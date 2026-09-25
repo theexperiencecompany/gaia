@@ -268,8 +268,14 @@ class TestSourcePrefixedToolName:
     def test_a_source_with_no_ascii_word_characters_gets_the_generic_prefix(self) -> None:
         assert source_prefixed_tool_name("支付", "execute") == "mcp_execute"
 
-    def test_fits_the_provider_function_name_limit_without_cutting_the_tool_name(self) -> None:
-        name = source_prefixed_tool_name("a very long integration name " * 5, "execute")
-        assert len(name) <= MCP_TOOL_NAME_MAX_CHARS
-        assert name.endswith("_execute")
-        assert "__" not in name
+    def test_a_long_source_is_cut_to_exactly_the_provider_function_name_limit(self) -> None:
+        name = source_prefixed_tool_name("a" * 100, "execute")
+
+        assert len(name) == MCP_TOOL_NAME_MAX_CHARS
+        assert name.endswith("a_execute")
+
+    def test_a_cut_that_lands_on_a_separator_leaves_no_double_separator(self) -> None:
+        # 56 prefix chars fit beside "_execute"; the 56th is the separator before "b".
+        name = source_prefixed_tool_name("a" * 55 + " b", "execute")
+
+        assert name == "a" * 55 + "_execute"

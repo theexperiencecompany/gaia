@@ -4,10 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.agents.core.background.running_registry import RunningSubagents
-from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
-from app.models.agent_models import RunningSubagent
 from app.models.payment_models import PlanType
 from app.services.payments.payment_service import payment_service
 
@@ -552,41 +549,6 @@ class TestCancelStreamEndpoint:
         response = await test_client.post("/api/v1/cancel-stream/stream-owned-by-other")
 
         assert response.status_code == 403
-
-    @pytest.mark.regression
-    @pytest.mark.usefixtures("fake_redis")
-    @patch(
-        "app.api.v1.endpoints.chat.stream_manager.get_progress",
-        new_callable=AsyncMock,
-    )
-    async def test_stopping_a_turn_stops_the_background_subagents_it_dispatched(
-        self,
-        mock_get_progress,
-        test_client,
-        test_user,
-    ):
-        mock_get_progress.return_value = {
-            "user_id": test_user.user_id,
-            "conversation_id": "conv-abc",
-        }
-        await RunningSubagents("conv-abc").claim(
-            RunningSubagent(
-                subagent_id="s1",
-                subagent_thread_id="spawn_conv-abc_s1",
-                integration_id="ticker",
-                agent_name="ticker_agent",
-                task_summary="tick",
-                started_at="2026-09-25T00:00:00Z",
-                stream_id="subagent_s1",
-                dispatched_by="stream-xyz",
-            )
-        )
-
-        response = await test_client.post("/api/v1/cancel-stream/stream-xyz")
-
-        assert response.json()["success"] is True
-        assert await stream_manager.is_cancelled("stream-xyz")
-        assert await stream_manager.is_cancelled("subagent_s1")
 
     async def test_cancel_stream_requires_auth(self, unauthenticated_client):
         """POST /api/v1/cancel-stream/{id} without auth must return 401."""

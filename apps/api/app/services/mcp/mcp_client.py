@@ -742,9 +742,9 @@ class MCPClient:
 
     @staticmethod
     async def _rename_shadowing_tools(
-        raw_tools: list[BaseTool], integration_id: str, source_name: str
-    ) -> None:
-        """Rename the server's tools a GAIA tool name would shadow, leaving them unreachable.
+        raw_tools: list[BaseTool], source_name: str
+    ) -> dict[str, str]:
+        """Rename the server's tools a GAIA tool name would shadow; return original -> new name.
 
         Done once here so every consumer (tool dicts, indexes, resolver) sees one name;
         the adapter still calls the server by the tool's own mcp_name.
@@ -761,12 +761,7 @@ class MCPClient:
                     + raw_tool.description
                 )
                 renamed[original] = raw_tool.name
-        if renamed:
-            log.info(
-                f"{LogTag.MCP} Renamed MCP tools that GAIA tool names shadow",
-                integration_id=integration_id,
-                renamed=renamed,
-            )
+        return renamed
 
     @staticmethod
     def _stamp_tool_metadata(
@@ -1004,7 +999,7 @@ class MCPClient:
             client = await self._open_session(integration_id, mcp_config)
 
             raw_tools = await self._convert_tools_safe(client, integration_id)
-            await self._rename_shadowing_tools(raw_tools, integration_id, resolved.name)
+            renamed_tools = await self._rename_shadowing_tools(raw_tools, resolved.name)
 
             # CRITICAL: Wrap tools to filter None values before MCP invocation.
             # MCP servers expect optional params to be OMITTED, not sent as null.
@@ -1035,6 +1030,7 @@ class MCPClient:
                 user_id=self.user_id,
                 is_custom=is_custom,
                 tool_names_sample=tool_names_sample,
+                renamed_tools=renamed_tools,
             )
 
             await self._run_post_connect_tasks(

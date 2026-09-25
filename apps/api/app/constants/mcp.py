@@ -41,6 +41,7 @@ MCP_UNSUPPORTED_CONTENT_NOTICE = "[{kind} omitted: this result type cannot be sh
 # An MCP tool named like one of GAIA's own tools (Dodo's "execute") is renamed
 # <source>_<name>; bounded by the providers' function-name limit (OpenAI: 64).
 MCP_TOOL_NAME_MAX_CHARS = 64
+MCP_TOOL_NAME_SEPARATOR = "_"
 # The <source> part when the integration's name has no ASCII letters or digits.
 MCP_UNNAMED_SOURCE_PREFIX = "mcp"
 # Leads a renamed tool's description: the server's docs, results and other tools

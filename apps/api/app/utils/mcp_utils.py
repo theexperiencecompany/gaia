@@ -13,7 +13,11 @@ import re
 from langchain_core.tools import BaseTool
 
 from app.constants.log_tags import LogTag
-from app.constants.mcp import MCP_TOOL_NAME_MAX_CHARS, MCP_UNNAMED_SOURCE_PREFIX
+from app.constants.mcp import (
+    MCP_TOOL_NAME_MAX_CHARS,
+    MCP_TOOL_NAME_SEPARATOR,
+    MCP_UNNAMED_SOURCE_PREFIX,
+)
 from shared.py.wide_events import log
 
 
@@ -30,9 +34,10 @@ def canonical_tool_name_map(names: Iterable[str]) -> dict[str, str]:
 
 def source_prefixed_tool_name(source_name: str, tool_name: str) -> str:
     """Name a tool after its source, e.g. ("Dodo Payments", "execute") -> "dodo_payments_execute"."""
-    prefix = re.sub(r"[^a-z0-9]+", "_", source_name.lower()).strip("_")
-    prefix = prefix[: MCP_TOOL_NAME_MAX_CHARS - len(tool_name) - 1].rstrip("_")
-    return f"{prefix or MCP_UNNAMED_SOURCE_PREFIX}_{tool_name}"
+    sep = MCP_TOOL_NAME_SEPARATOR
+    prefix = re.sub(r"[^a-z0-9]+", sep, source_name.lower()).strip(sep)
+    prefix = prefix[: MCP_TOOL_NAME_MAX_CHARS - len(tool_name) - len(sep)].rstrip(sep)
+    return f"{prefix or MCP_UNNAMED_SOURCE_PREFIX}{sep}{tool_name}"
 
 
 _CONNECTION_ERROR_PATTERNS = (

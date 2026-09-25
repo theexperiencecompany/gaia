@@ -28,12 +28,14 @@ from mcp.types import (
     ResourceTemplate,
     TextContent,
     TextResourceContents,
+    Tool,
 )
 from pydantic import AnyUrl
 import pytest
 
 from app.constants.device_bridge import DEVICE_TRANSPORT
 from app.constants.log_tags import LogTag
+from app.constants.mcp import MCP_RENAMED_TOOL_NOTE
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
 from app.models.device import Device
 from app.models.mcp_config import MCPConfig, OAuthDiscovery
@@ -2119,6 +2121,27 @@ class TestSanitizingLangChainAdapter:
         assert "anyOf" in fixed["items"]
 
 
+class TestAConvertedToolRenamedOnGaiasSide:
+    async def test_it_still_calls_the_server_by_the_servers_own_name(self) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(
+            return_value=CallToolResult(content=[TextContent(type="text", text="ran")])
+        )
+        server_tool = Tool(
+            name="execute",
+            description="Run code.",
+            inputSchema={"type": "object", "properties": {"code": {"type": "string"}}},
+        )
+        tool = SanitizingLangChainAdapter()._convert_tool(server_tool, connector)
+        assert tool is not None
+        tool.name = "dodo_payments_execute"
+
+        result = await tool.ainvoke({"code": "1+1"})
+
+        assert result == "ran"
+        connector.call_tool.assert_awaited_once_with("execute", {"code": "1+1"})
+
+
 # ===========================================================================
 # ResilientLangChainAdapter Tests
 # ===========================================================================
@@ -4149,6 +4172,35 @@ class TestConnectFailureClassification:
 
 
 @pytest.mark.usefixtures("core_tool_registry")
+class TestRenameShadowingTools:
+    async def test_a_tool_named_like_a_gaia_tool_is_renamed_and_told_its_old_name(self) -> None:
+        shadowed = _mock_tool("execute", description="Run code.")
+
+        renamed = await MCPClient._rename_shadowing_tools([shadowed], "Dodo Payments")
+
+        assert renamed == {"execute": "dodo_payments_execute"}
+        assert shadowed.name == "dodo_payments_execute"
+        assert shadowed.description == (
+            MCP_RENAMED_TOOL_NOTE.format(original="execute", renamed="dodo_payments_execute")
+            + "Run code."
+        )
+
+    async def test_the_reserved_ticket_names_are_renamed_too(self) -> None:
+        ticket = _mock_tool("approve")
+
+        assert await MCPClient._rename_shadowing_tools([ticket], "Acme") == {
+            "approve": "acme_approve"
+        }
+
+    async def test_a_tool_no_gaia_tool_shadows_is_left_alone(self) -> None:
+        own = _mock_tool("search_docs", description="Search the docs.")
+
+        assert await MCPClient._rename_shadowing_tools([own], "Dodo Payments") == {}
+        assert own.name == "search_docs"
+        assert own.description == "Search the docs."
+
+
+@pytest.mark.usefixtures("core_tool_registry")
 class TestDoConnectWiringExact:
     @pytest.fixture(autouse=True)
     def _mock_ssrf_guard(self) -> Iterator[None]:
@@ -4171,6 +4223,7 @@ class TestDoConnectWiringExact:
         tools = [_mock_tool("t1")]
         client._open_session = AsyncMock(return_value=session)
         client._convert_tools_safe = AsyncMock(return_value=tools)
+        client._rename_shadowing_tools = AsyncMock(return_value={})
         client._stamp_tool_metadata = MagicMock()
         client._run_post_connect_tasks = AsyncMock()
 
@@ -4189,6 +4242,7 @@ class TestDoConnectWiringExact:
         mock_resolver.resolve.assert_awaited_once_with(INTEGRATION_ID)
         client._open_session.assert_awaited_once_with(INTEGRATION_ID, resolved.mcp_config)
         client._convert_tools_safe.assert_awaited_once_with(session, INTEGRATION_ID)
+        client._rename_shadowing_tools.assert_awaited_once_with(tools, resolved.name)
         client._stamp_tool_metadata.assert_called_once_with(tools, INTEGRATION_ID, SERVER_URL)
         client._run_post_connect_tasks.assert_awaited_once_with(
             resolved, resolved.mcp_config, False, INTEGRATION_ID, tools

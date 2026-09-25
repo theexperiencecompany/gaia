@@ -701,6 +701,28 @@ class TestResumingABackgroundRun:
         assert _landings(client_edges.deliver) == [_landing("sent")]
         assert recorder.event("subagent_run")["resumed"] is True
 
+    async def test_a_resumed_runs_record_names_the_stream_it_runs_on_and_no_dispatcher(
+        self,
+        redis: Any,
+        client_edges: SimpleNamespace,
+        own_stream: dict[str, list[dict[str, Any]]],
+    ) -> None:
+        seen: list[RunningSubagent] = []
+
+        async def _run(**_kwargs: Any) -> SubagentOutcome:
+            seen.extend(await RunningSubagents(CONVERSATION).live())
+            return SubagentOutcome(text="sent")
+
+        with patch(f"{MODULE}.execute_subagent_stream", new=_run):
+            assert await delegation.resume_background(_delegation(), {"status": "approved"})
+            await _drain()
+
+        ((own_stream_id, _),) = own_stream.items()
+        (record,) = seen
+        assert own_stream_id.startswith(SUBAGENT_STREAM_ID_PREFIX)
+        assert record.stream_id == own_stream_id
+        assert record.dispatched_by is None
+
     async def test_a_redundant_resume_lands_nothing(
         self, redis: Any, client_edges: SimpleNamespace
     ) -> None:

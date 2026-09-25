@@ -1,20 +1,28 @@
-"""GET /stream/{stream_id} — replay semantics of the executor-stream endpoint.
+"""The chat stream endpoints: replaying a stream, and stopping one.
 
 Regression: a completed stream whose Redis event log still exists must replay
 that log, not short-circuit to a bare [DONE]. A HIL resume publishes its
 frames (second approval card included) and closes within ~100ms — faster than
 the client's websocket-to-fetch round trip — so the short-circuit dropped
 every frame of nearly every resumed run.
+
+Regression: a Stop must reach the background subagents the turn dispatched,
+which run on their own streams and outlive the turn.
 """
 
 import asyncio
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from httpx import AsyncClient
 from prometheus_client import REGISTRY
 import pytest
 
+from app.agents.core.background.running_registry import RunningSubagents
 from app.api.v1.endpoints.chat import _stream_from_redis
+from app.core.stream_manager import stream_manager
+from app.models.agent_models import RunningSubagent
+from tests.conftest import FAKE_USER, FAKE_USER_2
 
 pytestmark = pytest.mark.unit
 
@@ -299,3 +307,62 @@ class TestSSEDeliveryLatency:
                 await stream.athrow(asyncio.CancelledError)
 
         assert _delivery_count("disconnected") == before + 1
+
+
+CONVERSATION = "conv-cancel"
+TURN = "turn-stream"
+
+
+async def _dispatched_by_turn() -> str:
+    stream_id = "subagent_s1"
+    claimed = await RunningSubagents(CONVERSATION).claim(
+        RunningSubagent(
+            subagent_id="s1",
+            subagent_thread_id=f"spawn_{CONVERSATION}_s1",
+            integration_id="ticker",
+            agent_name="ticker_agent",
+            task_summary="tick",
+            started_at="2026-09-25T00:00:00Z",
+            stream_id=stream_id,
+            dispatched_by=TURN,
+        )
+    )
+    assert claimed
+    return stream_id
+
+
+@pytest.mark.usefixtures("fake_redis")
+class TestCancelStream:
+    @pytest.mark.regression
+    async def test_stopping_a_turn_stops_the_background_subagents_it_dispatched(
+        self, client: AsyncClient
+    ) -> None:
+        await stream_manager.start_stream(TURN, CONVERSATION, FAKE_USER.user_id)
+        subagent_stream = await _dispatched_by_turn()
+
+        response = await client.post(f"/api/v1/cancel-stream/{TURN}")
+
+        assert response.json() == {"success": True, "stream_id": TURN, "error": None}
+        assert await stream_manager.is_cancelled(TURN)
+        assert await stream_manager.is_cancelled(subagent_stream)
+
+    async def test_another_users_stream_is_refused_and_nothing_stops(
+        self, client: AsyncClient
+    ) -> None:
+        await stream_manager.start_stream(TURN, CONVERSATION, FAKE_USER_2.user_id)
+        subagent_stream = await _dispatched_by_turn()
+
+        response = await client.post(f"/api/v1/cancel-stream/{TURN}")
+
+        assert response.status_code == 403
+        assert not await stream_manager.is_cancelled(TURN)
+        assert not await stream_manager.is_cancelled(subagent_stream)
+
+    async def test_an_unknown_stream_is_reported_not_found(self, client: AsyncClient) -> None:
+        response = await client.post("/api/v1/cancel-stream/no-such-stream")
+
+        assert response.json() == {
+            "success": False,
+            "stream_id": "no-such-stream",
+            "error": "Stream not found",
+        }

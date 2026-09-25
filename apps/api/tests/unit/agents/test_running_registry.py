@@ -156,6 +156,15 @@ class TestStopStream:
         for stream_id in ("turn", "subagent_child", "subagent_grandchild"):
             assert await stream_manager.is_cancelled(stream_id)
 
+    async def test_a_blocking_run_inside_a_stopped_subagent_stops_with_it(self) -> None:
+        reg = RunningSubagents(CONV)
+        assert await reg.claim(_run("child", "subagent_child", dispatched_by="turn"))
+        assert await reg.claim(_run("inner", "subagent_child", dispatched_by="subagent_child"))
+
+        stopped = await registry.stop_stream(CONV, "turn")
+
+        assert [s.subagent_id for s in stopped] == ["child"]
+
     async def test_leaves_runs_another_stream_dispatched(self) -> None:
         reg = RunningSubagents(CONV)
         assert await reg.claim(_run("mine", "subagent_mine", dispatched_by="turn"))
@@ -197,10 +206,27 @@ class TestStopAll:
         assert await stream_manager.is_cancelled("subagent_orphan")
         assert await stream_manager.is_cancelled("subagent_resumed")
 
+    async def test_a_run_already_stopped_is_not_cancelled_again(self) -> None:
+        reg = RunningSubagents(CONV)
+        assert await reg.claim(_run("done", "subagent_done", dispatched_by="turn"))
+        await stream_manager.cancel_stream("subagent_done")
+
+        with patch.object(
+            stream_manager, "cancel_stream", wraps=stream_manager.cancel_stream
+        ) as cancel:
+            await reg.stop_all()
+
+        cancel.assert_not_called()
+
     async def test_a_record_written_before_runs_carried_streams_still_decodes(self) -> None:
         reg = RunningSubagents(CONV)
         legacy = _sub("legacy")
         assert await reg.claim(legacy)
 
-        assert await reg.live() == [legacy]
-        assert await reg.stop_all() == [legacy]
+        with patch.object(
+            stream_manager, "cancel_stream", wraps=stream_manager.cancel_stream
+        ) as cancel:
+            assert await reg.live() == [legacy]
+            assert await reg.stop_all() == [legacy]
+
+        cancel.assert_not_called()
