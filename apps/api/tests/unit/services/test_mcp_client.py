@@ -2413,12 +2413,15 @@ class TestAToolWithUnderscoredArguments:
 
         connector.call_tool.assert_awaited_once_with("list", {"filter": {"_since": "2026-01-01"}})
 
-    @pytest.mark.regression
     @pytest.mark.parametrize(
         ("model_args", "server_args"),
         [
             ({"target": {"id": "public"}}, {"target": {"id": "public"}}),
-            ({"target": {"id_2": "internal"}}, {"target": {"_id": "internal"}}),
+            pytest.param(
+                {"target": {"id_2": "internal"}},
+                {"target": {"_id": "internal"}},
+                marks=pytest.mark.regression,
+            ),
         ],
     )
     async def test_one_of_options_naming_id_and_underscore_id_each_map_back(
