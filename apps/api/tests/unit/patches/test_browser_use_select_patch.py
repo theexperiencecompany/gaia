@@ -11,8 +11,9 @@ from browser_use.browser.watchdogs.default_action_watchdog import DefaultActionW
 import pytest
 
 import app.patches.browser_use_select_patch as patch_module
+from tests.helpers import OBSCURA_TEST_CDP_URL
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("obscura_host")]
 
 
 class _Input:
@@ -118,7 +119,11 @@ def _watchdog(cdp: _FakeCdp, node: object | None = None) -> SimpleNamespace:
             raise AssertionError("the CDP session must be the one for the event's own node")
         return session
 
-    return SimpleNamespace(browser_session=SimpleNamespace(cdp_client_for_node=cdp_client_for_node))
+    return SimpleNamespace(
+        browser_session=SimpleNamespace(
+            cdp_url=OBSCURA_TEST_CDP_URL, cdp_client_for_node=cdp_client_for_node
+        )
+    )
 
 
 def _event(text: str, tag: str = "select") -> SimpleNamespace:

@@ -198,7 +198,26 @@ async def test_the_job_carries_the_turns_identity_and_provenance(
         "root_request_id": "req-42",
         "source_category": "bot",
         "conversation_source": ConversationSource.DISCORD,
+        "secrets": {},
     }
+
+
+async def test_a_credential_reaches_the_job_and_never_the_task_anyone_reads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorder = _install(monkeypatch)
+
+    await browser_task.ainvoke(
+        {
+            "task": "log in with hunter2-secret",
+            "secrets": {"password": "hunter2-secret", "otp": ""},
+        },
+        config=UI_CONFIG,
+    )
+
+    assert recorder.request.secrets == {"password": "hunter2-secret"}
+    assert "hunter2-secret" not in recorder.request.task
+    assert "hunter2-secret" not in recorder.states[0].task
 
 
 async def test_the_claimed_slot_the_queued_state_and_the_job_all_name_one_job(

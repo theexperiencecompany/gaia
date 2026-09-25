@@ -18,6 +18,7 @@ import pytest
 
 from app.constants.browser import BrowserEngine
 import app.patches.browser_use_obscura_navigate_patch as patch_module
+from tests.helpers import OBSCURA_TEST_CDP_URL
 
 _URL = "https://example.test/slow"
 
@@ -29,7 +30,7 @@ def _session(navigate: AsyncMock) -> tuple[Any, AsyncMock]:
         cdp_client=SimpleNamespace(send=SimpleNamespace(Page=SimpleNamespace(navigate=navigate))),
     )
     get_cdp = AsyncMock(return_value=cdp_session)
-    return SimpleNamespace(get_or_create_cdp_session=get_cdp), get_cdp
+    return SimpleNamespace(cdp_url=OBSCURA_TEST_CDP_URL, get_or_create_cdp_session=get_cdp), get_cdp
 
 
 @pytest.fixture
@@ -39,12 +40,8 @@ def original(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     return stand_in
 
 
-@pytest.fixture
-def obscura(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(patch_module.settings, "BROWSER_ENGINE", BrowserEngine.OBSCURA)
-
-
 @pytest.mark.unit
+@pytest.mark.usefixtures("obscura_host")
 class TestObscuraNavigatePatch:
     async def test_another_engine_takes_browser_uses_own_path_with_every_argument(
         self, monkeypatch: pytest.MonkeyPatch, original: AsyncMock
@@ -72,7 +69,6 @@ class TestObscuraNavigatePatch:
         # browser-use 0.11.13 waits for the full "load" when no wait is named.
         original.assert_awaited_once_with(session, _URL, "t1", timeout=None, wait_until="load")
 
-    @pytest.mark.usefixtures("obscura")
     async def test_obscura_navigates_its_target_once_and_skips_lifecycle_polling(
         self, original: AsyncMock
     ) -> None:
@@ -87,14 +83,12 @@ class TestObscuraNavigatePatch:
         )
         original.assert_not_awaited()
 
-    @pytest.mark.usefixtures("obscura")
     async def test_a_navigation_obscura_reports_as_failed_raises_with_its_error(self) -> None:
         session, _ = _session(AsyncMock(return_value={"errorText": "net::ERR_NAME_NOT_RESOLVED"}))
 
         with pytest.raises(RuntimeError, match=r"^Navigation failed: net::ERR_NAME_NOT_RESOLVED$"):
             await patch_module._navigate_and_wait(session, _URL, "t1")
 
-    @pytest.mark.usefixtures("obscura")
     async def test_a_navigation_past_the_engine_deadline_raises_naming_it(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

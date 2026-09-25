@@ -11,8 +11,9 @@ from browser_use.browser.session import BrowserSession
 import pytest
 
 import app.patches.browser_use_window_open_patch as patch_module
+from tests.helpers import OBSCURA_TEST_CDP_URL
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("obscura_host")]
 
 
 class _FakeCdp:
@@ -61,7 +62,7 @@ def _session(target_id: str, cdp: _FakeCdp) -> SimpleNamespace:
 def _browser_session(*targets: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     """Build a browser session whose accessor hands out targets in order, recording each ask."""
     queue = list(targets)
-    browser = SimpleNamespace(requests=[])
+    browser = SimpleNamespace(cdp_url=OBSCURA_TEST_CDP_URL, requests=[])
 
     async def original(self: object, target_id: str | None = None, focus: bool = True) -> object:
         assert self is browser, "Browser-Use's accessor must be asked on the same session"

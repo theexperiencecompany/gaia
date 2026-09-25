@@ -11,8 +11,9 @@ import pytest
 
 from app.constants.log_tags import LogTag
 import app.patches.browser_use_scroll_patch as patch_module
+from tests.helpers import OBSCURA_TEST_CDP_URL
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("obscura_host")]
 
 
 class _Input:
@@ -45,7 +46,9 @@ def _watchdog(cdp: _FakeCdp) -> SimpleNamespace:
         return session
 
     return SimpleNamespace(
-        browser_session=SimpleNamespace(get_or_create_cdp_session=get_or_create_cdp_session)
+        browser_session=SimpleNamespace(
+            cdp_url=OBSCURA_TEST_CDP_URL, get_or_create_cdp_session=get_or_create_cdp_session
+        )
     )
 
 

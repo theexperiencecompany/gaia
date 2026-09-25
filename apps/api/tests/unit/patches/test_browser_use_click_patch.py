@@ -15,8 +15,9 @@ from browser_use.browser.watchdogs.default_action_watchdog import DefaultActionW
 import pytest
 
 import app.patches.browser_use_click_patch as patch_module
+from tests.helpers import OBSCURA_TEST_CDP_URL
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("obscura_host")]
 
 # What the page measures for the search button, and what the snapshot fabricates
 # for it -- a click computed from the snapshot lands a whole page down.
@@ -107,7 +108,11 @@ def _watchdog(cdp: _FakeCdp, node: object | None = None) -> SimpleNamespace:
             raise ValueError("no CDP session for that node")
         return session
 
-    return SimpleNamespace(browser_session=SimpleNamespace(cdp_client_for_node=cdp_client_for_node))
+    return SimpleNamespace(
+        browser_session=SimpleNamespace(
+            cdp_url=OBSCURA_TEST_CDP_URL, cdp_client_for_node=cdp_client_for_node
+        )
+    )
 
 
 def _node(tag: str = "button", attributes: dict[str, str] | None = None) -> SimpleNamespace:
