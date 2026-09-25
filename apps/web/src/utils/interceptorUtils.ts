@@ -28,7 +28,13 @@ export const processAxiosError = (
   { router }: ErrorHandlerDependencies,
 ): void => {
   if (error.code === "ERR_CONNECTION_REFUSED" || error.code === "ERR_NETWORK") {
-    toast.error("Server unreachable. Try again later");
+    // An edge body-size rejection has no CORS header, so the browser reports
+    // it as a network error: for a file upload, size is the likely cause.
+    toast.error(
+      error.config?.data instanceof FormData
+        ? "Upload failed. The file may be too large. Try a smaller file."
+        : "Server unreachable. Try again later",
+    );
     error.handled = true;
     return;
   }

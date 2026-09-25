@@ -1,5 +1,5 @@
+import { ApiError } from "@shared/api";
 import { useCallback, useRef } from "react";
-
 import { chatApi } from "@/features/chat/api/chatApi";
 import type { UploadedFilePreview } from "@/features/chat/components/files/FilePreview";
 import {
@@ -7,6 +7,7 @@ import {
   MAX_FILE_SIZE_BYTES,
   MAX_FILES,
 } from "@/features/chat/constants/files";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import { useComposerStore } from "@/stores/composerStore";
 import { useStreamStore } from "@/stores/streamStore";
@@ -116,6 +117,11 @@ export const useFileAttachments = () => {
               // The API client already surfaced the backend detail (413/415…)
               // as a toast — just drop the failed chip.
               removeUploadedFile(tempId);
+              trackEvent(ANALYTICS_EVENTS.CHAT_FILE_UPLOAD_FAILED, {
+                status: error instanceof ApiError ? error.status : undefined,
+                size_bytes: file.size,
+                content_type: file.type,
+              });
               throw error;
             }
           }),
