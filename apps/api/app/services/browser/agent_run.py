@@ -15,9 +15,14 @@ from dataclasses import dataclass
 from functools import partial
 from itertools import compress
 from time import perf_counter
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import Any, TypedDict
 
-from pydantic import TypeAdapter
+from browser_use import Agent, Browser
+from browser_use.agent.views import ActionResult, AgentHistoryList, AgentOutput
+from browser_use.browser.events import BrowserConnectedEvent
+from browser_use.browser.session import BrowserSession
+from browser_use.browser.views import BrowserStateSummary
+from pydantic import BaseModel, TypeAdapter
 
 from app.constants.browser import (
     BROWSER_AGENT_NO_PROGRESS_STEPS,
@@ -61,13 +66,6 @@ from app.services.browser.session import BrowserHostSession
 from app.services.browser.stalled_loads import StalledLoads
 from app.services.browser.tools import build_browser_tools
 from shared.py.wide_events import log
-
-if TYPE_CHECKING:
-    from browser_use import Agent
-    from browser_use.agent.views import ActionResult, AgentHistoryList, AgentOutput
-    from browser_use.browser.session import BrowserSession
-    from browser_use.browser.views import BrowserStateSummary
-    from pydantic import BaseModel
 
 # Attributes worth naming an otherwise-unlabelled control by, in the order a
 # person would recognise it. `value` covers <input type="submit" value="Submit">.
@@ -239,9 +237,6 @@ class BrowserAgentRun:
         return self._frames
 
     async def execute(self, task: str) -> RunOutcome:
-        from browser_use import Agent, Browser  # noqa: PLC0415 -- heavy optional dep
-        from browser_use.browser.events import BrowserConnectedEvent  # noqa: PLC0415 -- heavy dep
-
         # Before any Browser-Use object exists, so every event bus this run
         # starts takes the run's lock, not the process-wide one.
         isolate_run_events()
@@ -346,8 +341,6 @@ class BrowserAgentRun:
 
     async def _on_step_start(self, agent: object) -> None:
         """Hand the agent what the user said since its last step, and any load the browser stopped."""
-        from browser_use.agent.views import ActionResult  # noqa: PLC0415 -- heavy optional dep
-
         del agent
         for message in await self._hooks.take_user_messages():
             self._agent.message_manager.add_new_task(self._secrets.mask(message))

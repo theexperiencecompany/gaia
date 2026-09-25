@@ -2,16 +2,19 @@
 
 Both are Browser-Use chat models (OpenAI wire, which OpenRouter and the dev
 endpoint both speak), and every call either makes is recorded into the run's
-ledger. The browser_use import is local since the package is heavy and only a
-real browser task needs it.
+ledger.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from time import perf_counter
-from typing import TYPE_CHECKING, Literal, TypeVar, overload
+from typing import Literal, TypeVar, overload
 
+from browser_use import ChatOpenAI
+from browser_use.llm.base import BaseChatModel
+from browser_use.llm.messages import BaseMessage
+from browser_use.llm.views import ChatInvokeCompletion
 from pydantic import BaseModel
 from pydantic_core import CoreSchema, core_schema
 
@@ -36,11 +39,6 @@ from app.constants.llm import (
 from app.services.browser.exceptions import BrowserUnavailableError
 from app.services.browser.hedge import first_answer
 from app.services.browser.ledger import CallComponent, ModelCall, RunLedger
-
-if TYPE_CHECKING:
-    from browser_use.llm.base import BaseChatModel
-    from browser_use.llm.messages import BaseMessage
-    from browser_use.llm.views import ChatInvokeCompletion
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -139,8 +137,6 @@ def _openai_wire_model(
     Every argument is required: Browser-Use's own defaults for the cap and the
     effort are real values, and one silently standing in for ours is a bug.
     """
-    from browser_use import ChatOpenAI  # noqa: PLC0415 -- heavy optional dep
-
     return ChatOpenAI(
         model=model,
         api_key=api_key,

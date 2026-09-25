@@ -13,8 +13,10 @@ import asyncio
 from dataclasses import dataclass, field, replace
 import json
 from time import perf_counter
-from typing import TYPE_CHECKING
 
+from browser_use.llm.base import BaseChatModel
+from browser_use.llm.exceptions import ModelError
+from browser_use.llm.messages import SystemMessage, UserMessage
 from pydantic import BaseModel, Field
 
 from app.constants.browser import (
@@ -64,9 +66,6 @@ from app.services.browser.ledger import CallComponent, ExecutedAction, ModelCall
 from app.services.browser.run_contract import FlagFn
 from app.services.browser.stalled_loads import StalledLoads
 from shared.py.wide_events import log
-
-if TYPE_CHECKING:
-    from browser_use.llm.base import BaseChatModel
 
 #: Why a burst ended, and what the agent is told about it.
 _Ending = tuple[JevStop, str]
@@ -455,12 +454,6 @@ class JevRunner:
 
         A model that fails or never answers is a step Jev could not decide.
         """
-        from browser_use.llm.exceptions import ModelError  # noqa: PLC0415 -- heavy optional dep
-        from browser_use.llm.messages import (  # noqa: PLC0415 -- heavy optional dep
-            SystemMessage,
-            UserMessage,
-        )
-
         page = self._masked(state.page)
         context = {
             "goal": state.goal,

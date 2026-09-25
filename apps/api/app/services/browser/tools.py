@@ -7,21 +7,16 @@ string, Browser-Use resumes its loop natively afterwards with full task
 memory, no dispose or recreate. solve_captcha_with_help hands a CAPTCHA to a
 human takeover since there is no automatic solver. request_agent_guidance
 pauses the same way but asks the agent that started the run, not the user.
-
-Imports of browser_use are local so the module loads without the package.
 """
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING
 
+from browser_use import Tools
 from pydantic import BaseModel
 
 from app.constants.browser import EngineSwitchReason
-
-if TYPE_CHECKING:
-    from browser_use import Tools
 
 TakeoverFn = Callable[[str, str], Awaitable[str]]
 AgentGuidanceFn = Callable[[str], Awaitable[str]]
@@ -47,8 +42,6 @@ def build_browser_tools(
     raise to stop the run; handle_engine_switch, given only on the fast engine,
     moves the run to the full browser.
     """
-    from browser_use import Tools  # noqa: PLC0415 -- heavy optional dep
-
     tools: Tools[None] = Tools()
 
     # Registered by function name; BrowserHandoffAction.REQUEST_AGENT_GUIDANCE must spell it the same.

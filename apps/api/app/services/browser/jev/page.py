@@ -15,7 +15,14 @@ from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict, TypeVar, cast
+from typing import Literal, NotRequired, TypedDict, TypeVar, cast
+
+from browser_use.browser.events import SwitchTabEvent
+from browser_use.browser.session import BrowserSession, CDPSession
+from cdp_use.cdp.input.commands import DispatchKeyEventParameters, DispatchMouseEventParameters
+from cdp_use.cdp.page.commands import CaptureScreenshotReturns
+from cdp_use.cdp.runtime.commands import EvaluateReturns
+from cdp_use.cdp.runtime.types import RemoteObject
 
 from app.constants.browser import (
     JEV_CDP_TIMEOUT_SECONDS,
@@ -27,13 +34,6 @@ from app.constants.browser import (
 from app.constants.log_tags import LogTag
 from app.services.browser.exceptions import BrowserAutomationError
 from shared.py.wide_events import log
-
-if TYPE_CHECKING:
-    from browser_use.browser.session import BrowserSession, CDPSession
-    from cdp_use.cdp.input.commands import DispatchKeyEventParameters, DispatchMouseEventParameters
-    from cdp_use.cdp.page.commands import CaptureScreenshotReturns
-    from cdp_use.cdp.runtime.commands import EvaluateReturns
-    from cdp_use.cdp.runtime.types import RemoteObject
 
 _ASSETS = Path(__file__).parent
 _SNAPSHOT_JS = (_ASSETS / "snapshot.js").read_text()
@@ -369,8 +369,6 @@ class JevPage:
 
     async def follow_new_tab(self, tabs_before: set[str]) -> bool:
         """Focus a tab the last input opened, as a person would; True when one opened."""
-        from browser_use.browser.events import SwitchTabEvent  # noqa: PLC0415 -- heavy optional dep
-
         tabs = await self._browser.get_tabs()
         opened = [tab.target_id for tab in tabs if tab.target_id not in tabs_before]
         if not opened:

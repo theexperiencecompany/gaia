@@ -10,8 +10,9 @@ page's text.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING
 
+from browser_use import Tools
+from browser_use.agent.views import ActionResult
 from pydantic import BaseModel, Field
 
 from app.constants.browser import (
@@ -25,10 +26,6 @@ from app.constants.browser import (
 from app.schemas.browser import BrowserAction
 from app.services.browser.jev.decision import OPTION_SEPARATOR
 from app.services.browser.jev.loop import BurstResult, JevRunner, JevStep
-
-if TYPE_CHECKING:
-    from browser_use import Tools
-    from browser_use.agent.views import ActionResult
 
 #: Emits one card for a finished burst: its caption source, and the page it ended on.
 BurstEmitFn = Callable[[list[BrowserAction], str, str], Awaitable[None]]
@@ -163,8 +160,6 @@ class JevDelegate:
         self._fruitless: set[tuple[str, ...]] = set()
 
     async def run(self, params: JevParams) -> ActionResult:
-        from browser_use.agent.views import ActionResult  # noqa: PLC0415 -- heavy optional dep
-
         goal = _normalized(params.goal)
         if goal in self._fruitless:
             return ActionResult(error=JEV_REPEATED_GOAL_REFUSAL)

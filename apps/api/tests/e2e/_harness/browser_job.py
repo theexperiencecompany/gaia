@@ -17,7 +17,6 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import browser_use
 import fakeredis.aioredis
 
 from app.agents.core.background.session import RunKind, create_session
@@ -416,8 +415,8 @@ async def browser_job_world(
         # A guidance request nobody answers must fail the journey in seconds, not
         # sit out the real two-minute budget.
         patch("app.services.browser.job_runner.BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS", 2),
-        patch.object(browser_use, "Agent", double.agent),
-        patch.object(browser_use, "Browser", lambda **kwargs: browser),
+        patch("app.services.browser.agent_run.Agent", double.agent),
+        patch("app.services.browser.agent_run.Browser", lambda **kwargs: browser),
         patch("app.agents.tools.browser_tool.enqueue_worker_job", _enqueue),
         patch("app.agents.tools.browser_tool.RedisPoolManager.get_pool", AsyncMock()),
         patch(

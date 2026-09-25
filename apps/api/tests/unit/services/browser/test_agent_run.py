@@ -16,7 +16,6 @@ from types import SimpleNamespace
 from typing import Any, ClassVar
 from unittest.mock import MagicMock
 
-import browser_use
 import pytest
 
 from app.constants.browser import (
@@ -660,8 +659,8 @@ def built_with(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, object]]:
         built.append(("text", ledger))
         return _TEXT_MODEL
 
-    monkeypatch.setattr(browser_use, "Agent", _Agent)
-    monkeypatch.setattr(browser_use, "Browser", _Browser)
+    monkeypatch.setattr(agent_run_mod, "Agent", _Agent)
+    monkeypatch.setattr(agent_run_mod, "Browser", _Browser)
     monkeypatch.setattr(agent_run_mod, "build_agent_llm", _llm)
     monkeypatch.setattr(agent_run_mod, "build_text_model", _text_model)
     monkeypatch.setattr(agent_run_mod, "open_jev_client", _JevGateway.opened)
