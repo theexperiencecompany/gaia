@@ -289,6 +289,8 @@ class JevRunner:
                         )
                     text, typed = value
                     await self._page.act(action, page, text=typed)
+                    if action["kind"] == "secret":
+                        self._secrets.learn(typed)
                 else:
                     tabs = await self._page.tab_ids()
                     await self._page.act(action, page)

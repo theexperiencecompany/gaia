@@ -7,12 +7,26 @@ agent through its sensitive_data.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 import re
 from urllib.parse import quote, quote_plus, urlsplit
 
 from app.constants.browser import JEV_SECRET_MASK
 
 _PLACEHOLDER = re.compile(r"<secret>([\w.-]+)</secret>")
+
+
+def _forms_of(values: Iterable[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Every form a value takes (as typed, and as a URL encodes it) with its name, longest first."""
+    return sorted(
+        (
+            (form, name)
+            for name, value in values
+            for form in {value, quote_plus(value), quote(value)}
+        ),
+        key=lambda pair: len(pair[0]),
+        reverse=True,
+    )
 
 
 class RunSecrets:
@@ -24,15 +38,10 @@ class RunSecrets:
         self._sites = [site.lower().removeprefix("www.") for site in sites]
         # A form sent by GET puts a password in the next page's URL, encoded.
         # Longest first, so a longer form is never half-replaced by a shorter one inside it.
-        self._forms = sorted(
-            (
-                (form, name)
-                for name, value in self._values.items()
-                for form in {value, quote_plus(value), quote(value)}
-            ),
-            key=lambda pair: len(pair[0]),
-            reverse=True,
-        )
+        self._forms = _forms_of(self._values.items())
+        #: Values the run typed into a password field that the task never named a secret.
+        self._typed: list[str] = []
+        self._redacted = self._forms
 
     @property
     def names(self) -> list[str]:
@@ -51,9 +60,26 @@ class RunSecrets:
             text = text.replace(form, f"<secret>{name}</secret>")
         return text
 
+    def learn(self, typed: str) -> None:
+        """Treat a value the run typed into a password field as a secret for everything a person reads.
+
+        A task can spell a password out instead of naming a secret; once it is in
+        a password field, it is one, and the page may echo it (a GET form puts it in the URL).
+        """
+        if (
+            not typed
+            or _PLACEHOLDER.fullmatch(typed)
+            or typed in {*self._values.values(), *self._typed}
+        ):
+            return
+        self._typed.append(typed)
+        self._redacted = _forms_of(
+            [*self._values.items(), *(("typed", value) for value in self._typed)]
+        )
+
     def redact(self, text: str) -> str:
         """Replace every secret value and placeholder with the mask, for text a person reads."""
-        for form, _name in self._forms:
+        for form, _name in self._redacted:
             text = text.replace(form, JEV_SECRET_MASK)
         return _PLACEHOLDER.sub(JEV_SECRET_MASK, text)
 
