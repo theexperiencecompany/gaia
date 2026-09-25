@@ -271,9 +271,9 @@ class SanitizingLangChainAdapter(LangChainAdapter):
             ) -> str | list[ContentBlock] | _FormattedToolError:
                 try:
                     # Nested objects arrive as Pydantic models, under the model's names.
-                    arguments = _to_server_names(
-                        _ARGUMENTS.dump_python(kwargs, mode="json"), self.server_schema
-                    )
+                    # Equivalent under mutation: the generated models hold only JSON-native values.
+                    as_json = _ARGUMENTS.dump_python(kwargs, mode="json")  # pragma: no mutate
+                    arguments = _to_server_names(as_json, self.server_schema)
                     tool_result: CallToolResult = await self.tool_connector.call_tool(
                         self.mcp_name, arguments
                     )

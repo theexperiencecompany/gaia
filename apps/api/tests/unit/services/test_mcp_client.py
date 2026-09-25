@@ -2142,6 +2142,17 @@ class TestSanitizingLangChainAdapter:
 
         assert list(fixed["properties"]) == ["field2fa"]
 
+    def test_fix_schema_leaves_a_required_name_it_has_no_property_for(self):
+        schema = {
+            "type": "object",
+            "properties": {"_id": {"type": "string"}},
+            "required": ["_id", "undeclared"],
+        }
+
+        fixed = SanitizingLangChainAdapter().fix_schema(schema)
+
+        assert fixed["required"] == ["id", "undeclared"]
+
     def test_fix_schema_required_keeps_names_it_did_not_rename(self):
         schema = {
             "type": "object",
