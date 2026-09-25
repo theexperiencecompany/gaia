@@ -93,8 +93,9 @@ class StalledLoads:
             browser={"stalled_url": url},
         )
         self._stalled.append(
-            f"{url} sent nothing for {BROWSER_LOAD_STALL_SECONDS:.0f} s, so its loading was stopped; "
-            "the tab is still on the page it was on."
+            f"{url} did not respond within {BROWSER_LOAD_STALL_SECONDS:.0f} s, so its loading was "
+            "stopped and the tab stayed on the page it was on. Sites are often briefly slow; "
+            "the page may load if opened again."
         )
         try:
             await asyncio.wait_for(
