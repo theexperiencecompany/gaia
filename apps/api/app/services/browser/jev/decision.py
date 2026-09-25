@@ -16,7 +16,6 @@ import re
 from app.constants.browser import (
     JEV_MAX_ELEMENTS,
     JEV_PROBABILITY_SUM_TOLERANCE,
-    JEV_RECENT_ACTIONS,
     JevOperation,
 )
 from app.services.browser.exceptions import BrowserAutomationError
@@ -35,6 +34,8 @@ from app.services.browser.jev.questions import (
     OPERATIONS,
     TARGET,
     VALUE,
+    VALUE_GENERATE,
+    VALUE_NONE,
 )
 
 _KIND_OPERATION = {
@@ -51,6 +52,18 @@ _CONTROL_OPERATION = {
 NONE_VALUE = "NONE"
 GENERATE = "GENERATE"
 _ELEMENT_FIELDS = ("role", "ident", "value", "checked", "selected", "expanded", "filled")
+#: What a target question shows of each candidate besides its label and current value.
+_TARGET_FIELDS = ("role", "ident", "checked", "selected", "expanded", "filled")
+#: What the value question and the text model see of the field being typed into.
+_FIELD_KEYS = ("label", "role", "ident", "value")
+#: A choice this close to the most likely option is a tie, not a lower-ranked pick.
+_TIE_TOLERANCE = 1e-6
+_TRAILING_PUNCTUATION = ".,;:!?"
+_OPERATION_QUESTION = "operation"
+_NAVIGATE_QUESTION = "navigate_target"
+_VALUE_QUESTION = "value"
+_NO_ANSWER = "Jev returned no answer for a question; no action executed."
+_INVALID_ANSWER = "Invalid Jev response; no action executed."
 
 # Literal values a goal spells out: quoted text, emails, dates, URLs.
 _QUOTED = re.compile(r"\"([^\"]{1,200})\"|“([^”]{1,200})”|(?<![\w])'([^']{1,200})'(?![\w])")
@@ -96,9 +109,41 @@ class Decision:
     evaluation: JevEvaluation
 
 
+@dataclass(frozen=True)
+class _Choice:
+    """A validated answer: the option chosen, and how sure Jev was."""
+
+    choice: str
+    confidence: float
+
+
+@dataclass
+class _Element:
+    """One observed element as Jev's state lists it; a dropdown's options are its targets."""
+
+    index: str
+    label: str
+    #: The descriptor fields it carries (role, id or name, value, states), none of them empty.
+    fields: dict[str, object]
+    operations: list[JevOperation] = field(default_factory=list)
+    options: list[dict[str, str]] | None = None
+
+    def described(self) -> dict[str, object]:
+        """Return the element as Jev reads it."""
+        described = {
+            **self.fields,
+            "index": self.index,
+            "label": self.label,
+            "operations": self.operations,
+        }
+        if self.options is not None:
+            described["options"] = self.options
+        return described
+
+
 @dataclass
 class _ActionSpace:
-    elements: list[dict[str, object]] = field(default_factory=list)
+    elements: list[_Element] = field(default_factory=list)
     #: Per target operation: target index -> snapshot action.
     targets: dict[JevOperation, dict[str, PageAction]] = field(default_factory=dict)
     controls: dict[JevOperation, PageAction] = field(default_factory=dict)
@@ -107,7 +152,7 @@ class _ActionSpace:
 def action_space(actions: list[PageAction]) -> _ActionSpace:
     """One index per observed element; each operation has its own valid targets."""
     space = _ActionSpace()
-    indices: dict[int, str] = {}
+    by_node: dict[int, _Element] = {}
     for action in actions:
         kind = action["kind"]
         if kind not in _KIND_OPERATION:
@@ -116,32 +161,31 @@ def action_space(actions: list[PageAction]) -> _ActionSpace:
                 space.controls[operation] = action
             continue
         node = action["node"]
-        if node not in indices:
-            if len(indices) >= JEV_MAX_ELEMENTS:
+        element = by_node.get(node)
+        if element is None:
+            if len(by_node) >= JEV_MAX_ELEMENTS:
                 continue
-            index = str(len(space.elements) + 1)
-            indices[node] = index
-            element = {
-                key: value for key, value in _fields(action, _ELEMENT_FIELDS).items() if value != ""
-            }
-            element.update(index=index, label=action["label"].split(" → ")[0], operations=[])
+            fields = {k: v for k, v in _fields(action, _ELEMENT_FIELDS).items() if v != ""}
+            element = _Element(
+                index=str(len(space.elements) + 1),
+                label=action["label"].split(" → ")[0],
+                fields=fields,
+            )
             if kind == "select":
-                element["value"] = action.get("current_value", "")
-                element["options"] = []
+                # A dropdown shows its current choice; each option it offers is a target.
+                element.fields["value"] = action["current_value"]
+                element.options = []
+            by_node[node] = element
             space.elements.append(element)
-        index = indices[node]
         operation = _KIND_OPERATION[kind]
-        element = space.elements[int(index) - 1]
-        operations = element["operations"]
-        assert isinstance(operations, list)
-        if operation not in operations:
-            operations.append(operation)
-        target = index
-        if kind == "select":
-            options = element["options"]
-            assert isinstance(options, list)
-            target = f"{index}:{len(options) + 1}"
-            options.append({"index": target, "label": action["label"], "value": action["value"]})
+        if operation not in element.operations:
+            element.operations.append(operation)
+        target = element.index
+        if element.options is not None:
+            target = f"{element.index}:{len(element.options) + 1}"
+            element.options.append(
+                {"index": target, "label": action["label"], "value": action["value"]}
+            )
         space.targets.setdefault(operation, {})[target] = action
     return space
 
@@ -158,35 +202,62 @@ def literals(goal: str) -> list[str]:
     for match in _QUOTED.finditer(goal):
         found.append(next(group for group in match.groups() if group))
     for pattern in (_EMAIL, _DATE, _URL):
-        found.extend(match.group(0).rstrip(".,;:!?") for match in pattern.finditer(goal))
+        found.extend(
+            match.group(0).rstrip(_TRAILING_PUNCTUATION) for match in pattern.finditer(goal)
+        )
     return list(dict.fromkeys(value for value in found if not _SECRET_PLACEHOLDER.fullmatch(value)))
 
 
 def goal_addresses(goal: str) -> list[str]:
-    """Return the pages a goal names: its URLs, and bare sites as https addresses."""
-    urls = [match.group(0).rstrip(".,;:!?") for match in _URL.finditer(goal)]
-    sites = [f"https://{match.group(0).lower()}/" for match in _SITE.finditer(_URL.sub(" ", goal))]
+    """Return the pages a goal names: its URLs, and bare sites outside them as https addresses."""
+    urls = [match.group(0).rstrip(_TRAILING_PUNCTUATION) for match in _URL.finditer(goal)]
+    sites = [
+        f"https://{match.group(0).lower()}/"
+        for text in _URL.split(goal)
+        for match in _SITE.finditer(text)
+    ]
     return list(dict.fromkeys([*urls, *sites]))
 
 
-def _validate_choice(answer: JevChoiceAnswer | None, ids: set[str]) -> JevChoiceAnswer:
+def describe_field(target: PageAction) -> dict[str, object]:
+    """Return the field being typed into as the value question and the text model see it."""
+    return {key: target.get(key) for key in _FIELD_KEYS}
+
+
+def _target_question(operation: JevOperation) -> str:
+    return f"{operation.value.lower()}_target"
+
+
+def _target_criteria(candidates: dict[str, PageAction]) -> dict[str, JsonInput]:
+    """Return an operation's targets as Jev weighs them: label, current value and states."""
+    return {
+        index: {
+            "element": f"[{index}] {action['label']}",
+            "current_value": action.get("current_value", action["value"]),
+            **_fields(action, _TARGET_FIELDS),
+        }
+        for index, action in candidates.items()
+    }
+
+
+def _page(page: PageState) -> dict[str, object]:
+    return {"url": page.url, "title": page.title, "text": page.text}
+
+
+def _validate_choice(answer: JevChoiceAnswer | None, ids: set[str]) -> _Choice:
     if answer is None:
-        raise JevDecisionError("Jev returned no answer for a question; no action executed.")
+        raise JevDecisionError(_NO_ANSWER)
     probabilities = answer.probabilities
-    numbers = [
-        *probabilities.values(),
-        answer.confidence if answer.confidence is not None else -1.0,
-    ]
-    valid = (
+    confidence = answer.confidence
+    if confidence is None or not (
         answer.choice in ids
         and set(probabilities) == ids
-        and all(math.isfinite(n) and 0 <= n <= 1 for n in numbers)
+        and all(math.isfinite(n) and 0 <= n <= 1 for n in [*probabilities.values(), confidence])
         and abs(sum(probabilities.values()) - 1) < JEV_PROBABILITY_SUM_TOLERANCE
-        and probabilities[answer.choice] >= max(probabilities.values()) - 1e-6
-    )
-    if not valid:
-        raise JevDecisionError("Invalid Jev response; no action executed.")
-    return answer
+        and probabilities[answer.choice] >= max(probabilities.values()) - _TIE_TOLERANCE
+    ):
+        raise JevDecisionError(_INVALID_ANSWER)
+    return _Choice(answer.choice, confidence)
 
 
 async def decide(
@@ -199,8 +270,9 @@ async def decide(
 ) -> Decision:
     """Ask Jev for this step's operation and target; raises JevDecisionError on a malformed answer."""
     space = action_space(page.actions)
+    controls: dict[JevOperation, PageAction] = space.controls
     operations: dict[str, JsonInput] = {op.value: OPERATIONS[op] for op in space.targets}
-    operations.update({op.value: action["label"] for op, action in space.controls.items()})
+    operations.update({op.value: control["label"] for op, control in controls.items()})
     if JevOperation.TYPE_TEXT in space.targets:
         operations[JevOperation.PRESS_ENTER.value] = OPERATIONS[JevOperation.PRESS_ENTER]
     if addresses:
@@ -211,22 +283,13 @@ async def decide(
     operations[JevOperation.BLOCKED.value] = OPERATIONS[JevOperation.BLOCKED]
 
     questions: dict[str, JevQuestion] = {
-        "operation": JevQuestion(
+        _OPERATION_QUESTION: JevQuestion(
             criteria=operations, instructions={"goal": goal, "rules": NEXT_ACTION}
         )
     }
     for operation, candidates in space.targets.items():
-        questions[operation.value.lower() + "_target"] = JevQuestion(
-            criteria={
-                index: {
-                    "element": f"[{index}] {action['label']}",
-                    "current_value": action.get("current_value", action.get("value", "")),
-                    **_fields(
-                        action, ("role", "ident", "checked", "selected", "expanded", "filled")
-                    ),
-                }
-                for index, action in candidates.items()
-            },
+        questions[_target_question(operation)] = JevQuestion(
+            criteria=_target_criteria(candidates),
             instructions={
                 "goal": goal,
                 "operation": operation.value,
@@ -235,40 +298,47 @@ async def decide(
         )
     address_ids = {f"U{i + 1}": url for i, url in enumerate(addresses)}
     if address_ids:
-        questions["navigate_target"] = JevQuestion(
+        questions[_NAVIGATE_QUESTION] = JevQuestion(
             criteria=dict(address_ids),
-            instructions={"goal": goal, "operation": "NAVIGATE", "rules": NAVIGATE_TARGET},
+            instructions={
+                "goal": goal,
+                "operation": JevOperation.NAVIGATE.value,
+                "rules": NAVIGATE_TARGET,
+            },
         )
     state: dict[str, object] = {
-        "page": {"url": page.url, "title": page.title, "text": page.text},
-        "elements": space.elements,
+        "page": _page(page),
+        "elements": [element.described() for element in space.elements],
         "recent_actions": [
             {"action": h.action, "kind": h.kind, "text": h.text, "page_changed": h.page_changed}
-            for h in history[-JEV_RECENT_ACTIONS:]
+            for h in history
         ],
         "visited": [{"title": v.title, "url": v.url} for v in visited],
     }
     evaluation = await client.evaluate(JevEvaluationRequest(state=state, questions=questions))
-    operation_answer = _validate_choice(evaluation.answers.get("operation"), set(operations))
+    operation_answer = _validate_choice(
+        evaluation.answers.get(_OPERATION_QUESTION), set(operations)
+    )
     operation = JevOperation(operation_answer.choice)
     action_id: str | None = None
     url: str | None = None
     if operation in space.targets:
         target = _validate_choice(
-            evaluation.answers.get(operation.value.lower() + "_target"),
-            set(space.targets[operation]),
+            evaluation.answers.get(_target_question(operation)), set(space.targets[operation])
         )
-        action_id = space.targets[operation][target.choice]["id"]
-    elif operation in space.controls:
-        action_id = space.controls[operation]["id"]
+        chosen: PageAction = space.targets[operation][target.choice]
+        action_id = chosen["id"]
+    elif operation in controls:
+        control: PageAction = controls[operation]
+        action_id = control["id"]
     elif operation is JevOperation.NAVIGATE:
-        target = _validate_choice(evaluation.answers.get("navigate_target"), set(address_ids))
+        target = _validate_choice(evaluation.answers.get(_NAVIGATE_QUESTION), set(address_ids))
         url = address_ids[target.choice]
     return Decision(
         operation=operation,
         action_id=action_id,
         url=url,
-        confidence=operation_answer.confidence or 0.0,
+        confidence=operation_answer.confidence,
         latency_ms=evaluation.latency_ms,
         evaluation=evaluation,
     )
@@ -285,31 +355,26 @@ async def choose_value(
     """Pick what to type into target: a literal from the goal, one of the run's secrets, GENERATE, or NONE.
 
     A password field is offered the run's secrets only, and any other field never a secret.
+    history is the recent actions Jev may see, already cut to that window.
     """
     is_secret = target["kind"] == "secret"
     options = [f"<secret>{name}</secret>" for name in secrets] if is_secret else literals(goal)
     criteria: dict[str, JsonInput] = {f"V{i + 1}": value for i, value in enumerate(options)}
     if not is_secret:
-        criteria[GENERATE] = "None of these: write the value from what the goal implies."
-    criteria[NONE_VALUE] = "The goal gives no value for this field."
+        criteria[GENERATE] = VALUE_GENERATE
+    criteria[NONE_VALUE] = VALUE_NONE
     question = JevQuestion(
         criteria=criteria,
-        instructions={
-            "goal": goal,
-            "field": {k: target.get(k) for k in ("label", "role", "ident", "value")},
-            "rules": VALUE,
-        },
+        instructions={"goal": goal, "field": describe_field(target), "rules": VALUE},
     )
     state: dict[str, object] = {
-        "page": {"url": page.url, "title": page.title, "text": page.text},
-        "recent_actions": [
-            {"action": h.action, "text": h.text} for h in history[-JEV_RECENT_ACTIONS:]
-        ],
+        "page": _page(page),
+        "recent_actions": [{"action": h.action, "text": h.text} for h in history],
     }
     evaluation = await client.evaluate(
-        JevEvaluationRequest(state=state, questions={"value": question})
+        JevEvaluationRequest(state=state, questions={_VALUE_QUESTION: question})
     )
-    answer = _validate_choice(evaluation.answers.get("value"), set(criteria))
+    answer = _validate_choice(evaluation.answers.get(_VALUE_QUESTION), set(criteria))
     if answer.choice in (GENERATE, NONE_VALUE):
         return answer.choice, evaluation
     return options[int(answer.choice[1:]) - 1], evaluation

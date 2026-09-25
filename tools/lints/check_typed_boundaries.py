@@ -109,6 +109,7 @@ EXTERNAL_TYPEDDICT_PATHS = frozenset(
         "cdp_use.cdp.domsnapshot.types.NodeTreeSnapshot",
         "cdp_use.cdp.domsnapshot.types.RareBooleanData",
         "cdp_use.cdp.domsnapshot.types.RareStringData",
+        "cdp_use.cdp.page.commands.CaptureScreenshotReturns",
         "cdp_use.cdp.page.events.FrameNavigatedEvent",
         "cdp_use.cdp.page.events.FrameStartedNavigatingEvent",
         "cdp_use.cdp.page.events.FrameStoppedLoadingEvent",

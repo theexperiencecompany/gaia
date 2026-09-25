@@ -42,11 +42,13 @@ from app.services.browser.jev.decision import (
     Visited,
     choose_value,
     decide,
+    describe_field,
     goal_addresses,
 )
 from app.services.browser.jev.gateway import JevDecisionsClient, JevEvaluation, JevGatewayError
 from app.services.browser.jev.page import (
     Covered,
+    Frame,
     JevPage,
     NavigationFailed,
     PageAction,
@@ -64,6 +66,33 @@ from shared.py.wide_events import log
 
 if TYPE_CHECKING:
     from browser_use.llm.base import BaseChatModel
+
+#: Why a burst ended, and what the agent is told about it.
+_Ending = tuple[JevStop, str]
+
+_ASKED_TO_STOP: _Ending = (JevStop.STOPPED, "The run was asked to stop.")
+_USER_MESSAGE: _Ending = (JevStop.USER_MESSAGE, "The user sent a message.")
+_MAX_ACTIONS: _Ending = (JevStop.MAX_ACTIONS, f"{JEV_BURST_MAX_ACTIONS} actions in one burst.")
+_KEPT_CHANGING: _Ending = (JevStop.STALE, "The page kept changing under each decision.")
+_OVERLAID: _Ending = (
+    JevStop.COVERED,
+    "The chosen control is covered, hidden or disabled (an overlay?).",
+)
+_JUDGED_BLOCKED: _Ending = (JevStop.BLOCKED, "Jev found no operation that makes progress here.")
+_JUDGED_DONE: _Ending = (JevStop.DONE, "Jev judged the goal done.")
+_NO_CHANGE: _Ending = (
+    JevStop.NO_PROGRESS,
+    f"{JEV_UNCHANGED_LIMIT} actions in a row changed nothing.",
+)
+_CYCLED: _Ending = (JevStop.CYCLE, "Jev went back and forth between the same two actions.")
+#: How much of a CAPTCHA frame's address the stop names.
+_CAPTCHA_SRC_CHARS = 120
+#: What a page-level step records as its label.
+_PAGE_LEVEL_LABELS = {JevOperation.GO_BACK: "Go back", JevOperation.PRESS_ENTER: "Press Enter"}
+
+
+def _elapsed_ms(started: float) -> int:
+    return round((perf_counter() - started) * 1000)
 
 
 class _TextValue(BaseModel):
@@ -187,12 +216,11 @@ class JevRunner:
             stop, detail = opening or await self._run(state)
         except PageUnresponsive as exc:
             stop, detail = JevStop.UNRESPONSIVE, str(exc)
+        except StalePage as exc:
+            # A read that never settles, before or after an action (which is recorded first).
+            stop, detail = JevStop.STALE, str(exc)
         final = state.page
-        hidden = [
-            frame["src"]
-            for frame in final.frames
-            if frame["visible"] and not frame["same_origin"] and frame["src"]
-        ]
+        final_url = self._secrets.mask(final.url)
         log.info(
             f"{LogTag.BROWSER} Jev burst ended",
             stop=stop.value,
@@ -203,48 +231,37 @@ class JevRunner:
             stop=stop,
             detail=detail,
             steps=state.steps,
-            url=self._secrets.mask(final.url),
+            url=final_url,
             title=final.title,
             text=self._secrets.mask(final.text),
-            opened=[
-                page for url, page in state.opened.items() if url != self._secrets.mask(final.url)
-            ],
-            hidden_frames=hidden,
+            opened=[page for url, page in state.opened.items() if url != final_url],
+            hidden_frames=_hidden_frames(final.frames),
         )
 
-    async def _run(self, state: _Burst) -> tuple[JevStop, str]:
+    async def _run(self, state: _Burst) -> _Ending:
         while True:
             if await self._should_stop():
-                return JevStop.STOPPED, "The run was asked to stop."
+                return _ASKED_TO_STOP
             if await self._user_waiting():
-                return JevStop.USER_MESSAGE, "The user sent a message."
-            captcha = next(
-                (
-                    frame["src"]
-                    for frame in state.page.frames
-                    if frame["visible"]
-                    and any(marker in frame["src"].lower() for marker in JEV_CAPTCHA_FRAME_MARKERS)
-                ),
-                None,
-            )
-            if captcha is not None:
-                return JevStop.CAPTCHA, f"A CAPTCHA is on the page ({captcha[:120]})."
-            if len(state.steps) >= JEV_BURST_MAX_ACTIONS:
-                return JevStop.MAX_ACTIONS, f"{JEV_BURST_MAX_ACTIONS} actions in one burst."
-            if state.stale >= JEV_STALE_LIMIT:
-                return JevStop.STALE, "The page kept changing under each decision."
-            if state.covered >= JEV_COVERED_LIMIT:
+                return _USER_MESSAGE
+            if (captcha := _captcha(state.page.frames)) is not None:
                 return (
-                    JevStop.COVERED,
-                    "The chosen control is covered, hidden or disabled (an overlay?).",
+                    JevStop.CAPTCHA,
+                    f"A CAPTCHA is on the page ({captcha[:_CAPTCHA_SRC_CHARS]}).",
                 )
+            if len(state.steps) >= JEV_BURST_MAX_ACTIONS:
+                return _MAX_ACTIONS
+            if state.stale >= JEV_STALE_LIMIT:
+                return _KEPT_CHANGING
+            if state.covered >= JEV_COVERED_LIMIT:
+                return _OVERLAID
             if not await self._page.fresh(state.page):
                 state.page = await self._page.observe()
             try:
-                decision = await self._decide(state)
+                ended = await self._execute(state, await self._decide(state))
             except (JevGatewayError, JevDecisionError) as exc:
+                # Deciding the step or the value to type; an action already taken stays recorded.
                 return JevStop.GATEWAY, f"Jev could not decide this step: {exc}"
-            ended = await self._execute(state, decision)
             if ended is not None:
                 return ended
 
@@ -254,19 +271,14 @@ class JevRunner:
             self._client,
             self._masked(state.page),
             state.goal,
-            [
-                RecentAction(
-                    action=s.label, kind=s.operation.value, text=s.text, page_changed=s.page_changed
-                )
-                for s in state.steps[-JEV_RECENT_ACTIONS:]
-            ],
+            _history(state),
             self.visited,
             list(dict.fromkeys([*state.addresses, *(v.url for v in self.visited)])),
         )
-        self._record_call(decision.evaluation, round((perf_counter() - started) * 1000))
+        self._record_call(decision.evaluation, _elapsed_ms(started))
         return decision
 
-    async def _execute(self, state: _Burst, decision: Decision) -> tuple[JevStop, str] | None:
+    async def _execute(self, state: _Burst, decision: Decision) -> _Ending | None:
         """Execute one decision; return why the burst ends, or None to take another step."""
         operation = decision.operation
         if operation in (JevOperation.DONE, JevOperation.BLOCKED):
@@ -290,46 +302,39 @@ class JevRunner:
         before = state.page
         step = self._record(state, decision, performed, started)
         # Recorded before observing: a navigation interrupting the read must not erase the action.
-        try:
+        state.page = await self._page.observe()
+        # Checked after the read, when a tab the click opened is registered; a
+        # person follows the tab a link opens.
+        if operation is JevOperation.CLICK and await self._page.follow_new_tab(set(performed.tabs)):
             state.page = await self._page.observe()
-            # Checked after the read, when a tab the click opened is registered; a
-            # person follows the tab a link opens.
-            if operation is JevOperation.CLICK and await self._page.follow_new_tab(
-                set(performed.tabs)
-            ):
-                state.page = await self._page.observe()
-        except StalePage:
-            return JevStop.STALE, "The page did not settle after the last action."
         state.steps[-1] = replace(step, page_changed=state.page.fingerprint != before.fingerprint)
-        if stalled := self._stalls.take():
-            return JevStop.LOAD_STALLED, self._secrets.mask(" ".join(stalled))
+        if stalled := self._load_stalled():
+            return stalled
         await self._read(state)
         return self._stuck(state)
 
-    async def _conclude(self, state: _Burst, operation: JevOperation) -> tuple[JevStop, str] | None:
+    async def _conclude(self, state: _Burst, operation: JevOperation) -> _Ending | None:
         """Return DONE or BLOCKED once the page it was judged on still stands, else read it again."""
         if not await self._page.fresh(state.page):
             state.page = await self._page.observe()
             return None
-        if operation is JevOperation.BLOCKED:
-            return JevStop.BLOCKED, "Jev found no operation that makes progress here."
-        return JevStop.DONE, "Jev judged the goal done."
+        return _JUDGED_BLOCKED if operation is JevOperation.BLOCKED else _JUDGED_DONE
 
-    async def _perform(self, state: _Burst, decision: Decision) -> _Performed | tuple[JevStop, str]:
+    async def _perform(self, state: _Burst, decision: Decision) -> _Performed | _Ending:
         """Carry out one decision on the page; return what it did, or why the burst ends instead."""
         operation = decision.operation
-        if operation is JevOperation.NAVIGATE and decision.url is not None:
+        if decision.url is not None:
             failed = await self._open(decision.url)
             return failed if failed is not None else _Performed(label=f"Open {decision.url}")
-        if operation is JevOperation.GO_BACK:
-            await self._page.go_back()
-            return _Performed(label="Go back")
-        if operation is JevOperation.PRESS_ENTER:
-            await self._page.press_enter()
-            return _Performed(label="Press Enter")
         if decision.action_id is None:
-            return _Performed(label=operation.value)
-        action = state.page.action(decision.action_id)
+            # GO_BACK and PRESS_ENTER act on the page, not on an observed target.
+            label = _PAGE_LEVEL_LABELS[operation]
+            if operation is JevOperation.GO_BACK:
+                await self._page.go_back()
+            else:
+                await self._page.press_enter()
+            return _Performed(label=label)
+        action: PageAction = state.page.action(decision.action_id)
         target = _Performed(
             label=action["label"],
             ident=action.get("ident", ""),
@@ -358,7 +363,7 @@ class JevRunner:
             ExecutedAction(
                 component=CallComponent.JEV,
                 description=self._secrets.redact(f"{operation.value} {performed.label}"),
-                duration_ms=round((perf_counter() - started) * 1000),
+                duration_ms=_elapsed_ms(started),
             )
         )
         step = JevStep(
@@ -387,44 +392,43 @@ class JevRunner:
         else:
             state.opened[opened.url] = state.opened.pop(opened.url)
 
-    async def _open(self, url: str) -> tuple[JevStop, str] | None:
+    async def _open(self, url: str) -> _Ending | None:
         """Open url; return why the burst ends when the page could not be opened."""
         try:
             await self._page.navigate(url)
         except NavigationFailed as exc:
-            if stalled := self._stalls.take():
-                return JevStop.LOAD_STALLED, self._secrets.mask(" ".join(stalled))
-            return JevStop.NAVIGATION_FAILED, self._secrets.mask(
-                f"{url} could not be opened: {exc}"
+            return self._load_stalled() or (
+                JevStop.NAVIGATION_FAILED,
+                self._secrets.mask(f"{url} could not be opened: {exc}"),
             )
         return None
 
-    def _stuck(self, state: _Burst) -> tuple[JevStop, str] | None:
+    def _load_stalled(self) -> _Ending | None:
+        """Return why the burst ends when the browser stopped loads that never answered."""
+        stalled = self._stalls.take()
+        return (JevStop.LOAD_STALLED, self._secrets.mask(" ".join(stalled))) if stalled else None
+
+    def _stuck(self, state: _Burst) -> _Ending | None:
         """Whether the burst stopped making progress: no change, or a back-and-forth between two moves."""
         recent = [
             s for s in state.steps[-JEV_UNCHANGED_LIMIT:] if s.operation is not JevOperation.WAIT
         ]
         if len(recent) == JEV_UNCHANGED_LIMIT and all(s.page_changed is False for s in recent):
-            return JevStop.NO_PROGRESS, f"{JEV_UNCHANGED_LIMIT} actions in a row changed nothing."
+            return _NO_CHANGE
         moves = [(s.url, s.label) for s in state.steps[-4:]]
         if len(moves) == 4 and moves[0] == moves[2] != moves[1] == moves[3]:
-            return JevStop.CYCLE, "Jev went back and forth between the same two actions."
+            return _CYCLED
         return None
 
     async def _value_for(self, state: _Burst, action: PageAction) -> tuple[str, str] | None:
         """Return what to type into action, as (shown, typed); None when the goal gives no value."""
         page = self._masked(state.page)
-        history = [
-            RecentAction(
-                action=s.label, kind=s.operation.value, text=s.text, page_changed=s.page_changed
-            )
-            for s in state.steps[-JEV_RECENT_ACTIONS:]
-        ]
+        history = _history(state)
         started = perf_counter()
         choice, evaluation = await choose_value(
             self._client, page, state.goal, action, history, self._secrets.names
         )
-        self._record_call(evaluation, round((perf_counter() - started) * 1000))
+        self._record_call(evaluation, _elapsed_ms(started))
         if choice == NONE_VALUE:
             return None
         if choice == GENERATE:
@@ -438,7 +442,11 @@ class JevRunner:
     async def _write_value(
         self, state: _Burst, action: PageAction, history: list[RecentAction]
     ) -> str | None:
-        """Ask the tiny model for a value the goal implies but does not spell out."""
+        """Ask the tiny model for a value the goal implies but does not spell out.
+
+        A model that fails or never answers is a step Jev could not decide.
+        """
+        from browser_use.llm.exceptions import ModelError  # noqa: PLC0415 -- heavy optional dep
         from browser_use.llm.messages import (  # noqa: PLC0415 -- heavy optional dep
             SystemMessage,
             UserMessage,
@@ -447,17 +455,22 @@ class JevRunner:
         page = self._masked(state.page)
         context = {
             "goal": state.goal,
-            "field": {k: action.get(k) for k in ("label", "role", "ident", "value")},
+            "field": describe_field(action),
             "page": {"title": page.title, "text": page.text[:JEV_PAGE_TEXT_MAX_CHARS]},
             "recent_actions": [{"action": h.action, "text": h.text} for h in history],
         }
-        completion = await asyncio.wait_for(
-            self._text_model.ainvoke(
-                [SystemMessage(content=TEXT_VALUE), UserMessage(content=json.dumps(context))],
-                output_format=_TextValue,
-            ),
-            timeout=JEV_TEXT_TIMEOUT_SECONDS,
-        )
+        try:
+            completion = await asyncio.wait_for(
+                self._text_model.ainvoke(
+                    [SystemMessage(content=TEXT_VALUE), UserMessage(content=json.dumps(context))],
+                    output_format=_TextValue,
+                ),
+                timeout=JEV_TEXT_TIMEOUT_SECONDS,
+            )
+        except (TimeoutError, ModelError) as exc:
+            raise JevDecisionError(
+                f"The value could not be written ({type(exc).__name__})."
+            ) from exc
         value = completion.completion.text
         return value if value and value.strip() else None
 
@@ -483,3 +496,35 @@ class JevRunner:
                 cost_usd=evaluation.gateway_cost_usd,
             )
         )
+
+
+def _captcha(frames: list[Frame]) -> str | None:
+    """Return the address of a CAPTCHA frame on the page, if one is shown."""
+    return next(
+        (
+            frame["src"]
+            for frame in frames
+            if frame["visible"]
+            and any(marker in frame["src"].lower() for marker in JEV_CAPTCHA_FRAME_MARKERS)
+        ),
+        None,
+    )
+
+
+def _hidden_frames(frames: list[Frame]) -> list[str]:
+    """Return the shown frames Jev cannot see into: cross-origin ones with an address."""
+    return [
+        frame["src"]
+        for frame in frames
+        if frame["visible"] and not frame["same_origin"] and frame["src"]
+    ]
+
+
+def _history(state: _Burst) -> list[RecentAction]:
+    """Return the burst's recent actions as Jev's questions show them."""
+    return [
+        RecentAction(
+            action=s.label, kind=s.operation.value, text=s.text, page_changed=s.page_changed
+        )
+        for s in state.steps[-JEV_RECENT_ACTIONS:]
+    ]
