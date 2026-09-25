@@ -8,8 +8,9 @@ real browser task needs it.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from time import perf_counter
-from typing import TYPE_CHECKING, TypeVar, overload
+from typing import TYPE_CHECKING, Literal, TypeVar, overload
 
 from pydantic import BaseModel
 from pydantic_core import CoreSchema, core_schema
@@ -20,8 +21,10 @@ from app.config.settings import settings
 from app.constants.browser import (
     BROWSER_AGENT_HEDGE_SECONDS,
     BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
+    BROWSER_AGENT_OPENROUTER_KEY_MISSING,
     BROWSER_AGENT_REASONING_EFFORT,
     JEV_TEXT_HEDGE_SECONDS,
+    JEV_TEXT_OPENROUTER_KEY_MISSING,
 )
 from app.constants.llm import (
     DEV_LLM_BROWSER_HEADERS,
@@ -49,6 +52,8 @@ _TEXT_MAX_COMPLETION_TOKENS = 4096
 _TEXT_REASONING = ReasoningLevel.LIGHT
 # An agent step writes a whole action list plus its memory under flash mode.
 _AGENT_MAX_COMPLETION_TOKENS = 8192
+
+_Effort = Literal["none", "minimal", "low"]
 
 
 class MeteredChatModel:
@@ -120,33 +125,55 @@ class MeteredChatModel:
         return result
 
 
-async def build_agent_llm(user_id: str | None, ledger: RunLedger) -> BaseChatModel:
-    """Return the reasoning model the Browser-Use agent runs on: the user's executor lane, at low effort."""
+def _openai_wire_model(
+    *,
+    model: str,
+    api_key: str,
+    base_url: str,
+    default_headers: Mapping[str, str] | None,
+    max_completion_tokens: int,
+    reasoning_effort: _Effort,
+) -> BaseChatModel:
+    """Build the one kind of chat model a browser run uses, sending reasoning_effort to model.
+
+    Every argument is required: Browser-Use's own defaults for the cap and the
+    effort are real values, and one silently standing in for ours is a bug.
+    """
     from browser_use import ChatOpenAI  # noqa: PLC0415 -- heavy optional dep
 
+    return ChatOpenAI(
+        model=model,
+        api_key=api_key,
+        base_url=base_url,
+        default_headers=default_headers,
+        max_completion_tokens=max_completion_tokens,
+        reasoning_models=[model],
+        reasoning_effort=reasoning_effort,
+    )
+
+
+async def build_agent_llm(user_id: str | None, ledger: RunLedger) -> MeteredChatModel:
+    """Return the reasoning model the Browser-Use agent runs on: the user's executor lane, at low effort."""
     lane, _plan = await resolve_lane(user_id, AgentRole.EXECUTOR)
     if lane.provider is LLMProviderName.CUSTOM:
         endpoint = custom_endpoint()
-        model = ChatOpenAI(
+        model = _openai_wire_model(
             model=endpoint.model,
             api_key=endpoint.api_key,
             base_url=endpoint.base_url,
             default_headers=DEV_LLM_BROWSER_HEADERS,
             max_completion_tokens=_AGENT_MAX_COMPLETION_TOKENS,
-            reasoning_models=[endpoint.model],
             reasoning_effort=BROWSER_AGENT_REASONING_EFFORT,
         )
     elif lane.provider is LLMProviderName.OPENROUTER and lane.model:
         if not settings.OPENROUTER_API_KEY:
-            raise BrowserUnavailableError(
-                "OPENROUTER_API_KEY is not set; the browser agent needs it."
-            )
-        model = ChatOpenAI(
+            raise BrowserUnavailableError(BROWSER_AGENT_OPENROUTER_KEY_MISSING)
+        model = _openai_wire_model(
             model=lane.model,
             api_key=settings.OPENROUTER_API_KEY,
             base_url=_OPENROUTER_BASE_URL,
+            default_headers=None,
             max_completion_tokens=_AGENT_MAX_COMPLETION_TOKENS,
-            reasoning_models=[lane.model],
             reasoning_effort=BROWSER_AGENT_REASONING_EFFORT,
         )
     else:
@@ -156,32 +183,27 @@ async def build_agent_llm(user_id: str | None, ledger: RunLedger) -> BaseChatMod
     return MeteredChatModel(model, ledger, CallComponent.AGENT, BROWSER_AGENT_HEDGE_SECONDS)
 
 
-def build_text_model(ledger: RunLedger) -> BaseChatModel:
+def build_text_model(ledger: RunLedger) -> MeteredChatModel:
     """Return Jev's text helper: the forced dev lane's endpoint, else BROWSER_USE_JEV_TEXT_MODEL over OpenRouter."""
-    from browser_use import ChatOpenAI  # noqa: PLC0415 -- heavy optional dep
-
     if custom_lane_forced():
         endpoint = custom_endpoint()
-        model = ChatOpenAI(
+        model = _openai_wire_model(
             model=endpoint.model,
             api_key=endpoint.api_key,
             base_url=endpoint.base_url,
             default_headers=DEV_LLM_BROWSER_HEADERS,
             max_completion_tokens=_TEXT_MAX_COMPLETION_TOKENS,
-            reasoning_models=[endpoint.model],
             reasoning_effort=OPENAI_REASONING_EFFORT[_TEXT_REASONING],
         )
     else:
         if not settings.OPENROUTER_API_KEY:
-            raise BrowserUnavailableError(
-                "OPENROUTER_API_KEY is not set; Jev decisions and the text model both need it."
-            )
-        model = ChatOpenAI(
+            raise BrowserUnavailableError(JEV_TEXT_OPENROUTER_KEY_MISSING)
+        model = _openai_wire_model(
             model=settings.BROWSER_USE_JEV_TEXT_MODEL,
             api_key=settings.OPENROUTER_API_KEY,
             base_url=_OPENROUTER_BASE_URL,
+            default_headers=None,
             max_completion_tokens=_TEXT_MAX_COMPLETION_TOKENS,
-            reasoning_models=[settings.BROWSER_USE_JEV_TEXT_MODEL],
             reasoning_effort=OPENROUTER_REASONING_EFFORT[_TEXT_REASONING],
         )
     return MeteredChatModel(model, ledger, CallComponent.TEXT, JEV_TEXT_HEDGE_SECONDS)
