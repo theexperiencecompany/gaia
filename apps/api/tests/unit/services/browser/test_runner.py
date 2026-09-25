@@ -26,7 +26,6 @@ from app.constants.browser import (
     BROWSER_RUN_BLOCKED_SUMMARY,
     BROWSER_RUN_CANCELLED_SUMMARY,
     BROWSER_RUN_DONE_SUMMARY,
-    BROWSER_RUN_HANDOFF_COMPLETED_SUMMARY,
     BROWSER_RUN_HANDOFF_ENDED_SUMMARY,
     BROWSER_RUN_HANDOFF_TIMED_OUT,
     BROWSER_RUN_NOT_DONE_SUMMARY,
@@ -963,10 +962,10 @@ async def test_the_handoff_past_the_limit_stops_the_run() -> None:
     result = await _run(_runner(_asks_too_often)[0])
 
     assert _ScriptedRun.made[0].refusal == "max-handoffs"
-    # The user did complete the earlier handoffs.
+    # The earlier handoffs the user completed do not make a refused one a success.
     assert (result.status, result.success, result.summary) == (
-        BrowserSessionStatus.COMPLETED,
-        True,
+        BrowserSessionStatus.CANCELLED,
+        False,
         BROWSER_RUN_STOPPED_SUMMARY,
     )
 
@@ -993,30 +992,14 @@ async def test_a_handoff_the_user_cancelled_stops_the_run_even_when_the_cancel_i
     )
 
 
-@pytest.mark.parametrize(
-    ("first", "status", "success", "summary"),
-    [
-        (
-            HandoffStatus.COMPLETED,
-            BrowserSessionStatus.COMPLETED,
-            True,
-            BROWSER_RUN_HANDOFF_COMPLETED_SUMMARY,
-        ),
-        (
-            HandoffStatus.CANCELLED,
-            BrowserSessionStatus.CANCELLED,
-            False,
-            BROWSER_RUN_HANDOFF_ENDED_SUMMARY,
-        ),
-    ],
-)
-async def test_a_run_a_cancelled_handoff_ended_says_whether_the_user_did_the_step_first(
-    first: HandoffStatus, status: BrowserSessionStatus, success: bool, summary: str
+@pytest.mark.parametrize("first", [HandoffStatus.COMPLETED, HandoffStatus.CANCELLED])
+async def test_a_run_a_cancelled_handoff_ended_is_cancelled_whatever_the_user_did_before(
+    first: HandoffStatus,
 ) -> None:
     async def _two_handoffs(run: _ScriptedRun) -> RunOutcome:
         await run.hooks.takeover("Sign in", "credentials")
         await run.hooks.takeover("Pay", "payment")
-        raise AssertionError("the second handoff ends the run")
+        raise AssertionError("the last handoff ends the run")
 
     runner, _ = _runner(_two_handoffs)
     outcomes = iter([first, HandoffStatus.CANCELLED])
@@ -1028,7 +1011,11 @@ async def test_a_run_a_cancelled_handoff_ended_says_whether_the_user_did_the_ste
 
     result = await _run(runner)
 
-    assert (result.status, result.success, result.summary) == (status, success, summary)
+    assert (result.status, result.success, result.summary) == (
+        BrowserSessionStatus.CANCELLED,
+        False,
+        BROWSER_RUN_HANDOFF_ENDED_SUMMARY,
+    )
 
 
 async def test_a_handoff_that_timed_out_fails_the_run() -> None:

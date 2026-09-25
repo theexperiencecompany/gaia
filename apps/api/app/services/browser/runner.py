@@ -28,7 +28,6 @@ from app.constants.browser import (
     BROWSER_RUN_BLOCKED_SUMMARY,
     BROWSER_RUN_CANCELLED_SUMMARY,
     BROWSER_RUN_DONE_SUMMARY,
-    BROWSER_RUN_HANDOFF_COMPLETED_SUMMARY,
     BROWSER_RUN_HANDOFF_ENDED_SUMMARY,
     BROWSER_RUN_HANDOFF_TIMED_OUT,
     BROWSER_RUN_NOT_DONE_SUMMARY,
@@ -182,7 +181,6 @@ class BrowserTaskRunner:
         self._budget_summary: str | None = None  # pragma: no mutate
         # None reads as falsy exactly like False.
         self._stopped = False  # pragma: no mutate
-        self._handed_off = False
         #: What the user told the run to do instead when they took over.
         self._user_notes: list[str] = []
         # None reads as falsy exactly like False.
@@ -428,16 +426,12 @@ class BrowserTaskRunner:
         return state
 
     async def _finish_from_handoff(self) -> BrowserResultSnapshot:
-        """Judge a run the handoff ended: blocked with no guidance, expired, completed by the user, or stopped."""
+        """Judge a run the handoff ended: blocked with no guidance, expired, or stopped."""
         if self._blocked_summary:
             return await self._finish(BrowserSessionStatus.FAILED, False, self._blocked_summary)
         if self._handoff_timed_out:
             return await self._finish(
                 BrowserSessionStatus.FAILED, False, BROWSER_RUN_HANDOFF_TIMED_OUT
-            )
-        if self._handed_off:
-            return await self._finish(
-                BrowserSessionStatus.COMPLETED, True, BROWSER_RUN_HANDOFF_COMPLETED_SUMMARY
             )
         return await self._finish(
             BrowserSessionStatus.CANCELLED, False, BROWSER_RUN_HANDOFF_ENDED_SUMMARY
@@ -459,12 +453,9 @@ class BrowserTaskRunner:
         if self._budget_summary:
             return await self._finish(BrowserSessionStatus.FAILED, False, self._budget_summary)
         if self._stopped:
-            status = (
-                BrowserSessionStatus.COMPLETED
-                if self._handed_off
-                else BrowserSessionStatus.CANCELLED
+            return await self._finish(
+                BrowserSessionStatus.CANCELLED, False, BROWSER_RUN_STOPPED_SUMMARY
             )
-            return await self._finish(status, self._handed_off, BROWSER_RUN_STOPPED_SUMMARY)
         if await self._is_cancelled():
             return await self._finish(
                 BrowserSessionStatus.CANCELLED, False, BROWSER_RUN_CANCELLED_SUMMARY
@@ -540,7 +531,6 @@ class BrowserTaskRunner:
             self._last_frame_at = perf_counter()
             self._waited += self._last_frame_at - waiting_since
         if outcome.status == HandoffStatus.COMPLETED:
-            self._handed_off = True
             log.info(f"{LogTag.BROWSER} Browser takeover completed by user; agent continuing.")
             note = (outcome.message or "").strip() or None
             # The auto-resolver's own resume note is not an instruction the user

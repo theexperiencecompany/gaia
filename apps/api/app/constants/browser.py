@@ -373,7 +373,6 @@ BROWSER_RUN_WORK_BUDGET_SUMMARY = "Browser task timed out after {seconds}s of wo
 BROWSER_RUN_STOPPED_SUMMARY = "Browser task stopped."
 BROWSER_RUN_CANCELLED_SUMMARY = "Browser task was cancelled."
 BROWSER_RUN_HANDOFF_ENDED_SUMMARY = "Browser task was stopped."
-BROWSER_RUN_HANDOFF_COMPLETED_SUMMARY = "You completed the sensitive step in the live browser."
 BROWSER_RUN_DONE_SUMMARY = "Completed the browser task."
 BROWSER_RUN_NOT_DONE_SUMMARY = "Could not complete the browser task."
 #: Why the agent could not attach to a session the host created: nearly always the CDP proxy.
