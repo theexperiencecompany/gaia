@@ -20,12 +20,21 @@ from urllib.parse import urlsplit
 
 from app.constants.browser import (
     BROWSER_AGENT_GUIDANCE_MAX,
+    BROWSER_CDP_ATTACH_HINT,
     BROWSER_ENGINE_FALLBACK_NOTE,
     BROWSER_ENGINE_FALLBACK_WITHOUT_STATE_NOTE,
     BROWSER_ENGINE_SWITCH_ACK,
     BROWSER_ENGINE_UNRESPONSIVE_SUMMARY,
     BROWSER_RUN_BLOCKED_SUMMARY,
+    BROWSER_RUN_CANCELLED_SUMMARY,
+    BROWSER_RUN_DONE_SUMMARY,
+    BROWSER_RUN_HANDOFF_COMPLETED_SUMMARY,
+    BROWSER_RUN_HANDOFF_ENDED_SUMMARY,
     BROWSER_RUN_HANDOFF_TIMED_OUT,
+    BROWSER_RUN_NOT_DONE_SUMMARY,
+    BROWSER_RUN_STOPPED_SUMMARY,
+    BROWSER_RUN_WALL_CLOCK_SUMMARY,
+    BROWSER_RUN_WORK_BUDGET_SUMMARY,
     BROWSER_STALL_NOTE,
     BROWSER_STALL_NOTE_AFTER_SECONDS,
     BROWSER_TASK_FAILED_PREFIX,
@@ -169,8 +178,10 @@ class BrowserTaskRunner:
         #: Seconds spent waiting on the user or the agent: the task budget does not run then.
         self._waited = 0.0
         #: Why the run stopped itself, when a budget ended it.
-        self._budget_summary: str | None = None
-        self._stopped = False
+        # "" reads as falsy exactly like None.
+        self._budget_summary: str | None = None  # pragma: no mutate
+        # None reads as falsy exactly like False.
+        self._stopped = False  # pragma: no mutate
         self._handed_off = False
         #: What the user told the run to do instead when they took over.
         self._user_notes: list[str] = []
@@ -255,14 +266,14 @@ class BrowserTaskRunner:
                 return await self._finish(
                     BrowserSessionStatus.FAILED,
                     False,
-                    f"Browser task timed out after {self._task_timeout}s.",
+                    BROWSER_RUN_WALL_CLOCK_SUMMARY.format(seconds=self._task_timeout),
                 )
             except (ConnectionError, OSError) as exc:
                 # The host created the session but the agent couldn't attach over CDP —
                 # almost always the host's CDP proxy websocket isn't reachable from here.
                 raise BrowserUnavailableError(
                     f"Could not attach to the browser over CDP at {self._session.cdp_url}: {exc}. "
-                    "Check that the browser host is reachable from the API at BROWSER_HOST_URL."
+                    + BROWSER_CDP_ATTACH_HINT
                 ) from exc
             except Exception as exc:
                 # Any unexpected agent/runtime failure must not leave the card stuck in
@@ -426,12 +437,10 @@ class BrowserTaskRunner:
             )
         if self._handed_off:
             return await self._finish(
-                BrowserSessionStatus.COMPLETED,
-                True,
-                "You completed the sensitive step in the live browser.",
+                BrowserSessionStatus.COMPLETED, True, BROWSER_RUN_HANDOFF_COMPLETED_SUMMARY
             )
         return await self._finish(
-            BrowserSessionStatus.CANCELLED, False, "Browser task was stopped."
+            BrowserSessionStatus.CANCELLED, False, BROWSER_RUN_HANDOFF_ENDED_SUMMARY
         )
 
     async def _finish_after_execute(self, outcome: RunOutcome) -> BrowserResultSnapshot:
@@ -455,10 +464,10 @@ class BrowserTaskRunner:
                 if self._handed_off
                 else BrowserSessionStatus.CANCELLED
             )
-            return await self._finish(status, self._handed_off, "Browser task stopped.")
+            return await self._finish(status, self._handed_off, BROWSER_RUN_STOPPED_SUMMARY)
         if await self._is_cancelled():
             return await self._finish(
-                BrowserSessionStatus.CANCELLED, False, "Browser task was cancelled."
+                BrowserSessionStatus.CANCELLED, False, BROWSER_RUN_CANCELLED_SUMMARY
             )
         return await self._finish_from_outcome(outcome)
 
@@ -468,7 +477,9 @@ class BrowserTaskRunner:
             return True
         active = perf_counter() - self._started_at - self._waited
         if active > self._task_timeout:
-            self._budget_summary = f"Browser task timed out after {self._task_timeout}s of work."
+            self._budget_summary = BROWSER_RUN_WORK_BUDGET_SUMMARY.format(
+                seconds=self._task_timeout
+            )
             log.fail(BrowserRunFailure.TASK_TIMEOUT)
             return True
         check = await get_budget_stop_reason(self._user_id, None, self._root_request_id)
@@ -615,9 +626,9 @@ class BrowserTaskRunner:
         self._last_frame_at = perf_counter()
         # None reads as falsy exactly like False.
         self._stall_noted = False  # pragma: no mutate
-        task = spawn_background_task(self._emit_step(frame), name="browser_step_emit")
-        self._emit_tasks.add(task)
-        task.add_done_callback(self._emit_tasks.discard)
+        self._emit_tasks.add(
+            spawn_background_task(self._emit_step(frame), name="browser_step_emit")
+        )
 
     async def _emit_step(self, frame: StepFrame) -> None:
         async with self._emit_lock:
@@ -627,7 +638,8 @@ class BrowserTaskRunner:
                 self._shots.append(screenshot)
             # Feeds only the info-level step timing line.
             screenshot_ms = round((perf_counter() - shot_t0) * 1000)  # pragma: no mutate
-            emit_t0 = perf_counter()
+            # Feeds only the info-level step timing line.
+            emit_t0 = perf_counter()  # pragma: no mutate
             await self._emit(
                 BrowserStepSnapshot(
                     index=frame.index,
@@ -688,8 +700,6 @@ class BrowserTaskRunner:
     async def _finish_from_outcome(self, outcome: RunOutcome) -> BrowserResultSnapshot:
         status = BrowserSessionStatus.COMPLETED if outcome.success else BrowserSessionStatus.FAILED
         summary = outcome.summary or (
-            "Completed the browser task."
-            if outcome.success
-            else "Could not complete the browser task."
+            BROWSER_RUN_DONE_SUMMARY if outcome.success else BROWSER_RUN_NOT_DONE_SUMMARY
         )
         return await self._finish(status, outcome.success, summary)

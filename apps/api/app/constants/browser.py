@@ -366,6 +366,19 @@ BROWSER_AGENT_ROLE = (
 # Said to the agent when it asks for guidance with no assistant joined to answer.
 #: What the agent reads after a handoff step when the user left no note.
 BROWSER_TAKEOVER_DONE_NOTE = "The user finished that step in the live browser."
+#: How a run's result reads when the runner, not the agent, ended it.
+BROWSER_RUN_WALL_CLOCK_SUMMARY = "Browser task timed out after {seconds}s."
+BROWSER_RUN_WORK_BUDGET_SUMMARY = "Browser task timed out after {seconds}s of work."
+BROWSER_RUN_STOPPED_SUMMARY = "Browser task stopped."
+BROWSER_RUN_CANCELLED_SUMMARY = "Browser task was cancelled."
+BROWSER_RUN_HANDOFF_ENDED_SUMMARY = "Browser task was stopped."
+BROWSER_RUN_HANDOFF_COMPLETED_SUMMARY = "You completed the sensitive step in the live browser."
+BROWSER_RUN_DONE_SUMMARY = "Completed the browser task."
+BROWSER_RUN_NOT_DONE_SUMMARY = "Could not complete the browser task."
+#: Why the agent could not attach to a session the host created: nearly always the CDP proxy.
+BROWSER_CDP_ATTACH_HINT = (
+    "Check that the browser host is reachable from the API at BROWSER_HOST_URL."
+)
 #: Why a run cannot start when no Chromium host is configured for it.
 BROWSER_NO_CHROME_HOST = "No Chrome browser host is configured (BROWSER_FALLBACK_HOST_URL)."
 BROWSER_NO_GUIDANCE_AVAILABLE = (

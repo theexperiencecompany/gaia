@@ -18,20 +18,36 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.constants.browser import (
+    BROWSER_AGENT_GUIDANCE_MAX,
+    BROWSER_CDP_ATTACH_HINT,
     BROWSER_ENGINE_FALLBACK_NOTE,
     BROWSER_ENGINE_FALLBACK_WITHOUT_STATE_NOTE,
     BROWSER_ENGINE_SWITCH_ACK,
+    BROWSER_RUN_BLOCKED_SUMMARY,
+    BROWSER_RUN_CANCELLED_SUMMARY,
+    BROWSER_RUN_DONE_SUMMARY,
+    BROWSER_RUN_HANDOFF_COMPLETED_SUMMARY,
+    BROWSER_RUN_HANDOFF_ENDED_SUMMARY,
     BROWSER_RUN_HANDOFF_TIMED_OUT,
+    BROWSER_RUN_NOT_DONE_SUMMARY,
+    BROWSER_RUN_STOPPED_SUMMARY,
+    BROWSER_RUN_WALL_CLOCK_SUMMARY,
     BROWSER_STALL_NOTE,
     HANDOFF_AUTORESOLVED_NOTE,
     MAX_HANDOFFS_PER_TASK,
+    BrowserRunFailure,
     BrowserSessionStatus,
+    EngineFailure,
     EngineSwitchReason,
     HandoffStatus,
     SensitiveCategory,
+    StateCarry,
 )
 from app.schemas.browser import (
+    AgentGuidanceRequest,
+    BrowserAction,
     BrowserResultSnapshot,
+    BrowserSessionSnapshot,
     BrowserStepSnapshot,
     HandoffOutcome,
     HandoffRequest,
@@ -45,11 +61,13 @@ from app.services.browser.ledger import CallComponent, ModelCall
 from app.services.browser.run_contract import BrowserRunConfig, RunHooks, RunOutcome, StepFrame
 from app.services.browser.runner import BrowserRunnerCallbacks, BrowserTaskRunner
 from app.services.browser.session import BrowserHostSession
+from app.services.llm_metering import LLMCallContext, TokenUsage
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
 PAGE = "https://example.test/book"
+SECRETS = RunSecrets({"password": "hunter2"}, ["example.test"])
 
 #: What one scripted run does with the hooks the runner handed it.
 Script = Callable[["_ScriptedRun"], Awaitable[RunOutcome]]
@@ -72,11 +90,19 @@ class _ScriptedRun:
     made: ClassVar[list[_ScriptedRun]] = []
 
     def __init__(
-        self, *, session: BrowserHostSession, hooks: RunHooks, setup: AgentRunSetup, **_: Any
+        self,
+        *,
+        session: BrowserHostSession,
+        config: BrowserRunConfig,
+        hooks: RunHooks,
+        setup: AgentRunSetup,
     ) -> None:
         self.session = session
+        self.config = config
         self.hooks = hooks
+        self.setup = setup
         self.steps_before = setup.steps_before
+        self.task: str | None = None
         self.last_url: str | None = PAGE
         self.abandoned = False
         self.stopped = False
@@ -84,19 +110,20 @@ class _ScriptedRun:
         type(self).made.append(self)
 
     async def execute(self, task: str) -> RunOutcome:
-        return await type(self).scripts[len(type(self).made) - 1](self)
+        self.task = task
+        return await type(self).scripts[type(self).made.index(self)](self)
 
-    def step(self, index: int, screenshot: str | None = None) -> None:
+    def step(self, index: int, screenshot: str | None = None, since_prev_ms: int = 0) -> None:
         self.hooks.step(
             StepFrame(
                 index=index,
                 session_id=self.session.session_id,
                 goal=f"step {index}",
-                actions=[],
+                actions=[BrowserAction(name="click", inputs={"index": index}, target="Next")],
                 url=PAGE,
-                title=None,
+                title="Book a table",
                 raw_screenshot=screenshot,
-                since_prev_ms=0,
+                since_prev_ms=since_prev_ms,
             )
         )
 
@@ -135,13 +162,15 @@ def scripted(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _runner(
     *scripts: Script,
-    task_timeout: int = 30,
+    task_timeout: float = 30,
+    handoff_timeout: float = 60,
     stream_screenshots: bool = False,
     handoff: HandoffOutcome | None = None,
     fallback: bool = False,
-    note: AsyncMock | None = None,
     user_id: str | None = "user-1",
+    **callbacks: Any,
 ) -> tuple[BrowserTaskRunner, dict[str, Any]]:
+    """Build a runner over the scripts; callbacks override the runner's seams (note, is_cancelled, ...)."""
     _ScriptedRun.scripts = list(scripts)
     seen: dict[str, Any] = {"emitted": [], "handoffs": []}
 
@@ -151,7 +180,7 @@ def _runner(
     async def _request_handoff(
         request: HandoffRequest, session: BrowserHostSession
     ) -> HandoffOutcome:
-        seen["handoffs"].append(request)
+        seen["handoffs"].append((request, session))
         return handoff or HandoffOutcome(status=HandoffStatus.COMPLETED)
 
     open_fallback = AsyncMock(return_value=_session("s-fallback"))
@@ -159,25 +188,28 @@ def _runner(
     runner = BrowserTaskRunner(
         session=_session(),
         callbacks=BrowserRunnerCallbacks(
-            emit=_emit,
-            request_handoff=_request_handoff,
-            is_cancelled=AsyncMock(return_value=False),
-            user_waiting=AsyncMock(return_value=False),
-            take_user_messages=AsyncMock(return_value=[]),
-            note=note,
-            open_fallback_session=open_fallback if fallback else None,
+            **{
+                "emit": _emit,
+                "request_handoff": _request_handoff,
+                "is_cancelled": AsyncMock(return_value=False),
+                "user_waiting": AsyncMock(return_value=False),
+                "take_user_messages": AsyncMock(return_value=[]),
+                "open_fallback_session": open_fallback if fallback else None,
+                **callbacks,
+            }
         ),
         config=BrowserRunConfig(
             max_steps=10,
             max_actions_per_step=5,
-            task_timeout_seconds=task_timeout,
+            task_timeout_seconds=task_timeout,  # type: ignore[arg-type]  # sub-second budgets keep the clock tests fast
             step_timeout_seconds=180,
-            handoff_timeout_seconds=60,
+            handoff_timeout_seconds=handoff_timeout,  # type: ignore[arg-type]  # as above
             stream_screenshots=stream_screenshots,
             solve_captcha=False,
         ),
-        secrets=RunSecrets({}, []),
+        secrets=SECRETS,
         user_id=user_id,
+        root_request_id="req-1",
     )
     return runner, seen
 
@@ -274,8 +306,9 @@ async def test_a_timed_out_handoff_fails_the_run_even_when_browser_use_swallows_
 
     result = await _run(runner)
 
-    assert (result.status, result.summary) == (
+    assert (result.status, result.success, result.summary) == (
         BrowserSessionStatus.FAILED,
+        False,
         BROWSER_RUN_HANDOFF_TIMED_OUT,
     )
 
@@ -304,7 +337,7 @@ async def test_an_unknown_takeover_category_is_treated_as_irreversible() -> None
 
     await _run(runner)
 
-    assert [request.category for request in seen["handoffs"]] == [SensitiveCategory.IRREVERSIBLE]
+    assert [request.category for request, _ in seen["handoffs"]] == [SensitiveCategory.IRREVERSIBLE]
 
 
 # ---------------------------------------------------------------------------
@@ -561,3 +594,941 @@ async def test_a_run_past_its_budget_never_moves_even_with_its_engine_wedged(
     seen["open_fallback"].assert_not_awaited()
     assert result.summary == "limit"
     assert result.status == BrowserSessionStatus.FAILED
+
+
+# ---------------------------------------------------------------------------
+# What the agent run is given, and what the run shows first and last
+# ---------------------------------------------------------------------------
+
+
+async def test_the_agent_run_works_for_this_runs_user_ledger_secrets_and_hooks() -> None:
+    action_results = AsyncMock()
+    user_waiting = AsyncMock(return_value=False)
+    runner, _ = _runner(
+        _done, user_id="user-7", action_results=action_results, user_waiting=user_waiting
+    )
+
+    await _run(runner)
+
+    [run] = _ScriptedRun.made
+    assert run.task == "book a table"
+    assert (run.setup.user_id, run.setup.ledger, run.setup.secrets) == (
+        "user-7",
+        runner.ledger,
+        SECRETS,
+    )
+    assert run.config.max_actions_per_step == 5
+    assert (run.hooks.action_results, run.hooks.user_waiting) == (action_results, user_waiting)
+    assert runner.used_fallback is False
+
+
+async def test_the_run_opens_on_its_session_and_ends_with_its_result() -> None:
+    runner, seen = _runner(_done)
+
+    result = await _run(runner)
+
+    assert seen["emitted"][0] == BrowserSessionSnapshot(
+        task="book a table",
+        status=BrowserSessionStatus.RUNNING,
+        session_id="s-primary",
+        live_view_url="http://s-primary/live",
+    )
+    assert seen["emitted"][-1] == result
+
+
+async def test_the_users_mid_task_messages_reach_the_agent_and_the_result() -> None:
+    async def _reads(run: _ScriptedRun) -> RunOutcome:
+        run.heard = await run.hooks.take_user_messages()
+        return RunOutcome(success=True, summary="booked")
+
+    runner, _ = _runner(_reads, take_user_messages=AsyncMock(return_value=["for four, not two"]))
+
+    result = await _run(runner)
+
+    assert _ScriptedRun.made[0].heard == ["for four, not two"]
+    assert result.user_notes == ["for four, not two"]
+
+
+@pytest.mark.parametrize(
+    ("outcome", "status", "summary"),
+    [
+        (RunOutcome(True, ""), BrowserSessionStatus.COMPLETED, BROWSER_RUN_DONE_SUMMARY),
+        (RunOutcome(False, ""), BrowserSessionStatus.FAILED, BROWSER_RUN_NOT_DONE_SUMMARY),
+        (RunOutcome(False, "No such table."), BrowserSessionStatus.FAILED, "No such table."),
+    ],
+)
+async def test_a_result_the_agent_wrote_nothing_for_still_says_how_it_ended(
+    outcome: RunOutcome, status: BrowserSessionStatus, summary: str
+) -> None:
+    async def _ends(run: _ScriptedRun) -> RunOutcome:
+        return outcome
+
+    result = await _run(_runner(_ends)[0])
+
+    assert (result.status, result.success, result.summary, result.steps) == (
+        status,
+        outcome.success,
+        summary,
+        0,
+    )
+
+
+async def test_background_work_is_named_for_the_logs(monkeypatch: pytest.MonkeyPatch) -> None:
+    names: list[str | None] = []
+    real_spawn = runner_mod.spawn_background_task
+
+    def _spawn(coro: Any, *, name: str | None = None) -> asyncio.Task[Any]:
+        names.append(name)
+        return real_spawn(coro, name=name)
+
+    monkeypatch.setattr(runner_mod, "spawn_background_task", _spawn)
+    runner, _ = _runner(_done)
+    runner.ledger.add(
+        ModelCall(CallComponent.JEV, "openrouter", "jev", 1, input_tokens=1, output_tokens=1)
+    )
+
+    await _run(runner)
+
+    assert set(names) == {"browser_stall_watch", "browser_step_emit", "browser_meter_call"}
+
+
+# ---------------------------------------------------------------------------
+# Step cards
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("since_prev_ms", "elapsed_ms"), [(0, None), (250, 250)])
+async def test_a_step_card_carries_the_frames_page_actions_and_time(
+    since_prev_ms: int, elapsed_ms: int | None
+) -> None:
+    async def _one(run: _ScriptedRun) -> RunOutcome:
+        run.step(1, since_prev_ms=since_prev_ms)
+        return RunOutcome(True, "booked")
+
+    runner, seen = _runner(_one)
+    await _run(runner)
+
+    [card] = [c for c in seen["emitted"] if isinstance(c, BrowserStepSnapshot)]
+    assert (card.index, card.goal, card.url, card.title, card.elapsed_ms) == (
+        1,
+        "step 1",
+        PAGE,
+        "Book a table",
+        elapsed_ms,
+    )
+    assert card.actions == [BrowserAction(name="click", inputs={"index": 1}, target="Next")]
+
+
+async def test_a_frames_photo_is_uploaded_as_the_image_it_carries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    uploaded: list[tuple[bytes, str, int]] = []
+
+    async def _publish(image: bytes, session_id: str, index: int) -> str:
+        uploaded.append((image, session_id, index))
+        return "https://cdn.test/3.png"
+
+    monkeypatch.setattr(runner_mod, "publish_step_screenshot", _publish)
+
+    async def _one(run: _ScriptedRun) -> RunOutcome:
+        run.step(3, screenshot="c2hvdA==")
+        return RunOutcome(True, "booked")
+
+    await _run(_runner(_one, stream_screenshots=True)[0])
+
+    assert uploaded == [(b"shot", "s-primary", 3)]
+
+
+async def test_with_screenshots_off_no_photo_is_uploaded_or_shown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    publish = AsyncMock(return_value="https://cdn.test/1.png")
+    monkeypatch.setattr(runner_mod, "publish_step_screenshot", publish)
+
+    async def _one(run: _ScriptedRun) -> RunOutcome:
+        run.step(1, screenshot="c2hvdA==")
+        return RunOutcome(True, "booked")
+
+    runner, seen = _runner(_one, stream_screenshots=False)
+    await _run(runner)
+
+    [card] = [c for c in seen["emitted"] if isinstance(c, BrowserStepSnapshot)]
+    assert card.screenshot is None
+    publish.assert_not_awaited()
+
+
+async def test_a_step_card_that_fails_to_send_does_not_lose_the_result() -> None:
+    async def _one(run: _ScriptedRun) -> RunOutcome:
+        run.step(1)
+        return RunOutcome(True, "booked")
+
+    runner, seen = _runner(_one)
+    real_emit = runner._emit
+
+    async def _flaky(snapshot: object) -> None:
+        if isinstance(snapshot, BrowserStepSnapshot):
+            raise ConnectionError("stream closed")
+        await real_emit(snapshot)
+
+    runner._emit = _flaky
+
+    result = await _run(runner)
+
+    assert (result.success, result.summary, result.steps) == (True, "booked", 1)
+
+
+# ---------------------------------------------------------------------------
+# Clocks and budgets
+# ---------------------------------------------------------------------------
+
+
+async def test_the_wall_clock_leaves_room_for_every_permitted_handoff() -> None:
+    async def _slow(run: _ScriptedRun) -> RunOutcome:
+        await asyncio.sleep(0.02 * MAX_HANDOFFS_PER_TASK / 2)
+        return RunOutcome(True, "booked")
+
+    result = await _run(_runner(_slow, task_timeout=0, handoff_timeout=0.02)[0])
+
+    assert (result.success, result.summary) == (True, "booked")
+
+
+async def test_a_run_past_the_wall_clock_is_stopped_and_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _never(run: _ScriptedRun) -> RunOutcome:
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    runner, _ = _runner(_never, task_timeout=0, handoff_timeout=0.01)
+
+    async with captured_wide_event() as event:
+        result = await _run(runner)
+
+    assert _ScriptedRun.made[0].stopped is True
+    assert (result.status, result.success, result.summary) == (
+        BrowserSessionStatus.FAILED,
+        False,
+        BROWSER_RUN_WALL_CLOCK_SUMMARY.format(seconds=0),
+    )
+    assert event["reason"] == BrowserRunFailure.TASK_TIMEOUT
+
+
+@pytest.mark.parametrize(("work", "stops"), [(20.0, False), (20.5, True)])
+async def test_the_work_budget_ends_a_run_only_once_passed(
+    monkeypatch: pytest.MonkeyPatch, work: float, stops: bool
+) -> None:
+    clock = [0.0]
+    monkeypatch.setattr(runner_mod, "perf_counter", lambda: clock[0])
+
+    async def _works(run: _ScriptedRun) -> RunOutcome:
+        clock[0] += work
+        run.stops = await run.hooks.should_stop()
+        return RunOutcome(True, "booked")
+
+    runner, _ = _runner(_works, task_timeout=20)
+    async with captured_wide_event() as event:
+        await _run(runner)
+
+    assert _ScriptedRun.made[0].stops is stops
+    assert (event.get("reason") == BrowserRunFailure.TASK_TIMEOUT) is stops
+
+
+async def test_waiting_on_the_user_twice_is_not_counted_twice_as_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [0.0]
+    monkeypatch.setattr(runner_mod, "perf_counter", lambda: clock[0])
+
+    async def _two_handoffs(run: _ScriptedRun) -> RunOutcome:
+        clock[0] += 5
+        await run.hooks.takeover("Sign in", "credentials")
+        clock[0] += 5
+        await run.hooks.takeover("Enter the code", "credentials")
+        run.after_waits = await run.hooks.should_stop()
+        clock[0] += 15
+        run.after_work = await run.hooks.should_stop()
+        return RunOutcome(True, "booked")
+
+    runner, _ = _runner(_two_handoffs, task_timeout=20)
+
+    async def _slow_user(request: HandoffRequest, session: BrowserHostSession) -> HandoffOutcome:
+        clock[0] += 600
+        return HandoffOutcome(status=HandoffStatus.COMPLETED)
+
+    runner._request_handoff = _slow_user
+
+    await _run(runner)
+
+    [run] = _ScriptedRun.made
+    assert (run.after_waits, run.after_work) == (False, True)
+
+
+async def test_the_cost_budget_is_read_for_this_user_and_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    check = AsyncMock(return_value=None)
+    monkeypatch.setattr(runner_mod, "get_budget_stop_reason", check)
+
+    async def _checks(run: _ScriptedRun) -> RunOutcome:
+        await run.hooks.should_stop()
+        return RunOutcome(True, "booked")
+
+    await _run(_runner(_checks, user_id="user-7")[0])
+
+    check.assert_awaited_with("user-7", None, "req-1")
+
+
+async def test_a_run_silent_from_its_start_gets_the_stall_note(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [0.0]
+    monkeypatch.setattr(runner_mod, "perf_counter", lambda: clock[0])
+    monkeypatch.setattr(runner_mod, "_STALL_POLL_SECONDS", 0.01)
+    monkeypatch.setattr(runner_mod, "BROWSER_STALL_NOTE_AFTER_SECONDS", 5.0)
+
+    async def _silent(run: _ScriptedRun) -> RunOutcome:
+        # Exactly the threshold of silence is a stall.
+        clock[0] = 5.0
+        await asyncio.sleep(0.1)
+        return RunOutcome(True, "booked")
+
+    note = AsyncMock()
+    await _run(_runner(_silent, note=note)[0])
+
+    note.assert_awaited_once_with(BROWSER_STALL_NOTE)
+
+
+async def test_steps_arriving_in_time_are_never_a_stall(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(runner_mod, "_STALL_POLL_SECONDS", 0.01)
+    monkeypatch.setattr(runner_mod, "BROWSER_STALL_NOTE_AFTER_SECONDS", 0.2)
+
+    async def _steady(run: _ScriptedRun) -> RunOutcome:
+        for n in range(1, 6):
+            run.step(n)
+            await asyncio.sleep(0.03)
+        return RunOutcome(True, "booked")
+
+    note = AsyncMock()
+    await _run(_runner(_steady, note=note)[0])
+
+    note.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Handoffs: the note, the category, the session, the endings
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("message", "note", "notes"),
+    [
+        ("  Use my work card  ", "Use my work card", ["Use my work card"]),
+        ("   ", None, []),
+        (None, None, []),
+    ],
+)
+async def test_the_users_note_from_a_handoff_reaches_the_agent_and_the_result(
+    message: str | None, note: str | None, notes: list[str]
+) -> None:
+    async def _hands_over(run: _ScriptedRun) -> RunOutcome:
+        run.note = await run.hooks.takeover("Pay the deposit", "payment")
+        return RunOutcome(True, "booked")
+
+    runner, seen = _runner(
+        _hands_over, handoff=HandoffOutcome(status=HandoffStatus.COMPLETED, message=message)
+    )
+
+    result = await _run(runner)
+
+    assert _ScriptedRun.made[0].note == note
+    assert result.user_notes == notes
+    [(request, session)] = seen["handoffs"]
+    assert (request.category, request.reason, session) == (
+        SensitiveCategory.PAYMENT,
+        "Pay the deposit",
+        runner.session,
+    )
+
+
+async def test_the_handoff_past_the_limit_stops_the_run() -> None:
+    async def _asks_too_often(run: _ScriptedRun) -> RunOutcome:
+        for _ in range(MAX_HANDOFFS_PER_TASK):
+            await run.hooks.takeover("Enter the code", "credentials")
+        try:
+            await run.hooks.takeover("Enter the code again", "credentials")
+        except BrowserHandoffCancelled as exc:
+            run.refusal = str(exc)
+        return RunOutcome(False, "")
+
+    result = await _run(_runner(_asks_too_often)[0])
+
+    assert _ScriptedRun.made[0].refusal == "max-handoffs"
+    # The user did complete the earlier handoffs.
+    assert (result.status, result.success, result.summary) == (
+        BrowserSessionStatus.COMPLETED,
+        True,
+        BROWSER_RUN_STOPPED_SUMMARY,
+    )
+
+
+async def test_a_handoff_the_user_cancelled_stops_the_run_even_when_the_cancel_is_swallowed() -> (
+    None
+):
+    async def _swallows(run: _ScriptedRun) -> RunOutcome:
+        try:
+            await run.hooks.takeover("Sign in", "credentials")
+        except BrowserHandoffCancelled as exc:
+            run.why = str(exc)
+        return RunOutcome(True, "looks done")
+
+    runner, _ = _runner(_swallows, handoff=HandoffOutcome(status=HandoffStatus.CANCELLED))
+
+    result = await _run(runner)
+
+    assert _ScriptedRun.made[0].why == HandoffStatus.CANCELLED.value
+    assert (result.status, result.success, result.summary) == (
+        BrowserSessionStatus.CANCELLED,
+        False,
+        BROWSER_RUN_STOPPED_SUMMARY,
+    )
+
+
+@pytest.mark.parametrize(
+    ("first", "status", "success", "summary"),
+    [
+        (
+            HandoffStatus.COMPLETED,
+            BrowserSessionStatus.COMPLETED,
+            True,
+            BROWSER_RUN_HANDOFF_COMPLETED_SUMMARY,
+        ),
+        (
+            HandoffStatus.CANCELLED,
+            BrowserSessionStatus.CANCELLED,
+            False,
+            BROWSER_RUN_HANDOFF_ENDED_SUMMARY,
+        ),
+    ],
+)
+async def test_a_run_a_cancelled_handoff_ended_says_whether_the_user_did_the_step_first(
+    first: HandoffStatus, status: BrowserSessionStatus, success: bool, summary: str
+) -> None:
+    async def _two_handoffs(run: _ScriptedRun) -> RunOutcome:
+        await run.hooks.takeover("Sign in", "credentials")
+        await run.hooks.takeover("Pay", "payment")
+        raise AssertionError("the second handoff ends the run")
+
+    runner, _ = _runner(_two_handoffs)
+    outcomes = iter([first, HandoffStatus.CANCELLED])
+
+    async def _answers(request: HandoffRequest, session: BrowserHostSession) -> HandoffOutcome:
+        return HandoffOutcome(status=next(outcomes))
+
+    runner._request_handoff = _answers
+
+    result = await _run(runner)
+
+    assert (result.status, result.success, result.summary) == (status, success, summary)
+
+
+async def test_a_handoff_that_timed_out_fails_the_run() -> None:
+    async def _hands_over(run: _ScriptedRun) -> RunOutcome:
+        await run.hooks.takeover("Sign in", "credentials")
+        raise AssertionError("the timeout ends the run")
+
+    runner, _ = _runner(_hands_over, handoff=HandoffOutcome(status=HandoffStatus.TIMEOUT))
+
+    result = await _run(runner)
+
+    assert (result.status, result.success, result.summary) == (
+        BrowserSessionStatus.FAILED,
+        False,
+        BROWSER_RUN_HANDOFF_TIMED_OUT,
+    )
+
+
+async def test_a_cancelled_run_that_finished_anyway_is_reported_cancelled() -> None:
+    runner, _ = _runner(_done, is_cancelled=AsyncMock(return_value=True))
+
+    result = await _run(runner)
+
+    assert (result.status, result.success, result.summary) == (
+        BrowserSessionStatus.CANCELLED,
+        False,
+        BROWSER_RUN_CANCELLED_SUMMARY,
+    )
+
+
+async def test_a_run_past_its_cost_budget_after_it_finished_still_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stop = type("_Check", (), {"stop_reason": "limit"})()
+    monkeypatch.setattr(runner_mod, "get_budget_stop_reason", AsyncMock(return_value=stop))
+
+    async def _checks_then_claims(run: _ScriptedRun) -> RunOutcome:
+        await run.hooks.should_stop()
+        return RunOutcome(True, "booked")
+
+    result = await _run(_runner(_checks_then_claims)[0])
+
+    assert (result.status, result.success, result.summary) == (
+        BrowserSessionStatus.FAILED,
+        False,
+        "limit",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Guidance from the agent that started the run
+# ---------------------------------------------------------------------------
+
+
+def _guided(*answers: HandoffOutcome, joined: bool = True) -> dict[str, Any]:
+    asked: list[AgentGuidanceRequest] = []
+    replies = iter(answers)
+
+    async def _request_guidance(request: AgentGuidanceRequest) -> HandoffOutcome:
+        asked.append(request)
+        return next(replies)
+
+    return {
+        "request_guidance": _request_guidance,
+        "agent_joined": AsyncMock(return_value=joined),
+        "asked": asked,
+    }
+
+
+async def test_a_blocked_run_is_guided_with_what_the_user_said_so_far() -> None:
+    guided = _guided(HandoffOutcome(status=HandoffStatus.COMPLETED, message="  Use search  "))
+    asked = guided.pop("asked")
+
+    async def _blocked(run: _ScriptedRun) -> RunOutcome:
+        await run.hooks.take_user_messages()
+        assert run.hooks.guidance_allowed is not None and run.hooks.guidance is not None
+        run.allowed = await run.hooks.guidance_allowed()
+        run.instruction = await run.hooks.guidance(AgentGuidanceRequest(reason="stuck", task="t"))
+        return RunOutcome(True, "booked")
+
+    runner, _ = _runner(
+        _blocked, take_user_messages=AsyncMock(return_value=["not the red one"]), **guided
+    )
+
+    await _run(runner)
+
+    [run] = _ScriptedRun.made
+    assert (run.allowed, run.instruction) == (True, "Use search")
+    assert [request.user_notes for request in asked] == [["not the red one"]]
+
+
+@pytest.mark.parametrize("carries_on", [True, False])
+@pytest.mark.parametrize(
+    "reply",
+    [
+        HandoffOutcome(status=HandoffStatus.COMPLETED, message="   "),
+        HandoffOutcome(status=HandoffStatus.COMPLETED, message=None),
+        HandoffOutcome(status=HandoffStatus.TIMEOUT, message="use search"),
+    ],
+)
+async def test_a_blocked_run_with_no_instruction_ends_blocked_even_if_the_agent_carries_on(
+    reply: HandoffOutcome, carries_on: bool
+) -> None:
+    guided = _guided(reply)
+    guided.pop("asked")
+
+    async def _blocked(run: _ScriptedRun) -> RunOutcome:
+        assert run.hooks.guidance is not None
+        try:
+            await run.hooks.guidance(AgentGuidanceRequest(reason="stuck", task="t"))
+        except BrowserHandoffCancelled as exc:
+            if not carries_on:
+                raise
+            run.why = str(exc)
+        # The agent's next check stops it.
+        run.stops = await run.hooks.should_stop()
+        return RunOutcome(True, "booked anyway")
+
+    runner, _ = _runner(_blocked, **guided)
+
+    async with captured_wide_event() as event:
+        result = await _run(runner)
+
+    assert (result.status, result.success, result.summary) == (
+        BrowserSessionStatus.FAILED,
+        False,
+        BROWSER_RUN_BLOCKED_SUMMARY,
+    )
+    assert event["browser"]["blocked"] == BrowserRunFailure.BLOCKED.value
+    if carries_on:
+        [run] = _ScriptedRun.made
+        assert (run.why, run.stops) == (reply.status.value, True)
+
+
+async def test_a_run_may_ask_for_guidance_only_so_often_and_only_while_an_agent_is_joined() -> None:
+    answers = [HandoffOutcome(status=HandoffStatus.COMPLETED, message="try again")] * (
+        BROWSER_AGENT_GUIDANCE_MAX
+    )
+    guided = _guided(*answers)
+    guided.pop("asked")
+
+    async def _asks(run: _ScriptedRun) -> RunOutcome:
+        assert run.hooks.guidance_allowed is not None and run.hooks.guidance is not None
+        run.allowed = []
+        for _ in range(BROWSER_AGENT_GUIDANCE_MAX + 1):
+            run.allowed.append(await run.hooks.guidance_allowed())
+            if run.allowed[-1]:
+                await run.hooks.guidance(AgentGuidanceRequest(reason="stuck", task="t"))
+        return RunOutcome(True, "booked")
+
+    await _run(_runner(_asks, **guided)[0])
+
+    assert _ScriptedRun.made[0].allowed == [True] * BROWSER_AGENT_GUIDANCE_MAX + [False]
+
+
+@pytest.mark.parametrize("missing", ["request_guidance", "agent_joined", "gone"])
+async def test_with_no_agent_to_ask_guidance_is_not_offered(missing: str) -> None:
+    guided = _guided(joined=missing != "gone")
+    guided.pop("asked")
+    if missing != "gone":
+        guided.pop(missing)
+
+    async def _asks(run: _ScriptedRun) -> RunOutcome:
+        assert run.hooks.guidance_allowed is not None
+        run.allowed = await run.hooks.guidance_allowed()
+        return RunOutcome(True, "booked")
+
+    await _run(_runner(_asks, **guided)[0])
+
+    assert _ScriptedRun.made[0].allowed is False
+
+
+async def test_guidance_asked_with_no_channel_ends_the_run() -> None:
+    async def _asks(run: _ScriptedRun) -> RunOutcome:
+        assert run.hooks.guidance is not None
+        try:
+            await run.hooks.guidance(AgentGuidanceRequest(reason="stuck", task="t"))
+        except BrowserHandoffCancelled as exc:
+            run.why = str(exc)
+            raise
+        raise AssertionError("no channel ends the run")
+
+    result = await _run(_runner(_asks)[0])
+
+    assert _ScriptedRun.made[0].why == "no-guidance-channel"
+    assert result.status == BrowserSessionStatus.CANCELLED
+
+
+async def test_waiting_on_the_agent_twice_is_not_counted_as_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [0.0]
+    monkeypatch.setattr(runner_mod, "perf_counter", lambda: clock[0])
+    guided = _guided(*[HandoffOutcome(status=HandoffStatus.COMPLETED, message="go on")] * 2)
+    guided.pop("asked")
+
+    async def _slow_agent(request: AgentGuidanceRequest) -> HandoffOutcome:
+        clock[0] += 600
+        return HandoffOutcome(status=HandoffStatus.COMPLETED, message="go on")
+
+    guided["request_guidance"] = _slow_agent
+
+    async def _two_asks(run: _ScriptedRun) -> RunOutcome:
+        assert run.hooks.guidance is not None
+        clock[0] += 5
+        await run.hooks.guidance(AgentGuidanceRequest(reason="stuck", task="t"))
+        clock[0] += 5
+        await run.hooks.guidance(AgentGuidanceRequest(reason="stuck", task="t"))
+        run.after_waits = await run.hooks.should_stop()
+        clock[0] += 15
+        run.after_work = await run.hooks.should_stop()
+        return RunOutcome(True, "booked")
+
+    await _run(_runner(_two_asks, task_timeout=20, **guided)[0])
+
+    [run] = _ScriptedRun.made
+    assert (run.after_waits, run.after_work) == (False, True)
+
+
+async def test_waiting_on_the_agent_pauses_the_watchdog() -> None:
+    guided = _guided()
+    guided.pop("asked")
+
+    async def _slow_agent(request: AgentGuidanceRequest) -> HandoffOutcome:
+        await asyncio.sleep(0.2)
+        return HandoffOutcome(status=HandoffStatus.COMPLETED, message="go on")
+
+    guided["request_guidance"] = _slow_agent
+
+    async def _asks(run: _ScriptedRun) -> RunOutcome:
+        assert run.hooks.guidance is not None
+        run.answers = False
+        await run.hooks.guidance(AgentGuidanceRequest(reason="stuck", task="t"))
+        run.answers = True
+        return RunOutcome(True, "booked")
+
+    runner, seen = _runner(_asks, _done, fallback=True, **guided)
+
+    result = await _run(runner)
+
+    seen["open_fallback"].assert_not_awaited()
+    assert result.summary == "booked"
+
+
+async def test_a_run_the_user_stopped_is_not_moved_after_it_ends(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _gone(session: BrowserHostSession) -> EngineFailure | None:
+        return EngineFailure.SESSION_GONE
+
+    monkeypatch.setattr(runner_mod, "engine_failure", _gone)
+
+    async def _gives_up(run: _ScriptedRun) -> RunOutcome:
+        return RunOutcome(False, "")
+
+    runner, seen = _runner(
+        _gives_up, _done, fallback=True, is_cancelled=AsyncMock(return_value=True)
+    )
+
+    result = await _run(runner)
+
+    seen["open_fallback"].assert_not_awaited()
+    assert result.status == BrowserSessionStatus.CANCELLED
+
+
+# ---------------------------------------------------------------------------
+# Metering and failures
+# ---------------------------------------------------------------------------
+
+
+async def test_a_model_call_is_metered_as_browser_spend_against_the_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record = AsyncMock()
+    monkeypatch.setattr(runner_mod, "record_llm_call", record)
+    runner, _ = _runner(_done)
+
+    runner.ledger.add(
+        ModelCall(CallComponent.AGENT, "openrouter", "luna", 1, input_tokens=10, output_tokens=2)
+    )
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    [call] = record.await_args_list
+    assert call.kwargs["usage"] == TokenUsage(
+        input_tokens=10, output_tokens=2, cached_tokens=0, reasoning_tokens=0
+    )
+    assert call.kwargs["root_request_id"] == "req-1"
+    assert call.kwargs["context"] == LLMCallContext(
+        agent_name="browser_task", background=False, charge_to_budget=True
+    )
+
+
+async def test_a_run_that_cannot_attach_names_the_url_and_what_to_check() -> None:
+    async def _refused(run: _ScriptedRun) -> RunOutcome:
+        raise ConnectionRefusedError("cdp refused")
+
+    with pytest.raises(BrowserUnavailableError) as raised:
+        await _run(_runner(_refused)[0])
+
+    message = str(raised.value)
+    assert "ws://s-primary" in message
+    assert "cdp refused" in message
+    assert message.endswith(BROWSER_CDP_ATTACH_HINT)
+
+
+async def test_an_unexpected_failure_is_logged_with_its_type_and_session() -> None:
+    async def _crashes(run: _ScriptedRun) -> RunOutcome:
+        raise RuntimeError("history unreadable")
+
+    async with captured_wide_event() as event:
+        result = await _run(_runner(_crashes)[0])
+
+    assert result.success is False
+    assert event["reason"] == BrowserRunFailure.RUN_CRASHED
+    [error] = event["errors"]
+    assert "failed unexpectedly" in error["msg"]
+    assert (error["error_type"], error["error"], error["browser"]) == (
+        "RuntimeError",
+        "history unreadable",
+        {"session_id": "s-primary"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Moving to the fallback engine
+# ---------------------------------------------------------------------------
+
+
+async def test_a_run_moved_to_the_fallback_resumes_at_the_page_it_was_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(runner_mod, "hand_over_state", AsyncMock(return_value=object()))
+
+    async def _switches(run: _ScriptedRun) -> RunOutcome:
+        assert run.hooks.switch_engine is not None
+        await run.hooks.switch_engine(EngineSwitchReason.RENDERS_WRONG, None)
+        return RunOutcome(False, "")
+
+    captured: list[tuple[Any, ...]] = []
+    monkeypatch.setattr(runner_mod, "capture_event", lambda *args: captured.append(args))
+    runner, seen = _runner(_switches, _done, fallback=True)
+
+    async with captured_wide_event() as event:
+        await _run(runner)
+
+    primary, on_fallback = _ScriptedRun.made
+    assert (on_fallback.config.start_url, on_fallback.task) == (PAGE, "book a table")
+    assert on_fallback.session.session_id == "s-fallback"
+    assert (
+        BrowserSessionSnapshot(
+            task="book a table",
+            status=BrowserSessionStatus.RUNNING,
+            session_id="s-fallback",
+            live_view_url="http://s-fallback/live",
+        )
+        in seen["emitted"]
+    )
+    assert runner.used_fallback is True
+    assert event["browser"]["primary_session_id"] == "s-primary"
+    assert event["browser"]["engine_switch"] == "renders_wrong"
+    assert event["browser"]["state_carry"] == StateCarry.CARRIED.value
+    # A switch with no page to name reports no host.
+    assert captured[0][2]["host"] == ""
+
+
+async def test_the_primarys_state_is_read_from_the_primary_and_an_unreadable_one_is_logged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    read_from: list[str] = []
+
+    async def _unreadable(session: BrowserHostSession) -> object:
+        read_from.append(session.session_id)
+        raise BrowserUnavailableError("the engine gave no state")
+
+    monkeypatch.setattr(runner_mod, "hand_over_state", _unreadable)
+
+    async def _switches(run: _ScriptedRun) -> RunOutcome:
+        assert run.hooks.switch_engine is not None
+        await run.hooks.switch_engine(EngineSwitchReason.CONTROL_BROKEN, PAGE)
+        return RunOutcome(False, "")
+
+    runner, seen = _runner(_switches, _done, fallback=True)
+
+    async with captured_wide_event() as event:
+        await _run(runner)
+
+    assert read_from == ["s-primary"]
+    seen["open_fallback"].assert_awaited_once_with(PAGE, None)
+    assert event["browser"]["state_carry"] == StateCarry.UNREADABLE.value
+    [warning] = [w for w in event["warnings"] if w.get("error_type") == "BrowserUnavailableError"]
+    assert "state" in warning["msg"]
+    assert warning["browser"] == {"session_id": "s-primary", "operation": "hand_over_state"}
+
+
+async def test_an_engine_that_failed_under_a_run_is_named_and_carries_no_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _gone(session: BrowserHostSession) -> EngineFailure | None:
+        return EngineFailure.SESSION_GONE if session.session_id == "s-primary" else None
+
+    monkeypatch.setattr(runner_mod, "engine_failure", _gone)
+    hand_over = AsyncMock()
+    monkeypatch.setattr(runner_mod, "hand_over_state", hand_over)
+
+    async def _gives_up(run: _ScriptedRun) -> RunOutcome:
+        return RunOutcome(False, "The page never loaded.")
+
+    runner, seen = _runner(_gives_up, _done, fallback=True)
+
+    async with captured_wide_event() as event:
+        result = await _run(runner)
+
+    hand_over.assert_not_awaited()
+    seen["open_fallback"].assert_awaited_once_with(PAGE, None)
+    assert result.summary == "booked"
+    assert event["browser"]["fallback_reason"] == EngineFailure.SESSION_GONE.value
+    assert event["browser"]["state_carry"] == StateCarry.ENGINE_FAILED.value
+    [warning] = [w for w in event["warnings"] if "engine_failure" in w]
+    assert "failed under the run" in warning["msg"]
+    assert (warning["engine_failure"], warning["browser"]) == (
+        EngineFailure.SESSION_GONE.value,
+        {"session_id": "s-primary", "operation": "engine_failure"},
+    )
+
+
+@pytest.mark.parametrize(
+    ("outcome", "engine_failed"),
+    [(RunOutcome(True, "booked"), True), (RunOutcome(False, "No table."), False)],
+)
+async def test_a_run_moves_only_when_it_failed_and_its_engine_failed_too(
+    monkeypatch: pytest.MonkeyPatch, outcome: RunOutcome, engine_failed: bool
+) -> None:
+    async def _host(session: BrowserHostSession) -> EngineFailure | None:
+        return EngineFailure.SESSION_GONE if engine_failed else None
+
+    monkeypatch.setattr(runner_mod, "engine_failure", _host)
+
+    async def _ends(run: _ScriptedRun) -> RunOutcome:
+        return outcome
+
+    runner, seen = _runner(_ends, _done, fallback=True)
+
+    result = await _run(runner)
+
+    seen["open_fallback"].assert_not_awaited()
+    assert result.summary == outcome.summary
+
+
+@pytest.mark.parametrize("engine_failed", [True, False])
+async def test_a_run_that_could_not_attach_moves_only_when_its_engine_failed(
+    monkeypatch: pytest.MonkeyPatch, engine_failed: bool
+) -> None:
+    async def _host(session: BrowserHostSession) -> EngineFailure | None:
+        return (
+            EngineFailure.SESSION_GONE
+            if engine_failed and session.session_id == "s-primary"
+            else None
+        )
+
+    monkeypatch.setattr(runner_mod, "engine_failure", _host)
+
+    async def _cannot_attach(run: _ScriptedRun) -> RunOutcome:
+        raise ConnectionRefusedError("cdp refused")
+
+    runner, seen = _runner(_cannot_attach, _done, fallback=True)
+
+    async with captured_wide_event() as event:
+        if engine_failed:
+            result = await _run(runner)
+            assert (result.success, result.summary) == (True, "booked")
+            assert _ScriptedRun.made[1].task == "book a table"
+            [warning] = [w for w in event["warnings"] if "could not run" in w["msg"]]
+            assert (warning["error_type"], warning["browser"]) == (
+                "ConnectionRefusedError",
+                {"session_id": "s-primary"},
+            )
+        else:
+            with pytest.raises(BrowserUnavailableError):
+                await _run(runner)
+            seen["open_fallback"].assert_not_awaited()
+
+
+async def test_a_handoff_on_a_run_with_a_fallback_pauses_the_watchdog() -> None:
+    async def _waits(run: _ScriptedRun) -> RunOutcome:
+        run.answers = False
+        await run.hooks.takeover("Sign in", "credentials")
+        run.answers = True
+        return RunOutcome(True, "booked")
+
+    runner, seen = _runner(_waits, _done, fallback=True)
+
+    async def _slow_user(request: HandoffRequest, session: BrowserHostSession) -> HandoffOutcome:
+        await asyncio.sleep(0.2)
+        return HandoffOutcome(status=HandoffStatus.COMPLETED)
+
+    runner._request_handoff = _slow_user
+
+    result = await _run(runner)
+
+    seen["open_fallback"].assert_not_awaited()
+    assert (result.success, result.summary) == (True, "booked")
+    assert _ScriptedRun.made[0].task == "book a table"
