@@ -44,6 +44,12 @@ vi.mock("@slack/bolt", () => ({
 
 vi.mock("@gaia/shared/bots", async () => {
   const { makeGaiaSharedMock } = await import("../shared/mocks/gaiaSharedBase");
+  // The real boundary and failure recorder, so the runtime-error test reads
+  // the bot_event the adapter really prints.
+  const actual =
+    await vi.importActual<typeof import("@gaia/shared/bots")>(
+      "@gaia/shared/bots",
+    );
   const base = makeGaiaSharedMock("slack", {
     streamingDefaults: {
       slack: { editIntervalMs: 1500, streaming: true, platform: "slack" },
@@ -56,6 +62,8 @@ vi.mock("@gaia/shared/bots", async () => {
   const SUBCOMMAND_COMMANDS = new Set(["todo", "workflow"]);
   return {
     ...base,
+    withWideEvent: actual.withWideEvent,
+    recordBotFailure: actual.recordBotFailure,
     extractSubcommandArgs: vi.fn(
       (commandName: string, rawText: string | undefined) => {
         if (!SUBCOMMAND_COMMANDS.has(commandName)) return {};
@@ -72,6 +80,7 @@ vi.mock("@gaia/shared/bots", async () => {
 
 import { handleStreamingChat } from "@gaia/shared/bots";
 import { SlackAdapter } from "../../slack/src/adapter";
+import { captureBotEvents } from "../shared/helpers/capture-bot-event";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -920,6 +929,137 @@ describe("SlackAdapter - deliverOutbound channel routing", () => {
       channel: "D-dm",
       text: "hi",
     });
+  });
+});
+
+describe("SlackAdapter - deliverOutboundFile channel routing", () => {
+  type FileDeliverer = {
+    deliverOutboundFile: (
+      destinationId: string,
+      attachment: { url: string; filename: string; caption?: string },
+      isChannel: boolean,
+    ) => Promise<void>;
+    fetchOutboundArtifact: ReturnType<typeof vi.fn>;
+    app: unknown;
+  };
+
+  const shot = {
+    url: "https://cdn.example.com/shot-1.png",
+    filename: "browser-step-1.png",
+    caption: "Step 1",
+  };
+
+  function makeAdapter() {
+    const adapter = new SlackAdapter() as unknown as FileDeliverer;
+    adapter.fetchOutboundArtifact = vi.fn().mockResolvedValue({
+      data: Buffer.from("png"),
+      contentType: "image/png",
+    });
+    const app = {
+      client: {
+        files: { uploadV2: vi.fn().mockResolvedValue({}) },
+        conversations: {
+          open: vi.fn().mockResolvedValue({ channel: { id: "D-dm" } }),
+        },
+      },
+    };
+    adapter.app = app;
+    return { adapter, app };
+  }
+
+  it("uploads a group's photo into the channel and skips DM resolution", async () => {
+    const { adapter, app } = makeAdapter();
+
+    await adapter.deliverOutboundFile("C-group", shot, true);
+
+    expect(app.client.conversations.open).not.toHaveBeenCalled();
+    expect(app.client.files.uploadV2).toHaveBeenCalledWith(
+      expect.objectContaining({ channel_id: "C-group" }),
+    );
+  });
+
+  it("uploads a photo to the user's DM when not a channel", async () => {
+    const { adapter, app } = makeAdapter();
+
+    await adapter.deliverOutboundFile("U-user", shot, false);
+
+    expect(app.client.conversations.open).toHaveBeenCalledWith({
+      users: "U-user",
+    });
+    expect(app.client.files.uploadV2).toHaveBeenCalledWith(
+      expect.objectContaining({ channel_id: "D-dm" }),
+    );
+  });
+
+  it("re-resolves the DM after an upload to a stale DM channel fails", async () => {
+    const { adapter, app } = makeAdapter();
+    app.client.files.uploadV2.mockRejectedValueOnce(
+      new Error("channel_not_found"),
+    );
+
+    await expect(
+      adapter.deliverOutboundFile("U-user", shot, false),
+    ).rejects.toThrow("channel_not_found");
+    await adapter.deliverOutboundFile("U-user", shot, false);
+
+    expect(app.client.conversations.open).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// app.error — Bolt's last-resort handler
+// ---------------------------------------------------------------------------
+
+// The mock above does not reach apps/bots/slack's @slack/bolt, so this is a real
+// Bolt App dispatching a throwing listener into the adapter's error handler;
+// app_uninstalled skips Bolt's authorize step, so no Slack API call is made.
+describe("SlackAdapter - runtime errors", () => {
+  interface RealBoltApp {
+    event: (type: string, listener: () => Promise<void>) => void;
+    processEvent: (event: {
+      body: Record<string, unknown>;
+      ack: () => Promise<void>;
+    }) => Promise<void>;
+  }
+
+  async function bootRealApp(): Promise<RealBoltApp> {
+    vi.stubEnv("SLACK_BOT_TOKEN", "xoxb-test");
+    vi.stubEnv("SLACK_SIGNING_SECRET", "signing-secret");
+    vi.stubEnv("SLACK_APP_TOKEN", "xapp-test");
+    const adapter = new SlackAdapter();
+    await (
+      adapter as unknown as { initialize: () => Promise<void> }
+    ).initialize();
+    vi.unstubAllEnvs();
+    return (adapter as unknown as { app: RealBoltApp }).app;
+  }
+
+  it("turns a listener crash into a failed bot_runtime_error event with its reason and hashed user", async () => {
+    const app = await bootRealApp();
+    app.event("app_uninstalled", async () => {
+      throw new Error("An API error occurred: channel_not_found");
+    });
+
+    const events = await captureBotEvents("bot_runtime_error", () =>
+      app.processEvent({
+        body: {
+          type: "event_callback",
+          team_id: "T1",
+          api_app_id: "A1",
+          event: { type: "app_uninstalled", user: "U123" },
+        },
+        ack: async () => undefined,
+      }),
+    );
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      platform: "slack",
+      outcome: "failed",
+      reason: "destination_not_found",
+      user_hash: "h_U123",
+    });
+    expect(JSON.stringify(events[0])).not.toContain('"U123"');
   });
 });
 

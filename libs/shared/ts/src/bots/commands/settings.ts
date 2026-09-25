@@ -9,8 +9,8 @@
  */
 
 import type { BotCommand, CommandExecuteParams, RichMessage } from "../types";
-import { formatBotError } from "../utils/formatters";
-import { wideLog } from "../utils/wide-events";
+import { reportCommandFailure } from "../utils/commands";
+import { recordBotFailure } from "../utils/failure-reasons";
 
 /**
  * Converts a potentially relative URL to an absolute one using the frontend base URL.
@@ -50,7 +50,7 @@ export const settingsCommand: BotCommand = {
               "Sign in to GAIA and connect your account in Settings → Linked Accounts.",
           );
         } catch (error) {
-          wideLog.error("settings_link_token_failed", undefined, error);
+          recordBotFailure("create_link_token_failed", error);
           await target.sendEphemeral(
             "❌ Not linked yet. Use /auth to link your account.",
           );
@@ -113,7 +113,9 @@ export const settingsCommand: BotCommand = {
 
       await target.sendRich(richMsg);
     } catch (error) {
-      await target.sendEphemeral(formatBotError(error));
+      await target.sendEphemeral(
+        reportCommandFailure("get_settings", error, ctx),
+      );
     }
   },
 };

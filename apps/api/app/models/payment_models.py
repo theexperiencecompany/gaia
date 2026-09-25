@@ -160,7 +160,7 @@ class UserSubscriptionStatus(ResponseModel):
 
     has_ever_subscribed: bool = Field(
         False,
-        description="Whether the user has ever had a subscription, in any status — "
+        description="Whether the user has ever had a subscription, in any status; "
         "separates a lapsed subscriber from one who has never paid",
     )
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -18,10 +19,13 @@ from httpx import ASGITransport, AsyncClient
 from jose import JWTError, jwt
 import pytest
 
-from app.api.v1.endpoints.bot import require_bot_api_key
+from app.api.v1.endpoints.bot import require_bot_api_key, router as bot_router
+from app.api.v1.middleware.logging import LoggingMiddleware
 from app.config.settings import settings
+from app.constants import error_codes
 from app.constants.auth import JWT_ALGORITHM
 from app.core.bot_auth_middleware import BotAuthMiddleware
+from app.core.exception_handlers import register_exception_handlers
 from app.db.repositories.users import user_repository
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.bot_token_service import (
@@ -29,6 +33,7 @@ from app.services.bot_token_service import (
     create_bot_session_token,
     verify_bot_session_token,
 )
+import shared.py.logging as shared_logging
 
 # ---------------------------------------------------------------------------
 # Test constants
@@ -36,6 +41,7 @@ from app.services.bot_token_service import (
 
 TEST_BOT_API_KEY = "test-bot-api-key-for-integration-tests"
 TEST_BOT_SESSION_SECRET = "a" * 64  # 64-char secret for JWT signing
+TEST_LOG_HASH_SECRET = "c" * 64
 TEST_USER_ID = "507f1f77bcf86cd799439011"
 TEST_PLATFORM = "discord"
 TEST_PLATFORM_USER_ID = "123456789012345678"
@@ -660,7 +666,7 @@ class TestBotEndpointResetSession:
             )
 
         assert response.status_code == 401
-        assert "not authenticated" in response.json()["message"].lower()
+        assert response.json()["code"] == error_codes.BOT_ACCOUNT_NOT_LINKED
 
 
 @pytest.mark.integration
@@ -851,3 +857,71 @@ class TestSessionTokenFastPathReachesBotRoutes:
             )
 
         assert response.status_code == 401
+
+
+@pytest.mark.integration
+class TestBotRefusalWideEvent:
+    """A refused bot request's wide event says which account and why, through the real stack."""
+
+    @pytest.fixture
+    def logged_bot_app(self) -> FastAPI:
+        app = FastAPI()
+        register_exception_handlers(app)
+        app.include_router(bot_router, prefix="/api/v1/bot")
+        app.add_middleware(BotAuthMiddleware)
+        app.add_middleware(LoggingMiddleware)
+        return app
+
+    async def _post_reset(self, app: FastAPI, api_key: str) -> tuple[int, dict, dict]:
+        with (
+            patch.object(settings, "BOT_LOG_HASH_SECRET", TEST_LOG_HASH_SECRET),
+            patch("app.api.v1.middleware.logging.request_logger") as request_logger,
+        ):
+            transport = ASGITransport(app=app, raise_app_exceptions=False)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.post(
+                    "/api/v1/bot/reset-session",
+                    json={"platform": "telegram", "platform_user_id": TEST_PLATFORM_USER_ID},
+                    headers={
+                        "X-Bot-API-Key": api_key,
+                        "X-Bot-Platform": "telegram",
+                        "X-Bot-Platform-User-Id": TEST_PLATFORM_USER_ID,
+                    },
+                )
+        return response.status_code, response.json(), request_logger.bind.call_args.kwargs
+
+    @pytest.mark.regression
+    async def test_an_unlinked_account_401_says_account_not_linked(
+        self,
+        logged_bot_app: FastAPI,
+        mock_redis_cache: dict[str, AsyncMock],
+        mock_platform_lookup: AsyncMock,
+    ) -> None:
+        mock_platform_lookup.return_value = None
+
+        status, body, event = await self._post_reset(logged_bot_app, TEST_BOT_API_KEY)
+
+        assert status == 401
+        assert body["code"] == error_codes.BOT_ACCOUNT_NOT_LINKED
+        assert event["reason"] == "account_not_linked"
+        assert event["outcome"] == "failed"
+        assert event["platform"] == "telegram"
+        assert event["user_hash"] == shared_logging.hash_log_identifier(
+            TEST_PLATFORM_USER_ID, TEST_LOG_HASH_SECRET
+        )
+        assert TEST_PLATFORM_USER_ID not in json.dumps(event, default=str)
+
+    @pytest.mark.regression
+    async def test_a_wrong_bot_key_401_says_the_key_not_the_account(
+        self,
+        logged_bot_app: FastAPI,
+        mock_redis_cache: dict[str, AsyncMock],
+        mock_platform_lookup: AsyncMock,
+    ) -> None:
+        status, body, event = await self._post_reset(logged_bot_app, "not-the-key")
+
+        assert status == 401
+        assert body["code"] == error_codes.BOT_API_KEY_INVALID
+        assert event["reason"] == "bot_api_key_invalid"
+        assert event["platform"] == "telegram"
+        mock_platform_lookup.assert_not_awaited()

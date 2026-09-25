@@ -1,8 +1,8 @@
 """ARQ worker startup functionality."""
 
 import asyncio
+from collections.abc import MutableMapping
 import os
-from typing import Any
 
 from shared.py.logging import configure_file_logging
 
@@ -22,6 +22,7 @@ from app.core.provider_registration import (
 )
 from app.services.device.up_listener import start_up_listener
 from app.utils.browser_reaper import start_browser_reaper
+from app.workers.browser_worker import start_browser_worker
 from app.workers.metrics import start_metrics_server
 from shared.py.wide_events import log, log_context
 
@@ -29,7 +30,7 @@ from shared.py.wide_events import log, log_context
 setup_warnings()
 
 
-async def startup(ctx: dict[str, Any]) -> None:
+async def startup(ctx: MutableMapping[str, object]) -> None:
     """ARQ worker startup function with eager initialization.
 
     ARQ runs this outside any task boundary, so it gets its own: a worker that
@@ -62,3 +63,6 @@ async def startup(ctx: dict[str, Any]) -> None:
         # Reap any crawl4ai browser drivers that escape teardown (worker crawl
         # tasks are routinely cancelled; see app/utils/browser_reaper.py).
         start_browser_reaper()
+
+        # Last: browser jobs run on the services everything above just started.
+        start_browser_worker(ctx)

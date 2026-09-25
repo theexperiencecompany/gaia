@@ -399,7 +399,7 @@ def _log_schedule_drift(workflow: Workflow, workflow_id: str, actual_fire_utc: d
 
 async def _quota_exhausted_body(workflow: Workflow, reset_time_str: str) -> str:
     """Quota-exhausted copy, naming the reset time in the user's timezone when it can be rendered."""
-    body = f"'{workflow.title}' couldn't run — you've used all your workflow executions for today."
+    body = f"'{workflow.title}' couldn't run. You've used all your workflow executions for today."
     try:
         reset_dt = datetime.fromisoformat(reset_time_str)
         if reset_dt.tzinfo is None:
@@ -436,7 +436,7 @@ async def _rate_limit_failure_content(
         # different copy. Runs resume after the daily reset; the caller's
         # re-arm keeps the cron.
         body = (
-            f"'{workflow.title}' couldn't run — you're out of "
+            f"'{workflow.title}' couldn't run. You're out of "
             f"AI usage for today. It will run again after your usage resets."
         )
         if not is_pro:
@@ -449,8 +449,8 @@ async def _rate_limit_failure_content(
         # Plan-gated — feature isn't available on their plan at all. Only a
         # free user can reach here (Pro has access).
         body = (
-            f"'{workflow.title}' couldn't run — "
-            f"automated workflow execution is not available on your current plan. "
+            f"'{workflow.title}' couldn't run. "
+            f"Automated workflow execution is not available on your current plan. "
             f"Upgrade to {upgrade_plan} to unlock this feature."
         )
 

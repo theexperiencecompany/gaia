@@ -22,6 +22,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.store.memory import InMemoryStore
 import time_machine
 
+from app.agents.context import section_context
 from app.agents.context.assemble import assemble_context
 from app.agents.context.section_context import SectionContext
 from app.agents.context.slots import PromptSlot, slot_of
@@ -288,8 +289,7 @@ async def _seed_workflow(
         SectionContext.from_configurable(
             AgentTier.WORKFLOW_AUTHORING,
             configurable,
-            query=query,
-            user_id=user.user_id,
+            section_context.SectionScope(query=query, user_id=user.user_id),
         )
     )
     # Through the module so the harness sees the same patched binding production

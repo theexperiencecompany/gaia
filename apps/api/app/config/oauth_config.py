@@ -11,7 +11,6 @@ from app.agents.prompts.memory_prompts import (
     AGENTMAIL_MEMORY_PROMPT,
     AIRTABLE_MEMORY_PROMPT,
     ASANA_MEMORY_PROMPT,
-    BROWSERBASE_MEMORY_PROMPT,
     CALENDAR_MEMORY_PROMPT,
     CLICKUP_MEMORY_PROMPT,
     CONTEXT7_MEMORY_PROMPT,
@@ -48,7 +47,6 @@ from app.agents.prompts.subagent_prompts import (
     AGENTMAIL_AGENT_SYSTEM_PROMPT,
     AIRTABLE_AGENT_SYSTEM_PROMPT,
     ASANA_AGENT_SYSTEM_PROMPT,
-    BROWSERBASE_AGENT_SYSTEM_PROMPT,
     CALENDAR_AGENT_SYSTEM_PROMPT,
     CLICKUP_AGENT_SYSTEM_PROMPT,
     CONTEXT7_AGENT_SYSTEM_PROMPT,
@@ -85,7 +83,6 @@ from app.config.oauth_content import (
     AGENTMAIL_CONTENT,
     AIRTABLE_CONTENT,
     ASANA_CONTENT,
-    BROWSERBASE_CONTENT,
     CLICKUP_CONTENT,
     CONTEXT7_CONTENT,
     DEEPWIKI_CONTENT,
@@ -501,7 +498,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                     slug="gmail_poll_inbox",
                     composio_slug="GMAIL_NEW_GMAIL_MESSAGE",
                     name="Poll Inbox",
-                    description="Polls your inbox every N minutes — ideal for periodic email triage",
+                    description="Polls your inbox every N minutes, ideal for periodic email triage",
                     config_schema={
                         "interval": TriggerConfigFieldSchema(
                             type="integer",
@@ -534,9 +531,9 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             # miners into the agent AND its spawned chunk-readers so triage mines
             # the offload with query_json/grep instead of read-whole-file + bash.
             extra_initial_tools=["query_json", "grep"],
-            # GMAIL_FETCH_MESSAGES (paginated) replaces GMAIL_FETCH_EMAILS's capped
-            # page size; GMAIL_FETCH_THREAD (normalized) replaces the raw thread view.
-            # Excluded here so the agent can't retrieve them; REST mail still calls them by name.
+            # GMAIL_FETCH_MESSAGES/THREAD replace the fixed-page-size, unshaped
+            # stock tools. exclude_tools only gates agent retrieval; the REST
+            # mail layer still invokes the stock tools by name.
             exclude_tools=["GMAIL_FETCH_EMAILS", "GMAIL_FETCH_MESSAGE_BY_THREAD_ID"],
             memory_prompt=GMAIL_MEMORY_PROMPT,
         ),
@@ -1918,39 +1915,6 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
         ),
         content=AGENTMAIL_CONTENT,
     ),
-    # Browserbase MCP (OAuth via MCP spec discovery)
-    OAuthIntegration(
-        id="browserbase",
-        name="Browserbase",
-        description="Cloud-based headless browser automation for web scraping, testing, and interaction - navigate pages, fill forms, click elements, and extract data at scale.",
-        category="developer",
-        provider="browserbase",
-        scopes=[],
-        available=True,
-        is_featured=True,
-        short_name="browserbase",
-        managed_by="mcp",
-        mcp_config=MCPConfig(
-            # No OAuth (no PRM/AS-metadata/DCR — /register 404s); auth_type="bearer"
-            # prompts for the user's API key via the bearer-token modal instead.
-            server_url="https://mcp.browserbase.com/mcp",
-            requires_auth=True,
-            auth_type="bearer",
-        ),
-        subagent_config=SubAgentConfig(
-            has_subagent=True,
-            agent_name="browserbase_agent",
-            tool_space="browserbase",
-            domain="browser automation and web scraping",
-            capabilities="navigating web pages, filling forms, clicking elements, extracting data, taking screenshots, running browser automation at scale",
-            use_cases="web scraping, browser testing, form automation, data extraction, web interaction",
-            system_prompt=BROWSERBASE_AGENT_SYSTEM_PROMPT,
-            use_direct_tools=True,
-            disable_retrieve_tools=True,
-            memory_prompt=BROWSERBASE_MEMORY_PROMPT,
-        ),
-        content=BROWSERBASE_CONTENT,
-    ),
     # PostHog MCP (OAuth via MCP spec discovery)
     OAuthIntegration(
         id="posthog",
@@ -1988,6 +1952,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
 
 @cache
 def get_integration_by_id(integration_id: str) -> OAuthIntegration | None:
+    """Return the matching integration, or None if no integration has this id."""
     return next((i for i in OAUTH_INTEGRATIONS if i.id == integration_id), None)
 
 

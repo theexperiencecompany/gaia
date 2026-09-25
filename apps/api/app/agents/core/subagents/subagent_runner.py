@@ -14,7 +14,6 @@ from langchain_core.messages import (
     AnyMessage,
     BaseMessage,
     HumanMessage,
-    ReasoningContentBlock,
     SystemMessage,
     ToolMessage,
 )
@@ -22,7 +21,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command, StateSnapshot, interrupt
 
 from app.agents.context.assemble import assemble_context
-from app.agents.context.section_context import SectionContext
+from app.agents.context.section_context import SectionContext, SectionScope
 from app.agents.context.tiers import AgentTier
 from app.agents.core.background.session import claim_tool_output, note_tool_output_owner
 from app.agents.core.background.subagent_channel import SubagentCancel
@@ -33,11 +32,12 @@ from app.agents.core.graph_manager import (
 )
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.llm.lane import AgentRole, dev_option
+from app.agents.llm.reasoning import extract_reasoning_delta
 from app.agents.prompts.workflow_prompts import (
     WORKFLOW_AUTO_NOTIFY_SECTION,
     WORKFLOW_SILENT_NOTIFY_SECTION,
 )
-from app.constants.agents import AgentTag, wrap_agent_payload
+from app.constants.agents import DONE_EVIDENCE_RULE, AgentTag, wrap_agent_payload
 from app.constants.general import (
     EXECUTOR_INTEGRATION_ID,
     EXECUTOR_THREAD_PREFIX,
@@ -83,12 +83,6 @@ def _capture_finish_task_content(chunk: ToolMessage, current_message: str) -> st
     return current_message
 
 
-class _ReasoningKwargs(TypedDict, total=False):
-    """The additional_kwargs key DeepSeek-style providers put reasoning under; not always a str."""
-
-    reasoning_content: object
-
-
 class _MessagesChannel(TypedDict, total=False):
     """The messages channel of a State update or snapshot; its other channels ride along unread."""
 
@@ -103,39 +97,6 @@ class SubagentInitialState(TypedDict, total=False):
     intent: str | None
     integration_usernames: dict[str, str]
     selected_tool_ids: list[str]
-
-
-def _block_reasoning(block: object) -> str | None:
-    """Return a content block's reasoning text, or None when it is not a reasoning block."""
-    # content_blocks yields ContentBlock dicts (a v1 list may also hold bare strings)
-    if not isinstance(block, dict):
-        return None
-    # only "type" is read before the block is known to be a reasoning block
-    reasoning_block: ReasoningContentBlock = cast(ReasoningContentBlock, block)
-    if reasoning_block.get("type") != "reasoning":
-        return None
-    return reasoning_block.get("reasoning")
-
-
-def _extract_reasoning_delta(chunk: AIMessageChunk) -> str:
-    """Pull this chunk's reasoning ("thinking") text, model-agnostic.
-
-    ChatOpenRouter surfaces reasoning as standard reasoning content blocks;
-    other providers (DeepSeek-style) put it in additional_kwargs.reasoning_content.
-    Returns "" when the chunk carries no thinking (e.g. non-reasoning models), so
-    the caller emits nothing for them.
-    """
-    parts: list[str] = []
-    for block in chunk.content_blocks:
-        text = _block_reasoning(block)
-        if text:
-            parts.append(text)
-    if not parts:
-        kwargs: _ReasoningKwargs = cast(_ReasoningKwargs, chunk.additional_kwargs)
-        fallback = kwargs.get("reasoning_content")
-        if fallback:
-            parts.append(fallback if isinstance(fallback, str) else str(fallback))
-    return "".join(parts)
 
 
 @dataclass(frozen=True)
@@ -224,6 +185,8 @@ class ThreadSeed:
     subagent_id: str | None = None
     retrieval_query: str | None = None
     integration_id: str | None = None
+    #: The comms turn's request this thread serves; see SectionContext.request_query.
+    request_query: str | None = None
 
 
 async def build_initial_messages(
@@ -254,10 +217,13 @@ async def build_initial_messages(
         SectionContext.from_configurable(
             tier,
             configurable,
-            query=retrieval_query if retrieval_query is not None else task,
-            user_id=user_id,
-            subagent_id=subagent_id,
-            integration_id=integration_id,
+            SectionScope(
+                query=retrieval_query if retrieval_query is not None else task,
+                request_query=seed.request_query,
+                user_id=user_id,
+                subagent_id=subagent_id,
+                integration_id=integration_id,
+            ),
         )
     )
 
@@ -326,7 +292,7 @@ def _process_messages_payload(
         # (empty for non-reasoning models). Deltas are per chunk; the stream
         # writer coalesces them for the persistence collector, never for publish.
         if stream_writer:
-            reasoning_delta = _extract_reasoning_delta(chunk)
+            reasoning_delta = extract_reasoning_delta(chunk)
             if reasoning_delta:
                 reasoning_payload = ReasoningPayload(
                     content=reasoning_delta, subagent_id=subagent_id
@@ -793,7 +759,10 @@ def compose_executor_brief(
         parts.append(last_run.strip())
     if criteria:
         lines = "\n".join(f"- {c}" for c in criteria)
-        parts.append(f"Definition of done (every item must be true before you finish):\n{lines}")
+        parts.append(
+            "Definition of done (every item must be true before you finish):\n"
+            f"{lines}\n{DONE_EVIDENCE_RULE}"
+        )
     if playbook_check:
         parts.append(playbook_check.strip())
     return "\n\n".join(parts)
@@ -928,9 +897,8 @@ async def prepare_executor_execution(
         ):
             enhanced_task = f"{enhanced_task}\n\n{files_block}"
 
-    # Build messages using shared helper.
-    # Pass original task as retrieval_query so memory/context semantic search
-    # is not polluted by the DIRECT EXECUTION HINT injected into enhanced_task.
+    # The unenhanced task keeps the DIRECT EXECUTION HINT out of semantic search;
+    # request_query lets the executor reuse the recall comms made on the same message.
     messages = await build_initial_messages(
         system_message=system_message,
         agent_name="executor_agent",
@@ -940,6 +908,7 @@ async def prepare_executor_execution(
             configurable=new_configurable,
             user_id=user_id,
             retrieval_query=task,
+            request_query=configurable.get("user_request"),
         ),
     )
 

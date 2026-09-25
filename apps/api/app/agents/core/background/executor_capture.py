@@ -11,6 +11,7 @@ implementation so chat and workflow runs render identically.
 """
 
 import asyncio
+from collections.abc import Sequence
 from pathlib import Path
 from types import CoroutineType, FrameType
 
@@ -130,21 +131,29 @@ def _innermost_frames(task: asyncio.Task[object]) -> str:
 def drain_executor_tool_data(stream_id: str) -> list[ToolDataEntry]:
     """Drain the session's tool events into reconstructed tool_data.
 
-    Non-destructive read. Mirrors the comms-graph accumulation path:
-    tool_calls_data outputs are merged in, and subagent start/end pairs are
-    grouped via reconstruct_subagent_groups. Only tool_calls_data entries
-    get their output backfilled.
+    Non-destructive read: single ownership, not source-emptying, is what keeps
+    a second drain from duplicating cards.
     """
     session = get_session(stream_id)
     if session is None or not session.tool_events:
         return []
+    return tool_data_from_events(session.tool_events)
+
+
+def tool_data_from_events(events: Sequence[dict[str, object]]) -> list[ToolDataEntry]:
+    """Reconstruct grouped tool_data from a sequence of raw collector events.
+
+    Only tool_calls_data entries get their output backfilled. The events need
+    not come from this process: a detached job's feed is replayed through here
+    to put its cards on a delivered message.
+    """
     entries: list[ToolDataEntry] = []
     # The accumulator envelope is an open bag; only "tool_data" has a fixed
     # shape, and it's this list object throughout, rebound by
     # reconstruct_subagent_groups, hence the re-read at the end.
     accumulated: dict[str, object] = {"tool_data": entries}
     outputs: dict[str, str] = {}
-    for evt in session.tool_events:
+    for evt in events:
         # Hooks emit raw field payloads like {"email_fetch_data": [...]};
         # normalize to {"tool_data": {...}} or absorb_collector_event drops
         # them and the list card never persists.
@@ -209,26 +218,26 @@ def build_returned_to_frontend_note(stream_id: str) -> str:
         "These native cards are already on the user's screen this turn:\n"
         f"{body}\n"
         "They visually render the RAW items, so don't re-type those items "
-        "row-by-row and don't re-emit them as OpenUI — that literal duplication "
+        "row-by-row and don't re-emit them as OpenUI. That literal duplication "
         "is the ONLY thing to avoid here.\n"
         "The cards are visual aids, NOT your reply. You still owe the user the "
-        "ANSWER in your own voice — the substance the executor produced: what it "
+        "ANSWER in your own voice, the substance the executor produced: what it "
         "found, grouped and counted, the few items that actually matter (and "
         'why), and the natural next step. This synthesis is never "card '
         'contents"; suppressing it because a card exists is the worst failure '
         "you can have.\n"
         "Match the depth to the work: a quick outcome gets a line or two; a "
         "large, comprehensive result (a full triage, a multi-item analysis) gets "
-        "a real structured rundown — never a one-liner. Replying just \"here's "
+        "a real structured rundown, never a one-liner. Replying just \"here's "
         'the list 👇" with no substance, when the executor did real work, fails '
         "the user. Point them to the card for the granular rows AFTER you've "
         "actually delivered the gist.\n"
-        "CRITICAL EXCEPTION — LONG-FORM DELIVERABLE: if the executor's result is "
+        "CRITICAL EXCEPTION (LONG-FORM DELIVERABLE): if the executor's result is "
         "itself a finished written piece (a research report, an article, an "
         "analysis, a document), that is the ANSWER, not raw card rows. The cards "
         "above were just the research/loading steps along the way. Deliver the "
-        "deliverable IN FULL per the long-form rule — every section, point, and "
-        "citation — and do NOT compress it to a 'here's the breakdown' summary. "
+        "deliverable IN FULL per the long-form rule: every section, point, and "
+        "citation, and do NOT compress it to a 'here's the breakdown' summary. "
         "This note never authorizes shrinking a report; it only stops you "
         "re-typing rows a card already lists.",
     )

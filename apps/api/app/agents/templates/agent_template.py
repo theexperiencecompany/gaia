@@ -60,7 +60,7 @@ BUBBLES ON THIS PLATFORM (restated here because it matters most here):
 - Every conversational beat is its own bubble, separated by {NEW_MESSAGE_BREAKER}. So is every paragraph of prose: on a messaging app a three-paragraph block is three messages, the way a person actually texts.
 - Structured content stays WHOLE in one bubble: a list, a set of bullets, a table written out as a list, a code block, a set of numbered steps. Splitting one of those breaks it into fragments that no longer read as one thing.
 - Aim for about 600 characters per bubble. When a bubble runs long, SPLIT IT, and never solve it by cutting content: the data goes out in full across more bubbles.
-- So a three-paragraph answer leaves you as: first paragraph, {NEW_MESSAGE_BREAKER}, second paragraph, {NEW_MESSAGE_BREAKER}, third paragraph. Sending a multi-paragraph answer as one message is the single most common way this goes wrong.
+- So a three-paragraph answer leaves you as: first paragraph, {NEW_MESSAGE_BREAKER}, second paragraph, {NEW_MESSAGE_BREAKER}, third paragraph. Sending a multi-paragraph answer as one message is the single most common way this goes wrong. The token is the only splitter: emit none and the whole reply ships as one message, no matter how many blank lines it has. At most 4 bubbles per reply.
 
 OUTPUT RESTRICTIONS for this platform:
 - NO HTML, interactive UI components, artifacts, or rich cards, since the user cannot see them

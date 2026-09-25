@@ -1,0 +1,210 @@
+From 3848b156132065f9b182c9e99edd9dffc00f8b4d Mon Sep 17 00:00:00 2001
+From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
+Date: Wed, 23 Sep 2026 18:51:52 +0530
+Subject: [PATCH 13/18] fix(layout): floats and blocks inside inlines resolve
+ percentage heights against their block container
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Two shapes left `height:100%` at 0 even though the containing block had a
+definite height (CSS2 §10.5), which made Amazon's floated tile links 0px tall:
+
+- A float is laid out inside an anonymous float band row or a zero-height
+  escape wrapper, so taffy resolved its percentage against that wrapper.
+  The post-layout percentage repair now also covers a float reached through
+  an anonymous wrapper whose DOM parent is a definite-height block, and a
+  parent height given by a length expression without a percentage (e.g.
+  calc(clamp(...))) counts as definite.
+- A block box inside a plain inline (block-in-inline split) inherited the
+  inline's "indefinite" containing-block height during style resolution, so
+  its percentage was rewritten to auto. A plain inline or display:contents
+  box is never a containing block; it now passes its parent's
+  containing-block definiteness through, and the repair looks past such
+  boxes to the block container.
+
+Auto-height containing blocks are untouched: the percentage still computes
+to auto there.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-render/src/dom.rs | 121 ++++++++++++++++++++++++++++++-
+ 1 file changed, 117 insertions(+), 4 deletions(-)
+
+diff --git a/crates/obscura-render/src/dom.rs b/crates/obscura-render/src/dom.rs
+index fe792e0..a684b6b 100644
+--- a/crates/obscura-render/src/dom.rs
++++ b/crates/obscura-render/src/dom.rs
+@@ -1937,6 +1937,19 @@ fn sync_resolved_percentage_padding(
+     );
+ }
+ 
++/// A box that is never the containing block of its in-flow descendants: a
++/// plain inline box (not atomic, floated, or absolutely positioned) or a
++/// `display:contents` element. CSS2 §10.1 makes the nearest block container
++/// ancestor the containing block, so a block box inside an inline (the
++/// block-in-inline split) resolves percentages against that block container.
++fn passes_through_block_containing_block(style: &crate::LayoutStyle) -> bool {
++    (style.display_contents && style.display != crate::Display::None)
++        || (style.display == crate::Display::Inline
++            && !style.is_inline_block
++            && style.float.is_none()
++            && !matches!(style.position, Some(taffy::Position::Absolute)))
++}
++
+ /// Taffy's flex stand-in for an inline formatting context can lose the
+ /// block-axis percentage basis of a containing block. Two shapes hit this:
+ ///
+@@ -1948,7 +1961,13 @@ fn sync_resolved_percentage_padding(
+ ///   stands in for the line box, whose height is auto, so taffy resolves the
+ ///   percentage against an indefinite size and the box collapses to its
+ ///   content. CSS2 §10.5 resolves it against the containing block, which is
+-///   the block container, not the line box.
++///   the block container, not the line box;
++/// - a float in a definite-height block sits in an anonymous float band row
++///   or a zero-height escape wrapper, so its own `height:100%` resolves
++///   against that wrapper instead of the block container.
++///
++/// A block box inside a plain inline (the block-in-inline split) looks past
++/// the inline to its block container, as CSS2 §10.1 does.
+ ///
+ /// Blink's `CalculateChildAvailableSize` and Gecko's `ReflowInput` both pass
+ /// the containing block's used content-box block size to such descendants.
+@@ -1987,7 +2006,20 @@ fn resolve_atomic_percentage_heights(
+         let dom_id = id_map.get(&node).copied();
+ 
+         if let (Some(dom_id), Some(parent_id)) = (dom_id, nearest_dom_parent) {
+-            let is_direct_dom_child = rendered_parent(tree, dom_id) == Some(parent_id);
++            // The containing block is the nearest ancestor box that is not a
++            // plain inline or `display:contents`: a block box inside an
++            // inline (block-in-inline split) belongs to the block container.
++            let mut containing_block = rendered_parent(tree, dom_id);
++            while let Some(ancestor) = containing_block.filter(|&ancestor| ancestor != parent_id) {
++                if !styles
++                    .get(&ancestor)
++                    .is_some_and(passes_through_block_containing_block)
++                {
++                    break;
++                }
++                containing_block = rendered_parent(tree, ancestor);
++            }
++            let is_direct_dom_child = containing_block == Some(parent_id);
+             let child_percent = styles.get(&dom_id).and_then(|style| {
+                 (style.size_expressions[1].is_none()
+                     && !style.ignores_used_box_sizes()
+@@ -2006,12 +2038,24 @@ fn resolve_atomic_percentage_heights(
+                 && styles
+                     .get(&dom_id)
+                     .is_some_and(|style| crate::is_inline_level_box(style));
++            // Likewise a float: its taffy parent is the anonymous band row or
++            // placement wrapper (zero-height when the float escapes), but its
++            // containing block is the block container it floats in.
++            let float_in_wrapper = in_anonymous_wrapper
++                && styles
++                    .get(&dom_id)
++                    .is_some_and(|style| style.float.is_some());
+             let parent_is_definite_basis = styles.get(&parent_id).is_some_and(|style| {
+                 (style.float.is_some()
+                     || style.is_inline_block
+-                    || (child_in_line_wrapper && style.display != crate::Display::Inline))
++                    || (child_in_line_wrapper && style.display != crate::Display::Inline)
++                    || (float_in_wrapper && style.display == crate::Display::Block))
+                     && definite_height_nodes.contains(&parent_id)
+-                    && style.size_expressions[1].is_none()
++                    // A resolved length expression is definite; one with a
++                    // percentage was resolved against a guessed basis.
++                    && !style.size_expressions[1]
++                        .as_deref()
++                        .is_some_and(|expression| expression.contains('%'))
+             });
+             if is_direct_dom_child
+                 && parent_is_definite_basis
+@@ -5159,6 +5203,9 @@ fn layout_dom_once(
+                     };
+                 }
+                 inh.cb_width = child_cb_width;
++                if styles.get(&id).is_some_and(passes_through_block_containing_block) {
++                    child_cb_height_definite = inh.cb_height_definite;
++                }
+                 inh.cb_height_definite = child_cb_height_definite;
+                 for child in style_children(tree, id).into_iter().rev() {
+                     queue.push((child, inh.clone()));
+@@ -5943,6 +5990,9 @@ fn layout_dom_once(
+                 };
+             }
+             inh.cb_width = child_cb_width;
++            if styles.get(&id).is_some_and(passes_through_block_containing_block) {
++                child_cb_height_definite = inh.cb_height_definite;
++            }
+             inh.cb_height_definite = child_cb_height_definite;
+             for cid in style_children(tree, id).into_iter().rev() {
+                 queue.push((cid, inh.clone()));
+@@ -20927,4 +20977,67 @@ mod tests {
+         );
+         assert!(rect("p-auto").height < 30.0, "{:?}", rect("p-auto"));
+     }
++
++    #[test]
++    fn float_and_block_in_inline_percentage_height_resolve_against_definite_block() {
++        // CSS2 §10.5: a percentage height resolves against the containing
++        // block's height when that height is definite. A float's containing
++        // block is its block container, not the anonymous wrapper that
++        // places it; a block box inside an inline element (which splits the
++        // inline) has the nearest block container as its containing block,
++        // not the inline. Against an auto-height block the percentage
++        // computes to auto.
++        let tree = parse_html(
++            r##"<style>html, body { margin: 0 }</style>
++            <div style="height:400px"><div id="float-full" style="float:left;width:10px;height:100%"></div></div>
++            <div style="height:400px"><div id="float-half" style="float:right;width:10px;height:50%"></div></div>
++            <div style="height:400px">text <div id="float-text" style="float:left;width:10px;height:100%"></div> more</div>
++            <div style="height:400px"><div style="float:left;width:20px;height:100%"><div id="float-nested" style="height:50%"></div></div></div>
++            <div style="height:400px"><div style="float:left;width:20px;height:50%"><div id="float-float" style="float:left;width:10px;height:50%"></div></div></div>
++            <div style="height:400px"><div style="float:left;width:10px;height:100%"></div><div id="float-sibling" style="height:50%"></div></div>
++            <div style="height:calc(300px + 100px)"><div id="float-calc" style="float:left;width:10px;height:100%"></div></div>
++            <div style="height:300px"><span><div id="bii" style="height:100%"></div></span></div>
++            <div style="height:300px"><span>text<div id="bii-mixed" style="height:100%"></div>more</span></div>
++            <div style="height:300px"><span><div id="float-in-inline" style="float:left;width:5px;height:100%"></div></span></div>
++            <div style="height:300px"><span><div id="bii-half" style="height:50%"></div></span></div>
++            <div style="height:300px"><span><span><div id="bii-deep" style="height:100%"></div></span></span></div>
++            <div style="height:300px"><span><div style="height:100%"><div id="bii-nested" style="height:50%"></div></div></span></div>
++            <ul style="height:400px;margin:0;padding:0;list-style:none"><li style="float:left;width:300px;height:100%"><span><div style="height:100%"><div style="height:100%"><a id="tile" href="#" style="display:block;height:100%;width:100%"></a></div></div></span></li></ul>
++            <div id="auto-float-parent"><div id="float-auto" style="float:left;width:10px;height:100%"></div></div>
++            <div id="auto-bii-parent"><span><div id="bii-auto" style="height:100%"></div></span></div>
++            <div style="height:300px"><div><span><div id="bii-auto-cb" style="height:100%"></div></span></div></div>"##,
++        );
++        let laid = layout_dom(&tree, (1280.0, 720.0));
++        let rect = |id: &str| laid.rects[&tree.get_element_by_id(id).unwrap()];
++        let mut wrong = Vec::new();
++        let mut near = |id: &str, want: f32| {
++            let got = rect(id);
++            if (got.height - want).abs() >= 0.5 {
++                wrong.push(format!("{id}: want {want}, got {got:?}"));
++            }
++        };
++
++        near("float-full", 400.0);
++        near("float-half", 200.0);
++        near("float-text", 400.0);
++        near("float-nested", 200.0);
++        near("float-float", 100.0);
++        near("float-calc", 400.0);
++        near("float-sibling", 200.0);
++        near("bii", 300.0);
++        near("bii-half", 150.0);
++        near("bii-mixed", 300.0);
++        near("float-in-inline", 300.0);
++        near("bii-deep", 300.0);
++        near("bii-nested", 150.0);
++        near("tile", 400.0);
++
++        // Auto-height containing block: the percentage behaves as auto.
++        near("float-auto", 0.0);
++        near("bii-auto", 0.0);
++        near("bii-auto-cb", 0.0);
++        near("auto-float-parent", 0.0);
++        near("auto-bii-parent", 0.0);
++        assert!(wrong.is_empty(), "{wrong:#?}");
++    }
+ }

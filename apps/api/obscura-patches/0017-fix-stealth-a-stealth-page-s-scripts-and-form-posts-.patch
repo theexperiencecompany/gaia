@@ -1,0 +1,366 @@
+From 4b8d9193c4dd674408a8e1ee780d4414e76faa39 Mon Sep 17 00:00:00 2001
+From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
+Date: Thu, 24 Sep 2026 00:13:18 +0530
+Subject: [PATCH 17/18] fix(stealth): a stealth page's scripts and form posts
+ go out as the same browser as its pages
+
+A stealth page loads documents, stylesheets, images and scripted fetches through
+the wreq client, which presents the Linux Chrome 145 identity. Two requests
+still went through the plain client and its profile identity (Windows Chrome
+143, another TLS fingerprint):
+
+- Parser-inserted classic scripts.
+- Form submissions (POST navigations), and the redirect they answer with.
+
+A site that pins its session to the User-Agent (Rack's session-hijacking guard,
+as on the-internet.herokuapp.com) cleared the session on each script request,
+and the cleared cookie replaced the signed-in one: a login made in the page
+worked while the page was open, but the cookies saved from it were logged out.
+Scripts now prefer the stealth client as stylesheets do, and the stealth client
+gains post_form_with_callbacks: the same navigation loop with a method and a
+body, a 301/302/303 answered with a GET, and no retry of a non-GET after a
+connection reset.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-browser/src/page.rs    | 162 +++++++++++++++++++++++++-
+ crates/obscura-net/src/wreq_client.rs |  58 +++++++--
+ 2 files changed, 205 insertions(+), 15 deletions(-)
+
+diff --git a/crates/obscura-browser/src/page.rs b/crates/obscura-browser/src/page.rs
+index 402b068..c637e08 100644
+--- a/crates/obscura-browser/src/page.rs
++++ b/crates/obscura-browser/src/page.rs
+@@ -1714,6 +1714,20 @@ impl Page {
+             .unwrap_or([255, 255, 255, 255])
+     }
+ 
++    /// Submit a form the way do_fetch loads a page: as the stealth browser when
++    /// there is one, so the login and the pages after it come from one browser.
++    async fn do_post_form(&self, url: &Url, body: &str) -> Result<Response, ObscuraNetError> {
++        #[cfg(feature = "stealth")]
++        if let Some(ref stealth) = self.stealth_client {
++            return stealth
++                .post_form_with_callbacks(url, body, Some(&self.callbacks))
++                .await;
++        }
++        self.http_client
++            .post_form_with_callbacks(url, body, Some(&self.callbacks))
++            .await
++    }
++
+     async fn do_fetch(&self, url: &Url) -> Result<Response, ObscuraNetError> {
+         #[cfg(feature = "stealth")]
+         if let Some(ref stealth) = self.stealth_client {
+@@ -2334,6 +2348,11 @@ impl Page {
+         }
+ 
+         let client = self.http_client.clone();
++        // A stealth page's scripts go out as the same browser as the page and
++        // its stylesheets: the plain client announces another User-Agent, and
++        // a site that pins its session to it clears the session on each script.
++        #[cfg(feature = "stealth")]
++        let stealth_client = self.stealth_client.clone();
+         let page_callbacks = self.callbacks.clone();
+         let script_initiator = self
+             .url
+@@ -2343,6 +2362,8 @@ impl Page {
+             .iter()
+             .map(|(idx, url)| {
+                 let client = client.clone();
++                #[cfg(feature = "stealth")]
++                let stealth_client = stealth_client.clone();
+                 let cbs = page_callbacks.clone();
+                 let initiator = script_initiator.clone();
+                 let url = url.clone();
+@@ -2375,10 +2396,21 @@ impl Page {
+                         return Some((idx, url, resp));
+                     }
+                     let request = ResourceRequest::subresource(ResourceType::Script, &initiator);
+-                    match client
++                    #[cfg(feature = "stealth")]
++                    let result = if let Some(stealth_client) = stealth_client {
++                        stealth_client
++                            .fetch_resource_with_callbacks(&parsed, request, Some(&cbs))
++                            .await
++                    } else {
++                        client
++                            .fetch_resource_with_callbacks(&parsed, request, Some(&cbs))
++                            .await
++                    };
++                    #[cfg(not(feature = "stealth"))]
++                    let result = client
+                         .fetch_resource_with_callbacks(&parsed, request, Some(&cbs))
+-                        .await
+-                    {
++                        .await;
++                    match result {
+                         Ok(resp) => Some((idx, url, resp)),
+                         Err(e) => {
+                             tracing::warn!("Failed to fetch script {}: {}", url, e);
+@@ -3302,9 +3334,7 @@ impl Page {
+                 redirected_from: Vec::new(),
+             })
+         } else if method == "POST" {
+-            self.http_client
+-                .post_form_with_callbacks(&url, body, Some(&self.callbacks))
+-                .await
++            self.do_post_form(&url, body).await
+         } else {
+             self.do_fetch(&url).await
+         }
+@@ -5639,6 +5669,126 @@ mod tests {
+         (format!("http://{address}/{page}"), script_requests)
+     }
+ 
++    /// Serves a page with one external script and a login form that answers
++    /// POST /login with a 303 to /secure; records each request's method, path
++    /// and User-Agent header.
++    fn spawn_user_agent_recording_server() -> (
++        String,
++        std::sync::Arc<std::sync::Mutex<Vec<(String, String, String)>>>,
++    ) {
++        use std::io::{Read as _, Write as _};
++
++        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
++        let address = listener.local_addr().unwrap();
++        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
++        let recorded = seen.clone();
++        std::thread::spawn(move || {
++            for stream in listener.incoming() {
++                let Ok(mut stream) = stream else {
++                    continue;
++                };
++                let mut request = [0u8; 4096];
++                let length = stream.read(&mut request).unwrap_or(0);
++                let request_text = String::from_utf8_lossy(&request[..length]).to_string();
++                let mut request_line = request_text
++                    .lines()
++                    .next()
++                    .unwrap_or_default()
++                    .split_whitespace();
++                let method = request_line.next().unwrap_or("GET").to_string();
++                let path = request_line.next().unwrap_or("/").to_string();
++                let user_agent = request_text
++                    .lines()
++                    .find_map(|line| {
++                        let (name, value) = line.split_once(':')?;
++                        name.eq_ignore_ascii_case("user-agent").then(|| value.trim().to_string())
++                    })
++                    .unwrap_or_default();
++                recorded.lock().unwrap().push((method.clone(), path.clone(), user_agent));
++                let response = if method == "POST" {
++                    "HTTP/1.1 303 See Other\r\nLocation: /secure\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
++                } else {
++                    let (content_type, body) = if path == "/app.js" {
++                        ("application/javascript", "globalThis.__ran = true;")
++                    } else {
++                        (
++                            "text/html",
++                            "<!doctype html><html><body><script src='/app.js'></script></body></html>",
++                        )
++                    };
++                    format!(
++                        "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
++                        body.len(),
++                    )
++                };
++                let _ = stream.write_all(response.as_bytes());
++            }
++        });
++        (format!("http://{address}/"), seen)
++    }
++
++    fn stealth_page(name: &str) -> super::Page {
++        let context = std::sync::Arc::new(crate::BrowserContext::with_storage_and_network(
++            name.to_string(),
++            None,
++            true,
++            None,
++            None,
++            true,
++        ));
++        super::Page::new(name.to_string(), context)
++    }
++
++    fn user_agent_of(seen: &[(String, String, String)], method: &str, path: &str) -> Option<String> {
++        seen.iter()
++            .find(|(m, p, _)| m == method && p == path)
++            .map(|(_, _, ua)| ua.clone())
++    }
++
++    /// A stealth page once fetched its parser-inserted scripts with the plain
++    /// client, which announces another browser: a site that pins its session to
++    /// the User-Agent (Rack's session-hijacking guard) cleared the session on
++    /// every script request, and the cleared cookie replaced the signed-in one.
++    #[cfg(feature = "stealth")]
++    #[tokio::test(flavor = "current_thread")]
++    async fn stealth_scripts_are_requested_as_the_same_browser_as_their_page() {
++        let (url, seen) = spawn_user_agent_recording_server();
++        let mut page = stealth_page("stealth-script-identity");
++
++        page.navigate(&url).await.unwrap();
++
++        let seen = seen.lock().unwrap().clone();
++        let script_agent = user_agent_of(&seen, "GET", "/app.js");
++        assert!(script_agent.is_some(), "the script was never requested: {seen:?}");
++        assert_eq!(script_agent, user_agent_of(&seen, "GET", "/"), "requests: {seen:?}");
++    }
++
++    /// A stealth page submitted its forms with the plain client too, so a
++    /// login was made as one browser and every later request came from
++    /// another; a site that pins its session to the User-Agent dropped it.
++    #[cfg(feature = "stealth")]
++    #[tokio::test(flavor = "current_thread")]
++    async fn stealth_form_posts_and_their_redirects_go_out_as_the_page_browser() {
++        let (url, seen) = spawn_user_agent_recording_server();
++        let mut page = stealth_page("stealth-form-identity");
++        page.navigate(&url).await.unwrap();
++
++        page.navigate_with_wait_post(
++            &format!("{url}login"),
++            crate::lifecycle::WaitUntil::Load,
++            "POST",
++            "username=tomsmith",
++        )
++        .await
++        .unwrap();
++
++        let seen = seen.lock().unwrap().clone();
++        let page_agent = user_agent_of(&seen, "GET", "/");
++        assert_eq!(user_agent_of(&seen, "POST", "/login"), page_agent, "requests: {seen:?}");
++        assert_eq!(user_agent_of(&seen, "GET", "/secure"), page_agent, "requests: {seen:?}");
++        assert!(page.url_string().ends_with("/secure"), "landed on {}", page.url_string());
++    }
++
+     #[tokio::test(flavor = "current_thread")]
+     async fn duplicate_cacheable_scripts_fetch_once_but_execute_for_each_element() {
+         use std::sync::atomic::Ordering;
+diff --git a/crates/obscura-net/src/wreq_client.rs b/crates/obscura-net/src/wreq_client.rs
+index 5b31e35..6ac58ae 100644
+--- a/crates/obscura-net/src/wreq_client.rs
++++ b/crates/obscura-net/src/wreq_client.rs
+@@ -317,7 +317,7 @@ impl StealthHttpClient {
+         url: &Url,
+         callbacks: Option<&CallbackRegistry>,
+     ) -> Result<Response, ObscuraNetError> {
+-        self.fetch_with_profile(url, ResourceRequest::navigation(), callbacks)
++        self.fetch_with_profile(url, ResourceRequest::navigation(), callbacks, wreq::Method::GET, None)
+             .await
+     }
+ 
+@@ -327,7 +327,28 @@ impl StealthHttpClient {
+         request: ResourceRequest,
+         callbacks: Option<&CallbackRegistry>,
+     ) -> Result<Response, ObscuraNetError> {
+-        self.fetch_with_profile(url, request, callbacks).await
++        self.fetch_with_profile(url, request, callbacks, wreq::Method::GET, None)
++            .await
++    }
++
++    /// Submit a form as a navigation, as the same browser as every other request
++    /// of a stealth page. The plain client announced another User-Agent and TLS
++    /// fingerprint, and a site that pins its session to them dropped the login.
++    /// A 301, 302 or 303 answer is followed with a GET, as the plain client does.
++    pub async fn post_form_with_callbacks(
++        &self,
++        url: &Url,
++        body: &str,
++        callbacks: Option<&CallbackRegistry>,
++    ) -> Result<Response, ObscuraNetError> {
++        self.fetch_with_profile(
++            url,
++            ResourceRequest::navigation(),
++            callbacks,
++            wreq::Method::POST,
++            Some(body.as_bytes().to_vec()),
++        )
++        .await
+     }
+ 
+     async fn fetch_with_profile(
+@@ -335,6 +356,8 @@ impl StealthHttpClient {
+         url: &Url,
+         request: ResourceRequest,
+         callbacks: Option<&CallbackRegistry>,
++        initial_method: wreq::Method,
++        initial_body: Option<Vec<u8>>,
+     ) -> Result<Response, ObscuraNetError> {
+         validate_url(url, self.allow_private_network)?;
+         validate_request_mode(&request, url)?;
+@@ -358,12 +381,14 @@ impl StealthHttpClient {
+         let mut redirects = Vec::new();
+         let mut redirect_tainted = false;
+         let mut request_callback_fired = false;
++        let mut method = initial_method;
++        let mut body = initial_body;
+ 
+         // Follow up to 20 redirects (Fetch spec + the reqwest path): 0..=20 makes
+         // 21 requests, so the 20th hop is followed and only the 21st fails.
+         for _ in 0..=20 {
+             validate_request_mode(&request, &current_url)?;
+-            let mut req = self.client.get(current_url.as_str());
++            let mut req = self.client.request(method.clone(), current_url.as_str());
+ 
+             req = req
+                 .header("accept", request.accept())
+@@ -399,9 +424,15 @@ impl StealthHttpClient {
+                 req = req.header("origin", &request_origin);
+             }
+ 
++            if let Some(ref form) = body {
++                req = req
++                    .header("content-type", "application/x-www-form-urlencoded")
++                    .body(form.clone());
++            }
++
+             let request_info = RequestInfo {
+                 url: current_url.clone(),
+-                method: "GET".to_string(),
++                method: method.to_string(),
+                 headers: self.extra_headers.read().await.clone(),
+                 resource_type: request.resource_type,
+             };
+@@ -413,8 +444,13 @@ impl StealthHttpClient {
+             }
+ 
+             let in_flight = InFlightGuard::new(&self.in_flight);
+-            let resp = send_get_with_connection_reset_retry(req, &current_url)
+-                .await
++            // Only a GET is safe to send twice after a connection reset.
++            let sent = if method == wreq::Method::GET {
++                send_get_with_connection_reset_retry(req, &current_url).await
++            } else {
++                req.send().await
++            };
++            let resp = sent
+                 .map_err(|e| {
+                     ObscuraNetError::Network(format!(
+                         "{}: {} (source: {:?})",
+@@ -463,19 +499,23 @@ impl StealthHttpClient {
+                         redirect_taints_origin(&request, &current_url, &next_url);
+                     redirects.push(current_url.clone());
+                     current_url = next_url;
++                    if matches!(status.as_u16(), 301 | 302 | 303) {
++                        method = wreq::Method::GET;
++                        body = None;
++                    }
+                     continue;
+                 }
+             }
+ 
+-            let body = read_wreq_body_limited(resp, &current_url, request.max_response_bytes)
+-                .await?;
++            let response_body =
++                read_wreq_body_limited(resp, &current_url, request.max_response_bytes).await?;
+             drop(in_flight);
+ 
+             let response = Response {
+                 url: current_url,
+                 status: status.as_u16(),
+                 headers: response_headers,
+-                body,
++                body: response_body,
+                 redirected_from: redirects,
+             };
+             if let Some(callbacks) = callbacks {

@@ -1,0 +1,146 @@
+From 5d9dcf2c46ca9b5a6640916d161278b64c575fb4 Mon Sep 17 00:00:00 2001
+From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
+Date: Wed, 23 Sep 2026 16:56:26 +0530
+Subject: [PATCH 05/18] fix(shadow): attach and look up shadow roots in the
+ caller's own document
+
+op_shadow_attach and op_shadow_root_info always used the page's document,
+while every other DOM call names its realm's frame. Inside a frame realm,
+body.attachShadow() therefore created the shadow root in the page's tree,
+keyed by the frame's node id, and the first appendChild into it (in the
+frame's tree) failed with HierarchyRequestError.
+
+Cloudflare Turnstile does exactly this in its challenge frame (it attaches a
+shadow root to its <body> and appends a <style>), so every Cloudflare-fronted
+page such as stackoverflow.com threw that error from the challenge.
+
+Both ops now take the realm frame id, as op_dom does.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/js/bootstrap.js |  6 ++--
+ crates/obscura-js/src/frame.rs    | 46 +++++++++++++++++++++++++++++++
+ crates/obscura-js/src/ops.rs      | 14 +++++++---
+ 3 files changed, 59 insertions(+), 7 deletions(-)
+
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index d16a305..3fc5483 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -13341,10 +13341,10 @@ Element.prototype.attachShadow = function attachShadow(opts) {
+   if (!globalThis.__obscura_shadowHostNames.has(_ln) && _ln.indexOf('-') === -1) {
+     throw new DOMException('Failed to execute attachShadow on Element: this element does not support attachShadow', 'NotSupportedError');
+   }
+-  if (Deno.core.ops.op_shadow_root_info(this._nid)) {
++  if (Deno.core.ops.op_shadow_root_info(this._nid, _realmFrameId)) {
+     throw new DOMException('Failed to execute attachShadow on Element: the element already hosts a shadow tree.', 'NotSupportedError');
+   }
+-  const rootNid = Deno.core.ops.op_shadow_attach(this._nid, _mode);
++  const rootNid = Deno.core.ops.op_shadow_attach(this._nid, _mode, _realmFrameId);
+   if (rootNid < 0) {
+     throw new DOMException('Failed to execute attachShadow on Element: this element does not support attachShadow', 'NotSupportedError');
+   }
+@@ -13363,7 +13363,7 @@ _markNative(Element.prototype.attachShadow);
+ 
+ function _shadowRootForHost(host, includeClosed) {
+   if (!host) return null;
+-  const info = Deno.core.ops.op_shadow_root_info(host._nid);
++  const info = Deno.core.ops.op_shadow_root_info(host._nid, _realmFrameId);
+   if (!info) return null;
+   const parts = info.split('\0');
+   if (!includeClosed && parts[1] !== 'open') return null;
+diff --git a/crates/obscura-js/src/frame.rs b/crates/obscura-js/src/frame.rs
+index 0b67cdb..f0a3475 100644
+--- a/crates/obscura-js/src/frame.rs
++++ b/crates/obscura-js/src/frame.rs
+@@ -446,6 +446,52 @@ mod tests {
+         assert!(frame.is_same_origin_as("https://child.example"));
+     }
+ 
++    /// A shadow root attached inside a frame belongs to the frame's document.
++    /// Cloudflare Turnstile does exactly this in its challenge frame: it
++    /// attaches a shadow root to its own <body> and appends a <style> to it.
++    #[test]
++    fn frame_shadow_root_lives_in_the_frame_document() {
++        let mut parent = page(
++            "https://parent.example/page",
++            "<html><body><div><p>parent</p></div></body></html>",
++        );
++        let frame = FrameRealm::new(
++            &mut parent,
++            1,
++            0,
++            "https://child.example/frame",
++            "<html><body></body></html>",
++        )
++        .expect("frame realm");
++
++        assert_eq!(
++            frame
++                .evaluate(
++                    &mut parent,
++                    r#"(() => {
++                        const root = document.body.attachShadow({ mode: "open" });
++                        const style = document.createElement("style");
++                        style.textContent = "p { color: red }";
++                        root.appendChild(style);
++                        return [
++                            root.firstChild === style,
++                            style.parentNode === root,
++                            document.body.shadowRoot === root,
++                        ];
++                    })()"#,
++                )
++                .unwrap(),
++            serde_json::json!([true, true, true])
++        );
++        // The page's own tree is untouched: nothing was attached to its nodes.
++        assert_eq!(
++            parent
++                .evaluate("[document.body.shadowRoot, document.querySelector('div').shadowRoot]")
++                .unwrap(),
++            serde_json::json!([null, null])
++        );
++    }
++
+     #[test]
+     fn frame_uses_its_embedding_viewport() {
+         let mut parent = page(
+diff --git a/crates/obscura-js/src/ops.rs b/crates/obscura-js/src/ops.rs
+index c285aba..009ca08 100644
+--- a/crates/obscura-js/src/ops.rs
++++ b/crates/obscura-js/src/ops.rs
+@@ -1321,13 +1321,19 @@ fn op_script_try_start(state: &OpState, nid: u32) -> bool {
+ /// tree. Layout intentionally remains unaware of the detached root until
+ /// scoped style, slot assignment, and composed-tree paint are implemented.
+ #[op2(fast)]
+-fn op_shadow_attach(state: &OpState, host_nid: u32, #[string] mode: String) -> i32 {
++fn op_shadow_attach(
++    state: &OpState,
++    host_nid: u32,
++    #[string] mode: String,
++    frame_id: u32,
++) -> i32 {
+     let mode = match mode.as_str() {
+         "open" => ShadowRootMode::Open,
+         "closed" => ShadowRootMode::Closed,
+         _ => return -1,
+     };
+-    let shared = state.borrow::<SharedState>().clone();
++    // The host's node id only means something in its own realm's document.
++    let shared = frame_state(state, frame_id);
+     let state = shared.borrow();
+     let Some(dom) = state.dom.as_ref() else {
+         return -1;
+@@ -1344,8 +1350,8 @@ fn op_shadow_attach(state: &OpState, host_nid: u32, #[string] mode: String) -> i
+ /// visibility in bootstrap.js.
+ #[op2]
+ #[string]
+-fn op_shadow_root_info(state: &OpState, host_nid: u32) -> String {
+-    let shared = state.borrow::<SharedState>().clone();
++fn op_shadow_root_info(state: &OpState, host_nid: u32, frame_id: u32) -> String {
++    let shared = frame_state(state, frame_id);
+     let state = shared.borrow();
+     let Some(dom) = state.dom.as_ref() else {
+         return String::new();

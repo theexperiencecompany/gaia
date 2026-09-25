@@ -1,6 +1,6 @@
 ---
 name: posthog-find-metrics
-description: Find, query, and analyze PostHog metrics — trends, funnels, retention, feature flags, experiments, errors, and custom HogQL/SQL queries. Uses parallel subagents for multi-metric investigations.
+description: Find, query, and analyze PostHog metrics: trends, funnels, retention, feature flags, experiments, errors, and custom HogQL/SQL queries. Uses parallel subagents for multi-metric investigations.
 target: posthog_agent
 ---
 
@@ -13,7 +13,7 @@ User wants analytics data, event trends, user behavior, conversion funnels, A/B 
 
 PostHog's MCP runs in CLI mode: one `exec` tool wraps every PostHog tool, and you
 reach them by passing a CLI-style string in `command`. There are hundreds of tools
-across dozens of categories, so nothing is loaded upfront — you discover what you
+across dozens of categories, so nothing is loaded upfront. You discover what you
 need per task.
 
 ```text
@@ -35,7 +35,7 @@ Rules the server itself states:
 `schema` paths descend through object `properties` (`query.source`), array `items`
 (`events.0.properties`, or `events.id` to jump to a property on the item type), and
 `anyOf`/`oneOf` variants (by index, or by a property name that identifies a variant).
-An unknown path returns the available child paths — read them rather than guessing again.
+An unknown path returns the available child paths. Read them rather than guessing again.
 
 `search` matches tool metadata only, not input schemas, and there is no field
 projection: drill one path at a time.
@@ -64,12 +64,12 @@ exec({"command": "call query-run {\"query\": {\"kind\": \"TrendsQuery\", ...}}"}
 
 ## Step 2: Resolve Event Names First
 
-If event names are unknown, discover them before querying — search for the event
+If event names are unknown, discover them before querying; search for the event
 definition tool, then list properties for the event you picked. Never guess event names.
 
 ## Step 3: Query Payloads
 
-The query shapes below are PostHog's, independent of tool naming — pass them to
+The query shapes below are PostHog's, independent of tool naming. Pass them to
 whichever query tool `search` surfaced, after confirming its schema with `info`.
 
 ### Trends
@@ -89,7 +89,7 @@ whichever query tool `search` surfaced, after confirming its schema with `info`.
 ```
 
 ### HogQL / Custom SQL
-Write HogQL directly — faster and more predictable than generating it:
+Write HogQL directly, faster and more predictable than generating it:
 ```json
 {"kind": "HogQLQuery",
  "query": "SELECT uniq(distinct_id) as users, toStartOfDay(timestamp) as day FROM events WHERE event = '$pageview' AND timestamp >= now() - interval 7 day GROUP BY day ORDER BY day"}
@@ -128,7 +128,7 @@ WHERE cohort_day <= 30 GROUP BY cohort_day ORDER BY cohort_day
 ## Step 4: Parallel Execution
 
 ### Two simple metrics → two `exec` calls in one turn
-Once both tools' schemas are known, issue the calls together — no subagents needed.
+Once both tools' schemas are known, issue the calls together. No subagents needed.
 
 ### Multi-step tasks → spawn subagents in parallel
 
@@ -146,7 +146,7 @@ spawn_subagent(
 )
 ```
 
-Name the intent, the search term, the event names and the date range — one clear
+Name the intent, the search term, the event names and the date range. One clear
 objective per subagent:
 ```
 # Good:
@@ -164,10 +164,10 @@ funnel, errors, experiments). Always include absolute numbers, % change vs prior
 period, time range, and one actionable call-out.
 
 ## Anti-Patterns
-- **Guessing tool names** — `search` first; the tool list is large and changes
-- **Guessing schemas** — `info` once per tool, and `schema` for every `hint` field
-- **Running `info` before every call** — reuse the schema you already have
-- **Guessing event names** — discover them before querying
-- **Sequential when parallel is possible** — independent metrics should run concurrently
-- **Arbitrary date ranges** — use the user's range; default to `-30d` if unspecified
-- **Over-querying** — check saved insights first; reuse ones that already answer the question
+- **Guessing tool names**: `search` first; the tool list is large and changes
+- **Guessing schemas**: `info` once per tool, and `schema` for every `hint` field
+- **Running `info` before every call**: reuse the schema you already have
+- **Guessing event names**: discover them before querying
+- **Sequential when parallel is possible**: independent metrics should run concurrently
+- **Arbitrary date ranges**: use the user's range; default to `-30d` if unspecified
+- **Over-querying**: check saved insights first; reuse ones that already answer the question

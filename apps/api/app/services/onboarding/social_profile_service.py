@@ -6,7 +6,7 @@ import urllib.parse
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
-from app.agents.llm.client import ainvoke_llm, get_helper_llm
+from app.agents.llm.client import ainvoke_llm, resolve_model
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.prompts.onboarding_prompts import SOCIAL_PROFILE_FILTER_PROMPT
 from app.constants.log_tags import LogTag
@@ -254,7 +254,7 @@ async def extract_social_profiles_from_emails(
         context_lines = []
         for i, ctx in enumerate(entry.contexts, 1):
             context_lines.append(
-                f'  Context {i} — From: {ctx.sender} | Subject: {ctx.subject} | "{ctx.snippet}"'
+                f'  Context {i}, From: {ctx.sender} | Subject: {ctx.subject} | "{ctx.snippet}"'
             )
         candidates_lines.append(header)
         candidates_lines.extend(context_lines)
@@ -268,7 +268,7 @@ async def extract_social_profiles_from_emails(
 
     try:
         try:
-            llm = get_helper_llm()
+            llm = resolve_model()
         except LLMNotConfiguredError:
             log.warning(
                 f"{LogTag.ONBOARDING} social_profiles LLM not available, using sent-email fallback"

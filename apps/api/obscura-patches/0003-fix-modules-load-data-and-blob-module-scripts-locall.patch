@@ -1,0 +1,510 @@
+From 3dcd2b329dc0c3c36dc18f905b78d154364ba180 Mon Sep 17 00:00:00 2001
+From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
+Date: Wed, 23 Sep 2026 16:33:32 +0530
+Subject: [PATCH 03/18] fix(modules): load data: and blob: module scripts
+ locally
+
+Module scripts from data: URLs were sent to the network layer, which only
+fetches http(s)/file, and blob: URLs from URL.createObjectURL lived only in a
+JS-side map the Rust module loader could not see. Bing's blob: module scripts
+and Reddit's inline data: modules therefore failed to load.
+
+The module loader now decodes data: URLs with the shared decoder (moved from
+obscura-browser into obscura-net) and reads blob: URLs from a page-scoped
+object-URL store that createObjectURL/revokeObjectURL maintain through ops.
+A blob: module resolves only if this page minted it, for the document's
+origin, and has not revoked it; the store is cleared with each new document.
+Workers read the same store, replacing the enumerable __blobStore global.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ Cargo.lock                             |  1 +
+ crates/obscura-browser/src/page.rs     | 92 ++++++++++++++------------
+ crates/obscura-js/js/bootstrap.js      | 17 ++---
+ crates/obscura-js/src/module_loader.rs | 53 +++++++++++++++
+ crates/obscura-js/src/ops.rs           | 39 +++++++++++
+ crates/obscura-js/src/runtime.rs       | 48 ++++++++++++++
+ crates/obscura-net/Cargo.toml          |  1 +
+ crates/obscura-net/src/data_url.rs     | 53 +++++++++++++++
+ crates/obscura-net/src/lib.rs          |  2 +
+ 9 files changed, 255 insertions(+), 51 deletions(-)
+ create mode 100644 crates/obscura-net/src/data_url.rs
+
+diff --git a/Cargo.lock b/Cargo.lock
+index fc8d924..0c12dd3 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -1993,6 +1993,7 @@ name = "obscura-net"
+ version = "0.1.0"
+ dependencies = [
+  "async-trait",
++ "base64",
+  "encoding_rs",
+  "futures-util",
+  "rcgen",
+diff --git a/crates/obscura-browser/src/page.rs b/crates/obscura-browser/src/page.rs
+index 9fa2a32..c3e59d7 100644
+--- a/crates/obscura-browser/src/page.rs
++++ b/crates/obscura-browser/src/page.rs
+@@ -5,7 +5,7 @@ use obscura_dom::{parse_html, DomTree};
+ use obscura_js::frame::FrameRealm;
+ use obscura_js::runtime::ObscuraJsRuntime;
+ use obscura_net::{
+-    CallbackRegistry, ObscuraHttpClient, ObscuraNetError, RequestCallback, ResourceRequest,
++    decode_data_uri, CallbackRegistry, ObscuraHttpClient, ObscuraNetError, RequestCallback, ResourceRequest,
+     ResourceType, Response, ResponseCallback,
+ };
+ use url::Url;
+@@ -29,48 +29,6 @@ fn env_geolocation() -> Option<(f64, f64)> {
+     valid.then_some((lat, lon))
+ }
+ 
+-fn decode_data_uri(uri: &str) -> Option<Vec<u8>> {
+-    let rest = uri.strip_prefix("data:")?;
+-    let comma = rest.find(',')?;
+-    let meta = &rest[..comma];
+-    let payload = &rest[comma + 1..];
+-    if meta.split(';').any(|t| t.eq_ignore_ascii_case("base64")) {
+-        let cleaned: String = payload.chars().filter(|c| !c.is_whitespace()).collect();
+-        BASE64.decode(cleaned).ok()
+-    } else {
+-        Some(percent_decode(payload))
+-    }
+-}
+-
+-fn percent_decode(s: &str) -> Vec<u8> {
+-    let mut out = Vec::with_capacity(s.len());
+-    let b = s.as_bytes();
+-    let mut i = 0;
+-    while i < b.len() {
+-        if b[i] == b'%' && i + 2 < b.len() {
+-            let hi = hex_val(b[i + 1]);
+-            let lo = hex_val(b[i + 2]);
+-            if let (Some(h), Some(l)) = (hi, lo) {
+-                out.push((h << 4) | l);
+-                i += 3;
+-                continue;
+-            }
+-        }
+-        out.push(b[i]);
+-        i += 1;
+-    }
+-    out
+-}
+-
+-fn hex_val(b: u8) -> Option<u8> {
+-    match b {
+-        b'0'..=b'9' => Some(b - b'0'),
+-        b'a'..=b'f' => Some(b - b'a' + 10),
+-        b'A'..=b'F' => Some(b - b'A' + 10),
+-        _ => None,
+-    }
+-}
+-
+ /// Truncate `s` to at most `max` bytes without splitting a UTF-8 character.
+ /// `&s[..max]` panics if `max` lands inside a multi-byte char; the evaluated
+ /// expression logged below is caller-controlled, so slice it safely.
+@@ -6570,6 +6528,54 @@ mod tests {
+         );
+     }
+ 
++    #[tokio::test(flavor = "current_thread")]
++    async fn parser_module_script_loads_from_a_data_url() {
++        let mut page = import_map_test_page(
++            "data-url-module",
++            "https://example.test",
++            r#"<html><head>
++            <script type="module" src="data:text/javascript,globalThis.__data_module%20=%20'ran'"></script>
++            <script type="module" src="data:text/javascript;base64,Z2xvYmFsVGhpcy5fX2RhdGFfbW9kdWxlX2I2NCA9IDI="></script>
++        </head><body></body></html>"#,
++        );
++        page.execute_scripts().await;
++        page.settle_for_duration(300).await;
++        let js = page.js.as_mut().unwrap();
++        assert_eq!(
++            js.evaluate("[globalThis.__data_module, globalThis.__data_module_b64]")
++                .unwrap(),
++            serde_json::json!(["ran", 2]),
++        );
++    }
++
++    #[tokio::test(flavor = "current_thread")]
++    async fn inserted_module_script_loads_from_a_blob_url() {
++        let mut page = import_map_test_page(
++            "blob-url-module",
++            "https://example.test",
++            r#"<html><head><script>
++                const src = URL.createObjectURL(new Blob(
++                    ["import v from 'data:text/javascript,export default 5'; globalThis.__blob_script = [v, import.meta.url.startsWith('blob:https://example.test/')];"],
++                    { type: 'text/javascript' }));
++                const s = document.createElement('script');
++                s.type = 'module';
++                s.src = src;
++                s.onerror = () => { globalThis.__blob_script = 'error'; };
++                document.head.appendChild(s);
++            </script></head><body></body></html>"#,
++        );
++        page.execute_scripts().await;
++        page.settle_for_duration(300).await;
++        assert_eq!(
++            page.js
++                .as_mut()
++                .unwrap()
++                .evaluate("globalThis.__blob_script")
++                .unwrap(),
++            serde_json::json!([5, true]),
++        );
++    }
++
+     #[tokio::test(flavor = "current_thread")]
+     async fn parser_import_map_before_first_module_controls_resolution() {
+         let (base, requests) = spawn_parser_import_map_server(1);
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index 1eaed5d..d16a305 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -13696,7 +13696,7 @@ globalThis.Worker = class Worker {
+ 
+     let resolvedUrl = url;
+     if (typeof url === 'string') {
+-      const blob = globalThis.__blobStore?.[url];
++      const blob = url.startsWith('blob:') ? Deno.core.ops.op_blob_url_text(url) : null;
+       if (blob) {
+         worker._code = blob;
+         // Auto-start on next tick so caller can set onmessage first.
+@@ -13808,7 +13808,6 @@ globalThis.Worker = class Worker {
+   }
+ };
+ 
+-globalThis.__blobStore = globalThis.__blobStore || {};
+ URL.createObjectURL = function(blob) {
+   // Chrome mints blob:<document-origin>/<v4-uuid> (blob:null/<uuid> on an opaque
+   // origin) and throws a TypeError on missing/non-Blob input. The old code named
+@@ -13847,20 +13846,22 @@ URL.createObjectURL = function(blob) {
+     // failed (net::ERR_FAILED), which broke AWS WAF's proof-of-work worker.
+     // The obscura Blob materializes _bytes in its constructor; fall back to
+     // the async text() store only for foreign Blob shims without _bytes.
++    // The bytes live in the page's native object-URL store, where the module
++    // loader resolves blob: module scripts without touching the network.
+     if (blob._bytes) {
+-      let text = '';
+-      try { text = new TextDecoder().decode(blob._bytes); } catch (e) {}
+-      globalThis.__blobStore[id] = text;
++      Deno.core.ops.op_blob_url_register(id, blob._bytes);
+     } else if (typeof blob.text === 'function') {
+-      blob.text().then(text => { globalThis.__blobStore[id] = text; });
++      blob.text().then(text => {
++        Deno.core.ops.op_blob_url_register(id, new TextEncoder().encode(text));
++      });
+     } else {
+-      globalThis.__blobStore[id] = '';
++      Deno.core.ops.op_blob_url_register(id, new Uint8Array(0));
+     }
+     return id;
+   }
+ };
+ URL.revokeObjectURL = function(url) {
+-  delete globalThis.__blobStore[url];
++  Deno.core.ops.op_blob_url_revoke(String(url));
+ };
+ 
+ // Window-level scrolling (issue #468). #431 gave elements functional
+diff --git a/crates/obscura-js/src/module_loader.rs b/crates/obscura-js/src/module_loader.rs
+index 7110eb6..749c707 100644
+--- a/crates/obscura-js/src/module_loader.rs
++++ b/crates/obscura-js/src/module_loader.rs
+@@ -145,6 +145,37 @@ impl ObscuraModuleLoader {
+     }
+ }
+ 
++impl ObscuraModuleLoader {
++    /// The bytes behind a `blob:` module URL. Only object URLs minted in this
++    /// page, for this page's origin, and not yet revoked resolve; anything else
++    /// is a network error, as in a browser.
++    fn blob_module_bytes(&self, specifier: &ModuleSpecifier) -> Result<Vec<u8>, ModuleLoaderError> {
++        let fail = || io_err(format!("Failed to fetch module {}", specifier));
++        let state = self
++            .page_state
++            .as_ref()
++            .and_then(Weak::upgrade)
++            .ok_or_else(fail)?;
++        let state = state.try_borrow().map_err(|_| fail())?;
++        let document_origin = url::Url::parse(&state.url)
++            .map(|document| document.origin().ascii_serialization())
++            .map_err(|_| fail())?;
++        // blob:<origin>/<uuid> — the origin is everything before the last '/'.
++        let blob_origin = specifier
++            .as_str()
++            .strip_prefix("blob:")
++            .and_then(|rest| rest.rsplit_once('/'))
++            .map(|(origin, _)| origin)
++            .ok_or_else(fail)?;
++        if blob_origin != document_origin {
++            return Err(fail());
++        }
++        // A fragment does not name a different object.
++        let key = specifier.as_str().split('#').next().unwrap_or_default();
++        state.blob_urls.get(key).cloned().ok_or_else(fail)
++    }
++}
++
+ fn io_err(msg: String) -> ModuleLoaderError {
+     std::io::Error::new(std::io::ErrorKind::Other, msg).into()
+ }
+@@ -191,6 +222,28 @@ impl ModuleLoader for ObscuraModuleLoader {
+         _requested_module_type: RequestedModuleType,
+     ) -> ModuleLoadResponse {
+         let url = module_specifier.to_string();
++        // data: and blob: modules never touch the network: a data: URL carries
++        // its body, and a blob: URL names bytes this page registered through
++        // URL.createObjectURL. Module scripts are always decoded as UTF-8.
++        let local = match module_specifier.scheme() {
++            "data" => Some(
++                obscura_net::decode_data_uri(&url)
++                    .ok_or_else(|| io_err(format!("Invalid data: module URL {}", url))),
++            ),
++            "blob" => Some(self.blob_module_bytes(module_specifier)),
++            _ => None,
++        };
++        if let Some(bytes) = local {
++            self.loaded_specifiers.borrow_mut().push(url);
++            return ModuleLoadResponse::Sync(bytes.map(|bytes| {
++                ModuleSource::new(
++                    deno_core::ModuleType::JavaScript,
++                    ModuleSourceCode::String(String::from_utf8_lossy(&bytes).into_owned().into()),
++                    module_specifier,
++                    None,
++                )
++            }));
++        }
+         // Module-graph CORS and same-origin credentials are relative to the
+         // owning document, not to the importing module. The importer remains
+         // the HTTP referrer for a dependency; keeping these URLs distinct
+diff --git a/crates/obscura-js/src/ops.rs b/crates/obscura-js/src/ops.rs
+index 125b9f3..c285aba 100644
+--- a/crates/obscura-js/src/ops.rs
++++ b/crates/obscura-js/src/ops.rs
+@@ -173,6 +173,11 @@ pub struct ObscuraState {
+     /// Bytes of payload currently queued above, tracked rather than summed so
+     /// the cap costs nothing per message.
+     pub pending_frame_message_bytes: usize,
++    /// Object URLs minted by `URL.createObjectURL` in this page's realms,
++    /// mapped to the Blob's bytes. Module scripts and workers read a `blob:`
++    /// URL from here; it is never fetched over the network. A new document
++    /// starts with an empty store, as a browser drops a document's object URLs.
++    pub blob_urls: HashMap<String, Vec<u8>>,
+     /// Requests initiated by this runtime only. Browser contexts share their
+     /// transport client across pages, so the client's aggregate counter cannot
+     /// be used as a page-readiness signal.
+@@ -372,6 +377,7 @@ impl ObscuraState {
+             frame_id: 0,
+             pending_frame_messages: Vec::new(),
+             pending_frame_message_bytes: 0,
++            blob_urls: HashMap::new(),
+             page_in_flight: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+             activity_generation: 0,
+             document_generation: 0,
+@@ -1249,6 +1255,36 @@ fn fragment_context_and_html(arg: &str) -> (html5ever::QualName, &str) {
+     )
+ }
+ 
++/// Registers the bytes behind an object URL (see `ObscuraState::blob_urls`).
++/// Kept on the page's state whichever realm minted it, because the module
++/// loader is shared by every realm of the page.
++#[op2(fast)]
++fn op_blob_url_register(state: &OpState, #[string] url: &str, #[buffer] bytes: &[u8]) {
++    let shared = state.borrow::<SharedState>().clone();
++    shared
++        .borrow_mut()
++        .blob_urls
++        .insert(url.to_string(), bytes.to_vec());
++}
++
++#[op2(fast)]
++fn op_blob_url_revoke(state: &OpState, #[string] url: &str) {
++    let shared = state.borrow::<SharedState>().clone();
++    shared.borrow_mut().blob_urls.remove(url);
++}
++
++/// The object URL's contents as text, or `None` for an unknown/revoked URL.
++#[op2]
++#[string]
++fn op_blob_url_text(state: &OpState, #[string] url: &str) -> Option<String> {
++    let shared = state.borrow::<SharedState>().clone();
++    let state = shared.borrow();
++    state
++        .blob_urls
++        .get(url)
++        .map(|bytes| String::from_utf8_lossy(bytes).into_owned())
++}
++
+ #[op2(fast)]
+ fn op_script_mark_started(state: &OpState, nid: u32) -> bool {
+     let shared = state.borrow::<SharedState>().clone();
+@@ -5709,6 +5745,9 @@ pub fn build_extension() -> Extension {
+     let mut ops = vec![
+         op_dom(),
+         op_script_mark_started(),
++        op_blob_url_register(),
++        op_blob_url_revoke(),
++        op_blob_url_text(),
+         op_script_try_start(),
+         op_shadow_attach(),
+         op_shadow_root_info(),
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index 4a32772..5346cf2 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -1132,6 +1132,7 @@ impl ObscuraJsRuntime {
+         gs.activity_generation = 0;
+         gs.page_in_flight = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+         gs.already_started_scripts.borrow_mut().clear();
++        gs.blob_urls.clear();
+         // A new document owns a fresh retained scene and resource cache.
+         #[cfg(feature = "render")]
+         {
+@@ -19261,6 +19262,53 @@ mod tests {
+         );
+     }
+ 
++    #[tokio::test(flavor = "current_thread")]
++    async fn dynamic_import_loads_data_and_blob_modules_locally() {
++        let mut rt = ObscuraJsRuntime::with_base_url("https://example.test/index.html");
++        rt.set_dom(parse_html("<html><body></body></html>"));
++        rt.run_page_init();
++        rt.execute_script(
++            "https://example.test/index.html",
++            "globalThis.__local_modules = {}; \
++             const note = (k) => [v => { __local_modules[k] = v; }, e => { __local_modules[k] = 'error: ' + e.message; }]; \
++             import('data:text/javascript,export default 1').then(m => m.default).then(...note('data')); \
++             import('data:text/javascript;base64,ZXhwb3J0IGRlZmF1bHQgMw==').then(m => m.default).then(...note('b64')); \
++             const url = URL.createObjectURL(new Blob(['export default 7'], { type: 'text/javascript' })); \
++             import(url).then(m => m.default).then(...note('blob')); \
++             const gone = URL.createObjectURL(new Blob(['export default 8'], { type: 'text/javascript' })); \
++             URL.revokeObjectURL(gone); \
++             import(gone).then(() => 'loaded', () => 'rejected').then(...note('revoked')); \
++             import('blob:https://other.test/00000000-0000-4000-8000-000000000000').then(() => 'loaded', () => 'rejected').then(...note('foreign'));",
++        )
++        .unwrap();
++        rt.run_event_loop().await.unwrap();
++        assert_eq!(
++            rt.evaluate("globalThis.__local_modules").unwrap(),
++            serde_json::json!({"data": 1, "b64": 3, "blob": 7, "revoked": "rejected", "foreign": "rejected"}),
++        );
++    }
++
++    #[tokio::test(flavor = "current_thread")]
++    async fn inline_module_statically_imports_a_blob_module() {
++        let mut rt = ObscuraJsRuntime::with_base_url("https://example.test/index.html");
++        rt.set_dom(parse_html("<html><body></body></html>"));
++        rt.run_page_init();
++        rt.execute_script(
++            "https://example.test/index.html",
++            "globalThis.__blob_dep = URL.createObjectURL(new Blob(['export const v = 42'], { type: 'text/javascript' }));",
++        )
++        .unwrap();
++        let url = rt.evaluate("globalThis.__blob_dep").unwrap();
++        rt.load_inline_module(
++            &format!("import {{ v }} from '{}'; globalThis.__blob_static = v;", url.as_str().unwrap()),
++            "https://example.test/index.html",
++            1_000,
++        )
++        .await
++        .unwrap();
++        assert_eq!(rt.evaluate("globalThis.__blob_static").unwrap().as_f64(), Some(42.0));
++    }
++
+     #[tokio::test(flavor = "current_thread")]
+     async fn classic_script_url_is_dynamic_import_referrer() {
+         use std::io::{Read as _, Write as _};
+diff --git a/crates/obscura-net/Cargo.toml b/crates/obscura-net/Cargo.toml
+index 8d0763b..6bfb38d 100644
+--- a/crates/obscura-net/Cargo.toml
++++ b/crates/obscura-net/Cargo.toml
+@@ -19,6 +19,7 @@ tracing = { workspace = true }
+ thiserror = { workspace = true }
+ async-trait = "0.1"
+ encoding_rs = "0.8"
++base64 = { workspace = true }
+ tempfile = "3"
+ futures-util = { version = "0.3", optional = true }
+ # wreq and wreq-util are pre-release crates whose API changes between rc builds
+diff --git a/crates/obscura-net/src/data_url.rs b/crates/obscura-net/src/data_url.rs
+new file mode 100644
+index 0000000..ba13961
+--- /dev/null
++++ b/crates/obscura-net/src/data_url.rs
+@@ -0,0 +1,53 @@
++//! `data:` URL decoding. A data URL carries its body inline, so every consumer
++//! (navigation, classic scripts, module scripts) decodes it locally instead of
++//! fetching it.
++
++use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
++
++/// The body of a `data:` URL, or `None` when `uri` is not one or its base64
++/// payload is malformed. A fragment is not part of the body.
++pub fn decode_data_uri(uri: &str) -> Option<Vec<u8>> {
++    let rest = uri.strip_prefix("data:")?;
++    let comma = rest.find(',')?;
++    let meta = &rest[..comma];
++    let payload = &rest[comma + 1..];
++    let payload = payload.split_once('#').map_or(payload, |(body, _)| body);
++    if meta.split(';').any(|t| t.trim().eq_ignore_ascii_case("base64")) {
++        let cleaned: Vec<u8> = percent_decode(payload)
++            .into_iter()
++            .filter(|c| !c.is_ascii_whitespace())
++            .collect();
++        BASE64.decode(cleaned).ok()
++    } else {
++        Some(percent_decode(payload))
++    }
++}
++
++fn percent_decode(s: &str) -> Vec<u8> {
++    let mut out = Vec::with_capacity(s.len());
++    let b = s.as_bytes();
++    let mut i = 0;
++    while i < b.len() {
++        if b[i] == b'%' && i + 2 < b.len() {
++            let hi = hex_val(b[i + 1]);
++            let lo = hex_val(b[i + 2]);
++            if let (Some(h), Some(l)) = (hi, lo) {
++                out.push((h << 4) | l);
++                i += 3;
++                continue;
++            }
++        }
++        out.push(b[i]);
++        i += 1;
++    }
++    out
++}
++
++fn hex_val(b: u8) -> Option<u8> {
++    match b {
++        b'0'..=b'9' => Some(b - b'0'),
++        b'a'..=b'f' => Some(b - b'a' + 10),
++        b'A'..=b'F' => Some(b - b'A' + 10),
++        _ => None,
++    }
++}
+diff --git a/crates/obscura-net/src/lib.rs b/crates/obscura-net/src/lib.rs
+index b9d0b96..d25cc72 100644
+--- a/crates/obscura-net/src/lib.rs
++++ b/crates/obscura-net/src/lib.rs
+@@ -1,5 +1,6 @@
+ pub mod client;
+ pub mod cookies;
++pub mod data_url;
+ pub mod encoding;
+ pub mod interceptor;
+ pub mod robots;
+@@ -12,6 +13,7 @@ pub use client::{
+     ObscuraNetError, RequestCallback, RequestCredentials, RequestInfo, RequestMode,
+     ResourceRequest, ResourceType, Response, ResponseCallback, SsrfGuardResolver,
+ };
++pub use data_url::decode_data_uri;
+ pub use cookies::{canonical_domain, default_cookie_path, CookieInfo, CookieJar};
+ pub use encoding::{
+     decode_non_html, decode_response, decode_response_with_name, decode_with_label, label_name,

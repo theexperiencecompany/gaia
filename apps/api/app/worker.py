@@ -13,7 +13,7 @@ from app.constants.payments import SUBSCRIPTION_WORKFLOW_SYNC_TASK
 # custom tools 500 with "Missing user_id in auth_credentials" because the
 # CustomTool user_id-injection patch never loads here.
 import app.patches  # noqa: F401 -- applies monkeypatches on import; must run before the patched SDKs are used
-from app.workers.config.worker_settings import WorkerSettings
+from app.workers.config.worker_settings import WorkerFunction, WorkerSettings
 from app.workers.lifecycle import shutdown, startup
 from app.workers.task_envelope import arq_task
 from app.workers.tasks import (
@@ -110,7 +110,9 @@ _sync_workflows_for_subscription_state = func(
     name=SUBSCRIPTION_WORKFLOW_SYNC_TASK,
 )
 
-WorkerSettings.functions = [
+# Every job on the default queue. Browser jobs have their own worker
+# (app.workers.browser_worker), started from the worker lifecycle.
+TASK_FUNCTIONS: list[WorkerFunction] = [
     _sweep_hil_approvals,
     _process_reminder,
     _cleanup_expired_reminders,
@@ -140,6 +142,7 @@ WorkerSettings.functions = [
     _warm_device_servers,
     _sync_workflows_for_subscription_state,
 ]
+WorkerSettings.functions = TASK_FUNCTIONS
 
 WorkerSettings.cron_jobs = [
     cron(

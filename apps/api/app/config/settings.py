@@ -20,11 +20,13 @@ from typing import Any, Literal, Self, TypedDict, Unpack
 
 from dotenv import load_dotenv
 from pydantic import computed_field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import SettingsConfigDict
 
+from app.config.browser_host_settings import BrowserHostSettings
 from app.config.secrets import inject_infisical_secrets
 from app.config.settings_validator import settings_validator
 from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
+from app.constants.llm import DevLLMApi
 from app.constants.log_tags import LogTag
 from app.constants.search import (
     CRAWL4AI_DEFAULT_MAX_BROWSERS,
@@ -41,10 +43,8 @@ class SettingsOverrides(TypedDict, total=False):
     SHOW_MISSING_KEY_WARNINGS: bool
 
 
-class BaseAppSettings(BaseSettings):
+class BaseAppSettings(BrowserHostSettings):
     """Base configuration settings for the application."""
-
-    ENV: Literal["production", "development"] = "production"
 
     SHOW_MISSING_KEY_WARNINGS: bool = True
 
@@ -102,6 +102,9 @@ class CommonSettings(BaseAppSettings):
     # of requests/day against a free-plan dev user, which 429s at 200/day
     # otherwise. get_settings() refuses production boot when set.
     DEV_UNLIMITED_RATE_LIMITS: bool = False
+    # The bots' HMAC key for hashed platform ids in logs; the same value here
+    # makes the API's user_hash join the bots'. Unset falls back like the bots.
+    BOT_LOG_HASH_SECRET: str | None = None
 
     # ----------------------------------------------
     # Database Connections
@@ -200,12 +203,97 @@ class CommonSettings(BaseAppSettings):
             return CRAWL4AI_DEFAULT_MAX_BROWSERS
         return max(CRAWL4AI_MIN_MAX_BROWSERS, parsed)
 
+    # --- Browser-Use (autonomous browser automation) ---
+    # Always on in every environment; an unreachable host fails loudly at task time.
+
+    # Dev-only: suffixes every ChromaDB collection name so parallel worktrees,
+    # which share one local Chroma, stop deleting each other's indexed tools.
+    # Empty in production (dedicated Chroma); set per worktree by `mise run wt:env`.
+    CHROMA_COLLECTION_NAMESPACE: str = ""
+    # Cloudflare R2, the fast edge store for browser step screenshots; Cloudinary
+    # stays the durable store for arbitrary user files. Optional: any unset field
+    # falls back to inline data URLs. Use a custom domain in prod, r2.dev is rate-limited.
+    CLOUDFLARE_ACCOUNT_ID: str | None = None
+    R2_ACCESS_KEY_ID: str | None = None
+    R2_SECRET_ACCESS_KEY: str | None = None
+    R2_BUCKET: str = "gaia-browser-shots"
+    R2_PUBLIC_BASE_URL: str | None = None
+    # Jev "System One" decision policy (TypeSafe AI): each step's decision is a
+    # single Jev evaluation over the page's indexed element table, not a
+    # generative chat completion. Screenshots are never sent to Jev.
+    BROWSER_USE_JEV_MODEL: str = "~typesafe/jev-latest"
+    # Which gateway serves Jev decisions: "openrouter" (default) or "vercel"
+    # (Vercel AI Gateway). Hot-swappable at boot: both speak the same
+    # {model, state, questions} decisions shape.
+    BROWSER_JEV_PROVIDER: Literal["openrouter", "vercel"] = "openrouter"
+    # Vercel AI Gateway key + model, read only when BROWSER_JEV_PROVIDER=vercel.
+    BROWSER_JEV_VERCEL_API_KEY: str | None = None
+    BROWSER_JEV_VERCEL_MODEL: str = "typesafe-ai/jev"
+    # Text helper for the loop, called only when a decision needs a typed value.
+    # deepseek-v4-flash answers a URL/value prompt in ~1.5-5s with minimal
+    # reasoning (measured 2026-09-22); forcing reasoning off made it return null.
+    BROWSER_USE_JEV_TEXT_MODEL: str = "deepseek/deepseek-v4-flash-0731"
+
+    # Hard limits — everything is bounded so no browser task can run away. The
+    # agent's step count is only Browser-Use's required backstop: a run ends on
+    # the agent's finish, no progress, or its time and cost budgets.
+    BROWSER_USE_MAX_STEPS: int = 100
+    BROWSER_USE_MAX_ACTIONS_PER_STEP: int = 5
+    BROWSER_USE_TASK_TIMEOUT_SECONDS: int = 600
+    # How long a paused run waits for the user's handoff step (a login, a CAPTCHA).
+    # The one source: the job deadline, its TTLs, the relay's wait and the per-step
+    # budget all derive from it (job_lifetime.py); resolving sooner resumes at once.
+    BROWSER_USE_HANDOFF_TIMEOUT_SECONDS: int = 600
+    # Active work budget for a single step. The effective per-step timeout adds the
+    # handoff timeout on top, so a step that pauses for a human live-view takeover
+    # is never killed as "stuck" while the user is completing it.
+    BROWSER_USE_STEP_TIMEOUT_SECONDS: int = 180
+    # Stream per-step screenshots into the chat card / bot messages.
+    BROWSER_USE_STREAM_SCREENSHOTS: bool = True
+
+    # There is no automatic CAPTCHA solver: when set, the agent gets an action to
+    # hand a CAPTCHA to the user, who solves it in live-view before it continues.
+    BROWSER_USE_SOLVE_CAPTCHA: bool = True
+
+    # --- Browser host (gaia-browser-host, our own low-RAM Chromium host) ---
+
+    # One long-lived Chromium, one isolated context per session, proxied over
+    # CDP with an authenticated screencast live view. Reached internally by
+    # service name; override locally to http://localhost:8930.
+
+    # A second Chromium host: a run about to end blocked retries that page there once.
+    # It needs BROWSER_ENGINE=chromium, few BROWSER_HOST_MAX_SESSIONS, and its OWN
+    # address as BROWSER_HOST_URL, since a host builds its CDP/live URLs from it.
+    BROWSER_FALLBACK_HOST_URL: str | None = None
+    # Base port for the dedicated Obscura the crawl4ai engine drives, distinct
+    # from OBSCURA_PORT so the two never collide; the manager probes upward from
+    # here if taken. High range on purpose: 9222/9223 collide with local Chrome.
+    OBSCURA_CRAWL_PORT: int = 39222
+
+    # Fernet key (32 url-safe base64 bytes) encrypting each user's saved browser
+    # login (storage_state) at rest in Mongo. Infisical-provided in production;
+    # persistence fails loud if a save/load is attempted while it's unset.
+    BROWSER_STATE_ENCRYPTION_KEY: str | None = None
+    # HMAC secret (>=32 chars) for the short-lived live-view takeover JWT handed
+    # to a user's own bot channel so they can take over a handoff without a web login.
+    BROWSER_TAKEOVER_TOKEN_SECRET: str | None = None
+    # When false, a session's login is never persisted or restored (per-deployment
+    # opt-out of "log in once, reuse next time").
+    BROWSER_PERSIST_LOGINS: bool = True
+    # Public base URL fronting the authenticated live-view route, e.g.
+    # https://browser.heygaia.io in prod, where a vhost reverse-proxies to this
+    # api service. When unset, live-view links fall back to HOST.
+    BROWSER_LIVE_VIEW_BASE_URL: str | None = None
+
     # Custom OpenRouter/OpenAI-compatible endpoint for cheap bulk dev/test usage.
     # All three must be set; the "custom" provider is registered exclusively in
     # development (see register_llm_providers), so these have no effect in production.
     DEV_LLM_BASE_URL: str | None = None
     DEV_LLM_API_KEY: str | None = None
     DEV_LLM_MODEL: str | None = None
+    # Which API the endpoint is called through. OpenAI's reasoning models need
+    # "responses": their chat completions reject function tools with reasoning on.
+    DEV_LLM_API: DevLLMApi = DevLLMApi.CHAT_COMPLETIONS
     # Default model for every dev request that doesn't pick one in the chat-header
     # selector — any DEV_MODEL_OPTIONS key from app/constants/llm.py ("custom" =
     # the endpoint above). An explicit selector choice still wins.
@@ -444,6 +532,7 @@ class ProductionSettings(CommonSettings):
     # Monitoring & Analytics
     # ----------------------------------------------
     SENTRY_DSN: str
+    POSTHOG_API_KEY: str
 
     # ----------------------------------------------
     # MCP OAuth Credentials
@@ -638,6 +727,7 @@ class DevelopmentSettings(CommonSettings):
     # Monitoring & Analytics
     # ----------------------------------------------
     SENTRY_DSN: str | None = None
+    POSTHOG_API_KEY: str | None = None
 
     # ----------------------------------------------
     # MCP OAuth Credentials

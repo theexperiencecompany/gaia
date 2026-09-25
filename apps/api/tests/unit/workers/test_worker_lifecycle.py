@@ -1,6 +1,7 @@
 """Unit tests for ARQ worker lifecycle (startup, shutdown) and config."""
 
 import asyncio
+from collections.abc import Iterator
 import importlib.util
 from pathlib import Path
 import socket
@@ -8,15 +9,66 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.workers.config.worker_settings import WorkerSettings
+from app.workers.config.worker_settings import (
+    ARQ_BACKSTOP_GRACE_SECONDS,
+    WORKER_JOB_TIMEOUT_SECONDS,
+    WorkerSettings,
+)
 from app.workers.lifecycle.shutdown import shutdown
 
 # startup is imported lazily: the module has side effects at import time
 # (configure_file_logging, setup_warnings).
 
 
+@pytest.fixture(autouse=True)
+def browser_worker_calls() -> Iterator[list[str]]:
+    """Record the browser worker's start/stop; a real one would consume the live Redis queue."""
+    calls: list[str] = []
+
+    def _start(ctx: dict) -> None:
+        calls.append("start")
+
+    async def _stop(ctx: dict) -> None:
+        calls.append("stop")
+
+    with (
+        patch("app.workers.lifecycle.startup.start_browser_worker", _start),
+        patch("app.workers.lifecycle.shutdown.stop_browser_worker", _stop),
+    ):
+        yield calls
+
+
 class TestWorkerStartup:
     """Tests for ARQ worker startup function."""
+
+    async def test_the_browser_worker_is_kept_in_the_ctx_that_shutdown_stops_it_from(
+        self, ctx: dict
+    ) -> None:
+        """Shutdown finds the running browser worker in arq's ctx; started on any other mapping it would never be stopped."""
+        seen: list[object] = []
+        with (
+            patch("app.workers.lifecycle.startup.unified_startup", new_callable=AsyncMock),
+            patch("app.workers.lifecycle.startup.start_browser_worker", seen.append),
+        ):
+            from app.workers.lifecycle.startup import startup
+
+            await startup(ctx)
+
+        assert seen == [ctx]
+        assert seen[0] is ctx
+
+    async def test_startup_starts_the_browser_worker_once_the_process_is_ready(
+        self, ctx: dict, browser_worker_calls: list[str]
+    ) -> None:
+        async def _ready(context: str) -> None:
+            assert browser_worker_calls == []
+
+        with patch("app.workers.lifecycle.startup.unified_startup", _ready):
+            from app.workers.lifecycle.startup import startup
+
+            await startup(ctx)
+
+        assert browser_worker_calls == ["start"]
 
     @pytest.fixture
     def ctx(self) -> dict:
@@ -99,6 +151,34 @@ class TestWorkerStartup:
 
 class TestWorkerShutdown:
     """Tests for ARQ worker shutdown function."""
+
+    async def test_shutdown_stops_the_browser_worker_before_tearing_services_down(
+        self, browser_worker_calls: list[str]
+    ) -> None:
+        async def _teardown(context: str) -> None:
+            assert browser_worker_calls == ["stop"]
+
+        with patch("app.workers.lifecycle.shutdown.unified_shutdown", _teardown):
+            await shutdown({})
+
+        assert browser_worker_calls == ["stop"]
+
+    async def test_shutdown_stops_the_browser_worker_this_process_started(self) -> None:
+        """The running worker lives in ARQ's ctx; stopping any other leaves its jobs running."""
+        stopped: list[dict] = []
+
+        async def _stop(ctx: dict) -> None:
+            stopped.append(ctx)
+
+        ctx = {"startup_time": 0}
+        with (
+            patch("app.workers.lifecycle.shutdown.stop_browser_worker", _stop),
+            patch("app.workers.lifecycle.shutdown.unified_shutdown", AsyncMock()),
+        ):
+            await shutdown(ctx)
+
+        assert stopped == [ctx]
+        assert stopped[0] is ctx
 
     async def test_shutdown_calls_unified_shutdown_with_arq_worker(self):
         """unified_shutdown is called with the 'arq_worker' literal."""
@@ -236,9 +316,10 @@ class TestWorkerSettings:
         assert isinstance(WorkerSettings.job_timeout, int)
         assert WorkerSettings.job_timeout > 0
 
-    def test_job_timeout_is_30_minutes(self):
-        """Default job timeout should be 30 minutes (1800 seconds)."""
-        assert WorkerSettings.job_timeout == 1800
+    def test_job_timeout_is_a_backstop_past_the_30_minute_envelope_cap(self):
+        """The envelope cuts a job off at 30 minutes; ARQ's timeout only backs it up."""
+        assert WORKER_JOB_TIMEOUT_SECONDS == 1800
+        assert WorkerSettings.job_timeout == WORKER_JOB_TIMEOUT_SECONDS + ARQ_BACKSTOP_GRACE_SECONDS
 
     def test_keep_result_zero(self):
         """keep_result=0 means results are not stored in Redis."""

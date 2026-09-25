@@ -61,22 +61,30 @@ BOUNDARY_MODULES: dict[str, str] = {
     "apps/api/app/db/repositories/base.py": "the Mongo document -> model boundary",
     "apps/api/app/override/": "vendored overrides of third-party library internals",
     "apps/api/app/patches/": "monkeypatches of third-party library internals",
+    "apps/api/app/browser_host/cdp_mux.py": "the CDP wire: Chrome owns every command and result shape",
+    "apps/api/app/browser_host/chromium.py": "the CDP wire: Chrome owns every command and result shape",
+    "apps/api/app/browser_host/proxy.py": "the CDP wire: Chrome owns every command and result shape",
+    "apps/api/app/browser_host/screencast.py": "the CDP wire: Chrome owns every command and result shape",
 }
 
 # Maps keyed by a protocol, not a shape: the key IS the contract (an HTTP
 # header name, an environment variable), so reading it by string is honest.
 PROTOCOL_MAPS = ("os.environ",)
-PROTOCOL_MAP_ATTRIBUTES = ("headers", "query_params", "path_params", "cookies")
+# A DOM node's ``attributes`` is keyed by HTML attribute names, the same kind of contract.
+PROTOCOL_MAP_ATTRIBUTES = ("headers", "query_params", "path_params", "cookies", "attributes")
 
 # A key read on a TypedDict is a declared shape, not a guess: mypy checks the key
 # (apps/api/CLAUDE.md, Type Safety item 6). Repo TypedDicts are discovered from
 # ``class X(TypedDict)``; these come from libraries and cannot be discovered.
 EXTERNAL_TYPEDDICTS = (
     "ToolCall",
+    "InvalidToolCall",
     "RunnableConfig",
     "UsageMetadata",
     "InputTokenDetails",
     "OutputTokenDetails",
+    "StorageState",
+    "StorageStateCookie",
 )
 # Library TypedDicts app classes subclass, by the path they are imported from: the
 # local name is often an alias (``State as _BigtoolState``), so the bare name can't
@@ -95,6 +103,20 @@ EXTERNAL_TYPEDDICT_PATHS = frozenset(
         "langchain_core.messages.ReasoningContentBlock",
         "langchain_core.messages.content.ReasoningContentBlock",
         "composio.core.models.tools.ToolExecutionResponse",
+        "cdp_use.cdp.dom.commands.ResolveNodeReturns",
+        "cdp_use.cdp.domsnapshot.commands.CaptureSnapshotReturns",
+        "cdp_use.cdp.domsnapshot.types.DocumentSnapshot",
+        "cdp_use.cdp.domsnapshot.types.NodeTreeSnapshot",
+        "cdp_use.cdp.domsnapshot.types.RareBooleanData",
+        "cdp_use.cdp.domsnapshot.types.RareStringData",
+        "cdp_use.cdp.page.commands.CaptureScreenshotReturns",
+        "cdp_use.cdp.page.events.FrameNavigatedEvent",
+        "cdp_use.cdp.page.events.FrameStartedNavigatingEvent",
+        "cdp_use.cdp.page.events.FrameStoppedLoadingEvent",
+        "cdp_use.cdp.page.types.Frame",
+        "cdp_use.cdp.runtime.commands.CallFunctionOnReturns",
+        "cdp_use.cdp.runtime.commands.EvaluateReturns",
+        "cdp_use.cdp.runtime.types.RemoteObject",
     }
 )
 # Collections whose one type argument is the element a loop over them yields.

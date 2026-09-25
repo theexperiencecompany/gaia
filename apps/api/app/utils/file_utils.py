@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Union, cast
 
 from langchain_core.messages import BaseMessage
 
-from app.agents.llm.client import ainvoke_llm, get_helper_llm, metered_config, with_llm_retry
+from app.agents.llm.client import ainvoke_llm, metered_config, resolve_model, with_llm_retry
 from app.agents.llm.vision import describe_image
 from app.agents.prompts.image_prompts import DOCUMENT_IMAGE_SUMMARY_PROMPT
 from app.config.settings import settings
@@ -82,7 +82,7 @@ class DocumentProcessor:
         """
         self._parser: LlamaParse | None = None
         self.user_id = user_id
-        self.llm = get_helper_llm()
+        self.llm = resolve_model()
 
     @property
     def parser(self) -> "LlamaParse":

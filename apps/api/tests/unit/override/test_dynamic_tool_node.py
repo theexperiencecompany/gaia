@@ -200,7 +200,7 @@ class TestRealMiddlewarePath:
         assert message.name == "hangs"
         assert message.content == (
             "Error: TimeoutError: 'hangs' timed out after 0.01s. The operation may or may "
-            "not have completed on the provider side — verify its effect before retrying."
+            "not have completed on the provider side. Verify its effect before retrying."
         )
 
     async def test_a_proxied_timeout_names_the_real_tool_at_the_backstop_bound(self) -> None:

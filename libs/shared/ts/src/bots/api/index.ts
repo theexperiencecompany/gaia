@@ -17,6 +17,7 @@ import type {
   SettingsResponse,
 } from "../types";
 import { getErrorReason, getHttpStatus } from "../utils/logger";
+import { isOwnApiUrl } from "../utils/own-api";
 import { wideLog } from "../utils/wide-events";
 import {
   type ApprovalUpdateHandler,
@@ -25,7 +26,9 @@ import {
   streamChat,
 } from "./chat-stream";
 import {
+  downloadApiBinaryRequest,
   downloadArtifactRequest,
+  downloadUrlRequest,
   transcribeAudioRequest,
   uploadFileRequest,
 } from "./media";
@@ -582,6 +585,27 @@ export class GaiaClient {
           conversationId,
           path,
         ),
+      ctx,
+    );
+  }
+
+  /**
+   * Downloads an outbound attachment's bytes, choosing the transport by origin.
+   *
+   * A URL on our own API (a step screenshot at `/shots/…`, served by the API
+   * where no object store is configured) goes through this authenticated client;
+   * anything else is self-authorizing and stays behind the SSRF guard, because a
+   * queued URL must not make the bot read internal services.
+   */
+  async downloadAttachmentUrl(
+    url: string,
+    ctx: BotUserContext,
+  ): Promise<{ data: Buffer; contentType: string }> {
+    if (!isOwnApiUrl(this.client.defaults.baseURL, url)) {
+      return downloadUrlRequest(url);
+    }
+    return this.requestWithAuth(
+      () => downloadApiBinaryRequest(this.client, this.userHeaders(ctx), url),
       ctx,
     );
   }

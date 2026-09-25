@@ -194,8 +194,8 @@ APPROVAL_TOOL_CATEGORY = "hil"
 
 # Ack text streamed when a chat message resolves a pending approval instead of
 # starting a new turn.
-HIL_ACK_APPROVED = "Got it — going ahead."
-HIL_ACK_DENIED = "Understood — I won't do that."
+HIL_ACK_APPROVED = "Got it, going ahead."
+HIL_ACK_DENIED = "Understood, I will not do that."
 
 # Auto-deny reason when a bot user moves on without answering a pending approval.
 UNRELATED_FEEDBACK = "The user moved on to a different request; do not perform the action."

@@ -28,7 +28,6 @@ from app.agents.core.background import (
     executor_queue as eq,
     executor_runner as er,
     result_delivery as rd,
-    session as sess,
 )
 from app.agents.core.background.executor_capture import (
     await_executor_done,
@@ -54,6 +53,7 @@ from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.executor import (
     EXECUTOR_APPROVAL_LOST_MESSAGE,
+    EXECUTOR_CRASH_MESSAGE,
     EXECUTOR_PAUSED,
     EXECUTOR_STEP_LIMIT_MESSAGE,
 )
@@ -69,13 +69,6 @@ from tests.helpers import WideEventRecorder, captured_wide_event
 # The task text the finalize step now receives; forwarded to comms on a cancel.
 TASK = "run the standup summary"
 CARD_NOTE = wrap_agent_payload(AgentTag.RETURNED_TO_FRONTEND, "todo_data (1 todo)")
-
-
-@pytest.fixture(autouse=True)
-def _clean_registry():
-    sess._sessions.clear()
-    yield
-    sess._sessions.clear()
 
 
 def _run(
@@ -1124,7 +1117,7 @@ class TestARunHandsFinalizeWhatItProduced:
         ):
             await self._drive(inbox_ids=("e1",))
 
-        assert self._delivered(h.deliver) == ("no model", "error")
+        assert self._delivered(h.deliver) == (EXECUTOR_CRASH_MESSAGE, "error")
         h.spawn.assert_not_called()
         assert [e.id for e in await ec.ExecutorInbox("conv-1").read()] == ["e1"]
         warnings = recorder.event("executor_run")["warnings"]
@@ -1139,7 +1132,7 @@ class TestARunHandsFinalizeWhatItProduced:
         [
             (
                 AsyncMock(side_effect=RuntimeError("graph exploded")),
-                ("graph exploded", "error"),
+                (EXECUTOR_CRASH_MESSAGE, "error"),
             ),
             (
                 AsyncMock(side_effect=GraphRecursionError("too deep")),

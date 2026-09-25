@@ -12,6 +12,7 @@ from app.constants.chroma import CHROMA_CANVAS_COLLECTION, CHROMA_NOTES_COLLECTI
 from app.constants.files import CHROMA_DOCUMENTS_COLLECTION
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
+from app.db.chroma.namespace import namespaced_collection
 from app.db.chroma.noop_telemetry import NOOP_PRODUCT_TELEMETRY_IMPL
 from shared.py.wide_events import log
 
@@ -52,6 +53,8 @@ class ChromaClient:
             embedding_function = await providers.aget("google_embeddings")
 
         # If no collection name provided, return the default client
+        if collection_name:
+            collection_name = namespaced_collection(collection_name)
         if not collection_name:
             default_client = await providers.aget("langchain_chroma")
             if default_client is None:

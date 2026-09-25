@@ -39,6 +39,7 @@ from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, agent_configurable
+from app.services.browser.jobs import cancel_conversation_browser_job
 from app.services.hil.ledger_decide import cancel_ledger_approvals
 from app.services.hil.resolution import cancel_conversation_approvals
 from app.services.workflow.execution_service import get_last_run_brief
@@ -132,6 +133,19 @@ async def call_executor(
     if not conversation_id:
         log.error(f"{LogTag.TOOL} call_executor: missing thread_id in configurable")
         return "Internal error: conversation context unavailable. Please try again."
+    if base_configurable.get("is_result_narration"):
+        # A result-narration turn must not start work: the run it narrates still
+        # holds the busy lock, so a dispatch here queues a duplicate of the task
+        # that just finished (one user message, two browser runs).
+        log.info(
+            f"{LogTag.TOOL} call_executor refused during result narration",
+            conversation_id=conversation_id,
+        )
+        return (
+            "Not dispatched. This turn only reports a result that already came back; it "
+            "cannot start new work. Report what happened, including the failure and its "
+            "reason if it failed, and ask the user whether they want it retried."
+        )
 
     task_id = str(uuid4())
     # Read off the configurable, never a tool argument: asking the comms model to
@@ -143,18 +157,18 @@ async def call_executor(
     # replayed transcript. Empty for interactive chat and for a first run.
     workflow_id = base_configurable.get("workflow_id")
     user_id = base_configurable.get("user_id")
-    is_workflow_run = bool(workflow_id and user_id)
-    last_run = await get_last_run_brief(workflow_id, user_id) if is_workflow_run else ""
-    # Asked here, not at narration time: write_playbook is an executor tool that
-    # comms (which narrates the result) cannot reach. The stopped-replay record
-    # rides along verbatim for the same reason as the request: comms paraphrases.
-    playbook_check = (
-        await playbook_check_brief(
+    if workflow_id and user_id:
+        last_run = await get_last_run_brief(workflow_id, user_id)
+        # Asked here, not at narration time: write_playbook is an executor tool that
+        # comms (which narrates the result) cannot reach. The stopped-replay record
+        # rides along verbatim for the same reason as the request: comms paraphrases.
+        playbook_check = await playbook_check_brief(
             workflow_id, user_id, fallback_note=base_configurable.get("playbook_fallback")
         )
-        if is_workflow_run
-        else ""
-    )
+    else:
+        # compose_executor_brief skips a falsy part, so None and "" are equivalent here.
+        last_run = ""  # pragma: no mutate
+        playbook_check = ""  # pragma: no mutate
 
     composed_task = compose_executor_brief(
         task,
@@ -365,7 +379,14 @@ async def cancel_executor(
     lock_value: str | None = decode_raw_item(raw_lock) if raw_lock is not None else None
     has_pending = await inbox.count() > 0
 
+    # A browser run outlives the turn that started it, so the stream's cancel
+    # flag reaches it only while that turn is alive; a stop-everything also flags
+    # the job. A targeted cancel names one executor task and leaves it running.
+    browser_job = await cancel_conversation_browser_job(conversation_id) if cancel_all else None
+
     if not lock_value and not has_pending:
+        if browser_job:
+            return "Stopped the browser task."
         return "No executor tasks are running or pending for this conversation."
 
     try:

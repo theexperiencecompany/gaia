@@ -123,6 +123,10 @@ vi.mock("@gaia/shared/bots", async () => {
       unsupportedMediaMessage: vi.fn(
         (kind: string) => `I can't process ${kind} yet.`,
       ),
+      // The real boundary and failure recorder, so the runtime-error test
+      // reads the bot_event the adapter really prints.
+      withWideEvent: vi.fn(real.withWideEvent),
+      recordBotFailure: vi.fn(real.recordBotFailure),
     },
   });
 });
@@ -146,6 +150,7 @@ import {
   extractTelegramMedia,
   TelegramAdapter,
 } from "../../telegram/src/adapter";
+import { captureBotEvents } from "../shared/helpers/capture-bot-event";
 
 /** A real-shaped one-tap link code: 22 urlsafe-base64 characters. */
 const LINK_CODE = "Ab3-_xY9zQ1234567890wE";
@@ -1650,6 +1655,40 @@ describe("TelegramAdapter - media message routing", () => {
     ).resolveIncomingMedia;
     expect(resolve).not.toHaveBeenCalled();
     expect(handleStreamingChat).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// bot.catch — grammY's last-resort handler
+// ---------------------------------------------------------------------------
+
+describe("TelegramAdapter - runtime errors", () => {
+  it("records a middleware crash as a failed bot_runtime_error with its reason and hashed ids", async () => {
+    const adapter = makeAdapter();
+    (
+      adapter as unknown as { registerErrorHandler: () => void }
+    ).registerErrorHandler();
+    const handler = mockBotCatch.mock.calls.at(-1)?.[0] as (err: {
+      error: unknown;
+      ctx: unknown;
+    }) => Promise<void>;
+
+    const events = await captureBotEvents("bot_runtime_error", () =>
+      handler({
+        error: new Error("Forbidden: bot was blocked by the user"),
+        ctx: { from: { id: 42 }, chat: { id: 7 }, update: { update_id: 9 } },
+      }),
+    );
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      platform: "telegram",
+      outcome: "failed",
+      reason: "destination_blocked",
+      user_hash: "h_42",
+      channel_hash: "h_7",
+      update_id: 9,
+    });
   });
 });
 

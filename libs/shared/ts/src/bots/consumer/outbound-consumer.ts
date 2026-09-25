@@ -12,15 +12,24 @@
 import { type Channel, type ConsumeMessage, connect } from "amqplib";
 import type { PlatformName } from "../types";
 import { segmentIntoBubbles } from "../utils/bubbles";
+import {
+  BOT_FAILURE_REASON,
+  isTransientBotFailure,
+  recordBotFailure,
+} from "../utils/failure-reasons";
 import { renderForPlatform } from "../utils/formatters";
-import { type BotLogger, createBotLogger } from "../utils/logger";
+import {
+  type BotLogger,
+  createBotLogger,
+  hashLogIdentifier,
+} from "../utils/logger";
 import { chunkResponse } from "../utils/text";
 import { wideLog, withWideEvent } from "../utils/wide-events";
 import {
   type OutboundAttachment,
   type OutboundMessageEnvelope,
   type OutboundReaction,
-  outboundMessageEnvelopeSchema,
+  outboundMessageEnvelopeSchemaFor,
 } from "./envelope";
 import {
   dlqName,
@@ -32,6 +41,8 @@ import {
 /** Messages prefetched per consumer — bounds in-flight work for backpressure. */
 const PREFETCH = 8;
 const RECONNECT_BASE_MS = 1_000;
+/** Lane for a message whose destination can't be read; handle() dead-letters it. */
+const UNREADABLE_LANE = "";
 const RECONNECT_MAX_MS = 30_000;
 
 /**
@@ -45,10 +56,14 @@ type DeliverFn = (
   isChannel: boolean,
 ) => Promise<void>;
 
-/** Sends one file attachment to a platform destination. */
+/**
+ * Sends one file attachment to a platform destination, addressed like
+ * {@link DeliverFn}: a channel/group id when `isChannel`, else a user id.
+ */
 type DeliverFileFn = (
   destinationId: string,
   attachment: OutboundAttachment,
+  isChannel: boolean,
 ) => Promise<void>;
 
 /**
@@ -68,17 +83,29 @@ export class OutboundConsumer {
   private stopped = false;
   private reconnectDelayMs = RECONNECT_BASE_MS;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Per-chat delivery chains, so one chat's messages go out in published order. */
+  private readonly lanes = new Map<string, Promise<void>>();
   private readonly logger: BotLogger;
+  private readonly envelopeSchema: ReturnType<
+    typeof outboundMessageEnvelopeSchemaFor
+  >;
   private readonly deliverReaction: DeliverReactionFn;
 
+  /**
+   * `gaiaApiUrl` is what makes a plain-http attachment URL acceptable: a dev or
+   * self-hosted API serves step screenshots off its own host, and only that one
+   * origin is exempt from the https rule.
+   */
   constructor(
     private readonly platform: PlatformName,
     private readonly url: string,
     private readonly deliver: DeliverFn,
     private readonly deliverFile: DeliverFileFn,
+    gaiaApiUrl: string | undefined,
     deliverReaction?: DeliverReactionFn,
   ) {
     this.logger = createBotLogger(platform, "outbound-consumer");
+    this.envelopeSchema = outboundMessageEnvelopeSchemaFor(gaiaApiUrl);
     // Platforms without a native reaction path keep the old behavior: the
     // emoji goes out as a text bubble. Explicit, logged at the call site.
     this.deliverReaction =
@@ -126,7 +153,14 @@ export class OutboundConsumer {
           queue,
         },
         async () => {
-          this.conn = await connect(this.url);
+          const conn = await connect(this.url);
+          if (this.stopped) {
+            // stop() ran while the connection was opening, before there was a
+            // connection for it to close: a bot whose boot failed kept consuming.
+            await conn.close().catch(() => undefined);
+            return;
+          }
+          this.conn = conn;
           this.conn.on("close", () => this.scheduleReconnect());
           // Keeps the reason diagnosable and stops an unhandled 'error' from killing the
           // process; 'close' still drives the reconnect. Without this the only trace of a
@@ -154,7 +188,7 @@ export class OutboundConsumer {
             arguments: workQueueArguments(queue),
           });
           await this.channel.prefetch(PREFETCH);
-          await this.channel.consume(queue, (msg) => void this.handle(msg));
+          await this.channel.consume(queue, (msg) => this.dispatch(msg));
 
           this.reconnectDelayMs = RECONNECT_BASE_MS;
         },
@@ -206,6 +240,25 @@ export class OutboundConsumer {
     }
   }
 
+  /**
+   * Hands a message to its chat's lane. Prefetched messages run concurrently, so a
+   * slow photo upload let the text published after it arrive first; one chat's
+   * messages now go out in published order while other chats proceed.
+   */
+  private dispatch(msg: ConsumeMessage | null): void {
+    if (!msg) {
+      void this.handle(msg);
+      return;
+    }
+    const lane = laneKey(msg);
+    const previous = this.lanes.get(lane) ?? Promise.resolve();
+    const current = previous.then(() => this.handle(msg));
+    this.lanes.set(lane, current);
+    void current.finally(() => {
+      if (this.lanes.get(lane) === current) this.lanes.delete(lane);
+    });
+  }
+
   private async handle(msg: ConsumeMessage | null): Promise<void> {
     const channel = this.channel;
     if (!msg || !channel) return;
@@ -226,6 +279,7 @@ export class OutboundConsumer {
 
         wideLog.set({
           envelope_id: env.id,
+          destination_hash: hashLogIdentifier(env.destination_id),
           has_attachment: Boolean(env.attachment),
           has_reaction: Boolean(env.reaction),
         });
@@ -249,6 +303,7 @@ export class OutboundConsumer {
             env.id,
             env.destination_id,
             env.attachment,
+            env.is_channel,
           );
           return;
         }
@@ -281,14 +336,19 @@ export class OutboundConsumer {
       wideLog.warning("outbound_envelope_unparseable", {
         bytes: msg.content.length,
       });
+      wideLog.fail(BOT_FAILURE_REASON.ENVELOPE_REJECTED);
       this.settle(channel, () => channel.nack(msg, false, false)); // unparseable → DLQ
       return null;
     }
-    const parsed = outboundMessageEnvelopeSchema.safeParse(raw);
+    const parsed = this.envelopeSchema.safeParse(raw);
     if (!parsed.success) {
       wideLog.warning("outbound_envelope_invalid", {
         issues: parsed.error.issues.length,
+        invalid_fields: parsed.error.issues.map((issue) =>
+          issue.path.join("."),
+        ),
       });
+      wideLog.fail(BOT_FAILURE_REASON.ENVELOPE_REJECTED);
       this.settle(channel, () => channel.nack(msg, false, false)); // schema mismatch → DLQ
       return null;
     }
@@ -302,6 +362,7 @@ export class OutboundConsumer {
         expected: this.platform,
         got: env.platform,
       });
+      wideLog.fail(BOT_FAILURE_REASON.ENVELOPE_REJECTED);
       this.settle(channel, () => channel.nack(msg, false, false)); // wrong platform → DLQ
       return null;
     }
@@ -319,17 +380,17 @@ export class OutboundConsumer {
     id: string,
     destinationId: string,
     attachment: OutboundAttachment,
+    isChannel: boolean,
   ): Promise<void> {
     wideLog.set({ attachment_filename: attachment.filename });
     try {
-      await this.deliverFile(destinationId, attachment);
+      await this.deliverFile(destinationId, attachment, isChannel);
       this.settle(channel, () => channel.ack(msg));
     } catch (err) {
-      wideLog.error(
-        "outbound_file_delivery_failed",
-        { envelope_id: id, redelivered: msg.fields.redelivered },
-        err,
-      );
+      recordBotFailure("outbound_file_delivery_failed", err, {
+        envelope_id: id,
+        redelivered: msg.fields.redelivered,
+      });
       // Never requeue a file: deliverFile fetches AND uploads, so a failure can surface after
       // the platform already accepted the upload. We can't tell a pre-send from a post-send
       // failure, so requeueing risks a duplicate; dead-letter instead for manual replay.
@@ -384,6 +445,7 @@ export class OutboundConsumer {
     const sources = resolveSources(text, textParts);
     if (sources.length === 0) {
       wideLog.warning("outbound_envelope_empty", { envelope_id: id });
+      wideLog.fail(BOT_FAILURE_REASON.ENVELOPE_REJECTED);
       this.settle(channel, () => channel.nack(msg, false, false)); // nothing to send → DLQ
       return;
     }
@@ -403,25 +465,26 @@ export class OutboundConsumer {
       // it so the dropped message is visible for inspection.
       if (progress.delivered === 0) {
         wideLog.warning("outbound_text_rendered_empty", { envelope_id: id });
+        wideLog.fail(BOT_FAILURE_REASON.ENVELOPE_REJECTED);
         this.settle(channel, () => channel.nack(msg, false, false));
         return;
       }
       this.settle(channel, () => channel.ack(msg));
     } catch (err) {
       wideLog.set({ delivered_count: progress.delivered });
-      wideLog.error(
-        "outbound_delivery_failed",
-        {
-          envelope_id: id,
-          delivered: progress.delivered,
-          redelivered: msg.fields.redelivered,
-        },
-        err,
-      );
-      // Requeue for one retry ONLY if nothing was sent yet: requeue re-delivers the WHOLE
-      // envelope, so once any chunk is out, retrying would re-send delivered chunks. After a
-      // partial send (or a second attempt) dead-letter instead, to avoid duplicating the user.
-      const requeue = progress.delivered === 0 && !msg.fields.redelivered;
+      const reason = recordBotFailure("outbound_delivery_failed", err, {
+        envelope_id: id,
+        delivered: progress.delivered,
+        redelivered: msg.fields.redelivered,
+      });
+      // One retry, only for a failure a retry can get past and only if nothing went out:
+      // requeue re-delivers the WHOLE envelope, so after a partial send it would duplicate
+      // the user. A permanent failure (chat gone, bot blocked) dead-letters at once.
+      const requeue =
+        isTransientBotFailure(reason) &&
+        progress.delivered === 0 &&
+        !msg.fields.redelivered;
+      wideLog.set({ requeued: requeue });
       this.settle(channel, () => channel.nack(msg, false, requeue));
     }
   }
@@ -467,4 +530,17 @@ function resolveSources(
   if (textParts?.length) return textParts;
   if (text) return [text];
   return [];
+}
+
+/** The destination a message is delivered to, read before validation so it can pick a lane. */
+function laneKey(msg: ConsumeMessage): string {
+  try {
+    const parsed: unknown = JSON.parse(msg.content.toString());
+    if (parsed && typeof parsed === "object" && "destination_id" in parsed) {
+      return String(parsed.destination_id);
+    }
+  } catch {
+    // Unparseable: handle() dead-letters it; no chat order to keep.
+  }
+  return UNREADABLE_LANE;
 }

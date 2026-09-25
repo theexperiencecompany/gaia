@@ -1,13 +1,13 @@
 ---
 name: notion-search-content
-description: Smart Notion search — query pages and databases, apply filters, traverse content, synthesize findings
+description: Smart Notion search: query pages and databases, apply filters, traverse content, synthesize findings
 target: notion_agent
 ---
 
 # Notion: Search & Find Content
 
 ## When to Activate
-User is looking for information in Notion — pages, databases, specific content, or trying to find something they remember vaguely.
+User is looking for information in Notion: pages, databases, specific content, or trying to find something they remember vaguely.
 
 ## Step 1: Choose Search Strategy
 
@@ -70,7 +70,7 @@ NOTION_FETCH_DATABASE(database_id="<uuid>") → properties, column types
 
 ## Step 5: Synthesize Results
 
-Don't just dump results — organize them:
+Don't just dump results, organize them:
 
 ```
 Found 5 results for "product roadmap":
@@ -98,7 +98,7 @@ Found 5 results for "product roadmap":
 
 ## Using spawn_subagent for Multiple Pages
 
-When you need to read content from multiple Notion pages, the **parent agent** drives the loop — it spawns one subagent per page (or per batch of pages) to keep the main context clean. Subagents cannot spawn further subagents.
+When you need to read content from multiple Notion pages, the **parent agent** drives the loop. It spawns one subagent per page (or per batch of pages) to keep the main context clean. Subagents cannot spawn further subagents.
 
 ```
 # Parent finds page IDs via search

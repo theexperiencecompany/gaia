@@ -23,6 +23,7 @@ import {
   createBotLogger,
   extractSubcommandArgs,
   handleStreamingChat,
+  type OutboundAttachment,
   type PlatformName,
   type RichMessage,
   type RichMessageTarget,
@@ -32,8 +33,13 @@ import {
 import type { PlatformEmulation } from "./emulation";
 import type { TranscriptRecorder } from "./transcript";
 
-/** Default HTTP health-server port — high, to avoid the 3200-3203 real bots. */
-const HARNESS_SERVER_PORT = 3210;
+/**
+ * Port 0: the OS picks a free one. Nothing calls the harness's health server,
+ * and a fixed port made a second concurrent sender (a "stop" sent mid-run)
+ * die on EADDRINUSE while its outbound consumer kept taking the first run's
+ * replies. The runner clears `BOT_SERVER_PORT`, which would override it.
+ */
+const HARNESS_SERVER_PORT = 0;
 
 /** Options accepted by {@link HarnessAdapter.simulateMessage}. */
 export interface SimulateOptions {
@@ -61,8 +67,20 @@ export class HarnessAdapter extends BaseBotAdapter {
   private readonly adapterLogger: BotLogger;
   private nextMessageId = 1;
 
-  constructor(emulation: PlatformEmulation, transcript: TranscriptRecorder) {
+  protected override readonly consumesOutbound: boolean;
+
+  /**
+   * consumesOutbound is false for a message sent into a conversation another
+   * harness process is already consuming for: RabbitMQ would split that
+   * process's deliveries between the two.
+   */
+  constructor(
+    emulation: PlatformEmulation,
+    transcript: TranscriptRecorder,
+    { consumesOutbound = true }: { consumesOutbound?: boolean } = {},
+  ) {
     super();
+    this.consumesOutbound = consumesOutbound;
     this.platform = emulation.platform;
     this.emulation = emulation;
     this.transcript = transcript;
@@ -114,6 +132,33 @@ export class HarnessAdapter extends BaseBotAdapter {
       text,
     });
     return Promise.resolve();
+  }
+
+  /**
+   * Records a backend-originated file delivery, fetching the bytes through the
+   * real shared helper first. The base class would answer "I can't send files on
+   * telegram yet" — but the harness stands in for a platform that can, so a
+   * transcript has to show the caption and prove the download succeeded.
+   */
+  protected override async deliverOutboundFile(
+    destinationId: string,
+    attachment: OutboundAttachment,
+    isChannel: boolean,
+  ): Promise<void> {
+    const artifact = await this.fetchOutboundArtifact(
+      destinationId,
+      attachment,
+      isChannel,
+    );
+    if (!artifact) return; // too large — fetchOutboundArtifact already replied
+    this.transcript.record({
+      type: "outbound-attachment",
+      destinationId,
+      filename: attachment.filename,
+      text: attachment.caption ?? "",
+      bytes: artifact.data.length,
+      contentType: attachment.content_type ?? artifact.contentType,
+    });
   }
 
   // ---------------------------------------------------------------------------

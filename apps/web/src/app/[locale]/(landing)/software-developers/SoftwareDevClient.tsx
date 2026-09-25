@@ -72,7 +72,7 @@ export default function SoftwareDevClient() {
           transition={{ duration: 0.7, ease, delay: 0.2 }}
           className="relative z-10 mb-10 max-w-2xl text-xl font-light leading-relaxed text-white"
         >
-          GAIA monitors GitHub, Linear, and Slack in the background — triages
+          GAIA monitors GitHub, Linear, and Slack in the background, triages
           what needs you, handles the rest, and delivers your standup before
           your first commit.
         </m.p>
@@ -95,7 +95,7 @@ export default function SoftwareDevClient() {
         <SectionHeader
           label="Proactive AI"
           headline="GAIA works while you ship."
-          description="Stop losing deep work sessions to GitHub noise, stale tickets, and Slack threads you should have seen hours ago. GAIA runs silently in the background — surfaces what actually matters, handles the rest, and reports back when you surface."
+          description="Stop losing deep work sessions to GitHub noise, stale tickets, and Slack threads you should have seen hours ago. GAIA runs silently in the background: it surfaces what actually matters, handles the rest, and reports back when you surface."
           integrations={[
             { id: "github", label: "GitHub" },
             { id: "linear", label: "Linear" },
@@ -113,7 +113,7 @@ export default function SoftwareDevClient() {
         <SectionHeader
           label="Daily Standup"
           headline="Your standup, written before your first commit."
-          description="Every morning GAIA compiles your merged PRs, completed Linear tickets, and blocked work from GitHub and Slack — and formats it as a ready-to-post standup update. Just show up to standup."
+          description="Every morning GAIA compiles your merged PRs, completed Linear tickets, and blocked work from GitHub and Slack, then formats it as a ready-to-post standup update. Just show up to standup."
           integrations={[
             { id: "github", label: "GitHub" },
             { id: "linear", label: "Linear" },
@@ -131,7 +131,7 @@ export default function SoftwareDevClient() {
         <SectionHeader
           label="PR Review"
           headline="No PR goes stale on your watch."
-          description="GAIA tracks every open PR across your repositories, flags reviews going cold, and summarizes what changed — so you unblock your team in 2 minutes, not 20."
+          description="GAIA tracks every open PR across your repositories, flags reviews going cold, and summarizes what changed, so you unblock your team in 2 minutes, not 20."
           integrations={[
             { id: "github", label: "GitHub" },
             { id: "slack", label: "Slack" },
@@ -150,7 +150,7 @@ export default function SoftwareDevClient() {
           label="Team Q&A"
           labelIcon={<SlackIcon />}
           headline="Your team gets answers in Slack. Without pulling you in."
-          description="Ask @GAIA anything in your Slack channel and it answers from GitHub, Linear, Notion, and your docs — instantly. No DMs, no interruptions, no meetings about meetings."
+          description="Ask @GAIA anything in your Slack channel and it answers from GitHub, Linear, Notion, and your docs, instantly. No DMs, no interruptions, no meetings about meetings."
           integrations={[
             { id: "slack", label: "Slack" },
             { id: "github", label: "GitHub" },
@@ -168,7 +168,7 @@ export default function SoftwareDevClient() {
         <SectionHeader
           label="Incident Response"
           headline="First to know. Never the last to respond."
-          description="GAIA monitors Sentry errors, GitHub alerts, and Datadog anomalies — and pages you in Slack the moment something breaks, with context already pulled so you can triage in seconds."
+          description="GAIA monitors Sentry errors, GitHub alerts, and Datadog anomalies, then pages you in Slack the moment something breaks, with context already pulled so you can triage in seconds."
           integrations={[
             { id: "github", label: "GitHub" },
             { id: "slack", label: "Slack" },
@@ -185,7 +185,7 @@ export default function SoftwareDevClient() {
         <SectionHeader
           label="On Autopilot"
           headline="Set it once. It ships while you sleep."
-          description="Daily standup at 9am. Weekly sprint reports. PR review reminders every 24 hours. Tell GAIA once — it builds the workflow, connects the tools, and runs every time. You never touch it again."
+          description="Daily standup at 9am. Weekly sprint reports. PR review reminders every 24 hours. Tell GAIA once, and it builds the workflow, connects the tools, and runs every time. You never touch it again."
           integrations={[
             { id: "github", label: "GitHub" },
             { id: "linear", label: "Linear" },

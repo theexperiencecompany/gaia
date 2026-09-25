@@ -36,7 +36,11 @@ from app.schemas.dev_schemas import (
 from app.services.conversation_service import create_conversation_service
 from app.services.files import FileService
 from app.services.oauth.oauth_service import store_user_info
-from app.services.platform_link_service import Platform, PlatformLinkService
+from app.services.platform_link_service import (
+    AccountHasDifferentPlatformError,
+    Platform,
+    PlatformLinkService,
+)
 from app.services.todos.todo_service import TodoService
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.utils.errors import create_error
@@ -164,7 +168,7 @@ async def seed_dev_data(
             for i in range(conversations)
         ),
         *(
-            PlatformLinkService.link_account(
+            _link_replacing(
                 user_id=user_id,
                 platform=platform,
                 platform_user_id=platform_user_id,
@@ -193,6 +197,27 @@ async def seed_dev_data(
         platforms_linked=platform_links,
         platform_user_ids=platform_user_ids,
     )
+
+
+async def _link_replacing(
+    *, user_id: str, platform: str, platform_user_id: str, profile: dict[str, str]
+) -> None:
+    """Make platform_user_id the user's link for platform, replacing a different one.
+
+    A seed says which platform identity should reach this user; on a dev box
+    the user often already has a real one linked (the bot harness's synthetic
+    id and a real Telegram account cannot both hold the one slot), and the
+    seed is the dev tool that decides.
+    """
+    try:
+        await PlatformLinkService.link_account(
+            user_id=user_id, platform=platform, platform_user_id=platform_user_id, profile=profile
+        )
+    except AccountHasDifferentPlatformError:
+        await PlatformLinkService.unlink_account(user_id, platform)
+        await PlatformLinkService.link_account(
+            user_id=user_id, platform=platform, platform_user_id=platform_user_id, profile=profile
+        )
 
 
 async def delete_dev_user(email: str) -> DeleteDevUserResponse:

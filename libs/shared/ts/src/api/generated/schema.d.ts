@@ -380,6 +380,198 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/browser/handoffs/{handoff_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Browser Handoff
+         * @description Current status of a browser handoff — the card polls this so a reload or a
+         *     resolution made elsewhere (chat, another device) is reflected reliably.
+         */
+        get: operations["browser_get_browser_handoff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/browser/handoffs/{handoff_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Browser Handoff
+         * @description Continue (user finished the step in live-view) or cancel a browser handoff.
+         */
+        post: operations["browser_decide_browser_handoff"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/browser/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Browser Sessions
+         * @description Receive a browser profile from the local CLI and store it as saved logins.
+         *
+         *     Authenticated by the single-use import code, not a session cookie — the CLI
+         *     runs outside the browser. The uploaded storage_state is split per host and
+         *     encrypted at rest by the same store that seeds every future task.
+         */
+        post: operations["browser_import_browser_sessions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/browser/import/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mint Browser Import Token
+         * @description Mint the short-lived, single-use code the local ``gaia connect`` CLI
+         *     presents to upload this user's browser profile. Authorised by the web
+         *     session; the CLI, which has no cookie, authenticates with the returned code.
+         */
+        post: operations["browser_mint_browser_import_token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/browser/logins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Browser Logins Endpoint
+         * @description Domains the user has a saved browser login for (never the encrypted state).
+         */
+        get: operations["browser_list_browser_logins_endpoint"];
+        put?: never;
+        post?: never;
+        /**
+         * Clear Browser Logins Endpoint
+         * @description Forget every saved browser login for the user.
+         */
+        delete: operations["browser_clear_browser_logins_endpoint"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/browser/logins/{domain}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Forget Browser Login Endpoint
+         * @description Forget the saved login for one domain.
+         */
+        delete: operations["browser_forget_browser_login_endpoint"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/browser/sessions/{session_id}/live-view-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Live View Token
+         * @description Mint a short-lived takeover token so the web card can open the cross-origin
+         *     live view (the host-only session cookie is not sent to the live-view vhost).
+         */
+        get: operations["browser_get_live_view_token"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/browser/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Browser Tasks Endpoint
+         * @description The user's browser task history (settings), newest first, with recap URLs.
+         */
+        get: operations["browser_list_browser_tasks_endpoint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/browser/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Browser Task Endpoint
+         * @description Remove one task from the user's browser history.
+         */
+        delete: operations["browser_delete_browser_task_endpoint"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/calendar/{calendar_id}/events": {
         parameters: {
             query?: never;
@@ -1009,6 +1201,46 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/features": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Features
+         * @description The flags the caller may toggle, each with the value in effect for them.
+         */
+        get: operations["features_list_features"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/features/{flag}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Feature
+         * @description Turn one user-facing flag on or off for the caller; unknown and internal flags are 404.
+         */
+        patch: operations["features_update_feature"];
         trace?: never;
     };
     "/api/v1/fetch-url-metadata": {
@@ -5387,6 +5619,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/live/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Live View Page
+         * @description Standalone live-view page. ``code`` is a short capability code (the bot link)
+         *     that resolves to a session + owner in Redis; failing that it is treated as a raw
+         *     session id authorized by the ``?t=`` takeover token or a same-origin cookie (the
+         *     web chat card).
+         */
+        get: operations["browser_live_view_page"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/replays/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Replay Page
+         * @description Standalone recap slideshow for a finished session. ``code`` resolves to the
+         *     session + step count in Redis; the step screenshots are public R2 URLs, so no
+         *     per-session auth is needed (the code itself is the unguessable capability).
+         */
+        get: operations["browser_replay_page"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shots/{code}/{index}.png": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Step Screenshot
+         * @description One step frame of a finished run, for deployments with no object store.
+         *
+         *     Same capability model as the recap page it feeds: the code is the secret, so
+         *     a frame cannot be reached by guessing a session id, and it expires with the
+         *     code. The index is an int, so it cannot walk out of the run's directory.
+         */
+        get: operations["browser_step_screenshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -6146,6 +6447,93 @@ export interface components {
              * @description User's display name (null if not set)
              */
             user_name?: string | null;
+        };
+        /**
+         * BrowserImportRequest
+         * @description A profile upload from the local CLI: the mint code plus a Playwright
+         *     storage_state (cookies + localStorage), split per host on the server.
+         */
+        BrowserImportRequest: {
+            /** Cookies */
+            cookies?: components["schemas"]["ImportedCookie"][];
+            /** Origins */
+            origins?: components["schemas"]["ImportedOrigin"][];
+            /** Source Browser */
+            source_browser?: string | null;
+            /** Token */
+            token: string;
+        };
+        /**
+         * BrowserImportResponse
+         * @description What landed: the hosts now seeded and how many cookies each carries.
+         */
+        BrowserImportResponse: {
+            /** Cookie Count */
+            cookie_count: number;
+            /** Host Count */
+            host_count: number;
+            /** Imported */
+            imported?: components["schemas"]["BrowserLoginResponse"][];
+        };
+        /**
+         * BrowserLoginResponse
+         * @description A saved browser login. Only the domain is exposed — never the encrypted state.
+         */
+        BrowserLoginResponse: {
+            /** Domain */
+            domain: string;
+            /** Expires At */
+            expires_at: string | null;
+            /** Source */
+            source: string | null;
+            /** Source Browser */
+            source_browser: string | null;
+            /** Source Ip */
+            source_ip: string | null;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /**
+         * BrowserSessionStatus
+         * @description Lifecycle state of a browser session: created to live/working to ended/failed.
+         * @enum {string}
+         */
+        BrowserSessionStatus: "starting" | "running" | "paused" | "completed" | "failed" | "cancelled";
+        /**
+         * BrowserTaskFrame
+         * @description One recap frame: a step screenshot plus what the agent was doing.
+         */
+        BrowserTaskFrame: {
+            /** Caption */
+            caption?: string | null;
+            /** Url */
+            url: string;
+        };
+        /**
+         * BrowserTaskResponse
+         * @description One row in the user's browser task history (settings).
+         */
+        BrowserTaskResponse: {
+            /** Conversation Id */
+            conversation_id: string;
+            /** Created At */
+            created_at: string | null;
+            /**
+             * Frames
+             * @description Recap frames (screenshot + caption), in order.
+             */
+            frames: components["schemas"]["BrowserTaskFrame"][];
+            /** Id */
+            id: string;
+            /** Source */
+            source: string;
+            status: components["schemas"]["BrowserSessionStatus"];
+            /** Steps */
+            steps: number;
+            /** Success */
+            success: boolean;
+            /** Task */
+            task: string;
         };
         /**
          * BudgetWindow
@@ -7210,7 +7598,7 @@ export interface components {
             icon_color?: string | null;
             /**
              * Integration Ids
-             * @description Integration ids this workflow uses — picked by the user or identified from intent. Scopes the tool palette when generating steps.
+             * @description Integration ids this workflow uses, picked by the user or identified from intent. Scopes the tool palette when generating steps.
              */
             integration_ids?: string[] | null;
             /**
@@ -7885,6 +8273,12 @@ export interface components {
             used: number;
         };
         /**
+         * FeatureStage
+         * @description How finished a user-facing feature is, shown next to its toggle.
+         * @enum {string}
+         */
+        FeatureStage: "experimental";
+        /**
          * FeatureUpgrade
          * @description The Pro tier's limits for a feature, so a free user sees the delta.
          */
@@ -8495,6 +8889,36 @@ export interface components {
             trigger_name: "google_sheets_new_sheet";
         };
         /**
+         * HandoffDecision
+         * @description User decision on a pending handoff, or a note-only reply.
+         * @enum {string}
+         */
+        HandoffDecision: "continue" | "cancel";
+        /**
+         * HandoffDecisionRequest
+         * @description Body of ``POST /browser/handoffs/{handoff_id}/decision``.
+         */
+        HandoffDecisionRequest: {
+            decision: components["schemas"]["HandoffDecision"];
+            /** Message */
+            message?: string | null;
+        };
+        /**
+         * HandoffDecisionResponse
+         * @description Outcome of a handoff decision: accepted with note, cancelled, or errored.
+         */
+        HandoffDecisionResponse: {
+            /** Handoff Id */
+            handoff_id: string;
+            status: components["schemas"]["HandoffStatus"];
+        };
+        /**
+         * HandoffStatus
+         * @description State of a live-view handoff: pending, completed, cancelled, expired.
+         * @enum {string}
+         */
+        HandoffStatus: "pending" | "completed" | "cancelled" | "timeout";
+        /**
          * HealthResponse
          * @description ``GET /health`` (and its ping/root aliases) when the API is serving normally.
          */
@@ -8588,6 +9012,70 @@ export interface components {
              * @description The model's answer about the uploaded image
              */
             response: string;
+        };
+        /**
+         * ImportedCookie
+         * @description One cookie in a Playwright storage_state. Field aliases match Playwright's
+         *     camelCase exactly, so a dump ``by_alias`` re-emits the shape the browser host
+         *     seeds — this is an external schema boundary, not our own.
+         */
+        ImportedCookie: {
+            /** Domain */
+            domain: string;
+            /**
+             * Expires
+             * @default -1
+             */
+            expires?: number;
+            /**
+             * Httponly
+             * @default false
+             */
+            httpOnly?: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Path
+             * @default /
+             */
+            path?: string;
+            /**
+             * Samesite
+             * @default Lax
+             * @enum {string}
+             */
+            sameSite?: "Strict" | "Lax" | "None";
+            /**
+             * Secure
+             * @default false
+             */
+            secure?: boolean;
+            /** Value */
+            value: string;
+        };
+        /** ImportedLocalStorageItem */
+        ImportedLocalStorageItem: {
+            /** Name */
+            name: string;
+            /** Value */
+            value: string;
+        };
+        /** ImportedOrigin */
+        ImportedOrigin: {
+            /** Localstorage */
+            localStorage?: components["schemas"]["ImportedLocalStorageItem"][];
+            /** Origin */
+            origin: string;
+        };
+        /**
+         * ImportTokenResponse
+         * @description The short-lived code the CLI presents, and how long it lives.
+         */
+        ImportTokenResponse: {
+            /** Expires In Seconds */
+            expires_in_seconds: number;
+            /** Token */
+            token: string;
         };
         /**
          * InitiatePlatformConnectRequest
@@ -9020,6 +9508,19 @@ export interface components {
              * @description Username on the platform
              */
             username: string | null;
+        };
+        /**
+         * LiveViewTokenResponse
+         * @description A short-lived takeover token for opening the cross-origin live view.
+         */
+        LiveViewTokenResponse: {
+            /**
+             * Expires In
+             * @description Seconds until the token expires.
+             */
+            expires_in: number;
+            /** Token */
+            token: string;
         };
         /**
          * LogoutResponse
@@ -9641,6 +10142,18 @@ export interface components {
          */
         MemorySearchResult: {
             /**
+             * Degraded
+             * @description Whether the embedding sidecar failed fast and recall ran without dense search or the reranker; such a result is never cached
+             * @default false
+             */
+            degraded: boolean;
+            /**
+             * Has Confident Match
+             * @description Whether any memory matched the query confidently rather than as a weak fallback
+             * @default false
+             */
+            has_confident_match: boolean;
+            /**
              * Memories
              * @description List of matching memories
              */
@@ -9954,12 +10467,12 @@ export interface components {
             first_message: string;
             /**
              * Handoff Text
-             * @description first_message with ' #<code>' appended — the exact text a WhatsApp or iMessage user sends. Used to build the iMessage sms: link, whose number is only known after the phone is registered on Photon's pool.
+             * @description first_message with ' #<code>' appended, the exact text a WhatsApp or iMessage user sends. Used to build the iMessage sms: link, whose number is only known after the phone is registered on Photon's pool.
              */
             handoff_text: string;
             /**
              * Links
-             * @description Deep link per platform that carries the code. iMessage is absent by construction — its number is assigned per user.
+             * @description Deep link per platform that carries the code. iMessage is absent by construction; its number is assigned per user.
              */
             links: {
                 [key: string]: string;
@@ -11499,7 +12012,7 @@ export interface components {
             delivered: boolean;
             /**
              * First Contact
-             * @description Ordered bubbles the bot must send itself because delivery failed. Empty whenever delivered is true — sending them then would say everything twice.
+             * @description Ordered bubbles the bot must send itself because delivery failed. Empty whenever delivered is true, because sending them then would say everything twice.
              */
             first_contact?: string[];
             /**
@@ -13865,6 +14378,14 @@ export interface components {
              */
             timezone: string;
         };
+        /** UpdateUserFeatureFlagRequest */
+        UpdateUserFeatureFlagRequest: {
+            /**
+             * Enabled
+             * @description The caller's choice; it overrides the rollout for them
+             */
+            enabled: boolean;
+        };
         /**
          * UpdateVoiceRequest
          * @description Request body for choosing a voice.
@@ -13976,6 +14497,52 @@ export interface components {
             /** User Id */
             user_id: string;
         };
+        /** UserFeatureFlagListResponse */
+        UserFeatureFlagListResponse: {
+            /**
+             * Features
+             * @description Every user-facing flag, in registry order
+             */
+            features: components["schemas"]["UserFeatureFlagResponse"][];
+        };
+        /**
+         * UserFeatureFlagResponse
+         * @description One flag the user may toggle, with the value currently in effect for them.
+         */
+        UserFeatureFlagResponse: {
+            /**
+             * Available
+             * @description False while ops have the feature killed for everyone; the switch is locked
+             */
+            available: boolean;
+            /**
+             * Description
+             * @description One or two sentences on what turning it on changes
+             */
+            description: string;
+            /**
+             * Enabled
+             * @description In effect for the caller: off while killed, else their own choice, else the rollout, else the default
+             */
+            enabled: boolean;
+            /**
+             * Key
+             * @description Flag key, the {flag} path parameter of the PATCH route
+             */
+            key: string;
+            /**
+             * Label
+             * @description Short name shown next to the toggle
+             */
+            label: string;
+            /** @description How finished the feature is */
+            stage: components["schemas"]["FeatureStage"];
+            /**
+             * Unavailable Reason
+             * @description Why the switch is locked, shown beside it; null when available
+             */
+            unavailable_reason: string | null;
+        };
         /**
          * UserSubscriptionStatus
          * @description Response model for user subscription status.
@@ -14002,7 +14569,7 @@ export interface components {
             days_remaining: number | null;
             /**
              * Has Ever Subscribed
-             * @description Whether the user has ever had a subscription, in any status — separates a lapsed subscriber from one who has never paid
+             * @description Whether the user has ever had a subscription, in any status; separates a lapsed subscriber from one who has never paid
              * @default false
              */
             has_ever_subscribed: boolean;
@@ -14523,7 +15090,7 @@ export interface components {
              * @default 0
              */
             current_step_index: number;
-            /** @description Why the workflow is not activated. None means the user turned it off themselves — only system-paused workflows may be resumed automatically. */
+            /** @description Why the workflow is not activated. None means the user turned it off themselves. Only system-paused workflows may be resumed automatically. */
             deactivated_reason: components["schemas"]["DeactivationReason"] | null;
             /**
              * Description
@@ -14558,7 +15125,7 @@ export interface components {
             id: string;
             /**
              * Integration Ids
-             * @description Integration ids this workflow uses — picked by the user or identified from intent by the workflow assistant. Scopes the tool palette when generating steps. Connection state is never stored here: required/missing integrations are derived from the steps at read time.
+             * @description Integration ids this workflow uses, picked by the user or identified from intent by the workflow assistant. Scopes the tool palette when generating steps. Connection state is never stored here: required/missing integrations are derived from the steps at read time.
              */
             integration_ids: string[];
             /**
@@ -14795,6 +15362,12 @@ export type Body_user_update_user_timezone = components['schemas']['Body_user_up
 export type BotAuthStatusResponse = components['schemas']['BotAuthStatusResponse'];
 export type BotChatRequest = components['schemas']['BotChatRequest'];
 export type BotSettingsResponse = components['schemas']['BotSettingsResponse'];
+export type BrowserImportRequest = components['schemas']['BrowserImportRequest'];
+export type BrowserImportResponse = components['schemas']['BrowserImportResponse'];
+export type BrowserLoginResponse = components['schemas']['BrowserLoginResponse'];
+export type BrowserSessionStatus = components['schemas']['BrowserSessionStatus'];
+export type BrowserTaskFrame = components['schemas']['BrowserTaskFrame'];
+export type BrowserTaskResponse = components['schemas']['BrowserTaskResponse'];
 export type BudgetWindow = components['schemas']['BudgetWindow'];
 export type BuiltinSkillInfo = components['schemas']['BuiltinSkillInfo'];
 export type BuiltinSkillsResponse = components['schemas']['BuiltinSkillsResponse'];
@@ -14891,6 +15464,7 @@ export type EventDeleteRequest = components['schemas']['EventDeleteRequest'];
 export type EventDeleteResponse = components['schemas']['EventDeleteResponse'];
 export type EventUpdateRequest = components['schemas']['EventUpdateRequest'];
 export type FeaturePeriodUsage = components['schemas']['FeaturePeriodUsage'];
+export type FeatureStage = components['schemas']['FeatureStage'];
 export type FeatureUpgrade = components['schemas']['FeatureUpgrade'];
 export type FeatureUsageSummary = components['schemas']['FeatureUsageSummary'];
 export type FileData = components['schemas']['FileData'];
@@ -14927,12 +15501,20 @@ export type GoogleDocsDocumentUpdatedConfig = components['schemas']['GoogleDocsD
 export type GoogleDocsNewDocumentConfig = components['schemas']['GoogleDocsNewDocumentConfig'];
 export type GoogleSheetsNewRowConfig = components['schemas']['GoogleSheetsNewRowConfig'];
 export type GoogleSheetsNewSheetConfig = components['schemas']['GoogleSheetsNewSheetConfig'];
+export type HandoffDecision = components['schemas']['HandoffDecision'];
+export type HandoffDecisionRequest = components['schemas']['HandoffDecisionRequest'];
+export type HandoffDecisionResponse = components['schemas']['HandoffDecisionResponse'];
+export type HandoffStatus = components['schemas']['HandoffStatus'];
 export type HealthResponse = components['schemas']['HealthResponse'];
 export type HILPreferencesResponse = components['schemas']['HILPreferencesResponse'];
 export type HistoryFeatureUsage = components['schemas']['HistoryFeatureUsage'];
 export type HistoryUsagePeriod = components['schemas']['HistoryUsagePeriod'];
 export type ImageData = components['schemas']['ImageData'];
 export type ImageToTextResponse = components['schemas']['ImageToTextResponse'];
+export type ImportedCookie = components['schemas']['ImportedCookie'];
+export type ImportedLocalStorageItem = components['schemas']['ImportedLocalStorageItem'];
+export type ImportedOrigin = components['schemas']['ImportedOrigin'];
+export type ImportTokenResponse = components['schemas']['ImportTokenResponse'];
 export type InitiatePlatformConnectRequest = components['schemas']['InitiatePlatformConnectRequest'];
 export type InitiatePlatformConnectResponse = components['schemas']['InitiatePlatformConnectResponse'];
 export type InstructionsEditor = components['schemas']['InstructionsEditor'];
@@ -14956,6 +15538,7 @@ export type LinkedUsersResponse = components['schemas']['LinkedUsersResponse'];
 export type LinkPlatformRequest = components['schemas']['LinkPlatformRequest'];
 export type LinkPlatformResponse = components['schemas']['LinkPlatformResponse'];
 export type LinkTokenInfoResponse = components['schemas']['LinkTokenInfoResponse'];
+export type LiveViewTokenResponse = components['schemas']['LiveViewTokenResponse'];
 export type LogoutResponse = components['schemas']['LogoutResponse'];
 export type MarkAllReadSummary = components['schemas']['MarkAllReadSummary'];
 export type MarkAsReadResponse = components['schemas']['MarkAsReadResponse'];
@@ -15205,6 +15788,7 @@ export type UpdateMessagesResponse = components['schemas']['UpdateMessagesRespon
 export type UpdateProjectRequest = components['schemas']['UpdateProjectRequest'];
 export type UpdateReminderRequest = components['schemas']['UpdateReminderRequest'];
 export type UpdateTimezoneResponse = components['schemas']['UpdateTimezoneResponse'];
+export type UpdateUserFeatureFlagRequest = components['schemas']['UpdateUserFeatureFlagRequest'];
 export type UpdateVoiceRequest = components['schemas']['UpdateVoiceRequest'];
 export type UpdateWorkflowRequest = components['schemas']['UpdateWorkflowRequest'];
 export type URLRequest = components['schemas']['URLRequest'];
@@ -15213,6 +15797,8 @@ export type UsageActivityResponse = components['schemas']['UsageActivityResponse
 export type UsageBudget = components['schemas']['UsageBudget'];
 export type UsageHistoryEntry = components['schemas']['UsageHistoryEntry'];
 export type UsageSummary = components['schemas']['UsageSummary'];
+export type UserFeatureFlagListResponse = components['schemas']['UserFeatureFlagListResponse'];
+export type UserFeatureFlagResponse = components['schemas']['UserFeatureFlagResponse'];
 export type UserSubscriptionStatus = components['schemas']['UserSubscriptionStatus'];
 export type UserUpdateResponse = components['schemas']['UserUpdateResponse'];
 export type ValidationIssue = components['schemas']['ValidationIssue'];
@@ -16309,6 +16895,490 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["UnlinkAccountResponse"];
                 };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_get_browser_handoff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                handoff_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HandoffDecisionResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_decide_browser_handoff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                handoff_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HandoffDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HandoffDecisionResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_import_browser_sessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrowserImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserImportResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_mint_browser_import_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportTokenResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_list_browser_logins_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserLoginResponse"][];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_clear_browser_logins_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_forget_browser_login_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_get_live_view_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveViewTokenResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_list_browser_tasks_endpoint: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrowserTaskResponse"][];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_delete_browser_task_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Unprocessable Entity */
             422: {
@@ -18179,6 +19249,106 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeviceTokenResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    features_list_features: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserFeatureFlagListResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    features_update_feature: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                flag: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateUserFeatureFlagRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserFeatureFlagResponse"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -26628,29 +27798,33 @@ export interface operations {
         parameters: {
             query?: {
                 completed?: boolean | null;
+                /** @description Due date after this date */
                 due_after?: string | null;
+                /** @description Due date before this date */
                 due_before?: string | null;
+                /** @description Only todos due this week */
                 due_this_week?: boolean;
+                /** @description Only todos due today */
                 due_today?: boolean;
                 has_due_date?: boolean | null;
+                /** @description Include statistics in response */
                 include_stats?: boolean;
+                labels?: string[] | null;
+                /** @description Search mode: text, semantic, or hybrid */
                 mode?: components["schemas"]["SearchMode"];
                 overdue?: boolean | null;
                 page?: number;
                 per_page?: number;
                 priority?: components["schemas"]["Priority"] | null;
                 project_id?: string | null;
+                /** @description Search query */
                 q?: string | null;
             };
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: {
-            content: {
-                "application/json": string[] | null;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Client Error */
             "4XX": {
@@ -29837,6 +31011,154 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DegradedHealthResponse"];
+                };
+            };
+        };
+    };
+    browser_live_view_page: {
+        parameters: {
+            query?: {
+                t?: string | null;
+            };
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_replay_page: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_step_screenshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+                index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };

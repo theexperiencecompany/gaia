@@ -202,7 +202,7 @@
     Public artifact URL: a file at `artifacts/<name>` is served at https://api.heygaia.io/api/v1/sessions/conv-1/artifacts/<name>
     USER CONTEXT FOR GMAIL:
     - email: ada@example.com
-    CUSTOM INSTRUCTIONS FOR GMAIL (set by the user — honor these):
+    CUSTOM INSTRUCTIONS FOR GMAIL (set by the user, honor these):
     Always archive newsletters.
     ## Available skills
     - inbox-triage
@@ -212,7 +212,7 @@
     - **gmail-clean-inbox** (`/workspace/integrations/gmail/agent/skills/gmail-clean-inbox/skill.md`): Intelligently clean Gmail inbox - audit labels, identify patterns, batch categorize, archive old messages, present cleanup summary
     - **gmail-draft-send** (`/workspace/integrations/gmail/agent/skills/gmail-draft-send/skill.md`): Create and send Gmail emails using draft-first workflow. Always draft first, get user approval, then send.
     - **gmail-find-contacts** (`/workspace/integrations/gmail/agent/skills/gmail-find-contacts/skill.md`): Find contacts in Gmail - search for specific people or email addresses from email history.
-    - **gmail-search-context** (`/workspace/integrations/gmail/agent/skills/gmail-search-context/skill.md`): Read, search, and summarize Gmail — precise queries, large-inbox fan-out reads, synthesized findings, and the opinionated inbox triage report
+    - **gmail-search-context** (`/workspace/integrations/gmail/agent/skills/gmail-search-context/skill.md`): Read, search, and summarize Gmail: precise queries, large-inbox fan-out reads, synthesized findings, and the opinionated inbox triage report
 
 [2] human
     summarise my unread mail
@@ -258,7 +258,7 @@
     What you remember about this user (memory core):
     - Prefers short answers.
     
-    Based on our previous conversations (bracketed dates say when something happened / was last mentioned):
+    From our previous conversations (bracketed dates say when something happened / was last mentioned). These are records of the past. They can answer questions about remembered facts, but never show that something asked for now has been done, or that live state (what a page, inbox or account shows now) is still current.
     - Ships on Fridays [mentioned 2026-02-01]
     
     About Gaia (your identity and capabilities):

@@ -122,3 +122,15 @@ describe("wideLog.set namespace merging", () => {
     expect(event.todo).toBe("replaced-by-scalar");
   });
 });
+
+describe("a failure the handler caught", () => {
+  it("stays failed with its reason instead of being stamped success", async () => {
+    const event = await captureEvent(async () => {
+      wideLog.fail("account_not_linked", { http_status: 401 });
+    });
+
+    expect(event.outcome).toBe("failed");
+    expect(event.reason).toBe("account_not_linked");
+    expect(event.http_status).toBe(401);
+  });
+});

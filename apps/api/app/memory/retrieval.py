@@ -119,10 +119,11 @@ async def recall(
     timings: dict[str, int] = {}
     started = time.perf_counter()
 
-    ann_hits, fts_hits = await asyncio.gather(
+    ann_result, fts_hits = await asyncio.gather(
         _ann_search(user_id, query, timings),
         _fts_search(user_id, query, timings),
     )
+    ann_hits = ann_result or []
 
     stage = time.perf_counter()
     fused_ids = _rrf_fuse(
@@ -177,7 +178,19 @@ async def recall(
             timings={key: float(value) for key, value in timings.items()},
         ),
     )
-    return MemorySearchResult(memories=entries, total_count=len(entries))
+    degraded_reasons = []
+    if ann_result is None:
+        degraded_reasons.append("embed_query_skipped")
+    if scored and not scored[0].reranked:
+        degraded_reasons.append("rerank_skipped")
+    if degraded_reasons:
+        log.warning("memory_recall_degraded", reasons=degraded_reasons, result_count=len(entries))
+    return MemorySearchResult(
+        memories=entries,
+        total_count=len(entries),
+        has_confident_match=any(item.confident for item in scored),
+        degraded=bool(degraded_reasons),
+    )
 
 
 async def recall_episodes(
@@ -232,17 +245,19 @@ async def _embed_query_interactive(query: str) -> list[float] | None:
         return None
 
 
-async def _ann_search(user_id: str, query: str, timings: dict[str, int]) -> list[tuple[str, float]]:
+async def _ann_search(
+    user_id: str, query: str, timings: dict[str, int]
+) -> list[tuple[str, float]] | None:
     """Embed the query and run dense ANN over the user's latest memories.
 
-    Returns no ANN hits when the embedding sidecar failed fast, so recall
-    degrades to FTS-only rather than failing the turn.
+    Returns None when the embedding sidecar failed fast, so recall degrades
+    to FTS-only rather than failing the turn, and knows it did.
     """
     stage = time.perf_counter()
     embedding = await _embed_query_interactive(query)
     timings["embed_ms"] = _elapsed_ms(stage)
     if embedding is None:
-        return []
+        return None
 
     stage = time.perf_counter()
     hits = await chroma_store.query_similar(user_id, embedding, ANN_CANDIDATES, only_latest=True)
@@ -323,6 +338,7 @@ class _ScoredCandidate:
     relevance: float
     score: float
     confident: bool
+    reranked: bool = True
 
 
 async def _rerank_and_boost(
@@ -380,6 +396,7 @@ async def _rerank_and_boost(
                     or rerank_confident
                     or str(row.id) in fts_ids
                 ),
+                reranked=raw_scores is not None,
             )
         )
     scored.sort(key=lambda item: item.score, reverse=True)

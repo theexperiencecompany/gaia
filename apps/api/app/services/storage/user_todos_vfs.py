@@ -105,7 +105,7 @@ def _folder_name(doc: UserTodoProjection) -> str:
 def _index_line(doc: UserTodoProjection) -> str:
     meta = doc["meta"]
     title = (meta.get("title") or "(untitled)").replace("\n", " ").strip()
-    updated = updated_at_key(meta) or "—"
+    updated = updated_at_key(meta) or "unknown"
     due = meta.get("due_date")
     due_suffix = f"  due={due}" if due else ""
     return f"- [{_glyph(meta)}] `{_folder_name(doc)}`  {title}{due_suffix}  _(updated {updated})_"
@@ -114,7 +114,7 @@ def _index_line(doc: UserTodoProjection) -> str:
 def _index_lines(docs: list[UserTodoProjection]) -> str:
     header = (
         "<!-- Generated index of the user's active todos. Sorted by "
-        "last-updated, newest first. Do not edit — regenerated on every "
+        "last-updated, newest first. Do not edit, regenerated on every "
         "sync. -->\n"
     )
     sorted_docs = sorted(docs, key=lambda d: updated_at_key(d["meta"]), reverse=True)

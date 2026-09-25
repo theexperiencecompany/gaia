@@ -6,32 +6,35 @@ import math
 import time
 from typing import Any, TypedDict, TypeVar, cast
 
-import httpx
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.language_models import LanguageModelInput, LanguageModelLike
 from langchain_core.language_models.chat_models import (
     BaseChatModel,
 )
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, BaseMessage, InvalidToolCall, ToolCall
 from langchain_core.messages.ai import InputTokenDetails, OutputTokenDetails, UsageMetadata
 from langchain_core.outputs import LLMResult
 from langchain_core.runnables import (
     Runnable,
     RunnableBinding,
     RunnableConfig,
+    RunnableLambda,
     RunnableSequence,
 )
 from langchain_core.runnables.utils import ConfigurableField
+from langchain_core.utils.function_calling import convert_to_openai_tool
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
 from openrouter.utils import BackoffStrategy, RetryConfig
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError
 
+from app.agents.llm.dev_lane import build_custom_chat_model, custom_lane_forced
 from app.agents.llm.exceptions import (
     LLM_FALLBACK_EXCEPTIONS,
     LLM_RETRYABLE_EXCEPTIONS,
     LLMNotConfiguredError,
+    MalformedStructuredOutputError,
 )
 from app.agents.llm.types import LLMFallback, LLMProvider, ProviderLLM
 from app.config.settings import settings
@@ -42,9 +45,10 @@ from app.constants.llm import (
     DEFAULT_LLM_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
-    DEV_LLM_BROWSER_HEADERS,
     DEV_LLM_MAX_OUTPUT_TOKENS,
     HELPER_MAX_OUTPUT_TOKENS,
+    HIL_JUDGE_FALLBACK_MODEL_NAMES,
+    HIL_JUDGE_MODEL_NAME,
     LLM_INVOKE_TIMEOUT_SECONDS,
     LLM_LABEL_METADATA_KEY,
     LLM_RETRY_MAX_ATTEMPTS,
@@ -57,6 +61,7 @@ from app.constants.llm import (
     OPENROUTER_DEV_APP_URL,
     OPENROUTER_MAX_OUTPUT_TOKENS,
     OPENROUTER_REASONING,
+    OPENROUTER_REASONING_EFFORT,
     REASONING_FIELD_ID,
     SIM_STUB_API_KEY,
     SIM_STUB_BASE_URL,
@@ -65,6 +70,9 @@ from app.constants.llm import (
     VISION_MODEL_NAME,
     LLMProviderKey,
     LLMProviderName,
+    ModelUse,
+    OpenRouterModelKwargs,
+    ReasoningLevel,
 )
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
@@ -286,7 +294,8 @@ def init_openrouter_llm() -> LanguageModelLike:
             # rates 10x apart. session_id sticky routing composes with `order`
             # (measured: order + session lands on the ordered upstream every time).
             **_provider_order_kwargs(),
-            reasoning=OPENROUTER_REASONING,
+            # Unpacked: ChatOpenRouter declares reasoning as a plain dict.
+            reasoning={**OPENROUTER_REASONING},
         )
     )
     # Every chat LLM must carry the context-window profile — fractional-token
@@ -307,53 +316,18 @@ def init_openrouter_llm() -> LanguageModelLike:
 def init_custom_llm() -> LanguageModelLike:
     """DEV-ONLY: build the env-defined custom provider from the DEV_LLM_* settings.
 
-    Any OpenRouter/OpenAI-compatible endpoint (base URL, key, model). Routes
-    bulk test traffic to heavily discounted lanes (e.g. Nous Research's DeepSeek
-    models) without spending real credits. Registered only when ENV=development
-    (see register_llm_providers).
+    Any OpenAI-compatible endpoint, over the API DEV_LLM_API names: discounted
+    lanes (e.g. Nous Research's DeepSeek) or OpenAI's own models. Registered
+    only when ENV=development (see register_llm_providers).
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
     # Only the model pin: the custom lane runs ChatOpenAI (no reasoning field to
     # bind, binding keys omit reasoning/model_kwargs). model_name is the field id
     # both ChatOpenAI and ChatOpenRouter expose (see _MODEL_FIELD).
-    return _build_custom_llm().configurable_fields(model_name=_MODEL_FIELD)
-
-
-def _build_custom_llm(temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
-    """Build the bare custom-endpoint chat model, before the configurable wiring.
-
-    Split out because a structured one-shot needs the model itself, which the
-    configurable wrapper init_custom_llm hides. ChatOpenAI not ChatOpenRouter:
-    the openrouter SDK requires a system_fingerprint that OpenAI-compatible
-    lanes omit, failing every call; the openai SDK tolerates it.
-    """
-    # ChatOpenAI takes the browser headers on its httpx clients directly
-    # (ChatOpenRouter's default_headers path crashes — see init_openrouter_llm).
-    llm = without_sdk_retry(
-        ChatOpenAI(
-            model=PROVIDER_MODELS[LLMProviderName.CUSTOM],
-            temperature=temperature,
-            streaming=True,
-            stream_usage=True,
-            # Field name is max_tokens, but ChatOpenAI aliases it to
-            # max_completion_tokens at construction; langchain still sends it as
-            # max_tokens on the wire (compatible with the OpenAI-style lanes).
-            max_completion_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
-            # Unlike the OpenRouter SDK (see without_sdk_retry), the OpenAI
-            # SDK honors max_retries=0, so retries stay solely with with_llm_retry.
-            max_retries=0,
-            api_key=_secret_or_none(settings.DEV_LLM_API_KEY),
-            base_url=settings.DEV_LLM_BASE_URL,
-            http_client=httpx.Client(headers=DEV_LLM_BROWSER_HEADERS),
-            http_async_client=httpx.AsyncClient(headers=DEV_LLM_BROWSER_HEADERS),
-        )
-    )
-    # Fractional-window middleware resolves the window from the model profile at
-    # graph-build time and RAISES without it -- the same contract _build_default_llm
-    # and _sim_llm satisfy. DEV_LLM_* has no registry entry, so pin the default window.
-    llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
-    return llm
+    return build_custom_chat_model(
+        temperature=DEFAULT_LLM_TEMPERATURE, max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS
+    ).configurable_fields(model_name=_MODEL_FIELD)
 
 
 def init_llm(
@@ -507,39 +481,11 @@ def register_llm_providers() -> None:
         init_custom_llm()
 
 
-def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> ChatOpenRouter:
-    """Build the single factory for the default model (DEFAULT_MODEL_NAME, over OpenRouter).
-
-    Used by EVERY auxiliary LLM task -- the paid model is reserved for the main chat
-    agent (see lane.py) and helpers never use it. The memory pipeline is the one
-    exception and prefers direct Gemini (ainvoke_structured_gemini). Instances are cached
-    per temperature. Raises LLMNotConfiguredError if OpenRouter is not configured.
-    """
-    if settings.GAIA_SIM_MODE:
-        return _sim_llm(temperature)
-    if not settings.OPENROUTER_API_KEY:
-        raise LLMNotConfiguredError("Default LLM not configured. Set OPENROUTER_API_KEY.")
-    return _build_default_llm(temperature)
-
-
-class _ProviderRouting(TypedDict):
-    """OpenRouter's provider-routing preference block."""
-
-    order: list[str]
-    allow_fallbacks: bool
-
-
-class _ProviderModelKwargs(TypedDict):
-    """The model_kwargs payload carrying the routing block."""
-
-    provider: _ProviderRouting
-
-
 class _ProviderOrderKwargs(TypedDict, total=False):
     """Constructor kwargs for a routed client; empty when no order is configured.
 
     model_kwargs is the shape ChatOpenRouter declares (dict[str, Any]); the
-    routing block it carries is _ProviderModelKwargs, built below.
+    routing block it carries is OpenRouterModelKwargs, built below.
     """
 
     model_kwargs: dict[str, Any]
@@ -558,7 +504,7 @@ def _provider_order_kwargs() -> _ProviderOrderKwargs:
     order = [slug.strip() for slug in raw.split(",") if slug.strip()]
     if not order:
         return {}
-    routing: _ProviderModelKwargs = {"provider": {"order": order, "allow_fallbacks": False}}
+    routing: OpenRouterModelKwargs = {"provider": {"order": order, "allow_fallbacks": False}}
     return {"model_kwargs": dict(routing)}
 
 
@@ -585,36 +531,76 @@ def _build_default_llm(temperature: float) -> ChatOpenRouter:
     return llm
 
 
-def get_helper_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> ChatOpenRouter:
-    """Return get_default_llm capped to HELPER_MAX_OUTPUT_TOKENS.
+def resolve_model(
+    use: ModelUse = ModelUse.HELPER,
+    *,
+    temperature: float = DEFAULT_LLM_TEMPERATURE,
+    reasoning: ReasoningLevel | None = None,
+) -> BaseChatModel:
+    """Return the chat model a one-shot call for use runs on: the one place a one-shot's model is chosen.
 
-    For one-shot helpers whose output is small. The graph-adjacent consumers
-    (create_agent's model fallback, the summarization/compaction middleware) keep the
-    full reservation via get_default_llm -- they legitimately produce long output.
-    model_copy shares the cached client; .bind() loses the cap under bind_tools.
-    """
-    llm = get_default_llm(temperature=temperature)
-    if settings.GAIA_SIM_MODE:
-        return llm
-    return llm.model_copy(update={"max_tokens": HELPER_MAX_OUTPUT_TOKENS})
-
-
-def get_vision_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
-    """Build the factory for every image -> text call (vision/describe.py).
-
-    Separate from :func:get_default_llm: the default model is picked for cheap
-    text and may not be multimodal, and describe_image degrades to None if
-    vision fails. Raises LLMNotConfiguredError when Google is not configured.
+    Sim mode wins, then the forced dev lane (every use on the custom endpoint),
+    then the use's production model. reasoning None keeps the model's default.
+    Raises LLMNotConfiguredError when the chosen provider has no key.
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm(temperature)
-    if not settings.GOOGLE_API_KEY:
-        raise LLMNotConfiguredError("Vision model not configured. Set GOOGLE_API_KEY.")
-    return _build_vision_llm(temperature)
+    if custom_lane_forced():
+        return build_custom_chat_model(
+            temperature=temperature, max_tokens=HELPER_MAX_OUTPUT_TOKENS, reasoning=reasoning
+        )
+    match use:
+        case ModelUse.HELPER:
+            return _openrouter_one_shot(temperature, reasoning, model_name=AUX_MODEL_NAME)
+        case ModelUse.JUDGE:
+            return _openrouter_one_shot(
+                temperature,
+                reasoning,
+                model_name=HIL_JUDGE_MODEL_NAME,
+                fallback_model_names=HIL_JUDGE_FALLBACK_MODEL_NAMES,
+            )
+        case ModelUse.MEMORY:
+            if not settings.GOOGLE_API_KEY:
+                raise LLMNotConfiguredError("Memory model not configured. Set GOOGLE_API_KEY.")
+            return _build_memory_llm(temperature)
+        case ModelUse.VISION:
+            if not settings.GOOGLE_API_KEY:
+                raise LLMNotConfiguredError("Vision model not configured. Set GOOGLE_API_KEY.")
+            return _build_vision_llm(temperature)
+
+
+def _openrouter_one_shot(
+    temperature: float,
+    reasoning: ReasoningLevel | None,
+    *,
+    model_name: str,
+    fallback_model_names: tuple[str, ...] = (),
+) -> ChatOpenRouter:
+    """Re-point the cached default client at model_name, capped to HELPER_MAX_OUTPUT_TOKENS.
+
+    model_copy, not .bind(): bind_tools rebuilds the binding and drops a bound
+    model or cap (measured: every aux call served DEFAULT_MODEL_NAME).
+    fallback_model_names ride OpenRouter's models array, tried in order on
+    transport errors only, with the provider order the client already carries.
+    """
+    if not settings.OPENROUTER_API_KEY:
+        raise LLMNotConfiguredError("Default LLM not configured. Set OPENROUTER_API_KEY.")
+    base = _build_default_llm(temperature)
+    update: dict[str, object] = {"max_tokens": HELPER_MAX_OUTPUT_TOKENS, "model_name": model_name}
+    if reasoning is not None:
+        update["reasoning"] = {"effort": OPENROUTER_REASONING_EFFORT[reasoning]}
+    if fallback_model_names:
+        update["model_kwargs"] = {
+            **(base.model_kwargs or {}),
+            "models": [model_name, *fallback_model_names],
+        }
+    return base.model_copy(update=update)
 
 
 @cache
 def _build_vision_llm(temperature: float) -> BaseChatModel:
+    # Not the default model: that one is picked for cheap text and may be blind,
+    # and describe_image degrades to None when vision fails.
     llm = ChatGoogleGenerativeAI(model=VISION_MODEL_NAME, temperature=temperature)
     # Same reason as _build_default_llm: fractional-window middleware reads this.
     llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
@@ -622,32 +608,19 @@ def _build_vision_llm(temperature: float) -> BaseChatModel:
 
 
 def memory_lane_available() -> bool:
-    """Whether the direct-Gemini memory lane can serve a call — what :func:get_memory_llm raises on."""
+    """Whether the direct-Gemini memory lane can serve a call — what resolve_model(MEMORY) raises on."""
     return bool(settings.GAIA_SIM_MODE or settings.GOOGLE_API_KEY)
 
 
 def aux_lane_available() -> bool:
-    """Whether the aux (OpenRouter) lane can serve a call — the mirror of :func:memory_lane_available."""
-    return bool(settings.GAIA_SIM_MODE or settings.OPENROUTER_API_KEY)
-
-
-def get_memory_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
-    """Build the factory for every memory-pipeline call (extraction, categorization, consolidation).
-
-    Runs on direct Gemini (MEMORY_MODEL_NAME), NOT OpenRouter: extraction is fire-and-forget work
-    that OVERLAPS the graph's next-turn requests, and concurrent requests on ONE provider's cache
-    store wipe each other's chains mid-read (measured: comms ~0 under a concurrent alias-lane
-    extraction, ~99.5% under Gemini). Raises LLMNotConfiguredError when Google is not configured.
-    """
-    if settings.GAIA_SIM_MODE:
-        return _sim_llm(temperature)
-    if not memory_lane_available():
-        raise LLMNotConfiguredError("Memory model not configured. Set GOOGLE_API_KEY.")
-    return _build_memory_llm(temperature)
+    """Whether the aux lane can serve a call — the mirror of :func:memory_lane_available."""
+    return bool(settings.GAIA_SIM_MODE or custom_lane_forced() or settings.OPENROUTER_API_KEY)
 
 
 @cache
 def _build_memory_llm(temperature: float) -> BaseChatModel:
+    # Direct Gemini: extraction overlaps the graph's next turn, and concurrent calls on
+    # one provider's cache wipe each other's chains (comms ~0 on the aux lane, ~99.5% here).
     llm = ChatGoogleGenerativeAI(model=MEMORY_MODEL_NAME, temperature=temperature)
     # Same reason as _build_default_llm: fractional-window middleware reads this.
     llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
@@ -661,6 +634,11 @@ def _stamp_fallback(result: _ResultT) -> _ResultT:
         metadata["gaia_fell_back"] = True
         metadata["gaia_fallback_model"] = DEFAULT_MODEL_NAME
     return result
+
+
+def _allowed_fallback(fallback: LLMFallback) -> LLMFallback:
+    """Return fallback, or None on the forced dev lane, where no call may leave the custom endpoint."""
+    return None if custom_lane_forced() else fallback
 
 
 def _materialize_fallback(fallback: LLMFallback) -> Runnable | None:
@@ -688,8 +666,8 @@ def _is_openrouter_wire(runnable: Runnable) -> bool:
     for _ in range(_WIRE_WALK_MAX_HOPS):
         if isinstance(node, ChatOpenRouter):
             # session_id is an OpenRouter-service routing hint: a ChatOpenRouter aimed
-            # at another OpenAI-compatible endpoint (e.g. the DEV_LLM_* custom lane)
-            # rejects it, so only bind when the endpoint is OpenRouter's own (base unset).
+            # at another OpenAI-compatible endpoint (e.g. the sim stub) rejects it,
+            # so only bind when the endpoint is OpenRouter's own (base unset).
             base = node.openrouter_api_base
             return base is None or "openrouter.ai" in str(base)
         if isinstance(node, RunnableBinding):
@@ -813,12 +791,12 @@ class StructuredCallOptions:
 
     temperature: float = DEFAULT_LLM_TEMPERATURE
     timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS
-    # Model override for this one-shot only (None = the aux default). Rides
-    # model_kwargs like the provider order, not .bind (bind_tools drops it).
-    model_name: str | None = None
-    # OpenRouter `models`-array fallback, tried in order on transport errors —
-    # never on verdicts. Empty = no fallback.
-    fallback_model_names: tuple[str, ...] = ()
+    #: None keeps the model's default; the Gemini memory fallback ignores it.
+    reasoning: ReasoningLevel | None = None
+    #: What the call is for; resolve_model turns it into a provider and model.
+    use: ModelUse = ModelUse.HELPER
+    #: 1 disables retry, for a caller on a hard latency budget.
+    max_attempts: int = LLM_RETRY_MAX_ATTEMPTS
 
 
 _DEFAULT_STRUCTURED_OPTIONS = StructuredCallOptions()
@@ -843,6 +821,7 @@ async def ainvoke_llm(
     # through here but is already metered by LLMAccountingMiddleware, so it
     # passes meter_auxiliary=False — otherwise every graph call is booked twice.
     opts = options or LLMInvokeOptions()
+    fallback = _allowed_fallback(fallback)
     config = _with_call_label(config, label)
     fallback_config = (
         _with_call_label(opts.fallback_config, label) if opts.fallback_config else None
@@ -934,6 +913,7 @@ def invoke_llm(
     async-only (see :class:LLMInvokeOptions).
     """
     opts = options or LLMInvokeOptions()
+    fallback = _allowed_fallback(fallback)
     config = _with_call_label(config, label)
     try:
         return with_llm_retry(primary, max_attempts=opts.max_attempts).invoke(
@@ -1284,64 +1264,139 @@ async def _record_auxiliary_usage(
         )
 
 
-def _aux_structured_runnable(
-    schema: type[_StructuredT],
-    temperature: float,
-    config: RunnableConfig | None,
-    *,
-    model_name: str | None = None,
-    fallback_model_names: tuple[str, ...] = (),
-) -> Runnable:
-    """Build the structured runnable every auxiliary one-shot runs on.
+class _OpenAIFunctionSpec(BaseModel):
+    """The function block of an OpenAI tool spec, read for the name the model calls."""
 
-    The helper LLM re-pointed at model_name (default AUX_MODEL_NAME), with the
-    aux sticky-routing session. fallback_model_names rides the OpenRouter models
-    array: same primary first, tried in order on rate limits/downtime — verdicts
-    never trigger it.
+    model_config = ConfigDict(extra="ignore")
+
+    name: str
+
+
+class _OpenAIToolSpec(BaseModel):
+    """An OpenAI tool spec as convert_to_openai_tool builds it."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    function: _OpenAIFunctionSpec
+
+
+class _IncompleteDetails(BaseModel):
+    """Why a Responses API reply ended incomplete."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    reason: str | None = None
+
+
+class _ReplyMetadata(BaseModel):
+    """A reply's response_metadata, read for why generation stopped.
+
+    Chat completions say it in finish_reason; the Responses API instead marks
+    the reply incomplete and names the reason in incomplete_details.
     """
-    # The alias must be set via model_copy, NOT .bind(model=...):
-    # with_structured_output rebuilds via bind_tools, which drops a bound
-    # alias — every aux call then served DEFAULT_MODEL_NAME (measured).
-    resolved = model_name or AUX_MODEL_NAME
-    base = get_helper_llm(temperature=temperature)
-    helper = base.model_copy(update={"model_name": resolved})
-    if fallback_model_names:
-        merged = {**(base.model_kwargs or {}), "models": [resolved, *fallback_model_names]}
-        helper = helper.model_copy(update={"model_kwargs": merged})
-    structured = helper.with_structured_output(schema)
-    # Bound AFTER with_structured_output (which drops outer bindings). Aux
-    # one-shots get their OWN suffixed sticky session — sharing the
-    # conversation's session_id re-pinned its provider (measured: rotation dips).
+
+    model_config = ConfigDict(extra="ignore")
+
+    finish_reason: str | None = None
+    incomplete_details: _IncompleteDetails | None = None
+
+    def stopped_at_output_cap(self) -> bool:
+        """Whether the provider cut the reply off at its output-token limit."""
+        return self.finish_reason == "length" or (
+            self.incomplete_details is not None
+            and self.incomplete_details.reason == "max_output_tokens"
+        )
+
+
+def _structured_tool_name(schema: type[BaseModel]) -> str:
+    """Return the tool name a structured schema is offered to the model under."""
+    return _OpenAIToolSpec.model_validate(convert_to_openai_tool(schema)).function.name
+
+
+def _parse_structured_reply(message: BaseMessage, schema: type[_StructuredT]) -> _StructuredT:
+    """Return the schema filled from the reply's one tool call; raise MalformedStructuredOutputError otherwise.
+
+    Needs an unstreamed reply: its arguments went through json.loads, while a
+    streamed one went through partial-JSON repair, which keeps whatever prefix parses.
+    """
+    name = _structured_tool_name(schema)
+    if not isinstance(message, AIMessage):
+        raise MalformedStructuredOutputError(
+            f"{name}: expected an AI reply, got {type(message).__name__}"
+        )
+    if _ReplyMetadata.model_validate(message.response_metadata).stopped_at_output_cap():
+        raise MalformedStructuredOutputError(f"{name}: reply stopped at the output cap")
+    if message.invalid_tool_calls:
+        invalid: InvalidToolCall = message.invalid_tool_calls[0]
+        raw = str(invalid.get("args"))
+        raise MalformedStructuredOutputError(
+            f"{name}: tool-call arguments are not valid JSON: {raw[:300]!r}", llm_output=raw
+        )
+    tool_calls: list[ToolCall] = message.tool_calls
+    calls = [call for call in tool_calls if call["name"] == name]
+    if not calls:
+        raise MalformedStructuredOutputError(
+            f"{name}: reply made no {name} tool call (content: {str(message.content)[:200]!r})",
+            llm_output=str(message.content),
+        )
+    try:
+        chosen: ToolCall = calls[0]
+        return schema.model_validate(chosen["args"])
+    except ValidationError as error:
+        raise MalformedStructuredOutputError(
+            f"{name}: tool-call arguments do not fit the schema: {error}"
+        ) from error
+
+
+def _structured_tool_choice(llm: BaseChatModel) -> str:
+    """Return how a structured one-shot offers its one tool to llm: forced on the Responses API only.
+
+    Forced tools get grammar-decoded on Baidu/Together, cutting at an unescaped quote:
+    27 of 43 closing answers cut forced, 0 of 28 offered (deepseek-v4-flash replay).
+    Offered, gpt-6-luna on the Responses API answered in prose instead (3 of 3 on a
+    memory-style prompt); forced, it called the tool 12 of 12.
+    """
+    return "required" if isinstance(llm, ChatOpenAI) and llm.use_responses_api else "auto"
+
+
+def _structured_tool_runnable(llm: BaseChatModel, schema: type[_StructuredT]) -> Runnable:
+    """Build the one-tool structured runnable every non-Gemini one-shot runs on.
+
+    Not with_structured_output: it forces the tool by name, and it parses streamed
+    arguments leniently. The call is unstreamed (streaming=False also holds under
+    astream_events), so :func:_parse_structured_reply sees the arguments exactly as sent.
+    """
+    tool = convert_to_openai_tool(schema)
+    tool_choice = _structured_tool_choice(llm)
+    bound = llm.model_copy(update={"streaming": False}).bind_tools(
+        [schema],
+        tool_choice=tool_choice,
+        ls_structured_output_format={
+            "kwargs": {"method": "function_calling", "tool_choice": tool_choice},
+            "schema": tool,
+        },
+    )
+    return bound | RunnableLambda(
+        lambda message: _parse_structured_reply(message, schema),
+        name=_structured_tool_name(schema),
+    )
+
+
+def _structured_runnable(
+    schema: type[_StructuredT], config: RunnableConfig | None, options: StructuredCallOptions
+) -> Runnable:
+    """Build the structured runnable a one-shot runs on, on the model resolve_model picks for it.
+
+    Aux one-shots get their OWN suffixed sticky session, bound after bind_tools
+    (which drops outer bindings): sharing the conversation's session_id re-pinned
+    its provider (measured: rotation dips). Only an OpenRouter wire receives it.
+    """
+    model = resolve_model(options.use, temperature=options.temperature, reasoning=options.reasoning)
+    structured = _structured_tool_runnable(model, schema)
     session_id = _sticky_session_id(config, auxiliary=True)
-    if session_id:
+    if session_id and _is_openrouter_wire(structured):
         structured = structured.bind(session_id=session_id)
     return structured
-
-
-def background_structured_runnable(
-    schema: type[_StructuredT],
-    *,
-    temperature: float = DEFAULT_LLM_TEMPERATURE,
-    config: RunnableConfig | None = None,
-) -> Runnable:
-    """Build a structured one-shot on the provider THIS deployment actually runs on.
-
-    _aux_structured_runnable is hardwired to OpenRouter, which is wrong for a
-    deployment pointed at the custom endpoint instead — that one-shot must run
-    there too, without the aux alias (an OpenRouter-only model id). Sim mode
-    wins over the custom endpoint, as in every other factory here.
-    """
-    if settings.GAIA_SIM_MODE:
-        return _sim_llm(temperature).with_structured_output(schema)
-    if settings.DEV_DEFAULT_MODEL == LLMProviderName.CUSTOM and settings.DEV_LLM_BASE_URL:
-        # Bounded like the helper lane. Unbounded, a replay's narration ran to
-        # the endpoint's 64k output cap, took 257 seconds, and cut off
-        # mid-sentence.
-        bounded = _build_custom_llm(temperature).model_copy(
-            update={"max_tokens": HELPER_MAX_OUTPUT_TOKENS}
-        )
-        return bounded.with_structured_output(schema)
-    return _aux_structured_runnable(schema, temperature, config)
 
 
 async def ainvoke_structured(
@@ -1352,38 +1407,28 @@ async def ainvoke_structured(
     config: RunnableConfig | None = None,
     options: StructuredCallOptions = _DEFAULT_STRUCTURED_OPTIONS,
 ) -> _StructuredT:
-    """Run the single canonical one-shot structured call on the default model.
+    """Run the single canonical one-shot structured call on the model options.use resolves to.
 
-    Adds retry + fallback via :func:ainvoke_llm, runs on :func:get_helper_llm,
-    isolated from the conversation's cache chain by a suffixed sticky session, not a second model id.
-    Raises LLMNotConfiguredError when OPENROUTER_API_KEY is unset.
+    Adds retry + fallback via :func:ainvoke_llm. Raises LLMNotConfiguredError
+    when that model's provider has no key.
     """
     # Metering lives in ainvoke_llm, which this delegates to — a handler here too
     # would record the same call twice and over-report the user's COGS.
     return cast(
         _StructuredT,
         await ainvoke_llm(
-            _aux_structured_runnable(
-                schema,
-                options.temperature,
-                config,
-                model_name=options.model_name,
-                fallback_model_names=options.fallback_model_names,
-            ),
+            _structured_runnable(schema, config, options),
             prompt,
             config=config,
             label=label,
-            options=LLMInvokeOptions(timeout=options.timeout),
+            options=LLMInvokeOptions(timeout=options.timeout, max_attempts=options.max_attempts),
         ),
     )
 
 
 def _memory_structured_runnable(schema: type[_StructuredT], temperature: float) -> Runnable:
-    """Build the direct-Gemini structured runnable the memory pipeline falls back to.
-
-    The counterpart of :func:_aux_structured_runnable for the other lane.
-    """
-    return get_memory_llm(temperature=temperature).with_structured_output(schema)
+    """Build the direct-Gemini structured runnable the memory pipeline falls back to."""
+    return resolve_model(ModelUse.MEMORY, temperature=temperature).with_structured_output(schema)
 
 
 async def ainvoke_structured_gemini(
@@ -1394,13 +1439,14 @@ async def ainvoke_structured_gemini(
     config: RunnableConfig | None = None,
     options: StructuredCallOptions = _DEFAULT_STRUCTURED_OPTIONS,
 ) -> _StructuredT:
-    """Run the structured one-shot call for the memory pipeline: aux lane primary, direct Gemini fallback.
+    """Run a structured one-shot on the lane that fails over: aux lane primary, direct Gemini fallback.
 
     Same contract as :func:ainvoke_structured. Preference is measured: Gemini
     flash-lite's cache never extends past tools+system (repeat prompts always
     read exactly 3,064 cached tokens), vs. 98.1% cached on the aux lane. A
     Google-only deployment still extracts memories on Gemini alone.
     """
+    invoke_options = LLMInvokeOptions(timeout=options.timeout, max_attempts=options.max_attempts)
     if not aux_lane_available():
         if not memory_lane_available():
             # Delegates so the canonical LLMNotConfiguredError (naming the fix)
@@ -1419,7 +1465,7 @@ async def ainvoke_structured_gemini(
                 prompt,
                 config=config,
                 label=label,
-                options=LLMInvokeOptions(timeout=options.timeout),
+                options=invoke_options,
             ),
         )
     # Metering lives in ainvoke_llm, which this delegates to — a handler here too
@@ -1432,11 +1478,11 @@ async def ainvoke_structured_gemini(
     return cast(
         _StructuredT,
         await ainvoke_llm(
-            _aux_structured_runnable(schema, options.temperature, config),
+            _structured_runnable(schema, config, options),
             prompt,
             fallback=fallback,
             config=config,
             label=label,
-            options=LLMInvokeOptions(timeout=options.timeout),
+            options=invoke_options,
         ),
     )

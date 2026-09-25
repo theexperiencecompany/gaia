@@ -63,7 +63,7 @@ os.environ["LANGFUSE_HOST"] = ""
 # chromadb's telemetry client is a background network thread that makes the process
 # fork-hostile: mutmut forking a child hit SIGTRAP (exit -5) before it wrote a byte,
 # so every mutant of chroma_store came back "suspicious" and was ungradeable.
-os.environ["ANONYMIZED_TELEMETRY"] = "False"
+os.environ["ANONYMIZED_TELEMETRY"] = "false"
 # darwin getproxies() hits the non-fork-safe SystemConfiguration framework, segfaulting
 # a mutmut child that builds an httpx client there. A non-empty proxy var short-circuits
 # it; NO_PROXY=* is behavior-neutral — httpx returns no proxies for it either way.

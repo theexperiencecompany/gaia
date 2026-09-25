@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Collaborative design tool with Figma AI for UI generation",
   description:
     "Figma is the industry-standard collaborative design tool featuring Figma AI for UI generation and design suggestions. GAIA is a proactive AI productivity assistant that manages the project workflows, tasks, and communications surrounding design work.",
-  metaTitle: "Figma Alternative for Design Workflow Automation — GAIA vs Figma",
+  metaTitle: "Figma Alternative for Design Workflow Automation: GAIA vs Figma",
   metaDescription:
     "Figma AI handles UI design but not the project management around it. GAIA is an open-source alternative that automates tasks, emails, and workflows across design and engineering teams with 50+ integrations.",
   keywords: [
@@ -22,13 +22,13 @@ export const entry: ComparisonData = {
     "design workflow automation",
     "open source figma alternative",
   ],
-  intro: `Figma is the dominant collaborative design tool used by product and design teams worldwide. Its move to introduce Figma AI — including AI-powered UI component generation, design suggestions, and the ability to describe a layout and have it rendered — marks a significant evolution in how design work gets done. For designers who spend time creating wireframes, exploring layout variations, or generating UI prototypes, Figma AI represents a meaningful acceleration of the creative process.
+  intro: `Figma is the dominant collaborative design tool used by product and design teams worldwide. Its move to introduce Figma AI (including AI-powered UI component generation, design suggestions, and the ability to describe a layout and have it rendered) marks a significant evolution in how design work gets done. For designers who spend time creating wireframes, exploring layout variations, or generating UI prototypes, Figma AI represents a meaningful acceleration of the creative process.
 
 The reality of design work, however, extends far beyond the canvas. Design projects involve complex coordination between designers, product managers, and engineers. Feedback cycles happen across email threads, Slack messages, and Linear or Jira tickets. Handoffs between design and engineering require clear task assignment and version tracking. Stakeholder reviews generate action items that need to be tracked somewhere. Design sprints require calendar coordination. And throughout all of this, important context gets scattered across multiple tools.
 
-GAIA manages this coordination layer — the project management, communication, and workflow automation that surrounds design work but is not the design itself. When a design review generates action items, GAIA creates the corresponding Linear issues or Jira tickets. When a stakeholder emails feedback, GAIA triages that message and creates a task for the designer. When a design sprint requires scheduling multiple review meetings, GAIA coordinates calendar availability and sends invites. When a project update needs to flow to the team's Notion page, GAIA handles the update.
+GAIA manages this coordination layer: the project management, communication, and workflow automation that surrounds design work but is not the design itself. When a design review generates action items, GAIA creates the corresponding Linear issues or Jira tickets. When a stakeholder emails feedback, GAIA triages that message and creates a task for the designer. When a design sprint requires scheduling multiple review meetings, GAIA coordinates calendar availability and sends invites. When a project update needs to flow to the team's Notion page, GAIA handles the update.
 
-These tools serve fundamentally different jobs. Figma AI accelerates the creation of design artifacts — layouts, components, and prototypes. GAIA accelerates the coordination work that makes design projects succeed: managing the tasks, communications, and cross-team handoffs that connect design decisions to product outcomes. For design teams that use Figma for their creative work and find themselves overwhelmed by the coordination overhead around it, GAIA addresses the productivity problem that Figma AI was never designed to solve.`,
+These tools serve fundamentally different jobs. Figma AI accelerates the creation of design artifacts: layouts, components, and prototypes. GAIA accelerates the coordination work that makes design projects succeed: managing the tasks, communications, and cross-team handoffs that connect design decisions to product outcomes. For design teams that use Figma for their creative work and find themselves overwhelmed by the coordination overhead around it, GAIA addresses the productivity problem that Figma AI was never designed to solve.`,
   rows: [
     {
       feature: "Core approach",
@@ -84,7 +84,7 @@ These tools serve fundamentally different jobs. Figma AI accelerates the creatio
     },
     {
       feature: "Open source / self-hosting",
-      gaia: "Fully open source and self-hostable — complete data ownership",
+      gaia: "Fully open source and self-hostable: complete data ownership",
       competitor: "Proprietary SaaS; design assets stored on Figma's servers",
     },
     {
@@ -104,7 +104,7 @@ These tools serve fundamentally different jobs. Figma AI accelerates the creatio
   ],
   competitorAdvantages: [
     "Industry-leading collaborative design tool trusted by virtually every product and design team",
-    "Figma AI for UI generation and design suggestions — directly accelerates the creative design process",
+    "Figma AI for UI generation and design suggestions, directly accelerating the creative design process",
     "Dev Mode and engineering handoff features deeply integrated with the design artifact itself",
   ],
   verdict:
@@ -113,7 +113,7 @@ These tools serve fundamentally different jobs. Figma AI accelerates the creatio
     {
       question: "Can GAIA replace Figma for design work?",
       answer:
-        "No — GAIA is not a design tool and does not replace Figma for UI design or prototyping. GAIA manages the project management, communication, and workflow automation surrounding design work: task creation, email triage, calendar coordination, and cross-tool automation between Figma teams and their engineering and product counterparts.",
+        "No. GAIA is not a design tool and does not replace Figma for UI design or prototyping. GAIA manages the project management, communication, and workflow automation surrounding design work: task creation, email triage, calendar coordination, and cross-tool automation between Figma teams and their engineering and product counterparts.",
     },
     {
       question: "How does GAIA integrate with design team workflows?",
@@ -124,7 +124,7 @@ These tools serve fundamentally different jobs. Figma AI accelerates the creatio
       question:
         "Can GAIA create Jira or Linear tickets from Figma design reviews?",
       answer:
-        "Yes. GAIA can parse design review feedback — from emails, meeting notes, or direct input — and create properly structured tickets in Jira, Linear, or Asana with appropriate assignees, priorities, and context. This automates the handoff from design review to engineering task.",
+        "Yes. GAIA can parse design review feedback (from emails, meeting notes, or direct input) and create properly structured tickets in Jira, Linear, or Asana with appropriate assignees, priorities, and context. This automates the handoff from design review to engineering task.",
     },
     {
       question: "Is GAIA useful for design teams using Figma?",

@@ -40,23 +40,19 @@ class TestCriteriaBlock:
 
 @pytest.fixture
 def captured(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
-    """Replace the two LLM seams so a judge call records its arguments and returns."""
+    """Replace the structured-call seam so a judge call records its arguments and returns."""
     seen: dict[str, Any] = {}
 
-    def fake_runnable(model: type[BaseModel], temperature: float) -> str:
+    async def fake_structured(
+        model: type[BaseModel], prompt: str, *, label: str, options: Any
+    ) -> _Verdict:
         seen["model"] = model
-        seen["temperature"] = temperature
-        return "runnable"
-
-    async def fake_ainvoke(runnable: str, prompt: str, label: str, options: Any) -> _Verdict:
-        seen["runnable"] = runnable
         seen["prompt"] = prompt
         seen["label"] = label
         seen["options"] = options
         return _Verdict()
 
-    monkeypatch.setattr(judge_mod, "background_structured_runnable", fake_runnable)
-    monkeypatch.setattr(judge_mod, "ainvoke_llm", fake_ainvoke)
+    monkeypatch.setattr(judge_mod, "ainvoke_structured", fake_structured)
     return seen
 
 
@@ -66,7 +62,7 @@ class TestJudgePlumbing:
     ) -> None:
         """A judge that varies run to run turns a regression into a coin flip."""
         await judge(_Verdict, "rubric", label="some_judge", timeout=90.0)
-        assert captured["temperature"] == 0.0
+        assert captured["options"].temperature == 0.0
         assert captured["options"].max_attempts == DEFAULT_MAX_ATTEMPTS == 2
         assert captured["options"].timeout == 90.0
 
@@ -87,7 +83,7 @@ class TestJudgePlumbing:
     ) -> None:
         """A deterministic difficult user stops being difficult in new ways."""
         await simulate(_Verdict, "p", label="user_sim", timeout=1.0, temperature=0.8)
-        assert captured["temperature"] == 0.8
+        assert captured["options"].temperature == 0.8
 
 
 class TestDevClient:

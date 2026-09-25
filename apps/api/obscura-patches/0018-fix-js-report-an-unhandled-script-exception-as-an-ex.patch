@@ -1,0 +1,350 @@
+From 68d2c0f889d135984d59e1acd865ab7c712446bd Mon Sep 17 00:00:00 2001
+From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
+Date: Thu, 24 Sep 2026 14:53:59 +0530
+Subject: [PATCH 18/18] fix(js): report an unhandled script exception as an
+ exception, not a console.error
+
+HTML "report an exception" fires onerror and the error event and, when no
+handler handled it, sends the exception to the developer console. Obscura did
+that and also called console.error("Uncaught ... (url:line:col)"), so CDP
+clients got a Runtime.consoleAPICalled the page never made next to the
+Runtime.exceptionThrown. It also sent exceptionThrown for a document script's
+exception that a handler had cancelled, and never sent one for inserted or
+timer-string scripts.
+
+report_script_exception now owns the console report: the realm's reporter
+returns whether the error was handled, and when it was not, the host queues
+Runtime.exceptionThrown (and the MCP console line). A document script's host
+path records the exception itself only when the script is not reported.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/js/bootstrap.js |   8 +-
+ crates/obscura-js/src/ops.rs      | 118 +++++++++++++++++++++++++++++-
+ crates/obscura-js/src/runtime.rs  | 113 ++++++++++++++--------------
+ 3 files changed, 175 insertions(+), 64 deletions(-)
+
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index 3c12070..9b86f36 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -88,7 +88,9 @@ globalThis.onerror = function(msg, src, line, col, error) {
+ // HTML "report the exception" for a classic script's uncaught exception. The
+ // host calls this with the message V8 formats ("Uncaught Error: boom"), the
+ // script URL, the 1-based line and column, and the thrown value, for scripts
+-// it compiles and runs itself (runtime.rs, ops.rs `run_classic_script`).
++// it compiles and runs itself (runtime.rs, ops.rs `run_classic_script`). It
++// returns whether a handler handled the error; if none did, the host reports
++// it to the developer console as an exception (ops.rs `report_script_exception`).
+ Object.defineProperty(globalThis, '__obscura_reportScriptError', {
+   value: function(message, filename, lineno, colno, error) {
+     let handled = false;
+@@ -102,9 +104,7 @@ Object.defineProperty(globalThis, '__obscura_reportScriptError', {
+       globalThis.dispatchEvent(event);
+       handled = handled || event.defaultPrevented;
+     } catch (_) {}
+-    if (!handled) {
+-      console.error(message + (filename ? ' (' + filename + ':' + lineno + ':' + colno + ')' : ''));
+-    }
++    return handled;
+   },
+   writable: false,
+   enumerable: false,
+diff --git a/crates/obscura-js/src/ops.rs b/crates/obscura-js/src/ops.rs
+index 7714eca..f7882a7 100644
+--- a/crates/obscura-js/src/ops.rs
++++ b/crates/obscura-js/src/ops.rs
+@@ -1348,13 +1348,123 @@ pub(crate) fn run_classic_script(scope: &mut v8::HandleScope, source: &str, url:
+     true
+ }
+ 
++/// Queues an uncaught exception for the developer console, which CDP delivers
++/// as `Runtime.exceptionThrown`. `fallback_url` names the script when V8 gave
++/// the exception no frame with a URL.
++pub(crate) fn record_uncaught_exception(
++    state: &mut ObscuraState,
++    error: &deno_core::error::JsError,
++    fallback_url: &str,
++) {
++    if !state.runtime_events_enabled {
++        return;
++    }
++    state.runtime_exception_counter = state.runtime_exception_counter.saturating_add(1);
++    let first = error.frames.first();
++    let url = first
++        .and_then(|frame| frame.file_name.clone())
++        .filter(|url| !url.is_empty())
++        .unwrap_or_else(|| fallback_url.to_string());
++    let line_number = first
++        .and_then(|frame| frame.line_number)
++        .unwrap_or(1)
++        .saturating_sub(1);
++    let column_number = first
++        .and_then(|frame| frame.column_number)
++        .unwrap_or(1)
++        .saturating_sub(1);
++    let stack_trace = error
++        .frames
++        .iter()
++        .map(|frame| {
++            serde_json::json!({
++                "functionName": frame.function_name.as_deref().unwrap_or(""),
++                "scriptId": "",
++                "url": frame.file_name.as_deref().unwrap_or(fallback_url),
++                "lineNumber": frame.line_number.unwrap_or(1).saturating_sub(1),
++                "columnNumber": frame.column_number.unwrap_or(1).saturating_sub(1),
++            })
++        })
++        .collect();
++    let timestamp = std::time::SystemTime::now()
++        .duration_since(std::time::UNIX_EPOCH)
++        .unwrap_or_default()
++        .as_secs_f64()
++        * 1_000.0;
++    if state.pending_runtime_events.len() >= 1_024 {
++        state.pending_runtime_events.pop_front();
++    }
++    let exception_id = state.runtime_exception_counter;
++    state
++        .pending_runtime_events
++        .push_back(RuntimeEvent::Exception(RuntimeExceptionEvent {
++            exception_id,
++            name: error.name.clone().unwrap_or_else(|| "Error".to_string()),
++            description: error
++                .stack
++                .clone()
++                .unwrap_or_else(|| error.exception_message.clone()),
++            url,
++            line_number,
++            column_number,
++            stack_trace,
++            timestamp,
++        }));
++}
++
+ /// HTML's "report the exception" for a script's uncaught exception: hands the
+ /// message, the source URL, the 1-based line and column and the thrown value to
+ /// the current realm's reporter, which fires `onerror` and `error` listeners.
++/// When none of them handled it, the exception goes to the developer console as
++/// an exception (`Runtime.exceptionThrown`), the way a browser reports it; it is
++/// not a `console.error` call, which would tell a CDP client the page logged it.
+ pub(crate) fn report_script_exception(
+     scope: &mut v8::TryCatch<v8::HandleScope>,
+     exception: v8::Local<v8::Value>,
+ ) {
++    let error = deno_core::error::JsError::from_v8_exception(scope, exception);
++    if dispatch_script_error(scope, exception) {
++        return;
++    }
++    let state = deno_core::JsRuntime::op_state_from(scope);
++    let Some(page) = state.borrow().try_borrow::<SharedState>().cloned() else {
++        return;
++    };
++    let mut page = page.borrow_mut();
++    let first = error.frames.first();
++    let url = first
++        .and_then(|frame| frame.file_name.clone())
++        .unwrap_or_default();
++    let message = format!(
++        "Uncaught {}{}",
++        error.exception_message.trim_start_matches("Uncaught "),
++        first
++            .filter(|_| !url.is_empty())
++            .map(|frame| format!(
++                " ({url}:{}:{})",
++                frame.line_number.unwrap_or(0),
++                frame.column_number.unwrap_or(0)
++            ))
++            .unwrap_or_default()
++    );
++    tracing::error!(target: "obscura::console", "{}", message);
++    if page.console_messages_enabled {
++        if page.pending_console_messages.len() >= 1_024 {
++            page.pending_console_messages.pop_front();
++        }
++        page.pending_console_messages
++            .push_back(format!("[error] {message}"));
++    }
++    record_uncaught_exception(&mut page, &error, &url);
++}
++
++/// Fires `onerror` and the `error` event for an uncaught script exception and
++/// says whether a handler handled it (returned true from `onerror`, or
++/// cancelled the event).
++fn dispatch_script_error(
++    scope: &mut v8::TryCatch<v8::HandleScope>,
++    exception: v8::Local<v8::Value>,
++) -> bool {
+     let (text, filename, line, column) = match scope.message() {
+         Some(message) => {
+             let text = message.get(scope).into();
+@@ -1376,18 +1486,20 @@ pub(crate) fn report_script_exception(
+     let context = scope.get_current_context();
+     let global = context.global(scope);
+     let Some(key) = v8::String::new(scope, "__obscura_reportScriptError") else {
+-        return;
++        return false;
+     };
+     let scope = &mut v8::TryCatch::new(scope);
+     let Some(reporter) = global
+         .get(scope, key.into())
+         .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
+     else {
+-        return;
++        return false;
+     };
+     let line = v8::Integer::new(scope, line).into();
+     let column = v8::Integer::new(scope, column).into();
+-    reporter.call(scope, global.into(), &[text, filename, line, column, exception]);
++    reporter
++        .call(scope, global.into(), &[text, filename, line, column, exception])
++        .is_some_and(|handled| handled.is_true())
+ }
+ 
+ /// Runs a script element's source as its own classic script in the realm named
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index a59813d..22acabe 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -20,7 +20,7 @@ use crate::module_loader::{ModuleLoadActivity, ObscuraModuleLoader};
+ #[cfg(all(test, feature = "render"))]
+ use crate::ops::ensure_prepared_render;
+ use crate::ops::{
+-    build_extension, node_is_script, ObscuraState, RuntimeEvent, RuntimeExceptionEvent,
++    build_extension, node_is_script, ObscuraState, RuntimeEvent,
+     StoredNetworkResponseBody,
+ };
+ #[cfg(feature = "render")]
+@@ -1312,61 +1312,7 @@ impl ObscuraJsRuntime {
+     }
+ 
+     fn record_uncaught_exception(&self, error: &deno_core::error::JsError, fallback_url: &str) {
+-        let mut state = self.state.borrow_mut();
+-        if !state.runtime_events_enabled {
+-            return;
+-        }
+-        state.runtime_exception_counter = state.runtime_exception_counter.saturating_add(1);
+-        let first = error.frames.first();
+-        let url = first
+-            .and_then(|frame| frame.file_name.clone())
+-            .filter(|url| !url.is_empty())
+-            .unwrap_or_else(|| fallback_url.to_string());
+-        let line_number = first
+-            .and_then(|frame| frame.line_number)
+-            .unwrap_or(1)
+-            .saturating_sub(1);
+-        let column_number = first
+-            .and_then(|frame| frame.column_number)
+-            .unwrap_or(1)
+-            .saturating_sub(1);
+-        let stack_trace = error
+-            .frames
+-            .iter()
+-            .map(|frame| {
+-                serde_json::json!({
+-                    "functionName": frame.function_name.as_deref().unwrap_or(""),
+-                    "scriptId": "",
+-                    "url": frame.file_name.as_deref().unwrap_or(fallback_url),
+-                    "lineNumber": frame.line_number.unwrap_or(1).saturating_sub(1),
+-                    "columnNumber": frame.column_number.unwrap_or(1).saturating_sub(1),
+-                })
+-            })
+-            .collect();
+-        let timestamp = std::time::SystemTime::now()
+-            .duration_since(std::time::UNIX_EPOCH)
+-            .unwrap_or_default()
+-            .as_secs_f64()
+-            * 1_000.0;
+-        if state.pending_runtime_events.len() >= 1_024 {
+-            state.pending_runtime_events.pop_front();
+-        }
+-        let exception_id = state.runtime_exception_counter;
+-        state
+-            .pending_runtime_events
+-            .push_back(RuntimeEvent::Exception(RuntimeExceptionEvent {
+-                exception_id,
+-                name: error.name.clone().unwrap_or_else(|| "Error".to_string()),
+-                description: error
+-                    .stack
+-                    .clone()
+-                    .unwrap_or_else(|| error.exception_message.clone()),
+-                url,
+-                line_number,
+-                column_number,
+-                stack_trace,
+-                timestamp,
+-            }));
++        crate::ops::record_uncaught_exception(&mut self.state.borrow_mut(), error, fallback_url);
+     }
+ 
+     pub fn get_network_response_body(&self, request_id: &str) -> Option<StoredNetworkResponseBody> {
+@@ -3206,7 +3152,9 @@ impl ObscuraJsRuntime {
+         let result = match result {
+             Ok(()) => Ok(()),
+             Err((message, error)) => {
+-                if let Some(error) = error.as_ref() {
++                // A reported script's exception already went to the console,
++                // unless the page handled it.
++                if let Some(error) = error.as_ref().filter(|_| !report) {
+                     self.record_uncaught_exception(error, &script_url);
+                 }
+                 Err(message)
+@@ -18781,6 +18729,57 @@ mod tests {
+         assert_eq!(result, serde_json::json!([3, "    at <anonymous>:1:46"]));
+     }
+ 
++    /// An uncaught script exception nobody handled reaches the developer console
++    /// once, as the exception itself (CDP `Runtime.exceptionThrown`), never as a
++    /// `console.error` call the page did not make. One an `error` listener
++    /// cancelled is not reported at all (HTML "report an exception").
++    #[test]
++    fn uncaught_script_exception_is_reported_once_as_an_exception() {
++        let mut rt = setup_runtime("<html><head></head><body></body></html>");
++        rt.set_runtime_events_enabled(true);
++        let summary = |events: Vec<RuntimeEvent>| -> Vec<String> {
++            events
++                .into_iter()
++                .map(|event| match event {
++                    RuntimeEvent::Console(event) => format!("console.{}", event.kind),
++                    RuntimeEvent::Exception(event) => format!(
++                        "exception {} {}:{}:{}",
++                        event.description.lines().next().unwrap_or(""),
++                        event.url,
++                        event.line_number,
++                        event.column_number,
++                    ),
++                })
++                .collect()
++        };
++
++        assert!(rt
++            .execute_page_script_guarded("https://www.example.com/", "\"use strict\";\n_w.x = 1;")
++            .is_err());
++        rt.execute_script(
++            "insert",
++            "const s = document.createElement('script'); s.textContent = 'null.y'; document.body.appendChild(s);",
++        )
++        .unwrap();
++        assert_eq!(
++            summary(rt.take_pending_runtime_events()),
++            [
++                "exception ReferenceError: _w is not defined https://www.example.com/:1:0",
++                "exception TypeError: Cannot read properties of null (reading 'y') http://example.com/test:0:5",
++            ]
++        );
++
++        rt.execute_script(
++            "setup",
++            "addEventListener('error', (e) => e.preventDefault());",
++        )
++        .unwrap();
++        assert!(rt
++            .execute_page_script_guarded("https://www.example.com/", "_w.x = 1;")
++            .is_err());
++        assert_eq!(summary(rt.take_pending_runtime_events()), Vec::<String>::new());
++    }
++
+     /// A document's own parser-inserted script reports an uncaught exception to
+     /// `onerror` with its URL, as a browser does; host-internal scripts do not.
+     #[test]

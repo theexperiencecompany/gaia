@@ -6,8 +6,8 @@ export const entry: ComparisonData = {
   domain: "bardeen.ai",
   tagline: "Automate your browser with AI",
   description:
-    "Bardeen is a Chrome extension that automates browser-based tasks through AI-generated playbooks and point-and-click web scraping. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows across 50+ apps via deep API integrations — no browser required.",
-  metaTitle: "Bardeen Alternative with Proactive AI — GAIA vs Bardeen",
+    "Bardeen is a Chrome extension that automates browser-based tasks through AI-generated playbooks and point-and-click web scraping. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows across 50+ apps via deep API integrations, with no browser required.",
+  metaTitle: "Bardeen Alternative with Proactive AI: GAIA vs Bardeen",
   metaDescription:
     "Bardeen automates browser tasks but relies on screen scraping and needs manual triggers. GAIA is an open-source Bardeen alternative with proactive AI that uses real API connections to manage email, calendar, and workflows across 50+ tools.",
   keywords: [
@@ -21,7 +21,7 @@ export const entry: ComparisonData = {
     "AI productivity comparison",
   ],
   intro:
-    "Bardeen built its reputation as the go-to Chrome extension for automating repetitive browser work. Its Magic Box lets you describe a task in plain English — 'scrape leads from this page and add them to my CRM' — and it generates a playbook that runs inside your browser. For browser-centric automation and web scraping, it is genuinely useful. But Bardeen's architecture is fundamentally browser-bound: it requires a running Chrome instance, works by controlling the browser UI rather than calling APIs, and is primarily reactive — you still have to trigger it. GAIA takes a different approach entirely. It integrates directly with Gmail, Google Calendar, Slack, Notion, GitHub, and 50+ other tools through official APIs, acts proactively on your behalf, and runs continuously in the background across web, desktop, and mobile — without a browser in sight.",
+    "Bardeen built its reputation as the go-to Chrome extension for automating repetitive browser work. Its Magic Box lets you describe a task in plain English (for example, 'scrape leads from this page and add them to my CRM') and it generates a playbook that runs inside your browser. For browser-centric automation and web scraping, it is genuinely useful. But Bardeen's architecture is fundamentally browser-bound: it requires a running Chrome instance, works by controlling the browser UI rather than calling APIs, and is primarily reactive: you still have to trigger it. GAIA takes a different approach entirely. It integrates directly with Gmail, Google Calendar, Slack, Notion, GitHub, and 50+ other tools through official APIs, acts proactively on your behalf, and runs continuously in the background across web, desktop, and mobile, without a browser in sight.",
   rows: [
     {
       feature: "Core approach",
@@ -31,13 +31,13 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Automation type",
-      gaia: "API-native automations that call official endpoints directly — reliable, fast, and not dependent on a browser session or page layout",
+      gaia: "API-native automations that call official endpoints directly: reliable, fast, and not dependent on a browser session or page layout",
       competitor:
         "Browser-UI automation and web scraping: controls the browser like a user would, meaning automations can break when page layouts change",
     },
     {
       feature: "Email management",
-      gaia: "Full Gmail management — triages inbox by urgency, drafts context-aware replies, auto-labels, and creates tasks from emails automatically",
+      gaia: "Full Gmail management: triages inbox by urgency, drafts context-aware replies, auto-labels, and creates tasks from emails automatically",
       competitor:
         "Can scrape email data from web-based inboxes or trigger email sends via browser automation; no native inbox triage or AI-driven reply drafting",
     },
@@ -49,9 +49,9 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Proactive behavior",
-      gaia: "Continuously monitors your inbox, calendar, and connected tools; acts before you ask — triages emails, prepares briefings, and runs scheduled workflows",
+      gaia: "Continuously monitors your inbox, calendar, and connected tools; acts before you ask: triages emails, prepares briefings, and runs scheduled workflows",
       competitor:
-        "Primarily reactive — automations run when you trigger them or on a schedule you define; the tool does not monitor your workflow or surface unsolicited insights",
+        "Primarily reactive: automations run when you trigger them or on a schedule you define; the tool does not monitor your workflow or surface unsolicited insights",
     },
     {
       feature: "Integrations",
@@ -67,19 +67,19 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Memory & context",
-      gaia: "Graph-based persistent memory that connects tasks to projects, meetings to people, and emails to outcomes — builds deep contextual understanding over time",
+      gaia: "Graph-based persistent memory that connects tasks to projects, meetings to people, and emails to outcomes, building deep contextual understanding over time",
       competitor:
         "No persistent memory system; each playbook execution is stateless and context-aware reasoning across tools is not a core capability",
     },
     {
       feature: "Platform availability",
-      gaia: "Available on web, desktop, mobile, CLI, and bots — works anywhere without needing a browser window open",
+      gaia: "Available on web, desktop, mobile, CLI, and bots, working anywhere without needing a browser window open",
       competitor:
         "Chrome browser extension only; automations require a running Chrome instance, limiting use to desktop and preventing mobile or headless execution",
     },
     {
       feature: "Open source",
-      gaia: "Fully open source and self-hostable with Docker — own your data entirely and deploy on your own infrastructure",
+      gaia: "Fully open source and self-hostable with Docker: own your data entirely and deploy on your own infrastructure",
       competitor:
         "Proprietary closed-source SaaS platform with no self-hosting option",
     },
@@ -91,19 +91,19 @@ export const entry: ComparisonData = {
     },
   ],
   gaiaAdvantages: [
-    "API-native integrations are reliable and fast — not subject to breaking when websites update their layouts or block browser automation",
+    "API-native integrations are reliable and fast, not subject to breaking when websites update their layouts or block browser automation",
     "Proactively monitors your inbox, calendar, and connected tools and acts on your behalf without requiring a trigger or open browser tab",
-    "Runs on web, desktop, mobile, CLI, and bots — not locked to a Chrome window, making it useful across every device and context",
+    "Runs on web, desktop, mobile, CLI, and bots, not locked to a Chrome window, making it useful across every device and context",
     "Open source and self-hostable for full data ownership, with no per-seat pricing for personal use and no usage credit caps when self-hosted",
-    "Graph-based persistent memory builds a connected model of your tasks, meetings, emails, and people over time — enabling context-aware proactive action",
+    "Graph-based persistent memory builds a connected model of your tasks, meetings, emails, and people over time, enabling context-aware proactive action",
   ],
   competitorAdvantages: [
     "Point-and-click web scraping with a visual builder makes it easy to extract structured data from any website without writing code",
     "Large library of pre-built playbook templates covering sales, recruiting, research, and CRM enrichment workflows that can be deployed in minutes",
-    "Effective for browser-specific automation scenarios — form filling, LinkedIn prospecting, and web research — that API-only tools cannot handle",
+    "Effective for browser-specific automation scenarios (form filling, LinkedIn prospecting, and web research) that API-only tools cannot handle",
   ],
   verdict:
-    "Bardeen is a strong tool for teams that need browser-based automation and no-code web scraping, particularly for sales and lead enrichment workflows. But its Chrome-extension architecture makes it inherently reactive, browser-bound, and dependent on page layouts staying stable. GAIA is built for people who want an AI assistant that proactively manages their entire digital workflow — triaging email, running calendar actions, creating tasks, and orchestrating multi-step automations across 50+ tools through official APIs, on every platform they use.",
+    "Bardeen is a strong tool for teams that need browser-based automation and no-code web scraping, particularly for sales and lead enrichment workflows. But its Chrome-extension architecture makes it inherently reactive, browser-bound, and dependent on page layouts staying stable. GAIA is built for people who want an AI assistant that proactively manages their entire digital workflow: triaging email, running calendar actions, creating tasks, and orchestrating multi-step automations across 50+ tools through official APIs, on every platform they use.",
   faqs: [
     {
       question: "Can GAIA replace Bardeen for web scraping?",
@@ -113,7 +113,7 @@ export const entry: ComparisonData = {
     {
       question: "How is GAIA's automation different from Bardeen's playbooks?",
       answer:
-        "Bardeen playbooks automate browser interactions — they control Chrome like a user would, clicking buttons and reading page content. This makes them powerful for browser-specific tasks but fragile when websites change layouts. GAIA automations call official APIs directly, making them faster, more reliable, and independent of any browser session. GAIA also initiates automations proactively based on what is happening in your inbox or calendar, rather than waiting for you to run a playbook.",
+        "Bardeen playbooks automate browser interactions: they control Chrome like a user would, clicking buttons and reading page content. This makes them powerful for browser-specific tasks but fragile when websites change layouts. GAIA automations call official APIs directly, making them faster, more reliable, and independent of any browser session. GAIA also initiates automations proactively based on what is happening in your inbox or calendar, rather than waiting for you to run a playbook.",
     },
     {
       question: "Does GAIA work without a browser being open?",

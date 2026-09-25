@@ -328,6 +328,79 @@ class RedisCache:
             )
             return False
 
+    @overload
+    async def get_and_delete(self, key: str, model: type[T]) -> T | None: ...
+
+    @overload
+    async def get_and_delete(self, key: str, model: None = None) -> JsonValue: ...
+
+    async def get_and_delete(self, key: str, model: type[T] | None = None) -> T | JsonValue:
+        """Atomically read and remove key (GETDEL), so a one-time credential is redeemed exactly once."""
+        if not self.redis:
+            log.warning(f"{LogTag.STORAGE} Redis is not initialized. Skipping get_and_delete.")
+            return None
+
+        try:
+            value = await self.redis.getdel(key)
+            if value:
+                return deserialize_any(value, model)
+            return None
+        except Exception as e:
+            log.error(
+                "redis_op_failed",
+                op="get_and_delete",
+                key=key,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+            return None
+
+    async def set_if_absent(
+        self, key: str, value: object, *, ttl: int, model: type[object] | None = None
+    ) -> bool:
+        """SET NX with a TTL: True when this call created the key, False when it already existed.
+
+        The one atomic "first writer wins" the cache offers, for state that may be
+        settled from several processes at once. False also when Redis is down or
+        the write failed, so a caller never proceeds as the winner on an unstored key.
+        """
+        if not self.redis:
+            log.warning(f"{LogTag.STORAGE} Redis is not initialized. Skipping set_if_absent.")
+            return False
+
+        try:
+            created = await self.redis.set(key, serialize_any(value, model), ex=ttl, nx=True)
+            return created is not None
+        except Exception as e:
+            log.error(
+                "redis_op_failed",
+                op="set_if_absent",
+                key=key,
+                ttl=ttl,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+            return False
+
+    async def ttl_seconds(self, key: str) -> int | None:
+        """Seconds until key expires, or None when it is absent, has no expiry, or Redis is down."""
+        if not self.redis:
+            log.warning(f"{LogTag.STORAGE} Redis is not initialized. Skipping ttl operation.")
+            return None
+
+        try:
+            remaining = await self.redis.ttl(key)
+        except Exception as e:
+            log.error(
+                "redis_op_failed",
+                op="ttl",
+                key=key,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+            return None
+        return remaining if remaining >= 0 else None
+
     async def delete(self, key: str) -> None:
         """Delete a cached key."""
         if not self.redis:
@@ -401,25 +474,7 @@ async def get_and_delete_cache(key: str, model: None = None) -> JsonValue: ...
 
 async def get_and_delete_cache(key: str, model: type[T] | None = None) -> T | JsonValue:
     """Atomically get and delete a value (GETDEL) so a replayed one-time token can't also read it."""
-    if not redis_cache.redis:
-        log.warning(
-            f"{LogTag.STORAGE} Redis is not initialized. Skipping get_and_delete operation."
-        )
-        return None
-
-    try:
-        value = await redis_cache.redis.getdel(key)
-        if value:
-            return deserialize_any(value, model)
-        return None
-    except Exception as e:
-        log.error(
-            f"{LogTag.STORAGE} Error in get_and_delete for key",
-            key=key,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return None
+    return await redis_cache.get_and_delete(key, model)
 
 
 async def delete_cache_by_pattern(pattern: str) -> None:

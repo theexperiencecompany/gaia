@@ -744,6 +744,31 @@ class TestRunChatStreamBackground:
         assert mock_capture.call_args.args[2]["delegated"] is False
         assert mock_capture.call_args.args[2]["queued"] is False
 
+    async def test_an_empty_source_is_omitted_rather_than_sent_blank(
+        self, test_user, existing_conv_body
+    ):
+        """A bot platform is a plain str, so "" reaches here; analytics must not get a blank prop."""
+        sm = _make_stream_manager_mock()
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=AsyncMock(return_value=_done_only_stream()),
+            ),
+            patch("app.services.chat.stream.save_conversation_async", new=AsyncMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+            patch("app.services.chat.stream.capture_event") as mock_capture,
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_capture_blank_source",
+                body=existing_conv_body,
+                user=test_user,
+                conversation_id="conv_existing_123",
+                source="",
+            )
+
+        assert "source" not in mock_capture.call_args.args[2]
+
     async def test_captures_message_cancelled_when_stream_cancelled(
         self, test_user, existing_conv_body
     ):
@@ -1558,6 +1583,305 @@ class TestRunChatStreamBackground:
         assert state.ttft_ms == 2000.0
         assert state.e2e_ack_ms == 2000.0
 
+    # chunk dispatch: every frame goes through `_dispatch_stream_chunk`, which
+    # picks what the client sees and what the turn persists. The tests above
+    # only assert the happy path, so a wrong branch would still read as a pass.
+
+    async def _drive(self, agent_chunks, sm, save, *, stream_id="stream_dispatch"):
+        async def agent_stream():
+            for chunk in agent_chunks:
+                yield chunk
+
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=AsyncMock(return_value=agent_stream()),
+            ),
+            patch("app.services.chat.stream.save_conversation_async", new=save),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+        ):
+            await run_chat_stream_background(
+                stream_id=stream_id,
+                body=self.dispatch_body(),
+                user=AuthenticatedUser(user_id="user_1", email="a@b.com"),
+                conversation_id="conv_existing_123",
+            )
+
+    @staticmethod
+    def dispatch_body() -> MessageRequestWithHistory:
+        return MessageRequestWithHistory(
+            message="hi", messages=[], conversation_id="conv_existing_123"
+        )
+
+    async def test_a_non_data_frame_is_published_verbatim_on_its_own_stream(
+        self, test_user
+    ) -> None:
+        """Pass a non-data: frame through untouched to the stream the client is listening on."""
+        sm = _make_stream_manager_mock()
+
+        await self._drive(["keepalive\n\n", "data: [DONE]\n\n"], sm, AsyncMock())
+
+        assert ("stream_dispatch", "keepalive\n\n") in [
+            call.args for call in sm.publish_chunk.call_args_list
+        ]
+
+    async def test_an_error_frame_from_the_agent_is_persisted_onto_the_turn(
+        self, test_user
+    ) -> None:
+        """Persist an error frame yielded by call_agent's setup guard, the one path nothing else records."""
+        save = AsyncMock()
+
+        await self._drive(
+            [f"data: {json.dumps({'error': 'model unavailable'})}\n\n", "data: [DONE]\n\n"],
+            _make_stream_manager_mock(),
+            save,
+        )
+
+        assert save.call_args.kwargs["error"] == "model unavailable"
+
+    async def test_a_data_frame_without_an_error_leaves_the_turn_unmarked(self, test_user) -> None:
+        save = AsyncMock()
+
+        await self._drive(
+            [f"data: {json.dumps({'response': 'hello'})}\n\n", "data: [DONE]\n\n"],
+            _make_stream_manager_mock(),
+            save,
+        )
+
+        assert save.call_args.kwargs["error"] is None
+
+    async def test_comms_thinking_is_folded_into_the_persisted_tool_data(self, test_user) -> None:
+        """Fold comms's plain-frame reasoning into tool_data the same way the executor's is, so a reload keeps it."""
+        save = AsyncMock()
+
+        await self._drive(
+            [
+                f"data: {json.dumps({'reasoning': {'content': 'weighing it up'}})}\n\n",
+                "data: [DONE]\n\n",
+            ],
+            _make_stream_manager_mock(),
+            save,
+        )
+
+        assert save.call_args.kwargs["tool_data"]["tool_data"] == [
+            {
+                "tool_name": "tool_calls_data",
+                "tool_category": "reasoning",
+                "data": {
+                    "tool_name": "reasoning",
+                    "tool_category": "reasoning",
+                    "message": "",
+                    "reasoning": "weighing it up",
+                },
+            }
+        ]
+
+    async def test_a_frame_with_no_reasoning_adds_no_thinking_entry(self, test_user) -> None:
+        save = AsyncMock()
+
+        await self._drive(
+            [f"data: {json.dumps({'response': 'hello'})}\n\n", "data: [DONE]\n\n"],
+            _make_stream_manager_mock(),
+            save,
+        )
+
+        assert save.call_args.kwargs["tool_data"]["tool_data"] == []
+
+    async def test_a_frame_the_processor_chokes_on_still_reaches_the_client(
+        self, test_user
+    ) -> None:
+        """Passthrough is the fallback: a frame we cannot parse is still the agent's output, and swallowing it would blank the bubble."""
+        sm = _make_stream_manager_mock()
+        frame = f"data: {json.dumps({'response': 'hello'})}\n\n"
+
+        with patch(
+            "app.services.chat.stream.process_data_chunk",
+            new=AsyncMock(side_effect=RuntimeError("collector blew up")),
+        ):
+            await self._drive([frame, "data: [DONE]\n\n"], sm, AsyncMock())
+
+        assert ("stream_dispatch", frame) in [call.args for call in sm.publish_chunk.call_args_list]
+
+    @pytest.mark.parametrize(
+        "frame",
+        [
+            pytest.param('data: {"error": "trunc', id="truncated-error-json"),
+            pytest.param('data: {"reasoning": {"content": "half', id="truncated-reasoning-json"),
+            pytest.param('data: ["error", "reasoning"]', id="json-array-not-object"),
+        ],
+    )
+    async def test_a_malformed_data_frame_does_not_take_the_turn_down(
+        self, test_user, frame: str
+    ) -> None:
+        """Treat a data: line that mentions error or reasoning but is not valid JSON as unreadable, not a reason to fail the turn."""
+        sm = _make_stream_manager_mock()
+        save = AsyncMock()
+
+        await self._drive([f"{frame}\n\n", "data: [DONE]\n\n"], sm, save)
+
+        save.assert_awaited()
+        assert save.call_args.kwargs["error"] is None
+        assert save.call_args.kwargs["tool_data"]["tool_data"] == []
+
+    async def test_a_parsed_data_frame_reaches_the_client_on_its_own_stream(
+        self, test_user
+    ) -> None:
+        """Route a parsed frame through process_data_chunk using the stream id passed in, not a default."""
+        sm = _make_stream_manager_mock()
+        frame = f"data: {json.dumps({'response': 'hello'})}\n\n"
+
+        await self._drive([frame, "data: [DONE]\n\n"], sm, AsyncMock(), stream_id="stream_routed")
+
+        assert ("stream_routed", frame) in [call.args for call in sm.publish_chunk.call_args_list]
+
+    async def test_todo_progress_streamed_mid_turn_survives_onto_the_saved_turn(
+        self, test_user
+    ) -> None:
+        """Todo snapshots accumulate across the turn and are injected once at save time — lose the accumulator and the reloaded turn shows no todo card at all."""
+        save = AsyncMock()
+        snapshot = {"source": "executor", "completed": 1, "total": 2}
+
+        await self._drive(
+            [f"data: {json.dumps({'todo_progress': snapshot})}\n\n", "data: [DONE]\n\n"],
+            _make_stream_manager_mock(),
+            save,
+        )
+
+        entries = save.call_args.kwargs["tool_data"]["tool_data"]
+        assert [e["data"] for e in entries if e["tool_name"] == "todo_progress"] == [
+            {"executor": snapshot}
+        ]
+
+    async def test_a_chunk_processor_failure_is_reported_with_its_cause(self, test_user) -> None:
+        """The passthrough fallback hides the failure from the user by design, so the wide event is the only place it exists — without the cause and the conversation on it, a recurring parse failure is undebuggable."""
+        with (
+            patch("app.services.chat.stream.log") as mock_log,
+            patch(
+                "app.services.chat.stream.process_data_chunk",
+                new=AsyncMock(side_effect=RuntimeError("collector blew up")),
+            ),
+        ):
+            mock_log.get.return_value = {}
+            await self._drive(
+                [f"data: {json.dumps({'response': 'hello'})}\n\n", "data: [DONE]\n\n"],
+                _make_stream_manager_mock(),
+                AsyncMock(),
+            )
+
+        errors = [c for c in mock_log.error.call_args_list if "Error processing chunk" in c.args[0]]
+        assert len(errors) == 1
+        assert errors[0].kwargs == {
+            "error": "collector blew up",
+            "error_type": "RuntimeError",
+            "conversation_id": "conv_existing_123",
+        }
+
+    # executor tool_data attach + finalize backstop: attach is the sole owner of
+    # the executor's cards on a live delegated turn; `_finalize_stream` re-runs
+    # it as a backstop when the turn was cut short. Both paths fail silently.
+
+    async def test_a_completed_attach_is_not_repeated_by_the_finally_backstop(
+        self, test_user
+    ) -> None:
+        """Flip attached on a completed attach so the finally backstop does not wait and drain twice."""
+        wait = AsyncMock(return_value=True)
+
+        with (
+            patch("app.services.chat.stream.await_executor_done", new=wait),
+            patch("app.services.chat.stream.drain_executor_tool_data", return_value=[]),
+        ):
+            await self._drive(["data: [DONE]\n\n"], _make_stream_manager_mock(), AsyncMock())
+
+        wait.assert_awaited_once()
+
+    async def test_the_fallback_save_persists_this_turn_recovered_from_its_own_stream(
+        self, test_user, existing_conv_body
+    ) -> None:
+        """Recover this stream's progress and save it under this conversation and user, or write an empty turn."""
+        sm = _make_stream_manager_mock()
+        sm.get_progress = AsyncMock(
+            side_effect=lambda sid: {"complete_message": "recovered"}
+            if sid == "stream_fallback"
+            else None
+        )
+        save = AsyncMock()
+
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=AsyncMock(side_effect=RuntimeError("agent down")),
+            ),
+            patch("app.services.chat.stream.save_conversation_async", new=save),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_fallback",
+                body=existing_conv_body,
+                user=test_user,
+                conversation_id="conv_existing_123",
+            )
+
+        assert save.call_args.kwargs["complete_message"] == "recovered"
+        assert save.call_args.kwargs["body"] is existing_conv_body
+        assert save.call_args.kwargs["user"] == test_user
+        assert save.call_args.kwargs["conversation_id"] == "conv_existing_123"
+
+    async def test_the_backstop_attaches_the_executor_cards_to_this_conversation(
+        self, test_user, existing_conv_body
+    ) -> None:
+        """A turn cut short during the executor wait leaves saved=True but attached=False; the backstop is the only thing that still writes the cards, and it must write them to the conversation they belong to."""
+        entries = [{"tool_name": "browser_task", "data": {"steps": 3}}]
+        append = AsyncMock(return_value=True)
+
+        with (
+            patch(
+                "app.services.chat.stream.await_executor_done",
+                new=AsyncMock(side_effect=[RuntimeError("wait interrupted"), True]),
+            ),
+            patch("app.services.chat.stream.drain_executor_tool_data", return_value=entries),
+            patch(
+                "app.services.chat.stream.conversation_repository.append_message_tool_data",
+                new=append,
+            ),
+        ):
+            await self._drive(["data: [DONE]\n\n"], _make_stream_manager_mock(), AsyncMock())
+
+        append.assert_awaited_once()
+        assert append.await_args.args[0] == "conv_existing_123"
+        assert append.await_args.kwargs["entries"] == entries
+
+    async def test_a_failing_backstop_attach_is_reported_with_its_cause(self, test_user) -> None:
+        """Best-effort means the user loses their cards silently; the wide event is the only signal that it happened, so it carries the stream, the cause and the conversation."""
+        with (
+            patch("app.services.chat.stream.log") as mock_log,
+            patch(
+                "app.services.chat.stream.await_executor_done",
+                new=AsyncMock(side_effect=RuntimeError("executor gone")),
+            ),
+        ):
+            mock_log.get.return_value = {}
+            await self._drive(
+                ["data: [DONE]\n\n"],
+                _make_stream_manager_mock(),
+                AsyncMock(),
+                stream_id="stream_backstop",
+            )
+
+        errors = [
+            c
+            for c in mock_log.error.call_args_list
+            if "Backstop executor tool_data attach failed" in c.args[0]
+        ]
+        assert len(errors) == 1
+        assert errors[0].kwargs == {
+            "stream_id": "stream_backstop",
+            "error": "executor gone",
+            "error_type": "RuntimeError",
+            "conversation_id": "conv_existing_123",
+        }
+
     async def _run_turn(
         self, user: AuthenticatedUser, reply: str
     ) -> tuple[list[tuple[str, dict[str, Any]]], AsyncMock, MagicMock]:
@@ -1894,3 +2218,13 @@ class TestTurnLatencyHelpers:
                 None,
             )
         assert _log.get()["chat"] == {"delegated": False, "queued": False}
+
+
+class TestAFreshStreamState:
+    """A new turn starts with nothing saved and nothing attached, as real bools."""
+
+    def test_starts_with_nothing_saved_or_attached(self) -> None:
+        state = _StreamState()
+
+        assert state.saved is False
+        assert state.attached is False

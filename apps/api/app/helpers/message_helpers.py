@@ -364,7 +364,7 @@ def _uploaded_file_lines(
         lines.append(f"- {file.filename}  (id: {file.fileId})  →  `{path}`")
     else:
         lines.append(
-            f"- {file.filename}  (id: {file.fileId}) — not on disk, use `search_uploaded_files`"
+            f"- {file.filename}  (id: {file.fileId}), not on disk, use `search_uploaded_files`"
         )
     if file.description:
         summary = file.description.strip()
@@ -433,14 +433,14 @@ def format_files_list(
 {file_block}
 
 How to work with these files:
-- What is it? — the `summary` above already says; read the `full summary` file
+- What is it? The `summary` above already says; read the `full summary` file
   for the complete write-up.
-- Need the raw content? — read the file at its path with read/bash. Files shown
+- Need the raw content? Read the file at its path with read/bash. Files shown
   without a path are not on disk; use `search_uploaded_files` for those.
-- Searching across several uploaded files? — use `search_uploaded_files`.
+- Searching across several uploaded files? Use `search_uploaded_files`.
 The files live in `./user-uploaded/` (read-only). To process them: copy into
 `./scratch/`, do your work, and write user-visible output into `./artifacts/`
-— files written there render as cards in the chat immediately.
+Files written there render as cards in the chat immediately.
 
 See `/workspace/sessions/{conversation_id or "<conv>"}/GUIDE.md` for the
 full layout and conventions, and `/workspace/INDEX.md` for the top level.

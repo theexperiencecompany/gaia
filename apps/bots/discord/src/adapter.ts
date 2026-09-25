@@ -35,9 +35,11 @@ import {
   type PlatformName,
   type RichMessage,
   type RichMessageTarget,
+  recordBotFailure,
   renderForPlatform,
   type SentMessage,
   STREAMING_DEFAULTS,
+  sanitizeErrorForLog,
   wideLog,
   withWideEvent,
 } from "@gaia/shared/bots";
@@ -54,6 +56,8 @@ import {
   type MessageContextMenuCommandInteraction,
   MessageFlags,
   Partials,
+  type SendableChannels,
+  type User,
 } from "discord.js";
 import { downloadDiscordAttachment, extractDiscordMedia } from "./media";
 import { ROTATING_STATUSES, STATUS_ROTATION_INTERVAL_MS } from "./statuses";
@@ -135,6 +139,18 @@ export class DiscordAdapter extends BaseBotAdapter {
       );
     });
 
+    // discord.js emits gateway and websocket failures as 'error'; with no listener
+    // the EventEmitter throws and takes the bot down. Recorded like Slack's app.error.
+    this.client.on(Events.Error, (error) => {
+      void withWideEvent(
+        "bot_runtime_error",
+        { platform: this.platform, component: "adapter" },
+        async () => {
+          recordBotFailure("discord_client_error", error);
+        },
+      );
+    });
+
     this.client.on(Events.InteractionCreate, async (interaction) => {
       if (interaction.isChatInputCommand()) {
         await this.handleInteraction(interaction);
@@ -195,42 +211,49 @@ export class DiscordAdapter extends BaseBotAdapter {
     return this.client;
   }
 
+  /**
+   * Resolves where an outbound message is sent: the channel itself for a
+   * group/channel conversation, else the user, whose `send` is their DM.
+   */
+  private async resolveOutboundTarget(
+    destinationId: string,
+    isChannel: boolean,
+  ): Promise<SendableChannels | User> {
+    if (!isChannel) return this.client.users.fetch(destinationId);
+    const channel = await this.client.channels.fetch(destinationId);
+    if (channel?.isTextBased() && "send" in channel) return channel;
+    throw new Error(
+      `Discord destination ${destinationId} is not a sendable text channel`,
+    );
+  }
+
   protected async deliverOutbound(
     destinationId: string,
     text: string,
     isChannel: boolean,
   ): Promise<void> {
-    if (isChannel) {
-      // A group/channel conversation: send to the channel itself, not a DM.
-      const channel = await this.client.channels.fetch(destinationId);
-      if (channel?.isTextBased() && "send" in channel) {
-        await channel.send(text);
-        return;
-      }
-      throw new Error(
-        `Discord destination ${destinationId} is not a sendable text channel`,
-      );
-    }
-    const user = await this.client.users.fetch(destinationId);
-    await user.send(text);
+    const target = await this.resolveOutboundTarget(destinationId, isChannel);
+    await target.send(text);
   }
 
   /**
-   * Delivers an agent-generated file artifact to a Discord user. Fetches the
-   * bytes from GAIA (bot-authenticated) and DMs them as a message attachment.
-   * The destination is the stored Discord user id.
+   * Delivers an agent-generated file artifact as a message attachment. Fetches
+   * the bytes from GAIA (bot-authenticated), then posts them into the channel
+   * when `isChannel`, else DMs them to the stored Discord user id.
    */
   protected override async deliverOutboundFile(
     destinationId: string,
     attachment: OutboundAttachment,
+    isChannel: boolean,
   ): Promise<void> {
     const artifact = await this.fetchOutboundArtifact(
       destinationId,
       attachment,
+      isChannel,
     );
     if (!artifact) return; // too large — fetchOutboundArtifact already replied
-    const user = await this.client.users.fetch(destinationId);
-    await user.send({
+    const target = await this.resolveOutboundTarget(destinationId, isChannel);
+    await target.send({
       content: attachment.caption ?? undefined,
       files: [{ attachment: artifact.data, name: attachment.filename }],
     });
@@ -394,9 +417,9 @@ export class DiscordAdapter extends BaseBotAdapter {
       },
       async (authUrl: string) => {
         const publicContent =
-          "To use GAIA, please authenticate first — check your DMs for the link.";
+          "To use GAIA, please authenticate first. Check your DMs for the link.";
         const publicContentFallback =
-          "To use GAIA, please authenticate first — an ephemeral link has been sent above.";
+          "To use GAIA, please authenticate first. An ephemeral link has been sent above.";
         try {
           await interaction.user.send(
             renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
@@ -406,7 +429,8 @@ export class DiscordAdapter extends BaseBotAdapter {
           } else if (lastFollowUp) {
             await lastFollowUp.edit({ content: publicContent });
           }
-        } catch {
+        } catch (dmError) {
+          wideLog.warning("auth_dm_failed", sanitizeErrorForLog(dmError));
           await interaction.followUp({
             content: renderForPlatform(
               buildAuthLinkMessage(authUrl),
@@ -535,14 +559,16 @@ export class DiscordAdapter extends BaseBotAdapter {
             ),
           });
           replied = true;
-        } catch {
+        } catch (replyError) {
+          wideLog.warning("auth_reply_failed", sanitizeErrorForLog(replyError));
           try {
             await interaction.user.send(
               renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
             );
             replied = true;
-          } catch {
-            // both deliveries failed — leave replied false so error callback can run
+          } catch (dmError) {
+            // Neither the reply nor the DM reached the user: the link is lost.
+            wideLog.error("auth_link_undelivered", undefined, dmError);
           }
         }
       },
@@ -723,13 +749,13 @@ export class DiscordAdapter extends BaseBotAdapter {
       .setColor(0x6366f1)
       .setTitle("Hey, I'm GAIA 👋")
       .setDescription(
-        "Your personal AI — built to think ahead, remember everything, and get things done with you.\n\nHere's what I can do right in Discord:",
+        "Your personal AI, built to think ahead, remember everything, and get things done with you.\n\nHere's what I can do right in Discord:",
       )
       .addFields(
         {
           name: "Chat",
           value:
-            "Just type anything — ask questions, brainstorm, think out loud.",
+            "Just type anything: ask questions, brainstorm, think out loud.",
           inline: false,
         },
         {
@@ -869,12 +895,13 @@ export class DiscordAdapter extends BaseBotAdapter {
         renderForPlatform(buildAuthLinkMessage(authUrl), "discord"),
       );
       dmSent = true;
-    } catch {
-      // DM failed — public message below will instruct the user
+    } catch (dmError) {
+      // The public message below tells the user to open their DMs.
+      wideLog.warning("auth_dm_failed", sanitizeErrorForLog(dmError));
     }
     await send(
       dmSent
-        ? "To use GAIA here, please link your account — check your DMs for the link."
+        ? "To use GAIA here, please link your account. Check your DMs for the link."
         : "To use GAIA here, please link your account. Enable DMs from server members and try again, or use /auth in a private message.",
     );
   }

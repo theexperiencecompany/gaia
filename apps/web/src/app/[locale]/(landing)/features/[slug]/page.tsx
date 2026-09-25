@@ -62,7 +62,7 @@ export default async function FeatureDetailPage({ params }: Props) {
   ]);
 
   const webPageSchema = generateWebPageSchema(
-    `${feature.title} — GAIA`,
+    `${feature.title}: GAIA`,
     feature.subheadline,
     pageUrl,
     [

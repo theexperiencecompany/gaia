@@ -1,0 +1,100 @@
+From dad4530340852f64076329ad64c37974eb5200c3 Mon Sep 17 00:00:00 2001
+From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
+Date: Wed, 23 Sep 2026 16:54:00 +0530
+Subject: [PATCH 04/18] fix(layout): stretched grid-item form controls keep
+ their intrinsic block size
+
+A native control that is a stretch-aligned grid item keeps height:auto so
+it can fill its track, but an empty control (e.g. a textarea) has no
+content, so it contributed 0 to an auto row and was stretched to 0px.
+Bing's search textarea (height:100% in an auto-height grid, rows=1,
+max-height:22px) laid out 0px tall and was unusable. Floor min-height at
+the rows/line-height intrinsic size, capped by max-height and never below
+an author min-height.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-render/src/dom.rs | 59 ++++++++++++++++++++++++++++++--
+ 1 file changed, 57 insertions(+), 2 deletions(-)
+
+diff --git a/crates/obscura-render/src/dom.rs b/crates/obscura-render/src/dom.rs
+index cc9da6e..896577c 100644
+--- a/crates/obscura-render/src/dom.rs
++++ b/crates/obscura-render/src/dom.rs
+@@ -11648,13 +11648,31 @@ fn assign_native_control_size(
+         };
+         style.width = crate::Dimension::Px(declared);
+     }
+-    if style.height == crate::Dimension::Auto && !stretch_block {
++    if style.height == crate::Dimension::Auto {
+         let declared = if content_box {
+             (intrinsic_height - vertical_edges).max(0.0)
+         } else {
+             intrinsic_height
+         };
+-        style.height = crate::Dimension::Px(declared);
++        if !stretch_block {
++            style.height = crate::Dimension::Px(declared);
++        } else if let crate::Dimension::Auto | crate::Dimension::Px(_) = style.min_height {
++            // A stretched grid item keeps its auto height so it can fill the
++            // track, but it still contributes its intrinsic block size to
++            // that track (capped by max-height). An empty control has no
++            // content to supply it, so without this floor an auto row
++            // collapsed to 0 and took the control with it (Bing's
++            // `height:100%` search textarea).
++            let capped = match style.max_height {
++                crate::Dimension::Px(max) => declared.min(max),
++                _ => declared,
++            };
++            let floor = match style.min_height {
++                crate::Dimension::Px(min) => min.max(capped),
++                _ => capped,
++            };
++            style.min_height = crate::Dimension::Px(floor);
++        }
+     }
+ }
+ 
+@@ -20780,4 +20798,41 @@ mod tests {
+         assert_eq!(style.display, crate::Display::Inline);
+         assert!(style.is_inline_block);
+     }
++
++    #[test]
++    fn textarea_percentage_height_against_auto_block_keeps_rows_height() {
++        // Bing's search box: an empty rows=1 textarea with `height:100%` in
++        // an auto-height grid area, capped by `max-height:22px`. The
++        // percentage cannot resolve while the track is sized, so it behaves
++        // as auto and the rows-derived intrinsic height must contribute; it
++        // previously collapsed to 0px and the control was invisible.
++        let tree = parse_html(
++            r#"<style>
++               html, body { margin: 0 }
++               textarea { padding: 0; border: 0; font: 16px/20px sans-serif }
++               .ic { display: grid; padding-top: 14px }
++               .ic textarea { grid-area: content; width: 100%; height: 100% }
++               .blk textarea { height: 100% }
++               </style>
++            <div style="display:flex; width:843px"><div class="ic" style="flex:1">
++              <textarea id="bing" rows="1" style="max-height: 22px"></textarea>
++            </div></div>
++            <div class="ic"><textarea id="grid3" rows="3"></textarea></div>
++            <div class="ic"><textarea id="capped" rows="3" style="max-height: 22px"></textarea></div>
++            <div class="ic"><textarea id="floored" rows="1" style="min-height: 50px"></textarea></div>
++            <div class="ic"><textarea id="fixed" rows="3" style="height: 40px"></textarea></div>
++            <div class="blk"><textarea id="block1" rows="1"></textarea></div>"#,
++        );
++        let laid = layout_dom(&tree, (1280.0, 720.0));
++        let rect = |id: &str| laid.rects[&tree.get_element_by_id(id).unwrap()];
++
++        let bing = rect("bing");
++        assert!((bing.height - 20.0).abs() < 0.5, "{:?}", bing);
++        assert!(bing.width > 800.0, "{:?}", bing);
++        assert!((rect("grid3").height - 60.0).abs() < 0.5, "{:?}", rect("grid3"));
++        assert!((rect("capped").height - 22.0).abs() < 0.5, "{:?}", rect("capped"));
++        assert!((rect("floored").height - 50.0).abs() < 0.5, "{:?}", rect("floored"));
++        assert!((rect("fixed").height - 40.0).abs() < 0.5, "{:?}", rect("fixed"));
++        assert!((rect("block1").height - 20.0).abs() < 0.5, "{:?}", rect("block1"));
++    }
+ }

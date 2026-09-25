@@ -436,7 +436,7 @@ async def _record_blocked_run(
     if kind not in INTEGRATION_DECLINE_KINDS:
         return success_response(
             {"declined": True, "blocked": True, "counted": False},
-            "Noted — this run never reached the work, so it does not count against the "
+            "Noted. This run never reached the work, so it does not count against the "
             "workflow. It will be asked again on a run that gets further.",
         )
 
@@ -567,7 +567,7 @@ def _decline_request_problem(
             "branch_on_required",
             "order_branches has to name the one call that runs on some days and not others, "
             "as branch_on. If every call you made happens every run and only their arguments "
-            "differ, the order does not branch — use placeholders and call write_playbook. If "
+            "differ, the order does not branch. Use placeholders and call write_playbook. If "
             "only the NUMBER of times a call repeats differs, that is a for_each step, not a "
             "decline.",
         )

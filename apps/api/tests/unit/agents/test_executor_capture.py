@@ -23,6 +23,7 @@ from app.agents.core.background.executor_capture import (
     drain_executor_tool_data,
     register_executor_capture,
     teardown_executor_capture,
+    tool_data_from_events,
 )
 from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.background.session import (
@@ -32,7 +33,16 @@ from app.agents.core.background.session import (
     signal_executor_done,
 )
 from app.constants.agents import AgentTag, wrap_agent_payload
+from app.constants.browser import BROWSER_TASK_EVENT, BROWSER_TOOL_CATEGORY
 from app.constants.log_tags import LogTag
+from app.models.stream_events import ToolOutputPayload
+from app.services.chat.chunks import normalize_custom_event
+from app.utils.agent_utils import (
+    SubagentStartDetails,
+    format_browser_action_entry,
+    format_subagent_end_event,
+    format_subagent_start_event,
+)
 
 
 def _tool_call_event(tool_call_id: str, subagent_id: str | None = None) -> dict:
@@ -272,26 +282,26 @@ class TestReturnedToFrontendNote:
             "These native cards are already on the user's screen this turn:\n"
             "  - todo_data (1 todo, via subagent:Todos)\n"
             "They visually render the RAW items, so don't re-type those items "
-            "row-by-row and don't re-emit them as OpenUI — that literal duplication "
+            "row-by-row and don't re-emit them as OpenUI. That literal duplication "
             "is the ONLY thing to avoid here.\n"
             "The cards are visual aids, NOT your reply. You still owe the user the "
-            "ANSWER in your own voice — the substance the executor produced: what it "
+            "ANSWER in your own voice, the substance the executor produced: what it "
             "found, grouped and counted, the few items that actually matter (and "
             'why), and the natural next step. This synthesis is never "card '
             'contents"; suppressing it because a card exists is the worst failure '
             "you can have.\n"
             "Match the depth to the work: a quick outcome gets a line or two; a "
             "large, comprehensive result (a full triage, a multi-item analysis) gets "
-            "a real structured rundown — never a one-liner. Replying just \"here's "
+            "a real structured rundown, never a one-liner. Replying just \"here's "
             'the list 👇" with no substance, when the executor did real work, fails '
             "the user. Point them to the card for the granular rows AFTER you've "
             "actually delivered the gist.\n"
-            "CRITICAL EXCEPTION — LONG-FORM DELIVERABLE: if the executor's result is "
+            "CRITICAL EXCEPTION (LONG-FORM DELIVERABLE): if the executor's result is "
             "itself a finished written piece (a research report, an article, an "
             "analysis, a document), that is the ANSWER, not raw card rows. The cards "
             "above were just the research/loading steps along the way. Deliver the "
-            "deliverable IN FULL per the long-form rule — every section, point, and "
-            "citation — and do NOT compress it to a 'here's the breakdown' summary. "
+            "deliverable IN FULL per the long-form rule: every section, point, and "
+            "citation, and do NOT compress it to a 'here's the breakdown' summary. "
             "This note never authorizes shrinking a report; it only stops you "
             "re-typing rows a card already lists.",
         )
@@ -482,3 +492,76 @@ class TestAnExecutorThatNeverFinishes:
         from app.workers.config.worker_settings import WORKER_JOB_TIMEOUT_SECONDS
 
         assert BACKGROUND_EXECUTOR_WAIT_TIMEOUT < WORKER_JOB_TIMEOUT_SECONDS
+
+
+class TestToolDataFromEvents:
+    """The grouping half of the drain, run on a feed that no StreamSession ever held.
+
+    A detached browser job's cards live in Redis, not in this process's session,
+    so a delivery from the worker has to reconstruct them from the raw frames.
+    """
+
+    @staticmethod
+    def _browser_feed() -> list[dict]:
+        """Build the frames a browser job publishes, through the formatters the job runner calls."""
+        session_card = {"kind": "session", "session_id": "sess-1", "status": "running"}
+        step_card = {"kind": "step", "index": 1, "goal": "open the menu"}
+        raw: list[dict] = [
+            {BROWSER_TASK_EVENT: session_card},
+            {
+                "subagent_start": format_subagent_start_event(
+                    subagent_name="Browser",
+                    agent_type="spawned",
+                    subagent_id="browser:sess-1",
+                    details=SubagentStartDetails(tool_category=BROWSER_TOOL_CATEGORY),
+                )
+            },
+            {
+                "tool_data": format_browser_action_entry(
+                    name="click",
+                    inputs={"index": 2},
+                    target="Menu",
+                    subagent_id="browser:sess-1",
+                    tool_call_id="browser:sess-1:1:0",
+                )
+            },
+            {
+                "tool_output": ToolOutputPayload(
+                    tool_call_id="browser:sess-1:1:0",
+                    output="clicked Menu",
+                    subagent_id="browser:sess-1",
+                ).model_dump(mode="json")
+            },
+            {BROWSER_TASK_EVENT: step_card},
+            {
+                "subagent_end": format_subagent_end_event(
+                    subagent_id="browser:sess-1", duration_ms=5
+                )
+            },
+        ]
+        return [normalize_custom_event(frame) for frame in raw]
+
+    def test_an_empty_feed_reconstructs_nothing(self) -> None:
+        assert tool_data_from_events([]) == []
+
+    def test_the_cards_come_back_in_the_order_the_run_published_them(self) -> None:
+        entries = tool_data_from_events(self._browser_feed())
+
+        cards = [e for e in entries if e["tool_name"] == BROWSER_TASK_EVENT]
+        assert [c["data"]["kind"] for c in cards] == ["session", "step"]
+
+    def test_the_actions_are_grouped_under_the_runs_browser_row(self) -> None:
+        # Ungrouped, every action would render as its own top-level card in the
+        # delivered message instead of one collapsible "Browser" row.
+        entries = tool_data_from_events(self._browser_feed())
+
+        (group,) = [e for e in entries if e["tool_name"] == "subagent_group"]
+        assert group["data"]["subagent_name"] == "Browser"
+        assert group["data"]["duration_ms"] == 5
+        assert [call["tool_name"] for call in group["data"]["tool_calls"]] == ["click"]
+
+    def test_each_actions_result_is_carried_on_its_row(self) -> None:
+        entries = tool_data_from_events(self._browser_feed())
+
+        (group,) = [e for e in entries if e["tool_name"] == "subagent_group"]
+        assert group["data"]["tool_calls"][0]["output"] == "clicked Menu"

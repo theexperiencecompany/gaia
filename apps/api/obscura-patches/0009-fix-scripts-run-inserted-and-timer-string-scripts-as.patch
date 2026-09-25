@@ -1,0 +1,795 @@
+From 5cbebd018ba10428c6db57e00de6c7c24dd7fab1 Mon Sep 17 00:00:00 2001
+From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
+Date: Wed, 23 Sep 2026 17:51:16 +0530
+Subject: [PATCH 09/18] fix(scripts): run inserted and timer-string scripts as
+ their own V8 scripts
+
+Dynamically inserted scripts (fetched and inline) and setTimeout/setInterval
+string handlers ran through `(0, eval)(body)` in bootstrap.js. Their stacks
+therefore read `eval at execute (<obscura:bootstrap>:371:28), <anonymous>:2:7`
+instead of the script URL, which exposes the engine and loses the source.
+Cloudflare Turnstile collects such stacks from its api.js.
+
+- New op_script_run_classic compiles the source with v8::Script::compile and a
+  ScriptOrigin naming the script URL, in the realm named by the caller's frame
+  id, so top-level var/function still become globals of that realm.
+- A fetched script is queued as a native microtask of the op itself, so no
+  bootstrap frame sits below its top level. document.currentScript is set and
+  restored by before/done callbacks inside the same call.
+- Inline inserted scripts are named by the document (base) URL, as parser
+  inline scripts already were; string timers get no URL (<anonymous>).
+- Frame document scripts were compiled with no origin at all; they now carry
+  their URL (the frame document URL for inline ones).
+- Uncaught exceptions from page scripts, including SyntaxErrors, are now
+  reported to window.onerror and error listeners with message, URL, line and
+  column. Before, parser-script errors only reached the host log. ErrorEvent
+  gains filename, lineno and colno.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-browser/src/page.rs |   4 +-
+ crates/obscura-js/js/bootstrap.js  |  66 ++++++--
+ crates/obscura-js/src/frame.rs     |  98 ++++++++++-
+ crates/obscura-js/src/ops.rs       | 151 +++++++++++++++++
+ crates/obscura-js/src/runtime.rs   | 261 ++++++++++++++++++++++++++++-
+ 5 files changed, 559 insertions(+), 21 deletions(-)
+
+diff --git a/crates/obscura-browser/src/page.rs b/crates/obscura-browser/src/page.rs
+index c3e59d7..402b068 100644
+--- a/crates/obscura-browser/src/page.rs
++++ b/crates/obscura-browser/src/page.rs
+@@ -2568,7 +2568,7 @@ impl Page {
+                                 "<current-script>",
+                                 &format!("globalThis.__currentScriptNid={};", script.nid),
+                             );
+-                            if let Err(error) = js.execute_script_guarded(&execution_url, &code) {
++                            if let Err(error) = js.execute_page_script_guarded(&execution_url, &code) {
+                                 tracing::warn!("Script error ({}): {}", execution_url, error);
+                             }
+                             let _ = js.execute_script(
+@@ -2584,7 +2584,7 @@ impl Page {
+                             &format!("globalThis.__currentScriptNid={};", script.nid),
+                         );
+                         if let Err(error) =
+-                            js.execute_script_guarded(&script.base_url, &script.inline)
++                            js.execute_page_script_guarded(&script.base_url, &script.inline)
+                         {
+                             tracing::warn!("Inline script error: {}", error);
+                         }
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index aafc606..d8d8270 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -22,7 +22,7 @@
+     '__obscura_registerLinkedStylesheet', '__obscura_activateLabel',
+     '__obscura_isDisabled', '__obscura_labeledControl', '__obscura_interactiveHost',
+     '__obscura_submitter', '__markParserScripts', '__obscura_hasPendingDynamicScripts',
+-    '__obscura_hasPendingLoadDelayingScripts',
++    '__obscura_hasPendingLoadDelayingScripts', '__obscura_reportScriptError',
+     '__obscura_nextPendingTimeoutDelay',
+     '__obscura_hw', '__obscura_mem',
+     '__documentReadyState__', '__currentUrl',
+@@ -85,6 +85,31 @@ globalThis.onunhandledrejection = function(e) { if (e?.preventDefault) e.prevent
+ globalThis.onerror = function(msg, src, line, col, error) {
+   globalThis.__obscura_errors.push({msg: String(msg), src: String(src||""), line, error: String(error||"")});
+ };
++// HTML "report the exception" for a classic script's uncaught exception. The
++// host calls this with the message V8 formats ("Uncaught Error: boom"), the
++// script URL, the 1-based line and column, and the thrown value, for scripts
++// it compiles and runs itself (runtime.rs, ops.rs `run_classic_script`).
++Object.defineProperty(globalThis, '__obscura_reportScriptError', {
++  value: function(message, filename, lineno, colno, error) {
++    let handled = false;
++    const handler = globalThis.onerror;
++    if (typeof handler === 'function') {
++      try { handled = handler.call(globalThis, message, filename, lineno, colno, error) === true; }
++      catch (_) {}
++    }
++    try {
++      const event = new ErrorEvent('error', { message, filename, lineno, colno, error, cancelable: true });
++      globalThis.dispatchEvent(event);
++      handled = handled || event.defaultPrevented;
++    } catch (_) {}
++    if (!handled) {
++      console.error(message + (filename ? ' (' + filename + ':' + lineno + ':' + colno + ')' : ''));
++    }
++  },
++  writable: false,
++  enumerable: false,
++  configurable: false,
++});
+ 
+ let _domMutationEpoch = 0;
+ let _treeMutationEpoch = 0;
+@@ -349,14 +374,19 @@ async function __runDynScriptTask(task) {
+         // loop ordering, this prevents a batch of concurrently completed
+         // third-party scripts from being charged to (and pinning) whichever
+         // parser script happened to trigger the microtask checkpoint.
++        //
++        // The body runs as its own classic script named by its URL, so its
++        // stacks and error reports read `https://host/app.js:2:7` as in a
++        // browser. The op itself is queued as the microtask (natively, so a
++        // page's Promise polyfill is not involved), which leaves no bootstrap
++        // frame below the script's top level.
+         await new Promise(resolve => {
+-          const execute = () => {
+-            globalThis.__currentScriptNid = task.nid;
+-            try { (0, eval)(body); }
+-            catch(e) { console.error('Dynamic script error (' + task.url + '):', e.message); }
+-            finally { globalThis.__currentScriptNid = task.prevNid || 0; }
+-            resolve();
+-          };
++          const run = Deno.core.ops.op_script_run_classic.bind(
++            null, body, task.url, _realmFrameId,
++            () => { globalThis.__currentScriptNid = task.nid; },
++            () => { globalThis.__currentScriptNid = task.prevNid || 0; resolve(); },
++          );
++          const execute = () => { Deno.core.ops.op_queue_microtask(run); };
+           if (_scheduleAfter(0, execute) === undefined) execute();
+         });
+       }
+@@ -916,10 +946,11 @@ const _coerceTimerFn = (fn) => {
+     // global scope, so top-level var/function declarations become globals (a
+     // `new Function(fn)` wrapper kept them local); deferring to fire time also
+     // surfaces a SyntaxError when the timer elapses, matching a real browser,
+-    // instead of swallowing it eagerly at scheduling. The dynamic-script path
+-    // uses the same indirect eval for the same reason.
++    // instead of swallowing it eagerly at scheduling.
++    // It is its own script with no URL, which a browser reports as
++    // `<anonymous>`.
+     const src = fn;
+-    return () => { (0, eval)(src); };
++    return () => { Deno.core.ops.op_script_run_classic(src, '', _realmFrameId); };
+   }
+   return typeof fn === "function" ? fn : null;
+ };
+@@ -2041,9 +2072,16 @@ function __prepareInsertedScript(script) {
+     __dynScriptQueue.push(task);
+     __processDynScriptQueue();
+   } else {
++    // An inline script is its own classic script named by the document's
++    // URL (its base URL, as parser-inserted inline scripts are), and runs
++    // synchronously inside the insertion.
++    let scriptUrl = globalThis.location?.href || 'about:blank';
++    try {
++      const baseEl = globalThis.document?.querySelector('base[href]');
++      if (baseEl) scriptUrl = new URL(baseEl.getAttribute('href'), scriptUrl).href;
++    } catch(e) {}
+     globalThis.__currentScriptNid = script._nid;
+-    try { (0, eval)(code); }
+-    catch(e) { console.error('Dynamic inline script error:', e.message); }
++    try { Deno.core.ops.op_script_run_classic(code, scriptUrl, _realmFrameId); }
+     finally { globalThis.__currentScriptNid = prevNid || 0; }
+   }
+ }
+@@ -10172,7 +10210,7 @@ globalThis.KeyboardEvent = class extends Event {
+ };
+ globalThis.FocusEvent = class extends Event { constructor(t,o={}) { super(t,o);this.relatedTarget=o.relatedTarget||null; } };
+ globalThis.InputEvent = class extends Event { constructor(t,o={}) { super(t,o);this.data=o.data||null;this.inputType=o.inputType||""; } };
+-globalThis.ErrorEvent = class extends Event { constructor(t,o={}) { super(t,o);this.message=o.message||"";this.error=o.error||null; } };
++globalThis.ErrorEvent = class extends Event { constructor(t,o={}) { super(t,o);this.message=o.message===undefined?"":String(o.message);this.filename=o.filename===undefined?"":String(o.filename);this.lineno=o.lineno>>>0;this.colno=o.colno>>>0;this.error=o.error===undefined?null:o.error; } };
+ globalThis.PointerEvent = class extends Event { constructor(t,o={}) { super(t,o); } };
+ globalThis.AnimationEvent = class extends Event {};
+ globalThis.TransitionEvent = class extends Event {};
+diff --git a/crates/obscura-js/src/frame.rs b/crates/obscura-js/src/frame.rs
+index f8aabbc..09dd16b 100644
+--- a/crates/obscura-js/src/frame.rs
++++ b/crates/obscura-js/src/frame.rs
+@@ -295,8 +295,9 @@ impl FrameRealm {
+                 continue;
+             }
+ 
++            // An inline script is named by its document's URL, as in a browser.
+             let (name, source) = if script.src.is_empty() {
+-                (format!("inline {index}"), script.text.clone())
++                (self.url.clone(), script.text.clone())
+             } else {
+                 let resolved = self.resolve(&script.src);
+                 match load_external(&resolved) {
+@@ -310,8 +311,8 @@ impl FrameRealm {
+             if source.trim().is_empty() {
+                 continue;
+             }
+-            if let Err(error) = self.execute_script(parent, &source) {
+-                problems.push(format!("frame script {name} failed: {error}"));
++            if let Err(error) = parent.run_document_script_in_realm(&self.context, &source, &name) {
++                problems.push(format!("frame script {name} ({index}) failed: {error}"));
+             }
+         }
+         problems
+@@ -557,6 +558,97 @@ mod tests {
+         );
+     }
+ 
++    /// A script the frame inserts runs as its own classic script in the frame's
++    /// realm: its top-level declarations become the frame's globals, never the
++    /// page's, and its stack and `onerror` name its own URL.
++    #[tokio::test(flavor = "current_thread")]
++    async fn frame_inserted_scripts_run_as_their_own_scripts_in_the_frame() {
++        let mut parent = page("https://parent.example/page", "<html><body></body></html>");
++        let frame = FrameRealm::new(
++            &mut parent,
++            1,
++            0,
++            "https://child.example/frame",
++            "<html><body></body></html>",
++        )
++        .expect("frame realm");
++
++        frame
++            .execute_script(
++                &mut parent,
++                r#"
++                globalThis.reports = [];
++                onerror = (m, s, l, c) => { reports.push([m, s, l, c]); return true; };
++                Deno.core.ops.op_fetch_url = (url) => JSON.stringify({
++                    status: 200,
++                    headers: { "content-type": "text/javascript" },
++                    body: "var frameExtVar = location.href;\nglobalThis.extStack = new Error('e').stack;\nthrow new Error('frame boom');",
++                    url,
++                });
++                const inline = document.createElement("script");
++                inline.textContent = "var frameInlineVar = document.body.tagName;\nglobalThis.inlineStack = new Error('i').stack;";
++                document.body.appendChild(inline);
++                const external = document.createElement("script");
++                external.src = "/t/api.js";
++                external.onload = () => { globalThis.loaded = true; };
++                document.body.appendChild(external);
++                "#,
++            )
++            .unwrap();
++        parent.run_event_loop_bounded(500).await.unwrap();
++
++        assert_eq!(
++            frame
++                .evaluate(
++                    &mut parent,
++                    "[frameInlineVar, inlineStack.split('\\n')[1], frameExtVar, extStack.split('\\n').slice(0, 2), loaded, reports]"
++                )
++                .unwrap(),
++            serde_json::json!([
++                "BODY",
++                "    at https://child.example/frame:2:26",
++                "https://child.example/frame",
++                ["Error: e", "    at https://child.example/t/api.js:2:23"],
++                true,
++                [["Uncaught Error: frame boom", "https://child.example/t/api.js", 3, 1]]
++            ])
++        );
++        assert_eq!(
++            parent
++                .evaluate("[typeof frameInlineVar, typeof frameExtVar]")
++                .unwrap(),
++            serde_json::json!(["undefined", "undefined"])
++        );
++    }
++
++    /// A frame document's own scripts are named by their URLs too.
++    #[test]
++    fn frame_document_scripts_are_named_by_their_urls() {
++        let mut parent = page("https://parent.example/", "<html><body></body></html>");
++        let frame = FrameRealm::new(
++            &mut parent,
++            1,
++            0,
++            "https://child.example/dir/page",
++            r#"<html><body>
++               <script>var stacks = [new Error().stack.split('\n')[1]];</script>
++               <script src="lib.js"></script>
++               </body></html>"#,
++        )
++        .expect("frame realm");
++        let problems = frame.run_document_scripts(&mut parent, |_| {
++            Some("stacks.push(new Error().stack.split('\\n')[1]);".into())
++        });
++        assert!(problems.is_empty(), "unexpected problems: {problems:?}");
++        assert_eq!(
++            frame.evaluate(&mut parent, "stacks").unwrap(),
++            serde_json::json!([
++                "    at https://child.example/dir/page:1:15",
++                "    at https://child.example/dir/lib.js:1:13"
++            ])
++        );
++    }
++
+     /// Layout reads made inside a frame measure the frame's own document.
+     /// Turnstile measures elements in its challenge frame; answers taken from
+     /// whatever page node shares the id are nonsense.
+diff --git a/crates/obscura-js/src/ops.rs b/crates/obscura-js/src/ops.rs
+index 00adcdf..2ca7b6e 100644
+--- a/crates/obscura-js/src/ops.rs
++++ b/crates/obscura-js/src/ops.rs
+@@ -660,6 +660,13 @@ impl RealmStates {
+         self.entries.retain(|(known, _, _)| known != context);
+     }
+ 
++    fn context_by_frame_id(&self, frame_id: u32) -> Option<v8::Global<v8::Context>> {
++        self.entries
++            .iter()
++            .find(|(_, id, _)| *id == frame_id)
++            .map(|(context, _, _)| context.clone())
++    }
++
+     fn by_frame_id(&self, frame_id: u32) -> Option<SharedState> {
+         self.entries
+             .iter()
+@@ -1301,6 +1308,149 @@ fn op_script_mark_started(state: &OpState, nid: u32, frame_id: u32) -> bool {
+     true
+ }
+ 
++/// Compiles and runs `source` as a classic script of its own, in the current
++/// context, the way a browser runs a `<script>`.
++///
++/// The script's URL is its V8 resource name, so stacks, `window.onerror` and
++/// `import()` see the script where a browser would (`https://host/app.js:2:7`),
++/// and top-level `var` and function declarations become globals of the realm.
++/// An uncaught exception, including a SyntaxError, is reported to the realm's
++/// `onerror` and `error` listeners with that URL and position, then cleared.
++///
++/// Returns false only when execution is being terminated; the termination is
++/// left pending so it unwinds whatever JavaScript is below.
++pub(crate) fn run_classic_script(scope: &mut v8::HandleScope, source: &str, url: &str) -> bool {
++    let Some(code) = v8::String::new(scope, source) else {
++        return true;
++    };
++    let Some(name) = v8::String::new(scope, url) else {
++        return true;
++    };
++    let origin = v8::ScriptOrigin::new(
++        scope,
++        name.into(),
++        0,
++        0,
++        false,
++        0,
++        None,
++        false,
++        false,
++        false,
++        None,
++    );
++    let scope = &mut v8::TryCatch::new(scope);
++    let ran = v8::Script::compile(scope, code, Some(&origin))
++        .and_then(|script| script.run(scope))
++        .is_some();
++    if ran {
++        return true;
++    }
++    if scope.has_terminated() || scope.is_execution_terminating() {
++        return false;
++    }
++    if let Some(exception) = scope.exception() {
++        report_script_exception(scope, exception);
++    }
++    true
++}
++
++/// HTML's "report the exception" for a script's uncaught exception: hands the
++/// message, the source URL, the 1-based line and column and the thrown value to
++/// the current realm's reporter, which fires `onerror` and `error` listeners.
++pub(crate) fn report_script_exception(
++    scope: &mut v8::TryCatch<v8::HandleScope>,
++    exception: v8::Local<v8::Value>,
++) {
++    let (text, filename, line, column) = match scope.message() {
++        Some(message) => {
++            let text = message.get(scope).into();
++            let filename = message
++                .get_script_resource_name(scope)
++                .filter(|name| name.is_string())
++                .unwrap_or_else(|| v8::String::empty(scope).into());
++            let line = message.get_line_number(scope).unwrap_or(0) as i32;
++            let column = message.get_start_column() as i32 + 1;
++            (text, filename, line, column)
++        }
++        None => {
++            let text = exception
++                .to_string(scope)
++                .unwrap_or_else(|| v8::String::empty(scope));
++            (text.into(), v8::String::empty(scope).into(), 0, 0)
++        }
++    };
++    let context = scope.get_current_context();
++    let global = context.global(scope);
++    let Some(key) = v8::String::new(scope, "__obscura_reportScriptError") else {
++        return;
++    };
++    let scope = &mut v8::TryCatch::new(scope);
++    let Some(reporter) = global
++        .get(scope, key.into())
++        .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
++    else {
++        return;
++    };
++    let line = v8::Integer::new(scope, line).into();
++    let column = v8::Integer::new(scope, column).into();
++    reporter.call(scope, global.into(), &[text, filename, line, column, exception]);
++}
++
++/// Runs a script element's source as its own classic script in the realm named
++/// by `frame_id`, calling `before` just before it and `done` just after it.
++///
++/// An inserted inline script runs synchronously, so bootstrap.js calls this
++/// directly. A fetched script runs as its own task: bootstrap.js queues this op
++/// itself as a microtask, so no bootstrap function is on the stack below
++/// the script, as in a browser's script-execution task. `before` and `done`
++/// bracket the script inside that one call, where bootstrap sets and restores
++/// `document.currentScript`; nothing another task queued can run in between.
++#[op2(nofast, reentrant)]
++fn op_script_run_classic(
++    scope: &mut v8::HandleScope,
++    state: Rc<RefCell<OpState>>,
++    #[string] source: String,
++    #[string] url: String,
++    frame_id: u32,
++    before: v8::Local<v8::Value>,
++    done: v8::Local<v8::Value>,
++) {
++    // A native op is bound in the page realm, so the page's context is the
++    // current one; a frame's is looked up by the id its bootstrap passed.
++    let context = if frame_id == 0 {
++        scope.get_current_context()
++    } else {
++        let registry = state
++            .borrow()
++            .try_borrow::<Rc<RefCell<RealmStates>>>()
++            .cloned();
++        let Some(context) =
++            registry.and_then(|registry| registry.borrow().context_by_frame_id(frame_id))
++        else {
++            // The frame is gone; its scripts no longer run.
++            return;
++        };
++        v8::Local::new(scope, context)
++    };
++    let receiver: v8::Local<v8::Value> = v8::undefined(scope).into();
++    if let Ok(before) = v8::Local::<v8::Function>::try_from(before) {
++        if before.call(scope, receiver, &[]).is_none() {
++            return;
++        }
++    }
++    let completed = {
++        let scope = &mut v8::ContextScope::new(scope, context);
++        run_classic_script(scope, &source, &url)
++    };
++    if !completed {
++        return;
++    }
++    if let Ok(done) = v8::Local::<v8::Function>::try_from(done) {
++        done.call(scope, receiver, &[]);
++    }
++}
++
+ /// Atomically claim an executable script.  A false result means the node was
+ /// created inert by an HTML-string API or has already been prepared once.
+ #[op2(fast)]
+@@ -5762,6 +5912,7 @@ pub fn build_extension() -> Extension {
+         op_blob_url_revoke(),
+         op_blob_url_text(),
+         op_script_try_start(),
++        op_script_run_classic(),
+         op_shadow_attach(),
+         op_shadow_root_info(),
+         op_runtime_events_enabled(),
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index 3d84eb3..c05ed35 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -823,6 +823,53 @@ impl ObscuraJsRuntime {
+         }
+     }
+ 
++    /// Runs one of a frame document's own classic scripts in `realm`, named by
++    /// `url` as a browser names it, reporting an uncaught exception to the
++    /// frame's `onerror` and `error` listeners and returning its text.
++    pub(crate) fn run_document_script_in_realm(
++        &mut self,
++        realm: &deno_core::v8::Global<deno_core::v8::Context>,
++        source: &str,
++        url: &str,
++    ) -> Result<(), String> {
++        use deno_core::v8;
++
++        let mut entered = self.runtime();
++        let isolate = entered.v8_isolate();
++        let scope = &mut v8::HandleScope::new(isolate);
++        let context = v8::Local::new(scope, realm);
++        let scope = &mut v8::ContextScope::new(scope, context);
++        let code = v8::String::new(scope, source).ok_or("source too large")?;
++        let name = v8::String::new(scope, url).ok_or("script URL too large")?;
++        let origin = v8::ScriptOrigin::new(
++            scope,
++            name.into(),
++            0,
++            0,
++            false,
++            0,
++            None,
++            false,
++            false,
++            false,
++            None,
++        );
++        let scope = &mut v8::TryCatch::new(scope);
++        let ran = v8::Script::compile(scope, code, Some(&origin))
++            .and_then(|script| script.run(scope))
++            .is_some();
++        if ran {
++            return Ok(());
++        }
++        let text = exception_text(scope);
++        if let Some(exception) = scope.exception() {
++            if !scope.is_execution_terminating() {
++                crate::ops::report_script_exception(scope, exception);
++            }
++        }
++        Err(text)
++    }
++
+     /// Copies the browser-identity globals from the main realm into `realm`.
+     ///
+     /// A frame must present the same identity as its parent: anti-bot code
+@@ -3080,6 +3127,14 @@ impl ObscuraJsRuntime {
+     }
+ 
+     fn execute_classic_script(&mut self, name: &str, source: &str) -> Result<(), String> {
++        self.run_classic_script(name, source, false)
++    }
++
++    /// Runs `source` as a classic script named `name`. With `report`, an
++    /// uncaught exception is also reported to the page's `onerror` and `error`
++    /// listeners, as a browser does for a document's own scripts; host-internal
++    /// scripts pass false.
++    fn run_classic_script(&mut self, name: &str, source: &str, report: bool) -> Result<(), String> {
+         self.begin_javascript_task();
+         let script_url = name.to_string();
+         // JsRuntime::execute_script in deno_core 0.350 restricts `name` to a
+@@ -3116,6 +3171,9 @@ impl ObscuraJsRuntime {
+                 return match scope.exception() {
+                     Some(exception) => {
+                         let error = deno_core::error::JsError::from_v8_exception(scope, exception);
++                        if report {
++                            crate::ops::report_script_exception(scope, exception);
++                        }
+                         Err((format!("JS error: {error}"), Some(error)))
+                     }
+                     None => Err((
+@@ -3132,6 +3190,9 @@ impl ObscuraJsRuntime {
+                 return match scope.exception() {
+                     Some(exception) => {
+                         let error = deno_core::error::JsError::from_v8_exception(scope, exception);
++                        if report {
++                            crate::ops::report_script_exception(scope, exception);
++                        }
+                         Err((format!("JS error: {error}"), Some(error)))
+                     }
+                     None => Err((
+@@ -3166,14 +3227,37 @@ impl ObscuraJsRuntime {
+         }
+     }
+ 
++    /// Runs one of the document's own classic scripts, named by its URL (the
++    /// document's for an inline script). Unlike `execute_script_guarded`, an
++    /// uncaught exception is reported to the page's `onerror` and `error`
++    /// listeners, as a browser reports it.
++    pub fn execute_page_script_guarded(&mut self, url: &str, source: &str) -> Result<(), String> {
++        let timeout = if source.len() < 10_000 {
++            std::time::Duration::ZERO
++        } else {
++            std::time::Duration::from_secs(5)
++        };
++        self.run_classic_script_with_timeout(url, source, timeout, true)
++    }
++
+     pub fn execute_script_with_timeout(
+         &mut self,
+         name: &str,
+         source: &str,
+         timeout: std::time::Duration,
++    ) -> Result<(), String> {
++        self.run_classic_script_with_timeout(name, source, timeout, false)
++    }
++
++    fn run_classic_script_with_timeout(
++        &mut self,
++        name: &str,
++        source: &str,
++        timeout: std::time::Duration,
++        report: bool,
+     ) -> Result<(), String> {
+         if timeout.is_zero() {
+-            return self.execute_classic_script(name, source);
++            return self.run_classic_script(name, source, report);
+         }
+ 
+         let isolate_handle = self.runtime().v8_isolate().thread_safe_handle();
+@@ -3201,7 +3285,7 @@ impl ObscuraJsRuntime {
+             }
+         });
+ 
+-        let result = self.execute_classic_script(name, source);
++        let result = self.run_classic_script(name, source, report);
+ 
+         {
+             let (lock, cvar) = &*pair;
+@@ -18340,6 +18424,179 @@ mod tests {
+         );
+     }
+ 
++    /// A fetched dynamic script runs as its own classic script named by its URL,
++    /// as in a browser: its stack reads `https://host/app.js:line:col` with no
++    /// engine frames, `onerror` gets that URL, and top-level declarations
++    /// become globals.
++    #[tokio::test(flavor = "current_thread")]
++    async fn dynamic_external_script_runs_as_its_own_script_named_by_its_url() {
++        let mut rt = setup_runtime("<html><head></head><body></body></html>");
++        let result = rt
++            .call_function_on_for_cdp(
++                r#"async () => {
++                    const originalFetchOp = Deno.core.ops.op_fetch_url;
++                    const reports = [];
++                    const listened = [];
++                    globalThis.onerror = (message, source, line, column, error) => {
++                        reports.push([message, source, line, column, error instanceof Error]);
++                        return true;
++                    };
++                    addEventListener("error", event => listened.push([event.filename, event.lineno]));
++                    try {
++                        Deno.core.ops.op_fetch_url = (url) => JSON.stringify({
++                            status: 200,
++                            headers: { "content-type": "text/javascript" },
++                            body: "var dynTopVar = 1;\nfunction dynTopFn() {}\n" +
++                                  "globalThis.dynStack = new Error('x').stack;\n" +
++                                  "globalThis.dynCurrent = document.currentScript && document.currentScript.id;\n" +
++                                  "throw new Error('boom');",
++                            url,
++                        });
++                        const script = document.createElement("script");
++                        script.id = "dyn";
++                        script.src = "/assets/app.js";
++                        const outcome = await new Promise(resolve => {
++                            script.onload = () => resolve("load");
++                            script.onerror = () => resolve("error");
++                            document.head.appendChild(script);
++                        });
++                        return {
++                            outcome,
++                            stack: globalThis.dynStack.split("\n").slice(0, 2),
++                            engineFrames: /eval at|obscura:bootstrap/.test(globalThis.dynStack),
++                            current: globalThis.dynCurrent,
++                            currentAfter: document.currentScript,
++                            topVar: globalThis.dynTopVar,
++                            topFn: typeof globalThis.dynTopFn,
++                            reports,
++                            listened,
++                        };
++                    } finally {
++                        Deno.core.ops.op_fetch_url = originalFetchOp;
++                    }
++                }"#,
++                None,
++                &[],
++                true,
++                true,
++            )
++            .await
++            .unwrap();
++
++        assert_eq!(
++            result.value.unwrap(),
++            serde_json::json!({
++                "outcome": "load",
++                "stack": ["Error: x", "    at http://example.com/assets/app.js:3:23"],
++                "engineFrames": false,
++                "current": "dyn",
++                "currentAfter": null,
++                "topVar": 1,
++                "topFn": "function",
++                "reports": [[
++                    "Uncaught Error: boom",
++                    "http://example.com/assets/app.js",
++                    5,
++                    1,
++                    true,
++                ]],
++                "listened": [["http://example.com/assets/app.js", 5]],
++            })
++        );
++    }
++
++    /// An inserted inline script is its own classic script named by the
++    /// document's URL, runs synchronously, and keeps sloppy global semantics.
++    #[test]
++    fn dynamic_inline_script_is_named_by_the_document_url() {
++        let mut rt = setup_runtime("<html><head></head><body></body></html>");
++        let result = rt
++            .evaluate(
++                r#"
++                var scriptTestSetup = true;
++                const reports = [];
++                globalThis.onerror = (message, source, line, column) => {
++                    reports.push([message, source, line, column]);
++                    return true;
++                };
++                const script = document.createElement("script");
++                script.textContent = "var inlineTopVar = 2;\n" +
++                    "globalThis.inlineStack = new Error('y').stack;\n" +
++                    "throw new TypeError('inline boom');";
++                document.body.appendChild(script);
++                const after = document.createElement("script");
++                after.textContent = "globalThis.afterRan = inlineTopVar + 1;";
++                document.body.appendChild(after);
++                return {
++                    firstFrame: globalThis.inlineStack.split("\n")[1],
++                    evalFrames: /eval at|obscura:bootstrap/.test(globalThis.inlineStack.split("\n")[1]),
++                    topVar: globalThis.inlineTopVar,
++                    afterRan: globalThis.afterRan,
++                    reports,
++                };
++                "#,
++            )
++            .unwrap();
++        assert_eq!(
++            result,
++            serde_json::json!({
++                "firstFrame": "    at http://example.com/test:2:26",
++                "evalFrames": false,
++                "topVar": 2,
++                "afterRan": 3,
++                "reports": [["Uncaught TypeError: inline boom", "http://example.com/test", 3, 1]],
++            })
++        );
++    }
++
++    /// A string timer handler is compiled as its own classic script, which has
++    /// no URL, so a browser shows `<anonymous>`; not an eval frame.
++    #[tokio::test(flavor = "current_thread")]
++    async fn string_timer_runs_as_its_own_script() {
++        let mut rt = setup_runtime("<html><head></head><body></body></html>");
++        rt.execute_script(
++            "t",
++            "setTimeout('var timerTopVar = 3; globalThis.timerStack = new Error().stack;', 0);",
++        )
++        .unwrap();
++        rt.run_event_loop_bounded(300).await.unwrap();
++        let result = rt
++            .evaluate("[globalThis.timerTopVar, globalThis.timerStack.split('\\n')[1]]")
++            .unwrap();
++        assert_eq!(result, serde_json::json!([3, "    at <anonymous>:1:46"]));
++    }
++
++    /// A document's own parser-inserted script reports an uncaught exception to
++    /// `onerror` with its URL, as a browser does; host-internal scripts do not.
++    #[test]
++    fn parser_script_exception_is_reported_with_its_url() {
++        let mut rt = setup_runtime("<html><head></head><body></body></html>");
++        rt.execute_script(
++            "setup",
++            "globalThis.reports = []; onerror = (m, s, l, c) => { reports.push([m, s, l, c]); return true; };",
++        )
++        .unwrap();
++        assert!(rt
++            .execute_page_script_guarded("https://cdn.example/lib.js", "\n  null.x;")
++            .is_err());
++        assert!(rt
++            .execute_page_script_guarded("http://example.com/test", "let = ;")
++            .is_err());
++        assert!(rt.execute_script("<internal>", "throw 1").is_err());
++        assert_eq!(
++            rt.evaluate("reports").unwrap(),
++            serde_json::json!([
++                [
++                    "Uncaught TypeError: Cannot read properties of null (reading 'x')",
++                    "https://cdn.example/lib.js",
++                    2,
++                    8
++                ],
++                ["Uncaught SyntaxError: Unexpected token ';'", "http://example.com/test", 1, 7]
++            ])
++        );
++    }
++
+     #[tokio::test(flavor = "current_thread")]
+     async fn dynamic_classic_scripts_are_async_by_default_but_honor_async_false_order() {
+         let mut rt = setup_runtime("<html><head></head><body></body></html>");

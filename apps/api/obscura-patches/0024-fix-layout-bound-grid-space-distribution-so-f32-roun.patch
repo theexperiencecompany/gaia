@@ -1,0 +1,102 @@
+From 8890e41c6af826d250982d0320481d6344c92c7c Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 25 Sep 2026 06:31:11 +0530
+Subject: [PATCH] fix(layout): bound grid space distribution so f32 rounding
+ cannot hang it
+
+Wikipedia's Chile article never finished layout: the first
+getComputedStyle after load spun at full CPU forever. Its nested navbox
+tables lay out as nested taffy grids. While sizing a column,
+distribute_space_up_to_limits left a track at 205.56958 against a limit
+of 205.5696, one f32 ulp below. The "can still grow" filter
+(size + increase < limit) kept the track live, but its headroom
+(limit - size - increase) rounds to 0.0, so the track never grew, never
+froze, and the 281 px of space left never shrank below the threshold.
+
+In exact arithmetic every round either uses up the space or freezes a
+track, so the loop needs at most tracks.len() + 1 rounds. Bound it that
+way, and bound find_size_of_fr the same way. This backports upstream
+taffy #1036 (c579c31), which added the same bounds for non-finite
+inputs. Results are unchanged wherever the loop used to terminate.
+
+The new layout test is the reduced page: two nested tables, three
+strings. Before this change it never finishes; now it takes about 1 ms.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-render/tests/layout_test.rs    | 22 +++++++++++++++++++
+ vendor/taffy/src/compute/grid/track_sizing.rs | 19 ++++++++++++++--
+ 2 files changed, 39 insertions(+), 2 deletions(-)
+
+diff --git a/crates/obscura-render/tests/layout_test.rs b/crates/obscura-render/tests/layout_test.rs
+index 9ad9af4..3ecd89a 100644
+--- a/crates/obscura-render/tests/layout_test.rs
++++ b/crates/obscura-render/tests/layout_test.rs
+@@ -4522,3 +4522,25 @@ fn float_ending_at_rounded_segment_boundary_does_not_panic() {
+ 
+     assert_eq!(place(&mut context, 400.3333, FloatDirection::Left).y, 1859.0);
+ }
++
++/// Reduced from Wikipedia's "Chile" article (two nested navbox tables). Tables
++/// lay out as taffy grids; sizing the outer table's column left a track one f32
++/// ulp below its growth limit with zero computable headroom, and grid space
++/// distribution spun forever. Layout takes about a millisecond; the bound is
++/// generous so only a hang fails it.
++#[cfg(feature = "paint")]
++#[test]
++fn nested_navbox_tables_finish_grid_track_sizing() {
++    const HTML: &str = r#"<table><tr><th style="padding:0.25em 1em"><div style="font-size:114%;margin:0 4em">Links to related articles</div></th></tr><tr><td style="font-size:114%"><div><table><tr><th colspan="2"><div style="margin:0 4em">Countries and dependencies of South America</div></th></tr><tr><th style="width:1%"></th><td style="width:100%"><div style="padding:0 0.25em">South Georgia and the South Sandwich Islands</div></td></tr></table></div></td></tr></table>"#;
++
++    let (sender, receiver) = std::sync::mpsc::channel();
++    std::thread::spawn(move || {
++        let tree = parse_html(HTML);
++        let layout = layout_dom(&tree, (1280.0, 720.0));
++        let _ = sender.send(layout.rects.len());
++    });
++    let rects = receiver
++        .recv_timeout(std::time::Duration::from_secs(10))
++        .expect("nested table layout did not finish within 10 s");
++    assert!(rects > 10, "expected the tables to lay out, got {rects} rects");
++}
+diff --git a/vendor/taffy/src/compute/grid/track_sizing.rs b/vendor/taffy/src/compute/grid/track_sizing.rs
+index a2b8c18..90aa5c4 100644
+--- a/vendor/taffy/src/compute/grid/track_sizing.rs
++++ b/vendor/taffy/src/compute/grid/track_sizing.rs
+@@ -1290,7 +1290,12 @@ fn find_size_of_fr(tracks: &[GridTrack], space_to_fill: f32) -> f32 {
+     // condition can never be true for the first iteration.
+     let mut hypothetical_fr_size = f32::INFINITY;
+     let mut previous_iter_hypothetical_fr_size;
+-    loop {
++    // Every restart of the algorithm treats at least one more flexible track as inflexible, so a valid
++    // hypothetical fr size is always found within `tracks.len() + 1` iterations. Non-finite values (which
++    // can arise from non-finite style inputs) break that invariant as comparisons against `NaN` are always
++    // false, so we bound the iteration count to guarantee termination.
++    let max_iterations = tracks.len() + 1;
++    for _ in 0..max_iterations {
+         // Let leftover space be the space to fill minus the base sizes of the non-flexible grid tracks.
+         // Let flex factor sum be the sum of the flex factors of the flexible tracks. If this value is less than 1, set it to 1 instead.
+         // We compute both of these in a single loop to avoid iterating over the data twice
+@@ -1381,8 +1386,18 @@ fn distribute_space_up_to_limits(
+     /// extra space when it gets to exactly zero, we will stop when it falls below this amount
+     const THRESHOLD: f32 = 0.01;
+ 
++    // Each iteration freezes at least one track at its limit, so the loop always completes within
++    // `tracks.len() + 1` iterations in exact arithmetic. In f32 a track can sit one ulp below its limit
++    // while `limit - size - increase` rounds to zero: it is neither frozen nor able to grow, and no space
++    // is ever distributed. Non-finite values can stall the loop the same way. Bound the iteration count
++    // so termination does not depend on rounding.
++    let max_iterations = tracks.len() + 1;
++
+     let mut space_to_distribute = space_to_distribute;
+-    while space_to_distribute > THRESHOLD {
++    for _ in 0..max_iterations {
++        if space_to_distribute <= THRESHOLD {
++            break;
++        }
+         let track_distribution_proportion_sum: f32 = tracks
+             .iter()
+             .filter(|track| track_affected_property(track) + track.item_incurred_increase < track_limit(track))
+-- 
+2.43.0
+

@@ -76,7 +76,7 @@ The worker tier. Has access to **everything** that does work.
 
 ### Initial tool IDs (the executor's initial bind set)
 
-`activate_integration`, `handoff`, `execute`, `get_tool_schema`, `plan_tasks`, `update_tasks`, `read`, `bash`, `deep_research`, `list_running_subagents`, `message_subagent`, `cancel_subagent`, `read_manual`, `create_tracked_todo`, `update_tracked_todo`, `update_tracked_todo_canvas`, `complete_tracked_todo`, `search_todo_context`, `list_tracked_todos`, `list_trigger_fields`, `subscribe_todo_to_trigger`, `unsubscribe_todo_from_trigger`, `save_learned_skill`, `write_playbook`, `decline_playbook`, `read_playbook`, `disable_playbook`, `add_device`, `approve_device_pairing`, `list_devices`, `run_on_device`.
+`activate_integration`, `handoff`, `execute`, `get_tool_schema`, `plan_tasks`, `update_tasks`, `read`, `bash`, `deep_research`, `list_running_subagents`, `message_subagent`, `cancel_subagent`, `read_manual`, `create_tracked_todo`, `update_tracked_todo`, `update_tracked_todo_canvas`, `complete_tracked_todo`, `search_todo_context`, `list_tracked_todos`, `list_trigger_fields`, `subscribe_todo_to_trigger`, `unsubscribe_todo_from_trigger`, `save_learned_skill`, `browser_task`, `wait_for_browser_task`, `guide_browser_task`, `write_playbook`, `decline_playbook`, `read_playbook`, `disable_playbook`, `add_device`, `approve_device_pairing`, `list_devices`, `run_on_device`.
 
 ### Handoff lifecycle (background, async)
 
@@ -383,6 +383,7 @@ Integration tools (Composio + per-user MCP — the thousands) are **never bound*
 ### 9.3 Subagent coordination
 
 - Background results need no join tool: a finished background subagent lands its result in the executor inbox (waking a rested executor), and the pre-model drain hook injects it before the next reasoning step. Steering is `list_running_subagents` / `message_subagent` / `cancel_subagent`. A background subagent parked on an approval announces itself the same way and resumes on its own when the user decides (see §4 Delegation).
+- `apps/api/app/agents/tools/browser_tool.py` — `wait_for_browser_task(timeout=600)`. The one join tool left: a browser job runs in an ARQ worker, not in-process, so the join polls **Redis**: it takes the joiner lease, waits on the job's durable state, and returns the run's answer. Dropping the lease on every exit is what hands delivery back to the worker.
 
 ### 9.4 Lifecycle / orchestration
 
@@ -530,6 +531,31 @@ Integration tools (Composio + per-user MCP — the thousands) are **never bound*
 - **Workspace path helpers** — `apps/api/app/agents/workspace/paths.py` (canonical `/workspace/...` paths, session_dir, runs_log_dir).
 - **Namespace derivation** — `apps/api/app/helpers/namespace_utils.py` (derives tool namespace from integration_id + server_url).
 - **Wide-event logging** — `libs/shared/py/wide_events.py` (used throughout for structured logging with `log.set(...)`).
+
+---
+
+## Browser automation
+
+A browser task is a background job, not a tool call the turn holds open. `browser_task` claims the conversation's one browser slot, enqueues an ARQ job and returns a started notice; the run itself happens in the worker and outlives the turn that asked for it.
+
+- `apps/api/app/agents/tools/browser_tool.py`: the executor's two browser tools. `browser_task` starts a job and never returns a result; `wait_for_browser_task` joins the job and returns the run's own answer.
+- `apps/api/app/services/browser/jobs.py`: the Redis state one run shares across processes. The per-conversation slot lease (one browser per conversation, heartbeated by the worker), the job's durable state, the joiner lease that decides who speaks the result, and the cancel flag a stop sets on a job whose turn has already ended.
+- `apps/api/app/workers/tasks/browser_tasks.py`: `run_browser_job`, registered in `apps/api/app/worker.py` with no retry, because a browser run is not idempotent. It owns the slot heartbeat, the terminal state a joiner reads, and the delivery hand-off.
+- `apps/api/app/services/browser/job_runner.py`: `execute_browser_job`, the process-agnostic run. No stream writer, no LangGraph config, no tool result: every card snapshot goes to the job's own feed and to the bot platform, and every failure becomes a terminal result card.
+- `apps/api/app/services/browser/job_events.py`: one replayable Redis stream per job. A relay reads it from `0-0`, so a relay that starts late or restarts still shows the run from step 1; a sentinel frame closes it.
+- `apps/api/app/services/browser/job_relay.py`: `relay_job_events`, running in the API beside the turn. It replays the feed through `make_redis_stream_writer(stream_id)`, which is what puts the cards on live SSE **and** into the turn's collected tool events. A worker publishing to the stream itself would reach the first but not the second, and the cards would vanish on reload.
+- Who speaks the result: a joining executor holds a Redis lease while it waits, and reports the run's answer itself. With no live joiner (the turn ended, or the API restarted) the worker narrates the result and delivers it as a follow-up message carrying the run's cards.
+- `apps/api/app/services/browser/runner.py`: `BrowserTaskRunner` owns one task's progress, handoff, budgets and metering.
+- `apps/api/app/services/browser/agent_run.py`: `BrowserAgentRun` runs one Browser-Use `Agent` on the reasoning model (`llm.py`, the user's executor lane at low effort). Its initial action is `jev` on the whole task, so Jev drives first and the agent's first model call reads what Jev did; the agent then finishes with the answer, re-delegates a sharper goal to `jev`, or acts itself. The agent is the only finisher and the only answer writer.
+- `apps/api/app/services/browser/jev/`: Jev, ported from browser-use/jev-ultrafast. `snapshot.js` reads the page atomically (controls with live values, visible text, code-owned node ids, freshness guards; open shadow roots and same-origin frames too); `page.py` observes and executes over the Browser-Use session's CDP connection (per-key typing, occlusion re-checked before input, no retried mutation); `decision.py` asks one decisions request per step (an operation head and one target head per operation); `loop.py` runs a burst until DONE, BLOCKED or no progress; `tool.py` is the `jev` action and the report the agent reads; `gateway.py` is the OpenRouter/Vercel decisions client with failover.
+- Credentials: `browser_task` takes `secrets`; the task carries `<secret>name</secret>` and only the page receives a value (`jev/secrets.py`).
+- `apps/api/app/services/browser/ledger.py`: every model call of a run (Jev, text helper, agent), metered the moment it lands so the user's budget binds mid-run.
+- Mid-task messages: the chat pre-turn hook (`app/services/chat/stream.py`) posts a reply that resolves no handoff to the running job's inbox (`jobs.py`); it ends the current Jev burst and reaches the agent as a follow-up request.
+- Engines: Chrome by default; `FeatureFlag.BROWSER_OBSCURA` opts a user into Obscura with Chrome as the fallback (`job_runner.hosts_for`). Browser-Use patches that work around Obscura gaps apply to Obscura sessions only (`app/patches/obscura_sessions.py`).
+- Handoff: `request_human_takeover` and `solve_captcha_with_help`, registered in `apps/api/app/services/browser/tools.py`, are the agent's own way to pause; the runner blocks the task and resumes it with the user's note.
+- `apps/api/app/services/browser/stalled_loads.py`: a top-level load whose site sends nothing for 15 s is stopped, because Chrome answers no script on a tab until its pending navigation gets a first byte; the agent (or Jev's report) is told which page stalled.
+- Each run takes its own bubus event lock (`app/patches/browser_use_run_lock_patch.py`): bubus otherwise serialises every Browser-Use session in the worker process.
+- Browser-Use is pinned (`browser-use==0.11.13` in `apps/api/pyproject.toml`); several `app/patches/browser_use_*` patches rebind its internals.
 
 ---
 

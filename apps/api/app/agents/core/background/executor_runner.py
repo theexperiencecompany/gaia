@@ -58,6 +58,7 @@ from app.constants.agents import AgentTag
 from app.constants.executor import (
     EXECUTOR_APPROVAL_LOST_MESSAGE,
     EXECUTOR_CARRY_TASK,
+    EXECUTOR_CRASH_MESSAGE,
     EXECUTOR_PAUSED,
     EXECUTOR_STEP_LIMIT_MESSAGE,
     MESSAGE_ID_KEY,
@@ -70,6 +71,7 @@ from app.models.agent_models import AgentConfigurable, AgentConfigurableView
 from app.models.chat_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.browser.jobs import cancel_conversation_browser_job
 from app.services.hil.approvals_store import set_resume_item
 from app.services.hil.resume_slot import release_resume_dispatch
 from app.services.latency_metrics import (
@@ -338,6 +340,31 @@ class _ExecutorResult(NamedTuple):
     ctx: SubagentExecutionContext | None = None
 
 
+async def _cancel_orphaned_browser_job(conversation_id: str, stream_id: str) -> None:
+    """Stop the browser job a failed run left in flight, so it cannot speak a second ending.
+
+    The job outlives the turn and nobody will join it now, so without this the
+    worker narrates its own conclusion minutes after comms said the run failed.
+    """
+    try:
+        job_id = await cancel_conversation_browser_job(conversation_id)
+    except Exception as e:  # the run's own error message must still reach comms
+        log.error(
+            f"{LogTag.AGENT} Could not cancel the browser job left by a failed executor run",
+            conversation_id=conversation_id,
+            stream_id=stream_id,
+            error=str(e),
+        )
+        return
+    if job_id is not None:
+        log.warning(
+            f"{LogTag.AGENT} Cancelled the browser job orphaned by a failed executor run",
+            conversation_id=conversation_id,
+            stream_id=stream_id,
+            browser={"job_id": job_id},
+        )
+
+
 async def _execute_executor(
     task: str,
     configurable: AgentConfigurable,
@@ -394,10 +421,15 @@ async def _execute_executor(
             stream_id=stream_id,
             error=str(e),
         )
+        await _cancel_orphaned_browser_job(run.conversation_id, stream_id)
         return _ExecutorResult(EXECUTOR_STEP_LIMIT_MESSAGE, "error", ctx=ctx)
     except Exception as e:
+        # The raw exception is for the log, never for comms: a bare string (often
+        # empty) is not a story, so comms invented one and offered to re-run work
+        # that may have half-landed. Say what happened and ask instead.
         log.error(f"{LogTag.AGENT} Executor run failed", stream_id=stream_id, error=str(e))
-        return _ExecutorResult(str(e), "error", ctx=ctx)
+        await _cancel_orphaned_browser_job(run.conversation_id, stream_id)
+        return _ExecutorResult(EXECUTOR_CRASH_MESSAGE, "error", ctx=ctx)
 
 
 async def _finalize_executor_run(

@@ -19,7 +19,7 @@ import pytest
 from app.agents.context.assemble import AssembledContext
 from app.agents.context.slots import PromptSlot
 from app.agents.context.tiers import AgentTier
-from app.agents.core.background import redis_writer as rw, session as sess
+from app.agents.core.background import redis_writer as rw
 from app.agents.core.background.executor_capture import drain_executor_tool_data
 from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.background.session import RunKind, StreamSession, create_session
@@ -273,6 +273,26 @@ class TestBuildInitialMessages:
             )
 
         assert mock_assemble.call_args.args[0].query == "original query"
+
+    @pytest.mark.asyncio
+    async def test_the_comms_request_reaches_the_assembler_beside_the_retrieval_query(self):
+        """Recall reuses what comms fetched for the user's own words; losing them re-recalls on the brief."""
+        with self._assembled() as mock_assemble:
+            await build_initial_messages(
+                system_message=SystemMessage(content="sys"),
+                agent_name="agent",
+                task="enhanced task with hints",
+                seed=ThreadSeed(
+                    tier=AgentTier.EXECUTOR,
+                    configurable={},
+                    retrieval_query="book the usual table",
+                    request_query="can you book our usual table for Friday?",
+                ),
+            )
+
+        ctx = mock_assemble.call_args.args[0]
+        assert ctx.request_query == "can you book our usual table for Friday?"
+        assert ctx.query == "book the usual table"
 
     @pytest.mark.asyncio
     async def test_tier_and_ids_reach_the_assembler(self):
@@ -1052,6 +1072,27 @@ class TestPrepareExecutorExecution:
         }
 
     @pytest.mark.asyncio
+    async def test_the_users_own_request_rides_to_the_executors_context_with_the_bare_task(self):
+        """The executor recalls on the message comms already recalled on, and on the unenhanced task."""
+        build_config = AsyncMock(return_value={"configurable": {"thread_id": "executor_t1"}})
+        graph, config, system, context = self._prepare_patches(build_config)
+        with graph, config, system, context as mock_assemble:
+            await prepare_executor_execution(
+                task="book the usual table",
+                configurable={
+                    "user_id": "u1",
+                    "thread_id": "t1",
+                    "email": "t@t.com",
+                    "user_name": "Test",
+                    "user_request": "can you book our usual table for Friday?",
+                },
+            )
+
+        ctx = mock_assemble.call_args.args[0]
+        assert ctx.request_query == "can you book our usual table for Friday?"
+        assert ctx.query == "book the usual table"
+
+    @pytest.mark.asyncio
     async def test_the_dev_executor_model_comms_stashed_becomes_this_runs_dev_option(self):
         """DEV-ONLY: without this the executor silently inherits comms's lane and the header's picker does nothing."""
         build_config = AsyncMock(return_value={"configurable": {"thread_id": "executor_t1"}})
@@ -1518,12 +1559,10 @@ def _real_stream_writer(stream_id: str = "s-reasoning"):
     MagicMock writer cannot see it: the SSE frames and the persisted entries have
     to come off the same run.
     """
-    sess._sessions.clear()
     session = create_session(stream_id, RunKind.QUEUED)
     with patch.object(rw, "stream_manager") as stream_manager:
         stream_manager.publish_chunk = AsyncMock()
         yield make_redis_stream_writer(stream_id), stream_manager, session
-    sess._sessions.clear()
 
 
 def _published_reasoning(stream_manager: MagicMock) -> list[str]:

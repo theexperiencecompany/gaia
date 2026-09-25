@@ -14,6 +14,7 @@ import pytest
 
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
 from app.agents.tools.executor_tool import call_executor
+from app.constants.agents import DONE_EVIDENCE_RULE
 
 
 class TestComposeTaskBrief:
@@ -54,7 +55,8 @@ class TestComposeTaskBrief:
             "\n\n"
             "<last_run>\nat: 2026-08-27T09:00:00+00:00\n</last_run>"
             "\n\n"
-            "Definition of done (every item must be true before you finish):\n- digest sent"
+            "Definition of done (every item must be true before you finish):\n- digest sent\n"
+            f"{DONE_EVIDENCE_RULE}"
         )
 
     def test_the_brief_layout_is_exact(self):
@@ -71,7 +73,7 @@ class TestComposeTaskBrief:
             "triage my inbox"
             "\n\n"
             "Definition of done (every item must be true before you finish):\n"
-            "- promos archived\n- offer flagged"
+            f"- promos archived\n- offer flagged\n{DONE_EVIDENCE_RULE}"
         )
 
 

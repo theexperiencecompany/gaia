@@ -187,6 +187,7 @@ def pin_settings(provider: ProviderConfig) -> None:
     # app, would die on the environment instead of doing their (offline) job.
     # `_load_failure` exists precisely to explain that failure when a suite run
     # legitimately provokes it.
+    from app.agents.llm.dev_lane import build_custom_chat_model
     from app.config.settings import settings
     from app.core.lazy_loader import providers
 
@@ -195,5 +196,7 @@ def pin_settings(provider: ProviderConfig) -> None:
     settings.DEV_LLM_MODEL = provider.model
     if settings.GAIA_SIM_MODE:
         return
+    # One-shot models are cached per shape; a rotation must rebuild them too.
+    build_custom_chat_model.cache_clear()
     if providers.is_initialized("custom_llm"):
         providers.reset("custom_llm")

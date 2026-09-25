@@ -221,7 +221,7 @@ class CreateReminderToolRequest(BaseModel):
     home_timezone: str | None = Field(
         None,
         description=(
-            "User's home timezone (IANA or ±HH:MM) — the zone absolute clock times "
+            "User's home timezone (IANA or ±HH:MM), the zone absolute clock times "
             "are interpreted in and the recurrence runs in. None falls back to UTC."
         ),
     )

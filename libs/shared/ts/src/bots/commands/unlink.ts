@@ -7,7 +7,7 @@
  * @module
  */
 import type { BotCommand, CommandExecuteParams } from "../types";
-import { wideLog } from "../utils/wide-events";
+import { reportCommandFailure } from "../utils/commands";
 
 /** `/unlink` command definition. */
 export const unlinkCommand: BotCommand = {
@@ -33,9 +33,8 @@ export const unlinkCommand: BotCommand = {
           "Use `/auth` to reconnect at any time.",
       );
     } catch (error) {
-      wideLog.error("unlink_command_error", undefined, error);
       await target.sendEphemeral(
-        "❌ Failed to unlink your account. Please try again.",
+        reportCommandFailure("unlink_account", error, ctx),
       );
     }
   },

@@ -149,7 +149,7 @@ def render_index(docs: list[GaiaTaskProjection]) -> str:
     """Build the generated index.md body: one line per task, newest-updated first."""
     header = (
         "<!-- Generated index of active gaia-tasks. Sorted by "
-        "last-updated, newest first. Do not edit — regenerated on every "
+        "last-updated, newest first. Do not edit, regenerated on every "
         "sync. -->\n"
     )
     sorted_docs = sorted(docs, key=lambda d: updated_at_key(d["meta"]), reverse=True)
@@ -159,7 +159,7 @@ def render_index(docs: list[GaiaTaskProjection]) -> str:
     for d in sorted_docs:
         meta = d["meta"]
         title = (meta.get("title") or "(untitled)").replace("\n", " ").strip()
-        updated = updated_at_key(meta) or "—"
+        updated = updated_at_key(meta) or "unknown"
         body.append(f"- [{_glyph(meta)}] `{_folder_name(d)}`  {title}  _(updated {updated})_")
     return "\n".join([header, "", *body]) + "\n"
 

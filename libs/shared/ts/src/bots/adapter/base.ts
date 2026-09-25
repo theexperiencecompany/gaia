@@ -49,11 +49,13 @@ import type {
   PlatformName,
   RichMessageTarget,
 } from "../types";
+import { BOT_FAILURE_REASON, recordBotFailure } from "../utils/failure-reasons";
 import { formatBotError, renderForPlatform } from "../utils/formatters";
 import {
   type BotLogger,
   createBotLogger,
   hashLogIdentifier,
+  sanitizeErrorForLog,
 } from "../utils/logger";
 import {
   type IncomingMedia,
@@ -81,6 +83,13 @@ export abstract class BaseBotAdapter {
    * Override in each subclass. Overrideable at runtime via `BOT_SERVER_PORT`.
    */
   protected abstract readonly defaultServerPort: number;
+
+  /**
+   * Whether this process consumes the platform's outbound queue. Every bot does;
+   * the harness sending a second message as the same user mid-run must not, or
+   * it takes a share of the deliveries meant for the process already consuming.
+   */
+  protected readonly consumesOutbound: boolean = true;
 
   /** GAIA API client shared across all command handlers. */
   protected gaia!: GaiaClient;
@@ -235,12 +244,14 @@ export abstract class BaseBotAdapter {
     const url = this.config.rabbitmqUrl;
     // loadConfig() already warned (config_optional_missing / RABBITMQ_URL) on
     // this same boot event — saying it twice does not make it truer.
-    if (!url) return;
+    if (!url || !this.consumesOutbound) return;
     this._outboundConsumer = new OutboundConsumer(
       this.platform,
       url,
       (id, text, isChannel) => this.deliverOutbound(id, text, isChannel),
-      (id, attachment) => this.deliverOutboundFile(id, attachment),
+      (id, attachment, isChannel) =>
+        this.deliverOutboundFile(id, attachment, isChannel),
+      this.config.gaiaApiUrl,
       (id, reaction, isChannel) =>
         this.deliverOutboundReaction(id, reaction, isChannel),
     );
@@ -317,12 +328,28 @@ export abstract class BaseBotAdapter {
   protected async fetchOutboundArtifact(
     destinationId: string,
     attachment: OutboundAttachment,
+    isChannel: boolean,
   ): Promise<{ data: Buffer; contentType: string } | null> {
-    const artifact = await this.gaia.downloadArtifact(
-      attachment.conversation_id,
-      attachment.path,
-      { platform: this.platform, platformUserId: destinationId },
-    );
+    let artifact: { data: Buffer; contentType: string };
+    if (attachment.url) {
+      artifact = await this.gaia.downloadAttachmentUrl(attachment.url, {
+        platform: this.platform,
+        platformUserId: destinationId,
+      });
+    } else {
+      if (!attachment.conversation_id || !attachment.path) {
+        // The envelope schema's refine already guarantees exactly one source —
+        // reaching here means a malformed envelope slipped past validation.
+        throw new Error(
+          "outbound attachment has neither `url` nor `conversation_id`/`path`",
+        );
+      }
+      artifact = await this.gaia.downloadArtifact(
+        attachment.conversation_id,
+        attachment.path,
+        { platform: this.platform, platformUserId: destinationId },
+      );
+    }
     const limit = OUTBOUND_FILE_LIMITS[this.platform];
     if (artifact.data.length > limit) {
       // `platform` is already on every line's envelope — repeating it as a
@@ -332,6 +359,7 @@ export abstract class BaseBotAdapter {
         bytes: artifact.data.length,
         limit,
       });
+      wideLog.fail(BOT_FAILURE_REASON.FILE_TOO_LARGE);
       // A generated artifact the user never receives. Captured, not just
       // logged: this is a product failure with a per-platform size cause, and
       // its rate is the signal for raising a limit or chunking the output.
@@ -351,7 +379,7 @@ export abstract class BaseBotAdapter {
           `I generated *${attachment.filename}*, but it's too large to send on ${this.platform} (max ${Math.floor(limit / (1024 * 1024))} MB).`,
           this.platform,
         ),
-        false, // the file path only ever targets a DM
+        isChannel,
       );
       return null;
     }
@@ -363,10 +391,14 @@ export abstract class BaseBotAdapter {
    * when an envelope carries an `attachment`. The default sends a short text note
    * via {@link deliverOutbound}; platforms that support attachments (e.g.
    * WhatsApp) override this to fetch the artifact bytes and upload them.
+   *
+   * `isChannel` addresses it like {@link deliverOutbound}: a browser run asked
+   * for in a group streams its step photos back into that group.
    */
   protected async deliverOutboundFile(
     destinationId: string,
     attachment: OutboundAttachment,
+    isChannel: boolean,
   ): Promise<void> {
     wideLog.warning("outbound_file_fallback_text", {
       attachment_filename: attachment.filename,
@@ -382,7 +414,7 @@ export abstract class BaseBotAdapter {
     await this.deliverOutbound(
       destinationId,
       `I created *${attachment.filename}*, but I can't send files on ${this.platform} yet.`,
-      false, // the file path only ever targets a DM
+      isChannel,
     );
   }
 
@@ -494,17 +526,10 @@ export abstract class BaseBotAdapter {
         } catch (error) {
           const durationMs = Date.now() - startMs;
           const errorType = error instanceof Error ? error.name : "Unknown";
-          wideLog.error(
-            "command_dispatch_failed",
-            {
-              command: name,
-              user_hash: userHash,
-              channel_hash: channelHash,
-              duration_ms: durationMs,
-              error_type: errorType,
-            },
-            error,
-          );
+          recordBotFailure("command_dispatch_failed", error, {
+            command: name,
+            duration_ms: durationMs,
+          });
           // Capture only the error class name. Raw messages can contain file
           // paths, request IDs, or upstream-echoed tokens — never ship them.
           this.analytics.capture(distinctId, BOT_EVENTS.COMMAND_EXECUTED, {
@@ -517,12 +542,15 @@ export abstract class BaseBotAdapter {
             context: `command:${name}`,
             error_type: errorType,
           });
-          const errMsg = formatBotError(error);
+          const errMsg = formatBotError(error, this.platform);
           try {
             await target.sendEphemeral(errMsg);
-          } catch {
+          } catch (sendError) {
             // Target may be expired (e.g. Discord interaction timeout).
-            wideLog.warning("error_notice_send_failed", { command: name });
+            wideLog.warning("error_notice_send_failed", {
+              command: name,
+              ...sanitizeErrorForLog(sendError),
+            });
           }
         }
       },

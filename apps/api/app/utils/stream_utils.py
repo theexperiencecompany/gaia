@@ -90,7 +90,7 @@ class _ToolOutputEvent(BaseModel):
     output: str | None = None
 
 
-class _ReasoningEvent(BaseModel):
+class ReasoningEvent(BaseModel):
     """A collector ``reasoning`` frame: one flushed step of thinking."""
 
     model_config = ConfigDict(extra="ignore")
@@ -111,7 +111,7 @@ class _CollectorEvent(BaseModel):
 
     tool_data: Annotated[ToolDataEntry | list[ToolDataEntry] | None, SkipValidation] = None
     tool_output: _ToolOutputEvent | None = None
-    reasoning: _ReasoningEvent | None = None
+    reasoning: ReasoningEvent | None = None
     subagent_start: Annotated[dict[str, object] | None, SkipValidation] = None
     subagent_end: Annotated[dict[str, object] | None, SkipValidation] = None
 
@@ -254,7 +254,7 @@ def absorb_collector_event(
         if tid and val:
             tool_outputs[tid] = val
     if event.reasoning is not None:
-        _absorb_reasoning(event.reasoning, entries)
+        absorb_reasoning(event.reasoning, entries)
     if event.subagent_start is not None:
         start_id = _SubagentFrameId.model_validate(event.subagent_start).subagent_id
         _lifecycle_bucket(accumulated, "subagent_starts")[start_id] = event.subagent_start
@@ -271,7 +271,7 @@ def _lifecycle_bucket(accumulated: MutableMapping[str, object], bucket: str) -> 
     return frames
 
 
-def _absorb_reasoning(reasoning: _ReasoningEvent, tool_data: list[ToolDataEntry]) -> None:
+def absorb_reasoning(reasoning: ReasoningEvent, tool_data: list[ToolDataEntry]) -> None:
     """Persist a streamed thinking block into tool_data as a reasoning step.
 
     A reasoning step rides a tool_calls_data entry so it persists and

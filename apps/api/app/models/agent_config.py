@@ -15,6 +15,8 @@ from typing import Any, Literal, TypedDict, cast
 
 from pydantic import BaseModel, ConfigDict
 
+from app.constants.llm import LaneConfig, OpenRouterModelKwargs, OpenRouterReasoning
+
 #: All home_timezone_from_config needs of a run config: a string-keyed mapping
 #: it reads configurable out of. Naming RunnableConfig here pulled langchain_core
 #: into every importer. RunnableConfig is a TypedDict and satisfies this.
@@ -120,17 +122,21 @@ class AgentConfigurable(TypedDict, total=False):
     # --- model selection ----------------------------------------------------
     #: THE model selection, resolved once per turn and inherited verbatim.
     #: **This is the only model key GAIA code reads.**
-    lane: dict[str, Any]
+    lane: LaneConfig
     #: LangChain's own binding keys, written from ``lane`` and read ONLY by
     #: LangChain's field resolution — the expansion, not the decision.
     provider: str
     model: str
-    model_kwargs: dict[str, Any]
-    reasoning: dict[str, Any]
+    model_kwargs: OpenRouterModelKwargs
+    reasoning: OpenRouterReasoning
 
     # --- run scope ----------------------------------------------------------
     selected_tool: str | None
     tool_category: str | None
+    #: True only for comms_narrator re-voicing a finished executor result. It never
+    #: dispatches: call_executor refuses and the live status frame stays out, since
+    #: the narrated run still holds the busy lock.
+    is_result_narration: bool
     subagent_id: str | None
     #: Shared VFS session, held constant across the executor and the handoff
     #: subagents it spawns so all resolve paths against one workspace.

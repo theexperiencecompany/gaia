@@ -1,0 +1,1018 @@
+From 4c5a882b19051027d26faa7be010e46c0557aff1 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 25 Sep 2026 00:25:52 +0530
+Subject: [PATCH] perf(geometry): read the base URL once per DOM state, and
+ hit-test natively
+
+Every getBoundingClientRect ran querySelector("base[href]") over the whole
+document to check the prepared layout was reusable: 0.65 ms a read, 13 s
+for one page snapshot on a Wikipedia article. Geometry reads now use the
+memoized base URL, which DOM mutations invalidate.
+
+document.elementFromPoint walked every element in JS, reading each rect
+and the computed style of every ancestor: seconds a call on large pages,
+and Input.dispatchMouseEvent calls it twice per click. The same hit test
+(latest box in tree order that contains the point, is not
+visibility-hidden, and is not clipped by an ancestor's overflow) now runs
+over the prepared layout.
+---
+ crates/obscura-js/js/bootstrap.js  | 798 ++++++++++++++++++++++++++++-
+ crates/obscura-js/src/ops.rs       |  32 +-
+ crates/obscura-render/src/dom.rs   |   7 +
+ crates/obscura-render/src/paint.rs |  61 ++-
+ 4 files changed, 890 insertions(+), 8 deletions(-)
+
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index 9b86f36..5e1f266 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -4368,6 +4368,59 @@ class Element extends Node {
+     if (this._selected !== undefined) return this._selected;
+     return this.hasAttribute("selected");
+   }
++  // <option>.label: the label attribute when non-empty, else its text with
++  // whitespace stripped and collapsed. <optgroup>.label reflects the attribute.
++  get label() {
++    if (this.localName === 'option') {
++      const attr = this.getAttribute('label');
++      if (attr) return attr;
++      return (this.textContent || '').replace(/[\t\n\f\r ]+/g, ' ').trim();
++    }
++    if (this.localName === 'optgroup' || this.localName === 'track') return this.getAttribute('label') || '';
++    return undefined;
++  }
++  set label(v) {
++    if (['option', 'optgroup', 'track'].includes(this.localName)) this.setAttribute('label', String(v));
++    else Object.defineProperty(this, 'label', { value: v, writable: true, enumerable: true, configurable: true });
++  }
++  // <input>/<textarea>.readOnly reflects the readonly attribute.
++  get readOnly() {
++    if (this.localName !== 'input' && this.localName !== 'textarea') return undefined;
++    return this.hasAttribute('readonly');
++  }
++  set readOnly(v) {
++    if (this.localName !== 'input' && this.localName !== 'textarea') { Object.defineProperty(this, 'readOnly', { value: v, writable: true, enumerable: true, configurable: true }); return; }
++    if (v) this.setAttribute('readonly', ''); else this.removeAttribute('readonly');
++  }
++  // An element is editable when the nearest contenteditable state in its
++  // inclusive ancestry is true or plaintext-only, or the document is in design mode.
++  get isContentEditable() {
++    for (let e = this; e && e.nodeType === 1; e = e.parentNode) {
++      const state = e.getAttribute('contenteditable');
++      if (state === null) continue;
++      const v = state.toLowerCase();
++      if (v === '' || v === 'true' || v === 'plaintext-only') return true;
++      if (v === 'false') return false;
++    }
++    const doc = this.ownerDocument;
++    return !!doc && String(doc.designMode).toLowerCase() === 'on';
++  }
++  // <select>.selectedOptions: the options whose selectedness is true, in tree
++  // order. A single select with none marked has its selectedIndex option.
++  get selectedOptions() {
++    if (this.localName !== 'select') return undefined;
++    const opts = this.options;
++    const picked = [];
++    for (let i = 0; i < opts.length; i++) if (opts[i].selected) picked.push(opts[i]);
++    if (!picked.length && !this.hasAttribute('multiple')) {
++      const index = this.selectedIndex;
++      if (index >= 0 && opts[index]) picked.push(opts[index]);
++    }
++    return HTMLCollection._from(picked);
++  }
++  set selectedOptions(v) {
++    if (this.localName !== 'select') Object.defineProperty(this, 'selectedOptions', { value: v, writable: true, enumerable: true, configurable: true });
++  }
+   set selected(v) {
+     this._selected = !!v;
+     // Keep the native DOM tree in sync so layout/paint observes live form
+@@ -4377,7 +4430,722 @@ class Element extends Node {
+       else this.removeAttribute('selected');
+     }
+   }
+-  get text() {
++  get text() {
++    if (['option', 'script', 'title', 'a'].includes(this.localName)) {
++      return this.textContent;
++    }
++    return undefined;
++  }
++  set text(v) {
++    if (['option', 'script', 'title', 'a'].includes(this.localName)) {
++      this.textContent = String(v);
++      return;
++    }
++    // Most elements have no platform `text` reflector. Preserve ordinary
++    // expando semantics for them even though all HTML element interfaces
++    // currently share this prototype.
++    Object.defineProperty(this, 'text', {
++      value: v,
++      writable: true,
++      enumerable: true,
++      configurable: true
++    });
++  }
++  get disabled() { return this.hasAttribute("disabled"); }
++  set disabled(v) { if (v) this.setAttribute("disabled", ""); else this.removeAttribute("disabled"); }
++  get type() {
++    // select and textarea report fixed IDL types, not the content attribute.
++    // jQuery's select valHook branches on type === "select-one" to decide
++    // scalar vs array .val(); "" here made every single select read as an
++    // array, so value comparisons against strings never matched.
++    if (this.localName === "select") return this.hasAttribute("multiple") ? "select-multiple" : "select-one";
++    if (this.localName === "textarea") return "textarea";
++    return this.getAttribute("type") || (this.localName === "input" ? "text" : "");
++  }
++  set type(v) { this.setAttribute("type", v); }
++  get name() { return this.getAttribute("name") || ""; }
++  set name(v) { this.setAttribute("name", v); }
++  get placeholder() { return this.getAttribute("placeholder") || ""; }
++  set placeholder(v) { this.setAttribute("placeholder", v); }
++  get accept() { return this.getAttribute("accept") || ""; }
++  set accept(v) { this.setAttribute("accept", v); }
++  // For <a>/<area>, href returns the resolved absolute URL (the spec behavior,
++  // and what scrapers want). It uses op_url_resolve, which returns just the
++  // resolved string, rather than the full-component op the decomposition
++  // members use. Other elements reflect the raw attribute.
++  get href() {
++    const ln = this.localName;
++    // SVG href-bearing elements reflect href as an SVGAnimatedString (with the
++    // legacy xlink:href as a fallback), not a resolved URL string. Checked
++    // before the HTML <a> path because an SVG <a> also has localName 'a'.
++    if (this.namespaceURI === "http://www.w3.org/2000/svg" &&
++        (ln === 'a' || ln === 'image' || ln === 'use' || ln === 'script' ||
++         ln === 'pattern' || ln === 'filter' || ln === 'textPath' || ln === 'mpath' ||
++         ln === 'linearGradient' || ln === 'radialGradient' || ln === 'feImage' || ln === 'tref')) {
++      if (!this._svgHref) this._svgHref = new SVGAnimatedString(this, "href", "xlink:href");
++      return this._svgHref;
++    }
++    if (ln === 'a' || ln === 'area') {
++      const raw = this.getAttribute('href');
++      if (raw === null) return '';
++      // Legacy-charset document: href must reflect the encoding-override query.
++      if (!_docIsUtf8()) { const u = _elemHrefURL(this); return u ? u.href : raw; }
++      const r = _urlResolveOp(raw, _anchorBase());
++      return r !== null ? r : raw;
++    }
++    if (ln === 'base') {
++      // https://html.spec.whatwg.org/multipage/semantics.html#dom-base-href
++      // Against the fallback base URL, not the document base URL: a base element is not affected
++      // by other base elements or itself. Applications read this to determine their own base.
++      const raw = this.getAttribute('href');
++      if (raw === null) return '';
++      const r = _urlResolveOp(raw, _domParse("document_url") || "about:blank");
++      return r !== null ? r : raw;
++    }
++    return this.getAttribute("href") || "";
++  }
++  set href(v) { this.setAttribute("href", v); }
++  // HTMLHyperlinkElementUtils / HTMLAnchorElement reflected content
++  // attributes. Real-world locale, routing, and analytics code commonly
++  // enumerates `[hreflang]` links and reads the IDL property rather than
++  // getAttribute(); leaving it undefined aborts the entire component even
++  // though the attribute is present in the DOM.
++  get hreflang() { return this.getAttribute("hreflang") || ""; }
++  set hreflang(v) { this.setAttribute("hreflang", v); }
++  get rel() { return this.getAttribute("rel") || ""; }
++  set rel(v) { this.setAttribute("rel", v); }
++  get target() { return this.getAttribute("target") || ""; }
++  set target(v) { this.setAttribute("target", v); }
++  get download() { return this.getAttribute("download") || ""; }
++  set download(v) { this.setAttribute("download", v); }
++  get ping() { return this.getAttribute("ping") || ""; }
++  set ping(v) { this.setAttribute("ping", v); }
++  get referrerPolicy() { return this.getAttribute("referrerpolicy") || ""; }
++  set referrerPolicy(v) { this.setAttribute("referrerpolicy", v); }
++  // HTMLHyperlinkElementUtils URL-decomposition members, live on <a>/<area>.
++  get protocol() { const u = (this.localName === 'a' || this.localName === 'area') ? _elemHrefURL(this) : null; return u ? u.protocol : ''; }
++  set protocol(v) { if (this.localName === 'a' || this.localName === 'area') _setElemHrefPart(this, 'protocol', v); }
++  get username() { const u = (this.localName === 'a' || this.localName === 'area') ? _elemHrefURL(this) : null; return u ? u.username : ''; }
++  set username(v) { if (this.localName === 'a' || this.localName === 'area') _setElemHrefPart(this, 'username', v); }
++  get password() { const u = (this.localName === 'a' || this.localName === 'area') ? _elemHrefURL(this) : null; return u ? u.password : ''; }
++  set password(v) { if (this.localName === 'a' || this.localName === 'area') _setElemHrefPart(this, 'password', v); }
++  get host() { const u = (this.localName === 'a' || this.localName === 'area') ? _elemHrefURL(this) : null; return u ? u.host : ''; }
++  set host(v) { if (this.localName === 'a' || this.localName === 'area') _setElemHrefPart(this, 'host', v); }
++  get hostname() { const u = (this.localName === 'a' || this.localName === 'area') ? _elemHrefURL(this) : null; return u ? u.hostname : ''; }
++  set hostname(v) { if (this.localName === 'a' || this.localName === 'area') _setElemHrefPart(this, 'hostname', v); }
++  get port() { const u = (this.localName === 'a' || this.localName === 'area') ? _elemHrefURL(this) : null; return u ? u.port : ''; }
++  set port(v) { if (this.localName === 'a' || this.localName === 'area') _setElemHrefPart(this, 'port', v); }
++  get pathname() { const u = (this.localName === 'a' || this.localName === 'area') ? _elemHrefURL(this) : null; return u ? u.pathname : ''; }
++  set pathname(v) { if (this.localName === 'a' || this.localName === 'area') _setElemHrefPart(this, 'pathname', v); }
++  get search() { const u = (this.localName === 'a' || this.localName === 'area') ? _elemHrefURL(this) : null; return u ? u.search : ''; }
++  set search(v) { if (this.localName === 'a' || this.localName === 'area') _setElemHrefPart(this, 'search', v); }
++  get hash() { const u = (this.localName === 'a' || this.localName === 'area') ? _elemHrefURL(this) : null; return u ? u.hash : ''; }
++  set hash(v) { if (this.localName === 'a' || this.localName === 'area') _setElemHrefPart(this, 'hash', v); }
++  get origin() { const u = (this.localName === 'a' || this.localName === 'area') ? _elemHrefURL(this) : null; return u ? u.origin : ''; }
++  get src() {
++    // IDL reflection: HTMLScriptElement/HTMLImageElement/etc. `.src` returns the
++    // resolved absolute URL, not the literal attribute. Loaders that compute their
++    // base via `new URL(document.currentScript.src).origin` break on a relative
++    // value (issue #255). getAttribute("src") still returns the literal.
++    const v = this.getAttribute("src");
++    if (!v) return "";
++    try { return new URL(v, _documentBase() || "about:blank").href; }
++    catch (e) { return v; }
++  }
++  set src(v) {
++    this.setAttribute("src", v);
++  }
++  _resetIframeFrame() {
++    const oldId = this._frameId;
++    if (oldId) {
++      delete globalThis.__obscura_frameElements[oldId];
++      delete globalThis.__obscura_frameWindows[oldId];
++    }
++    this._frameId = 0;
++    this._iframeLoadingUrl = null;
++    this._iframeDoc = new _IframeDocument(
++      '<!DOCTYPE html><html><head></head><body></body></html>', 'about:blank', this);
++    this._iframeWin = new _IframeWindow(this._iframeDoc, 'about:blank');
++  }
++  _loadIframeSrc(url) {
++    let fullUrl = url;
++    if (!url.includes('://')) {
++      try { fullUrl = new URL(url, _domParse("document_url") || "about:blank").href; } catch(e) {}
++    }
++    // Both the src setter and the parser sweep in __obscura_init reach here, so
++    // a frame the page assigned before init must not be fetched a second time.
++    if (this._iframeLoadingUrl === fullUrl) return;
++    this._resetIframeFrame();
++    this._iframeLoadingUrl = fullUrl;
++    const el = this;
++    fetch(fullUrl, {mode: 'no-cors'}).then(async resp => {
++      if (el._iframeLoadingUrl !== fullUrl) return;
++      if (resp.ok || resp.type === 'opaque') {
++        const html = await resp.text();
++        // Hand the document to the host, which gives this frame a realm of its
++        // own and runs the scripts that came with it (issue #600). The shim
++        // document below stays: it is what the parent reads through
++        // contentDocument.
++        const box = el.getBoundingClientRect();
++        el._frameId = Deno.core.ops.op_frame_document_ready(
++          fullUrl, html, Math.round(box.width) || 300, Math.round(box.height) || 150);
++        if (el._frameId) globalThis.__obscura_frameElements[el._frameId] = el;
++        el._iframeDoc = new _IframeDocument(html, fullUrl, el);
++        el._iframeWin = new _IframeWindow(el._iframeDoc, fullUrl);
++        // Bind the window to the realm the host just queued. This is what makes
++        // posting into the frame reach the frame's own listeners, and makes a
++        // message coming back out arrive with this window as its `source`.
++        if (el._frameId) {
++          el._iframeWin._frameId = el._frameId;
++          globalThis.__obscura_frameWindows[el._frameId] = el._iframeWin;
++          globalThis.__obscura_frameElements[el._frameId] = el;
++        }
++      } else {
++        el._iframeDoc = new _IframeDocument('<!DOCTYPE html><html><head></head><body></body></html>', fullUrl, el);
++        el._iframeWin = new _IframeWindow(el._iframeDoc, fullUrl);
++      }
++
++      // Dispatch through the element so the onload property/attribute and any
++      // addEventListener('load', ...) listeners all run. Calling el.onload()
++      // directly bypasses listeners registered via addEventListener.
++      el.dispatchEvent(new Event('load'));
++    }).catch(() => {
++      if (el._iframeLoadingUrl !== fullUrl) return;
++      el._iframeDoc = new _IframeDocument('<!DOCTYPE html><html><head></head><body></body></html>', fullUrl, el);
++      el._iframeWin = new _IframeWindow(el._iframeDoc, fullUrl);
++
++      el.dispatchEvent(new Event('load'));
++    });
++  }
++  get contentDocument() {
++    if (this.localName !== 'iframe') return undefined;
++    const real = _frameObjectsFor(this);
++    if (real?.document) return real.document;
++    if (this._iframeDoc) {
++      const pageOrigin = (function(){ try { return new URL(_domParse("document_url")).origin; } catch(e) { return ''; } })();
++      const iframeOrigin = (function(url){ try { return new URL(url).origin; } catch(e) { return ''; } })(this.src);
++      if (pageOrigin === iframeOrigin || this.src === '' || this.src === 'about:blank' || !this.src.includes('://')) {
++        return this._iframeDoc;
++      }
++      return null; // Cross-origin: blocked
++    }
++    if (!this._iframeDoc) {
++      this._iframeDoc = new _IframeDocument('<!DOCTYPE html><html><head></head><body></body></html>', 'about:blank', this);
++      this._iframeWin = new _IframeWindow(this._iframeDoc, 'about:blank');
++    }
++    return this._iframeDoc;
++  }
++  get contentWindow() {
++    if (this.localName !== 'iframe') return undefined;
++    if (_frameObjectsFor(this)) {
++      const win = _frameWindowFor(this._frameId);
++      if (win) return win;
++    }
++    if (!this._iframeWin) {
++      if (this.parentNode === null) return null;
++      this.contentDocument;
++    }
++    return this._iframeWin;
++  }
++  get action() {
++    // A missing action falls back to the document URL, a present one resolves against the base.
++    const action = this.getAttribute("action") || _domParse("document_url") || "";
++    try { return new URL(action, _documentBase() || "about:blank").href; } catch(e) { return action; }
++  }
++  set action(v) { this.setAttribute("action", v); }
++  get method() { return this.getAttribute("method") || "get"; }
++  set method(v) { this.setAttribute("method", v); }
++  get form() {
++    let p = this.parentNode;
++    while (p && p.localName !== 'form') p = p.parentNode;
++    return p;
++  }
++  // Label association, per the HTML labelable-elements list. Playwright's
++  // getByLabel and its follow-label retargeting read these; without them a
++  // label-linked control is invisible to that engine.
++  get labels() {
++    if (!_isLabelable(this)) return _nodeList([]);
++    const doc = this.ownerDocument;
++    if (!doc || !doc.querySelectorAll) return _nodeList([]);
++    const out = [];
++    const id = this.getAttribute('id');
++    if (id) {
++      // Filter in JS rather than building a selector: an id containing a
++      // quote would break out of label[for="..."].
++      const all = doc.querySelectorAll('label');
++      for (let i = 0; i < all.length; i++) {
++        if (all[i].getAttribute('for') === id) out.push(all[i]);
++      }
++    }
++    let p = this.parentNode;
++    while (p) {
++      if (p.localName === 'label') out.push(p);
++      p = p.parentNode;
++    }
++    return _nodeList(out);
++  }
++  get control() {
++    if (this.localName !== 'label') return null;
++    const doc = this.ownerDocument;
++    const forId = this.getAttribute('for');
++    if (forId) {
++      if (!doc || !doc.getElementById) return null;
++      const target = doc.getElementById(forId);
++      return target && _isLabelable(target) ? target : null;
++    }
++    const candidates = this.querySelectorAll('button, input, meter, output, progress, select, textarea');
++    for (let i = 0; i < candidates.length; i++) {
++      if (_isLabelable(candidates[i])) return candidates[i];
++    }
++    return null;
++  }
++  get options() {
++    if (this.localName !== 'select') return [];
++    return HTMLCollection._from(this.querySelectorAll('option'));
++  }
++  add(item, before = null) {
++    if (this.localName !== 'select') {
++      throw new TypeError("Illegal invocation");
++    }
++    if (!item || item.nodeType !== 1
++        || (item.localName !== 'option' && item.localName !== 'optgroup')) {
++      throw new TypeError("Failed to execute 'add' on 'HTMLSelectElement': parameter 1 is not of type 'HTMLOptionElement' or 'HTMLOptGroupElement'.");
++    }
++    if (typeof before === 'number') {
++      const reference = this.options[before] || null;
++      this.insertBefore(item, reference);
++    } else if (before == null) {
++      this.appendChild(item);
++    } else {
++      this.insertBefore(item, before);
++    }
++  }
++  get selectedIndex() {
++    const opts = this.options;
++    for (let i = 0; i < opts.length; i++) {
++      if (opts[i].selected || opts[i].hasAttribute('selected')) return i;
++    }
++    // Only a single select implicitly selects its first option; a multiple
++    // select with nothing chosen idles at -1 like a real browser.
++    return opts.length && !this.hasAttribute('multiple') ? 0 : -1;
++  }
++  set selectedIndex(v) {
++    const opts = this.options;
++    for (let i = 0; i < opts.length; i++) {
++      opts[i]._selected = (i === v);
++    }
++  }
++  // Per the HTML spec, the submit() METHOD submits the form WITHOUT firing a
++  // cancelable `submit` event — a page's submit listener cannot veto it. Only
++  // requestSubmit() and user-initiated submits fire the cancelable event.
++  // Conflating the two broke sites whose submit listener preventDefault()s the
++  // native submit and then calls form.submit() from a callback (e.g. an
++  // invisible-reCAPTCHA data-callback) to actually send the form.
++  submit(submitter) {
++    this._navigateSubmit(submitter);
++  }
++  requestSubmit(submitter) {
++    // Per spec, a given submitter must be a submit button owned by this form;
++    // both checks run before the submit event fires. A missing/null submitter
++    // means "submit from the form itself".
++    if (submitter !== undefined && submitter !== null) {
++      if (!_isSubmitButton(submitter)) {
++        throw new TypeError(
++          "Failed to execute 'requestSubmit' on 'HTMLFormElement': The specified element is not a submit button."
++        );
++      }
++      if (submitter.form !== this) {
++        throw new DOMException(
++          "Failed to execute 'requestSubmit' on 'HTMLFormElement': The specified element is not owned by this form element.",
++          'NotFoundError'
++        );
++      }
++    }
++    const cancelled = !this.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
++    if (cancelled) return;
++    this._navigateSubmit(submitter);
++  }
++  _navigateSubmit(submitter) {
++    const pairs = [];
++    const fields = this.querySelectorAll('input, select, textarea');
++    for (let i = 0; i < fields.length; i++) {
++      const f = fields[i];
++      const name = f.getAttribute('name');
++      if (!name) continue;
++      if (f.getAttribute('disabled') !== null) continue;
++      const tag = f.localName;
++      const type = (f.getAttribute('type') || '').toLowerCase();
++      if ((type === 'checkbox' || type === 'radio') && !f.checked) continue;
++      if (type === 'file' || type === 'reset') continue;
++      if (type === 'button') continue;
++      if (type === 'submit' || tag === 'button') {
++        if (submitter && f !== submitter) continue;
++        if (!submitter) continue; // default submit: don't include submit button value
++      }
++
++      let val;
++      if (tag === 'select') {
++        const opt = f.querySelector('option[selected]') || f.querySelector('option');
++        val = opt ? (opt.getAttribute('value') !== null ? opt.getAttribute('value') : opt.textContent) : '';
++      } else if (tag === 'textarea') {
++        val = f.value || f.textContent || '';
++      } else {
++        val = f.value !== undefined ? f.value : (f.getAttribute('value') || '');
++      }
++      const enc = (s) => encodeURIComponent(s).replace(/%20/g, '+').replace(/!/g, '%21');
++      pairs.push(enc(name) + '=' + enc(val));
++    }
++
++    const action = this.getAttribute('action') || '';
++    const method = (this.getAttribute('method') || 'GET').toUpperCase();
++    const baseUrl = globalThis.location?.href || 'about:blank';
++    let targetUrl;
++    try { targetUrl = new URL(action, baseUrl).href; } catch(e) { targetUrl = action; }
++
++    const encoded = pairs.join('&');
++    if (method === 'POST') {
++      Deno.core.ops.op_navigate(targetUrl, 'POST', encoded);
++    } else {
++      const sep = targetUrl.includes('?') ? '&' : '?';
++      Deno.core.ops.op_navigate(targetUrl + (encoded ? sep + encoded : ''), 'GET', '');
++    }
++  }
++  reset() {
++    this.dispatchEvent(new Event('reset', { bubbles: true }));
++  }
++  get dataset() {
++    if (this._dataset) return this._dataset;
++    const el = this;
++    const attrFor = (k) => "data-" + _cssCamelToKebab(k);
++    // camelCase the part after the `data-` prefix, e.g. data-foo-bar -> fooBar.
++    const dataKeys = () => el.getAttributeNames()
++      .filter((n) => n.startsWith("data-"))
++      .map((n) => _cssKebabToCamel(n.slice(5)));
++    this._dataset = new Proxy(new DOMStringMap(_domStringMapConstructionKey), {
++      get(target, k, receiver) {
++        if (typeof k === "string" && el.hasAttribute(attrFor(k))) return el.getAttribute(attrFor(k));
++        return Reflect.get(target, k, receiver);
++      },
++      set(target, k, v, receiver) {
++        if (typeof k !== "string") return Reflect.set(target, k, v, receiver);
++        el.setAttribute(attrFor(k), String(v));
++        return true;
++      },
++      has(target, k) {
++        return (typeof k === "string" && el.hasAttribute(attrFor(k))) || Reflect.has(target, k);
++      },
++      deleteProperty(target, k) {
++        if (typeof k !== "string") return Reflect.deleteProperty(target, k);
++        el.removeAttribute(attrFor(k));
++        return true;
++      },
++      ownKeys() { return dataKeys(); },
++      getOwnPropertyDescriptor(target, k) {
++        if (typeof k === "string" && el.hasAttribute(attrFor(k))) {
++          return { value: el.getAttribute(attrFor(k)), writable: true, enumerable: true, configurable: true };
++        }
++        return Reflect.getOwnPropertyDescriptor(target, k);
++      },
++    });
++    return this._dataset;
++  }
++  get offsetWidth() {
++    if (this._isViewportRoot()) return globalThis.innerWidth || 1280;
++    return this.getBoundingClientRect().width;
++  }
++  get offsetHeight() {
++    if (this._isViewportRoot()) return globalThis.innerHeight || 720;
++    return this.getBoundingClientRect().height;
++  }
++  get offsetTop() { return this.getBoundingClientRect().top; }
++  get offsetLeft() { return this.getBoundingClientRect().left; }
++  // In standards mode documentElement exposes viewport client geometry.
++  // Puppeteer's #clickableBox clips boxes to those dimensions; returning the
++  // non-render fallback 100x20 there makes every element appear off-screen.
++  get clientWidth() {
++    // In standards mode only the root element exposes the viewport. Body is
++    // an ordinary box; treating it as another viewport breaks libraries that
++    // measure the page's body or a full-viewport sizing sentinel.
++    if (this.tagName === 'HTML') return globalThis.innerWidth || 1280;
++    const metrics = this._renderClientMetrics();
++    return metrics ? metrics.width : 100;
++  }
++  get clientHeight() {
++    if (this.tagName === 'HTML') return globalThis.innerHeight || 720;
++    const metrics = this._renderClientMetrics();
++    return metrics ? metrics.height : 20;
++  }
++  _renderClientMetrics() {
++    if (typeof Deno.core.ops.op_layout_geometry !== 'function') return null;
++    try {
++      const raw = Deno.core.ops.op_layout_geometry(String(this._nid | 0), _realmFrameId);
++      if (!raw) return { width: 0, height: 0 };
++      const geometry = JSON.parse(raw);
++      if (geometry
++          && Number.isFinite(geometry.clientWidth)
++          && Number.isFinite(geometry.clientHeight)) {
++        // CSSOM View exposes Web IDL longs. The native layout retains
++        // subpixel precision for getBoundingClientRect(); client metrics round
++        // to whole CSS pixels like Chromium.
++        return {
++          width: Math.round(Math.max(0, geometry.clientWidth)),
++          height: Math.round(Math.max(0, geometry.clientHeight)),
++        };
++      }
++    } catch (_error) {}
++    return { width: 0, height: 0 };
++  }
++  // `undefined` means this is a non-render build. `null` means the render
++  // engine is present but this element has no associated CSS box (for
++  // example, display:none or a detached element). Keep those states distinct:
++  // CSSOM View returns an empty rect list for the latter, while the former
++  // deliberately retains Obscura's compatibility geometry.
++  _renderBoxGeometry() {
++    if (typeof Deno.core.ops.op_layout_geometry !== 'function') return undefined;
++    try {
++      const raw = Deno.core.ops.op_layout_geometry(String(this._nid | 0), _realmFrameId);
++      if (!raw) return null;
++      const geometry = JSON.parse(raw);
++      if (geometry
++          && Number.isFinite(geometry.x)
++          && Number.isFinite(geometry.y)
++          && Number.isFinite(geometry.width)
++          && Number.isFinite(geometry.height)) {
++        return geometry;
++      }
++    } catch (_error) {}
++    return null;
++  }
++  _rectFromRenderGeometry(geometry) {
++    const x = geometry.x, y = geometry.y;
++    const width = geometry.width, height = geometry.height;
++    const rect = {
++      x, y, width, height,
++      top: y, right: x + width, bottom: y + height, left: x,
++      toJSON() { return this; },
++    };
++    Object.defineProperty(rect, "__obscuraViewportFixed", {
++      value: !!geometry.viewportFixed,
++      enumerable: false,
++    });
++    return rect;
++  }
++  get scrollWidth() {
++    if (this._isViewportRoot()) {
++      const metrics = this._renderScrollMetrics();
++      return metrics
++        ? Math.round(Math.max(0, metrics.scrollWidth || 0))
++        : (globalThis.innerWidth || 1280);
++    }
++    const metrics = this._renderElementScrollMetrics();
++    if (metrics !== undefined) {
++      return metrics ? Math.round(Math.max(0, metrics.scrollWidth || 0)) : 0;
++    }
++    return 100;
++  }
++  get scrollHeight() {
++    if (this._isViewportRoot()) {
++      const metrics = this._renderScrollMetrics();
++      return metrics
++        ? Math.round(Math.max(0, metrics.scrollHeight || 0))
++        : (globalThis.innerHeight || 720);
++    }
++    const metrics = this._renderElementScrollMetrics();
++    if (metrics !== undefined) {
++      return metrics ? Math.round(Math.max(0, metrics.scrollHeight || 0)) : 0;
++    }
++    return 20;
++  }
++  _isViewportRoot() {
++    const t = this.tagName;
++    return t === 'HTML' || t === 'BODY';
++  }
++  _renderScrollMetrics() {
++    if (typeof Deno.core.ops.op_layout_metrics !== 'function') return null;
++    try {
++      const raw = Deno.core.ops.op_layout_metrics(_realmFrameId);
++      return raw ? JSON.parse(raw) : null;
++    } catch (_e) {
++      return null;
++    }
++  }
++  _renderElementScrollMetrics() {
++    if (typeof Deno.core.ops.op_element_scroll_metrics !== 'function') return undefined;
++    try {
++      const raw = Deno.core.ops.op_element_scroll_metrics(String(this._nid | 0), _realmFrameId);
++      if (!raw) return null;
++      const metrics = JSON.parse(raw);
++      return metrics && metrics.hasBox !== false ? metrics : null;
++    } catch (_e) {
++      return null;
++    }
++  }
++  _renderScrollOffset() {
++    if (typeof Deno.core.ops.op_scroll_offset !== 'function') return null;
++    try {
++      const raw = Deno.core.ops.op_scroll_offset(_realmFrameId);
++      return raw ? JSON.parse(raw) : null;
++    } catch (_e) {
++      return null;
++    }
++  }
++  _setRenderScroll(x, y) {
++    if (typeof Deno.core.ops.op_scroll_to !== 'function') return null;
++    try {
++      const raw = Deno.core.ops.op_scroll_to(+x || 0, +y || 0, _realmFrameId);
++      return raw ? JSON.parse(raw) : null;
++    } catch (_e) {
++      return null;
++    }
++  }
++  _setRenderElementScroll(x, y) {
++    if (typeof Deno.core.ops.op_element_scroll_to !== 'function') return null;
++    try {
++      const raw = Deno.core.ops.op_element_scroll_to(String(this._nid | 0), +x || 0, +y || 0, _realmFrameId);
++      return raw ? JSON.parse(raw) : null;
++    } catch (_e) {
++      return null;
++    }
++  }
++  // Render builds clamp both viewport and element scroll areas against the
++  // exact overflow used by geometry and paint. Non-render builds retain the
++  // synthetic compatibility state.
++  get scrollTop() {
++    if (this._isViewportRoot()) {
++      const offset = this._renderScrollOffset();
++      if (offset) return offset.y || 0;
++    } else {
++      const metrics = this._renderElementScrollMetrics();
++      if (metrics !== undefined) return metrics ? (metrics.y || 0) : 0;
++    }
++    return this._scrollTop || 0;
++  }
++  set scrollTop(v) {
++    v = +v;
++    const nv = Number.isFinite(v) && v > 0 ? v : 0;
++    const old = this.scrollTop;
++    let actual = nv;
++    if (this._isViewportRoot()) {
++      const offset = this._renderScrollOffset();
++      const updated = offset && this._setRenderScroll(offset.x, nv);
++      if (updated) actual = updated.y || 0;
++    } else {
++      const metrics = this._renderElementScrollMetrics();
++      if (metrics !== undefined) {
++        actual = metrics ? (metrics.y || 0) : 0;
++        const updated = metrics && this._setRenderElementScroll(metrics.x, nv);
++        if (updated) actual = updated.y || 0;
++      }
++    }
++    const changed = actual !== old;
++    this._scrollTop = actual;
++    if (changed && !this._scrollSuppress) this._fireScroll();
++    if (changed &&
++        typeof globalThis.__obscura_recompute_intersections === "function") {
++      // Scrolling changes target positions, not ResizeObserver box sizes.
++      globalThis.__obscura_recompute_intersections();
++    }
++  }
++  get scrollLeft() {
++    if (this._isViewportRoot()) {
++      const offset = this._renderScrollOffset();
++      if (offset) return offset.x || 0;
++    } else {
++      const metrics = this._renderElementScrollMetrics();
++      if (metrics !== undefined) return metrics ? (metrics.x || 0) : 0;
++    }
++    return this._scrollLeft || 0;
++  }
++  set scrollLeft(v) {
++    v = +v;
++    const nv = Number.isFinite(v) && v > 0 ? v : 0;
++    const old = this.scrollLeft;
++    let actual = nv;
++    if (this._isViewportRoot()) {
++      const offset = this._renderScrollOffset();
++      const updated = offset && this._setRenderScroll(nv, offset.y);
++      if (updated) actual = updated.x || 0;
++    } else {
++      const metrics = this._renderElementScrollMetrics();
++      if (metrics !== undefined) {
++        actual = metrics ? (metrics.x || 0) : 0;
++        const updated = metrics && this._setRenderElementScroll(nv, metrics.y);
++        if (updated) actual = updated.x || 0;
++      }
++    }
++    const changed = actual !== old;
++    this._scrollLeft = actual;
++    if (changed && !this._scrollSuppress) this._fireScroll();
++    if (changed &&
++        typeof globalThis.__obscura_recompute_intersections === "function") {
++      globalThis.__obscura_recompute_intersections();
++    }
++  }
++  getBoundingClientRect() {
++    globalThis.__obscura_click_target = this;
++    // Real layout when the render feature is compiled in: ask the Rust layout
++    // cache for this element's border box. The op is absent in the default
++    // build, so probe with typeof and fall through to the synthetic rect below.
++    const geometry = this._renderBoxGeometry();
++    if (geometry !== undefined) {
++      if (geometry) return this._rectFromRenderGeometry(geometry);
++      // CSSOM View: an element without an associated box has an all-zero
++      // bounding rect. Do not leak the non-render 100x20 compatibility cell.
++      return {
++        x: 0, y: 0, width: 0, height: 0,
++        top: 0, right: 0, bottom: 0, left: 0,
++        toJSON() { return this; },
++      };
++    }
++    // Default (non-render) builds keep viewport-sized roots. Without this
++    // synthetic fallback every hit test against them clips down to a 100x20
++    // cell and Document.elementFromPoint cannot recurse into their children.
++    if (this._isViewportRoot()) {
++      const vw = globalThis.innerWidth || 1280;
++      const vh = globalThis.innerHeight || 720;
++      return {
++        x: 0, y: 0, width: vw, height: vh,
++        top: 0, right: vw, bottom: vh, left: 0,
++        toJSON() { return this; },
++      };
++    }
++    // No layout engine (default build): synthesize a deterministic position
++    // from the node id so Playwright's actionability polling still gets a
++    // stable, distinct rect for hit-testing (issue #45).
++    // Every nid maps to a unique cell in a 12-column grid for a 1280x720 viewport.
++    const VW = 1280, VH = 720, COLS = 12, CW = 100, CH = 20, GX = 110, GY = 30;
++    const rowsPerScreen = Math.max(1, Math.floor((VH - 10) / GY));
++    const cell = this._nid | 0;
++    const col = ((cell * 7) | 0) % COLS;
++    const row = (((cell * 13) | 0) >> 0) % rowsPerScreen;
++    const x = 10 + col * GX;
++    const y = 10 + row * GY;
++    return {
++      x, y, width: CW, height: CH,
++      top: y, right: x + CW, bottom: y + CH, left: x,
++      toJSON() { return this; },
++    };
++  }
++  getClientRects() {
++    const geometry = this._renderBoxGeometry();
++    if (geometry === null) return new DOMRectList([]);
++    if (geometry !== undefined) {
++      if (Array.isArray(geometry.clientRects)) {
++        return new DOMRectList(geometry.clientRects.map(
++          rect => this._rectFromRenderGeometry({
++            ...rect,
++            viewportFixed: geometry.viewportFixed,
++          })
++        ));
++      }
++      return new DOMRectList([this._rectFromRenderGeometry(geometry)]);
++    }
++    return new DOMRectList([this.getBoundingClientRect()]);
++  }
++  // No layout engine: a stub that always returns true unblocks Playwright's
++  // actionability polling. With a real layout we'd check display, visibility,
++  // opacity and rect dimensions per spec.
++  checkVisibility(opts) { return true; }  get text() {
+     if (['option', 'script', 'title', 'a'].includes(this.localName)) {
+       return this.textContent;
+     }
+@@ -5089,10 +5857,21 @@ class Element extends Node {
+     }
+     return new DOMRectList([this.getBoundingClientRect()]);
+   }
+-  // No layout engine: a stub that always returns true unblocks Playwright's
+-  // actionability polling. With a real layout we'd check display, visibility,
+-  // opacity and rect dimensions per spec.
+-  checkVisibility(opts) { return true; }
++  // CSSOM View checkVisibility(): false without a box, with checkOpacity /
++  // opacityProperty when it or an ancestor has opacity 0, with
++  // checkVisibilityCSS / visibilityProperty when its visibility is hidden.
++  // Without a layout engine every element is treated as visible, which
++  // unblocks Playwright's actionability polling.
++  checkVisibility(opts) {
++    if (typeof Deno.core.ops.op_element_visibility !== 'function') return true;
++    const facts = Deno.core.ops.op_element_visibility(this._nid | 0, _realmFrameId);
++    if (facts < 0) return true;
++    if (!(facts & 1)) return false;
++    const o = opts || {};
++    if ((o.checkVisibilityCSS || o.visibilityProperty) && (facts & 2)) return false;
++    if ((o.checkOpacity || o.opacityProperty) && (facts & 4)) return false;
++    return true;
++  }
+   // ARIA reflection properties. Without an accessibility tree we expose the
+   // raw aria-* attributes so Playwright's getByRole / getByLabel locators can
+   // at least find elements that author them explicitly.
+@@ -15779,6 +16558,15 @@ if (typeof Document !== 'undefined' && !Document.prototype.elementFromPoint) {
+     var w = (typeof window !== 'undefined' && window.innerWidth) || 1280;
+     var h = (typeof window !== 'undefined' && window.innerHeight) || 720;
+     if (x < 0 || y < 0 || x > w || y > h) return null;
++    // With layout, hit testing runs natively over the laid-out boxes: the
++    // walk below costs a JS round trip per element and stalls large pages.
++    if (typeof Deno.core.ops.op_element_from_point === 'function') {
++      var rootNid = this.documentElement ? (this.documentElement._nid | 0) : 0;
++      var bodyNid = this.body ? (this.body._nid | 0) : 0;
++      var hit = Deno.core.ops.op_element_from_point(x, y, rootNid, bodyNid, _realmFrameId);
++      if (hit > 0) return _wrap(hit) || this.body || this.documentElement || null;
++      if (hit === 0) return this.body || this.documentElement || null;
++    }
+     var all = this.querySelectorAll('*');
+     var best = null;
+     var bestNid = -1;
+diff --git a/crates/obscura-js/src/ops.rs b/crates/obscura-js/src/ops.rs
+index f7882a7..c65fca7 100644
+--- a/crates/obscura-js/src/ops.rs
++++ b/crates/obscura-js/src/ops.rs
+@@ -6106,6 +6106,7 @@ pub fn build_extension() -> Extension {
+         ops.push(op_image_metadata());
+         ops.push(op_load_image_metadata());
+         ops.push(op_layout_geometry());
++        ops.push(op_element_from_point());
+         ops.push(op_resize_observer_measurements());
+         ops.push(op_intersection_observer_measurements());
+         ops.push(op_computed_style());
+@@ -6372,7 +6373,7 @@ pub(crate) fn document_base_href_memoized(state: &ObscuraState) -> Option<String
+ pub(crate) fn ensure_prepared_render(
+     state: &mut ObscuraState,
+ ) -> Option<&obscura_render::PreparedRender> {
+-    let base_url = document_base_url(state);
++    let base_url = document_base_url_memoized(state);
+     let viewport = state.viewport;
+     let render_media = state.render_media;
+     let animation_sample = state.animation_sample;
+@@ -6471,7 +6472,7 @@ pub(crate) fn ensure_prepared_render(
+ fn ensure_prepared_geometry(
+     state: &mut ObscuraState,
+ ) -> Option<&obscura_render::PreparedRender> {
+-    let base_url = document_base_url(state);
++    let base_url = document_base_url_memoized(state);
+     let reusable = state.pending_style_mutations.is_empty()
+         && !state.animation_timeline.has_pending_start_candidates()
+         && state.prepared_render.as_ref().is_some_and(|prepared| {
+@@ -7060,6 +7061,33 @@ fn op_layout_geometry(state: &OpState, #[string] nid_str: String, frame_id: u32)
+     String::new()
+ }
+ 
++/// Native hit test for `document.elementFromPoint`: the node id of the
++/// element box under the viewport point (see
++/// `PreparedRender::element_at_point`), 0 when none but the root or body
++/// contains it, or -1 when layout is unavailable.
++#[cfg(feature = "render")]
++#[op2(fast)]
++fn op_element_from_point(state: &OpState, x: f64, y: f64, root_nid: u32, body_nid: u32, frame_id: u32) -> i32 {
++    let shared = frame_state(state, frame_id);
++    let mut gs = shared.borrow_mut();
++    sample_live_document_animations(&mut gs);
++    if ensure_resolved_scroll_for_geometry(&mut gs).is_none() {
++        return -1;
++    }
++    let (Some((_, scroll)), Some(prepared), Some(dom)) =
++        (gs.resolved_scroll.as_ref(), gs.prepared_render.as_ref(), gs.dom.as_ref())
++    else {
++        return -1;
++    };
++    let skip = [
++        obscura_dom::tree::NodeId::new(root_nid),
++        obscura_dom::tree::NodeId::new(body_nid),
++    ];
++    prepared
++        .element_at_point(dom, scroll, x as f32, y as f32, &skip)
++        .map_or(0, |id| id.index() as i32)
++}
++
+ /// Measure every target in one ResizeObserver rendering opportunity.
+ ///
+ /// ResizeObserver gathers all observations before it invokes any callback.
+diff --git a/crates/obscura-render/src/dom.rs b/crates/obscura-render/src/dom.rs
+index ffba27d..73ffc33 100644
+--- a/crates/obscura-render/src/dom.rs
++++ b/crates/obscura-render/src/dom.rs
+@@ -211,6 +211,13 @@ impl OverflowClip {
+         }
+     }
+ 
++    /// Whether a viewport point lies inside the clip on every clipped axis.
++    /// Rounded corners are not consulted; the rectangular clip decides.
++    pub(crate) fn contains_point(&self, x: f32, y: f32) -> bool {
++        let inside = |axis: Option<(f32, f32)>, v: f32| axis.is_none_or(|(start, end)| v >= start && v <= end);
++        inside(self.x, x) && inside(self.y, y)
++    }
++
+     pub(crate) fn intersect(self, other: Self) -> Self {
+         let axis = |a: Option<(f32, f32)>, b: Option<(f32, f32)>| match (a, b) {
+             (Some((a0, a1)), Some((b0, b1))) => {
+diff --git a/crates/obscura-render/src/paint.rs b/crates/obscura-render/src/paint.rs
+index 988ae96..e3c87c3 100644
+--- a/crates/obscura-render/src/paint.rs
++++ b/crates/obscura-render/src/paint.rs
+@@ -882,7 +882,7 @@ impl ResolvedScrollState {
+             .unwrap_or((0.0, 0.0))
+     }
+ 
+-    fn inherited_clip_for(
++    pub(crate) fn inherited_clip_for(
+         &self,
+         id: obscura_dom::tree::NodeId,
+     ) -> Option<crate::dom::OverflowClip> {
+@@ -1052,6 +1052,65 @@ impl PreparedRender {
+         &self.layout
+     }
+ 
++    /// Whether an element's computed visibility is hidden. Visibility is
++    /// inherited, so the nearest element that sets it (itself first) decides.
++    pub fn visibility_hidden(&self, tree: &DomTree, id: obscura_dom::tree::NodeId) -> bool {
++        let mut current = Some(id);
++        while let Some(node) = current {
++            if let Some(hidden) = self.layout.styles.get(&node).and_then(|style| style.visibility_hidden) {
++                return hidden;
++            }
++            current = crate::dom::rendered_parent(tree, node);
++        }
++        false
++    }
++
++    /// Hit testing for `document.elementFromPoint`: of the element boxes that
++    /// contain the viewport point, are not visibility-hidden, and are not
++    /// clipped away there by an ancestor's overflow, the one latest in tree
++    /// order. `skip` names boxes never returned (the root and body).
++    pub fn element_at_point(
++        &self,
++        tree: &DomTree,
++        scroll: &ResolvedScrollState,
++        x: f32,
++        y: f32,
++        skip: &[obscura_dom::tree::NodeId],
++    ) -> Option<obscura_dom::tree::NodeId> {
++        let mut best: Option<obscura_dom::tree::NodeId> = None;
++        for &id in self.layout.rects.keys() {
++            if best.is_some_and(|best| best.index() >= id.index()) || skip.contains(&id) {
++                continue;
++            }
++            if !tree.get_node(id).is_some_and(|node| node.is_element()) {
++                continue;
++            }
++            let Some(rect) = self.viewport_rect_with_scroll(id, scroll) else {
++                continue;
++            };
++            if rect.width <= 0.0
++                || rect.height <= 0.0
++                || x < rect.x
++                || y < rect.y
++                || x > rect.x + rect.width
++                || y > rect.y + rect.height
++            {
++                continue;
++            }
++            if scroll
++                .inherited_clip_for(id)
++                .is_some_and(|clip| !clip.contains_point(x, y))
++            {
++                continue;
++            }
++            if self.visibility_hidden(tree, id) {
++                continue;
++            }
++            best = Some(id);
++        }
++        best
++    }
++
+     pub fn content_size(&self) -> (f32, f32) {
+         self.content_size
+     }
+-- 
+2.43.0
+

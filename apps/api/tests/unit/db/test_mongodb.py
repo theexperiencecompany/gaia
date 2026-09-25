@@ -393,6 +393,8 @@ _INDEX_CREATORS = [
     "create_hil_approvals_indexes",
     "create_approval_ledger_indexes",
     "create_pending_platform_registration_indexes",
+    "create_browser_profiles_indexes",
+    "create_browser_tasks_indexes",
     "create_llm_call_indexes",
     "create_playbook_indexes",
     "create_tool_output_shapes_indexes",

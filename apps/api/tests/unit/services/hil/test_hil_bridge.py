@@ -31,6 +31,7 @@ from app.models.hil_models import ApprovalLedgerDocument, HILApprovalStatus, Led
 from app.services.analytics_service import AnalyticsEvents
 from app.services.hil.bridge import (
     ApprovalOutcome,
+    GatedApproval,
     build_summary,
     flush_held_approval_cards,
     publish_approval_request,
@@ -42,12 +43,19 @@ from app.services.hil.bridge import (
     sync_conversation_approval_flag,
 )
 from app.services.hil.utils import GatedCall
+from app.utils.general_utils import ELLIPSIS
 
 from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_record
 
 MODULE = "app.services.hil.bridge"
 
 TOOL_CALL = GatedCall(id="call-1", name="send_email", args={"to": "bob@example.com"})
+
+SEPARATOR = ": "  # the colon + space between a summary's label/lead-in and its content
+
+# The stream the request was raised on, which closed when the run paused — deliberately
+# NOT the stream the settled card must be published to.
+PAUSED_RUN_STREAM_ID = "stream-of-the-paused-run"
 
 
 @pytest.fixture
@@ -75,15 +83,18 @@ def bridge():
         }
 
 
-async def publish(bridge: dict) -> None:
+async def publish(bridge: dict, **overrides: Any) -> None:
     await publish_approval_request(
-        approval_id="appr-1",
-        stream_id=STREAM_ID,
-        user_id=USER_ID,
-        conversation_id=CONVERSATION_ID,
-        tool_call=TOOL_CALL,
-        summary="Send email — to: bob@example.com",
-        integration_name="Gmail",
+        GatedApproval(
+            approval_id="appr-1",
+            stream_id=STREAM_ID,
+            user_id=USER_ID,
+            conversation_id=CONVERSATION_ID,
+            tool_call=TOOL_CALL,
+            summary="Send email — to: bob@example.com",
+            integration_name="Gmail",
+        ),
+        **overrides,
     )
     await asyncio.sleep(0)  # let the fire-and-forget notify task start
 
@@ -102,6 +113,38 @@ class TestPublishExactlyOnce:
 
         bridge["stream"].publish_chunk.assert_awaited_once()
         bridge["notify"].assert_awaited_once()
+
+    async def test_the_notification_names_the_user_conversation_and_approval(
+        self, bridge: dict
+    ) -> None:
+        # The wake-up is delivered out-of-band (push/email), so every one of these has
+        # to be the real value: a wrong user notifies a stranger, a wrong conversation
+        # or approval id deep-links the user to a card that isn't the one waiting.
+        await publish(bridge)
+
+        bridge["notify"].assert_awaited_once_with(
+            USER_ID, CONVERSATION_ID, "appr-1", "Send email — to: bob@example.com"
+        )
+
+    async def test_the_wide_event_names_the_approval_its_tool_and_its_stream(
+        self, bridge: dict
+    ) -> None:
+        # These three fields are all an operator has to find the turn a pending approval
+        # belongs to; dropping the namespace (or renaming a key) makes the event unqueryable.
+        await publish(bridge)
+
+        bridge["log"].set.assert_called_once_with(
+            hil={"approval_id": "appr-1", "tool": "send_email", "stream_id": STREAM_ID}
+        )
+
+    async def test_the_pending_card_says_why_auto_mode_stopped_to_ask(self, bridge: dict) -> None:
+        # Auto mode only pauses a call it judged risky; the card is where the user reads
+        # that judgement before deciding, so it must arrive with the card itself.
+        await publish(bridge, auto_reason="Sends mail to someone outside your contacts")
+
+        data = published_frame(bridge)["data"]
+        assert data["status"] == "pending"
+        assert data["auto_reason"] == "Sends mail to someone outside your contacts"
 
     async def test_a_resume_replay_publishes_nothing_and_wakes_nobody(self, bridge: dict) -> None:
         # The node re-runs from the top on every resume. Re-publishing would stack a
@@ -186,12 +229,34 @@ class TestTheOutcomeSettlesTheCard:
             args=TOOL_CALL.args,
             summary="Send email — to: bob@example.com",
             integration_name="Gmail",
+            stream_id=PAUSED_RUN_STREAM_ID,
         )
         # STREAM_ID explicitly, never record.stream_id: a resumed run publishes to a
         # NEW stream, and the card has to settle where the user is now watching.
         await publish_decision(
             record, outcome.status, stream_id=STREAM_ID, feedback=outcome.feedback
         )
+
+    async def test_the_card_settles_on_the_stream_the_user_is_watching_now(
+        self, bridge: dict
+    ) -> None:
+        # The request's own stream closed when the run paused. Settling there resolves
+        # the card where nobody is looking, leaving a live Approve/Deny prompt on screen.
+        await self.settle(ApprovalOutcome(status=HILApprovalStatus.APPROVED))
+
+        assert bridge["stream"].publish_chunk.await_args.args[0] == STREAM_ID
+
+    async def test_the_settled_card_carries_the_original_calls_identity(self, bridge: dict) -> None:
+        # The settled card replaces the pending one by these fields; rebuilt from the
+        # stored record, so a dropped field renders a second, anonymous card instead.
+        await self.settle(ApprovalOutcome(status=HILApprovalStatus.APPROVED))
+
+        data = published_frame(bridge)["data"]
+        assert data["integration_name"] == "Gmail"
+        assert data["gated_tool_name"] == TOOL_CALL.name
+        assert data["tool_call_id"] == TOOL_CALL.id
+        assert data["summary"] == "Send email — to: bob@example.com"
+        assert data["args_preview"] == TOOL_CALL.args
 
     async def test_an_approval_settles_the_card(self, bridge: dict) -> None:
         await self.settle(ApprovalOutcome(status=HILApprovalStatus.APPROVED))
@@ -427,19 +492,149 @@ class TestSummary:
     def test_a_call_with_no_arguments_still_reads_as_a_sentence(self) -> None:
         assert build_summary("delete_everything", {}, None) == "Delete everything"
 
+    def test_multi_word_tool_names_get_every_underscore_swapped(self) -> None:
+        assert build_summary("list_all_todos", {}, None) == "List all todos"
+
+    def test_the_integration_name_is_parenthesized_after_the_label(self) -> None:
+        assert build_summary("send_email", {}, "Gmail") == "Send email (Gmail)"
+
+    def test_with_no_integration_the_label_carries_no_parentheses(self) -> None:
+        assert build_summary("send_email", {}, None) == "Send email"
+
+    def test_the_label_and_arguments_are_joined_by_a_colon(self) -> None:
+        assert build_summary("send_email", {"to": "bob"}, None) == f"Send email{SEPARATOR}to: bob"
+
+    def test_multiple_arguments_are_comma_separated_in_order(self) -> None:
+        summary = build_summary("send_email", {"to": "bob", "cc": "al"}, None)
+
+        assert summary == f"Send email{SEPARATOR}to: bob, cc: al"
+
+    def test_an_argument_value_at_the_clip_boundary_is_shown_in_full(self) -> None:
+        value = "a" * HIL_SUMMARY_MAX_ARG_CHARS
+
+        summary = build_summary("send_email", {"note": value}, None)
+
+        assert summary == f"Send email{SEPARATOR}note: {value}"
+        assert ELLIPSIS not in summary
+
+    def test_an_argument_value_one_over_the_boundary_is_clipped_with_an_ellipsis(self) -> None:
+        value = "a" * (HIL_SUMMARY_MAX_ARG_CHARS + 1)
+
+        summary = build_summary("send_email", {"note": value}, None)
+
+        assert summary == f"Send email{SEPARATOR}note: {'a' * HIL_SUMMARY_MAX_ARG_CHARS}{ELLIPSIS}"
+
+    def test_boolean_and_numeric_arguments_are_shown_as_scalars(self) -> None:
+        summary = build_summary("set_reminder", {"urgent": True, "count": 3}, None)
+
+        assert summary == f"Set reminder{SEPARATOR}urgent: True, count: 3"
+
+
+class TestBrowserTaskSummary:
+    """browser_task gets a bespoke summary: the LLM's task argument, not the tool name, so the card reads as what will happen."""
+
+    def test_a_missing_task_argument_falls_back_to_a_generic_line(self) -> None:
+        assert build_summary("browser_task", {}, None) == "Start a browser task"
+
+    def test_a_whitespace_only_task_falls_back_to_a_generic_line(self) -> None:
+        assert build_summary("browser_task", {"task": "   "}, None) == "Start a browser task"
+
+    def test_the_task_is_stripped_of_surrounding_whitespace(self) -> None:
+        summary = build_summary("browser_task", {"task": "  Book a flight  "}, None)
+
+        assert summary == f"Start a browser task{SEPARATOR}Book a flight"
+
+    def test_only_the_first_sentence_is_used_and_its_period_is_dropped(self) -> None:
+        summary = build_summary("browser_task", {"task": "Book a flight. Then find a hotel."}, None)
+
+        assert summary == f"Start a browser task{SEPARATOR}Book a flight"
+
+    def test_a_task_with_no_sentence_break_is_used_whole_when_short(self) -> None:
+        summary = build_summary("browser_task", {"task": "Book a flight to Tokyo"}, None)
+
+        assert summary == f"Start a browser task{SEPARATOR}Book a flight to Tokyo"
+
+    def test_a_lead_in_exactly_at_the_clip_boundary_is_kept_whole(self) -> None:
+        task = "y" * 140  # no ". " in it, so `first` == the whole (stripped) task
+
+        summary = build_summary("browser_task", {"task": task}, None)
+
+        assert summary == f"Start a browser task{SEPARATOR}{task}"
+        assert ELLIPSIS not in summary
+
+    def test_a_lead_in_one_over_the_clip_boundary_is_clipped_with_an_ellipsis(self) -> None:
+        task = "y" * 141
+
+        summary = build_summary("browser_task", {"task": task}, None)
+
+        assert summary == f"Start a browser task{SEPARATOR}{'y' * 140}{ELLIPSIS}"
+
+    def test_a_long_task_with_no_sentence_break_is_clipped_from_the_full_task(self) -> None:
+        task = "x" * 200
+
+        summary = build_summary("browser_task", {"task": task}, None)
+
+        assert summary == f"Start a browser task{SEPARATOR}{'x' * 140}{ELLIPSIS}"
+
+    def test_an_empty_lead_in_before_the_first_period_falls_back_to_the_full_task(self) -> None:
+        # task.split(". ", 1)[0] is "" here, so the "0 < len(first)" guard must reject
+        # it and fall through to clipping the whole task, not render an empty lead-in.
+        summary = build_summary("browser_task", {"task": ". rest of the task"}, None)
+
+        assert summary == f"Start a browser task{SEPARATOR}. rest of the task"
+
+    def test_only_the_first_period_space_is_treated_as_a_sentence_break(self) -> None:
+        summary = build_summary("browser_task", {"task": "First. Second. Third."}, None)
+
+        assert summary == f"Start a browser task{SEPARATOR}First"
+
+    def test_a_trailing_period_with_no_further_sentence_is_dropped(self) -> None:
+        # No ". " anywhere in the task, so `first` is the whole (stripped) task — only
+        # the final `.rstrip(".")` removes the trailing period, not the split.
+        summary = build_summary("browser_task", {"task": "Book a flight."}, None)
+
+        assert summary == f"Start a browser task{SEPARATOR}Book a flight"
+
+    def test_the_trailing_strip_removes_only_periods_not_other_characters(self) -> None:
+        # `X` is not a character `rstrip(".")` would ever touch — this pins the exact
+        # strip set against a mutant that also strips trailing `X`s.
+        summary = build_summary("browser_task", {"task": "Book a flightX."}, None)
+
+        assert summary == f"Start a browser task{SEPARATOR}Book a flightX"
+
+    def test_a_one_character_lead_in_is_kept_not_clipped(self) -> None:
+        # Pins the lower bound at `0 <`, not `1 <`: a single-character lead-in must
+        # still be treated as present and used as-is, not fall through to clip_text.
+        summary = build_summary("browser_task", {"task": "A. Rest of stuff here"}, None)
+
+        assert summary == f"Start a browser task{SEPARATOR}A"
+
+    def test_a_140_char_lead_in_from_a_longer_task_is_kept_whole(self) -> None:
+        # Distinguishes `<= 140` from `< 140`: here `first` (the lead-in before the
+        # first ". ") is exactly 140 chars but `task` (the fallback clip_text source)
+        # is much longer, so a boundary off-by-one would clip a sentence that fits.
+        task = "y" * 140 + ". additional sentence"
+
+        summary = build_summary("browser_task", {"task": task}, None)
+
+        assert summary == f"Start a browser task{SEPARATOR}{'y' * 140}"
+        assert ELLIPSIS not in summary
+
 
 class TestCardShownEvent:
     async def test_register_emits_card_shown_with_user_id(self, bridge: dict) -> None:
         """The funnel's first event must attribute to the row's user — the bridge carries no request context, so an inferred id is unavailable and an anonymous capture would strand it."""
         with patch(f"{MODULE}.capture_event") as capture:
             await publish_ledger_request(
-                approval_id="ap_1",
-                stream_id=STREAM_ID,
-                user_id=USER_ID,
-                conversation_id=CONVERSATION_ID,
-                tool_call=TOOL_CALL,
-                summary="Send it",
-                integration_name="Gmail",
+                GatedApproval(
+                    approval_id="ap_1",
+                    stream_id=STREAM_ID,
+                    user_id=USER_ID,
+                    conversation_id=CONVERSATION_ID,
+                    tool_call=TOOL_CALL,
+                    summary="Send it",
+                    integration_name="Gmail",
+                ),
             )
 
         capture.assert_called_once_with(
@@ -456,13 +651,15 @@ class TestCardShownEvent:
     async def test_background_register_marks_background(self, bridge: dict) -> None:
         with patch(f"{MODULE}.capture_event") as capture:
             await publish_ledger_request(
-                approval_id="ap_1",
-                stream_id=STREAM_ID,
-                user_id=USER_ID,
-                conversation_id=CONVERSATION_ID,
-                tool_call=TOOL_CALL,
-                summary="Send it",
-                integration_name="Gmail",
+                GatedApproval(
+                    approval_id="ap_1",
+                    stream_id=STREAM_ID,
+                    user_id=USER_ID,
+                    conversation_id=CONVERSATION_ID,
+                    tool_call=TOOL_CALL,
+                    summary="Send it",
+                    integration_name="Gmail",
+                ),
                 live=False,
             )
 
@@ -479,13 +676,15 @@ class TestBackgroundFlagSync:
             ) as mark,
         ):
             await publish_ledger_request(
-                approval_id="ap_1",
-                stream_id=STREAM_ID,
-                user_id=USER_ID,
-                conversation_id=CONVERSATION_ID,
-                tool_call=TOOL_CALL,
-                summary="Send it",
-                integration_name="Gmail",
+                GatedApproval(
+                    approval_id="ap_1",
+                    stream_id=STREAM_ID,
+                    user_id=USER_ID,
+                    conversation_id=CONVERSATION_ID,
+                    tool_call=TOOL_CALL,
+                    summary="Send it",
+                    integration_name="Gmail",
+                ),
                 owner_run_type="todo",
                 owner_id="todo-9",
             )
@@ -501,13 +700,15 @@ class TestBackgroundFlagSync:
             ) as mark,
         ):
             await publish_ledger_request(
-                approval_id="ap_1",
-                stream_id=STREAM_ID,
-                user_id=USER_ID,
-                conversation_id=CONVERSATION_ID,
-                tool_call=TOOL_CALL,
-                summary="Send it",
-                integration_name="Gmail",
+                GatedApproval(
+                    approval_id="ap_1",
+                    stream_id=STREAM_ID,
+                    user_id=USER_ID,
+                    conversation_id=CONVERSATION_ID,
+                    tool_call=TOOL_CALL,
+                    summary="Send it",
+                    integration_name="Gmail",
+                ),
             )
 
         mark.assert_not_called()
@@ -592,18 +793,18 @@ class TestBackgroundFlagSync:
 
 
 async def publish_ledger(**overrides: Any) -> None:
-    kwargs: dict[str, Any] = {
-        "approval_id": "ap_1",
-        "stream_id": STREAM_ID,
-        "user_id": USER_ID,
-        "conversation_id": CONVERSATION_ID,
-        "tool_call": TOOL_CALL,
-        "summary": "Send it",
-        "integration_name": "Gmail",
-        "live": False,
-    }
+    approval = GatedApproval(
+        approval_id="ap_1",
+        stream_id=STREAM_ID,
+        user_id=USER_ID,
+        conversation_id=CONVERSATION_ID,
+        tool_call=TOOL_CALL,
+        summary="Send it",
+        integration_name="Gmail",
+    )
+    kwargs: dict[str, Any] = {"live": False}
     with patch(f"{MODULE}.capture_event"):
-        await publish_ledger_request(**{**kwargs, **overrides})
+        await publish_ledger_request(approval, **{**kwargs, **overrides})
     await asyncio.sleep(0)  # let the fire-and-forget notify task start
 
 

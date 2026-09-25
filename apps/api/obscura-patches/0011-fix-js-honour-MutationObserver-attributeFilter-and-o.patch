@@ -1,0 +1,353 @@
+From bf4e3259024f2116fa83cab1089a3ffa72e35a44 Mon Sep 17 00:00:00 2001
+From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
+Date: Wed, 23 Sep 2026 18:31:02 +0530
+Subject: [PATCH 11/18] fix(js): honour MutationObserver attributeFilter and
+ observe() options
+
+MutationObserver ignored attributeFilter, so an observer that watches only
+`src` and rewrites `type`/`class` from its callback was told about its own
+writes and re-ran forever. OneTrust's OtAutoBlock on booking.com does exactly
+that to a dynamically inserted gtm.js: an endless microtask chain that pinned a
+core and grew the engine by 13-70 MB/s (2.5 GB after 190 s, no end).
+
+observe() now follows DOM "observe": attributeFilter and old-value options
+imply their type, invalid options throw TypeError, re-observing a node replaces
+its options instead of registering twice, and attributeOldValue reports the
+old value. Records are queued per interested observer and delivered from one
+mutation observer microtask.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/js/bootstrap.js | 180 ++++++++++++++++++++----------
+ crates/obscura-js/src/runtime.rs  |  83 ++++++++++++++
+ 2 files changed, 207 insertions(+), 56 deletions(-)
+
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index f66bb24..3c12070 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -3725,6 +3725,7 @@ class Element extends Node {
+       : null;
+     const value = String(v);
+     const ceOld = _ceObserves(this, n) ? this.getAttribute(n) : undefined;
++    const mutationOld = globalThis.__mutationObservers?.length ? this.getAttribute(n) : null;
+     _dom("set_attribute", this._nid, n + "\0" + value);
+     if (n === "src" && this.localName === "iframe") {
+       if (value && value !== "about:blank") this._loadIframeSrc(value);
+@@ -3748,7 +3749,7 @@ class Element extends Node {
+       if (this.__inlineHandlerCache) delete this.__inlineHandlerCache.onload;
+     }
+     if (popoverPrev !== undefined) this._popoverTypeMaybeChanged(popoverPrev);
+-    if (globalThis.__mutationObservers?.length) globalThis.__notifyMutation('attributes', this._nid, [], [], n);
++    if (globalThis.__mutationObservers?.length) globalThis.__notifyMutation('attributes', this._nid, [], [], n, mutationOld);
+     if (ceOld !== undefined) _ceAttributeChanged(this, n, ceOld, value, null);
+     if (this.localName === "source"
+         && (n === "srcset" || n === "sizes" || n === "media" || n === "type")) {
+@@ -9336,90 +9337,157 @@ Object.defineProperty(Document.prototype, 'adoptedStyleSheets', {
+   },
+ });
+ 
++// MutationObserver per DOM §4.3. Observers that registered at least once, in
++// registration order; "notify mutation observers" walks this list.
+ globalThis.__mutationObservers = [];
++// One pending "mutation observer microtask" for the whole agent, as the spec
++// has it, rather than one per queued record.
++let _mutationObserverMicrotaskQueued = false;
++// Captured before page script runs, so a page that replaces queueMicrotask or
++// Promise cannot reroute (or drop) observer delivery.
++const _queueEngineMicrotask = globalThis.queueMicrotask.bind(globalThis);
++function _notifyMutationObservers() {
++  _mutationObserverMicrotaskQueued = false;
++  for (const observer of [...globalThis.__mutationObservers]) {
++    if (observer._records.length === 0) continue;
++    const records = observer._records.splice(0);
++    try { observer._callback.call(observer, records, observer); }
++    catch (e) { /* observer errors shouldn't propagate */ }
++  }
++}
++function _queueMutationObserverMicrotask() {
++  if (_mutationObserverMicrotaskQueued) return;
++  _mutationObserverMicrotaskQueued = true;
++  _queueEngineMicrotask(_notifyMutationObservers);
++}
+ globalThis.MutationObserver = class MutationObserver {
+   constructor(callback) {
++    if (typeof callback !== "function") {
++      throw new TypeError(
++        "Failed to construct 'MutationObserver': parameter 1 is not of type 'Function'."
++      );
++    }
+     this._callback = callback;
+     this._targets = [];
+     this._records = [];
+   }
+   observe(target, options) {
+-    this._targets.push({ target, options: options || {} });
+-    globalThis.__mutationObservers.push(this);
++    if (!target || target._nid == null) {
++      throw new TypeError(
++        "Failed to execute 'observe' on 'MutationObserver': parameter 1 is not of type 'Node'."
++      );
++    }
++    const given = options == null ? {} : options;
++    const init = {
++      childList: !!given.childList,
++      subtree: !!given.subtree,
++      attributes: given.attributes === undefined ? undefined : !!given.attributes,
++      characterData: given.characterData === undefined ? undefined : !!given.characterData,
++      attributeOldValue: given.attributeOldValue === undefined ? undefined : !!given.attributeOldValue,
++      characterDataOldValue: given.characterDataOldValue === undefined ? undefined : !!given.characterDataOldValue,
++      attributeFilter: given.attributeFilter === undefined ? undefined : Array.from(given.attributeFilter, String),
++    };
++    // An old-value or filter option implies the mutation type it qualifies.
++    if ((init.attributeOldValue !== undefined || init.attributeFilter !== undefined)
++        && init.attributes === undefined) init.attributes = true;
++    if (init.characterDataOldValue !== undefined && init.characterData === undefined) {
++      init.characterData = true;
++    }
++    const fail = (why) => {
++      throw new TypeError(`Failed to execute 'observe' on 'MutationObserver': ${why}`);
++    };
++    if (!init.childList && !init.attributes && !init.characterData) {
++      fail("The options object must set at least one of 'attributes', 'characterData', or 'childList' to true.");
++    }
++    if (init.attributeOldValue && !init.attributes) {
++      fail("The options object may only set 'attributeOldValue' to true when 'attributes' is true or not present.");
++    }
++    if (init.attributeFilter !== undefined && !init.attributes) {
++      fail("The options object may only set 'attributeFilter' when 'attributes' is true or not present.");
++    }
++    if (init.characterDataOldValue && !init.characterData) {
++      fail("The options object may only set 'characterDataOldValue' to true when 'characterData' is true or not present.");
++    }
++    if (init.attributeFilter !== undefined) init.attributeFilter = new Set(init.attributeFilter);
++    // Observing a node this observer already watches replaces its options
++    // instead of adding a second registration.
++    const existing = this._targets.find((registration) => registration.target === target);
++    if (existing) existing.options = init;
++    else this._targets.push({ target, options: init });
++    if (!globalThis.__mutationObservers.includes(this)) {
++      globalThis.__mutationObservers.push(this);
++    }
+   }
+   disconnect() {
+     this._targets = [];
++    this._records = [];
+     const idx = globalThis.__mutationObservers.indexOf(this);
+     if (idx >= 0) globalThis.__mutationObservers.splice(idx, 1);
+   }
+   takeRecords() {
+-    const r = this._records.slice();
+-    this._records = [];
+-    return r;
++    return this._records.splice(0);
+   }
+   _notify(records) {
+     this._records.push(...records);
+-    Promise.resolve().then(() => {
+-      if (this._records.length > 0) {
+-        const batch = this._records.splice(0);
+-        try { this._callback(batch, this); } catch(e) { /* observer errors shouldn't propagate */ }
+-      }
+-    });
++    _queueMutationObserverMicrotask();
+   }
+ };
++// "Queue a mutation record": one record per interested observer, chosen by
++// each registration's options. attributeFilter matters beyond fidelity: an
++// observer that watches only `src` and rewrites `type`/`class` from its own
++// callback must not be told about those writes, or it re-triggers itself in
++// an endless microtask chain that never yields to the event loop.
+ globalThis.__notifyMutation = function(type, target_nid, addedNodes, removedNodes, attributeName, oldValue) {
+   if (!globalThis.__mutationObservers.length) return;
+-  // Use `_wrap` (the canonical node-id → wrapper resolver) instead of a
+-  // direct cache poke. The previous code referenced `globalThis._cache`,
+-  // but `_cache` is a module-local Map — the lookup always returned
+-  // undefined, so the function silently bailed every time. Result: no
+-  // MutationObserver fired in obscura, ever, despite the call sites being
+-  // wired up at appendChild / setAttribute. _wrap also lazily creates a
+-  // wrapper for nodes that didn't have one yet (e.g. children parsed from
++  // Use `_wrap` (the canonical node-id → wrapper resolver): it lazily creates
++  // a wrapper for nodes that didn't have one yet (e.g. children parsed from
+   // `set innerHTML`), which we need for record.target/added/removed.
+   const target = _wrap(target_nid);
+   if (!target) return;
+-  const record = {
+-    type: type, // 'childList', 'attributes', 'characterData'
+-    target: target,
+-    addedNodes: (addedNodes || []).map(nid => _wrap(nid)).filter(Boolean),
+-    removedNodes: (removedNodes || []).map(nid => _wrap(nid)).filter(Boolean),
+-    attributeName: attributeName || null,
+-    oldValue: oldValue ?? null,
+-    previousSibling: null,
+-    nextSibling: null,
++  // Inclusive ancestors, computed once and only if a subtree registration
++  // could need them.
++  let ancestors = null;
++  const isAncestor = (nid) => {
++    if (!ancestors) {
++      ancestors = new Set();
++      let cur = target.parentNode;
++      while (cur) { ancestors.add(cur._nid); cur = cur.parentNode; }
++    }
++    return ancestors.has(nid);
+   };
+-  // Walk target → ancestors so a subtree-mode observer rooted at any
+-  // ancestor matches. The previous implementation just checked that
+-  // `target.contains` and `target.closest` were defined (always true on
+-  // any Element), so subtree=true silently behaved like subtree=false and
+-  // every nested mutation missed its subscriber.
++  const interested = new Map();
+   for (const obs of globalThis.__mutationObservers) {
+-    let matched = false;
+-    for (const t of obs._targets) {
+-      const root = t.target;
++    for (const { target: root, options } of obs._targets) {
+       if (!root) continue;
+-      // Filter by type per the observer options. Default behaviour matches
+-      // real MutationObserver: attribute mutations need options.attributes,
+-      // characterData mutations need options.characterData, childList
+-      // needs options.childList.
+-      const wantsType =
+-        (type === 'attributes' && t.options.attributes) ||
+-        (type === 'characterData' && t.options.characterData) ||
+-        (type === 'childList' && t.options.childList);
+-      if (!wantsType) continue;
+-      if (root._nid === target_nid) { matched = true; break; }
+-      if (t.options.subtree) {
+-        // Walk parents until we hit the observed root or run off the tree.
+-        let cur = target.parentNode;
+-        while (cur) {
+-          if (cur._nid === root._nid) { matched = true; break; }
+-          cur = cur.parentNode;
+-        }
+-        if (matched) break;
++      if (type === 'attributes') {
++        if (!options.attributes) continue;
++        if (options.attributeFilter && !options.attributeFilter.has(attributeName)) continue;
++      } else if (type === 'characterData') {
++        if (!options.characterData) continue;
++      } else if (type === 'childList') {
++        if (!options.childList) continue;
+       }
+-    }
+-    if (matched) obs._notify([record]);
++      if (root._nid !== target_nid && !(options.subtree && isAncestor(root._nid))) continue;
++      const wantsOld = (type === 'attributes' && options.attributeOldValue)
++        || (type === 'characterData' && options.characterDataOldValue);
++      if (!interested.has(obs) || wantsOld) interested.set(obs, wantsOld ? (oldValue ?? null) : null);
++    }
++  }
++  if (!interested.size) return;
++  const added = (addedNodes || []).map(nid => _wrap(nid)).filter(Boolean);
++  const removed = (removedNodes || []).map(nid => _wrap(nid)).filter(Boolean);
++  for (const [obs, recordOldValue] of interested) {
++    obs._notify([{
++      type: type, // 'childList', 'attributes', 'characterData'
++      target: target,
++      addedNodes: added.slice(),
++      removedNodes: removed.slice(),
++      attributeName: attributeName || null,
++      attributeNamespace: null,
++      oldValue: recordOldValue,
++      previousSibling: null,
++      nextSibling: null,
++    }]);
+   }
+ };
+ 
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index 3644850..fbb4043 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -20950,6 +20950,89 @@ mod tests {
+         assert_eq!(result, serde_json::json!("SPAN"));
+     }
+ 
++    // A consent manager's script blocker (OneTrust OtAutoBlock on booking.com)
++    // watches only `src` and, from its callback, rewrites `type` and `class` on
++    // the same script. With attributeFilter ignored every rewrite re-notified
++    // the observer, an endless microtask chain that pinned a CPU and grew the
++    // heap by ~16 MB/s. The callback must run once per `src` change, and the
++    // engine must go idle.
++    #[tokio::test(flavor = "current_thread")]
++    async fn mutation_observer_attribute_filter_stops_self_triggering_callback() {
++        let mut rt = setup_runtime("<html><head></head><body></body></html>");
++        rt.execute_script(
++            "mutation-observer-self-trigger",
++            r#"
++                globalThis.__calls = 0;
++                globalThis.__names = [];
++                new MutationObserver((records) => {
++                    // Cap the chain so the old behaviour fails the test instead of hanging it.
++                    if (++__calls > 50) return;
++                    for (const record of records) {
++                        __names.push(record.attributeName);
++                        const script = record.target;
++                        script.setAttribute("type", "text/plain");
++                        script.setAttribute("class", "optanon-category-C0004");
++                    }
++                }).observe(document.documentElement, {
++                    childList: true, subtree: true, attributes: true, attributeFilter: ["src"],
++                });
++                const script = document.createElement("script");
++                script.setAttribute("data-x", "1");
++                document.head.appendChild(script);
++                script.setAttribute("src", "https://example.com/gtm.js");
++            "#,
++        )
++        .unwrap();
++        rt.run_event_loop_bounded(200).await.unwrap();
++        assert_eq!(
++            rt.evaluate("[__calls, __names.join(',')]").unwrap(),
++            serde_json::json!([1, ",src"])
++        );
++    }
++
++    // Per DOM "observe": re-observing a node replaces its options rather than
++    // registering twice, attributeOldValue/attributeFilter imply attributes,
++    // oldValue is reported only when asked for, and invalid options throw.
++    #[tokio::test(flavor = "current_thread")]
++    async fn mutation_observer_observe_options_follow_the_spec() {
++        let mut rt = setup_runtime(r#"<html><body><div id="t" title="a"></div></body></html>"#);
++        rt.execute_script(
++            "mutation-observer-options",
++            r#"
++                const t = document.getElementById("t");
++                globalThis.__seen = [];
++                const observer = new MutationObserver((records) => {
++                    for (const r of records) __seen.push(`${r.type}:${r.attributeName}:${r.oldValue}`);
++                });
++                observer.observe(t, { attributes: true });
++                observer.observe(t, { attributeOldValue: true, attributeFilter: ["title"] });
++                t.setAttribute("title", "b");
++                t.setAttribute("lang", "en");
++                const plain = new MutationObserver((records) => {
++                    for (const r of records) __seen.push(`plain:${r.attributeName}:${r.oldValue}`);
++                });
++                plain.observe(t, { attributes: true });
++                t.setAttribute("title", "c");
++                globalThis.__errors = [
++                    () => observer.observe(t, {}),
++                    () => observer.observe(t, { attributes: false, attributeFilter: ["x"] }),
++                    () => observer.observe(t, { childList: true, attributeOldValue: true, attributes: false }),
++                    () => observer.observe(null, { childList: true }),
++                    () => new MutationObserver(null),
++                ].map((f) => { try { f(); return "none"; } catch (e) { return e.name; } });
++            "#,
++        )
++        .unwrap();
++        rt.run_event_loop_bounded(200).await.unwrap();
++        assert_eq!(
++            rt.evaluate("[__seen.join('|'), __errors.join(',')]").unwrap(),
++            serde_json::json!([
++                "attributes:title:a|attributes:title:b|plain:title:null",
++                "TypeError,TypeError,TypeError,TypeError,TypeError"
++            ])
++        );
++    }
++
+     #[test]
+     fn document_write_registers_window_named_access() {
+         let mut rt = setup_runtime("<html><body></body></html>");

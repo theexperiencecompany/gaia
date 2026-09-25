@@ -48,8 +48,10 @@ class TestCreateSupportTicket:
             title="App crashes on login",
             description="When I try to log in with Google, the app crashes immediately.",
         )
-        assert result.startswith("I've prepared a support ticket draft for you to review."), result
-        assert "review" in result.lower()
+        assert result == (
+            "Drafted a support ticket for you. Check it over and hit "
+            "Submit Ticket when it looks right."
+        )
         # Verify writer was called with progress and data
         assert w.call_count == 2
         progress_call = w.call_args_list[0][0][0]
@@ -77,7 +79,7 @@ class TestCreateSupportTicket:
             title="Add dark mode",
             description="I would love to have a dark mode option in the settings.",
         )
-        assert result.startswith("I've prepared a feature request draft for you to review."), result
+        assert result.startswith("Drafted a feature request for you."), result
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.user_service")
@@ -102,7 +104,7 @@ class TestCreateSupportTicket:
         data_call = w.call_args_list[1][0][0]
         ticket = data_call["support_ticket_data"][0]
         assert ticket["type"] == "feature"
-        assert result.startswith("I've prepared a feature request draft for you to review."), result
+        assert result.startswith("Drafted a feature request for you."), result
 
     async def test_no_user_id(self) -> None:
         from app.agents.tools.support_tool import create_support_ticket
@@ -188,7 +190,7 @@ class TestCreateSupportTicket:
             title="Test",
             description="A test description for the ticket.",
         )
-        assert "error" in result.lower()
+        assert result.startswith("Could not prepare your support ticket:")
         assert "DB down" in result
 
     @patch(f"{MODULE}.get_stream_writer")

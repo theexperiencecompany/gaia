@@ -59,8 +59,8 @@ class TestLedgerPublish:
 
         ledger.register.assert_awaited_once()
         pub.assert_awaited_once()
-        assert pub.await_args.kwargs["approval_id"] == "ap_abc1234567"
-        assert pub.await_args.kwargs["conversation_id"] == CONVERSATION_ID
+        assert pub.await_args.args[0].approval_id == "ap_abc1234567"
+        assert pub.await_args.args[0].conversation_id == CONVERSATION_ID
 
     async def test_live_duplicate_publishes_nothing(self) -> None:
         from app.services.hil import gate
@@ -98,7 +98,7 @@ class TestLedgerPublishHold:
         teardown_session(stream_id)
 
     async def test_live_run_holds_sse_and_notify_but_records_session(self) -> None:
-        from app.services.hil.bridge import publish_ledger_request
+        from app.services.hil.bridge import GatedApproval, publish_ledger_request
         from app.services.hil.utils import GatedCall
 
         stream_id = "stream-hold-test"
@@ -112,13 +112,15 @@ class TestLedgerPublishHold:
                 patch("app.services.hil.bridge._schedule_pending_notification") as notify,
             ):
                 await publish_ledger_request(
-                    approval_id="ap_hold",
-                    stream_id=stream_id,
-                    user_id="u1",
-                    conversation_id="conv-1",
-                    tool_call=GatedCall(name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}),
-                    summary="Send it",
-                    integration_name="gmail",
+                    GatedApproval(
+                        approval_id="ap_hold",
+                        stream_id=stream_id,
+                        user_id="u1",
+                        conversation_id="conv-1",
+                        tool_call=GatedCall(name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}),
+                        summary="Send it",
+                        integration_name="gmail",
+                    ),
                 )
             chunk.assert_not_awaited()
             notify.assert_not_called()
@@ -133,7 +135,7 @@ class TestLedgerPublishHold:
 
     async def test_live_run_without_session_publishes_immediately(self) -> None:
         """No session means no drain will ever persist the frame — holding would hide the card until a drain that never comes."""
-        from app.services.hil.bridge import publish_ledger_request
+        from app.services.hil.bridge import GatedApproval, publish_ledger_request
         from app.services.hil.utils import GatedCall
 
         with (
@@ -144,13 +146,15 @@ class TestLedgerPublishHold:
             patch("app.services.hil.bridge._schedule_pending_notification") as notify,
         ):
             await publish_ledger_request(
-                approval_id="ap_nosession",
-                stream_id="stream-without-session",
-                user_id="u1",
-                conversation_id="conv-1",
-                tool_call=GatedCall(name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}),
-                summary="Send it",
-                integration_name="gmail",
+                GatedApproval(
+                    approval_id="ap_nosession",
+                    stream_id="stream-without-session",
+                    user_id="u1",
+                    conversation_id="conv-1",
+                    tool_call=GatedCall(name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}),
+                    summary="Send it",
+                    integration_name="gmail",
+                ),
             )
         chunk.assert_awaited_once()
         notify.assert_called_once()
@@ -158,7 +162,7 @@ class TestLedgerPublishHold:
     async def test_queued_session_publishes_immediately(self) -> None:
         """Detached queued runs have a session but no watcher — holding would park the card on an unwatched stream."""
         from app.agents.core.background.session import RunKind, create_session
-        from app.services.hil.bridge import publish_ledger_request
+        from app.services.hil.bridge import GatedApproval, publish_ledger_request
         from app.services.hil.utils import GatedCall
 
         stream_id = "stream-queued-test"
@@ -172,13 +176,15 @@ class TestLedgerPublishHold:
                 patch("app.services.hil.bridge._schedule_pending_notification") as notify,
             ):
                 await publish_ledger_request(
-                    approval_id="ap_queued",
-                    stream_id=stream_id,
-                    user_id="u1",
-                    conversation_id="conv-1",
-                    tool_call=GatedCall(name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}),
-                    summary="Send it",
-                    integration_name="gmail",
+                    GatedApproval(
+                        approval_id="ap_queued",
+                        stream_id=stream_id,
+                        user_id="u1",
+                        conversation_id="conv-1",
+                        tool_call=GatedCall(name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}),
+                        summary="Send it",
+                        integration_name="gmail",
+                    ),
                 )
             chunk.assert_awaited_once()
             notify.assert_called_once()
@@ -186,7 +192,7 @@ class TestLedgerPublishHold:
             self._teardown(stream_id)
 
     async def test_background_run_publishes_immediately(self) -> None:
-        from app.services.hil.bridge import publish_ledger_request
+        from app.services.hil.bridge import GatedApproval, publish_ledger_request
         from app.services.hil.utils import GatedCall
 
         stream_id = "stream-bg-test"
@@ -200,13 +206,15 @@ class TestLedgerPublishHold:
                 patch("app.services.hil.bridge._schedule_pending_notification") as notify,
             ):
                 await publish_ledger_request(
-                    approval_id="ap_bg",
-                    stream_id=stream_id,
-                    user_id="u1",
-                    conversation_id="conv-1",
-                    tool_call=GatedCall(name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}),
-                    summary="Send it",
-                    integration_name="gmail",
+                    GatedApproval(
+                        approval_id="ap_bg",
+                        stream_id=stream_id,
+                        user_id="u1",
+                        conversation_id="conv-1",
+                        tool_call=GatedCall(name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}),
+                        summary="Send it",
+                        integration_name="gmail",
+                    ),
                     live=False,
                 )
             chunk.assert_awaited_once()
@@ -217,7 +225,7 @@ class TestLedgerPublishHold:
     async def test_revoke_drops_held_frame_instead_of_tombstoning(self) -> None:
         """A revoke before the run ends removes the unshown frame: the drain persists nothing and the user never knows the card existed."""
         from app.services.hil import ledger_decide
-        from app.services.hil.bridge import publish_ledger_request
+        from app.services.hil.bridge import GatedApproval, publish_ledger_request
         from app.services.hil.utils import GatedCall
 
         stream_id = "stream-drop-test"
@@ -231,13 +239,15 @@ class TestLedgerPublishHold:
                 patch("app.services.hil.bridge._schedule_pending_notification"),
             ):
                 await publish_ledger_request(
-                    approval_id="ap_drop",
-                    stream_id=stream_id,
-                    user_id="u1",
-                    conversation_id="conv-1",
-                    tool_call=GatedCall(name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}),
-                    summary="Send it",
-                    integration_name="gmail",
+                    GatedApproval(
+                        approval_id="ap_drop",
+                        stream_id=stream_id,
+                        user_id="u1",
+                        conversation_id="conv-1",
+                        tool_call=GatedCall(name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}),
+                        summary="Send it",
+                        integration_name="gmail",
+                    ),
                 )
             row = MagicMock()
             row.approval_id = "ap_drop"

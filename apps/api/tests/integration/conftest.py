@@ -142,10 +142,10 @@ async def real_redis(monkeypatch):
     await client.aclose()
 
 
-# chromadb's EphemeralClient is a process-global singleton that raises if a
-# later call's settings differ from the first; pre-creating it here makes
-# every later default-settings call hit the reuse path, order-independent.
-@pytest.fixture(scope="session", autouse=True)
+# Pre-created so later default-settings EphemeralClient calls reuse it. Opt-in
+# from the fixtures that build one, never autouse: chroma cannot survive fork(),
+# so an autouse client hangs every mutmut mutant of any module tested here.
+@pytest.fixture(scope="session")
 def _precreate_ephemeral_chroma() -> None:
     import chromadb
 

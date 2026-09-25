@@ -785,7 +785,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
       {
         question: "How long does it take for a recording to appear in Drive?",
         answer:
-          "GAIA uploads the recording as soon as Zoom finishes processing it, which typically takes 5–30 minutes after the meeting ends depending on length. You'll receive a notification when it's available in Drive.",
+          "GAIA uploads the recording as soon as Zoom finishes processing it, which typically takes 5 to 30 minutes after the meeting ends depending on length. You'll receive a notification when it's available in Drive.",
       },
       {
         question:

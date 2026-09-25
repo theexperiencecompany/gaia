@@ -138,8 +138,8 @@ class LoopGuardMiddleware(AgentMiddleware):
                     content=(
                         f"[Loop guard] Blocked without executing: `{tool_name}` has already been "
                         f"called {repeat} times in a row with identical arguments (limit "
-                        f"{LOOP_GUARD_STOP_REPEAT}). Re-running it will return the same result — "
-                        "reuse the earlier result, or if the task is done, stop and report it."
+                        f"{LOOP_GUARD_STOP_REPEAT}). Re-running it will return the same result. "
+                        "Reuse the earlier result, or if the task is done, stop and report it."
                     ),
                     tool_call_id=tool_call_id,
                     name=tool_name,
@@ -166,7 +166,7 @@ class LoopGuardMiddleware(AgentMiddleware):
                     result,
                     f"{TOOL_RESULT_NOTE_SEPARATOR}[Loop guard: `{tool_name}` has now been called "
                     f"{repeat} times in a row "
-                    "with identical arguments. The result won't change — reuse the earlier result "
+                    "with identical arguments. The result won't change. Reuse the earlier result "
                     "and move on instead of repeating this call.]",
                 )
             return result
@@ -196,14 +196,14 @@ class LoopGuardMiddleware(AgentMiddleware):
             content = (
                 f"[Loop guard] Blocked without executing: `{tool_name}` has already failed "
                 f"{identical} times this run with identical arguments (limit {LOOP_GUARD_STOP_IDENTICAL}). "
-                "This call will keep failing — stop retrying it, re-read the earlier errors, and "
+                "This call will keep failing. Stop retrying it, re-read the earlier errors, and "
                 "either change the arguments/approach or move on to a different step."
             )
         elif same_tool >= LOOP_GUARD_STOP_SAME_TOOL:
             content = (
                 f"[Loop guard] Blocked without executing: `{tool_name}` has already failed "
                 f"{same_tool} times this run (limit {LOOP_GUARD_STOP_SAME_TOOL}). This tool is not "
-                "working for the current task — stop calling it, re-read the earlier errors, and try "
+                "working for the current task. Stop calling it, re-read the earlier errors, and try "
                 "a different approach or step."
             )
         else:
@@ -221,7 +221,7 @@ class LoopGuardMiddleware(AgentMiddleware):
         if identical >= LOOP_GUARD_WARN_IDENTICAL:
             return (
                 f"\n\n[Loop guard: this exact call to `{tool_name}` has now failed {identical} "
-                "times in a row. Re-read the error above and change your arguments or approach — "
+                "times in a row. Re-read the error above and change your arguments or approach. "
                 "retrying it unchanged will keep failing.]"
             )
         if same_tool >= LOOP_GUARD_WARN_SAME_TOOL:

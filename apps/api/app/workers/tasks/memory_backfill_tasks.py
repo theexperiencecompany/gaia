@@ -184,7 +184,7 @@ async def _notify_memory_ready(user_id: str) -> None:
                 content=NotificationContent(
                     title="Your memory is ready",
                     body=(
-                        "GAIA just organized memories from your past conversations — it now "
+                        "GAIA just organized memories from your past conversations. It now "
                         "remembers your context, preferences, and the people you mention. "
                         "Review or edit anything anytime."
                     ),

@@ -1,0 +1,1903 @@
+From e4a0bde68cd229f7f9e473e4c8d5d1cc092b6d08 Mon Sep 17 00:00:00 2001
+From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
+Date: Wed, 23 Sep 2026 19:59:33 +0530
+Subject: [PATCH 15/18] fix(render): retain styles incrementally when shadow
+ roots carry stylesheets
+
+Any document with a native shadow root switched the retained-style path
+off, so every geometry read after a DOM change re-cascaded the whole
+document (nytimes.com logs `retained-style fallback reason=shadow-sheets
+roots=22`; 1.5-2 s per cascade). With container queries the second query
+pass was a full cascade too, so each read cost two.
+
+Shadow scopes:
+- StylesheetCache keeps one compiled sheet per ShadowRoot; the root's
+  ordered <style> text, viewport and media type are its fingerprint. A new
+  root or a changed fingerprint restyles that host's component. Identical
+  component sheets are parsed once per render.
+- The planner walks the style tree (shadow children, slot -> assigned
+  nodes) for subtrees and ancestor chains, and looks up the sheets that can
+  select a node: its scope, its own shadow sheet (:host), and the scopes
+  it is slotted into (::slotted). Slot reassignment (`slot`, slot `name`,
+  slots entering or leaving a shadow tree) restyles the host's component.
+- `:host(<compound>)` arguments are now keyed in the invalidation map, and
+  `::slotted(<compound>)` is keyed as its own subject.
+- Shadow <style> edits no longer force a full cascade; document-scope ones
+  still do.
+- Elements with no retained style are marked fresh so post-cascade
+  normalization runs on them.
+- obscura-js reports mutations inside shadow trees and attachShadow on a
+  connected host to the retained planner instead of dropping the prepared
+  render.
+
+Container-query passes after the first re-cascade only the elements some
+conditional rule selects (plus subtrees and ancestor chains) and reuse the
+rest; full passes remain when a shadow sheet has conditional rules.
+
+Tests: equivalence with a full cascade for shadow attribute/insert/remove/
+text, shadow-root appends that bring slots, slotted children, host
+attributes and inline style, slot reassignment, shadow <style> text and
+insertion, and attachShadow after layout; locality (a mutation in one of 30
+components re-cascades <= 40 nodes, 2000+ reused); container passes against
+forced full passes, including a 5-level activation chain.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/src/ops.rs                  |  73 +-
+ crates/obscura-render/src/css.rs              | 148 +++-
+ crates/obscura-render/src/dom.rs              | 664 +++++++++++++++---
+ .../src/dom/shadow_restyle_tests.rs           | 638 +++++++++++++++++
+ 4 files changed, 1389 insertions(+), 134 deletions(-)
+ create mode 100644 crates/obscura-render/src/dom/shadow_restyle_tests.rs
+
+diff --git a/crates/obscura-js/src/ops.rs b/crates/obscura-js/src/ops.rs
+index 2ca7b6e..e2ce6ee 100644
+--- a/crates/obscura-js/src/ops.rs
++++ b/crates/obscura-js/src/ops.rs
+@@ -940,13 +940,9 @@ fn retained_style_mutation(
+     arg2: &str,
+ ) -> Option<obscura_render::RetainedStyleMutation> {
+     let node = NodeId::new(arg1.parse::<u32>().ok()?);
+-    // The retained planner and document stylesheet cache are intentionally
+-    // light-tree scoped. A mutation inside a connected shadow tree must still
+-    // invalidate rendering, but cannot be represented by that document-local
+-    // dirty set until scoped stylesheet invalidation is retained separately.
+-    if dom.containing_shadow_root(node).is_some() {
+-        return None;
+-    }
++    // Mutations inside shadow trees are planned like light-tree ones: the
++    // renderer looks up each shadow root's own sheet, walks the flattened
++    // style tree, and fingerprints shadow `<style>` text per root.
+     match cmd {
+         "set_attribute" => {
+             let (name, value) = arg2.split_once('\0')?;
+@@ -1015,9 +1011,6 @@ fn retained_style_mutation(
+         "insert_before" => {
+             let reference = NodeId::new(arg2.parse::<u32>().ok()?);
+             let new_parent = dom.get_node(reference)?.parent?;
+-            if dom.containing_shadow_root(new_parent).is_some() {
+-                return None;
+-            }
+             let old_parent = dom.get_node(node)?.parent;
+             Some(
+                 obscura_render::TreeStyleMutation::Insert {
+@@ -1468,9 +1461,10 @@ fn op_script_try_start(state: &OpState, nid: u32, frame_id: u32) -> bool {
+     newly_started
+ }
+ 
+-/// Attach one native shadow-tree scope without making it part of the light
+-/// tree. Layout intentionally remains unaware of the detached root until
+-/// scoped style, slot assignment, and composed-tree paint are implemented.
++/// Attach one native shadow-tree scope to `host_nid`. Attaching to a
++/// connected host changes rendering at once: the host's light children are
++/// now either slotted or unrendered, and the (empty) shadow tree replaces
++/// them in the flattened tree.
+ #[op2(fast)]
+ fn op_shadow_attach(
+     state: &OpState,
+@@ -1485,12 +1479,43 @@ fn op_shadow_attach(
+     };
+     // The host's node id only means something in its own realm's document.
+     let shared = frame_state(state, frame_id);
+-    let state = shared.borrow();
+-    let Some(dom) = state.dom.as_ref() else {
+-        return -1;
++    let host = NodeId::new(host_nid);
++    let (result, connected) = {
++        let state = shared.borrow();
++        let Some(dom) = state.dom.as_ref() else {
++            return -1;
++        };
++        (dom.attach_shadow_root(host, mode), dom.is_connected(host))
+     };
+-    match dom.attach_shadow_root(NodeId::new(host_nid), mode) {
+-        Ok(root) => root.raw() as i32,
++    match result {
++        Ok(root) => {
++            #[cfg(feature = "render")]
++            if connected {
++                let mut state = shared.borrow_mut();
++                state.activity_generation = state.activity_generation.wrapping_add(1);
++                // The retained planner treats the root like an inserted
++                // subtree of the host; the new root's sheet fingerprint then
++                // restyles the host's whole component.
++                let retained = state.prepared_render.is_some()
++                    && queue_retained_style_mutation(
++                        &mut state.pending_style_mutations,
++                        obscura_render::TreeStyleMutation::Insert {
++                            node: root,
++                            old_parent: None,
++                            new_parent: host,
++                        }
++                        .into(),
++                    );
++                if !retained {
++                    state.prepared_render = None;
++                    state.pending_style_mutations.clear();
++                }
++                state.resolved_scroll = None;
++            }
++            #[cfg(not(feature = "render"))]
++            let _ = connected;
++            root.raw() as i32
++        }
+         Err(AttachShadowError::HostAlreadyHasShadowRoot) => -2,
+         Err(_) => -1,
+     }
+@@ -4572,7 +4597,7 @@ mod tests {
+ 
+     #[cfg(feature = "render")]
+     #[test]
+-    fn connected_shadow_nodes_invalidate_without_entering_light_tree_retention() {
++    fn connected_shadow_nodes_invalidate_through_scoped_retention() {
+         let dom = parse_html(
+             r#"<x-host id="host"></x-host><div id="source"><span id="shadow-child"></span></div>"#,
+         );
+@@ -4587,9 +4612,13 @@ mod tests {
+         assert!(node_is_connected(&dom, child));
+         assert!(shadow_including_connected_nodes(&dom).contains(&child));
+         assert!(
+-            retained_style_mutation(&dom, "set_attribute", &child.index().to_string(), "class\0changed")
+-                .is_none(),
+-            "shadow mutations require a full scoped cascade"
++            matches!(
++                retained_style_mutation(&dom, "set_attribute", &child.index().to_string(), "class\0changed"),
++                Some(obscura_render::RetainedStyleMutation::Attribute(
++                    obscura_render::AttributeStyleMutation { node, ref name, .. }
++                )) if node == child && name == "class"
++            ),
++            "shadow mutations are planned against the shadow root's own sheet"
+         );
+ 
+         dom.append_child(source, host);
+diff --git a/crates/obscura-render/src/css.rs b/crates/obscura-render/src/css.rs
+index 6e2d6c5..1b9d83f 100644
+--- a/crates/obscura-render/src/css.rs
++++ b/crates/obscura-render/src/css.rs
+@@ -1137,7 +1137,28 @@ fn note_compound_dependencies(
+             }
+             ':' => {
+                 if chars.get(index + 1) == Some(&':') {
+-                    let (_, next) = consume_css_identifier(&chars, index + 2);
++                    let (name, next) = consume_css_identifier(&chars, index + 2);
++                    if name.eq_ignore_ascii_case("slotted") && chars.get(next) == Some(&'(') {
++                        // `::slotted(<compound>)` has its own subject: the
++                        // assigned light element. Key its argument as a
++                        // compound of its own so a structural state inside
++                        // it is anchored on the slotted element, not on the
++                        // slot compound written before `::slotted`.
++                        let Some(close) = matching_delimiter(&chars, next, '(', ')') else {
++                            map.mark_conservative(rule_order);
++                            return;
++                        };
++                        let argument: String = chars[next + 1..close].iter().collect();
++                        note_selector_dependencies(
++                            map,
++                            argument.trim(),
++                            reaches,
++                            rule_order,
++                            !inside_relational,
++                        );
++                        index = close + 1;
++                        continue;
++                    }
+                     index = next.max(index + 2);
+                     continue;
+                 }
+@@ -1302,6 +1323,22 @@ fn note_compound_dependencies(
+                             }
+                         }
+                     }
++                    "host" => {
++                        // `:host(<compound>)` tests the shadow host itself.
++                        // Its argument's keys live on the host, which the
++                        // retained planner looks up in the host's own shadow
++                        // sheet; the reach is this compound's reach.
++                        map.push_state(name, rule_order, reaches);
++                        for alternative in split_selector_list(&arguments) {
++                            note_selector_dependencies(
++                                map,
++                                alternative.trim(),
++                                reaches,
++                                rule_order,
++                                !inside_relational,
++                            );
++                        }
++                    }
+                     "dir" | "lang" => {
+                         // The corresponding HTML attributes inherit through
+                         // descendants, while the functional selector may
+@@ -2421,6 +2458,27 @@ pub struct StylesheetCache {
+     entry: Option<CachedStylesheet>,
+     hits: u64,
+     misses: u64,
++    /// One compiled author sheet per connected ShadowRoot from the previous
++    /// render. The exact ordered `<style>` text of the root (plus viewport and
++    /// media type) is the entry's fingerprint: a retained restyle may reuse a
++    /// shadow tree's computed styles only while its fingerprint is unchanged.
++    shadow: HashMap<NodeId, CachedShadowStylesheet>,
++}
++
++struct CachedShadowStylesheet {
++    host: NodeId,
++    sources: Vec<String>,
++    viewport_bits: (u32, u32),
++    media_type: CssMediaType,
++    source_bytes: usize,
++    sheet: Arc<Stylesheet>,
++}
++
++/// Outcome of looking up one ShadowRoot's sheet in [`StylesheetCache`].
++pub(crate) struct ShadowSheetLookup {
++    pub sheet: Arc<Stylesheet>,
++    /// The root's fingerprint equals the one recorded by the previous render.
++    pub unchanged: bool,
+ }
+ 
+ struct CachedStylesheet {
+@@ -2481,6 +2539,89 @@ impl StylesheetCache {
+         (sheet, false)
+     }
+ 
++    /// Look up `root`'s compiled sheet by fingerprint. `shared` deduplicates
++    /// parses within one render: many instances of one component carry the
++    /// same `<style>` text and can share one immutable compiled sheet.
++    pub(crate) fn get_or_parse_shadow(
++        &mut self,
++        tree: &DomTree,
++        root: NodeId,
++        host: NodeId,
++        sources: Vec<String>,
++        viewport: (f32, f32),
++        media_type: CssMediaType,
++        shared: &mut HashMap<Vec<String>, Arc<Stylesheet>>,
++    ) -> ShadowSheetLookup {
++        let viewport_bits = (viewport.0.to_bits(), viewport.1.to_bits());
++        if let Some(entry) = self.shadow.get(&root) {
++            if entry.host == host
++                && entry.viewport_bits == viewport_bits
++                && entry.media_type == media_type
++                && entry.sources == sources
++            {
++                let sheet = Arc::clone(&entry.sheet);
++                shared
++                    .entry(sources)
++                    .or_insert_with(|| Arc::clone(&sheet));
++                return ShadowSheetLookup {
++                    sheet,
++                    unchanged: true,
++                };
++            }
++        }
++        let sheet = match shared.get(&sources) {
++            Some(sheet) => Arc::clone(sheet),
++            None => {
++                let sheet = Arc::new(Stylesheet::parse_for_viewport_and_media(
++                    tree, &sources, viewport, media_type,
++                ));
++                shared.insert(sources.clone(), Arc::clone(&sheet));
++                sheet
++            }
++        };
++        let source_bytes = sources
++            .iter()
++            .try_fold(0usize, |total, source| total.checked_add(source.len()));
++        let retained_bytes = self
++            .shadow
++            .iter()
++            .filter(|(cached_root, _)| **cached_root != root)
++            .map(|(_, entry)| entry.source_bytes)
++            .sum::<usize>();
++        match source_bytes {
++            // Past the byte bound the root is simply not remembered, so every
++            // render reports it changed and restyles its host conservatively.
++            Some(bytes)
++                if bytes.saturating_add(retained_bytes) <= MAX_STYLESHEET_CACHE_SOURCE_BYTES =>
++            {
++                self.shadow.insert(
++                    root,
++                    CachedShadowStylesheet {
++                        host,
++                        sources,
++                        viewport_bits,
++                        media_type,
++                        source_bytes: bytes,
++                        sheet: Arc::clone(&sheet),
++                    },
++                );
++            }
++            _ => {
++                self.shadow.remove(&root);
++            }
++        }
++        ShadowSheetLookup {
++            sheet,
++            unchanged: false,
++        }
++    }
++
++    /// Forget roots that are no longer connected, so a root that returns later
++    /// is treated as new rather than matched against a stale fingerprint.
++    pub(crate) fn retain_shadow_roots(&mut self, live: &std::collections::HashSet<NodeId>) {
++        self.shadow.retain(|root, _| live.contains(root));
++    }
++
+     pub fn hit_count(&self) -> u64 {
+         self.hits
+     }
+@@ -2491,6 +2632,11 @@ impl StylesheetCache {
+ 
+     pub fn retained_source_bytes(&self) -> usize {
+         self.entry.as_ref().map_or(0, |entry| entry.source_bytes)
++            + self
++                .shadow
++                .values()
++                .map(|entry| entry.source_bytes)
++                .sum::<usize>()
+     }
+ }
+ 
+diff --git a/crates/obscura-render/src/dom.rs b/crates/obscura-render/src/dom.rs
+index bce1ece..2243a9f 100644
+--- a/crates/obscura-render/src/dom.rs
++++ b/crates/obscura-render/src/dom.rs
+@@ -3382,15 +3382,199 @@ enum RetainedStylePlan {
+     Full,
+ }
+ 
++/// Children of `id` for style invalidation, over every edge the cascade
++/// walks: its light children, the children of its ShadowRoot when it is a
++/// host, and its assigned nodes when it is a slot. A slotted node therefore appears under both its light
++/// parent (the host) and its slot; both edges can carry style damage (the
++/// host through the document cascade, the slot through inheritance and
++/// `::slotted()`), so invalidation follows both.
++fn invalidation_children(tree: &DomTree, id: NodeId) -> Vec<NodeId> {
++    let mut children = tree.children(id);
++    if let Some(root) = tree.shadow_root(id) {
++        children.extend(tree.children(root));
++    }
++    if let Some(assigned) = tree.assigned_nodes(id) {
++        children.extend(assigned);
++    }
++    children
++}
++
++/// Every node below `root` in the style tree, crossing into shadow trees and
++/// from slots to their assigned nodes. Unlike `DomTree::descendants`, which
++/// stays inside one tree scope, this reaches every node whose computed style
++/// can inherit from `root`.
++fn style_descendants(tree: &DomTree, root: NodeId) -> Vec<NodeId> {
++    let mut result = Vec::new();
++    let mut visited = HashSet::new();
++    visited.insert(root);
++    let mut stack = invalidation_children(tree, root);
++    stack.reverse();
++    while let Some(id) = stack.pop() {
++        if !visited.insert(id) {
++            continue;
++        }
++        result.push(id);
++        let children = invalidation_children(tree, id);
++        stack.extend(children.into_iter().rev());
++    }
++    result
++}
++
++/// Every node above `node` in the style tree: its light ancestors, the host of
++/// each ShadowRoot on the way up (and that host's ancestors), and for a
++/// slotted node its slot chain and the slots' own ancestors.
++fn style_ancestors(tree: &DomTree, node: NodeId) -> Vec<NodeId> {
++    let mut result = Vec::new();
++    let mut visited = HashSet::new();
++    visited.insert(node);
++    let mut stack = vec![node];
++    while let Some(id) = stack.pop() {
++        let mut parents = Vec::with_capacity(3);
++        if let Some(parent) = tree.get_node(id).and_then(|node| node.parent) {
++            parents.push(parent);
++            if let Some(info) = tree.shadow_root_info(parent) {
++                parents.push(info.host);
++            } else if tree.shadow_root(parent).is_some() {
++                if let Some(slot) = tree.assigned_slot(id) {
++                    parents.push(slot);
++                }
++            }
++        } else if let Some(info) = tree.shadow_root_info(id) {
++            parents.push(info.host);
++        }
++        for parent in parents {
++            if visited.insert(parent) {
++                result.push(parent);
++                stack.push(parent);
++            }
++        }
++    }
++    result
++}
++
+ fn add_style_subtree(tree: &DomTree, root: NodeId, dirty: &mut HashSet<NodeId>) {
+     dirty.insert(root);
+-    dirty.extend(tree.descendants(root));
++    dirty.extend(style_descendants(tree, root));
+     // Rebuild the context chain too. A retained ancestor may carry a final
+     // post-layout Px repair (native controls, blockification, table/grid
+     // fixups) where a full pass would feed its specified Auto/inherit form to
+     // the fresh descendant's normalization. Ancestors are fresh individually;
+     // their unrelated sibling subtrees remain reusable.
+-    dirty.extend(tree.ancestors(root));
++    dirty.extend(style_ancestors(tree, root));
++}
++
++/// The author sheet whose ordinary rules match nodes in `node`'s tree scope.
++fn scope_sheet<'a>(
++    tree: &DomTree,
++    node: NodeId,
++    document_sheet: &'a crate::css::Stylesheet,
++    shadow_sheets: &'a HashMap<NodeId, std::sync::Arc<crate::css::Stylesheet>>,
++) -> &'a crate::css::Stylesheet {
++    tree.containing_shadow_root(node)
++        .and_then(|root| shadow_sheets.get(&root))
++        .map_or(document_sheet, |sheet| &**sheet)
++}
++
++fn push_sheet<'a>(sheets: &mut Vec<&'a crate::css::Stylesheet>, sheet: &'a crate::css::Stylesheet) {
++    if !sheets.iter().any(|known| std::ptr::eq(*known, sheet)) {
++        sheets.push(sheet);
++    }
++}
++
++/// Sheets that can select `node` as a subject: its own scope's sheet, its
++/// ShadowRoot's sheet when it is a host (`:host`), and the sheet of every
++/// scope it is slotted into (`::slotted()`, following nested slot chains).
++fn subject_sheets<'a>(
++    tree: &DomTree,
++    node: NodeId,
++    document_sheet: &'a crate::css::Stylesheet,
++    shadow_sheets: &'a HashMap<NodeId, std::sync::Arc<crate::css::Stylesheet>>,
++) -> Vec<&'a crate::css::Stylesheet> {
++    let mut sheets = vec![scope_sheet(tree, node, document_sheet, shadow_sheets)];
++    if shadow_sheets.is_empty() {
++        return sheets;
++    }
++    if let Some(sheet) = tree.shadow_root(node).and_then(|root| shadow_sheets.get(&root)) {
++        push_sheet(&mut sheets, sheet);
++    }
++    add_slot_chain_sheets(tree, node, shadow_sheets, &mut sheets);
++    sheets
++}
++
++fn add_slot_chain_sheets<'a>(
++    tree: &DomTree,
++    node: NodeId,
++    shadow_sheets: &'a HashMap<NodeId, std::sync::Arc<crate::css::Stylesheet>>,
++    sheets: &mut Vec<&'a crate::css::Stylesheet>,
++) {
++    let mut slot = tree.assigned_slot(node);
++    for _ in 0..tree.len() {
++        let Some(current) = slot else { break };
++        if let Some(sheet) = tree
++            .containing_shadow_root(current)
++            .and_then(|root| shadow_sheets.get(&root))
++        {
++            push_sheet(sheets, sheet);
++        }
++        slot = tree.assigned_slot(current);
++    }
++}
++
++/// Sheets whose selectors can observe the child list of `parent`: every sheet
++/// that can select `parent` itself, plus, when `parent` is a host, every
++/// scope its children are slotted into (`::slotted(:first-child)` and the
++/// like are evaluated against the host's light child list).
++fn child_list_sheets<'a>(
++    tree: &DomTree,
++    parent: NodeId,
++    document_sheet: &'a crate::css::Stylesheet,
++    shadow_sheets: &'a HashMap<NodeId, std::sync::Arc<crate::css::Stylesheet>>,
++) -> Vec<&'a crate::css::Stylesheet> {
++    let mut sheets = subject_sheets(tree, parent, document_sheet, shadow_sheets);
++    if let Some(root) = tree.shadow_root(parent) {
++        for slot in tree.descendants(root) {
++            if tree.is_html_slot_element(slot) {
++                if let Some(sheet) = shadow_sheets.get(&root) {
++                    push_sheet(&mut sheets, sheet);
++                }
++                add_slot_chain_sheets(tree, slot, shadow_sheets, &mut sheets);
++            }
++        }
++    }
++    sheets
++}
++
++fn subtree_contains_slot_element(tree: &DomTree, root: NodeId) -> bool {
++    std::iter::once(root)
++        .chain(tree.descendants(root))
++        .any(|id| tree.is_html_slot_element(id))
++}
++
++/// A slot entering or leaving a shadow tree reassigns the host's light
++/// children, which changes their inheritance parent and `::slotted()` rules.
++fn add_slot_reassignment_scope(
++    tree: &DomTree,
++    node: NodeId,
++    parent: Option<NodeId>,
++    dirty: &mut HashSet<NodeId>,
++) {
++    let Some(host) = parent
++        .and_then(|parent| tree.containing_shadow_root(parent))
++        .and_then(|root| tree.shadow_root_info(root))
++        .map(|info| info.host)
++    else {
++        return;
++    };
++    if subtree_contains_slot_element(tree, node) {
++        add_style_subtree(tree, host, dirty);
++    }
++}
++
++/// A `<style>` element changing inside a shadow tree alters only that root's
++/// sheet, which the per-root fingerprint in [`crate::css::StylesheetCache`]
++/// detects; only document-scope style changes force a full cascade here.
++fn in_document_scope(tree: &DomTree, node: Option<NodeId>) -> bool {
++    node.is_some_and(|node| tree.containing_shadow_root(node).is_none())
+ }
+ 
+ fn add_container_query_reset_scopes(
+@@ -3433,14 +3617,23 @@ fn add_container_query_reset_scopes(
+         matcher.push_ancestor(tree, id);
+     }
+     let children_inside_container = inside_active_container || active_containers.contains(&id);
++    let is_host = tree.shadow_root(id).is_some();
+     for child in tree.children(id) {
++        // A slotted child queries containers along its flattened ancestry,
++        // which includes its slot and the slot's shadow-tree ancestors.
++        let child_inside_container = children_inside_container
++            || (is_host
++                && tree.assigned_slot(child).is_some()
++                && style_ancestors(tree, child)
++                    .iter()
++                    .any(|ancestor| active_containers.contains(ancestor)));
+         add_container_query_reset_scopes(
+             tree,
+             child,
+             sheet,
+             matcher,
+             active_containers,
+-            children_inside_container,
++            child_inside_container,
+             selected,
+             dirty,
+         );
+@@ -3513,6 +3706,10 @@ fn add_inserted_relational_anchor_candidates(
+         current = tree.get_node(id).and_then(|node| node.parent);
+         if let Some(parent) = current {
+             candidates.insert(parent);
++            // `:host(:has(...))` anchors on the host of this shadow tree.
++            if let Some(info) = tree.shadow_root_info(parent) {
++                candidates.insert(info.host);
++            }
+         }
+     }
+ }
+@@ -3530,6 +3727,9 @@ fn add_removed_relational_anchor_candidates(
+     while let Some(id) = current {
+         candidates.insert(id);
+         candidates.extend(tree.children(id));
++        if let Some(info) = tree.shadow_root_info(id) {
++            candidates.insert(info.host);
++        }
+         let parent = tree.get_node(id).and_then(|node| node.parent);
+         if let Some(parent) = parent {
+             candidates.extend(tree.children(parent));
+@@ -3630,7 +3830,7 @@ fn add_relational_tree_invalidation(
+ 
+ fn add_style_context_chain(tree: &DomTree, node: NodeId, dirty: &mut HashSet<NodeId>) {
+     dirty.insert(node);
+-    dirty.extend(tree.ancestors(node));
++    dirty.extend(style_ancestors(tree, node));
+ }
+ 
+ fn add_table_row_child_scope(tree: &DomTree, parent: NodeId, dirty: &mut HashSet<NodeId>) {
+@@ -3973,6 +4173,7 @@ fn add_empty_parent_scope(
+ fn retained_style_plan(
+     tree: &DomTree,
+     sheet: &crate::css::Stylesheet,
++    shadow_sheets: &HashMap<NodeId, std::sync::Arc<crate::css::Stylesheet>>,
+     mutations: &[RetainedStyleMutation],
+ ) -> RetainedStylePlan {
+     let mut dirty = HashSet::new();
+@@ -3999,7 +4200,6 @@ fn retained_style_plan(
+             let RetainedStyleMutation::Tree(mutation) = mutation else {
+                 unreachable!()
+             };
+-            let map = sheet.invalidation_map();
+             match *mutation {
+                 TreeStyleMutation::Insert {
+                     node,
+@@ -4008,10 +4208,16 @@ fn retained_style_plan(
+                 } => {
+                     // Inserting or moving a style subtree changes the ordered
+                     // author stylesheet, so parsing/index reuse is forbidden.
+-                    if subtree_contains_style_element(tree, node)
+-                        || node_is_style_text(tree, node, old_parent)
+-                        || node_is_style_text(tree, node, Some(new_parent))
+-                    {
++                    // A shadow-scope `<style>` changes only its root's sheet,
++                    // which the per-root fingerprint invalidates.
++                    let document_style = (subtree_contains_style_element(tree, node)
++                        && (tree.containing_shadow_root(node).is_none()
++                            || in_document_scope(tree, old_parent)))
++                        || (in_document_scope(tree, old_parent)
++                            && node_is_style_text(tree, node, old_parent))
++                        || (in_document_scope(tree, Some(new_parent))
++                            && node_is_style_text(tree, node, Some(new_parent)));
++                    if document_style {
+                         if std::env::var_os("OBSCURA_RENDER_TIMING").is_some() {
+                             eprintln!(
+                                 "[timing] retained-style fallback reason=style-subtree-insert node={} old_parent={old_parent:?} new_parent={}",
+@@ -4021,33 +4227,55 @@ fn retained_style_plan(
+                         }
+                         return RetainedStylePlan::Full;
+                     }
+-                    if !add_relational_tree_invalidation(tree, map, mutation, &mut dirty) {
+-                        return RetainedStylePlan::Full;
++                    let mut sheets = child_list_sheets(tree, new_parent, sheet, shadow_sheets);
++                    if let Some(parent) = old_parent {
++                        for old_sheet in child_list_sheets(tree, parent, sheet, shadow_sheets) {
++                            push_sheet(&mut sheets, old_sheet);
++                        }
++                    }
++                    for scoped in &sheets {
++                        if !add_relational_tree_invalidation(
++                            tree,
++                            scoped.invalidation_map(),
++                            mutation,
++                            &mut dirty,
++                        ) {
++                            return RetainedStylePlan::Full;
++                        }
+                     }
+                     add_style_subtree(tree, node, &mut dirty);
++                    add_slot_reassignment_scope(tree, node, old_parent, &mut dirty);
++                    add_slot_reassignment_scope(tree, node, Some(new_parent), &mut dirty);
+                     if let Some(parent) = old_parent {
+                         add_style_context_chain(tree, parent, &mut dirty);
+                         add_table_row_child_scope(tree, parent, &mut dirty);
+-                        add_removed_structural_scopes(tree, map, node, parent, &mut dirty);
+-                        add_removed_sibling_scopes(tree, map, parent, &mut dirty);
+-                        add_empty_parent_scope(tree, map, parent, mutations, &mut dirty);
++                        for scoped in &sheets {
++                            let map = scoped.invalidation_map();
++                            add_removed_structural_scopes(tree, map, node, parent, &mut dirty);
++                            add_removed_sibling_scopes(tree, map, parent, &mut dirty);
++                            add_empty_parent_scope(tree, map, parent, mutations, &mut dirty);
++                        }
+                     }
+                     add_style_context_chain(tree, new_parent, &mut dirty);
+                     add_table_row_child_scope(tree, new_parent, &mut dirty);
+-                    add_inserted_structural_scopes(
+-                        tree,
+-                        map,
+-                        node,
+-                        new_parent,
+-                        mutations,
+-                        &mut dirty,
+-                    );
+-                    add_inserted_sibling_scopes(tree, map, node, new_parent, &mut dirty);
+-                    add_empty_parent_scope(tree, map, new_parent, mutations, &mut dirty);
++                    for scoped in &sheets {
++                        let map = scoped.invalidation_map();
++                        add_inserted_structural_scopes(
++                            tree,
++                            map,
++                            node,
++                            new_parent,
++                            mutations,
++                            &mut dirty,
++                        );
++                        add_inserted_sibling_scopes(tree, map, node, new_parent, &mut dirty);
++                        add_empty_parent_scope(tree, map, new_parent, mutations, &mut dirty);
++                    }
+                 }
+                 TreeStyleMutation::Remove { node, old_parent } => {
+-                    if subtree_contains_style_element(tree, node)
+-                        || node_is_style_text(tree, node, Some(old_parent))
++                    if in_document_scope(tree, Some(old_parent))
++                        && (subtree_contains_style_element(tree, node)
++                            || node_is_style_text(tree, node, Some(old_parent)))
+                     {
+                         if std::env::var_os("OBSCURA_RENDER_TIMING").is_some() {
+                             eprintln!(
+@@ -4058,17 +4286,29 @@ fn retained_style_plan(
+                         }
+                         return RetainedStylePlan::Full;
+                     }
+-                    if !add_relational_tree_invalidation(tree, map, mutation, &mut dirty) {
+-                        return RetainedStylePlan::Full;
++                    let sheets = child_list_sheets(tree, old_parent, sheet, shadow_sheets);
++                    for scoped in &sheets {
++                        if !add_relational_tree_invalidation(
++                            tree,
++                            scoped.invalidation_map(),
++                            mutation,
++                            &mut dirty,
++                        ) {
++                            return RetainedStylePlan::Full;
++                        }
+                     }
++                    add_slot_reassignment_scope(tree, node, Some(old_parent), &mut dirty);
+                     add_style_context_chain(tree, old_parent, &mut dirty);
+                     add_table_row_child_scope(tree, old_parent, &mut dirty);
+-                    add_removed_structural_scopes(tree, map, node, old_parent, &mut dirty);
+-                    add_removed_sibling_scopes(tree, map, old_parent, &mut dirty);
+-                    add_empty_parent_scope(tree, map, old_parent, mutations, &mut dirty);
++                    for scoped in &sheets {
++                        let map = scoped.invalidation_map();
++                        add_removed_structural_scopes(tree, map, node, old_parent, &mut dirty);
++                        add_removed_sibling_scopes(tree, map, old_parent, &mut dirty);
++                        add_empty_parent_scope(tree, map, old_parent, mutations, &mut dirty);
++                    }
+                 }
+                 TreeStyleMutation::Text { node, parent } => {
+-                    if node_is_style_text(tree, node, parent) {
++                    if in_document_scope(tree, parent) && node_is_style_text(tree, node, parent) {
+                         if std::env::var_os("OBSCURA_RENDER_TIMING").is_some() {
+                             eprintln!(
+                                 "[timing] retained-style fallback reason=style-text node={} parent={parent:?}",
+@@ -4077,12 +4317,31 @@ fn retained_style_plan(
+                         }
+                         return RetainedStylePlan::Full;
+                     }
+-                    if !add_relational_tree_invalidation(tree, map, mutation, &mut dirty) {
+-                        return RetainedStylePlan::Full;
++                    let sheets = match parent {
++                        Some(parent) => child_list_sheets(tree, parent, sheet, shadow_sheets),
++                        None => vec![sheet],
++                    };
++                    for scoped in &sheets {
++                        if !add_relational_tree_invalidation(
++                            tree,
++                            scoped.invalidation_map(),
++                            mutation,
++                            &mut dirty,
++                        ) {
++                            return RetainedStylePlan::Full;
++                        }
+                     }
+                     if let Some(parent) = parent {
+                         add_style_context_chain(tree, parent, &mut dirty);
+-                        add_empty_parent_scope(tree, map, parent, mutations, &mut dirty);
++                        for scoped in &sheets {
++                            add_empty_parent_scope(
++                                tree,
++                                scoped.invalidation_map(),
++                                parent,
++                                mutations,
++                                &mut dirty,
++                            );
++                        }
+                     } else {
+                         dirty.insert(node);
+                     }
+@@ -4102,24 +4361,46 @@ fn retained_style_plan(
+             RetainedAttributeMutationKind::Selector => {}
+         }
+ 
+-        let map = sheet.invalidation_map();
+-        let mut dependencies = Vec::new();
+-        dependencies.extend_from_slice(map.attribute_dependencies(&name));
+-        if name == "id" {
+-            if let Some(old) = mutation.old_value.as_deref() {
+-                dependencies.extend_from_slice(map.id_dependencies(old));
+-            }
+-            if let Some(new) = mutation.new_value.as_deref() {
+-                dependencies.extend_from_slice(map.id_dependencies(new));
++        // Slot assignment is computed from `slot` on a host's light child and
++        // `name` on a slot. Reassignment changes a light child's inheritance
++        // parent and its `::slotted()` rules; restyle the component.
++        if !shadow_sheets.is_empty() {
++            if name == "slot" {
++                let parent = tree.get_node(mutation.node).and_then(|node| node.parent);
++                if let Some(host) = parent.filter(|parent| tree.shadow_root(*parent).is_some()) {
++                    add_style_subtree(tree, host, &mut dirty);
++                }
++            } else if name == "name" && tree.is_html_slot_element(mutation.node) {
++                if let Some(host) = tree
++                    .containing_shadow_root(mutation.node)
++                    .and_then(|root| tree.shadow_root_info(root))
++                    .map(|info| info.host)
++                {
++                    add_style_subtree(tree, host, &mut dirty);
++                }
+             }
+-        } else if name == "class" {
+-            for class in mutation
+-                .old_value
+-                .iter()
+-                .chain(&mutation.new_value)
+-                .flat_map(|value| value.split_whitespace())
+-            {
+-                dependencies.extend_from_slice(map.class_dependencies(class));
++        }
++
++        let mut dependencies = Vec::new();
++        for scoped in subject_sheets(tree, mutation.node, sheet, shadow_sheets) {
++            let map = scoped.invalidation_map();
++            dependencies.extend_from_slice(map.attribute_dependencies(&name));
++            if name == "id" {
++                if let Some(old) = mutation.old_value.as_deref() {
++                    dependencies.extend_from_slice(map.id_dependencies(old));
++                }
++                if let Some(new) = mutation.new_value.as_deref() {
++                    dependencies.extend_from_slice(map.id_dependencies(new));
++                }
++            } else if name == "class" {
++                for class in mutation
++                    .old_value
++                    .iter()
++                    .chain(&mutation.new_value)
++                    .flat_map(|value| value.split_whitespace())
++                {
++                    dependencies.extend_from_slice(map.class_dependencies(class));
++                }
+             }
+         }
+ 
+@@ -4139,8 +4420,10 @@ fn retained_style_plan(
+             "required" => &["required", "optional"],
+             _ => &[],
+         };
+-        for state in states {
+-            dependencies.extend_from_slice(map.state_dependencies(state));
++        for scoped in subject_sheets(tree, mutation.node, sheet, shadow_sheets) {
++            for state in states {
++                dependencies.extend_from_slice(scoped.invalidation_map().state_dependencies(state));
++            }
+         }
+ 
+         for dependency in dependencies {
+@@ -4209,7 +4492,7 @@ pub(crate) fn can_retain_layout_for_tabindex(
+         cache.get_or_parse(tree, &sources, viewport, crate::CssMediaType::Screen);
+     cache_hit
+         && matches!(
+-            retained_style_plan(tree, &sheet, mutations),
++            retained_style_plan(tree, &sheet, &HashMap::new(), mutations),
+             RetainedStylePlan::Reuse {
+                 dirty,
+                 has_animation_damage: false,
+@@ -4431,11 +4714,20 @@ fn layout_dom_with_web_fonts_pass_limit(
+ /// document collector cannot accidentally absorb a component's styles and a
+ /// shadow collector cannot absorb a nested component's styles. Walking host
+ /// edges explicitly here also discovers roots nested inside other roots.
++struct ShadowStylesheets {
++    sheets: HashMap<NodeId, std::sync::Arc<crate::css::Stylesheet>>,
++    /// Hosts whose ShadowRoot is new, or whose sheet fingerprint differs from
++    /// the one recorded by the previous render through the same cache. Every
++    /// host is listed when no cache is supplied.
++    changed_hosts: Vec<NodeId>,
++}
++
+ fn collect_shadow_stylesheets(
+     tree: &DomTree,
+     viewport: (f32, f32),
+     media_type: crate::CssMediaType,
+-) -> HashMap<NodeId, std::sync::Arc<crate::css::Stylesheet>> {
++    mut cache: Option<&mut crate::css::StylesheetCache>,
++) -> ShadowStylesheets {
+     let mut roots = Vec::new();
+     let mut stack = vec![tree.document()];
+     let mut visited = HashSet::new();
+@@ -4444,42 +4736,78 @@ fn collect_shadow_stylesheets(
+             continue;
+         }
+         if let Some(root) = tree.shadow_root(node) {
+-            roots.push(root);
++            roots.push((root, node));
+             stack.extend(tree.children(root).into_iter().rev());
+         }
+         stack.extend(tree.children(node).into_iter().rev());
+     }
+ 
+-    roots
+-        .into_iter()
+-        .map(|root| {
+-            let sources = tree
+-                .descendants(root)
+-                .into_iter()
+-                .filter_map(|node_id| {
+-                    let node = tree.get_node(node_id)?;
+-                    let element = node.as_element()?;
+-                    (element.local.as_ref() == "style"
+-                        && node.get_attribute("media").is_none_or(|media| {
+-                            media.trim().is_empty()
+-                                || crate::css::media_query_applies_for_viewport_and_type(
+-                                    media,
+-                                    viewport,
+-                                    media_type,
+-                                )
+-                        }))
+-                    .then(|| tree.text_content(node_id))
+-                })
+-                .collect::<Vec<_>>();
+-            let sheet = crate::css::Stylesheet::parse_for_viewport_and_media(
+-                tree,
+-                &sources,
+-                viewport,
+-                media_type,
+-            );
+-            (root, std::sync::Arc::new(sheet))
+-        })
+-        .collect()
++    let mut shared = HashMap::new();
++    let mut sheets = HashMap::with_capacity(roots.len());
++    let mut changed_hosts = Vec::new();
++    for &(root, host) in &roots {
++        let sources = tree
++            .descendants(root)
++            .into_iter()
++            .filter_map(|node_id| {
++                let node = tree.get_node(node_id)?;
++                let element = node.as_element()?;
++                (element.local.as_ref() == "style"
++                    && node.get_attribute("media").is_none_or(|media| {
++                        media.trim().is_empty()
++                            || crate::css::media_query_applies_for_viewport_and_type(
++                                media,
++                                viewport,
++                                media_type,
++                            )
++                    }))
++                .then(|| tree.text_content(node_id))
++            })
++            .collect::<Vec<_>>();
++        let (sheet, unchanged) = match cache.as_deref_mut() {
++            Some(cache) => {
++                let lookup = cache.get_or_parse_shadow(
++                    tree,
++                    root,
++                    host,
++                    sources,
++                    viewport,
++                    media_type,
++                    &mut shared,
++                );
++                (lookup.sheet, lookup.unchanged)
++            }
++            None => {
++                let sheet = match shared.get(&sources) {
++                    Some(sheet) => std::sync::Arc::clone(sheet),
++                    None => {
++                        let sheet = std::sync::Arc::new(
++                            crate::css::Stylesheet::parse_for_viewport_and_media(
++                                tree,
++                                &sources,
++                                viewport,
++                                media_type,
++                            ),
++                        );
++                        shared.insert(sources, std::sync::Arc::clone(&sheet));
++                        sheet
++                    }
++                };
++                (sheet, false)
++            }
++        };
++        if !unchanged {
++            changed_hosts.push(host);
++        }
++        sheets.insert(root, sheet);
++    }
++    if let Some(cache) = cache {
++        cache.retain_shadow_roots(&roots.iter().map(|(root, _)| *root).collect());
++    }
++    ShadowStylesheets {
++        sheets,
++        changed_hosts,
++    }
+ }
+ 
+ fn layout_dom_with_web_fonts_pass_limit_at_animation_time(
+@@ -4519,7 +4847,8 @@ fn layout_dom_with_web_fonts_pass_limit_at_animation_time(
+     }
+ 
+     let t0 = std::time::Instant::now();
+-    let (sheet, stylesheet_cache_hit) = match stylesheet_cache {
++    let mut stylesheet_cache = stylesheet_cache;
++    let (sheet, stylesheet_cache_hit) = match stylesheet_cache.as_deref_mut() {
+         Some(cache) => cache.get_or_parse(tree, &css_sources, viewport, media_type),
+         None => (
+             std::sync::Arc::new(crate::css::Stylesheet::parse_for_viewport_and_media(
+@@ -4531,30 +4860,14 @@ fn layout_dom_with_web_fonts_pass_limit_at_animation_time(
+             false,
+         ),
+     };
+-    let shadow_sheets = collect_shadow_stylesheets(tree, viewport, media_type);
++    let ShadowStylesheets {
++        sheets: shadow_sheets,
++        changed_hosts: changed_shadow_hosts,
++    } = collect_shadow_stylesheets(tree, viewport, media_type, stylesheet_cache);
+     let t_parse = t0.elapsed();
+ 
+     let retained_requested = retained.as_ref().map_or(0, |retained| retained.styles.len());
+     let retained = retained.and_then(|mut retained| {
+-        // The document cache key intentionally contains only document-scope
+-        // sources. Until shadow sheets have their own retained cache keys and
+-        // invalidation maps, reusing computed styles after DOM/style damage in
+-        // a document with a native root could preserve stale shadow rules or
+-        // inherited host custom properties. Resource-only damage cannot
+-        // change either cascade, so its zero-dirty reuse remains sound.
+-        let resource_only = !mutations.is_empty()
+-            && mutations
+-                .iter()
+-                .all(|mutation| matches!(mutation, RetainedStyleMutation::Resource));
+-        if !shadow_sheets.is_empty() && !resource_only {
+-            if timing {
+-                eprintln!(
+-                    "[timing] retained-style fallback reason=shadow-sheets roots={}",
+-                    shadow_sheets.len(),
+-                );
+-            }
+-            return None;
+-        }
+         if !stylesheet_cache_hit {
+             if timing {
+                 eprintln!("[timing] retained-style fallback reason=stylesheet-cache-miss");
+@@ -4568,18 +4881,56 @@ fn layout_dom_with_web_fonts_pass_limit_at_animation_time(
+                 (style.container_type != crate::ContainerType::Normal).then_some(*node)
+             })
+             .collect::<HashSet<_>>();
++        // Every node the cascade visits: the flattened tree plus unslotted
++        // light children of hosts, which still receive computed styles.
+         let connected = std::iter::once(tree.document())
+-            .chain(rendered_descendants(tree, tree.document()))
++            .chain(style_descendants(tree, tree.document()))
+             .collect::<HashSet<_>>();
+         retained.styles.retain(|node, _| connected.contains(node));
+         retained
+             .custom_properties
+             .retain(|node, _| connected.contains(node));
+-        match retained_style_plan(tree, &sheet, mutations) {
++        match retained_style_plan(tree, &sheet, &shadow_sheets, mutations) {
+             RetainedStylePlan::Reuse {
+                 mut dirty,
+                 has_animation_damage,
+             } => {
++                // A new ShadowRoot, or one whose `<style>` text changed, can
++                // change its host (`:host`), its shadow tree, and its slotted
++                // light children; all of them are the host's style subtree.
++                let planned = dirty.len();
++                for host in &changed_shadow_hosts {
++                    add_style_subtree(tree, *host, &mut dirty);
++                }
++                let after_shadow = dirty.len();
++                // An element with no retained style is cascaded from scratch,
++                // so post-cascade normalization must treat it as fresh too;
++                // otherwise it would be kept as if already normalized.
++                dirty.extend(connected.iter().copied().filter(|node| {
++                    !retained.styles.contains_key(node)
++                        && tree.get_node(*node).is_some_and(|node| node.is_element())
++                }));
++                if timing {
++                    eprintln!(
++                        "[timing] retained-style plan mutations={} planned_dirty={} changed_shadow_hosts={} shadow_dirty={} unretained_dirty={}",
++                        mutations.len(),
++                        planned,
++                        changed_shadow_hosts.len(),
++                        after_shadow - planned,
++                        dirty.len() - after_shadow,
++                    );
++                }
++                // Container-query resets below are planned from the document
++                // sheet only. A shadow sheet's conditional rules would need
++                // their own reset scopes; until then keep the sound full pass.
++                if !active_containers.is_empty()
++                    && shadow_sheets.values().any(|sheet| sheet.has_container_queries())
++                {
++                    if timing {
++                        eprintln!("[timing] retained-style fallback reason=shadow-container-queries");
++                    }
++                    return None;
++                }
+                 if !active_containers.is_empty() && sheet.has_container_queries() {
+                     let mut matcher = tree.matcher();
+                     add_container_query_reset_scopes(
+@@ -4680,6 +5031,16 @@ fn layout_dom_with_web_fonts_pass_limit_at_animation_time(
+             },
+         );
+     }
++    // Later passes differ from the previous one only in container-query
++    // decisions, so they re-cascade the conditional subjects and reuse every
++    // other computed style. Shadow sheets' conditional rules (`:host`,
++    // `::slotted`) are not in this document-sheet scope; keep full passes
++    // for them.
++    let container_pass_scope = (!force_full_container_passes()
++        && !shadow_sheets
++            .values()
++            .any(|sheet| sheet.has_container_queries()))
++    .then(|| container_query_subject_scope(tree, &sheet));
+     let mut previous_candidate: Option<(DomLayout, crate::css::ContainerDecisionSignature)> = None;
+     let mut seen_signatures = Vec::new();
+     let mut passes = 1;
+@@ -4714,6 +5075,22 @@ fn layout_dom_with_web_fonts_pass_limit_at_animation_time(
+     });
+     let mut needs_fallback = false;
+     for pass in 2..=max_passes {
++        let retained_pass = container_pass_scope.as_ref().map(|scope| {
++            // Pass one's layout is never returned once a later pass runs
++            // (every loop exit replaces it), so its styles move. A later
++            // candidate may still be returned and is copied instead.
++            let maps = match previous_candidate.as_ref() {
++                None => RetainedStyleMaps {
++                    styles: std::mem::take(&mut laid.styles),
++                    custom_properties: std::mem::take(&mut laid.custom_properties),
++                },
++                Some((previous, _)) => RetainedStyleMaps {
++                    styles: previous.styles.clone(),
++                    custom_properties: previous.custom_properties.clone(),
++                },
++            };
++            (maps, scope.clone())
++        });
+         let (next, signature, pass_query, pass_cascade) =
+             layout_dom_once(
+                 tree,
+@@ -4723,7 +5100,7 @@ fn layout_dom_with_web_fonts_pass_limit_at_animation_time(
+                 &sheet,
+                 &shadow_sheets,
+                 Some(&snapshot),
+-                None,
++                retained_pass,
+                 animation_sample,
+                 animation_timeline,
+             );
+@@ -4810,6 +5187,67 @@ fn layout_dom_with_web_fonts_pass_limit_at_animation_time(
+     )
+ }
+ 
++#[cfg(test)]
++thread_local! {
++    /// Test oracle switch: re-cascade the whole document on every container
++    /// query pass, as the renderer did before query passes reused styles.
++    static FORCE_FULL_CONTAINER_PASSES: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
++}
++
++fn force_full_container_passes() -> bool {
++    #[cfg(test)]
++    {
++        FORCE_FULL_CONTAINER_PASSES.with(std::cell::Cell::get)
++    }
++    #[cfg(not(test))]
++    {
++        false
++    }
++}
++
++/// Nodes whose computed style can differ between two container-query passes
++/// over the same DOM: every element some container-conditional rule (or
++/// conditional `::before`/`::after`/`::placeholder` rule) selects, with its
++/// whole style subtree for inheritance and its ancestor chain for post-layout
++/// repairs. Only the evaluator's decisions differ between passes, and a
++/// decision is consulted only after a conditional rule's selector matched, so
++/// every other element cascades identically in both passes.
++///
++/// Shadow-tree nodes cascade without a query evaluator and are skipped;
++/// slotted light children are reached as DOM children of their host and
++/// matched against their DOM ancestors, as the cascade matches them.
++fn container_query_subject_scope(
++    tree: &DomTree,
++    sheet: &crate::css::Stylesheet,
++) -> HashSet<NodeId> {
++    enum Work {
++        Visit(NodeId),
++        Pop,
++    }
++    let mut dirty = HashSet::new();
++    let mut matcher = tree.matcher();
++    let mut work = vec![Work::Visit(tree.document())];
++    while let Some(item) = work.pop() {
++        match item {
++            Work::Pop => matcher.pop_ancestor(),
++            Work::Visit(id) => {
++                let is_element = tree.get_node(id).is_some_and(|node| node.is_element());
++                if is_element && sheet.node_matches_container_query_rule(tree, &mut matcher, id) {
++                    add_style_subtree(tree, id, &mut dirty);
++                }
++                if is_element {
++                    matcher.push_ancestor(tree, id);
++                    work.push(Work::Pop);
++                }
++                for child in tree.children(id).into_iter().rev() {
++                    work.push(Work::Visit(child));
++                }
++            }
++        }
++    }
++    dirty
++}
++
+ fn layout_dom_once(
+     tree: &DomTree,
+     viewport: (f32, f32),
+@@ -15155,6 +15593,9 @@ fn build_children_with_float_zone(
+     result
+ }
+ 
++#[cfg(test)]
++mod shadow_restyle_tests;
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+@@ -17032,6 +17473,7 @@ mod tests {
+         } = retained_style_plan(
+             &tree,
+             &sheet,
++            &HashMap::new(),
+             &[RetainedStyleMutation::WaapiAnimation { node: target }],
+         ) else {
+             panic!("WAAPI target damage must remain retainable")
+diff --git a/crates/obscura-render/src/dom/shadow_restyle_tests.rs b/crates/obscura-render/src/dom/shadow_restyle_tests.rs
+new file mode 100644
+index 0000000..59a8557
+--- /dev/null
++++ b/crates/obscura-render/src/dom/shadow_restyle_tests.rs
+@@ -0,0 +1,638 @@
++//! Retained (incremental) restyle in documents whose shadow roots carry
++//! stylesheets. Every case compares the incremental result with a forced full
++//! cascade of the same final tree, and checks that only the damaged component
++//! was re-cascaded.
++
++use super::*;
++use obscura_dom::tree::{NodeData, ShadowRootMode};
++use obscura_dom::tree_sink::parse_html;
++
++const VIEWPORT: (f32, f32) = (640.0, 480.0);
++const CLEAN_PEERS: usize = 2_000;
++
++const SHADOW_CSS: &str = r#"
++    :host { display:block; padding-left:3px }
++    :host(.active) { width:211px; color:#0a0b0c }
++    :host(.active) .inner { height:17px }
++    .inner { width:var(--accent); height:9px }
++    .inner.on { width:44px; color:#445566; --accent:13px }
++    .wrap.lit ::slotted(*) { margin-left:6px }
++    ::slotted(.item) { display:block; height:7px }
++    ::slotted(.hot) { width:77px; font-size:19px }
++    ::slotted(:first-child) { padding-top:2px }
++    slot { color:#778899 }
++    slot[name=other] { font-weight:700 }
++    b { display:block; width:var(--accent) }
++    .inner > b:first-child { margin-top:4px }
++"#;
++
++struct Fixture {
++    tree: DomTree,
++    host: NodeId,
++    other: NodeId,
++    root: NodeId,
++    other_source: NodeId,
++    /// A detached `<style>` ready to be inserted into a shadow root.
++    spare_style: NodeId,
++}
++
++fn attach(tree: &DomTree, host: NodeId, source: NodeId) -> NodeId {
++    let root = tree
++        .attach_shadow_root(host, ShadowRootMode::Open)
++        .expect("attach native shadow root");
++    for child in tree.children(source) {
++        tree.append_child(root, child);
++    }
++    tree.remove(source);
++    root
++}
++
++/// Two component instances plus a large clean light-DOM branch. The second
++/// host's shadow root is attached unless `defer_other` is set.
++fn fixture(defer_other: bool) -> Fixture {
++    let mut peers = String::new();
++    for index in 0..CLEAN_PEERS {
++        peers.push_str(&format!("<span class=clean data-index={index}></span>"));
++    }
++    let component = |suffix: &str| {
++        format!(
++            r#"<style>{SHADOW_CSS}</style>
++               <div id="wrap{suffix}" class="wrap">
++                 <slot id="title-slot{suffix}" name="title"></slot>
++                 <div id="inner{suffix}" class="inner"><b id="deep{suffix}">deep</b><b id="extra{suffix}">extra</b></div>
++                 <slot id="default-slot{suffix}"></slot>
++               </div>"#
++        )
++    };
++    let html = format!(
++        r#"<!doctype html><html><head><style>
++             html,body{{margin:0}}
++             x-card{{display:block}}
++             .clean{{display:block;height:1px}}
++             .item{{color:#102030}}
++           </style></head><body>
++           <x-card id="host" class="card" style="color:#010203;--accent:5px">
++             <span id="slotted" class="item" slot="title">title</span>
++             <span id="plain" class="item">body</span>
++             <span id="late" class="item">late</span>
++           </x-card>
++           <x-card id="other" class="card"><span id="other-slotted" class="item" slot="title">t</span></x-card>
++           <div id="source">{}</div>
++           <div id="source-other">{}</div>
++           <aside id="clean">{peers}</aside>
++           <div id="spare"><style id="spare-style">b {{ height:12px }} :host {{ border-left:4px solid }}</style></div>
++           </body></html>"#,
++        component(""),
++        component("-o"),
++    );
++    let tree = parse_html(&html);
++    let id = |name: &str| tree.get_element_by_id(name).unwrap_or_else(|| panic!("{name}"));
++    let host = id("host");
++    let other = id("other");
++    let source = id("source");
++    let other_source = id("source-other");
++    let spare = id("spare");
++    let spare_style = id("spare-style");
++    tree.remove_child(spare_style);
++    tree.remove(spare);
++    let root = attach(&tree, host, source);
++    if defer_other {
++        // Built off-document, as a component constructs its shadow content.
++        tree.remove_child(other_source);
++    } else {
++        attach(&tree, other, other_source);
++    }
++    Fixture {
++        tree,
++        host,
++        other,
++        root,
++        other_source,
++        spare_style,
++    }
++}
++
++fn find(tree: &DomTree, root: NodeId, id: &str) -> NodeId {
++    tree.descendants(root)
++        .into_iter()
++        .find(|node| {
++            tree.get_node(*node)
++                .is_some_and(|node| node.get_attribute("id") == Some(id))
++        })
++        .unwrap_or_else(|| panic!("shadow node {id}"))
++}
++
++fn initial_layout(tree: &DomTree, cache: &mut crate::css::StylesheetCache) -> DomLayout {
++    layout_dom_with_web_fonts_and_stylesheet_cache(tree, VIEWPORT, &HashMap::new(), &[], cache)
++}
++
++fn assert_styles_match(case: &str, tree: &DomTree, incremental: &DomLayout, full: &DomLayout) {
++    assert_eq!(
++        incremental.styles.keys().collect::<HashSet<_>>(),
++        full.styles.keys().collect::<HashSet<_>>(),
++        "{case}: computed-style node set"
++    );
++    for (node, style) in &incremental.styles {
++        assert_eq!(
++            format!("{style:#?}"),
++            format!("{:#?}", full.styles[node]),
++            "{case}: computed style for {node:?} {:?} (id={:?} parent={:?})",
++            tree.get_node(*node).and_then(|node| node.as_element().map(|element| element.local.to_string())),
++            tree.get_node(*node).and_then(|node| node.get_attribute("id").map(str::to_owned)),
++            tree.get_node(*node).and_then(|node| node.parent),
++        );
++    }
++    assert_eq!(incremental.rects, full.rects, "{case}: border boxes");
++    assert_eq!(
++        incremental.inline_fragments, full.inline_fragments,
++        "{case}: inline fragments"
++    );
++    assert_eq!(incremental.text_runs, full.text_runs, "{case}: text runs");
++    assert_eq!(
++        incremental.custom_properties, full.custom_properties,
++        "{case}: custom properties"
++    );
++}
++
++/// Run the retained restyle for `mutations` over `initial`, compare it with a
++/// full cascade, and require that it stayed incremental and local.
++fn finish(
++    case: &str,
++    tree: &DomTree,
++    cache: &mut crate::css::StylesheetCache,
++    mut initial: DomLayout,
++    mutations: &[RetainedStyleMutation],
++    max_fresh: usize,
++) -> ContainerLayoutTelemetry {
++    let retained = RetainedStyleMaps {
++        styles: std::mem::take(&mut initial.styles),
++        custom_properties: std::mem::take(&mut initial.custom_properties),
++    };
++    let (incremental, telemetry) = layout_dom_with_web_fonts_pass_limit(
++        tree,
++        VIEWPORT,
++        &HashMap::new(),
++        &[],
++        None,
++        Some(cache),
++        Some(retained),
++        mutations,
++    );
++    let full = layout_dom(tree, VIEWPORT);
++    assert_styles_match(case, tree, &incremental, &full);
++    assert_eq!(telemetry.retained_fallback, 0, "{case}: {telemetry:?}");
++    assert!(
++        telemetry.retained_reused >= CLEAN_PEERS,
++        "{case}: clean branch must be reused {telemetry:?}"
++    );
++    assert!(
++        telemetry.retained_fresh <= max_fresh,
++        "{case}: restyle must stay inside the damaged component {telemetry:?}"
++    );
++    telemetry
++}
++
++fn attribute(tree: &DomTree, node: NodeId, name: &str, value: &str) -> RetainedStyleMutation {
++    let old_value = tree
++        .get_node(node)
++        .and_then(|node| node.get_attribute(name).map(str::to_owned));
++    tree.with_node_mut(node, |node| node.set_attribute(name, value.into()));
++    AttributeStyleMutation {
++        node,
++        name: name.into(),
++        old_value,
++        new_value: Some(value.to_owned()),
++    }
++    .into()
++}
++
++/// One component's worth of nodes: host, its light children, and its shadow
++/// tree, plus the ancestor chain. Anything near the whole document means the
++/// retained path lost locality.
++const COMPONENT_BUDGET: usize = 40;
++
++#[test]
++fn retained_shadow_tree_attribute_matches_full() {
++    let f = fixture(false);
++    let mut cache = crate::css::StylesheetCache::default();
++    let initial = initial_layout(&f.tree, &mut cache);
++    let inner = find(&f.tree, f.root, "inner");
++    let mutation = attribute(&f.tree, inner, "class", "inner on");
++    finish("shadow class", &f.tree, &mut cache, initial, &[mutation], COMPONENT_BUDGET);
++}
++
++#[test]
++fn retained_shadow_tree_insert_and_remove_match_full() {
++    let f = fixture(false);
++    let inner = find(&f.tree, f.root, "inner");
++    let deep = find(&f.tree, f.root, "deep");
++    let extra = find(&f.tree, f.root, "extra");
++    f.tree.remove_child(deep);
++    let mut cache = crate::css::StylesheetCache::default();
++    let initial = initial_layout(&f.tree, &mut cache);
++    // Reinserting before `extra` moves :first-child between the two <b>.
++    f.tree.insert_before(extra, deep);
++    let mutation = TreeStyleMutation::Insert {
++        node: deep,
++        old_parent: None,
++        new_parent: inner,
++    };
++    finish(
++        "shadow insert",
++        &f.tree,
++        &mut cache,
++        initial,
++        &[mutation.into()],
++        COMPONENT_BUDGET,
++    );
++
++    let initial = initial_layout(&f.tree, &mut cache);
++    f.tree.remove_child(deep);
++    finish(
++        "shadow remove",
++        &f.tree,
++        &mut cache,
++        initial,
++        &[TreeStyleMutation::Remove {
++            node: deep,
++            old_parent: inner,
++        }
++        .into()],
++        COMPONENT_BUDGET,
++    );
++}
++
++#[test]
++fn retained_shadow_root_child_insert_matches_full() {
++    let f = fixture(false);
++    let wrap = find(&f.tree, f.root, "wrap");
++    f.tree.remove_child(wrap);
++    let mut cache = crate::css::StylesheetCache::default();
++    let initial = initial_layout(&f.tree, &mut cache);
++    // Appending to the ShadowRoot itself; this also brings both slots back,
++    // reassigning every light child of the host.
++    f.tree.append_child(f.root, wrap);
++    finish(
++        "shadow root append with slots",
++        &f.tree,
++        &mut cache,
++        initial,
++        &[TreeStyleMutation::Insert {
++            node: wrap,
++            old_parent: None,
++            new_parent: f.root,
++        }
++        .into()],
++        COMPONENT_BUDGET,
++    );
++}
++
++#[test]
++fn retained_shadow_text_mutation_matches_full() {
++    let f = fixture(false);
++    let deep = find(&f.tree, f.root, "deep");
++    let text = f.tree.children(deep)[0];
++    let mut cache = crate::css::StylesheetCache::default();
++    let initial = initial_layout(&f.tree, &mut cache);
++    f.tree.with_node_mut(text, |node| {
++        if let NodeData::Text { contents } = &mut node.data {
++            *contents = "a much longer piece of deep shadow text".into();
++        }
++    });
++    finish(
++        "shadow text",
++        &f.tree,
++        &mut cache,
++        initial,
++        &[TreeStyleMutation::Text {
++            node: text,
++            parent: Some(deep),
++        }
++        .into()],
++        COMPONENT_BUDGET,
++    );
++}
++
++#[test]
++fn retained_slotted_light_child_attribute_matches_full() {
++    let f = fixture(false);
++    let slotted = f.tree.get_element_by_id("slotted").unwrap();
++    let mut cache = crate::css::StylesheetCache::default();
++    let initial = initial_layout(&f.tree, &mut cache);
++    // Only a shadow ::slotted() rule depends on `hot`.
++    let mutation = attribute(&f.tree, slotted, "class", "item hot");
++    finish("slotted class", &f.tree, &mut cache, initial, &[mutation], COMPONENT_BUDGET);
++}
++
++#[test]
++fn retained_slotted_light_child_insert_matches_full() {
++    let f = fixture(false);
++    let slotted = f.tree.get_element_by_id("slotted").unwrap();
++    let late = f.tree.get_element_by_id("late").unwrap();
++    f.tree.remove_child(late);
++    let mut cache = crate::css::StylesheetCache::default();
++    let initial = initial_layout(&f.tree, &mut cache);
++    // Becomes the host's first child: ::slotted(:first-child) moves to it.
++    f.tree.insert_before(slotted, late);
++    finish(
++        "slotted insert",
++        &f.tree,
++        &mut cache,
++        initial,
++        &[TreeStyleMutation::Insert {
++            node: late,
++            old_parent: None,
++            new_parent: f.host,
++        }
++        .into()],
++        COMPONENT_BUDGET,
++    );
++
++    let initial = initial_layout(&f.tree, &mut cache);
++    f.tree.remove_child(slotted);
++    finish(
++        "slotted remove",
++        &f.tree,
++        &mut cache,
++        initial,
++        &[TreeStyleMutation::Remove {
++            node: slotted,
++            old_parent: f.host,
++        }
++        .into()],
++        COMPONENT_BUDGET,
++    );
++}
++
++#[test]
++fn retained_host_attribute_reaches_host_and_shadow_rules() {
++    let f = fixture(false);
++    let mut cache = crate::css::StylesheetCache::default();
++    let initial = initial_layout(&f.tree, &mut cache);
++    // `:host(.active)` and `:host(.active) .inner` live only in the shadow sheet.
++    let mutation = attribute(&f.tree, f.host, "class", "card active");
++    finish("host class", &f.tree, &mut cache, initial, &[mutation], COMPONENT_BUDGET);
++
++    let initial = initial_layout(&f.tree, &mut cache);
++    // Inherited color and custom property cross the shadow boundary.
++    let mutation = attribute(
++        &f.tree,
++        f.host,
++        "style",
++        "color:#fedcba;--accent:29px",
++    );
++    finish("host inline style", &f.tree, &mut cache, initial, &[mutation], COMPONENT_BUDGET);
++}
++
++#[test]
++fn retained_slot_assignment_changes_match_full() {
++    let f = fixture(false);
++    let plain = f.tree.get_element_by_id("plain").unwrap();
++    let mut cache = crate::css::StylesheetCache::default();
++    let initial = initial_layout(&f.tree, &mut cache);
++    let mutation = attribute(&f.tree, plain, "slot", "title");
++    finish("light slot attribute", &f.tree, &mut cache, initial, &[mutation], COMPONENT_BUDGET);
++
++    let initial = initial_layout(&f.tree, &mut cache);
++    let title_slot = find(&f.tree, f.root, "title-slot");
++    let mutation = attribute(&f.tree, title_slot, "name", "other");
++    finish("slot name", &f.tree, &mut cache, initial, &[mutation], COMPONENT_BUDGET);
++
++    let initial = initial_layout(&f.tree, &mut cache);
++    // A shadow ancestor of the slot gates a `::slotted()` rule.
++    let wrap = find(&f.tree, f.root, "wrap");
++    let mutation = attribute(&f.tree, wrap, "class", "wrap lit");
++    finish("slot ancestor class", &f.tree, &mut cache, initial, &[mutation], COMPONENT_BUDGET);
++}
++
++#[test]
++fn retained_shadow_style_text_change_matches_full() {
++    let f = fixture(false);
++    let style = f
++        .tree
++        .descendants(f.root)
++        .into_iter()
++        .find(|node| {
++            f.tree.get_node(*node).is_some_and(|node| {
++                node.as_element()
++                    .is_some_and(|element| element.local.as_ref() == "style")
++            })
++        })
++        .unwrap();
++    let text = f.tree.children(style)[0];
++    let mut cache = crate::css::StylesheetCache::default();
++    let initial = initial_layout(&f.tree, &mut cache);
++    f.tree.with_node_mut(text, |node| {
++        if let NodeData::Text { contents } = &mut node.data {
++            contents.push_str(" .inner { height:31px } ::slotted(*) { margin-top:5px } :host { margin-left:9px }");
++        }
++    });
++    finish(
++        "shadow style text",
++        &f.tree,
++        &mut cache,
++        initial,
++        &[TreeStyleMutation::Text {
++            node: text,
++            parent: Some(style),
++        }
++        .into()],
++        COMPONENT_BUDGET,
++    );
++}
++
++#[test]
++fn retained_shadow_style_insert_matches_full() {
++    let f = fixture(false);
++    let mut cache = crate::css::StylesheetCache::default();
++    let initial = initial_layout(&f.tree, &mut cache);
++    let style = f.spare_style;
++    f.tree.append_child(f.root, style);
++    finish(
++        "shadow style insert",
++        &f.tree,
++        &mut cache,
++        initial,
++        &[TreeStyleMutation::Insert {
++            node: style,
++            old_parent: None,
++            new_parent: f.root,
++        }
++        .into()],
++        COMPONENT_BUDGET,
++    );
++}
++
++#[test]
++fn retained_attach_shadow_after_layout_matches_full() {
++    let f = fixture(true);
++    let mut cache = crate::css::StylesheetCache::default();
++    let initial = initial_layout(&f.tree, &mut cache);
++    // Attaching reassigns the host's light children to the new shadow tree.
++    let root = attach(&f.tree, f.other, f.other_source);
++    finish(
++        "attach shadow",
++        &f.tree,
++        &mut cache,
++        initial,
++        &[TreeStyleMutation::Insert {
++            node: root,
++            old_parent: None,
++            new_parent: f.other,
++        }
++        .into()],
++        COMPONENT_BUDGET,
++    );
++}
++
++/// Cost: with many styled components, a mutation inside one of them
++/// re-cascades that component only.
++#[test]
++fn retained_shadow_mutation_restyles_only_its_component() {
++    let mut peers = String::new();
++    for index in 0..CLEAN_PEERS {
++        peers.push_str(&format!("<span class=clean data-index={index}></span>"));
++    }
++    let mut hosts = String::new();
++    let mut sources = String::new();
++    for index in 0..30 {
++        hosts.push_str(&format!(
++            r#"<x-card id="host-{index}"><span slot="title">t{index}</span></x-card>"#
++        ));
++        sources.push_str(&format!(
++            r#"<div id="source-{index}"><style>{SHADOW_CSS}</style>
++               <div class="wrap"><slot name="title"></slot>
++               <div id="inner-{index}" class="inner"><b>a</b><b>b</b></div></div></div>"#
++        ));
++    }
++    let tree = parse_html(&format!(
++        r#"<!doctype html><style>.clean{{display:block;height:1px}}</style>
++           <main>{hosts}</main>{sources}<aside>{peers}</aside>"#
++    ));
++    let mut roots = Vec::new();
++    for index in 0..30 {
++        let host = tree.get_element_by_id(&format!("host-{index}")).unwrap();
++        let source = tree.get_element_by_id(&format!("source-{index}")).unwrap();
++        roots.push(attach(&tree, host, source));
++    }
++    let mut cache = crate::css::StylesheetCache::default();
++    let initial = initial_layout(&tree, &mut cache);
++    let inner = find(&tree, roots[17], "inner-17");
++    let mutation = attribute(&tree, inner, "class", "inner on");
++    let telemetry = finish(
++        "one of thirty components",
++        &tree,
++        &mut cache,
++        initial,
++        &[mutation],
++        COMPONENT_BUDGET,
++    );
++    // Thirty components of ~9 styled nodes each plus the clean branch.
++    assert!(
++        telemetry.retained_reused >= CLEAN_PEERS + 29 * 8,
++        "{telemetry:?}"
++    );
++}
++
++fn layout_with_container_passes(tree: &DomTree, force_full: bool) -> (DomLayout, ContainerLayoutTelemetry) {
++    FORCE_FULL_CONTAINER_PASSES.with(|force| force.set(force_full));
++    let result = layout_dom_with_web_fonts_measured(tree, VIEWPORT, &HashMap::new(), &[]);
++    FORCE_FULL_CONTAINER_PASSES.with(|force| force.set(false));
++    result
++}
++
++/// Container-query passes after the first reuse every style no conditional
++/// rule selects. The result must equal re-cascading the whole document on
++/// every pass, including multi-pass activation chains, pseudo-elements,
++/// inherited values and custom properties set under a condition, and a
++/// shadow host in the tree.
++#[test]
++fn container_query_passes_reuse_unconditional_styles_and_match_full_passes() {
++    let mut chain_css = String::from("#c0{container:c0/inline-size;width:300px}");
++    for level in 0..4 {
++        chain_css.push_str(&format!(
++            "@container c{level} (min-width:100px){{#c{}{{container:c{}/inline-size;width:{}px}}}}",
++            level + 1,
++            level + 1,
++            280 - level * 20,
++        ));
++    }
++    chain_css.push_str("@container c4 (min-width:100px){#chain-target{width:77px;color:#0000ff}}");
++    let mut chain = String::new();
++    for level in 0..=4 {
++        chain.push_str(&format!("<div id=\"c{level}\">"));
++    }
++    chain.push_str("<div id=\"chain-target\"><span>inherits</span></div>");
++    for _ in 0..=4 {
++        chain.push_str("</div>");
++    }
++    let mut peers = String::new();
++    for index in 0..300 {
++        peers.push_str(&format!("<p class=peer>peer {index}</p>"));
++    }
++    let tree = parse_html(&format!(
++        r#"<!doctype html><style>
++             body{{margin:0}}
++             .card{{container-type:inline-size;width:320px}}
++             .narrow{{container-type:inline-size;width:120px}}
++             .title{{font-size:12px}}
++             @container (min-width:200px){{
++               .title{{font-size:24px;color:#aa0000;--gap:9px}}
++               .title::before{{content:"wide ";color:#00aa00}}
++               .title + .body{{margin-top:var(--gap, 1px)}}
++             }}
++             @container (max-width:199px){{ .title{{letter-spacing:2px}} }}
++             .body{{padding-left:var(--gap, 3px)}}
++             .peer{{margin:0;height:4px}}
++             {chain_css}
++           </style>
++           <div class="card"><h2 class="title">Wide <b>inner</b></h2><div class="body">text</div></div>
++           <div class="narrow"><h2 class="title">Narrow</h2><div class="body">text</div></div>
++           <x-card id="host"><span class="title" slot="s">slotted</span></x-card>
++           <div id="source"><style>:host{{display:block}} slot{{color:#123123}}</style><div class="card"><slot name="s"></slot></div></div>
++           {chain}
++           <section>{peers}</section>"#
++    ));
++    let host = tree.get_element_by_id("host").unwrap();
++    let source = tree.get_element_by_id("source").unwrap();
++    attach(&tree, host, source);
++
++    let (incremental, incremental_telemetry) = layout_with_container_passes(&tree, false);
++    let (full, full_telemetry) = layout_with_container_passes(&tree, true);
++    assert_styles_match("container passes", &tree, &incremental, &full);
++    assert_eq!(incremental_telemetry.passes, full_telemetry.passes);
++    assert_eq!(incremental_telemetry.termination, full_telemetry.termination);
++    assert!(incremental_telemetry.passes >= 5, "{incremental_telemetry:?}");
++    let target = tree.get_element_by_id("chain-target").unwrap();
++    assert_eq!(incremental.styles[&target].width, crate::Dimension::Px(77.0));
++
++    // The same must hold after a retained restyle of the document.
++    let mut cache = crate::css::StylesheetCache::default();
++    let mut initial = initial_layout(&tree, &mut cache);
++    let wide_title = tree
++        .descendants(tree.document())
++        .into_iter()
++        .find(|node| {
++            tree.get_node(*node)
++                .is_some_and(|node| node.get_attribute("class") == Some("title"))
++        })
++        .unwrap();
++    let mutation = attribute(&tree, wide_title, "class", "title hot");
++    let retained = RetainedStyleMaps {
++        styles: std::mem::take(&mut initial.styles),
++        custom_properties: std::mem::take(&mut initial.custom_properties),
++    };
++    let (retained_layout, telemetry) = layout_dom_with_web_fonts_pass_limit(
++        &tree,
++        VIEWPORT,
++        &HashMap::new(),
++        &[],
++        None,
++        Some(&mut cache),
++        Some(retained),
++        &[mutation],
++    );
++    let (full, _) = layout_with_container_passes(&tree, true);
++    assert_eq!(telemetry.retained_fallback, 0, "{telemetry:?}");
++    assert_styles_match("retained container passes", &tree, &retained_layout, &full);
++}

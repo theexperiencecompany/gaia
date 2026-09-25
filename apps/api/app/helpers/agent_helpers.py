@@ -19,6 +19,7 @@ from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.interruption import record_interruption
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.llm.lane import AgentRole, ModelLane, resolve_lane
+from app.agents.llm.reasoning import extract_reasoning_delta
 from app.agents.llm.ttft import LLMTtftCallback
 from app.config.langfuse import build_langfuse_callback
 from app.constants.analytics import POSTHOG_PROVIDER_KEY
@@ -53,6 +54,7 @@ from app.models.payment_models import PlanType
 from app.models.stream_events import (
     MessageBoundaryPayload,
     ModelFallbackFrame,
+    ReasoningPayload,
     ToolOutputPayload,
 )
 from app.services.latency_metrics import observe_comms_graph, span
@@ -1365,6 +1367,19 @@ async def _stream_messages(
 
     # Stream AI response content (only from comms_agent to avoid duplication)
     if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
+        # Comms thinking, streamed like the executor's, so reasoning before a
+        # reply is visible instead of a frozen UI. No subagent_id: the client
+        # renders the root turn as a top-level thinking block.
+        if is_comms:
+            reasoning_delta = extract_reasoning_delta(chunk)
+            if reasoning_delta:
+                yield format_sse_data(
+                    {
+                        "reasoning": ReasoningPayload(content=reasoning_delta).model_dump(
+                            exclude_none=True
+                        )
+                    }
+                )
         message_id, held_text = _held_chunk_text(chunk, is_comms, state.tool_call_message_ids)
         if held_text:
             if state.pipeline_ttft_perf is None:

@@ -31,6 +31,7 @@ from app.config.rate_limits import (
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
     BUDGET_WRAPUP_REMAINING_FRACTION,
+    DEFAULT_MAX_TOKENS,
     PROVIDER_NAME_METADATA_KEY,
     RECURSION_HWM_FRACTION,
 )
@@ -44,10 +45,19 @@ from app.services.cost_budget import (
 )
 from shared.py.wide_events import log
 
+#: A stored lane, whole: to_configurable writes every key, so a fixture must too.
+_LANE: dict[str, object] = {
+    "provider": "gemini",
+    "model": "gemini-3-pro",
+    "reasoning": None,
+    "provider_pin": None,
+    "max_input_tokens": DEFAULT_MAX_TOKENS,
+}
+
 CONFIG: dict[str, Any] = {
     "configurable": {
         "thread_id": "conv-1",
-        "lane": {"provider": "gemini", "model": "gemini-3-pro"},
+        "lane": _LANE,
         "user_id": "user-1",
     }
 }
@@ -143,7 +153,7 @@ _LEDGER_CONFIG: dict[str, Any] = {
         "conversation_id": "conv-1",
         "workflow_id": "wf-1",
         "root_request_id": "req-1",
-        "lane": {"provider": "gemini", "model": "gemini-3-pro"},
+        "lane": _LANE,
         "user_id": "user-1",
     }
 }
@@ -212,7 +222,7 @@ async def test_a_graph_call_is_never_recorded_as_background_system_work() -> Non
     bare = {
         "configurable": {
             "user_id": "user-1",
-            "lane": {"provider": "gemini", "model": "gemini-3-pro"},
+            "lane": _LANE,
         }
     }
 

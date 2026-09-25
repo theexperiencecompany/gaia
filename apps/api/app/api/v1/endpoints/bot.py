@@ -13,7 +13,9 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.middleware.auth import get_current_user as get_request_user
 from app.config.settings import settings
 from app.constants.auth import AUDIT_ACTOR_BOT_API
+from app.constants.bot import BotRequestFailure
 from app.constants.cache import BOT_UPGRADE_LINK_PREFIX, BOT_UPGRADE_LINK_TTL
+from app.constants.error_codes import BOT_ACCOUNT_NOT_LINKED, BOT_API_KEY_INVALID
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager, with_heartbeat
@@ -160,6 +162,15 @@ def _capture_bot_turn_refused(user_id: str, platform: str, reason: str) -> None:
     )
 
 
+def _bot_request_refused(
+    status_code: int, reason: BotRequestFailure, message: str, code: str | None = None
+) -> HTTPException:
+    """Mark the wide event failed with its reason and build the refusal to raise."""
+    log.fail(reason)
+    detail: str | dict[str, str] = {"message": message, "code": code} if code else message
+    return HTTPException(status_code=status_code, detail=detail)
+
+
 async def _resolve_bot_caller(
     request: Request, platform: str, platform_user_id: str
 ) -> AuthenticatedUser | None:
@@ -170,10 +181,35 @@ async def _resolve_bot_caller(
     return await resolve_bot_user(platform, platform_user_id)
 
 
+async def _require_linked_bot_caller(
+    request: Request, platform: str, platform_user_id: str
+) -> AuthenticatedUser:
+    """The caller's linked user; a 401 naming the unlinked account otherwise."""
+    user = await _resolve_bot_caller(request, platform, platform_user_id)
+    if user is None:
+        raise _bot_request_refused(
+            401,
+            BotRequestFailure.ACCOUNT_NOT_LINKED,
+            "This platform account is not linked to a GAIA account.",
+            BOT_ACCOUNT_NOT_LINKED,
+        )
+    return user
+
+
+def _require_valid_platform(platform: str) -> None:
+    if not Platform.is_valid(platform):
+        raise _bot_request_refused(400, BotRequestFailure.INVALID_PLATFORM, "Invalid platform")
+
+
 async def require_bot_api_key(request: Request) -> None:
     """Verify that the request has a valid bot API key (set by BotAuthMiddleware)."""
     if not getattr(request.state, "bot_api_key_valid", False):
-        raise HTTPException(status_code=401, detail="Invalid or missing bot API key")
+        raise _bot_request_refused(
+            401,
+            BotRequestFailure.BOT_API_KEY_INVALID,
+            "Invalid or missing bot API key",
+            BOT_API_KEY_INVALID,
+        )
 
 
 async def _may_mint_bot_upgrade_link(user_id: str) -> bool:
@@ -594,6 +630,10 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     user = await _resolve_bot_caller(request, body.platform, body.platform_user_id)
 
     if user is None:
+        log.set(
+            outcome=BOT_STREAM_ERROR_NOT_AUTHENTICATED,
+            reason=BotRequestFailure.ACCOUNT_NOT_LINKED,
+        )
         return _refusal_stream_with_notice(
             _UNLINKED_PAYWALL_NOTICE, BOT_STREAM_ERROR_NOT_AUTHENTICATED
         )
@@ -675,13 +715,9 @@ async def reset_session(request: Request, body: ResetSessionRequest) -> ResetSes
     await require_bot_api_key(request)
     log.set(operation="reset_session", platform=body.platform)
 
-    user = await _resolve_bot_caller(request, body.platform, body.platform_user_id)
-
-    if user is None:
-        raise HTTPException(status_code=401, detail="User not authenticated")
-
+    user = await _require_linked_bot_caller(request, body.platform, body.platform_user_id)
     user_id = user.user_id
-    log.set(user={"id": user_id}, platform=body.platform)
+    log.set(user={"id": user_id})
 
     new_conversation_id = await BotService.reset_session(
         body.platform, body.platform_user_id, body.channel_id, user, is_dm=body.is_dm
@@ -713,8 +749,7 @@ async def check_auth_status(
     """Report whether a platform user is linked to a GAIA account."""
     await require_bot_api_key(request)
     log.set(operation="check_auth_status", platform=platform)
-    if not Platform.is_valid(platform):
-        raise HTTPException(status_code=400, detail="Invalid platform")
+    _require_valid_platform(platform)
     user = await resolve_bot_user(platform, platform_user_id)
     # The linked id is returned, not just the boolean: it is what the bot uses as
     # its PostHog distinct_id, so bot events land on the same profile as this
@@ -738,8 +773,7 @@ async def list_linked_users(request: Request, platform: str) -> LinkedUsersRespo
     """Return the platform_user_ids linked on the given platform."""
     await require_bot_api_key(request)
     log.set(operation="list_linked_users", platform=platform)
-    if not Platform.is_valid(platform):
-        raise HTTPException(status_code=400, detail="Invalid platform")
+    _require_valid_platform(platform)
     ids = await PlatformLinkService.list_platform_user_ids(platform)
     log.set(outcome="success", linked_count=len(ids))
     return LinkedUsersResponse(platform_user_ids=ids)
@@ -760,8 +794,7 @@ async def get_settings(
     """Return the platform user's settings, connected integrations, and model."""
     await require_bot_api_key(request)
     log.set(operation="get_bot_settings", platform=platform)
-    if not Platform.is_valid(platform):
-        raise HTTPException(status_code=400, detail="Invalid platform")
+    _require_valid_platform(platform)
     user = await resolve_bot_user(platform, platform_user_id)
 
     if user is None:
@@ -834,10 +867,11 @@ async def unlink_account(request: Request) -> UnlinkAccountResponse:
     platform_user_id = request.headers.get("X-Bot-Platform-User-Id")
 
     if not platform or not platform_user_id:
-        raise HTTPException(status_code=400, detail="Missing platform headers")
+        raise _bot_request_refused(
+            400, BotRequestFailure.MISSING_PLATFORM_HEADERS, "Missing platform headers"
+        )
 
-    if not Platform.is_valid(platform):
-        raise HTTPException(status_code=400, detail="Invalid platform")
+    _require_valid_platform(platform)
 
     user = await resolve_bot_user(platform, platform_user_id)
     if user is None:
@@ -846,9 +880,14 @@ async def unlink_account(request: Request) -> UnlinkAccountResponse:
             actor=AUDIT_ACTOR_BOT_API,
             resource=platform_user_id,
             provider=platform,
-            reason="account_not_linked",
+            reason=BotRequestFailure.ACCOUNT_NOT_LINKED,
         )
-        raise HTTPException(status_code=404, detail="Account not linked")
+        raise _bot_request_refused(
+            404,
+            BotRequestFailure.ACCOUNT_NOT_LINKED,
+            "Account not linked",
+            BOT_ACCOUNT_NOT_LINKED,
+        )
 
     user_id = user.user_id
     await PlatformLinkService.unlink_account(user_id, platform)
@@ -911,28 +950,25 @@ async def transcribe_bot_audio(
     try:
         await require_active_subscription(user.user_id, feature="bot_transcribe")
     except SubscriptionRequiredException:
-        log.set(outcome="subscription_required")  # pragma: no mutate
+        log.set(  # pragma: no mutate
+            outcome="subscription_required", reason=BotRequestFailure.SUBSCRIPTION_REQUIRED
+        )
         raise
 
+    too_large = f"Audio exceeds the {MAX_AUDIO_BYTES // (1024 * 1024)} MB limit."
     if content_length is not None and content_length > MAX_AUDIO_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Audio exceeds the {MAX_AUDIO_BYTES // (1024 * 1024)} MB limit.",
-        )
+        raise _bot_request_refused(413, BotRequestFailure.AUDIO_TOO_LARGE, too_large)
 
     audio_bytes = await file.read(MAX_AUDIO_BYTES + 1)
     if len(audio_bytes) > MAX_AUDIO_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Audio exceeds the {MAX_AUDIO_BYTES // (1024 * 1024)} MB limit.",
-        )
+        raise _bot_request_refused(413, BotRequestFailure.AUDIO_TOO_LARGE, too_large)
 
     try:
         normalized = validate_audio_payload(content_type=file.content_type, size=len(audio_bytes))
     except AudioTooLargeError as e:
-        raise HTTPException(status_code=413, detail=str(e)) from e
+        raise _bot_request_refused(413, BotRequestFailure.AUDIO_TOO_LARGE, str(e)) from e
     except UnsupportedAudioFormatError as e:
-        raise HTTPException(status_code=415, detail=str(e)) from e
+        raise _bot_request_refused(415, BotRequestFailure.UNSUPPORTED_AUDIO_FORMAT, str(e)) from e
 
     filename = file.filename or "voice-note"
     try:
@@ -949,7 +985,9 @@ async def transcribe_bot_audio(
             error=str(e),
             exc_info=True,
         )
-        raise HTTPException(status_code=502, detail="Transcription failed") from e
+        raise _bot_request_refused(
+            502, BotRequestFailure.TRANSCRIPTION_FAILED, "Transcription failed"
+        ) from e
 
     # After the transcription succeeds: an event on entry would count failures
     # as successes. Length, not content — the transcript is user speech.

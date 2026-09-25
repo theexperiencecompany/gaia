@@ -706,9 +706,9 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   private async sendWelcome(waId: string): Promise<void> {
     const text =
       `*Hey, I'm GAIA* 👋\n\n` +
-      `Your personal AI — I think ahead, remember what matters, and help you actually get things done.\n\n` +
+      `Your personal AI. I think ahead, remember what matters, and help you actually get things done.\n\n` +
       `Here's what I can do right here on WhatsApp:\n\n` +
-      `*Chat*\nJust type anything — ask questions, brainstorm, think out loud.\n\n` +
+      `*Chat*\nJust type anything: ask questions, brainstorm, think out loud.\n\n` +
       `*Todos*\nCapture tasks with /todo add.\n\n` +
       `*Workflows*\nRun automations with /workflow and delegate whole projects.\n\n` +
       `*Link your account*\nRun /auth to connect GAIA so I remember you and your context.\n\n` +
@@ -926,8 +926,8 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     } catch (err) {
       // Free-form send failed — usually the 24-hour window is closed. Fall back to
       // the approved template (sendable any time); a template failure rethrows so
-      // the consumer dead-letters it. Original error logged for visibility.
-      this.adapterLogger.info("outbound_template_fallback", {
+      // the consumer dead-letters it. A warning, because a 401/5xx lands here too.
+      wideLog.warning("outbound_template_fallback", {
         user_hash: hashLogIdentifier(destinationId),
         ...sanitizeErrorForLog(err),
       });
@@ -1009,10 +1009,12 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   protected override async deliverOutboundFile(
     destinationId: string,
     attachment: OutboundAttachment,
+    isChannel: boolean,
   ): Promise<void> {
     const artifact = await this.fetchOutboundArtifact(
       destinationId,
       attachment,
+      isChannel,
     );
     if (!artifact) return; // too large — fetchOutboundArtifact already replied
     const { data, contentType } = artifact;

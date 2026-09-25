@@ -33,7 +33,6 @@ from app.services.workflow.generation_service import (
     WorkflowStepGenerationError,
     _build_available_triggers,
     _build_trigger_hint,
-    _structured_one_shot,
     enrich_steps,
 )
 from app.services.workflow.queue_service import WorkflowQueueService
@@ -1660,42 +1659,12 @@ class TestBuildAvailableTriggers:
 # ===========================================================================
 
 
-class TestStructuredOneShotLane:
-    """The one-shot must run on the model lane this deployment is configured for.
-
-    Hardwiring it to the OpenRouter aux lane is what made every workflow
-    generation die on a provider error (a 402) on a deployment pointed at a
-    custom endpoint, which the UI saw as a blank 500 from /regenerate-steps.
-    """
-
-    async def test_uses_deployment_lane_runnable(self) -> None:
-        runnable = MagicMock()
-        with (
-            patch(
-                "app.services.workflow.generation_service.background_structured_runnable",
-                return_value=runnable,
-            ) as mock_lane,
-            patch(
-                "app.services.workflow.generation_service.ainvoke_llm",
-                new_callable=AsyncMock,
-            ) as mock_invoke,
-        ):
-            mock_invoke.return_value = GeneratedWorkflow(steps=[])
-
-            await _structured_one_shot(
-                GeneratedWorkflow, "prompt", label="workflow_generation", user_id="u1"
-            )
-
-        assert mock_lane.call_args[0][0] is GeneratedWorkflow
-        assert mock_invoke.await_args[0][0] is runnable
-
-
 class TestGenerateStepsWithLLM:
     """Tests for WorkflowGenerationService.generate_steps_with_llm."""
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
     @patch(
-        "app.services.workflow.generation_service._structured_one_shot",
+        "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
     )
     @patch(
@@ -1730,7 +1699,7 @@ class TestGenerateStepsWithLLM:
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
     @patch(
-        "app.services.workflow.generation_service._structured_one_shot",
+        "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
     )
     @patch(
@@ -1761,7 +1730,7 @@ class TestGenerateStepsWithLLM:
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
     @patch(
-        "app.services.workflow.generation_service._structured_one_shot",
+        "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
     )
     @patch(
@@ -1788,7 +1757,7 @@ class TestGenerateStepsWithLLM:
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
     @patch(
-        "app.services.workflow.generation_service._structured_one_shot",
+        "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
     )
     @patch(
@@ -1819,7 +1788,7 @@ class TestGenerateStepsWithLLM:
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
     @patch(
-        "app.services.workflow.generation_service._structured_one_shot",
+        "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
     )
     @patch(
@@ -1849,7 +1818,7 @@ class TestGenerateStepsWithLLM:
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
     @patch(
-        "app.services.workflow.generation_service._structured_one_shot",
+        "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
     )
     @patch(
@@ -1885,7 +1854,7 @@ class TestGenerateWorkflowPrompt:
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
     @patch(
-        "app.services.workflow.generation_service._structured_one_shot",
+        "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
     )
     async def test_generate_prompt_success(self, mock_structured: AsyncMock) -> None:
@@ -1907,7 +1876,7 @@ class TestGenerateWorkflowPrompt:
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
     @patch(
-        "app.services.workflow.generation_service._structured_one_shot",
+        "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
     )
     async def test_generate_prompt_manual_suggested_trigger(
@@ -1928,7 +1897,7 @@ class TestGenerateWorkflowPrompt:
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
     @patch(
-        "app.services.workflow.generation_service._structured_one_shot",
+        "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
     )
     async def test_generate_prompt_invalid_trigger_type_no_suggestion(
@@ -1948,7 +1917,7 @@ class TestGenerateWorkflowPrompt:
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
     @patch(
-        "app.services.workflow.generation_service._structured_one_shot",
+        "app.services.workflow.generation_service.ainvoke_structured",
         new_callable=AsyncMock,
     )
     async def test_generate_prompt_parse_failure_propagates(

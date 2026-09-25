@@ -1,0 +1,197 @@
+From 75922943e32a6cf2ad8d6cd34edab6570a688de1 Mon Sep 17 00:00:00 2001
+From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
+Date: Wed, 23 Sep 2026 17:05:14 +0530
+Subject: [PATCH 06/18] fix(layout): atomic inlines resolve percentage heights
+ against their block container
+
+An inline-level atomic box (inline-block, input, textarea) is laid out as a
+child of the anonymous flex-wrap run wrapper that stands in for its line box.
+That wrapper has an auto height, so taffy resolved `height:100%` against an
+indefinite size and the box collapsed to its content (0px for an empty span,
+a few px for a control). CSS2 10.5 resolves it against the containing block,
+which is the block container, not the line box.
+
+Extend the post-layout percentage repair to inline-level children reached
+through an anonymous wrapper whose DOM parent is a definite-height block
+container, and propagate each resolved height to its descendants within the
+same pass so nested percentages resolve in one relayout. Auto-height parents
+are untouched: the percentage still computes to auto there.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-render/src/dom.rs | 107 +++++++++++++++++++++++++++----
+ 1 file changed, 95 insertions(+), 12 deletions(-)
+
+diff --git a/crates/obscura-render/src/dom.rs b/crates/obscura-render/src/dom.rs
+index 896577c..135dc94 100644
+--- a/crates/obscura-render/src/dom.rs
++++ b/crates/obscura-render/src/dom.rs
+@@ -1938,17 +1938,27 @@ fn sync_resolved_percentage_padding(
+ }
+ 
+ /// Taffy's flex stand-in for an inline formatting context can lose the
+-/// block-axis percentage basis of an atomic containing block. This is most
+-/// visible when the atomic box is floated: the float's synthetic placement
+-/// wrapper has an indefinite block size, so a `height:100%` descendant
+-/// collapses even though the float itself has a definite used height.
++/// block-axis percentage basis of a containing block. Two shapes hit this:
++///
++/// - the atomic box is floated: the float's synthetic placement wrapper has
++///   an indefinite block size, so a `height:100%` descendant collapses even
++///   though the float itself has a definite used height;
++/// - an atomic inline (inline-block, input, textarea, ...) sits in a line of
++///   its block container. Its taffy parent is the anonymous run wrapper that
++///   stands in for the line box, whose height is auto, so taffy resolves the
++///   percentage against an indefinite size and the box collapses to its
++///   content. CSS2 §10.5 resolves it against the containing block, which is
++///   the block container, not the line box.
+ ///
+ /// Blink's `CalculateChildAvailableSize` and Gecko's `ReflowInput` both pass
+ /// the containing block's used content-box block size to such descendants.
+ /// Reify that basis after the preliminary layout, when min/max constraints and
+ /// border-box edges are known exactly. Keep the repair to ordinary direct
+-/// descendants of definite floated/inline-block containing blocks; grid-area,
+-/// flex-item, positioned, and anonymous containing-block rules remain native.
++/// descendants of a definite containing block that either is a floated or
++/// inline-block box, or reaches the child only through anonymous stand-in
++/// wrappers; grid-area, flex-item, positioned containing-block rules remain
++/// native. Resolved heights propagate top-down within the pass, so a chain of
++/// percentages resolves in one relayout.
+ fn resolve_atomic_percentage_heights(
+     tree: &DomTree,
+     taffy_tree: &mut TaffyTree<usize>,
+@@ -1963,6 +1973,7 @@ fn resolve_atomic_percentage_heights(
+         node: taffy::NodeId,
+         nearest_dom_parent: Option<NodeId>,
+         containing_block_height: f32,
++        in_anonymous_wrapper: bool,
+         id_map: &HashMap<taffy::NodeId, NodeId>,
+         styles: &HashMap<NodeId, crate::LayoutStyle>,
+         definite_height_nodes: &HashSet<NodeId>,
+@@ -1971,7 +1982,8 @@ fn resolve_atomic_percentage_heights(
+         let Ok(layout) = taffy_tree.layout(node) else {
+             return;
+         };
+-        let own_content_height = layout.content_box_height().max(0.0);
++        let layout = *layout;
++        let mut own_content_height = layout.content_box_height().max(0.0);
+         let dom_id = id_map.get(&node).copied();
+ 
+         if let (Some(dom_id), Some(parent_id)) = (dom_id, nearest_dom_parent) {
+@@ -1986,20 +1998,40 @@ fn resolve_atomic_percentage_heights(
+                     _ => None,
+                 })
+             });
+-            let parent_is_definite_atomic = styles.get(&parent_id).is_some_and(|style| {
+-                (style.float.is_some() || style.is_inline_block)
++            // An inline-level child whose taffy parent is an anonymous line
++            // wrapper lost its containing block to that wrapper; the real
++            // containing block is its DOM parent, provided that parent is a
++            // block container or atomic box rather than a plain inline box.
++            let child_in_line_wrapper = in_anonymous_wrapper
++                && styles
++                    .get(&dom_id)
++                    .is_some_and(|style| crate::is_inline_level_box(style));
++            let parent_is_definite_basis = styles.get(&parent_id).is_some_and(|style| {
++                (style.float.is_some()
++                    || style.is_inline_block
++                    || (child_in_line_wrapper && style.display != crate::Display::Inline))
+                     && definite_height_nodes.contains(&parent_id)
+                     && style.size_expressions[1].is_none()
+             });
+             if is_direct_dom_child
+-                && parent_is_definite_atomic
++                && parent_is_definite_basis
+                 && containing_block_height.is_finite()
+             {
+                 if let Some(percent) = child_percent {
+                     if let Ok(current) = taffy_tree.style(node) {
+                         let mut resolved = current.clone();
+-                        resolved.size.height =
+-                            taffy::Dimension::length((percent * containing_block_height).max(0.0));
++                        let height = (percent * containing_block_height).max(0.0);
++                        resolved.size.height = taffy::Dimension::length(height);
++                        // Its own descendants resolve against this new used
++                        // height, not the collapsed preliminary one.
++                        let edges = layout.padding.top
++                            + layout.padding.bottom
++                            + layout.border.top
++                            + layout.border.bottom;
++                        own_content_height = match resolved.box_sizing {
++                            taffy::BoxSizing::BorderBox => (height - edges).max(0.0),
++                            taffy::BoxSizing::ContentBox => height,
++                        };
+                         if taffy_tree.set_style(node, resolved).is_ok() {
+                             *changed = true;
+                         }
+@@ -2022,6 +2054,7 @@ fn resolve_atomic_percentage_heights(
+                 child,
+                 next_dom_parent,
+                 next_containing_block_height,
++                dom_id.is_none(),
+                 id_map,
+                 styles,
+                 definite_height_nodes,
+@@ -2037,6 +2070,7 @@ fn resolve_atomic_percentage_heights(
+         taffy_root,
+         None,
+         0.0,
++        false,
+         id_map,
+         styles,
+         definite_height_nodes,
+@@ -20835,4 +20869,53 @@ mod tests {
+         assert!((rect("fixed").height - 40.0).abs() < 0.5, "{:?}", rect("fixed"));
+         assert!((rect("block1").height - 20.0).abs() < 0.5, "{:?}", rect("block1"));
+     }
++
++    #[test]
++    fn inline_level_percentage_height_resolves_against_definite_block() {
++        // CSS2 §10.5: a percentage height resolves against the containing
++        // block's height when that height is definite. For an atomic inline
++        // (inline-block, input, textarea) the containing block is the
++        // nearest block container, not the line box, so `height:100%` in a
++        // `height:60px` div is 60px. Against an auto-height block the
++        // percentage computes to auto and the box keeps its intrinsic size.
++        let tree = parse_html(
++            r#"<style>
++               html, body { margin: 0 }
++               input, textarea { padding: 0; border: 0; font: 16px/20px sans-serif; box-sizing: border-box }
++               </style>
++            <div id="p-span" style="height:60px"><span id="span" style="display:inline-block;height:100%;width:10px"></span></div>
++            <div style="height:60px"><span id="half" style="display:inline-block;height:50%;width:10px"></span></div>
++            <div style="height:60px">text <span id="span-text" style="display:inline-block;height:100%;width:10px"></span></div>
++            <div style="height:60px"><span style="display:inline-block;height:100%;width:20px"><span id="nested" style="display:inline-block;height:50%;width:10px"></span></span></div>
++            <div style="height:60px"><input id="input" style="height:100%"></div>
++            <div style="height:60px"><textarea id="textarea" rows="1" style="height:100%"></textarea></div>
++            <div id="p-auto"><span id="span-auto" style="display:inline-block;height:100%;width:10px"></span></div>
++            <div><input id="input-auto" style="height:100%"></div>
++            <div><textarea id="textarea-auto" rows="1" style="height:100%"></textarea></div>"#,
++        );
++        let laid = layout_dom(&tree, (1280.0, 720.0));
++        let rect = |id: &str| laid.rects[&tree.get_element_by_id(id).unwrap()];
++        let near = |id: &str, want: f32| {
++            let got = rect(id);
++            assert!((got.height - want).abs() < 0.5, "{id}: want {want}, got {got:?}");
++        };
++
++        near("span", 60.0);
++        near("p-span", 60.0);
++        near("half", 30.0);
++        near("span-text", 60.0);
++        near("nested", 30.0);
++        near("input", 60.0);
++        near("textarea", 60.0);
++
++        // Auto-height parent: the percentage behaves as auto.
++        near("span-auto", 0.0);
++        near("textarea-auto", 20.0);
++        let input_auto = rect("input-auto");
++        assert!(
++            input_auto.height > 15.0 && input_auto.height < 30.0,
++            "{input_auto:?}"
++        );
++        assert!(rect("p-auto").height < 30.0, "{:?}", rect("p-auto"));
++    }
+ }

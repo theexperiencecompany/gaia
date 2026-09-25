@@ -296,7 +296,7 @@ class TestRecursionWrapup:
         shown = " ".join(str(m.content) for m in run.last_prompt())
 
         assert "almost out of steps" in shown, f"the model was never warned: {shown[-200:]!r}"
-        assert "summarize what you" in shown, "warned without being told what to do about it"
+        assert "Summarize what you" in shown, "warned without being told what to do about it"
 
     async def test_a_short_run_is_not_warned(self):
         """Control: warning on every turn would waste tokens on work with plenty of budget left."""

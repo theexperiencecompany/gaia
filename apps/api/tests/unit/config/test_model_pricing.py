@@ -21,6 +21,7 @@ from app.config.model_pricing import (
     get_model_pricing,
     has_rate_card,
 )
+from app.config.settings import settings
 from app.constants.llm import (
     AUX_MODEL_NAME,
     DEFAULT_MODEL_NAME,
@@ -78,6 +79,11 @@ class TestEveryRuntimeModelIsPriced:
         """DEFAULT_PRICING is ~10x the real rate of the cheap models; a runtime model resolving to it means its COGS numbers are fiction."""
         assert get_model_pricing(model_id) is not DEFAULT_PRICING
 
+    def test_the_browser_lane_models_never_fall_back_to_default_pricing(self) -> None:
+        """The browser lane's decision model and its text helper are settings, metered from Browser-Use's history, so they are read when the test runs rather than frozen at import."""
+        for model_id in (settings.BROWSER_USE_JEV_MODEL, settings.BROWSER_USE_JEV_TEXT_MODEL):
+            assert get_model_pricing(model_id) is not DEFAULT_PRICING, model_id
+
     def test_the_memory_and_vision_model_carries_its_real_rate(self) -> None:
         """The exact production regression: gemini-3.1-flash-lite priced at $0.001/1k input instead of $0.0001."""
         pricing = get_model_pricing("gemini-3.1-flash-lite")
@@ -114,10 +120,45 @@ class TestEveryRuntimeModelIsPriced:
         assert args[0].endswith("model missing from pricing table — priced at DEFAULT_PRICING")
         assert kwargs == {"model_name": "some-model-nobody-registered"}
 
+    @pytest.mark.regression
+    def test_the_dev_custom_model_is_estimated_without_an_error_per_call(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """DEV_LLM_MODEL is whatever a developer points it at: one ERROR per call was 285 in one battery."""
+        monkeypatch.setattr(settings, "ENV", "development")
+        monkeypatch.setattr(settings, "DEV_LLM_MODEL", "gpt-6-luna")
+
+        with patch("app.config.model_pricing.log") as mock_log:
+            pricing = get_model_pricing("gpt-6-luna")
+
+        assert pricing == DEFAULT_PRICING
+        assert has_rate_card("gpt-6-luna") is False
+        mock_log.error.assert_not_called()
+
+    def test_production_still_logs_an_unpriced_model_named_like_the_dev_one(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "production")
+        monkeypatch.setattr(settings, "DEV_LLM_MODEL", "gpt-6-luna")
+
+        with patch("app.config.model_pricing.log") as mock_log:
+            get_model_pricing("gpt-6-luna")
+
+        mock_log.error.assert_called_once()
+
     def test_a_known_model_does_not_log(self) -> None:
         get_model_pricing(DEFAULT_MODEL_NAME)
 
         assert not log.get().get("errors", [])
+
+    @pytest.mark.parametrize("variant", ["nitro", "floor"])
+    def test_an_openrouter_routing_variant_is_priced_as_its_base_model(self, variant: str) -> None:
+        """Routing variants such as :nitro only pick the provider; the default price misprices every turn."""
+        with patch("app.config.model_pricing.log") as mock_log:
+            pricing = get_model_pricing(f"{DEFAULT_MODEL_NAME}:{variant}")
+
+        assert pricing == MODEL_PRICING[DEFAULT_MODEL_NAME]
+        mock_log.error.assert_not_called()
 
     def test_the_onboarding_declaration_matches_the_rate_card(self) -> None:
         """Every id in OPENROUTER_MODEL_TOOL_IMAGE_SUPPORT must carry a rate; the default model stays text-only, or flipping it without the live gate run would 400 real turns mid-stream."""

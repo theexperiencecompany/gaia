@@ -1,0 +1,84 @@
+name: Obscura Compat
+
+# Loads a set of common sites in our Obscura build and in headless Chrome and
+# fails when Obscura throws a JS error Chrome does not, or shows far fewer
+# inputs/buttons/links (apps/api/scripts/obscura_compat_probe.py). Sites with
+# known gaps, bot-detection walls included, sit in
+# scripts/ci/baselines/obscura-compat.txt; only a gap elsewhere fails the run,
+# and a baseline site that now matches Chrome is printed as removable.
+#
+# Informational, never a required check: it loads live third-party sites, so a
+# red run means "look at the summary", not "the PR is broken".
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - apps/api/obscura-patches/**
+      - apps/api/Dockerfile
+      - apps/api/scripts/obscura_compat_probe.py
+      - scripts/ci/baselines/obscura-compat.txt
+      - .github/workflows/obscura-compat.yml
+
+concurrency:
+  group: obscura-compat-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Obscura vs Chrome on common sites
+    runs-on: ubuntu-latest
+    # A cold cargo build of Obscura is most of this; the probe itself is ~10 min.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      # The same obscura-builder stage the api image ships (pinned commit +
+      # apps/api/obscura-patches), exported as bare files. build-push-action
+      # rather than a raw `docker buildx build` because it hands the GHA cache
+      # backend its runtime token. mode=min caches only the two binaries (~220
+      # MB): an unchanged build is a full hit, and a patch change invalidates the
+      # cargo build anyway, so mode=max's multi-GB target/ layer would buy nothing.
+      - name: Build the Obscura binaries from apps/api/Dockerfile
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          target: obscura-bin
+          outputs: type=local,dest=${{ runner.temp }}/obscura
+          cache-from: type=gha,scope=obscura-bin
+          cache-to: type=gha,scope=obscura-bin,mode=min
+
+      - name: Locate the binaries (Obscura built above, Chrome from the runner image)
+        run: |
+          set -euo pipefail
+          chrome="$(command -v google-chrome)" || { echo "::error::google-chrome is not on this runner image"; exit 1; }
+          echo "OBSCURA_BIN=$RUNNER_TEMP/obscura/obscura" >> "$GITHUB_ENV"
+          echo "CHROMIUM_BIN=$chrome" >> "$GITHUB_ENV"
+          "$chrome" --version
+
+      - uses: ./.github/actions/setup-uv
+
+      - name: Probe common sites against the baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run --project apps/api --frozen --group backend \
+            python apps/api/scripts/obscura_compat_probe.py \
+            --baseline scripts/ci/baselines/obscura-compat.txt \
+            | tee "$RUNNER_TEMP/probe.txt"
+
+      - name: Write the probe report to the job summary
+        if: always()
+        run: |
+          [ -s "$RUNNER_TEMP/probe.txt" ] || exit 0
+          { echo '```'; cat "$RUNNER_TEMP/probe.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

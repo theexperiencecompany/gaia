@@ -23,7 +23,7 @@ from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.session import get_session, teardown_session
 from app.agents.tools import executor_tool
 from app.agents.tools.executor_tool import call_executor, cancel_executor, tools
-from app.constants.agents import AgentTag
+from app.constants.agents import DONE_EVIDENCE_RULE, AgentTag
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_BUSY_TTL,
@@ -37,6 +37,7 @@ from app.db.redis import redis_cache
 from app.db.repositories.playbooks import playbook_repository
 from app.models.agent_models import InboxEntry
 from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus, ToolStep
+from app.services.browser.jobs import claim_conversation_slot, job_cancel_requested
 from app.utils import background_tasks
 
 
@@ -352,7 +353,7 @@ class TestCallExecutorLockContention:
                 id=handed_id,
                 text=(
                     "second\n\nDefinition of done (every item must be true before you "
-                    "finish):\n- the draft is saved"
+                    f"finish):\n- the draft is saved\n{DONE_EVIDENCE_RULE}"
                 ),
                 tag=AgentTag.USER_INTERJECTION,
             )
@@ -533,6 +534,61 @@ class TestCallExecutorFailures:
 
         assert response == "Error starting task: redis write failed"
         assert await fake_redis.get(LOCK_KEY) == "stream-1:live-task"
+
+
+# ── cancel_executor reaches a detached browser job ───────────────────
+
+
+class TestCancelExecutorStopsTheBrowser:
+    """A browser run outlives the turn that started it, so /stop has to reach the job itself."""
+
+    async def test_a_stop_cancels_the_conversations_browser_job(
+        self,
+        fake_redis: fakeredis.aioredis.FakeRedis,
+        broadcast: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
+        await claim_conversation_slot(CONVERSATION_ID, "job-1")
+        await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
+
+        await run_cancel_executor(config=config_for(), task_ids=[])
+
+        assert await job_cancel_requested("job-1") is True
+
+    async def test_a_stop_reaches_a_browser_job_whose_turn_already_ended(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        # The executor is long gone, so there is no busy lock and no live stream
+        # to cancel — the job flag is the only thing that still stops the browser.
+        await claim_conversation_slot(CONVERSATION_ID, "job-1")
+
+        response = await run_cancel_executor(config=config_for(), task_ids=[])
+
+        assert await job_cancel_requested("job-1") is True
+        assert response == "Stopped the browser task."
+
+    async def test_a_targeted_cancel_leaves_the_browser_run_alone(
+        self,
+        fake_redis: fakeredis.aioredis.FakeRedis,
+        broadcast: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Cancelling one named executor task is not "stop everything"; the browser keeps going."""
+        monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
+        await claim_conversation_slot(CONVERSATION_ID, "job-1")
+        await inbox().append("q1", "queued work")
+
+        await run_cancel_executor(config=config_for(), task_ids=["q1"])
+
+        assert await job_cancel_requested("job-1") is False
+
+    async def test_a_stop_with_nothing_running_anywhere_still_reports_nothing(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        response = await run_cancel_executor(config=config_for(), task_ids=[])
+
+        assert response == "No executor tasks are running or pending for this conversation."
 
 
 # ── cancel_executor ──────────────────────────────────────────────────
@@ -1147,6 +1203,32 @@ class TestDispatchAcknowledgement:
             "is settled, so report what happened and never ask again for an approval the "
             "user has already given."
         )
+
+
+class TestAResultNarrationTurnStartsNoWork:
+    """Comms re-voicing a finished result must not dispatch again.
+
+    The run being narrated still holds the busy lock, so a dispatch here queued a duplicate
+    of the task that just finished: one user message, two browser runs. The refusal is what
+    comms reads instead of an acknowledgement, so its wording is the behaviour: it must say
+    nothing started, and steer comms to report the outcome and offer a retry itself.
+    """
+
+    async def test_the_call_is_refused_and_nothing_is_spawned_or_locked(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        response = await call_executor_with(
+            config=config_for(is_result_narration=True), task="try the booking again"
+        )
+
+        assert response == (
+            "Not dispatched. This turn only reports a result that already came back; it "
+            "cannot start new work. Report what happened, including the failure and its "
+            "reason if it failed, and ask the user whether they want it retried."
+        )
+        await drain_background_tasks()
+        assert spawned_runs == []
+        assert await fake_redis.get(f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION_ID}") is None
 
 
 class TestSparedRunHearsNoInterruption:

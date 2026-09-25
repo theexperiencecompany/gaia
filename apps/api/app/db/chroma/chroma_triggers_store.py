@@ -20,6 +20,7 @@ from app.models.trigger_config import TriggerConfig
 from shared.py.wide_events import VectorContext, log
 
 from .chroma_store import ChromaStore
+from .index_warmup import run_index_warmup
 
 # Namespace for workflow triggers in the store
 TRIGGERS_NAMESPACE = "workflow_triggers"
@@ -177,33 +178,6 @@ def _build_put_operations(
     return put_ops
 
 
-async def _execute_batch_operations(
-    store: ChromaStore, put_ops: list[PutOp], batch_size: int = 50
-) -> None:
-    """Execute put operations in batches.
-
-    Args:
-        store: ChromaStore instance
-        put_ops: List of PutOp operations to execute
-        batch_size: Number of operations per batch
-    """
-    if not put_ops:
-        return
-
-    total_ops = len(put_ops)
-
-    for i in range(0, total_ops, batch_size):
-        batch = put_ops[i : i + batch_size]
-        await store.abatch(batch)
-        log.info(
-            f"{LogTag.CHROMA} Processed triggers batch",
-            batch_index=i // batch_size + 1,
-            batch_total=(total_ops + batch_size - 1) // batch_size,
-        )
-
-    log.info(f"{LogTag.CHROMA} Successfully updated triggers in ChromaDB", total_ops=total_ops)
-
-
 @lazy_provider(
     name="chroma_triggers_store",
     required_keys=[],
@@ -259,7 +233,7 @@ async def initialize_chroma_triggers_store() -> ChromaStore:
     )
 
     put_ops = _build_put_operations(triggers_to_upsert, triggers_to_delete)
-    await _execute_batch_operations(store, put_ops)
+    await run_index_warmup(store, put_ops, context="triggers_store")
 
     return store
 

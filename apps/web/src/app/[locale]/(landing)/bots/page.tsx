@@ -11,7 +11,7 @@ import {
 export const metadata: Metadata = generatePageMetadata({
   title: "Your AI, Where You Already Work",
   description:
-    "Chat with GAIA on Discord, Telegram, Slack, WhatsApp, and iMessage. Delegate tasks, get answers, and run workflows — without leaving the apps you already use.",
+    "Chat with GAIA on Discord, Telegram, Slack, WhatsApp, and iMessage. Delegate tasks, get answers, and run workflows, without leaving the apps you already use.",
   path: "/bots",
   keywords: [
     "GAIA bots",

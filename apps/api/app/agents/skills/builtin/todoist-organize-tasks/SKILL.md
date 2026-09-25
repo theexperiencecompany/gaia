@@ -1,6 +1,6 @@
 ---
 name: todoist-organize-tasks
-description: Intelligently organize Todoist projects, tasks, labels and sections — search before creating, learn user patterns, smart decomposition
+description: Intelligently organize Todoist projects, tasks, labels and sections: search before creating, learn user patterns, smart decomposition
 target: todoist_agent
 ---
 

@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "granola.so",
   tagline: "AI notepad for meetings that runs locally on Mac",
   description:
-    "Granola is a local-first Mac app that enhances your own meeting notes with AI, running on-device for privacy. GAIA is a proactive AI assistant that manages your full workflow — tasks, email, calendar, and cross-tool automation beyond meetings.",
+    "Granola is a local-first Mac app that enhances your own meeting notes with AI, running on-device for privacy. GAIA is a proactive AI assistant that manages your full workflow: tasks, email, calendar, and cross-tool automation beyond meetings.",
   metaTitle:
-    "Granola Alternative with Full Workflow Automation — GAIA vs Granola",
+    "Granola Alternative with Full Workflow Automation: GAIA vs Granola",
   metaDescription:
-    "Granola is a private local Mac meeting notepad. GAIA is an open-source alternative that goes beyond notes to automate tasks, emails, and workflows across 50+ integrations — with self-hosting for the same privacy.",
+    "Granola is a private local Mac meeting notepad. GAIA is an open-source alternative that goes beyond notes to automate tasks, emails, and workflows across 50+ integrations, with self-hosting for the same privacy.",
   keywords: [
     "granola alternative",
     "gaia vs granola",
@@ -25,13 +25,13 @@ export const entry: ComparisonData = {
   ],
   intro: `Granola carved out a distinctive niche in the crowded meeting AI space by prioritizing privacy and the user's own note-taking. Instead of a bot that joins your call and records everything automatically, Granola runs locally on Mac, listens to your system audio, and enhances the notes you jot down during a meeting with AI-powered structure and summaries. No audio is uploaded to a server; processing happens on-device. For privacy-conscious professionals who want AI assistance without surrendering their meeting content to a cloud service, this is a compelling proposition.
 
-The product philosophy is intentional: Granola is designed to augment your personal note-taking practice rather than replace it. You still take notes during the meeting — Granola just makes them better, filling gaps and structuring your raw thoughts into organized summaries. This is a meaningfully different approach than fully automated meeting recorders, and many users prefer the sense of control it provides.
+The product philosophy is intentional: Granola is designed to augment your personal note-taking practice rather than replace it. You still take notes during the meeting. Granola just makes them better, filling gaps and structuring your raw thoughts into organized summaries. This is a meaningfully different approach than fully automated meeting recorders, and many users prefer the sense of control it provides.
 
 What Granola does not address is everything that happens outside the note itself. After a meeting with a refined set of notes, you still need to transfer action items into your task manager, write follow-up emails, update relevant documents, and schedule next steps in your calendar. Granola's value is contained within the note artifact; it does not extend into the broader workflow.
 
 GAIA addresses this workflow gap. It connects meeting context to your email, task management, calendar, and documentation tools. Action items can be pushed directly into Todoist, Linear, or Jira. Follow-up emails can be drafted and sent in Gmail. Notion pages can be updated with decisions made. And before the next meeting, GAIA generates preparation briefings automatically.
 
-For teams that specifically value local privacy with local processing, GAIA also offers a self-hosted deployment option — you control the infrastructure, and your data never leaves your own servers. This provides the privacy guarantees of Granola's local model while adding the full-stack productivity automation that Granola does not offer. The combination of privacy and capability makes GAIA a meaningful alternative for privacy-first professionals who have grown beyond what a local notepad alone can provide.`,
+For teams that specifically value local privacy with local processing, GAIA also offers a self-hosted deployment option: you control the infrastructure, and your data never leaves your own servers. This provides the privacy guarantees of Granola's local model while adding the full-stack productivity automation that Granola does not offer. The combination of privacy and capability makes GAIA a meaningful alternative for privacy-first professionals who have grown beyond what a local notepad alone can provide.`,
   rows: [
     {
       feature: "Core approach",
@@ -41,7 +41,7 @@ For teams that specifically value local privacy with local processing, GAIA also
     },
     {
       feature: "Privacy model",
-      gaia: "Self-hostable open source — deploy on your own infrastructure for complete data sovereignty",
+      gaia: "Self-hostable open source: deploy on your own infrastructure for complete data sovereignty",
       competitor:
         "On-device processing on Mac; audio and meeting content stays local by default",
     },
@@ -90,7 +90,7 @@ For teams that specifically value local privacy with local processing, GAIA also
     },
     {
       feature: "Open source",
-      gaia: "Fully open source on GitHub — inspect, fork, and self-host the code",
+      gaia: "Fully open source on GitHub: inspect, fork, and self-host the code",
       competitor: "Proprietary closed-source application",
     },
     {
@@ -101,7 +101,7 @@ For teams that specifically value local privacy with local processing, GAIA also
   ],
   gaiaAdvantages: [
     "Converts meeting notes into real tasks in Todoist, Linear, and Jira automatically",
-    "Cross-platform availability including Windows, web, and mobile — not Mac-only",
+    "Cross-platform availability including Windows, web, and mobile, not Mac-only",
     "Self-hosting for privacy matching Granola's local approach, plus full workflow automation",
     "Pre-meeting briefings and post-meeting email automation beyond the note boundary",
     "50+ integrations connecting meeting context to your entire tool stack",
@@ -109,16 +109,16 @@ For teams that specifically value local privacy with local processing, GAIA also
   ],
   competitorAdvantages: [
     "Genuinely local on-device processing with no audio uploaded to any server",
-    "Preserves the user's personal note-taking style while enhancing with AI — feels less intrusive than automated bots",
+    "Preserves the user's personal note-taking style while enhancing with AI: feels less intrusive than automated bots",
     "Clean, focused Mac app experience optimized for the meeting note use case",
   ],
   verdict:
-    "Granola is an elegant, privacy-first meeting notepad for Mac users who want AI enhancement without cloud recording. GAIA is the right choice for professionals who want AI that manages the full workflow around meetings — and who want privacy through self-hosting rather than local-only processing — alongside a complete productivity platform.",
+    "Granola is an elegant, privacy-first meeting notepad for Mac users who want AI enhancement without cloud recording. GAIA is the right choice for professionals who want AI that manages the full workflow around meetings, who want privacy through self-hosting rather than local-only processing, and who want a complete productivity platform alongside it.",
   faqs: [
     {
       question: "Is GAIA as private as Granola for meeting content?",
       answer:
-        "GAIA's self-hosted deployment puts your data entirely on your own infrastructure — no third party processes your meeting content. This provides the same privacy guarantee as Granola's local processing, while also enabling the cross-tool automation and workflow management that Granola does not offer.",
+        "GAIA's self-hosted deployment puts your data entirely on your own infrastructure: no third party processes your meeting content. This provides the same privacy guarantee as Granola's local processing, while also enabling the cross-tool automation and workflow management that Granola does not offer.",
     },
     {
       question: "Does GAIA work on Windows like Granola does not?",
@@ -138,7 +138,7 @@ For teams that specifically value local privacy with local processing, GAIA also
     {
       question: "Is GAIA open source like Granola?",
       answer:
-        "GAIA is fully open source on GitHub and can be self-hosted for free. Granola is a proprietary Mac app — while it processes audio locally, the application code itself is not open source. For teams that want both transparency and privacy, GAIA's open-source, self-hosted model provides stronger guarantees.",
+        "GAIA is fully open source on GitHub and can be self-hosted for free. Granola is a proprietary Mac app. While it processes audio locally, the application code itself is not open source. For teams that want both transparency and privacy, GAIA's open-source, self-hosted model provides stronger guarantees.",
     },
   ],
   relatedPersonas: ["startup-founders", "software-developers"],

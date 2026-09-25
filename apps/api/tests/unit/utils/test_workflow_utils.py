@@ -263,6 +263,29 @@ class TestApplyWorkflowEdit:
             workflow.id, USER_ID, regeneration_reason="prompt edited via assistant"
         )
 
+    async def test_an_applied_edit_says_the_integration_trigger_was_left_alone(self) -> None:
+        """The title change lands but the trigger change silently does not; without this sentence the user believes both were applied."""
+        current = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="gmail_new_email")
+        workflow = _workflow(current)
+        draft = _draft(
+            title="Evening digest",
+            trigger_type="integration",
+            trigger_slug="gmail_new_labeled_email",
+        )
+        writer = MagicMock()
+
+        with patch(f"{SERVICE}.update_workflow", new_callable=AsyncMock) as mock_update:
+            mock_update.return_value = _workflow(current, title="Evening digest")
+            result = await apply_workflow_edit(
+                draft=draft, workflow=workflow, user_id=USER_ID, writer=writer
+            )
+
+        assert result["message"] == (
+            "Workflow 'Evening digest' updated."
+            " The integration trigger itself was left unchanged. Its config is set "
+            "in the workflow editor in the app."
+        )
+
     async def test_an_integration_trigger_change_alone_is_sent_to_the_editor(self) -> None:
         current = TriggerConfig(type=TriggerType.INTEGRATION, trigger_name="gmail_new_email")
         workflow = _workflow(current)

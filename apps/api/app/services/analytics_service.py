@@ -31,6 +31,16 @@ class AnalyticsEvents(StrEnum):
     # Without it a refusal is a MISSING event, and missing is
     # indistinguishable from a user who never typed.
     CHAT_MESSAGE_REFUSED = "chat:message_refused"
+    # Browser automation — captured when the run finishes (never on start, so
+    # attempts don't count as successes) and when a human resolves a handoff.
+    BROWSER_TASK_FINISHED = "browser:task_finished"
+    # The agent moved an Obscura run to Chrome: the sites where the fast engine falls short.
+    BROWSER_ENGINE_SWITCHED = "browser:engine_switched"
+    BROWSER_HANDOFF_RESOLVED = "browser:handoff_resolved"
+    # The two halves of the `gaia connect` login import: the web session mints a
+    # code, then the CLI redeems it. Both are needed to see where the flow drops.
+    BROWSER_IMPORT_TOKEN_MINTED = "browser:import_token_minted"  # nosec B105 -- analytics event name, not a credential
+    BROWSER_LOGINS_IMPORTED = "browser:logins_imported"
     WORKFLOW_CREATED = "workflow:created"
     WORKFLOW_EXECUTED = "workflow:executed"
     WORKFLOW_ACTIVATED = "workflow:activated"
@@ -254,10 +264,12 @@ class AnalyticsEvents(StrEnum):
 
     USAGE_QUERIED = "usage:queried"
 
-    # Fallback exposure for unevaluated flags (complement of $feature_flag_called).
-    # Props: {flag, enabled, fallback_reason}; deduplicated per user/flag/day to
-    # tell served control apart from PostHog down.
+    # Exposure PostHog never saw (complement of $feature_flag_called): a fallback
+    # or a user's own choice. Props: {flag, enabled, fallback_reason};
+    # deduplicated per user/flag/day to tell served control apart from PostHog down.
     FEATURE_FLAG_EVALUATED = "feature_flag:evaluated"
+    # A user switched a user-facing flag in Settings. Props: {flag, enabled}.
+    FEATURE_TOGGLED = "feature:toggled"
     # Background spend only; agent-graph calls are covered by $ai_generation.
     AI_LLM_CALL_COMPLETED = "ai:llm_call_completed"
 
@@ -331,6 +343,7 @@ class AIFeature(StrEnum):
     RESEARCH = "research", ("research_queries",)
     MODERATION = "moderation", ("profanity",)
     TITLE_GENERATION = "title_generation", ("chatbot",)
+    BROWSER = "browser", ("browser_handoff_conversational_resolve",)
     # A caller whose label no member claims.
     UNATTRIBUTED = "unattributed"
 

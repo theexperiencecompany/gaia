@@ -95,6 +95,10 @@ def test_the_runtime_built_memory_label_resolves_by_prefix() -> None:
     assert feature_for_label("memory:consolidate") is AIFeature.MEMORY
 
 
+def test_the_browser_handoff_resolver_is_browser_spend() -> None:
+    assert feature_for_label("browser_handoff_conversational_resolve") is AIFeature.BROWSER
+
+
 def test_an_unmapped_label_is_unattributed_rather_than_guessed() -> None:
     assert feature_for_label("some_helper_added_next_year") is AIFeature.UNATTRIBUTED
 

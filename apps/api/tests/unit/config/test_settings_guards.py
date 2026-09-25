@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from pydantic import SecretStr, ValidationError
 import pytest
 
-from app.agents.llm import client
+from app.agents.llm import client, dev_lane
 from app.agents.llm.client import PROVIDER_MODELS
 from app.config.settings import (
     CommonSettings,
@@ -28,6 +28,7 @@ from app.constants.llm import (
     OPENROUTER_DEV_APP_URL,
     OPENROUTER_MAX_OUTPUT_TOKENS,
     OPENROUTER_REASONING,
+    DevLLMApi,
     LLMProviderName,
 )
 
@@ -269,7 +270,8 @@ def test_init_custom_llm_wires_every_kwarg_and_profile(monkeypatch):
     """The DEV_LLM_* endpoint must receive every construction kwarg intact, including its context-window profile and configurable model field."""
     captured: dict[str, object] = {}
     # The custom lane deliberately constructs ChatOpenAI, not ChatOpenRouter.
-    monkeypatch.setattr(client, "ChatOpenAI", _fake_chat_openrouter(captured))
+    monkeypatch.setattr(dev_lane, "ChatOpenAI", _fake_chat_openrouter(captured))
+    dev_lane.build_custom_chat_model.cache_clear()
     monkeypatch.setattr(client.settings, "ENV", "development")
     monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
     # PROVIDER_MODELS freezes at import from the ambient env; CI has no
@@ -293,3 +295,24 @@ def test_init_custom_llm_wires_every_kwarg_and_profile(monkeypatch):
     assert captured["stream_usage"] is True
     assert llm.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
     assert captured["cf_model_name"] is client._MODEL_FIELD
+
+
+def test_the_custom_endpoint_defaults_to_chat_completions(monkeypatch):
+    """Nous-style endpoints predate the setting and speak chat completions only."""
+    monkeypatch.delenv("DEV_LLM_API", raising=False)
+
+    assert DevelopmentSettings(_env_file=None).DEV_LLM_API is DevLLMApi.CHAT_COMPLETIONS
+
+
+def test_the_custom_endpoint_can_be_switched_to_the_responses_api(monkeypatch):
+    monkeypatch.setenv("DEV_LLM_API", "responses")
+
+    assert DevelopmentSettings(_env_file=None).DEV_LLM_API is DevLLMApi.RESPONSES
+
+
+def test_an_unknown_custom_endpoint_api_refuses_to_load(monkeypatch):
+    """A typo must not quietly fall back to chat completions, where gpt-6-luna rejects tools."""
+    monkeypatch.setenv("DEV_LLM_API", "response")
+
+    with pytest.raises(ValidationError, match="DEV_LLM_API"):
+        DevelopmentSettings(_env_file=None)

@@ -50,7 +50,7 @@ class TestProcessDataChunkReal:
                 stream_id,
                 chunk,
                 ChunkAccumulators(
-                    tool_entries, {}, {}, tool_outputs, todo_progress_accumulated, follow_up_actions
+                    tool_entries, tool_outputs, todo_progress_accumulated, follow_up_actions
                 ),
             )
 
@@ -79,7 +79,7 @@ class TestProcessDataChunkReal:
                 stream_id,
                 chunk,
                 ChunkAccumulators(
-                    tool_entries, {}, {}, tool_outputs, todo_progress_accumulated, follow_up_actions
+                    tool_entries, tool_outputs, todo_progress_accumulated, follow_up_actions
                 ),
             )
 
@@ -108,7 +108,7 @@ class TestProcessDataChunkReal:
                 stream_id,
                 chunk,
                 ChunkAccumulators(
-                    tool_entries, {}, {}, tool_outputs, todo_progress_accumulated, follow_up_actions
+                    tool_entries, tool_outputs, todo_progress_accumulated, follow_up_actions
                 ),
             )
 

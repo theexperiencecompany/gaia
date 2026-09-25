@@ -9,6 +9,7 @@ it could have read.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.runnables import RunnableConfig
+from pydantic import ValidationError
 import pytest
 
 from app.agents.llm.vision.capability import (
@@ -19,6 +20,7 @@ from app.agents.llm.vision.capability import (
 )
 from app.constants.llm import (
     DEFAULT_LLM_PROVIDER,
+    DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
     GEMINI_PROVIDER,
     LANE_FIELD_ID,
@@ -29,7 +31,18 @@ from app.constants.llm import (
 _MOD = "app.agents.llm.vision.capability"
 
 
-def _config(lane: dict | None) -> RunnableConfig:
+def _lane(provider: str, model: str | None) -> dict[str, object]:
+    """Return a whole stored lane: to_configurable writes every key, so a fixture must too."""
+    return {
+        "provider": provider,
+        "model": model,
+        "reasoning": None,
+        "provider_pin": None,
+        "max_input_tokens": DEFAULT_MAX_TOKENS,
+    }
+
+
+def _config(lane: dict[str, object] | None) -> RunnableConfig:
     return {"configurable": {LANE_FIELD_ID: lane} if lane is not None else {}}
 
 
@@ -42,7 +55,7 @@ def _catalog(accepts: bool) -> MagicMock:
 @pytest.mark.unit
 class TestActiveLane:
     def test_the_runs_lane_answers_the_question(self) -> None:
-        assert active_lane(_config({"provider": GEMINI_PROVIDER, "model": "gemini-x"})) == (
+        assert active_lane(_config(_lane(GEMINI_PROVIDER, "gemini-x"))) == (
             GEMINI_PROVIDER,
             "gemini-x",
         )
@@ -53,7 +66,7 @@ class TestActiveLane:
 
     def test_a_lane_that_pins_no_model_answers_with_the_clients_default(self) -> None:
         """The custom dev endpoint pins no model — the client serves DEV_LLM_MODEL."""
-        assert active_lane(_config({"provider": OPENROUTER_PROVIDER, "model": None})) == (
+        assert active_lane(_config(_lane(OPENROUTER_PROVIDER, None))) == (
             OPENROUTER_PROVIDER,
             DEFAULT_MODEL_NAME,
         )
@@ -63,16 +76,14 @@ class TestActiveLane:
 class TestMediaDeliveryPerLane:
     async def test_direct_gemini_keeps_images_in_the_tool_result(self) -> None:
         """Multimodal all the way down, and not in the OpenRouter catalog."""
-        delivery = await resolve_media_delivery(
-            _config({"provider": GEMINI_PROVIDER, "model": "gemini-x"})
-        )
+        delivery = await resolve_media_delivery(_config(_lane(GEMINI_PROVIDER, "gemini-x")))
 
         assert delivery is MediaDelivery.KEEP_IN_TOOL_RESULTS
 
     async def test_an_openrouter_model_the_catalog_says_takes_images_keeps_them(self) -> None:
         with patch(f"{_MOD}.get_openrouter_catalog", AsyncMock(return_value=_catalog(True))):
             delivery = await resolve_media_delivery(
-                _config({"provider": OPENROUTER_PROVIDER, "model": "vendor/sees"})
+                _config(_lane(OPENROUTER_PROVIDER, "vendor/sees"))
             )
 
         assert delivery is MediaDelivery.KEEP_IN_TOOL_RESULTS
@@ -80,7 +91,7 @@ class TestMediaDeliveryPerLane:
     async def test_a_text_only_openrouter_model_gets_the_description_instead(self) -> None:
         with patch(f"{_MOD}.get_openrouter_catalog", AsyncMock(return_value=_catalog(False))):
             delivery = await resolve_media_delivery(
-                _config({"provider": OPENROUTER_PROVIDER, "model": "vendor/blind"})
+                _config(_lane(OPENROUTER_PROVIDER, "vendor/blind"))
             )
 
         assert delivery is MediaDelivery.REPLACE_WITH_TEXT
@@ -88,16 +99,14 @@ class TestMediaDeliveryPerLane:
     async def test_the_catalog_is_asked_about_the_lanes_own_model(self) -> None:
         catalog = _catalog(True)
         with patch(f"{_MOD}.get_openrouter_catalog", AsyncMock(return_value=catalog)):
-            await resolve_media_delivery(
-                _config({"provider": OPENROUTER_PROVIDER, "model": "vendor/sees"})
-            )
+            await resolve_media_delivery(_config(_lane(OPENROUTER_PROVIDER, "vendor/sees")))
 
         catalog.accepts_images.assert_awaited_once_with("vendor/sees")
 
     async def test_a_provider_with_no_catalog_never_gets_a_request_it_would_reject(self) -> None:
         """The dev endpoint is neither Gemini nor in the OpenRouter catalog, so nothing can establish it takes pixels."""
         delivery = await resolve_media_delivery(
-            _config({"provider": LLMProviderName.CUSTOM, "model": "local/dev-model"})
+            _config(_lane(LLMProviderName.CUSTOM, "local/dev-model"))
         )
 
         assert delivery is MediaDelivery.REPLACE_WITH_TEXT
@@ -106,8 +115,8 @@ class TestMediaDeliveryPerLane:
         self,
     ) -> None:
         """An unknown provider is a bug in whatever wrote the bag and must surface, not degrade images to text."""
-        with pytest.raises(ValueError, match="not a valid LLMProviderName"):
-            await resolve_media_delivery(_config({"provider": "some-new-provider"}))
+        with pytest.raises(ValidationError, match="provider"):
+            await resolve_media_delivery(_config(_lane("some-new-provider", "vendor/model")))
 
 
 @pytest.mark.unit
@@ -115,14 +124,9 @@ class TestModelCanViewImages:
     async def test_a_text_only_lane_cannot_view_images_however_they_are_delivered(self) -> None:
         with patch(f"{_MOD}.get_openrouter_catalog", AsyncMock(return_value=_catalog(False))):
             assert (
-                await model_can_view_images(
-                    _config({"provider": OPENROUTER_PROVIDER, "model": "vendor/blind"})
-                )
+                await model_can_view_images(_config(_lane(OPENROUTER_PROVIDER, "vendor/blind")))
                 is False
             )
 
     async def test_a_multimodal_lane_can(self) -> None:
-        assert (
-            await model_can_view_images(_config({"provider": GEMINI_PROVIDER, "model": "gemini-x"}))
-            is True
-        )
+        assert await model_can_view_images(_config(_lane(GEMINI_PROVIDER, "gemini-x"))) is True

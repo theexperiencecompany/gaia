@@ -1,0 +1,186 @@
+From ddd4294ede428100987c8dc8951b1fd32126418e Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 25 Sep 2026 05:13:10 +0530
+Subject: [PATCH] fix(input): a mouse press focuses what it lands on, as Chrome
+ does
+
+A mousedown nobody cancelled moves focus to the nearest focusable ancestor of
+its target, or blurs when there is none. Without it a click on a text field
+left focus where it was, so every key and Input.insertText after it went
+nowhere: logins and forms typed into the void.
+---
+ crates/obscura-cdp/src/domains/input.rs       |   9 +-
+ crates/obscura-cdp/tests/input_mouse_focus.rs | 134 ++++++++++++++++++
+ 2 files changed, 142 insertions(+), 1 deletion(-)
+ create mode 100644 crates/obscura-cdp/tests/input_mouse_focus.rs
+
+diff --git a/crates/obscura-cdp/src/domains/input.rs b/crates/obscura-cdp/src/domains/input.rs
+index d829d68..e6cff31 100644
+--- a/crates/obscura-cdp/src/domains/input.rs
++++ b/crates/obscura-cdp/src/domains/input.rs
+@@ -134,6 +134,8 @@ pub async fn handle(
+             let (alt_key, ctrl_key, meta_key, shift_key) = modifier_flags(modifiers);
+ 
+             if event_type == "mousePressed" {
++                // Chrome's default action for a mousedown nobody cancelled: focus the
++                // nearest focusable ancestor of the target, or blur when there is none.
+                 if let Some(page) = ctx.get_session_page_mut(session_id) {
+                     let code = format!(
+                         "(function() {{\
+@@ -142,7 +144,12 @@ pub async fn handle(
+                             globalThis.__obscura_click_target = target;\
+                             globalThis.__obscura_mouse_down = {{target:target,button:{button_code},clickCount:{click_count}}};\
+                             var evt = globalThis.__obscura_markTrusted(new MouseEvent('mousedown', {{bubbles:true,cancelable:true,view:globalThis,clientX:{x},clientY:{y},button:{button_code},buttons:{buttons},detail:{click_count},altKey:{alt_key},ctrlKey:{ctrl_key},metaKey:{meta_key},shiftKey:{shift_key}}}));\
+-                            target.dispatchEvent(evt);\
++                            if (!target.dispatchEvent(evt)) return;\
++                            var focusable = target;\
++                            while (focusable && !(focusable.matches && (focusable.matches('input:not([type=hidden]),textarea,select,button,a[href],area[href],summary,iframe,[tabindex]') || focusable.isContentEditable))) focusable = focusable.parentElement;\
++                            var active = document.activeElement;\
++                            if (focusable && !globalThis.__obscura_isDisabled(focusable)) {{ if (active !== focusable) focusable.focus(); }}\
++                            else if (active && active !== document.body && active.blur) active.blur();\
+                         }})()",
+                         x = x,
+                         y = y,
+diff --git a/crates/obscura-cdp/tests/input_mouse_focus.rs b/crates/obscura-cdp/tests/input_mouse_focus.rs
+new file mode 100644
+index 0000000..2e535e4
+--- /dev/null
++++ b/crates/obscura-cdp/tests/input_mouse_focus.rs
+@@ -0,0 +1,134 @@
++#![cfg(feature = "render")]
++//! A mouse press focuses what a person clicked, as Chrome does, so typing lands there.
++
++use obscura_cdp::dispatch::{dispatch, CdpContext};
++use obscura_cdp::types::CdpRequest;
++use serde_json::{json, Value};
++use tokio::io::{AsyncReadExt, AsyncWriteExt};
++use tokio::net::TcpListener;
++
++async fn serve_fixture() -> String {
++    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
++    let addr = listener.local_addr().unwrap();
++    tokio::spawn(async move {
++        let (mut socket, _) = listener.accept().await.unwrap();
++        let mut buf = [0u8; 2048];
++        let _ = socket.read(&mut buf).await.unwrap();
++        let body = r#"<!doctype html><html><head><style>
++            html, body { margin: 0; font: 16px monospace }
++            input, textarea, div, button { display: block; width: 200px; height: 30px; margin: 4px 0 }
++        </style></head><body>
++          <input id="name">
++          <textarea id="notes"></textarea>
++          <div id="plain">plain text</div>
++          <div id="editor" contenteditable="true"></div>
++          <button id="wrapped"><span id="inner">go</span></button>
++          <input id="guarded">
++          <input id="off" disabled>
++          <script>
++            document.getElementById('guarded').addEventListener('mousedown', e => e.preventDefault());
++          </script>
++        </body></html>"#;
++        let response = format!(
++            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
++            body.len()
++        );
++        let _ = socket.write_all(response.as_bytes()).await;
++    });
++    format!("http://{addr}/")
++}
++
++async fn cdp(ctx: &mut CdpContext, id: u64, method: &str, params: Value, sid: &str) -> Value {
++    let response = dispatch(
++        &CdpRequest {
++            id,
++            method: method.to_string(),
++            params,
++            session_id: Some(sid.to_string()),
++        },
++        ctx,
++    )
++    .await;
++    assert!(response.error.is_none(), "CDP {method} failed: {:?}", response.error);
++    response.result.unwrap_or_else(|| json!({}))
++}
++
++async fn evaluate(ctx: &mut CdpContext, id: u64, expression: &str, sid: &str) -> Value {
++    cdp(
++        ctx,
++        id,
++        "Runtime.evaluate",
++        json!({"expression": expression, "returnByValue": true, "awaitPromise": true}),
++        sid,
++    )
++    .await
++}
++
++async fn setup() -> (CdpContext, String) {
++    std::env::set_var("OBSCURA_ALLOW_PRIVATE_NETWORK", "1");
++    let url = serve_fixture().await;
++    let mut ctx = CdpContext::new();
++    let page_id = ctx.create_page();
++    let sid = "mouse-focus-session";
++    ctx.sessions.insert(sid.to_string(), page_id);
++    cdp(&mut ctx, 1, "Page.navigate", json!({"url": url, "waitUntil": "load"}), sid).await;
++    (ctx, sid.to_string())
++}
++
++/// Click the centre of `selector` the way a real pointer would.
++async fn click_element(ctx: &mut CdpContext, id: u64, sid: &str, selector: &str) {
++    let rect = evaluate(
++        ctx,
++        id,
++        &format!(
++            "JSON.stringify(document.querySelector('{selector}').getBoundingClientRect().toJSON())"
++        ),
++        sid,
++    )
++    .await;
++    let rect: Value = serde_json::from_str(rect["result"]["value"].as_str().unwrap()).unwrap();
++    let x = rect["x"].as_f64().unwrap() + rect["width"].as_f64().unwrap() / 2.0;
++    let y = rect["y"].as_f64().unwrap() + rect["height"].as_f64().unwrap() / 2.0;
++    for kind in ["mousePressed", "mouseReleased"] {
++        cdp(
++            ctx,
++            id + 1,
++            "Input.dispatchMouseEvent",
++            json!({"type": kind, "x": x, "y": y, "button": "left", "clickCount": 1}),
++            sid,
++        )
++        .await;
++    }
++}
++
++async fn active(ctx: &mut CdpContext, id: u64, sid: &str) -> Value {
++    evaluate(ctx, id, "document.activeElement === document.body ? 'body' : document.activeElement.id", sid).await["result"]["value"].clone()
++}
++
++#[tokio::test(flavor = "current_thread")]
++async fn a_press_focuses_the_clicked_field_and_typing_lands_there() {
++    let (mut ctx, sid) = setup().await;
++    click_element(&mut ctx, 10, &sid, "#name").await;
++    assert_eq!(active(&mut ctx, 20, &sid).await, "name");
++    cdp(&mut ctx, 21, "Input.insertText", json!({"text": "Ada"}), &sid).await;
++    let value = evaluate(&mut ctx, 22, "document.getElementById('name').value", &sid).await;
++    assert_eq!(value["result"]["value"], "Ada");
++    click_element(&mut ctx, 30, &sid, "#notes").await;
++    assert_eq!(active(&mut ctx, 40, &sid).await, "notes");
++    click_element(&mut ctx, 50, &sid, "#editor").await;
++    assert_eq!(active(&mut ctx, 60, &sid).await, "editor");
++    click_element(&mut ctx, 70, &sid, "#inner").await;
++    assert_eq!(active(&mut ctx, 80, &sid).await, "wrapped", "the focusable ancestor takes focus");
++}
++
++#[tokio::test(flavor = "current_thread")]
++async fn a_press_on_nothing_focusable_blurs_and_a_cancelled_press_or_disabled_field_does_not_focus() {
++    let (mut ctx, sid) = setup().await;
++    click_element(&mut ctx, 10, &sid, "#name").await;
++    click_element(&mut ctx, 20, &sid, "#plain").await;
++    assert_eq!(active(&mut ctx, 30, &sid).await, "body");
++    click_element(&mut ctx, 40, &sid, "#guarded").await;
++    assert_eq!(active(&mut ctx, 50, &sid).await, "body", "preventDefault on mousedown keeps focus");
++    click_element(&mut ctx, 60, &sid, "#off").await;
++    assert_eq!(active(&mut ctx, 70, &sid).await, "body");
++}
+-- 
+2.43.0
+

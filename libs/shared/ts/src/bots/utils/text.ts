@@ -60,6 +60,15 @@ export const PLATFORM_LIMITS: Record<PlatformName, number> = {
   imessage: 4096,
 };
 
+/** How each platform is named in user-facing copy. */
+export const PLATFORM_DISPLAY_NAMES: Record<PlatformName, string> = {
+  discord: "Discord",
+  slack: "Slack",
+  telegram: "Telegram",
+  whatsapp: "WhatsApp",
+  imessage: "iMessage",
+};
+
 /**
  * Returns true if cutting ``text`` at index ``idx`` would land inside an
  * incomplete markdown link of the form ``[label](url)``. Used by

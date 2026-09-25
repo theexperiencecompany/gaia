@@ -40,8 +40,8 @@ export type {
   OutboundReaction,
 } from "./consumer/envelope";
 export {
-  outboundAttachmentSchema,
-  outboundMessageEnvelopeSchema,
+  outboundAttachmentSchemaFor,
+  outboundMessageEnvelopeSchemaFor,
   outboundReactionSchema,
 } from "./consumer/envelope";
 export {
@@ -88,6 +88,7 @@ export type {
   UnauthenticatedSettingsResponse,
 } from "./types";
 export type {
+  BotFailureReason,
   BotLogFields,
   BotLogger,
   BotLogLevel,
@@ -104,11 +105,13 @@ export type {
 export {
   BODY_READ_TIMEOUT,
   BODY_TOO_LARGE,
+  BOT_FAILURE_REASON,
   BOT_MEDIA_LIMITS,
   buildAuthLinkMessage,
   buildPlanRequiredMessage,
   COMMAND_HELP,
   chunkResponse,
+  classifyBotFailure,
   convertToDiscordMarkdown,
   convertToImessageText,
   convertToSlackMrkdwn,
@@ -160,6 +163,7 @@ export {
   readBodyBytesBounded,
   readResponseBytesCapped,
   readStreamBytesCapped,
+  recordBotFailure,
   renderForPlatform,
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,

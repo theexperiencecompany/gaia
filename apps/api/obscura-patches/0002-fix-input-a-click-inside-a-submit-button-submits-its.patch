@@ -1,0 +1,131 @@
+From 9db29319289def98a42fa2ce4118f52b8b95c53a Mon Sep 17 00:00:00 2001
+From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
+Date: Wed, 23 Sep 2026 15:34:49 +0530
+Subject: [PATCH 02/18] fix(input): a click inside a submit button submits its
+ form
+
+Hit testing an icon-only submit button lands on its <svg>; the click's
+activation behaviour belongs to the nearest enclosing submit button, as in
+browsers, so both click paths (element.click() and the CDP mouse path) now
+resolve the submitter through one shared __obscura_submitter helper.
+---
+ crates/obscura-cdp/src/domains/input.rs | 10 ++++-----
+ crates/obscura-js/js/bootstrap.js       | 22 ++++++++++++++-----
+ crates/obscura-js/src/runtime.rs        | 29 +++++++++++++++++++++++++
+ 3 files changed, 49 insertions(+), 12 deletions(-)
+
+diff --git a/crates/obscura-cdp/src/domains/input.rs b/crates/obscura-cdp/src/domains/input.rs
+index be9060c..d829d68 100644
+--- a/crates/obscura-cdp/src/domains/input.rs
++++ b/crates/obscura-cdp/src/domains/input.rs
+@@ -220,12 +220,10 @@ pub async fn handle(
+                             if (link) {{\
+                                 var href = link.getAttribute('href');\
+                                 if (href && !href.startsWith('#') && !href.startsWith('javascript:')) location.assign(href);\
+-                            }} else if (tag === 'BUTTON' && type !== 'button' && type !== 'reset') {{\
+-                                var form = clickTarget.closest ? clickTarget.closest('form') : null;\
+-                                if (form) {{ try {{ if (typeof form.requestSubmit === 'function') {{ form.requestSubmit(clickTarget); }} else {{ form.submit(clickTarget); }} }} catch(e) {{}} }}\
+-                            }} else if (tag === 'INPUT' && (type === 'submit' || type === 'image')) {{\
+-                                var form2 = clickTarget.closest ? clickTarget.closest('form') : null;\
+-                                if (form2) {{ try {{ if (typeof form2.requestSubmit === 'function') {{ form2.requestSubmit(clickTarget); }} else {{ form2.submit(clickTarget); }} }} catch(e) {{}} }}\
++                            }} else if (globalThis.__obscura_submitter(clickTarget)) {{\
++                                var submitter = globalThis.__obscura_submitter(clickTarget);\
++                                var form = submitter.closest ? submitter.closest('form') : null;\
++                                if (form) {{ try {{ if (typeof form.requestSubmit === 'function') {{ form.requestSubmit(submitter); }} else {{ form.submit(submitter); }} }} catch(e) {{}} }}\
+                             }} else if ({click_count} >= 3 && (tag === 'INPUT' || tag === 'TEXTAREA')) {{\
+                                 var len = clickTarget.value ? clickTarget.value.length : 0;\
+                                 if (clickTarget.setSelectionRange) clickTarget.setSelectionRange(0, len);\
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index b112b3a..1eaed5d 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -21,7 +21,7 @@
+     '__obscura_liveFrameIds', '__obscura_forgetFrame',
+     '__obscura_registerLinkedStylesheet', '__obscura_activateLabel',
+     '__obscura_isDisabled', '__obscura_labeledControl', '__obscura_interactiveHost',
+-    '__markParserScripts', '__obscura_hasPendingDynamicScripts',
++    '__obscura_submitter', '__markParserScripts', '__obscura_hasPendingDynamicScripts',
+     '__obscura_hasPendingLoadDelayingScripts',
+     '__obscura_nextPendingTimeoutDelay',
+     '__obscura_hw', '__obscura_mem',
+@@ -2854,10 +2854,19 @@ globalThis.__obscura_labeledControl = function(label) { return _labeledControl(l
+ globalThis.__obscura_interactiveHost = function(el) {
+   return el && el.closest ? el.closest(_INTERACTIVE) : null;
+ };
++// The submit button a click on el activates: el itself, or the button el sits
++// inside. HTML runs a click's activation behaviour on the nearest activatable
++// ancestor, so a click on the icon inside an icon-only submit button (hit
++// testing lands on the <svg>) submits the form, as it does in browsers.
++globalThis.__obscura_submitter = function(el) {
++  const host = _isSubmitButton(el) ? el : (el && el.closest ? el.closest('button') : null);
++  return host && _isSubmitButton(host) && !_isActuallyDisabled(host) ? host : null;
++};
+ // Frozen so page script can neither replace the helpers to suppress or fake
+ // label activation, nor delete them and make later clicks throw.
+ for (const _name of ['__obscura_activateLabel', '__obscura_isDisabled',
+-                     '__obscura_labeledControl', '__obscura_interactiveHost']) {
++                     '__obscura_labeledControl', '__obscura_interactiveHost',
++                     '__obscura_submitter']) {
+   Object.defineProperty(globalThis, _name, { writable: false, configurable: false });
+ }
+ 
+@@ -3837,14 +3846,15 @@ class Element extends Node {
+       // can never hand it a submitter it would reject. Also matches the CDP
+       // click path in input.rs, which already treats <input type=image> as a
+       // submit button.
+-      if (_isSubmitButton(this)) {
+-        const form = this.closest ? this.closest('form') : null;
++      const submitter = globalThis.__obscura_submitter(this);
++      if (submitter) {
++        const form = submitter.closest ? submitter.closest('form') : null;
+         // A real submit-button click fires the cancelable submit event, so use
+         // requestSubmit() (not the plain submit() method, which now bypasses it).
+         if (form && typeof form.requestSubmit === 'function') {
+-          form.requestSubmit(this);
++          form.requestSubmit(submitter);
+         } else if (form && typeof form.submit === 'function') {
+-          form.submit(this);
++          form.submit(submitter);
+         }
+       }
+     }
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index 8bd3139..4a32772 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -6868,6 +6868,35 @@ mod tests {
+         assert_eq!(result, serde_json::json!([true, false, true, true, true]));
+     }
+ 
++    #[test]
++    fn a_click_inside_a_submit_button_submits_its_form() {
++        let mut rt = setup_runtime(
++            r#"<html><body><form id="f" action="/search">
++                <button type="submit"><svg><path id="icon"></path></svg></button>
++                <button type="button"><span id="plain">x</span></button>
++                <button type="submit" disabled><span id="off">x</span></button>
++            </form></body></html>"#,
++        );
++        let result = rt
++            .evaluate(
++                r#"
++                let submits = 0;
++                document.getElementById("f").addEventListener("submit", (e) => {
++                    submits += 1;
++                    e.preventDefault();
++                });
++                HTMLElement.prototype.click.call(document.getElementById("icon"));
++                const viaIcon = submits;
++                HTMLElement.prototype.click.call(document.getElementById("plain"));
++                HTMLElement.prototype.click.call(document.getElementById("off"));
++                return [viaIcon, submits,
++                        globalThis.__obscura_submitter(document.getElementById("icon")) !== null];
++                "#,
++            )
++            .unwrap();
++        assert_eq!(result, serde_json::json!([1, 1, true]));
++    }
++
+     #[test]
+     fn window_named_access_tracks_dynamic_ids_and_fragment_parsing() {
+         let mut rt = setup_runtime("<html><body><div id='host'></div></body></html>");

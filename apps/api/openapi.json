@@ -1827,6 +1827,250 @@
         "title": "BotSettingsResponse",
         "type": "object"
       },
+      "BrowserImportRequest": {
+        "description": "A profile upload from the local CLI: the mint code plus a Playwright\nstorage_state (cookies + localStorage), split per host on the server.",
+        "properties": {
+          "cookies": {
+            "items": {
+              "$ref": "#/components/schemas/ImportedCookie"
+            },
+            "title": "Cookies",
+            "type": "array"
+          },
+          "origins": {
+            "items": {
+              "$ref": "#/components/schemas/ImportedOrigin"
+            },
+            "title": "Origins",
+            "type": "array"
+          },
+          "source_browser": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Browser"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "BrowserImportRequest",
+        "type": "object"
+      },
+      "BrowserImportResponse": {
+        "description": "What landed: the hosts now seeded and how many cookies each carries.",
+        "properties": {
+          "cookie_count": {
+            "title": "Cookie Count",
+            "type": "integer"
+          },
+          "host_count": {
+            "title": "Host Count",
+            "type": "integer"
+          },
+          "imported": {
+            "items": {
+              "$ref": "#/components/schemas/BrowserLoginResponse"
+            },
+            "title": "Imported",
+            "type": "array"
+          }
+        },
+        "required": [
+          "host_count",
+          "cookie_count"
+        ],
+        "title": "BrowserImportResponse",
+        "type": "object"
+      },
+      "BrowserLoginResponse": {
+        "description": "A saved browser login. Only the domain is exposed \u2014 never the encrypted state.",
+        "properties": {
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "source_browser": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Browser"
+          },
+          "source_ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Ip"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "domain",
+          "updated_at",
+          "expires_at",
+          "source",
+          "source_browser",
+          "source_ip"
+        ],
+        "title": "BrowserLoginResponse",
+        "type": "object"
+      },
+      "BrowserSessionStatus": {
+        "description": "Lifecycle state of a browser session: created to live/working to ended/failed.",
+        "enum": [
+          "starting",
+          "running",
+          "paused",
+          "completed",
+          "failed",
+          "cancelled"
+        ],
+        "title": "BrowserSessionStatus",
+        "type": "string"
+      },
+      "BrowserTaskFrame": {
+        "description": "One recap frame: a step screenshot plus what the agent was doing.",
+        "properties": {
+          "caption": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "BrowserTaskFrame",
+        "type": "object"
+      },
+      "BrowserTaskResponse": {
+        "description": "One row in the user's browser task history (settings).",
+        "properties": {
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "frames": {
+            "description": "Recap frames (screenshot + caption), in order.",
+            "items": {
+              "$ref": "#/components/schemas/BrowserTaskFrame"
+            },
+            "title": "Frames",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BrowserSessionStatus"
+          },
+          "steps": {
+            "title": "Steps",
+            "type": "integer"
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "task": {
+            "title": "Task",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "task",
+          "status",
+          "success",
+          "steps",
+          "created_at",
+          "conversation_id",
+          "source",
+          "frames"
+        ],
+        "title": "BrowserTaskResponse",
+        "type": "object"
+      },
       "BudgetWindow": {
         "description": "One cost-budget window: how much of the allowance is used, and when it\nresets. Deliberately no raw USD \u2014 see ``cost_budget.get_budget_status``.",
         "properties": {
@@ -4081,7 +4325,7 @@
                 "type": "null"
               }
             ],
-            "description": "Integration ids this workflow uses \u2014 picked by the user or identified from intent. Scopes the tool palette when generating steps.",
+            "description": "Integration ids this workflow uses, picked by the user or identified from intent. Scopes the tool palette when generating steps.",
             "title": "Integration Ids"
           },
           "is_system_workflow": {
@@ -5519,6 +5763,14 @@
         "title": "FeaturePeriodUsage",
         "type": "object"
       },
+      "FeatureStage": {
+        "description": "How finished a user-facing feature is, shown next to its toggle.",
+        "enum": [
+          "experimental"
+        ],
+        "title": "FeatureStage",
+        "type": "string"
+      },
       "FeatureUpgrade": {
         "description": "The Pro tier's limits for a feature, so a free user sees the delta.",
         "properties": {
@@ -6710,6 +6962,69 @@
         "title": "HILPreferencesResponse",
         "type": "object"
       },
+      "HandoffDecision": {
+        "description": "User decision on a pending handoff, or a note-only reply.",
+        "enum": [
+          "continue",
+          "cancel"
+        ],
+        "title": "HandoffDecision",
+        "type": "string"
+      },
+      "HandoffDecisionRequest": {
+        "description": "Body of ``POST /browser/handoffs/{handoff_id}/decision``.",
+        "properties": {
+          "decision": {
+            "$ref": "#/components/schemas/HandoffDecision"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "HandoffDecisionRequest",
+        "type": "object"
+      },
+      "HandoffDecisionResponse": {
+        "description": "Outcome of a handoff decision: accepted with note, cancelled, or errored.",
+        "properties": {
+          "handoff_id": {
+            "title": "Handoff Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/HandoffStatus"
+          }
+        },
+        "required": [
+          "handoff_id",
+          "status"
+        ],
+        "title": "HandoffDecisionResponse",
+        "type": "object"
+      },
+      "HandoffStatus": {
+        "description": "State of a live-view handoff: pending, completed, cancelled, expired.",
+        "enum": [
+          "pending",
+          "completed",
+          "cancelled",
+          "timeout"
+        ],
+        "title": "HandoffStatus",
+        "type": "string"
+      },
       "HealthResponse": {
         "description": "``GET /health`` (and its ping/root aliases) when the API is serving normally.",
         "properties": {
@@ -6849,6 +7164,117 @@
           "response"
         ],
         "title": "ImageToTextResponse",
+        "type": "object"
+      },
+      "ImportTokenResponse": {
+        "description": "The short-lived code the CLI presents, and how long it lives.",
+        "properties": {
+          "expires_in_seconds": {
+            "title": "Expires In Seconds",
+            "type": "integer"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "expires_in_seconds"
+        ],
+        "title": "ImportTokenResponse",
+        "type": "object"
+      },
+      "ImportedCookie": {
+        "description": "One cookie in a Playwright storage_state. Field aliases match Playwright's\ncamelCase exactly, so a dump ``by_alias`` re-emits the shape the browser host\nseeds \u2014 this is an external schema boundary, not our own.",
+        "properties": {
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "expires": {
+            "default": -1,
+            "title": "Expires",
+            "type": "number"
+          },
+          "httpOnly": {
+            "default": false,
+            "title": "Httponly",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "default": "/",
+            "title": "Path",
+            "type": "string"
+          },
+          "sameSite": {
+            "default": "Lax",
+            "enum": [
+              "Strict",
+              "Lax",
+              "None"
+            ],
+            "title": "Samesite",
+            "type": "string"
+          },
+          "secure": {
+            "default": false,
+            "title": "Secure",
+            "type": "boolean"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value",
+          "domain"
+        ],
+        "title": "ImportedCookie",
+        "type": "object"
+      },
+      "ImportedLocalStorageItem": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "title": "ImportedLocalStorageItem",
+        "type": "object"
+      },
+      "ImportedOrigin": {
+        "properties": {
+          "localStorage": {
+            "items": {
+              "$ref": "#/components/schemas/ImportedLocalStorageItem"
+            },
+            "title": "Localstorage",
+            "type": "array"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          }
+        },
+        "required": [
+          "origin"
+        ],
+        "title": "ImportedOrigin",
         "type": "object"
       },
       "InitiatePlatformConnectRequest": {
@@ -7708,6 +8134,26 @@
           }
         },
         "title": "LinkedUsersResponse",
+        "type": "object"
+      },
+      "LiveViewTokenResponse": {
+        "description": "A short-lived takeover token for opening the cross-origin live view.",
+        "properties": {
+          "expires_in": {
+            "description": "Seconds until the token expires.",
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "expires_in"
+        ],
+        "title": "LiveViewTokenResponse",
         "type": "object"
       },
       "LogoutResponse": {
@@ -8854,6 +9300,18 @@
       "MemorySearchResult": {
         "description": "Results from a memory search.",
         "properties": {
+          "degraded": {
+            "default": false,
+            "description": "Whether the embedding sidecar failed fast and recall ran without dense search or the reranker; such a result is never cached",
+            "title": "Degraded",
+            "type": "boolean"
+          },
+          "has_confident_match": {
+            "default": false,
+            "description": "Whether any memory matched the query confidently rather than as a weak fallback",
+            "title": "Has Confident Match",
+            "type": "boolean"
+          },
           "memories": {
             "description": "List of matching memories",
             "items": {
@@ -8871,7 +9329,9 @@
         },
         "required": [
           "memories",
-          "total_count"
+          "total_count",
+          "has_confident_match",
+          "degraded"
         ],
         "title": "MemorySearchResult",
         "type": "object"
@@ -9812,7 +10272,7 @@
             "type": "string"
           },
           "handoff_text": {
-            "description": "first_message with ' #<code>' appended \u2014 the exact text a WhatsApp or iMessage user sends. Used to build the iMessage sms: link, whose number is only known after the phone is registered on Photon's pool.",
+            "description": "first_message with ' #<code>' appended, the exact text a WhatsApp or iMessage user sends. Used to build the iMessage sms: link, whose number is only known after the phone is registered on Photon's pool.",
             "title": "Handoff Text",
             "type": "string"
           },
@@ -9820,7 +10280,7 @@
             "additionalProperties": {
               "type": "string"
             },
-            "description": "Deep link per platform that carries the code. iMessage is absent by construction \u2014 its number is assigned per user.",
+            "description": "Deep link per platform that carries the code. iMessage is absent by construction; its number is assigned per user.",
             "title": "Links",
             "type": "object"
           }
@@ -13111,7 +13571,7 @@
             "type": "boolean"
           },
           "first_contact": {
-            "description": "Ordered bubbles the bot must send itself because delivery failed. Empty whenever delivered is true \u2014 sending them then would say everything twice.",
+            "description": "Ordered bubbles the bot must send itself because delivery failed. Empty whenever delivered is true, because sending them then would say everything twice.",
             "items": {
               "type": "string"
             },
@@ -18013,6 +18473,20 @@
         "title": "UpdateTimezoneResponse",
         "type": "object"
       },
+      "UpdateUserFeatureFlagRequest": {
+        "properties": {
+          "enabled": {
+            "description": "The caller's choice; it overrides the rollout for them",
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "UpdateUserFeatureFlagRequest",
+        "type": "object"
+      },
       "UpdateVoiceRequest": {
         "description": "Request body for choosing a voice.",
         "properties": {
@@ -18304,6 +18778,80 @@
         "title": "UsageSummary",
         "type": "object"
       },
+      "UserFeatureFlagListResponse": {
+        "properties": {
+          "features": {
+            "description": "Every user-facing flag, in registry order",
+            "items": {
+              "$ref": "#/components/schemas/UserFeatureFlagResponse"
+            },
+            "title": "Features",
+            "type": "array"
+          }
+        },
+        "required": [
+          "features"
+        ],
+        "title": "UserFeatureFlagListResponse",
+        "type": "object"
+      },
+      "UserFeatureFlagResponse": {
+        "description": "One flag the user may toggle, with the value currently in effect for them.",
+        "properties": {
+          "available": {
+            "description": "False while ops have the feature killed for everyone; the switch is locked",
+            "title": "Available",
+            "type": "boolean"
+          },
+          "description": {
+            "description": "One or two sentences on what turning it on changes",
+            "title": "Description",
+            "type": "string"
+          },
+          "enabled": {
+            "description": "In effect for the caller: off while killed, else their own choice, else the rollout, else the default",
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "key": {
+            "description": "Flag key, the {flag} path parameter of the PATCH route",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "description": "Short name shown next to the toggle",
+            "title": "Label",
+            "type": "string"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/FeatureStage",
+            "description": "How finished the feature is"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the switch is locked, shown beside it; null when available",
+            "title": "Unavailable Reason"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "description",
+          "stage",
+          "enabled",
+          "available",
+          "unavailable_reason"
+        ],
+        "title": "UserFeatureFlagResponse",
+        "type": "object"
+      },
       "UserSubscriptionStatus": {
         "description": "Response model for user subscription status.",
         "properties": {
@@ -18344,7 +18892,7 @@
           },
           "has_ever_subscribed": {
             "default": false,
-            "description": "Whether the user has ever had a subscription, in any status \u2014 separates a lapsed subscriber from one who has never paid",
+            "description": "Whether the user has ever had a subscription, in any status; separates a lapsed subscriber from one who has never paid",
             "title": "Has Ever Subscribed",
             "type": "boolean"
           },
@@ -19280,7 +19828,7 @@
                 "type": "null"
               }
             ],
-            "description": "Why the workflow is not activated. None means the user turned it off themselves \u2014 only system-paused workflows may be resumed automatically."
+            "description": "Why the workflow is not activated. None means the user turned it off themselves. Only system-paused workflows may be resumed automatically."
           },
           "description": {
             "default": "",
@@ -19340,7 +19888,7 @@
             "type": "string"
           },
           "integration_ids": {
-            "description": "Integration ids this workflow uses \u2014 picked by the user or identified from intent by the workflow assistant. Scopes the tool palette when generating steps. Connection state is never stored here: required/missing integrations are derived from the steps at read time.",
+            "description": "Integration ids this workflow uses, picked by the user or identified from intent by the workflow assistant. Scopes the tool palette when generating steps. Connection state is never stored here: required/missing integrations are derived from the steps at read time.",
             "items": {
               "type": "string"
             },
@@ -20977,6 +21525,600 @@
         "summary": "Unlink Platform Account",
         "tags": [
           "Bot"
+        ]
+      }
+    },
+    "/api/v1/browser/handoffs/{handoff_id}": {
+      "get": {
+        "description": "Current status of a browser handoff \u2014 the card polls this so a reload or a\nresolution made elsewhere (chat, another device) is reflected reliably.",
+        "operationId": "browser_get_browser_handoff",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "handoff_id",
+            "required": true,
+            "schema": {
+              "title": "Handoff Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandoffDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Browser Handoff",
+        "tags": [
+          "Browser"
+        ]
+      }
+    },
+    "/api/v1/browser/handoffs/{handoff_id}/decision": {
+      "post": {
+        "description": "Continue (user finished the step in live-view) or cancel a browser handoff.",
+        "operationId": "browser_decide_browser_handoff",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "handoff_id",
+            "required": true,
+            "schema": {
+              "title": "Handoff Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandoffDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandoffDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Decide Browser Handoff",
+        "tags": [
+          "Browser"
+        ]
+      }
+    },
+    "/api/v1/browser/import": {
+      "post": {
+        "description": "Receive a browser profile from the local CLI and store it as saved logins.\n\nAuthenticated by the single-use import code, not a session cookie \u2014 the CLI\nruns outside the browser. The uploaded storage_state is split per host and\nencrypted at rest by the same store that seeds every future task.",
+        "operationId": "browser_import_browser_sessions",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserImportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Import Browser Sessions",
+        "tags": [
+          "Browser"
+        ]
+      }
+    },
+    "/api/v1/browser/import/token": {
+      "post": {
+        "description": "Mint the short-lived, single-use code the local ``gaia connect`` CLI\npresents to upload this user's browser profile. Authorised by the web\nsession; the CLI, which has no cookie, authenticates with the returned code.",
+        "operationId": "browser_mint_browser_import_token",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportTokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Mint Browser Import Token",
+        "tags": [
+          "Browser"
+        ]
+      }
+    },
+    "/api/v1/browser/logins": {
+      "delete": {
+        "description": "Forget every saved browser login for the user.",
+        "operationId": "browser_clear_browser_logins_endpoint",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Clear Browser Logins Endpoint",
+        "tags": [
+          "Browser"
+        ]
+      },
+      "get": {
+        "description": "Domains the user has a saved browser login for (never the encrypted state).",
+        "operationId": "browser_list_browser_logins_endpoint",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BrowserLoginResponse"
+                  },
+                  "title": "Response Browser List Browser Logins Endpoint",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "List Browser Logins Endpoint",
+        "tags": [
+          "Browser"
+        ]
+      }
+    },
+    "/api/v1/browser/logins/{domain}": {
+      "delete": {
+        "description": "Forget the saved login for one domain.",
+        "operationId": "browser_forget_browser_login_endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain",
+            "required": true,
+            "schema": {
+              "title": "Domain",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Forget Browser Login Endpoint",
+        "tags": [
+          "Browser"
+        ]
+      }
+    },
+    "/api/v1/browser/sessions/{session_id}/live-view-token": {
+      "get": {
+        "description": "Mint a short-lived takeover token so the web card can open the cross-origin\nlive view (the host-only session cookie is not sent to the live-view vhost).",
+        "operationId": "browser_get_live_view_token",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveViewTokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Live View Token",
+        "tags": [
+          "Browser"
+        ]
+      }
+    },
+    "/api/v1/browser/tasks": {
+      "get": {
+        "description": "The user's browser task history (settings), newest first, with recap URLs.",
+        "operationId": "browser_list_browser_tasks_endpoint",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BrowserTaskResponse"
+                  },
+                  "title": "Response Browser List Browser Tasks Endpoint",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "List Browser Tasks Endpoint",
+        "tags": [
+          "Browser"
+        ]
+      }
+    },
+    "/api/v1/browser/tasks/{task_id}": {
+      "delete": {
+        "description": "Remove one task from the user's browser history.",
+        "operationId": "browser_delete_browser_task_endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Delete Browser Task Endpoint",
+        "tags": [
+          "Browser"
         ]
       }
     },
@@ -23419,6 +24561,131 @@
         "summary": "Revoke",
         "tags": [
           "Device Bridge"
+        ]
+      }
+    },
+    "/api/v1/features": {
+      "get": {
+        "description": "The flags the caller may toggle, each with the value in effect for them.",
+        "operationId": "features_list_features",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserFeatureFlagListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "List Features",
+        "tags": [
+          "Features"
+        ]
+      }
+    },
+    "/api/v1/features/{flag}": {
+      "patch": {
+        "description": "Turn one user-facing flag on or off for the caller; unknown and internal flags are 404.",
+        "operationId": "features_update_feature",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flag",
+            "required": true,
+            "schema": {
+              "title": "Flag",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserFeatureFlagRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserFeatureFlagResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Update Feature",
+        "tags": [
+          "Features"
         ]
       }
     },
@@ -34643,6 +35910,7 @@
         "operationId": "todos_list_todos",
         "parameters": [
           {
+            "description": "Search query",
             "in": "query",
             "name": "q",
             "required": false,
@@ -34655,16 +35923,19 @@
                   "type": "null"
                 }
               ],
+              "description": "Search query",
               "title": "Q"
             }
           },
           {
+            "description": "Search mode: text, semantic, or hybrid",
             "in": "query",
             "name": "mode",
             "required": false,
             "schema": {
               "$ref": "#/components/schemas/SearchMode",
-              "default": "hybrid"
+              "default": "hybrid",
+              "description": "Search mode: text, semantic, or hybrid"
             }
           },
           {
@@ -34749,6 +36020,26 @@
           },
           {
             "in": "query",
+            "name": "labels",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Labels"
+            }
+          },
+          {
+            "description": "Due date after this date",
+            "in": "query",
             "name": "due_after",
             "required": false,
             "schema": {
@@ -34761,10 +36052,12 @@
                   "type": "null"
                 }
               ],
+              "description": "Due date after this date",
               "title": "Due After"
             }
           },
           {
+            "description": "Due date before this date",
             "in": "query",
             "name": "due_before",
             "required": false,
@@ -34778,25 +36071,30 @@
                   "type": "null"
                 }
               ],
+              "description": "Due date before this date",
               "title": "Due Before"
             }
           },
           {
+            "description": "Only todos due today",
             "in": "query",
             "name": "due_today",
             "required": false,
             "schema": {
               "default": false,
+              "description": "Only todos due today",
               "title": "Due Today",
               "type": "boolean"
             }
           },
           {
+            "description": "Only todos due this week",
             "in": "query",
             "name": "due_this_week",
             "required": false,
             "schema": {
               "default": false,
+              "description": "Only todos due this week",
               "title": "Due This Week",
               "type": "boolean"
             }
@@ -34826,36 +36124,18 @@
             }
           },
           {
+            "description": "Include statistics in response",
             "in": "query",
             "name": "include_stats",
             "required": false,
             "schema": {
               "default": false,
+              "description": "Include statistics in response",
               "title": "Include Stats",
               "type": "boolean"
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "anyOf": [
-                  {
-                    "items": {
-                      "type": "string"
-                    },
-                    "type": "array"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Labels"
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
             "content": {
@@ -39162,6 +40442,213 @@
         "summary": "Health Check",
         "tags": [
           "Health"
+        ]
+      }
+    },
+    "/live/{code}": {
+      "get": {
+        "description": "Standalone live-view page. ``code`` is a short capability code (the bot link)\nthat resolves to a session + owner in Redis; failing that it is treated as a raw\nsession id authorized by the ``?t=`` takeover token or a same-origin cookie (the\nweb chat card).",
+        "operationId": "browser_live_view_page",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "t",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "T"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Live View Page",
+        "tags": [
+          "Browser"
+        ]
+      }
+    },
+    "/replays/{code}": {
+      "get": {
+        "description": "Standalone recap slideshow for a finished session. ``code`` resolves to the\nsession + step count in Redis; the step screenshots are public R2 URLs, so no\nper-session auth is needed (the code itself is the unguessable capability).",
+        "operationId": "browser_replay_page",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Replay Page",
+        "tags": [
+          "Browser"
+        ]
+      }
+    },
+    "/shots/{code}/{index}.png": {
+      "get": {
+        "description": "One step frame of a finished run, for deployments with no object store.\n\nSame capability model as the recap page it feeds: the code is the secret, so\na frame cannot be reached by guessing a session id, and it expires with the\ncode. The index is an int, so it cannot walk out of the run's directory.",
+        "operationId": "browser_step_screenshot",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "schema": {
+              "title": "Index",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Step Screenshot",
+        "tags": [
+          "Browser"
         ]
       }
     }

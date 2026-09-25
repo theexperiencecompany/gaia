@@ -1,0 +1,1101 @@
+From c278b13de031cb6dc41c7aeaf05f089ea89e5755 Mon Sep 17 00:00:00 2001
+From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
+Date: Wed, 23 Sep 2026 20:42:45 +0530
+Subject: [PATCH 16/18] fix(render): scope :has() removal invalidation to the
+ removed features
+
+Every light-DOM removal re-cascaded the whole document on nytimes.com
+(`planned_dirty=5470`, 2.4-3.5 s per geometry read after a removeChild).
+The planner fired every `:has()` rule on every removal and walked all old
+ancestors: NYT's `body:has(.k27EHG_expandedPromoFeed)` then anchored on
+<body>, whose subtree is the document.
+
+As Blink and WebKit do, a removal now fires a `:has()` only when the removed
+subtree carried a feature (tag, class, id, attribute) of its argument, or
+when the argument has a sibling/structural side effect on an element that
+stays and that element carries a key. The runtime cannot rely on the
+detached subtree at flush time (it may have been edited, or its old parent
+removed or moved since), so `TreeStyleMutation::remove` records the
+subtree's features and the old ancestor chain when the removal happens.
+
+The walk to the anchors follows the argument's traversal scope: `> .x`
+reaches only the old parent (and only a removed root that is `.x`), `+`/`~`
+only the old parent's children, a descendant combinator every old ancestor;
+mixed or nested combinators keep the old every-boundary walk. A `:has()`
+inside `:is()`/`:where()`/`:not()` takes the anchor key of the compound
+around it (GitHub's `.col:not(:has(+ .dummy))`), as do structural pseudos
+there.
+
+The runtime now builds retained-style records only for connected changes
+to a prepared render, so detached DOM building does not pay for the
+snapshot.
+
+Removal read on a NYT snapshot: 3.5 s -> 0.3 s (planned_dirty 5088 -> 13);
+live nytimes.com: 2.5 s -> 0.25 s. Retained results match a forced full
+recalc on nytimes.com, YouTube, GitHub and Wikipedia after removals.
+
+Tests: equivalence with a full cascade for removing a `:has()` argument or
+its holder, a `body:has()` flag, an unkeyed-anchor child argument, text
+under `:empty`; removals after the old parent is detached or moved and
+after a detached edit; locality (<= 40 fresh of 2000+) for unrelated
+removals and for child/sibling/`:not()` arguments.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/src/ops.rs                  |  19 +-
+ crates/obscura-render/src/css.rs              | 324 +++++++++++++++++-
+ crates/obscura-render/src/dom.rs              | 158 ++++++++-
+ .../src/dom/has_removal_restyle_tests.rs      | 265 ++++++++++++++
+ .../src/dom/shadow_restyle_tests.rs           |  12 +-
+ 5 files changed, 742 insertions(+), 36 deletions(-)
+ create mode 100644 crates/obscura-render/src/dom/has_removal_restyle_tests.rs
+
+diff --git a/crates/obscura-js/src/ops.rs b/crates/obscura-js/src/ops.rs
+index e2ce6ee..7714eca 100644
+--- a/crates/obscura-js/src/ops.rs
++++ b/crates/obscura-js/src/ops.rs
+@@ -1005,7 +1005,7 @@ fn retained_style_mutation(
+         "remove_child" => {
+             let old_parent = dom.get_node(node)?.parent?;
+             Some(
+-                obscura_render::TreeStyleMutation::Remove { node, old_parent }.into(),
++                obscura_render::TreeStyleMutation::remove(dom, node, old_parent).into(),
+             )
+         }
+         "insert_before" => {
+@@ -1632,11 +1632,20 @@ fn op_dom_inner(shared: SharedState, cmd: String, arg1: String, arg2: String) ->
+             .as_ref()
+             .map(|dom| render_mutation_impact(dom, &cmd, &arg1, &arg2))
+             .unwrap_or_default();
++        // Only a connected change to a prepared render is queued. A removal
++        // record snapshots the removed subtree, which detached DOM building
++        // should not pay for.
+         #[cfg(feature = "render")]
+-        let retained_style_mutation = state
+-            .dom
+-            .as_ref()
+-            .and_then(|dom| retained_style_mutation(dom, &cmd, &arg1, &arg2));
++        let retained_style_mutation = (impact.connected
++            && impact.actual_change
++            && state.prepared_render.is_some())
++        .then(|| {
++            state
++                .dom
++                .as_ref()
++                .and_then(|dom| retained_style_mutation(dom, &cmd, &arg1, &arg2))
++        })
++        .flatten();
+         let invalidate = impact.connected && impact.actual_change;
+         if invalidate {
+             state.activity_generation = state.activity_generation.wrapping_add(1);
+diff --git a/crates/obscura-render/src/css.rs b/crates/obscura-render/src/css.rs
+index 1b9d83f..b302539 100644
+--- a/crates/obscura-render/src/css.rs
++++ b/crates/obscura-render/src/css.rs
+@@ -83,6 +83,11 @@ pub(crate) struct RelationalInvalidation {
+     pub rule_order: usize,
+     anchor_key: Option<RelationalSelectorKey>,
+     relative_keys: Vec<RelationalSelectorKey>,
++    pub anchor_scope: RelationalAnchorScope,
++    /// Every compound of every argument has a key, so an element whose
++    /// sibling adjacency or structural state changed can only affect a match
++    /// if it carries one of `relative_keys`.
++    pub every_compound_keyed: bool,
+     pub anchor_reaches: InvalidationReaches,
+     pub unkeyed_subject: bool,
+     pub sibling_side_effect: bool,
+@@ -141,11 +146,283 @@ fn relational_key_may_match(
+     }
+ }
+ 
++/// Where the anchors of a `:has()` can sit relative to a removed subtree, from
++/// the combinators of its relative selectors (Blink's
++/// `CheckPseudoHasArgumentTraversalScope`). A match runs from the anchor down
++/// and/or forward to the subject, so the anchor of an element that left is one
++/// of its old ancestors or an earlier sibling of one.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub(crate) struct RelationalAnchorScope {
++    /// How many old ancestors, nearest first, can be anchors. `usize::MAX`
++    /// for a descendant combinator anywhere in the argument.
++    pub ancestors: usize,
++    /// The old parent's children can be anchors (`:has(+ .x)`, `:has(~ .x)`).
++    pub siblings: bool,
++    /// Children at every old ancestor boundary can be anchors: sibling and
++    /// descendant combinators mixed, or combinators inside functional
++    /// pseudo-classes, which this summary does not model.
++    pub ancestor_siblings: bool,
++}
++
++impl RelationalAnchorScope {
++    pub(crate) const NONE: Self = Self {
++        ancestors: 0,
++        siblings: false,
++        ancestor_siblings: false,
++    };
++    pub(crate) const ANY: Self = Self {
++        ancestors: usize::MAX,
++        siblings: true,
++        ancestor_siblings: true,
++    };
++
++    /// How many levels of a removed subtree, from its root, can hold an
++    /// element that a match from a surviving anchor passed through.
++    pub(crate) fn removed_depth(self) -> usize {
++        if self.ancestor_siblings {
++            usize::MAX
++        } else {
++            self.ancestors.max(usize::from(self.siblings))
++        }
++    }
++
++    fn union(self, other: Self) -> Self {
++        Self {
++            ancestors: self.ancestors.max(other.ancestors),
++            siblings: self.siblings || other.siblings,
++            ancestor_siblings: self.ancestor_siblings || other.ancestor_siblings,
++        }
++    }
++
++    /// Scope of one relative selector. A structural pseudo in it can change
++    /// on elements that stay: siblings of the removed element (`:first-child`
++    /// and friends), whose anchors are already in scope, and the old parent
++    /// (`:empty`), whose anchors sit one level further up.
++    fn of_argument(selector: &str, structural_side_effect: bool) -> Self {
++        let Some(combinators) = relative_selector_combinators(selector) else {
++            return Self::ANY;
++        };
++        let child_or_descendant = combinators.iter().all(|&c| c == '>' || c == ' ');
++        let sibling = combinators.iter().all(|&c| c == '+' || c == '~');
++        if child_or_descendant {
++            let ancestors = if combinators.iter().all(|&c| c == '>') {
++                combinators.len() + usize::from(structural_side_effect)
++            } else {
++                usize::MAX
++            };
++            Self {
++                ancestors,
++                siblings: false,
++                ancestor_siblings: false,
++            }
++        } else if sibling && !structural_side_effect {
++            Self {
++                ancestors: 0,
++                siblings: true,
++                ancestor_siblings: false,
++            }
++        } else {
++            Self::ANY
++        }
++    }
++}
++
++/// The combinators of a relative selector in order, the leading (possibly
++/// implicit descendant) one first; `' '` is the descendant combinator. None
++/// when a functional pseudo-class argument has combinators of its own, or the
++/// selector cannot be split.
++fn relative_selector_combinators(selector: &str) -> Option<Vec<char>> {
++    let chars = selector.trim().chars().collect::<Vec<_>>();
++    let mut combinators = Vec::new();
++    let mut index = 0usize;
++    match chars.first() {
++        Some(&c) if matches!(c, '>' | '+' | '~') => {
++            combinators.push(c);
++            index = 1;
++        }
++        _ => combinators.push(' '),
++    }
++    let mut pending_whitespace = false;
++    let mut token = false;
++    while index < chars.len() {
++        let ch = chars[index];
++        if ch.is_whitespace() {
++            pending_whitespace = true;
++            index += 1;
++            continue;
++        }
++        if matches!(ch, '>' | '+' | '~') {
++            if !token {
++                return None;
++            }
++            combinators.push(ch);
++            pending_whitespace = false;
++            token = false;
++            index += 1;
++            continue;
++        }
++        if pending_whitespace && token {
++            combinators.push(' ');
++        }
++        pending_whitespace = false;
++        token = true;
++        match ch {
++            '\\' => index += 2,
++            '[' => index = matching_delimiter(&chars, index, '[', ']')? + 1,
++            '(' => {
++                let close = matching_delimiter(&chars, index, '(', ')')?;
++                let argument = chars[index + 1..close].iter().collect::<String>();
++                for alternative in split_selector_list(&argument) {
++                    let nested = relative_selector_combinators(&alternative)?;
++                    if nested != [' '] {
++                        return None;
++                    }
++                }
++                index = close + 1;
++            }
++            '\'' | '"' => return None,
++            _ => index += 1,
++        }
++    }
++    Some(combinators)
++}
++
++/// The selector features (ids, classes, attribute names, local names) of a
++/// subtree, captured when the subtree leaves the document.
++///
++/// Blink and WebKit invalidate `:has()` on removal by asking whether the
++/// removed elements carry any feature of a `:has()` argument, then walking to
++/// the anchors. Obscura plans restyle at the next rendering opportunity, when
++/// the detached subtree may already have been edited (unobserved), so the
++/// features are recorded at removal time instead of read back later.
++#[derive(Clone, Default, PartialEq, Eq)]
++pub struct SelectorFeatures {
++    /// Each map holds a feature's smallest depth below the removed root
++    /// (the root is depth 0), so a `:has()` whose argument only reaches a
++    /// fixed depth ignores features further down.
++    element_depth: Option<u32>,
++    ids: HashMap<String, u32>,
++    classes: HashMap<String, u32>,
++    /// ASCII-lowercased attribute local names.
++    attributes: HashMap<String, u32>,
++    /// ASCII-lowercased element local names.
++    local_names: HashMap<String, u32>,
++}
++
++impl std::fmt::Debug for SelectorFeatures {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        f.debug_struct("SelectorFeatures")
++            .field("element_depth", &self.element_depth)
++            .field("ids", &self.ids.len())
++            .field("classes", &self.classes.len())
++            .field("attributes", &self.attributes.len())
++            .field("local_names", &self.local_names.len())
++            .finish()
++    }
++}
++
++fn note_feature(map: &mut HashMap<String, u32>, feature: String, depth: u32) {
++    map.entry(feature)
++        .and_modify(|known| *known = (*known).min(depth))
++        .or_insert(depth);
++}
++
++impl SelectorFeatures {
++    /// Collect the features of `root` and its light-tree descendants. Shadow
++    /// trees are skipped: a `:has()` argument never matches across a shadow
++    /// boundary, and a removed host takes its shadow-scope anchors with it.
++    pub fn collect(tree: &DomTree, root: NodeId) -> Self {
++        let mut features = Self::default();
++        let mut stack = vec![(root, 0u32)];
++        while let Some((id, depth)) = stack.pop() {
++            let is_element = tree
++                .with_node(id, |node| {
++                    let Some(element) = node.as_element() else {
++                        return false;
++                    };
++                    note_feature(
++                        &mut features.local_names,
++                        element.local.as_ref().to_ascii_lowercase(),
++                        depth,
++                    );
++                    for attribute in node.attrs().unwrap_or_default() {
++                        note_feature(
++                            &mut features.attributes,
++                            attribute.name.local.as_ref().to_ascii_lowercase(),
++                            depth,
++                        );
++                    }
++                    // The same lookups `relational_key_may_match` uses.
++                    if let Some(id) = node.get_attribute("id") {
++                        note_feature(&mut features.ids, id.to_owned(), depth);
++                    }
++                    if let Some(classes) = node.get_attribute("class") {
++                        for class in classes.split_whitespace() {
++                            note_feature(&mut features.classes, class.to_owned(), depth);
++                        }
++                    }
++                    true
++                })
++                .unwrap_or(false);
++            if is_element {
++                features.element_depth =
++                    Some(features.element_depth.map_or(depth, |known| known.min(depth)));
++            }
++            stack.extend(tree.children(id).into_iter().map(|child| (child, depth + 1)));
++        }
++        features
++    }
++
++    /// Whether an element sits less than `depth` levels below the root.
++    pub fn has_elements_within(&self, depth: usize) -> bool {
++        self.element_depth.is_some_and(|known| (known as usize) < depth)
++    }
++
++    fn contains_within(&self, key: &RelationalSelectorKey, depth: usize, quirks: bool) -> bool {
++        let within = |map: &HashMap<String, u32>, expected: &str, fold: bool| {
++            map.get(expected).is_some_and(|known| (*known as usize) < depth)
++                || (fold
++                    && map.iter().any(|(actual, known)| {
++                        (*known as usize) < depth && actual.eq_ignore_ascii_case(expected)
++                    }))
++        };
++        match key {
++            RelationalSelectorKey::Id(expected) => within(&self.ids, expected, quirks),
++            RelationalSelectorKey::Class(expected) => within(&self.classes, expected, quirks),
++            RelationalSelectorKey::Attribute(expected) => {
++                within(&self.attributes, &expected.to_ascii_lowercase(), false)
++            }
++            RelationalSelectorKey::LocalName(expected) => {
++                within(&self.local_names, &expected.to_ascii_lowercase(), false)
++            }
++        }
++    }
++}
++
+ impl RelationalInvalidation {
+     pub(crate) fn anchor_may_match(&self, tree: &DomTree, node: NodeId) -> bool {
+         relational_key_may_match(self.anchor_key.as_ref(), tree, node)
+     }
+ 
++    /// Whether a removed subtree with `features` can have carried an element
++    /// that some relative-selector path of this `:has()` passed through. The
++    /// keys cover every compound of the path, so a subtree without any of them
++    /// held neither the subject nor an intermediate of a match.
++    ///
++    /// Only the levels of the subtree the argument can reach from an anchor
++    /// outside it count: `:has(> .x)` anchors a removed `.x` on the old parent
++    /// only when `.x` is the removed root itself.
++    pub(crate) fn relative_path_may_match_features(
++        &self,
++        features: &SelectorFeatures,
++        quirks: bool,
++    ) -> bool {
++        let depth = self.anchor_scope.removed_depth();
++        self.relative_keys
++            .iter()
++            .any(|key| features.contains_within(key, depth, quirks))
++    }
++
+     pub(crate) fn relative_path_may_match(&self, tree: &DomTree, node: NodeId) -> bool {
+         let Some(dom_node) = tree.get_node(node) else {
+             return false;
+@@ -1084,6 +1361,7 @@ fn note_compound_dependencies(
+     reaches: InvalidationReaches,
+     rule_order: usize,
+     inside_relational: bool,
++    outer_anchor: Option<&RelationalSelectorKey>,
+ ) {
+     if let Some(local_name) = compound_local_name(compound) {
+         map.push_local_name(local_name, rule_order, reaches);
+@@ -1155,6 +1433,7 @@ fn note_compound_dependencies(
+                             reaches,
+                             rule_order,
+                             !inside_relational,
++                            None,
+                         );
+                         index = close + 1;
+                         continue;
+@@ -1184,7 +1463,8 @@ fn note_compound_dependencies(
+                         map.push_structural_invalidation(StructuralInvalidation {
+                             rule_order,
+                             state: name.clone(),
+-                            subject_key: relational_anchor_key(compound),
++                            subject_key: relational_anchor_key(compound)
++                                .or_else(|| outer_anchor.cloned()),
+                             reaches,
+                             inside_relational,
+                         });
+@@ -1220,6 +1500,8 @@ fn note_compound_dependencies(
+                 let arguments: String = chars[next + 1..close].iter().collect();
+                 match name.as_str() {
+                     "is" | "where" | "not" => {
++                        let anchor = relational_anchor_key(compound);
++                        let anchor = anchor.as_ref().or(outer_anchor);
+                         for alternative in split_selector_list(&arguments) {
+                             note_selector_dependencies(
+                                 map,
+@@ -1227,6 +1509,7 @@ fn note_compound_dependencies(
+                                 reaches,
+                                 rule_order,
+                                 !inside_relational,
++                                anchor,
+                             );
+                         }
+                     }
+@@ -1277,10 +1560,34 @@ fn note_compound_dependencies(
+                         let text_side_effect = alternatives.iter().any(|alternative| {
+                             selector_contains_pseudo(alternative.trim(), &["empty"])
+                         });
++                        let every_compound_keyed = alternatives.iter().all(|alternative| {
++                            let alternative = alternative.trim();
++                            let alternative = alternative
++                                .strip_prefix(['>', '+', '~'])
++                                .unwrap_or(alternative)
++                                .trim_start();
++                            let (compounds, malformed) = invalidation_compounds(alternative);
++                            !malformed
++                                && compounds.iter().all(|(compound, _)| {
++                                    relative_selector_subject_has_key(compound)
++                                })
++                        });
++                        let anchor_scope = alternatives
++                            .iter()
++                            .map(|alternative| {
++                                RelationalAnchorScope::of_argument(
++                                    alternative.trim(),
++                                    structural_side_effect,
++                                )
++                            })
++                            .fold(RelationalAnchorScope::NONE, RelationalAnchorScope::union);
+                         map.push_relational_invalidation(RelationalInvalidation {
+                             rule_order,
+-                            anchor_key: relational_anchor_key(compound),
++                            anchor_key: relational_anchor_key(compound)
++                                .or_else(|| outer_anchor.cloned()),
+                             relative_keys,
++                            anchor_scope,
++                            every_compound_keyed,
+                             anchor_reaches: reaches,
+                             unkeyed_subject: unkeyed,
+                             sibling_side_effect,
+@@ -1296,6 +1603,7 @@ fn note_compound_dependencies(
+                                 InvalidationReaches::CONSERVATIVE,
+                                 rule_order,
+                                 false,
++                                None,
+                             );
+                         }
+                     }
+@@ -1304,7 +1612,8 @@ fn note_compound_dependencies(
+                         map.push_structural_invalidation(StructuralInvalidation {
+                             rule_order,
+                             state: name,
+-                            subject_key: relational_anchor_key(compound),
++                            subject_key: relational_anchor_key(compound)
++                                .or_else(|| outer_anchor.cloned()),
+                             reaches,
+                             inside_relational,
+                         });
+@@ -1319,6 +1628,7 @@ fn note_compound_dependencies(
+                                     InvalidationReaches::CONSERVATIVE,
+                                     rule_order,
+                                     !inside_relational,
++                                    None,
+                                 );
+                             }
+                         }
+@@ -1336,6 +1646,7 @@ fn note_compound_dependencies(
+                                 reaches,
+                                 rule_order,
+                                 !inside_relational,
++                                None,
+                             );
+                         }
+                     }
+@@ -1367,12 +1678,16 @@ fn note_compound_dependencies(
+     }
+ }
+ 
++/// `outer_anchor` is a key of the compound around an `:is()`/`:where()`/
++/// `:not()` argument. The argument's subject compound tests that same element,
++/// so a `:has()` there anchors on an element which also carries the key.
+ fn note_selector_dependencies(
+     map: &mut InvalidationMap,
+     selector: &str,
+     outer_reaches: InvalidationReaches,
+     rule_order: usize,
+     record_tree_siblings: bool,
++    outer_anchor: Option<&RelationalSelectorKey>,
+ ) {
+     if record_tree_siblings {
+         let (adjacent, general) = selector_sibling_combinators(selector);
+@@ -1394,12 +1709,14 @@ fn note_selector_dependencies(
+             map.mark_conservative(rule_order);
+         }
+         let reaches = compose_invalidation_reach(map, local_reaches, outer_reaches, rule_order);
++        let subject = local_reaches == InvalidationReaches::SELF;
+         note_compound_dependencies(
+             map,
+             &compound,
+             reaches,
+             rule_order,
+             !record_tree_siblings,
++            outer_anchor.filter(|_| subject),
+         );
+     }
+ }
+@@ -1415,6 +1732,7 @@ fn note_selector_for_invalidation(
+         InvalidationReaches::SELF,
+         rule_order,
+         true,
++        None,
+     );
+ }
+ 
+diff --git a/crates/obscura-render/src/dom.rs b/crates/obscura-render/src/dom.rs
+index 2243a9f..7de1470 100644
+--- a/crates/obscura-render/src/dom.rs
++++ b/crates/obscura-render/src/dom.rs
+@@ -529,9 +529,12 @@ pub enum TreeStyleMutation {
+         old_parent: Option<NodeId>,
+         new_parent: NodeId,
+     },
++    /// Build with [`TreeStyleMutation::remove`] before the DOM change so
++    /// `removed` describes the subtree and ancestors the last render saw.
+     Remove {
+         node: NodeId,
+         old_parent: NodeId,
++        removed: RemovedSubtree,
+     },
+     Text {
+         node: NodeId,
+@@ -539,6 +542,46 @@ pub enum TreeStyleMutation {
+     },
+ }
+ 
++/// What a removal took out of the tree, captured when it happened.
++///
++/// Both halves can go stale before the rendering opportunity plans restyle:
++/// a detached subtree can be edited without any mutation record, and the old
++/// parent can itself be removed or moved, cutting the old ancestor chain.
++/// `:has()` removal invalidation needs the state as of the last render.
++#[derive(Clone, Debug, PartialEq, Eq)]
++pub struct RemovedSubtree {
++    /// The old parent, then its ancestors up to the tree-scope root.
++    old_ancestors: Vec<NodeId>,
++    features: crate::css::SelectorFeatures,
++}
++
++impl RemovedSubtree {
++    pub fn capture(tree: &DomTree, node: NodeId, old_parent: NodeId) -> Self {
++        let mut old_ancestors = vec![old_parent];
++        let mut current = old_parent;
++        while let Some(parent) = tree.get_node(current).and_then(|node| node.parent) {
++            old_ancestors.push(parent);
++            current = parent;
++        }
++        Self {
++            old_ancestors,
++            features: crate::css::SelectorFeatures::collect(tree, node),
++        }
++    }
++}
++
++impl TreeStyleMutation {
++    /// Record `node` leaving `old_parent`. Call it before the DOM change, or
++    /// at least before anything else touches the subtree or the old ancestors.
++    pub fn remove(tree: &DomTree, node: NodeId, old_parent: NodeId) -> Self {
++        Self::Remove {
++            node,
++            old_parent,
++            removed: RemovedSubtree::capture(tree, node, old_parent),
++        }
++    }
++}
++
+ /// Damage input for a retained-style rebuild. Attribute invalidation uses
+ /// selector-key dependencies; tree invalidation uses parent/sibling scopes.
+ #[derive(Clone, Debug, PartialEq, Eq)]
+@@ -3738,6 +3781,46 @@ fn add_removed_relational_anchor_candidates(
+     }
+ }
+ 
++/// A removal changes adjacency and structural state (`:first-child`,
++/// `:empty`, ...) only for the old parent and the children left in it. When
++/// every compound of the `:has()` argument is keyed, one of those elements
++/// must carry a key for the side effect to reach a match.
++fn removal_side_effect_may_match(
++    tree: &DomTree,
++    invalidation: &crate::css::RelationalInvalidation,
++    old_parent: NodeId,
++) -> bool {
++    !invalidation.every_compound_keyed
++        || std::iter::once(old_parent)
++            .chain(tree.children(old_parent))
++            .any(|id| invalidation.relative_path_may_match(tree, id))
++}
++
++/// Anchor candidates for a removal, walked from the ancestor chain recorded at
++/// removal time (the old parent may since have been detached or moved) and
++/// limited to where this `:has()`'s argument lets an anchor sit.
++fn recorded_removal_anchor_candidates(
++    tree: &DomTree,
++    old_ancestors: &[NodeId],
++    scope: crate::css::RelationalAnchorScope,
++) -> HashSet<NodeId> {
++    let mut candidates = HashSet::new();
++    for (level, &id) in old_ancestors.iter().enumerate() {
++        if level < scope.ancestors {
++            candidates.insert(id);
++            // `:host(:has(...))` anchors on the host of this shadow tree.
++            if let Some(info) = tree.shadow_root_info(id) {
++                candidates.insert(info.host);
++            }
++        }
++        // The old sibling links are gone: take every child at the boundary.
++        if scope.ancestor_siblings || (level == 0 && scope.siblings) {
++            candidates.extend(tree.children(id));
++        }
++    }
++    candidates
++}
++
+ fn add_relational_anchor_scope(
+     tree: &DomTree,
+     anchor: NodeId,
+@@ -3778,9 +3861,8 @@ fn add_relational_tree_invalidation(
+                 add_removed_relational_anchor_candidates(tree, old_parent, &mut candidates);
+             }
+         }
+-        TreeStyleMutation::Remove { old_parent, .. } => {
+-            add_removed_relational_anchor_candidates(tree, old_parent, &mut candidates);
+-        }
++        // Removal candidates depend on each `:has()`'s traversal scope.
++        TreeStyleMutation::Remove { .. } => {}
+         TreeStyleMutation::Text { node, parent } => {
+             add_inserted_relational_anchor_candidates(tree, node, &mut candidates);
+             if let Some(parent) = parent {
+@@ -3791,7 +3873,24 @@ fn add_relational_tree_invalidation(
+ 
+     for invalidation in map.relational_invalidations() {
+         let triggered = match mutation {
+-                TreeStyleMutation::Remove { .. } => true,
++                // Blink/WebKit scope removal invalidation by the removed
++                // elements' features; only side effects on the elements that
++                // stay (sibling adjacency, structural pseudos) fire unkeyed.
++                TreeStyleMutation::Remove {
++                    removed,
++                    old_parent,
++                    ..
++                } => {
++                    invalidation
++                        .relative_path_may_match_features(&removed.features, tree.is_quirks())
++                        || (invalidation.unkeyed_subject
++                            && removed
++                                .features
++                                .has_elements_within(invalidation.anchor_scope.removed_depth()))
++                        || ((invalidation.sibling_side_effect
++                            || invalidation.structural_side_effect)
++                            && removal_side_effect_may_match(tree, invalidation, *old_parent))
++                }
+                 TreeStyleMutation::Insert { node, .. } => {
+                     subtree_may_match_relational_path(tree, invalidation, *node)
+                         || invalidation.unkeyed_subject
+@@ -3803,6 +3902,18 @@ fn add_relational_tree_invalidation(
+         if !triggered {
+             continue;
+         }
++        let removal_candidates;
++        let candidates = match mutation {
++            TreeStyleMutation::Remove { removed, .. } => {
++                removal_candidates = recorded_removal_anchor_candidates(
++                    tree,
++                    &removed.old_ancestors,
++                    invalidation.anchor_scope,
++                );
++                &removal_candidates
++            }
++            _ => &candidates,
++        };
+         for anchor in candidates.iter().copied() {
+             if !invalidation.anchor_may_match(tree, anchor) {
+                 continue;
+@@ -4272,7 +4383,11 @@ fn retained_style_plan(
+                         add_empty_parent_scope(tree, map, new_parent, mutations, &mut dirty);
+                     }
+                 }
+-                TreeStyleMutation::Remove { node, old_parent } => {
++                TreeStyleMutation::Remove {
++                    node,
++                    old_parent,
++                    ref removed,
++                } => {
+                     if in_document_scope(tree, Some(old_parent))
+                         && (subtree_contains_style_element(tree, node)
+                             || node_is_style_text(tree, node, Some(old_parent)))
+@@ -4287,7 +4402,17 @@ fn retained_style_plan(
+                         return RetainedStylePlan::Full;
+                     }
+                     let sheets = child_list_sheets(tree, old_parent, sheet, shadow_sheets);
+-                    for scoped in &sheets {
++                    // Where the recorded chain has since been cut, the part
++                    // above the cut can sit in another tree scope.
++                    let mut relational_sheets = sheets.clone();
++                    for pair in removed.old_ancestors.windows(2) {
++                        if tree.get_node(pair[0]).and_then(|node| node.parent) != Some(pair[1]) {
++                            for cut in child_list_sheets(tree, pair[1], sheet, shadow_sheets) {
++                                push_sheet(&mut relational_sheets, cut);
++                            }
++                        }
++                    }
++                    for scoped in &relational_sheets {
+                         if !add_relational_tree_invalidation(
+                             tree,
+                             scoped.invalidation_map(),
+@@ -15596,6 +15721,9 @@ fn build_children_with_float_zone(
+ #[cfg(test)]
+ mod shadow_restyle_tests;
+ 
++#[cfg(test)]
++mod has_removal_restyle_tests;
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+@@ -18386,10 +18514,7 @@ mod tests {
+             &tree,
+             &mut cache,
+             initial,
+-            TreeStyleMutation::Remove {
+-                node: removed,
+-                old_parent: rows,
+-            },
++            TreeStyleMutation::remove(&tree, removed, rows),
+             Incremental,
+         );
+         assert!(!incremental.styles.contains_key(&removed));
+@@ -18743,10 +18868,7 @@ mod tests {
+                 &tree,
+                 &mut cache,
+                 initial,
+-                TreeStyleMutation::Remove {
+-                    node: removed,
+-                    old_parent: host,
+-                },
++                TreeStyleMutation::remove(&tree, removed, host),
+                 Incremental,
+             );
+         }
+@@ -18767,6 +18889,9 @@ mod tests {
+             &[],
+             &mut cache,
+         );
++        // The runtime records the removal before the DOM change; the later
++        // detached edit is not observed.
++        let removal = TreeStyleMutation::remove(&tree, signal, host);
+         tree.remove_child(signal);
+         tree.with_node_mut(signal, |node| {
+             node.set_attribute("class", "detached-and-renamed".into())
+@@ -18776,10 +18901,7 @@ mod tests {
+             &tree,
+             &mut cache,
+             initial,
+-            TreeStyleMutation::Remove {
+-                node: signal,
+-                old_parent: host,
+-            },
++            removal,
+             Incremental,
+         );
+ 
+diff --git a/crates/obscura-render/src/dom/has_removal_restyle_tests.rs b/crates/obscura-render/src/dom/has_removal_restyle_tests.rs
+new file mode 100644
+index 0000000..4a132eb
+--- /dev/null
++++ b/crates/obscura-render/src/dom/has_removal_restyle_tests.rs
+@@ -0,0 +1,265 @@
++//! `:has()` invalidation for light-DOM removals. As in Blink and WebKit, a
++//! removal restyles a `:has()` anchor only when the removed subtree carried a
++//! feature of the `:has()` argument (or the argument has a sibling/structural
++//! side effect on the elements that stay). Every case compares the retained
++//! restyle with a forced full cascade of the same final tree.
++
++use super::*;
++use obscura_dom::tree_sink::parse_html;
++
++const VIEWPORT: (f32, f32) = (640.0, 480.0);
++const CLEAN_PEERS: usize = 2_000;
++
++/// `body:has(...)` is the nytimes.com shape: a keyed anchor whose subtree is
++/// the whole document. `:has(> .b)` has no anchor key, so every ancestor of a
++/// removal is a candidate anchor.
++const HAS_CSS: &str = r#"
++    html,body{margin:0}
++    .clean{display:block;height:1px}
++    body:has(.flag){color:#010203}
++    body:has(.flag) .kid{width:31px}
++    .a:has(.b){width:123px;color:#123456}
++    .a:has(.b) .kid{height:9px}
++    :has(> .direct) > .note{padding-left:3px}
++    .n:has(.label:empty){width:77px}
++    :has(> .cap:empty) > .note{margin-left:5px}
++    .col:not(:last-child):not(:has(+ .dummy)){margin-right:4px}
++    .wrap :has(> .icon) > .note{padding-top:2px}
++"#;
++
++fn document() -> DomTree {
++    let mut peers = String::new();
++    for index in 0..CLEAN_PEERS {
++        peers.push_str(&format!("<span class=clean data-index={index}></span>"));
++    }
++    parse_html(&format!(
++        r#"<!doctype html><html><head><style>{HAS_CSS}</style></head><body>
++           <i id="flag" class="flag"></i>
++           <div id="a" class="a">
++             <section id="mid"><i id="b" class="b"></i><i id="b2"></i></section>
++             <p id="kid" class="kid"></p>
++             <div id="shelf"></div>
++           </div>
++           <div id="elsewhere"></div>
++           <div id="holder"><i id="direct" class="direct"></i><i class="note"></i></div>
++           <div id="n" class="n"><span id="label" class="label">text</span></div>
++           <div id="capbox"><span id="cap" class="cap">t</span><i class="note"></i></div>
++           <div id="row"><div id="col1" class="col"></div><div id="col2" class="col"></div><div id="col3" class="col dummy"></div><div id="col4" class="col"></div></div>
++           <div class="wrap"><div><div id="iconbox"><b id="icon" class="icon"></b><b id="plain" class="note"></b></div></div></div>
++           <aside id="clean">{peers}</aside>
++           </body></html>"#,
++    ))
++}
++
++fn id(tree: &DomTree, name: &str) -> NodeId {
++    tree.get_element_by_id(name).unwrap_or_else(|| panic!("{name}"))
++}
++
++fn initial_layout(tree: &DomTree, cache: &mut crate::css::StylesheetCache) -> DomLayout {
++    layout_dom_with_web_fonts_and_stylesheet_cache(tree, VIEWPORT, &HashMap::new(), &[], cache)
++}
++
++/// Retained restyle for `mutations`, checked against a full cascade.
++fn finish(
++    case: &str,
++    tree: &DomTree,
++    cache: &mut crate::css::StylesheetCache,
++    mut initial: DomLayout,
++    mutations: Vec<TreeStyleMutation>,
++) -> ContainerLayoutTelemetry {
++    let retained = RetainedStyleMaps {
++        styles: std::mem::take(&mut initial.styles),
++        custom_properties: std::mem::take(&mut initial.custom_properties),
++    };
++    let mutations = mutations
++        .into_iter()
++        .map(RetainedStyleMutation::from)
++        .collect::<Vec<_>>();
++    let (incremental, telemetry) = layout_dom_with_web_fonts_pass_limit(
++        tree,
++        VIEWPORT,
++        &HashMap::new(),
++        &[],
++        None,
++        Some(cache),
++        Some(retained),
++        &mutations,
++    );
++    let full = layout_dom(tree, VIEWPORT);
++    assert_eq!(
++        incremental.styles.keys().collect::<HashSet<_>>(),
++        full.styles.keys().collect::<HashSet<_>>(),
++        "{case}: computed-style node set"
++    );
++    for (node, style) in &incremental.styles {
++        assert_eq!(
++            format!("{style:#?}"),
++            format!("{:#?}", full.styles[node]),
++            "{case}: computed style for {node:?} (id={:?})",
++            tree.get_node(*node)
++                .and_then(|node| node.get_attribute("id").map(str::to_owned)),
++        );
++    }
++    assert_eq!(incremental.rects, full.rects, "{case}: border boxes");
++    assert_eq!(
++        incremental.custom_properties, full.custom_properties,
++        "{case}: custom properties"
++    );
++    assert_eq!(telemetry.retained_fallback, 0, "{case}: {telemetry:?}");
++    telemetry
++}
++
++/// Remove `node` the way the runtime does: record, then mutate.
++fn remove(tree: &DomTree, node: NodeId) -> TreeStyleMutation {
++    let parent = tree.get_node(node).and_then(|node| node.parent).unwrap();
++    let mutation = TreeStyleMutation::remove(tree, node, parent);
++    tree.remove_child(node);
++    mutation
++}
++
++/// Roughly the ancestor chain plus a few small subtrees. The whole document
++/// is over 2000 elements.
++const LOCAL_BUDGET: usize = 40;
++
++#[test]
++fn retained_has_argument_removal_matches_full() {
++    // `.a:has(.b)` stops matching when `.b`, or an element holding it, goes.
++    for (case, victim) in [("remove .b", "b"), ("remove .b's parent", "mid")] {
++        let tree = document();
++        let mut cache = crate::css::StylesheetCache::default();
++        let initial = initial_layout(&tree, &mut cache);
++        let a = id(&tree, "a");
++        let kid = id(&tree, "kid");
++        assert_eq!(initial.styles[&a].width, crate::Dimension::Px(123.0), "{case}");
++        let mutation = remove(&tree, id(&tree, victim));
++        let telemetry = finish(case, &tree, &mut cache, initial, vec![mutation]);
++        assert!(
++            telemetry.retained_reused >= CLEAN_PEERS,
++            "{case}: {telemetry:?}"
++        );
++        let full = layout_dom(&tree, VIEWPORT);
++        assert_ne!(full.styles[&a].width, crate::Dimension::Px(123.0), "{case}");
++        assert_ne!(full.styles[&kid].height, crate::Dimension::Px(9.0), "{case}");
++    }
++
++    // A keyed anchor whose subtree is the whole document: removing the flag
++    // must restyle all of it.
++    let tree = document();
++    let mut cache = crate::css::StylesheetCache::default();
++    let initial = initial_layout(&tree, &mut cache);
++    let mutation = remove(&tree, id(&tree, "flag"));
++    finish("remove body:has() flag", &tree, &mut cache, initial, vec![mutation]);
++
++    // Unkeyed anchor: the removed child's old parent stops matching.
++    let tree = document();
++    let mut cache = crate::css::StylesheetCache::default();
++    let initial = initial_layout(&tree, &mut cache);
++    let mutation = remove(&tree, id(&tree, "direct"));
++    finish("remove unkeyed-anchor argument", &tree, &mut cache, initial, vec![mutation]);
++
++    // Removing a label's only text makes it `:empty`: a structural side
++    // effect on an element that stays, with no element removed.
++    let tree = document();
++    let mut cache = crate::css::StylesheetCache::default();
++    let initial = initial_layout(&tree, &mut cache);
++    let text = tree.children(id(&tree, "label"))[0];
++    let mutation = remove(&tree, text);
++    finish("remove text under :empty", &tree, &mut cache, initial, vec![mutation]);
++}
++
++#[test]
++fn retained_has_removal_walks_only_to_possible_anchors() {
++    // Each `:has()` argument bounds where its anchor can be: the old parent
++    // for `> .x`, the old parent's children for `+ .x`, one level further up
++    // when the old parent turns `:empty`. The anchor compound's key also
++    // comes from around a `:not()`.
++    let cases: [(&str, fn(&DomTree) -> NodeId); 6] = [
++        ("child argument, unkeyed anchor", |tree| id(tree, "direct")),
++        // `.direct` is a grandchild of the old parent: its anchor left too.
++        ("child argument below the removed root", |tree| id(tree, "holder")),
++        ("child argument under a descendant path", |tree| id(tree, "icon")),
++        ("child argument whose parent turns :empty", |tree| tree.children(id(tree, "cap"))[0]),
++        ("sibling argument inside :not()", |tree| id(tree, "col3")),
++        ("sibling argument, unrelated sibling", |tree| id(tree, "col1")),
++    ];
++    for (case, victim) in cases {
++        let tree = document();
++        let mut cache = crate::css::StylesheetCache::default();
++        let initial = initial_layout(&tree, &mut cache);
++        let mutation = remove(&tree, victim(&tree));
++        let telemetry = finish(case, &tree, &mut cache, initial, vec![mutation]);
++        assert!(
++            telemetry.retained_fresh <= LOCAL_BUDGET,
++            "{case}: restyle must stay near the removal {telemetry:?}"
++        );
++    }
++}
++
++#[test]
++fn retained_unrelated_removal_does_not_restyle_has_anchors() {
++    // Neither removal carries `.flag`, `.b`, `.direct` or `.label`, so none
++    // of the `:has()` anchors (body, `.a`, every ancestor for the unkeyed
++    // one) can change.
++    for (case, victim) in [
++        ("remove clean peer", "clean-victim"),
++        ("remove sibling of .b", "b2"),
++    ] {
++        let tree = document();
++        if victim == "clean-victim" {
++            let peer = tree.children(id(&tree, "clean"))[CLEAN_PEERS / 2];
++            tree.with_node_mut(peer, |node| node.set_attribute("id", "clean-victim".into()));
++        }
++        let mut cache = crate::css::StylesheetCache::default();
++        let initial = initial_layout(&tree, &mut cache);
++        let mutation = remove(&tree, id(&tree, victim));
++        let telemetry = finish(case, &tree, &mut cache, initial, vec![mutation]);
++        assert!(
++            telemetry.retained_fresh <= LOCAL_BUDGET,
++            "{case}: an unrelated removal must not restyle the document {telemetry:?}"
++        );
++        assert!(
++            telemetry.retained_reused >= CLEAN_PEERS,
++            "{case}: {telemetry:?}"
++        );
++    }
++}
++
++#[test]
++fn retained_has_removal_uses_the_state_at_removal_time() {
++    // `.b` leaves `#mid`, then `#mid` leaves `.a`: by the rendering
++    // opportunity `.b`'s old parent is detached and `#mid` no longer holds
++    // `.b`, yet `.a` must stop matching.
++    let tree = document();
++    let mut cache = crate::css::StylesheetCache::default();
++    let initial = initial_layout(&tree, &mut cache);
++    let first = remove(&tree, id(&tree, "b"));
++    let second = remove(&tree, id(&tree, "mid"));
++    finish("nested removals", &tree, &mut cache, initial, vec![first, second]);
++
++    // Same, but `#mid` moves out of `.a` instead of leaving the document.
++    let tree = document();
++    let mut cache = crate::css::StylesheetCache::default();
++    let initial = initial_layout(&tree, &mut cache);
++    let a = id(&tree, "a");
++    let mid = id(&tree, "mid");
++    let elsewhere = id(&tree, "elsewhere");
++    let first = remove(&tree, id(&tree, "b"));
++    tree.append_child(elsewhere, mid);
++    let moved = TreeStyleMutation::Insert {
++        node: mid,
++        old_parent: Some(a),
++        new_parent: elsewhere,
++    };
++    finish("removal then move of old parent", &tree, &mut cache, initial, vec![first, moved]);
++
++    // A detached subtree edited before the flush: its recorded features, not
++    // its current ones, decide.
++    let tree = document();
++    let mut cache = crate::css::StylesheetCache::default();
++    let initial = initial_layout(&tree, &mut cache);
++    let mid = id(&tree, "mid");
++    let b = id(&tree, "b");
++    let mutation = remove(&tree, mid);
++    tree.with_node_mut(b, |node| node.set_attribute("class", "renamed".into()));
++    finish("detached edit after removal", &tree, &mut cache, initial, vec![mutation]);
++}
+diff --git a/crates/obscura-render/src/dom/shadow_restyle_tests.rs b/crates/obscura-render/src/dom/shadow_restyle_tests.rs
+index 59a8557..29f5703 100644
+--- a/crates/obscura-render/src/dom/shadow_restyle_tests.rs
++++ b/crates/obscura-render/src/dom/shadow_restyle_tests.rs
+@@ -253,11 +253,7 @@ fn retained_shadow_tree_insert_and_remove_match_full() {
+         &f.tree,
+         &mut cache,
+         initial,
+-        &[TreeStyleMutation::Remove {
+-            node: deep,
+-            old_parent: inner,
+-        }
+-        .into()],
++        &[TreeStyleMutation::remove(&f.tree, deep, inner).into()],
+         COMPONENT_BUDGET,
+     );
+ }
+@@ -355,11 +351,7 @@ fn retained_slotted_light_child_insert_matches_full() {
+         &f.tree,
+         &mut cache,
+         initial,
+-        &[TreeStyleMutation::Remove {
+-            node: slotted,
+-            old_parent: f.host,
+-        }
+-        .into()],
++        &[TreeStyleMutation::remove(&f.tree, slotted, f.host).into()],
+         COMPONENT_BUDGET,
+     );
+ }

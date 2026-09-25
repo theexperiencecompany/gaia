@@ -19,7 +19,8 @@ import type {
   LinkCodeFailure,
   ParsedLinkCode,
 } from "./link-codes.types";
-import type { MessageTarget, PlatformName } from "./types";
+import type { MessageTarget, PlatformName, RedeemedLinkCode } from "./types";
+import { recordBotFailure } from "./utils/failure-reasons";
 import { hashLogIdentifier } from "./utils/logger";
 import { wideLog, withWideEvent } from "./utils/wide-events";
 
@@ -125,7 +126,7 @@ export function buildLinkCodeFailureMessage(
   }
   return (
     "**That link has expired**\n\n" +
-    "Head back to GAIA and pick your platform again — it only takes a tap.\n" +
+    "Head back to GAIA and pick your platform again. It only takes a tap.\n" +
     `${frontendUrl}/onboarding`
   );
 }
@@ -179,58 +180,89 @@ export async function redeemLinkCode(
       user_hash: hashLogIdentifier(platformUserId),
     },
     async () => {
+      let redeemed: RedeemedLinkCode;
       try {
-        const redeemed = await gaia.redeemLinkCode(
+        redeemed = await gaia.redeemLinkCode(
           platform,
           platformUserId,
           code,
           profile,
           firstMessage,
         );
-        wideLog.audit("platform_linked_via_code", {
-          user_hash: hashLogIdentifier(platformUserId),
-        });
-        // The outbound publish is never retried, so bubbles the queue refused
-        // are sent from here or not at all — and the one message a new user is
-        // guaranteed to read is the whole point of the link.
-        if (!redeemed.delivered) {
-          for (const bubble of redeemed.firstContact) {
-            await target.send(bubble);
-          }
-        }
-        wideLog.set({
-          link_result: "linked",
-          first_contact_sent_by_bot: !redeemed.delivered,
-        });
-        return true;
       } catch (error: unknown) {
-        const reason = classifyLinkFailure(error);
-        // "rejected" is a refusal the user caused; ours is its own result, so a
-        // dashboard cannot read our outage as people presenting bad codes.
-        wideLog.set({
-          link_result: reason === "failed" ? "failed" : "rejected",
-          reason,
-        });
-        if (reason === "failed") {
-          // Nothing is rethrown: the adapters' last-resort handlers only log,
-          // so a propagated error answered the user's first-ever message with
-          // silence. The failure is recorded here instead.
-          wideLog.error(
-            "platform_link_code_failed",
-            { user_hash: hashLogIdentifier(platformUserId) },
-            error,
-          );
-        } else {
-          wideLog.audit("platform_link_code_rejected", {
-            user_hash: hashLogIdentifier(platformUserId),
-            reason,
-          });
-        }
-        await target.send(
-          buildLinkCodeFailureMessage(reason, gaia.getFrontendUrl()),
-        );
+        await answerLinkFailure(gaia, platformUserId, target, error);
         return false;
       }
+      wideLog.audit("platform_linked_via_code", {
+        user_hash: hashLogIdentifier(platformUserId),
+      });
+      wideLog.set({
+        link_result: "linked",
+        first_contact_sent_by_bot: !redeemed.delivered,
+      });
+      // The outbound publish is never retried, so bubbles the queue refused
+      // are sent from here or not at all — and the one message a new user is
+      // guaranteed to read is the whole point of the link.
+      if (!redeemed.delivered) {
+        await sendFirstContact(target, redeemed.firstContact);
+      }
+      return true;
     },
   );
+}
+
+/**
+ * Sends the first contact the API handed back. The account is linked whatever
+ * happens here, so a send that fails is recorded on the event, never answered
+ * with a failure message that would tell the user the link did not work.
+ */
+async function sendFirstContact(
+  target: MessageTarget,
+  bubbles: string[],
+): Promise<void> {
+  let sent = 0;
+  try {
+    for (const bubble of bubbles) {
+      await target.send(bubble);
+      sent += 1;
+    }
+  } catch (error: unknown) {
+    recordBotFailure("link_first_contact_undelivered", error, {
+      bubbles: bubbles.length,
+    });
+  } finally {
+    wideLog.set({ first_contact_sent: sent });
+  }
+}
+
+/** Answers a redemption the API refused or that broke on our side; never rethrows. */
+async function answerLinkFailure(
+  gaia: GaiaClient,
+  platformUserId: string,
+  target: MessageTarget,
+  error: unknown,
+): Promise<void> {
+  const reason = classifyLinkFailure(error);
+  // "rejected" is a refusal the user caused; ours is its own result, so a
+  // dashboard cannot read our outage as people presenting bad codes.
+  wideLog.set({
+    link_result: reason === "failed" ? "failed" : "rejected",
+    reason,
+  });
+  if (reason === "failed") {
+    // Nothing is rethrown: the adapters' last-resort handlers only log,
+    // so a propagated error answered the user's first-ever message with
+    // silence. The failure is recorded here instead.
+    wideLog.error(
+      "platform_link_code_failed",
+      { user_hash: hashLogIdentifier(platformUserId) },
+      error,
+    );
+  } else {
+    wideLog.audit("platform_link_code_rejected", {
+      user_hash: hashLogIdentifier(platformUserId),
+      reason,
+    });
+  }
+  await target.send(buildLinkCodeFailureMessage(reason, gaia.getFrontendUrl()));
 }

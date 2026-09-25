@@ -1117,7 +1117,7 @@ class TestRevokeSettlesSessionFrame:
         )
         from app.models.hil_models import HILApprovalStatus
         from app.services.hil import ledger_decide
-        from app.services.hil.bridge import _approval_entry, _publish_entry
+        from app.services.hil.bridge import GatedApproval, _approval_entry, _publish_entry
         from app.services.hil.utils import GatedCall
 
         stream_id = "stream-settle-test"
@@ -1130,11 +1130,18 @@ class TestRevokeSettlesSessionFrame:
                 await _publish_entry(
                     stream_id,
                     _approval_entry(
-                        "ap_abc",
-                        GatedCall(name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}),
+                        GatedApproval(
+                            approval_id="ap_abc",
+                            stream_id=stream_id,
+                            user_id="u1",
+                            conversation_id="conv-1",
+                            tool_call=GatedCall(
+                                name="GMAIL_SEND_EMAIL", id="c1", args={"to": "b@x"}
+                            ),
+                            summary="Send it",
+                            integration_name=None,
+                        ),
                         HILApprovalStatus.PENDING,
-                        "Send it",
-                        None,
                     ),
                 )
             row = _row(proposing_run_id=stream_id, state=LedgerState.REVOKED)

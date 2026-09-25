@@ -1,0 +1,752 @@
+From e91f261bffb0a017bc4116c361fffde48fc2b6f0 Mon Sep 17 00:00:00 2001
+From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
+Date: Wed, 23 Sep 2026 19:44:13 +0530
+Subject: [PATCH 14/18] fix(layout): give an inline split around block children
+ real geometry
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+An inline element whose children are blocks (Amazon's footer links: an
+inline <a> holding an h5 and a display:block span) is spliced out of the
+box tree so the blocks become children of the block container. That
+splice left the inline with no box at all: getBoundingClientRect was
+0x0 and getClientRects empty, so 25 footer links counted as invisible and
+could not be clicked. Undecorated inline wrappers spliced next to a block
+lost their geometry the same way.
+
+CSS2 §9.2.1.1 splits such an inline around the blocks. Rebuild its
+fragments after layout the way Chrome reports them:
+
+- the blocks sit in an anonymous block box, exposed as one fragment of
+  the inline: the containing block's content-box width, from the first
+  block's top to the last block's bottom;
+- an empty fragment at an edge where the inline starts or ends with a
+  block;
+- the inline's text before and after the blocks: the box-tree builder
+  records every spliced inline, and a folded inline run now keeps those
+  inlines open as edgeless owners around their members, so shaping
+  yields their line fragments without changing line breaking.
+
+getBoundingClientRect is the union of the non-empty fragments. Paint
+still skips spliced inlines, as before. Hit testing inside the block
+returns the block's content, whose ancestor chain includes the inline.
+
+Amazon snapshot: 57 -> 83 visible links (Chrome 83). Live: amazon
+53 -> 79, news.ycombinator.com 188 -> 226 (Chrome 226), wikipedia
+905 -> 936; bing, duckduckgo and github unchanged.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/src/runtime.rs    | 102 ++++++++
+ crates/obscura-render/src/dom.rs    | 363 +++++++++++++++++++++++++++-
+ crates/obscura-render/src/inline.rs |  90 ++++++-
+ crates/obscura-render/src/paint.rs  |   6 +
+ 4 files changed, 553 insertions(+), 8 deletions(-)
+
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index fbb4043..a59813d 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -7559,6 +7559,108 @@ mod tests {
+         );
+     }
+ 
++    #[cfg(feature = "render")]
++    #[test]
++    fn inline_split_around_blocks_has_geometry_and_hit_tests_through_the_block() {
++        // Amazon's footer shape: an inline <a> whose children are a block h5
++        // and a display:block span. CSS2 §9.2.1.1 splits the inline around
++        // them; Chrome reports the anonymous block as one of its client rects
++        // and their union as its bounding rect, so the link is visible and
++        // clickable. Hit testing inside the block finds the block's content,
++        // whose ancestor chain includes the link.
++        let dom = parse_html(
++            r#"<html><head><style>
++                html,body { margin:0; font:16px/20px sans-serif }
++                ul { margin:0; padding:0; list-style:none; width:400px }
++                li { padding:0 10px }
++                h5 { margin:0; font-size:12px; line-height:14px }
++                .text { display:block }
++            </style></head><body>
++                <ul><li><a id="link" href="/music"><h5 id="heading">Amazon Music</h5><span id="text" class="text">Stream millions<br>of songs</span></a></li></ul>
++                <p id="plain-host"><a id="plain" href="/plain">plain link</a></p>
++            </body></html>"#,
++        );
++        let mut rt = ObscuraJsRuntime::new();
++        rt.set_dom(dom);
++        rt.set_viewport(800.0, 600.0);
++        rt.run_page_init();
++
++        let result = rt
++            .evaluate(
++                r#"
++                const box = (r) => [r.x, r.y, r.width, r.height];
++                const link = document.getElementById("link");
++                const heading = document.getElementById("heading").getBoundingClientRect();
++                const text = document.getElementById("text").getBoundingClientRect();
++                const plain = document.getElementById("plain");
++                const hit = document.elementFromPoint(heading.x + 5, heading.y + heading.height / 2);
++                const hitText = document.elementFromPoint(text.x + 5, text.y + text.height / 2);
++                const chain = [];
++                for (let node = hit; node; node = node.parentElement) chain.push(node.id || node.tagName);
++                return {
++                    link: box(link.getBoundingClientRect()),
++                    linkRects: Array.from(link.getClientRects(), box),
++                    heading: box(heading),
++                    text: box(text),
++                    hit: hit && hit.id,
++                    hitText: hitText && hitText.id,
++                    closest: hit && hit.closest("a") && hit.closest("a").id,
++                    chain,
++                    plain: box(plain.getBoundingClientRect()),
++                    plainRects: Array.from(plain.getClientRects(), box),
++                };
++                "#,
++            )
++            .unwrap();
++
++        let values = |key: &str| -> Vec<f64> {
++            result[key]
++                .as_array()
++                .unwrap()
++                .iter()
++                .map(|value| value.as_f64().unwrap())
++                .collect()
++        };
++        let near = |got: &[f64], want: [f64; 4], what: &str| {
++            assert!(
++                got.iter().zip(want).all(|(got, want)| (got - want).abs() < 0.6),
++                "{what}: want {want:?}, got {got:?} ({result})"
++            );
++        };
++        let heading = values("heading");
++        let text = values("text");
++        near(&heading, [10.0, 0.0, 380.0, 14.0], "heading");
++        let bottom = text[1] + text[3];
++        near(&values("link"), [10.0, 0.0, 380.0, bottom], "link bounding rect");
++
++        let rects = result["linkRects"].as_array().unwrap();
++        assert_eq!(rects.len(), 3, "{result}");
++        let rect = |index: usize| -> Vec<f64> {
++            rects[index]
++                .as_array()
++                .unwrap()
++                .iter()
++                .map(|value| value.as_f64().unwrap())
++                .collect()
++        };
++        near(&rect(0), [10.0, 0.0, 0.0, 0.0], "leading empty fragment");
++        near(&rect(1), [10.0, 0.0, 380.0, bottom], "anonymous block fragment");
++        near(&rect(2), [10.0, bottom, 0.0, 0.0], "trailing empty fragment");
++
++        assert_eq!(result["hit"], serde_json::json!("heading"), "{result}");
++        assert_eq!(result["hitText"], serde_json::json!("text"), "{result}");
++        assert_eq!(result["closest"], serde_json::json!("link"), "{result}");
++        let chain = result["chain"].as_array().unwrap();
++        assert_eq!(chain[1], serde_json::json!("link"), "{result}");
++
++        // A plain inline is unchanged: one fragment hugging its text.
++        let plain = values("plain");
++        assert!(plain[2] > 40.0 && plain[2] < 90.0, "{result}");
++        assert!(plain[3] > 10.0 && plain[3] < 25.0, "{result}");
++        let plain_rects = result["plainRects"].as_array().unwrap();
++        assert_eq!(plain_rects.len(), 1, "{result}");
++    }
++
+     #[cfg(feature = "render")]
+     #[test]
+     fn ordinary_inline_keeps_computed_sizes_but_uses_content_geometry() {
+diff --git a/crates/obscura-render/src/dom.rs b/crates/obscura-render/src/dom.rs
+index a684b6b..bce1ece 100644
+--- a/crates/obscura-render/src/dom.rs
++++ b/crates/obscura-render/src/dom.rs
+@@ -302,6 +302,11 @@ pub struct DomLayout {
+     /// this list is the source for background/border painting and
+     /// `getClientRects()` as wrapping support is extended.
+     pub inline_fragments: HashMap<NodeId, Vec<Rect>>,
++    /// Plain inline elements the box tree spliced out (an inline split around
++    /// block-level children, or an undecorated wrapper). Their `rects` and
++    /// `inline_fragments` entries are derived from their descendants for
++    /// CSSOM geometry and hit testing; paint does not draw them as boxes.
++    pub split_inlines: HashSet<NodeId>,
+     pub styles: HashMap<NodeId, crate::LayoutStyle>,
+     /// Computed custom properties in force for each element. Values are
+     /// reference-counted because the overwhelmingly common case is inheritance
+@@ -2215,6 +2220,11 @@ struct IfcRegistry {
+     /// post-pass then balances those already-built boxes without rebuilding
+     /// or reshaping their subtrees.
+     multicol: Vec<MulticolBuild>,
++    /// Plain inline elements spliced out of the box tree because they wrap
++    /// block-level content or carry no decorations (see
++    /// `flatten_boxless_inline_children`). They own no taffy node; their
++    /// fragments are rebuilt from their descendants after layout.
++    split_inlines: HashSet<NodeId>,
+ }
+ 
+ #[derive(Clone, Copy, Debug, Default)]
+@@ -7394,6 +7404,18 @@ fn layout_dom_once(
+         }
+     }
+ 
++    // Spliced inlines own no taffy node. Rebuild their CSS fragments (the
++    // block-in-inline split, CSS2 §9.2.1.1) from the geometry their
++    // descendants now have. This runs after the clip tree is resolved: an
++    // inline box never clips its descendants, so it does not affect it.
++    synthesize_split_inline_fragments(
++        tree,
++        &ifc_items.split_inlines,
++        &mut rects,
++        &mut inline_fragments,
++        &styles,
++    );
++
+     let generated_boxes = ifc_items
+         .generated
+         .iter()
+@@ -7411,6 +7433,7 @@ fn layout_dom_once(
+         DomLayout {
+             rects,
+             inline_fragments,
++            split_inlines: std::mem::take(&mut ifc_items.split_inlines),
+             styles,
+             custom_properties,
+             clip_rects,
+@@ -7433,6 +7456,192 @@ fn layout_dom_once(
+     )
+ }
+ 
++/// Geometry for plain inlines that the box tree spliced out.
++///
++/// CSS2 §9.2.1.1 splits an inline box that contains a block-level box: the
++/// inline content before and after the block becomes line fragments of the
++/// inline, and the block boxes in between sit in an anonymous block box of
++/// the containing block. Browsers expose that anonymous block's extent as one
++/// fragment of the inline (Blink's block-in-inline line): the containing
++/// block's content-box width, from the top of the first block to the bottom
++/// of the last. An inline that starts or ends with a block also has an empty
++/// fragment at that edge. `getBoundingClientRect()` is the union of the
++/// non-empty fragments, `getClientRects()` lists them all.
++///
++/// Line fragments for text of the inline come from shaping (the inline is an
++/// owner in its run); block fragments come from the laid-out blocks.
++fn synthesize_split_inline_fragments(
++    tree: &DomTree,
++    split_inlines: &HashSet<NodeId>,
++    rects: &mut HashMap<NodeId, Rect>,
++    inline_fragments: &mut HashMap<NodeId, Vec<Rect>>,
++    styles: &HashMap<NodeId, crate::LayoutStyle>,
++) {
++    enum Piece {
++        Inline,
++        Block(NodeId),
++    }
++    fn collect(
++        tree: &DomTree,
++        id: NodeId,
++        split_inlines: &HashSet<NodeId>,
++        styles: &HashMap<NodeId, crate::LayoutStyle>,
++        out: &mut Vec<Piece>,
++    ) {
++        for child in rendered_children(tree, id) {
++            let Some(node) = tree.get_node(child) else {
++                continue;
++            };
++            if let obscura_dom::tree::NodeData::Text { contents } = &node.data {
++                if !contents.trim().is_empty() {
++                    out.push(Piece::Inline);
++                }
++                continue;
++            }
++            if !node.is_element() {
++                continue;
++            }
++            let Some(style) = styles.get(&child) else {
++                continue;
++            };
++            if style.display == crate::Display::None
++                || style.float.is_some()
++                || matches!(style.position, Some(taffy::Position::Absolute))
++            {
++                continue;
++            }
++            if style.display_contents || split_inlines.contains(&child) {
++                collect(tree, child, split_inlines, styles, out);
++            } else if is_in_flow_block_level(style) {
++                out.push(Piece::Block(child));
++            } else {
++                out.push(Piece::Inline);
++            }
++        }
++    }
++
++    let mut synthesized = Vec::new();
++    for &id in split_inlines {
++        let mut pieces = Vec::new();
++        collect(tree, id, split_inlines, styles, &mut pieces);
++        let mut line_fragments = inline_fragments.get(&id).cloned().unwrap_or_default();
++        if !pieces.iter().any(|piece| matches!(piece, Piece::Block(_))) {
++            // No split: shaping already produced the whole geometry.
++            continue;
++        }
++
++        // The anonymous block box spans the containing block's content box:
++        // the nearest ancestor that is not itself a plain inline.
++        let mut containing_block = rendered_parent(tree, id);
++        while let Some(ancestor) = containing_block {
++            if !styles
++                .get(&ancestor)
++                .is_some_and(passes_through_block_containing_block)
++            {
++                break;
++            }
++            containing_block = rendered_parent(tree, ancestor);
++        }
++        let Some((cb_x, cb_width)) = containing_block.and_then(|cb| {
++            let rect = rects.get(&cb)?;
++            let style = styles.get(&cb)?;
++            let left = style.border.left + style.padding.left;
++            let right = style.border.right + style.padding.right;
++            Some((rect.x + left, (rect.width - left - right).max(0.0)))
++        }) else {
++            continue;
++        };
++
++        let mut fragments: Vec<Rect> = Vec::new();
++        let mut group: Option<(f32, f32)> = None; // top, bottom
++        let flush = |group: &mut Option<(f32, f32)>, fragments: &mut Vec<Rect>| {
++            if let Some((top, bottom)) = group.take() {
++                fragments.push(Rect {
++                    x: cb_x,
++                    y: top,
++                    width: cb_width,
++                    height: (bottom - top).max(0.0),
++                });
++            }
++        };
++        let starts_with_block = matches!(pieces.first(), Some(Piece::Block(_)));
++        let ends_with_block = matches!(pieces.last(), Some(Piece::Block(_)));
++        let mut last_block_bottom = None;
++        for piece in &pieces {
++            match *piece {
++                Piece::Inline => flush(&mut group, &mut fragments),
++                Piece::Block(block) => {
++                    let Some(rect) = rects.get(&block) else {
++                        continue;
++                    };
++                    let margin_bottom = styles.get(&block).map_or(0.0, |style| style.margin.bottom);
++                    let bottom = rect.y + rect.height;
++                    group = Some(match group {
++                        Some((top, group_bottom)) => (top.min(rect.y), group_bottom.max(bottom)),
++                        None => (rect.y, bottom),
++                    });
++                    last_block_bottom = Some(bottom + margin_bottom);
++                }
++            }
++        }
++        flush(&mut group, &mut fragments);
++        let Some(first_block) = fragments.first().copied() else {
++            continue;
++        };
++        if starts_with_block {
++            fragments.insert(
++                0,
++                Rect {
++                    x: cb_x,
++                    y: first_block.y,
++                    width: 0.0,
++                    height: 0.0,
++                },
++            );
++        }
++        if ends_with_block {
++            if let Some(bottom) = last_block_bottom {
++                fragments.push(Rect {
++                    x: cb_x,
++                    y: bottom,
++                    width: 0.0,
++                    height: 0.0,
++                });
++            }
++        }
++        // Interleave the shaped line fragments in visual (block-axis) order;
++        // the sort is stable, so an edge fragment stays ahead of the block
++        // fragment that shares its top.
++        fragments.append(&mut line_fragments);
++        fragments.sort_by(|a, b| a.y.total_cmp(&b.y));
++        synthesized.push((id, fragments));
++    }
++
++    for (id, fragments) in synthesized {
++        // CSSOM View: the bounding rect is the union of the fragments that
++        // have both a width and a height; if none has, the first fragment.
++        let union = fragments
++            .iter()
++            .filter(|rect| rect.width > 0.0 && rect.height > 0.0)
++            .copied()
++            .reduce(|union, rect| {
++                let left = union.x.min(rect.x);
++                let top = union.y.min(rect.y);
++                let right = (union.x + union.width).max(rect.x + rect.width);
++                let bottom = (union.y + union.height).max(rect.y + rect.height);
++                Rect {
++                    x: left,
++                    y: top,
++                    width: right - left,
++                    height: bottom - top,
++                }
++            })
++            .unwrap_or(fragments[0]);
++        rects.insert(id, union);
++        inline_fragments.insert(id, fragments);
++    }
++}
++
+ /// Convert Taffy's ordinary-inline line surrogate into the element's actual
+ /// visual fragment box.
+ ///
+@@ -12748,7 +12957,13 @@ fn build(
+     // containing block formatting context.
+     if style.display == crate::Display::Block || style.internal_flex_container {
+         let mut flattened = Vec::new();
+-        flatten_boxless_inline_children(tree, &dom_children, styles, &mut flattened);
++        flatten_boxless_inline_children(
++            tree,
++            &dom_children,
++            styles,
++            &mut flattened,
++            &mut ifc_items.split_inlines,
++        );
+         dom_children = flattened;
+     }
+     let internal_mixed_block_flow = style.internal_flex_container
+@@ -13592,11 +13807,17 @@ fn inline_wraps_only_in_flow_blocks(
+ /// computed text styles, so removing these wrappers preserves shaping while
+ /// exposing block-in-inline descendants early enough for anonymous block
+ /// construction.
++///
++/// Every spliced inline (not `display:contents`, which generates no box) is
++/// recorded in `spliced`: it still generates CSS inline boxes, and its
++/// geometry is rebuilt from its descendants after layout (see
++/// `synthesize_split_inline_fragments`).
+ fn flatten_boxless_inline_children(
+     tree: &DomTree,
+     children: &[NodeId],
+     styles: &HashMap<NodeId, crate::LayoutStyle>,
+     out: &mut Vec<NodeId>,
++    spliced: &mut HashSet<NodeId>,
+ ) {
+     for &cid in children {
+         let display_contents = styles
+@@ -13607,8 +13828,11 @@ fn flatten_boxless_inline_children(
+             || is_flattenable_inline(tree, cid, styles)
+             || inline_wraps_only_in_flow_blocks(tree, cid, styles)
+         {
++            if !display_contents {
++                spliced.insert(cid);
++            }
+             let kids = rendered_children(tree, cid);
+-            flatten_boxless_inline_children(tree, &kids, styles, out);
++            flatten_boxless_inline_children(tree, &kids, styles, out, spliced);
+         } else {
+             out.push(cid);
+         }
+@@ -21040,4 +21264,139 @@ mod tests {
+         near("auto-bii-parent", 0.0);
+         assert!(wrong.is_empty(), "{wrong:#?}");
+     }
++
++    /// Fragments and bounding rect of an element, for split-inline tests.
++    fn split_geometry(laid: &DomLayout, tree: &DomTree, id: &str) -> (Option<Rect>, Vec<Rect>) {
++        let node = tree.get_element_by_id(id).unwrap();
++        (
++            laid.rects.get(&node).copied(),
++            laid.inline_fragments.get(&node).cloned().unwrap_or_default(),
++        )
++    }
++
++    fn assert_rect_near(got: Rect, want: [f32; 4], what: &str) {
++        let got_values = [got.x, got.y, got.width, got.height];
++        assert!(
++            got_values
++                .iter()
++                .zip(want)
++                .all(|(got, want)| (got - want).abs() < 0.6),
++            "{what}: want {want:?}, got {got:?}"
++        );
++    }
++
++    #[test]
++    fn inline_split_around_blocks_covers_its_fragments() {
++        // CSS2 §9.2.1.1: an inline containing block-level boxes is split
++        // around them. The blocks sit in an anonymous block box, which Chrome
++        // reports as one fragment of the inline (the containing block's
++        // content width, first block top to last block bottom), with an
++        // empty fragment at an edge where the inline starts or ends with a
++        // block. getBoundingClientRect is the union of non-empty fragments.
++        // Expected values measured in Chrome with the same markup.
++        let tree = parse_html(
++            r##"<style>html,body{margin:0;font:16px/20px sans-serif}</style>
++<div style="width:400px"><a id="amazon" href="#"><h5 id="h" style="margin:0;font-size:12px;line-height:14px">Amazon Music</h5><span id="s" style="display:block">Stream millions<br>of songs</span></a></div>
++<div style="width:400px"><a id="narrow" href="#"><div id="d" style="width:100px">narrow</div></a></div>
++<div style="width:400px;padding:0 10px"><a id="margins" href="#"><h5 style="margin:10px 0;height:20px"></h5><span style="display:block;margin:5px 20px;height:20px"></span></a></div>
++<div style="width:400px"><a id="outer" href="#"><span id="inner"><div id="deep" style="height:30px"></div></span></a></div>"##,
++        );
++        let laid = layout_dom(&tree, (1280.0, 720.0));
++
++        let (rect, fragments) = split_geometry(&laid, &tree, "amazon");
++        let rect = rect.expect("split inline must have a box");
++        assert_rect_near(rect, [0.0, 0.0, 400.0, 54.0], "amazon rect");
++        assert_eq!(fragments.len(), 3, "{fragments:?}");
++        assert_rect_near(fragments[0], [0.0, 0.0, 0.0, 0.0], "amazon before");
++        assert_rect_near(fragments[1], [0.0, 0.0, 400.0, 54.0], "amazon blocks");
++        assert_rect_near(fragments[2], [0.0, 54.0, 0.0, 0.0], "amazon after");
++
++        // The anonymous block is as wide as the containing block, even when
++        // the block inside it is narrower.
++        let (rect, fragments) = split_geometry(&laid, &tree, "narrow");
++        assert_rect_near(rect.unwrap(), [0.0, 54.0, 400.0, 20.0], "narrow rect");
++        assert_eq!(fragments.len(), 3, "{fragments:?}");
++        assert_rect_near(fragments[1], [0.0, 54.0, 400.0, 20.0], "narrow blocks");
++        assert_rect_near(fragments[2], [0.0, 74.0, 0.0, 0.0], "narrow after");
++
++        // Block margins stay outside the block fragment; the containing
++        // block's padding offsets it; the trailing empty fragment sits below
++        // the last block's bottom margin.
++        let (rect, fragments) = split_geometry(&laid, &tree, "margins");
++        assert_rect_near(rect.unwrap(), [10.0, 84.0, 400.0, 50.0], "margins rect");
++        assert_rect_near(fragments[0], [10.0, 84.0, 0.0, 0.0], "margins before");
++        assert_rect_near(fragments[2], [10.0, 139.0, 0.0, 0.0], "margins after");
++
++        // Nested plain inlines are each split around the same block.
++        for id in ["outer", "inner"] {
++            let (rect, fragments) = split_geometry(&laid, &tree, id);
++            assert_rect_near(rect.unwrap(), [0.0, 139.0, 400.0, 30.0], id);
++            assert_eq!(fragments.len(), 3, "{id}: {fragments:?}");
++        }
++
++        // The blocks themselves keep their own geometry.
++        let (h, _) = split_geometry(&laid, &tree, "h");
++        assert_rect_near(h.unwrap(), [0.0, 0.0, 400.0, 14.0], "h5");
++        let (d, _) = split_geometry(&laid, &tree, "d");
++        assert_rect_near(d.unwrap(), [0.0, 54.0, 100.0, 20.0], "narrow block");
++    }
++
++    #[test]
++    fn plain_inline_without_blocks_is_not_split() {
++        // An inline with only inline content keeps its ordinary geometry:
++        // one line fragment hugging its text, never a block-wide fragment.
++        let tree = parse_html(
++            r##"<style>html,body{margin:0;font:16px/20px sans-serif}</style>
++<div style="width:400px"><a id="plain" href="#">plain link</a></div>
++<div style="width:400px">text <span id="decorated" style="background:red">decorated</span><div>block</div></div>"##,
++        );
++        let laid = layout_dom(&tree, (1280.0, 720.0));
++        for id in ["plain", "decorated"] {
++            let (rect, fragments) = split_geometry(&laid, &tree, id);
++            assert!(fragments.len() <= 1, "{id}: {fragments:?}");
++            if let Some(rect) = rect {
++                assert!(rect.width < 120.0 && rect.height < 25.0, "{id}: {rect:?}");
++            }
++        }
++        #[cfg(feature = "paint")]
++        {
++            let (rect, fragments) = split_geometry(&laid, &tree, "plain");
++            let rect = rect.unwrap();
++            assert_eq!(fragments, vec![rect]);
++            assert!(rect.width > 40.0 && rect.width < 90.0, "{rect:?}");
++            assert!((rect.height - 17.0).abs() < 1.0, "{rect:?}");
++            let node = tree.get_element_by_id("plain").unwrap();
++            assert!(!laid.split_inlines.contains(&node));
++        }
++    }
++
++    #[cfg(feature = "paint")]
++    #[test]
++    fn inline_split_around_a_block_keeps_its_text_line_fragments() {
++        // Text before and after the block becomes line fragments of the
++        // inline, shaped like any other inline's text. Chrome:
++        // [[0,55,45.38,17],[0,74,400,20],[0,95,32.02,17]] with the first
++        // line at y=0 here.
++        let tree = parse_html(
++            r##"<style>html,body{margin:0;font:16px/20px sans-serif}</style>
++<div style="width:400px"><a id="mixed" href="#">before<div id="d2">block</div>after</a></div>"##,
++        );
++        let laid = layout_dom(&tree, (1280.0, 720.0));
++        let (rect, fragments) = split_geometry(&laid, &tree, "mixed");
++        let rect = rect.expect("split inline must have a box");
++        assert_eq!(fragments.len(), 3, "{fragments:?}");
++        let [before, block, after] = [fragments[0], fragments[1], fragments[2]];
++        assert!(before.width > 30.0 && before.width < 60.0, "{before:?}");
++        assert!((before.height - 17.0).abs() < 1.0, "{before:?}");
++        assert!(before.y + before.height <= block.y + 0.5, "{fragments:?}");
++        assert_rect_near(block, [0.0, 20.0, 400.0, 20.0], "block fragment");
++        assert!(after.width > 20.0 && after.width < 50.0, "{after:?}");
++        assert!(after.y >= block.y + block.height - 0.5, "{fragments:?}");
++        assert!((rect.x, rect.width) == (0.0, 400.0), "{rect:?}");
++        assert!((rect.y - before.y).abs() < 0.01, "{rect:?}");
++        assert!(
++            (rect.y + rect.height - after.y - after.height).abs() < 0.01,
++            "{rect:?}"
++        );
++    }
+ }
+diff --git a/crates/obscura-render/src/inline.rs b/crates/obscura-render/src/inline.rs
+index 9684c12..3b4757c 100644
+--- a/crates/obscura-render/src/inline.rs
++++ b/crates/obscura-render/src/inline.rs
+@@ -1434,7 +1434,27 @@ impl TextEngine {
+         let ctx = base_span_ctx(base, font, &mut collector);
+         let line_height = ctx.line_height;
+         let mut spans: Vec<(String, SpanAttrs)> = Vec::new();
++        // Run members can come from inside inline elements that the box tree
++        // spliced out (a plain inline split around a block child, or an
++        // undecorated wrapper). Those inlines still generate line fragments
++        // here, so keep them open as owners around their members; their
++        // continuation geometry then comes from shaping like any other inline.
++        let mut open_splices: Vec<NodeId> = Vec::new();
+         for &cid in run {
++            let splices = spliced_inline_ancestors(tree, parent, cid, styles);
++            let shared = open_splices
++                .iter()
++                .zip(&splices)
++                .take_while(|(open, next)| open == next)
++                .count();
++            while open_splices.len() > shared {
++                let owner = open_splices.pop().expect("open spliced inline");
++                collector.end_owner(owner);
++            }
++            for &owner in &splices[shared..] {
++                collector.begin_edgeless_owner(owner);
++                open_splices.push(owner);
++            }
+             collect_node_spans(
+                 tree,
+                 cid,
+@@ -1445,6 +1465,9 @@ impl TextEngine {
+                 &self.loaded_families,
+             );
+         }
++        while let Some(owner) = open_splices.pop() {
++            collector.end_owner(owner);
++        }
+         self.push_shaped_item(
+             base,
+             line_height,
+@@ -2265,6 +2288,8 @@ struct Collector {
+     owner_ranges: Vec<OwnerTextRange>,
+     owner_boxes: Vec<InlineOwnerBox>,
+     boundary_events: Vec<InlineBoundaryEvent>,
++    /// Stack of open owners opened by `begin_edgeless_owner`.
++    edgeless_owners: Vec<NodeId>,
+     text_len: usize,
+ }
+ 
+@@ -2277,6 +2302,7 @@ impl Collector {
+             owner_ranges: Vec::new(),
+             owner_boxes: Vec::new(),
+             boundary_events: Vec::new(),
++            edgeless_owners: Vec::new(),
+             text_len: 0,
+         }
+     }
+@@ -2320,16 +2346,36 @@ impl Collector {
+         });
+     }
+ 
++    /// Open an owner that contributes provenance only: no boundary events,
++    /// so the shaped line breaks and advances are exactly those of the run
++    /// without it. Used for inline elements the box tree spliced out, whose
++    /// edges have never taken part in line layout.
++    fn begin_edgeless_owner(&mut self, owner: NodeId) {
++        let start_event = self.boundary_events.len();
++        self.owners.push(ActiveInlineOwner {
++            owner,
++            start: self.text_len,
++            start_edge: InlineEdge::default(),
++            end_edge: InlineEdge::default(),
++            start_event,
++        });
++        self.edgeless_owners.push(owner);
++    }
++
+     fn end_owner(&mut self, owner: NodeId) {
+         let active = self.owners.pop().expect("balanced inline owner stack");
+         debug_assert_eq!(active.owner, owner);
+         let end_event = self.boundary_events.len();
+-        self.boundary_events.push(InlineBoundaryEvent {
+-            owner,
+-            position: self.text_len,
+-            is_start: false,
+-            edge: active.end_edge,
+-        });
++        if self.edgeless_owners.last() == Some(&owner) {
++            self.edgeless_owners.pop();
++        } else {
++            self.boundary_events.push(InlineBoundaryEvent {
++                owner,
++                position: self.text_len,
++                is_start: false,
++                edge: active.end_edge,
++            });
++        }
+         self.owner_boxes.push(InlineOwnerBox {
+             owner,
+             start: active.start,
+@@ -2404,6 +2450,38 @@ fn base_span_ctx(base: &LayoutStyle, font: ResolvedFont, collector: &mut Collect
+     }
+ }
+ 
++/// Inline elements between a run member and the run's block container,
++/// outermost first. Run members are the container's children after the box
++/// tree spliced out boxless wrappers, so every element on that path is a
++/// spliced inline or a `display:contents` element (which generates no box
++/// and is skipped).
++fn spliced_inline_ancestors(
++    tree: &DomTree,
++    container: NodeId,
++    member: NodeId,
++    styles: &std::collections::HashMap<NodeId, LayoutStyle>,
++) -> Vec<NodeId> {
++    let mut chain = Vec::new();
++    let mut ancestor = crate::dom::rendered_parent(tree, member);
++    while let Some(id) = ancestor {
++        if id == container {
++            chain.reverse();
++            return chain;
++        }
++        let Some(style) = styles.get(&id) else {
++            return Vec::new();
++        };
++        if !style.display_contents {
++            if style.display != crate::Display::Inline || style.is_inline_block {
++                return Vec::new();
++            }
++            chain.push(id);
++        }
++        ancestor = crate::dom::rendered_parent(tree, id);
++    }
++    Vec::new()
++}
++
+ fn collect_spans(
+     tree: &DomTree,
+     id: NodeId,
+diff --git a/crates/obscura-render/src/paint.rs b/crates/obscura-render/src/paint.rs
+index d80059d..988ae96 100644
+--- a/crates/obscura-render/src/paint.rs
++++ b/crates/obscura-render/src/paint.rs
+@@ -3834,6 +3834,12 @@ fn paint_laid_dom_scrolled(
+             Some(r) => *r,
+             None => continue,
+         };
++        // A spliced inline's geometry is derived from its descendants for
++        // CSSOM; it has no box of its own to paint (its descendants paint
++        // themselves in their own iterations).
++        if laid.split_inlines.contains(&nid) {
++            continue;
++        }
+ 
+         let style = match laid.styles.get(&nid) {
+             Some(s) => s,

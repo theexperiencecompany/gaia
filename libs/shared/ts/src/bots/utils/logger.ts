@@ -164,46 +164,73 @@ export function hashLogIdentifier(
 }
 
 /**
- * Extracts the HTTP status from an Axios-style error (`error.response.status`),
- * or `undefined` if absent. Centralizes the repeated `unknown`-cast that every
- * call site (API client, streaming, media, formatters) was duplicating.
+ * The HTTP status a failed call carries, whichever client raised it: Axios
+ * (`response.status`), `GaiaApiError` and discord.js (`status`), grammY
+ * (`error_code`, Telegram's Bot API status) or Kapso (`httpStatus`).
+ * `undefined` when there is none.
  */
 export function getHttpStatus(error: unknown): number | undefined {
-  return (error as { response?: { status?: number } } | null)?.response?.status;
+  const candidate = error as {
+    response?: { status?: unknown };
+    status?: unknown;
+    error_code?: unknown;
+    httpStatus?: unknown;
+  } | null;
+  for (const value of [
+    candidate?.response?.status,
+    candidate?.status,
+    candidate?.error_code,
+    candidate?.httpStatus,
+  ]) {
+    if (typeof value === "number") return value;
+  }
+  return undefined;
 }
 
 /**
  * The API's error body — the flat `{ message, code, ... }` envelope every
- * non-2xx response carries — or `{}` when the response had no JSON body.
+ * non-2xx response carries, read from an Axios error or a `GaiaApiError` —
+ * or `{}` when the response had no JSON body.
  */
 export function getErrorReason(error: unknown): Record<string, unknown> {
-  const data = (error as { response?: { data?: unknown } } | null)?.response
-    ?.data;
+  const candidate = error as {
+    response?: { data?: unknown };
+    reason?: unknown;
+  } | null;
+  const data = candidate?.response?.data ?? candidate?.reason;
   if (typeof data !== "object" || data === null) return {};
   return data as Record<string, unknown>;
 }
 
+/** The API's machine-readable error `code` (e.g. `BOT_ACCOUNT_NOT_LINKED`), if it sent one. */
+export function getApiErrorCode(error: unknown): string | undefined {
+  const code = getErrorReason(error).code;
+  return typeof code === "string" ? code : undefined;
+}
+
 /**
- * Describes a thrown value with the two flat scalars every GAIA surface uses: `error_type`
- * (the exception's class/name) and `error` (its message) — the same vocabulary as Python's
- * `log.error(..., error=str(exc), error_type=...)`, used by ~900 call sites, the wide-events
- * lint, and the observability scanner.
- *
- * Nesting the pair under one `error: {...}` object (as this used to) put a string on one surface
- * and an object on the other under the same key, the one shape `| json` can't parse — silently dropping the line from every error dashboard.
+ * Describes a thrown value as flat scalars: `error_type` and `error` (Python's vocabulary),
+ * plus `http_status`, and an API refusal's `error_code` and `error_detail` (its message).
+ * Never a nested `error: {...}` object — the one shape `| json` can't parse.
  */
 export function sanitizeErrorForLog(error: unknown): BotLogFields {
-  if (error instanceof Error) {
+  if (!(error instanceof Error)) {
     return {
-      error_type: error.name,
-      error: error.message,
+      error_type: "Unknown",
+      error: typeof error === "string" ? error : "Unknown non-Error thrown",
     };
   }
-
-  return {
-    error_type: "Unknown",
-    error: typeof error === "string" ? error : "Unknown non-Error thrown",
+  const fields: BotLogFields = {
+    error_type: error.name,
+    error: error.message,
   };
+  const status = getHttpStatus(error);
+  if (status !== undefined) fields.http_status = status;
+  const code = getApiErrorCode(error);
+  if (code !== undefined) fields.error_code = code;
+  const detail = getErrorReason(error).message;
+  if (typeof detail === "string") fields.error_detail = detail;
+  return fields;
 }
 
 function toJsonValue(value: unknown, depth = 0): JsonValue {

@@ -2,7 +2,7 @@ import asyncio
 from typing import Annotated
 import uuid
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
@@ -92,9 +92,9 @@ async def get_todo_labels(
 # Main Todo CRUD Endpoints
 @router.get("/todos", response_model=TodoListResponse)
 async def list_todos(
-    # Depends(), not Query(): FastAPI doesn't flatten a query model through include_router,
-    # so a Query()-bound model 422s every request; Depends() binds each field as a param.
-    params: Annotated[TodoListParams, Depends()],
+    # Query(), not Depends(): Depends() binds each scalar field but silently drops the
+    # list ones, so ?labels=a&labels=b arrived as None and the filter never applied.
+    params: Annotated[TodoListParams, Query()],
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> TodoListResponse:
     """

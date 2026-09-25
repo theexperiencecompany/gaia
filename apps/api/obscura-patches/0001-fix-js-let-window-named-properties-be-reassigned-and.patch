@@ -1,0 +1,131 @@
+From 4bc67c709911b75c8e88d8eaca55eaacf1ce4ad1 Mon Sep 17 00:00:00 2001
+From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
+Date: Wed, 23 Sep 2026 13:22:55 +0530
+Subject: [PATCH 01/18] fix(js): let window named properties be reassigned, and
+ give <template> its own class
+
+Assigning to a name that an element id exposes on window (Next.js does
+window.__NEXT_DATA__ = ...) threw on the getter-only accessor; a setter now
+shadows it with a data property, as the WindowProxy does in browsers.
+HTMLTemplateElement was an alias of Element, so a library patching
+HTMLTemplateElement.prototype (react-aria's firstChild) broke every element.
+---
+ crates/obscura-js/js/bootstrap.js | 22 +++++++++++++-
+ crates/obscura-js/src/runtime.rs  | 50 +++++++++++++++++++++++++++++++
+ 2 files changed, 71 insertions(+), 1 deletion(-)
+
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index 324208d..b112b3a 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -6518,6 +6518,7 @@ function _elementClassFor(nid) {
+       && _domParse("namespace_uri", nid) === "http://www.w3.org/1999/xhtml") {
+     return globalThis.HTMLSlotElement;
+   }
++  if (tag === "TEMPLATE" && globalThis.HTMLTemplateElement) return globalThis.HTMLTemplateElement;
+   if (tag === "IMG") return HTMLImageElement;
+   if (tag === "CANVAS" && globalThis.HTMLCanvasElement) return globalThis.HTMLCanvasElement;
+   if (tag === "AUDIO") return HTMLAudioElement;
+@@ -6539,6 +6540,7 @@ function _elementClassForKnownName(namespace, qualifiedName) {
+     if (tag === "FORM" && globalThis.HTMLFormElement) return globalThis.HTMLFormElement;
+     if (tag === "TEXTAREA" && globalThis.HTMLTextAreaElement) return globalThis.HTMLTextAreaElement;
+     if (tag === "SLOT" && globalThis.HTMLSlotElement) return globalThis.HTMLSlotElement;
++    if (tag === "TEMPLATE" && globalThis.HTMLTemplateElement) return globalThis.HTMLTemplateElement;
+     if (tag === "IMG") return HTMLImageElement;
+     if (tag === "CANVAS" && globalThis.HTMLCanvasElement) return globalThis.HTMLCanvasElement;
+     if (tag === "AUDIO") return HTMLAudioElement;
+@@ -11756,7 +11758,12 @@ globalThis.HTMLOListElement = Element;
+ globalThis.HTMLLIElement = Element;
+ globalThis.HTMLPreElement = Element;
+ globalThis.HTMLHeadingElement = Element;
+-globalThis.HTMLTemplateElement = Element;
++// <template> needs its own brand for the same reason as <slot> below: with
++// `HTMLTemplateElement = Element`, react-aria's patch of
++// HTMLTemplateElement.prototype.firstChild (return this.content.firstChild)
++// landed on every element and threw on the first plain <div> React hydrated
++// (seen on duckduckgo.com's home page).
++globalThis.HTMLTemplateElement = class HTMLTemplateElement extends Element {};
+ // <slot> needs its own brand: with `HTMLSlotElement = Element` every element
+ // was an instance, but assignedElements() did not exist, so the common
+ // `el instanceof HTMLSlotElement && el.assignedElements()` guard (Swiper's
+@@ -12028,6 +12035,19 @@ function _ensureWindowNamedProperty(name) {
+   try {
+     Object.defineProperty(globalThis, name, {
+       get() { return _windowNamedValue(name); },
++      // Named elements live behind the WindowProxy in a real browser, so a
++      // script assigning the name gets an own data property that shadows the
++      // element (Next.js does `window.__NEXT_DATA__ = ...` next to the
++      // `<script id="__NEXT_DATA__">` it hydrates from).
++      set(value) {
++        _windowNamedPropertyNames.delete(name);
++        Object.defineProperty(globalThis, name, {
++          value,
++          writable: true,
++          configurable: true,
++          enumerable: true,
++        });
++      },
+       configurable: true,
+       enumerable: true,
+     });
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index 0c3d34f..8bd3139 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -6818,6 +6818,56 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn window_named_access_assignment_shadows_the_element() {
++        let mut rt = setup_runtime(
++            r#"<html><body>
++                <script id="__NEXT_DATA__" type="application/json">{"page":"/"}</script>
++            </body></html>"#,
++        );
++        let result = rt
++            .evaluate(
++                r#"
++                const before = window.__NEXT_DATA__ === document.getElementById("__NEXT_DATA__");
++                window.__NEXT_DATA__ = { page: "/", props: {} };
++                const after = window.__NEXT_DATA__.props !== undefined;
++                window.__NEXT_DATA__ = 7;
++                const rewritten = window.__NEXT_DATA__ === 7;
++                const descriptor = Object.getOwnPropertyDescriptor(window, "__NEXT_DATA__");
++                return [before, after, rewritten, descriptor.writable === true];
++                "#,
++            )
++            .unwrap();
++        assert_eq!(result, serde_json::json!([true, true, true, true]));
++    }
++
++    #[test]
++    fn template_element_has_own_brand() {
++        let mut rt = setup_runtime(
++            "<html><body><div id='plain'></div><template id='t'><p>x</p></template></body></html>",
++        );
++        let result = rt
++            .evaluate(
++                r#"
++                const plain = document.getElementById("plain");
++                const t = document.getElementById("t");
++                Object.defineProperty(HTMLTemplateElement.prototype, "firstChild", {
++                    configurable: true,
++                    get() { return this.content.firstChild; },
++                });
++                return [
++                    t instanceof HTMLTemplateElement,
++                    plain instanceof HTMLTemplateElement,
++                    plain instanceof HTMLElement,
++                    plain.firstChild === null,
++                    t.firstChild !== null && t.firstChild.localName === "p",
++                ];
++                "#,
++            )
++            .unwrap();
++        assert_eq!(result, serde_json::json!([true, false, true, true, true]));
++    }
++
+     #[test]
+     fn window_named_access_tracks_dynamic_ids_and_fragment_parsing() {
+         let mut rt = setup_runtime("<html><body><div id='host'></div></body></html>");

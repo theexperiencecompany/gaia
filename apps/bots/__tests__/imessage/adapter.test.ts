@@ -415,7 +415,7 @@ describe("handleInboundMessage routing", () => {
 
     const sent = space.send.mock.calls.map((call) => call[0] as string);
     expect(sent).toContain(
-      "Voice notes aren't supported here yet — please type your message instead.",
+      "Voice notes aren't supported here yet. Please type your message instead.",
     );
     expect(sent.some((text) => text.includes("Something went wrong"))).toBe(
       false,
@@ -633,7 +633,7 @@ describe("multi-part (group) content", () => {
     expect(resolveMockOf(adapter)).not.toHaveBeenCalled();
     const sent = space.send.mock.calls.map((call) => call[0] as string);
     expect(sent).toContain(
-      "Voice notes aren't supported here yet — please type your message instead.",
+      "Voice notes aren't supported here yet. Please type your message instead.",
     );
     expect(handleStreamingChat).not.toHaveBeenCalled();
   });

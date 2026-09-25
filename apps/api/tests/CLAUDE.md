@@ -93,3 +93,20 @@ Never hardcode real secrets in tests; never read a `~` path (the fence owns
 env, fixtures own paths). If a test needs a key, declare it via
 `HERMETIC_ALLOW_KEYS` in the tier's conftest — with a comment saying why the
 live value is genuinely required.
+
+## Browser automation
+
+Gates, in order: the hermetic e2e journeys (`tests/e2e/test_browser_task_background.py`,
+the whole job through the real executor graph), the integration suites
+(`tests/integration/agents/test_browser_job_*.py`, relay and delivery over real product
+code), the Obscura conformance suite (`tests/integration/real/test_obscura_conformance.py`), and
+the live Telegram battery through the bot harness:
+`nx run bot-harness:sim -- send --emulate telegram --user dev@gaia.local --settle 20000 --out t.jsonl "<task>"`.
+
+Unit tests here carry invariants and regressions only: an owner-checked lease, an applied
+cap, a refusal that never enqueues, a note that reaches the goal, the handoff timeout
+message. What a journey proves end to end gets no second unit copy, and a test pinning a
+call sequence, a poll count or a line of copy is deleted rather than maintained.
+
+A green suite is not the finish line for a browser change: the battery is. Cards, shots
+and handoffs only prove themselves against a real browser on a real platform.

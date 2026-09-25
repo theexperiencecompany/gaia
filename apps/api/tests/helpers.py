@@ -385,3 +385,8 @@ async def pg_advisory_lock(
             yield
         finally:
             await conn.execute("SELECT pg_advisory_unlock(%s)", (lock_id,))
+
+
+#: The Obscura host the browser patch tests configure; a session whose CDP URL is on it runs on Obscura.
+OBSCURA_TEST_HOST_URL = "http://obscura.test:9300"
+OBSCURA_TEST_CDP_URL = "ws://obscura.test:9300/devtools/browser/run-1"

@@ -74,13 +74,13 @@ class ExtractedFact(BaseModel):
         description=(
             "How long this assertion stays true. 'durable': identity, "
             "relationships, preferences, style, health, values, long-run goals "
-            "— never expires. 'state': a value that was only true as of a "
+            ". Never expires. 'state': a value that was only true as of a "
             "moment (counts, balances, metrics, connection status, deployment "
             "state, open bugs, in-flight applications, anything you would write "
-            "'as of <date>') — expires. 'task': a commitment, deadline or "
-            "intention — becomes an agenda item, never a plain fact. 'journal': "
+            "'as of <date>'). Expires. 'task': a commitment, deadline or "
+            "intention. Becomes an agenda item, never a plain fact. 'journal': "
             "what happened today, anything GAIA itself recommended, produced, "
-            "drafted or advised, or a world fact merely looked up — becomes a "
+            "drafted or advised, or a world fact merely looked up. Becomes a "
             "journal line, never a fact. When torn between durable and state, "
             "choose state."
         )
@@ -132,7 +132,7 @@ class AgendaUpdate(BaseModel):
 
     item: str = Field(
         description=(
-            "The open loop itself, phrased as the commitment — 'Sam owes the "
+            "The open loop itself, phrased as the commitment: 'Sam owes the "
             "landlord a signed lease by March 3', not 'Sam mentioned the lease'. "
             "Self-contained and in third person, like a fact. When closing an "
             "item, phrase it as the ORIGINAL commitment so it can be matched "
@@ -142,7 +142,7 @@ class AgendaUpdate(BaseModel):
     resolved: bool = Field(
         description=(
             "True when this conversation CLOSED the loop (it was delivered, "
-            "cancelled, or otherwise finished) — the matching agenda item is "
+            "cancelled, or otherwise finished), the matching agenda item is "
             "then retired. False when it opens or restates an open loop."
         )
     )
@@ -167,7 +167,7 @@ class ExtractedMemoryBatch(BaseModel):
     agenda_updates: list[AgendaUpdate] = Field(
         default_factory=list,
         description=(
-            "Open loops opened or closed in this conversation — new commitments, "
+            "Open loops opened or closed in this conversation: new commitments, "
             "deadlines, things GAIA owes the user, or previously open items now "
             "resolved. Empty if the conversation changed no open loops."
         ),
@@ -217,7 +217,7 @@ class ConsolidatedDocument(BaseModel):
         description=(
             "The full rewritten markdown body of the document, following the "
             "section skeleton and rules in the system prompt. No code fences, "
-            "no commentary — the document body only."
+            "no commentary, the document body only."
         )
     )
 

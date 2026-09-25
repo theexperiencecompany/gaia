@@ -10,8 +10,8 @@ same PR (its header says so too).
 
 - **`workflows/main.yml` ("Quality Checks") — correctness.** Build + tests
   only. Its `quality-gate` job is a branch-protection target.
-- **`workflows/code-quality.yml` ("Code Quality") — hygiene.** Twenty
-  lanes (Biome, tsc, `python-static` = ruff + custom AST lints + complexity +
+- **`workflows/code-quality.yml` ("Code Quality") — hygiene.** Twenty-one
+  lanes (Biome, tsc, the Go tool `tools/gaia-connect`, `python-static` = ruff + custom AST lints + complexity +
   docstrings + security in one job, mypy, dead code, evlog-map observability
   score, wide-event cross-runtime conformance, semgrep, sharded mutation
   testing, …) behind the

@@ -18,7 +18,7 @@ from langgraph.store.base import GetOp, PutOp, SearchOp
 import pytest
 
 from app.constants.chroma import MAX_CONCURRENT_CHROMA_WRITES
-from app.db.chroma.chroma_store import ChromaStore
+from app.db.chroma.chroma_store import ChromaBatchWriteError, ChromaStore
 from app.db.chroma.chroma_tools_store import (
     _build_put_operations,
     _compute_tool_diff,
@@ -132,7 +132,7 @@ def collection_prefix() -> str:
 
 
 @pytest.fixture
-async def ephemeral_client(collection_prefix: str):
+async def ephemeral_client(collection_prefix: str, _precreate_ephemeral_chroma: None):
     """Return a ChromaDB client per test.
 
     Uses real AsyncHttpClient against the chroma service when USE_REAL_SERVICES=1,
@@ -424,7 +424,10 @@ class TestChromaStoreSearch:
                 raise RuntimeError("Simulated upsert failure")
             return await original_upsert_item(self_arg, doc_id, op, collection)
 
-        with patch.object(type(chroma_store), "_upsert_item", selective_upsert):
+        with (
+            patch.object(type(chroma_store), "_upsert_item", selective_upsert),
+            pytest.raises(ChromaBatchWriteError),
+        ):
             await chroma_store.abatch(
                 [
                     PutOp(
@@ -440,7 +443,7 @@ class TestChromaStoreSearch:
                 ]
             )
 
-        # The successful item should be present.
+        # The successful item should be present despite the surfaced failure.
         ok_results = await chroma_store.abatch([GetOp(namespace=ns, key=success_key)])
         assert ok_results[0] is not None
         assert ok_results[0].key == success_key

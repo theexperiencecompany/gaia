@@ -11,9 +11,9 @@ import {
 import AiChiefOfStaffClient from "./AiChiefOfStaffClient";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "AI Chief of Staff — Your Proactive AI That Runs Your Day",
+  title: "AI Chief of Staff: Your Proactive AI That Runs Your Day",
   description:
-    "GAIA is your AI chief of staff: it reads your inbox, prepares briefings, schedules meetings, tracks follow-ups, and manages your day proactively — before you ask.",
+    "GAIA is your AI chief of staff: it reads your inbox, prepares briefings, schedules meetings, tracks follow-ups, and manages your day proactively, before you ask.",
   path: "/ai-chief-of-staff",
   keywords: [
     "AI chief of staff",
@@ -33,12 +33,12 @@ const faqs = [
   {
     question: "Can GAIA really replace a human chief of staff?",
     answer:
-      "For most operational overhead — inbox triage, meeting prep, follow-up tracking, briefing generation, and routine delegation — yes. GAIA handles the administrative layer that occupies most of a chief of staff's calendar. It won't replace a strategic thought partner or someone who manages people, but for day-to-day operational work, it covers 70-80% of what founders and execs hire for.",
+      "For most operational overhead (inbox triage, meeting prep, follow-up tracking, briefing generation, and routine delegation), yes. GAIA handles the administrative layer that occupies most of a chief of staff's calendar. It won't replace a strategic thought partner or someone who manages people, but for day-to-day operational work, it covers 70-80% of what founders and execs hire for.",
   },
   {
     question: "What does GAIA do automatically vs what do I need to ask?",
     answer:
-      "GAIA sends your morning briefing automatically every day at your chosen time. It also runs scheduled workflows: daily summaries, weekly pipeline reviews, follow-up reminders. You ask GAIA for anything ad-hoc — drafting a reply, scheduling a meeting, pulling context on a deal — via natural language in chat or through the desktop app.",
+      "GAIA sends your morning briefing automatically every day at your chosen time. It also runs scheduled workflows: daily summaries, weekly pipeline reviews, follow-up reminders. You ask GAIA for anything ad-hoc (drafting a reply, scheduling a meeting, pulling context on a deal) via natural language in chat or through the desktop app.",
   },
   {
     question: "How long does setup take?",
@@ -48,14 +48,14 @@ const faqs = [
   {
     question: "Is my email data private?",
     answer:
-      "On the cloud tier, your data is processed with strict security controls, and content from your connected accounts is never used to improve our services. To generate responses, email content is shared with third-party AI model providers as described in our Privacy Policy. On the self-hosted tier, your email content never leaves your own infrastructure — GAIA processes everything locally using your own LLM API key.",
+      "On the cloud tier, your data is processed with strict security controls, and content from your connected accounts is never used to improve our services. To generate responses, email content is shared with third-party AI model providers as described in our Privacy Policy. On the self-hosted tier, your email content never leaves your own infrastructure. GAIA processes everything locally using your own LLM API key.",
   },
 ];
 
 export default function AiChiefOfStaffPage() {
   const webPageSchema = generateWebPageSchema(
-    "AI Chief of Staff — Your Proactive AI That Runs Your Day | GAIA",
-    "GAIA is your AI chief of staff: it reads your inbox, prepares briefings, schedules meetings, tracks follow-ups, and manages your day proactively — before you ask.",
+    "AI Chief of Staff: Your Proactive AI That Runs Your Day | GAIA",
+    "GAIA is your AI chief of staff: it reads your inbox, prepares briefings, schedules meetings, tracks follow-ups, and manages your day proactively, before you ask.",
     `${siteConfig.url}/ai-chief-of-staff`,
     [
       { name: "Home", url: siteConfig.url },

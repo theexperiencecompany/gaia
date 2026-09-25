@@ -243,12 +243,9 @@ class CustomLLM(LLM):
         if event.keys() & PLUMBING_EVENT_KEYS:
             await self.forward_stream_event_to_frontend(data)
 
-    # The base class declares chat() -> LLMStream, but the LiveKit pipeline calls it as
-    # `async with llm.chat(...) as stream: async for chunk in stream:`, which is exactly
-    # what @asynccontextmanager + yield gen() provides.
-    # The pipeline also passes tools/tool_choice/conn_options (voice/agent.py), which
-    # this override does not use — the catch-all has to stay or those calls TypeError.
-    # `object`, not Any: nothing here ever reads them.
+    # The pipeline calls this as `async with llm.chat(...) as stream: async for c in stream`,
+    # which @asynccontextmanager + yield gen() provides; **_kwargs takes the tools,
+    # tool_choice and conn_options the pipeline passes (voice/agent.py) and never reads.
     @asynccontextmanager
     async def chat(
         self, *, chat_ctx: ChatContext, **_kwargs: object

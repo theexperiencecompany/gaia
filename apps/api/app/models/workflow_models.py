@@ -231,7 +231,7 @@ class Workflow(BaseScheduledTask, ResponseModel):
         default=None,
         description=(
             "Why the workflow is not activated. None means the user turned it off "
-            "themselves — only system-paused workflows may be resumed automatically."
+            "themselves. Only system-paused workflows may be resumed automatically."
         ),
     )
     notify_on_completion: bool = Field(
@@ -305,7 +305,7 @@ class Workflow(BaseScheduledTask, ResponseModel):
     integration_ids: list[str] = Field(
         default_factory=list,
         description=(
-            "Integration ids this workflow uses — picked by the user or identified "
+            "Integration ids this workflow uses, picked by the user or identified "
             "from intent by the workflow assistant. Scopes the tool palette when "
             "generating steps. Connection state is never stored here: "
             "required/missing integrations are derived from the steps at read time."
@@ -435,7 +435,7 @@ class CreateWorkflowRequest(BaseModel):
     integration_ids: list[str] | None = Field(
         default=None,
         description=(
-            "Integration ids this workflow uses — picked by the user or identified "
+            "Integration ids this workflow uses, picked by the user or identified "
             "from intent. Scopes the tool palette when generating steps."
         ),
     )
@@ -718,7 +718,7 @@ class GeneratedPromptOutput(BaseModel):
             "200-400 words of imperative execution instructions written directly to "
             "the AI agent. Use second-person present tense ('Fetch...', 'Search...', "
             "'Send...'). Cover: goal, data gathering, processing, actions, and failure "
-            "handling. No scheduling info, no markdown, no bullet points — flowing "
+            "handling. No scheduling info, no markdown, no bullet points, flowing "
             "prose only."
         )
     )

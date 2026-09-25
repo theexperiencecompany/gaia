@@ -261,7 +261,11 @@ jobs:
     # changes.sh, nx affected or pytest.sh must agree on one answer.
     env:
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
-    timeout-minutes: 15
+    # ~4 min on an idle box, but the host CPU governor makes lanes queue and
+    # that queueing counts here: while four packed mutation shards share the
+    # box this job measured 12 min, then 16 (cancelled at the old 15-min cap,
+    # 2026-09-08). Sized like test-python's 22, not the idle-box number.
+    timeout-minutes: 25
     permissions:
       contents: read
     steps:

@@ -38,7 +38,7 @@ This applies to both static `export const metadata` objects and dynamic `generat
 
 **Title formatting:**
 - Lead with the most descriptive keyword, not the brand name
-- Use em-dash `—` (not pipe `|`) to separate primary topic from subtitle
+- Use a colon (not a pipe `|`, never an em dash) to separate primary topic from subtitle: `AI Chief of Staff: Your Proactive AI That Runs Your Day`
 - Keep under 60 characters where possible
 - No trailing punctuation
 

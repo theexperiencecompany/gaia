@@ -97,6 +97,13 @@ TOOL_RESULT_NOTE_SEPARATOR = "\n\n"
 #: run (which replays nothing) for every suspect the streak allows.
 PLAYBOOK_SUSPECT_BASELINE_WINDOW = PLAYBOOK_SUSPECT_STREAK_LIMIT * (1 + PLAYBOOK_HEAL_ATTEMPT_LIMIT)
 
+#: Closes every executor brief's definition of done. A memory of the same task
+#: once stood in for the run: "log me in" came back "already done" with no browser.
+DONE_EVIDENCE_RULE = (
+    "An item that asks for an action, or for what a page or account shows now, is met "
+    "only by a tool call in this run. A memory, or an earlier run of the same task, never meets it."
+)
+
 #: The tag both playbook briefs open with. The executor's graph loop reads it
 #: off the task turn to know the run owes a decision, so the briefs and the
 #: gate cannot drift apart on a string.

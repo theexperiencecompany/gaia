@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 
 from app.agents.llm.client import StructuredCallOptions, ainvoke_structured, silent_metered_config
 from app.constants.hil import HIL_JUDGE_MIN_QUOTE_WORDS, HIL_LLM_TIMEOUT_SECONDS
-from app.constants.llm import HIL_JUDGE_FALLBACK_MODEL_NAMES, HIL_JUDGE_MODEL_NAME
+from app.constants.llm import ModelUse
 from app.constants.log_tags import LogTag
 from app.models.hil_models import ApprovalLedgerDocument, LedgerState
 from app.services.hil.prompts import INTENT_JUDGE_PROMPT
@@ -358,11 +358,7 @@ async def _ask_judge(
         ),
         label="hil_intent_judge",
         config=silent_metered_config(user_id),
-        options=StructuredCallOptions(
-            timeout=HIL_LLM_TIMEOUT_SECONDS,
-            model_name=HIL_JUDGE_MODEL_NAME,
-            fallback_model_names=HIL_JUDGE_FALLBACK_MODEL_NAMES,
-        ),
+        options=StructuredCallOptions(timeout=HIL_LLM_TIMEOUT_SECONDS, use=ModelUse.JUDGE),
     )
 
 

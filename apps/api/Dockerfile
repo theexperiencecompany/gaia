@@ -81,6 +81,39 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # `--mount=type=cache,target=/root/.cache/crawl4ai` guarding it pointed at a
 # path crawl4ai never writes.
 
+# ---- Obscura build: compile the browser engine from source ----
+# Pinned to a commit past v0.2.2 that fixes the dynamic-import / frame-realm
+# SIGSEGV (upstream #850 + #841, PR #864) — not yet in a tagged release, and
+# v0.2.2's release tarball crashes the whole process on pages that use dynamic
+# import() (fingerprint.com and friends). Revert to the release tarball download
+# once v0.2.3 ships. deno_core's v8 crate pulls a PREBUILT V8, so this compiles
+# Rust only (~few min), not V8. render+stealth = the build we launch with
+# --stealth (native rendering + TLS impersonation). libunwind-dev is required by
+# the stealth feature's BoringSSL (btls-sys); GitHub's runners preinstall it so
+# Obscura's own CI never lists it.
+FROM rust:1-slim-bookworm AS obscura-builder
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    clang cmake libclang-dev libssl-dev llvm-dev pkg-config \
+    git ca-certificates perl make libunwind-dev build-essential
+ARG OBSCURA_COMMIT=8f9c630b17d655920e13907afd8b498bbb9a2291
+# Our fixes ride on the pinned upstream commit as a patch series, so taking an
+# update is a pin bump: git am fails the build loudly when a patch no longer
+# applies, and one upstream has merged is deleted from the series.
+COPY apps/api/obscura-patches /obscura-patches
+RUN git clone https://github.com/h4ckf0r0day/obscura /obscura \
+    && git -C /obscura checkout ${OBSCURA_COMMIT} \
+    && git -C /obscura -c user.name=gaia -c user.email=build@heygaia.io am /obscura-patches/*.patch
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    cd /obscura && cargo build --locked --release -p obscura-cli --bins --features render,stealth
+
+# Just the two binaries, for `--target obscura-bin --output type=local`: the
+# nightly compat probe (.github/workflows/obscura-compat.yml) runs this exact build.
+FROM scratch AS obscura-bin
+COPY --from=obscura-builder /obscura/target/release/obscura /obscura
+COPY --from=obscura-builder /obscura/target/release/obscura-worker /obscura-worker
+
 # ---- Runtime: minimal production image ----
 FROM python:3.12-slim AS runtime
 WORKDIR /app
@@ -108,6 +141,15 @@ RUN curl --proto "=https" --tlsv1.2 -fsSL "https://github.com/juicedata/juicefs/
     | tar -xz -C /tmp \
     && install -m 0755 /tmp/juicefs /usr/local/bin/juicefs \
     && rm -rf /tmp/juicefs /tmp/LICENSE /tmp/README.md
+
+# Obscura — the browser-host engine (default; BROWSER_ENGINE=obscura). A single
+# self-contained Rust CDP server + its render worker, built from source in the
+# obscura-builder stage above (the fixed commit; v0.2.2's release tarball crashes
+# the whole process on dynamic-import pages — see that stage's comment). Native
+# render build needs no runtime libs beyond glibc (Obscura ships on distroless).
+COPY --from=obscura-builder /obscura/target/release/obscura /opt/obscura/obscura
+COPY --from=obscura-builder /obscura/target/release/obscura-worker /opt/obscura/obscura-worker
+RUN chmod 0755 /opt/obscura/obscura /opt/obscura/obscura-worker
 
 # Copy uv binary (pinned version)
 COPY --from=ghcr.io/astral-sh/uv:0.10.6 /uv /uvx /bin/
@@ -142,6 +184,7 @@ ENV ENV=production \
     UV_PROJECT_ENVIRONMENT=/usr/local \
     PYTHONPATH=/app/apps/api \
     PLAYWRIGHT_BROWSERS_PATH=/opt/browsers \
+    OBSCURA_BIN=/opt/obscura/obscura \
     GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
 
 # Copy workspace pyproject files (needed for uv run --group)
@@ -197,6 +240,9 @@ WORKDIR /app/apps/api
 
 USER appuser
 EXPOSE 8000
+# A browser-host container (python -m app.browser_host) serves the internal
+# network; its port is never published. Natively the host binds loopback.
+ENV BROWSER_HOST_BIND_ADDRESS=0.0.0.0
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--proxy-headers", "--forwarded-allow-ips", "*"]

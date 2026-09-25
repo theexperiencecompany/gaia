@@ -18,7 +18,7 @@ from langchain_core.messages import SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 
-from app.agents.context.slots import BACKGROUND_EXECUTOR_NAME, EXECUTOR_STATUS_MARKER
+from app.agents.context.slots import EXECUTOR_STATUS_MARKER
 from app.agents.core.background.executor_queue import decode_raw_item, parse_lock_value
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.log_tags import LogTag
@@ -36,12 +36,12 @@ async def executor_status_hook(state: State, config: RunnableConfig, store: Base
         if not thread_id or not redis_cache.client:
             return state
 
-        messages = state.get("messages", [])
-        # Skip during result narration: the busy lock is still held while comms
-        # re-voices a finished result, and injecting "STILL RUNNING" here can
-        # make the model return an empty narration that leaks the raw text.
-        if messages and messages[-1].name == BACKGROUND_EXECUTOR_NAME:
+        # The narrated run still holds the busy lock. Its flag decides, never a message
+        # name: narration triggers persist in the thread, and a scan for one silences
+        # every later turn of the conversation.
+        if configurable.get("is_result_narration"):
             return state
+        messages = state.get("messages", [])
 
         raw = await redis_cache.client.get(f"{EXECUTOR_BUSY_PREFIX}{thread_id}")
         if raw is None:
@@ -52,7 +52,7 @@ async def executor_status_hook(state: State, config: RunnableConfig, store: Base
             content=(
                 "A background task you dispatched in this conversation is STILL "
                 f"RUNNING right now (task_id: {task_id or 'unknown'}). Its results "
-                "have not arrived yet — do not claim it finished, and do not "
+                "have not arrived yet. Do not claim it finished, and do not "
                 "dispatch the same task again. If the user asks about it, tell "
                 "them it's in progress."
             ),

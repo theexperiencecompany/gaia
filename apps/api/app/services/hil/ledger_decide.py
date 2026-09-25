@@ -49,6 +49,7 @@ from app.schemas.hil_schemas import BatchDecisionItem, BatchDecisionOutcome
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.hil.approvals_store import list_pending_for_conversation
 from app.services.hil.bridge import (
+    SettledApprovalCard,
     _approval_entry,
     _publish_entry,
     settle_session_approval_frame,
@@ -632,13 +633,14 @@ async def publish_ledger_decision(
     mapped = (
         HILApprovalStatus.APPROVED if status is LedgerState.APPROVED else HILApprovalStatus.DENIED
     )
+    card = SettledApprovalCard(
+        approval_id=row.approval_id,
+        tool_call=GatedCall(name=row.tool_name, id="", args=row.args),
+        summary=row.summary,
+        integration_name=None,
+    )
     entry = _approval_entry(
-        row.approval_id,
-        GatedCall(name=row.tool_name, id="", args=row.args),
-        mapped,
-        row.summary,
-        None,
-        feedback if feedback is not None else row.feedback,
+        card, mapped, feedback=feedback if feedback is not None else row.feedback
     )
     if row.proposing_run_id:
         try:

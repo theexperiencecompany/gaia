@@ -1,0 +1,970 @@
+From 70220aed52a18f2997cc3be63180df57f731d44c Mon Sep 17 00:00:00 2001
+From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
+Date: Wed, 23 Sep 2026 17:38:46 +0530
+Subject: [PATCH 08/18] fix(js): make window a real EventTarget and run custom
+ element reactions
+
+YouTube threw "window.__shady_native_addEventListener is not a function"
+from webcomponents-sd.js and rendered nothing to use (0 inputs, buttons
+and links; Chrome shows 1/6/3).
+
+Root cause: EventTarget was an alias for Node, and window carried its own
+addEventListener/removeEventListener/dispatchEvent while its prototype
+chain held neither Window.prototype nor EventTarget.prototype. ShadyDOM
+copies the three descriptors off EventTarget.prototype as
+__shady_native_*, sees window does not inherit them, falls back to
+Window.prototype, finds nothing there either, and then calls
+window.__shady_native_addEventListener.
+
+Now, as in a browser, EventTarget is its own interface. Node extends it,
+the global's chain is window -> Window.prototype -> EventTarget.prototype,
+and only EventTarget.prototype owns the three methods. Elements and
+documents keep their own listener storage, registered per prototype, and
+the shared methods use the nearest one on the target's chain. A bare call
+with no receiver targets window, per WebIDL.
+
+With ShadyDOM running, three more engine gaps kept YouTube's Polymer
+components from rendering:
+
+- textContent/nodeValue on a Text or Comment appended a child instead of
+  replacing its data, so no characterData record was queued. Polymer's and
+  ShadyDOM's microtask queues flip a detached text node under a
+  characterData MutationObserver, so their flushes never ran.
+- Custom elements only reacted when their definition arrived. Inserting a
+  defined element now upgrades it or calls connectedCallback, removing it
+  calls disconnectedCallback, observed attribute changes call
+  attributeChangedCallback (also once per attribute at upgrade), and
+  importNode upgrades the defined elements it creates. This covers
+  appendChild, insertBefore, replaceChild, removeChild, innerHTML on
+  elements and shadow roots, and textContent. Upgrade errors are reported
+  instead of swallowed.
+- classList, relList, sandbox and sizes had getters only, so assigning a
+  string threw in strict code ("Cannot set property sandbox of #<Element>
+  which has only a getter"). They are [PutForwards=value] and now set the
+  attribute.
+
+YouTube now probes at inputs=1 buttons=6 links=7 (Chrome 1/6/3) with no
+Obscura-only errors. DuckDuckGo, GitHub, Stack Overflow, Bing, Wikipedia,
+npm, react.dev, Reddit and MDN probe the same as before.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/js/bootstrap.js | 423 ++++++++++++++++++++++--------
+ crates/obscura-js/src/runtime.rs  | 191 ++++++++++++++
+ 2 files changed, 510 insertions(+), 104 deletions(-)
+
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index 37cc586..aafc606 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -51,6 +51,7 @@
+     //   Object.getOwnPropertyDescriptor(window, 'Node').enumerable
+     // Pre-declaring them non-enumerable here is enough -- per the note above,
+     // the later `globalThis.X = X` assignments only update the value.
++    'EventTarget', 'Window',
+     'Node', 'Element', 'Document', 'DocumentFragment', 'DocumentType',
+     'Navigator', 'PluginArray', 'Plugin', 'MimeType', 'MimeTypeArray',
+     'Animation', 'KeyframeEffect', 'DocumentTimeline',
+@@ -79,28 +80,11 @@ globalThis.__obscura_core_handoff = Deno.core;
+ 
+ globalThis.__obscura_errors = [];
+ 
+-globalThis.addEventListener = globalThis.addEventListener || function(){};
+ globalThis.onunhandledrejection = function(e) { if (e?.preventDefault) e.preventDefault(); };
+ 
+ globalThis.onerror = function(msg, src, line, col, error) {
+   globalThis.__obscura_errors.push({msg: String(msg), src: String(src||""), line, error: String(error||"")});
+ };
+-globalThis.__windowListeners = {};
+-globalThis.addEventListener = function(type, fn) {
+-  if (!globalThis.__windowListeners[type]) globalThis.__windowListeners[type] = [];
+-  globalThis.__windowListeners[type].push(fn);
+-};
+-globalThis.removeEventListener = function(type, fn) {
+-  if (globalThis.__windowListeners[type]) {
+-    globalThis.__windowListeners[type] = globalThis.__windowListeners[type].filter(h => h !== fn);
+-  }
+-};
+-globalThis.dispatchEvent = function(event) {
+-  if (!event) return true;
+-  const handlers = globalThis.__windowListeners[event.type] || [];
+-  for (const h of handlers) { try { h.call(globalThis, event); } catch(e) { console.error(e); } }
+-  return !event.defaultPrevented;
+-};
+ 
+ let _domMutationEpoch = 0;
+ let _treeMutationEpoch = 0;
+@@ -1883,6 +1867,67 @@ function _eventTargetDispatch(target, event) {
+   return !event.defaultPrevented;
+ }
+ 
++// EventTarget is one interface in a browser: window, every node, and the
++// standalone targets all inherit addEventListener / removeEventListener /
++// dispatchEvent from EventTarget.prototype, and none of them has its own copy.
++// Polyfills depend on that shape. ShadyDOM (Polymer, YouTube) saves the three
++// descriptors it finds on EventTarget.prototype as `__shady_native_*` and then
++// calls them on window and on elements; when window did not inherit from
++// EventTarget it found nothing and threw
++// "window.__shady_native_addEventListener is not a function".
++//
++// The listener storage still differs by kind of target (elements keep theirs in
++// _eventRegistry, documents on the wrapper), so each kind registers its storage
++// against its prototype and the shared methods use the nearest one on the
++// target's prototype chain.
++const _eventTargetKinds = new WeakMap();
++const _eventTargetGeneric = {
++  add: _eventTargetAdd,
++  remove: _eventTargetRemove,
++  dispatch: _eventTargetDispatch,
++};
++function _eventTargetKindOf(target) {
++  for (let p = Object.getPrototypeOf(target); p; p = Object.getPrototypeOf(p)) {
++    const kind = _eventTargetKinds.get(p);
++    if (kind) return kind;
++  }
++  return _eventTargetGeneric;
++}
++// WebIDL: an operation called with a null/undefined `this` on the global uses
++// the global object, so a bare `addEventListener(...)` in strict code or a
++// module still reaches window.
++function _eventTargetThis(target) {
++  return target == null ? globalThis : Object(target);
++}
++class EventTarget {
++  addEventListener(type, callback, options) {
++    const target = _eventTargetThis(this);
++    _eventTargetKindOf(target).add(target, type, callback, options);
++  }
++  removeEventListener(type, callback, options) {
++    const target = _eventTargetThis(this);
++    _eventTargetKindOf(target).remove(target, type, callback, options);
++  }
++  dispatchEvent(event) {
++    const target = _eventTargetThis(this);
++    return _eventTargetKindOf(target).dispatch(target, event);
++  }
++}
++_markNative(EventTarget);
++_markNative(EventTarget.prototype.addEventListener);
++_markNative(EventTarget.prototype.removeEventListener);
++_markNative(EventTarget.prototype.dispatchEvent);
++globalThis.EventTarget = EventTarget;
++
++// The global object is a Window: window -> Window.prototype ->
++// EventTarget.prototype -> Object.prototype, as in a browser. `Window` is not
++// constructible from script.
++globalThis.Window = function Window() { throw new TypeError('Illegal constructor'); };
++_markNative(globalThis.Window);
++Object.setPrototypeOf(globalThis.Window, EventTarget);
++Object.setPrototypeOf(globalThis.Window.prototype, EventTarget.prototype);
++Object.setPrototypeOf(globalThis, globalThis.Window.prototype);
++
+ // During custom-element upgrade, HTMLElement's constructor must return the
+ // already-existing element being upgraded. A class constructor cannot be
+ // invoked with `.call(existingElement)`, so the registry and Element
+@@ -2025,6 +2070,110 @@ function __prepareInsertedSubtree(root) {
+   for (const script of scripts) __prepareInsertedScript(script);
+ }
+ 
++// Custom element reactions (HTML "custom element reactions"). A browser runs a
++// defined element's lifecycle callbacks whenever the DOM changes under it, not
++// only when its definition arrives: inserting it into a document upgrades it if
++// it is not yet upgraded, or else calls connectedCallback; removing it calls
++// disconnectedCallback; changing an observed attribute calls
++// attributeChangedCallback. Polymer, Lit and ShadyDOM render nested components
++// through exactly these calls. The reactions here run synchronously at the end
++// of the DOM operation, which is where a browser's reaction checkpoint puts them.
++function _ceRegistry() {
++  const registry = globalThis.customElements;
++  return registry && registry._registry && registry._registry.size > 0 ? registry : null;
++}
++function _ceReport(error) {
++  try {
++    if (typeof globalThis.reportError === 'function') globalThis.reportError(error);
++    else console.error(error);
++  } catch (_e) {}
++}
++// Elements of `root`'s subtree (root included) in shadow-including tree order.
++function _ceElementsIn(root, includeRoot = true) {
++  const out = [];
++  const visit = (node) => {
++    const ids = _domParse("query_selector_all_scoped", node._nid, "*") || [];
++    for (const nid of ids) {
++      const el = _wrapEl(+nid);
++      if (!el) continue;
++      out.push(el);
++      const shadow = _shadowRootForHost(el, true);
++      if (shadow) visit(shadow);
++    }
++  };
++  if (includeRoot && root && root.nodeType === 1) {
++    out.push(root);
++    const shadow = _shadowRootForHost(root, true);
++    if (shadow) visit(shadow);
++  }
++  if (root && (root.nodeType === 1 || root.nodeType === 11 || root.nodeType === 9)) visit(root);
++  return out;
++}
++function _ceIsUpgraded(el) {
++  return el.__customUpgraded === true && !el.__customUpgradeFailed;
++}
++function _ceDefinitionFor(registry, el) {
++  if (el.namespaceURI !== "http://www.w3.org/1999/xhtml") return null;
++  return registry._registry.get(el.localName) || null;
++}
++// `root` (or, with includeRoot false, its contents) just became connected.
++function _ceConnected(root, includeRoot = true) {
++  const registry = _ceRegistry();
++  if (!registry || !root || !root.isConnected) return;
++  for (const el of _ceElementsIn(root, includeRoot)) {
++    if (_ceIsUpgraded(el)) {
++      if (typeof el.connectedCallback === 'function') {
++        try { el.connectedCallback(); } catch (e) { _ceReport(e); }
++      }
++    } else if (!el.__customUpgraded) {
++      const definition = _ceDefinitionFor(registry, el);
++      if (definition) registry._upgradeElement(el, definition);
++    }
++  }
++}
++// The upgraded custom elements under `root`, captured before it leaves a
++// connected tree (a native replacement leaves nothing to walk afterwards).
++function _ceConnectedCustomElements(root, includeRoot = true) {
++  if (!_ceRegistry() || !root || !root.isConnected) return null;
++  const found = _ceElementsIn(root, includeRoot).filter(_ceIsUpgraded);
++  return found.length ? found : null;
++}
++function _ceDisconnected(elements) {
++  if (!elements) return;
++  for (const el of elements) {
++    if (typeof el.disconnectedCallback === 'function') {
++      try { el.disconnectedCallback(); } catch (e) { _ceReport(e); }
++    }
++  }
++}
++// Upgrade the defined elements a document operation just created (importNode),
++// without connecting them.
++function _ceUpgradeCreated(root) {
++  const registry = _ceRegistry();
++  if (!registry || !root) return;
++  for (const el of _ceElementsIn(root)) {
++    if (el.__customUpgraded) continue;
++    const definition = _ceDefinitionFor(registry, el);
++    if (definition) registry._upgradeElement(el, definition);
++  }
++}
++// observedAttributes is read once, when the definition is registered.
++const _ceObservedByDefinition = new WeakMap();
++const _ceDefinitionOfElement = new WeakMap();
++// Whether a change to attribute `name` on `el` must call back, checked before
++// the change so the old value is read only when it is needed.
++function _ceObserves(el, name) {
++  if (el.__customUpgraded !== true || el.__customUpgradeFailed) return false;
++  if (typeof el.attributeChangedCallback !== 'function') return false;
++  const observed = _ceObservedByDefinition.get(_ceDefinitionOfElement.get(el));
++  return !!observed && observed.has(name);
++}
++function _ceAttributeChanged(el, name, oldValue, newValue, namespace) {
++  try {
++    el.attributeChangedCallback(name, oldValue, newValue, namespace == null ? null : namespace);
++  } catch (e) { _ceReport(e); }
++}
++
+ function _seedDetachedTreeState(node) {
+   node._treeDetachedExact = true;
+   node._treeParent = null;
+@@ -2046,7 +2195,7 @@ function _seedUnchangedConnection(node, connected) {
+   node._treeConnectedEpoch = _treeMutationEpoch;
+ }
+ 
+-class Node {
++class Node extends EventTarget {
+   static ELEMENT_NODE = 1;
+   static ATTRIBUTE_NODE = 2;
+   static TEXT_NODE = 3;
+@@ -2066,7 +2215,7 @@ class Node {
+   static DOCUMENT_POSITION_CONTAINED_BY = 16;
+   static DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC = 32;
+ 
+-  constructor(nid) { this._nid = nid; }
++  constructor(nid) { super(); this._nid = nid; }
+   get nodeType() { return +_dom("node_type", this._nid); }
+   get nodeName() { return _domParse("node_name", this._nid) || ""; }
+   get ownerDocument() { return globalThis.document; }
+@@ -2076,6 +2225,7 @@ class Node {
+   }
+   get textContent() { return _domParse("text_content", this._nid) ?? ""; }
+   set textContent(v) {
++    const ceRemoved = _ceConnectedCustomElements(this, false);
+     const oldChildren = _domParse("child_nodes", this._nid) || [];
+     for (const c of oldChildren) {
+       const child = _wrap(c);
+@@ -2094,6 +2244,7 @@ class Node {
+     if (globalThis.__mutationObservers?.length) {
+       globalThis.__notifyMutation('childList', this._nid, added, oldChildren);
+     }
++    _ceDisconnected(ceRemoved);
+   }
+   get nodeValue() {
+     const t = this.nodeType;
+@@ -2151,6 +2302,7 @@ class Node {
+     }
+     if (c._shadowParent) c._shadowParent.removeChild(c);
+     else if (c.parentNode) _detachStyleSheetsInSubtree(c);
++    const ceMoved = c.parentNode ? _ceConnectedCustomElements(c) : null;
+     const parentConnected = this.isConnected;
+     const inserted = _dom("append_child", this._nid, c._nid) === "true";
+     if (!inserted) {
+@@ -2167,6 +2319,8 @@ class Node {
+     if (c instanceof Element && c.tagName === 'LINK') {
+       _loadLinkedStylesheet(c);
+     }
++    _ceDisconnected(ceMoved);
++    if (parentConnected) _ceConnected(c);
+     return c;
+   }
+   removeChild(c) {
+@@ -2185,6 +2339,7 @@ class Node {
+       _linkedStylesheetNodes.delete(c);
+     }
+     const parentConnected = this.isConnected;
++    const ceRemoved = parentConnected ? _ceConnectedCustomElements(c) : null;
+     const removed = _dom("remove_child", c._nid) === "true";
+     if (!removed) {
+       throw new DOMException(
+@@ -2197,6 +2352,7 @@ class Node {
+     _detachStyleSheetsInSubtree(c);
+     _reconcileWindowNamedProperties(removedWindowNames);
+     if (globalThis.__mutationObservers?.length) globalThis.__notifyMutation('childList', this._nid, [], [c._nid]);
++    _ceDisconnected(ceRemoved);
+     return c;
+   }
+   replaceChild(newChild, oldChild) {
+@@ -2216,7 +2372,9 @@ class Node {
+     }
+     if (newChild._shadowParent) newChild._shadowParent.removeChild(newChild);
+     else if (newChild.parentNode) _detachStyleSheetsInSubtree(newChild);
++    const ceMoved = newChild.parentNode ? _ceConnectedCustomElements(newChild) : null;
+     const parentConnected = this.isConnected;
++    const ceRemoved = parentConnected ? _ceConnectedCustomElements(oldChild) : null;
+     const removedWindowNames = _windowNamedNamesInTree(oldChild);
+     const inserted = _dom("insert_before", newChild._nid, oldChild._nid) === "true";
+     if (!inserted) {
+@@ -2242,6 +2400,9 @@ class Node {
+     if (newChild instanceof Element && newChild.tagName === 'LINK') {
+       _loadLinkedStylesheet(newChild);
+     }
++    _ceDisconnected(ceRemoved);
++    _ceDisconnected(ceMoved);
++    if (parentConnected) _ceConnected(newChild);
+     return oldChild;
+   }
+   insertBefore(n, ref) {
+@@ -2261,6 +2422,7 @@ class Node {
+     }
+     if (n._shadowParent) n._shadowParent.removeChild(n);
+     else if (n.parentNode) _detachStyleSheetsInSubtree(n);
++    const ceMoved = n.parentNode ? _ceConnectedCustomElements(n) : null;
+     const parentConnected = this.isConnected;
+     const inserted = _dom("insert_before", n._nid, ref._nid) === "true";
+     if (!inserted) {
+@@ -2279,6 +2441,8 @@ class Node {
+     if (n instanceof Element && n.tagName === 'LINK') {
+       _loadLinkedStylesheet(n);
+     }
++    _ceDisconnected(ceMoved);
++    if (parentConnected) _ceConnected(n);
+     return n;
+   }
+   contains(o) {
+@@ -2394,17 +2558,17 @@ class Node {
+     return true;
+   }
+   isSameNode(other) { return !!other && this._nid === other._nid; }
+-  addEventListener(type, callback, options) {
+-    _eventTargetAdd(this, type, callback, options);
+-  }
+-  removeEventListener(type, callback, options) {
+-    _eventTargetRemove(this, type, callback, options);
+-  }
+-  dispatchEvent(event) {
+-    return _eventTargetDispatch(this, event);
+-  }
+ }
+ class CharacterData extends Node {
++  // On a text, comment or PI node, textContent and nodeValue are the node's
++  // data: setting either replaces the data and queues a characterData record,
++  // it does not append a child. Polymer's and ShadyDOM's microtask queues are
++  // built on exactly that: they observe a detached `createTextNode('')` for
++  // characterData and flip its textContent to schedule a flush.
++  get textContent() { return this.data; }
++  set textContent(v) { this.data = v == null ? "" : String(v); }
++  get nodeValue() { return this.data; }
++  set nodeValue(v) { this.data = v == null ? "" : String(v); }
+   get data() {
+     return _domParse("text_content", this._nid) ?? "";
+   }
+@@ -2484,6 +2648,16 @@ class Comment extends CharacterData {
+ // associated content attribute as an ordered set of tokens and writes changes
+ // straight back, so reads and writes stay live with the element. A Proxy is
+ // layered on top so numeric indexing (list[0]) hits item().
++// Assignment to a token-list property: on an element that has the property it
++// sets the reflected attribute; on any other element the name is an ordinary
++// expando, as it would be where the interface does not define it.
++function _putForwardTokenList(el, prop, attr, value) {
++  if (el[prop] !== undefined) {
++    el.setAttribute(attr, String(value));
++    return;
++  }
++  Object.defineProperty(el, prop, { value, writable: true, enumerable: true, configurable: true });
++}
+ class DOMTokenList {
+   constructor(el, attr, supportedTokens) {
+     // Non-enumerable so the element <-> token-list cycle is not visible to
+@@ -3382,6 +3556,7 @@ class Element extends Node {
+     if (globalThis.__mutationObservers?.length) {
+       oldChildren = _domParse("child_nodes", this._nid) || [];
+     }
++    const ceRemoved = _ceConnectedCustomElements(this, false);
+     _dom("set_inner_html", this._nid, String(v ?? ""));
+     // HTML fragment parsing can introduce IDs without calling the JS
+     // setAttribute path. Register those elements for Window named access
+@@ -3392,6 +3567,8 @@ class Element extends Node {
+       newChildren = _domParse("child_nodes", this._nid) || [];
+       globalThis.__notifyMutation('childList', this._nid, newChildren, oldChildren);
+     }
++    _ceDisconnected(ceRemoved);
++    _ceConnected(this, false);
+   }
+   get outerHTML() { return _domParse("outer_html", this._nid) ?? ""; }
+   get innerText() { return this.textContent; }
+@@ -3445,6 +3622,9 @@ class Element extends Node {
+     if (!this._classList) this._classList = new DOMTokenList(this, "class");
+     return this._classList;
+   }
++  // classList, relList, sandbox and sizes are [PutForwards=value]: assigning a
++  // string sets the underlying attribute, it does not throw.
++  set classList(v) { this.setAttribute("class", String(v)); }
+   get relList() {
+     const ns = this.namespaceURI, ln = this.localName;
+     const ok = (ns === "http://www.w3.org/2000/svg" && ln === "a") ||
+@@ -3457,16 +3637,19 @@ class Element extends Node {
+     if (!this._relList) this._relList = new DOMTokenList(this, "rel", ["alternate","dns-prefetch","icon","manifest","modulepreload","next","pingback","preconnect","prefetch","preload","prev","search","stylesheet"]);
+     return this._relList;
+   }
++  set relList(v) { _putForwardTokenList(this, "relList", "rel", v); }
+   get sandbox() {
+     if (this.namespaceURI !== "http://www.w3.org/1999/xhtml" || this.localName !== "iframe") return undefined;
+     if (!this._sandboxList) this._sandboxList = new DOMTokenList(this, "sandbox", ["allow-downloads","allow-forms","allow-modals","allow-orientation-lock","allow-pointer-lock","allow-popups","allow-popups-to-escape-sandbox","allow-presentation","allow-same-origin","allow-scripts","allow-top-navigation","allow-top-navigation-by-user-activation","allow-top-navigation-to-custom-protocols"]);
+     return this._sandboxList;
+   }
++  set sandbox(v) { _putForwardTokenList(this, "sandbox", "sandbox", v); }
+   get sizes() {
+     if (this.namespaceURI !== "http://www.w3.org/1999/xhtml" || this.localName !== "link") return undefined;
+     if (!this._sizesList) this._sizesList = new DOMTokenList(this, "sizes");
+     return this._sizesList;
+   }
++  set sizes(v) { _putForwardTokenList(this, "sizes", "sizes", v); }
+   get htmlFor() {
+     if (this.namespaceURI !== "http://www.w3.org/1999/xhtml") return undefined;
+     const ln = this.localName;
+@@ -3503,6 +3686,7 @@ class Element extends Node {
+       ? this.getAttribute(n)
+       : null;
+     const value = String(v);
++    const ceOld = _ceObserves(this, n) ? this.getAttribute(n) : undefined;
+     _dom("set_attribute", this._nid, n + "\0" + value);
+     if (n === "src" && this.localName === "iframe") {
+       if (value && value !== "about:blank") this._loadIframeSrc(value);
+@@ -3527,6 +3711,7 @@ class Element extends Node {
+     }
+     if (popoverPrev !== undefined) this._popoverTypeMaybeChanged(popoverPrev);
+     if (globalThis.__mutationObservers?.length) globalThis.__notifyMutation('attributes', this._nid, [], [], n);
++    if (ceOld !== undefined) _ceAttributeChanged(this, n, ceOld, value, null);
+     if (this.localName === "source"
+         && (n === "srcset" || n === "sizes" || n === "media" || n === "type")) {
+       const picture = this.parentElement;
+@@ -3556,10 +3741,12 @@ class Element extends Node {
+     const previousWindowName = (n === "id" || n === "name")
+       ? this.getAttribute(n)
+       : null;
++    const ceOld = _ceObserves(this, n) ? this.getAttribute(n) : null;
+     _dom("remove_attribute", this._nid, n);
+     if (this._nullNamespaceAttrs instanceof Map) {
+       this._nullNamespaceAttrs.delete(n);
+     }
++    if (ceOld !== null) _ceAttributeChanged(this, n, ceOld, null, null);
+     if (previousWindowName
+         && (n === "id" || (n === "name" && _windowNameEligibleElement(this)))) {
+       _reconcileWindowNamedProperty(previousWindowName);
+@@ -3704,46 +3891,6 @@ class Element extends Node {
+     }
+     return null;
+   }
+-  addEventListener(type, handler, opts) {
+-    const key = this._nid;
+-    if (!_eventRegistry[key]) _eventRegistry[key] = {};
+-    if (!_eventRegistry[key][type]) _eventRegistry[key][type] = [];
+-    _eventRegistry[key][type].push(handler);
+-  }
+-  removeEventListener(type, handler) {
+-    const key = this._nid;
+-    if (_eventRegistry[key] && _eventRegistry[key][type]) {
+-      _eventRegistry[key][type] = _eventRegistry[key][type].filter(h => h !== handler);
+-    }
+-  }
+-  dispatchEvent(event) {
+-    if (!event) return true;
+-    if (!event.target) event.target = this;
+-    event.currentTarget = this;
+-    // Spec: inline `onclick="..."` content attributes are event handlers
+-    // for the matching event type. Fire them alongside any
+-    // addEventListener handlers. Also honor the IDL property
+-    // `el.onclick = fn` if set. Without this, b.click() never invokes
+-    // the inline handler and forms with onsubmit / buttons with onclick
+-    // are silently dead.
+-    const handlerName = 'on' + event.type;
+-    const inlineFn = this[handlerName] || this._resolveInlineHandler(handlerName);
+-    if (typeof inlineFn === 'function') {
+-      try {
+-        const ret = inlineFn.call(this, event);
+-        if (ret === false) event.preventDefault();
+-      } catch(e) { console.error(e); }
+-    }
+-    const handlers = (_eventRegistry[this._nid] || {})[event.type] || [];
+-    for (const h of handlers) {
+-      try { h.call(this, event); } catch(e) { console.error(e); }
+-      if (event._immediatePropagationStopped) break;
+-    }
+-    if (event.bubbles && !event._propagationStopped && this.parentNode) {
+-      this.parentNode.dispatchEvent(event);
+-    }
+-    return !event.defaultPrevented;
+-  }
+   _resolveInlineHandler(name) {
+     // name = 'onclick' / 'onsubmit' / etc. Compile the content attribute
+     // as a function body on first read and cache it on the instance.
+@@ -5051,6 +5198,53 @@ class Element extends Node {
+   }
+ }
+ 
++// Element listener storage, reached through EventTarget.prototype (see
++// _eventTargetKinds). Listeners live in _eventRegistry by node id so they
++// survive wrapper churn; dispatch also runs the element's inline `on*`
++// handler and bubbles to the parent.
++_eventTargetKinds.set(Element.prototype, {
++  add(el, type, handler, opts) {
++    const key = el._nid;
++    if (!_eventRegistry[key]) _eventRegistry[key] = {};
++    if (!_eventRegistry[key][type]) _eventRegistry[key][type] = [];
++    _eventRegistry[key][type].push(handler);
++  },
++  remove(el, type, handler) {
++    const key = el._nid;
++    if (_eventRegistry[key] && _eventRegistry[key][type]) {
++      _eventRegistry[key][type] = _eventRegistry[key][type].filter(h => h !== handler);
++    }
++  },
++  dispatch(el, event) {
++    if (!event) return true;
++    if (!event.target) event.target = el;
++    event.currentTarget = el;
++    // Spec: inline `onclick="..."` content attributes are event handlers
++    // for the matching event type. Fire them alongside any
++    // addEventListener handlers. Also honor the IDL property
++    // `el.onclick = fn` if set. Without this, b.click() never invokes
++    // the inline handler and forms with onsubmit / buttons with onclick
++    // are silently dead.
++    const handlerName = 'on' + event.type;
++    const inlineFn = el[handlerName] || el._resolveInlineHandler(handlerName);
++    if (typeof inlineFn === 'function') {
++      try {
++        const ret = inlineFn.call(el, event);
++        if (ret === false) event.preventDefault();
++      } catch(e) { console.error(e); }
++    }
++    const handlers = (_eventRegistry[el._nid] || {})[event.type] || [];
++    for (const h of handlers) {
++      try { h.call(el, event); } catch(e) { console.error(e); }
++      if (event._immediatePropagationStopped) break;
++    }
++    if (event.bubbles && !event._propagationStopped && el.parentNode) {
++      el.parentNode.dispatchEvent(event);
++    }
++    return !event.defaultPrevented;
++  },
++});
++
+ // WHATWG "convert nodes into a node": a Node argument passes through, anything
+ // else is stringified into a Text node, so e.g. append(null) inserts the text
+ // "null" and append(undefined) inserts "undefined" per the (Node or DOMString)
+@@ -5548,23 +5742,6 @@ class Document extends Node {
+     return new Cls('');
+   }
+   createRange() { return new Range(); }
+-  addEventListener(type, fn, opts) {
+-    if (typeof fn !== 'function') return;
+-    if (!this._listeners) this._listeners = {};
+-    if (!this._listeners[type]) this._listeners[type] = [];
+-    if (!this._listeners[type].includes(fn)) this._listeners[type].push(fn);
+-  }
+-  removeEventListener(type, fn) {
+-    if (this._listeners?.[type]) {
+-      this._listeners[type] = this._listeners[type].filter(h => h !== fn);
+-    }
+-  }
+-  dispatchEvent(event) {
+-    if (!event) return true;
+-    const handlers = (this._listeners?.[event.type] || []).slice();
+-    for (const h of handlers) { try { h.call(this, event); } catch(e) { console.error('document event error:', e); } }
+-    return !event.defaultPrevented;
+-  }
+   createTreeWalker(root, whatToShow, filter) {
+     // whatToShow is unsigned long; default SHOW_ALL only when the arg is omitted.
+     // An explicit 0 (show nothing) must stay 0, not become SHOW_ALL.
+@@ -5919,11 +6096,14 @@ class DocumentFragment extends Node {
+   get innerHTML() { return _domParse("inner_html", this._nid) ?? ""; }
+   set innerHTML(v) {
+     const html = String(v ?? "");
++    const ceRemoved = _ceConnectedCustomElements(this, false);
+     if (this._fragmentContext) {
+       _dom("set_inner_html_context", this._nid, _fragmentContextPayload(this._fragmentContext, html));
+     } else {
+       _dom("set_inner_html", this._nid, html);
+     }
++    _ceDisconnected(ceRemoved);
++    _ceConnected(this, false);
+   }
+   querySelector(s) { return _wrapEl(+_dom("query_selector_scoped", this._nid, s)); }
+   querySelectorAll(s) {
+@@ -6707,22 +6887,12 @@ Object.defineProperty(Element.prototype, 'onload', {
+   enumerable: false,
+ });
+ 
+-globalThis.Window = globalThis.Window || function Window() {};
+ Object.defineProperty(globalThis.Window, Symbol.hasInstance, {
+   value(obj) { return obj === globalThis || (obj && obj.window === obj); },
+   configurable: true,
+ });
+-// A browser global is a Window object, not merely an object accepted by
+-// `Window[Symbol.hasInstance]`. Framework environment gates (including Ember's)
+-// also require the direct identity `self.constructor === Window`; leaving the
+-// inherited Object constructor makes them enter their server-rendering path
+-// and hand string selectors to DOM render operations.
+-Object.defineProperty(globalThis, 'constructor', {
+-  value: globalThis.Window,
+-  writable: true,
+-  configurable: true,
+-  enumerable: false,
+-});
++// `self.constructor === Window` (Ember's environment gate, among others) holds
++// through Window.prototype.constructor, set up with EventTarget above.
+ 
+ 
+ // Remove the static _iframeRegistry and replace with dynamic getters.
+@@ -9319,6 +9489,12 @@ class CustomElementRegistry {
+     try { this._byCtor.set(cls, name); this._defineInner(name, cls, opts); } finally { this._defining = false; }
+   }
+   _defineInner(name, cls, opts) {
++    let observed = [];
++    if (typeof cls.prototype?.attributeChangedCallback === 'function') {
++      const list = cls.observedAttributes;
++      if (list != null) observed = Array.from(list, String);
++    }
++    _ceObservedByDefinition.set(cls, new Set(observed));
+     this._registry.set(name, cls);
+     // Upgrade existing matching elements: instantiate the class on each,
+     // fire connectedCallback if the element is in the document. Without
+@@ -9355,11 +9531,24 @@ class CustomElementRegistry {
+       if (constructed !== el) {
+         throw new TypeError("Custom element constructor did not produce the element being upgraded");
+       }
+-      if (typeof el.connectedCallback === 'function' && globalThis.document?.contains?.(el)) {
+-        try { el.connectedCallback(); } catch (e) {}
+-      }
+     } catch (e) {
+       el.__customUpgradeFailed = true;
++      _ceReport(e);
++      return;
++    }
++    // The upgrade reactions: one attributeChangedCallback per observed
++    // attribute already present, then connectedCallback if connected.
++    _ceDefinitionOfElement.set(el, cls);
++    const observed = _ceObservedByDefinition.get(cls);
++    if (observed && observed.size && typeof el.attributeChangedCallback === 'function') {
++      for (const name of el.getAttributeNames()) {
++        if (!observed.has(name)) continue;
++        try { el.attributeChangedCallback(name, null, el.getAttribute(name), null); }
++        catch (e) { _ceReport(e); }
++      }
++    }
++    if (typeof el.connectedCallback === 'function' && el.isConnected) {
++      try { el.connectedCallback(); } catch (e) { _ceReport(e); }
+     }
+   }
+   get(name) { return this._registry.get(name); }
+@@ -11888,6 +12077,27 @@ globalThis.DocumentType = DocumentType;
+ globalThis.Node = Node;
+ globalThis.Element = Element;
+ globalThis.Document = Document;
++// Document listener storage, reached through EventTarget.prototype (see
++// _eventTargetKinds).
++_eventTargetKinds.set(Document.prototype, {
++  add(doc, type, fn, opts) {
++    if (typeof fn !== 'function') return;
++    if (!doc._listeners) doc._listeners = {};
++    if (!doc._listeners[type]) doc._listeners[type] = [];
++    if (!doc._listeners[type].includes(fn)) doc._listeners[type].push(fn);
++  },
++  remove(doc, type, fn) {
++    if (doc._listeners?.[type]) {
++      doc._listeners[type] = doc._listeners[type].filter(h => h !== fn);
++    }
++  },
++  dispatch(doc, event) {
++    if (!event) return true;
++    const handlers = (doc._listeners?.[event.type] || []).slice();
++    for (const h of handlers) { try { h.call(doc, event); } catch(e) { console.error('document event error:', e); } }
++    return !event.defaultPrevented;
++  },
++});
+ // CSSStyleDeclaration is the type of element.style and getComputedStyle(); it is
+ // pre-declared non-enumerable in _preHideInternals, but unlike the other WebIDL
+ // interfaces it had no value assignment, leaving `window.CSSStyleDeclaration`
+@@ -11921,7 +12131,6 @@ for (const _proto of [Document.prototype, DocumentFragment.prototype]) {
+   _proto.prepend = Element.prototype.prepend;
+   _proto.replaceChildren = Element.prototype.replaceChildren;
+ }
+-globalThis.EventTarget = Node;
+ globalThis.HTMLCollection = class HTMLCollection extends Array {
+   item(i) {
+     i = i >>> 0;
+@@ -14817,8 +15026,8 @@ if (typeof BroadcastChannel === 'undefined') {
+     }
+     get [Symbol.toStringTag]() { return 'BroadcastChannel'; }
+   };
+-  // EventTarget is currently Node-backed in this runtime; link the prototype
+-  // without invoking Node's DOM-node constructor or exposing a fake `_nid`.
++  // BroadcastChannel is an EventTarget; link the prototype so instanceof and
++  // the shared EventTarget methods see it as one.
+   Object.setPrototypeOf(globalThis.BroadcastChannel.prototype, globalThis.EventTarget.prototype);
+ }
+ 
+@@ -15225,7 +15434,13 @@ if (typeof URLPattern === 'undefined') {
+ }
+ 
+ if (typeof Document !== 'undefined' && !Document.prototype.importNode) {
+-  Document.prototype.importNode = function(node, deep) { return node?.cloneNode(!!deep) || null; };
++  Document.prototype.importNode = function(node, deep) {
++    const clone = node?.cloneNode(!!deep) || null;
++    // The clone's elements are created in this document, so defined custom
++    // elements among them are upgraded (not connected) before this returns.
++    if (clone) _ceUpgradeCreated(clone);
++    return clone;
++  };
+ }
+ 
+ // Document.adoptNode: standard DOM (HTML living spec). Frameworks that move
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index cf7ba04..3d84eb3 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -6477,6 +6477,197 @@ mod tests {
+         );
+     }
+ 
++    // ShadyDOM (Polymer, YouTube) saves the descriptors it finds on
++    // EventTarget.prototype as `__shady_native_*` and calls them on window and
++    // on nodes. That needs the browser shape: one EventTarget.prototype that
++    // window (through Window.prototype) and every node inherit from, and no own
++    // copies anywhere below it.
++    #[test]
++    fn window_and_nodes_share_one_event_target_prototype() {
++        let mut rt = setup_runtime("<html><body><div id='a'></div></body></html>");
++        let result = rt
++            .evaluate(
++                r#"
++                const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
++                const ET = EventTarget.prototype;
++                const owners = [window, Window.prototype, Node.prototype, Element.prototype, Document.prototype]
++                    .filter(o => ['addEventListener', 'removeEventListener', 'dispatchEvent'].some(k => has(o, k)));
++                return [
++                    Object.getPrototypeOf(window) === Window.prototype,
++                    Object.getPrototypeOf(Window.prototype) === ET,
++                    Object.getPrototypeOf(Node.prototype) === ET,
++                    EventTarget !== Node,
++                    window instanceof EventTarget,
++                    window.constructor === Window,
++                    owners.length,
++                    new EventTarget() instanceof Node,
++                ];
++                "#,
++            )
++            .unwrap();
++        assert_eq!(
++            result,
++            serde_json::json!([true, true, true, true, true, true, 0, false])
++        );
++    }
++
++    #[test]
++    fn shadydom_native_event_capture_reaches_window_elements_and_document() {
++        let mut rt = setup_runtime("<html><body><div id='a'></div></body></html>");
++        // The first half is what ShadyDOM's addNativePrefixedProperties does.
++        let result = rt
++            .evaluate(
++                r#"
++                const props = ['dispatchEvent', 'addEventListener', 'removeEventListener'];
++                const copy = (proto) => {
++                    for (const name of props) {
++                        const d = Object.getOwnPropertyDescriptor(proto, name);
++                        if (d) Object.defineProperty(proto, '__shady_native_' + name, d);
++                    }
++                };
++                copy(window.EventTarget.prototype);
++                if (window.__shady_native_addEventListener === undefined) copy(Window.prototype);
++                const seen = [];
++                window.__shady_native_addEventListener('w', (e) => seen.push('window:' + (e.target === window)));
++                window.__shady_native_dispatchEvent(new Event('w'));
++                const el = document.getElementById('a');
++                const onEl = () => seen.push('element');
++                el.__shady_native_addEventListener('e', onEl);
++                document.__shady_native_addEventListener('e', () => seen.push('document'));
++                el.__shady_native_dispatchEvent(new Event('e', { bubbles: true }));
++                el.__shady_native_removeEventListener('e', onEl);
++                el.dispatchEvent(new Event('e'));
++                // The methods are strict, so a bare call has an undefined
++                // receiver, which WebIDL treats as the global.
++                const add = window.addEventListener;
++                add('bare', () => seen.push('bare'));
++                window.dispatchEvent(new Event('bare'));
++                return seen;
++                "#,
++            )
++            .unwrap();
++        assert_eq!(
++            result,
++            serde_json::json!(["window:true", "element", "document", "bare"])
++        );
++    }
++
++    // Polymer's and ShadyDOM's microtask queues flip the textContent of a
++    // detached text node under a characterData MutationObserver.
++    #[test]
++    fn text_node_text_content_replaces_data_and_queues_character_data() {
++        let mut rt = setup_runtime("<html><body></body></html>");
++        let result = rt
++            .evaluate(
++                r#"
++                const node = document.createTextNode('');
++                const observer = new MutationObserver(() => {});
++                observer.observe(node, { characterData: true });
++                node.textContent = 1;
++                const afterText = [node.data, node.childNodes.length];
++                node.nodeValue = 'two';
++                const records = observer.takeRecords();
++                const comment = document.createComment('x');
++                comment.textContent = null;
++                return [afterText, node.data, records.map(r => r.type), comment.data];
++                "#,
++            )
++            .unwrap();
++        assert_eq!(
++            result,
++            serde_json::json!([["1", 0], "two", ["characterData", "characterData"], ""])
++        );
++    }
++
++    #[test]
++    fn custom_element_reactions_follow_dom_changes() {
++        let mut rt = setup_runtime(
++            "<html><body><template id='t'><p><x-item a='1'></x-item></p></template><div id='host'></div></body></html>",
++        );
++        let result = rt
++            .evaluate(
++                r#"
++                const log = [];
++                class Item extends HTMLElement {
++                    static get observedAttributes() { return ['a']; }
++                    constructor() { super(); log.push('construct'); }
++                    connectedCallback() { log.push('connected'); }
++                    disconnectedCallback() { log.push('disconnected'); }
++                    attributeChangedCallback(name, oldValue, value) {
++                        log.push(`attr ${name} ${oldValue} ${value}`);
++                    }
++                }
++                customElements.define('x-item', Item);
++                const host = document.getElementById('host');
++                // importNode creates the elements in this document: upgraded,
++                // with their observed attributes, but not connected.
++                const fragment = document.importNode(document.getElementById('t').content, true);
++                log.push('imported ' + (fragment.querySelector('x-item') instanceof Item));
++                host.appendChild(fragment);
++                const item = host.querySelector('x-item');
++                item.setAttribute('a', '2');
++                item.setAttribute('b', '3');
++                item.removeAttribute('a');
++                item.remove();
++                host.innerHTML = '<x-item></x-item>';
++                log.push('parsed ' + (host.firstChild instanceof Item));
++                host.textContent = '';
++                const shadowHost = document.createElement('div');
++                document.body.appendChild(shadowHost);
++                shadowHost.attachShadow({ mode: 'open' }).innerHTML = '<x-item></x-item>';
++                return log;
++                "#,
++            )
++            .unwrap();
++        assert_eq!(
++            result,
++            serde_json::json!([
++                "construct",
++                "attr a null 1",
++                "imported true",
++                "connected",
++                "attr a 1 2",
++                "attr a 2 null",
++                "disconnected",
++                "construct",
++                "connected",
++                "parsed true",
++                "disconnected",
++                "construct",
++                "connected"
++            ])
++        );
++    }
++
++    // classList, relList, sandbox and sizes are [PutForwards=value].
++    #[test]
++    fn token_list_assignment_sets_the_attribute() {
++        let mut rt = setup_runtime("<html><body></body></html>");
++        let result = rt
++            .evaluate(
++                r#"
++                return (function () {
++                "use strict";
++                const frame = document.createElement('iframe');
++                frame.sandbox = 'allow-scripts allow-forms';
++                const link = document.createElement('link');
++                link.relList = 'preload';
++                const div = document.createElement('div');
++                div.classList = 'a b';
++                div.sandbox = 'expando';
++                return [frame.getAttribute('sandbox'), frame.sandbox.length,
++                        link.getAttribute('rel'), div.className, div.sandbox,
++                        div.hasAttribute('sandbox')];
++                })();
++                "#,
++            )
++            .unwrap();
++        assert_eq!(
++            result,
++            serde_json::json!(["allow-scripts allow-forms", 2, "preload", "a b", "expando", false])
++        );
++    }
++
+     #[test]
+     fn created_foreign_element_keeps_native_qualified_name_through_clone() {
+         let mut rt = setup_runtime("<html><body></body></html>");

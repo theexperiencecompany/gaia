@@ -1,0 +1,775 @@
+From ed9f4229bf2ed38f859dd96bcd5e977fe92c7723 Mon Sep 17 00:00:00 2001
+From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
+Date: Wed, 23 Sep 2026 17:21:07 +0530
+Subject: [PATCH 07/18] fix(frames): resolve layout, style, scroll and script
+ ops in the caller's document
+
+Every op that takes a node id, or reads document-level layout, took the
+page's document even when a frame realm called it. Inside an iframe (such as
+Cloudflare's Turnstile challenge frame) a node id then named nothing, or an
+unrelated node, in the page's tree:
+
+- getBoundingClientRect, client*/offset*, getComputedStyle, element and
+  root scroll metrics and scrollTo, ResizeObserver and IntersectionObserver
+  measured the page's node with the same id (a frame's 123x45 div read back
+  as the page's 500x40 one).
+- op_script_try_start checked the page's tree, so a script inserted by frame
+  code never ran; op_script_mark_started had the same bug.
+- Image metadata, canvas surfaces and paint damage, WAAPI animations,
+  document.fonts and the render-task clock all wrote into the page's state.
+
+All of them now take the realm frame id and use frame_state(), as op_dom and
+the shadow-root ops do; bootstrap.js passes _realmFrameId.
+
+With layout reading the frame's own document, the frame also needs its own
+viewport: FrameRealm::set_viewport now sets it on the frame's state, not only
+on innerWidth/innerHeight. A frame's parser-inserted scripts are marked
+already-started, as the page's are, so moving one does not run it again.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/js/bootstrap.js |  46 ++++----
+ crates/obscura-js/src/frame.rs    | 172 ++++++++++++++++++++++++++++--
+ crates/obscura-js/src/ops.rs      |  94 +++++++++-------
+ crates/obscura-js/src/runtime.rs  |  14 +--
+ 4 files changed, 252 insertions(+), 74 deletions(-)
+
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index 3fc5483..37cc586 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -319,7 +319,7 @@ function _decodeDataScriptUrl(url) {
+ // native per-document state so it survives wrapper churn, fragment parsing,
+ // moves, and cloneNode().
+ globalThis.__markParserScripts = function(nids) {
+-  for (const nid of nids || []) Deno.core.ops.op_script_mark_started(+nid);
++  for (const nid of nids || []) Deno.core.ops.op_script_mark_started(+nid, _realmFrameId);
+ };
+ async function __fetchDynClassicScript(task) {
+   let body;
+@@ -896,7 +896,7 @@ const _scheduleAfter = (delay, fn) => {
+     Deno.core.ops.op_sleep(d).then(() => {
+       _frameTimerStates.delete(frameTimerId);
+       if (state.cancelled) return;
+-      Deno.core.ops.op_begin_render_task?.();
++      Deno.core.ops.op_begin_render_task?.(_realmFrameId);
+       fn();
+     });
+     return frameTimerId;
+@@ -907,7 +907,7 @@ const _scheduleAfter = (delay, fn) => {
+     // HTML timer/observer/rAF delivery starts a new task. Freeze animation
+     // time lazily on that task's first style/layout read so a callback that
+     // waited in the host queue samples its actual delivery instant.
+-    Deno.core.ops.op_begin_render_task?.();
++    Deno.core.ops.op_begin_render_task?.(_realmFrameId);
+     return fn();
+   });
+ };
+@@ -1191,7 +1191,7 @@ function _browserPostedTaskRunOne(currentGeneration = _invalidPostedTaskGenerati
+   }
+   if (!callback) return;
+ 
+-  Deno.core.ops.op_begin_render_task?.();
++  Deno.core.ops.op_begin_render_task?.(_realmFrameId);
+   try { callback(); }
+   catch (error) { console.error("Posted task error:", error); }
+   finally {
+@@ -1891,7 +1891,7 @@ function _eventTargetDispatch(target, event) {
+ const _customElementConstructionStack = [];
+ 
+ function __prepareInsertedScript(script) {
+-  if (!Deno.core.ops.op_script_try_start(script._nid)) return;
++  if (!Deno.core.ops.op_script_try_start(script._nid, _realmFrameId)) return;
+   const scriptType = (script.getAttribute('type') || '').trim().toLowerCase();
+   const isModule = scriptType === 'module';
+   const isImportMap = scriptType === 'importmap';
+@@ -3156,7 +3156,7 @@ class Animation {
+   }
+   _native(action, value = 0) {
+     try {
+-      const changed = !!Deno.core.ops.op_waapi_control?.(this._nativeId, action, Number(value) || 0);
++      const changed = !!Deno.core.ops.op_waapi_control?.(this._nativeId, action, Number(value) || 0, _realmFrameId);
+       if (changed) _domMutationEpoch++;
+       return changed;
+     }
+@@ -3176,7 +3176,7 @@ class Animation {
+         : this.effect._timing.iterations,
+       iterationsInfinite: this.effect._timing.iterations === Infinity,
+     };
+-    try { this._registered = !!Deno.core.ops.op_waapi_create?.(JSON.stringify(input)); }
++    try { this._registered = !!Deno.core.ops.op_waapi_create?.(JSON.stringify(input), _realmFrameId); }
+     catch (_) { this._registered = false; }
+     if (this._registered) {
+       _waapiAnimations.add(this);
+@@ -4639,7 +4639,7 @@ class Element extends Node {
+   _renderClientMetrics() {
+     if (typeof Deno.core.ops.op_layout_geometry !== 'function') return null;
+     try {
+-      const raw = Deno.core.ops.op_layout_geometry(String(this._nid | 0));
++      const raw = Deno.core.ops.op_layout_geometry(String(this._nid | 0), _realmFrameId);
+       if (!raw) return { width: 0, height: 0 };
+       const geometry = JSON.parse(raw);
+       if (geometry
+@@ -4664,7 +4664,7 @@ class Element extends Node {
+   _renderBoxGeometry() {
+     if (typeof Deno.core.ops.op_layout_geometry !== 'function') return undefined;
+     try {
+-      const raw = Deno.core.ops.op_layout_geometry(String(this._nid | 0));
++      const raw = Deno.core.ops.op_layout_geometry(String(this._nid | 0), _realmFrameId);
+       if (!raw) return null;
+       const geometry = JSON.parse(raw);
+       if (geometry
+@@ -4724,7 +4724,7 @@ class Element extends Node {
+   _renderScrollMetrics() {
+     if (typeof Deno.core.ops.op_layout_metrics !== 'function') return null;
+     try {
+-      const raw = Deno.core.ops.op_layout_metrics();
++      const raw = Deno.core.ops.op_layout_metrics(_realmFrameId);
+       return raw ? JSON.parse(raw) : null;
+     } catch (_e) {
+       return null;
+@@ -4733,7 +4733,7 @@ class Element extends Node {
+   _renderElementScrollMetrics() {
+     if (typeof Deno.core.ops.op_element_scroll_metrics !== 'function') return undefined;
+     try {
+-      const raw = Deno.core.ops.op_element_scroll_metrics(String(this._nid | 0));
++      const raw = Deno.core.ops.op_element_scroll_metrics(String(this._nid | 0), _realmFrameId);
+       if (!raw) return null;
+       const metrics = JSON.parse(raw);
+       return metrics && metrics.hasBox !== false ? metrics : null;
+@@ -4744,7 +4744,7 @@ class Element extends Node {
+   _renderScrollOffset() {
+     if (typeof Deno.core.ops.op_scroll_offset !== 'function') return null;
+     try {
+-      const raw = Deno.core.ops.op_scroll_offset();
++      const raw = Deno.core.ops.op_scroll_offset(_realmFrameId);
+       return raw ? JSON.parse(raw) : null;
+     } catch (_e) {
+       return null;
+@@ -4753,7 +4753,7 @@ class Element extends Node {
+   _setRenderScroll(x, y) {
+     if (typeof Deno.core.ops.op_scroll_to !== 'function') return null;
+     try {
+-      const raw = Deno.core.ops.op_scroll_to(+x || 0, +y || 0);
++      const raw = Deno.core.ops.op_scroll_to(+x || 0, +y || 0, _realmFrameId);
+       return raw ? JSON.parse(raw) : null;
+     } catch (_e) {
+       return null;
+@@ -4762,7 +4762,7 @@ class Element extends Node {
+   _setRenderElementScroll(x, y) {
+     if (typeof Deno.core.ops.op_element_scroll_to !== 'function') return null;
+     try {
+-      const raw = Deno.core.ops.op_element_scroll_to(String(this._nid | 0), +x || 0, +y || 0);
++      const raw = Deno.core.ops.op_element_scroll_to(String(this._nid | 0), +x || 0, +y || 0, _realmFrameId);
+       return raw ? JSON.parse(raw) : null;
+     } catch (_e) {
+       return null;
+@@ -6259,7 +6259,7 @@ class HTMLImageElement extends Element {
+     try {
+       const op = Deno.core.ops.op_load_image_metadata;
+       if (typeof op === "function") {
+-        Promise.resolve(op(this._nid >>> 0)).then(
++        Promise.resolve(op(this._nid >>> 0, _realmFrameId)).then(
+           raw => {
+             let metadata = null;
+             try { metadata = JSON.parse(raw); }
+@@ -6283,7 +6283,7 @@ class HTMLImageElement extends Element {
+     try {
+       const op = Deno.core.ops.op_image_metadata;
+       if (typeof op !== "function") return;
+-      const metadata = JSON.parse(op(this._nid >>> 0, true));
++      const metadata = JSON.parse(op(this._nid >>> 0, true, _realmFrameId));
+       if (!metadata) return;
+       const selected = metadata.currentSrc ? String(metadata.currentSrc) : "";
+       if (selected !== this._imageCurrentSrc) {
+@@ -7969,7 +7969,7 @@ function _roMeasurement(target, suppliedGeometry, suppliedByBatch = false) {
+   const hasRenderer = typeof Deno.core.ops.op_layout_geometry === "function";
+   if (!suppliedByBatch && hasRenderer && target?._nid != null) {
+     try {
+-      const raw = Deno.core.ops.op_layout_geometry(String(target._nid | 0));
++      const raw = Deno.core.ops.op_layout_geometry(String(target._nid | 0), _realmFrameId);
+       geometry = raw ? JSON.parse(raw) : null;
+     } catch (_error) {}
+   }
+@@ -8071,7 +8071,7 @@ function _roMeasurements(targets) {
+   if (typeof bulk === "function"
+       && targets.every(target => target?._nid != null)) {
+     try {
+-      const raw = bulk(JSON.stringify(targets.map(target => target._nid | 0)));
++      const raw = bulk(JSON.stringify(targets.map(target => target._nid | 0)), _realmFrameId);
+       const geometries = raw ? JSON.parse(raw) : null;
+       if (Array.isArray(geometries) && geometries.length === targets.length) {
+         for (let index = 0; index < targets.length; index++) {
+@@ -8487,7 +8487,7 @@ globalThis.getComputedStyle = (el) => {
+     snapshot.rendered = null;
+     if (typeof Deno.core.ops.op_computed_style === 'function' && el?._nid != null) {
+       try {
+-        const raw = Deno.core.ops.op_computed_style(String(el._nid | 0));
++        const raw = Deno.core.ops.op_computed_style(String(el._nid | 0), _realmFrameId);
+         snapshot.rendered = raw ? JSON.parse(raw) : null;
+       } catch (e) {}
+     }
+@@ -9555,7 +9555,7 @@ function _ioMeasurements(elements) {
+   const nativeElements = elements.filter(element => element?._nid != null);
+   if (typeof bulk !== "function" || !nativeElements.length) return measurements;
+   try {
+-    const raw = bulk(JSON.stringify(nativeElements.map(element => element._nid | 0)));
++    const raw = bulk(JSON.stringify(nativeElements.map(element => element._nid | 0)), _realmFrameId);
+     const geometries = raw ? JSON.parse(raw) : null;
+     if (Array.isArray(geometries) && geometries.length === nativeElements.length) {
+       for (let index = 0; index < nativeElements.length; index++) {
+@@ -13050,7 +13050,7 @@ class _Canvas2D {
+         this._buf.byteOffset,
+         this._buf.byteLength,
+       );
+-      if (!register(this.canvas._nid, this._w, this._h, bytes)) {
++      if (!register(this.canvas._nid, this._w, this._h, bytes, _realmFrameId)) {
+         throw new RangeError('Canvas backing store allocation failed');
+       }
+     }
+@@ -13061,7 +13061,7 @@ class _Canvas2D {
+     queueMicrotask(() => {
+       this._damageQueued = false;
+       const damage = Deno.core.ops.op_canvas_paint_damage;
+-      if (typeof damage === 'function') damage(this.canvas._nid);
++      if (typeof damage === 'function') damage(this.canvas._nid, _realmFrameId);
+     });
+   }
+   _parseColor(css) {
+@@ -15134,7 +15134,7 @@ if (typeof FontFace === 'undefined') {
+         weight: face.weight,
+         unicodeRange: face.unicodeRange
+       });
+-      Deno.core.ops.op_set_dynamic_fonts(JSON.stringify(registrations.filter(face => !face.skip)));
++      Deno.core.ops.op_set_dynamic_fonts(JSON.stringify(registrations.filter(face => !face.skip)), _realmFrameId);
+       _scheduleResizeRenderCheckpoint();
+     }
+     _faceChanged(face) {
+diff --git a/crates/obscura-js/src/frame.rs b/crates/obscura-js/src/frame.rs
+index f0a3475..f8aabbc 100644
+--- a/crates/obscura-js/src/frame.rs
++++ b/crates/obscura-js/src/frame.rs
+@@ -26,7 +26,7 @@ use std::rc::Rc;
+ 
+ use obscura_dom::parse_html;
+ 
+-use crate::ops::{ObscuraState, RealmStates};
++use crate::ops::{ObscuraState, RealmStates, SharedState};
+ use crate::runtime::ObscuraJsRuntime;
+ 
+ /// One child browsing context: its own realm, document and origin, living in
+@@ -35,6 +35,9 @@ pub struct FrameRealm {
+     context: deno_core::v8::Global<deno_core::v8::Context>,
+     /// Held so the frame's entry can be taken out again when the frame dies.
+     realms: Rc<std::cell::RefCell<RealmStates>>,
++    /// The frame's document state, the one its realm's ops resolve to.
++    #[cfg_attr(not(feature = "render"), allow(dead_code))]
++    state: SharedState,
+     frame_id: u32,
+     parent_frame_id: u32,
+     url: String,
+@@ -85,17 +88,22 @@ impl FrameRealm {
+         state.url = url.to_string();
+         state.frame_id = frame_id;
+         parent.share_resources_with(&mut state);
++        // The parser inserted these scripts; moving one later must not run it
++        // again. The page marks its own the same way.
++        if let Some(root) = state.dom.as_ref().map(|dom| dom.document()) {
++            crate::ops::mark_script_subtree_started(&state, root);
++        }
+ 
++        let state: SharedState = Rc::new(std::cell::RefCell::new(state));
+         let realms = parent.realm_states();
+-        realms.borrow_mut().register(
+-            context.clone(),
+-            frame_id,
+-            Rc::new(std::cell::RefCell::new(state)),
+-        );
++        realms
++            .borrow_mut()
++            .register(context.clone(), frame_id, state.clone());
+ 
+         let realm = FrameRealm {
+             context,
+             realms,
++            state,
+             frame_id,
+             parent_frame_id,
+             url: url.to_string(),
+@@ -187,6 +195,19 @@ impl FrameRealm {
+         } else {
+             150.0
+         };
++        // Layout inside the frame lays out against the frame's viewport, not
++        // the page's.
++        #[cfg(feature = "render")]
++        {
++            let mut state = self.state.borrow_mut();
++            let viewport = (width as f32, height as f32);
++            if state.viewport != viewport {
++                state.viewport = viewport;
++                state.prepared_render = None;
++                state.pending_style_mutations.clear();
++                state.resolved_scroll = None;
++            }
++        }
+         self.execute_script(
+             parent,
+             &format!(
+@@ -492,6 +513,145 @@ mod tests {
+         );
+     }
+ 
++    /// A script inserted by frame code runs once, in the frame. Its "already
++    /// started" flag belongs to the frame's document, not to whichever page
++    /// node happens to share its node id.
++    #[test]
++    fn frame_inserted_script_runs_once_in_the_frame() {
++        let mut parent = page(
++            "https://parent.example/page",
++            "<html><body><div><p>parent</p></div></body></html>",
++        );
++        let frame = FrameRealm::new(
++            &mut parent,
++            1,
++            0,
++            "https://child.example/frame",
++            "<html><body><script>globalThis.parsed = 1;</script></body></html>",
++        )
++        .expect("frame realm");
++
++        assert_eq!(
++            frame
++                .evaluate(
++                    &mut parent,
++                    r#"(() => {
++                        globalThis.ran = 0;
++                        const script = document.createElement("script");
++                        script.textContent = "globalThis.ran += 1;";
++                        document.body.appendChild(script);
++                        const afterInsert = globalThis.ran;
++                        // Moving a started script must not run it again.
++                        script.remove();
++                        document.body.appendChild(script);
++                        // Nor may moving a parser-inserted one.
++                        globalThis.parsed = 0;
++                        const parsed = document.querySelector("script");
++                        parsed.remove();
++                        document.body.appendChild(parsed);
++                        return [afterInsert, globalThis.ran, globalThis.parsed];
++                    })()"#,
++                )
++                .unwrap(),
++            serde_json::json!([1, 1, 0])
++        );
++    }
++
++    /// Layout reads made inside a frame measure the frame's own document.
++    /// Turnstile measures elements in its challenge frame; answers taken from
++    /// whatever page node shares the id are nonsense.
++    #[cfg(feature = "render")]
++    #[test]
++    fn frame_layout_reads_measure_the_frame_document() {
++        let mut parent = page(
++            "https://parent.example/page",
++            "<html><body style='margin:0'>\
++               <div id='a' style='width:500px;height:40px'></div>\
++               <div style='width:600px;height:60px'></div>\
++               <div style='width:700px;height:70px'></div>\
++             </body></html>",
++        );
++        let frame = FrameRealm::new(
++            &mut parent,
++            1,
++            0,
++            "https://child.example/frame",
++            "<html><body style='margin:0'>\
++               <div id='b' style='margin-left:7px;width:123px;height:45px;overflow:auto'>\
++                 <div style='height:300px'></div>\
++               </div>\
++             </body></html>",
++        )
++        .expect("frame realm");
++        frame.set_viewport(&mut parent, 300.0, 150.0).unwrap();
++
++        assert_eq!(
++            frame
++                .evaluate(
++                    &mut parent,
++                    r#"(() => {
++                        const b = document.getElementById("b");
++                        const rect = b.getBoundingClientRect();
++                        const style = getComputedStyle(b);
++                        const before = [b.scrollHeight, b.clientHeight, b.scrollTop];
++                        b.scrollTop = 50;
++                        return [
++                            rect.x, rect.width, rect.height,
++                            style.width, style.marginLeft,
++                            before, b.scrollTop,
++                            document.documentElement.scrollWidth,
++                        ];
++                    })()"#,
++                )
++                .unwrap(),
++            serde_json::json!([7, 123, 45, "123px", "7px", [300, 45, 0], 50, 300])
++        );
++        // The page's own layout is untouched.
++        assert_eq!(
++            parent
++                .evaluate(
++                    r#"(() => {
++                        const a = document.getElementById("a");
++                        return [a.getBoundingClientRect().width, getComputedStyle(a).width];
++                    })()"#,
++                )
++                .unwrap(),
++            serde_json::json!([500, "500px"])
++        );
++    }
++
++    /// ResizeObserver inside a frame reports the frame element's box.
++    #[cfg(feature = "render")]
++    #[tokio::test(flavor = "current_thread")]
++    async fn frame_resize_observer_measures_the_frame_document() {
++        let mut parent = page(
++            "https://parent.example/page",
++            "<html><body style='margin:0'><div style='width:500px;height:40px'></div></body></html>",
++        );
++        let frame = FrameRealm::new(
++            &mut parent,
++            1,
++            0,
++            "https://child.example/frame",
++            "<html><body style='margin:0'><div id='b' style='width:123px;height:45px'></div></body></html>",
++        )
++        .expect("frame realm");
++        frame
++            .execute_script(
++                &mut parent,
++                r#"globalThis.sizes = [];
++                   new ResizeObserver(entries => {
++                     for (const e of entries) globalThis.sizes.push([e.contentRect.width, e.contentRect.height]);
++                   }).observe(document.getElementById("b"));"#,
++            )
++            .unwrap();
++        parent.run_event_loop_bounded(300).await.unwrap();
++        assert_eq!(
++            frame.evaluate(&mut parent, "globalThis.sizes[0]").unwrap(),
++            serde_json::json!([123, 45])
++        );
++    }
++
+     #[test]
+     fn frame_uses_its_embedding_viewport() {
+         let mut parent = page(
+diff --git a/crates/obscura-js/src/ops.rs b/crates/obscura-js/src/ops.rs
+index 009ca08..00adcdf 100644
+--- a/crates/obscura-js/src/ops.rs
++++ b/crates/obscura-js/src/ops.rs
+@@ -1286,8 +1286,9 @@ fn op_blob_url_text(state: &OpState, #[string] url: &str) -> Option<String> {
+ }
+ 
+ #[op2(fast)]
+-fn op_script_mark_started(state: &OpState, nid: u32) -> bool {
+-    let shared = state.borrow::<SharedState>().clone();
++fn op_script_mark_started(state: &OpState, nid: u32, frame_id: u32) -> bool {
++    // A node id only means something in its own realm's document.
++    let shared = frame_state(state, frame_id);
+     let state = shared.borrow();
+     let Some(dom) = state.dom.as_ref() else {
+         return false;
+@@ -1303,8 +1304,8 @@ fn op_script_mark_started(state: &OpState, nid: u32) -> bool {
+ /// Atomically claim an executable script.  A false result means the node was
+ /// created inert by an HTML-string API or has already been prepared once.
+ #[op2(fast)]
+-fn op_script_try_start(state: &OpState, nid: u32) -> bool {
+-    let shared = state.borrow::<SharedState>().clone();
++fn op_script_try_start(state: &OpState, nid: u32, frame_id: u32) -> bool {
++    let shared = frame_state(state, frame_id);
+     let state = shared.borrow();
+     let Some(dom) = state.dom.as_ref() else {
+         return false;
+@@ -5618,7 +5619,11 @@ struct DynamicFontFaceInput {
+ /// supplies resource descriptors to the render preparation path.
+ #[cfg(feature = "render")]
+ #[op2(fast)]
+-fn op_set_dynamic_fonts(state: &OpState, #[string] registrations: &str) -> bool {
++fn op_set_dynamic_fonts(
++    state: &OpState,
++    #[string] registrations: &str,
++    frame_id: u32,
++) -> bool {
+     let Ok(inputs) = serde_json::from_str::<Vec<DynamicFontFaceInput>>(registrations) else {
+         return false;
+     };
+@@ -5652,7 +5657,8 @@ fn op_set_dynamic_fonts(state: &OpState, #[string] registrations: &str) -> bool
+             unicode_range: face.unicode_range,
+         })
+         .collect::<Vec<_>>();
+-    let shared = state.borrow::<SharedState>().clone();
++    // `document.fonts` belongs to the caller's document.
++    let shared = frame_state(state, frame_id);
+     let mut state = shared.borrow_mut();
+     if state.dynamic_fonts != fonts {
+         state.dynamic_fonts = fonts;
+@@ -5672,6 +5678,7 @@ fn op_canvas_register_surface(
+     width: u32,
+     height: u32,
+     #[buffer] pixels: JsBuffer,
++    frame_id: u32,
+ ) -> bool {
+     const MAX_CANVAS_DIMENSION: u32 = 32_767;
+     const MAX_CANVAS_PIXELS: usize = 67_108_864;
+@@ -5690,7 +5697,7 @@ fn op_canvas_register_surface(
+         return false;
+     }
+ 
+-    let shared = state.borrow::<SharedState>().clone();
++    let shared = frame_state(state, frame_id);
+     let mut state = shared.borrow_mut();
+     let node = NodeId::new(nid);
+     let is_canvas = state
+@@ -5730,8 +5737,8 @@ fn op_canvas_register_surface(
+ /// screencast/readiness without throwing away otherwise-valid layout.
+ #[cfg(feature = "render")]
+ #[op2(fast)]
+-fn op_canvas_paint_damage(state: &OpState, nid: u32) -> bool {
+-    let shared = state.borrow::<SharedState>().clone();
++fn op_canvas_paint_damage(state: &OpState, nid: u32, frame_id: u32) -> bool {
++    let shared = frame_state(state, frame_id);
+     let mut state = shared.borrow_mut();
+     let node = NodeId::new(nid);
+     if !state.canvas_surfaces.contains_key(&node) {
+@@ -5870,7 +5877,7 @@ fn invalidate_waapi_render(state: &mut ObscuraState, node: NodeId) {
+ 
+ #[cfg(feature = "render")]
+ #[op2(fast)]
+-fn op_waapi_create(state: &OpState, #[string] input: &str) -> bool {
++fn op_waapi_create(state: &OpState, #[string] input: &str, frame_id: u32) -> bool {
+     let Ok(input) = serde_json::from_str::<WaapiCreateInput>(input) else {
+         return false;
+     };
+@@ -5883,7 +5890,7 @@ fn op_waapi_create(state: &OpState, #[string] input: &str) -> bool {
+     {
+         return false;
+     }
+-    let shared = state.borrow::<SharedState>().clone();
++    let shared = frame_state(state, frame_id);
+     let mut state = shared.borrow_mut();
+     let node = NodeId::new(input.node);
+     if state.dom.as_ref().and_then(|dom| dom.get_node(node)).is_none() {
+@@ -5940,11 +5947,12 @@ fn op_waapi_control(
+     id: f64,
+     #[string] action: &str,
+     value: f64,
++    frame_id: u32,
+ ) -> bool {
+     if !id.is_finite() || id < 0.0 {
+         return false;
+     }
+-    let shared = state.borrow::<SharedState>().clone();
++    let shared = frame_state(state, frame_id);
+     let mut state = shared.borrow_mut();
+     let id = id as u64;
+     let Some(node) = state.animation_timeline.waapi_node(id) else {
+@@ -6219,8 +6227,8 @@ pub(crate) fn begin_animation_task(state: &mut ObscuraState) {
+ 
+ #[cfg(feature = "render")]
+ #[op2(fast)]
+-fn op_begin_render_task(state: &OpState) {
+-    let shared = state.borrow::<SharedState>().clone();
++fn op_begin_render_task(state: &OpState, frame_id: u32) {
++    let shared = frame_state(state, frame_id);
+     begin_animation_task(&mut shared.borrow_mut());
+ }
+ 
+@@ -6363,8 +6371,8 @@ fn cached_image_metadata_for_node(gs: &ObscuraState, node_id: NodeId) -> String
+ #[cfg(feature = "render")]
+ #[op2]
+ #[string]
+-fn op_image_metadata(state: &OpState, nid: u32, _cached_only: bool) -> String {
+-    let shared = state.borrow::<SharedState>().clone();
++fn op_image_metadata(state: &OpState, nid: u32, _cached_only: bool, frame_id: u32) -> String {
++    let shared = frame_state(state, frame_id);
+     let gs = shared.borrow();
+     let node_id = NodeId::new(nid);
+     let is_image = gs.dom.as_ref().is_some_and(|dom| {
+@@ -6455,11 +6463,8 @@ fn finish_async_image_metadata(
+ #[cfg(feature = "render")]
+ #[op2(async)]
+ #[string]
+-async fn op_load_image_metadata(state: Rc<RefCell<OpState>>, nid: u32) -> String {
+-    let shared = {
+-        let state = state.borrow();
+-        state.borrow::<SharedState>().clone()
+-    };
++async fn op_load_image_metadata(state: Rc<RefCell<OpState>>, nid: u32, frame_id: u32) -> String {
++    let shared = frame_state(&state.borrow(), frame_id);
+     let node_id = NodeId::new(nid);
+     let (
+         document_generation,
+@@ -6703,8 +6708,10 @@ fn clamp_scroll_offset_for_consumer(
+ #[cfg(feature = "render")]
+ #[op2]
+ #[string]
+-fn op_layout_geometry(state: &OpState, #[string] nid_str: String) -> String {
+-    let shared = state.borrow::<SharedState>().clone();
++fn op_layout_geometry(state: &OpState, #[string] nid_str: String, frame_id: u32) -> String {
++    // Measure the caller's own document: a frame's node id names nothing, or
++    // the wrong node, in the page's tree.
++    let shared = frame_state(state, frame_id);
+     let nid: u32 = nid_str.parse().unwrap_or(0);
+     let nid = obscura_dom::tree::NodeId::new(nid);
+     let mut gs = shared.borrow_mut();
+@@ -6765,13 +6772,17 @@ fn op_layout_geometry(state: &OpState, #[string] nid_str: String) -> String {
+ #[cfg(feature = "render")]
+ #[op2]
+ #[string]
+-fn op_resize_observer_measurements(state: &OpState, #[string] nids_json: String) -> String {
++fn op_resize_observer_measurements(
++    state: &OpState,
++    #[string] nids_json: String,
++    frame_id: u32,
++) -> String {
+     let nids = serde_json::from_str::<Vec<u32>>(&nids_json).unwrap_or_default();
+     if nids.is_empty() {
+         return "[]".to_string();
+     }
+ 
+-    let shared = state.borrow::<SharedState>().clone();
++    let shared = frame_state(state, frame_id);
+     let mut gs = shared.borrow_mut();
+     sample_live_document_animations(&mut gs);
+     if ensure_resolved_scroll_for_geometry(&mut gs).is_none() {
+@@ -6833,13 +6844,14 @@ fn op_resize_observer_measurements(state: &OpState, #[string] nids_json: String)
+ fn op_intersection_observer_measurements(
+     state: &OpState,
+     #[string] nids_json: String,
++    frame_id: u32,
+ ) -> String {
+     let nids = serde_json::from_str::<Vec<u32>>(&nids_json).unwrap_or_default();
+     if nids.is_empty() {
+         return "[]".to_string();
+     }
+ 
+-    let shared = state.borrow::<SharedState>().clone();
++    let shared = frame_state(state, frame_id);
+     let mut gs = shared.borrow_mut();
+     sample_live_document_animations(&mut gs);
+     if ensure_resolved_scroll_for_geometry(&mut gs).is_none() {
+@@ -6889,8 +6901,8 @@ fn op_intersection_observer_measurements(
+ #[cfg(feature = "render")]
+ #[op2]
+ #[string]
+-fn op_computed_style(state: &OpState, #[string] nid_str: String) -> String {
+-    let shared = state.borrow::<SharedState>().clone();
++fn op_computed_style(state: &OpState, #[string] nid_str: String, frame_id: u32) -> String {
++    let shared = frame_state(state, frame_id);
+     let nid: u32 = nid_str.parse().unwrap_or(0);
+     let nid = obscura_dom::tree::NodeId::new(nid);
+     let mut gs = shared.borrow_mut();
+@@ -6927,8 +6939,8 @@ fn op_css_supports(#[string] name: &str, #[string] value: &str) -> bool {
+ #[cfg(feature = "render")]
+ #[op2]
+ #[string]
+-fn op_layout_metrics(state: &OpState) -> String {
+-    let shared = state.borrow::<SharedState>().clone();
++fn op_layout_metrics(state: &OpState, frame_id: u32) -> String {
++    let shared = frame_state(state, frame_id);
+     let mut gs = shared.borrow_mut();
+     sample_live_document_animations(&mut gs);
+     let viewport = gs.viewport;
+@@ -6944,8 +6956,8 @@ fn op_layout_metrics(state: &OpState) -> String {
+ #[cfg(feature = "render")]
+ #[op2]
+ #[string]
+-fn op_element_scroll_metrics(state: &OpState, #[string] nid_str: String) -> String {
+-    let shared = state.borrow::<SharedState>().clone();
++fn op_element_scroll_metrics(state: &OpState, #[string] nid_str: String, frame_id: u32) -> String {
++    let shared = frame_state(state, frame_id);
+     let nid = NodeId::new(nid_str.parse().unwrap_or(0));
+     let mut gs = shared.borrow_mut();
+     sample_live_document_animations(&mut gs);
+@@ -6981,8 +6993,14 @@ fn op_element_scroll_metrics(state: &OpState, #[string] nid_str: String) -> Stri
+ #[cfg(feature = "render")]
+ #[op2]
+ #[string]
+-fn op_element_scroll_to(state: &OpState, #[string] nid_str: String, x: f64, y: f64) -> String {
+-    let shared = state.borrow::<SharedState>().clone();
++fn op_element_scroll_to(
++    state: &OpState,
++    #[string] nid_str: String,
++    x: f64,
++    y: f64,
++    frame_id: u32,
++) -> String {
++    let shared = frame_state(state, frame_id);
+     let nid = NodeId::new(nid_str.parse().unwrap_or(0));
+     let mut gs = shared.borrow_mut();
+     sample_live_document_animations(&mut gs);
+@@ -7025,8 +7043,8 @@ fn op_element_scroll_to(state: &OpState, #[string] nid_str: String, x: f64, y: f
+ #[cfg(feature = "render")]
+ #[op2]
+ #[string]
+-fn op_scroll_offset(state: &OpState) -> String {
+-    let shared = state.borrow::<SharedState>().clone();
++fn op_scroll_offset(state: &OpState, frame_id: u32) -> String {
++    let shared = frame_state(state, frame_id);
+     let mut gs = shared.borrow_mut();
+     sample_live_document_animations(&mut gs);
+     let requested = gs.scroll_offset;
+@@ -7037,8 +7055,8 @@ fn op_scroll_offset(state: &OpState) -> String {
+ #[cfg(feature = "render")]
+ #[op2]
+ #[string]
+-fn op_scroll_to(state: &OpState, x: f64, y: f64) -> String {
+-    let shared = state.borrow::<SharedState>().clone();
++fn op_scroll_to(state: &OpState, x: f64, y: f64, frame_id: u32) -> String {
++    let shared = frame_state(state, frame_id);
+     let mut gs = shared.borrow_mut();
+     sample_live_document_animations(&mut gs);
+     let (x, y) = clamp_scroll_offset_for_geometry(&mut gs, (x as f32, y as f32));
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index 5346cf2..cf7ba04 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -898,9 +898,9 @@ impl ObscuraJsRuntime {
+             frame.stealth_client = parent.stealth_client.clone();
+         }
+         // A frame realm shares the page transport, so its renderer cache must
+-        // not open synchronous requests either. Frame geometry currently
+-        // resolves against the main document's renderer state, so frame-scoped
+-        // background loading is not wired up here.
++        // not open synchronous requests either. Frame geometry resolves
++        // against the frame's own renderer state; frame-scoped background
++        // resource loading is not wired up here.
+         #[cfg(feature = "render")]
+         if crate::ops::has_page_transport(&parent) {
+             frame.render_resources.set_sync_loading_enabled(false);
+@@ -11958,10 +11958,10 @@ mod tests {
+                 const nativeBulk = Deno.core.ops.op_resize_observer_measurements;
+                 const nativeGeometry = Deno.core.ops.op_layout_geometry;
+                 const nativeComputedStyle = Deno.core.ops.op_computed_style;
+-                Deno.core.ops.op_resize_observer_measurements = input => {
++                Deno.core.ops.op_resize_observer_measurements = (input, ...rest) => {
+                     __resizeBulkCalls++;
+                     __resizeBulkSizes.push(JSON.parse(input).length);
+-                    return nativeBulk(input);
++                    return nativeBulk(input, ...rest);
+                 };
+                 Deno.core.ops.op_layout_geometry = (...args) => {
+                     __resizeLegacyGeometryCalls++;
+@@ -12325,10 +12325,10 @@ mod tests {
+                 const nativeBulk = Deno.core.ops.op_intersection_observer_measurements;
+                 const nativeGeometry = Deno.core.ops.op_layout_geometry;
+                 const nativeComputedStyle = Deno.core.ops.op_computed_style;
+-                Deno.core.ops.op_intersection_observer_measurements = input => {
++                Deno.core.ops.op_intersection_observer_measurements = (input, ...rest) => {
+                     __intersectionBulkCalls++;
+                     __intersectionBulkSizes.push(JSON.parse(input).length);
+-                    return nativeBulk(input);
++                    return nativeBulk(input, ...rest);
+                 };
+                 Deno.core.ops.op_layout_geometry = (...args) => {
+                     __intersectionLegacyGeometryCalls++;

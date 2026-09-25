@@ -84,6 +84,11 @@ flowchart TD
   DESKTOP_BUILD --> DESKTOP_UPLOAD["Upload assets + mark desktop-v* as Latest"]:::release
 
   RELEASE_EVT["release.published (desktop-v*)"]:::event --> DESKTOP_BUILD
+
+  OBSCURA_EVT["nightly schedule / dispatch /<br/>PR touching the Obscura build or probe"]:::event --> OBSCURA_COMPAT["obscura-compat.yml<br/>build Obscura, probe common sites vs Chrome<br/>(informational, not a required check)"]:::ci
+  OBSCURA_COMPAT --> OBSCURA_GATE{"gap at a site outside<br/>the baseline?"}:::decision
+  OBSCURA_GATE -- "Yes" --> OBSCURA_FAIL["Run fails"]:::terminal
+  OBSCURA_GATE -- "No" --> OBSCURA_PASS["Run passes; baseline sites that<br/>now match Chrome printed as removable"]:::terminal
 ```
 
 ## Per-Workflow Steps
@@ -99,7 +104,7 @@ flowchart TD
 ### `.github/workflows/code-quality.yml`
 1. Enter from PRs targeting `master`, pushes to `master`, and manual dispatch.
 2. `changes`: one cheap no-toolchain job detects which languages a PR touches; Python lanes and TypeScript lanes are skipped wholesale when their language is untouched (on push/dispatch everything runs).
-3. Twenty hygiene lanes — exactly the `LANES` array in the gate step, which is the only list that decides anything: `biome`, `deps`, `circular`, `file-size`, `types-location`, `components-per-file`, `duplicates` (jscpd), `package-hygiene`, `type-check` (tsc), `python-static` (= ruff + custom AST lints + xenon + interrogate + bandit + pip-audit in one job), `python-mypy`, `observability` (evlog-map score), `wide-event-conformance`, `dead-code` (knip + vulture), `alert-rules`, `suppression-hygiene`, `gitleaks`, `semgrep`, `test-mutation-plan`, `test-mutation`. Each self-scopes to changed files via `scripts/ci/changes.sh files`. The Python static tools share one lane because each is seconds of work behind ~40s of runner boot + checkout + uv install; every tool step is `continue-on-error` with an aggregating verdict, so one red tool still does not hide the others. The `wide-event-conformance` lane runs the Python and TypeScript logging stacks for real and diffs the log shapes they actually emit against each other and against `scripts/ci/wide-event-conformance/contract.json`, so the two halves cannot drift apart. The observability lane (`tools/evlog_map`, enforced) posts the full-repo score to the job summary and fails PRs whose changed files score below the same files at the merge-base.
+3. Twenty-one hygiene lanes — exactly the `LANES` array in the gate step, which is the only list that decides anything: `biome`, `deps`, `circular`, `file-size`, `types-location`, `components-per-file`, `duplicates` (jscpd), `package-hygiene`, `go-connect` (the `tools/gaia-connect` Go module: `go vet` + `go test` + `go build`, path-scoped via the `changes` job's `has_go` because the module is outside the nx graph), `type-check` (tsc), `python-static` (= ruff + custom AST lints + xenon + interrogate + bandit + pip-audit in one job), `python-mypy`, `observability` (evlog-map score), `wide-event-conformance`, `dead-code` (knip + vulture), `alert-rules`, `suppression-hygiene`, `gitleaks`, `semgrep`, `test-mutation-plan`, `test-mutation`. Each self-scopes to changed files via `scripts/ci/changes.sh files`. The Python static tools share one lane because each is seconds of work behind ~40s of runner boot + checkout + uv install; every tool step is `continue-on-error` with an aggregating verdict, so one red tool still does not hide the others. The `wide-event-conformance` lane runs the Python and TypeScript logging stacks for real and diffs the log shapes they actually emit against each other and against `scripts/ci/wide-event-conformance/contract.json`, so the two halves cannot drift apart. The observability lane (`tools/evlog_map`, enforced) posts the full-repo score to the job summary and fails PRs whose changed files score below the same files at the merge-base.
 
 4. `Quality gate (required)` (the single required status check) fails the merge if any lane is neither `success` nor `skipped`; a lane skipped by `changes` counts as passing, but a failed `changes` job fails the gate. All lanes are enforced — there is no informational tier.
 
@@ -142,10 +147,9 @@ flowchart TD
 6. Desktop release tags (`desktop-v*`) later trigger `desktop-release.yml` via GitHub `release.published`.
 
 ### `.github/workflows/publish-cli.yml`
-1. Accept release `tag` and `version` via workflow dispatch.
-2. Verify tag/version/manifests and npm idempotency (`should_publish`).
-3. If publish required: build `packages/cli` and `npm publish --provenance`.
-4. If version already exists: skip safely.
+Two independent jobs, so one CLI release ships both halves:
+1. `publish` — accept release `tag` and `version` via workflow dispatch, verify tag/version/manifests and npm idempotency (`should_publish`), and if publish is required build `packages/cli` and `npm publish`. If the version already exists on npm: skip safely.
+2. `publish-binaries` — cross-compile the `tools/gaia-connect` Go module for `darwin/{arm64,amd64}`, `linux/{amd64,arm64}` and `windows/amd64` (all `CGO_ENABLED=0` on one ubuntu runner — the macOS keychain read shells out to `security`, so no cgo and no macOS runner), then attach `gaia-connect-<os>-<arch>[.exe]` plus a `gaia-connect-SHA256SUMS` manifest to the same `cli-v<version>` release via `gh release upload --clobber` (`scripts/ci/release.sh connect-binaries`). The CLI downloads these assets by exact name, so the names and the manifest format are a contract. Deliberately NOT gated on `should_publish`: a rerun must be able to attach missing assets to a release whose npm version already exists. Both jobs notify Discord on failure.
 
 ### `.github/workflows/desktop-release.yml`
 1. Trigger on `release.published`, then continue only for `desktop-v*` tags.
@@ -157,6 +161,11 @@ flowchart TD
 1. Trigger on PR open/edit/synchronize.
 2. Validate PR title against configured semantic type list.
 
+### `.github/workflows/obscura-compat.yml`
+1. Triggers on a nightly `schedule`, `workflow_dispatch`, and `pull_request` limited to paths `apps/api/obscura-patches/**`, `apps/api/Dockerfile`, `apps/api/scripts/obscura_compat_probe.py`, `scripts/ci/baselines/obscura-compat.txt` and the workflow itself. `permissions: contents: read`. Not a required check and not wired into any gate: it loads live third-party sites.
+2. Builds only the `obscura-bin` stage of `apps/api/Dockerfile` (the same `obscura-builder` the api image ships: pinned `OBSCURA_COMMIT` + the `obscura-patches` series) with `docker/build-push-action`, exported as files (`outputs: type=local`). GHA cache `scope=obscura-bin`, `mode=min`: only the two binaries are cached, so an unchanged build is a full hit and a patch change rebuilds.
+3. Runs `apps/api/scripts/obscura_compat_probe.py --baseline scripts/ci/baselines/obscura-compat.txt` via `uv run --project apps/api --frozen --group backend`, with `CHROMIUM_BIN` set to the runner image's `google-chrome`. Fails only on a gap at a site not in the baseline; baseline sites that now match Chrome are printed as removable and do not fail the run (the baseline only ever shrinks). The probe output goes to the job summary.
+
 ## File Map
 - `.github/workflows/main.yml` ("Quality Checks"): THE CI correctness gate (build + tests + coverage + docker image + harness tooling + trivy + regression-proof + docker release trigger), home-runner-first with GitHub fallback. Python tests run runner-native against live service containers, split into four slices: `unit-a`, `unit-b`, `integration`, `bridge`.
 - `.github/workflows/code-quality.yml`: code-hygiene lanes (lint/type/dead-code/complexity/security) behind the `Quality gate (required)` check.
@@ -167,3 +176,4 @@ flowchart TD
 - `.github/workflows/publish-cli.yml`: CLI package validation/build/publish workflow.
 - `.github/workflows/desktop-release.yml`: desktop installer build and release-asset upload.
 - `.github/workflows/pr-naming-conventions.yml`: PR title convention enforcement.
+- `.github/workflows/obscura-compat.yml`: nightly Obscura-vs-Chrome compatibility probe over common sites, ratcheted against `scripts/ci/baselines/obscura-compat.txt`; informational, never required.

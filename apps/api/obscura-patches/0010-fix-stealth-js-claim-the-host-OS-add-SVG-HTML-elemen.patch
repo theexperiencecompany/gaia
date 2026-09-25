@@ -1,0 +1,601 @@
+From 8d284220c6d579e1b2a25d54523db928093bc7e0 Mon Sep 17 00:00:00 2001
+From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
+Date: Wed, 23 Sep 2026 18:34:25 +0530
+Subject: [PATCH 10/18] fix(stealth,js): claim the host OS, add SVG/HTML
+ element interfaces, return service worker registrations
+
+Stealth identity: the wreq emulation, UA, navigator.platform and client
+hints claimed Windows on every host. From a Linux host that mismatch got
+amazon.com's "Continue shopping" captcha (validateCaptcha) on every load,
+even after the AWS WAF challenge passed; real Chrome on the same host with
+its UA/client hints overridden to Windows got the same captcha on 4 of 5
+loads, and 0 of 4 with its own Linux identity. The stealth identity now
+follows the target OS (Linux x86_64 / Windows / macOS), and an empty
+platformVersion (what Chrome on Linux reports) is no longer replaced.
+
+JS: SvelteKit's router tests `a instanceof SVGAElement` for every link;
+the global did not exist, so nytimes.com's embedded Svelte app threw a
+ReferenceError at startup. Every SVG element now gets its own interface
+by local name (SVG 2 + Filter Effects), and the HTML element interfaces
+that were missing (HTMLTableCellElement, HTMLTimeElement, ...) are
+distinct subclasses instead of undefined.
+
+navigator.serviceWorker.register() resolved to undefined, so pages that
+set registration.onupdatefound threw. It now resolves to a
+ServiceWorkerRegistration with no worker (installing/waiting/active null),
+enforces same-origin like a browser, and `ready` stays pending as it does
+while no worker is active.
+
+Diagnostics: the dynamic-script fetch error names the URL, the stealth
+body-read error names the URL, and OBSCURA_RENDER_TIMING reports when
+retained styles fall back because of shadow-root stylesheets.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/js/bootstrap.js         | 208 ++++++++++++++++++++--
+ crates/obscura-js/src/runtime.rs          | 113 ++++++++++++
+ crates/obscura-net/src/wreq_client.rs     |  75 ++++++--
+ crates/obscura-render/src/dom.rs          |   9 +
+ crates/obscura/tests/stealth_transport.rs |   8 +
+ 5 files changed, 391 insertions(+), 22 deletions(-)
+
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index d8d8270..f66bb24 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -396,7 +396,7 @@ async function __runDynScriptTask(task) {
+     // off the element. Calling onload separately would double-fire it.
+     try { task.dispatchEvent(new Event('load')); } catch(e) {}
+   } catch(e) {
+-    console.error('Dynamic script fetch error:', e.message);
++    console.error('Dynamic script fetch error (' + task.url + '):', e.message);
+     try { task.dispatchEvent(new Event('error')); } catch(ex) {}
+   } finally {
+     if (task.delaysLoad) {
+@@ -6734,9 +6734,7 @@ function _elementClassFor(nid) {
+   // namespace for possible SVG wrappers.
+   if (tag && tag !== tag.toUpperCase()
+       && _domParse("namespace_uri", nid) === "http://www.w3.org/2000/svg") {
+-    if (tag === "path" && globalThis.SVGPathElement) return globalThis.SVGPathElement;
+-    if (tag === "svg" && globalThis.SVGSVGElement) return globalThis.SVGSVGElement;
+-    if (globalThis.SVGElement) return globalThis.SVGElement;
++    return _svgElementClass(tag);
+   }
+   if (tag === "FORM" && globalThis.HTMLFormElement) return globalThis.HTMLFormElement;
+   if (tag === "TEXTAREA" && globalThis.HTMLTextAreaElement) return globalThis.HTMLTextAreaElement;
+@@ -6752,16 +6750,14 @@ function _elementClassFor(nid) {
+   if (tag === "AUDIO") return HTMLAudioElement;
+   if (tag === "VIDEO") return HTMLVideoElement;
+   if (tag === "TRACK") return HTMLTrackElement;
+-  return Element;
++  return (_htmlElementClassByTag && _htmlElementClassByTag.get(tag)) || Element;
+ }
+ function _elementClassForKnownName(namespace, qualifiedName) {
+   const localName = qualifiedName.includes(":")
+     ? qualifiedName.slice(qualifiedName.indexOf(":") + 1)
+     : qualifiedName;
+   if (namespace === "http://www.w3.org/2000/svg") {
+-    if (localName === "path" && globalThis.SVGPathElement) return globalThis.SVGPathElement;
+-    if (localName === "svg" && globalThis.SVGSVGElement) return globalThis.SVGSVGElement;
+-    if (globalThis.SVGElement) return globalThis.SVGElement;
++    return _svgElementClass(localName);
+   }
+   if (namespace === "http://www.w3.org/1999/xhtml") {
+     const tag = localName.toUpperCase();
+@@ -6774,6 +6770,7 @@ function _elementClassForKnownName(namespace, qualifiedName) {
+     if (tag === "AUDIO") return HTMLAudioElement;
+     if (tag === "VIDEO") return HTMLVideoElement;
+     if (tag === "TRACK") return HTMLTrackElement;
++    return (_htmlElementClassByTag && _htmlElementClassByTag.get(tag)) || Element;
+   }
+   return Element;
+ }
+@@ -7125,14 +7122,21 @@ globalThis.navigator = {
+         mobile: false,
+         model: "",
+         platform: globalThis.__obscura_ua_platform || "Windows",
+-        platformVersion: globalThis.__obscura_ua_platform_version || "15.0.0",
++        // Chrome on Linux reports an empty platformVersion, so only a missing
++        // value falls back.
++        platformVersion: globalThis.__obscura_ua_platform_version ?? "15.0.0",
+         uaFullVersion: _chromeMajor() + ".0.0.0",
+         wow64: false,
+       });
+     },
+     toJSON() { return {brands:this.brands,mobile:this.mobile,platform:this.platform}; },
+   },
+-  serviceWorker: { ready: Promise.resolve(), register(){return Promise.resolve();}, getRegistrations(){return Promise.resolve([]);}, controller: null, oncontrollerchange: null, onmessage: null, addEventListener(){}, removeEventListener(){}, dispatchEvent(){return true;} },
++  // No service worker ever runs here, so a registration stays empty
++  // (installing/waiting/active all null) and `ready`, which waits for an
++  // active worker, never settles -- as in a browser whose worker has not
++  // activated. register() still resolves to a registration, because pages
++  // attach handlers to it (nytimes.com sets `registration.onupdatefound`).
++  serviceWorker: { ready: new Promise(() => {}), register(scriptURL, options) { return _serviceWorkerRegister(scriptURL, options); }, getRegistration(clientURL) { return _serviceWorkerGetRegistration(clientURL); }, getRegistrations() { return Promise.resolve([..._serviceWorkerRegistrations.values()]); }, startMessages() {}, controller: null, oncontrollerchange: null, onmessage: null, addEventListener(){}, removeEventListener(){}, dispatchEvent(){return true;} },
+   mediaDevices: {
+     enumerateDevices() {
+       return Promise.resolve([
+@@ -12091,6 +12095,118 @@ globalThis.SVGGraphicsElement = SVGGraphicsElement;
+ globalThis.SVGGeometryElement = SVGGeometryElement;
+ globalThis.SVGPathElement = SVGPathElement;
+ globalThis.SVGSVGElement = SVGSVGElement;
++
++// Every SVG element gets the interface a browser gives it, keyed by its
++// case-sensitive local name (SVG 2 plus Filter Effects). Code tests them by
++// name: SvelteKit's router does `a instanceof SVGAElement` for every link on
++// the page, so a missing global threw a ReferenceError and the router never
++// started. Names not listed stay plain SVGElement, as in browsers.
++var _svgClassByLocalName = new Map([["path", SVGPathElement], ["svg", SVGSVGElement]]);
++function _svgElementClass(localName) {
++  return (_svgClassByLocalName && _svgClassByLocalName.get(localName)) || SVGElement;
++}
++(function _defineSvgInterfaces() {
++  const defineInterface = (name, Base) => {
++    // A named class expression, so C.name is the interface name.
++    const C = ({ [name]: class extends Base {} })[name];
++    _markNative(C);
++    Object.defineProperty(globalThis, name, { value: C, writable: true, enumerable: false, configurable: true });
++    return C;
++  };
++  const abstract = {
++    SVGTextContentElement: SVGGraphicsElement,
++    SVGAnimationElement: SVGElement,
++    SVGGradientElement: SVGElement,
++    SVGComponentTransferFunctionElement: SVGElement,
++  };
++  for (const name in abstract) abstract[name] = defineInterface(name, abstract[name]);
++  abstract.SVGTextPositioningElement = defineInterface("SVGTextPositioningElement", abstract.SVGTextContentElement);
++  // [interface, base, ...local names]
++  const concrete = [
++    ["SVGAElement", SVGGraphicsElement, "a"],
++    ["SVGDefsElement", SVGGraphicsElement, "defs"],
++    ["SVGForeignObjectElement", SVGGraphicsElement, "foreignObject"],
++    ["SVGGElement", SVGGraphicsElement, "g"],
++    ["SVGImageElement", SVGGraphicsElement, "image"],
++    ["SVGSwitchElement", SVGGraphicsElement, "switch"],
++    ["SVGUseElement", SVGGraphicsElement, "use"],
++    ["SVGCircleElement", SVGGeometryElement, "circle"],
++    ["SVGEllipseElement", SVGGeometryElement, "ellipse"],
++    ["SVGLineElement", SVGGeometryElement, "line"],
++    ["SVGPolygonElement", SVGGeometryElement, "polygon"],
++    ["SVGPolylineElement", SVGGeometryElement, "polyline"],
++    ["SVGRectElement", SVGGeometryElement, "rect"],
++    ["SVGTextElement", abstract.SVGTextPositioningElement, "text"],
++    ["SVGTSpanElement", abstract.SVGTextPositioningElement, "tspan"],
++    ["SVGTextPathElement", abstract.SVGTextContentElement, "textPath"],
++    ["SVGAnimateElement", abstract.SVGAnimationElement, "animate"],
++    ["SVGAnimateMotionElement", abstract.SVGAnimationElement, "animateMotion"],
++    ["SVGAnimateTransformElement", abstract.SVGAnimationElement, "animateTransform"],
++    ["SVGSetElement", abstract.SVGAnimationElement, "set"],
++    ["SVGLinearGradientElement", abstract.SVGGradientElement, "linearGradient"],
++    ["SVGRadialGradientElement", abstract.SVGGradientElement, "radialGradient"],
++    ["SVGFEFuncAElement", abstract.SVGComponentTransferFunctionElement, "feFuncA"],
++    ["SVGFEFuncBElement", abstract.SVGComponentTransferFunctionElement, "feFuncB"],
++    ["SVGFEFuncGElement", abstract.SVGComponentTransferFunctionElement, "feFuncG"],
++    ["SVGFEFuncRElement", abstract.SVGComponentTransferFunctionElement, "feFuncR"],
++    ["SVGClipPathElement", SVGElement, "clipPath"],
++    ["SVGDescElement", SVGElement, "desc"],
++    ["SVGFilterElement", SVGElement, "filter"],
++    ["SVGMarkerElement", SVGElement, "marker"],
++    ["SVGMaskElement", SVGElement, "mask"],
++    ["SVGMetadataElement", SVGElement, "metadata"],
++    ["SVGMPathElement", SVGElement, "mpath"],
++    ["SVGPatternElement", SVGElement, "pattern"],
++    ["SVGScriptElement", SVGElement, "script"],
++    ["SVGStopElement", SVGElement, "stop"],
++    ["SVGStyleElement", SVGElement, "style"],
++    ["SVGSymbolElement", SVGElement, "symbol"],
++    ["SVGTitleElement", SVGElement, "title"],
++    ["SVGViewElement", SVGElement, "view"],
++  ];
++  for (const fe of ["Blend", "ColorMatrix", "ComponentTransfer", "Composite",
++      "ConvolveMatrix", "DiffuseLighting", "DisplacementMap", "DistantLight",
++      "DropShadow", "Flood", "GaussianBlur", "Image", "Merge", "MergeNode",
++      "Morphology", "Offset", "PointLight", "SpecularLighting", "SpotLight",
++      "Tile", "Turbulence"]) {
++    concrete.push(["SVGFE" + fe + "Element", SVGElement, "fe" + fe]);
++  }
++  for (const [name, Base, ...localNames] of concrete) {
++    const C = defineInterface(name, Base);
++    for (const localName of localNames) _svgClassByLocalName.set(localName, C);
++  }
++})();
++
++// HTML element interfaces that were missing from the global. Each is its own
++// subclass of HTMLElement (here Element) and wraps the elements it names, so
++// `cell instanceof HTMLTableCellElement` holds and is false for a <div>.
++// Interfaces that already exist keep their current definitions.
++var _htmlElementClassByTag = new Map();
++(function _defineMissingHtmlInterfaces() {
++  const table = [
++    ["HTMLAreaElement", "AREA"], ["HTMLBaseElement", "BASE"],
++    ["HTMLDListElement", "DL"], ["HTMLDataElement", "DATA"],
++    ["HTMLDirectoryElement", "DIR"], ["HTMLEmbedElement", "EMBED"],
++    ["HTMLFontElement", "FONT"], ["HTMLFrameElement", "FRAME"],
++    ["HTMLFrameSetElement", "FRAMESET"], ["HTMLMapElement", "MAP"],
++    ["HTMLMarqueeElement", "MARQUEE"], ["HTMLMenuElement", "MENU"],
++    ["HTMLMeterElement", "METER"], ["HTMLModElement", "INS", "DEL"],
++    ["HTMLObjectElement", "OBJECT"], ["HTMLOptGroupElement", "OPTGROUP"],
++    ["HTMLOutputElement", "OUTPUT"], ["HTMLParamElement", "PARAM"],
++    ["HTMLPictureElement", "PICTURE"], ["HTMLQuoteElement", "Q", "BLOCKQUOTE"],
++    ["HTMLSourceElement", "SOURCE"], ["HTMLTableCaptionElement", "CAPTION"],
++    ["HTMLTableCellElement", "TD", "TH"], ["HTMLTableColElement", "COL", "COLGROUP"],
++    ["HTMLTableRowElement", "TR"], ["HTMLTableSectionElement", "THEAD", "TBODY", "TFOOT"],
++    ["HTMLTimeElement", "TIME"], ["HTMLTitleElement", "TITLE"],
++  ];
++  for (const [name, ...tags] of table) {
++    if (Object.prototype.hasOwnProperty.call(globalThis, name) && globalThis[name]) continue;
++    const C = ({ [name]: class extends Element {} })[name];
++    _markNative(C);
++    Object.defineProperty(globalThis, name, { value: C, writable: true, enumerable: false, configurable: true });
++    for (const tag of tags) _htmlElementClassByTag.set(tag, C);
++  }
++})();
+ globalThis.CharacterData = CharacterData;
+ globalThis.Text = Text;
+ globalThis.Comment = Comment;
+@@ -15465,6 +15581,78 @@ if (typeof ServiceWorkerContainer === 'undefined') {
+   globalThis.ServiceWorkerContainer = class { register(){return Promise.resolve();} getRegistrations(){return Promise.resolve([]);} };
+ }
+ 
++class ServiceWorkerRegistration {
++  constructor(scope) {
++    this._scope = scope;
++    this.installing = null;
++    this.waiting = null;
++    this.active = null;
++    this.navigationPreload = {
++      enable() { return Promise.resolve(); }, disable() { return Promise.resolve(); },
++      setHeaderValue() { return Promise.resolve(); },
++      getState() { return Promise.resolve({ enabled: false, headerValue: "true" }); },
++    };
++    this.onupdatefound = null;
++    _makeListenerBox(this);
++  }
++  get scope() { return this._scope; }
++  get updateViaCache() { return "imports"; }
++  update() { return Promise.resolve(this); }
++  unregister() {
++    const had = _serviceWorkerRegistrations.get(this._scope) === this;
++    if (had) _serviceWorkerRegistrations.delete(this._scope);
++    return Promise.resolve(had);
++  }
++  showNotification() { return Promise.reject(new TypeError("No active registration.")); }
++  getNotifications() { return Promise.resolve([]); }
++}
++_markNative(ServiceWorkerRegistration);
++Object.defineProperty(globalThis, "ServiceWorkerRegistration", { value: ServiceWorkerRegistration, writable: true, enumerable: false, configurable: true });
++
++// Registrations by scope URL for this document's lifetime.
++var _serviceWorkerRegistrations = new Map();
++// ServiceWorkerContainer.register per the Service Workers spec, minus running
++// the worker: the script URL must be same-origin http(s), the scope defaults to
++// the script's directory and must share its origin.
++function _serviceWorkerRegister(scriptURL, options) {
++  let script, scope;
++  try {
++    const base = _documentBase() || globalThis.location?.href;
++    script = new URL(String(scriptURL), base);
++    const origin = globalThis.location?.origin;
++    if (!/^https?:$/.test(script.protocol)) {
++      return Promise.reject(new TypeError("Failed to register a ServiceWorker: The URL protocol of the script ('" + script.href + "') is not supported."));
++    }
++    if (script.origin !== origin) {
++      return Promise.reject(new DOMException("Failed to register a ServiceWorker: The origin of the provided scriptURL ('" + script.origin + "') does not match the current origin ('" + origin + "').", "SecurityError"));
++    }
++    scope = options && options.scope != null ? new URL(String(options.scope), base) : new URL("./", script);
++    if (scope.origin !== origin) {
++      return Promise.reject(new DOMException("Failed to register a ServiceWorker: The origin of the provided scope ('" + scope.origin + "') does not match the current origin ('" + origin + "').", "SecurityError"));
++    }
++  } catch (e) {
++    return Promise.reject(new TypeError("Failed to register a ServiceWorker: " + (e && e.message || e)));
++  }
++  scope.hash = "";
++  const key = scope.href;
++  let registration = _serviceWorkerRegistrations.get(key);
++  if (!registration) {
++    registration = new ServiceWorkerRegistration(key);
++    _serviceWorkerRegistrations.set(key, registration);
++  }
++  return Promise.resolve(registration);
++}
++function _serviceWorkerGetRegistration(clientURL) {
++  let url;
++  try { url = new URL(clientURL == null ? globalThis.location.href : String(clientURL), _documentBase() || globalThis.location?.href).href; }
++  catch (e) { return Promise.reject(new TypeError("Failed to get a ServiceWorkerRegistration: invalid URL")); }
++  let best;
++  for (const [scope, registration] of _serviceWorkerRegistrations) {
++    if (url.startsWith(scope) && (!best || scope.length > best.scope.length)) best = registration;
++  }
++  return Promise.resolve(best);
++}
++
+ if (typeof URLPattern === 'undefined') {
+   globalThis.URLPattern = class URLPattern {
+     constructor(pattern){this._pattern=pattern||{};} test(){return false;} exec(){return null;}
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index c05ed35..3644850 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -4581,6 +4581,22 @@ mod tests {
+     // set_platform must not allow a backslash-before-quote to break out of the
+     // JS string literal (injection), and set_user_agent must not silently fail
+     // on a control character; both must store the value verbatim.
++    #[tokio::test(flavor = "current_thread")]
++    async fn linux_platform_reports_an_empty_platform_version() {
++        // Chrome on Linux reports platformVersion "", which must not fall back.
++        let mut rt = setup_runtime("<html><body></body></html>");
++        rt.set_platform("Linux x86_64", "Linux", "");
++        rt.evaluate(
++            "navigator.userAgentData.getHighEntropyValues(['platformVersion']).then(v => { globalThis.__hev = [navigator.platform, v.platform, v.platformVersion]; })",
++        )
++        .unwrap();
++        rt.run_event_loop_bounded(100).await.unwrap();
++        assert_eq!(
++            rt.evaluate("globalThis.__hev").unwrap(),
++            serde_json::json!(["Linux x86_64", "Linux", ""])
++        );
++    }
++
+     #[test]
+     fn profile_setters_escape_backslash_and_control_characters() {
+         let mut rt = setup_runtime("<html><body></body></html>");
+@@ -7173,6 +7189,103 @@ mod tests {
+         assert_eq!(result, serde_json::json!([1, 1, true]));
+     }
+ 
++    #[test]
++    fn svg_elements_get_their_own_interfaces() {
++        // SvelteKit's router tests `a instanceof SVGAElement` for every link;
++        // a missing interface threw a ReferenceError (nytimes.com).
++        let mut rt = setup_runtime(
++            r#"<html><body><svg id="s"><a id="link" href="/x"><text id="t"><tspan id="ts">x</tspan></text></a>
++            <circle id="c"/><linearGradient id="lg"/><feGaussianBlur id="fe"/><foo id="unknown"/></svg>
++            <a id="html-link" href="/y">y</a></body></html>"#,
++        );
++        let result = rt
++            .evaluate(
++                r#"
++                const $ = (id) => document.getElementById(id);
++                const created = document.createElementNS("http://www.w3.org/2000/svg", "a");
++                return [
++                    $("link") instanceof SVGAElement,
++                    $("link") instanceof SVGGraphicsElement,
++                    $("link").href.baseVal,
++                    $("html-link") instanceof SVGAElement,
++                    created instanceof SVGAElement,
++                    $("t") instanceof SVGTextElement && $("t") instanceof SVGTextContentElement,
++                    $("ts") instanceof SVGTSpanElement && $("ts") instanceof SVGTextPositioningElement,
++                    $("c") instanceof SVGCircleElement && $("c") instanceof SVGGeometryElement,
++                    $("lg") instanceof SVGLinearGradientElement && $("lg") instanceof SVGGradientElement,
++                    $("fe") instanceof SVGFEGaussianBlurElement,
++                    $("unknown").constructor === SVGElement,
++                    $("s") instanceof SVGSVGElement,
++                    SVGAElement.name,
++                    Object.getOwnPropertyDescriptor(globalThis, "SVGAElement").enumerable,
++                ];
++                "#,
++            )
++            .unwrap();
++        assert_eq!(
++            result,
++            serde_json::json!([
++                true, true, "/x", false, true, true, true, true, true, true, true, true,
++                "SVGAElement", false
++            ])
++        );
++    }
++
++    #[test]
++    fn missing_html_element_interfaces_are_distinct() {
++        let mut rt = setup_runtime(
++            "<html><body><table><tbody><tr id='r'><td id='d'>x</td></tr></tbody></table><div id='v'></div><q id='q'></q></body></html>",
++        );
++        let result = rt
++            .evaluate(
++                r#"
++                const $ = (id) => document.getElementById(id);
++                return [
++                    $("d") instanceof HTMLTableCellElement,
++                    $("d") instanceof HTMLElement,
++                    $("v") instanceof HTMLTableCellElement,
++                    $("r") instanceof HTMLTableRowElement,
++                    document.createElement("th") instanceof HTMLTableCellElement,
++                    $("q") instanceof HTMLQuoteElement,
++                    document.createElement("time") instanceof HTMLTimeElement,
++                    Object.getOwnPropertyDescriptor(globalThis, "HTMLTableCellElement").enumerable,
++                ];
++                "#,
++            )
++            .unwrap();
++        assert_eq!(
++            result,
++            serde_json::json!([true, true, false, true, true, true, true, false])
++        );
++    }
++
++    #[tokio::test(flavor = "current_thread")]
++    async fn service_worker_register_resolves_to_a_registration() {
++        // nytimes.com sets `registration.onupdatefound` on the resolved value.
++        let mut rt = setup_runtime("<html><body></body></html>");
++        rt.evaluate(
++            r#"
++            var sw = (globalThis.__sw = []);
++            navigator.serviceWorker.register("/sw.js").then(async (registration) => {
++                registration.onupdatefound = () => {};
++                const found = await navigator.serviceWorker.getRegistration("/page");
++                __sw.push(registration instanceof ServiceWorkerRegistration, registration.scope,
++                    registration.active, found === registration);
++            });
++            navigator.serviceWorker.register("https://other.example/sw.js").catch((error) => {
++                __sw.push("rejected:" + error.name);
++            });
++            return sw.length;
++            "#,
++        )
++        .unwrap();
++        rt.run_event_loop_bounded(100).await.unwrap();
++        assert_eq!(
++            rt.evaluate("globalThis.__sw").unwrap(),
++            serde_json::json!(["rejected:SecurityError", true, "http://example.com/", null, true])
++        );
++    }
++
+     #[test]
+     fn window_named_access_tracks_dynamic_ids_and_fragment_parsing() {
+         let mut rt = setup_runtime("<html><body><div id='host'></div></body></html>");
+diff --git a/crates/obscura-net/src/wreq_client.rs b/crates/obscura-net/src/wreq_client.rs
+index 8806c38..5b31e35 100644
+--- a/crates/obscura-net/src/wreq_client.rs
++++ b/crates/obscura-net/src/wreq_client.rs
+@@ -57,20 +57,55 @@ impl wreq::dns::Resolve for SsrfGuardResolver {
+     }
+ }
+ 
+-#[cfg(feature = "stealth")]
+-pub const STEALTH_USER_AGENT: &str =
+-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36";
++// The stealth identity claims the operating system the engine actually runs
++// on. The OS shows through below the browser layer -- the TCP/IP stack
++// (initial TTL, window size, options) and the machine's own timing -- so a
++// Windows claim from a Linux host is a mismatch bot defences check for.
++// Measured on 2026-09-23 from a Linux host: real Chrome whose UA and client
++// hints were overridden to Windows got Amazon's "Continue shopping" captcha on
++// 4 of 5 loads, and 0 of 4 with its own Linux identity.
++//
++// The wreq emulation (Profile::Chrome145 on STEALTH_WREQ_PLATFORM) sends
++// STEALTH_USER_AGENT and the matching sec-ch-ua-platform on the wire, and
++// navigator reports the same identity through the constants below, so the
++// TLS/HTTP layer and the JS layer agree.
++#[cfg(all(feature = "stealth", target_os = "windows"))]
++mod stealth_identity {
++    pub const USER_AGENT: &str =
++        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36";
++    pub const NAVIGATOR_PLATFORM: &str = "Win32";
++    pub const UA_PLATFORM: &str = "Windows";
++    pub const UA_PLATFORM_VERSION: &str = "15.0.0";
++    pub const WREQ_PLATFORM: wreq_util::Platform = wreq_util::Platform::Windows;
++}
++#[cfg(all(feature = "stealth", target_os = "macos"))]
++mod stealth_identity {
++    pub const USER_AGENT: &str =
++        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36";
++    pub const NAVIGATOR_PLATFORM: &str = "MacIntel";
++    pub const UA_PLATFORM: &str = "macOS";
++    pub const UA_PLATFORM_VERSION: &str = "15.0.0";
++    pub const WREQ_PLATFORM: wreq_util::Platform = wreq_util::Platform::MacOS;
++}
++// Linux and every other Unix. Chrome on Linux reports an empty platformVersion.
++#[cfg(all(feature = "stealth", not(any(target_os = "windows", target_os = "macos"))))]
++mod stealth_identity {
++    pub const USER_AGENT: &str =
++        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36";
++    pub const NAVIGATOR_PLATFORM: &str = "Linux x86_64";
++    pub const UA_PLATFORM: &str = "Linux";
++    pub const UA_PLATFORM_VERSION: &str = "";
++    pub const WREQ_PLATFORM: wreq_util::Platform = wreq_util::Platform::Linux;
++}
+ 
+-// The wreq emulation (Profile::Chrome145, Platform::Windows) sends this exact
+-// UA and sec-ch-ua-platform "Windows" on the wire. navigator has to report the
+-// same identity, otherwise the TLS/HTTP layer and the JS layer disagree and a
+-// site cross-checks the mismatch as a bot signal.
+ #[cfg(feature = "stealth")]
+-pub const STEALTH_NAVIGATOR_PLATFORM: &str = "Win32";
++pub const STEALTH_USER_AGENT: &str = stealth_identity::USER_AGENT;
++#[cfg(feature = "stealth")]
++pub const STEALTH_NAVIGATOR_PLATFORM: &str = stealth_identity::NAVIGATOR_PLATFORM;
+ #[cfg(feature = "stealth")]
+-pub const STEALTH_UA_PLATFORM: &str = "Windows";
++pub const STEALTH_UA_PLATFORM: &str = stealth_identity::UA_PLATFORM;
+ #[cfg(feature = "stealth")]
+-pub const STEALTH_UA_PLATFORM_VERSION: &str = "15.0.0";
++pub const STEALTH_UA_PLATFORM_VERSION: &str = stealth_identity::UA_PLATFORM_VERSION;
+ 
+ #[cfg(feature = "stealth")]
+ fn tracker_blocking_enabled(value: Option<&str>) -> bool {
+@@ -155,7 +190,7 @@ async fn read_wreq_body_limited(
+     let mut body = Vec::with_capacity(capacity);
+     while let Some(chunk) = stream.next().await {
+         let chunk = chunk.map_err(|error| {
+-            ObscuraNetError::Network(format!("Failed to read body: {}", error))
++            ObscuraNetError::Network(format!("Failed to read body of {}: {}", url, error))
+         })?;
+         if chunk.len() > limit.saturating_sub(body.len()) {
+             return Err(response_too_large(url, limit));
+@@ -206,7 +241,7 @@ impl StealthHttpClient {
+     ) -> Self {
+         let emulation_opts = wreq_util::Emulation::builder()
+             .profile(wreq_util::Profile::Chrome145)
+-            .platform(wreq_util::Platform::Windows)
++            .platform(stealth_identity::WREQ_PLATFORM)
+             .build();
+ 
+         let mut builder = wreq::Client::builder()
+@@ -556,6 +591,22 @@ mod tests {
+     use crate::cookies::CookieJar;
+     use wreq::dns::{Name, Resolve};
+ 
++    // The stealth identity claims the host OS, and the UA, navigator.platform
++    // and the client-hint platform all name the same one.
++    #[test]
++    fn stealth_identity_names_the_host_os_consistently() {
++        let (ua_token, navigator_platform, hint) = if cfg!(target_os = "windows") {
++            ("(Windows NT 10.0; Win64; x64)", "Win32", "Windows")
++        } else if cfg!(target_os = "macos") {
++            ("(Macintosh; Intel Mac OS X 10_15_7)", "MacIntel", "macOS")
++        } else {
++            ("(X11; Linux x86_64)", "Linux x86_64", "Linux")
++        };
++        assert!(super::STEALTH_USER_AGENT.contains(ua_token), "{}", super::STEALTH_USER_AGENT);
++        assert_eq!(super::STEALTH_NAVIGATOR_PLATFORM, navigator_platform);
++        assert_eq!(super::STEALTH_UA_PLATFORM, hint);
++    }
++
+     // Mirrors client::ssrf_tests::resolver_blocks_hostname_that_resolves_to_loopback.
+     // Both transports must agree: a host-string check alone cannot see that a
+     // public name points inward, so the stealth client needs the same resolver.
+diff --git a/crates/obscura-render/src/dom.rs b/crates/obscura-render/src/dom.rs
+index 135dc94..fe792e0 100644
+--- a/crates/obscura-render/src/dom.rs
++++ b/crates/obscura-render/src/dom.rs
+@@ -4493,9 +4493,18 @@ fn layout_dom_with_web_fonts_pass_limit_at_animation_time(
+                 .iter()
+                 .all(|mutation| matches!(mutation, RetainedStyleMutation::Resource));
+         if !shadow_sheets.is_empty() && !resource_only {
++            if timing {
++                eprintln!(
++                    "[timing] retained-style fallback reason=shadow-sheets roots={}",
++                    shadow_sheets.len(),
++                );
++            }
+             return None;
+         }
+         if !stylesheet_cache_hit {
++            if timing {
++                eprintln!("[timing] retained-style fallback reason=stylesheet-cache-miss");
++            }
+             return None;
+         }
+         let active_containers = retained
+diff --git a/crates/obscura/tests/stealth_transport.rs b/crates/obscura/tests/stealth_transport.rs
+index 8357765..6e171fb 100644
+--- a/crates/obscura/tests/stealth_transport.rs
++++ b/crates/obscura/tests/stealth_transport.rs
+@@ -6,8 +6,16 @@ use std::time::Duration;
+ 
+ use obscura::Browser;
+ 
++// The stealth identity claims the host's own operating system.
++#[cfg(target_os = "windows")]
+ const STEALTH_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) \
+ AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36";
++#[cfg(target_os = "macos")]
++const STEALTH_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
++AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36";
++#[cfg(not(any(target_os = "windows", target_os = "macos")))]
++const STEALTH_USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) \
++AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36";
+ const ORDINARY_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) \
+ AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36";
+ 
