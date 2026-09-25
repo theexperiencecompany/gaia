@@ -19,6 +19,7 @@ from app.constants.cache import (
     RUNNING_SUBAGENTS_TTL,
 )
 from app.constants.log_tags import LogTag
+from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import RunningSubagent
 from shared.py.wide_events import log
@@ -76,6 +77,52 @@ class RunningSubagents:
         return next(
             (s for s in await self.live() if s.subagent_id == subagent_id),
             None,
+        )
+
+    async def stop_dispatched_by(self, stream_id: str) -> list[RunningSubagent]:
+        """Stop every run the stream dispatched, and every run those dispatched in turn.
+
+        A background run outlives the stream that dispatched it, so stopping that
+        stream alone never reaches it.
+        """
+        live = await self.live()
+        stopped: list[RunningSubagent] = []
+        stopped_streams = {stream_id}
+        parents = [stream_id]
+        while parents:
+            parent = parents.pop()
+            for subagent in live:
+                if subagent.dispatched_by != parent or subagent.stream_id in stopped_streams:
+                    continue
+                await _stop(subagent)
+                stopped.append(subagent)
+                if subagent.stream_id:
+                    stopped_streams.add(subagent.stream_id)
+                    parents.append(subagent.stream_id)
+        return stopped
+
+    async def stop_all(self) -> list[RunningSubagent]:
+        """Stop every live run in the conversation."""
+        live = await self.live()
+        for subagent in live:
+            await _stop(subagent)
+        return live
+
+
+async def stop_stream(conversation_id: str, stream_id: str) -> list[RunningSubagent]:
+    """Stop a stream and every subagent it dispatched, however deep; the one way to stop a run."""
+    await stream_manager.cancel_stream(stream_id)
+    return await RunningSubagents(conversation_id).stop_dispatched_by(stream_id)
+
+
+async def _stop(subagent: RunningSubagent) -> None:
+    """Stop the run's own stream; a run sharing its dispatcher's stream stops with it."""
+    if subagent.stream_id and not await stream_manager.is_cancelled(subagent.stream_id):
+        await stream_manager.cancel_stream(subagent.stream_id)
+        log.info(
+            f"{LogTag.AGENT} Stopped a running subagent",
+            subagent_id=subagent.subagent_id,
+            stream_id=subagent.stream_id,
         )
 
 

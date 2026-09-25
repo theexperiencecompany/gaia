@@ -1083,6 +1083,7 @@ class TestWorkflowHandoffCarriesTheSubagentsCallRecord:
             integration_id="gmail",
             configurable={},
             config={},
+            stream_id=None,
         )
         registry = MagicMock(claim=AsyncMock(return_value=True), deregister=AsyncMock())
         with (

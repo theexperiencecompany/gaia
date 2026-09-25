@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import TypeAdapter
 
+from app.agents.core.background.running_registry import stop_stream
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_id,
@@ -260,16 +261,21 @@ async def cancel_stream_endpoint(
             error="Stream not found",
         )
 
-    if _STREAM_PROGRESS.validate_python(raw_progress).user_id != user_id:
+    progress = _STREAM_PROGRESS.validate_python(raw_progress)
+    if progress.user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to cancel this stream",
         )
 
-    success = await stream_manager.cancel_stream(stream_id)
-    log.info(f"{LogTag.CHAT} Cancel stream request", stream_id=stream_id, success=success)
+    stopped = await stop_stream(progress.conversation_id, stream_id)
+    log.info(
+        f"{LogTag.CHAT} Cancel stream request",
+        stream_id=stream_id,
+        stopped_subagents=len(stopped),
+    )
 
-    return CancelStreamResponse(success=success, stream_id=stream_id)
+    return CancelStreamResponse(success=True, stream_id=stream_id)
 
 
 @router.get("/stream/{stream_id}", response_class=StreamingResponse)

@@ -24,6 +24,7 @@ from app.agents.core.background.executor_queue import (
     try_acquire_lock,
 )
 from app.agents.core.background.executor_runner import run_executor_background
+from app.agents.core.background.running_registry import RunningSubagents, stop_stream
 from app.agents.core.background.session import (
     ExecutorRun,
     RunIdentity,
@@ -357,6 +358,7 @@ async def cancel_executor(
 
     lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
     inbox = ExecutorInbox(conversation_id)
+    subagents = RunningSubagents(conversation_id)
     cancel_all = len(task_ids) == 0
 
     # Use raw client.get() — lock value is a plain string ("stream_id:task_id"),
@@ -364,8 +366,9 @@ async def cancel_executor(
     raw_lock = await redis_cache.client.get(lock_key)
     lock_value: str | None = decode_raw_item(raw_lock) if raw_lock is not None else None
     has_pending = await inbox.count() > 0
+    has_subagents = bool(await subagents.live())
 
-    if not lock_value and not has_pending:
+    if not lock_value and not has_pending and not has_subagents:
         return "No executor tasks are running or pending for this conversation."
 
     try:
@@ -380,6 +383,9 @@ async def cancel_executor(
         # Whether the RUNNING task actually died — captured before `cancelled`
         # grows to include pending entries, which say nothing about the run.
         running_cancelled = bool(cancelled)
+        # A background subagent outlives the run that dispatched it, so "stop
+        # everything" reaches it even after that run has finished.
+        stopped_subagents = await subagents.stop_all() if cancel_all else []
         skipped_running = bool(lock_value) and not running_cancelled
         if cancelled:
             # Only once the RUNNING task is actually gone: a cancel that spared it
@@ -392,14 +398,16 @@ async def cancel_executor(
             cancel_all,
             conversation_id,
         )
+        if stopped_subagents:
+            cancelled.append(f"{len(stopped_subagents)} running subagent(s)")
 
         if not cancelled:
             return "None of the specified task_ids matched any running or pending tasks."
 
         # Record the stop into the per-conversation thread, or the next run
         # resumes exactly what the user stopped — but only when the RUNNING
-        # task actually died; a spared live executor would drain the notice.
-        if running_cancelled:
+        # task or its subagents actually died; a spared live executor would drain the notice.
+        if running_cancelled or stopped_subagents:
             await inbox.announce_interruption(message)
 
         # Tell the client an agent-initiated cancel happened so it can clear the
@@ -463,7 +471,7 @@ async def _cancel_running_task(
         return []
 
     if active_stream_id and active_stream_id not in ("", "1"):
-        await StreamManager.cancel_stream(active_stream_id)
+        await stop_stream(conversation_id, active_stream_id)
 
     await redis_cache.delete(lock_key)
 

@@ -225,7 +225,8 @@ class RunningSubagent:
     The stable, addressable handle the executor needs to steer or cancel a
     specific worker: ``subagent_id`` is what the executor names in
     ``message_subagent``/``cancel_subagent``; ``subagent_thread_id`` is the key
-    its mailbox and cancel flag live under.
+    its mailbox and cancel flag live under. ``stream_id`` is the stream whose stop
+    ends the run; ``dispatched_by`` is the stream of the run that started it.
     """
 
     subagent_id: str
@@ -234,6 +235,9 @@ class RunningSubagent:
     agent_name: str
     task_summary: str
     started_at: str
+    # Defaulted so a record written before these fields existed still decodes.
+    stream_id: str | None = None
+    dispatched_by: str | None = None
 
 
 # What survives a queue hop / HIL resume. AgentConfigurable IS the allowlist; the
