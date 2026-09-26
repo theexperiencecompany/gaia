@@ -38,6 +38,7 @@ from app.constants.todos import (
     CANVAS_PROMPT_MAX_CHARS,
     FAILED_LABEL,
     TODO_SCHEDULE_FIRE_GRACE,
+    TodoActivityEvent,
 )
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
@@ -105,6 +106,17 @@ def _schedule_writes(repo: MagicMock) -> list[tuple[datetime | None, dict]]:
         (c.kwargs["expected"], c.kwargs["update"].model_dump(exclude_unset=True))
         for c in repo.update_if_scheduled_at.call_args_list
     ]
+
+
+@pytest.fixture(autouse=True)
+def activity() -> Iterator[AsyncMock]:
+    """Capture every activity.md entry the worker records, as (todo_id, user_id, event, detail)."""
+    with patch(f"{MODULE}.record_activity", AsyncMock(return_value=True)) as recorded:
+        yield recorded
+
+
+def _recorded(activity: AsyncMock) -> list[tuple[TodoActivityEvent, str]]:
+    return [(c.args[2], c.args[3]) for c in activity.await_args_list]
 
 
 def _updates(repo: MagicMock) -> list[dict]:
@@ -236,9 +248,14 @@ class TestTriggeredExecutionLock:
         pool.set = AsyncMock(return_value=None)
         enqueue = AsyncMock()
         exhausted = len(LOCK_DEFER_BACKOFF)
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=_doc())
+        recorded = AsyncMock()
         with (
             patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
             patch(f"{MODULE}.enqueue_worker_job", enqueue),
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}.record_activity", recorded),
             patch(f"{MODULE}.log") as log_mock,
         ):
             result = await execute_tracked_todo(
@@ -247,6 +264,10 @@ class TestTriggeredExecutionLock:
 
         assert result.startswith("dropped:todo-1")
         enqueue.assert_not_awaited()
+        # The lost event is on the todo's own timeline, not only in the logs.
+        todo_id, user_id, event, detail = recorded.await_args.args
+        assert (todo_id, user_id, event) == ("todo-1", "user-1", TodoActivityEvent.RUN_SKIPPED)
+        assert "dropped a gmail_new_message event" in detail
         # A dropped fire is an error, logged with every field an operator needs to
         # find the subscription that overran its defer budget. log.error also
         # appends to the wide event's errors[], so a blanked field is a real loss.
@@ -555,6 +576,16 @@ class TestExecuteTodoWithRetryEarlyExits:
         assert result == "expired:todo-1"
         via_agent.assert_not_awaited()
 
+    async def test_an_expired_todo_leaves_the_schedule_once_and_says_why(self, activity):
+        """A past scheduled_at kept it due: the safety net re-queued the skip every 30 minutes."""
+        past = datetime.now(UTC) - timedelta(seconds=1)
+        _result, repo, _run = await self._run(_doc(expires_at=past))
+
+        assert _updates(repo) == [{"scheduled_at": None}]
+        ((event, detail),) = _recorded(activity)
+        assert event is TodoActivityEvent.RUN_SKIPPED
+        assert detail == f"not run: the todo expired at {past.isoformat()}"
+
     async def test_expiry_in_the_future_still_executes(self):
         future = datetime.now(UTC) + timedelta(days=1)
         result, _repo, via_agent = await self._run(_doc(expires_at=future))
@@ -643,6 +674,16 @@ class TestExecuteTodoWithRetrySuccess:
         pool.enqueue_job.assert_awaited_once_with(
             "execute_tracked_todo", "todo-1", _defer_until=next_run
         )
+
+    async def test_the_next_run_of_a_recurring_todo_is_on_its_timeline(self, activity):
+        anchor = datetime.now(UTC).replace(microsecond=0) - timedelta(days=2)
+        _result, repo, _pool = await self._run(_doc(scheduled_at=anchor, recurrence="daily"))
+
+        next_run = _schedule_writes(repo)[0][1]["scheduled_at"]
+        assert _recorded(activity) == [
+            (TodoActivityEvent.SCHEDULED, f"next run {next_run.isoformat()} (daily)")
+        ]
+        assert activity.await_args.args[:2] == ("todo-1", "user-1")
 
     async def test_recurrence_is_evaluated_in_the_users_timezone(self):
         """A cron recurrence means 9am *local*: 03:30 UTC for Asia/Kolkata."""
@@ -750,6 +791,17 @@ class TestExecuteTodoWithRetryFailure:
             "todo-1", user_id="user-1", update=TodoUpdate(gaia_retry_count=1)
         )
         assert pool.enqueue_job.await_args.args == ("execute_tracked_todo", "todo-1", origin)
+
+    async def test_a_scheduled_retry_is_on_the_timeline(self, activity):
+        _result, repo, _pool, _mf = await self._run(_doc(gaia_retry_count=0))
+
+        retry_at = _updates(repo)[0]["scheduled_at"]
+        assert _recorded(activity) == [
+            (
+                TodoActivityEvent.RETRY_SCHEDULED,
+                f"attempt 2 of {MAX_RETRY_ATTEMPTS} at {retry_at.isoformat()}",
+            )
+        ]
 
     async def test_final_attempt_marks_failed_and_stops_retrying(self):
         doc = _doc(gaia_retry_count=MAX_RETRY_ATTEMPTS - 1)
@@ -1050,12 +1102,18 @@ class TestStaleScheduledFire:
             result = await _execute_todo_with_retry("todo-1", _pool(), origin)
         return result, run, repo
 
-    async def test_a_fire_whose_schedule_was_cleared_does_not_run(self):
+    async def test_a_fire_whose_schedule_was_cleared_does_not_run(self, activity):
         result, run, repo = await self._fire(_doc(scheduled_at=None))
 
         assert result == "stale:todo-1"
         run.assert_not_awaited()
         repo.update.assert_not_awaited()
+        assert _recorded(activity) == [
+            (
+                TodoActivityEvent.RUN_SKIPPED,
+                "dropped a leftover fire from an earlier schedule (now scheduled: nothing)",
+            )
+        ]
 
     async def test_a_fire_whose_schedule_moved_later_does_not_run(self):
         later = datetime.now(UTC) + TODO_SCHEDULE_FIRE_GRACE + timedelta(hours=1)
@@ -1126,7 +1184,7 @@ class TestExecuteOnExecutor:
             patch(f"{MODULE}.run_todo_on_executor", self.run),
             patch(f"{MODULE}.read_canvas", read),
             patch(f"{MODULE}.read_activity", AsyncMock(return_value="- earlier run")),
-            patch(f"{MODULE}.tracked_todo_service.append_activity_entry", self.timeline),
+            patch(f"{MODULE}.record_activity", self.timeline),
             patch(f"{MODULE}._collect_reference_context", self.references),
         )
 
@@ -1134,7 +1192,8 @@ class TestExecuteOnExecutor:
         return self.run.await_args.args[0]
 
     def _entries(self) -> list[str]:
-        return [c.kwargs["entry"] for c in self.timeline.call_args_list]
+        """Each recorded entry as "[event] detail"."""
+        return [f"[{c.args[2].value}] {c.args[3]}" for c in self.timeline.call_args_list]
 
     async def _execute(self, doc=None, origin=None, **patches):
         p1, p2, p3, p4, p5 = self._patches(**patches)
@@ -1171,20 +1230,17 @@ class TestExecuteOnExecutor:
 
         assert self._request().todo_run.trigger_type is TriggerType.TODO_TRIGGER
         assert '"thread_id": "t-1"' in self._request().task
-        assert "▶ run on gmail_new_message started" in self._entries()[0]
+        assert "[run_started] run on gmail_new_message" in self._entries()[0]
 
     async def test_the_start_entry_names_the_runs_conversation(self):
         await self._execute()
 
         (start,) = self._entries()
-        stamp, text = start.split(" ", 1)
-        assert datetime.fromisoformat(stamp).utcoffset() == timedelta(0)
         assert (
-            text
-            == f"▶ scheduled run started (conversation_id={self._request().conversation_id[:8]})"
+            start
+            == f"[run_started] scheduled run (conversation {self._request().conversation_id[:8]})"
         )
-        assert {c.kwargs["todo_id"] for c in self.timeline.call_args_list} == {"todo-1"}
-        assert {c.kwargs["user_id"] for c in self.timeline.call_args_list} == {"user-1"}
+        assert {c.args[:2] for c in self.timeline.call_args_list} == {("todo-1", "user-1")}
 
     async def test_each_run_gets_a_fresh_conversation(self):
         await self._execute()
@@ -1204,9 +1260,7 @@ class TestExecuteOnExecutor:
             await self._execute(run=AsyncMock(side_effect=TimeoutError("executor stalled")))
 
         _start, failed = self._entries()
-        stamp, text = failed.split(" ", 1)
-        assert datetime.fromisoformat(stamp).utcoffset() == timedelta(0)
-        assert text == "✗ scheduled run failed (TimeoutError)"
+        assert failed == "[run_failed] scheduled run failed (TimeoutError: executor stalled)"
 
 
 # ---------------------------------------------------------------------------
@@ -1238,6 +1292,17 @@ class TestMarkTodoFailed:
         assert request.content.title == "Scheduled Task Failed: Nightly backup"
         assert f"after {MAX_RETRY_ATTEMPTS} attempts" in request.content.body
         assert request.metadata == {"todo_id": "todo-1", "retry_count": MAX_RETRY_ATTEMPTS}
+
+    async def test_stopping_is_on_the_todos_timeline(self, activity):
+        with (
+            patch(f"{MODULE}.todo_repository", MagicMock(add_labels=AsyncMock())),
+            patch(f"{MODULE}.notification_service.create_notification", AsyncMock()),
+            patch(f"{MODULE}.teardown_subscriptions", AsyncMock(return_value=0)),
+        ):
+            await _mark_todo_failed("todo-1", "user-1", _doc())
+
+        ((todo_id, user_id, event, _detail),) = (c.args for c in activity.await_args_list)
+        assert (todo_id, user_id, event) == ("todo-1", "user-1", TodoActivityEvent.MARKED_FAILED)
 
     async def test_a_notification_failure_never_loses_the_failed_label(self):
         repo = MagicMock()
@@ -1404,13 +1469,7 @@ class _ResumeRun:
     log: MagicMock
 
     def entries(self) -> list[str]:
-        return [c.kwargs["entry"] for c in self.timeline.call_args_list]
-
-
-def _split_stamp(entry: str) -> tuple[datetime, str]:
-    """Split an activity entry into its leading timestamp and the rest."""
-    stamp, rest = entry.split(" ", 1)
-    return datetime.fromisoformat(stamp), rest
+        return [f"[{c.args[2].value}] {c.args[3]}" for c in self.timeline.call_args_list]
 
 
 class TestResumeTrackedTodo:
@@ -1454,7 +1513,7 @@ class TestResumeTrackedTodo:
             patch(f"{MODULE}._load_user_with_tz", run.load_user),
             patch(f"{MODULE}.enforce_daily_cost_budget", run.budget),
             patch(f"{MODULE}.run_todo_on_executor", run.agent),
-            patch(f"{MODULE}.tracked_todo_service.append_activity_entry", run.timeline),
+            patch(f"{MODULE}.record_activity", run.timeline),
             patch(f"{MODULE}.enqueue_worker_job", run.enqueue),
             patch(f"{MODULE}.log", run.log),
         ):
@@ -1508,30 +1567,22 @@ class TestResumeTrackedTodo:
         )
         run.pool.delete.assert_awaited_once_with("gaia_todo_exec:todo-1")
 
-    async def test_the_activity_log_records_the_resume_with_a_utc_stamp(self) -> None:
+    async def test_the_activity_log_records_the_granted_approval(self) -> None:
         """The finish entry comes from the run's delivery step, which sees the result."""
         run = await self._resume("todo-1", "conv-parked", "ap_1", "Send briefing")
 
-        (start,) = run.entries()
-        start_at, start_text = _split_stamp(start)
-        assert start_at.utcoffset() == timedelta(0)
-        assert start_text == (
-            "▶ approval resume started (ap_1: Send briefing — granted, continuing in this thread)"
-        )
-        assert {
-            (c.kwargs["todo_id"], c.kwargs["user_id"]) for c in run.timeline.call_args_list
-        } == {("todo-1", "user-7")}
+        assert run.entries() == [
+            "[approval_granted] ap_1: Send briefing; continuing the run in its own thread"
+        ]
+        assert {c.args[:2] for c in run.timeline.call_args_list} == {("todo-1", "user-7")}
 
     async def test_a_failed_resume_is_recorded_raised_and_releases_the_lock(self) -> None:
         run = self._build(agent=AsyncMock(side_effect=RuntimeError("model down")))
         with self._patched(run), pytest.raises(RuntimeError, match="model down"):
             await resume_tracked_todo({}, "todo-1", "conv-parked", "ap_1", "Send briefing")
 
-        failed = run.timeline.call_args_list[-1].kwargs
-        failed_at, failed_text = _split_stamp(failed["entry"])
-        assert failed_at.utcoffset() == timedelta(0)
-        assert failed_text == "✗ approval resume failed (RuntimeError)"
-        assert (failed["todo_id"], failed["user_id"]) == ("todo-1", "user-7")
+        assert run.entries()[-1] == "[run_failed] approval resume failed (RuntimeError: model down)"
+        assert run.timeline.call_args_list[-1].args[:2] == ("todo-1", "user-7")
         run.pool.delete.assert_awaited_once_with("gaia_todo_exec:todo-1")
 
     async def test_completed_todo_needs_no_resume(self) -> None:

@@ -8,7 +8,7 @@ activity inside the canvas) into the canvas.md / activity.md pair.
 from datetime import UTC, datetime
 import re
 
-from app.constants.todos import CANVAS_PROMPT_MAX_CHARS
+from app.constants.todos import CANVAS_PROMPT_MAX_CHARS, CANVAS_SECTIONS
 
 LEGACY_ACTIVITY_SECTIONS = ("Activity Log", "Timeline")
 _LEARNINGS_SECTION = "Learnings"
@@ -17,6 +17,12 @@ _DATED_BLOCK_RE = re.compile(r"(?:^|\n)(### \d{4}-\d{2}-\d{2}.*?)(?=\n### |\Z)",
 # A Timeline line: "- <iso timestamp> <text>" — sortable by the timestamp prefix.
 _TIMELINE_LINE_RE = re.compile(r"^- (\d{4}-\d{2}-\d{2}T\S+) ")
 _DATED_BLOCK_HEADER_RE = re.compile(r"### (\d{4}-\d{2}-\d{2})")
+_HEADING_RE = re.compile(r"^## (.+?)[ \t]*$", re.MULTILINE)
+# A section that is a run log in all but name: "Activity Log (append)", "Timeline", "History".
+_ACTIVITY_HEADING_RE = re.compile(
+    r"^(activity|timeline|history|changelog|run log|log)\b", re.IGNORECASE
+)
+_ANY_DATED_BLOCK_RE = re.compile(r"^### \d{4}-\d{2}-\d{2}", re.MULTILINE)
 
 
 def bounded_canvas(canvas: str) -> str:
@@ -167,3 +173,66 @@ def split_legacy_canvas(canvas: str) -> tuple[str, str | None]:
     if not text.endswith("\n"):
         text += "\n"
     return text, "\n\n".join(merged) if merged else None
+
+
+def _headings(canvas: str) -> list[str]:
+    return [match.group(1) for match in _HEADING_RE.finditer(canvas)]
+
+
+def with_missing_sections(canvas: str) -> str:
+    """Append every template section the canvas lacks, empty, in template order."""
+    missing = [section for section in CANVAS_SECTIONS if section not in _headings(canvas)]
+    if not missing:
+        return canvas
+    body = canvas.rstrip("\n")
+    return body + "".join(f"\n\n## {section}" for section in missing) + "\n"
+
+
+def canvas_problems(canvas: str) -> list[str]:
+    """List what keeps a canvas from being a recall doc: repeated sections, or activity in it."""
+    headings = _headings(canvas)
+    problems: list[str] = []
+    for heading in dict.fromkeys(headings):
+        if _ACTIVITY_HEADING_RE.match(heading):
+            problems.append(f'move "## {heading}" into activity.md')
+        elif (count := headings.count(heading)) > 1:
+            problems.append(f'merge the {count} "## {heading}" sections into one')
+    if _ANY_DATED_BLOCK_RE.search(canvas):
+        problems.append('move the dated "### YYYY-MM-DD" entries into activity.md')
+    return problems
+
+
+def _merge_duplicate_sections(canvas: str) -> str:
+    """Fold every repeat of a "## " section into its first occurrence."""
+    for heading in dict.fromkeys(_headings(canvas)):
+        while _headings(canvas).count(heading) > 1:
+            first = _section_span(canvas, heading)
+            if first is None:
+                break
+            rest = canvas[first[2] :]
+            rest, repeat_body = _remove_section(rest, heading)
+            canvas = canvas[: first[2]].rstrip("\n")
+            if repeat_body:
+                canvas += f"\n{repeat_body}"
+            canvas += ("\n" if rest.startswith("\n") else "\n\n") + rest.lstrip("\n")
+    return canvas
+
+
+def normalize_canvas(canvas: str) -> tuple[str, str | None]:
+    """Repair a canvas into the template's shape; return (canvas, activity moved out or None).
+
+    Legacy and activity-like sections move to activity.md, repeated sections
+    merge, and missing template sections are added. Idempotent.
+    """
+    text, moved = split_legacy_canvas(canvas)
+    moved_parts = [moved] if moved else []
+    for heading in dict.fromkeys(_headings(text)):
+        if _ACTIVITY_HEADING_RE.match(heading):
+            while _section_span(text, heading) is not None:
+                text, body = _remove_section(text, heading)
+                if body:
+                    moved_parts.append(body)
+    text = with_missing_sections(_merge_duplicate_sections(text))
+    if not text.endswith("\n"):
+        text += "\n"
+    return text, "\n\n".join(moved_parts) if moved_parts else None

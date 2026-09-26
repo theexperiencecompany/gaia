@@ -28,6 +28,7 @@ from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
     FAILED_LABEL,
     TODO_SCHEDULE_FIRE_GRACE,
+    TodoActivityEvent,
 )
 from app.db.repositories.todos import todo_repository
 from app.decorators import enforce_daily_cost_budget
@@ -44,8 +45,8 @@ from app.models.workflow_models import TriggerType
 from app.services.canvas_markdown import bounded_canvas, section_body
 from app.services.hil.utils import untrusted_fence
 from app.services.notification_service import notification_service
+from app.services.todo_activity import record_activity
 from app.services.todo_canvas_storage import read_activity, read_canvas
-from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.utils.auth_utils import load_user_context
 from app.utils.cron_utils import CronError, get_next_run_time
@@ -133,6 +134,15 @@ async def _handle_held_lock(todo_id: str, pool: ArqRedis, origin: TriggerOrigin 
             subscription_id=origin.subscription_id,
             defer_attempts=origin.defer_attempts,
         )
+        doc = await todo_repository.get_by_id(todo_id)
+        if doc is not None:
+            await record_activity(
+                todo_id,
+                doc.user_id,
+                TodoActivityEvent.RUN_SKIPPED,
+                f"dropped a {origin.trigger_name} event: a run was still going after "
+                f"{origin.defer_attempts} retries",
+            )
         return f"dropped:{todo_id} (lock held after {origin.defer_attempts} defers)"
 
     delay = LOCK_DEFER_BACKOFF[origin.defer_attempts]
@@ -163,7 +173,7 @@ async def _execute_todo_with_retry(
         log.warning("tracked_todo.execute_not_found", todo_id=todo_id)
         return f"not_found:{todo_id}"
 
-    if skipped := _skip_reason(doc, origin):
+    if skipped := await _skip_reason(doc, origin):
         return skipped
 
     user_id = doc.user_id
@@ -223,6 +233,12 @@ async def _execute_todo_with_retry(
             origin,
             _defer_until=next_attempt,
         )
+        await record_activity(
+            todo_id,
+            user_id,
+            TodoActivityEvent.RETRY_SCHEDULED,
+            f"attempt {new_retry_count + 1} of {MAX_RETRY_ATTEMPTS} at {next_attempt.isoformat()}",
+        )
         log.info(
             "tracked_todo.retry_enqueued",
             todo_id=todo_id,
@@ -255,24 +271,41 @@ async def _advance_schedule(doc: TodoDocument, pool: ArqRedis, user_tz: str) -> 
         return False
     if next_run:
         await enqueue_worker_job(pool, "execute_tracked_todo", doc.id, _defer_until=next_run)
+        await record_activity(
+            doc.id,
+            doc.user_id,
+            TodoActivityEvent.SCHEDULED,
+            f"next run {next_run.isoformat()} ({doc.recurrence})",
+        )
         log.info("tracked_todo.re_enqueued", todo_id=doc.id, next_run=next_run.isoformat())
     return True
 
 
-def _skip_reason(doc: TodoDocument, origin: TriggerOrigin | None) -> str | None:
+async def _skip_reason(doc: TodoDocument, origin: TriggerOrigin | None) -> str | None:
     """Return the result of a fire this todo must not run, or None when it runs."""
     todo_id = doc.id
     if doc.completed:
         log.info("tracked_todo.execute_already_completed", todo_id=todo_id)
         return f"completed:{todo_id}"
 
-    # Skip expired todos — let maintenance sweep handle gracefully
+    # Skip expired todos — let maintenance sweep handle gracefully. Clearing the
+    # schedule stops the safety net re-queueing this skip every 30 minutes.
     if doc.expires_at and doc.expires_at <= datetime.now(UTC):
         log.info(
             "tracked_todo.execute_expired",
             todo_id=todo_id,
             expires_at=doc.expires_at.isoformat(),
         )
+        if doc.scheduled_at is not None:
+            await todo_repository.update(
+                todo_id, user_id=doc.user_id, update=TodoUpdate(scheduled_at=None)
+            )
+            await record_activity(
+                todo_id,
+                doc.user_id,
+                TodoActivityEvent.RUN_SKIPPED,
+                f"not run: the todo expired at {doc.expires_at.isoformat()}",
+            )
         return f"expired:{todo_id}"
 
     # Skip failed todos — user must manually reset before re-execution
@@ -283,6 +316,13 @@ def _skip_reason(doc: TodoDocument, origin: TriggerOrigin | None) -> str | None:
     if origin is None and not _is_due(doc):
         scheduled = doc.scheduled_at.isoformat() if doc.scheduled_at else None
         log.warning("tracked_todo.stale_fire_skipped", todo_id=todo_id, scheduled_at=scheduled)
+        await record_activity(
+            todo_id,
+            doc.user_id,
+            TodoActivityEvent.RUN_SKIPPED,
+            "dropped a leftover fire from an earlier schedule "
+            f"(now scheduled: {scheduled or 'nothing'})",
+        )
         return f"stale:{todo_id}"
 
     if not doc.user_id:
@@ -412,11 +452,11 @@ async def _execute_on_executor(
     # accumulate in the checkpointer.
     conversation_id = str(uuid4())
     woken_by = "scheduled run" if origin is None else f"run on {origin.trigger_name}"
-    await tracked_todo_service.append_activity_entry(
-        todo_id=todo_id,
-        user_id=user_id,
-        entry=f"{datetime.now(UTC).isoformat()} ▶ {woken_by} started "
-        f"(conversation_id={conversation_id[:8]})",
+    await record_activity(
+        todo_id,
+        user_id,
+        TodoActivityEvent.RUN_STARTED,
+        f"{woken_by} (conversation {conversation_id[:8]})",
     )
     try:
         await run_todo_on_executor(
@@ -429,10 +469,11 @@ async def _execute_on_executor(
             )
         )
     except Exception as exc:
-        await tracked_todo_service.append_activity_entry(
-            todo_id=todo_id,
-            user_id=user_id,
-            entry=f"{datetime.now(UTC).isoformat()} ✗ {woken_by} failed ({type(exc).__name__})",
+        await record_activity(
+            todo_id,
+            user_id,
+            TodoActivityEvent.RUN_FAILED,
+            f"{woken_by} failed ({type(exc).__name__}: {str(exc)[:160]})",
         )
         raise
     log.info("tracked_todo.run_completed", todo_id=todo_id)
@@ -487,11 +528,11 @@ async def resume_tracked_todo(
         user_data, _ = await _load_user_with_tz(user_id)
         await enforce_daily_cost_budget(user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
 
-        start_iso = datetime.now(UTC).isoformat()
-        await tracked_todo_service.append_activity_entry(
-            todo_id=todo_id,
-            user_id=user_id,
-            entry=f"{start_iso} ▶ approval resume started ({approval_id}: {receipt} — granted, continuing in this thread)",
+        await record_activity(
+            todo_id,
+            user_id,
+            TodoActivityEvent.APPROVAL_GRANTED,
+            f"{approval_id}: {receipt}; continuing the run in its own thread",
         )
 
         message = (
@@ -511,11 +552,11 @@ async def resume_tracked_todo(
         )
         return f"resumed:{todo_id}"
     except Exception as exc:
-        fail_iso = datetime.now(UTC).isoformat()
-        await tracked_todo_service.append_activity_entry(
-            todo_id=todo_id,
-            user_id=user_id,
-            entry=f"{fail_iso} ✗ approval resume failed ({type(exc).__name__})",
+        await record_activity(
+            todo_id,
+            user_id,
+            TodoActivityEvent.RUN_FAILED,
+            f"approval resume failed ({type(exc).__name__}: {str(exc)[:160]})",
         )
         raise
     finally:
@@ -528,6 +569,13 @@ async def _mark_todo_failed(todo_id: str, user_id: str, doc: TodoDocument) -> No
     # The execution path skips failed todos until a manual reset, so leaving the
     # subscriptions armed would burn events on a todo that can never run.
     await teardown_subscriptions(todo_id, user_id, reason="failed")
+    await record_activity(
+        todo_id,
+        user_id,
+        TodoActivityEvent.MARKED_FAILED,
+        f"stopped after {MAX_RETRY_ATTEMPTS} failed attempts; runs resume once the failed "
+        "label is removed",
+    )
     log.info("tracked_todo.marked_failed", todo_id=todo_id)
 
     title: str = doc.title

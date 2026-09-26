@@ -10,8 +10,11 @@ from app.services.canvas_markdown import (
     _line_timestamp,
     _remove_section,
     bounded_canvas,
+    canvas_problems,
+    normalize_canvas,
     section_body,
     split_legacy_canvas,
+    with_missing_sections,
 )
 
 LEGACY = """# Fix the thing
@@ -304,3 +307,87 @@ class TestBoundedCanvas:
         assert bounded_canvas(canvas) == (
             "h" * half + "\n[middle of canvas trimmed: 100 characters]\n" + "t" * half
         )
+
+
+# The shape of the pitch-prep canvas from 2026-09-26: the removed append-mode tool
+# left a "## Activity Log (append)" section, a dated block and a doubled Learnings.
+MANGLED = """# GAIA Pitch Prep Research
+
+## Key Details
+- Pitch: Dodo Payments Pitch Days.
+
+## Current State
+- Research stored in Notion.
+
+## Customer-Depth Research Goal
+- What users like and want.
+
+## Learnings
+
+## Learnings
+
+## Activity Log (append)
+2026-09-26 01:45 IST: stored the research in Notion.
+### 2026-09-26 Paying-user demographics
+- 15 external payers
+"""
+
+
+class TestCanvasProblems:
+    def test_the_mangled_canvas_names_every_problem(self) -> None:
+        assert canvas_problems(MANGLED) == [
+            'merge the 2 "## Learnings" sections into one',
+            'move "## Activity Log (append)" into activity.md',
+            'move the dated "### YYYY-MM-DD" entries into activity.md',
+        ]
+
+    @pytest.mark.parametrize("heading", ["Timeline", "History", "Run log", "Log of runs"])
+    def test_a_log_by_any_name_is_activity(self, heading: str) -> None:
+        assert canvas_problems(f"## Key Details\n\n## {heading}\n- x\n") == [
+            f'move "## {heading}" into activity.md'
+        ]
+
+    def test_a_template_canvas_with_its_own_sections_is_fine(self) -> None:
+        canvas = "## Key Details\n\n## Current State\n\n## Risks\n\n## Context\n\n## Learnings\n"
+        assert canvas_problems(canvas) == []
+
+
+class TestWithMissingSections:
+    def test_only_the_missing_sections_are_added_in_template_order(self) -> None:
+        canvas = "# T\n\n## Key Details\nk\n\n## Learnings\n"
+
+        assert with_missing_sections(canvas) == (
+            "# T\n\n## Key Details\nk\n\n## Learnings\n\n## Current State\n\n## Context\n"
+        )
+
+    def test_a_complete_canvas_is_returned_as_is(self) -> None:
+        canvas = "## Key Details\n\n## Current State\n\n## Context\n\n## Learnings\n"
+        assert with_missing_sections(canvas) is canvas
+
+
+class TestNormalizeCanvas:
+    def test_the_mangled_canvas_becomes_a_recall_doc(self) -> None:
+        canvas, moved = normalize_canvas(MANGLED)
+
+        assert canvas_problems(canvas) == []
+        assert canvas.count("## Learnings") == 1
+        assert "## Customer-Depth Research Goal\n- What users like and want." in canvas
+        assert "## Context" in canvas
+        assert moved is not None
+        assert "stored the research in Notion" in moved
+        assert "15 external payers" in moved
+
+    def test_normalizing_is_idempotent(self) -> None:
+        canvas, _ = normalize_canvas(MANGLED)
+
+        assert normalize_canvas(canvas) == (canvas, None)
+
+    def test_repeated_sections_keep_every_body(self) -> None:
+        canvas, moved = normalize_canvas(
+            "## Key Details\na\n\n## Current State\n\n## Key Details\nb\n\n"
+            "## Context\n\n## Learnings\n"
+        )
+
+        assert moved is None
+        assert canvas.count("## Key Details") == 1
+        assert section_body(canvas, "Key Details") == "a\nb"

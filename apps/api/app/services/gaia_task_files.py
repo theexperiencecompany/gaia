@@ -13,9 +13,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.todos import CANVAS_SECTIONS, GAIA_TRACKED_LABEL
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import TodoDocument
+from app.services.canvas_markdown import canvas_problems, with_missing_sections
 from app.services.gaia_tasks_fs import fetch_active_projections, project_gaia_task
 from app.services.storage._vfs_common import INDEX_FILENAME, meta_body
 from app.services.storage.gaia_tasks_vfs import GAIA_TASKS_DIRNAME, render_index
@@ -143,11 +144,35 @@ def write_refusal(ref: GaiaTaskPath) -> str | None:
     return None
 
 
+def _content_refusal(ref: TaskFile, content: str) -> str | None:
+    """Why this body breaks its file's shape, or None when it may be saved."""
+    if ref.filename is GaiaTaskFile.ACTIVITY:
+        current = (ref.todo.activity_content or "").rstrip()
+        if not content.startswith(current):
+            return (
+                "Error: activity.md is append-only. Keep every existing entry exactly as it "
+                "is and add yours at the end; read the file again, since entries may have "
+                "been added since you last read it."
+            )
+        return None
+    if problems := canvas_problems(content):
+        return (
+            f"Error: canvas.md was not saved: {'; '.join(problems)}. The canvas keeps one "
+            f"section each for {', '.join(CANVAS_SECTIONS)} (plus any of your own); dated "
+            "entries and run logs belong in activity.md."
+        )
+    return None
+
+
 async def write_file(ref: GaiaTaskPath, user_id: str, content: str) -> str | None:
     """Persist a write to canvas.md/activity.md; return a refusal message on failure, None otherwise."""
     refusal = write_refusal(ref)
     if refusal is not None or not isinstance(ref, TaskFile):
         return refusal
+    if refusal := _content_refusal(ref, content):
+        return refusal
+    if ref.filename is GaiaTaskFile.CANVAS:
+        content = with_missing_sections(content)
     writer = write_canvas if ref.filename is GaiaTaskFile.CANVAS else write_activity
     if not await writer(ref.todo.id, user_id, content, expected_updated_at=ref.todo.updated_at):
         # The guarded write matched nothing: either the todo is gone or a

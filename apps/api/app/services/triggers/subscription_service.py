@@ -17,7 +17,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from app.constants.todos import BLOCKING_LABEL
+from app.constants.todos import BLOCKING_LABEL, TodoActivityEvent
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import TodoUpdate
 from app.models.trigger_subscription_models import (
@@ -30,6 +30,7 @@ from app.models.trigger_subscription_models import (
 )
 from app.models.workflow_models import TriggerConfig, TriggerType
 from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.todo_activity import record_activity
 from app.services.triggers import get_handler_by_name
 from app.services.triggers.subscription_validation import (
     ValidationOutcome,
@@ -172,6 +173,12 @@ async def register_subscription(
             "cooldown_seconds": cooldown_seconds,
         },
     )
+    await record_activity(
+        todo_id,
+        user_id,
+        TodoActivityEvent.WATCH_ADDED,
+        f"watching {trigger_name} ({len(outcome.conditions)} condition(s)) to {action.value}",
+    )
     log.info(
         "todo_subscription.registered",
         todo_id=todo_id,
@@ -223,6 +230,9 @@ async def unregister_subscription(
                 error_type=type(e).__name__,
             )
 
+    await record_activity(
+        todo_id, user_id, TodoActivityEvent.WATCH_REMOVED, f"stopped watching {target.trigger_name}"
+    )
     log.info(
         "todo_subscription.unregistered",
         todo_id=todo_id,
@@ -271,6 +281,10 @@ async def teardown_subscriptions(todo_id: str, user_id: str, *, reason: str) -> 
     await todo_repository.update(
         todo_id, user_id=user_id, update=TodoUpdate(trigger_subscriptions=[])
     )
+    names = ", ".join(sorted({sub.trigger_name for sub in todo.trigger_subscriptions}))
+    await record_activity(
+        todo_id, user_id, TodoActivityEvent.WATCH_REMOVED, f"stopped watching {names} ({reason})"
+    )
     log.info("todo_subscription.torn_down", todo_id=todo_id, count=count, reason=reason)
     return count
 
@@ -300,6 +314,12 @@ async def pause_subscriptions_for_trigger_names(user_id: str, trigger_names: set
                         todo.trigger_subscriptions, trigger_names, TriggerSubscriptionStatus.PAUSED
                     ),
                 ),
+            )
+            await record_activity(
+                todo.id,
+                user_id,
+                TodoActivityEvent.WATCH_PAUSED,
+                f"{trigger_name} paused: its integration was disconnected",
             )
             paused += 1
     if paused:
@@ -341,6 +361,12 @@ async def resync_subscriptions_for_trigger_names(user_id: str, trigger_names: se
                 todo.id,
                 user_id=user_id,
                 update=TodoUpdate(labels=labels, trigger_subscriptions=updated),
+            )
+            await record_activity(
+                todo.id,
+                user_id,
+                TodoActivityEvent.WATCH_RESUMED,
+                f"{trigger_name} resumed: its integration was reconnected",
             )
             resynced += 1
     if resynced:

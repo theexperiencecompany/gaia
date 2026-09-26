@@ -21,6 +21,8 @@ TODO_ID = "66f838cc8829054e5f10e407"
 FOLDER = f"fix-the-thing-{TODO_ID[-8:]}"
 CANVAS = "# Fix the thing\n\n## Current State\nWaiting on Rahul.\n"
 _FILES = "app.services.gaia_task_files"
+SECTIONS = "\n\n## Key Details\n\n## Current State\n\n## Context\n\n## Learnings\n"
+FULL_CANVAS = "# Fix the thing" + SECTIONS
 
 
 def _doc(**overrides: object) -> TodoDocument:
@@ -118,13 +120,13 @@ class TestWrite:
         _, w, _, _ = no_sandbox
 
         out = await write_tool.write.ainvoke(
-            {"path": f"/workspace/gaia-tasks/{FOLDER}/canvas.md", "content": "# new"},
+            {"path": f"/workspace/gaia-tasks/{FOLDER}/canvas.md", "content": FULL_CANVAS},
             config=CONFIG,
         )
 
         assert out.startswith("Wrote")
         canvas.assert_awaited_once_with(
-            TODO_ID, "user-1", "# new", expected_updated_at=_doc().updated_at
+            TODO_ID, "user-1", FULL_CANVAS, expected_updated_at=_doc().updated_at
         )
         activity.assert_not_awaited()
         w.assert_not_called()
@@ -132,13 +134,14 @@ class TestWrite:
     async def test_activity_write_lands_in_mongo(self, repo, writers, no_sandbox):
         canvas, activity = writers
 
+        appended = "- 2026-09-01T09:00:00+00:00 started\n- 2026-09-02T10:00:00+00:00 replied"
         await write_tool.write.ainvoke(
-            {"path": f"/workspace/gaia-tasks/{FOLDER}/activity.md", "content": "- x"},
+            {"path": f"/workspace/gaia-tasks/{FOLDER}/activity.md", "content": appended},
             config=CONFIG,
         )
 
         activity.assert_awaited_once_with(
-            TODO_ID, "user-1", "- x", expected_updated_at=_doc().updated_at
+            TODO_ID, "user-1", appended, expected_updated_at=_doc().updated_at
         )
 
     async def test_log_write_is_refused(self, repo, writers, no_sandbox):
@@ -226,13 +229,13 @@ class TestEdit:
 
     async def test_edit_ambiguous_old_string_needs_replace_all(self, repo, writers, no_sandbox):
         canvas, _ = writers
-        repo.find_tracked_by_short_id.return_value = [_doc(canvas_content="a b a")]
+        repo.find_tracked_by_short_id.return_value = [_doc(canvas_content="qq b qq" + SECTIONS)]
 
         out = await edit_tool.edit.ainvoke(
             {
                 "path": f"/workspace/gaia-tasks/{FOLDER}/canvas.md",
-                "old_string": "a",
-                "new_string": "c",
+                "old_string": "qq",
+                "new_string": "zz",
             },
             config=CONFIG,
         )
@@ -242,20 +245,20 @@ class TestEdit:
 
     async def test_edit_replace_all(self, repo, writers, no_sandbox):
         canvas, _ = writers
-        repo.find_tracked_by_short_id.return_value = [_doc(canvas_content="a b a")]
+        repo.find_tracked_by_short_id.return_value = [_doc(canvas_content="qq b qq" + SECTIONS)]
 
         out = await edit_tool.edit.ainvoke(
             {
                 "path": f"/workspace/gaia-tasks/{FOLDER}/canvas.md",
-                "old_string": "a",
-                "new_string": "c",
+                "old_string": "qq",
+                "new_string": "zz",
                 "replace_all": True,
             },
             config=CONFIG,
         )
 
         assert "2 occurrences" in out
-        assert canvas.await_args.args[2] == "c b c"
+        assert canvas.await_args.args[2] == "zz b zz" + SECTIONS
 
     async def test_edit_of_a_system_file_is_refused(self, repo, writers, no_sandbox):
         out = await edit_tool.edit.ainvoke(

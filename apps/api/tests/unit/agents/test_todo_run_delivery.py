@@ -16,7 +16,7 @@ from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
 from app.agents.core.background.todo_run_delivery import deliver_todo_run_result
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
 from app.constants.log_tags import LogTag
-from app.constants.todos import DELIVERY_KEY_DETAILS_MAX_CHARS
+from app.constants.todos import DELIVERY_KEY_DETAILS_MAX_CHARS, TodoActivityEvent
 from app.models.chat_models import ConversationSource
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
@@ -45,7 +45,7 @@ class _Seams:
     capture: MagicMock
 
     def entry(self) -> str:
-        return self.activity.await_args.kwargs["entry"]
+        return self.activity.await_args.args[3]
 
     def props(self) -> dict[str, object]:
         return self.capture.call_args.args[2]
@@ -67,7 +67,7 @@ def _seams(
         patch.object(trd, "narrate_executor_result", seams.narrate),
         patch.object(trd, "deliver_result_to_platforms", seams.send),
         patch.object(trd, "todo_repository", repo),
-        patch.object(trd.tracked_todo_service, "append_activity_entry", seams.activity),
+        patch.object(trd, "record_activity", seams.activity),
         patch.object(trd, "capture_event", seams.capture),
     ):
         yield seams
@@ -123,9 +123,9 @@ class TestAttribution:
         with _seams(todo=_todo(user_id="user-9")) as seams:
             await deliver_todo_run_result(RUN, SCHEDULED, "a\nlong\nreport", "final")
 
-        kwargs = seams.activity.await_args.kwargs
-        assert (kwargs["todo_id"], kwargs["user_id"]) == ("todo-1", "user-9")
-        assert "(summary='a long report')" in kwargs["entry"]
+        todo_id, user_id, event, detail = seams.activity.await_args.args
+        assert (todo_id, user_id, event) == ("todo-1", "user-9", TodoActivityEvent.RUN_FINISHED)
+        assert "(summary='a long report')" in detail
 
 
 class TestTheWideEventSaysWhatHappened:

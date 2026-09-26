@@ -30,6 +30,11 @@ SHORT = TODO_ID[-8:]
 FOLDER = f"fix-the-thing-{SHORT}"
 
 
+VALID_CANVAS = (
+    "# Fix the thing\n\n## Key Details\nk\n\n## Current State\nopen\n\n## Context\n\n## Learnings\n"
+)
+
+
 def _doc(**overrides: object) -> TodoDocument:
     data: dict[str, object] = {
         "id": TODO_ID,
@@ -207,11 +212,11 @@ class TestWriteFile:
         canvas, activity, syslog = writers
         doc = _doc()
 
-        result = await write_file(TaskFile(doc, GaiaTaskFile.CANVAS), USER_ID, "# new")
+        result = await write_file(TaskFile(doc, GaiaTaskFile.CANVAS), USER_ID, VALID_CANVAS)
 
         assert result is None
         canvas.assert_awaited_once_with(
-            TODO_ID, USER_ID, "# new", expected_updated_at=doc.updated_at
+            TODO_ID, USER_ID, VALID_CANVAS, expected_updated_at=doc.updated_at
         )
         activity.assert_not_awaited()
         # The audit line names this todo and this user, and records the file and
@@ -220,19 +225,64 @@ class TestWriteFile:
             todo_id=TODO_ID,
             user_id=USER_ID,
             event_type="CANVAS_UPDATED",
-            details="Agent wrote canvas.md (5 chars)",
+            details=f"Agent wrote canvas.md ({len(VALID_CANVAS)} chars)",
         )
+
+    async def test_a_canvas_missing_template_sections_gets_them_added(self, writers):
+        canvas, _activity, _syslog = writers
+
+        await write_file(
+            TaskFile(_doc(), GaiaTaskFile.CANVAS), USER_ID, "# new\n\n## Key Details\nk\n"
+        )
+
+        written = canvas.await_args.args[2]
+        assert written.startswith("# new\n\n## Key Details\nk")
+        for section in ("## Current State", "## Context", "## Learnings"):
+            assert written.count(section) == 1
+
+    @pytest.mark.parametrize(
+        ("body", "problem"),
+        [
+            (VALID_CANVAS + "\n## Learnings\nagain\n", 'merge the 2 "## Learnings" sections'),
+            (VALID_CANVAS + "\n## Activity Log (append)\n- ran\n", '"## Activity Log (append)"'),
+            (VALID_CANVAS + "\n### 2026-09-26 research\n- found\n", "dated"),
+        ],
+        ids=["repeated-section", "activity-section", "dated-entry"],
+    )
+    async def test_a_canvas_carrying_a_log_or_a_repeat_is_refused(self, writers, body, problem):
+        canvas, _activity, syslog = writers
+
+        refusal = await write_file(TaskFile(_doc(), GaiaTaskFile.CANVAS), USER_ID, body)
+
+        assert refusal is not None and problem in refusal
+        canvas.assert_not_awaited()
+        syslog.assert_not_awaited()
 
     async def test_activity_write_goes_to_mongo(self, writers):
         canvas, activity, syslog = writers
         doc = _doc()
+        appended = f"{doc.activity_content}\n- 2026-09-02T10:00:00+00:00 replied"
 
-        assert await write_file(TaskFile(doc, GaiaTaskFile.ACTIVITY), USER_ID, "- x") is None
+        assert await write_file(TaskFile(doc, GaiaTaskFile.ACTIVITY), USER_ID, appended) is None
         activity.assert_awaited_once_with(
-            TODO_ID, USER_ID, "- x", expected_updated_at=doc.updated_at
+            TODO_ID, USER_ID, appended, expected_updated_at=doc.updated_at
         )
         canvas.assert_not_awaited()
         assert "activity.md" in syslog.await_args.kwargs["details"]
+
+    @pytest.mark.parametrize(
+        "rewrite",
+        ["- 2026-09-02T10:00:00+00:00 replied", "- 2026-09-01T09:00:00+00:00 begun\n- more"],
+        ids=["dropped-entry", "edited-entry"],
+    )
+    async def test_activity_that_loses_an_earlier_entry_is_refused(self, writers, rewrite):
+        """A read-then-write that missed an entry code appended in between used to erase it."""
+        _canvas, activity, _syslog = writers
+
+        refusal = await write_file(TaskFile(_doc(), GaiaTaskFile.ACTIVITY), USER_ID, rewrite)
+
+        assert refusal is not None and "append-only" in refusal
+        activity.assert_not_awaited()
 
     @pytest.mark.parametrize("filename", [GaiaTaskFile.LOG, GaiaTaskFile.META])
     async def test_system_files_are_refused(self, writers, filename):
@@ -257,7 +307,7 @@ class TestWriteFile:
         canvas.return_value = False
         mock_repo.get.return_value = None
 
-        refusal = await write_file(TaskFile(_doc(), GaiaTaskFile.CANVAS), USER_ID, "x")
+        refusal = await write_file(TaskFile(_doc(), GaiaTaskFile.CANVAS), USER_ID, VALID_CANVAS)
 
         assert refusal is not None and "no longer exists" in refusal
         # The re-read must look up THIS todo for THIS user to tell deletion
@@ -271,7 +321,7 @@ class TestWriteFile:
         mock_repo.get.return_value = _doc()
 
         with pytest.raises(NoteConflictError) as exc:
-            await write_file(TaskFile(_doc(), GaiaTaskFile.CANVAS), USER_ID, "x")
+            await write_file(TaskFile(_doc(), GaiaTaskFile.CANVAS), USER_ID, VALID_CANVAS)
 
         # The conflict carries the todo id so a re-appliable caller knows what
         # to re-resolve.
@@ -283,7 +333,7 @@ class TestWriteFile:
         syslog.side_effect = RuntimeError("audit down")
 
         with patch(f"{_MOD}.log") as mock_log:
-            result = await write_file(TaskFile(_doc(), GaiaTaskFile.CANVAS), USER_ID, "# new")
+            result = await write_file(TaskFile(_doc(), GaiaTaskFile.CANVAS), USER_ID, VALID_CANVAS)
 
         assert result is None
         canvas.assert_awaited_once()

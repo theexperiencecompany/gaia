@@ -59,6 +59,17 @@ const PLUGINS: PluginConfig = {
   },
 };
 
+// Only `$$…$$` is math: prose full of prices ("$347.53 … $8") otherwise renders
+// the text between two dollar signs as a formula, one letter per line.
+const DISPLAY_MATH_PLUGINS: PluginConfig = {
+  math: {
+    name: "katex",
+    type: "math",
+    remarkPlugin: [remarkMath, { singleDollarTextMath: false }],
+    rehypePlugin: rehypeKatex,
+  },
+};
+
 // gfm is included explicitly: passing remarkPlugins replaces streamdown's default
 // set, so we restate it here alongside the GAIA flavors (line breaks, smart
 // punctuation, super/subscript).
@@ -218,6 +229,8 @@ export interface MarkdownRendererProps {
    * whose component overrides give such links a custom rendering.
    */
   extraLinkProtocols?: string[];
+  /** Treat `$…$` as inline math. Off for prose that quotes prices. Defaults to true. */
+  inlineDollarMath?: boolean;
 }
 
 const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
@@ -228,6 +241,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   components,
   extraLinkProtocols,
   lightBackground,
+  inlineDollarMath = true,
 }) => {
   const urlTransform = useMemo<UrlTransform>(() => {
     if (!extraLinkProtocols?.length) return defaultUrlTransform;
@@ -264,7 +278,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
       <Streamdown
         components={mergedComponents}
         remarkPlugins={REMARK_PLUGINS}
-        plugins={PLUGINS}
+        plugins={inlineDollarMath ? PLUGINS : DISPLAY_MATH_PLUGINS}
         allowedTags={ALLOWED_TAGS}
         urlTransform={urlTransform}
         isAnimating={isStreaming}

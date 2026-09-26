@@ -164,14 +164,18 @@ Overusing tracked todos degrades search quality and clutters GAIA's memory.
 addresses, URLs needed to act), `Current State` (true right now; rewrite it
 after every action), `Context` (decisions, open questions, signals), `Learnings`
 (written ONLY at completion: what worked, timing insights, reusable patterns).
-Keep it short and current: `edit` the section that changed, never append to the
-end of the file.
+One section each, plus any of your own. Keep it short and current: `edit` the
+section that changed, never append to the end of the file. A write that
+repeats a section or carries a log or dated entries is refused.
 
 `activity.md` is the chronological record: one dated entry per thing that
 happened (`- 2026-09-02T10:15:00+00:00 Gmail agent: sent ... thread 18f3a2b`),
-oldest first, newest at the end. Scheduled runs stamp their own start/finish
-markers here. After delegation, add what each agent did (tools used, ids,
-outcome). Never write learnings here, and never write activity into canvas.md.
+oldest first, newest at the end. It is append-only: add entries at the end, and
+a write that changes or drops an earlier one is refused. GAIA records its own
+lifecycle entries here as `- <time> [event] detail` (runs and their outcome,
+schedule and delivery changes, watches, trigger fires, failures, completion).
+After delegation, add what each agent did (tools used, ids, outcome). Never
+write learnings here, and never write activity into canvas.md.
 
 ## Scheduling & recurrence
 

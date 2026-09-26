@@ -5,7 +5,6 @@ saved there: comms decides whether it is worth a message at all, the user's chat
 app gets it only if so, and activity.md records what happened either way.
 """
 
-from datetime import UTC, datetime
 from typing import NamedTuple
 
 from app.agents.core.background.comms_narrator import narrate_executor_result
@@ -18,6 +17,7 @@ from app.constants.log_tags import LogTag
 from app.constants.todos import (
     DELIVERY_KEY_DETAILS_MAX_CHARS,
     RUN_SUMMARY_ACTIVITY_CHARS,
+    TodoActivityEvent,
     TodoRunDeliveryOutcome,
 )
 from app.db.repositories.todos import todo_repository
@@ -25,7 +25,7 @@ from app.models.chat_models import ConversationSource
 from app.models.todo_models import TodoDocument
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.canvas_markdown import section_body
-from app.services.tracked_todo_service import tracked_todo_service
+from app.services.todo_activity import record_activity
 from shared.py.wide_events import log
 
 _NOT_SENT_NOTES: dict[TodoRunDeliveryOutcome, str] = {
@@ -75,13 +75,11 @@ async def deliver_todo_run_result(
 
     log.set_ns("todo_delivery", outcome=resolution.outcome.value)
     summary = result_text.strip().replace("\n", " ")[:RUN_SUMMARY_ACTIVITY_CHARS]
-    await tracked_todo_service.append_activity_entry(
-        todo_id=todo.id,
-        user_id=todo.user_id,
-        entry=(
-            f"{datetime.now(UTC).isoformat()} ✓ run finished; {resolution.note} "
-            f"(summary={summary!r})"
-        ),
+    await record_activity(
+        todo.id,
+        todo.user_id,
+        TodoActivityEvent.RUN_FINISHED,
+        f"{resolution.note} (summary={summary!r})",
     )
     # A worker has no request context: the explicit user id keeps the event off
     # an anonymous profile.

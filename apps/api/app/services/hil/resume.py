@@ -4,8 +4,8 @@ Live runs resume through the executor inbox (ticket redeem). Background runs
 have no live run to wake, so an approval must RE-ENQUEUE the owning work and a
 denial must leave a trace where the owner actually looks:
 
-- Tracked todos: append the receipt to the activity log and re-enqueue the
-  todo; its next execution reads the log and continues (a denial appends skip).
+- Tracked todos: re-enqueue the todo in its parked conversation; a denial is
+  recorded on the todo's activity log, which its next run reads.
 - Workflows: re-queue with the receipt in the trigger context, so the run
   continues with the approval in context and the trace in its conversation.
 
@@ -14,10 +14,11 @@ here is best-effort: a resume failure must never fail the tap that approved.
 """
 
 from app.constants.log_tags import LogTag
+from app.constants.todos import TodoActivityEvent
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.models.hil_models import ApprovalLedgerDocument
 from app.services.analytics_service import AnalyticsEvents, capture_event
-from app.services.tracked_todo_service import tracked_todo_service
+from app.services.todo_activity import record_activity
 from app.services.workflow.execution_service import get_last_run_brief
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.utils.redis_utils import RedisPoolManager
@@ -66,20 +67,13 @@ async def record_owner_deny(row: ApprovalLedgerDocument, feedback: str | None) -
     """Leave a denial trace where a background owner looks. Never raises."""
     if row.owner_run_type != "todo" or not row.owner_id:
         return
-    try:
-        what = f" — {feedback!r}" if feedback else ""
-        await tracked_todo_service.append_activity_entry(
-            todo_id=row.owner_id,
-            user_id=row.user_id,
-            entry=(f"Approval {row.approval_id} denied{what}: skipped {row.summary}."),
-        )
-    except Exception as e:
-        log.warning(
-            f"{LogTag.HIL} deny trace failed",
-            approval_id=row.approval_id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
+    what = f" ({feedback!r})" if feedback else ""
+    await record_activity(
+        row.owner_id,
+        row.user_id,
+        TodoActivityEvent.APPROVAL_DENIED,
+        f"{row.approval_id}{what}: skipped {row.summary}",
+    )
 
 
 async def _resume_todo(row: ApprovalLedgerDocument) -> None:

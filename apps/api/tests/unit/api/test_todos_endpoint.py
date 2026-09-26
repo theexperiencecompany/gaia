@@ -504,6 +504,36 @@ class TestUpdateTodoReschedule:
         schedule.assert_awaited_once_with("todo-1", when)
 
 
+class TestUpdateTodoTimeline:
+    """A user's change to a tracked todo's schedule lands on its timeline, attributed to them."""
+
+    async def _put(self, client: AsyncClient, body: dict[str, object], labels: list[str]):
+        updated = _todo_response().model_copy(update={"labels": labels})
+        recorded = AsyncMock()
+        with (
+            patch(f"{TODOS_ENDPOINT}.TodoService.update_todo", new=AsyncMock(return_value=updated)),
+            patch(f"{TODOS_ENDPOINT}.record_field_changes", new=recorded),
+        ):
+            resp = await client.put("/api/v1/todos/todo-1", json=body)
+        assert resp.status_code == 200
+        return recorded
+
+    async def test_turning_a_tracked_todos_delivery_off_is_recorded_as_the_users(
+        self, client: AsyncClient
+    ) -> None:
+        recorded = await self._put(client, {"notify_on_run": False}, [GAIA_TRACKED_LABEL])
+
+        todo_id, user_id, update = recorded.await_args.args
+        assert (todo_id, user_id) == ("todo-1", "507f1f77bcf86cd799439011")
+        assert update.notify_on_run is False
+        assert recorded.await_args.kwargs == {"by": "the user in the app"}
+
+    async def test_a_classic_todo_has_no_timeline(self, client: AsyncClient) -> None:
+        recorded = await self._put(client, {"priority": "high"}, [])
+
+        recorded.assert_not_awaited()
+
+
 class TestTodoCanvas:
     async def test_returns_canvas_and_activity(self, client: AsyncClient) -> None:
         doc = TodoDocument(

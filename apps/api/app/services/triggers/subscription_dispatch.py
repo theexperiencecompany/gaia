@@ -17,7 +17,7 @@ from typing import Any
 
 from redis.exceptions import RedisError
 
-from app.constants.todos import BLOCKING_LABELS
+from app.constants.todos import BLOCKING_LABELS, TodoActivityEvent
 from app.db.redis import redis_cache
 from app.db.repositories.todos import todo_repository
 from app.models.notification.notification_models import (
@@ -34,6 +34,7 @@ from app.models.trigger_subscription_models import (
 )
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.notification_service import notification_service
+from app.services.todo_activity import record_activity
 from app.services.todos.todo_notifications import todo_redirect_action
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.condition_matching import conditions_match
@@ -187,6 +188,12 @@ async def _perform_action(
         subscription_id=subscription.id,
         trigger_name=subscription.trigger_name,
         subscription_action=subscription.action.value,
+    )
+    await record_activity(
+        todo.id,
+        todo.user_id,
+        TodoActivityEvent.TRIGGER_FIRED,
+        f"{subscription.trigger_name} matched; action: {subscription.action.value}",
     )
     match subscription.action:
         case SubscriptionAction.EXECUTE:
