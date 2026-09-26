@@ -38,7 +38,6 @@ from app.agents.core.background.todo_run import (
 )
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
 from app.constants.agents import AgentTag
-from app.constants.comms import SILENCE_KEYWORD
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.models.chat_models import ConversationSource
 from app.models.todo_models import TodoDocument
@@ -246,7 +245,7 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
 
 class TestNothingIsSentWhenNothingShouldBe:
     async def test_a_silenced_result_sends_nothing_and_says_why(self) -> None:
-        silenced = f"{SILENCE_KEYWORD}: no-op wake, nothing changed{NEW_MESSAGE_BREAKER}"
+        silenced = f"<SILENCE>no-op wake, nothing changed</SILENCE>{NEW_MESSAGE_BREAKER}"
         with _seams(todo=_todo(), narrated=silenced) as seams:
             await run_todo_on_executor(_request())
 
@@ -255,7 +254,7 @@ class TestNothingIsSentWhenNothingShouldBe:
         assert seams.capture.call_args.args[2]["outcome"] == "silenced"
 
     async def test_a_reaction_is_not_a_message_for_a_run_nobody_triggered(self) -> None:
-        with _seams(todo=_todo(), narrated="REACT: 👍") as seams:
+        with _seams(todo=_todo(), narrated="<EMOJI>👍</EMOJI>") as seams:
             await run_todo_on_executor(_request())
 
         seams.send.assert_not_awaited()

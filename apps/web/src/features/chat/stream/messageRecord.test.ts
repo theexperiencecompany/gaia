@@ -22,17 +22,17 @@ const meta = {
 
 describe("buildTurnMessageRecord", () => {
   it("records the streamed text as a plain message without an ack stamp", () => {
-    const acc = createTurnAccumulator("REACT: 😎");
+    const acc = createTurnAccumulator("<EMOJI>😎</EMOJI>");
 
     const record = buildTurnMessageRecord(meta, acc, "sending");
 
-    expect(record.content).toBe("REACT: 😎");
+    expect(record.content).toBe("<EMOJI>😎</EMOJI>");
     expect(record.kind).toBeUndefined();
     expect(record.reacts_to_message_id).toBeUndefined();
   });
 
   it("re-stamps a REACT ack as the bare emoji targeting the user message", () => {
-    const acc = createTurnAccumulator("REACT: 😎");
+    const acc = createTurnAccumulator("<EMOJI>😎</EMOJI>");
     const ack: EmojiAckStamp = {
       kind: "emoji_ack",
       emoji: "😎",

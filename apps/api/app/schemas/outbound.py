@@ -28,7 +28,7 @@ class OutboundAttachment(BaseModel):
 
 class OutboundReaction(BaseModel):
     """A native emoji reaction the bot should attach to an existing platform
-    message (a comms ``REACT: <emoji>`` answer to a background update).
+    message (a comms ``<EMOJI>…</EMOJI>`` answer to a background update).
 
     ``target_platform_message_id`` is the platform-native id of the message to
     react to (WhatsApp wamid, Telegram message_id, Discord id, Slack ts),

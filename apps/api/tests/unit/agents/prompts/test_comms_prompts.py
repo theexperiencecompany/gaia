@@ -4,7 +4,7 @@ import pytest
 
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
 from app.constants.agents import AgentTag, wrap_agent_payload
-from app.constants.comms import SILENCE_KEYWORD
+from app.constants.comms import SILENCE_DIRECTIVE
 from app.constants.general import NEW_MESSAGE_BREAKER
 
 pytestmark = pytest.mark.unit
@@ -29,7 +29,7 @@ class TestTrackedTodoDeliveryNote:
                 "result they asked to hear every time (always send that one). Anything else is "
                 "not worth a message: a routine check, a no-op, nothing new, a question they "
                 "already have, a run that only kept notes. Then reply with exactly one line and "
-                f"nothing else: '{SILENCE_KEYWORD}: <brief reason>'. "
+                f"nothing else: {SILENCE_DIRECTIVE}. "
                 "There is no message of theirs to react to, so never answer with a reaction. When "
                 "you do write, it reaches their chat app as plain text with no cards: lead with "
                 "what changed or what they must decide, give the concrete details they need, keep "
@@ -46,7 +46,7 @@ class TestTrackedTodoDeliveryNote:
         assert 'tracked todo "Watch the deploy"' in _note()
 
     def test_it_offers_silence_in_the_parsers_own_format(self) -> None:
-        assert f"'{SILENCE_KEYWORD}: <brief reason>'" in _note()
+        assert SILENCE_DIRECTIVE in _note()
 
     def test_it_rules_out_a_reaction_and_splits_on_the_real_separator(self) -> None:
         assert "never answer with a reaction" in _note()

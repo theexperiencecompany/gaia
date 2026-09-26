@@ -244,7 +244,7 @@ class _StreamState:
         # server-minted id.
         self.user_message_id: str = turn_id or str(uuid4())
         self.bot_message_id: str = str(uuid4())
-        # When comms resolved the turn to a ``REACT: <emoji>`` ack (see
+        # When comms resolved the turn to an ``<EMOJI>…</EMOJI>`` ack (see
         # resolve_turn_emoji_ack), the stamp that renders the saved reply as a reaction
         # badge. Unmutated: _persist_turn overwrites both before anything reads them.
         self.message_kind: MessageKind = MessageKind.TEXT  # pragma: no mutate

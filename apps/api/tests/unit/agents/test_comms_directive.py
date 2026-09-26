@@ -1,4 +1,4 @@
-"""Parsing comms' non-text turn outcomes (SILENCE / REACT) vs an ordinary reply."""
+"""Parsing comms' non-text turn outcomes (<SILENCE> / <EMOJI>) vs an ordinary reply."""
 
 import pytest
 
@@ -7,20 +7,25 @@ from app.constants.comms import CommsDirectiveKind
 
 pytestmark = pytest.mark.unit
 
-# Same table as REACT_DIRECTIVE_CASES in libs/shared/ts/src/bots/utils/react-directive.test.ts —
+# Same table as EMOJI_DIRECTIVE_CASES in libs/shared/ts/src/bots/utils/react-directive.test.ts —
 # change both together, or bots and backend disagree on what gets an emoji_ack.
-REACT_DIRECTIVE_CASES: list[tuple[str, str | None]] = [
+EMOJI_DIRECTIVE_CASES: list[tuple[str, str | None]] = [
+    ("<EMOJI>👍</EMOJI>", "👍"),
+    ("  <emoji> ✅ </emoji>  ", "✅"),
+    ("<EMOJI>👍</EMOJI>\n", "👍"),
+    ("<EMOJI>😎</EMOJI><NEW_MESSAGE_BREAK>", "😎"),
+    ("<EMOJI></EMOJI>", None),
+    ("<EMOJI> </EMOJI><NEW_MESSAGE_BREAK>", None),
+    ("<EMOJI>👍</SILENCE>", None),
+    ("<EMOJI>👍", None),
+    ("<EMOJI>👍</EMOJI>\nand more", None),
+    ("<EMOJI>👍</EMOJI><NEW_MESSAGE_BREAK>and more", None),
+    ("hello <EMOJI>👍</EMOJI>", None),
+    # The pre-tag line format, still in comms' own history.
     ("REACT: 👍", "👍"),
-    ("  react:   ✅  ", "✅"),
-    ("REACT:👍", "👍"),
-    ("REACT: 👍\n", "👍"),
     ("REACT: 😎<NEW_MESSAGE_BREAK>", "😎"),
     ("REACT: <NEW_MESSAGE_BREAK>", None),
-    ("REACT:", None),
-    ("REACT:   ", None),
-    ("REACT: 👍\nand more", None),
     ("REACTION: completed", None),
-    ("hello REACT: 👍", None),
     ("Booked your 9am flight to Tokyo.", None),
 ]
 
@@ -33,12 +38,22 @@ class TestInterpretCommsOutput:
         assert d.payload == "nothing new"
 
     def test_silence_directive(self) -> None:
-        d = interpret_comms_output("SILENCE: background calendar refresh, nothing new")
+        d = interpret_comms_output(
+            "<SILENCE>background calendar refresh, nothing new</SILENCE><NEW_MESSAGE_BREAK>"
+        )
         assert d.kind == CommsDirectiveKind.SILENCE
         assert d.payload == "background calendar refresh, nothing new"
 
-    @pytest.mark.parametrize(("text", "emoji"), REACT_DIRECTIVE_CASES)
-    def test_react_directive_table(self, text: str, emoji: str | None) -> None:
+    def test_a_silence_without_a_reason_is_still_a_silence(self) -> None:
+        assert interpret_comms_output("<SILENCE></SILENCE>").kind == CommsDirectiveKind.SILENCE
+
+    def test_the_pre_tag_silence_line_is_still_a_silence(self) -> None:
+        d = interpret_comms_output("SILENCE: no-op wake")
+        assert d.kind == CommsDirectiveKind.SILENCE
+        assert d.payload == "no-op wake"
+
+    @pytest.mark.parametrize(("text", "emoji"), EMOJI_DIRECTIVE_CASES)
+    def test_emoji_directive_table(self, text: str, emoji: str | None) -> None:
         d = interpret_comms_output(text)
         if emoji is None:
             assert d.kind == CommsDirectiveKind.REPLY
@@ -48,9 +63,13 @@ class TestInterpretCommsOutput:
             assert d.payload == emoji
 
     def test_multiline_message_is_never_a_directive(self) -> None:
-        # A real reply that merely starts with the word must not be mis-silenced —
+        # A real reply that merely starts with a tag must not be mis-silenced —
         # the safe failure is "treat as reply", never drop a real message.
-        text = "SILENCE: is golden.\nBut here is the actual answer you asked for."
+        text = "<SILENCE>is golden</SILENCE>\nBut here is the actual answer you asked for."
         d = interpret_comms_output(text)
         assert d.kind == CommsDirectiveKind.REPLY
         assert d.payload == text
+
+    def test_a_directive_followed_by_another_bubble_is_a_reply(self) -> None:
+        text = "<SILENCE>nothing new</SILENCE><NEW_MESSAGE_BREAK>Actually, one thing changed."
+        assert interpret_comms_output(text).kind == CommsDirectiveKind.REPLY

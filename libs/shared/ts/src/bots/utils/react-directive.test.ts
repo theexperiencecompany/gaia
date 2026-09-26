@@ -4,31 +4,36 @@ import {
   reactDirectiveEmoji,
 } from "./react-directive";
 
-// Same table as REACT_DIRECTIVE_CASES in apps/api/tests/unit/agents/test_comms_directive.py —
+// Same table as EMOJI_DIRECTIVE_CASES in apps/api/tests/unit/agents/test_comms_directive.py —
 // change both together, or bots and backend disagree on what gets an emoji_ack.
-const REACT_DIRECTIVE_CASES: readonly (readonly [string, string | null])[] = [
+const EMOJI_DIRECTIVE_CASES: readonly (readonly [string, string | null])[] = [
+  ["<EMOJI>👍</EMOJI>", "👍"],
+  ["  <emoji> ✅ </emoji>  ", "✅"],
+  ["<EMOJI>👍</EMOJI>\n", "👍"],
+  ["<EMOJI>😎</EMOJI><NEW_MESSAGE_BREAK>", "😎"],
+  ["<EMOJI></EMOJI>", null],
+  ["<EMOJI> </EMOJI><NEW_MESSAGE_BREAK>", null],
+  ["<EMOJI>👍</SILENCE>", null],
+  ["<EMOJI>👍", null],
+  ["<EMOJI>👍</EMOJI>\nand more", null],
+  ["<EMOJI>👍</EMOJI><NEW_MESSAGE_BREAK>and more", null],
+  ["hello <EMOJI>👍</EMOJI>", null],
+  // The pre-tag line format, still in comms' own history.
   ["REACT: 👍", "👍"],
-  ["  react:   ✅  ", "✅"],
-  ["REACT:👍", "👍"],
-  ["REACT: 👍\n", "👍"],
   ["REACT: 😎<NEW_MESSAGE_BREAK>", "😎"],
   ["REACT: <NEW_MESSAGE_BREAK>", null],
-  ["REACT:", null],
-  ["REACT:   ", null],
-  ["REACT: 👍\nand more", null],
   ["REACTION: completed", null],
-  ["hello REACT: 👍", null],
   ["Booked your 9am flight to Tokyo.", null],
 ];
 
 describe("reactDirectiveEmoji", () => {
-  it.each(REACT_DIRECTIVE_CASES)("classifies %j as %j", (text, emoji) => {
+  it.each(EMOJI_DIRECTIVE_CASES)("classifies %j as %j", (text, emoji) => {
     expect(reactDirectiveEmoji(text)).toBe(emoji);
   });
 });
 
 describe("couldBecomeReactDirective", () => {
-  it.each(REACT_DIRECTIVE_CASES.filter(([, emoji]) => emoji !== null))(
+  it.each(EMOJI_DIRECTIVE_CASES.filter(([, emoji]) => emoji !== null))(
     "holds the finished directive %j",
     (text) => {
       expect(couldBecomeReactDirective(text)).toBe(true);
@@ -38,23 +43,25 @@ describe("couldBecomeReactDirective", () => {
   it.each([
     "",
     "  ",
-    "R",
-    "rea",
+    "<",
+    "<em",
+    "<EMOJI>",
+    "<EMOJI>👍",
+    "<EMOJI>👍</EMO",
     "REACT",
-    "REACT:",
     "REACT: ",
-    "REACT: <NEW_MESSAGE_BREAK>",
   ])("holds %j, which one more frame can still make a directive", (text) => {
     expect(couldBecomeReactDirective(text)).toBe(true);
   });
 
   it.each([
     "Really interesting",
+    "<b>bold</b> reply",
+    "<EMOJI>👍</EMOJI>\nand more",
+    "<EMOJI>\n",
+    "hello <EMOJI>👍</EMOJI>",
+    "<\nEMOJI>👍</EMOJI>",
     "REACTION: completed",
-    "REACT: 👍\nand more",
-    "REACT:\n",
-    "hello REACT: 👍",
-    "R\nEACT: 👍",
   ])("releases %j, which no later frame can make a directive", (text) => {
     expect(couldBecomeReactDirective(text)).toBe(false);
   });

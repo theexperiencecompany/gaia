@@ -1,39 +1,42 @@
 """Parse comms' narration output into a turn outcome: reply, silence, or reaction.
 
-When comms narrates a background executor update that is not worth a full message,
-its output is a single control line instead of prose:
+A turn not worth a full message is a single control tag instead of prose:
 
-    SILENCE: <reason>  → deliver nothing (the reason is logged, not shown)
-    REACT: <emoji>     → deliver a lightweight emoji acknowledgment
+    <SILENCE>reason</SILENCE>  → deliver nothing (the reason is logged, not shown)
+    <EMOJI>👍</EMOJI>          → deliver a one-emoji acknowledgment
 
-Anything else is an ordinary reply. Parsing is strict — the whole trimmed message
-must be one control line — so prose that merely mentions the word never triggers
-it, and the safe failure is "treat as a normal reply" (a stray directive shows as
-text) rather than silently dropping a real message.
+Anything else is an ordinary reply. Parsing is strict — the whole turn, bubble
+breaks aside, must be one tag — so prose that merely mentions one never triggers
+it, and the safe failure is a stray tag shown as text, never a dropped message.
 """
 
 import re
 
-from app.constants.comms import REACT_KEYWORD, SILENCE_KEYWORD, CommsDirectiveKind
-from app.constants.general import NEW_MESSAGE_BREAKER
+from app.constants.comms import (
+    EMOJI_TAG,
+    LEGACY_REACT_KEYWORD,
+    SILENCE_TAG,
+    CommsDirectiveKind,
+)
 from app.models.agent_models import CommsDirective
+from app.utils.message_breaks import split_message_bubbles
 
-# Single logical line only (no DOTALL/MULTILINE): a real directive is one line,
-# so any multi-line reply falls through to REPLY and can never be mis-silenced.
-_DIRECTIVE_RE = re.compile(rf"^({SILENCE_KEYWORD}|{REACT_KEYWORD}):[ \t]*(.*)$", re.IGNORECASE)
+# One line, no DOTALL: a directive never spans lines, so a multi-line reply can
+# never be mis-silenced. The closing tag must name the opening one.
+_TAG_RE = re.compile(rf"^<({SILENCE_TAG}|{EMOJI_TAG})>([^\n]*?)</\1>$", re.IGNORECASE)
+_LEGACY_LINE_RE = re.compile(rf"^({SILENCE_TAG}|{LEGACY_REACT_KEYWORD}):([^\n]*)$", re.IGNORECASE)
 
 
 def interpret_comms_output(text: str) -> CommsDirective:
     """Classify comms' final narration text as a reply, a silence, or a reaction."""
-    match = _DIRECTIVE_RE.match(text.strip())
-    if match:
-        # Comms ends every reply with the bubble separator; it is never payload.
-        keyword = match.group(1).upper()
-        payload = match.group(2).replace(NEW_MESSAGE_BREAKER, "").strip()
-        if keyword == SILENCE_KEYWORD:
-            return CommsDirective(CommsDirectiveKind.SILENCE, payload)
-        # A REACT with no emoji is meaningless: a break-only payload falls
-        # through to REPLY instead of rendering an empty reaction.
-        if payload:
-            return CommsDirective(CommsDirectiveKind.REACT, payload)
+    bubbles = split_message_bubbles(text)
+    if len(bubbles) == 1:
+        match = _TAG_RE.match(bubbles[0]) or _LEGACY_LINE_RE.match(bubbles[0])
+        if match:
+            keyword, payload = match.group(1).upper(), match.group(2).strip()
+            if keyword == SILENCE_TAG:
+                return CommsDirective(CommsDirectiveKind.SILENCE, payload)
+            # A reaction with no emoji is meaningless: fall back to REPLY.
+            if payload:
+                return CommsDirective(CommsDirectiveKind.REACT, payload)
     return CommsDirective(CommsDirectiveKind.REPLY, text)

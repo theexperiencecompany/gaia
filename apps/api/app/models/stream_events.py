@@ -232,7 +232,7 @@ class EmojiAckPayload(BaseModel):
 
 
 class EmojiAckFrame(BaseModel):
-    """The turn resolved to comms' ``REACT: <emoji>`` control line.
+    """The turn resolved to comms' ``<EMOJI>…</EMOJI>`` control tag.
 
     The model streams the directive as ordinary text, so by the time the full
     reply is known the client has already shown it as a bubble. This frame tells

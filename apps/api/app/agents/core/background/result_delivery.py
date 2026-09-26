@@ -264,7 +264,7 @@ async def _narrate_and_deliver(
 
     notification_text = await _narrate_result(run, result_text, result_type, returned_note)
 
-    # Comms may answer with a control line instead of a message: SILENCE (deliver
+    # Comms may answer with a control tag instead of a message: SILENCE (deliver
     # nothing) or REACT (one-emoji ack). One event records the outcome and the
     # emoji (never reason/text); the delivery prop says how the ack landed.
     directive = interpret_comms_output(notification_text)

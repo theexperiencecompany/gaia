@@ -1,10 +1,10 @@
 /**
- * REACT-directive suppression in the shared bot streamer (`streamChat`).
+ * Emoji-directive suppression in the shared bot streamer (`streamChat`).
  *
- * The server streams comms' `REACT: <emoji>` control line as ordinary text,
+ * The server streams comms' `<EMOJI>…</EMOJI>` control tag as ordinary text,
  * then follows with an `emoji_ack` frame carrying the bare emoji. Per-chunk
  * adapters (Slack `chat.update`, Telegram `editMessageText`) paint every
- * `onChunk` immediately, so forwarding the directive leaks `REACT: 😎` into
+ * `onChunk` immediately, so forwarding the directive leaks `<EMOJI>😎</EMOJI>` into
  * the chat. The streamer must hold directive-shaped text back and deliver the
  * emoji instead — on every platform, streaming or render-at-end.
  *
@@ -57,12 +57,12 @@ function frames(...payloads: object[]): string {
   return payloads.map((p) => `data: ${JSON.stringify(p)}\n\n`).join("");
 }
 
-describe("streamChat — REACT directive suppression", () => {
+describe("streamChat — emoji directive suppression", () => {
   it("never forwards the directive, split across chunks, and delivers the emoji", async () => {
     const { onChunk, onDone, onError } = await drive(
       frames(
-        { text: "REACT:" },
-        { text: " 😎" },
+        { text: "<EMO" },
+        { text: "JI>😎</EMOJI>" },
         { emoji_ack: { emoji: "😎", reacts_to_message_id: "u1" } },
         { done: true, conversation_id: "c1" },
       ),
@@ -76,36 +76,39 @@ describe("streamChat — REACT directive suppression", () => {
     expect(onDone).toHaveBeenCalledWith("😎", "c1");
   });
 
-  it("suppresses a single-frame directive the same way", async () => {
-    const { onChunk, onDone } = await drive(
-      frames(
-        { text: "REACT: 👍" },
-        { emoji_ack: { emoji: "👍", reacts_to_message_id: "u1" } },
-        { done: true, conversation_id: "c1" },
-      ),
-    );
+  it.each(["<EMOJI>👍</EMOJI>", "REACT: 👍"])(
+    "suppresses the single-frame directive %j the same way",
+    async (directive) => {
+      const { onChunk, onDone } = await drive(
+        frames(
+          { text: directive },
+          { emoji_ack: { emoji: "👍", reacts_to_message_id: "u1" } },
+          { done: true, conversation_id: "c1" },
+        ),
+      );
 
-    expect(onChunk).toHaveBeenCalledTimes(1);
-    expect(onChunk).toHaveBeenCalledWith("👍");
-    expect(onDone).toHaveBeenCalledWith("👍", "c1");
-  });
+      expect(onChunk).toHaveBeenCalledTimes(1);
+      expect(onChunk).toHaveBeenCalledWith("👍");
+      expect(onDone).toHaveBeenCalledWith("👍", "c1");
+    },
+  );
 
   it("holds a lookalike prefix, then flushes it whole once disambiguated", async () => {
     const { onChunk, onDone } = await drive(
       frames(
-        { text: "REAC" },
-        { text: "TION: completed" },
+        { text: "<EM" },
+        { text: "PHASIS> completed" },
         { done: true, conversation_id: "c1" },
       ),
     );
 
-    // "REAC" could still become the directive, so nothing is forwarded until
-    // "TION: completed" proves it is an ordinary reply — then all of it at once.
-    expect(onChunk.mock.calls.flat()).toEqual(["REACTION: completed"]);
-    expect(onDone.mock.calls[0][0]).toBe("REACTION: completed");
+    // "<EM" could still become the directive, so nothing is forwarded until
+    // "PHASIS> completed" proves it is an ordinary reply — then all of it at once.
+    expect(onChunk.mock.calls.flat()).toEqual(["<EMPHASIS> completed"]);
+    expect(onDone.mock.calls[0][0]).toBe("<EMPHASIS> completed");
   });
 
-  it.each(["REACT:", "REACT: <NEW_MESSAGE_BREAK>"])(
+  it.each(["<EMOJI></EMOJI>", "<EMOJI> </EMOJI><NEW_MESSAGE_BREAK>", "REACT:"])(
     "flushes %j through onChunk at completion — the backend sends it as a reply, with no ack",
     async (text) => {
       const { onChunk, onDone } = await drive(
@@ -126,13 +129,13 @@ describe("streamChat — REACT directive suppression", () => {
       frames(
         { text: "Sure." },
         { message_boundary: { message_id: "m1", discarded: false } },
-        { text: "REACT: 👍" },
+        { text: "<EMOJI>👍</EMOJI>" },
         { message_boundary: { message_id: "m2", discarded: false } },
         { done: true, conversation_id: "c1" },
       ),
     );
 
-    expect(onChunk.mock.calls.flat()).toEqual(["Sure.", "REACT: 👍"]);
+    expect(onChunk.mock.calls.flat()).toEqual(["Sure.", "<EMOJI>👍</EMOJI>"]);
   });
 
   it("releases a held lookalike before its boundary, so it stays in its own bubble", async () => {
@@ -166,7 +169,7 @@ describe("streamChat — REACT directive suppression", () => {
   it("keeps holding the directive across its kept boundary until the ack replaces it", async () => {
     const { onChunk, onDone } = await drive(
       frames(
-        { text: "REACT: 👍" },
+        { text: "<EMOJI>👍</EMOJI>" },
         { message_boundary: { message_id: "m1", discarded: false } },
         { emoji_ack: { emoji: "👍", reacts_to_message_id: "u1" } },
         { done: true, conversation_id: "c1" },

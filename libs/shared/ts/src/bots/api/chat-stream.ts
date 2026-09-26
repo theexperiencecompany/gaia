@@ -166,7 +166,7 @@ async function streamChatOnce(
   // retracted). `fullText` is the whole reply on render-at-end platforms (Discord/WhatsApp/iMessage).
   let pendingText = "";
   // How much of `pendingText` has already been forwarded via `onChunk`. Text
-  // held back as a possible REACT directive lags the buffered whole.
+  // held back as a possible emoji directive lags the buffered whole.
   let forwardedLength = 0;
   // Held text from already-kept messages, still owed to `onChunk` unless an
   // `emoji_ack` replaces the turn.
@@ -185,7 +185,7 @@ async function streamChatOnce(
     forwardedLength = 0;
   };
 
-  /** Forward every held-back chunk — the turn is proven not to be a REACT directive. */
+  /** Forward every held-back chunk — the turn is proven not to be an emoji directive. */
   const releaseHeldText = async (): Promise<void> => {
     const held = heldKeptText + pendingText.slice(forwardedLength);
     heldKeptText = "";
@@ -199,7 +199,7 @@ async function streamChatOnce(
     keepPendingText();
   };
 
-  // Held while the turn could still be the REACT control line, so per-chunk
+  // Held while the turn could still be the emoji control tag, so per-chunk
   // adapters never paint the directive; a lookalike (`Real…`) flushes whole
   // once the next frame disambiguates it.
   const applyText = async (text: string): Promise<void> => {
@@ -209,7 +209,7 @@ async function streamChatOnce(
     }
   };
 
-  // The `REACT: <emoji>` ack: the delivered message is the bare emoji, not the
+  // The `<EMOJI>…</EMOJI>` ack: the delivered message is the bare emoji, not the
   // raw directive, which was never forwarded — so the emoji is the turn's one
   // chunk, or streaming platforms (rendering from onChunk) would show nothing.
   const applyEmojiAck = async (emoji: string): Promise<void> => {
