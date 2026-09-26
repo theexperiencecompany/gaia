@@ -9,7 +9,7 @@ context pays for a shape only when something actually consumes it.
 """
 
 import json
-from typing import TypedDict, cast
+from typing import cast
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, JsonValue
@@ -20,29 +20,13 @@ from app.constants.execute import (
     RESPONSE_SCHEMA_METADATA_KEYS,
     SCHEMA_DOC_MAX_CHARS,
 )
+from app.models.json_schema_models import JsonSchemaNode
 from app.utils.general_utils import clip_text
 
 # Composio's wrapper injects a config-passthrough parameter into the synthesized
 # signature; it is plumbing, never something the model supplies.
 _INTERNAL_ARG_NAMES = {"__runnable_config__"}
 _DESCRIPTION_MAX_CHARS = 600
-
-
-class _SchemaNode(TypedDict, total=False):
-    """The JSON Schema keywords the renderers read off one schema node.
-
-    Provider and observed schemas are never validated, so a keyword whose value
-    varies by provider stays JsonValue and every read keeps its isinstance guard.
-    """
-
-    type: str | list[str]
-    properties: dict[str, JsonValue]
-    required: list[str]
-    items: JsonValue
-    anyOf: JsonValue
-    oneOf: JsonValue
-    enum: JsonValue
-    additionalProperties: JsonValue
 
 
 def render_tool_doc(tool: BaseTool) -> str:
@@ -85,7 +69,7 @@ def render_compact_type(node: dict[str, JsonValue]) -> str:
 def _compact_type(node: object) -> str:
     if not isinstance(node, dict):
         return "any"
-    schema: _SchemaNode = cast(_SchemaNode, node)
+    schema: JsonSchemaNode = cast(JsonSchemaNode, node)
     union = _compact_union(schema)
     if union is not None:
         return union
@@ -102,7 +86,7 @@ def _compact_type(node: object) -> str:
     return _COMPACT_PRIMITIVES.get(str(type_), str(type_) if type_ else "any")
 
 
-def _compact_union(node: _SchemaNode) -> str | None:
+def _compact_union(node: JsonSchemaNode) -> str | None:
     """A union schema (anyOf/oneOf/type-list) as ``a|b``, else None."""
     variants = node.get("anyOf") or node.get("oneOf")
     if isinstance(variants, list) and variants:
@@ -113,7 +97,7 @@ def _compact_union(node: _SchemaNode) -> str | None:
     return None
 
 
-def _compact_object(node: _SchemaNode) -> str | None:
+def _compact_object(node: JsonSchemaNode) -> str | None:
     """An object schema as ``{name:type, opt?:type, [key]:type}``, else None."""
     type_ = node.get("type")
     if type_ != "object" and not (type_ is None and "properties" in node):
@@ -134,7 +118,7 @@ def _compact_object(node: _SchemaNode) -> str | None:
     return "{" + ", ".join(fields) + "}"
 
 
-def _compact_array(node: _SchemaNode) -> str | None:
+def _compact_array(node: JsonSchemaNode) -> str | None:
     """An array schema as ``item[]`` (grouped when the item is a union), else None."""
     if node.get("type") != "array":
         return None
@@ -143,7 +127,7 @@ def _compact_array(node: _SchemaNode) -> str | None:
     return (f"({item})" if "|" in item else item) + "[]"
 
 
-def _compact_enum(node: _SchemaNode) -> str | None:
+def _compact_enum(node: JsonSchemaNode) -> str | None:
     """A small closed enum as its JSON members joined by ``|``, else None."""
     enum = node.get("enum")
     if isinstance(enum, list) and 0 < len(enum) <= _COMPACT_ENUM_MAX_MEMBERS:
@@ -198,7 +182,7 @@ def _render_budgeted_schema(schema: dict[str, JsonValue], budget: int) -> str:
         pruned = _dumps(_prune_to_levels(schema, levels))
         if len(pruned) <= budget:
             return f"{pruned}\n{_SCHEMA_TRUNCATION_NOTE}"
-    node: _SchemaNode = cast(_SchemaNode, schema)
+    node: JsonSchemaNode = cast(JsonSchemaNode, schema)
     properties = node.get("properties")
     names = sorted(properties) if isinstance(properties, dict) else []
     floor = _dumps({"type": node.get("type", "object"), "fields": names})
@@ -236,7 +220,7 @@ def _compact_schema(schema: dict[str, JsonValue]) -> dict[str, JsonValue]:
     """Strip generator noise (titles, internal params, $defs plumbing keys)."""
     # cast, not isinstance: _strip_noise maps dict->dict by construction.
     compacted = cast(dict[str, JsonValue], _strip_noise(schema))
-    node: _SchemaNode = cast(_SchemaNode, compacted)
+    node: JsonSchemaNode = cast(JsonSchemaNode, compacted)
     properties = node.get("properties")
     if isinstance(properties, dict):
         for name in _INTERNAL_ARG_NAMES:

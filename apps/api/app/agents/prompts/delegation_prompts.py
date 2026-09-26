@@ -11,6 +11,10 @@ BACKGROUND_DELEGATION_ACK = (
     'stop it with cancel_subagent(subagent_id="{subagent_id}").'
 )
 
+STOPPED_BEFORE_START = (
+    "{name} was not started: the user stopped this task. Do not start it again unless they ask."
+)
+
 THREAD_BUSY_REFUSAL = (
     "{name} is already running on this integration, and a second run would corrupt "
     "its thread. Find it with list_running_subagents, then steer it with "

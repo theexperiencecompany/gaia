@@ -11,7 +11,7 @@ validation, and HTTPS enforcement for all OAuth endpoints.
 
 import asyncio
 import base64
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable
 import re
 import secrets
 import time
@@ -22,11 +22,13 @@ import httpx
 from langchain_core.tools import BaseTool
 from mcp_use import MCPClient as BaseMCPClient
 from mcp_use.client.session import MCPSession
-from pydantic import AnyHttpUrl, AnyUrl, BaseModel, ConfigDict
+from pydantic import AnyHttpUrl, AnyUrl, BaseModel, ConfigDict, JsonValue
 
+from app.agents.tools.core.registry import get_tool_registry
 from app.config.settings import settings
 from app.constants.cache import MCP_TOOLS_CACHE_KEY, OAUTH_DISCOVERY_PREFIX
 from app.constants.device_bridge import DEVICE_TRANSPORT
+from app.constants.execute import TICKET_NAMES
 from app.constants.log_tags import LogTag
 from app.constants.mcp import (
     COMPOSIO_MCP_HOST,
@@ -35,6 +37,7 @@ from app.constants.mcp import (
     GAIA_OAUTH_PRIVACY_PATH,
     GAIA_OAUTH_TOS_PATH,
     MAX_OAUTH_INVALID_SCOPE_DROPS,
+    MCP_RENAMED_TOOL_NOTE,
 )
 from app.core.lazy_loader import providers
 from app.db.chroma.chroma_tools_store import index_tools_to_store
@@ -43,6 +46,7 @@ from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.mcp_helpers import get_api_base_url, get_frontend_url
 from app.helpers.namespace_utils import derive_integration_namespace
+from app.models.integration_models import Integration, UserIntegrationDocument
 from app.models.mcp_config import (
     DCRClientRegistration,
     McpAuthChallenge,
@@ -53,13 +57,13 @@ from app.models.mcp_config import (
     MCPUseServerConfig,
     OAuthDiscovery,
     OAuthErrorResponse,
+    OidcTokenResponse,
 )
 from app.services.integrations.integration_resolver import IntegrationResolver, ResolvedIntegration
 from app.services.integrations.user_integration_status import (
     update_user_integration_status,
 )
 from app.services.integrations.user_integrations import (
-    get_user_integration_records,
     invalidate_user_integration_caches,
 )
 from app.services.mcp.device_connector import DeviceConnector
@@ -90,6 +94,7 @@ from app.utils.mcp_oauth_utils import (
     validate_pkce_support,
 )
 from app.utils.mcp_utils import (
+    source_prefixed_tool_name,
     wrap_tools_with_null_filter,
 )
 from app.utils.url_safety import assert_public_http_url
@@ -103,7 +108,6 @@ from mcp.client.auth.utils import (
 from mcp.shared.auth import (
     OAuthClientMetadata,
     OAuthMetadata,
-    OAuthToken,
 )
 from mcp.types import (
     CallToolResult,
@@ -113,6 +117,39 @@ from mcp.types import (
     ReadResourceResult,
 )
 from shared.py.wide_events import McpContext, log, log_context
+
+
+class _OAuthErrorBody(BaseModel):
+    """The one key of an HTTP error body that says why a grant failed (RFC 6749 §5.2)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    error: JsonValue = None
+
+
+class _IdTokenClaims(BaseModel):
+    """The id_token claim the OIDC nonce check reads."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    nonce: JsonValue = None
+
+
+class _McpContentMeta(BaseModel):
+    """A resource content's _meta: the MCP Apps ui hints sit under ui."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    ui: JsonValue = None
+
+
+class _McpUiHints(BaseModel):
+    """The ui hints forwarded to the client verbatim; the MCP Apps spec fixes neither shape."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    csp: JsonValue = None
+    permissions: JsonValue = None
 
 
 class _SanitizedMcpServer(TypedDict):
@@ -139,54 +176,6 @@ class _TokenExchangeRequest(TypedDict):
     client_id: str
     client_secret: str | None
     code_verifier: str | None
-
-
-class _OAuthErrorCode(BaseModel):
-    """The RFC 6749 Section 5.2 error code of a failed HTTP response's JSON body."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    error: str | None = None
-
-
-class _OidcTokenResponse(OAuthToken):
-    """An RFC 6749 token response, plus the OIDC id_token the nonce check reads."""
-
-    id_token: str | None = None
-
-
-class _IdTokenClaims(BaseModel):
-    """The one id_token claim the OIDC nonce check reads."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    nonce: str | None = None
-
-
-class _UserIntegrationRecord(BaseModel):
-    """The two fields of a persisted user integration record the server_url match filters on."""
-
-    model_config = ConfigDict(extra="ignore", coerce_numbers_to_str=True)
-
-    integration_id: str | None = None
-    status: str | None = None
-
-
-class _ResourceContentMeta(BaseModel):
-    """A resource content's _meta, as far as the MCP Apps ui hints go."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    ui: object = None
-
-
-class _ResourceUiHints(BaseModel):
-    """The content-level _meta.ui hints forwarded to the client verbatim."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    csp: object = None
-    permissions: object = None
 
 
 class _ClientBranding(TypedDict, total=False):
@@ -234,8 +223,8 @@ def _extract_response_signal(exception: Exception) -> tuple[int | None, str | No
     try:
         body = response.json() if callable(getattr(response, "json", None)) else None
         if isinstance(body, dict):
-            raw = _OAuthErrorCode.model_validate(body).error
-            if raw is not None:
+            raw = _OAuthErrorBody.model_validate(body).error
+            if isinstance(raw, str):
                 error_code = raw.lower()
     except Exception as parse_err:
         log.debug(
@@ -338,7 +327,7 @@ class MCPClient:
     def _sanitize_config(self, config: MCPUseConfig) -> _SanitizedMcpConfig:
         """Sanitize config for logging by removing sensitive data."""
         sanitized: dict[str, _SanitizedMcpServer] = {}
-        servers: dict[str, MCPUseServerConfig] = config.get("mcpServers", {})
+        servers: dict[str, MCPUseServerConfig] = config["mcpServers"]
         for server_id, server_config in servers.items():
             sanitized[server_id] = _SanitizedMcpServer(
                 url=server_config.get("url"),
@@ -772,6 +761,31 @@ class MCPClient:
         return raw_tools
 
     @staticmethod
+    async def _rename_shadowing_tools(
+        raw_tools: list[BaseTool], source_name: str
+    ) -> dict[str, str]:
+        """Rename the server's tools a GAIA tool name would shadow; return original -> new name.
+
+        Done once here so every consumer (tool dicts, indexes, resolver) sees one name;
+        the adapter still calls the server by the tool's own mcp_name.
+        """
+        registry = await get_tool_registry()
+        reserved = {*registry.get_tool_names(), *TICKET_NAMES}
+        taken = reserved | {raw_tool.name for raw_tool in raw_tools}
+        renamed: dict[str, str] = {}
+        for raw_tool in raw_tools:
+            if raw_tool.name in reserved:
+                original = raw_tool.name
+                raw_tool.name = source_prefixed_tool_name(source_name, original, taken)
+                taken.add(raw_tool.name)
+                raw_tool.description = (
+                    MCP_RENAMED_TOOL_NOTE.format(original=original, renamed=raw_tool.name)
+                    + raw_tool.description
+                )
+                renamed[original] = raw_tool.name
+        return renamed
+
+    @staticmethod
     def _stamp_tool_metadata(
         raw_tools: list[BaseTool],
         integration_id: str,
@@ -785,7 +799,6 @@ class MCPClient:
         metadata is the single source of truth for the tool's provenance.
         """
         for raw_tool in raw_tools:
-            # resilient_adapter stamps mcp_ui only on a tool with a UI resource.
             if raw_tool.metadata and "mcp_ui" in raw_tool.metadata:
                 raw_tool.metadata["mcp_server_url"] = server_url
 
@@ -853,8 +866,11 @@ class MCPClient:
         # namespace and register a subagent doc; platform MCPs use tool_space
         # (or id). Redis cache in index_tools_to_store dedupes across users.
         if is_custom:
-            custom_name = resolved.name if resolved.custom_doc else None
-            custom_desc = resolved.description if resolved.custom_doc else None
+            custom_doc = (
+                Integration.model_validate(resolved.custom_doc) if resolved.custom_doc else None
+            )
+            custom_name = custom_doc.name if custom_doc else None
+            custom_desc = custom_doc.description if custom_doc else None
             post_tasks.append(
                 self._handle_custom_integration_connect(
                     integration_id,
@@ -1008,6 +1024,7 @@ class MCPClient:
             client = await self._open_session(integration_id, mcp_config)
 
             raw_tools = await self._convert_tools_safe(client, integration_id)
+            renamed_tools = await self._rename_shadowing_tools(raw_tools, resolved.name)
 
             # CRITICAL: Wrap tools to filter None values before MCP invocation.
             # MCP servers expect optional params to be OMITTED, not sent as null.
@@ -1038,6 +1055,7 @@ class MCPClient:
                 user_id=self.user_id,
                 is_custom=is_custom,
                 tool_names_sample=tool_names_sample,
+                renamed_tools=renamed_tools,
             )
 
             await self._run_post_connect_tasks(
@@ -1146,8 +1164,9 @@ class MCPClient:
                 if resolved_name is None:
                     resolved = await IntegrationResolver.resolve(integration_id)
                     if resolved and resolved.custom_doc:
-                        resolved_name = resolved.name
-                        resolved_description = resolved.description
+                        custom_doc = Integration.model_validate(resolved.custom_doc)
+                        resolved_name = custom_doc.name
+                        resolved_description = custom_doc.description
 
                 if resolved_name:
                     # Local import to avoid circular dependency
@@ -1542,12 +1561,8 @@ class MCPClient:
         integration_id: str,
         token_endpoint: str,
         exchange: _TokenExchangeRequest,
-    ) -> _OidcTokenResponse:
-        """POST the RFC 6749 authorization-code grant to token_endpoint and return the validated response.
-
-        OAuthToken requires access_token and normalizes/validates token_type as
-        Bearer per OAuth 2.1.
-        """
+    ) -> OidcTokenResponse:
+        """POST the RFC 6749 authorization-code grant to token_endpoint and return the parsed response."""
         token_data: dict[str, str] = {
             "grant_type": "authorization_code",
             # Always include client_id in body for PKCE compatibility
@@ -1591,16 +1606,16 @@ class MCPClient:
                 f"{error_info.get('error_description', 'Unknown error')}"
             )
 
-        return _OidcTokenResponse.model_validate(response.json())
+        # OAuthToken requires access_token and normalizes token_type to Bearer (OAuth 2.1).
+        return OidcTokenResponse.model_validate(response.json())
 
     def _validate_oidc_nonce(
         self,
         integration_id: str,
         stored_nonce: str,
-        tokens: _OidcTokenResponse,
+        id_token: str | None,
     ) -> None:
         """Compare the id_token nonce against the value stored during auth URL build."""
-        id_token = tokens.id_token
         if not id_token:
             raise ValueError(
                 f"OIDC nonce validation failed for {integration_id}: "
@@ -1716,7 +1731,7 @@ class MCPClient:
         # Validate OIDC nonce if one was stored during auth URL build
         stored_nonce = await self.token_store.get_and_delete_oauth_nonce(integration_id)
         if stored_nonce:
-            self._validate_oidc_nonce(integration_id, stored_nonce, token)
+            self._validate_oidc_nonce(integration_id, stored_nonce, token.id_token)
 
         expires_at = oauth_token_expiry(token.expires_in)
 
@@ -2001,17 +2016,11 @@ class MCPClient:
         return None
 
     @staticmethod
-    def _connectable_candidate_ids(user_integrations: Sequence[Mapping[str, object]]) -> list[str]:
+    def _connectable_candidate_ids(
+        user_integrations: list[UserIntegrationDocument],
+    ) -> list[str]:
         """Filter persisted user integrations down to connected candidate ids."""
-        candidate_ids: list[str] = []
-        for integration_doc in user_integrations:
-            record = _UserIntegrationRecord.model_validate(integration_doc)
-            if record.integration_id is None:
-                continue
-            if record.status and record.status != "connected":
-                continue
-            candidate_ids.append(record.integration_id)
-        return candidate_ids
+        return [doc.integration_id for doc in user_integrations if doc.status == "connected"]
 
     async def _find_integration_id_by_server_url(self, server_url: str) -> str | None:
         """Find integration ID for a server URL from active sessions or DB state."""
@@ -2026,7 +2035,7 @@ class MCPClient:
 
         # Slow path: check user's persisted connected integrations.
         try:
-            user_integrations = await get_user_integration_records(self.user_id)
+            user_integrations = await user_integration_repository.list_for_user(self.user_id)
         except Exception as e:
             log.warning(
                 f"{LogTag.MCP} Failed to load user integrations while matching server_url",
@@ -2057,7 +2066,7 @@ class MCPClient:
         self,
         server_url: str,
         tool_name: str,
-        arguments: dict[str, object],
+        arguments: dict[str, JsonValue],
     ) -> CallToolResult:
         """Call a tool on the MCP server identified by server_url.
 
@@ -2207,21 +2216,19 @@ class MCPClient:
                 text = getattr(content, "text", None)
                 if text is not None:
                     content_meta = getattr(content, "_meta", None) or getattr(content, "meta", None)
-                    meta = (
-                        _ResourceContentMeta.model_validate(content_meta)
+                    raw_ui = (
+                        _McpContentMeta.model_validate(content_meta).ui
                         if isinstance(content_meta, dict)
-                        else _ResourceContentMeta()
+                        else None
                     )
-                    ui_hints = (
-                        _ResourceUiHints.model_validate(meta.ui)
-                        if isinstance(meta.ui, dict)
-                        else _ResourceUiHints()
+                    ui = (
+                        _McpUiHints.model_validate(raw_ui)
+                        if isinstance(raw_ui, dict)
+                        else _McpUiHints()
                     )
 
                     return McpUiResourceDetails(
-                        html=str(text),
-                        csp=ui_hints.csp,
-                        permissions=ui_hints.permissions,
+                        html=str(text), csp=ui.csp, permissions=ui.permissions
                     )
 
             return None

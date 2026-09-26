@@ -44,6 +44,7 @@ from app.agents.core.subagents.subagent_runner import (
 )
 from app.agents.prompts.delegation_prompts import (
     BACKGROUND_DELEGATION_ACK,
+    STOPPED_BEFORE_START,
     SUBAGENT_FAILED_RESULT,
     SUBAGENT_PARKED_ENTRY,
     SUBAGENT_RESULT_ENTRY,
@@ -137,7 +138,9 @@ class Delegation:
         parent: AgentConfigurable = self.parent_configurable
         return bool(parent.get("workflow_id"))
 
-    def running_record(self) -> RunningSubagent:
+    def running_record(
+        self, *, stream_id: str | None, dispatched_by: str | None
+    ) -> RunningSubagent:
         return RunningSubagent(
             subagent_id=self.subagent_id,
             subagent_thread_id=self.thread_id,
@@ -145,6 +148,8 @@ class Delegation:
             agent_name=self.ctx.agent_name,
             task_summary=self.task[:_TASK_SUMMARY_CHARS],
             started_at=datetime.now(UTC).isoformat(),
+            stream_id=stream_id,
+            dispatched_by=dispatched_by,
         )
 
     def resume_item(self) -> SubagentResumeItem:
@@ -179,7 +184,8 @@ async def delegate(delegation: Delegation, *, background: bool, probe_parked: bo
 async def _run_blocking(delegation: Delegation, *, probe_parked: bool) -> str:
     """Run to completion inside the calling tool, bubbling every HIL pause up to the parent."""
     registry = RunningSubagents(delegation.conversation_id)
-    record = delegation.running_record()
+    stream_id = delegation.ctx.stream_id
+    record = delegation.running_record(stream_id=stream_id, dispatched_by=stream_id)
     if not await registry.claim(record):
         return THREAD_BUSY_REFUSAL.format(name=delegation.display.name)
 
@@ -245,14 +251,18 @@ async def _dispatch_background(delegation: Delegation) -> str:
     # A replay of the node that dispatched this call must not dispatch it twice.
     if tool_call_id and not await try_claim_bg_dispatch(conversation_id, tool_call_id):
         return ack
-    record = delegation.running_record()
+    stream_id = _new_stream_id()
+    record = delegation.running_record(stream_id=stream_id, dispatched_by=delegation.ctx.stream_id)
     if not await RunningSubagents(conversation_id).claim(record):
         if tool_call_id:
             await release_bg_dispatch(conversation_id, tool_call_id)
         return THREAD_BUSY_REFUSAL.format(name=delegation.display.name)
-    _start_background_run(
-        delegation, record, resume=None, parent_stream_id=delegation.ctx.stream_id
-    )
+    # Read after the claim: a stop that read the registry before it could not see this run.
+    dispatcher = delegation.ctx.stream_id
+    if dispatcher and await stream_manager.is_cancelled(dispatcher):
+        await RunningSubagents(conversation_id).deregister(record)
+        return STOPPED_BEFORE_START.format(name=delegation.display.name)
+    _start_background_run(delegation, record, stream_id, resume=None)
     log.info(
         f"{LogTag.AGENT} Subagent dispatched to background",
         agent_name=delegation.ctx.agent_name,
@@ -267,43 +277,37 @@ async def resume_background(delegation: Delegation, decision: HilResumeDecision)
     A taken thread is a run still live (its own park resumes it once it exits) or a
     resume already in flight, which re-reads every decided record at its gates.
     """
-    record = delegation.running_record()
-    if not await RunningSubagents(delegation.conversation_id).claim(record):
-        return False
     # No parent link: the decision is the user's own go-ahead, whatever they did
     # to the turn that dispatched this run.
-    _start_background_run(
-        delegation, record, resume=Command(resume=decision), parent_stream_id=None
-    )
+    stream_id = _new_stream_id()
+    record = delegation.running_record(stream_id=stream_id, dispatched_by=None)
+    if not await RunningSubagents(delegation.conversation_id).claim(record):
+        return False
+    _start_background_run(delegation, record, stream_id, resume=Command(resume=decision))
     return True
 
 
+def _new_stream_id() -> str:
+    return f"{SUBAGENT_STREAM_ID_PREFIX}{uuid4()}"
+
+
 def _start_background_run(
-    delegation: Delegation,
-    record: RunningSubagent,
-    *,
-    resume: Command | None,
-    parent_stream_id: str | None,
+    delegation: Delegation, record: RunningSubagent, stream_id: str, *, resume: Command | None
 ) -> None:
     spawn_background_task(
-        _run_background(delegation, record, resume=resume, parent_stream_id=parent_stream_id),
+        _run_background(delegation, record, stream_id, resume=resume),
         name=BACKGROUND_SUBAGENT_TASK_NAME,
     )
 
 
 async def _run_background(
-    delegation: Delegation,
-    record: RunningSubagent,
-    *,
-    resume: Command | None,
-    parent_stream_id: str | None,
+    delegation: Delegation, record: RunningSubagent, stream_id: str, *, resume: Command | None
 ) -> None:
     """Drive a detached run on its own stream to its result, its failure, or its park; never raises."""
     # The task copies the dispatching tool's context, making the subagent graph a child
     # of the executor's run whose stream would echo its messages. Clears only the copy.
     var_child_runnable_config.set(None)
     ctx = delegation.ctx
-    stream_id = f"{SUBAGENT_STREAM_ID_PREFIX}{uuid4()}"
     # This task outlives the dispatching executor turn, so it needs its own
     # wide-event boundary or every log.set() is silently discarded.
     async with wide_task(
@@ -321,7 +325,7 @@ async def _run_background(
         failure = ""  # pragma: no mutate
         try:
             outcome = await _execute_on_own_stream(
-                delegation, stream_id, resume=resume, parent_stream_id=parent_stream_id
+                delegation, stream_id, resume=resume, parent_stream_id=record.dispatched_by
             )
         except Exception as e:  # the executor must learn its subagent failed
             log.error(
@@ -338,6 +342,11 @@ async def _run_background(
 
         if outcome is None:
             await _land(delegation, failure)
+        elif outcome.stopped:
+            # The user stopped it; landing would start the executor they just stopped.
+            log.info(
+                f"{LogTag.AGENT} Background subagent stopped by the user", agent_name=ctx.agent_name
+            )
         elif outcome.paused:
             await _park(delegation, outcome.interrupt or {})
         elif resume is not None and not outcome.text:
