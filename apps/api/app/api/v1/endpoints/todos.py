@@ -323,7 +323,7 @@ async def update_todo(
         # If this is a tracked todo and scheduled_at changed, reschedule ARQ job
         if updates.scheduled_at is not None and updated_todo.vfs_path:
             try:
-                await tracked_todo_service.reschedule_execution(todo_id, updates.scheduled_at)
+                await tracked_todo_service.schedule_execution(todo_id, updates.scheduled_at)
             except Exception as e:
                 log.warning(
                     f"{LogTag.TODO} Failed to reschedule todo after update",

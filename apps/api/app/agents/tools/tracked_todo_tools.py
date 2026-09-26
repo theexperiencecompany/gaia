@@ -49,11 +49,11 @@ from shared.py.wide_events import log
 _RECURRENCE_SHORTCUTS = {"daily", "weekly", "every_4h", "every_1h"}
 _UTC_OFFSET = "+00:00"
 _NOTIFY_ON_RUN_DESC = (
-    "Deliver this todo's run result to the user's chat app when a scheduled or "
-    "triggered run finishes. Default True. Set False only for a todo whose runs "
-    "are housekeeping the user does not want to hear about (a frequent poll that "
-    "usually finds nothing); a silent run can still reach them with "
-    "send_notification when something genuinely needs them."
+    "Whether a scheduled or triggered run may message the user's chat app when it "
+    "finds something that matters (routine runs never do). Default True. The "
+    "user's setting: set it only when they ask to stop or resume hearing about "
+    "this todo; a silent run can still reach them with send_notification when "
+    "something genuinely needs them."
 )
 _ERR_NO_USER_ID = "Error: user_id not found in config"
 
@@ -816,7 +816,7 @@ async def update_tracked_todo(
 
     # A real datetime here (agent-passed or cron-derived) means the ARQ job moves.
     if update.scheduled_at is not None:
-        await tracked_todo_service.reschedule_execution(todo_id, update.scheduled_at)
+        await tracked_todo_service.schedule_execution(todo_id, update.scheduled_at)
 
     updated_keys = list(update_fields)
     if references is not None:

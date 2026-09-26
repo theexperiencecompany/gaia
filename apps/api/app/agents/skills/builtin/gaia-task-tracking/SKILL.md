@@ -194,15 +194,15 @@ ALWAYS evaluated in the user's stored timezone — pass cron in user-local wall-
 
 ### Where a run's result goes
 
-- The run's **final message is delivered to the user's chat app** automatically
-  when it finishes (WhatsApp/Telegram/Discord/Slack), as a normal GAIA message.
-- So the answer IS the user-facing message: write it for them, and do NOT also
-  call `send_notification` to announce it — that sends it twice.
-- Nothing worth saying? End with an empty message and nothing is sent.
+- GAIA reads the run's **final report** and messages the user's chat app
+  (WhatsApp/Telegram/Discord/Slack) only when the run found something they need
+  to know or decide. A routine or no-op run sends nothing.
+- So end with a factual report (what you did, what changed, what needs them),
+  and do NOT call `send_notification` to announce it — that sends it twice.
+- Every run's outcome, sent or not, is recorded in activity.md for you.
 - `notify_on_run` (default `True`, settable on create/update) turns delivery off
-  for a todo whose runs the user should not hear about, e.g. a frequent poll
-  that usually finds nothing. A silent todo reaches the user only via a
-  deliberate `send_notification`.
+  entirely. It is the user's setting: change it only when they ask. A silent
+  todo reaches the user only via a deliberate `send_notification`.
 
 ## Institutional Memory
 

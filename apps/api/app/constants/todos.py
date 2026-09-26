@@ -4,7 +4,11 @@ Todo Constants.
 Constants for todo service operations.
 """
 
+from datetime import timedelta
+from enum import StrEnum
 from typing import Final
+
+from app.constants.chat import MAX_MESSAGE_LENGTH
 
 ONBOARDING_TODO_LIMIT = 3
 
@@ -39,3 +43,27 @@ BLOCKING_LABELS: Final[frozenset[str]] = frozenset(
 # enough for the recent trail, bounded so a long-lived recurring todo does not
 # grow the prompt without limit. Older entries stay readable via the file.
 ACTIVITY_PROMPT_TAIL_CHARS: Final[int] = 4_000
+
+# How much of canvas.md a prompt carries, head and tail kept, middle trimmed. An
+# uncapped canvas pushed a tracked todo's run past MAX_MESSAGE_LENGTH and failed
+# it on every retry; two fifths of that cap leaves room for the rest of the prompt.
+CANVAS_PROMPT_MAX_CHARS: Final[int] = MAX_MESSAGE_LENGTH * 2 // 5
+
+# How far past its stored scheduled_at a scheduled fire may land and still run.
+# ARQ fires a deferred job at its defer time; a fire outside this window is a
+# job left behind by a reschedule (ARQ cannot cancel it) and is dropped.
+TODO_SCHEDULE_FIRE_GRACE: Final[timedelta] = timedelta(minutes=2)
+
+# How much of a run's final report is kept in its activity.md entry.
+RUN_SUMMARY_ACTIVITY_CHARS: Final[int] = 200
+
+
+class TodoRunDeliveryOutcome(StrEnum):
+    """What happened to a tracked todo run's result, for activity.md and analytics."""
+
+    DELIVERED = "delivered"
+    UNDELIVERED = "undelivered"
+    SILENCED = "silenced"
+    NOTIFY_OFF = "notify_off"
+    NARRATION_FAILED = "narration_failed"
+    INVALID_DIRECTIVE = "invalid_directive"
