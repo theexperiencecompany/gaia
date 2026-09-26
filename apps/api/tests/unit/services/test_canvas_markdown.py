@@ -4,10 +4,12 @@ from datetime import UTC, datetime
 
 import pytest
 
+from app.constants.todos import CANVAS_PROMPT_MAX_CHARS
 from app.services.canvas_markdown import (
     _extract_entries,
     _line_timestamp,
     _remove_section,
+    bounded_canvas,
     section_body,
     split_legacy_canvas,
 )
@@ -288,3 +290,17 @@ def test_split_removes_each_legacy_section_alone(heading: str):
 
     assert f"## {heading}" not in new_canvas
     assert activity == "- entry"
+
+
+class TestBoundedCanvas:
+    def test_a_canvas_within_the_cap_is_untouched(self) -> None:
+        canvas = "x" * CANVAS_PROMPT_MAX_CHARS
+        assert bounded_canvas(canvas) is canvas
+
+    def test_an_oversized_canvas_keeps_equal_halves_around_a_marker(self) -> None:
+        half = CANVAS_PROMPT_MAX_CHARS // 2
+        canvas = "h" * half + "m" * 100 + "t" * half
+
+        assert bounded_canvas(canvas) == (
+            "h" * half + "\n[middle of canvas trimmed: 100 characters]\n" + "t" * half
+        )

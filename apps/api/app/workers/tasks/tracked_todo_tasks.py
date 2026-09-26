@@ -163,38 +163,11 @@ async def _execute_todo_with_retry(
         log.warning("tracked_todo.execute_not_found", todo_id=todo_id)
         return f"not_found:{todo_id}"
 
-    if doc.completed:
-        log.info("tracked_todo.execute_already_completed", todo_id=todo_id)
-        return f"completed:{todo_id}"
-
-    # Skip expired todos — let maintenance sweep handle gracefully
-    if doc.expires_at and doc.expires_at <= datetime.now(UTC):
-        log.info(
-            "tracked_todo.execute_expired",
-            todo_id=todo_id,
-            expires_at=doc.expires_at.isoformat(),
-        )
-        return f"expired:{todo_id}"
-
-    # Skip failed todos — user must manually reset before re-execution
-    if FAILED_LABEL in doc.labels:
-        log.info("tracked_todo.execute_marked_failed", todo_id=todo_id)
-        return f"skipped:{todo_id} (marked failed)"
-
-    if origin is None and not _is_due(doc):
-        log.warning(
-            "tracked_todo.stale_fire_skipped",
-            todo_id=todo_id,
-            scheduled_at=doc.scheduled_at.isoformat() if doc.scheduled_at else None,
-        )
-        return f"stale:{todo_id}"
+    if skipped := _skip_reason(doc, origin):
+        return skipped
 
     user_id = doc.user_id
     retry_count = doc.gaia_retry_count
-
-    if not user_id:
-        log.error("tracked_todo.execute_missing_user_id", todo_id=todo_id)
-        return f"error:{todo_id} (missing user_id)"
 
     # Single user fetch per run (matches workflow_tasks.py:416-427): reused for
     # execution and the next-run computation, so a tz change applies immediately
@@ -279,6 +252,38 @@ async def _execute_todo_with_retry(
             max_attempts=MAX_RETRY_ATTEMPTS,
         )
         return f"retry:{todo_id} (attempt {new_retry_count})"
+
+
+def _skip_reason(doc: TodoDocument, origin: TriggerOrigin | None) -> str | None:
+    """Return the result of a fire this todo must not run, or None when it runs."""
+    todo_id = doc.id
+    if doc.completed:
+        log.info("tracked_todo.execute_already_completed", todo_id=todo_id)
+        return f"completed:{todo_id}"
+
+    # Skip expired todos — let maintenance sweep handle gracefully
+    if doc.expires_at and doc.expires_at <= datetime.now(UTC):
+        log.info(
+            "tracked_todo.execute_expired",
+            todo_id=todo_id,
+            expires_at=doc.expires_at.isoformat(),
+        )
+        return f"expired:{todo_id}"
+
+    # Skip failed todos — user must manually reset before re-execution
+    if FAILED_LABEL in doc.labels:
+        log.info("tracked_todo.execute_marked_failed", todo_id=todo_id)
+        return f"skipped:{todo_id} (marked failed)"
+
+    if origin is None and not _is_due(doc):
+        scheduled = doc.scheduled_at.isoformat() if doc.scheduled_at else None
+        log.warning("tracked_todo.stale_fire_skipped", todo_id=todo_id, scheduled_at=scheduled)
+        return f"stale:{todo_id}"
+
+    if not doc.user_id:
+        log.error("tracked_todo.execute_missing_user_id", todo_id=todo_id)
+        return f"error:{todo_id} (missing user_id)"
+    return None
 
 
 def _is_due(doc: TodoDocument) -> bool:

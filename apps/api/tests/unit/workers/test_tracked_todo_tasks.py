@@ -558,10 +558,22 @@ class TestExecuteTodoWithRetryEarlyExits:
         via_agent.assert_not_awaited()
 
     async def test_missing_user_id_is_an_error_not_an_execution(self):
-        result, repo, via_agent = await self._run(_doc(user_id=""))
+        with patch(f"{MODULE}.log") as log_mock:
+            result, repo, via_agent = await self._run(_doc(user_id=""))
         assert result == "error:todo-1 (missing user_id)"
         via_agent.assert_not_awaited()
         repo.update.assert_not_awaited()
+        log_mock.error.assert_called_once_with(
+            "tracked_todo.execute_missing_user_id", todo_id="todo-1"
+        )
+
+    async def test_a_todo_expiring_at_this_instant_is_expired(self):
+        now = datetime(2026, 9, 26, 4, 30, tzinfo=UTC)
+        with patch(f"{MODULE}.datetime", wraps=datetime) as clock:
+            clock.now.return_value = now
+            result, _repo, via_agent = await self._run(_doc(expires_at=now, scheduled_at=now))
+        assert result == "expired:todo-1"
+        via_agent.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -1005,6 +1017,24 @@ class TestStaleScheduledFire:
         assert result == "success:todo-1"
         run.assert_awaited_once()
 
+    async def test_a_fire_exactly_at_the_end_of_the_grace_still_runs(self):
+        now = datetime(2026, 9, 26, 4, 30, tzinfo=UTC)
+        with patch(f"{MODULE}.datetime", wraps=datetime) as clock:
+            clock.now.return_value = now
+            result, run, _repo = await self._fire(_doc(scheduled_at=now + TODO_SCHEDULE_FIRE_GRACE))
+
+        assert result == "success:todo-1"
+        run.assert_awaited_once()
+
+    async def test_a_stale_fire_is_logged_with_the_schedule_it_found(self):
+        later = datetime.now(UTC) + timedelta(days=1)
+        with patch(f"{MODULE}.log") as log_mock:
+            await self._fire(_doc(scheduled_at=later))
+
+        log_mock.warning.assert_called_once_with(
+            "tracked_todo.stale_fire_skipped", todo_id="todo-1", scheduled_at=later.isoformat()
+        )
+
     async def test_a_fire_landing_just_before_its_time_still_runs(self):
         almost = datetime.now(UTC) + TODO_SCHEDULE_FIRE_GRACE - timedelta(seconds=30)
 
@@ -1037,12 +1067,13 @@ class TestExecuteOnExecutor:
         read = (
             AsyncMock(side_effect=canvas_error) if canvas_error else AsyncMock(return_value=canvas)
         )
+        self.references = AsyncMock(return_value="")
         return (
             patch(f"{MODULE}.run_todo_on_executor", self.run),
             patch(f"{MODULE}.read_canvas", read),
             patch(f"{MODULE}.read_activity", AsyncMock(return_value="- earlier run")),
             patch(f"{MODULE}.tracked_todo_service.append_activity_entry", self.timeline),
-            patch(f"{MODULE}._collect_reference_context", AsyncMock(return_value="")),
+            patch(f"{MODULE}._collect_reference_context", self.references),
         )
 
     def _request(self) -> TodoRunRequest:
@@ -1072,6 +1103,11 @@ class TestExecuteOnExecutor:
         assert "Canvas (canvas.md):\n## Current State\nall good" in request.task
         assert "Recent activity (activity.md):\n- earlier run" in request.task
 
+    async def test_past_learnings_come_from_this_todos_references_for_its_owner(self):
+        await self._execute(_doc(references=["todo-0", "todo-00"]))
+
+        self.references.assert_awaited_once_with(["todo-0", "todo-00"], "user-1")
+
     async def test_a_triggered_run_is_attributed_to_its_trigger(self):
         origin = TriggerOrigin(
             subscription_id="sub-1", trigger_name="gmail_new_message", payload={"thread_id": "t-1"}
@@ -1087,8 +1123,12 @@ class TestExecuteOnExecutor:
         await self._execute()
 
         (start,) = self._entries()
-        assert "▶ scheduled run started" in start
-        assert f"conversation_id={self._request().conversation_id[:8]}" in start
+        stamp, text = start.split(" ", 1)
+        assert datetime.fromisoformat(stamp).utcoffset() == timedelta(0)
+        assert (
+            text
+            == f"▶ scheduled run started (conversation_id={self._request().conversation_id[:8]})"
+        )
         assert {c.kwargs["todo_id"] for c in self.timeline.call_args_list} == {"todo-1"}
         assert {c.kwargs["user_id"] for c in self.timeline.call_args_list} == {"user-1"}
 
@@ -1110,7 +1150,9 @@ class TestExecuteOnExecutor:
             await self._execute(run=AsyncMock(side_effect=TimeoutError("executor stalled")))
 
         _start, failed = self._entries()
-        assert "✗ scheduled run failed (TimeoutError)" in failed
+        stamp, text = failed.split(" ", 1)
+        assert datetime.fromisoformat(stamp).utcoffset() == timedelta(0)
+        assert text == "✗ scheduled run failed (TimeoutError)"
 
 
 # ---------------------------------------------------------------------------

@@ -102,7 +102,9 @@ async def run_todo_on_executor(request: TodoRunRequest) -> None:
         except TimeoutError:
             reason = f"the executor did not finish within {BACKGROUND_EXECUTOR_WAIT_TIMEOUT}s"
             # Abandoned: its late finalize delivers nothing while the retry runs.
-            mark_executor_failed(stream_id, reason)
+            mark_executor_failed(
+                stream_id, reason
+            )  # pragma: no mutate — the reason dies with the session torn down below
             raise TodoRunFailedError(reason) from None
         if failure := executor_failure(stream_id):
             raise TodoRunFailedError(failure)

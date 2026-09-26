@@ -86,7 +86,11 @@ async def _reconcile_one(
         ),
         patch.object(reconciliation.pg_store, "get_memories_by_ids", AsyncMock(return_value=[row])),
         patch.object(reconciliation, "reconcile_facts", llm_mock),
+        # The rows' expiry is relative to NOW; read against the real clock, a
+        # "live for 30 days" row expired on 2026-09-26 and the suite went red.
+        patch.object(reconciliation, "datetime", wraps=datetime) as clock,
     ):
+        clock.now.return_value = NOW
         results = await reconciliation.reconcile(USER, [fact], [EMBEDDING])
     return results, llm_mock
 

@@ -1,7 +1,7 @@
 """The outcomes of a tracked todo run's delivery that the wiring test does not reach.
 
 The delivered / silenced / reaction / delivery-off / error paths run end to end in
-tests/integration/test_tracked_todo_run_delivery.py; these pin the rest.
+tests/unit/agents/test_tracked_todo_run_delivery.py; these pin the rest.
 """
 
 from collections.abc import Iterator
@@ -14,9 +14,12 @@ import pytest
 from app.agents.core.background import todo_run_delivery as trd
 from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
 from app.agents.core.background.todo_run_delivery import deliver_todo_run_result
+from app.constants.log_tags import LogTag
+from app.models.chat_models import ConversationSource
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
+from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
@@ -121,3 +124,62 @@ class TestAttribution:
         kwargs = seams.activity.await_args.kwargs
         assert (kwargs["todo_id"], kwargs["user_id"]) == ("todo-1", "user-9")
         assert "(summary='a long report')" in kwargs["entry"]
+
+
+class TestTheWideEventSaysWhatHappened:
+    """The executor_run event is where an operator reads why a todo did or did not message."""
+
+    async def test_a_delivered_result_names_its_todo_and_outcome(self) -> None:
+        with _seams(todo=_todo(), sent_on=ConversationSource.TELEGRAM):
+            async with captured_wide_event() as event:
+                await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        assert event["todo_delivery"] == {
+            "todo_id": "todo-1",
+            "result_type": "final",
+            "outcome": "delivered",
+        }
+
+    async def test_a_silenced_result_keeps_the_reason(self) -> None:
+        with _seams(todo=_todo(), narrated="SILENCE: routine check"):
+            async with captured_wide_event() as event:
+                await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        assert event["todo_delivery"]["silence_reason"] == "routine check"
+        assert event["todo_delivery"]["outcome"] == "silenced"
+
+    async def test_an_error_result_is_left_to_the_worker(self) -> None:
+        with _seams(todo=_todo()) as seams:
+            async with captured_wide_event() as event:
+                await deliver_todo_run_result(RUN, SCHEDULED, "boom", "error")
+
+        assert event["todo_delivery"] == {"todo_id": "todo-1", "result_type": "error"}
+        seams.narrate.assert_not_awaited()
+        seams.activity.assert_not_awaited()
+
+    async def test_a_deleted_todo_is_a_warning_naming_it(self) -> None:
+        with _seams(todo=None):
+            async with captured_wide_event() as event:
+                await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        (warning,) = event["warnings"]
+        assert warning["msg"] == f"{LogTag.AGENT} todo run finished for a deleted todo"
+        assert warning["todo_id"] == "todo-1"
+
+    async def test_a_failed_write_up_is_an_error_naming_the_todo(self) -> None:
+        with _seams(todo=_todo(), narrated=""):
+            async with captured_wide_event() as event:
+                await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        (error,) = event["errors"]
+        assert error["msg"] == f"{LogTag.AGENT} todo run result narration failed"
+        assert error["todo_id"] == "todo-1"
+
+    async def test_a_reaction_is_an_error_naming_the_emoji(self) -> None:
+        with _seams(todo=_todo(), narrated="REACT: 👍"):
+            async with captured_wide_event() as event:
+                await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        (error,) = event["errors"]
+        assert error["msg"] == f"{LogTag.AGENT} todo run result narrated as a reaction; not sent"
+        assert (error["todo_id"], error["emoji"]) == ("todo-1", "👍")

@@ -10,9 +10,11 @@ from app.agents.core.background.session import TodoRun, executor_abandoned
 from app.agents.core.background.todo_run import (
     TodoRunFailedError,
     TodoRunRequest,
+    _todo_run_configurable,
     run_todo_on_executor,
 )
-from app.models.user_models import AuthenticatedUser
+from app.agents.llm.lane import AgentRole
+from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from app.models.workflow_models import TriggerType
 
 pytestmark = pytest.mark.unit
@@ -64,3 +66,36 @@ async def test_a_run_that_never_finishes_is_abandoned_and_fails_the_attempt() ->
     (stream_id,) = stream_ids
     assert executor_abandoned(stream_id)
     never.set()
+
+
+async def test_the_executor_config_is_a_background_run_bound_to_the_todo() -> None:
+    """What a comms turn would have handed the executor, built without one."""
+    user = AuthenticatedUser(
+        user_id="user-1",
+        email="u@gaia.local",
+        onboarding=OnboardingSubdocument.model_validate(
+            {"preferences": {"profession": "engineer"}, "writing_style": {"summary": "terse"}}
+        ),
+    )
+    request = TodoRunRequest(
+        user=user,
+        todo_run=TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO),
+        todo_title="Watch the deploy",
+        task="brief",
+        conversation_id="run-conv",
+    )
+    built = AsyncMock(return_value={"configurable": {"thread_id": "run-conv"}})
+    with patch.object(todo_run, "build_agent_config", built):
+        configurable = await _todo_run_configurable(request, "stream-1")
+
+    assert configurable == {"thread_id": "run-conv", "stream_id": "stream-1"}
+    kwargs = built.await_args.kwargs
+    assert kwargs["identity"].conversation_id == "run-conv"
+    assert kwargs["identity"].agent_name == "executor_agent"
+    assert kwargs["identity"].user["user_id"] == "user-1"
+    assert kwargs["lane"].role is AgentRole.EXECUTOR
+    turn = kwargs["turn"]
+    assert (turn.active_todo_id, turn.execution_mode) == ("todo-1", "background")
+    assert turn.user_messages == ["Tracked todo: Watch the deploy"]
+    assert turn.user_preferences == {"profession": "engineer"}
+    assert turn.writing_style == {"summary": "terse"}

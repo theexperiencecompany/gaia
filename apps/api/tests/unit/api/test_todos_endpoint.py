@@ -488,6 +488,22 @@ class TestUpdateTodoWorkflowLink:
         )
 
 
+class TestUpdateTodoReschedule:
+    async def test_a_tracked_todos_new_time_gets_its_own_job(self, client: AsyncClient) -> None:
+        """The run drops a fire its todo's scheduled_at does not name, so the new time needs a job."""
+        when = datetime(2026, 10, 1, 4, 30, tzinfo=UTC)
+        updated = _todo_response().model_copy(update={"vfs_path": "/workspace/gaia-tasks/todo-1"})
+        schedule = AsyncMock(return_value=True)
+        with (
+            patch(f"{TODOS_ENDPOINT}.TodoService.update_todo", new=AsyncMock(return_value=updated)),
+            patch(f"{TODOS_ENDPOINT}.tracked_todo_service.schedule_execution", new=schedule),
+        ):
+            resp = await client.put("/api/v1/todos/todo-1", json={"scheduled_at": when.isoformat()})
+
+        assert resp.status_code == 200
+        schedule.assert_awaited_once_with("todo-1", when)
+
+
 class TestTodoCanvas:
     async def test_returns_canvas_and_activity(self, client: AsyncClient) -> None:
         doc = TodoDocument(
