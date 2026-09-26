@@ -12,7 +12,6 @@ from arq.connections import ArqRedis
 
 from app.agents.core.agent import AgentRunOptions, call_agent_silent
 from app.agents.prompts.todo_prompts import HEALTH_CHECK_VERDICT_ONLY
-from app.constants.chat import MAX_MESSAGE_LENGTH
 from app.constants.todos import BLOCKING_LABELS
 from app.db.repositories.todos import todo_repository
 from app.models.message_models import MessageRequestWithHistory
@@ -22,8 +21,9 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
 )
-from app.models.todo_models import TodoDocument
+from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.user_models import AuthenticatedUser
+from app.services.canvas_markdown import bounded_canvas
 from app.services.notification_service import notification_service
 from app.services.todos.todo_notifications import todo_redirect_action
 from app.services.tracked_todo_service import tracked_todo_service
@@ -39,11 +39,6 @@ MAX_HEALTH_CHECKS_PER_USER = 10  # Max agent health-check calls per user per swe
 # Legacy-migration page size: the cursor loop pages to a short page, so the
 # scan is complete no matter how many tracked todos exist.
 _MIGRATION_PAGE_SIZE = 200
-
-# A canvas over MAX_MESSAGE_LENGTH raised ValidationError and aborted the whole
-# cron mid-sweep; this budget derives from that cap (never a literal, to avoid
-# drift) — two fifths leaves 30k chars, far more than the scaffolding needs.
-HEALTH_CHECK_CANVAS_MAX_CHARS = MAX_MESSAGE_LENGTH * 2 // 5
 
 # Escalating backoff between repeat notifications for the same todo: notify, then
 # wait 1 day, then 3, then 7 before each repeat. After the schedule is exhausted
@@ -371,7 +366,7 @@ async def _health_check_expired(todo: TodoDocument, pool: ArqRedis) -> ExpiredOu
     user_id = todo.user_id
     title = todo.title
 
-    canvas = _bounded_canvas(await _read_canvas(todo))
+    canvas = bounded_canvas(await _read_canvas(todo))
 
     prompt = (
         f"A tracked todo has expired.\n"
@@ -426,7 +421,7 @@ async def _health_check_dormant(todo: TodoDocument, pool: ArqRedis) -> DormantOu
 
     idle_days = (now - updated_at).days if updated_at else DORMANT_DAYS
 
-    canvas = _bounded_canvas(await _read_canvas(todo))
+    canvas = bounded_canvas(await _read_canvas(todo))
 
     prompt = (
         f"A tracked todo has been dormant for {idle_days} days.\n"
@@ -443,6 +438,11 @@ async def _health_check_dormant(todo: TodoDocument, pool: ArqRedis) -> DormantOu
     if response.startswith("EXECUTE:"):
         jitter_seconds = random.randint(10, 120)  # nosec B311  # NOSONAR python:S2245: non-crypto scheduling jitter
         scheduled_at = now + timedelta(seconds=jitter_seconds)
+        # Stored first: the run drops a fire its todo's scheduled_at doesn't name,
+        # and the safety net can only recover a job whose time is on the todo.
+        await todo_repository.update(
+            todo_id, user_id=user_id, update=TodoUpdate(scheduled_at=scheduled_at)
+        )
         await tracked_todo_service.schedule_execution(todo_id, scheduled_at)
         action = response[len("EXECUTE:") :].strip()
         await tracked_todo_service.system_log(
@@ -589,21 +589,6 @@ async def _read_canvas(todo: TodoDocument) -> str:
             error=str(exc),
         )
         return ""
-
-
-def _bounded_canvas(canvas: str) -> str:
-    """Trim an oversized canvas to its head and tail, within HEALTH_CHECK_CANVAS_MAX_CHARS.
-
-    Key Details/Current State sit near the top; activity-log/timeline entries
-    append at the bottom — both ends carry what a health check needs, so the
-    middle is dropped behind a marker so the agent doesn't read it as a gap.
-    """
-    if len(canvas) <= HEALTH_CHECK_CANVAS_MAX_CHARS:
-        return canvas
-
-    half = HEALTH_CHECK_CANVAS_MAX_CHARS // 2
-    trimmed = len(canvas) - 2 * half
-    return f"{canvas[:half]}\n[middle of canvas trimmed: {trimmed} characters]\n{canvas[-half:]}"
 
 
 async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> str:

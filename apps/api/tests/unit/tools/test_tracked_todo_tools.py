@@ -1214,7 +1214,7 @@ class TestUpdateTrackedTodoSuccess:
                 return_value=self._existing_doc(scheduled_at=_FUTURE),
             ),
             patch(
-                "app.agents.tools.tracked_todo_tools.tracked_todo_service.reschedule_execution",
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
                 new_callable=AsyncMock,
             ) as mock_reschedule,
         ):
@@ -1236,7 +1236,7 @@ class TestUpdateTrackedTodoSuccess:
                 return_value=self._existing_doc(recurrence="0 9 * * *"),
             ),
             patch(
-                "app.agents.tools.tracked_todo_tools.tracked_todo_service.reschedule_execution",
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
                 new_callable=AsyncMock,
             ),
             patch(

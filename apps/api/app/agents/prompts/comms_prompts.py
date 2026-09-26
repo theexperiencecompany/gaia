@@ -638,6 +638,30 @@ PLATFORM_DELIVERY_NOTE = wrap_agent_payload(
     "this for them and are handing it over, in GAIA's normal voice.",
 )
 
+
+def tracked_todo_delivery_note(todo_title: str) -> str:
+    """Build the delivery instructions for a tracked todo's own background run.
+
+    Nobody asked for this result, so comms decides only whether it is worth a
+    message at all; the todo's files already keep the full record.
+    """
+    return wrap_agent_payload(
+        AgentTag.DELIVERY_INSTRUCTIONS,
+        f'This is the result of a background run of the user\'s tracked todo "{todo_title}". '
+        "Nobody asked for it just now: it ran on its schedule or on an event it watches, "
+        "and its full record is already kept in the todo. Message the user ONLY when this "
+        "run found something they need to know or act on: a real change, a result they "
+        "asked to hear about, a question or blocker only they can settle. A routine check, "
+        "a no-op, or a run that only kept notes is not worth a message: reply with exactly "
+        f"one line and nothing else: '{SILENCE_KEYWORD}: <brief reason>'. There is no "
+        "message of theirs to react to, so never answer with a reaction. When you do "
+        "write, it reaches their chat app as plain text with no cards: lead with what "
+        "changed or what they must decide, give the concrete details they need, keep it "
+        "short, never mention runs, schedules or internal ids, and never promise to follow "
+        f"up later. Split with {NEW_MESSAGE_BREAKER} only when there is more than one beat.",
+    )
+
+
 # Prepended to an interactive executor result so the bubble-split instruction sits
 # right next to the write; the same rule in the distant system prompt alone proved
 # probabilistic (workflow deliveries, which carry it inline, split reliably).

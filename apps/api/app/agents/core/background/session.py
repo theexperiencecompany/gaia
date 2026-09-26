@@ -18,6 +18,7 @@ from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, AgentConfigurableView
 from app.models.chat_models import SourceCategory
 from app.models.user_models import AuthenticatedUser
+from app.models.workflow_models import TriggerType
 from shared.py.wide_events import current_workflow_execution_id, log
 
 
@@ -64,6 +65,14 @@ class StreamSession:
     # tool_call_id -> the subagent_id of the run that ANNOUNCED it (None for
     # the executor's own calls) — the one fact that survives the echo above.
     tool_output_owners: dict[str, str | None] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class TodoRun:
+    """The tracked todo a background executor run is executing, and what woke it."""
+
+    todo_id: str
+    trigger_type: TriggerType
 
 
 @dataclass(frozen=True)
@@ -135,6 +144,9 @@ class ExecutorRun:
     workflow_title: str = ""
     workflow_notify_on_completion: bool = True
     active_todo_id: str | None = None
+    #: Set only on a tracked todo's own scheduled/triggered run: its result goes
+    #: through todo delivery, never into a conversation (the run's has none).
+    todo_run: TodoRun | None = None
     #: Where the turn that spawned this run came from. Defaults to background
     #: work, matching ``build_agent_config``: the only callers that leave the
     #: source unset are the silent background paths.

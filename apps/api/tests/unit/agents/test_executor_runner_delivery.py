@@ -25,6 +25,11 @@ from app.agents.core.background.session import (
     ExecutorRun,
     RunKind,
 )
+from app.agents.prompts.comms_prompts import (
+    INTERACTIVE_DELIVERY_NOTE,
+    PLATFORM_DELIVERY_NOTE,
+    SILENCE_NOTE,
+)
 from app.constants.executor import (
     EXECUTOR_NARRATION_FAILED_ERROR_MESSAGE,
     EXECUTOR_NARRATION_FAILED_MESSAGE,
@@ -1801,7 +1806,7 @@ class TestNarrateResultCallContract:
 
     Every one of these is a scoping key: the conversation decides which
     checkpoint (and therefore which persona and history) comms loads, the user
-    decides whose it is, and the workflow_id switches it to the workflow voice.
+    decides whose it is, and the preamble decides the voice (a workflow's here).
     A blanked or dropped one still returns text, so nothing downstream notices
     that the text was voiced for the wrong conversation.
     """
@@ -1814,15 +1819,9 @@ class TestNarrateResultCallContract:
             msg_type: str,
             conversation_id: str,
             user,
-            returned_note: str = "",
-            workflow_id: str | None = None,
+            preamble: str,
         ) -> str:
-            calls.append(
-                (
-                    (result_text, msg_type, conversation_id, user),
-                    {"returned_note": returned_note, "workflow_id": workflow_id},
-                )
-            )
+            calls.append(((result_text, msg_type, conversation_id, user), {"preamble": preamble}))
             return "voiced"
 
         with patch.object(rd, "narrate_executor_result", new=_record):
@@ -1834,23 +1833,9 @@ class TestNarrateResultCallContract:
         assert calls == [
             (
                 ("raw text", "final", "conv-1", AuthenticatedUser(user_id="user-1")),
-                {"returned_note": "handed back by the subagent", "workflow_id": "wf-1"},
+                {"preamble": PLATFORM_DELIVERY_NOTE},
             )
         ]
-
-    async def test_the_decided_approval_outcomes_ride_on_the_result_text(self) -> None:
-        """The note stops comms re-offering an approve/decline the user already answered, so it must be in the text comms reads."""
-        with (
-            patch.object(
-                rd, "_approval_outcomes_note", new=AsyncMock(return_value="\n\n[APPROVAL] done")
-            ),
-            patch.object(
-                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="voiced"
-            ) as narrate,
-        ):
-            await rd._narrate_result(_run(), "raw text", "final", "")
-
-        assert narrate.await_args.args[0] == "raw text\n\n[APPROVAL] done"
 
 
 class TestBuildBotMessageShape:
@@ -2074,7 +2059,24 @@ class TestDeliveryContextIsThreadedWhole:
                 _run(), "raw", "final", "handed back by the subagent", tool_data=None
             )
 
-        assert narrate.await_args.kwargs["returned_note"] == "handed back by the subagent"
+        assert narrate.await_args.kwargs["preamble"].startswith("handed back by the subagent")
+
+
+class TestDeliveryPreamble:
+    """Which delivery instructions comms writes a run's reply under."""
+
+    CARD_NOTE = "<returned_to_frontend>a card is on screen</returned_to_frontend>"
+
+    def test_a_workflow_result_is_restated_in_full_with_no_card_note(self) -> None:
+        """The card note would tell comms not to list data that has no card to fall back on."""
+        assert rd._delivery_preamble(_run(workflow=True), self.CARD_NOTE) == (
+            PLATFORM_DELIVERY_NOTE
+        )
+
+    def test_an_interactive_result_reads_the_card_note_before_the_split_rule(self) -> None:
+        assert rd._delivery_preamble(_run(), self.CARD_NOTE) == (
+            self.CARD_NOTE + INTERACTIVE_DELIVERY_NOTE + SILENCE_NOTE
+        )
 
 
 class TestWorkflowNotificationRef:

@@ -89,21 +89,17 @@ TRIGGERED_RELEVANCE_GUIDANCE = (
 )
 
 
-# Appended to a scheduled/triggered run whose todo has notify_on_run set. Without
-# it the run cannot tell whether anyone reads its answer, so it pings the user
-# with send_notification to be safe and the result arrives twice.
+# Appended to a scheduled/triggered run whose todo has notify_on_run set. GAIA
+# reads the run's final report and messages the user only when it matters, so
+# the run must neither notify on its own nor decide delivery for the user.
 DELIVERED_RESULT_GUIDANCE = (
-    "DELIVERY: when this run ends, your final message is sent to the user on their chat "
-    "app automatically. Write it for them, in GAIA's voice: the outcome, and anything "
-    "they have to decide. No internal narration, and never promise to message them "
-    "again later, because nothing keeps running after this run ends. Write like a "
-    "person texting an update: short, varied sentences, plain words, straight to what "
-    "happened. No throat-clearing, no filler, and no forced slang or quirks either. "
-    "If nothing changed, one line saying so is the whole message. Do NOT call "
-    "send_notification to announce this result, because that delivers it twice. "
-    "Notify only for something genuinely separate and urgent that cannot wait. "
-    "If a todo's runs are usually not worth a message, turn its delivery off with "
-    "update_tracked_todo(notify_on_run=False) rather than sending noise every run."
+    "REPORTING: end with a factual report of this run: what you checked or did, what "
+    "changed, and anything the user must decide. GAIA reads that report and messages "
+    "the user only if it matters, so write it for GAIA, not as a message to them. Do "
+    "NOT call send_notification to announce this run's outcome, because that sends it "
+    "a second time. Notify only for something separate and urgent that cannot wait. "
+    "Leave this todo's delivery settings alone: whether its runs reach the user is "
+    "the user's choice."
 )
 
 # The counterpart for a silent todo: nothing is delivered, so a result the user
