@@ -270,10 +270,24 @@ class TestWriteFile:
         canvas.assert_not_awaited()
         assert "activity.md" in syslog.await_args.kwargs["details"]
 
+    async def test_the_first_entry_of_an_empty_activity_is_accepted(self, writers):
+        _canvas, activity, _syslog = writers
+        doc = _doc(activity_content=None)
+        first = "- 2026-09-02T10:00:00+00:00 started"
+
+        assert await write_file(TaskFile(doc, GaiaTaskFile.ACTIVITY), USER_ID, first) is None
+        activity.assert_awaited_once_with(
+            TODO_ID, USER_ID, first, expected_updated_at=doc.updated_at
+        )
+
     @pytest.mark.parametrize(
         "rewrite",
-        ["- 2026-09-02T10:00:00+00:00 replied", "- 2026-09-01T09:00:00+00:00 begun\n- more"],
-        ids=["dropped-entry", "edited-entry"],
+        [
+            "- 2026-09-02T10:00:00+00:00 replied",
+            "- 2026-09-01T09:00:00+00:00 begun\n- more",
+            "- 2026-09-01T09:00:00+00:00 started, then abandoned",
+        ],
+        ids=["dropped-entry", "edited-entry", "extended-last-entry"],
     )
     async def test_activity_that_loses_an_earlier_entry_is_refused(self, writers, rewrite):
         """A read-then-write that missed an entry code appended in between used to erase it."""

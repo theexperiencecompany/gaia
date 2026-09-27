@@ -19,7 +19,11 @@ from app.models.todo_models import TodoDocument
 from app.services.canvas_markdown import canvas_problems, with_missing_sections
 from app.services.gaia_tasks_fs import fetch_active_projections, project_gaia_task
 from app.services.storage._vfs_common import INDEX_FILENAME, meta_body
-from app.services.storage.gaia_tasks_vfs import GAIA_TASKS_DIRNAME, render_index
+from app.services.storage.gaia_tasks_vfs import (
+    GAIA_TASKS_DIRNAME,
+    GaiaTaskProjection,
+    render_index,
+)
 from app.services.todo_canvas_storage import write_activity, write_canvas
 from app.services.tracked_todo_service import tracked_todo_service
 from shared.py.wide_events import log
@@ -129,7 +133,8 @@ async def read_file(ref: GaiaTaskPath, user_id: str) -> str:
         case GaiaTaskFile.LOG:
             return doc.log_content or ""
         case GaiaTaskFile.META:
-            return meta_body(project_gaia_task(doc)["meta"])
+            projection: GaiaTaskProjection = project_gaia_task(doc)
+            return meta_body(projection["meta"])
 
 
 def write_refusal(ref: GaiaTaskPath) -> str | None:
@@ -148,7 +153,10 @@ def _content_refusal(ref: TaskFile, content: str) -> str | None:
     """Why this body breaks its file's shape, or None when it may be saved."""
     if ref.filename is GaiaTaskFile.ACTIVITY:
         current = (ref.todo.activity_content or "").rstrip()
-        if not content.startswith(current):
+        appended = content[len(current) :]
+        # Text run onto the last line would change that entry, not add one.
+        extends_last_entry = bool(current and appended.strip()) and not appended.startswith("\n")
+        if not content.startswith(current) or extends_last_entry:
             return (
                 "Error: activity.md is append-only. Keep every existing entry exactly as it "
                 "is and add yours at the end; read the file again, since entries may have "

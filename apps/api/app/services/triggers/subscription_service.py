@@ -13,9 +13,10 @@ dispatch finds the subscription by user and trigger name instead. Conflating the
 two is how a reply-watching todo silently never fires.
 """
 
-from typing import Any
+from collections.abc import Mapping
 
 from pydantic import ValidationError
+from pydantic_core import ErrorDetails
 
 from app.constants.todos import BLOCKING_LABEL, TodoActivityEvent
 from app.db.repositories.todos import todo_repository
@@ -47,7 +48,9 @@ class SubscriptionError(Exception):
     """A subscription could not be registered, with a message the agent can act on."""
 
 
-def build_trigger_config(trigger_name: str, trigger_data: dict[str, Any] | None) -> TriggerConfig:
+def build_trigger_config(
+    trigger_name: str, trigger_data: Mapping[str, object] | None
+) -> TriggerConfig:
     """Build the TriggerConfig a handler expects, for a todo rather than a workflow.
 
     trigger_data carries the registration-time knobs the payload cannot express
@@ -72,7 +75,7 @@ async def register_subscription(
     action: SubscriptionAction,
     match: ConditionMatch = ConditionMatch.ALL,
     cooldown_seconds: int = DEFAULT_COOLDOWN_SECONDS,
-    trigger_data: dict[str, Any] | None = None,
+    trigger_data: Mapping[str, object] | None = None,
 ) -> tuple[TriggerSubscription, ValidationOutcome]:
     """Validate, register with Composio, and store one subscription on todo_id.
 
@@ -119,9 +122,10 @@ async def register_subscription(
     try:
         config = build_trigger_config(trigger_name, trigger_data)
     except ValidationError as e:
+        first_error: ErrorDetails = e.errors()[0]
         raise _fail(
             "invalid_config",
-            f"Invalid configuration for '{trigger_name}': {e.errors()[0]['msg']}",
+            f"Invalid configuration for '{trigger_name}': {first_error['msg']}",
         ) from e
 
     try:
@@ -153,7 +157,7 @@ async def register_subscription(
             else SubscriptionResolution.ACCOUNT
         ),
         composio_trigger_ids=trigger_ids,
-        trigger_data=trigger_data or {},
+        trigger_data=dict(trigger_data or {}),
     )
 
     await todo_repository.update(

@@ -405,6 +405,26 @@ class TestActions:
         assert (todo_id, user_id, event) == (TODO_ID, USER_ID, TodoActivityEvent.TRIGGER_FIRED)
         assert detail == f"{GMAIL} matched; action: {sub.action.value}"
 
+    async def test_an_action_that_fails_is_on_the_timeline_after_the_fire(self, deps) -> None:
+        """Regression: a failed action left only "trigger_fired", reading as if it had run."""
+        sub = _subscription(action=SubscriptionAction.NOTIFY)
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[sub])
+        ]
+        deps.notify.side_effect = RuntimeError("push service down")
+
+        assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {}) == 0
+
+        assert [c.args for c in deps.activity.await_args_list] == [
+            (TODO_ID, USER_ID, TodoActivityEvent.TRIGGER_FIRED, f"{GMAIL} matched; action: notify"),
+            (
+                TODO_ID,
+                USER_ID,
+                TodoActivityEvent.TRIGGER_ACTION_FAILED,
+                "notify failed: RuntimeError",
+            ),
+        ]
+
     async def test_the_fire_is_stamped_onto_the_wide_event(self, deps) -> None:
         # Every field the action is dispatched under must land on the event, so a
         # fired subscription is attributable after the fact.

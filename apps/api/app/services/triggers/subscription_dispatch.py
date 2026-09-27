@@ -13,7 +13,6 @@ case.
 """
 
 from datetime import UTC, datetime
-from typing import Any
 
 from redis.exceptions import RedisError
 
@@ -49,7 +48,7 @@ async def dispatch_to_subscribed_todos(
     trigger_name: str,
     trigger_id: str | None,
     user_id: str | None,
-    payload: dict[str, Any],
+    payload: dict[str, object],
 ) -> int:
     """Run every matching subscription's action. Returns how many fired."""
     todos = await _resolve_subscribers(trigger_name, trigger_id, user_id)
@@ -105,7 +104,7 @@ async def _fire_if_matching(
     subscription: TriggerSubscription,
     trigger_name: str,
     trigger_id: str | None,
-    payload: dict[str, Any],
+    payload: dict[str, object],
 ) -> bool:
     """Gate one subscription on trigger, instance, status, conditions and cooldown, then act."""
     if subscription.trigger_name != trigger_name:
@@ -179,7 +178,7 @@ async def _claim_cooldown(subscription: TriggerSubscription) -> bool:
 
 
 async def _perform_action(
-    todo: TodoDocument, subscription: TriggerSubscription, payload: dict[str, Any]
+    todo: TodoDocument, subscription: TriggerSubscription, payload: dict[str, object]
 ) -> None:
     log.set(
         component="trigger_subscription",
@@ -195,19 +194,29 @@ async def _perform_action(
         TodoActivityEvent.TRIGGER_FIRED,
         f"{subscription.trigger_name} matched; action: {subscription.action.value}",
     )
-    match subscription.action:
-        case SubscriptionAction.EXECUTE:
-            await _execute(todo, subscription, payload)
-        case SubscriptionAction.NOTIFY:
-            await _notify(todo, subscription)
-        case SubscriptionAction.COMPLETE:
-            await _complete(todo, subscription)
-        case SubscriptionAction.UNBLOCK:
-            await _unblock(todo, subscription)
+    try:
+        match subscription.action:
+            case SubscriptionAction.EXECUTE:
+                await _execute(todo, subscription, payload)
+            case SubscriptionAction.NOTIFY:
+                await _notify(todo, subscription)
+            case SubscriptionAction.COMPLETE:
+                await _complete(todo, subscription)
+            case SubscriptionAction.UNBLOCK:
+                await _unblock(todo, subscription)
+    except Exception as e:
+        # The fire is already on the timeline; without this it reads as if the action ran.
+        await record_activity(
+            todo.id,
+            todo.user_id,
+            TodoActivityEvent.TRIGGER_ACTION_FAILED,
+            f"{subscription.action.value} failed: {type(e).__name__}",
+        )
+        raise
 
 
 async def _execute(
-    todo: TodoDocument, subscription: TriggerSubscription, payload: dict[str, Any]
+    todo: TodoDocument, subscription: TriggerSubscription, payload: dict[str, object]
 ) -> None:
     """Enqueue the todo's normal execution, stamped with where it came from."""
     pool = await RedisPoolManager.get_pool()

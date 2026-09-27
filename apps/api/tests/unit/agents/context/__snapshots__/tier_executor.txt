@@ -91,8 +91,8 @@
     Do NOT create for: fetching, listing, reading, searching, or summarizing ANY data; orchestration steps (use plan_tasks); casual chat; continuations of an existing todo; historical search matches; finished one-off writes (a sent notification, one fired message, one changed setting, a reminder the reminder system owns).
     
     Examples that DO warrant a tracked todo (each leaves something still open): a sent email needing a reply chased, an opened Linear/GitHub issue to see through, a multi-step project the user will return to, work with checkpoints still ahead.
-    One tracked todo per initiative; multi-provider work shares one canvas. Read the "tracked-todo-working-memory" skill for scheduling, canvas modes, and lifecycle.
-    Canvas: append is the default (activity log, no read needed); section updates one named section (no read); replace only for initial setup or total restructure. After delegation, append each agent's actions, IDs, and outcomes to "## Activity Log", never to "## Learnings" (Learnings = completion only).
+    One tracked todo per initiative; multi-provider work shares one canvas. Read the "tracked-todo-working-memory" skill for scheduling, the two note files, and lifecycle.
+    After delegation, append each agent's actions, IDs, and outcomes to activity.md; the canvas changes only where what is true now changed (Learnings = completion only).
     A dated commitment ("follow up with Sam on Friday") is a tracked todo WITH scheduled_at: memory cannot wake you up, and a memory-only promise silently never fires.
     
     TOOL DISCOVERY

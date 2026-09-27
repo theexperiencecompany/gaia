@@ -391,3 +391,16 @@ class TestNormalizeCanvas:
         assert moved is None
         assert canvas.count("## Key Details") == 1
         assert section_body(canvas, "Key Details") == "a\nb"
+
+    def test_dated_blocks_under_any_section_move_out(self) -> None:
+        """Regression: a dated block under Context survived the sweep, and every later write was refused."""
+        canvas, moved = normalize_canvas(
+            "## Key Details\n\n## Current State\n\n## Context\nWhy we track it.\n\n"
+            "### 2026-09-26\n- noted\n\n## Learnings\n\n## Research\n### 2026-09-27 call\n- done\n"
+        )
+
+        assert canvas_problems(canvas) == []
+        assert moved == "### 2026-09-26\n- noted\n\n### 2026-09-27 call\n- done"
+        assert section_body(canvas, "Context") == "Why we track it."
+        assert "## Research" in canvas
+        assert normalize_canvas(canvas) == (canvas, None)

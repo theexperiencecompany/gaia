@@ -43,13 +43,7 @@ function renderBody({
     );
   }
   if (content) {
-    return (
-      <MarkdownRenderer
-        content={content}
-        className="text-sm"
-        inlineDollarMath={false}
-      />
-    );
+    return <MarkdownRenderer content={content} className="text-sm" />;
   }
   return (
     <p className="py-8 text-center text-sm text-zinc-500">

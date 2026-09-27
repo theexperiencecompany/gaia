@@ -176,7 +176,6 @@ apps/api/app/services/files/service.py	TB002
 apps/api/app/services/files/store.py	TB002
 apps/api/app/services/files/summaries.py	TB002
 apps/api/app/services/gaia_knowledge_service.py	TB002	deferred-until=2026-10-15; master's #1240 reads chromadb's GetResult TypedDict with .get, a shape chromadb owns; a typed wrapper over the Chroma client is its own change (decided 2026-09-16)
-apps/api/app/services/gaia_task_files.py	TB002
 apps/api/app/services/hil/classification.py	TB002
 apps/api/app/services/hil/notify.py	TB001
 apps/api/app/services/hil/notify.py	TB002
@@ -250,9 +249,6 @@ apps/api/app/services/triggers/handlers/notion.py	TB002
 apps/api/app/services/triggers/handlers/slack.py	TB001
 apps/api/app/services/triggers/handlers/slack.py	TB002
 apps/api/app/services/triggers/handlers/todoist.py	TB001
-apps/api/app/services/triggers/subscription_dispatch.py	TB001
-apps/api/app/services/triggers/subscription_service.py	TB001
-apps/api/app/services/triggers/subscription_service.py	TB002
 apps/api/app/services/upload_service.py	TB002
 apps/api/app/services/workflow/playbook/check.py	TB002
 apps/api/app/services/workflow/playbook/evaluator.py	TB001

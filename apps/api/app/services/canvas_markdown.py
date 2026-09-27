@@ -11,13 +11,13 @@ import re
 from app.constants.todos import CANVAS_PROMPT_MAX_CHARS, CANVAS_SECTIONS
 
 LEGACY_ACTIVITY_SECTIONS = ("Activity Log", "Timeline")
-_LEARNINGS_SECTION = "Learnings"
-# Activity entries the old append mode dumped under Learnings: "### 2026-08-20" blocks.
+# Activity entries the old append mode dumped into the canvas: "### 2026-08-20" blocks.
 _DATED_BLOCK_RE = re.compile(r"(?:^|\n)(### \d{4}-\d{2}-\d{2}.*?)(?=\n### |\Z)", re.DOTALL)
 # A Timeline line: "- <iso timestamp> <text>" — sortable by the timestamp prefix.
 _TIMELINE_LINE_RE = re.compile(r"^- (\d{4}-\d{2}-\d{2}T\S+) ")
 _DATED_BLOCK_HEADER_RE = re.compile(r"### (\d{4}-\d{2}-\d{2})")
 _HEADING_RE = re.compile(r"^## (.+?)[ \t]*$", re.MULTILINE)
+_SECTION_START_RE = re.compile(r"(?=\n## )")
 # A section that is a run log in all but name: "Activity Log (append)", "Timeline", "History".
 _ACTIVITY_HEADING_RE = re.compile(
     r"^(activity|timeline|history|changelog|run log|log)\b", re.IGNORECASE
@@ -73,20 +73,17 @@ def _remove_section(text: str, heading: str) -> tuple[str, str | None]:
     return before + after, body
 
 
-def _rescue_dated_blocks_from_learnings(text: str) -> tuple[str, list[str]]:
-    span = _section_span(text, _LEARNINGS_SECTION)
-    if span is None:
-        return text, []
-    _, body_start, section_end = span
-    body = text[body_start:section_end]
-    blocks = [m.group(1).strip() for m in _DATED_BLOCK_RE.finditer(body)]
-    if not blocks:
-        return text, []
-    remaining = _DATED_BLOCK_RE.sub("", body).strip()
-    rebuilt = (
-        text[:body_start] + ("\n" + remaining + "\n" if remaining else "\n") + text[section_end:]
-    )
-    return rebuilt, blocks
+def _rescue_dated_blocks(text: str) -> tuple[str, list[str]]:
+    """Pull every "### YYYY-MM-DD" block out of whichever section holds it."""
+    blocks: list[str] = []
+    segments: list[str] = []
+    for segment in _SECTION_START_RE.split(text):
+        found = [m.group(1).strip() for m in _DATED_BLOCK_RE.finditer(segment)]
+        if found:
+            blocks.extend(found)
+            segment = _DATED_BLOCK_RE.sub("", segment).rstrip() + "\n"
+        segments.append(segment)
+    return ("".join(segments), blocks) if blocks else (text, [])
 
 
 def _block_date(block: str) -> datetime | None:
@@ -141,14 +138,14 @@ def _extract_entries(body: str) -> tuple[list[tuple[datetime, str]], list[str]]:
 
 
 def split_legacy_canvas(canvas: str) -> tuple[str, str | None]:
-    """Move Activity Log, Timeline, and dated blocks stranded under Learnings out of the canvas.
+    """Move Activity Log, Timeline, and dated blocks in any section out of the canvas.
 
     Returns (new_canvas, activity or None). Dated entries from all three sources
     merge oldest-first; undated lines follow in original order. Idempotent: nothing
     to move comes back unchanged.
     """
     text, activity = _remove_section(canvas, "Activity Log")
-    text, rescued = _rescue_dated_blocks_from_learnings(text)
+    text, rescued = _rescue_dated_blocks(text)
     text, timeline = _remove_section(text, "Timeline")
     if text == canvas:
         return canvas, None
@@ -221,7 +218,7 @@ def _merge_duplicate_sections(canvas: str) -> str:
 def normalize_canvas(canvas: str) -> tuple[str, str | None]:
     """Repair a canvas into the template's shape; return (canvas, activity moved out or None).
 
-    Legacy and activity-like sections move to activity.md, repeated sections
+    Activity-like sections and dated blocks move to activity.md, repeated sections
     merge, and missing template sections are added. Idempotent.
     """
     text, moved = split_legacy_canvas(canvas)

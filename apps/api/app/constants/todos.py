@@ -86,6 +86,7 @@ class TodoActivityEvent(StrEnum):
     WATCH_PAUSED = "watch_paused"
     WATCH_RESUMED = "watch_resumed"
     TRIGGER_FIRED = "trigger_fired"
+    TRIGGER_ACTION_FAILED = "trigger_action_failed"
     RUN_STARTED = "run_started"
     RUN_FINISHED = "run_finished"
     RUN_FAILED = "run_failed"
