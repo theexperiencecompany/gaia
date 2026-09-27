@@ -46,14 +46,17 @@ async def test_a_conversation_already_running_the_executor_is_refused_before_spa
     spawned.assert_not_called()
 
 
-async def test_a_run_that_never_finishes_is_abandoned_and_fails_the_attempt() -> None:
-    """Abandoned so its late finalize delivers nothing while the worker's retry runs."""
+async def test_a_run_that_never_finishes_is_stopped_before_the_attempt_fails() -> None:
+    """Regression: a run left going past its wait kept calling tools while the worker's retry ran the todo again."""
     stream_ids: list[str] = []
-    never = asyncio.Event()
+    abandoned_when_stopped: list[bool] = []
 
     async def stall(*, run, task, configurable) -> None:
         stream_ids.append(run.stream_id)
-        await never.wait()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            abandoned_when_stopped.append(executor_abandoned(run.stream_id))
 
     with (
         patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),
@@ -63,9 +66,9 @@ async def test_a_run_that_never_finishes_is_abandoned_and_fails_the_attempt() ->
     ):
         await run_todo_on_executor(REQUEST)
 
-    (stream_id,) = stream_ids
-    assert executor_abandoned(stream_id)
-    never.set()
+    # Stopped before the attempt failed, and marked abandoned first so its finalize delivers nothing.
+    assert abandoned_when_stopped == [True]
+    assert len(stream_ids) == 1
 
 
 async def test_the_executor_config_is_a_background_run_bound_to_the_todo() -> None:

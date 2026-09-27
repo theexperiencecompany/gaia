@@ -182,34 +182,12 @@ async def _execute_todo_with_retry(
 
     try:
         await _execute_on_executor(doc, user_data=user_data, origin=origin)
-
-        # scheduled_at must name the NEXT execution (find_due_tracked_all_users
-        # selects on it), or the safety net re-enqueues this todo every scan.
-        # Recurrence uses the timezone looked up at the top of this run.
-        next_run = (
-            _compute_next_run(doc.recurrence, user_tz.value, anchor=doc.scheduled_at)
-            if doc.recurrence
-            else None
-        )
-        await todo_repository.update(
-            todo_id,
-            user_id=user_id,
-            update=TodoUpdate(gaia_retry_count=0, scheduled_at=next_run),
-        )
-
-        if next_run:
-            await enqueue_worker_job(
-                pool,
-                "execute_tracked_todo",
-                todo_id,
-                _defer_until=next_run,
+        # A watch firing is not the todo's schedule, so only a scheduled run moves it on.
+        advanced = origin is None and await _advance_schedule(doc, pool, user_tz.value)
+        if not advanced:
+            await todo_repository.update(
+                todo_id, user_id=user_id, update=TodoUpdate(gaia_retry_count=0)
             )
-            log.info(
-                "tracked_todo.re_enqueued",
-                todo_id=todo_id,
-                next_run=next_run.isoformat(),
-            )
-
         return f"success:{todo_id}"
 
     except Exception as exc:
@@ -227,14 +205,15 @@ async def _execute_todo_with_retry(
         backoff_index = min(new_retry_count - 1, len(RETRY_BACKOFF) - 1)
         backoff = RETRY_BACKOFF[backoff_index]
         next_attempt = datetime.now(UTC) + backoff
-        # Park scheduled_at on the backoff target as well: left in the past it
-        # keeps matching the safety net's due-query, which would fire the retry
-        # on the next 30-minute scan and flatten the 1h/4h ladder.
-        await todo_repository.update(
-            todo_id,
-            user_id=user_id,
-            update=TodoUpdate(gaia_retry_count=new_retry_count, scheduled_at=next_attempt),
+        # A scheduled retry parks scheduled_at on the backoff target: left in the
+        # past it matches the safety net's due-query, which fires it on the next
+        # 30-minute scan. A triggered retry carries its origin and needs no park.
+        update = (
+            TodoUpdate(gaia_retry_count=new_retry_count, scheduled_at=next_attempt)
+            if origin is None
+            else TodoUpdate(gaia_retry_count=new_retry_count)
         )
+        await todo_repository.update(todo_id, user_id=user_id, update=update)
         await enqueue_worker_job(
             pool,
             "execute_tracked_todo",
@@ -252,6 +231,32 @@ async def _execute_todo_with_retry(
             max_attempts=MAX_RETRY_ATTEMPTS,
         )
         return f"retry:{todo_id} (attempt {new_retry_count})"
+
+
+async def _advance_schedule(doc: TodoDocument, pool: ArqRedis, user_tz: str) -> bool:
+    """Move scheduled_at to the next run and queue it; False when it was rescheduled mid-run.
+
+    scheduled_at must name the next execution or the safety net re-queues the todo every scan.
+    """
+    next_run = (
+        _compute_next_run(doc.recurrence, user_tz, anchor=doc.scheduled_at)
+        if doc.recurrence
+        else None
+    )
+    advanced = await todo_repository.update_if_scheduled_at(
+        doc.id,
+        doc.user_id,
+        expected=doc.scheduled_at,
+        update=TodoUpdate(gaia_retry_count=0, scheduled_at=next_run),
+    )
+    if advanced is None:
+        # The run or the user set a new time while it ran; that time and its queued fire stand.
+        log.info("tracked_todo.rescheduled_during_run", todo_id=doc.id)
+        return False
+    if next_run:
+        await enqueue_worker_job(pool, "execute_tracked_todo", doc.id, _defer_until=next_run)
+        log.info("tracked_todo.re_enqueued", todo_id=doc.id, next_run=next_run.isoformat())
+    return True
 
 
 def _skip_reason(doc: TodoDocument, origin: TriggerOrigin | None) -> str | None:
@@ -287,11 +292,7 @@ def _skip_reason(doc: TodoDocument, origin: TriggerOrigin | None) -> str | None:
 
 
 def _is_due(doc: TodoDocument) -> bool:
-    """Whether a scheduled fire matches the todo's current schedule.
-
-    ARQ cannot cancel a deferred job, so a reschedule leaves the old one queued;
-    it must find the todo still due or it is a leftover, not a run.
-    """
+    """Whether this fire is the todo's current schedule; ARQ cannot cancel a superseded job."""
     return doc.scheduled_at is not None and doc.scheduled_at <= (
         datetime.now(UTC) + TODO_SCHEDULE_FIRE_GRACE
     )
@@ -383,12 +384,7 @@ async def _execute_on_executor(
     user_data: AuthenticatedUser,
     origin: TriggerOrigin | None = None,
 ) -> None:
-    """Run the todo on the executor, from its canvas, activity and references.
-
-    Never a workflow (a replayed playbook freezes the calls and cannot explore)
-    and never comms (it has no work tools). The finish entry and any message to
-    the user come from the run's delivery step, which sees the result.
-    """
+    """Run the todo on the executor; its delivery step writes the finish entry and any message."""
     todo_id = doc.id
     user_id = doc.user_id
 

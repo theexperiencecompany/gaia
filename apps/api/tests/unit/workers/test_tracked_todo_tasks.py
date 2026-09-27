@@ -43,7 +43,7 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
 )
-from app.models.todo_models import TodoDocument
+from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import TriggerOrigin
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
@@ -97,6 +97,14 @@ def _pool() -> MagicMock:
     pool.exists = AsyncMock(return_value=0)
     pool.enqueue_job = AsyncMock(return_value=MagicMock())
     return pool
+
+
+def _schedule_writes(repo: MagicMock) -> list[tuple[datetime | None, dict]]:
+    """Return (expected scheduled_at, $set payload) of every compare-and-set schedule write."""
+    return [
+        (c.kwargs["expected"], c.kwargs["update"].model_dump(exclude_unset=True))
+        for c in repo.update_if_scheduled_at.call_args_list
+    ]
 
 
 def _updates(repo: MagicMock) -> list[dict]:
@@ -519,6 +527,7 @@ class TestExecuteTodoWithRetryEarlyExits:
         repo = MagicMock()
         repo.get_by_id = AsyncMock(return_value=doc)
         repo.update = AsyncMock()
+        repo.update_if_scheduled_at = AsyncMock(return_value=doc)
         via_agent = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
@@ -586,11 +595,12 @@ class TestExecuteTodoWithRetrySuccess:
     def _route_enqueue(self, route_enqueue_via_pool):
         return
 
-    async def _run(self, doc, *, tz="UTC"):
+    async def _run(self, doc, *, tz="UTC", origin=None, rescheduled_meanwhile=False):
         pool = _pool()
         repo = MagicMock()
         repo.get_by_id = AsyncMock(return_value=doc)
         repo.update = AsyncMock()
+        repo.update_if_scheduled_at = AsyncMock(return_value=None if rescheduled_meanwhile else doc)
         with (
             patch(f"{MODULE}.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", AsyncMock()),
@@ -598,8 +608,9 @@ class TestExecuteTodoWithRetrySuccess:
                 f"{MODULE}.load_user_context",
                 AsyncMock(side_effect=_user_context(timezone=tz)),
             ),
+            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
         ):
-            result = await _execute_todo_with_retry("todo-1", pool)
+            result = await _execute_todo_with_retry("todo-1", pool, origin)
         return result, repo, pool
 
     async def test_one_shot_success_resets_retries_and_clears_scheduled_at(self):
@@ -608,7 +619,13 @@ class TestExecuteTodoWithRetrySuccess:
         result, repo, pool = await self._run(_doc(scheduled_at=stale, recurrence=None))
 
         assert result == "success:todo-1"
-        assert _updates(repo) == [{"gaia_retry_count": 0, "scheduled_at": None}]
+        repo.update_if_scheduled_at.assert_awaited_once_with(
+            "todo-1",
+            "user-1",
+            expected=stale,
+            update=TodoUpdate(gaia_retry_count=0, scheduled_at=None),
+        )
+        repo.update.assert_not_awaited()
         pool.enqueue_job.assert_not_awaited()
 
     async def test_recurring_success_moves_scheduled_at_forward_and_re_enqueues(self):
@@ -616,7 +633,8 @@ class TestExecuteTodoWithRetrySuccess:
         result, repo, pool = await self._run(_doc(scheduled_at=anchor, recurrence="daily"))
 
         assert result == "success:todo-1"
-        (payload,) = _updates(repo)
+        ((expected, payload),) = _schedule_writes(repo)
+        assert expected == anchor
         assert payload["gaia_retry_count"] == 0
         next_run = payload["scheduled_at"]
         assert next_run > datetime.now(UTC)
@@ -629,7 +647,7 @@ class TestExecuteTodoWithRetrySuccess:
     async def test_recurrence_is_evaluated_in_the_users_timezone(self):
         """A cron recurrence means 9am *local*: 03:30 UTC for Asia/Kolkata."""
         _result, repo, _pool_ = await self._run(_doc(recurrence="0 9 * * *"), tz="Asia/Kolkata")
-        next_run = _updates(repo)[0]["scheduled_at"]
+        next_run = _schedule_writes(repo)[0][1]["scheduled_at"]
         assert next_run.astimezone(KOLKATA).hour == 9
         assert next_run.astimezone(UTC).hour == 3
         assert next_run.astimezone(UTC).minute == 30
@@ -642,7 +660,30 @@ class TestExecuteTodoWithRetrySuccess:
         )
 
         assert result == "success:todo-1"
-        assert _updates(repo) == [{"gaia_retry_count": 0, "scheduled_at": None}]
+        assert _schedule_writes(repo) == [(stale, {"gaia_retry_count": 0, "scheduled_at": None})]
+        pool.enqueue_job.assert_not_awaited()
+
+    async def test_a_schedule_set_while_the_run_was_going_stands(self):
+        """Regression: a run that scheduled its own follow-up had it cleared, and that fire then dropped as stale."""
+        result, repo, pool = await self._run(_doc(recurrence="daily"), rescheduled_meanwhile=True)
+
+        assert result == "success:todo-1"
+        repo.update.assert_awaited_once_with(
+            "todo-1", user_id="user-1", update=TodoUpdate(gaia_retry_count=0)
+        )
+        pool.enqueue_job.assert_not_awaited()
+
+    async def test_a_triggered_run_leaves_the_todos_own_schedule_alone(self):
+        """Regression: a watch firing cleared a pending one-shot schedule, or pushed a recurring one a period on."""
+        pending = datetime.now(UTC) + timedelta(days=1)
+        origin = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
+        result, repo, pool = await self._run(
+            _doc(scheduled_at=pending, recurrence="daily"), origin=origin
+        )
+
+        assert result == "success:todo-1"
+        repo.update_if_scheduled_at.assert_not_awaited()
+        assert _updates(repo) == [{"gaia_retry_count": 0}]
         pool.enqueue_job.assert_not_awaited()
 
 
@@ -652,7 +693,7 @@ class TestExecuteTodoWithRetrySuccess:
 
 
 class TestExecuteTodoWithRetryFailure:
-    async def _run(self, doc):
+    async def _run(self, doc, origin=None):
         pool = _pool()
         repo = MagicMock()
         repo.get_by_id = AsyncMock(return_value=doc)
@@ -666,8 +707,9 @@ class TestExecuteTodoWithRetryFailure:
                 f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
             ),
             patch(f"{MODULE}._mark_todo_failed", mark_failed),
+            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
         ):
-            result = await _execute_todo_with_retry("todo-1", pool)
+            result = await _execute_todo_with_retry("todo-1", pool, origin)
         return result, repo, pool, mark_failed
 
     @pytest.mark.parametrize(
@@ -697,6 +739,17 @@ class TestExecuteTodoWithRetryFailure:
         assert payload["gaia_retry_count"] == 1
         assert payload["scheduled_at"] == pool.enqueue_job.await_args.kwargs["_defer_until"]
         assert payload["scheduled_at"] > datetime.now(UTC)
+
+    async def test_a_failed_triggered_run_keeps_the_todos_own_schedule(self):
+        """A triggered retry carries its origin, so parking scheduled_at would only overwrite the todo's own next run."""
+        pending = datetime.now(UTC) + timedelta(days=1)
+        origin = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
+        _result, repo, pool, _mf = await self._run(_doc(scheduled_at=pending), origin)
+
+        repo.update.assert_awaited_once_with(
+            "todo-1", user_id="user-1", update=TodoUpdate(gaia_retry_count=1)
+        )
+        assert pool.enqueue_job.await_args.args == ("execute_tracked_todo", "todo-1", origin)
 
     async def test_final_attempt_marks_failed_and_stops_retrying(self):
         doc = _doc(gaia_retry_count=MAX_RETRY_ATTEMPTS - 1)
@@ -984,6 +1037,7 @@ class TestStaleScheduledFire:
         repo = MagicMock()
         repo.get_by_id = AsyncMock(return_value=doc)
         repo.update = AsyncMock()
+        repo.update_if_scheduled_at = AsyncMock(return_value=doc)
         run = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),

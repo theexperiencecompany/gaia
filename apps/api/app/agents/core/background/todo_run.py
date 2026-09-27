@@ -96,15 +96,18 @@ async def run_todo_on_executor(request: TodoRunRequest) -> None:
             name=TODO_EXECUTOR_TASK_NAME,
         )
         try:
-            # The whole run, delivery included, so the worker's next steps see
-            # its outcome; shielded so a timed-out wait leaves the run alive.
+            # The whole run, delivery included, so the worker's next steps see its
+            # outcome; shielded so it is marked abandoned before it is cancelled.
             await asyncio.wait_for(asyncio.shield(run_task), BACKGROUND_EXECUTOR_WAIT_TIMEOUT)
         except TimeoutError:
             reason = f"the executor did not finish within {BACKGROUND_EXECUTOR_WAIT_TIMEOUT}s"
-            # Abandoned: its late finalize delivers nothing while the retry runs.
+            # Abandoned, so the finalize the cancel triggers delivers nothing.
             mark_executor_failed(
                 stream_id, reason
             )  # pragma: no mutate — the reason dies with the session torn down below
+            # Stopped, or it keeps calling tools while the worker's retry runs the todo again.
+            run_task.cancel()
+            await asyncio.wait({run_task})
             raise TodoRunFailedError(reason) from None
         if failure := executor_failure(stream_id):
             raise TodoRunFailedError(failure)
