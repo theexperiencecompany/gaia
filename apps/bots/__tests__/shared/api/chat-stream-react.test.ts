@@ -32,7 +32,10 @@ function makeDeps(sseBody: string): ChatStreamClient {
 }
 
 /** Drives one scripted SSE body through the real streamer. */
-async function drive(sseBody: string) {
+async function drive(
+  sseBody: string,
+  onReaction?: (emoji: string) => Promise<boolean>,
+) {
   const onChunk = vi.fn();
   const onDone = vi.fn();
   const onError = vi.fn();
@@ -46,6 +49,7 @@ async function drive(sseBody: string) {
     vi.fn(),
     vi.fn(),
     vi.fn(),
+    onReaction,
   );
   return { onChunk, onDone, onError };
 }
@@ -84,5 +88,40 @@ describe("streamChat — emoji acks", () => {
       "your answer.",
     ]);
     expect(onDone.mock.calls[0][0]).toBe("<EMPHASIS> is your answer.");
+  });
+});
+
+describe("streamChat — emoji ack as a native reaction", () => {
+  const ACK_TURN = frames(
+    { text: "<EMOJI>😅</EMOJI>" },
+    { message_boundary: { message_id: "m1", discarded: false } },
+    { emoji_ack: { emoji: "😅", reacts_to_message_id: "u1" } },
+    { done: true, conversation_id: "c1" },
+  );
+
+  it("delivers no text once the reaction attaches", async () => {
+    const onReaction = vi.fn(async () => true);
+
+    const { onChunk, onDone, onError } = await drive(ACK_TURN, onReaction);
+
+    expect(onReaction).toHaveBeenCalledExactlyOnceWith("😅");
+    expect(onChunk).not.toHaveBeenCalled();
+    expect(onDone).toHaveBeenCalledWith("", "c1");
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("delivers the emoji as the turn's text when the reaction is refused", async () => {
+    const { onChunk, onDone } = await drive(ACK_TURN, async () => false);
+
+    expect(onChunk.mock.calls.flat()).toEqual(["😅"]);
+    expect(onDone).toHaveBeenCalledWith("😅", "c1");
+  });
+
+  it("does not ask to react on an ordinary reply", async () => {
+    const onReaction = vi.fn(async () => true);
+
+    await drive(frames({ text: "Sure." }, { done: true }), onReaction);
+
+    expect(onReaction).not.toHaveBeenCalled();
   });
 });

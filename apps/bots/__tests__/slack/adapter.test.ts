@@ -86,6 +86,7 @@ function makeSlackClient(tsOverride?: string) {
         .mockResolvedValue({ ts: tsOverride ?? "1234567890.123456" }),
       update: vi.fn().mockResolvedValue({}),
       postEphemeral: vi.fn().mockResolvedValue({}),
+      delete: vi.fn().mockResolvedValue({}),
     },
   };
 }
@@ -374,6 +375,7 @@ describe("SlackAdapter - handleSlackStreaming", () => {
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      expect.any(Function), // onReaction
     );
   });
 
@@ -696,6 +698,7 @@ describe("SlackAdapter - app_mention event handling", () => {
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      expect.any(Function), // onReaction
     );
   });
 
@@ -783,6 +786,7 @@ describe("SlackAdapter - DM message event handling", () => {
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      expect.any(Function), // onReaction
     );
   });
 
@@ -924,23 +928,22 @@ describe("SlackAdapter - deliverOutbound channel routing", () => {
 });
 
 // ---------------------------------------------------------------------------
-// deliverOutboundReaction — native attach with text fallback
+// reactToMessage — the native reaction primitive, and the live turn using it
 // ---------------------------------------------------------------------------
 
-describe("SlackAdapter - deliverOutboundReaction", () => {
-  type Reactor = {
-    deliverOutboundReaction: (
-      destinationId: string,
-      reaction: { target_platform_message_id: string; emoji: string },
-      isChannel: boolean,
-    ) => Promise<void>;
-    analytics: { capture: (...args: unknown[]) => void };
-    app: unknown;
-  };
+type SlackReactor = {
+  reactToMessage: (
+    destinationId: string,
+    platformMessageId: string,
+    emoji: string,
+    isChannel: boolean,
+  ) => Promise<boolean>;
+  app: unknown;
+};
 
+describe("SlackAdapter - reactToMessage", () => {
   function makeReactor(reactionsAdd: unknown) {
-    const adapter = new SlackAdapter() as unknown as Reactor;
-    adapter.analytics = { capture: vi.fn() };
+    const adapter = new SlackAdapter() as unknown as SlackReactor;
     adapter.app = {
       client: {
         chat: { postMessage: vi.fn().mockResolvedValue({ ts: "1.1" }) },
@@ -953,6 +956,14 @@ describe("SlackAdapter - deliverOutboundReaction", () => {
     return adapter;
   }
 
+  function postMessageOf(adapter: SlackReactor) {
+    return (
+      adapter.app as {
+        client: { chat: { postMessage: ReturnType<typeof vi.fn> } };
+      }
+    ).client.chat.postMessage;
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -961,16 +972,18 @@ describe("SlackAdapter - deliverOutboundReaction", () => {
     const add = vi.fn().mockResolvedValue({});
     const adapter = makeReactor(add);
 
-    await adapter.deliverOutboundReaction(
+    const attached = await adapter.reactToMessage(
       "C-group",
-      { target_platform_message_id: "123.456", emoji: "👍" },
+      "123.456",
+      "👍",
       true,
     );
 
+    expect(attached).toBe(true);
     expect(add).toHaveBeenCalledWith({
       channel: "C-group",
       timestamp: "123.456",
-      name: "thumbsup",
+      name: "+1",
     });
   });
 
@@ -978,11 +991,7 @@ describe("SlackAdapter - deliverOutboundReaction", () => {
     const add = vi.fn().mockResolvedValue({});
     const adapter = makeReactor(add);
 
-    await adapter.deliverOutboundReaction(
-      "U-user",
-      { target_platform_message_id: "123.456", emoji: "✅" },
-      false,
-    );
+    await adapter.reactToMessage("U-user", "123.456", "✅", false);
 
     expect(add).toHaveBeenCalledWith({
       channel: "D-dm",
@@ -991,42 +1000,142 @@ describe("SlackAdapter - deliverOutboundReaction", () => {
     });
   });
 
-  it("falls back to text for an unmapped emoji", async () => {
+  it("attaches any standard emoji comms picks, not only a curated few", async () => {
     const add = vi.fn().mockResolvedValue({});
     const adapter = makeReactor(add);
 
-    await adapter.deliverOutboundReaction(
+    const attached = await adapter.reactToMessage(
       "C-group",
-      { target_platform_message_id: "123.456", emoji: "🦄" },
+      "123.456",
+      "😅",
       true,
     );
 
-    expect(add).not.toHaveBeenCalled();
-    const app = adapter.app as {
-      client: { chat: { postMessage: ReturnType<typeof vi.fn> } };
-    };
-    expect(app.client.chat.postMessage).toHaveBeenCalledWith({
+    expect(attached).toBe(true);
+    expect(add).toHaveBeenCalledWith({
       channel: "C-group",
-      text: "🦄",
+      timestamp: "123.456",
+      name: "sweat_smile",
     });
   });
 
-  it("falls back to text when attach fails", async () => {
-    const add = vi.fn().mockRejectedValue(new Error("message_not_found"));
+  it("refuses an emoji with no known shortcode without calling Slack or sending text", async () => {
+    const add = vi.fn().mockResolvedValue({});
     const adapter = makeReactor(add);
 
-    await adapter.deliverOutboundReaction(
+    const attached = await adapter.reactToMessage(
       "C-group",
-      { target_platform_message_id: "123.456", emoji: "👍" },
+      "123.456",
+      "🫡",
       true,
     );
 
-    const app = adapter.app as {
-      client: { chat: { postMessage: ReturnType<typeof vi.fn> } };
-    };
-    expect(app.client.chat.postMessage).toHaveBeenCalledWith({
-      channel: "C-group",
-      text: "👍",
+    expect(attached).toBe(false);
+    expect(add).not.toHaveBeenCalled();
+    expect(postMessageOf(adapter)).not.toHaveBeenCalled();
+  });
+
+  it("refuses without sending text when attach fails", async () => {
+    const add = vi.fn().mockRejectedValue(new Error("message_not_found"));
+    const adapter = makeReactor(add);
+
+    const attached = await adapter.reactToMessage(
+      "C-group",
+      "123.456",
+      "👍",
+      true,
+    );
+
+    expect(attached).toBe(false);
+    expect(postMessageOf(adapter)).not.toHaveBeenCalled();
+  });
+});
+
+describe("SlackAdapter - live turn reaction", () => {
+  type Streamer = {
+    handleSlackStreaming: (
+      client: ReturnType<typeof makeSlackClient>,
+      channelId: string,
+      userId: string,
+      message: string,
+      isDm: boolean,
+      inboundTs?: string,
+    ) => Promise<void>;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function lastReactionHook(): (emoji: string) => Promise<boolean> {
+    return vi.mocked(handleStreamingChat).mock.calls.at(-1)?.[8] as (
+      emoji: string,
+    ) => Promise<boolean>;
+  }
+
+  it("reacts to the inbound message and deletes the Thinking... placeholder", async () => {
+    const adapter = new SlackAdapter();
+    const react = vi
+      .spyOn(adapter as unknown as SlackReactor, "reactToMessage")
+      .mockResolvedValue(true);
+    const client = makeSlackClient("ts-placeholder");
+
+    await (adapter as unknown as Streamer).handleSlackStreaming(
+      client,
+      "D123",
+      "U456",
+      "thanks!",
+      true,
+      "111.222",
+    );
+
+    await expect(lastReactionHook()("👍")).resolves.toBe(true);
+    expect(react).toHaveBeenCalledWith("D123", "111.222", "👍", true);
+    expect(client.chat.delete).toHaveBeenCalledWith({
+      channel: "D123",
+      ts: "ts-placeholder",
     });
+  });
+
+  it("keeps the placeholder for the text fallback when the reaction is refused", async () => {
+    const adapter = new SlackAdapter();
+    vi.spyOn(
+      adapter as unknown as SlackReactor,
+      "reactToMessage",
+    ).mockResolvedValue(false);
+    const client = makeSlackClient("ts-placeholder");
+
+    await (adapter as unknown as Streamer).handleSlackStreaming(
+      client,
+      "D123",
+      "U456",
+      "thanks!",
+      true,
+      "111.222",
+    );
+
+    await expect(lastReactionHook()("👍")).resolves.toBe(false);
+    expect(client.chat.delete).not.toHaveBeenCalled();
+  });
+
+  it("falls back to text for a slash command, which has no message to react to", async () => {
+    const adapter = new SlackAdapter();
+    const react = vi.spyOn(
+      adapter as unknown as SlackReactor,
+      "reactToMessage",
+    );
+    const client = makeSlackClient("ts-placeholder");
+
+    await (adapter as unknown as Streamer).handleSlackStreaming(
+      client,
+      "C789",
+      "U456",
+      "thanks!",
+      false,
+    );
+
+    await expect(lastReactionHook()("👍")).resolves.toBe(false);
+    expect(react).not.toHaveBeenCalled();
+    expect(client.chat.delete).not.toHaveBeenCalled();
   });
 });

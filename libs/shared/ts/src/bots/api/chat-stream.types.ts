@@ -36,6 +36,14 @@ export type MessageBoundaryHandler = (
 export type NoticeHandler = (text: string) => void | Promise<void>;
 
 /**
+ * Fired when the turn resolved to a one-emoji acknowledgment of the user's message.
+ *
+ * Resolves true once the emoji is attached natively to that message, which then
+ * IS the reply; false sends the emoji as the turn's text instead.
+ */
+export type ReactionHandler = (emoji: string) => Promise<boolean>;
+
+/**
  * The slice of {@link GaiaClient} the streamer needs: the HTTP client, auth
  * header builder, and session-token storage. Passed as an explicit deps object
  * so the streaming logic stays decoupled from the client's private internals.

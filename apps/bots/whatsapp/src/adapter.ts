@@ -33,7 +33,6 @@ import {
   type LinkState,
   MEDIA_READ_TIMEOUT_MS,
   type OutboundAttachment,
-  type OutboundReaction,
   type PlatformName,
   type RichMessage,
   type RichMessageTarget,
@@ -672,6 +671,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         },
         STREAMING_DEFAULTS.whatsapp,
         await this.analyticsFor(waId),
+        (emoji: string) => this.reactToMessage(waId, messageId, emoji, false),
       );
     } catch (err) {
       this.adapterLogger.error("streaming_failed", {
@@ -935,37 +935,26 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     }
   }
 
-  protected override async deliverOutboundReaction(
+  protected override async reactToMessage(
     destinationId: string,
-    reaction: OutboundReaction,
+    platformMessageId: string,
+    emoji: string,
     _isChannel: boolean,
-  ): Promise<void> {
+  ): Promise<boolean> {
     // WhatsApp (Kapso) has no group/channel outbound model — destinationId is
     // always a wa_id, same addressing as deliverOutbound.
     try {
       await this.whatsAppClient.messages.sendReaction({
         phoneNumberId: this.whatsAppConfig.kapsoPhoneNumberId,
         to: `+${destinationId}`,
-        reaction: {
-          messageId: reaction.target_platform_message_id,
-          emoji: reaction.emoji,
-        },
+        reaction: { messageId: platformMessageId, emoji },
       });
-      this.analytics.capture(
-        await this.resolveDistinctId(destinationId),
-        BOT_EVENTS.REACTION_DELIVERED,
-        { success: true, delivery: "native" },
-      );
+      return true;
     } catch (err) {
       this.adapterLogger.warn("outbound_reaction_attach_failed", {
         ...sanitizeErrorForLog(err),
       });
-      await this.deliverOutbound(destinationId, reaction.emoji, _isChannel);
-      this.analytics.capture(
-        await this.resolveDistinctId(destinationId),
-        BOT_EVENTS.REACTION_DELIVERED,
-        { success: true, delivery: "fallback_text", reason: "attach_failed" },
-      );
+      return false;
     }
   }
 

@@ -16,9 +16,11 @@
  * No live API is required.
  */
 
+import { Readable } from "node:stream";
 import {
   buildAuthLinkMessage,
   buildPlanRequiredMessage,
+  GaiaClient,
   type PlatformName,
   renderForPlatform,
 } from "@gaia/shared/bots";
@@ -86,6 +88,8 @@ interface StreamScript {
   chunks?: string[];
   error?: string;
   authUrl?: string;
+  /** The turn resolves to this emoji ack instead of a text reply. */
+  reaction?: string;
 }
 
 const AUTH_URL = "https://gaia.example.com/auth?token=conf123";
@@ -118,33 +122,75 @@ function makeGaia(script: StreamScript) {
   };
 }
 
-// Canonical reduction: a keyed set of bubbles (create then update in place),
-// plus every text delivered by any channel (bubbles + ephemerals + DMs).
+/**
+ * A real GaiaClient whose HTTP transport replays a comms turn that resolved to
+ * an emoji ack, so the reaction scenario runs the real SSE parser on both sides.
+ */
+function reactionTurnGaia(emoji: string): GaiaClient {
+  const gaia = new GaiaClient("http://gaia.test", "key", "http://web.test");
+  const body = [
+    { text: `<EMOJI>${emoji}</EMOJI>` },
+    { message_boundary: { message_id: "m1", discarded: false } },
+    { emoji_ack: { emoji, reacts_to_message_id: "u1" } },
+    { done: true, conversation_id: "conv-1" },
+  ]
+    .map((frame) => `data: ${JSON.stringify(frame)}\n\n`)
+    .join("");
+  (gaia as unknown as { client: unknown }).client = {
+    post: vi.fn(async () => ({ data: Readable.from([body]) })),
+  };
+  return gaia;
+}
+
+function gaiaFor(script: StreamScript): unknown {
+  return script.reaction ? reactionTurnGaia(script.reaction) : makeGaia(script);
+}
+
+// Canonical reduction: a keyed set of bubbles (create then update in place,
+// gone once deleted), every text delivered by any channel (bubbles +
+// ephemerals + DMs), and every emoji attached as a native reaction.
 
 type Op =
   | { op: "create"; id: string; text: string }
   | { op: "update"; id: string; text: string }
+  | { op: "delete"; id: string }
+  | { op: "react"; emoji: string }
   | { op: "aux"; text: string };
 
 interface Canonical {
   bubbles: string[];
   allTexts: string[];
+  reactions: string[];
 }
 
 function reduce(ops: Op[]): Canonical {
   const order: string[] = [];
   const byId = new Map<string, string>();
   const allTexts: string[] = [];
+  const reactions: string[] = [];
   for (const op of ops) {
     if (op.op === "aux") {
       allTexts.push(op.text);
+      continue;
+    }
+    if (op.op === "react") {
+      reactions.push(op.emoji);
+      continue;
+    }
+    if (op.op === "delete") {
+      order.splice(order.indexOf(op.id), 1);
+      byId.delete(op.id);
       continue;
     }
     if (!byId.has(op.id)) order.push(op.id);
     byId.set(op.id, op.text);
     allTexts.push(op.text);
   }
-  return { bubbles: order.map((id) => byId.get(id) ?? ""), allTexts };
+  return {
+    bubbles: order.map((id) => byId.get(id) ?? ""),
+    allTexts,
+    reactions,
+  };
 }
 
 /** Reduce a recorded harness transcript into the same canonical shape. */
@@ -157,6 +203,8 @@ function reduceTranscript(recorder: TranscriptRecorder): Canonical {
       ops.push({ op: "update", id: event.messageId, text: event.text });
     else if (event.type === "ephemeral")
       ops.push({ op: "aux", text: event.text });
+    else if (event.type === "reaction")
+      ops.push({ op: "react", emoji: event.emoji });
   }
   return reduce(ops);
 }
@@ -171,7 +219,7 @@ async function driveHarness(
 ): Promise<Canonical> {
   const recorder = new TranscriptRecorder(platform);
   const adapter = new HarnessAdapter(resolveEmulation(platform), recorder);
-  (adapter as unknown as { gaia: unknown }).gaia = makeGaia(script);
+  (adapter as unknown as { gaia: unknown }).gaia = gaiaFor(script);
   await adapter.simulateMessage("dev-user-1", "please respond");
   return reduceTranscript(recorder);
 }
@@ -182,14 +230,25 @@ async function driveHarness(
 
 async function driveTelegram(script: StreamScript): Promise<Canonical> {
   const adapter = new TelegramAdapter();
-  (adapter as unknown as { gaia: unknown }).gaia = makeGaia(script);
+  (adapter as unknown as { gaia: unknown }).gaia = gaiaFor(script);
   (adapter as unknown as { botUsername: string }).botUsername = "gaiabot";
 
   const ops: Op[] = [];
   let mid = 100;
+  (adapter as unknown as { bot: unknown }).bot = {
+    api: {
+      setMessageReaction: vi.fn(
+        async (_chat: string, _id: number, [r]: { emoji: string }[]) => {
+          ops.push({ op: "react", emoji: r.emoji });
+          return true;
+        },
+      ),
+    },
+  };
   const ctx = {
     chat: { id: 555, type: "private" },
     from: { id: 999, first_name: "Dev" },
+    msg: { message_id: 7 },
     reply: vi.fn(async (text: string) => {
       const id = `t${mid++}`;
       ops.push({ op: "create", id, text });
@@ -206,6 +265,10 @@ async function driveTelegram(script: StreamScript): Promise<Canonical> {
         return { message_id: `x${mid++}` };
       }),
       sendChatAction: vi.fn(async () => ({})),
+      deleteMessage: vi.fn(async (_c: number, id: string) => {
+        ops.push({ op: "delete", id });
+        return true;
+      }),
     },
   };
 
@@ -223,10 +286,20 @@ async function driveTelegram(script: StreamScript): Promise<Canonical> {
 
 async function driveSlack(script: StreamScript): Promise<Canonical> {
   const adapter = new SlackAdapter();
-  (adapter as unknown as { gaia: unknown }).gaia = makeGaia(script);
+  (adapter as unknown as { gaia: unknown }).gaia = gaiaFor(script);
 
   const ops: Op[] = [];
   let ts = 100;
+  (adapter as unknown as { app: unknown }).app = {
+    client: {
+      reactions: {
+        add: vi.fn(async ({ name }: { name: string }) => {
+          ops.push({ op: "react", emoji: name });
+          return {};
+        }),
+      },
+    },
+  };
   const client = {
     chat: {
       postMessage: vi.fn(
@@ -244,6 +317,10 @@ async function driveSlack(script: StreamScript): Promise<Canonical> {
         ops.push({ op: "aux", text });
         return {};
       }),
+      delete: vi.fn(async ({ ts: id }: { ts: string }) => {
+        ops.push({ op: "delete", id });
+        return {};
+      }),
     },
   };
 
@@ -254,18 +331,27 @@ async function driveSlack(script: StreamScript): Promise<Canonical> {
         channelId: string,
         userId: string,
         message: string,
+        isDm: boolean,
+        inboundTs: string,
       ) => Promise<void>;
     }
   )
     // Channel id "U..." (not "D...") → public path, so an auth link is delivered
     // ephemerally, exactly like production.
-    .handleSlackStreaming(client, "U999", "U999", "please respond");
+    .handleSlackStreaming(
+      client,
+      "U999",
+      "U999",
+      "please respond",
+      false,
+      "111.1",
+    );
   return reduce(ops);
 }
 
 async function driveDiscord(script: StreamScript): Promise<Canonical> {
   const adapter = new DiscordAdapter();
-  (adapter as unknown as { gaia: unknown }).gaia = makeGaia(script);
+  (adapter as unknown as { gaia: unknown }).gaia = gaiaFor(script);
 
   const ops: Op[] = [];
   let fid = 100;
@@ -305,7 +391,7 @@ async function driveDiscord(script: StreamScript): Promise<Canonical> {
 
 async function driveWhatsApp(script: StreamScript): Promise<Canonical> {
   const adapter = new WhatsAppAdapter();
-  (adapter as unknown as { gaia: unknown }).gaia = makeGaia(script);
+  (adapter as unknown as { gaia: unknown }).gaia = gaiaFor(script);
   (adapter as unknown as { waConfig: unknown }).waConfig = {
     kapsoApiKey: "k",
     kapsoPhoneNumberId: "pn",
@@ -321,14 +407,75 @@ async function driveWhatsApp(script: StreamScript): Promise<Canonical> {
         ops.push({ op: "create", id, text: body });
         return { messages: [{ id }] };
       }),
+      sendReaction: vi.fn(
+        async ({ reaction }: { reaction: { emoji: string } }) => {
+          ops.push({ op: "react", emoji: reaction.emoji });
+          return {};
+        },
+      ),
     },
   };
 
   await (
     adapter as unknown as {
-      handleStreamingMessage: (waId: string, text: string) => Promise<void>;
+      handleStreamingMessage: (
+        waId: string,
+        text: string,
+        messageId: string,
+      ) => Promise<void>;
     }
-  ).handleStreamingMessage("dev-user-1", "please respond");
+  ).handleStreamingMessage("dev-user-1", "please respond", "wamid.1");
+  return reduce(ops);
+}
+
+/**
+ * The Discord mention path — the inbound-message analogue of what the harness
+ * simulates. The slash-command driver above has no user message to react to.
+ */
+async function driveDiscordMention(script: StreamScript): Promise<Canonical> {
+  const adapter = new DiscordAdapter();
+  (adapter as unknown as { gaia: unknown }).gaia = gaiaFor(script);
+
+  const ops: Op[] = [];
+  let mid = 100;
+  const react = vi.fn(async (emoji: string) => {
+    ops.push({ op: "react", emoji });
+  });
+  (adapter as unknown as { client: unknown }).client = {
+    channels: {
+      fetch: vi.fn(async () => ({
+        isTextBased: () => true,
+        messages: { fetch: vi.fn(async () => ({ react })) },
+      })),
+    },
+  };
+  const send = vi.fn(async (text: string) => {
+    const id = `d${mid++}`;
+    ops.push({ op: "create", id, text });
+    return {
+      edit: vi.fn(async (updated: string) => {
+        ops.push({ op: "update", id, text: updated });
+      }),
+    };
+  });
+  const message = {
+    id: "msg-in",
+    author: { id: "dev-user-1" },
+    guild: { id: "guild-1" },
+    channelId: "chan-1",
+    channel: { sendTyping: vi.fn(async () => undefined) },
+  };
+
+  await (
+    adapter as unknown as {
+      streamMentionReply: (
+        m: typeof message,
+        s: typeof send,
+        content: string,
+        attachments: unknown[],
+      ) => Promise<void>;
+    }
+  ).streamMentionReply(message, send, "please respond", []);
   return reduce(ops);
 }
 
@@ -394,6 +541,20 @@ describe("gaia-sim conformance: harness output matches the real adapter", () => 
       );
       expect(harness.allTexts).toContain(expectedUpgrade);
       expect(real.allTexts).toContain(expectedUpgrade);
+    });
+
+    it("reaction turn — both attach the emoji and leave no bubble", async () => {
+      const script = { reaction: "👍" };
+      const harness = await driveHarness(platform, script);
+      const drive =
+        platform === "discord" ? driveDiscordMention : REAL_DRIVERS[platform];
+      const real = await drive(script);
+
+      // Slack attaches by shortcode, so compare the count; the text half is exact.
+      expect(harness.reactions).toHaveLength(1);
+      expect(real.reactions).toHaveLength(1);
+      expect(harness.bubbles).toEqual([]);
+      expect(real.bubbles).toEqual([]);
     });
   });
 });

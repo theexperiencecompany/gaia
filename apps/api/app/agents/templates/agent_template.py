@@ -44,7 +44,7 @@ screenshot for visual context."""
 # Output-format addendum per text-only channel, inlined for byte-identical
 # output. LAST thing the model reads, far after Bubbles, so the bubble rule
 # is restated here as a backstop to the bot layer's own split.
-def _text_only_addendum(platform_name: str, formatting: str) -> str:
+def _text_only_addendum(platform_name: str, formatting: str, reactions: str = "") -> str:
     return f"""
 
 ## Platform Context (IMPORTANT)
@@ -72,7 +72,14 @@ WHAT TO DO INSTEAD:
 - Present all information as plain text lines and, where there are genuinely separate items, one flat level of bullets
 - For data that would normally show as a card/component, write it out as a clear text summary
 - For content that would be an artifact, include it directly in your message as text
-- Concise here means cutting filler, never cutting data a result carried. Trim your own wrapper words, then split what is left across bubbles. Delivering the data they asked for still outranks brevity."""
+- Concise here means cutting filler, never cutting data a result carried. Trim your own wrapper words, then split what is left across bubbles. Delivering the data they asked for still outranks brevity.{reactions}"""
+
+
+# Telegram's reaction API takes only a fixed emoji set; anything else reaches
+# the user as a separate text bubble instead of a reaction on their message.
+_TELEGRAM_REACTIONS: Final[str] = """
+
+REACTIONS ON TELEGRAM: a reaction attaches to their message only with one of 👍 ❤ 🔥 👏 😁 🤣 😭 🙏 👌 🎉 👀 💯 🤝 🤔 😢 🥰 😎 🤗. Pick from these; any other emoji arrives as a separate text message."""
 
 
 _WHATSAPP_ADDENDUM: Final[str] = _text_only_addendum(
@@ -82,6 +89,7 @@ _WHATSAPP_ADDENDUM: Final[str] = _text_only_addendum(
 _TELEGRAM_ADDENDUM: Final[str] = _text_only_addendum(
     "Telegram",
     "Telegram code formatting: `code`, ```code blocks```",
+    _TELEGRAM_REACTIONS,
 )
 _DISCORD_ADDENDUM: Final[str] = _text_only_addendum(
     "Discord",
