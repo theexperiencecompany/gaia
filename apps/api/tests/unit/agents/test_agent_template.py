@@ -5,7 +5,7 @@ from app.agents.templates.agent_template import (
     get_executor_prompt,
 )
 
-OPENUI_MARKER = "---OpenUI Lang (Rich UI Components)---"
+OPENUI_MARKER = "## Output Format (this app renders rich components)"
 PLATFORM_MARKER = "Platform Context"
 
 

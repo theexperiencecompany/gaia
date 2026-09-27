@@ -166,10 +166,10 @@ class TestCapabilityBlock:
 
     def test_the_comms_prompt_carries_the_block_and_the_connect_rule(self) -> None:
         assert CAPABILITY_SECTION_HEADER in COMMS_AGENT_PROMPT
-        assert "12. CONNECT MEANS A LINK:" in COMMS_AGENT_PROMPT
-        # The rule sits with the other non-negotiables, ahead of the voice.
-        assert COMMS_AGENT_PROMPT.index("12. CONNECT MEANS A LINK:") < COMMS_AGENT_PROMPT.index(
-            "## Voice"
+        rule = COMMS_AGENT_PROMPT.index("- CONNECT MEANS A CARD:")
+        # The rule sits with the other hard rules.
+        assert (
+            COMMS_AGENT_PROMPT.index("## Hard rules") < rule < COMMS_AGENT_PROMPT.index("## Memory")
         )
 
 

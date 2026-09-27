@@ -18,7 +18,7 @@
 # case passed every structural gate it had, because none could see it.
 #
 # The same run also showed the reply switching into Hinglish for an English-only
-# user, which the TONE MIRRORING primary directive forbids. Romanized Hindi is
+# user, which the MATCH THEM voice directive forbids. Romanized Hindi is
 # not reliably detectable in code (unlike Devanagari), so that stays a judge
 # criterion — stated explicitly here so the next author does not assume the
 # gate covers it.
