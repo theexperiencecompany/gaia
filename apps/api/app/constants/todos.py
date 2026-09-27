@@ -56,6 +56,8 @@ TODO_SCHEDULE_FIRE_GRACE: Final[timedelta] = timedelta(minutes=2)
 
 # How much of a run's final report is kept in its activity.md entry.
 RUN_SUMMARY_ACTIVITY_CHARS: Final[int] = 200
+# Bounds the Key Details a run's delivery decision reads next to the report.
+DELIVERY_KEY_DETAILS_MAX_CHARS: Final[int] = 1500
 
 
 class TodoRunDeliveryOutcome(StrEnum):

@@ -94,8 +94,10 @@ TRIGGERED_RELEVANCE_GUIDANCE = (
 # the run must neither notify on its own nor decide delivery for the user.
 DELIVERED_RESULT_GUIDANCE = (
     "REPORTING: end with a factual report of this run: what you checked or did, what "
-    "changed, and anything the user must decide. GAIA reads that report and messages "
-    "the user only if it matters, so write it for GAIA, not as a message to them. Do "
+    "is new since the last run (or that nothing is), and anything the user must decide. "
+    "Say when the todo's notes show the user already knows about an open question, and "
+    "when they asked to hear every result. GAIA reads that report and messages the user "
+    "only if it matters, so write it for GAIA, not as a message to them. Do "
     "NOT call send_notification to announce this run's outcome, because that sends it "
     "a second time. Notify only for something separate and urgent that cannot wait. "
     "Leave this todo's delivery settings alone: whether its runs reach the user is "

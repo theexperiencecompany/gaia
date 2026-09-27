@@ -12,7 +12,7 @@ pytestmark = pytest.mark.unit
 
 def _note() -> str:
     # Built per test, not at import: mutmut only credits a test with code it runs.
-    return tracked_todo_delivery_note("Watch the deploy")
+    return tracked_todo_delivery_note("Watch the deploy", None)
 
 
 class TestTrackedTodoDeliveryNote:
@@ -23,11 +23,13 @@ class TestTrackedTodoDeliveryNote:
                 AgentTag.DELIVERY_INSTRUCTIONS,
                 "This is the result of a background run of the user's tracked todo \"Watch the "
                 'deploy". Nobody asked for it just now: it ran on its schedule or on an event it '
-                "watches, and its full record is already kept in the todo. Message the user ONLY "
-                "when this run found something they need to know or act on: a real change, a "
-                "result they asked to hear about, a question or blocker only they can settle. A "
-                "routine check, a no-op, or a run that only kept notes is not worth a message: "
-                f"reply with exactly one line and nothing else: '{SILENCE_KEYWORD}: <brief reason>'. "
+                "watches, and its full record is already kept in the todo. Message the user when "
+                "the report shows something new they need to know or act on, a decision or "
+                "blocker only they can settle that they have not already been asked about, or a "
+                "result they asked to hear every time (always send that one). Anything else is "
+                "not worth a message: a routine check, a no-op, nothing new, a question they "
+                "already have, a run that only kept notes. Then reply with exactly one line and "
+                f"nothing else: '{SILENCE_KEYWORD}: <brief reason>'. "
                 "There is no message of theirs to react to, so never answer with a reaction. When "
                 "you do write, it reaches their chat app as plain text with no cards: lead with "
                 "what changed or what they must decide, give the concrete details they need, keep "
@@ -51,5 +53,15 @@ class TestTrackedTodoDeliveryNote:
         assert f"Split with {NEW_MESSAGE_BREAKER} only when" in _note()
 
     def test_it_says_when_a_message_is_worth_sending(self) -> None:
-        assert "Message the user ONLY when this run found something" in _note()
+        assert "a result they asked to hear every time (always send that one)" in _note()
+        assert "a question they already have" in _note()
         assert "never promise to follow up later" in _note()
+
+    def test_the_todos_standing_requests_sit_before_the_rules(self) -> None:
+        """Regression: "tell me every time" lived only in the canvas, and a real model silenced every run."""
+        note = tracked_todo_delivery_note("Word count", "- Tell me the result every time.")
+
+        assert (
+            "kept in the todo. Its Key Details, where the user's standing requests are kept:\n"
+            "- Tell me the result every time.\nMessage the user when"
+        ) in note

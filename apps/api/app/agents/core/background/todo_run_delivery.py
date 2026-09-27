@@ -15,11 +15,16 @@ from app.agents.core.comms_directive import interpret_comms_output
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
 from app.constants.comms import CommsDirectiveKind
 from app.constants.log_tags import LogTag
-from app.constants.todos import RUN_SUMMARY_ACTIVITY_CHARS, TodoRunDeliveryOutcome
+from app.constants.todos import (
+    DELIVERY_KEY_DETAILS_MAX_CHARS,
+    RUN_SUMMARY_ACTIVITY_CHARS,
+    TodoRunDeliveryOutcome,
+)
 from app.db.repositories.todos import todo_repository
 from app.models.chat_models import ConversationSource
 from app.models.todo_models import TodoDocument
 from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.canvas_markdown import section_body
 from app.services.tracked_todo_service import tracked_todo_service
 from shared.py.wide_events import log
 
@@ -93,6 +98,12 @@ async def deliver_todo_run_result(
     )
 
 
+def _standing_requests(todo: TodoDocument) -> str | None:
+    """Return the todo's Key Details, bounded, or None when it has none."""
+    key_details = section_body(todo.canvas_content or "", "Key Details")
+    return key_details[:DELIVERY_KEY_DETAILS_MAX_CHARS] if key_details else None
+
+
 async def _narrate_and_send(run: ExecutorRun, todo: TodoDocument, result_text: str) -> _Resolution:
     """Have comms write the result up (or decline to), then send it to the chat app."""
     text = await narrate_executor_result(
@@ -100,7 +111,7 @@ async def _narrate_and_send(run: ExecutorRun, todo: TodoDocument, result_text: s
         "result",
         run.conversation_id,
         run.user,
-        preamble=tracked_todo_delivery_note(todo.title),
+        preamble=tracked_todo_delivery_note(todo.title, _standing_requests(todo)),
     )
     if not text:
         log.error(f"{LogTag.AGENT} todo run result narration failed", todo_id=todo.id)

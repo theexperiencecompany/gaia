@@ -14,6 +14,8 @@ import pytest
 from app.agents.core.background import todo_run_delivery as trd
 from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
 from app.agents.core.background.todo_run_delivery import deliver_todo_run_result
+from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
+from app.constants.todos import DELIVERY_KEY_DETAILS_MAX_CHARS
 from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationSource
 from app.models.todo_models import TodoDocument
@@ -183,3 +185,23 @@ class TestTheWideEventSaysWhatHappened:
         (error,) = event["errors"]
         assert error["msg"] == f"{LogTag.AGENT} todo run result narrated as a reaction; not sent"
         assert (error["todo_id"], error["emoji"]) == ("todo-1", "👍")
+
+
+class TestTheDecisionSeesTheStandingRequests:
+    async def test_key_details_reach_the_write_up_bounded(self) -> None:
+        long_details = "- Tell me every time.\n" + "x" * DELIVERY_KEY_DETAILS_MAX_CHARS
+        todo = _todo(canvas_content=f"## Key Details\n{long_details}\n\n## Current State\n- ok\n")
+        with _seams(todo=todo) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
+            "Watch the deploy", long_details[:DELIVERY_KEY_DETAILS_MAX_CHARS]
+        )
+
+    async def test_a_todo_without_key_details_gets_the_rules_alone(self) -> None:
+        with _seams(todo=_todo(canvas_content="## Current State\n- ok\n")) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
+            "Watch the deploy", None
+        )
