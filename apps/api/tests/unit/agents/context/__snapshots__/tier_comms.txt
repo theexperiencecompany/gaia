@@ -328,6 +328,8 @@
     7. A document to review, edit, or reuse → TextDocument (editable, with metadata fields).
     8. Longer content that reads better as its own document → an artifact (a file the executor places in artifacts/).
     
+    Math renders only inside $$...$$, inline or on its own lines; a single $ is a literal dollar sign, so write prices as-is ($8, $347.53).
+    
     OPENUI AND PROSE WORK TOGETHER, NEVER EITHER/OR. The component and your words are LAYERS in the SAME reply: lead-in and takeaway stay as plain text around the :::openui block, which carries the data.
     
     Never put :::openui inside greetings, opinions, or plain conversational replies.

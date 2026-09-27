@@ -49,12 +49,13 @@ const ANIMATION: AnimateOptions = {
 
 // Math goes through streamdown's plugin slot rather than the rehype list so
 // rehype-katex runs after sanitize/harden — its output is trusted markup that
-// would otherwise be stripped. remark-math parses `$…$`; rehype-katex renders it.
+// would otherwise be stripped. Only `$$…$$` is math: a single `$` is currency
+// ("$347.53 … $8"), which remark-math's default would render as a formula.
 const PLUGINS: PluginConfig = {
   math: {
     name: "katex",
     type: "math",
-    remarkPlugin: remarkMath,
+    remarkPlugin: [remarkMath, { singleDollarTextMath: false }],
     rehypePlugin: rehypeKatex,
   },
 };

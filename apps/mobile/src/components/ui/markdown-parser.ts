@@ -51,7 +51,7 @@ export function repairStreamingMarkdown(md: string): string {
   const fenceCount = (out.match(/^[^\S\n]*```/gm) ?? []).length;
   if (fenceCount % 2 === 1) out += "\n```";
 
-  const mathFenceCount = (out.match(/^\$\$/gm) ?? []).length;
+  const mathFenceCount = (out.match(/^[^\S\n]*\$\$[^\S\n]*$/gm) ?? []).length;
   if (mathFenceCount % 2 === 1) out += "\n$$";
 
   // Close dangling inline markers, longest first, recounting after each append
@@ -125,7 +125,7 @@ function segmentFromMatch(match: RegExpExecArray): InlineSegment | null {
 }
 
 // Order matters: image before link; bold-italic before bold before italic;
-// $...$ before backtick.
+// $$...$$ before backtick. A single $ is currency, never math.
 const INLINE_REGEX = new RegExp(
   [
     /!\[([^\]]*)\]\(([^)]+)\)/.source, // 1-2 image
@@ -137,7 +137,7 @@ const INLINE_REGEX = new RegExp(
     /(?<![\w*])\*(?!\s)([^*\n]+?)(?<!\s)\*(?![\w*])/.source, // 9 italic *
     /(?<![\w_])_(?!\s)([^_\n]+?)(?<!\s)_(?![\w_])/.source, // 10 italic _
     /~~([\s\S]+?)~~/.source, // 11 strikethrough
-    /\$([^$\n]+?)\$/.source, // 12 math inline
+    /\$\$([^$\n]+?)\$\$/.source, // 12 math inline
     /`([^`\n]+)`/.source, // 13 code
   ].join("|"),
   "g",

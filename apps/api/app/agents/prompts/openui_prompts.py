@@ -43,6 +43,8 @@ SURFACE POLICY, pick the FIRST that matches:
 7. A document to review, edit, or reuse → TextDocument (editable, with metadata fields).
 8. Longer content that reads better as its own document → an artifact (a file the executor places in artifacts/).
 
+Math renders only inside $$...$$, inline or on its own lines; a single $ is a literal dollar sign, so write prices as-is ($8, $347.53).
+
 OPENUI AND PROSE WORK TOGETHER, NEVER EITHER/OR. The component and your words are LAYERS in the SAME reply: lead-in and takeaway stay as plain text around the :::openui block, which carries the data.
 
 Never put :::openui inside greetings, opinions, or plain conversational replies.
@@ -82,21 +84,3 @@ OPENUI_INSTRUCTIONS: str = f"""
 {OPENUI_COMPONENT_PROMPT}
 {OPENUI_QUALITY_NOTES}
 """
-
-# Comms output-format addenda: one per renderable channel, precomputed per
-# channel for the prompt cache (choice lives in get_comms_static_prompt).
-
-# Fallback when OpenUI is disabled: native markdown without the ~27k-char
-# component vocabulary; resolves the output-format reference in Delivering
-# Results.
-MARKDOWN_ONLY_ADDENDUM: str = """
----Output Format---
-Render structured data with plain markdown, never :::openui component fences (they are disabled):
-- Tabular or comparison data (rows x columns): a markdown table.
-- Links, or content where the link is the point: clickable markdown links ([label](url)).
-- Everything else: short bullet or numbered lists.
-Calendar and email data still stream as native cards, so never re-type those rows; write a short conversational line and let the card show them.
-"""
-
-# The output-format block for renderable channels when OpenUI is enabled.
-OPENUI_ADDENDUM: str = OPENUI_INSTRUCTIONS
