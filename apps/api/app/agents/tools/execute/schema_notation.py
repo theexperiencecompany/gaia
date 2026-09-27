@@ -1,6 +1,7 @@
 """JSON Schema as compact text for the model: type notation for returns, field lines for args.
 
-Returns render as ``{id:str, tags?:str[]}``: structure only, the key and its type.
+Returns render as ``{id:str, tags?:str[]}``: structure only, the key and its type,
+with a nullable field folded into ``?`` since a consumer treats both alike.
 Args keep what constructing a call needs, one field per line with its
 description and constraints; an oversized schema sheds description text before
 it sheds any structure. Examples are never rendered: they are the bulk of real
@@ -39,6 +40,8 @@ class _SchemaNode(TypedDict, total=False):
 _COMPACT_ENUM_MAX_MEMBERS = 6
 _ARG_ENUM_MAX_MEMBERS = 25
 _ANY = "any"
+_NULL = "null"
+_UNION_KEYS = ("anyOf", "oneOf")
 _COMPACT_PRIMITIVES = {
     "string": "str",
     "integer": "int",
@@ -76,12 +79,12 @@ _ARGS_DEPTH_NOTE = "(nested fields omitted for size)"
 
 def render_compact_type(node: dict[str, JsonValue]) -> str:
     """A JSON schema as terse type notation, e.g. ``{id:str, tags?:str[]}``."""
-    return _compact_type(inline_local_refs(node), _COMPACT_ENUM_MAX_MEMBERS)
+    return _compact_type(_without_null(inline_local_refs(node)), _COMPACT_ENUM_MAX_MEMBERS)
 
 
 def render_compact_type_budgeted(schema: dict[str, JsonValue], budget: int) -> str:
     """Compact type notation within budget, depth-collapsing when oversized."""
-    resolved = inline_local_refs(schema)
+    resolved = _without_null(inline_local_refs(schema))
     rendered = _compact_type(resolved, _COMPACT_ENUM_MAX_MEMBERS)
     if len(rendered) <= budget:
         return rendered
@@ -140,6 +143,45 @@ def _inline(
     target = _inline(definitions[name], definitions, expanding | {name})
     # Siblings of a $ref (a field's own description) override the definition's.
     return {**target, **rest} if isinstance(target, dict) else rest
+
+
+def _without_null(node: JsonValue) -> JsonValue:
+    """Drop null from a return shape's unions, and mark each field that was nullable optional."""
+    if isinstance(node, list):
+        return [_without_null(item) for item in node]
+    if not isinstance(node, dict):
+        return node
+    folded = {key: _without_null(value) for key, value in node.items()}
+    properties = node.get("properties")
+    required = folded.get("required")
+    if isinstance(properties, dict) and isinstance(required, list):
+        nullable = {name for name, sub in properties.items() if _is_nullable(sub)}
+        folded["required"] = [name for name in required if name not in nullable]
+    for key in _UNION_KEYS:
+        arms = folded.get(key)
+        if isinstance(arms, list):
+            kept = [arm for arm in arms if not _is_null(arm)]
+            if kept:
+                folded[key] = kept
+    type_ = folded.get("type")
+    if isinstance(type_, list):
+        kept_types = [t for t in type_ if t != _NULL]
+        if kept_types:
+            folded["type"] = kept_types
+    return folded
+
+
+def _is_nullable(node: JsonValue) -> bool:
+    """Whether a union admits null beside at least one real type."""
+    if not isinstance(node, dict):
+        return False
+    variants = _union_variants(cast(_SchemaNode, node)) or []
+    nulls = sum(_is_null(arm) for arm in variants)
+    return 0 < nulls < len(variants)
+
+
+def _is_null(node: JsonValue) -> bool:
+    return isinstance(node, dict) and node.get("type") == _NULL
 
 
 def _local_ref_name(ref: JsonValue) -> str | None:

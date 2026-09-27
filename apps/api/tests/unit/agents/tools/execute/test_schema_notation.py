@@ -68,7 +68,7 @@ class TestCompactType:
             "required": ["id", "count"],
         }
         assert render_compact_type(schema) == (
-            '{id:str, count:int, tags?:str[], status?:"open"|"closed", parent?:null|str, meta?:obj}'
+            '{id:str, count:int, tags?:str[], status?:"open"|"closed", parent?:str, meta?:obj}'
         )
 
     def test_a_map_renders_as_an_index_signature(self) -> None:
@@ -118,7 +118,7 @@ class TestCompactType:
             ({"oneOf": [{"type": "string"}, {"type": "integer"}]}, "int|str"),
             ({"anyOf": [], "type": "string"}, "str"),
             ({"anyOf": {"type": "string"}, "type": "integer"}, "int"),
-            ({"type": ["string", "null"]}, "null|str"),
+            ({"type": ["string", "null"]}, "str"),
             ({"properties": {"a": {"type": "string"}}}, "{a?:str}"),
             ({"type": "string", "enum": ["only"]}, '"only"'),
             ({"type": "string", "enum": []}, "str"),
@@ -128,10 +128,10 @@ class TestCompactType:
             ({"const": None}, "null"),
             ({"type": "number"}, "num"),
             ({"type": "boolean"}, "bool"),
-            ({"anyOf": [{"type": "string"}, {}, {"type": "null"}]}, "null|str"),
+            ({"anyOf": [{"type": "string"}, {}, {"type": "null"}]}, "str"),
             ({"anyOf": [{}, True]}, "any"),
             ({"anyOf": [{"type": "string"}, {}]}, "str"),
-            ({"anyOf": [{"enum": ["a", "b"]}, {"type": "null"}]}, '"a"|"b"|null'),
+            ({"anyOf": [{"enum": ["a", "b"]}, {"type": "null"}]}, '"a"|"b"'),
             ({"type": "array", "items": {"enum": ["a", "b"]}}, '("a"|"b")[]'),
             ({"type": "object", "additionalProperties": {"enum": ["a"]}}, '{[key]:"a"}'),
             (
@@ -139,7 +139,7 @@ class TestCompactType:
                     "$defs": {"Id": {"type": "string"}},
                     "anyOf": [{"$ref": "#/$defs/Id"}, {"type": "null"}],
                 },
-                "null|str",
+                "str",
             ),
         ],
         ids=[
@@ -170,6 +170,80 @@ class TestCompactType:
     )
     def test_shape(self, schema: dict[str, JsonValue], rendered: str) -> None:
         assert render_compact_type(schema) == rendered
+
+
+@pytest.mark.unit
+class TestReturnsFoldNullIntoOptional:
+    @pytest.mark.parametrize(
+        ("schema", "rendered"),
+        [
+            (
+                {
+                    "properties": {
+                        "id": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                        "name": {"type": "string"},
+                    },
+                    "required": ["id", "name"],
+                },
+                "{id?:str, name:str}",
+            ),
+            (
+                {"properties": {"x": {"type": ["string", "null"]}}, "required": ["x"]},
+                "{x?:str}",
+            ),
+            (
+                {"properties": {"x": {"oneOf": [{"type": "null"}, {"type": "integer"}]}}},
+                "{x?:int}",
+            ),
+            ({"properties": {"n": {"type": "null"}}, "required": ["n"]}, "{n:null}"),
+            ({"properties": {"n": {"anyOf": [{"type": "null"}]}}, "required": ["n"]}, "{n:null}"),
+            (
+                {
+                    "properties": {"x": {"anyOf": [{"type": "string"}, {"type": "integer"}]}},
+                    "required": ["x"],
+                },
+                "{x:int|str}",
+            ),
+            ({"properties": {"x": True}, "required": ["x"]}, "{x:any}"),
+            ({"anyOf": [{"type": "null"}]}, "null"),
+            ({"type": ["null"]}, "null"),
+            (
+                {
+                    "type": "array",
+                    "items": {
+                        "properties": {"t": {"type": ["string", "null"]}},
+                        "required": ["t"],
+                    },
+                },
+                "{t?:str}[]",
+            ),
+        ],
+        ids=[
+            "nullable_required_field_turns_optional",
+            "type_list_field",
+            "one_of_null_arm",
+            "a_null_only_field_stays",
+            "a_null_only_union_field_stays_required",
+            "a_union_without_null_stays_required",
+            "a_non_schema_field_stays_required",
+            "a_null_only_union_stays",
+            "a_null_only_type_list_stays",
+            "nested_in_array_items",
+        ],
+    )
+    def test_shape(self, schema: dict[str, JsonValue], rendered: str) -> None:
+        assert render_compact_type(schema) == rendered
+
+    def test_the_budgeted_render_folds_null_too(self) -> None:
+        schema: dict[str, JsonValue] = {
+            "properties": {"id": {"type": ["string", "null"]}},
+            "required": ["id"],
+        }
+        assert render_compact_type_budgeted(schema, UNBOUNDED) == "{id?:str}"
+
+    def test_args_keep_null_because_the_caller_may_send_it(self) -> None:
+        schema = _args({"body": {"type": ["string", "null"]}}, ["body"])
+        assert render_args_budgeted(schema, UNBOUNDED) == "body: null|str"
 
 
 @pytest.mark.unit
