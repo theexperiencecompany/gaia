@@ -16,6 +16,7 @@ from dataclasses import replace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
+import httpx
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.outputs import ChatGeneration, Generation, LLMResult
@@ -26,6 +27,7 @@ from langchain_core.runnables import (
     RunnableLambda,
 )
 from langchain_openrouter import ChatOpenRouter
+from openai import APIConnectionError, AuthenticationError, RateLimitError
 from pydantic import BaseModel, SecretStr
 import pytest
 
@@ -410,15 +412,15 @@ class TestInitLlm:
         mock_log: MagicMock,
     ) -> None:
         """A missing entry logs the provider name, not an empty model."""
-        primary = _make_llm_provider("openai")
-        mock_available.return_value = {"openai": primary.instance}
+        primary = _make_llm_provider("cerebras")
+        mock_available.return_value = {"cerebras": primary.instance}
         mock_ordered.return_value = [primary]
         mock_create.return_value = MagicMock()
 
         init_llm()
 
-        assert "openai" not in PROVIDER_MODELS
-        assert mock_log.set.call_args.kwargs["llm"]["model"] == "openai"
+        assert "cerebras" not in PROVIDER_MODELS
+        assert mock_log.set.call_args.kwargs["llm"]["model"] == "cerebras"
 
     def test_invalid_provider_raises_value_error(self) -> None:
         with pytest.raises(ValueError, match="Invalid preferred_provider 'cerebras'"):
@@ -1356,15 +1358,15 @@ class TestRegisterLlmProviders:
 
 class TestConstants:
     def test_provider_models_keys(self) -> None:
-        assert set(PROVIDER_MODELS.keys()) == {"gemini", "openrouter", "custom"}
+        assert set(PROVIDER_MODELS.keys()) == {"gemini", "openrouter", "custom", "openai"}
 
     def test_provider_priority_values(self) -> None:
-        assert set(PROVIDER_PRIORITY.values()) == {"gemini", "openrouter", "custom"}
+        assert set(PROVIDER_PRIORITY.values()) == {"gemini", "openrouter", "custom", "openai"}
 
     def test_provider_priority_is_ordered(self) -> None:
         sorted_keys = sorted(PROVIDER_PRIORITY.keys())
         providers_in_order = [PROVIDER_PRIORITY[k] for k in sorted_keys]
-        assert providers_in_order == ["openrouter", "gemini", "custom"]
+        assert providers_in_order == ["openrouter", "gemini", "custom", "openai"]
 
     def test_retryable_exceptions_contains_expected_types(self) -> None:
         from google.genai.errors import ServerError
@@ -1390,6 +1392,23 @@ class TestConstants:
 
         for cls in (ChatGoogleGenerativeAIError, ServerError, ClientError, APIError):
             assert issubclass(cls, LLM_FALLBACK_EXCEPTIONS), cls.__name__
+
+    def test_openai_transient_errors_are_retried_and_every_openai_error_falls_back(self) -> None:
+        """The comms lane runs the OpenAI SDK: without these an OpenAI outage fails the turn with no fallback."""
+        request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+        rate_limited = RateLimitError(
+            "slow down", response=httpx.Response(429, request=request), body=None
+        )
+        unauthorized = AuthenticationError(
+            "bad key", response=httpx.Response(401, request=request), body=None
+        )
+        disconnected = APIConnectionError(request=request)
+
+        assert isinstance(rate_limited, LLM_RETRYABLE_EXCEPTIONS)
+        assert isinstance(disconnected, LLM_RETRYABLE_EXCEPTIONS)
+        assert not isinstance(unauthorized, LLM_RETRYABLE_EXCEPTIONS)
+        for exc in (rate_limited, unauthorized, disconnected):
+            assert isinstance(exc, LLM_FALLBACK_EXCEPTIONS), type(exc).__name__
 
     def test_non_retryable_exception_not_in_tuple(self) -> None:
         assert not isinstance(ValueError("bad"), LLM_RETRYABLE_EXCEPTIONS)

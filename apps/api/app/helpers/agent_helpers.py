@@ -19,7 +19,7 @@ from app.agents.core.comms_directive import visible_comms_text, visible_comms_te
 from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.interruption import record_interruption
 from app.agents.core.subagents.registry import get_subagent_by_id
-from app.agents.llm.lane import AgentRole, ModelLane, resolve_lane
+from app.agents.llm.lane import AgentRole, ModelLane, inherits_lane, resolve_lane
 from app.agents.llm.ttft import LLMTtftCallback
 from app.config.langfuse import build_langfuse_callback
 from app.constants.analytics import POSTHOG_PROVIDER_KEY
@@ -695,12 +695,16 @@ async def build_agent_config(
         tracing.usage_metadata_callback,
     )
 
-    # The one seam every execution path crosses: a run with a parent inherits its
-    # lane whole, a top-level run resolves one here, so a new entry point can't be
-    # born on the wrong lane. An explicit dev choice beats inheritance beats fresh.
+    # The one seam every execution path crosses: a child inherits its parent's lane
+    # whole (except comms' own lane), a top-level run resolves one here. An explicit
+    # dev choice beats inheritance beats fresh.
     inherited_lane = ModelLane.from_configurable(parent.lane if parent else None)
     resolved_plan: PlanType | None = None
-    if lane.dev_option is None and inherited_lane is not None:
+    if (
+        lane.dev_option is None
+        and inherited_lane is not None
+        and inherits_lane(inherited_lane, lane.role)
+    ):
         model_lane = inherited_lane
     else:
         model_lane, resolved_plan = await resolve_lane(

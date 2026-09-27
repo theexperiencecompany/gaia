@@ -80,7 +80,7 @@ TAIL_VOLATILE_SLOTS: frozenset[PromptSlot] = frozenset(
 #: it appears. Gemini stays off this list for caching, not content loss:
 #: moving volatile slots back would fold per-turn bytes INTO its cached block.
 TAIL_VOLATILE_PROVIDERS: frozenset[LLMProviderName] = frozenset(
-    {LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM}
+    {LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM, LLMProviderName.OPENAI}
 )
 
 
