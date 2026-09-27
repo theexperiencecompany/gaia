@@ -9,18 +9,23 @@ presented to agents.
 """
 
 from collections.abc import Callable
+import json
 from typing import Union, cast
 
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
 from pydantic import ValidationError
 
 from app.constants.log_tags import LogTag
-from app.models.integrations.composio_hooks import ComposioToolCall, RunnableConfigTransport
+from app.models.integrations.composio_hooks import (
+    ComposioToolCall,
+    ComposioToolResponse,
+    RunnableConfigTransport,
+)
 from shared.py.wide_events import log
 
-# Most after-hooks return a narrower dict built from the envelope's data field,
-# but gmail_attachment_after_hook legitimately passes through a non-dict data
-# value unprocessed — so the honest type here is "whatever the payload is."
+# An after-hook returns the call's new `data`, which the registry wraps back in
+# the envelope; gmail_attachment_after_hook can pass a non-dict value through,
+# so the honest type is "whatever the payload is".
 AfterHookResponse = object
 BeforeHookFn = Callable[[str, str, ToolExecuteParams], ToolExecuteParams]
 AfterHookFn = Callable[[str, str, ToolExecutionResponse], AfterHookResponse]
@@ -53,8 +58,9 @@ class ComposioHookRegistry:
         # Registry for before_execute hooks
         self._before_hooks: list[BeforeHookFn] = []
 
-        # Registry for after_execute hooks
+        # Registry for after_execute hooks, and the tools they are scoped to
         self._after_hooks: list[AfterHookFn] = []
+        self.after_hook_tools: set[str] = set()
 
         # Registry for schema modifiers
         self._schema_modifiers: list[SchemaModifierFn] = []
@@ -203,15 +209,30 @@ def master_before_execute_hook(
     return hook_registry.execute_before_hooks(tool, toolkit, params)
 
 
+def _failed_envelope(response: ToolExecutionResponse) -> ToolExecutionResponse | None:
+    """Return a failed call's envelope to hand back unreshaped, or None when it succeeded.
+
+    A provider error inside a "successful" call's data is lifted to the envelope,
+    since every downstream error check reads only the top-level error.
+    """
+    envelope = ComposioToolResponse.model_validate(response)
+    if not envelope.successful:
+        return response
+    data = envelope.data
+    error = data.get("error") if isinstance(data, dict) else None
+    if not error:
+        return None
+    text = error if isinstance(error, str) else json.dumps(error)
+    return cast(ToolExecutionResponse, {**response, "successful": False, "error": text})
+
+
 def master_after_execute_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
 ) -> ToolExecutionResponse:
-    """Run every registered tool-specific after_execute hook plus global transforms.
+    """Run every registered tool-specific after_execute hook.
 
-    Composio's AfterExecute protocol declares this returns ToolExecutionResponse, but hooks
-    legitimately return a trimmed dict subset for the LLM (AfterHookResponse). The cast
-    matches the SDK's own runtime behavior, which casts the modifier chain's result straight
-    to Dict without enforcing the shape either.
+    A hook reshapes only a successful call's data and the envelope stays around
+    it, so the caller always gets {data, successful, error}.
     """
     result = hook_registry.execute_after_hooks(tool, toolkit, response)
     return cast(ToolExecutionResponse, result)
@@ -283,7 +304,7 @@ def register_after_hook(
 
         def conditional_hook(
             tool: str, toolkit: str, response: ToolExecutionResponse
-        ) -> AfterHookResponse:
+        ) -> ToolExecutionResponse:
             # Check if this hook should run for this tool/toolkit
             should_run = False
 
@@ -298,11 +319,15 @@ def register_after_hook(
                 if target_toolkits and toolkit in target_toolkits:
                     should_run = True
 
-            if should_run:
-                return func(tool, toolkit, response)
-            return response
+            if not should_run:
+                return response
+            failed = _failed_envelope(response)
+            if failed is not None:
+                return failed
+            return cast(ToolExecutionResponse, {**response, "data": func(tool, toolkit, response)})
 
         hook_registry.register_after_hook(conditional_hook)
+        hook_registry.after_hook_tools.update(target_tools)
         return func
 
     return decorator
