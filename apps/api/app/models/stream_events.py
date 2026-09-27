@@ -234,7 +234,7 @@ class EmojiAckPayload(BaseModel):
 class EmojiAckFrame(BaseModel):
     """The turn resolved to comms' ``<EMOJI>…</EMOJI>`` control tag.
 
-    The driver never streams the directive's text (DirectiveHoldback), so this
+    The driver never streams a directive's text (visible_comms_text), so this
     frame is the turn's whole visible outcome: the emoji is a reaction badge on
     the ``reacts_to_message_id`` message, never a bubble of its own. Only emitted on
     the interactive path (background executor results announce the same outcome

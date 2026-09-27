@@ -15,6 +15,7 @@ from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.core.background.session import claim_tool_output
+from app.agents.core.comms_directive import visible_comms_text
 from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.interruption import record_interruption
 from app.agents.core.subagents.registry import get_subagent_by_id
@@ -36,7 +37,6 @@ from app.core.lazy_loader import providers
 from app.core.stream_manager import stream_manager
 from app.db.redis import get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
-from app.helpers.directive_holdback import DirectiveHoldback
 from app.models.agent_models import (
     AgentConfigurable,
     AgentConfigurableView,
@@ -1133,7 +1133,8 @@ class _StreamAccumulators:
     # perf_counter of the first comms text yield in this run; None until then.
     # Only comms_agent text reaches the yield below, so executor runs never stamp.
     pipeline_ttft_perf: float | None = None
-    holdback: DirectiveHoldback = field(default_factory=DirectiveHoldback)
+    # Characters of each held message's visible text already streamed.
+    released_chars: dict[str, int] = field(default_factory=dict)
 
 
 async def _emit_mcp_app_event(
@@ -1295,6 +1296,10 @@ async def _stream_updates(
 
             # The node has finished, so the message's fate is decided (kept, or
             # a discarded handoff preamble); announce the boundary either way.
+            closing = last_ai_message(messages) if is_comms else None
+            closing_text = (
+                _release_visible_text(state, closing.id or "", complete=True) if closing else ""
+            )
             state.complete_message, boundary_id, discarded = _settle_message_boundary(
                 messages,
                 is_comms,
@@ -1303,6 +1308,9 @@ async def _stream_updates(
                 state.tool_call_message_ids,
             )
             if boundary_id is not None:
+                state.released_chars.pop(boundary_id, None)
+                if closing_text and not discarded:
+                    yield format_sse_response(closing_text)
                 yield format_sse_data(
                     {
                         "message_boundary": MessageBoundaryPayload(
@@ -1352,6 +1360,14 @@ async def _stream_tool_message_frames(
             yield frame
 
 
+def _release_visible_text(state: _StreamAccumulators, message_id: str, *, complete: bool) -> str:
+    """Return the next piece of a comms message a user may see, and mark it streamed."""
+    visible = visible_comms_text(state.message_texts.get(message_id, ""), complete=complete)
+    streamed = state.released_chars.get(message_id, 0)
+    state.released_chars[message_id] = len(visible)
+    return visible[streamed:]
+
+
 async def _stream_messages(
     payload: tuple[BaseMessage, StreamChunkMetadata],
     state: _StreamAccumulators,
@@ -1371,9 +1387,9 @@ async def _stream_messages(
         if held_text:
             if state.pipeline_ttft_perf is None:
                 state.pipeline_ttft_perf = time.perf_counter()
-            # Recorded before the yield: the directive holdback reads the turn as of this frame.
             state.message_texts[message_id] = state.message_texts.get(message_id, "") + held_text
-            yield format_sse_response(held_text)
+            if visible := _release_visible_text(state, message_id, complete=False):
+                yield format_sse_response(visible)
 
     # Emit tool_output when ToolMessage arrives
     elif chunk and isinstance(chunk, ToolMessage):
@@ -1390,6 +1406,11 @@ async def _stream_custom(
 ) -> AsyncGenerator[str, None]:
     """Handle one "custom" event: forward it, then honour subagent MCP App metadata."""
     drop_retracted_text(payload, state.message_texts)
+    state.released_chars = {
+        message_id: chars
+        for message_id, chars in state.released_chars.items()
+        if message_id in state.message_texts
+    }
     yield f"data: {json.dumps(payload)}\n\n"
 
     if not isinstance(payload, dict):
@@ -1522,9 +1543,7 @@ async def execute_graph_streaming(
                 async for frame in _frames_for_stream_event(
                     event, state, is_comms, stream_id, user_id
                 ):
-                    turn_so_far = _flush_held_messages(state.complete_message, state.message_texts)
-                    for released in state.holdback.admit(frame, turn_so_far):
-                        yield released
+                    yield frame
         except GeneratorExit:
             # Abandoned mid-stream without cancellation (server shutdown path):
             # neither success nor cancelled, and neither label may claim it.
@@ -1540,9 +1559,10 @@ async def execute_graph_streaming(
 
     # A run that ends without its closing node update (cancellation, a graph that
     # never reaches the agent node again) still owes the user what it streamed.
+    for message_id in list(state.message_texts):
+        if visible := _release_visible_text(state, message_id, complete=True):
+            yield format_sse_response(visible)
     state.complete_message = _flush_held_messages(state.complete_message, state.message_texts)
-    for released in state.holdback.settle(state.complete_message):
-        yield released
     if state.pipeline_ttft_perf is not None:
         log.set(comms_pipeline_ttft_ms=round((state.pipeline_ttft_perf - run_start) * 1000.0, 2))
 

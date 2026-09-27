@@ -162,6 +162,16 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
         assert f"<{AgentTag.DELIVERY_INSTRUCTIONS}>" in seams.narrate.await_args.kwargs["preamble"]
         seams.repo.get_by_id.assert_awaited_once_with(TODO_ID)
 
+    @pytest.mark.regression
+    async def test_a_silence_bubble_after_the_message_never_reaches_the_chat_app(self) -> None:
+        """Live on Telegram: 7 of 12 deliveries carried the raw <SILENCE> tag after the message."""
+        message = "Your passport expires in 13 days. Please book your renewal appointment."
+        narrated = f"{message}{NEW_MESSAGE_BREAKER}<SILENCE>Within the 30-day threshold.</SILENCE>"
+        with _seams(todo=_todo(), narrated=narrated) as seams:
+            await run_todo_on_executor(_request())
+
+        assert seams.send.await_args.kwargs["notification_text"] == message
+
     async def test_the_run_conversation_is_never_written(self) -> None:
         """It has no transport and does not exist: a save there 404s and drops the result."""
         with _seams(todo=_todo()) as seams:

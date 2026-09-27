@@ -1654,18 +1654,33 @@ class TestRunChatStreamBackground:
         acks = [frame["emoji_ack"] for _, frame in frames if "emoji_ack" in frame]
         assert acks == [{"emoji": "👍", "reacts_to_message_id": "umsg_1"}]
 
-    async def test_a_reaction_followed_by_another_bubble_streams_every_word(
+    @pytest.mark.regression
+    async def test_a_reaction_beside_a_message_streams_and_saves_only_the_message(
         self, test_user: AuthenticatedUser
     ) -> None:
-        pieces = ("<EMOJI>👍</EMOJI>", "<NEW_MESSAGE_BREAK>", "and more")
-
-        frames, save, _ = await self._run_turn(test_user, *pieces)
-
-        assert "".join(frame["response"] for _, frame in frames if "response" in frame) == "".join(
-            pieces
+        frames, save, _ = await self._run_turn(
+            test_user, "<EMOJI>👍</EMOJI>", "<NEW_MESSAGE_BREAK>", "and more"
         )
+
+        streamed = "".join(frame["response"] for _, frame in frames if "response" in frame)
+        assert streamed == "and more"
         assert not [frame for _, frame in frames if "emoji_ack" in frame]
-        assert save.await_args.kwargs["kind"] is MessageKind.TEXT
+        assert (save.await_args.kwargs["complete_message"], save.await_args.kwargs["kind"]) == (
+            "and more",
+            MessageKind.TEXT,
+        )
+
+    @pytest.mark.regression
+    async def test_a_silence_bubble_after_the_message_is_never_published_or_saved(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        frames, save, _ = await self._run_turn(
+            test_user, "Hello there.", "<NEW_MESSAGE_B", "REAK><SIL", "ENCE>x</SILENCE>"
+        )
+
+        streamed = [frame["response"] for _, frame in frames if "response" in frame]
+        assert "".join(streamed) == "Hello there."
+        assert save.await_args.kwargs["complete_message"] == "Hello there."
 
     @pytest.mark.regression
     async def test_a_live_silence_is_never_streamed_and_the_turn_still_answers(

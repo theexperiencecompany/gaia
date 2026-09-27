@@ -34,6 +34,7 @@ from app.constants.executor import (
     EXECUTOR_NARRATION_FAILED_ERROR_MESSAGE,
     EXECUTOR_NARRATION_FAILED_MESSAGE,
 )
+from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationSource, MessageModel, ToolDataEntry
@@ -2261,6 +2262,17 @@ class TestCommsDirectiveDelivery:
         assert capture.call_args.args[0] == "user-1"
         assert capture.call_args.args[1] == rd.AnalyticsEvents.CHAT_BACKGROUND_UPDATE_RESOLVED
         assert capture.call_args.args[2] == {"outcome": "silence"}
+
+    @pytest.mark.regression
+    async def test_a_message_with_a_trailing_directive_delivers_only_the_message(self) -> None:
+        message = "Your passport expires in 13 days."
+        save, platform, _ws = await _deliver(
+            ConversationSource.TELEGRAM,
+            comms_text=f"{message}{NEW_MESSAGE_BREAKER}<EMOJI>👍</EMOJI>",
+        )
+        assert platform.await_args.args[2] == message
+        saved = save.await_args.args[0].messages[0]
+        assert (saved.response, saved.kind) == (message, rd.MessageKind.TEXT)
 
     async def test_silence_on_web_broadcasts_nothing(self) -> None:
         save, platform, ws = await _deliver(

@@ -909,14 +909,14 @@ def resolve_turn_emoji_ack(
     A whole-reply emoji directive becomes a one-emoji acknowledgment stamped
     emoji_ack with the user message as target. A silence was never streamed, so
     it resolves to an empty reply, which the empty-completion fallback answers:
-    a live turn must not vanish. Anything else passes through unchanged.
+    a live turn must not vanish. A reply keeps its text without directive bubbles.
     """
     directive = interpret_comms_output(complete_message)
     if directive.kind is CommsDirectiveKind.REACT:
         return directive.payload, MessageKind.EMOJI_ACK, user_message_id
     if directive.kind is CommsDirectiveKind.SILENCE:
         return "", MessageKind.TEXT, None
-    return complete_message, MessageKind.TEXT, None
+    return directive.payload, MessageKind.TEXT, None
 
 
 async def _substitute_empty_completion(stream_id: str, state: _StreamState) -> None:

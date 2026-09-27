@@ -275,9 +275,10 @@ async def _narrate_and_deliver(
         log.set(comms_delivery="silenced", silence_reason=directive.payload)
         _capture_resolution(run, directive)
         return None, None
+    # A reply's payload is its text without any directive bubble written beside it.
+    notification_text = directive.payload
     if is_react:
         log.set(comms_delivery="reacted")
-        notification_text = directive.payload
         message_kind = MessageKind.EMOJI_ACK
     else:
         log.set(comms_delivery="message")

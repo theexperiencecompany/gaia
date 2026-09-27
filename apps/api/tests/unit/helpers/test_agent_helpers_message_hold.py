@@ -331,7 +331,7 @@ def _one_message(message_id: str, *pieces: str) -> list[GraphStreamEvent]:
 
 @pytest.mark.unit
 class TestDirectiveHoldback:
-    """A turn that is one directive tag never reaches the wire as text; any other turn does, in order."""
+    """A directive bubble never reaches the wire as text; every other bubble does, in order."""
 
     @pytest.mark.parametrize(
         "pieces",
@@ -350,26 +350,52 @@ class TestDirectiveHoldback:
         assert _frames(frames, "message_boundary") == [{"message_id": "m1", "discarded": False}]
         assert _streamed_message(frames) == "".join(pieces)
 
-    async def test_held_text_is_released_ahead_of_its_boundary_once_a_second_message_follows(
-        self,
+    @pytest.mark.parametrize(
+        ("pieces", "shown"),
+        [
+            (("Hello there.", "<NEW_MESSAGE_B", "REAK><SIL", "ENCE>x</SILENCE>"), "Hello there."),
+            (
+                ("On it.", f"{NEW_MESSAGE_BREAKER}<EMO", "JI>👍</EMOJI>", NEW_MESSAGE_BREAKER),
+                "On it.",
+            ),
+            (
+                (
+                    "First.",
+                    f"{NEW_MESSAGE_BREAKER}<SILENCE>x</SILENCE>",
+                    f"{NEW_MESSAGE_BREAKER}Last.",
+                ),
+                f"First.{NEW_MESSAGE_BREAKER}Last.",
+            ),
+            (("Done.", f"{NEW_MESSAGE_BREAKER}SILENCE: routine"), "Done."),
+            (("<EMOJI>👍</EMOJI>", NEW_MESSAGE_BREAKER, "and more"), "and more"),
+        ],
+    )
+    @pytest.mark.regression
+    async def test_a_directive_bubble_beside_text_never_reaches_the_wire(
+        self, pieces: tuple[str, ...], shown: str
     ) -> None:
+        frames = await _run_streaming(_one_message("m1", *pieces))
+
+        texts = _frames(frames, "response")
+        assert "".join(texts) == shown
+        assert _frames(frames, "message_boundary") == [{"message_id": "m1", "discarded": False}]
+
+    async def test_a_message_s_text_goes_out_ahead_of_its_boundary(self) -> None:
         """Clients settle the text before a boundary into that message; released after it, a retraction would eat it."""
         frames = await _run_streaming(
-            [*_one_message("m1", "<EMOJI>👍</EMOJI>"), *_one_message("m2", "on it.")]
+            [*_one_message("m1", "<EMOJI>👍</EMOJI>"), *_one_message("m2", "Re", ": trip")]
         )
 
         payloads = [json.loads(f[len("data: ") :]) for f in frames if f.startswith("data: {")]
         assert payloads == [
-            {"response": "<EMOJI>👍</EMOJI>"},
             {"message_boundary": {"message_id": "m1", "discarded": False}},
-            {"response": "on it."},
+            {"response": "Re: trip"},
             {"message_boundary": {"message_id": "m2", "discarded": False}},
         ]
 
-    async def test_a_retracted_directive_shaped_preamble_releases_what_it_held(
+    async def test_a_retracted_directive_shaped_preamble_does_not_hold_its_tool_card(
         self, resolved_tool_cards: Any
     ) -> None:
-        """Once the only held message is discarded the turn cannot be a directive; its tool card must not wait."""
         events = [
             message_chunk_event(message_id="m1", content="REACT"),
             agent_update_event(
@@ -383,9 +409,15 @@ class TestDirectiveHoldback:
 
         frames = await _run_streaming(events)
 
-        assert _frames(frames, "response") == ["REACT"]
+        assert _frames(frames, "response") == []
         assert _frames(frames, "tool_data") == [{"tool_name": "tool_calls_data", "data": {}}]
         assert _frames(frames, "message_boundary") == [{"message_id": "m1", "discarded": True}]
+
+    async def test_a_run_cut_short_still_releases_its_visible_text(self) -> None:
+        """A cancelled run never reaches its boundary; what the user may see must still go out."""
+        frames = await _run_streaming([message_chunk_event(message_id="m1", content="Sure")])
+
+        assert _frames(frames, "response") == ["Sure"]
 
     async def test_ordinary_text_is_published_before_the_next_event_is_read(self) -> None:
         frames = execute_graph_streaming(_OneChunkThenFails(), {}, _CONFIG)
