@@ -76,7 +76,7 @@ export type {
 } from "./quickAdd";
 export { parseQuickAdd } from "./quickAdd";
 export type { ReactionBadge, ReactionFoldable } from "./reactions";
-export { foldReactionAcks, isReactionAck } from "./reactions";
+export { foldReactionAcks, groupReactions, isReactionAck } from "./reactions";
 export type { SimilarityConfig } from "./similarity";
 export {
   DEFAULT_SIMILARITY_CONFIG,

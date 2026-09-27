@@ -38,11 +38,11 @@ class TestResolveTurnEmojiAck:
         assert kind is MessageKind.TEXT
         assert reacts_to is None
 
-    def test_silence_is_not_applied_interactively(self) -> None:
-        # SILENCE is scoped to background narration; a live turn must never
-        # silently vanish, so the text stays (and renders) as-is.
-        text = "SILENCE: routine refresh"
-        message, kind, reacts_to = resolve_turn_emoji_ack(text, "umsg_1")
-        assert message == text
+    def test_a_live_silence_resolves_to_an_empty_reply_never_the_tag(self) -> None:
+        """The stream never showed the tag, so the saved turn must not either; empty hands it to the empty-reply fallback."""
+        message, kind, reacts_to = resolve_turn_emoji_ack(
+            "<SILENCE>routine refresh</SILENCE>", "umsg_1"
+        )
+        assert message == ""
         assert kind is MessageKind.TEXT
         assert reacts_to is None

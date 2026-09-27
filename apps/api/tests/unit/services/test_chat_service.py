@@ -19,6 +19,7 @@ import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.messages import AIMessage
 from prometheus_client import REGISTRY
 import pytest
 
@@ -27,6 +28,7 @@ from app.agents.core.background.session import (
     create_session,
     teardown_session,
 )
+from app.constants.chat import EMPTY_RESPONSE_FALLBACK
 from app.models.chat_models import ConversationModel, MessageKind
 from app.models.message_models import MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
@@ -53,6 +55,7 @@ from app.services.chat.stream import (
 )
 from app.utils.stream_publishers import ExtractedToolData
 from shared.py.wide_events import log as _log
+from tests.helpers import ScriptedGraph, agent_update_event, message_chunk_event
 
 
 def _created_conversation(conversation_id: str, description: str) -> ConversationModel:
@@ -552,6 +555,7 @@ def _make_stream_manager_mock(is_cancelled: bool = False) -> MagicMock:
     m.publish_chunk = AsyncMock()
     m.is_cancelled = AsyncMock(return_value=is_cancelled)
     m.update_progress = AsyncMock()
+    m.settle_message_progress = AsyncMock()
     m.complete_stream = AsyncMock()
     m.set_error = AsyncMock()
     m.cleanup = AsyncMock()
@@ -1559,23 +1563,36 @@ class TestRunChatStreamBackground:
         assert state.e2e_ack_ms == 2000.0
 
     async def _run_turn(
-        self, user: AuthenticatedUser, reply: str
+        self, user: AuthenticatedUser, *reply_pieces: str
     ) -> tuple[list[tuple[str, dict[str, Any]]], AsyncMock, MagicMock]:
-        """Run one turn whose comms reply is reply; return the JSON frames published, the save and the capture."""
+        """Run one turn whose comms reply streams as reply_pieces; return the JSON frames published, the save and the capture.
+
+        The real graph driver runs over a scripted graph, so its hold on directive text is in the path.
+        """
         body = MessageRequestWithHistory(
             message="Booked it",
             messages=[{"role": "user", "content": "Booked it"}],
             conversation_id="conv_existing_123",
             turn_id="umsg_1",
         )
+        graph = ScriptedGraph(
+            [
+                *(message_chunk_event(message_id="m1", content=piece) for piece in reply_pieces),
+                agent_update_event(AIMessage(id="m1", content="".join(reply_pieces))),
+            ]
+        )
         sm = _make_stream_manager_mock()
         save = AsyncMock()
         with (
             _patch_stream_manager(sm),
+            patch("app.helpers.agent_helpers.stream_manager", sm),
             patch(
-                "app.services.chat.stream.call_agent",
-                new=AsyncMock(return_value=_text_then_nostream(reply, reply)),
+                "app.agents.core.agent._core_agent_logic",
+                new=AsyncMock(
+                    return_value=(graph, {}, {"agent_name": "comms_agent", "configurable": {}})
+                ),
             ),
+            patch("app.agents.core.agent.capture_event"),
             patch("app.services.chat.stream.save_conversation_async", new=save),
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
             patch("app.services.chat.stream.capture_event") as capture,
@@ -1602,7 +1619,7 @@ class TestRunChatStreamBackground:
         assert acks == [
             ("stream_turn", {"emoji_ack": {"emoji": "😎", "reacts_to_message_id": "umsg_1"}})
         ]
-        # Sent before the completion frame, so the client never closes a raw directive bubble.
+        # Sent before the completion frame, so the client never closes the turn as an empty bubble.
         order = [next(iter(frame)) for _, frame in frames]
         assert order.index("emoji_ack") < order.index("main_response_complete")
 
@@ -1625,6 +1642,41 @@ class TestRunChatStreamBackground:
         assert not [frame for _, frame in frames if "emoji_ack" in frame]
         assert save.await_args.kwargs["kind"] is MessageKind.TEXT
         assert AnalyticsEvents.CHAT_TURN_REACTED not in [c.args[1] for c in capture.call_args_list]
+
+    @pytest.mark.regression
+    async def test_a_reaction_streamed_in_pieces_never_reaches_any_client_as_text(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        """Web, mobile, bots and voice all read this stream; the raw tag used to paint as a bubble on every one."""
+        frames, _, _ = await self._run_turn(test_user, "<EM", "OJI>👍</EM", "OJI>")
+
+        assert [frame for _, frame in frames if "response" in frame] == []
+        acks = [frame["emoji_ack"] for _, frame in frames if "emoji_ack" in frame]
+        assert acks == [{"emoji": "👍", "reacts_to_message_id": "umsg_1"}]
+
+    async def test_a_reaction_followed_by_another_bubble_streams_every_word(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        pieces = ("<EMOJI>👍</EMOJI>", "<NEW_MESSAGE_BREAK>", "and more")
+
+        frames, save, _ = await self._run_turn(test_user, *pieces)
+
+        assert "".join(frame["response"] for _, frame in frames if "response" in frame) == "".join(
+            pieces
+        )
+        assert not [frame for _, frame in frames if "emoji_ack" in frame]
+        assert save.await_args.kwargs["kind"] is MessageKind.TEXT
+
+    @pytest.mark.regression
+    async def test_a_live_silence_is_never_streamed_and_the_turn_still_answers(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        """Silence is for background deliveries; a live turn must not vanish, nor show the tag."""
+        frames, save, _ = await self._run_turn(test_user, "<SILENCE>", "nothing new</SILENCE>")
+
+        streamed = [frame["response"] for _, frame in frames if "response" in frame]
+        assert streamed == [EMPTY_RESPONSE_FALLBACK]
+        assert save.await_args.kwargs["complete_message"] == EMPTY_RESPONSE_FALLBACK
 
 
 def _hist_count(name: str, labels: dict[str, str]) -> float:

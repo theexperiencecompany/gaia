@@ -369,8 +369,8 @@ async def _run_chat_stream(
             state.message_kind is MessageKind.EMOJI_ACK  # pragma: no mutate
             and state.reacts_to_message_id
         ):
-            # The client streamed the raw directive as text; the frame tells it to
-            # take that back and attach the emoji as a reaction badge instead.
+            # The driver held the directive's text back, so this frame is all the
+            # client learns of the turn: attach the emoji as a reaction badge.
             await stream_manager.publish_chunk(
                 stream_id,
                 format_sse_data(
@@ -906,24 +906,26 @@ def resolve_turn_emoji_ack(
 ) -> tuple[str, MessageKind, str | None]:
     """Reduce comms' final message to the stamp the saved turn should carry.
 
-    A whole-reply REACT control line becomes a one-emoji acknowledgment
-    stamped emoji_ack with the user message as target. SILENCE is never
-    applied here: a live turn must not vanish; anything else passes through
-    unchanged.
+    A whole-reply emoji directive becomes a one-emoji acknowledgment stamped
+    emoji_ack with the user message as target. A silence was never streamed, so
+    it resolves to an empty reply, which the empty-completion fallback answers:
+    a live turn must not vanish. Anything else passes through unchanged.
     """
     directive = interpret_comms_output(complete_message)
     if directive.kind is CommsDirectiveKind.REACT:
         return directive.payload, MessageKind.EMOJI_ACK, user_message_id
+    if directive.kind is CommsDirectiveKind.SILENCE:
+        return "", MessageKind.TEXT, None
     return complete_message, MessageKind.TEXT, None
 
 
 async def _substitute_empty_completion(stream_id: str, state: _StreamState) -> None:
     """Replace a contentless turn with one honest line, and record why.
 
-    Last resort: EmptyCompletionRetryMiddleware already retried once, so this
-    only fires when the model went silent twice. Every renderer drops an
-    empty body silently, so an unreplaced empty turn reads to the user as
-    being ignored. Turns with an error, a cancellation, or tool cards are left alone.
+    Fires when the model went silent twice (EmptyCompletionRetryMiddleware retried
+    once) or answered a live turn with a silence directive. Every renderer drops an
+    empty body, so an unreplaced empty turn reads as being ignored. Turns with an
+    error, a cancellation, or tool cards are left alone.
     """
     if state.complete_message.strip() or state.error or state.is_cancelled:
         return

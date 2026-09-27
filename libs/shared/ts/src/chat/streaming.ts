@@ -83,8 +83,8 @@ export type ChatStreamEvent =
   // A frame that was not valid JSON. Never rendered — consumers must log it
   // loudly and surface a stream error instead of showing garbage text.
   | { type: "parse_error"; raw: string }
-  // The turn's reply resolved to a comms `<EMOJI>…</EMOJI>` one-emoji ack: the
-  // client replaces the streamed directive text with the badge on the user's
+  // The turn's reply resolved to a comms `<EMOJI>…</EMOJI>` one-emoji ack, whose
+  // text the server never streams: the client shows a badge on the user's
   // message (`reactsToMessageId`), never a bubble of its own.
   | { type: "emoji_ack"; emoji: string; reactsToMessageId: string }
   | { type: "unknown"; payload: JsonObject };
@@ -138,8 +138,7 @@ const extractError = (payload: JsonObject): ChatStreamEvent[] =>
     : [];
 
 // `emoji_ack` arrives when comms' whole reply was an `<EMOJI>…</EMOJI>` tag: the
-// client drops the streamed directive and badges the emoji onto the user's
-// message instead of leaving a bubble.
+// client badges the emoji onto the user's message instead of leaving a bubble.
 const extractEmojiAck = (payload: JsonObject): ChatStreamEvent[] => {
   const ack = payload.emoji_ack;
   if (!isObject(ack)) return [];

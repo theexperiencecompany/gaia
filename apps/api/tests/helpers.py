@@ -1,7 +1,7 @@
 """Shared test utilities for GAIA API tests."""
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 import math
 import os
@@ -12,7 +12,7 @@ from typing import Any, ClassVar
 from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
 )
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
 from pydantic import Field
 import pytest
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -129,6 +129,43 @@ class BindableToolsFakeModel(FakeMessagesListChatModel):
 
     def bind_tools(self, tools: Any, **kwargs: Any) -> "BindableToolsFakeModel":
         return self
+
+
+#: One (namespace, mode, payload) triple of a graph's astream(subgraphs=True).
+GraphStreamEvent = tuple[tuple[str, ...], str, Any]
+
+
+class ScriptedGraph:
+    """A graph whose astream replays exactly the events handed to it.
+
+    Drives the real graph drivers (execute_graph_streaming / _silent) over shapes a
+    real model wire never produces: an id-less message, a tool call announced
+    before its text, arguments that never parse, a retraction mid-node.
+    """
+
+    def __init__(self, events: Sequence[tuple[Any, ...]]) -> None:
+        self._events = events
+
+    def astream(self, *_args: Any, **_kwargs: Any) -> AsyncGenerator[tuple[Any, ...], None]:
+        events = self._events
+
+        async def stream() -> AsyncGenerator[tuple[Any, ...], None]:
+            for event in events:
+                yield event
+
+        return stream()
+
+
+def message_chunk_event(
+    *, message_id: str | None, content: str = "", **kwargs: Any
+) -> GraphStreamEvent:
+    """Build a messages-mode event carrying one assistant chunk."""
+    return ((), "messages", (AIMessageChunk(id=message_id, content=content, **kwargs), {}))
+
+
+def agent_update_event(message: AIMessage) -> GraphStreamEvent:
+    """Build an updates-mode event closing the agent node with message as its reply."""
+    return ((), "updates", {"agent": {"messages": [message]}})
 
 
 def create_fake_llm(responses: list[str]) -> BindableToolsFakeModel:

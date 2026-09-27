@@ -389,61 +389,52 @@ export function useChat(
             onStreamId: (id) => {
               streamIdRef.current = id;
             },
-            onConversationCreated: (
-              newConvId,
-              userMsgId,
-              botMsgId,
-              description,
-            ) => {
-              const liveStore = useChatStore.getState();
-              const msgs = liveStore.messagesByConversation[storeKey] || [];
-
-              const updatedMsgs = msgs.map((msg, idx) => {
-                if (idx === msgs.length - 2) return { ...msg, id: userMsgId };
-                if (idx === msgs.length - 1) return { ...msg, id: botMsgId };
-                return msg;
-              });
-
-              if (!chatId && newConvId) {
-                liveStore.setMessages(newConvId, updatedMsgs);
-                liveStore.clearMessages(storeKey);
-                liveStore.setStreamingState({ conversationId: newConvId });
-                liveStore.setActiveChatId(newConvId);
-
-                // The server-assigned bot id replaces our temp id — keep the
-                // retry binding pointing at the real message.
-                if (lastRequestRef.current) {
-                  lastRequestRef.current = {
-                    ...lastRequestRef.current,
-                    assistantMessageId: botMsgId,
-                  };
-                }
-
-                // Show the new conversation in the sidebar immediately by
-                // prepending to the React Query cache (the sidebar's single
-                // source of truth); the background refetch confirms it.
-                queryClient.setQueryData(
-                  chatKeys.conversations(),
-                  (prev: Conversation[] | undefined) => {
-                    if (!prev) return prev;
-                    if (prev.some((c) => c.id === newConvId)) return prev;
-                    const now = new Date().toISOString();
-                    const entry = {
-                      id: newConvId,
-                      title: description || "New conversation",
-                      created_at: now,
-                      updated_at: now,
-                    };
-                    return [entry, ...prev];
-                  },
-                );
-
-                activeConvIdRef.current = newConvId;
-                setCurrentConversationId(newConvId);
-                options?.onNavigate?.(newConvId);
-              } else {
-                liveStore.setMessages(storeKey, updatedMsgs);
+            onMessageIds: (userMsgId, botMsgId) => {
+              // Server ids let an emoji_ack find the user message it reacts to.
+              useChatStore
+                .getState()
+                .adoptTurnMessageIds(storeKey, userMsgId, botMsgId);
+              // Keep the retry binding pointing at the real message.
+              if (lastRequestRef.current) {
+                lastRequestRef.current = {
+                  ...lastRequestRef.current,
+                  assistantMessageId: botMsgId,
+                };
               }
+            },
+            onConversationCreated: (newConvId, description) => {
+              if (chatId) return;
+              const liveStore = useChatStore.getState();
+              liveStore.setMessages(
+                newConvId,
+                liveStore.messagesByConversation[storeKey] || [],
+              );
+              liveStore.clearMessages(storeKey);
+              liveStore.setStreamingState({ conversationId: newConvId });
+              liveStore.setActiveChatId(newConvId);
+
+              // Show the new conversation in the sidebar immediately by
+              // prepending to the React Query cache (the sidebar's single
+              // source of truth); the background refetch confirms it.
+              queryClient.setQueryData(
+                chatKeys.conversations(),
+                (prev: Conversation[] | undefined) => {
+                  if (!prev) return prev;
+                  if (prev.some((c) => c.id === newConvId)) return prev;
+                  const now = new Date().toISOString();
+                  const entry = {
+                    id: newConvId,
+                    title: description || "New conversation",
+                    created_at: now,
+                    updated_at: now,
+                  };
+                  return [entry, ...prev];
+                },
+              );
+
+              activeConvIdRef.current = newConvId;
+              setCurrentConversationId(newConvId);
+              options?.onNavigate?.(newConvId);
             },
             onProgress: (message, toolName) => {
               useChatStore.getState().setStreamingState({
@@ -467,6 +458,15 @@ export function useChat(
               switch (event.type) {
                 case "response":
                   liveStore.updateLastMessage(convId, acc.responseText);
+                  return;
+                case "emoji_ack":
+                  // The turn is a reaction: foldReactionAcks badges the emoji
+                  // onto the user's message instead of rendering this bubble.
+                  liveStore.updateLastAssistantMessage(convId, {
+                    text: event.emoji,
+                    kind: "emoji_ack",
+                    reacts_to_message_id: event.reactsToMessageId,
+                  });
                   return;
                 case "tool_data":
                 case "tool_output":

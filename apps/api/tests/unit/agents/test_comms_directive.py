@@ -2,13 +2,11 @@
 
 import pytest
 
-from app.agents.core.comms_directive import interpret_comms_output
+from app.agents.core.comms_directive import could_become_comms_directive, interpret_comms_output
 from app.constants.comms import CommsDirectiveKind
 
 pytestmark = pytest.mark.unit
 
-# Same table as EMOJI_DIRECTIVE_CASES in libs/shared/ts/src/bots/utils/react-directive.test.ts —
-# change both together, or bots and backend disagree on what gets an emoji_ack.
 EMOJI_DIRECTIVE_CASES: list[tuple[str, str | None]] = [
     ("<EMOJI>👍</EMOJI>", "👍"),
     ("  <emoji> ✅ </emoji>  ", "✅"),
@@ -73,3 +71,54 @@ class TestInterpretCommsOutput:
     def test_a_directive_followed_by_another_bubble_is_a_reply(self) -> None:
         text = "<SILENCE>nothing new</SILENCE><NEW_MESSAGE_BREAK>Actually, one thing changed."
         assert interpret_comms_output(text).kind == CommsDirectiveKind.REPLY
+
+
+class TestCouldBecomeCommsDirective:
+    """The live stream holds a turn back while this is true, so no client ever sees a directive."""
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "",
+            "  ",
+            "<",
+            "<em",
+            "<EMOJI>",
+            "<EMOJI>👍",
+            "<EMOJI>👍</EMO",
+            "<EMOJI>👍</EMOJI>",
+            "<EMOJI>👍</EMOJI>\n",
+            "<EMOJI>👍</EMOJI><NEW_MESS",
+            "<EMOJI>👍</EMOJI><NEW_MESSAGE_BREAK>",
+            "<sil",
+            "<SILENCE>nothing new",
+            "<SILENCE>nothing new</SILENCE><NEW_MESSAGE_BREAK>",
+            "REACT",
+            "REACT: ",
+            "REACT: 😎<NEW_MESSAGE_BREAK>",
+            "Sil",
+            "SILENCE: no-op",
+        ],
+    )
+    def test_holds_a_turn_one_more_chunk_can_still_make_a_directive(self, text: str) -> None:
+        assert could_become_comms_directive(text) is True
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Hello",
+            "Really interesting",
+            "Silence is golden",
+            "<b>bold</b> reply",
+            "<EMOJI>\n",
+            "<\nEMOJI>👍</EMOJI>",
+            "<EMOJI>👍</EMOJI>\nand more",
+            "<EMOJI>👍</EMOJI><NEW_MESSAGE_BREAK>and more",
+            "<EMOJI></EMOJI><NEW_MESSAGE_BREAK>",
+            "<SILENCE>nothing new</SILENCE><NEW_MESSAGE_BREAK>Actually, one thing changed.",
+            "hello <EMOJI>👍</EMOJI>",
+            "REACTION: completed",
+        ],
+    )
+    def test_releases_a_turn_no_later_chunk_can_make_a_directive(self, text: str) -> None:
+        assert could_become_comms_directive(text) is False

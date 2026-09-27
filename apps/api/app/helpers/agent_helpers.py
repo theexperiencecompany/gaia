@@ -36,6 +36,7 @@ from app.core.lazy_loader import providers
 from app.core.stream_manager import stream_manager
 from app.db.redis import get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
+from app.helpers.directive_holdback import DirectiveHoldback
 from app.models.agent_models import (
     AgentConfigurable,
     AgentConfigurableView,
@@ -1132,6 +1133,7 @@ class _StreamAccumulators:
     # perf_counter of the first comms text yield in this run; None until then.
     # Only comms_agent text reaches the yield below, so executor runs never stamp.
     pipeline_ttft_perf: float | None = None
+    holdback: DirectiveHoldback = field(default_factory=DirectiveHoldback)
 
 
 async def _emit_mcp_app_event(
@@ -1369,8 +1371,9 @@ async def _stream_messages(
         if held_text:
             if state.pipeline_ttft_perf is None:
                 state.pipeline_ttft_perf = time.perf_counter()
-            yield format_sse_response(held_text)
+            # Recorded before the yield: the directive holdback reads the turn as of this frame.
             state.message_texts[message_id] = state.message_texts.get(message_id, "") + held_text
+            yield format_sse_response(held_text)
 
     # Emit tool_output when ToolMessage arrives
     elif chunk and isinstance(chunk, ToolMessage):
@@ -1519,7 +1522,9 @@ async def execute_graph_streaming(
                 async for frame in _frames_for_stream_event(
                     event, state, is_comms, stream_id, user_id
                 ):
-                    yield frame
+                    turn_so_far = _flush_held_messages(state.complete_message, state.message_texts)
+                    for released in state.holdback.admit(frame, turn_so_far):
+                        yield released
         except GeneratorExit:
             # Abandoned mid-stream without cancellation (server shutdown path):
             # neither success nor cancelled, and neither label may claim it.
@@ -1536,6 +1541,8 @@ async def execute_graph_streaming(
     # A run that ends without its closing node update (cancellation, a graph that
     # never reaches the agent node again) still owes the user what it streamed.
     state.complete_message = _flush_held_messages(state.complete_message, state.message_texts)
+    for released in state.holdback.settle(state.complete_message):
+        yield released
     if state.pipeline_ttft_perf is not None:
         log.set(comms_pipeline_ttft_ms=round((state.pipeline_ttft_perf - run_start) * 1000.0, 2))
 

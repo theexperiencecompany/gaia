@@ -86,7 +86,7 @@ export class TurnSession {
   private closeHandled = false;
   /** The turn's reply resolved to a comms `<EMOJI>…</EMOJI>` ack — see
    *  handleEmojiAck. Stamped on the record so the fold badges the emoji onto
-   *  the user's message instead of leaving the streamed directive as a bubble. */
+   *  the user's message instead of rendering the turn as a bubble. */
   private reactionAck: EmojiAckStamp | null = null;
   /** Client cross-check clock. Server timing is the SLO; these deltas only
    *  validate it from the user's side. */
@@ -631,9 +631,9 @@ export class TurnSession {
   }
 
   /**
-   * The server ruled this turn a comms `<EMOJI>…</EMOJI>` ack: the streamed
-   * directive ("<EMOJI>😎</EMOJI>") was bubble text, the emoji is a reaction on the
-   * user's message. Re-stamp the record (bare emoji + kind + target) in the
+   * The server ruled this turn a comms `<EMOJI>…</EMOJI>` ack and streamed none
+   * of its text: the emoji is a reaction on the user's message. Stamp the
+   * record (bare emoji + kind + target) in the
    * store and IndexedDB now, so `foldReactionAcks` hides the ack bubble and
    * badges the emoji without a reload; the close write carries the same stamp.
    */

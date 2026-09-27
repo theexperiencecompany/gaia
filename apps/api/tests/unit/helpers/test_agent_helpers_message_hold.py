@@ -31,6 +31,12 @@ from app.helpers.agent_helpers import (
     execute_graph_silent,
     execute_graph_streaming,
 )
+from tests.helpers import (
+    GraphStreamEvent,
+    ScriptedGraph,
+    agent_update_event,
+    message_chunk_event,
+)
 
 
 @pytest.mark.unit
@@ -126,44 +132,7 @@ class TestDropRetractedText:
         assert held == {"m1": "kept"}
 
 
-class _ScriptedGraph:
-    """A graph whose astream replays exactly the triples handed to it.
-
-    The loopback-wire harness in test_agent_helpers_tool_call_silence.py
-    proves the drivers against the real OpenAI delta order. It cannot script the
-    shapes that order never produces — an id-less message, a tool call announced
-    before its text, args that never parse — and those are precisely where the
-    hold bookkeeping goes wrong silently. Driving astream directly is the
-    same driver code over the same triple shape, with the wire's accidents
-    removed.
-    """
-
-    def __init__(self, events: list[tuple[tuple[str, ...], str, Any]]) -> None:
-        self._events = events
-
-    def astream(self, *_args: Any, **_kwargs: Any) -> AsyncGenerator[tuple[Any, ...], None]:
-        events = self._events
-
-        async def stream() -> AsyncGenerator[tuple[Any, ...], None]:
-            for event in events:
-                yield event
-
-        return stream()
-
-
-def _chunk(
-    *, message_id: str | None, content: str = "", **kwargs: Any
-) -> tuple[tuple[str, ...], str, Any]:
-    """Build a messages triple carrying one assistant chunk."""
-    return ((), "messages", (AIMessageChunk(id=message_id, content=content, **kwargs), {}))
-
-
-def _boundary(message: AIMessage) -> tuple[tuple[str, ...], str, Any]:
-    """Build an updates triple closing the agent node with message as its reply."""
-    return ((), "updates", {"agent": {"messages": [message]}})
-
-
-def _custom(payload: Any) -> tuple[tuple[str, ...], str, Any]:
+def _custom(payload: Any) -> GraphStreamEvent:
     return ((), "custom", payload)
 
 
@@ -178,13 +147,13 @@ _UNPARSEABLE_CALL: dict[str, Any] = {
 _CONFIG: Any = {"agent_name": "comms_agent", "configurable": {"user_id": "u1"}}
 
 
-async def _run_silent(events: list[tuple[tuple[str, ...], str, Any]]) -> str:
-    message, _ = await execute_graph_silent(_ScriptedGraph(events), {}, _CONFIG)
+async def _run_silent(events: list[GraphStreamEvent]) -> str:
+    message, _ = await execute_graph_silent(ScriptedGraph(events), {}, _CONFIG)
     return message
 
 
-async def _run_streaming(events: list[tuple[tuple[str, ...], str, Any]]) -> list[str]:
-    return [frame async for frame in execute_graph_streaming(_ScriptedGraph(events), {}, _CONFIG)]
+async def _run_streaming(events: list[GraphStreamEvent]) -> list[str]:
+    return [frame async for frame in execute_graph_streaming(ScriptedGraph(events), {}, _CONFIG)]
 
 
 def _frames(frames: list[str], key: str) -> list[Any]:
@@ -224,7 +193,7 @@ class TestBoundaryBookkeeping:
 
     async def test_a_boundary_with_nothing_held_adds_no_text(self) -> None:
         """The driver must treat "nothing was held" as nothing, not as a value."""
-        events = [_boundary(AIMessage(id="m1", content=""))]
+        events = [agent_update_event(AIMessage(id="m1", content=""))]
 
         assert await _run_silent(events) == ""
         assert _streamed_message(await _run_streaming(events)) == ""
@@ -232,8 +201,8 @@ class TestBoundaryBookkeeping:
     async def test_text_from_a_message_the_provider_gave_no_id_is_still_kept(self) -> None:
         """chunk.id or "" holds an id-less message under the empty key; the boundary must resolve to it too."""
         events = [
-            _chunk(message_id=None, content="hey"),
-            _boundary(AIMessage(id=None, content="hey")),
+            message_chunk_event(message_id=None, content="hey"),
+            agent_update_event(AIMessage(id=None, content="hey")),
         ]
 
         assert await _run_silent(events) == "hey"
@@ -246,8 +215,8 @@ class TestBoundaryBookkeeping:
     ) -> None:
         """If the boundary resolves to a different key than the hold did, the preamble leaks to the user."""
         events = [
-            _chunk(message_id=None, content="let me get that set up"),
-            _boundary(
+            message_chunk_event(message_id=None, content="let me get that set up"),
+            agent_update_event(
                 AIMessage(
                     id=None,
                     content="let me get that set up",
@@ -263,8 +232,8 @@ class TestBoundaryBookkeeping:
     ) -> None:
         """The two halves of discarded are alternatives: a finished message can carry a tool call no chunk announced."""
         events = [
-            _chunk(message_id="m1", content="let me get that set up"),
-            _boundary(
+            message_chunk_event(message_id="m1", content="let me get that set up"),
+            agent_update_event(
                 AIMessage(
                     id="m1",
                     content="let me get that set up",
@@ -279,9 +248,9 @@ class TestBoundaryBookkeeping:
     async def test_a_message_s_chunks_are_joined_not_replaced(self) -> None:
         """Text arrives one delta at a time; holding only the newest would lose most of every reply."""
         events = [
-            _chunk(message_id="m1", content="all "),
-            _chunk(message_id="m1", content="set up now."),
-            _boundary(AIMessage(id="m1", content="all set up now.")),
+            message_chunk_event(message_id="m1", content="all "),
+            message_chunk_event(message_id="m1", content="set up now."),
+            agent_update_event(AIMessage(id="m1", content="all set up now.")),
         ]
 
         assert await _run_silent(events) == "all set up now."
@@ -290,10 +259,10 @@ class TestBoundaryBookkeeping:
     async def test_two_kept_messages_are_separated_by_the_break_sentinel(self) -> None:
         """Silent mode persists the whole turn, so two replies in one run must stay two bubbles."""
         events = [
-            _chunk(message_id="m1", content="on it."),
-            _boundary(AIMessage(id="m1", content="on it.")),
-            _chunk(message_id="m2", content="all done."),
-            _boundary(AIMessage(id="m2", content="all done.")),
+            message_chunk_event(message_id="m1", content="on it."),
+            agent_update_event(AIMessage(id="m1", content="on it.")),
+            message_chunk_event(message_id="m2", content="all done."),
+            agent_update_event(AIMessage(id="m2", content="all done.")),
         ]
 
         assert await _run_silent(events) == f"on it.{NEW_MESSAGE_BREAKER}all done."
@@ -306,9 +275,9 @@ class TestChunkLevelSilence:
     async def test_text_that_follows_its_own_tool_call_never_reaches_the_user(self) -> None:
         """Anthropic-shaped ordering: the tool call announces first, then the narration; only that chunk knows."""
         events = [
-            _chunk(message_id="m1", **_UNPARSEABLE_CALL),
-            _chunk(message_id="m1", content="let me get that set up"),
-            _boundary(AIMessage(id="m1", content="let me get that set up")),
+            message_chunk_event(message_id="m1", **_UNPARSEABLE_CALL),
+            message_chunk_event(message_id="m1", content="let me get that set up"),
+            agent_update_event(AIMessage(id="m1", content="let me get that set up")),
         ]
 
         assert await _run_silent(events) == ""
@@ -324,7 +293,7 @@ class TestRetractionMidNode:
     async def test_a_retracted_id_less_draft_is_forgotten(self) -> None:
         """An id-less draft is held under the empty key and retracted under a null id: both must normalise to match."""
         events = [
-            _chunk(message_id=None, content="Great question! Let me unpack that."),
+            message_chunk_event(message_id=None, content="Great question! Let me unpack that."),
             _custom({"message_boundary": {"message_id": None, "discarded": True}}),
         ]
 
@@ -333,9 +302,95 @@ class TestRetractionMidNode:
 
     async def test_a_kept_draft_survives_the_custom_stream(self) -> None:
         events = [
-            _chunk(message_id=None, content="all set up now."),
+            message_chunk_event(message_id=None, content="all set up now."),
             _custom({"message_boundary": {"message_id": None, "discarded": False}}),
         ]
 
         assert await _run_silent(events) == "all set up now."
         assert _streamed_message(await _run_streaming(events)) == "all set up now."
+
+
+class _OneChunkThenFails:
+    """A graph that streams one chunk and fails the test if the driver reads further."""
+
+    def astream(self, *_args: Any, **_kwargs: Any) -> AsyncGenerator[tuple[Any, ...], None]:
+        async def stream() -> AsyncGenerator[tuple[Any, ...], None]:
+            yield message_chunk_event(message_id="m1", content="Hello")
+            raise AssertionError("the driver read the next event before publishing the first chunk")
+
+        return stream()
+
+
+def _one_message(message_id: str, *pieces: str) -> list[GraphStreamEvent]:
+    """Build the events of one kept message streamed as pieces."""
+    return [
+        *(message_chunk_event(message_id=message_id, content=piece) for piece in pieces),
+        agent_update_event(AIMessage(id=message_id, content="".join(pieces))),
+    ]
+
+
+@pytest.mark.unit
+class TestDirectiveHoldback:
+    """A turn that is one directive tag never reaches the wire as text; any other turn does, in order."""
+
+    @pytest.mark.parametrize(
+        "pieces",
+        [
+            ("<EM", "OJI>👍</EM", "OJI>"),
+            ("<SILENCE>", "nothing new</SILENCE>", "<NEW_MESSAGE_BREAK>"),
+            ("REACT", ": 😎"),
+        ],
+    )
+    async def test_a_directive_turn_emits_no_text_but_keeps_its_boundary(
+        self, pieces: tuple[str, ...]
+    ) -> None:
+        frames = await _run_streaming(_one_message("m1", *pieces))
+
+        assert _frames(frames, "response") == []
+        assert _frames(frames, "message_boundary") == [{"message_id": "m1", "discarded": False}]
+        assert _streamed_message(frames) == "".join(pieces)
+
+    async def test_held_text_is_released_ahead_of_its_boundary_once_a_second_message_follows(
+        self,
+    ) -> None:
+        """Clients settle the text before a boundary into that message; released after it, a retraction would eat it."""
+        frames = await _run_streaming(
+            [*_one_message("m1", "<EMOJI>👍</EMOJI>"), *_one_message("m2", "on it.")]
+        )
+
+        payloads = [json.loads(f[len("data: ") :]) for f in frames if f.startswith("data: {")]
+        assert payloads == [
+            {"response": "<EMOJI>👍</EMOJI>"},
+            {"message_boundary": {"message_id": "m1", "discarded": False}},
+            {"response": "on it."},
+            {"message_boundary": {"message_id": "m2", "discarded": False}},
+        ]
+
+    async def test_a_retracted_directive_shaped_preamble_releases_what_it_held(
+        self, resolved_tool_cards: Any
+    ) -> None:
+        """Once the only held message is discarded the turn cannot be a directive; its tool card must not wait."""
+        events = [
+            message_chunk_event(message_id="m1", content="REACT"),
+            agent_update_event(
+                AIMessage(
+                    id="m1",
+                    content="REACT",
+                    tool_calls=[{"name": "call_executor", "args": {"task": "x"}, "id": "c1"}],
+                )
+            ),
+        ]
+
+        frames = await _run_streaming(events)
+
+        assert _frames(frames, "response") == ["REACT"]
+        assert _frames(frames, "tool_data") == [{"tool_name": "tool_calls_data", "data": {}}]
+        assert _frames(frames, "message_boundary") == [{"message_id": "m1", "discarded": True}]
+
+    async def test_ordinary_text_is_published_before_the_next_event_is_read(self) -> None:
+        frames = execute_graph_streaming(_OneChunkThenFails(), {}, _CONFIG)
+
+        first = await anext(frames)
+        await frames.aclose()
+
+        assert json.loads(first[len("data: ") :]) == {"response": "Hello"}

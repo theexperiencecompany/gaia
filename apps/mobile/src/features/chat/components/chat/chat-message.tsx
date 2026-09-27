@@ -26,6 +26,7 @@ import { ImageBubble } from "./image-bubble";
 import { LinkPreviewCard } from "./link-preview-card";
 import { MemoryIndicator } from "./memory-indicator";
 import type { MessageActionConfig } from "./message-action-sheet";
+import { MessageReactions } from "./message-reactions";
 import { MessageReplyQuote } from "./message-reply-quote";
 import { ThinkingBubble } from "./thinking-bubble";
 
@@ -193,6 +194,9 @@ function UserChatMessage({
               total={messageParts.length}
             />
           ))}
+          {message.reactions?.length ? (
+            <MessageReactions reactions={message.reactions} align="end" />
+          ) : null}
         </View>
       </PressableFeedback>
     </Animated.View>
@@ -420,6 +424,12 @@ function AIChatMessage({
           isLoading={isLoading}
           isLastMessage={isLastMessage}
         />
+
+        {message.reactions?.length ? (
+          <View style={{ paddingHorizontal: spacing.md, marginTop: GAP_SM }}>
+            <MessageReactions reactions={message.reactions} align="start" />
+          </View>
+        ) : null}
 
         {/* Link preview – shown below message content for AI messages */}
         {!isLoading && linkPreviewUrls.length > 0 && linkPreviewData?.length ? (
