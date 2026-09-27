@@ -20,6 +20,7 @@ from langchain_core.tools import BaseTool, StructuredTool
 import pytest
 
 from app.agents.core.background.executor_channel import ExecutorInbox
+from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.background.session import get_session, teardown_session
 from app.agents.tools import executor_tool
 from app.agents.tools.executor_tool import call_executor, cancel_executor, tools
@@ -35,7 +36,7 @@ from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.db.repositories.playbooks import playbook_repository
-from app.models.agent_models import InboxEntry
+from app.models.agent_models import InboxEntry, RunningSubagent
 from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus, ToolStep
 from app.utils import background_tasks
 
@@ -869,6 +870,65 @@ class TestCancelAnnouncesTheInterruption:
 
         assert response == "Cancelled: q1."
         assert await inbox().read() == []
+
+
+class TestCancelStopsSubagents:
+    """A background subagent outlives the executor run that dispatched it."""
+
+    @staticmethod
+    async def _running(subagent_id: str, dispatched_by: str) -> str:
+        stream_id = f"subagent_{subagent_id}"
+        claimed = await RunningSubagents(CONVERSATION_ID).claim(
+            RunningSubagent(
+                subagent_id=subagent_id,
+                subagent_thread_id=f"spawn_{CONVERSATION_ID}_{subagent_id}",
+                integration_id="ticker",
+                agent_name="ticker_agent",
+                task_summary="tick",
+                started_at="2026-09-25T00:00:00Z",
+                stream_id=stream_id,
+                dispatched_by=dispatched_by,
+            )
+        )
+        assert claimed
+        return stream_id
+
+    @pytest.mark.regression
+    async def test_stop_everything_reaches_a_subagent_whose_executor_run_already_finished(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, broadcast: AsyncMock
+    ) -> None:
+        stream_id = await self._running("s1", dispatched_by="finished-turn")
+
+        response = await run_cancel_executor(config=config_for(), task_ids=[])
+
+        assert response == "Cancelled: 1 running subagent(s)."
+        assert await StreamManager.is_cancelled(stream_id)
+        assert [e.tag for e in await inbox().read()] == [AgentTag.EXECUTOR_INTERRUPTED]
+
+    @pytest.mark.regression
+    async def test_stopping_the_running_task_stops_only_the_subagents_it_dispatched(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, broadcast: AsyncMock
+    ) -> None:
+        await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
+        mine = await self._running("mine", dispatched_by="stream-1")
+        theirs = await self._running("theirs", dispatched_by="earlier-turn")
+
+        response = await run_cancel_executor(config=config_for(), task_ids=["running-task"])
+
+        assert response == "Cancelled: running-task."
+        assert await StreamManager.is_cancelled(mine)
+        assert not await StreamManager.is_cancelled(theirs)
+
+    async def test_cancelling_pending_work_leaves_running_subagents_alone(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, broadcast: AsyncMock
+    ) -> None:
+        stream_id = await self._running("s1", dispatched_by="finished-turn")
+        await inbox().append("q1", "drop this")
+
+        response = await run_cancel_executor(config=config_for(), task_ids=["q1"])
+
+        assert response == "Cancelled: q1."
+        assert not await StreamManager.is_cancelled(stream_id)
 
 
 # ── malformed inbox entries ──────────────────────────────────────────

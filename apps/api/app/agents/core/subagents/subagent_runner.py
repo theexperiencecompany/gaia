@@ -140,7 +140,7 @@ def _extract_reasoning_delta(chunk: AIMessageChunk) -> str:
 
 @dataclass(frozen=True)
 class SubagentOutcome:
-    """One graph run's result: its text, or the HIL approval it paused on.
+    """One graph run's result: its text, the HIL approval it paused on, or that the user stopped it.
 
     interrupt carries the payload the gate passed to interrupt(). When it
     is set the graph is checkpointed mid-run and text is meaningless — the
@@ -155,6 +155,7 @@ class SubagentOutcome:
     text: str
     interrupt: HilInterruptPayload | None = None
     run_messages: tuple[AnyMessage, ...] = ()
+    stopped: bool = False
 
     @property
     def paused(self) -> bool:
@@ -566,7 +567,7 @@ async def execute_subagent_stream(
         observe_subagent_run(time.perf_counter() - segment_start, subagent_id=label, status="error")
         raise
 
-    outcome = _finalize_run(run)
+    outcome = replace(_finalize_run(run), stopped=cancelled)
     observe_subagent_run(
         time.perf_counter() - segment_start,
         subagent_id=label,

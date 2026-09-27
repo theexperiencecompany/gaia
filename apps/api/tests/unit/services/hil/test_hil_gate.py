@@ -47,6 +47,8 @@ from .conftest import (
 
 MODULE = "app.services.hil.gate"
 
+pytestmark = pytest.mark.usefixtures("hil_barrier_mode")
+
 
 @pytest.fixture(autouse=True)
 def _quiet_log():

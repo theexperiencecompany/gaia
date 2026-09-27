@@ -1,8 +1,10 @@
 import asyncio
 from datetime import UTC, datetime
+from http import HTTPStatus
 import math
 import uuid
 
+from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.projects import project_repository
 from app.db.repositories.todos import todo_repository
@@ -32,9 +34,11 @@ from app.models.todo_models import (
     UpdateProjectRequest,
 )
 from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.todos.errors import TrackedLabelChangeError, TrackedTodoWorkflowError
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.user_todos_fs import schedule_user_todos_sync
 from app.utils.canvas_vector_utils import delete_canvas_embedding
+from app.utils.errors import AppError
 from app.utils.todo_vector_utils import (
     TodoSearchFilters,
     delete_todo_embedding,
@@ -111,10 +115,40 @@ def _to_todo_update(updates: TodoUpdateRequest) -> TodoUpdate:
     it — so None-valued fields are dropped rather than written as nulls, and the
     resulting model's set fields are exactly what will be written.
     """
-    update = TodoUpdate(**updates.model_dump(exclude_none=True))
+    update = TodoUpdate(**updates.model_dump(exclude_none=True, exclude={"workflow_id"}))
     if update.subtasks is not None:
         update.subtasks = _ensure_subtask_ids(update.subtasks)
     return update
+
+
+async def _refuse_a_tracked_todo_with_a_workflow(
+    todo_id: str, user_id: str, updates: TodoUpdateRequest
+) -> None:
+    """Refuse, before any write, an update that changes tracked status or links a tracked todo.
+
+    A tracked todo created before workflows were removed may still hold a
+    workflow_id nothing reads; editing it is not refused.
+    """
+    if updates.workflow_id is None and updates.labels is None:
+        return
+    existing = await todo_repository.get(todo_id, user_id=user_id)
+    if existing is None:
+        raise ValueError(f"Todo {todo_id} not found")
+    tracked = GAIA_TRACKED_LABEL in existing.labels
+    if updates.labels is not None and (GAIA_TRACKED_LABEL in updates.labels) != tracked:
+        raise TrackedLabelChangeError()
+    if updates.workflow_id and tracked:
+        raise TrackedTodoWorkflowError()
+
+
+async def _refuse_a_bulk_tracked_label_change(
+    user_id: str, todo_ids: list[str], labels: list[str]
+) -> None:
+    """Refuse a bulk labels write that would track a selected todo or untrack one."""
+    tracking = GAIA_TRACKED_LABEL in labels
+    todos = await todo_repository.find_by_ids(user_id, todo_ids)
+    if any((GAIA_TRACKED_LABEL in todo.labels) != tracking for todo in todos):
+        raise TrackedLabelChangeError()
 
 
 def _drop_completion_fields(update: TodoUpdate) -> TodoUpdate:
@@ -171,6 +205,8 @@ class TodoService:
                 "user_id": user_id,
             },
         )
+        if GAIA_TRACKED_LABEL in todo.labels and todo.workflow_id:
+            raise TrackedTodoWorkflowError()
         # Whether the caller filed the todo into a project themselves — read
         # before the Inbox default below makes project_id unconditionally set.
         project_chosen = todo.project_id is not None
@@ -204,28 +240,6 @@ class TodoService:
         )
         created = await todo_repository.create(document)
 
-        # Queue workflow generation as fire-and-forget (does not block response)
-        try:
-            # Deferred import: workflow/ARQ enqueue stack loads only when generation is actually queued
-            from app.services.workflow.queue_service import (  # noqa: PLC0415 -- deferred
-                WorkflowQueueService,
-            )
-
-            spawn_logged_task(
-                "todo_workflow_generation",
-                WorkflowQueueService.queue_todo_workflow_generation(
-                    todo_id=created.id,
-                    user_id=user_id,
-                    title=todo.title,
-                    description=todo.description or "",
-                ),
-                user={"id": user_id},
-                todo={"id": created.id},
-            )
-            log.info("todo.workflow_generation_queued", todo_id=created.id, title=todo.title)
-        except Exception as e:
-            log.warning("todo.workflow_queue_failed", title=todo.title, error=str(e))
-
         # Index for search
         try:
             await store_todo_embedding(created.id, created, user_id)
@@ -246,6 +260,36 @@ class TodoService:
             },
         )
         return TodoResponse.from_document(created)
+
+    @classmethod
+    async def create_todo_with_workflow(cls, todo: TodoModel, user_id: str) -> TodoResponse:
+        """Create a classic todo and queue its workflow generation; tracked todos never take this path."""
+        if GAIA_TRACKED_LABEL in todo.labels:
+            raise TrackedTodoWorkflowError()
+        created = await cls.create_todo(todo, user_id)
+
+        # Fire-and-forget: generation must not block or fail the create.
+        try:
+            # Deferred import: workflow/ARQ enqueue stack loads only when generation is actually queued
+            from app.services.workflow.queue_service import (  # noqa: PLC0415 -- deferred
+                WorkflowQueueService,
+            )
+
+            spawn_logged_task(
+                "todo_workflow_generation",
+                WorkflowQueueService.queue_todo_workflow_generation(
+                    todo_id=created.id,
+                    user_id=user_id,
+                    title=todo.title,
+                    description=todo.description or "",
+                ),
+                user={"id": user_id},
+                todo={"id": created.id},
+            )
+            log.info("todo.workflow_generation_queued", todo_id=created.id, title=todo.title)
+        except Exception as e:
+            log.warning("todo.workflow_queue_failed", title=todo.title, error=str(e))
+        return created
 
     @classmethod
     async def get_todo(cls, todo_id: str, user_id: str) -> TodoResponse:
@@ -319,6 +363,7 @@ class TodoService:
             },
         )
         update = _to_todo_update(updates)
+        await _refuse_a_tracked_todo_with_a_workflow(todo_id, user_id, updates)
 
         if update.project_id is not None:
             project = await project_repository.get(update.project_id, user_id=user_id)
@@ -347,10 +392,16 @@ class TodoService:
                     log.warning("tracked_todo.ui_complete_failed", todo_id=todo_id, error=str(e))
                 update = _drop_completion_fields(update)
 
+        if updates.workflow_id is not None and not await todo_repository.link_workflow(
+            todo_id, user_id=user_id, workflow_id=updates.workflow_id
+        ):
+            # The check above passed, so the todo became tracked (or went away) mid-update.
+            raise TrackedTodoWorkflowError()
+
         if update.model_fields_set:
             updated = await todo_repository.update(todo_id, user_id=user_id, update=update)
         else:
-            # Only a tracked completion happened; it already persisted + invalidated.
+            # A tracked completion or a workflow link already persisted + invalidated.
             updated = await todo_repository.get(todo_id, user_id=user_id)
 
         if not updated:
@@ -427,6 +478,16 @@ class TodoService:
         cls, request: BulkUpdateRequest, user_id: str
     ) -> BulkOperationResponse:
         """Bulk update multiple todos."""
+        # A bulk $set skips the per-todo check that keeps a tracked todo unlinked.
+        if request.updates.workflow_id is not None:
+            raise AppError(
+                message="A workflow is linked one todo at a time, not in bulk",
+                status_code=HTTPStatus.BAD_REQUEST,
+            )
+        if request.updates.labels is not None:
+            await _refuse_a_bulk_tracked_label_change(
+                user_id, request.todo_ids, request.updates.labels
+            )
         update = _to_todo_update(request.updates)
         if not update.model_fields_set:
             return BulkOperationResponse(
@@ -637,11 +698,6 @@ class ProjectService:
 
 
 # Compatibility functions for old API
-async def create_todo(todo: TodoModel, user_id: str) -> TodoResponse:
-    """Compatibility wrapper for old create_todo function."""
-    return await TodoService.create_todo(todo, user_id)
-
-
 async def get_todo(todo_id: str, user_id: str) -> TodoResponse:
     """Compatibility wrapper for old get_todo function."""
     return await TodoService.get_todo(todo_id, user_id)

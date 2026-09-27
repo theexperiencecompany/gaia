@@ -52,6 +52,7 @@ import tests.offline_env  # isort: skip  # noqa: F401 -- imported for its side e
 # pulling in app.config.settings which instantiates settings at import
 # time; without ENV set first that resolves to ProductionSettings and fails.
 from app.config.posthog import init_posthog
+from app.config.settings import settings as app_settings
 from app.core.lazy_loader import MissingKeyStrategy, providers
 from app.db.redis import redis_cache
 from app.models.payment_models import (
@@ -695,6 +696,21 @@ def free_plan() -> Iterator[MagicMock]:
 
 
 @pytest.fixture
+def core_tool_registry() -> Iterator[None]:
+    """Serve MCP connects GAIA's real core tool registry, whose names they rename around."""
+    from app.agents.tools.core.registry import ToolRegistry
+
+    registry = ToolRegistry()
+    registry.setup()
+    with patch(
+        "app.services.mcp.mcp_client.get_tool_registry",
+        new_callable=AsyncMock,
+        return_value=registry,
+    ):
+        yield
+
+
+@pytest.fixture
 def mock_mongodb():
     return AsyncMock()
 
@@ -793,6 +809,12 @@ def no_observed_tool_shapes() -> Iterator[AsyncMock]:
         new=AsyncMock(return_value=None),
     ) as get_shape:
         yield get_shape
+
+
+@pytest.fixture
+def hil_barrier_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Gate on the interrupt barrier: HIL_LEDGER's kill-switch path, not the shipped default."""
+    monkeypatch.setattr(app_settings, "ENABLE_HIL_LEDGER", False)
 
 
 @pytest.fixture(autouse=True)

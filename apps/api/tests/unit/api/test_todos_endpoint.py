@@ -11,6 +11,7 @@ from httpx import AsyncClient
 import pytest
 
 from app.constants.general import MAX_PAGE_NUMBER
+from app.constants.todos import GAIA_TRACKED_LABEL
 from app.models.todo_models import (
     BulkOperationResponse,
     BulkUpdateRequest,
@@ -26,6 +27,7 @@ from app.models.todo_models import (
     TodoUpdateRequest,
 )
 from app.services.analytics_service import AnalyticsEvents
+from app.services.todos.errors import TrackedTodoWorkflowError
 
 TODOS_ENDPOINT = "app.api.v1.endpoints.todos"
 ANALYTICS_PATCH = "app.api.v1.endpoints.todos.capture_context_event"
@@ -436,6 +438,54 @@ class TestListQueryHelpers:
         assert params.include_stats is True
         assert params.due_date_start == after
         assert params.due_date_end == before
+
+
+class TestCreateTodoEndpoint:
+    async def test_a_classic_todo_is_created_with_its_workflow(self, client: AsyncClient) -> None:
+        """POST /todos is the classic entry point: the one path that generates a todo's workflow."""
+        with patch(
+            f"{TODOS_ENDPOINT}.TodoService.create_todo_with_workflow",
+            new=AsyncMock(return_value=_todo_response()),
+        ) as create:
+            resp = await client.post("/api/v1/todos", json={"title": "Buy milk"})
+
+        assert resp.status_code == 201
+        create.assert_awaited_once()
+        assert create.await_args.args[0].title == "Buy milk"
+        assert create.await_args.args[1] == "507f1f77bcf86cd799439011"
+
+
+class TestGenerateTodoWorkflow:
+    async def test_a_tracked_todo_is_refused_and_nothing_is_queued(
+        self, client: AsyncClient
+    ) -> None:
+        tracked = _todo_response().model_copy(update={"labels": [GAIA_TRACKED_LABEL]})
+        queue = AsyncMock(return_value=True)
+        with (
+            patch(f"{TODOS_ENDPOINT}.TodoService.get_todo", new=AsyncMock(return_value=tracked)),
+            patch(
+                "app.services.workflow.queue_service.WorkflowQueueService.queue_todo_workflow_generation",
+                new=queue,
+            ),
+        ):
+            resp = await client.post("/api/v1/todos/todo-1/workflow")
+
+        assert resp.status_code == 409
+        queue.assert_not_awaited()
+
+
+class TestUpdateTodoWorkflowLink:
+    async def test_linking_a_workflow_to_a_tracked_todo_is_409(self, client: AsyncClient) -> None:
+        with patch(
+            f"{TODOS_ENDPOINT}.TodoService.update_todo",
+            new=AsyncMock(side_effect=TrackedTodoWorkflowError()),
+        ):
+            resp = await client.put("/api/v1/todos/todo-1", json={"workflow_id": "wf1"})
+
+        assert resp.status_code == 409
+        assert resp.json()["message"] == (
+            "Tracked todos run on the agent from their canvas and never link a workflow"
+        )
 
 
 class TestTodoCanvas:

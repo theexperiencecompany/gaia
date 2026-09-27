@@ -13,9 +13,10 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, JsonValue
 
 from app.agents.tools.execute.resolver import ResolvedTool, resolve_tool
-from app.agents.tools.execute.schema_notation import _SchemaNode, render_compact_type
+from app.agents.tools.execute.schema_notation import render_compact_type
 from app.constants.execute import RESPONSE_SCHEMA_METADATA_KEYS
 from app.db.repositories.tool_shapes import tool_shapes_repository
+from app.models.json_schema_models import JsonSchemaNode
 
 # Composio's wrapper injects a config-passthrough parameter into the synthesized
 # signature; it is plumbing, never something the model supplies.
@@ -90,7 +91,7 @@ def _compact_schema(schema: dict[str, JsonValue]) -> dict[str, JsonValue]:
     """Strip generator noise (titles, internal params, $defs plumbing keys)."""
     # cast, not isinstance: _strip_noise maps dict->dict by construction.
     compacted = cast(dict[str, JsonValue], _strip_noise(schema))
-    node: _SchemaNode = cast(_SchemaNode, compacted)
+    node: JsonSchemaNode = cast(JsonSchemaNode, compacted)
     properties = node.get("properties")
     if isinstance(properties, dict):
         for name in _INTERNAL_ARG_NAMES:

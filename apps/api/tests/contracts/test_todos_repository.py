@@ -661,3 +661,32 @@ class TestLegacyMigrationScan:
         page_two = await repo.list_tracked_for_legacy_migration(limit=2, after_id=page_one[-1].id)
         assert [t.id for t in page_two] == sorted([first.id, last.id])[2:]
         assert await repo.list_tracked_for_legacy_migration(limit=2, after_id=last.id) == []
+
+
+class TestLinkWorkflow:
+    """link_workflow is the only writer of workflow_id, and it never links a tracked todo."""
+
+    async def test_links_a_classic_todo(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1", labels=[]))
+        linked = await repo.link_workflow(created.id, user_id="u1", workflow_id="wf1")
+        assert linked is not None and linked.workflow_id == "wf1"
+
+    async def test_refuses_a_tracked_todo_and_writes_nothing(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1", labels=[GAIA_TRACKED_LABEL]))
+        assert await repo.link_workflow(created.id, user_id="u1", workflow_id="wf1") is None
+        stored = await repo.get_by_id(created.id)
+        assert stored is not None and stored.workflow_id is None
+
+    async def test_is_user_scoped(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="owner", labels=[]))
+        assert await repo.link_workflow(created.id, user_id="attacker", workflow_id="wf1") is None
+
+    async def test_a_link_is_visible_through_the_cached_read(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1", labels=[]))
+        primed = await repo.get(created.id, user_id="u1")
+        assert primed is not None and primed.workflow_id is None
+
+        await repo.link_workflow(created.id, user_id="u1", workflow_id="wf1")
+
+        fresh = await repo.get(created.id, user_id="u1")
+        assert fresh is not None and fresh.workflow_id == "wf1"

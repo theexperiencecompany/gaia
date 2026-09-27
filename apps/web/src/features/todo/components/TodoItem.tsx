@@ -1,6 +1,7 @@
 "use client";
 
 import { Checkbox } from "@heroui/checkbox";
+import { isTrackedTodo } from "@shared/todos";
 import { memo } from "react";
 import { ChevronRight } from "@/components/shared/icons";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -79,6 +80,7 @@ export default memo(function TodoItem({
     checkboxWrapperClassName,
     titleClassName,
   } = useTodoItem({ todo, projects, onUpdate });
+  const tracked = isTrackedTodo(todo);
 
   return (
     <div
@@ -89,7 +91,7 @@ export default memo(function TodoItem({
         className,
       )}
       style={{ contentVisibility: "auto", containIntrinsicSize: "0 80px" }}
-      onMouseEnter={() => onPrefetchWorkflow?.(todo.id)}
+      onMouseEnter={tracked ? undefined : () => onPrefetchWorkflow?.(todo.id)}
     >
       <button
         type="button"
@@ -140,10 +142,12 @@ export default memo(function TodoItem({
           />
         </div>
 
-        {/* Workflow Category Icons */}
-        {todo.workflow_categories && todo.workflow_categories.length > 0 && (
-          <WorkflowCategoryIcons categories={todo.workflow_categories} />
-        )}
+        {/* Workflow Category Icons — tracked todos never have a workflow */}
+        {!tracked &&
+          todo.workflow_categories &&
+          todo.workflow_categories.length > 0 && (
+            <WorkflowCategoryIcons categories={todo.workflow_categories} />
+          )}
 
         <div className="flex h-full min-h-full justify-center items-center self-center group-hover:opacity-100 opacity-0 transition">
           <ChevronRight width={20} height={20} className="text-zinc-400" />

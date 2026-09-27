@@ -10,9 +10,10 @@ import asyncio
 import base64
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
+import copy
 from datetime import UTC, datetime, timedelta
 import json
-from typing import Any
+from typing import Any, ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import parse_qs, urlparse
 
@@ -28,20 +29,28 @@ from mcp.types import (
     ResourceTemplate,
     TextContent,
     TextResourceContents,
+    Tool,
 )
-from pydantic import AnyUrl
+from pydantic import AnyUrl, ValidationError
 import pytest
 
 from app.constants.device_bridge import DEVICE_TRANSPORT
 from app.constants.log_tags import LogTag
+from app.constants.mcp import MCP_RENAMED_TOOL_NOTE
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
 from app.models.device import Device
-from app.models.mcp_config import MCPConfig, OAuthDiscovery
+from app.models.integration_models import (
+    Integration,
+    UserIntegrationDocument,
+    UserIntegrationStatus,
+)
+from app.models.mcp_config import MCPConfig, OAuthDiscovery, OidcTokenResponse
 from app.services.mcp.langchain_adapter import SanitizingLangChainAdapter
 from app.services.mcp.mcp_client import (
     DCRNotSupportedError,
     MCPClient,
     StepUpAuthRequiredError,
+    _extract_response_signal,
     _parse_device_server_url,
     get_mcp_client,
 )
@@ -131,6 +140,23 @@ def _api_error(status_code: int) -> Exception:
     response.json.return_value = {}
     err.response = response  # type: ignore[attr-defined]  # mirrors the SDK's own attached response
     return err
+
+
+def _custom_doc(name: str, description: str) -> dict[str, object]:
+    """Build a custom_doc the way IntegrationResolver does: a dumped Integration."""
+    return Integration(
+        integration_id=INTEGRATION_ID,
+        name=name,
+        description=description,
+        category="custom",
+        managed_by="mcp",
+    ).model_dump()
+
+
+def _user_integration(
+    integration_id: str, status: UserIntegrationStatus
+) -> UserIntegrationDocument:
+    return UserIntegrationDocument(user_id=USER_ID, integration_id=integration_id, status=status)
 
 
 def _mock_tool(name: str = "test_tool", description: str = "A test tool") -> MagicMock:
@@ -355,6 +381,7 @@ class TestMCPClientConnect:
             )
 
 
+@pytest.mark.usefixtures("core_tool_registry")
 class TestMCPClientDoConnect:
     @pytest.fixture(autouse=True)
     def _mock_ssrf_guard(self) -> Iterator[None]:
@@ -2086,6 +2113,83 @@ class TestSanitizingLangChainAdapter:
         # Stripped underscores, starts with digit -> prefixed with "field"
         assert "field123field" in fixed["properties"]
 
+    def test_fix_schema_turns_a_type_array_into_an_exact_any_of(self):
+        fixed = SanitizingLangChainAdapter().fix_schema({"type": ["string", "null"]})
+
+        assert fixed == {"anyOf": [{"type": "string"}, {"type": "null"}]}
+
+    def test_fix_schema_types_a_bare_enum_as_string(self):
+        fixed = SanitizingLangChainAdapter().fix_schema({"enum": ["a", "b"]})
+
+        assert fixed == {"enum": ["a", "b"], "type": "string"}
+
+    def test_fix_schema_keeps_the_declared_type_of_a_typed_enum(self):
+        fixed = SanitizingLangChainAdapter().fix_schema({"enum": [1, 2], "type": "integer"})
+
+        assert fixed == {"enum": [1, 2], "type": "integer"}
+
+    def test_fix_schema_strips_only_the_underscores_of_a_property_name(self):
+        schema = {"type": "object", "properties": {"_Xray": {"type": "string"}}}
+
+        fixed = SanitizingLangChainAdapter().fix_schema(schema)
+
+        assert list(fixed["properties"]) == ["Xray"]
+
+    def test_fix_schema_prefixes_a_property_that_would_start_with_a_digit(self):
+        schema = {"type": "object", "properties": {"_2fa": {"type": "string"}}}
+
+        fixed = SanitizingLangChainAdapter().fix_schema(schema)
+
+        assert list(fixed["properties"]) == ["field2fa"]
+
+    def test_fix_schema_names_one_of_options_in_one_namespace(self):
+        schema = {
+            "oneOf": [
+                {"type": "object", "properties": {"_id": {}}, "required": ["_id"]},
+                {"type": "object", "properties": {"id": {}}, "required": ["id"]},
+            ]
+        }
+
+        fixed = SanitizingLangChainAdapter().fix_schema(schema)
+
+        assert [(list(o["properties"]), o["required"]) for o in fixed["oneOf"]] == [
+            (["id_2"], ["id_2"]),
+            (["id"], ["id"]),
+        ]
+
+    def test_fix_schema_leaves_non_schema_lists_of_an_object_alone(self):
+        schema = {
+            "type": "object",
+            "properties": {"_id": {"type": "string"}},
+            "examples": [{"type": ["string", "null"]}],
+        }
+
+        fixed = SanitizingLangChainAdapter().fix_schema(schema)
+
+        assert fixed["examples"] == [{"type": ["string", "null"]}]
+
+    def test_fix_schema_leaves_a_required_name_it_has_no_property_for(self):
+        schema = {
+            "type": "object",
+            "properties": {"_id": {"type": "string"}},
+            "required": ["_id", "undeclared"],
+        }
+
+        fixed = SanitizingLangChainAdapter().fix_schema(schema)
+
+        assert fixed["required"] == ["id", "undeclared"]
+
+    def test_fix_schema_required_keeps_names_it_did_not_rename(self):
+        schema = {
+            "type": "object",
+            "properties": {"_id": {"type": "string"}, "name": {"type": "string"}},
+            "required": ["_id", "name"],
+        }
+
+        fixed = SanitizingLangChainAdapter().fix_schema(schema)
+
+        assert fixed["required"] == ["id", "name"]
+
     def test_fix_schema_passthrough_non_dict(self):
         adapter = SanitizingLangChainAdapter()
         assert adapter.fix_schema("string_value") == "string_value"
@@ -2116,6 +2220,351 @@ class TestSanitizingLangChainAdapter:
         }
         fixed = adapter.fix_schema(schema)
         assert "anyOf" in fixed["items"]
+
+
+class TestAConvertedToolCalledSynchronously:
+    def test_it_refuses_because_mcp_calls_are_async(self) -> None:
+        server_tool = Tool(name="ping", description="d", inputSchema={"type": "object"})
+        tool = SanitizingLangChainAdapter()._convert_tool(server_tool, MagicMock())
+        assert tool is not None
+
+        with pytest.raises(NotImplementedError, match="^MCP tools only support async operations$"):
+            tool.invoke({})
+
+
+class TestAConvertedToolThatFails:
+    @staticmethod
+    def _tool(connector: MagicMock) -> BaseTool:
+        server_tool = Tool(name="execute", description="Run code.", inputSchema={"type": "object"})
+        tool = SanitizingLangChainAdapter()._convert_tool(server_tool, connector)
+        assert tool is not None
+        return tool
+
+    async def test_a_call_that_raises_comes_back_as_mcp_uses_formatted_error(self) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(side_effect=RuntimeError("server down"))
+
+        result = await self._tool(connector)._arun()
+
+        assert (result["error"], result["details"], result["tool"]) == (
+            "RuntimeError",
+            "server down",
+            "execute",
+        )
+
+    async def test_a_result_that_cannot_be_read_comes_back_as_a_formatted_error(self) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(
+            return_value=CallToolResult(content=[TextContent(type="text", text="ok")])
+        )
+        with patch(
+            "app.services.mcp.langchain_adapter._tool_result_to_content",
+            new=AsyncMock(side_effect=ValueError("unreadable")),
+        ):
+            result = await self._tool(connector)._arun()
+
+        assert (result["error"], result["details"], result["tool"]) == (
+            "ValueError",
+            "unreadable",
+            "execute",
+        )
+
+
+class TestAToolWithUnderscoredArguments:
+    """Pydantic rejects leading-underscore field names, so the model sees them without the underscore."""
+
+    SCHEMA: ClassVar[dict[str, object]] = {
+        "type": "object",
+        "properties": {
+            "_id": {"type": "string"},
+            "name": {"type": "string"},
+            "meta": {"type": "object", "properties": {"_rev": {"type": "string"}}},
+            "items": {
+                "type": "array",
+                "items": {"type": "object", "properties": {"_key": {"type": "string"}}},
+            },
+        },
+        "required": ["_id"],
+    }
+
+    @classmethod
+    def _tool(cls, connector: MagicMock) -> BaseTool:
+        server_tool = Tool(name="get", description="d", inputSchema=copy.deepcopy(cls.SCHEMA))
+        tool = SanitizingLangChainAdapter()._convert_tool(server_tool, connector)
+        assert tool is not None
+        return tool
+
+    @pytest.mark.regression
+    async def test_the_server_receives_its_own_argument_names_back(self) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(
+            return_value=CallToolResult(content=[TextContent(type="text", text="ok")])
+        )
+
+        await self._tool(connector).ainvoke(
+            {"id": "a", "name": "n", "meta": {"rev": "r"}, "items": [{"key": "k"}]}
+        )
+
+        connector.call_tool.assert_awaited_once_with(
+            "get", {"_id": "a", "name": "n", "meta": {"_rev": "r"}, "items": [{"_key": "k"}]}
+        )
+
+    @pytest.mark.regression
+    async def test_an_optional_nested_object_is_mapped_through_its_any_of(self) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(
+            return_value=CallToolResult(content=[TextContent(type="text", text="ok")])
+        )
+        schema = {
+            "type": "object",
+            "properties": {
+                "filter": {
+                    "anyOf": [
+                        {"type": "object", "properties": {"_since": {"type": "string"}}},
+                        {"type": "null"},
+                    ]
+                }
+            },
+        }
+        tool = SanitizingLangChainAdapter()._convert_tool(
+            Tool(name="list", description="d", inputSchema=schema), connector
+        )
+        assert tool is not None
+
+        await tool.ainvoke({"filter": {"since": "2026-01-01"}})
+
+        connector.call_tool.assert_awaited_once_with("list", {"filter": {"_since": "2026-01-01"}})
+
+    @pytest.mark.regression
+    async def test_a_map_arguments_values_are_mapped_through_additional_properties(
+        self,
+    ) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(
+            return_value=CallToolResult(content=[TextContent(type="text", text="ok")])
+        )
+        schema = {
+            "type": "object",
+            "properties": {
+                "labels": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "object",
+                        "properties": {"_value": {"type": "string"}},
+                    },
+                }
+            },
+        }
+        tool = SanitizingLangChainAdapter()._convert_tool(
+            Tool(name="tag", description="d", inputSchema=schema), connector
+        )
+        assert tool is not None
+
+        await tool.ainvoke({"labels": {"env": {"value": "prod"}}})
+
+        connector.call_tool.assert_awaited_once_with("tag", {"labels": {"env": {"_value": "prod"}}})
+
+    @pytest.mark.regression
+    async def test_a_server_with_both_id_and_underscore_id_gets_each_value_back(self) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(
+            return_value=CallToolResult(content=[TextContent(type="text", text="ok")])
+        )
+        schema = {
+            "type": "object",
+            "properties": {"id": {"type": "string"}, "_id": {"type": "string"}},
+            "required": ["id", "_id"],
+        }
+        tool = SanitizingLangChainAdapter()._convert_tool(
+            Tool(name="put", description="d", inputSchema=schema), connector
+        )
+        assert tool is not None
+        assert set(tool.args_schema.model_json_schema()["required"]) == {"id", "id_2"}
+
+        await tool.ainvoke({"id": "public", "id_2": "internal"})
+
+        connector.call_tool.assert_awaited_once_with("put", {"id": "public", "_id": "internal"})
+
+    async def test_two_names_that_strip_alike_stay_apart(self) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(
+            return_value=CallToolResult(content=[TextContent(type="text", text="ok")])
+        )
+        schema = {
+            "type": "object",
+            "properties": {"_id": {"type": "string"}, "__id": {"type": "string"}},
+        }
+        tool = SanitizingLangChainAdapter()._convert_tool(
+            Tool(name="put", description="d", inputSchema=schema), connector
+        )
+        assert tool is not None
+
+        await tool.ainvoke({"id": "one", "id_2": "two"})
+
+        connector.call_tool.assert_awaited_once_with("put", {"_id": "one", "__id": "two"})
+
+    async def test_an_object_reached_only_through_one_of_is_mapped(self) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(
+            return_value=CallToolResult(content=[TextContent(type="text", text="ok")])
+        )
+        schema = {
+            "type": "object",
+            "properties": {
+                "filter": {
+                    "oneOf": [
+                        {"type": "object", "properties": {"_since": {"type": "string"}}},
+                        {"type": "null"},
+                    ]
+                }
+            },
+        }
+        tool = SanitizingLangChainAdapter()._convert_tool(
+            Tool(name="list", description="d", inputSchema=schema), connector
+        )
+        assert tool is not None
+
+        await tool.ainvoke({"filter": {"since": "2026-01-01"}})
+
+        connector.call_tool.assert_awaited_once_with("list", {"filter": {"_since": "2026-01-01"}})
+
+    @pytest.mark.parametrize(
+        ("model_args", "server_args"),
+        [
+            ({"target": {"id": "public"}}, {"target": {"id": "public"}}),
+            pytest.param(
+                {"target": {"id_2": "internal"}},
+                {"target": {"_id": "internal"}},
+                marks=pytest.mark.regression,
+            ),
+        ],
+    )
+    async def test_one_of_options_naming_id_and_underscore_id_each_map_back(
+        self, model_args: dict[str, object], server_args: dict[str, object]
+    ) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(
+            return_value=CallToolResult(content=[TextContent(type="text", text="ok")])
+        )
+        schema = {
+            "type": "object",
+            "properties": {
+                "target": {
+                    "oneOf": [
+                        {
+                            "type": "object",
+                            "properties": {"_id": {"type": "string"}},
+                            "required": ["_id"],
+                        },
+                        {
+                            "type": "object",
+                            "properties": {"id": {"type": "string"}},
+                            "required": ["id"],
+                        },
+                    ]
+                }
+            },
+        }
+        tool = SanitizingLangChainAdapter()._convert_tool(
+            Tool(name="find", description="d", inputSchema=schema), connector
+        )
+        assert tool is not None
+
+        await tool.ainvoke(model_args)
+
+        connector.call_tool.assert_awaited_once_with("find", server_args)
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("model_item", "server_item"),
+        [({"left": "a"}, {"_left": "a"}), ({"right": "b"}, {"_right": "b"})],
+    )
+    async def test_a_property_two_options_declare_maps_through_each_options_schema(
+        self, model_item: dict[str, object], server_item: dict[str, object]
+    ) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(
+            return_value=CallToolResult(content=[TextContent(type="text", text="ok")])
+        )
+        schema = {
+            "type": "object",
+            "properties": {
+                "pick": {
+                    "oneOf": [
+                        {
+                            "type": "object",
+                            "properties": {"item": {"type": "object", "properties": {"_left": {}}}},
+                        },
+                        {
+                            "type": "object",
+                            "properties": {
+                                "item": {"type": "object", "properties": {"_right": {}}}
+                            },
+                        },
+                    ]
+                }
+            },
+        }
+        tool = SanitizingLangChainAdapter()._convert_tool(
+            Tool(name="choose", description="d", inputSchema=schema), connector
+        )
+        assert tool is not None
+
+        await tool.ainvoke({"pick": {"item": model_item}})
+
+        connector.call_tool.assert_awaited_once_with("choose", {"pick": {"item": server_item}})
+
+    @pytest.mark.regression
+    async def test_array_items_declared_by_several_options_map_through_each(self) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(
+            return_value=CallToolResult(content=[TextContent(type="text", text="ok")])
+        )
+
+        def _option(key: str) -> dict[str, object]:
+            element = {"type": "object", "properties": {key: {}}}
+            return {"type": "object", "properties": {"rows": {"type": "array", "items": element}}}
+
+        schema = {
+            "type": "object",
+            "properties": {"batch": {"oneOf": [_option("_left"), _option("_right")]}},
+        }
+        tool = SanitizingLangChainAdapter()._convert_tool(
+            Tool(name="load", description="d", inputSchema=schema), connector
+        )
+        assert tool is not None
+
+        await tool.ainvoke({"batch": {"rows": [{"left": 1}, {"right": 2}]}})
+
+        connector.call_tool.assert_awaited_once_with(
+            "load", {"batch": {"rows": [{"_left": 1}, {"_right": 2}]}}
+        )
+
+    def test_the_model_sees_names_pydantic_accepts(self) -> None:
+        properties = self._tool(MagicMock()).args_schema.model_json_schema()["properties"]
+
+        assert set(properties) == {"id", "name", "meta", "items"}
+
+
+class TestAConvertedToolRenamedOnGaiasSide:
+    async def test_it_still_calls_the_server_by_the_servers_own_name(self) -> None:
+        connector = MagicMock()
+        connector.call_tool = AsyncMock(
+            return_value=CallToolResult(content=[TextContent(type="text", text="ran")])
+        )
+        server_tool = Tool(
+            name="execute",
+            description="Run code.",
+            inputSchema={"type": "object", "properties": {"code": {"type": "string"}}},
+        )
+        tool = SanitizingLangChainAdapter()._convert_tool(server_tool, connector)
+        assert tool is not None
+        tool.name = "dodo_payments_execute"
+
+        result = await tool.ainvoke({"code": "1+1"})
+
+        assert result == "ran"
+        connector.call_tool.assert_awaited_once_with("execute", {"code": "1+1"})
 
 
 # ===========================================================================
@@ -2671,17 +3120,18 @@ class TestMCPClientFindIntegrationIdByServerUrl:
         with (
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
             patch(
-                "app.services.mcp.mcp_client.get_user_integration_records",
+                "app.services.mcp.mcp_client.user_integration_repository.list_for_user",
                 new_callable=AsyncMock,
                 return_value=[
-                    {"integration_id": "db_int", "status": "connected"},
+                    _user_integration("db_int", "connected"),
                 ],
-            ),
+            ) as list_for_user,
         ):
             mock_resolver.resolve = AsyncMock(return_value=resolved)
             result = await client._find_integration_id_by_server_url(SERVER_URL)
 
         assert result == "db_int"
+        list_for_user.assert_awaited_once_with(USER_ID)
 
     async def test_returns_none_for_empty_url(self):
         client = MCPClient(user_id=USER_ID)
@@ -2692,7 +3142,7 @@ class TestMCPClientFindIntegrationIdByServerUrl:
         client = MCPClient(user_id=USER_ID)
         with (
             patch(
-                "app.services.mcp.mcp_client.get_user_integration_records",
+                "app.services.mcp.mcp_client.user_integration_repository.list_for_user",
                 new_callable=AsyncMock,
                 return_value=[],
             ),
@@ -2704,10 +3154,10 @@ class TestMCPClientFindIntegrationIdByServerUrl:
         client = MCPClient(user_id=USER_ID)
         with (
             patch(
-                "app.services.mcp.mcp_client.get_user_integration_records",
+                "app.services.mcp.mcp_client.user_integration_repository.list_for_user",
                 new_callable=AsyncMock,
                 return_value=[
-                    {"integration_id": "pending_int", "status": "created"},
+                    _user_integration("pending_int", "created"),
                 ],
             ),
         ):
@@ -2718,7 +3168,7 @@ class TestMCPClientFindIntegrationIdByServerUrl:
         client = MCPClient(user_id=USER_ID)
         with (
             patch(
-                "app.services.mcp.mcp_client.get_user_integration_records",
+                "app.services.mcp.mcp_client.user_integration_repository.list_for_user",
                 new_callable=AsyncMock,
                 side_effect=Exception("DB error"),
             ),
@@ -2732,10 +3182,10 @@ class TestMCPClientFindIntegrationIdByServerUrl:
         with (
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
             patch(
-                "app.services.mcp.mcp_client.get_user_integration_records",
+                "app.services.mcp.mcp_client.user_integration_repository.list_for_user",
                 new_callable=AsyncMock,
                 return_value=[
-                    {"integration_id": "err_int", "status": "connected"},
+                    _user_integration("err_int", "connected"),
                 ],
             ),
         ):
@@ -3320,7 +3770,7 @@ class TestMCPClientHandleCustomIntegrationConnect:
         tools = [_mock_tool()]
 
         resolved = MagicMock()
-        resolved.custom_doc = {"name": "Resolved Name", "description": "Resolved Desc"}
+        resolved.custom_doc = _custom_doc("Resolved Name", "Resolved Desc")
 
         with (
             patch(
@@ -3349,6 +3799,7 @@ class TestMCPClientHandleCustomIntegrationConnect:
             mock_subagent.assert_awaited_once()
             call_kwargs = mock_subagent.call_args[1]
             assert call_kwargs["request"].name == "Resolved Name"
+            assert call_kwargs["request"].description == "Resolved Desc"
 
 
 # ===========================================================================
@@ -3736,7 +4187,7 @@ class TestRunPostConnectTasksExact:
 
     async def test_custom_integration_routes_to_custom_handler_with_doc_fields(self):
         resolved = MagicMock()
-        resolved.custom_doc = {"name": "Custom Name", "description": "Custom Desc"}
+        resolved.custom_doc = _custom_doc("Custom Name", "Custom Desc")
         client = MCPClient(user_id=USER_ID)
         client.token_store.store_unauthenticated = AsyncMock()
         client._handle_custom_integration_connect = AsyncMock()
@@ -4147,6 +4598,78 @@ class TestConnectFailureClassification:
         assert client._refresh_attempts == set()
 
 
+class _ErrorWithResponse(Exception):
+    def __init__(self, response: MagicMock) -> None:
+        super().__init__("refresh failed")
+        self.response = response
+
+
+class TestExtractResponseSignal:
+    def test_reads_the_status_and_the_lowercased_oauth_error_code(self) -> None:
+        response = MagicMock(status_code=400)
+        response.json = MagicMock(return_value={"error": "INVALID_GRANT", "extra": 1})
+
+        assert _extract_response_signal(_ErrorWithResponse(response)) == (400, "invalid_grant")
+
+    def test_a_non_string_error_code_is_not_a_code(self) -> None:
+        response = MagicMock(status_code=401, json=MagicMock(return_value={"error": 7}))
+
+        assert _extract_response_signal(_ErrorWithResponse(response)) == (401, None)
+
+    def test_an_error_with_no_response_carries_no_signal(self) -> None:
+        assert _extract_response_signal(RuntimeError("network down")) == (None, None)
+
+
+@pytest.mark.usefixtures("core_tool_registry")
+class TestRenameShadowingTools:
+    async def test_a_tool_named_like_a_gaia_tool_is_renamed_and_told_its_old_name(self) -> None:
+        shadowed = _mock_tool("execute", description="Run code.")
+
+        renamed = await MCPClient._rename_shadowing_tools([shadowed], "Dodo Payments")
+
+        assert renamed == {"execute": "dodo_payments_execute"}
+        assert shadowed.name == "dodo_payments_execute"
+        assert shadowed.description == (
+            MCP_RENAMED_TOOL_NOTE.format(original="execute", renamed="dodo_payments_execute")
+            + "Run code."
+        )
+
+    async def test_a_renamed_tool_never_takes_a_name_the_server_already_uses(self) -> None:
+        shadowed = _mock_tool("execute")
+        own = _mock_tool("dodo_payments_execute")
+
+        renamed = await MCPClient._rename_shadowing_tools([shadowed, own], "Dodo Payments")
+
+        assert renamed == {"execute": "dodo_payments_execute_2"}
+        assert own.name == "dodo_payments_execute"
+
+    async def test_two_renamed_tools_never_share_a_name(self) -> None:
+        registry = MagicMock(get_tool_names=MagicMock(return_value=["grep", "grep_2"]))
+        tools = [_mock_tool("grep"), _mock_tool("grep_2"), _mock_tool("acme_grep")]
+        with patch(
+            "app.services.mcp.mcp_client.get_tool_registry",
+            new=AsyncMock(return_value=registry),
+        ):
+            renamed = await MCPClient._rename_shadowing_tools(tools, "Acme")
+
+        assert renamed == {"grep": "acme_grep_2", "grep_2": "acme_grep_2_2"}
+
+    async def test_the_reserved_ticket_names_are_renamed_too(self) -> None:
+        ticket = _mock_tool("approve")
+
+        assert await MCPClient._rename_shadowing_tools([ticket], "Acme") == {
+            "approve": "acme_approve"
+        }
+
+    async def test_a_tool_no_gaia_tool_shadows_is_left_alone(self) -> None:
+        own = _mock_tool("search_docs", description="Search the docs.")
+
+        assert await MCPClient._rename_shadowing_tools([own], "Dodo Payments") == {}
+        assert own.name == "search_docs"
+        assert own.description == "Search the docs."
+
+
+@pytest.mark.usefixtures("core_tool_registry")
 class TestDoConnectWiringExact:
     @pytest.fixture(autouse=True)
     def _mock_ssrf_guard(self) -> Iterator[None]:
@@ -4169,6 +4692,7 @@ class TestDoConnectWiringExact:
         tools = [_mock_tool("t1")]
         client._open_session = AsyncMock(return_value=session)
         client._convert_tools_safe = AsyncMock(return_value=tools)
+        client._rename_shadowing_tools = AsyncMock(return_value={})
         client._stamp_tool_metadata = MagicMock()
         client._run_post_connect_tasks = AsyncMock()
 
@@ -4187,6 +4711,7 @@ class TestDoConnectWiringExact:
         mock_resolver.resolve.assert_awaited_once_with(INTEGRATION_ID)
         client._open_session.assert_awaited_once_with(INTEGRATION_ID, resolved.mcp_config)
         client._convert_tools_safe.assert_awaited_once_with(session, INTEGRATION_ID)
+        client._rename_shadowing_tools.assert_awaited_once_with(tools, resolved.name)
         client._stamp_tool_metadata.assert_called_once_with(tools, INTEGRATION_ID, SERVER_URL)
         client._run_post_connect_tasks.assert_awaited_once_with(
             resolved, resolved.mcp_config, False, INTEGRATION_ID, tools
@@ -4660,11 +5185,11 @@ class TestExchangeCodeForTokensExact:
             },
             timeout=30,
         )
-        assert result == {"access_token": "at"}
+        assert result == OidcTokenResponse(access_token="at")
 
     async def test_missing_verifier_omits_the_key_entirely(self):
         client = MCPClient(user_id=USER_ID)
-        post = AsyncMock(return_value=_ok_response({}))
+        post = AsyncMock(return_value=_ok_response({"access_token": "at"}))
         with patch(
             "app.services.mcp.mcp_client.httpx.AsyncClient",
             return_value=_fake_http_client(post)(),
@@ -4684,7 +5209,7 @@ class TestExchangeCodeForTokensExact:
 
     async def test_secret_adds_basic_auth_header_with_exact_encoding(self):
         client = MCPClient(user_id=USER_ID)
-        post = AsyncMock(return_value=_ok_response({}))
+        post = AsyncMock(return_value=_ok_response({"access_token": "at"}))
         expected_basic = "Basic " + base64.b64encode(b"cid:sec").decode()
         with patch(
             "app.services.mcp.mcp_client.httpx.AsyncClient",
@@ -4701,7 +5226,7 @@ class TestExchangeCodeForTokensExact:
 
     async def test_no_secret_means_no_authorization_header(self):
         client = MCPClient(user_id=USER_ID)
-        post = AsyncMock(return_value=_ok_response({}))
+        post = AsyncMock(return_value=_ok_response({"access_token": "at"}))
         with patch(
             "app.services.mcp.mcp_client.httpx.AsyncClient",
             return_value=_fake_http_client(post)(),
@@ -4726,7 +5251,34 @@ class TestExchangeCodeForTokensExact:
                 INTEGRATION_ID, "https://auth.example.com/token", self._exchange()
             )
 
-        assert result == {"access_token": "at"}
+        assert result == OidcTokenResponse(access_token="at")
+
+    async def test_the_response_is_validated_and_keeps_the_oidc_id_token(self) -> None:
+        client = MCPClient(user_id=USER_ID)
+        body = {"access_token": "at", "token_type": "bearer", "id_token": "h.p.s"}
+        with patch(
+            "app.services.mcp.mcp_client.httpx.AsyncClient",
+            return_value=_fake_http_client(AsyncMock(return_value=_ok_response(body)))(),
+        ):
+            result = await client._exchange_code_for_tokens(
+                INTEGRATION_ID, "https://auth.example.com/token", self._exchange()
+            )
+
+        assert result.token_type == "Bearer"
+        assert result.id_token == "h.p.s"
+
+    async def test_a_success_without_an_access_token_is_refused(self) -> None:
+        client = MCPClient(user_id=USER_ID)
+        with (
+            patch(
+                "app.services.mcp.mcp_client.httpx.AsyncClient",
+                return_value=_fake_http_client(AsyncMock(return_value=_ok_response({})))(),
+            ),
+            pytest.raises(ValidationError),
+        ):
+            await client._exchange_code_for_tokens(
+                INTEGRATION_ID, "https://auth.example.com/token", self._exchange()
+            )
 
     @pytest.mark.parametrize("status", [300, 301, 400])
     async def test_the_first_non_2xx_status_is_an_error(self, status: int) -> None:
@@ -4851,11 +5403,9 @@ class TestHandleOauthCallbackNonceEnforcement:
     ) -> None:
         """Losing the integration id on any hop exchanges the code against the wrong token endpoint or the wrong stored nonce."""
         client = self._make_client()
-        tokens = {
-            "access_token": "at",
-            "token_type": "Bearer",
-            "id_token": _make_id_token({"nonce": "stored_nonce"}),
-        }
+        tokens = OidcTokenResponse(
+            access_token="at", id_token=_make_id_token({"nonce": "stored_nonce"})
+        )
         client._validate_oidc_nonce = MagicMock()
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config(requires_auth=True, client_id="cid")
@@ -4887,7 +5437,9 @@ class TestHandleOauthCallbackNonceEnforcement:
         credentials.assert_awaited_once_with(INTEGRATION_ID, resolved.mcp_config, oauth_config)
         assert exchange.await_args.kwargs["integration_id"] == INTEGRATION_ID
         assert exchange.await_args.kwargs["token_endpoint"] == "https://auth.example.com/token"
-        client._validate_oidc_nonce.assert_called_once_with(INTEGRATION_ID, "stored_nonce", tokens)
+        client._validate_oidc_nonce.assert_called_once_with(
+            INTEGRATION_ID, "stored_nonce", tokens.id_token
+        )
 
     async def test_nonce_mismatch_aborts_before_tokens_are_stored(self):
         client = self._make_client()
@@ -5056,15 +5608,14 @@ class TestServerUrlMatchingHelpersExact:
 
         assert match is None
 
-    def test_connectable_candidate_ids_filters_exactly(self):
+    def test_connectable_candidate_ids_keeps_only_connected_in_order(self):
         docs = [
-            {"integration_id": "a", "status": "connected"},
-            {"integration_id": "b", "status": "created"},
-            {"integration_id": None, "status": "connected"},
-            {"integration_id": "c"},
-            {"integration_id": 123, "status": "connected"},
+            _user_integration("a", "connected"),
+            _user_integration("b", "created"),
+            _user_integration("c", "connected"),
+            _user_integration("d", "expired"),
         ]
-        assert MCPClient._connectable_candidate_ids(docs) == ["a", "c", "123"]
+        assert MCPClient._connectable_candidate_ids(docs) == ["a", "c"]
 
     def test_connectable_candidate_ids_empty_for_no_docs(self):
         assert MCPClient._connectable_candidate_ids([]) == []

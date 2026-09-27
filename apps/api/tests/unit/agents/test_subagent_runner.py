@@ -621,6 +621,47 @@ class TestExecuteSubagentStream:
         assert "should not reach" not in result.text
         fake_cancel.clear.assert_awaited_once()
 
+    @pytest.mark.regression
+    async def test_a_run_whose_stream_the_user_stopped_reports_it_stopped(self):
+        async def _fake_astream(*args, **kwargs):
+            yield ("messages", (AIMessageChunk(content="partial"), {}))
+
+        mock_graph = MagicMock()
+        mock_graph.astream = _fake_astream
+        with (
+            patch("app.agents.core.subagents.subagent_runner.log"),
+            patch(
+                "app.agents.core.subagents.subagent_runner.stream_manager.is_cancelled",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+        ):
+            result = await execute_subagent_stream(
+                _make_ctx(subagent_graph=mock_graph, stream_id="s-1")
+            )
+
+        assert result.stopped is True
+
+    async def test_a_run_that_finishes_is_not_stopped(self):
+        async def _fake_astream(*args, **kwargs):
+            yield ("messages", (AIMessageChunk(content="all of it"), {}))
+
+        mock_graph = MagicMock()
+        mock_graph.astream = _fake_astream
+        with (
+            patch("app.agents.core.subagents.subagent_runner.log"),
+            patch(
+                "app.agents.core.subagents.subagent_runner.stream_manager.is_cancelled",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+        ):
+            result = await execute_subagent_stream(
+                _make_ctx(subagent_graph=mock_graph, stream_id="s-1")
+            )
+
+        assert result.stopped is False
+
     @pytest.mark.asyncio
     async def test_non_tuple_events_skipped(self):
         """Events with length != 2 should be silently skipped."""

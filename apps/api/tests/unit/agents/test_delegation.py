@@ -30,6 +30,7 @@ from app.agents.core.subagents.delegation import (
     runs_in_background,
 )
 from app.agents.core.subagents.subagent_runner import SubagentExecutionContext, SubagentOutcome
+from app.agents.prompts import delegation_prompts
 from app.agents.prompts.delegation_prompts import (
     BACKGROUND_DELEGATION_ACK,
     SUBAGENT_FAILED_RESULT,
@@ -701,6 +702,28 @@ class TestResumingABackgroundRun:
         assert _landings(client_edges.deliver) == [_landing("sent")]
         assert recorder.event("subagent_run")["resumed"] is True
 
+    async def test_a_resumed_runs_record_names_the_stream_it_runs_on_and_no_dispatcher(
+        self,
+        redis: Any,
+        client_edges: SimpleNamespace,
+        own_stream: dict[str, list[dict[str, Any]]],
+    ) -> None:
+        seen: list[RunningSubagent] = []
+
+        async def _run(**_kwargs: Any) -> SubagentOutcome:
+            seen.extend(await RunningSubagents(CONVERSATION).live())
+            return SubagentOutcome(text="sent")
+
+        with patch(f"{MODULE}.execute_subagent_stream", new=_run):
+            assert await delegation.resume_background(_delegation(), {"status": "approved"})
+            await _drain()
+
+        ((own_stream_id, _),) = own_stream.items()
+        (record,) = seen
+        assert own_stream_id.startswith(SUBAGENT_STREAM_ID_PREFIX)
+        assert record.stream_id == own_stream_id
+        assert record.dispatched_by is None
+
     async def test_a_redundant_resume_lands_nothing(
         self, redis: Any, client_edges: SimpleNamespace
     ) -> None:
@@ -786,6 +809,75 @@ class TestABackgroundRunsBoundary:
             "error_type": "RuntimeError",
             "error": "redis down",
         }
+
+
+class TestABackgroundRunTheUserStopped:
+    @pytest.mark.regression
+    async def test_a_dispatch_after_its_turn_was_stopped_never_starts(
+        self, redis: Any, client_edges: SimpleNamespace
+    ) -> None:
+        client_edges.streams.is_cancelled = AsyncMock(
+            side_effect=lambda sid: sid == LIVE["stream_id"]
+        )
+        execute = AsyncMock(return_value=SubagentOutcome(text="done"))
+        with patch(f"{MODULE}.execute_subagent_stream", new=execute):
+            result = await delegate(_delegation(), background=True, probe_parked=False)
+            await _drain()
+
+        assert result == delegation_prompts.STOPPED_BEFORE_START.format(name="summarise the report")
+        execute.assert_not_awaited()
+        assert await RunningSubagents(CONVERSATION).live() == []
+        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
+
+    @pytest.mark.regression
+    async def test_it_lands_nothing_so_the_stopped_executor_does_not_restart(
+        self, redis: Any, client_edges: SimpleNamespace
+    ) -> None:
+        stopped = SubagentOutcome(text="got halfway", stopped=True)
+        with patch(f"{MODULE}.execute_subagent_stream", new=AsyncMock(return_value=stopped)):
+            await delegate(_delegation(), background=True, probe_parked=False)
+            await _drain()
+
+        client_edges.deliver.assert_not_awaited()
+        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
+
+    @pytest.mark.regression
+    async def test_its_record_names_its_own_stream_and_the_stream_that_dispatched_it(
+        self,
+        redis: Any,
+        client_edges: SimpleNamespace,
+        own_stream: dict[str, list[dict[str, Any]]],
+    ) -> None:
+        seen: list[RunningSubagent] = []
+
+        async def _run(**_kwargs: Any) -> SubagentOutcome:
+            seen.extend(await RunningSubagents(CONVERSATION).live())
+            return SubagentOutcome(text="done")
+
+        with patch(f"{MODULE}.execute_subagent_stream", new=_run):
+            await delegate(_delegation(), background=True, probe_parked=False)
+            await _drain()
+
+        ((own_stream_id, _),) = own_stream.items()
+        (record,) = seen
+        assert record.stream_id == own_stream_id
+        assert record.dispatched_by == LIVE["stream_id"]
+
+    async def test_a_blocking_run_is_recorded_on_the_stream_it_shares(self, redis: Any) -> None:
+        seen: list[RunningSubagent] = []
+
+        async def _run(**_kwargs: Any) -> SubagentOutcome:
+            seen.extend(await RunningSubagents(CONVERSATION).live())
+            return SubagentOutcome(text="done")
+
+        with (
+            patch(f"{MODULE}.execute_subagent_stream", new=_run),
+            patch(f"{MODULE}.get_stream_writer", return_value=MagicMock()),
+        ):
+            await delegate(_delegation(), background=False, probe_parked=False)
+
+        (record,) = seen
+        assert record.stream_id == record.dispatched_by == LIVE["stream_id"]
 
 
 class TestABackgroundRunsStreamLifecycle:

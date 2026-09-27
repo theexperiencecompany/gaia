@@ -4,7 +4,7 @@ ARQ worker tasks for executing scheduled tracked todos.
 Handles:
 - Acquiring Redis locks to prevent double-execution
 - Retry logic with exponential backoff
-- Workflow-based and agent-based execution paths
+- Agent execution from the todo's canvas, activity and references
 - Recurrence scheduling (re-enqueue after success)
 - Safety-net cron for orphaned todos
 """
@@ -200,7 +200,7 @@ async def _execute_todo_with_retry(
         await enforce_daily_cost_budget(user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
 
     try:
-        await _run_execution(doc, user_id, user_data=user_data, origin=origin)
+        await _execute_via_agent(doc, user_id, user_data=user_data, origin=origin)
 
         # scheduled_at must name the NEXT execution (find_due_tracked_all_users
         # selects on it), or the safety net re-enqueues this todo every scan.
@@ -279,11 +279,7 @@ def _trigger_type(origin: TriggerOrigin | None) -> TriggerType:
 
 
 def _execution_context(todo_id: str | None, origin: TriggerOrigin | None) -> dict[str, object]:
-    """Build the trigger stamp both execution paths put on a run.
-
-    One builder because the workflow path and the agent path were stamping
-    the same literal separately, so only one would have been updated.
-    """
+    """Build the trigger stamp a todo run and its approval resume both put on the agent."""
     trigger_type = _trigger_type(origin).value
     if origin is None:
         return {"trigger_type": trigger_type, "todo_id": todo_id}
@@ -294,37 +290,6 @@ def _execution_context(todo_id: str | None, origin: TriggerOrigin | None) -> dic
         "subscription_id": origin.subscription_id,
         "trigger_data": origin.payload,
     }
-
-
-async def _run_execution(
-    doc: TodoDocument,
-    user_id: str,
-    *,
-    user_data: AuthenticatedUser,
-    origin: TriggerOrigin | None = None,
-) -> None:
-    if doc.workflow_id:
-        # Deferred import to avoid circular dependency
-        # Deferred import: breaks circular dependency with the workflow queue/service stack
-        from app.services.workflow.queue_service import (  # noqa: PLC0415 -- deferred
-            WorkflowQueueService,
-        )
-
-        # A todo that generated a workflow still runs under the todo's own opt-out:
-        # without this the workflow's notify_on_completion (default on) would
-        # message a user who turned this todo's delivery off.
-        context = {
-            **_execution_context(doc.id, origin),
-            "workflow_notify_on_completion": doc.notify_on_run,
-        }
-        success = await WorkflowQueueService.queue_workflow_execution(
-            doc.workflow_id, user_id, context
-        )
-        if not success:
-            raise RuntimeError(f"Failed to queue workflow {doc.workflow_id} for todo {doc.id}")
-        log.info("tracked_todo.workflow_queued", workflow_id=doc.workflow_id, todo_id=doc.id)
-    else:
-        await _execute_via_agent(doc, user_id, user_data=user_data, origin=origin)
 
 
 def _extract_learnings(ref_canvas: str) -> str | None:
@@ -410,7 +375,9 @@ async def _execute_via_agent(
     user_data: AuthenticatedUser,
     origin: TriggerOrigin | None = None,
 ) -> str:
-    """Execute the todo using call_agent_silent directly (no workflow needed).
+    """Run the todo on the agent, from its canvas, activity and references.
+
+    Never a workflow: a replayed playbook freezes the calls and cannot explore.
 
     Returns the first 200 chars of the agent response.
     """

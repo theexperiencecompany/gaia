@@ -9,31 +9,12 @@ provider schemas and repeat what the description already says.
 """
 
 import json
-from typing import TypedDict, cast
+from typing import cast
 
 from pydantic import JsonValue
 
+from app.models.json_schema_models import JsonSchemaNode
 from app.utils.general_utils import clip_text
-
-
-class _SchemaNode(TypedDict, total=False):
-    """The JSON Schema keywords the renderers read off one schema node.
-
-    Provider and observed schemas are never validated, so a keyword whose value
-    varies by provider stays JsonValue and every read keeps its isinstance guard.
-    """
-
-    type: str | list[str]
-    properties: dict[str, JsonValue]
-    required: list[str]
-    items: JsonValue
-    anyOf: JsonValue
-    oneOf: JsonValue
-    enum: JsonValue
-    const: JsonValue
-    description: JsonValue
-    additionalProperties: JsonValue
-
 
 # Returns: a larger enum renders as its base type. Args list more members,
 # since a value outside the set fails validation.
@@ -175,7 +156,7 @@ def _is_nullable(node: JsonValue) -> bool:
     """Whether a union admits null beside at least one real type."""
     if not isinstance(node, dict):
         return False
-    variants = _union_variants(cast(_SchemaNode, node)) or []
+    variants = _union_variants(cast(JsonSchemaNode, node)) or []
     nulls = sum(_is_null(arm) for arm in variants)
     return 0 < nulls < len(variants)
 
@@ -219,7 +200,7 @@ def _prune_to_levels(node: JsonValue, levels: int) -> JsonValue:
 def _compact_type(node: object, enum_cap: int) -> str:
     if not isinstance(node, dict):
         return _ANY
-    schema: _SchemaNode = cast(_SchemaNode, node)
+    schema: JsonSchemaNode = cast(JsonSchemaNode, node)
     variants = _union_variants(schema)
     if variants is not None:
         return _join_arms({_compact_type(variant, enum_cap) for variant in variants})
@@ -244,7 +225,7 @@ def _join_arms(arms: set[str]) -> str:
     return "|".join(sorted(arms))
 
 
-def _union_variants(node: _SchemaNode) -> list[JsonValue] | None:
+def _union_variants(node: JsonSchemaNode) -> list[JsonValue] | None:
     """The members of a union schema (anyOf/oneOf/type-list), else None."""
     variants = node.get("anyOf") or node.get("oneOf")
     if isinstance(variants, list) and variants:
@@ -255,12 +236,12 @@ def _union_variants(node: _SchemaNode) -> list[JsonValue] | None:
     return None
 
 
-def _is_object(node: _SchemaNode) -> bool:
+def _is_object(node: JsonSchemaNode) -> bool:
     type_ = node.get("type")
     return type_ == "object" or (type_ is None and "properties" in node)
 
 
-def _compact_object(node: _SchemaNode, enum_cap: int) -> str | None:
+def _compact_object(node: JsonSchemaNode, enum_cap: int) -> str | None:
     """An object schema as ``{name:type, opt?:type, [key]:type}``, else None."""
     if not _is_object(node):
         return None
@@ -280,7 +261,7 @@ def _compact_object(node: _SchemaNode, enum_cap: int) -> str | None:
     return "{" + ", ".join(fields) + "}"
 
 
-def _compact_array(node: _SchemaNode, enum_cap: int) -> str | None:
+def _compact_array(node: JsonSchemaNode, enum_cap: int) -> str | None:
     """An array schema as ``item[]`` (grouped when the item is a union), else None."""
     if node.get("type") != "array":
         return None
@@ -289,7 +270,7 @@ def _compact_array(node: _SchemaNode, enum_cap: int) -> str | None:
     return (f"({item})" if "|" in item else item) + "[]"
 
 
-def _compact_literal(node: _SchemaNode, enum_cap: int) -> str | None:
+def _compact_literal(node: JsonSchemaNode, enum_cap: int) -> str | None:
     """A const, or a closed enum within the cap, as JSON members joined by ``|``, else None."""
     if "const" in node:
         return _dumps(node["const"])
@@ -300,18 +281,18 @@ def _compact_literal(node: _SchemaNode, enum_cap: int) -> str | None:
 
 
 def _render_args(schema: dict[str, JsonValue], description_cap: int | None) -> str:
-    node: _SchemaNode = cast(_SchemaNode, schema)
+    node: JsonSchemaNode = cast(JsonSchemaNode, schema)
     if not _has_fields(node):
         return _compact_type(schema, _ARG_ENUM_MAX_MEMBERS)
     return "\n".join(_field_lines(node, 0, description_cap))
 
 
-def _has_fields(node: _SchemaNode) -> bool:
+def _has_fields(node: JsonSchemaNode) -> bool:
     properties = node.get("properties")
     return _is_object(node) and isinstance(properties, dict) and bool(properties)
 
 
-def _field_lines(node: _SchemaNode, depth: int, description_cap: int | None) -> list[str]:
+def _field_lines(node: JsonSchemaNode, depth: int, description_cap: int | None) -> list[str]:
     """One line per field of an object; a field holding an object nests its own lines."""
     properties = cast(dict[str, JsonValue], node.get("properties"))
     required = set(node.get("required") or [])
@@ -331,11 +312,11 @@ def _field_lines(node: _SchemaNode, depth: int, description_cap: int | None) -> 
     return lines
 
 
-def _expandable(node: JsonValue) -> tuple[str, _SchemaNode, str] | None:
+def _expandable(node: JsonValue) -> tuple[str, JsonSchemaNode, str] | None:
     """The object a field nests as lines, with the type text around it, else None."""
     if not isinstance(node, dict):
         return None
-    schema: _SchemaNode = cast(_SchemaNode, node)
+    schema: JsonSchemaNode = cast(JsonSchemaNode, node)
     variants = _union_variants(schema)
     if variants is not None:
         # Only one object arm can nest: `null|{` reads; two objects would not.
@@ -375,7 +356,7 @@ def _field_comment(node: JsonValue, description_cap: int | None) -> str:
 def _constraints(node: dict[str, JsonValue]) -> str:
     """The validation keywords a caller must satisfy, read off the field and its union arms."""
     found: dict[str, str] = {}
-    sources: list[JsonValue] = [node, *(_union_variants(cast(_SchemaNode, node)) or [])]
+    sources: list[JsonValue] = [node, *(_union_variants(cast(JsonSchemaNode, node)) or [])]
     for source in sources:
         if not isinstance(source, dict):
             continue
