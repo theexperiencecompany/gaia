@@ -26,6 +26,7 @@ from shared.py.wide_events import log
 # signature; it is plumbing, never something the model supplies.
 _INTERNAL_ARG_NAMES = {"__runnable_config__"}
 _TITLE = "title"
+_REQUIRED = "required"
 # Keywords whose value maps names to schemas: a key there is a field, never an annotation.
 _SCHEMA_MAPS = frozenset({"properties", "patternProperties", "$defs", "definitions"})
 
@@ -126,13 +127,28 @@ def _compact_schema(schema: dict[str, JsonValue]) -> dict[str, JsonValue]:
 
 
 def _strip_noise(node: JsonValue, *, keys_are_names: bool = False) -> JsonValue:
-    """Drop the title annotation; a key of a name-to-schema map is a field name and stays."""
+    """Drop the title annotation and keep only string names in required.
+
+    A key of a name-to-schema map is a field name, so a field called title or
+    required is kept as it is.
+    """
     if isinstance(node, dict):
         return {
-            key: _strip_noise(value, keys_are_names=not keys_are_names and key in _SCHEMA_MAPS)
+            key: (
+                _required_names(value)
+                if not keys_are_names and key == _REQUIRED
+                else _strip_noise(value, keys_are_names=not keys_are_names and key in _SCHEMA_MAPS)
+            )
             for key, value in node.items()
             if keys_are_names or key != _TITLE
         }
     if isinstance(node, list):
         return [_strip_noise(item) for item in node]
     return node
+
+
+def _required_names(value: JsonValue) -> JsonValue:
+    """A provider's required list as field names only; anything else there names no field."""
+    if not isinstance(value, list):
+        return []
+    return [name for name in value if isinstance(name, str)]

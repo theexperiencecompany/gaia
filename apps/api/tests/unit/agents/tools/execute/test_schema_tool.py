@@ -267,6 +267,28 @@ class TestArgsSchemaOf:
             "$defs": {"title": {"type": "string"}},
         }
 
+    @pytest.mark.parametrize(
+        ("required", "cleaned"),
+        [([{"x": 1}, "a", 5, None], ["a"]), (5, []), ("abc", [])],
+        ids=["non_string_members", "not_a_list", "a_bare_string"],
+    )
+    def test_a_malformed_required_keeps_only_its_string_names(
+        self, required: object, cleaned: list[str]
+    ) -> None:
+        """A provider's malformed required crashed doc rendering (unhashable member, non-iterable value)."""
+        tool = _catalog_tool(None)
+        tool.args_schema = {
+            "type": "object",
+            "properties": {
+                "a": {"type": "string"},
+                "required": {"type": "object", "properties": {}, "required": required},
+            },
+            "required": required,
+        }
+        schema = _args_schema_of(tool)
+        assert schema["required"] == cleaned
+        assert schema["properties"]["required"]["required"] == cleaned
+
     def test_a_tool_without_a_schema_takes_no_args(self) -> None:
         tool = _catalog_tool(None)
         tool.args_schema = None

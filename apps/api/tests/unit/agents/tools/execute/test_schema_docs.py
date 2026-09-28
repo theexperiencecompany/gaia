@@ -184,6 +184,15 @@ class TestRenderToolDoc:
         fixed_lines = len(USAGE) + len(ARGS_HEADER) + len("## GMAIL_FETCH_EMAILS") + 200
         assert len(doc) <= 600 + ARGS_SCHEMA_MAX_CHARS + RETURNS_INLINE_MAX_CHARS + fixed_lines
 
+    async def test_a_malformed_required_still_renders_the_doc(self) -> None:
+        schema = {
+            "type": "object",
+            "properties": {"q": {"type": "string"}},
+            "required": [{"not": "a name"}, "q"],
+        }
+        doc = await _doc(_tool(args_schema=schema))
+        assert "\nq: str\n" in doc
+
     async def test_a_schema_carrying_a_python_value_still_renders(self) -> None:
         """Python-built dict schemas can carry non-JSON defaults; a doc must render them, not crash retrieval."""
         schema = {

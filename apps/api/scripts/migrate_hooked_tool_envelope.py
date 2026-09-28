@@ -4,8 +4,9 @@ A tool with a GAIA after-hook now returns {data, successful, error} instead of
 the bare reshaped data, so a stored path into its output needs a leading
 ``data.``. This lists every playbook placeholder ($steps.<id> / $last_run.<TOOL>)
 that reads such an output — stale ones, and ``data.`` ones a person must check —
-and with --apply deletes the tools' observed output shapes so they are relearned
-in the new form. Playbooks are only reported.
+and with --apply deletes the tools' observed shapes still in the old form, so they
+are relearned in the new one. A shape already in the envelope form is kept, so a
+rerun deletes nothing new. Playbooks are only reported.
 
     cd apps/api && uv run python scripts/migrate_hooked_tool_envelope.py [--apply]
 """
@@ -18,7 +19,7 @@ from typing import NamedTuple
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.constants.execute import EXECUTE_TOOL_NAME
+from app.constants.execute import EXECUTE_TOOL_NAME, GLOBAL_SHAPE_SCOPE
 from app.db.mongodb.collections import get_async_collection
 from app.models.integrations.composio_hooks import ComposioToolResponse
 from app.services.workflow.playbook.placeholders import placeholder_tokens
@@ -29,6 +30,8 @@ LAST_RUN_ROOT = "last_run"
 # A path whose next segment is one of these already reads through the envelope.
 ENVELOPE_KEYS = frozenset(ComposioToolResponse.model_fields)
 DATA_KEY = "data"
+# An observed shape with this top-level key was learned from an envelope, not the old form.
+ENVELOPE_MARKER = "successful"
 
 
 class References(NamedTuple):
@@ -80,6 +83,15 @@ def playbook_references(playbook: Mapping[str, object], hooked_tools: frozenset[
     return found
 
 
+def old_form_shape_filter(hooked: frozenset[str]) -> dict[str, object]:
+    """Match the hooked tools' catalog shapes learned before the envelope; relearned ones are left alone."""
+    return {
+        "scope": GLOBAL_SHAPE_SCOPE,
+        "tool_name": {"$in": sorted(hooked)},
+        f"output_schema.properties.{ENVELOPE_MARKER}": {"$exists": False},
+    }
+
+
 def hooked_tool_inventory() -> frozenset[str]:
     """Every tool whose output the envelope change reshaped; refuses when that cannot be listed by name."""
     if hook_registry.has_broad_after_hook:
@@ -110,8 +122,10 @@ async def main(apply: bool) -> None:
     )
 
     shapes = get_async_collection("tool_output_shapes")
-    shape_filter = {"tool_name": {"$in": sorted(hooked)}}
-    print(f"observed shapes to reset: {await shapes.count_documents(shape_filter)}")
+    shape_filter = old_form_shape_filter(hooked)
+    print(
+        f"observed shapes still in the old form, to reset: {await shapes.count_documents(shape_filter)}"
+    )
     if apply:
         deleted = await shapes.delete_many(shape_filter)
         print(f"deleted {deleted.deleted_count} observed shapes")

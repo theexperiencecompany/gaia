@@ -6,6 +6,7 @@ import pytest
 from scripts.migrate_hooked_tool_envelope import (
     References,
     hooked_tool_inventory,
+    old_form_shape_filter,
     playbook_references,
 )
 
@@ -130,3 +131,13 @@ class TestHookedToolInventory:
         with patch.object(hook_registry, "has_broad_after_hook", True):
             with pytest.raises(SystemExit, match="scoped by toolkit or to every tool"):
                 hooked_tool_inventory()
+
+
+@pytest.mark.unit
+class TestOldFormShapeFilter:
+    def test_only_catalog_shapes_learned_before_the_envelope_match(self) -> None:
+        assert old_form_shape_filter(HOOKED) == {
+            "scope": "global",
+            "tool_name": {"$in": ["GMAIL_GET_CONTACTS", "TWITTER_RECENT_SEARCH"]},
+            "output_schema.properties.successful": {"$exists": False},
+        }
