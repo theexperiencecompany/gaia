@@ -13,7 +13,10 @@ import type { ApprovalRequestData } from "../../chat";
 import { NEW_MESSAGE_BREAK_TOKEN } from "../../utils/messageBreakUtils";
 import type { ChatRequest } from "../types";
 import { getHttpStatus } from "../utils/logger";
-import { REACTION_OUTCOME } from "../utils/reaction-outcome";
+import {
+  REACTION_OUTCOME,
+  type ReactionHandler,
+} from "../utils/reaction-outcome";
 import { wideLog } from "../utils/wide-events";
 import type {
   ApprovalUpdateHandler,
@@ -21,15 +24,14 @@ import type {
   MessageBoundary,
   MessageBoundaryHandler,
   NoticeHandler,
-  ReactionHandler,
 } from "./chat-stream.types";
 
+export type { ReactionHandler } from "../utils/reaction-outcome";
 export type {
   ApprovalUpdateHandler,
   ChatStreamClient,
   MessageBoundaryHandler,
   NoticeHandler,
-  ReactionHandler,
 } from "./chat-stream.types";
 
 /** Exponential-backoff base delay and ceiling for stream retries. */

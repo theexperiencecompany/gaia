@@ -21,6 +21,14 @@ export const REACTION_OUTCOME = {
 export type ReactionOutcome =
   (typeof REACTION_OUTCOME)[keyof typeof REACTION_OUTCOME];
 
+/**
+ * Fired when the turn resolved to a one-emoji acknowledgment of the user's message.
+ *
+ * Resolves ATTACHED once the emoji is attached natively to that message, which
+ * then IS the reply; any other outcome sends the emoji as the turn's text instead.
+ */
+export type ReactionHandler = (emoji: string) => Promise<ReactionOutcome>;
+
 /** Which path delivered the reaction: a reply to a live turn, or an outbound envelope. */
 export const REACTION_SURFACE = {
   LIVE: "live",
