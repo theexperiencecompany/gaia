@@ -194,9 +194,7 @@ function UserChatMessage({
               total={messageParts.length}
             />
           ))}
-          {message.reactions?.length ? (
-            <MessageReactions reactions={message.reactions} align="end" />
-          ) : null}
+          <MessageReactions reactions={message.reactions} align="end" />
         </View>
       </PressableFeedback>
     </Animated.View>
@@ -425,11 +423,11 @@ function AIChatMessage({
           isLastMessage={isLastMessage}
         />
 
-        {message.reactions?.length ? (
-          <View style={{ paddingHorizontal: spacing.md, marginTop: GAP_SM }}>
-            <MessageReactions reactions={message.reactions} align="start" />
-          </View>
-        ) : null}
+        <MessageReactions
+          reactions={message.reactions}
+          align="start"
+          style={{ paddingHorizontal: spacing.md, marginTop: GAP_SM }}
+        />
 
         {/* Link preview – shown below message content for AI messages */}
         {!isLoading && linkPreviewUrls.length > 0 && linkPreviewData?.length ? (

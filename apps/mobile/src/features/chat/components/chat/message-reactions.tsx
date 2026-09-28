@@ -1,6 +1,6 @@
 import { groupReactions, type ReactionBadge } from "@gaia/shared/utils";
 import { Chip } from "heroui-native";
-import { View } from "react-native";
+import { type StyleProp, View, type ViewStyle } from "react-native";
 import { cn } from "@/lib/utils";
 
 /**
@@ -10,14 +10,17 @@ import { cn } from "@/lib/utils";
 export function MessageReactions({
   reactions,
   align,
+  style,
 }: {
-  reactions: ReactionBadge[];
+  reactions: ReactionBadge[] | null | undefined;
   align: "start" | "end";
+  style?: StyleProp<ViewStyle>;
 }) {
-  if (reactions.length === 0) return null;
+  if (!reactions?.length) return null;
 
   return (
     <View
+      style={style}
       className={cn(
         "flex-row flex-wrap gap-1",
         align === "end" ? "justify-end" : "justify-start",
