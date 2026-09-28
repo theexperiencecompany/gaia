@@ -344,7 +344,10 @@ class TestGetOrderedProviders:
         }
         ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=True)
 
-        assert [p.name for p in ordered] == ["openrouter", "openai"]
+        assert [(p.name, p.instance) for p in ordered] == [
+            ("openrouter", available["openrouter"]),
+            ("openai", available["openai"]),
+        ]
 
     def test_empty_available(self) -> None:
         ordered = _get_ordered_providers({}, preferred_provider=None, fallback_enabled=True)
