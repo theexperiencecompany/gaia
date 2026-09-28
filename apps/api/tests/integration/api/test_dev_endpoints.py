@@ -418,6 +418,9 @@ class TestDevServiceLogic:
                 dev_service, "create_conversation_service", new_callable=AsyncMock
             ) as mock_convo,
             patch.object(
+                dev_service.PlatformLinkService, "ensure_linkable", new_callable=AsyncMock
+            ),
+            patch.object(
                 dev_service.PlatformLinkService, "link_account", new_callable=AsyncMock
             ) as mock_link,
         ):
@@ -502,7 +505,7 @@ class TestDevServiceLogic:
             ) as mock_convo,
             patch.object(
                 dev_service.PlatformLinkService,
-                "link_account",
+                "ensure_linkable",
                 AsyncMock(side_effect=AccountHasDifferentPlatformError("already linked")),
             ),
         ):
@@ -515,6 +518,37 @@ class TestDevServiceLogic:
         assert exc.value.code == LINK_CONFLICT_ACCOUNT_HAS_OTHER
         mock_todo.assert_not_awaited()
         mock_convo.assert_not_awaited()
+
+    async def test_seed_writes_no_link_when_any_platform_conflicts(self):
+        """Linking in parallel let telegram commit while slack raised: a 409 with a half-linked user."""
+        from app.constants.platform_links import LINK_CONFLICT_ACCOUNT_HAS_OTHER
+        from app.services import dev_service, platform_link_service
+        from app.utils.errors import AppError
+
+        oid = str(ObjectId())
+        user = dev_service.UserDocument.model_validate(
+            {"id": oid, "email": DEV_EMAIL, "platform_links": {"slack": {"id": "a-real-slack-id"}}}
+        )
+        repo = platform_link_service.user_repository
+        with (
+            patch.object(
+                dev_service.user_repository,
+                "get_by_email",
+                new_callable=AsyncMock,
+                return_value=user,
+            ),
+            patch.object(dev_service.user_repository, "complete_onboarding", AsyncMock()),
+            patch.object(repo, "get_by_platform_id", AsyncMock(return_value=None)),
+            patch.object(repo, "get", AsyncMock(return_value=user)),
+            patch.object(repo, "link_platform", AsyncMock()) as mock_write,
+        ):
+            with pytest.raises(AppError) as exc:
+                await dev_service.seed_dev_data(
+                    DEV_EMAIL, todos=0, conversations=0, platform_links=["telegram", "slack"]
+                )
+
+        assert exc.value.code == LINK_CONFLICT_ACCOUNT_HAS_OTHER
+        mock_write.assert_not_awaited()
 
     async def test_seed_missing_user_404_with_hint(self):
         from app.services import dev_service

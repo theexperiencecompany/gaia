@@ -153,9 +153,12 @@ async def seed_dev_data(
     # by consumers.
     platform_user_ids = {platform: f"dev-{platform}-{user_id}" for platform in platform_links}
 
-    # Links go first: a dev user whose real platform account is already linked
-    # must get its 409 before any todo or conversation is written.
+    # Every link is checked before any is written, and links go before todos and
+    # conversations: a dev user with a real account already linked gets its 409
+    # with nothing written.
     try:
+        for platform, platform_user_id in platform_user_ids.items():
+            await PlatformLinkService.ensure_linkable(user_id, platform, platform_user_id)
         await asyncio.gather(
             *(
                 PlatformLinkService.link_account(

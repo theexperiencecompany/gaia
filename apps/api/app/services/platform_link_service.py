@@ -486,6 +486,27 @@ class PlatformLinkService:
         return await user_repository.list_platform_user_ids(platform, limit=limit)
 
     @staticmethod
+    async def ensure_linkable(
+        user_id: str, platform: str, platform_user_id: str
+    ) -> _StoredPlatformLink | None:
+        """Raise the link conflict that would block linking; returns the user's current link on this platform.
+
+        Writes nothing, so a caller linking several platforms can check them all first.
+        """
+        existing = await user_repository.get_by_platform_id(platform, platform_user_id)
+        if existing and existing.id != user_id:
+            raise PlatformAccountTakenError(
+                f"This {platform} account is already linked to another GAIA user"
+            )
+        user = await user_repository.get(user_id)
+        prior_link = _stored_link(user, platform)
+        if prior_link is not None and prior_link.id and prior_link.id != platform_user_id:
+            raise AccountHasDifferentPlatformError(
+                f"Your account already has a different {platform} account linked"
+            )
+        return prior_link
+
+    @staticmethod
     async def link_account(
         user_id: str,
         platform: str,
@@ -505,20 +526,7 @@ class PlatformLinkService:
         if not platform_user_id:
             raise ValueError("platform_user_id must not be empty")
 
-        # Reject if this platform ID is already linked to a different user
-        existing = await user_repository.get_by_platform_id(platform, platform_user_id)
-        if existing and existing.id != user_id:
-            raise PlatformAccountTakenError(
-                f"This {platform} account is already linked to another GAIA user"
-            )
-
-        # Reject if the user already has a different platform ID stored
-        user = await user_repository.get(user_id)
-        prior_link = _stored_link(user, platform)
-        if prior_link is not None and prior_link.id and prior_link.id != platform_user_id:
-            raise AccountHasDifferentPlatformError(
-                f"Your account already has a different {platform} account linked"
-            )
+        prior_link = await PlatformLinkService.ensure_linkable(user_id, platform, platform_user_id)
 
         now = datetime.now(UTC).isoformat()
 
