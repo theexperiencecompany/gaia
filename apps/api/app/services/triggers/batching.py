@@ -18,7 +18,6 @@ by its window is a missed meeting.
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 import json
-from typing import Any
 from uuid import uuid4
 
 from redis.exceptions import RedisError
@@ -164,9 +163,9 @@ async def buffer_batch_event(
 async def buffer_trigger_event(
     workflow_id: str,
     user_id: str,
-    data: dict[str, Any],
+    data: Mapping[str, object],
     window_seconds: int,
-    context: dict[str, Any],
+    context: Mapping[str, object],
 ) -> bool:
     """Add one event to the workflow's batch; the workflow itself is the drain run."""
     key = TRIGGER_BATCH_KEY.format(workflow_id=workflow_id)
@@ -183,7 +182,7 @@ async def buffer_trigger_event(
     )
 
 
-async def drain_trigger_batch(batch_key: str) -> list[dict[str, Any]] | None:
+async def drain_trigger_batch(batch_key: str) -> list[dict[str, object]] | None:
     """Take every buffered event for this batch, leaving the key empty.
 
     Read-and-delete in one transaction so events arriving mid-drain open the
@@ -200,7 +199,7 @@ async def drain_trigger_batch(batch_key: str) -> list[dict[str, Any]] | None:
         pipe.delete(batch_key)
         raw_events, _ = await pipe.execute()
 
-    events: list[dict[str, Any]] = []
+    events: list[dict[str, object]] = []
     for raw in raw_events:
         try:
             events.append(json.loads(raw))
@@ -251,7 +250,7 @@ async def schedule_drain_if_refilled(
 
 
 async def reschedule_if_refilled(
-    workflow_id: str, batch_key: str, window_seconds: int, context: dict[str, Any]
+    workflow_id: str, batch_key: str, window_seconds: int, context: Mapping[str, object]
 ) -> bool:
     """Schedule the workflow's follow-up run under a fresh id; this run still holds its own."""
     return await schedule_drain_if_refilled(

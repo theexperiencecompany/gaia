@@ -227,7 +227,6 @@ apps/api/app/services/storage/user_todos_vfs.py	TB001
 apps/api/app/services/storage/user_todos_vfs.py	TB002
 apps/api/app/services/support_service.py	TB002
 apps/api/app/services/tools/tools_service.py	TB002
-apps/api/app/services/triggers/batching.py	TB001
 apps/api/app/services/triggers/condition_matching.py	TB001
 apps/api/app/services/triggers/handlers/asana.py	TB001
 apps/api/app/services/triggers/handlers/calendar.py	TB001
