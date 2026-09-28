@@ -27,13 +27,13 @@ def interpret_comms_output(text: str) -> CommsDirective:
     """Classify comms' final narration text as a reply, a silence, or a reaction."""
     match = _DIRECTIVE_RE.match(text.strip())
     if match:
-        keyword, payload = match.group(1).upper(), match.group(2).strip()
+        # Comms ends every reply with the bubble separator; it is never payload.
+        keyword = match.group(1).upper()
+        payload = match.group(2).replace(NEW_MESSAGE_BREAKER, "").strip()
         if keyword == SILENCE_KEYWORD:
             return CommsDirective(CommsDirectiveKind.SILENCE, payload)
-        # A REACT with no emoji is meaningless — fall back to REPLY. Strip the
-        # bubble-separator token first, so a break-only payload still falls
+        # A REACT with no emoji is meaningless: a break-only payload falls
         # through to REPLY instead of rendering an empty reaction.
-        payload = payload.replace(NEW_MESSAGE_BREAKER, "").strip()
         if payload:
             return CommsDirective(CommsDirectiveKind.REACT, payload)
     return CommsDirective(CommsDirectiveKind.REPLY, text)

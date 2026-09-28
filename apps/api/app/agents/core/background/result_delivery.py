@@ -29,11 +29,17 @@ from app.agents.core.background.comms_narrator import (
     record_platform_delivery,
 )
 from app.agents.core.background.session import ExecutorRun
+from app.agents.core.background.todo_run_delivery import deliver_todo_run_result
 from app.agents.core.background.workflow_platform_delivery import (
     deliver_result_to_platforms,
 )
 from app.agents.core.comms_directive import interpret_comms_output
 from app.agents.core.nodes.follow_up_actions_node import generate_follow_up_actions
+from app.agents.prompts.comms_prompts import (
+    INTERACTIVE_DELIVERY_NOTE,
+    PLATFORM_DELIVERY_NOTE,
+    SILENCE_NOTE,
+)
 from app.constants.comms import CommsDirectiveKind
 from app.constants.executor import (
     EXECUTOR_NARRATION_FAILED_ERROR_MESSAGE,
@@ -106,12 +112,15 @@ async def deliver_result(
 ) -> tuple[str | None, str | None]:
     """Narrate a finished executor run through comms, persist it, and deliver it.
 
-    Comms is invoked silently (no SSE); its text is the user-visible message.
-    Returns (narrated_text, message_id); (None, None) on failure; a REACT gives
-    (None, message_id). The message saves, then routes over EXACTLY ONE transport
+    Returns (narrated_text, message_id); (None, None) on failure or for a tracked
+    todo's own run, which has no conversation and goes to todo delivery. A REACT
+    gives (None, message_id). The message routes over EXACTLY ONE transport
     chosen by the conversation's source (workflow notification, bot API, or WS).
     """
     try:
+        if run.todo_run is not None:
+            await deliver_todo_run_result(run, run.todo_run, result_text, result_type)
+            return None, None
         return await _narrate_and_deliver(run, result_text, result_type, tool_data, returned_note)
     except Exception as e:  # delivery is best-effort, never propagates
         log.error(f"{LogTag.AGENT} Background notification delivery failed", error=str(e))
@@ -494,6 +503,18 @@ async def _broadcast_and_defer_follow_ups(
         )
 
 
+def _delivery_preamble(run: ExecutorRun, returned_note: str) -> str:
+    """Pick the delivery instructions comms writes this run's reply under."""
+    if run.workflow_id:
+        # Text-only platform delivery: comms must restate everything. The
+        # card-suppression note is deliberately dropped — it would tell comms
+        # NOT to list data that has no card to fall back on.
+        return PLATFORM_DELIVERY_NOTE
+    # Interactive chat: "already shown as a card" first, so comms doesn't
+    # re-narrate data the frontend rendered, then the bubble-split instruction.
+    return f"{returned_note}{INTERACTIVE_DELIVERY_NOTE}{SILENCE_NOTE}"
+
+
 async def _narrate_result(
     run: ExecutorRun,
     result_text: str,
@@ -511,8 +532,7 @@ async def _narrate_result(
         result_type,
         run.conversation_id,
         run.user,
-        returned_note=returned_note,
-        workflow_id=run.workflow_id,
+        preamble=_delivery_preamble(run, returned_note),
     )
     # Never fall back to result_text: it is the executor's internal monologue,
     # and on the error path a raw exception string (executor_runner `str(e)`).

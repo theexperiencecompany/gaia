@@ -592,6 +592,52 @@ class TestReplaceNoteFields:
         assert updated is not None and updated.canvas_content == "v2"
 
 
+class TestUpdateIfScheduledAt:
+    """A finished run moves the schedule on only if nothing rescheduled the todo while it ran."""
+
+    async def test_moves_the_schedule_when_it_is_unchanged(self, repo, make_doc):
+        due = datetime(2026, 9, 27, 9, 0, tzinfo=UTC)
+        created = await repo.create(make_doc(user_id="u1", scheduled_at=due))
+        stored = await repo.get(created.id, user_id="u1")
+        assert stored is not None
+
+        updated = await repo.update_if_scheduled_at(
+            created.id,
+            "u1",
+            expected=stored.scheduled_at,
+            update=TodoUpdate(scheduled_at=due + timedelta(days=1)),
+        )
+
+        assert updated is not None and updated.scheduled_at == due + timedelta(days=1)
+        # Read back through the user's cache scope, which the earlier get populated.
+        reread = await repo.get(created.id, user_id="u1")
+        assert reread is not None and reread.scheduled_at == due + timedelta(days=1)
+
+    async def test_a_schedule_set_meanwhile_is_kept(self, repo, make_doc):
+        due = datetime(2026, 9, 27, 9, 0, tzinfo=UTC)
+        created = await repo.create(make_doc(user_id="u1", scheduled_at=due))
+        follow_up = due + timedelta(hours=3)
+        await repo.update(created.id, user_id="u1", update=TodoUpdate(scheduled_at=follow_up))
+
+        assert (
+            await repo.update_if_scheduled_at(
+                created.id, "u1", expected=due, update=TodoUpdate(scheduled_at=None)
+            )
+            is None
+        )
+        kept = await repo.get(created.id, user_id="u1")
+        assert kept is not None and kept.scheduled_at == follow_up
+
+    async def test_an_unscheduled_todo_matches_an_expected_none(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1"))
+
+        updated = await repo.update_if_scheduled_at(
+            created.id, "u1", expected=None, update=TodoUpdate(gaia_retry_count=0)
+        )
+
+        assert updated is not None
+
+
 class TestCrossDomainDeletes:
     """Finders/deletes used by the onboarding + dev-reset cross-domain callers."""
 

@@ -603,6 +603,14 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             extra["updated_at"] = expected_updated_at
         return await self._apply_update(todo_id, user_id, extra, update)
 
+    async def update_if_scheduled_at(
+        self, todo_id: str, user_id: str, *, expected: datetime | None, update: TodoUpdate
+    ) -> TodoDocument | None:
+        """Apply update only while scheduled_at is still expected (compare-and-set); None otherwise."""
+        return await self._apply_update(
+            todo_id, user_id, {"user_id": user_id, "scheduled_at": expected}, update
+        )
+
     async def append_text_field(
         self,
         todo_id: str,

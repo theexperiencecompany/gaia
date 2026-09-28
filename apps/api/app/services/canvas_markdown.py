@@ -8,6 +8,8 @@ activity inside the canvas) into the canvas.md / activity.md pair.
 from datetime import UTC, datetime
 import re
 
+from app.constants.todos import CANVAS_PROMPT_MAX_CHARS
+
 LEGACY_ACTIVITY_SECTIONS = ("Activity Log", "Timeline")
 _LEARNINGS_SECTION = "Learnings"
 # Activity entries the old append mode dumped under Learnings: "### 2026-08-20" blocks.
@@ -15,6 +17,19 @@ _DATED_BLOCK_RE = re.compile(r"(?:^|\n)(### \d{4}-\d{2}-\d{2}.*?)(?=\n### |\Z)",
 # A Timeline line: "- <iso timestamp> <text>" — sortable by the timestamp prefix.
 _TIMELINE_LINE_RE = re.compile(r"^- (\d{4}-\d{2}-\d{2}T\S+) ")
 _DATED_BLOCK_HEADER_RE = re.compile(r"### (\d{4}-\d{2}-\d{2})")
+
+
+def bounded_canvas(canvas: str) -> str:
+    """Trim an oversized canvas to its head and tail, within CANVAS_PROMPT_MAX_CHARS.
+
+    Key Details/Current State sit at the top and the latest notes at the bottom,
+    so the middle is dropped behind a marker the agent won't read as a gap.
+    """
+    if len(canvas) <= CANVAS_PROMPT_MAX_CHARS:
+        return canvas
+    half = CANVAS_PROMPT_MAX_CHARS // 2
+    trimmed = len(canvas) - 2 * half
+    return f"{canvas[:half]}\n[middle of canvas trimmed: {trimmed} characters]\n{canvas[-half:]}"
 
 
 def _section_span(text: str, heading: str) -> tuple[int, int, int] | None:

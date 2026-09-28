@@ -26,6 +26,12 @@ REACT_DIRECTIVE_CASES: list[tuple[str, str | None]] = [
 
 
 class TestInterpretCommsOutput:
+    def test_a_silence_reason_never_carries_the_bubble_separator(self) -> None:
+        """The reason lands in activity.md and the logs; comms ends every reply with the separator."""
+        d = interpret_comms_output("SILENCE: nothing new<NEW_MESSAGE_BREAK>")
+        assert d.kind == CommsDirectiveKind.SILENCE
+        assert d.payload == "nothing new"
+
     def test_silence_directive(self) -> None:
         d = interpret_comms_output("SILENCE: background calendar refresh, nothing new")
         assert d.kind == CommsDirectiveKind.SILENCE

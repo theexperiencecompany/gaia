@@ -311,7 +311,10 @@ class TrackedTodoService:
     async def schedule_execution(todo_id: str, scheduled_at: datetime) -> bool:
         """Enqueue an ARQ deferred job to execute this tracked todo at scheduled_at.
 
-        Returns True if job was enqueued successfully, False otherwise.
+        The todo's stored scheduled_at must already name this time: a fire that
+        finds it moved is dropped as stale, which is also how a reschedule
+        retires the job it replaces (ARQ cannot cancel a deferred job).
+        Returns True if the job was enqueued.
         """
         try:
             pool = await RedisPoolManager.get_pool()
@@ -325,16 +328,6 @@ class TrackedTodoService:
         except Exception as e:
             log.warning("tracked_todo.schedule_failed", todo_id=todo_id, error=str(e))
             return False
-
-    @staticmethod
-    async def reschedule_execution(todo_id: str, new_scheduled_at: datetime) -> bool:
-        """Cancel any existing ARQ job for this todo and enqueue a new one.
-
-        Note: ARQ does not support cancelling deferred jobs by argument.
-        We enqueue a new job; the task itself uses a Redis lock to prevent
-        double-execution. This is safe — at most one execution fires per lock window.
-        """
-        return await TrackedTodoService.schedule_execution(todo_id, new_scheduled_at)
 
     @staticmethod
     async def archive_tracked_todo(todo_id: str, user_id: str, reason: str) -> bool:

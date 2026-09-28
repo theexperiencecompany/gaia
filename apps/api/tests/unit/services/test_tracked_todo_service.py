@@ -414,14 +414,6 @@ class TestScheduleExecution:
 
         assert await TrackedTodoService.schedule_execution(TODO_ID, datetime.now(UTC)) is False
 
-    async def test_reschedule_reuses_schedule(self, mock_repo, mock_deps):
-        pool = AsyncMock()
-        mock_deps.pool.return_value = pool
-        when = datetime.now(UTC) + timedelta(hours=2)
-
-        assert await TrackedTodoService.reschedule_execution(TODO_ID, when) is True
-        pool.enqueue_job.assert_awaited_once()
-
 
 class TestArchiveTrackedTodo:
     async def test_logs_reason_and_completes(self, mock_repo, mock_deps):

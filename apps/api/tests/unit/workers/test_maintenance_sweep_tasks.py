@@ -18,6 +18,7 @@ import pytest
 
 from app.agents.core.agent import AgentRunOptions
 from app.constants.chat import MAX_MESSAGE_LENGTH
+from app.constants.todos import CANVAS_PROMPT_MAX_CHARS
 from app.models.agent_models import SilentRunResult
 from app.models.message_models import MessageRequestWithHistory
 from app.models.notification.notification_models import (
@@ -97,6 +98,7 @@ def _sweep_patches(**overrides) -> tuple[MagicMock, dict[str, AsyncMock], list]:
         "health": AsyncMock(return_value=defaults["health"]),
         "archive": AsyncMock(),
         "schedule": AsyncMock(),
+        "store_schedule": AsyncMock(),
         "system_log": AsyncMock(),
         "add_labels": AsyncMock(),
         "notify": AsyncMock(),
@@ -115,6 +117,7 @@ def _sweep_patches(**overrides) -> tuple[MagicMock, dict[str, AsyncMock], list]:
         patch(f"{MODULE}._call_health_check_agent", mocks["health"]),
         patch(f"{MODULE}.tracked_todo_service.archive_tracked_todo", mocks["archive"]),
         patch(f"{MODULE}.tracked_todo_service.schedule_execution", mocks["schedule"]),
+        patch(f"{MODULE}.todo_repository.update", mocks["store_schedule"]),
         patch(f"{MODULE}.tracked_todo_service.system_log", mocks["system_log"]),
         patch(f"{MODULE}.todo_repository.add_labels", mocks["add_labels"]),
         patch(f"{MODULE}.notification_service.create_notification", mocks["notify"]),
@@ -355,6 +358,7 @@ class TestHealthCheckDormant:
     async def test_execute_decision_re_queues_with_jitter(self):
         pool = _pool()
         schedule = AsyncMock()
+        store = AsyncMock()
         syslog = AsyncMock()
         with (
             patch(f"{MODULE}._read_canvas", AsyncMock(return_value="")),
@@ -363,6 +367,7 @@ class TestHealthCheckDormant:
                 AsyncMock(return_value="EXECUTE: send the follow-up email"),
             ),
             patch(f"{MODULE}.tracked_todo_service.schedule_execution", schedule),
+            patch(f"{MODULE}.todo_repository.update", store) as store,
             patch(f"{MODULE}.tracked_todo_service.system_log", syslog),
         ):
             before = datetime.now(UTC)
@@ -373,6 +378,13 @@ class TestHealthCheckDormant:
         run_at = schedule.await_args.args[1]
         assert before <= run_at <= after + timedelta(seconds=120)
         assert schedule.await_args.args[0] == "todo-1"
+        # Stored on the todo too: a run drops a fire its scheduled_at doesn't
+        # name, and only a stored time lets the safety net recover a lost job.
+        assert store.await_args.args == ("todo-1",)
+        assert store.await_args.kwargs["user_id"] == "user-1"
+        assert store.await_args.kwargs["update"].model_dump(exclude_unset=True) == {
+            "scheduled_at": run_at
+        }
         syslog.assert_awaited_once()
         assert syslog.await_args.args[2] == "maintenance_requeued"
         assert "send the follow-up email" in syslog.await_args.args[3]
@@ -930,9 +942,7 @@ class TestCanvasBounding:
         assert kept_tail.endswith(tail)
         assert len(kept_head) + len(kept_tail) + int(marker.group(1)) == len(canvas)
         # The budget is split evenly, and all of it is used.
-        from app.workers.tasks.maintenance_sweep_tasks import HEALTH_CHECK_CANVAS_MAX_CHARS
-
-        assert len(kept_head) == len(kept_tail) == HEALTH_CHECK_CANVAS_MAX_CHARS // 2
+        assert len(kept_head) == len(kept_tail) == CANVAS_PROMPT_MAX_CHARS // 2
 
     async def test_a_canvas_under_the_bound_reaches_the_agent_untouched(self) -> None:
         canvas = "y" * 1_000
@@ -1143,6 +1153,7 @@ class TestDormantTierDetails:
                 AsyncMock(return_value="EXECUTE: send the follow-up email"),
             ),
             patch(f"{MODULE}.tracked_todo_service.schedule_execution", AsyncMock()) as schedule,
+            patch(f"{MODULE}.todo_repository.update", AsyncMock()),
             patch(f"{MODULE}.tracked_todo_service.system_log", AsyncMock()),
             patch(f"{MODULE}.random.randint", return_value=42) as randint,
         ):
@@ -1182,9 +1193,7 @@ class TestCanvasBoundIsInclusive:
         # The bound is the largest canvas that still fits, not the first one that
         # doesn't: trimming at exactly the cap costs a character of real content
         # and stamps a "0 characters trimmed" marker on an untouched canvas.
-        from app.workers.tasks.maintenance_sweep_tasks import HEALTH_CHECK_CANVAS_MAX_CHARS
-
-        canvas = "z" * HEALTH_CHECK_CANVAS_MAX_CHARS
+        canvas = "z" * CANVAS_PROMPT_MAX_CHARS
         health = AsyncMock(return_value="NEEDS_ATTENTION: still stuck")
         with (
             patch(f"{MODULE}._read_canvas", AsyncMock(return_value=canvas)),
