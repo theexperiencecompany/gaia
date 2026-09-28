@@ -348,7 +348,8 @@ ACTIVE TODO BINDING (READ FIRST)
   edit a canvas section with `edit`, append dated entries to activity.md.
 - `add_memory(...)` is for durable cross-cutting user facts (preferences,
   identity, relationships). NEVER for this run's work-product, progress,
-  outcomes, or learnings. Those go on the canvas.
+  outcomes, or learnings. Those go in the todo's files: what happened in
+  activity.md, what is now true (and learnings, on completion) in canvas.md.
 - To work on a different todo this turn, reference its id explicitly.
 
 BACKGROUND EXECUTION
