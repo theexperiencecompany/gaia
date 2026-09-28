@@ -17,9 +17,14 @@ JuiceFS / FUSE mount is required, so tracked todos work in every dev mode.
 
 from datetime import UTC, datetime
 
-from app.constants.todos import GAIA_TRACKED_LABEL, TodoActivityEvent
+from app.constants.todos import (
+    EXECUTE_TRACKED_TODO_TASK,
+    GAIA_TRACKED_LABEL,
+    TodoActivityEvent,
+)
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import Priority, TodoDocument, TodoModel, TodoResponse, TodoUpdate
+from app.models.trigger_subscription_models import TriggerOrigin
 from app.services.canvas_markdown import normalize_canvas
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from app.services.storage._vfs_common import folder_name
@@ -32,6 +37,7 @@ from app.services.todo_canvas_storage import (
 from app.services.todos.todo_service import TodoService
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.utils.canvas_vector_utils import mark_canvas_completed, store_canvas_embedding
+from app.utils.occurrence import occurrence_stamp
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log
@@ -287,26 +293,33 @@ class TrackedTodoService:
         )
 
     @staticmethod
-    async def schedule_execution(todo_id: str, scheduled_at: datetime) -> bool:
-        """Enqueue an ARQ deferred job to execute this tracked todo at scheduled_at.
+    async def schedule_execution(
+        todo_id: str,
+        scheduled_at: datetime,
+        *,
+        origin: TriggerOrigin | None = None,
+        defer_until: datetime | None = None,
+    ) -> bool:
+        """Queue the run armed for scheduled_at; False when that occurrence is already queued.
 
-        The todo's stored scheduled_at must already name this time: a fire that
-        finds it moved is dropped as stale, which is also how a reschedule
-        retires the job it replaces (ARQ cannot cancel a deferred job).
-        Returns True if the job was enqueued.
+        Store scheduled_at on the todo first: the job id dedupes a repeat enqueue,
+        and a fire whose todo has moved off its stamp is dropped as stale, which is
+        how a reschedule retires the job ARQ cannot cancel. defer_until only delays it.
         """
-        try:
-            pool = await RedisPoolManager.get_pool()
-            await enqueue_worker_job(
-                pool,
-                "execute_tracked_todo",
-                todo_id,
-                _defer_until=scheduled_at,
-            )
-            return True
-        except Exception as e:
-            log.warning("tracked_todo.schedule_failed", todo_id=todo_id, error=str(e))
-            return False
+        # Mongo stores a naive datetime as UTC, so the stamp must name that instant.
+        armed_for = scheduled_at if scheduled_at.tzinfo else scheduled_at.replace(tzinfo=UTC)
+        stamp = occurrence_stamp(armed_for)
+        pool = await RedisPoolManager.get_pool()
+        job = await enqueue_worker_job(
+            pool,
+            EXECUTE_TRACKED_TODO_TASK,
+            todo_id,
+            origin,
+            stamp,
+            _job_id=f"{EXECUTE_TRACKED_TODO_TASK}:{todo_id}:{stamp}",
+            _defer_until=defer_until or armed_for,
+        )
+        return job is not None
 
     @staticmethod
     async def archive_tracked_todo(todo_id: str, user_id: str, reason: str) -> bool:

@@ -15,8 +15,8 @@ scheduled_at now always names the next planned execution, or nothing.
 Recurrence/timezone resolution itself is covered by test_tracked_todo_recurrence.py.
 """
 
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import json
@@ -24,6 +24,10 @@ import re
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
+from arq.connections import ArqRedis
+from arq.constants import default_queue_name, job_key_prefix
+from arq.jobs import JobDef
+import fakeredis.aioredis
 import pytest
 
 from app.agents.core.background.session import TodoRun
@@ -48,6 +52,10 @@ from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import TriggerOrigin
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
+from app.services.tracked_todo_service import tracked_todo_service
+from app.utils.occurrence import occurrence_stamp
+from app.utils.redis_utils import RedisPoolManager
+from app.workers.task_envelope import arq_task
 from app.workers.tasks.tracked_todo_tasks import (
     LOCK_DEFER_BACKOFF,
     LOCK_TTL_SECONDS,
@@ -126,6 +134,16 @@ def _updates(repo: MagicMock) -> list[dict]:
     return [c.kwargs["update"].model_dump(exclude_unset=True) for c in repo.update.call_args_list]
 
 
+def _serving(pool: MagicMock) -> AbstractContextManager[AsyncMock]:
+    """Hand pool to every RedisPoolManager caller, the scheduling service included."""
+    return patch.object(RedisPoolManager, "get_pool", AsyncMock(return_value=pool))
+
+
+def _scheduled(at: datetime, origin: TriggerOrigin | None = None) -> tuple[object, ...]:
+    """Build the job args of a run armed for at, as the scheduling service enqueues them."""
+    return ("execute_tracked_todo", "todo-1", origin, occurrence_stamp(at))
+
+
 # ---------------------------------------------------------------------------
 # execute_tracked_todo — the Redis lock
 # ---------------------------------------------------------------------------
@@ -135,22 +153,22 @@ class TestExecuteTrackedTodoLock:
     async def test_acquires_lock_with_nx_and_ttl_then_releases_it(self):
         pool = _pool()
         inner = AsyncMock(return_value="success:todo-1")
+        stamp = 1_790_000_000
         with (
             patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
             patch(f"{MODULE}._execute_todo_with_retry", inner),
             patch(f"{MODULE}.log") as log_mock,
         ):
-            result = await execute_tracked_todo({}, "todo-1")
+            result = await execute_tracked_todo({}, "todo-1", None, stamp)
 
         assert result == "success:todo-1"
         pool.set.assert_awaited_once_with("gaia_todo_exec:todo-1", "1", nx=True, ex=1800)
         pool.delete.assert_awaited_once_with("gaia_todo_exec:todo-1")
-        # The retry helper gets the real todo id and the acquired pool, positionally —
-        # a None slipped into either would run the wrong todo or lose the lock handle.
-        assert inner.await_args.args[0] == "todo-1"
-        assert inner.await_args.args[1] is pool
-        # The wide event is stamped with this todo; a scheduled run has no origin.
-        log_mock.set.assert_any_call(todo_id="todo-1", trigger_origin=None)
+        # The retry helper gets the real todo id and the occurrence the job was
+        # armed for, decoded; a dropped stamp would let a stale job run ungated.
+        assert inner.await_args.args == ("todo-1", None, datetime.fromtimestamp(stamp, UTC))
+        # The wide event is stamped with this todo and occurrence; a scheduled run has no origin.
+        log_mock.set.assert_any_call(todo_id="todo-1", trigger_origin=None, scheduled_for=stamp)
 
     async def test_lock_already_held_skips_and_does_not_release_the_other_holders_lock(self):
         """Deleting a lock this run never acquired would break mutual exclusion."""
@@ -310,10 +328,12 @@ class TestTriggeredExecutionLock:
         ):
             await execute_tracked_todo({}, "todo-1", origin)
 
-        assert inner.await_args.args[2] is origin
+        assert inner.await_args.args[1] is origin
         # A triggered run stamps the wide event with the trigger's name, not None,
         # so the run is attributable to the watch that woke it.
-        log_mock.set.assert_any_call(todo_id="todo-1", trigger_origin="gmail_new_message")
+        log_mock.set.assert_any_call(
+            todo_id="todo-1", trigger_origin="gmail_new_message", scheduled_for=None
+        )
 
 
 class TestTriggeredExecutionPrompt:
@@ -476,6 +496,7 @@ class TestTriggeredExecutionGating:
         repo = MagicMock()
         repo.get_by_id = AsyncMock(return_value=_doc())
         repo.update = AsyncMock()
+        repo.update_if_scheduled_at = AsyncMock(return_value=_doc())
         via_agent = AsyncMock()
         budget = AsyncMock()
         with (
@@ -486,7 +507,7 @@ class TestTriggeredExecutionGating:
                 f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
             ),
         ):
-            await _execute_todo_with_retry("todo-1", _pool(), origin)
+            await _execute_todo_with_retry("todo-1", origin)
         return budget, via_agent
 
     async def test_a_triggered_run_takes_the_cost_wall_first(self):
@@ -530,10 +551,11 @@ class TestTriggeredExecutionGating:
             patch(
                 f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
             ),
+            _serving(pool),
         ):
-            await _execute_todo_with_retry("todo-1", pool, origin)
+            await _execute_todo_with_retry("todo-1", origin)
 
-        assert pool.enqueue_job.await_args.args == ("execute_tracked_todo", "todo-1", origin)
+        assert pool.enqueue_job.await_args.args[:3] == ("execute_tracked_todo", "todo-1", origin)
 
 
 # ---------------------------------------------------------------------------
@@ -546,8 +568,7 @@ class TestExecuteTodoWithRetryEarlyExits:
     def _route_enqueue(self, route_enqueue_via_pool):
         return
 
-    async def _run(self, doc, *, pool=None):
-        pool = pool or _pool()
+    async def _run(self, doc):
         repo = MagicMock()
         repo.get_by_id = AsyncMock(return_value=doc)
         repo.update = AsyncMock()
@@ -559,8 +580,9 @@ class TestExecuteTodoWithRetryEarlyExits:
             patch(
                 f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
             ),
+            _serving(_pool()),
         ):
-            result = await _execute_todo_with_retry("todo-1", pool)
+            result = await _execute_todo_with_retry("todo-1")
         return result, repo, via_agent
 
     async def test_missing_document(self):
@@ -645,8 +667,9 @@ class TestExecuteTodoWithRetrySuccess:
                 AsyncMock(side_effect=_user_context(timezone=tz)),
             ),
             patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            _serving(pool),
         ):
-            result = await _execute_todo_with_retry("todo-1", pool, origin)
+            result = await _execute_todo_with_retry("todo-1", origin)
         return result, repo, pool
 
     async def test_one_shot_success_resets_retries_and_clears_scheduled_at(self):
@@ -676,8 +699,11 @@ class TestExecuteTodoWithRetrySuccess:
         assert next_run > datetime.now(UTC)
         # Anchored daily keeps the original wall-clock time-of-day.
         assert (next_run - anchor) % timedelta(days=1) == timedelta(0)
+        # Armed for the scheduled_at it just stored, or the next run fires as stale.
         pool.enqueue_job.assert_awaited_once_with(
-            "execute_tracked_todo", "todo-1", _defer_until=next_run
+            *_scheduled(next_run),
+            _job_id=f"execute_tracked_todo:todo-1:{occurrence_stamp(next_run)}",
+            _defer_until=next_run,
         )
 
     async def test_the_next_run_of_a_recurring_todo_is_on_its_timeline(self, activity):
@@ -739,6 +765,10 @@ class TestExecuteTodoWithRetrySuccess:
 
 
 class TestExecuteTodoWithRetryFailure:
+    @pytest.fixture(autouse=True)
+    def _route_enqueue(self, route_enqueue_via_pool):
+        return
+
     async def _run(self, doc, origin=None):
         pool = _pool()
         repo = MagicMock()
@@ -754,8 +784,9 @@ class TestExecuteTodoWithRetryFailure:
             ),
             patch(f"{MODULE}._mark_todo_failed", mark_failed),
             patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            _serving(pool),
         ):
-            result = await _execute_todo_with_retry("todo-1", pool, origin)
+            result = await _execute_todo_with_retry("todo-1", origin)
         return result, repo, pool, mark_failed
 
     @pytest.mark.parametrize(
@@ -772,10 +803,9 @@ class TestExecuteTodoWithRetryFailure:
 
         next_attempt = pool.enqueue_job.await_args.kwargs["_defer_until"]
         assert before + expected_backoff <= next_attempt <= after + expected_backoff
-        # The origin rides along on every retry: without it a failed trigger run
-        # silently comes back as an ordinary scheduled run. None here is a
-        # scheduled run retrying, which is the case this test drives.
-        assert pool.enqueue_job.await_args.args == ("execute_tracked_todo", "todo-1", None)
+        # A scheduled run's retry (origin None), armed for its backoff slot so the
+        # safety net's job for that slot dedupes into it.
+        assert pool.enqueue_job.await_args.args == _scheduled(next_attempt)
 
     async def test_retry_parks_scheduled_at_on_the_backoff_target(self):
         """Leaving scheduled_at in the past lets the 30-minute safety net collapse the 1h/4h backoff to 30 minutes."""
@@ -795,7 +825,8 @@ class TestExecuteTodoWithRetryFailure:
         repo.update.assert_awaited_once_with(
             "todo-1", user_id="user-1", update=TodoUpdate(gaia_retry_count=1)
         )
-        assert pool.enqueue_job.await_args.args == ("execute_tracked_todo", "todo-1", origin)
+        retry_at = pool.enqueue_job.await_args.kwargs["_defer_until"]
+        assert pool.enqueue_job.await_args.args == _scheduled(retry_at, origin)
 
     async def test_a_scheduled_retry_is_on_the_timeline(self, activity):
         _result, repo, _pool, _mf = await self._run(_doc(gaia_retry_count=0))
@@ -856,7 +887,7 @@ class TestATrackedTodoAlwaysRunsTheAgent:
                 f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
             ),
         ):
-            await _execute_todo_with_retry("todo-1", _pool())
+            await _execute_todo_with_retry("todo-1")
 
         queue.assert_not_awaited()
         via_agent.assert_awaited_once()
@@ -1084,13 +1115,14 @@ class TestStaleScheduledFire:
 
     Regression for 2026-09-26: the executor scheduled the wrong todo, "undid" it
     17s later, and the first job still woke the todo at 10:00 and pinged the user.
+    Fires without armed_for are jobs queued before stamping, gated on being due.
     """
 
     @pytest.fixture(autouse=True)
     def _route_enqueue(self, route_enqueue_via_pool):
         return
 
-    async def _fire(self, doc, origin=None):
+    async def _fire(self, doc, origin=None, armed_for=None):
         repo = MagicMock()
         repo.get_by_id = AsyncMock(return_value=doc)
         repo.update = AsyncMock()
@@ -1103,14 +1135,30 @@ class TestStaleScheduledFire:
             patch(
                 f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
             ),
+            _serving(_pool()),
         ):
-            result = await _execute_todo_with_retry("todo-1", _pool(), origin)
+            result = await _execute_todo_with_retry("todo-1", origin, armed_for)
         return result, run, repo
+
+    @pytest.mark.parametrize(
+        ("stored_offset", "runs"),
+        [(timedelta(milliseconds=999), True), (timedelta(seconds=1), False)],
+    )
+    async def test_a_stamped_fire_matches_its_occurrence_to_the_second(self, stored_offset, runs):
+        """The stamp travels as whole seconds while Mongo keeps milliseconds."""
+        armed_for = datetime(2026, 9, 27, 10, 0, 0, tzinfo=UTC)
+
+        result, run, _repo = await self._fire(
+            _doc(scheduled_at=armed_for + stored_offset), armed_for=armed_for
+        )
+
+        assert result == ("success:todo-1" if runs else "stale_occurrence:todo-1")
+        assert run.await_count == int(runs)
 
     async def test_a_fire_whose_schedule_was_cleared_does_not_run(self, activity):
         result, run, repo = await self._fire(_doc(scheduled_at=None))
 
-        assert result == "stale:todo-1"
+        assert result == "stale_occurrence:todo-1"
         run.assert_not_awaited()
         repo.update.assert_not_awaited()
         assert _recorded(activity) == [
@@ -1125,7 +1173,7 @@ class TestStaleScheduledFire:
 
         result, run, _repo = await self._fire(_doc(scheduled_at=later))
 
-        assert result == "stale:todo-1"
+        assert result == "stale_occurrence:todo-1"
         run.assert_not_awaited()
 
     async def test_a_fire_at_its_scheduled_time_runs(self):
@@ -1145,11 +1193,15 @@ class TestStaleScheduledFire:
 
     async def test_a_stale_fire_is_logged_with_the_schedule_it_found(self):
         later = datetime.now(UTC) + timedelta(days=1)
+        armed_for = datetime.now(UTC).replace(microsecond=0)
         with patch(f"{MODULE}.log") as log_mock:
-            await self._fire(_doc(scheduled_at=later))
+            await self._fire(_doc(scheduled_at=later), armed_for=armed_for)
 
         log_mock.warning.assert_called_once_with(
-            "tracked_todo.stale_fire_skipped", todo_id="todo-1", scheduled_at=later.isoformat()
+            "tracked_todo.stale_fire_skipped",
+            todo_id="todo-1",
+            scheduled_at=later.isoformat(),
+            armed_for=armed_for.isoformat(),
         )
 
     async def test_a_fire_landing_just_before_its_time_still_runs(self):
@@ -1168,6 +1220,211 @@ class TestStaleScheduledFire:
 
         assert result == "success:todo-1"
         run.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# One run per scheduled occurrence, through a real ARQ queue
+# ---------------------------------------------------------------------------
+
+_LOCK_KEY = "gaia_todo_exec:todo-1"
+_TRIGGER = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
+
+
+class _TodoRow:
+    """One todo's row: reads return it, update applies the $set, the due query filters on it."""
+
+    def __init__(self, doc: TodoDocument) -> None:
+        self.doc = doc
+        self.get_by_id = AsyncMock(side_effect=lambda _todo_id: self.doc)
+        self.update = AsyncMock(side_effect=self._apply)
+        self.update_if_scheduled_at = AsyncMock(side_effect=self._apply_if_scheduled_at)
+        self.add_labels = AsyncMock()
+        self.find_due_tracked_all_users = AsyncMock(side_effect=self._due)
+
+    async def _apply(self, _todo_id: str, *, user_id: str, update: TodoUpdate) -> TodoDocument:
+        assert user_id == self.doc.user_id
+        self.doc = self.doc.model_copy(update=update.model_dump(exclude_unset=True))
+        return self.doc
+
+    async def _apply_if_scheduled_at(
+        self, todo_id: str, user_id: str, *, expected: datetime | None, update: TodoUpdate
+    ) -> TodoDocument | None:
+        if self.doc.scheduled_at != expected:
+            return None
+        return await self._apply(todo_id, user_id=user_id, update=update)
+
+    async def _due(self, *, now: datetime, **_: object) -> list[TodoDocument]:
+        due = self.doc.scheduled_at is not None and self.doc.scheduled_at <= now
+        return [self.doc] if due else []
+
+    def move(self, scheduled_at: datetime) -> None:
+        self.doc = self.doc.model_copy(update={"scheduled_at": scheduled_at})
+
+
+@pytest.fixture
+async def queue() -> AsyncIterator[ArqRedis]:
+    """Serve a real ArqRedis on fakeredis, so job-id dedupe and the run lock behave as in production."""
+    server = fakeredis.aioredis.FakeRedis()
+    pool = ArqRedis(pool_or_conn=server.connection_pool)
+    with patch.object(RedisPoolManager, "get_pool", AsyncMock(return_value=pool)):
+        yield pool
+    await server.aclose()
+
+
+async def _queued(queue: ArqRedis) -> list[JobDef]:
+    return sorted(await queue.queued_jobs(), key=lambda job: job.score)
+
+
+async def _fire(queue: ArqRedis, job: JobDef) -> str:
+    """Run one queued job through the worker envelope, then retire it as ARQ does."""
+    result = await arq_task(execute_tracked_todo)({}, *job.args, **job.kwargs)
+    await queue.delete(job_key_prefix + job.job_id)
+    await queue.zrem(default_queue_name, job.job_id)
+    return result
+
+
+class TestOneRunPerOccurrence:
+    """A queued job names the occurrence it was armed for, and only the todo's current one runs.
+
+    ARQ cannot cancel a deferred job, so every reschedule leaves the old one queued,
+    and the safety net, retries and trigger runs each used to add more on top.
+    """
+
+    @contextmanager
+    def _worker(self, row: _TodoRow, run: AsyncMock | None = None) -> Iterator[AsyncMock]:
+        run = run or AsyncMock()
+        with (
+            patch(f"{MODULE}.todo_repository", row),
+            patch(f"{MODULE}._execute_on_executor", run),
+            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            patch(f"{MODULE}._mark_todo_failed", AsyncMock()),
+            patch(
+                f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
+            ),
+        ):
+            yield run
+
+    @pytest.mark.regression
+    async def test_a_job_left_behind_by_a_reschedule_does_not_run(self, queue):
+        armed = datetime.now(UTC)
+        row = _TodoRow(_doc(scheduled_at=armed))
+        await tracked_todo_service.schedule_execution("todo-1", armed)
+        moved = armed + timedelta(seconds=30)
+        row.move(moved)
+        await tracked_todo_service.schedule_execution("todo-1", moved)
+
+        old_job, _moved_job = await _queued(queue)
+        with self._worker(row) as run:
+            result = await _fire(queue, old_job)
+
+        assert result == "stale_occurrence:todo-1"
+        run.assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_moving_a_todo_earlier_never_lets_the_old_job_run_it(self, queue):
+        """The earlier time's own fire was skipped under a trigger run; the old job must not stand in for it."""
+        old = datetime.now(UTC)
+        row = _TodoRow(_doc(scheduled_at=old))
+        await tracked_todo_service.schedule_execution("todo-1", old)
+        earlier = old - timedelta(minutes=10)
+        row.move(earlier)
+        await tracked_todo_service.schedule_execution("todo-1", earlier)
+
+        earlier_job, old_job = await _queued(queue)
+        with self._worker(row) as run:
+            await queue.set(_LOCK_KEY, "1")
+            assert await _fire(queue, earlier_job) == "skipped:todo-1 (lock held)"
+            await queue.delete(_LOCK_KEY)
+            result = await _fire(queue, old_job)
+
+        assert result == "stale_occurrence:todo-1"
+        run.assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_the_safety_net_adds_no_job_for_a_run_already_queued(self, queue):
+        due = datetime.now(UTC) - timedelta(seconds=1)
+        row = _TodoRow(_doc(scheduled_at=due))
+        await tracked_todo_service.schedule_execution("todo-1", due)
+
+        with patch(f"{MODULE}.todo_repository", row):
+            result = await safety_net_check_orphaned_todos({})
+
+        assert result == "re_enqueued:0 skipped:1"
+        assert len(await _queued(queue)) == 1
+
+    async def test_the_safety_net_recovers_a_todo_whose_job_was_lost(self, queue):
+        row = _TodoRow(_doc(scheduled_at=datetime.now(UTC) - timedelta(minutes=45)))
+
+        with self._worker(row) as run:
+            assert await safety_net_check_orphaned_todos({}) == "re_enqueued:1 skipped:0"
+            (job,) = await _queued(queue)
+            result = await _fire(queue, job)
+
+        assert result == "success:todo-1"
+        run.assert_awaited_once()
+
+    @pytest.mark.regression
+    async def test_a_trigger_run_keeps_the_todos_pending_scheduled_run(self, queue):
+        """A watched one-shot due Friday that fired Wednesday still has to run Friday."""
+        friday = datetime.now(UTC) + timedelta(days=2)
+        row = _TodoRow(_doc(scheduled_at=friday))
+        await tracked_todo_service.schedule_execution("todo-1", friday)
+
+        with self._worker(row) as run:
+            assert await arq_task(execute_tracked_todo)({}, "todo-1", _TRIGGER) == "success:todo-1"
+            assert row.doc.scheduled_at == friday
+            (job,) = await _queued(queue)
+            assert await _fire(queue, job) == "success:todo-1"
+
+        assert run.await_count == 2
+
+    @pytest.mark.regression
+    async def test_a_trigger_run_does_not_advance_the_recurrence(self, queue):
+        next_run = datetime.now(UTC) + timedelta(minutes=30)
+        row = _TodoRow(_doc(scheduled_at=next_run, recurrence="every_1h"))
+        await tracked_todo_service.schedule_execution("todo-1", next_run)
+
+        with self._worker(row):
+            await arq_task(execute_tracked_todo)({}, "todo-1", _TRIGGER)
+
+        assert row.doc.scheduled_at == next_run
+        assert len(await _queued(queue)) == 1
+
+    @pytest.mark.regression
+    async def test_an_hourly_todo_stays_one_chain_through_stray_and_triggered_fires(self, queue):
+        start = datetime.now(UTC)
+        row = _TodoRow(_doc(scheduled_at=start, recurrence="every_1h"))
+        await tracked_todo_service.schedule_execution("todo-1", start)
+        await tracked_todo_service.schedule_execution("todo-1", start + timedelta(seconds=20))
+
+        with self._worker(row) as run, patch(f"{MODULE}.datetime", wraps=datetime) as clock:
+            for hour in range(3):
+                clock.now.return_value = start + timedelta(hours=hour)
+                for job in await _queued(queue):
+                    await _fire(queue, job)
+                await arq_task(execute_tracked_todo)({}, "todo-1", _TRIGGER)
+                assert len(await _queued(queue)) == 1
+
+        # One scheduled and one triggered run an hour; the stray job never ran.
+        assert run.await_count == 6
+
+    @pytest.mark.regression
+    async def test_a_retry_is_the_one_job_for_its_backoff_slot(self, queue):
+        due = datetime.now(UTC) - timedelta(seconds=1)
+        row = _TodoRow(_doc(scheduled_at=due))
+        await tracked_todo_service.schedule_execution("todo-1", due)
+        (first,) = await _queued(queue)
+
+        with self._worker(row, AsyncMock(side_effect=[RuntimeError("boom"), None])) as run:
+            assert await _fire(queue, first) == "retry:todo-1 (attempt 1)"
+            with patch(f"{MODULE}.datetime", wraps=datetime) as clock:
+                clock.now.return_value = row.doc.scheduled_at + timedelta(seconds=1)
+                await safety_net_check_orphaned_todos({})
+            (retry,) = await _queued(queue)
+            result = await _fire(queue, retry)
+
+        assert result == "success:todo-1"
+        assert run.await_count == 2
 
 
 # ---------------------------------------------------------------------------
@@ -1405,6 +1662,10 @@ class TestComputeNextRunExtra:
 
 
 class TestSafetyNet:
+    @pytest.fixture(autouse=True)
+    def _route_enqueue(self, route_enqueue_via_pool):
+        return
+
     async def _run(self, candidates, *, locked: set[str] | None = None):
         locked = locked or set()
         pool = _pool()
@@ -1434,13 +1695,20 @@ class TestSafetyNet:
         pool.enqueue_job.assert_not_awaited()
 
     async def test_re_enqueues_an_orphan_with_bounded_jitter(self):
+        orphan = _doc(id="orphan")
         before = datetime.now(UTC)
-        result, _repo, pool = await self._run([_doc(id="orphan")])
+        result, _repo, pool = await self._run([orphan])
         after = datetime.now(UTC)
 
         assert result == "re_enqueued:1 skipped:0"
         run_at = pool.enqueue_job.await_args.kwargs["_defer_until"]
-        assert pool.enqueue_job.await_args.args == ("execute_tracked_todo", "orphan")
+        # Armed for the todo's own scheduled_at, not the jittered run time: that is
+        # the job id a still-queued job for the occurrence already holds.
+        stamp = occurrence_stamp(orphan.scheduled_at)
+        assert pool.enqueue_job.await_args.args == ("execute_tracked_todo", "orphan", None, stamp)
+        assert (
+            pool.enqueue_job.await_args.kwargs["_job_id"] == f"execute_tracked_todo:orphan:{stamp}"
+        )
         assert before <= run_at <= after + timedelta(seconds=60)
 
     async def test_a_todo_already_executing_is_skipped_not_double_enqueued(self):

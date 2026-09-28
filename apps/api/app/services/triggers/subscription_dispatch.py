@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 
 from redis.exceptions import RedisError
 
-from app.constants.todos import BLOCKING_LABELS, TodoActivityEvent
+from app.constants.todos import BLOCKING_LABELS, EXECUTE_TRACKED_TODO_TASK, TodoActivityEvent
 from app.db.redis import redis_cache
 from app.db.repositories.todos import todo_repository
 from app.models.notification.notification_models import (
@@ -222,7 +222,7 @@ async def _execute(
     pool = await RedisPoolManager.get_pool()
     await enqueue_worker_job(
         pool,
-        "execute_tracked_todo",
+        EXECUTE_TRACKED_TODO_TASK,
         todo.id,
         TriggerOrigin(
             subscription_id=subscription.id,

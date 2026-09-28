@@ -729,16 +729,6 @@ class TestScheduleExecutionAfterCreate:
             error = await _schedule_execution_after_create("t1", _FUTURE)
         assert error is None
 
-    async def test_scheduler_returns_false_yields_user_facing_warning(self):
-        with patch(
-            "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
-            new_callable=AsyncMock,
-            return_value=False,
-        ):
-            error = await _schedule_execution_after_create("t1", _FUTURE)
-        assert "scheduling failed" in error
-        assert "will NOT execute automatically" in error
-
     async def test_scheduler_exception_yields_user_facing_warning_not_a_crash(self):
         with patch(
             "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
@@ -1390,7 +1380,7 @@ class TestCreateTrackedTodoSuccess:
             patch(
                 "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
                 new_callable=AsyncMock,
-                return_value=False,
+                side_effect=ConnectionError("redis down"),
             ),
         ):
             result = await create_tracked_todo.coroutine(

@@ -13,6 +13,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 import json
 import random
+from typing import cast
 from uuid import uuid4
 
 from arq.connections import ArqRedis
@@ -26,6 +27,7 @@ from app.agents.prompts.todo_prompts import (
 )
 from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
+    EXECUTE_TRACKED_TODO_TASK,
     FAILED_LABEL,
     TODO_SCHEDULE_FIRE_GRACE,
     TodoActivityEvent,
@@ -47,9 +49,11 @@ from app.services.hil.utils import untrusted_fence
 from app.services.notification_service import notification_service
 from app.services.todo_activity import record_activity
 from app.services.todo_canvas_storage import read_activity, read_canvas
+from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.utils.auth_utils import load_user_context
 from app.utils.cron_utils import CronError, get_next_run_time
+from app.utils.occurrence import occurrence_stamp, parse_occurrence_stamp
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import Timezone
 from app.workers.queue import enqueue_worker_job
@@ -90,15 +94,20 @@ async def execute_tracked_todo(
     ctx: Mapping[str, object],  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
     todo_id: str,
     origin: TriggerOrigin | None = None,
+    scheduled_for: int | None = None,
 ) -> str:
     """Execute a single tracked todo, on its schedule or on a trigger.
 
     Acquires a Redis lock to prevent concurrent execution, then delegates to
     the retry helper; the lock is always released in the finally block.
-    origin is a parameter rather than part of ARQ's ctx because ctx is built
-    by the worker, not the enqueuer, leaving no channel for producer data.
+    origin and scheduled_for (the occurrence a scheduled job was armed for) are
+    parameters because ARQ's ctx is built by the worker, not the enqueuer.
     """
-    log.set(todo_id=todo_id, trigger_origin=origin.trigger_name if origin else None)
+    log.set(
+        todo_id=todo_id,
+        trigger_origin=origin.trigger_name if origin else None,
+        scheduled_for=scheduled_for,
+    )
     log.info("tracked_todo.execute_started", todo_id=todo_id)
 
     pool = await RedisPoolManager.get_pool()
@@ -109,7 +118,9 @@ async def execute_tracked_todo(
         return await _handle_held_lock(todo_id, pool, origin)
 
     try:
-        return await _execute_todo_with_retry(todo_id, pool, origin)
+        return await _execute_todo_with_retry(
+            todo_id, origin, parse_occurrence_stamp(scheduled_for, todo_id)
+        )
     finally:
         await pool.delete(lock_key)
 
@@ -149,7 +160,7 @@ async def _handle_held_lock(todo_id: str, pool: ArqRedis, origin: TriggerOrigin 
     retry_at = datetime.now(UTC) + delay
     await enqueue_worker_job(
         pool,
-        "execute_tracked_todo",
+        EXECUTE_TRACKED_TODO_TASK,
         todo_id,
         origin.model_copy(update={"defer_attempts": origin.defer_attempts + 1}),
         _defer_until=retry_at,
@@ -165,7 +176,7 @@ async def _handle_held_lock(todo_id: str, pool: ArqRedis, origin: TriggerOrigin 
 
 
 async def _execute_todo_with_retry(
-    todo_id: str, pool: ArqRedis, origin: TriggerOrigin | None = None
+    todo_id: str, origin: TriggerOrigin | None = None, armed_for: datetime | None = None
 ) -> str:
     """Fetch the todo, execute it, and handle retry/recurrence logic on the result."""
     doc = await todo_repository.get_by_id(todo_id)
@@ -173,7 +184,7 @@ async def _execute_todo_with_retry(
         log.warning("tracked_todo.execute_not_found", todo_id=todo_id)
         return f"not_found:{todo_id}"
 
-    if skipped := await _skip_reason(doc, origin):
+    if skipped := await _skip_reason(doc, origin, armed_for):
         return skipped
 
     user_id = doc.user_id
@@ -193,7 +204,7 @@ async def _execute_todo_with_retry(
     try:
         await _execute_on_executor(doc, user_data=user_data, origin=origin)
         # A watch firing is not the todo's schedule, so only a scheduled run moves it on.
-        advanced = origin is None and await _advance_schedule(doc, pool, user_tz.value)
+        advanced = origin is None and await _advance_schedule(doc, user_tz.value)
         if not advanced:
             await todo_repository.update(
                 todo_id, user_id=user_id, update=TodoUpdate(gaia_retry_count=0)
@@ -224,15 +235,9 @@ async def _execute_todo_with_retry(
             else TodoUpdate(gaia_retry_count=new_retry_count)
         )
         await todo_repository.update(todo_id, user_id=user_id, update=update)
-        await enqueue_worker_job(
-            pool,
-            "execute_tracked_todo",
-            todo_id,
-            # Without this the retry silently becomes an ordinary scheduled run:
-            # wrong attribution, and the payload the todo was woken to act on gone.
-            origin,
-            _defer_until=next_attempt,
-        )
+        # Without origin the retry silently becomes an ordinary scheduled run:
+        # wrong attribution, and the payload the todo was woken to act on gone.
+        await tracked_todo_service.schedule_execution(todo_id, next_attempt, origin=origin)
         await record_activity(
             todo_id,
             user_id,
@@ -249,7 +254,7 @@ async def _execute_todo_with_retry(
         return f"retry:{todo_id} (attempt {new_retry_count})"
 
 
-async def _advance_schedule(doc: TodoDocument, pool: ArqRedis, user_tz: str) -> bool:
+async def _advance_schedule(doc: TodoDocument, user_tz: str) -> bool:
     """Move scheduled_at to the next run and queue it; False when it was rescheduled mid-run.
 
     scheduled_at must name the next execution or the safety net re-queues the todo every scan.
@@ -270,7 +275,7 @@ async def _advance_schedule(doc: TodoDocument, pool: ArqRedis, user_tz: str) -> 
         log.info("tracked_todo.rescheduled_during_run", todo_id=doc.id)
         return False
     if next_run:
-        await enqueue_worker_job(pool, "execute_tracked_todo", doc.id, _defer_until=next_run)
+        await tracked_todo_service.schedule_execution(doc.id, next_run)
         await record_activity(
             doc.id,
             doc.user_id,
@@ -281,7 +286,9 @@ async def _advance_schedule(doc: TodoDocument, pool: ArqRedis, user_tz: str) -> 
     return True
 
 
-async def _skip_reason(doc: TodoDocument, origin: TriggerOrigin | None) -> str | None:
+async def _skip_reason(
+    doc: TodoDocument, origin: TriggerOrigin | None, armed_for: datetime | None
+) -> str | None:
     """Return the result of a fire this todo must not run, or None when it runs."""
     todo_id = doc.id
     if doc.completed:
@@ -313,9 +320,14 @@ async def _skip_reason(doc: TodoDocument, origin: TriggerOrigin | None) -> str |
         log.info("tracked_todo.execute_marked_failed", todo_id=todo_id)
         return f"skipped:{todo_id} (marked failed)"
 
-    if origin is None and not _is_due(doc):
+    if origin is None and not _fires_current_schedule(doc, armed_for):
         scheduled = doc.scheduled_at.isoformat() if doc.scheduled_at else None
-        log.warning("tracked_todo.stale_fire_skipped", todo_id=todo_id, scheduled_at=scheduled)
+        log.warning(
+            "tracked_todo.stale_fire_skipped",
+            todo_id=todo_id,
+            scheduled_at=scheduled,
+            armed_for=armed_for.isoformat() if armed_for else None,
+        )
         await record_activity(
             todo_id,
             doc.user_id,
@@ -323,7 +335,7 @@ async def _skip_reason(doc: TodoDocument, origin: TriggerOrigin | None) -> str |
             "dropped a leftover fire from an earlier schedule "
             f"(now scheduled: {scheduled or 'nothing'})",
         )
-        return f"stale:{todo_id}"
+        return f"stale_occurrence:{todo_id}"
 
     if not doc.user_id:
         log.error("tracked_todo.execute_missing_user_id", todo_id=todo_id)
@@ -331,11 +343,18 @@ async def _skip_reason(doc: TodoDocument, origin: TriggerOrigin | None) -> str |
     return None
 
 
-def _is_due(doc: TodoDocument) -> bool:
-    """Whether this fire is the todo's current schedule; ARQ cannot cancel a superseded job."""
-    return doc.scheduled_at is not None and doc.scheduled_at <= (
-        datetime.now(UTC) + TODO_SCHEDULE_FIRE_GRACE
-    )
+def _fires_current_schedule(doc: TodoDocument, armed_for: datetime | None) -> bool:
+    """Whether a scheduled fire is for the occurrence the todo's scheduled_at names.
+
+    ARQ cannot cancel a deferred job, so a reschedule leaves the old one queued. A
+    stamped fire must match to the second; an unstamped one, queued before jobs
+    carried their occurrence, cannot say which it was for and runs only when due.
+    """
+    if doc.scheduled_at is None:
+        return False
+    if armed_for is None:
+        return doc.scheduled_at <= datetime.now(UTC) + TODO_SCHEDULE_FIRE_GRACE
+    return occurrence_stamp(doc.scheduled_at) == occurrence_stamp(armed_for)
 
 
 def _trigger_type(origin: TriggerOrigin | None) -> TriggerType:
@@ -665,7 +684,8 @@ async def safety_net_check_orphaned_todos(_ctx: Mapping[str, object]) -> str:
     """Find scheduled tracked todos that should have run but were never picked up.
 
     Re-enqueues each one not already locked, with a random 0-60s jitter to
-    spread load.
+    spread load. The job is armed for the todo's scheduled_at, so a job still
+    queued for that occurrence absorbs the enqueue instead of gaining a twin.
     """
     now = datetime.now(UTC)
 
@@ -689,8 +709,12 @@ async def safety_net_check_orphaned_todos(_ctx: Mapping[str, object]) -> str:
 
         jitter_seconds = random.randint(0, 60)  # nosec B311  # NOSONAR python:S2245 — non-crypto scheduling jitter
         run_at = now + timedelta(seconds=jitter_seconds)
-        await enqueue_worker_job(pool, "execute_tracked_todo", todo_id, _defer_until=run_at)
-        re_enqueued += 1
+        # Set by construction: the due query selects on scheduled_at <= now.
+        armed_for = cast(datetime, doc.scheduled_at)
+        if await tracked_todo_service.schedule_execution(todo_id, armed_for, defer_until=run_at):
+            re_enqueued += 1
+        else:
+            skipped += 1
 
     log.set_ns("tracked_todo", re_enqueued=re_enqueued, skipped=skipped)
     return f"re_enqueued:{re_enqueued} skipped:{skipped}"

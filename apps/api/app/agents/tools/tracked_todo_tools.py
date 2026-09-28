@@ -200,7 +200,7 @@ async def _schedule_execution_after_create(
 ) -> str | None:
     """Hand the new todo to the scheduler; translate any failure into user-facing text."""
     try:
-        success = await tracked_todo_service.schedule_execution(todo_id, parsed_scheduled_at)
+        await tracked_todo_service.schedule_execution(todo_id, parsed_scheduled_at)
     except Exception as e:
         log.warning(
             "tracked_todo.schedule_after_create_failed",
@@ -209,11 +209,6 @@ async def _schedule_execution_after_create(
         )
         return (
             f"Tracked todo created (ID: {todo_id}) but scheduling failed: {e}. "
-            f"The todo exists but will NOT execute automatically."
-        )
-    if not success:
-        return (
-            f"Tracked todo created (ID: {todo_id}) but scheduling failed. "
             f"The todo exists but will NOT execute automatically."
         )
     return None

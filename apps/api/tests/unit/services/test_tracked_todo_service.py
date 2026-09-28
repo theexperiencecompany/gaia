@@ -17,6 +17,7 @@ from app.services.tracked_todo_service import (
     TrackedTodoService,
     tracked_todo_service,
 )
+from app.utils.occurrence import occurrence_stamp
 
 _MOD = "app.services.tracked_todo_service"
 USER_ID = "507f1f77bcf86cd799439011"
@@ -395,7 +396,7 @@ class TestSystemLog:
 
 
 class TestScheduleExecution:
-    async def test_enqueues_deferred_job(self, mock_repo, mock_deps):
+    async def test_the_job_is_armed_for_its_occurrence(self, mock_repo, mock_deps):
         pool = AsyncMock()
         mock_deps.pool.return_value = pool
         when = datetime.now(UTC) + timedelta(hours=1)
@@ -408,13 +409,49 @@ class TestScheduleExecution:
         # into this worker) — pin the job contract, not the trace.
         pool.enqueue_job.assert_awaited_once()
         args, kwargs = pool.enqueue_job.await_args
-        assert args == ("execute_tracked_todo", TODO_ID)
+        stamp = occurrence_stamp(when)
+        assert args == ("execute_tracked_todo", TODO_ID, None, stamp)
+        # One job id per occurrence: a repeat enqueue for it dedupes in ARQ.
+        assert kwargs["_job_id"] == f"execute_tracked_todo:{TODO_ID}:{stamp}"
         assert kwargs["_defer_until"] == when
 
-    async def test_false_when_enqueue_fails(self, mock_repo, mock_deps):
-        mock_deps.pool.side_effect = RuntimeError("redis down")
+    async def test_a_delayed_fire_keeps_the_occurrence_it_is_for(self, mock_repo, mock_deps):
+        pool = AsyncMock()
+        mock_deps.pool.return_value = pool
+        due = datetime.now(UTC) - timedelta(minutes=5)
+        later = datetime.now(UTC) + timedelta(seconds=30)
+
+        await TrackedTodoService.schedule_execution(TODO_ID, due, defer_until=later)
+
+        args, kwargs = pool.enqueue_job.await_args
+        assert args[-1] == occurrence_stamp(due)
+        assert kwargs["_defer_until"] == later
+
+    async def test_a_naive_time_is_stamped_as_the_utc_instant_mongo_stores(
+        self, mock_repo, mock_deps
+    ):
+        pool = AsyncMock()
+        mock_deps.pool.return_value = pool
+        naive = datetime(2026, 9, 27, 10, 0, 0)
+
+        await TrackedTodoService.schedule_execution(TODO_ID, naive)
+
+        args, _kwargs = pool.enqueue_job.await_args
+        assert args[-1] == occurrence_stamp(naive.replace(tzinfo=UTC))
+
+    async def test_false_when_the_occurrence_is_already_queued(self, mock_repo, mock_deps):
+        pool = AsyncMock()
+        pool.enqueue_job.return_value = None
+        mock_deps.pool.return_value = pool
 
         assert await TrackedTodoService.schedule_execution(TODO_ID, datetime.now(UTC)) is False
+
+    async def test_a_queue_failure_propagates(self, mock_repo, mock_deps):
+        """Every caller persisted scheduled_at first; hiding the failure hid a todo that never runs."""
+        mock_deps.pool.side_effect = RuntimeError("redis down")
+
+        with pytest.raises(RuntimeError, match="redis down"):
+            await TrackedTodoService.schedule_execution(TODO_ID, datetime.now(UTC))
 
 
 class TestArchiveTrackedTodo:
