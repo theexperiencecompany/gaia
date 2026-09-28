@@ -158,6 +158,27 @@ class TestRegisterSubscription:
             f"watching {ACCOUNT_TRIGGER} (1 condition(s)) to execute",
         )
 
+    async def test_a_thread_can_be_watched_for_the_users_own_reply(self) -> None:
+        # The inbox trigger never sees SENT mail; this is the only way a thread
+        # todo learns the user already replied from Gmail.
+        with _Harness(_todo(), []) as h:
+            subscription, outcome = await register_subscription(
+                todo_id=TODO_ID,
+                user_id=USER_ID,
+                trigger_name="gmail_email_sent",
+                conditions=[
+                    SubscriptionCondition(
+                        field_name="thread_id", operator=ConditionOperator.EQUALS, value="t-1"
+                    )
+                ],
+                action=SubscriptionAction.EXECUTE,
+            )
+
+        assert outcome.ok
+        assert subscription.resolution is SubscriptionResolution.ACCOUNT
+        assert subscription.composio_trigger_ids == []
+        assert h.written_subscriptions == [subscription]
+
     async def test_per_resource_trigger_stores_its_instance_ids(self) -> None:
         with _Harness(_todo(), ["ti_9"]) as h:
             subscription, _ = await register_subscription(

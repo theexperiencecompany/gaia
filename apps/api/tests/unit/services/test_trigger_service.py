@@ -37,6 +37,7 @@ from app.models.trigger_configs import (
     GitHubIssueAddedConfig,
     GitHubPrEventConfig,
     GitHubStarAddedConfig,
+    GmailEmailSentConfig,
     GmailNewMessageConfig,
     GmailPollInboxConfig,
     LinearCommentAddedConfig,
@@ -586,11 +587,18 @@ class TestGmailTriggerHandler:
 
     def test_trigger_names(self):
         handler = GmailTriggerHandler()
-        assert handler.trigger_names == ["gmail_new_message"]
+        assert handler.trigger_names == ["gmail_new_message", "gmail_email_sent"]
 
     def test_event_types(self):
         handler = GmailTriggerHandler()
-        assert handler.event_types == {"GMAIL_NEW_GMAIL_MESSAGE"}
+        assert handler.event_types == {"GMAIL_NEW_GMAIL_MESSAGE", "GMAIL_EMAIL_SENT_TRIGGER"}
+
+    def test_each_event_fires_only_its_own_trigger(self):
+        # Both triggers are account-level, so nothing but the event type keeps a
+        # sent-mail watch from waking on inbound mail.
+        handler = GmailTriggerHandler()
+        assert handler.trigger_names_for_event("GMAIL_NEW_GMAIL_MESSAGE") == ["gmail_new_message"]
+        assert handler.trigger_names_for_event("GMAIL_EMAIL_SENT_TRIGGER") == ["gmail_email_sent"]
 
     async def test_register_success_no_trigger_data(self):
         handler = GmailTriggerHandler()
@@ -611,6 +619,18 @@ class TestGmailTriggerHandler:
         config = _make_trigger_config("gmail_new_message", trigger_data=wrong_data)
         with pytest.raises(TypeError, match="Expected GmailNewMessageConfig"):
             await handler.register(USER_ID, WORKFLOW_ID, "gmail_new_message", config)
+
+    async def test_register_accepts_the_sent_trigger_config(self):
+        handler = GmailTriggerHandler()
+        config = _make_trigger_config("gmail_email_sent", trigger_data=GmailEmailSentConfig())
+        result = await handler.register(USER_ID, WORKFLOW_ID, "gmail_email_sent", config)
+        assert result == []
+
+    async def test_register_rejects_the_inbox_config_for_the_sent_trigger(self):
+        handler = GmailTriggerHandler()
+        config = _make_trigger_config("gmail_email_sent", trigger_data=GmailNewMessageConfig())
+        with pytest.raises(TypeError, match="Expected GmailEmailSentConfig"):
+            await handler.register(USER_ID, WORKFLOW_ID, "gmail_email_sent", config)
 
     # find_workflows strategy 1 (account-level) -> find_active_integration_workflows, strategy 2
     # (poll, by trigger id) -> find_active_by_composio_trigger. Verifies routing and the neither-id guard.
@@ -642,7 +662,23 @@ class TestGmailTriggerHandler:
         assert len(result) == 1
         assert result[0].user_id == USER_ID
         mock_repo.find_active_integration_workflows.assert_awaited_once_with(
-            USER_ID, GmailTriggerHandler.SUPPORTED_TRIGGERS
+            USER_ID, ["gmail_new_message"]
+        )
+
+    @patch("app.services.triggers.handlers.gmail.workflow_repository")
+    async def test_find_workflows_for_a_sent_email_matches_sent_workflows_by_user(self, mock_repo):
+        wf = _make_workflow(trigger_name="gmail_email_sent")
+        mock_repo.find_active_integration_workflows = AsyncMock(return_value=[wf])
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
+
+        handler = GmailTriggerHandler()
+        result = await handler.find_workflows(
+            "GMAIL_EMAIL_SENT_TRIGGER", TRIGGER_ID, {"user_id": USER_ID, "thread_id": "t-1"}
+        )
+
+        assert [w.trigger_config.trigger_name for w in result] == ["gmail_email_sent"]
+        mock_repo.find_active_integration_workflows.assert_awaited_once_with(
+            USER_ID, ["gmail_email_sent"]
         )
 
     @patch("app.services.triggers.handlers.gmail.workflow_repository")

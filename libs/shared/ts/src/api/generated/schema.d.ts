@@ -8188,6 +8188,17 @@ export interface components {
             nextPageToken?: string | null;
         };
         /**
+         * GmailEmailSentConfig
+         * @description Config for the gmail sent-mail trigger; account-level, so nothing to scope.
+         */
+        GmailEmailSentConfig: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            trigger_name: "gmail_email_sent";
+        };
+        /**
          * GmailLabelResource
          * @description A Gmail ``labels`` resource, forwarded to the client verbatim.
          *
@@ -13480,7 +13491,7 @@ export interface components {
              * Trigger Data
              * @description Provider-specific trigger configuration
              */
-            trigger_data?: (components["schemas"]["CalendarEventCreatedConfig"] | components["schemas"]["CalendarEventStartingSoonConfig"] | components["schemas"]["GmailNewMessageConfig"] | components["schemas"]["GmailPollInboxConfig"] | components["schemas"]["GitHubCommitEventConfig"] | components["schemas"]["GitHubPrEventConfig"] | components["schemas"]["GitHubStarAddedConfig"] | components["schemas"]["GitHubIssueAddedConfig"] | components["schemas"]["GoogleDocsNewDocumentConfig"] | components["schemas"]["GoogleDocsDocumentDeletedConfig"] | components["schemas"]["GoogleDocsDocumentUpdatedConfig"] | components["schemas"]["GoogleSheetsNewRowConfig"] | components["schemas"]["GoogleSheetsNewSheetConfig"] | components["schemas"]["LinearIssueCreatedConfig"] | components["schemas"]["LinearIssueUpdatedConfig"] | components["schemas"]["LinearCommentAddedConfig"] | components["schemas"]["NotionNewPageInDbConfig"] | components["schemas"]["NotionPageUpdatedConfig"] | components["schemas"]["NotionAllPageEventsConfig"] | components["schemas"]["NotionPageContentUpdatedConfig"] | components["schemas"]["SlackNewMessageConfig"] | components["schemas"]["SlackChannelCreatedConfig"] | components["schemas"]["TodoistNewTaskCreatedConfig"] | components["schemas"]["AsanaTaskTriggerConfig"]) | null;
+            trigger_data?: (components["schemas"]["CalendarEventCreatedConfig"] | components["schemas"]["CalendarEventStartingSoonConfig"] | components["schemas"]["GmailNewMessageConfig"] | components["schemas"]["GmailEmailSentConfig"] | components["schemas"]["GmailPollInboxConfig"] | components["schemas"]["GitHubCommitEventConfig"] | components["schemas"]["GitHubPrEventConfig"] | components["schemas"]["GitHubStarAddedConfig"] | components["schemas"]["GitHubIssueAddedConfig"] | components["schemas"]["GoogleDocsNewDocumentConfig"] | components["schemas"]["GoogleDocsDocumentDeletedConfig"] | components["schemas"]["GoogleDocsDocumentUpdatedConfig"] | components["schemas"]["GoogleSheetsNewRowConfig"] | components["schemas"]["GoogleSheetsNewSheetConfig"] | components["schemas"]["LinearIssueCreatedConfig"] | components["schemas"]["LinearIssueUpdatedConfig"] | components["schemas"]["LinearCommentAddedConfig"] | components["schemas"]["NotionNewPageInDbConfig"] | components["schemas"]["NotionPageUpdatedConfig"] | components["schemas"]["NotionAllPageEventsConfig"] | components["schemas"]["NotionPageContentUpdatedConfig"] | components["schemas"]["SlackNewMessageConfig"] | components["schemas"]["SlackChannelCreatedConfig"] | components["schemas"]["TodoistNewTaskCreatedConfig"] | components["schemas"]["AsanaTaskTriggerConfig"]) | null;
             /**
              * Trigger Name
              * @description Specific trigger slug for identification
@@ -14911,6 +14922,7 @@ export type GitHubStarAddedConfig = components['schemas']['GitHubStarAddedConfig
 export type GmailDeletionResponse = components['schemas']['GmailDeletionResponse'];
 export type GmailDraftResource = components['schemas']['GmailDraftResource'];
 export type GmailDraftsResponse = components['schemas']['GmailDraftsResponse'];
+export type GmailEmailSentConfig = components['schemas']['GmailEmailSentConfig'];
 export type GmailLabelResource = components['schemas']['GmailLabelResource'];
 export type GmailLabelsResponse = components['schemas']['GmailLabelsResponse'];
 export type GmailMessageResponse = components['schemas']['GmailMessageResponse'];

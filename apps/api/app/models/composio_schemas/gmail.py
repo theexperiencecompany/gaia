@@ -39,6 +39,27 @@ class GmailNewMessagePayload(BaseModel):
     to: str | None = Field(None, description="Recipient email address")
 
 
+class GmailEmailSentPayload(BaseModel):
+    """Payload for GMAIL_EMAIL_SENT_TRIGGER at the pinned toolkit 20260107_00.
+
+    Field set verified against Composio triggers_types API (2026-09); the pinned
+    version carries no message body or attachment list.
+    """
+
+    bcc: str | None = Field(None, description="Bcc recipients")
+    cc: str | None = Field(None, description="Cc recipients")
+    message_id: str | None = Field(None, description="Gmail message ID")
+    message_timestamp: str | None = Field(None, description="When it was sent, ISO 8601")
+    payload: dict[str, Any] | None = Field(None, description="Raw Gmail payload")
+    recipients: str | None = Field(
+        None, description="Comma-separated list of all recipients (To, Cc, Bcc)"
+    )
+    sender: str | None = Field(None, description="Sender email address")
+    subject: str | None = Field(None, description="Email subject")
+    thread_id: str | None = Field(None, description="Gmail thread ID")
+    to: str | None = Field(None, description="To recipients")
+
+
 # =============================================================================
 # Custom Tool Inputs
 # =============================================================================

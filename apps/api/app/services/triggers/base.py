@@ -108,6 +108,17 @@ class TriggerHandler(ABC):
         These are the webhook event types from Composio (e.g., 'GOOGLECALENDAR_...')
         """
 
+    def trigger_names_for_event(
+        self,
+        event_type: str,  # noqa: ARG002 -- interface contract; account-level handlers narrow by it
+    ) -> list[str]:
+        """Return the GAIA trigger names one Composio event fires; every name by default.
+
+        Per-resource subscriptions are still gated by their instance ids, so the
+        default is safe; an account-level handler with several events must narrow it.
+        """
+        return self.trigger_names
+
     @property
     def registers_instances(self) -> bool:
         """Return whether register returns per-owner Composio trigger instance ids.
@@ -360,7 +371,7 @@ class TriggerHandler(ABC):
             await enqueue_worker_job(
                 pool,
                 "dispatch_todo_subscriptions",
-                self.trigger_names,
+                self.trigger_names_for_event(event_type),
                 trigger_id,
                 user_id,
                 data,

@@ -37,6 +37,7 @@ pytestmark = pytest.mark.e2e
 
 _MOD = "app.services.triggers.subscription_dispatch"
 GMAIL = "gmail_new_message"
+GMAIL_SENT = "gmail_email_sent"
 SLACK = "slack_new_message"
 
 
@@ -126,20 +127,63 @@ class TestTriggerDispatchAgainstRealInfra:
         assert fired == 0
         enqueue.assert_not_awaited()
 
+    async def test_the_users_own_reply_on_the_watched_thread_wakes_the_todo(
+        self, _new_user
+    ) -> None:
+        todo_id, sub = await _seed_watch(
+            _new_user,
+            trigger_name=GMAIL_SENT,
+            conditions=[_condition("thread_id", ConditionOperator.EQUALS, "t-1")],
+        )
+        reply = {"thread_id": "t-1", "recipients": "alice@acme.com, bob@acme.com"}
+
+        with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
+            with patch(f"{_MOD}.capture_event"):
+                fired = await dispatch_to_subscribed_todos(GMAIL_SENT, None, _new_user, reply)
+
+        assert fired == 1
+        _pool, task_name, woken_todo_id, origin = enqueue.await_args.args
+        assert task_name == "execute_tracked_todo"
+        assert woken_todo_id == todo_id
+        assert origin.subscription_id == sub.id
+        assert origin.trigger_name == GMAIL_SENT
+        assert origin.payload["thread_id"] == "t-1"
+
+    async def test_a_reply_on_another_thread_does_not_wake_the_todo(self, _new_user) -> None:
+        await _seed_watch(
+            _new_user,
+            trigger_name=GMAIL_SENT,
+            conditions=[_condition("thread_id", ConditionOperator.EQUALS, "t-1")],
+        )
+
+        with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
+            with patch(f"{_MOD}.capture_event"):
+                fired = await dispatch_to_subscribed_todos(
+                    GMAIL_SENT, None, _new_user, {"thread_id": "t-2"}
+                )
+
+        assert fired == 0
+        enqueue.assert_not_awaited()
+
     async def test_a_per_resource_event_resolves_by_trigger_id_without_a_user(
         self, _new_user
     ) -> None:
+        # Unique per run: the lookup spans users, and the test database is not
+        # wiped, so a fixed id also matched every earlier run's todo.
+        trigger_id = f"ti-{ObjectId()}"
         todo_id, _ = await _seed_watch(
             _new_user,
             trigger_name=SLACK,
             resolution=SubscriptionResolution.TRIGGER_ID,
-            composio_trigger_ids=["ti-42"],
+            composio_trigger_ids=[trigger_id],
             conditions=[],
         )
 
         with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
             with patch(f"{_MOD}.capture_event"):
-                fired = await dispatch_to_subscribed_todos(SLACK, "ti-42", None, {"channel": "C1"})
+                fired = await dispatch_to_subscribed_todos(
+                    SLACK, trigger_id, None, {"channel": "C1"}
+                )
 
         assert fired == 1
         assert enqueue.await_args.args[2] == todo_id
