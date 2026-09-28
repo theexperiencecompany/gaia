@@ -51,7 +51,9 @@ export function repairStreamingMarkdown(md: string): string {
   const fenceCount = (out.match(/^[^\S\n]*```/gm) ?? []).length;
   if (fenceCount % 2 === 1) out += "\n```";
 
-  const mathFenceCount = (out.match(/^[^\S\n]*\$\$[^\S\n]*$/gm) ?? []).length;
+  const mathFenceCount = out
+    .split("\n")
+    .filter((line) => line.trim() === "$$").length;
   if (mathFenceCount % 2 === 1) out += "\n$$";
 
   // Close dangling inline markers, longest first, recounting after each append
