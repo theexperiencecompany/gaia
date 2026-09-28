@@ -15,8 +15,8 @@ from app.agents.core.background import todo_run_delivery as trd
 from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
 from app.agents.core.background.todo_run_delivery import deliver_todo_run_result
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
-from app.constants.todos import DELIVERY_KEY_DETAILS_MAX_CHARS
 from app.constants.log_tags import LogTag
+from app.constants.todos import DELIVERY_KEY_DETAILS_MAX_CHARS
 from app.models.chat_models import ConversationSource
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
