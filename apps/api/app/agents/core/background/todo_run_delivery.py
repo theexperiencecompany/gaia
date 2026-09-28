@@ -100,7 +100,8 @@ async def deliver_todo_run_result(
 
 def _standing_requests(todo: TodoDocument) -> str | None:
     """Return the todo's Key Details, bounded, or None when it has none."""
-    key_details = section_body(todo.canvas_content or "", "Key Details")
+    canvas = todo.canvas_content
+    key_details = section_body(canvas, "Key Details") if canvas else None
     return key_details[:DELIVERY_KEY_DETAILS_MAX_CHARS] if key_details else None
 
 

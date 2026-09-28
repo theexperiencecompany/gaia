@@ -205,3 +205,11 @@ class TestTheDecisionSeesTheStandingRequests:
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
             "Watch the deploy", None
         )
+
+    async def test_a_todo_with_no_canvas_gets_the_rules_alone(self) -> None:
+        with _seams(todo=_todo(canvas_content=None)) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
+            "Watch the deploy", None
+        )
