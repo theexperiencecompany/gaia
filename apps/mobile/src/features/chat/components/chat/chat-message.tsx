@@ -306,6 +306,128 @@ function AIMainContent({
   return null;
 }
 
+function hasFooterContent(message: ChatMessageLayoutProps["message"]): boolean {
+  return (
+    !!message.memoryData || !!message.followUpActions?.length || !!message.error
+  );
+}
+
+/** Memory pill, follow-up chips and the failure row under an AI message. */
+function AIMessageFooter({
+  message,
+  failed,
+  hasPartialText,
+  onFollowUpAction,
+  onRetry,
+}: {
+  message: ChatMessageLayoutProps["message"];
+  failed: boolean;
+  hasPartialText: boolean;
+  onFollowUpAction?: (action: string) => void;
+  onRetry?: () => void;
+}) {
+  return (
+    <>
+      {message.memoryData ? (
+        <MemoryIndicator
+          memoryData={message.memoryData as MemoryIndicatorData}
+        />
+      ) : null}
+      {message.followUpActions?.length ? (
+        <FollowUpActions
+          actions={message.followUpActions}
+          onActionPress={onFollowUpAction}
+        />
+      ) : null}
+      {/* Errored turn: keep the streamed text above and mark the failure */}
+      {message.error && failed ? (
+        <FailedResponse
+          error={message.error}
+          hasPartialText={hasPartialText}
+          onRetry={onRetry}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/** Link preview below a finished AI message, for the first URL it contains. */
+function AILinkPreview({
+  text,
+  isLoading,
+}: {
+  text: string;
+  isLoading: boolean;
+}) {
+  const { spacing } = useResponsive();
+  const { data: linkPreviewData } = useLinkPreview(
+    !isLoading && text.length > 0 ? text : "",
+  );
+  const preview = linkPreviewData?.[0];
+  if (isLoading || extractUrls(text).length === 0 || !preview) return null;
+
+  return (
+    <View style={{ paddingHorizontal: spacing.md, marginTop: GAP_SM }}>
+      <LinkPreviewCard
+        url={preview.url}
+        title={preview.title}
+        description={preview.description}
+        imageUrl={preview.imageUrl}
+        favicon={preview.favicon}
+        domain={preview.domain}
+      />
+    </View>
+  );
+}
+
+/** Derive what an AI message has to show, and whether it shows anything at all. */
+function useAIMessageState(
+  message: Message,
+  messageParts: MessagePart[],
+  parsedContent: ReturnType<typeof parseThinkingFromText>,
+  isLoading: boolean,
+) {
+  const hasStreamedText =
+    messageParts.length > 0 || !!parsedContent.thinking || !!message.imageData;
+  const isGeneratingImage = message.imageData != null && !message.imageData.url;
+  const failed = !!message.error && !isLoading;
+
+  const hasActivity = useMemo(
+    () => buildTimeline(message.toolData).length > 0,
+    [message.toolData],
+  );
+
+  // Tool data that carries its own rich typed card (approvals, weather, …).
+  // tool_calls_data and subagent_group render inside the ActivityBlock chain
+  // instead — subagent_group has no typed card and would hit UnsupportedToolCard.
+  const nonCallToolData = useMemo(
+    () =>
+      (message.toolData ?? []).filter(
+        (e) =>
+          e.tool_name !== TOOL_CALLS_DATA_TOOL_NAME &&
+          e.tool_name !== SUBAGENT_GROUP_TOOL_NAME,
+      ),
+    [message.toolData],
+  );
+
+  const hasAnyContent =
+    hasStreamedText ||
+    hasActivity ||
+    isLoading ||
+    isGeneratingImage ||
+    nonCallToolData.length > 0 ||
+    hasFooterContent(message);
+
+  return {
+    hasStreamedText,
+    isGeneratingImage,
+    failed,
+    hasActivity,
+    nonCallToolData,
+    hasAnyContent,
+  };
+}
+
 function AIChatMessage({
   message,
   handleLongPress,
@@ -331,44 +453,14 @@ function AIChatMessage({
 }) {
   const { spacing } = useResponsive();
 
-  const hasStreamedText =
-    messageParts.length > 0 || !!parsedContent.thinking || !!message.imageData;
-  const isGeneratingImage = message.imageData != null && !message.imageData.url;
-  const failed = !!message.error && !isLoading;
-
-  const hasActivity = useMemo(
-    () => buildTimeline(message.toolData).length > 0,
-    [message.toolData],
-  );
-
-  // Tool data that carries its own rich typed card (approvals, weather, …).
-  // tool_calls_data and subagent_group render inside the ActivityBlock chain
-  // instead — subagent_group has no typed card and would hit UnsupportedToolCard.
-  const nonCallToolData = useMemo(
-    () =>
-      (message.toolData ?? []).filter(
-        (e) =>
-          e.tool_name !== TOOL_CALLS_DATA_TOOL_NAME &&
-          e.tool_name !== SUBAGENT_GROUP_TOOL_NAME,
-      ),
-    [message.toolData],
-  );
-
-  const rawText = message.text ?? "";
-  const linkPreviewUrls = extractUrls(rawText);
-  const { data: linkPreviewData } = useLinkPreview(
-    !isLoading && rawText.length > 0 ? rawText : "",
-  );
-
-  const hasAnyContent =
-    hasStreamedText ||
-    hasActivity ||
-    isLoading ||
-    isGeneratingImage ||
-    nonCallToolData.length > 0 ||
-    !!message.memoryData ||
-    !!message.followUpActions?.length ||
-    !!message.error;
+  const {
+    hasStreamedText,
+    isGeneratingImage,
+    failed,
+    hasActivity,
+    nonCallToolData,
+    hasAnyContent,
+  } = useAIMessageState(message, messageParts, parsedContent, isLoading);
 
   if (!hasAnyContent) return null;
 
@@ -429,43 +521,15 @@ function AIChatMessage({
           style={{ paddingHorizontal: spacing.md, marginTop: GAP_SM }}
         />
 
-        {/* Link preview – shown below message content for AI messages */}
-        {!isLoading && linkPreviewUrls.length > 0 && linkPreviewData?.length ? (
-          <View style={{ paddingHorizontal: spacing.md, marginTop: GAP_SM }}>
-            <LinkPreviewCard
-              url={linkPreviewData[0].url}
-              title={linkPreviewData[0].title}
-              description={linkPreviewData[0].description}
-              imageUrl={linkPreviewData[0].imageUrl}
-              favicon={linkPreviewData[0].favicon}
-              domain={linkPreviewData[0].domain}
-            />
-          </View>
-        ) : null}
+        <AILinkPreview text={message.text ?? ""} isLoading={isLoading} />
 
-        {/* Memory indicator pill */}
-        {message.memoryData ? (
-          <MemoryIndicator
-            memoryData={message.memoryData as MemoryIndicatorData}
-          />
-        ) : null}
-
-        {/* Follow-up action chips */}
-        {message.followUpActions?.length ? (
-          <FollowUpActions
-            actions={message.followUpActions}
-            onActionPress={onFollowUpAction}
-          />
-        ) : null}
-
-        {/* Errored turn: keep the streamed text above and mark the failure */}
-        {message.error && failed ? (
-          <FailedResponse
-            error={message.error}
-            hasPartialText={messageParts.length > 0}
-            onRetry={onRetry}
-          />
-        ) : null}
+        <AIMessageFooter
+          message={message}
+          failed={failed}
+          hasPartialText={messageParts.length > 0}
+          onFollowUpAction={onFollowUpAction}
+          onRetry={onRetry}
+        />
       </PressableFeedback>
     </Animated.View>
   );
