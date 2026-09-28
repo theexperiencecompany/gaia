@@ -73,21 +73,3 @@ OPENUI_INSTRUCTIONS: str = f"""
 {OPENUI_SURFACE_POLICY}
 {OPENUI_COMPONENT_PROMPT}
 """
-
-# Comms output-format addenda: one per renderable channel, precomputed per
-# channel for the prompt cache (choice lives in get_comms_static_prompt).
-
-# Fallback when OpenUI is disabled: native markdown without the ~27k-char
-# component vocabulary; resolves the output-format reference in Delivering
-# Results.
-MARKDOWN_ONLY_ADDENDUM: str = """
----Output Format---
-Render structured data with plain markdown, never :::openui component fences (they are disabled):
-- Tabular or comparison data (rows x columns): a markdown table.
-- Links, or content where the link is the point: clickable markdown links ([label](url)).
-- Everything else: short bullet or numbered lists.
-Calendar and email data still stream as native cards, so never re-type those rows; write a short conversational line and let the card show them.
-"""
-
-# The output-format block for renderable channels when OpenUI is enabled.
-OPENUI_ADDENDUM: str = OPENUI_INSTRUCTIONS
