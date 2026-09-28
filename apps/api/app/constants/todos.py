@@ -58,8 +58,6 @@ TODO_SCHEDULE_FIRE_GRACE: Final[timedelta] = timedelta(minutes=2)
 
 # How much of a run's final report is kept in its activity.md entry.
 RUN_SUMMARY_ACTIVITY_CHARS: Final[int] = 200
-# Bounds the Key Details a run's delivery decision reads next to the report.
-DELIVERY_KEY_DETAILS_MAX_CHARS: Final[int] = 1500
 
 
 class TodoRunDeliveryOutcome(StrEnum):
@@ -102,14 +100,23 @@ class TodoActivityEvent(StrEnum):
 
 
 # The sections every canvas.md carries exactly once, in this order. Activity
-# (anything dated, any run log) belongs in activity.md, never here.
+# (dated "### YYYY-MM-DD" entries, any run log) belongs in activity.md, never here.
+CANVAS_STANDING_RULES_SECTION: Final[str] = "Standing rules"
 CANVAS_CURRENT_STATE_SECTION: Final[str] = "Current State"
 CANVAS_SECTIONS: Final[tuple[str, ...]] = (
+    CANVAS_STANDING_RULES_SECTION,
     "Key Details",
     CANVAS_CURRENT_STATE_SECTION,
     "Context",
     "Learnings",
 )
+
+# Most a Standing rules section may hold. Every prompt carries it whole, never
+# trimmed, so a canvas write that grows it past this is refused instead.
+STANDING_RULES_MAX_CHARS: Final[int] = 2_000
+
+# How many referenced todos a run reads Standing rules and Learnings from.
+REFERENCED_TODOS_PROMPT_LIMIT: Final[int] = 5
 
 # How much of an existing todo's Current State a refused duplicate create shows.
 EXISTING_TODO_STATE_EXCERPT_CHARS: Final[int] = 400

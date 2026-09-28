@@ -13,19 +13,23 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 import json
 import random
-from typing import cast
+from typing import NamedTuple, cast
 from uuid import uuid4
 
 from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import TodoRunRequest, run_todo_on_executor
 from app.agents.prompts.todo_prompts import (
     DELIVERED_RESULT_GUIDANCE,
+    REFERENCED_STANDING_RULES_LABEL,
     SILENT_RUN_GUIDANCE,
     TRIGGERED_RELEVANCE_GUIDANCE,
 )
 from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
+    CANVAS_STANDING_RULES_SECTION,
     FAILED_LABEL,
+    REFERENCED_TODOS_PROMPT_LIMIT,
+    STANDING_RULES_MAX_CHARS,
     TODO_SCHEDULE_FIRE_GRACE,
     TodoActivityEvent,
 )
@@ -45,7 +49,6 @@ from app.services.canvas_markdown import bounded_canvas, section_body
 from app.services.hil.utils import untrusted_fence
 from app.services.notification_service import notification_service
 from app.services.todo_activity import record_activity
-from app.services.todo_canvas_storage import read_activity, read_canvas
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.triggers.todo_trigger_window import (
@@ -393,41 +396,47 @@ def _trigger_type(origin: TriggerOrigin | None) -> TriggerType:
     return TriggerType.SCHEDULED_TODO if origin is None else TriggerType.TODO_TRIGGER
 
 
-def _extract_learnings(ref_canvas: str) -> str | None:
-    """Return the ## Learnings section of a canvas (heading included), or None if absent."""
-    body = section_body(ref_canvas, "Learnings")
-    if body is None:
-        return None
-    return f"## Learnings\n{body}"
+class _ReferenceContext(NamedTuple):
+    """What a run inherits from the todos it references: rules to obey, and past lessons."""
+
+    standing_rules: str = ""
+    learnings: str = ""
 
 
-async def _collect_reference_context(ref_ids: list[str], user_id: str) -> str:
-    """Gather ## Learnings from up to 5 referenced todos for prompt context."""
-    if not ref_ids:
-        return ""
-    ref_parts: list[str] = []
-    for ref_id in ref_ids[:5]:  # Cap at 5 to avoid context bloat
-        try:
-            ref_doc = await todo_repository.get_by_id(ref_id)
-            if not ref_doc:
-                continue
-            learnings = _extract_learnings(await read_canvas(ref_id, user_id) or "")
-            if learnings:
-                ref_parts.append(f'From past todo "{ref_doc.title}":\n{learnings.strip()}')
-        except Exception as e:
-            log.debug("execute_todo.reference_read_failed", ref_id=ref_id, error=str(e))
-            continue
-    if not ref_parts:
-        return ""
-    return "\n\nPast experience (from similar completed todos):\n" + "\n\n".join(ref_parts)
+async def _collect_reference_context(ref_ids: list[str], user_id: str) -> _ReferenceContext:
+    """Gather Standing rules and Learnings from the first referenced todos the user owns."""
+    wanted = [
+        ref for ref in ref_ids[:REFERENCED_TODOS_PROMPT_LIMIT] if todo_repository.is_valid_id(ref)
+    ]
+    if not wanted:
+        return _ReferenceContext()
+    owned = {doc.id: doc for doc in await todo_repository.find_by_ids(user_id, wanted)}
+    rules: list[str] = []
+    learnings: list[str] = []
+    for doc in (owned[ref] for ref in wanted if ref in owned):
+        canvas = doc.canvas_content or ""
+        if ref_rules := section_body(canvas, CANVAS_STANDING_RULES_SECTION):
+            rules.append(f'From "{doc.title}":\n{ref_rules[:STANDING_RULES_MAX_CHARS]}')
+        if ref_learnings := section_body(canvas, "Learnings"):
+            learnings.append(f'From past todo "{doc.title}":\n## Learnings\n{ref_learnings}')
+    return _ReferenceContext(
+        standing_rules=_labelled(REFERENCED_STANDING_RULES_LABEL, rules),
+        learnings=_labelled("Past experience (from similar completed todos):", learnings),
+    )
+
+
+def _labelled(label: str, blocks: list[str]) -> str:
+    """Join blocks under their label, or nothing when there are none."""
+    return f"{label}\n" + "\n\n".join(blocks) if blocks else ""
+
+
+_NO_REFERENCES = _ReferenceContext()
 
 
 def _build_execution_prompt(
     doc: TodoDocument,
     *,
-    canvas_content: str | None,
-    reference_context: str,
-    activity_content: str | None = None,
+    references: _ReferenceContext = _NO_REFERENCES,
     origin: TriggerOrigin | None = None,
     coalesced: Sequence[TriggerOrigin] = (),
 ) -> str:
@@ -463,17 +472,19 @@ def _build_execution_prompt(
         ]
     if doc.description:
         prompt_parts.append(f"Details: {doc.description}")
-    if canvas_content:
-        prompt_parts.append(f"Canvas (canvas.md):\n{bounded_canvas(canvas_content)}")
-    if activity_content:
+    if doc.canvas_content:
+        prompt_parts.append(f"Canvas (canvas.md):\n{bounded_canvas(doc.canvas_content)}")
+    if references.standing_rules:
+        prompt_parts.append(references.standing_rules)
+    if activity_content := doc.activity_content:
         tail = activity_content[-ACTIVITY_PROMPT_TAIL_CHARS:]
         truncated = " (older entries omitted; read activity.md for the full log)"
         label = "Recent activity (activity.md)"
         if len(activity_content) > len(tail):
             label += truncated
         prompt_parts.append(f"{label}:\n{tail}")
-    if reference_context:
-        prompt_parts.append(reference_context)
+    if references.learnings:
+        prompt_parts.append(references.learnings)
     prompt_parts.append(DELIVERED_RESULT_GUIDANCE if doc.notify_on_run else SILENT_RUN_GUIDANCE)
     return "\n\n".join(prompt_parts)
 
@@ -488,24 +499,9 @@ async def _execute_on_executor(
     """Run the todo on the executor; its delivery step writes the finish entry and any message."""
     todo_id = doc.id
     user_id = doc.user_id
-
-    canvas_content: str | None = None
-    activity_content: str | None = None  # pragma: no mutate — falsy; reassigned before truth test
-    try:
-        canvas_content = await read_canvas(todo_id, user_id)
-        activity_content = await read_activity(todo_id, user_id)
-    except Exception as exc:
-        log.warning(
-            "tracked_todo.canvas_read_failed",
-            todo_id=todo_id,
-            error=str(exc),
-        )
-
     prompt = _build_execution_prompt(
         doc,
-        canvas_content=canvas_content,
-        activity_content=activity_content,
-        reference_context=await _collect_reference_context(doc.references, user_id),
+        references=await _collect_reference_context(doc.references, user_id),
         origin=origin,
         coalesced=coalesced,
     )

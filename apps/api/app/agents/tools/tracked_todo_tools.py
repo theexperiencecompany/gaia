@@ -188,6 +188,22 @@ def _agent_actor(conversation_id: str | None) -> str:
     return f"GAIA in conversation {conversation_id[:8]}" if conversation_id else "GAIA"
 
 
+async def _references_refusal(user_id: str, references: list[str]) -> str | None:
+    """Refuse reference ids that name none of the user's todos; None when every one does.
+
+    A run obeys its references' Standing rules, so a foreign or mistyped id must not link.
+    """
+    valid = [ref for ref in references if todo_repository.is_valid_id(ref)]
+    owned = {doc.id for doc in await todo_repository.find_by_ids(user_id, valid)}
+    unknown = [ref for ref in references if ref not in owned]
+    if not unknown:
+        return None
+    return (
+        f"Error: no tracked todo of this user has the id {', '.join(unknown)}. "
+        "Nothing was saved; pass ids from list_tracked_todos or search_todo_context."
+    )
+
+
 def _creation_field_update(
     parsed_scheduled_at: datetime | None,
     recurrence: str | None,
@@ -606,13 +622,19 @@ async def create_tracked_todo(
         "the thread can have only one open todo: if it already has one, that todo "
         "comes back instead, for you to update.",
     ] = None,
+    references: Annotated[
+        list[str] | None,
+        "IDs of the user's other tracked todos this one builds on (a thread todo the "
+        "inbox desk opens references the desk). Every run of this todo obeys their "
+        "Standing rules and reads their Learnings.",
+    ] = None,
 ) -> str:
     """
     Create a tracked todo: a GAIA-managed todo with a working-memory canvas.
 
     A tracked todo shows on the user's todos page like a normal todo, but GAIA
-    owns it: it carries canvas.md (GAIA's recall doc: key IDs, current state,
-    context, learnings) and activity.md (dated log of what happened) plus an
+    owns it: it carries canvas.md (GAIA's recall doc: the user's standing rules,
+    key IDs, current state, context, learnings) and activity.md (dated log of what happened) plus an
     optional schedule/recurrence so GAIA can act on it over time. It is distinct from the user's own hand-created action items
     (which live in providers like Todoist, Google Tasks, Apple Reminders, Gaia
     Todos).
@@ -651,6 +673,8 @@ async def create_tracked_todo(
     gmail_thread_id: The Gmail thread id when the todo is about an email thread; it is
                 watched both ways and allowed one open todo. If the thread already has
                 one, nothing is created and that todo comes back: update it instead.
+    references: IDs of the user's tracked todos this one builds on; its runs obey their
+                Standing rules. An id that is not one of the user's todos creates nothing.
     """
     user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
     if not user_id:
@@ -673,6 +697,9 @@ async def create_tracked_todo(
     if error:
         return error
 
+    if references and (refusal := await _references_refusal(user_id, references)):
+        return refusal
+
     external_ref = _gmail_thread_ref(gmail_thread_id)
     try:
         result = await tracked_todo_service.create_tracked_todo(
@@ -685,6 +712,7 @@ async def create_tracked_todo(
             source_conversation_id=source_conversation_id,
             notify_on_run=notify_on_run,
             external_ref=external_ref,
+            references=references,
         )
     except ExternalRefTakenError as taken:
         return _format_ref_taken_output(taken.existing, datetime.now(UTC))
@@ -771,6 +799,28 @@ async def complete_tracked_todo(
     return f"Tracked todo {todo_id} completed and archived."
 
 
+async def _save_field_update(existing: TodoDocument, update: TodoUpdate, actor: str) -> str | None:
+    """Persist a field update and move the scheduled run; an error string when refused."""
+    effective_scheduled_at = (
+        update.scheduled_at if "scheduled_at" in update.model_fields_set else existing.scheduled_at
+    )
+    effective_recurrence = (
+        update.recurrence if "recurrence" in update.model_fields_set else existing.recurrence
+    )
+    if effective_recurrence and not effective_scheduled_at:
+        return (
+            "Error: cannot have recurrence without scheduled_at. "
+            "Either clear recurrence or provide a scheduled_at value."
+        )
+    if await todo_repository.update(existing.id, user_id=existing.user_id, update=update) is None:
+        return f"Error: tracked todo {existing.id} not found or not a tracked todo."
+    # A real datetime here (agent-passed or cron-derived) means the ARQ job moves.
+    if update.scheduled_at is not None:
+        await tracked_todo_service.schedule_execution(existing.id, update.scheduled_at)
+    await record_field_changes(existing.id, existing.user_id, update, by=actor)
+    return None
+
+
 @tool
 async def update_tracked_todo(
     config: RunnableConfig,
@@ -807,7 +857,8 @@ async def update_tracked_todo(
     ] = None,
     references: Annotated[
         list[str] | None,
-        "IDs of related past tracked todos to link. Appended to existing references.",
+        "IDs of the user's other tracked todos to link; appended to existing references. "
+        "Every run of this todo obeys their Standing rules and reads their Learnings.",
     ] = None,
     notify_on_run: Annotated[
         bool | None,
@@ -828,7 +879,7 @@ async def update_tracked_todo(
         scheduled_at: Schedule or reschedule execution. Must be in the future.
         recurrence: Set or clear recurrence pattern.
         expires_at: Set or clear the expiry datetime (when the todo becomes irrelevant).
-        references: IDs of related past tracked todos to link (appended to existing).
+        references: IDs of the user's tracked todos to link (appended to existing).
         notify_on_run: Turn this todo's run-result delivery on or off.
     """
     user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
@@ -850,7 +901,7 @@ async def update_tracked_todo(
     if notify_on_run is not None:
         update_fields["notify_on_run"] = notify_on_run
 
-    if not update_fields:
+    if not update_fields and not references:
         return "No fields to update. Provide at least one field to change."
 
     # Validate the resulting state against the existing doc — the in-call guards
@@ -858,36 +909,16 @@ async def update_tracked_todo(
     existing = await todo_repository.get(todo_id, user_id=user_id)
     if not existing:
         return f"Error: tracked todo {todo_id} not found or not a tracked todo."
+    if references and (refusal := await _references_refusal(user_id, references)):
+        return refusal
 
-    update = TodoUpdate.model_validate(update_fields)
-    effective_scheduled_at = (
-        update.scheduled_at if "scheduled_at" in update.model_fields_set else existing.scheduled_at
-    )
-    effective_recurrence = (
-        update.recurrence if "recurrence" in update.model_fields_set else existing.recurrence
-    )
-    if effective_recurrence and not effective_scheduled_at:
-        return (
-            "Error: cannot have recurrence without scheduled_at. "
-            "Either clear recurrence or provide a scheduled_at value."
-        )
-
-    updated = await todo_repository.update(todo_id, user_id=user_id, update=update)
-    if updated is None:
-        return f"Error: tracked todo {todo_id} not found or not a tracked todo."
-
-    # A real datetime here (agent-passed or cron-derived) means the ARQ job moves.
-    if update.scheduled_at is not None:
-        await tracked_todo_service.schedule_execution(todo_id, update.scheduled_at)
-    await record_field_changes(
-        todo_id,
-        user_id,
-        update,
-        by=_agent_actor(read_agent_configurable(config).conversation_id),
-    )
-
+    if update_fields:
+        actor = _agent_actor(read_agent_configurable(config).conversation_id)
+        update = TodoUpdate.model_validate(update_fields)
+        if error := await _save_field_update(existing, update, actor):
+            return error
     updated_keys = list(update_fields)
-    if references is not None:
+    if references:
         await todo_repository.add_references(todo_id, user_id=user_id, references=references)
         updated_keys.append("references")
 

@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 from bson import ObjectId
 import pytest
 
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.todos import GAIA_TRACKED_LABEL, STANDING_RULES_MAX_CHARS
 from app.models.todo_models import Priority, TodoDocument
 from app.services.gaia_task_files import (
     GaiaTaskFile,
@@ -31,7 +31,8 @@ FOLDER = f"fix-the-thing-{SHORT}"
 
 
 VALID_CANVAS = (
-    "# Fix the thing\n\n## Key Details\nk\n\n## Current State\nopen\n\n## Context\n\n## Learnings\n"
+    "# Fix the thing\n\n## Standing rules\n\n## Key Details\nk\n\n## Current State\nopen\n\n"
+    "## Context\n\n## Learnings\n"
 )
 
 
@@ -236,7 +237,7 @@ class TestWriteFile:
         )
 
         written = canvas.await_args.args[2]
-        assert written.startswith("# new\n\n## Key Details\nk")
+        assert written.startswith("# new\n\n## Standing rules\n\n## Key Details\nk")
         for section in ("## Current State", "## Context", "## Learnings"):
             assert written.count(section) == 1
 
@@ -246,8 +247,15 @@ class TestWriteFile:
             (VALID_CANVAS + "\n## Learnings\nagain\n", 'merge the 2 "## Learnings" sections'),
             (VALID_CANVAS + "\n## Activity Log (append)\n- ran\n", '"## Activity Log (append)"'),
             (VALID_CANVAS + "\n### 2026-09-26 research\n- found\n", "dated"),
+            (
+                VALID_CANVAS.replace(
+                    "## Standing rules\n",
+                    f"## Standing rules\n{'r' * (STANDING_RULES_MAX_CHARS + 1)}\n",
+                ),
+                'shorten "## Standing rules"',
+            ),
         ],
-        ids=["repeated-section", "activity-section", "dated-entry"],
+        ids=["repeated-section", "activity-section", "dated-entry", "rules-too-long"],
     )
     async def test_a_canvas_carrying_a_log_or_a_repeat_is_refused(self, writers, body, problem):
         canvas, _activity, syslog = writers
@@ -266,7 +274,7 @@ class TestWriteFile:
         assert refusal == (
             'Error: canvas.md was not saved: merge the 2 "## Learnings" sections into one; '
             'move the dated "### YYYY-MM-DD" entries into activity.md. The canvas keeps one '
-            "section each for Key Details, Current State, Context, Learnings (plus any of "
+            "section each for Standing rules, Key Details, Current State, Context, Learnings (plus any of "
             "your own); dated entries and run logs belong in activity.md."
         )
 

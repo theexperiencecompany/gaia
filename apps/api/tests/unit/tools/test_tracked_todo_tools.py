@@ -1168,11 +1168,17 @@ class TestUpdateTrackedTodoSuccess:
         mock_tz.assert_awaited_once_with("user-1")
 
     async def test_references_are_appended_and_reported(self):
+        refs = ["66f838cc8829054e5f10e402", "66f838cc8829054e5f10e403"]
         with (
             patch(
                 "app.agents.tools.tracked_todo_tools.todo_repository.get",
                 new_callable=AsyncMock,
                 return_value=self._existing_doc(),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.find_by_ids",
+                new_callable=AsyncMock,
+                return_value=[self._existing_doc(id=ref) for ref in refs],
             ),
             patch(
                 "app.agents.tools.tracked_todo_tools.todo_repository.update",
@@ -1188,10 +1194,10 @@ class TestUpdateTrackedTodoSuccess:
                 config=_config(),
                 todo_id="t1",
                 priority=Priority.HIGH,
-                references=["t2", "t3"],
+                references=refs,
             )
-        mock_add_refs.assert_awaited_once_with("t1", user_id="user-1", references=["t2", "t3"])
-        assert "references" in result
+        mock_add_refs.assert_awaited_once_with("t1", user_id="user-1", references=refs)
+        assert result == "Updated tracked todo t1: priority, references"
 
     async def test_labels_update_persists_and_reports_key(self):
         with (
@@ -1533,6 +1539,86 @@ class TestCreateThreadTrackedTodo:
 
         assert "Tracked todo created" not in result
         assert "Could not register 'gmail_email_sent'" in result
+
+
+class TestTrackedTodoReferences:
+    """A todo that references others inherits their Standing rules, so only the user's own count."""
+
+    _CREATE = "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo"
+    _FIND = "app.agents.tools.tracked_todo_tools.todo_repository.find_by_ids"
+    _GET = "app.agents.tools.tracked_todo_tools.todo_repository.get"
+    _UPDATE = "app.agents.tools.tracked_todo_tools.todo_repository.update"
+    _ADD = "app.agents.tools.tracked_todo_tools.todo_repository.add_references"
+    DESK = "66f838cc8829054e5f10e401"
+
+    def _owned(self, *ids: str) -> list[TodoDocument]:
+        return [TodoDocument(id=i, user_id="user-1", title="Inbox desk") for i in ids]
+
+    @staticmethod
+    def _response() -> TodoResponse:
+        now = datetime.now(UTC)
+        return TodoResponse(id="t1", user_id="user-1", title="t", created_at=now, updated_at=now)
+
+    async def test_a_todo_created_with_references_is_saved_with_them(self):
+        find = AsyncMock(return_value=self._owned(self.DESK))
+        with (
+            patch(self._FIND, find),
+            patch(self._CREATE, AsyncMock(return_value=self._response())) as create,
+        ):
+            result = await create_tracked_todo.coroutine(
+                config=_config(), title="Reply to Sam", references=[self.DESK]
+            )
+
+        assert "Tracked todo created: t1" in result
+        assert create.await_args.kwargs["references"] == [self.DESK]
+        find.assert_awaited_once_with("user-1", [self.DESK])
+
+    async def test_a_reference_that_is_not_one_of_the_users_todos_creates_nothing(self):
+        with (
+            patch(self._FIND, AsyncMock(return_value=[])),
+            patch(self._CREATE, AsyncMock(return_value=self._response())) as create,
+        ):
+            result = await create_tracked_todo.coroutine(
+                config=_config(), title="Reply to Sam", references=[self.DESK, "junk"]
+            )
+
+        assert result == (
+            f"Error: no tracked todo of this user has the id {self.DESK}, junk. "
+            "Nothing was saved; pass ids from list_tracked_todos or search_todo_context."
+        )
+        create.assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_references_alone_are_an_update(self):
+        """Regression: an update carrying only references was refused as "No fields to update"."""
+        with (
+            patch(self._FIND, AsyncMock(return_value=self._owned(self.DESK))),
+            patch(self._GET, AsyncMock(return_value=self._owned("t1")[0])),
+            patch(self._UPDATE, AsyncMock()) as update,
+            patch(self._ADD, AsyncMock()) as add,
+        ):
+            result = await update_tracked_todo.coroutine(
+                config=_config(), todo_id="t1", references=[self.DESK]
+            )
+
+        assert result == "Updated tracked todo t1: references"
+        add.assert_awaited_once_with("t1", user_id="user-1", references=[self.DESK])
+        update.assert_not_awaited()
+
+    async def test_an_update_naming_a_todo_the_user_does_not_own_links_nothing(self):
+        with (
+            patch(self._FIND, AsyncMock(return_value=[])),
+            patch(self._GET, AsyncMock(return_value=self._owned("t1")[0])),
+            patch(self._UPDATE, AsyncMock()) as update,
+            patch(self._ADD, AsyncMock()) as add,
+        ):
+            result = await update_tracked_todo.coroutine(
+                config=_config(), todo_id="t1", priority=Priority.HIGH, references=[self.DESK]
+            )
+
+        assert result.startswith(f"Error: no tracked todo of this user has the id {self.DESK}.")
+        update.assert_not_awaited()
+        add.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

@@ -64,6 +64,9 @@ from shared.py.wide_events import log
 
 CANVAS_TEMPLATE = """# {title}
 
+## Standing rules
+<!-- the user's instructions for how this todo behaves, one line each with the date given; every run obeys them over its defaults; never removed unless the user retracts one -->
+
 ## Key Details
 <!-- email addresses, thread IDs, calendar IDs, issue IDs: everything needed to take action -->
 
@@ -166,6 +169,7 @@ class TrackedTodoService:
         source_conversation_id: str | None = None,
         notify_on_run: bool = True,
         external_ref: ExternalRef | None = None,
+        references: list[str] | None = None,
     ) -> TodoResponse:
         """Create a todo with its canvas, activity and log, indexed in ChromaDB.
 
@@ -183,6 +187,7 @@ class TrackedTodoService:
             priority=priority,
             labels=all_labels,
             notify_on_run=notify_on_run,
+            references=references or [],
         )
         result = await TodoService.create_todo(todo, user_id, external_ref=external_ref)
         todo_id = result.id

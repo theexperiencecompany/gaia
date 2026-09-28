@@ -15,8 +15,9 @@ from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
 from app.constants.comms import CommsDirectiveKind
 from app.constants.log_tags import LogTag
 from app.constants.todos import (
-    DELIVERY_KEY_DETAILS_MAX_CHARS,
+    CANVAS_STANDING_RULES_SECTION,
     RUN_SUMMARY_ACTIVITY_CHARS,
+    STANDING_RULES_MAX_CHARS,
     TodoActivityEvent,
     TodoRunDeliveryOutcome,
 )
@@ -96,11 +97,11 @@ async def deliver_todo_run_result(
     )
 
 
-def _standing_requests(todo: TodoDocument) -> str | None:
-    """Return the todo's Key Details, bounded, or None when it has none."""
+def _standing_rules(todo: TodoDocument) -> str | None:
+    """Return the todo's Standing rules, bounded, or None when it has none."""
     canvas = todo.canvas_content
-    key_details = section_body(canvas, "Key Details") if canvas else None
-    return key_details[:DELIVERY_KEY_DETAILS_MAX_CHARS] if key_details else None
+    rules = section_body(canvas, CANVAS_STANDING_RULES_SECTION) if canvas else None
+    return rules[:STANDING_RULES_MAX_CHARS] if rules else None
 
 
 async def _narrate_and_send(run: ExecutorRun, todo: TodoDocument, result_text: str) -> _Resolution:
@@ -110,7 +111,7 @@ async def _narrate_and_send(run: ExecutorRun, todo: TodoDocument, result_text: s
         "result",
         run.conversation_id,
         run.user,
-        preamble=tracked_todo_delivery_note(todo.title, _standing_requests(todo)),
+        preamble=tracked_todo_delivery_note(todo.title, _standing_rules(todo)),
     )
     if not text:
         log.error(f"{LogTag.AGENT} todo run result narration failed", todo_id=todo.id)

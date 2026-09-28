@@ -34,6 +34,7 @@ from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import TodoRunRequest
 from app.agents.prompts.todo_prompts import (
     DELIVERED_RESULT_GUIDANCE,
+    REFERENCED_STANDING_RULES_LABEL,
     SILENT_RUN_GUIDANCE,
     TRIGGERED_RELEVANCE_GUIDANCE,
 )
@@ -41,9 +42,12 @@ from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
     CANVAS_PROMPT_MAX_CHARS,
     FAILED_LABEL,
+    REFERENCED_TODOS_PROMPT_LIMIT,
+    STANDING_RULES_MAX_CHARS,
     TODO_SCHEDULE_FIRE_GRACE,
     TodoActivityEvent,
 )
+from app.db.repositories.todos import todo_repository
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
@@ -76,8 +80,8 @@ from app.workers.tasks.tracked_todo_tasks import (
     _compute_next_run,
     _execute_on_executor,
     _execute_todo_with_retry,
-    _extract_learnings,
     _mark_todo_failed,
+    _ReferenceContext,
     execute_tracked_todo,
     resume_tracked_todo,
     safety_net_check_orphaned_todos,
@@ -314,9 +318,7 @@ class TestTriggeredExecutionPrompt:
     """
 
     def test_a_scheduled_prompt_mentions_no_event(self):
-        prompt = _build_execution_prompt(
-            _doc(title="Chase Acme"), canvas_content=None, reference_context=""
-        )
+        prompt = _build_execution_prompt(_doc(title="Chase Acme"))
 
         assert prompt.startswith("Execute the following scheduled task: Chase Acme")
         assert "Triggering event" not in prompt
@@ -333,8 +335,6 @@ class TestTriggeredExecutionPrompt:
 
         prompt = _build_execution_prompt(
             _doc(title="Chase Acme"),
-            canvas_content=None,
-            reference_context="",
             origin=origin,
         )
 
@@ -358,8 +358,6 @@ class TestTriggeredExecutionPrompt:
 
         prompt = _build_execution_prompt(
             _doc(title="Chase Acme"),
-            canvas_content=None,
-            reference_context="",
             origin=origin,
         )
 
@@ -393,8 +391,6 @@ class TestTriggeredExecutionPrompt:
 
         prompt = _build_execution_prompt(
             _doc(title="Chase Acme"),
-            canvas_content=None,
-            reference_context="",
             origin=origin,
         )
 
@@ -412,8 +408,6 @@ class TestTriggeredExecutionPrompt:
 
         prompt = _build_execution_prompt(
             _doc(title="Chase Acme"),
-            canvas_content=None,
-            reference_context="",
             origin=origin,
         )
 
@@ -431,8 +425,6 @@ class TestTriggeredExecutionPrompt:
 
         prompt = _build_execution_prompt(
             _doc(title="Chase Acme"),
-            canvas_content=None,
-            reference_context="",
             origin=origin,
             coalesced=[later],
         )
@@ -459,8 +451,6 @@ class TestDeliveryContractInThePrompt:
     def test_a_delivering_run_is_told_its_message_reaches_the_user(self):
         prompt = _build_execution_prompt(
             _doc(title="Chase Acme", notify_on_run=True),
-            canvas_content=None,
-            reference_context="",
         )
 
         assert DELIVERED_RESULT_GUIDANCE in prompt
@@ -469,8 +459,6 @@ class TestDeliveryContractInThePrompt:
     def test_a_silent_run_is_told_its_message_reaches_nobody(self):
         prompt = _build_execution_prompt(
             _doc(title="Chase Acme", notify_on_run=False),
-            canvas_content=None,
-            reference_context="",
         )
 
         assert SILENT_RUN_GUIDANCE in prompt
@@ -918,116 +906,78 @@ class TestATrackedTodoAlwaysRunsTheAgent:
 
 
 # ---------------------------------------------------------------------------
-# _extract_learnings
-# ---------------------------------------------------------------------------
-
-
-class TestExtractLearnings:
-    def test_returns_none_when_the_section_is_absent(self):
-        assert _extract_learnings("## Current State\nfine") is None
-
-    def test_returns_none_for_an_empty_canvas(self):
-        assert _extract_learnings("") is None
-
-    def test_reads_to_the_end_when_learnings_is_the_last_section(self):
-        canvas = "## Context\nc\n\n## Learnings\n- retry the API twice"
-        assert _extract_learnings(canvas) == "## Learnings\n- retry the API twice"
-
-    def test_stops_at_the_next_section_heading(self):
-        canvas = "## Learnings\n- a lesson\n\n## Timeline\n- ran at noon"
-        result = _extract_learnings(canvas)
-        assert result is not None
-        assert "- a lesson" in result
-        assert "Timeline" not in result
-
-    def test_handles_learnings_as_the_very_first_line(self):
-        canvas = "## Learnings\n- first-line lesson\n\n## Context\nc"
-        result = _extract_learnings(canvas)
-        assert result == "## Learnings\n- first-line lesson"
-
-
-# ---------------------------------------------------------------------------
 # _collect_reference_context
 # ---------------------------------------------------------------------------
 
 
+def _ref_id(n: int) -> str:
+    return f"66f838cc8829054e5f10e4{n:02d}"
+
+
 class TestCollectReferenceContext:
-    async def _run(self, ref_ids, *, docs, canvases):
-        repo = MagicMock()
-        repo.get_by_id = AsyncMock(side_effect=lambda rid: docs.get(rid))
-        read = AsyncMock(side_effect=lambda rid, _uid: canvases[rid])
-        with (
-            patch(f"{MODULE}.todo_repository", repo),
-            patch(f"{MODULE}.read_canvas", read),
-        ):
-            return await _collect_reference_context(ref_ids, "user-1"), repo, read
+    async def _run(self, ref_ids: list[str], owned: list[TodoDocument]):
+        find = AsyncMock(return_value=owned)
+        with patch.object(todo_repository, "find_by_ids", find):
+            return await _collect_reference_context(ref_ids, "user-1"), find
 
     async def test_no_references_short_circuits_without_touching_mongo(self):
-        repo = MagicMock()
-        repo.get_by_id = AsyncMock()
-        with patch(f"{MODULE}.todo_repository", repo):
-            assert await _collect_reference_context([], "user-1") == ""
-        repo.get_by_id.assert_not_awaited()
+        result, find = await self._run([], [])
+
+        assert result == _ReferenceContext()
+        find.assert_not_awaited()
 
     async def test_includes_the_referenced_todo_title_and_its_learnings(self):
-        docs = {"r1": _doc(id="r1", title="Last quarter's rollout")}
-        canvases = {"r1": "## Learnings\n- ship on Tuesdays\n"}
-        result, _repo, _read = await self._run(["r1"], docs=docs, canvases=canvases)
+        owned = [
+            _doc(
+                id=_ref_id(1),
+                title="Last quarter's rollout",
+                canvas_content="## Learnings\n- ship on Tuesdays\n",
+            )
+        ]
+        result, _ = await self._run([_ref_id(1)], owned)
 
-        assert result.startswith("\n\nPast experience (from similar completed todos):\n")
-        assert 'From past todo "Last quarter\'s rollout":' in result
-        assert "- ship on Tuesdays" in result
+        assert result == _ReferenceContext(
+            learnings="Past experience (from similar completed todos):\n"
+            'From past todo "Last quarter\'s rollout":\n## Learnings\n- ship on Tuesdays'
+        )
 
-    async def test_caps_reference_reads_at_five(self):
-        ids = [f"r{i}" for i in range(9)]
-        docs = {i: _doc(id=i, title=i) for i in ids}
-        canvases = {i: f"## Learnings\n- lesson {i}" for i in ids}
-        result, repo, _read = await self._run(ids, docs=docs, canvases=canvases)
+    async def test_reads_only_the_first_five_references(self):
+        ids = [_ref_id(i) for i in range(9)]
+        owned = [_doc(id=i, title=i, canvas_content=f"## Learnings\n- lesson {i}") for i in ids]
+        result, find = await self._run(ids, owned)
 
-        assert repo.get_by_id.await_count == 5
-        assert "- lesson r4" in result
-        assert "- lesson r5" not in result
+        find.assert_awaited_once_with("user-1", ids[:REFERENCED_TODOS_PROMPT_LIMIT])
+        assert f"- lesson {ids[4]}" in result.learnings
+        assert f"- lesson {ids[5]}" not in result.learnings
 
-    async def test_a_deleted_reference_is_skipped_and_the_rest_still_load(self):
-        docs = {"gone": None, "r2": _doc(id="r2", title="Kept")}
-        canvases = {"gone": "## Learnings\n- never read", "r2": "## Learnings\n- kept lesson"}
-        result, _repo, read = await self._run(["gone", "r2"], docs=docs, canvases=canvases)
+    async def test_a_reference_that_names_no_todo_of_the_owner_is_skipped(self):
+        owned = [_doc(id=_ref_id(2), title="Kept", canvas_content="## Learnings\n- kept lesson")]
+        result, find = await self._run(["not-an-id", _ref_id(1), _ref_id(2)], owned)
 
-        assert "- never read" not in result
-        assert "- kept lesson" in result
-        # A missing doc must short-circuit before the canvas read.
-        assert read.await_count == 1
+        find.assert_awaited_once_with("user-1", [_ref_id(1), _ref_id(2)])
+        assert result.learnings.endswith('From past todo "Kept":\n## Learnings\n- kept lesson')
 
-    async def test_a_canvas_read_failure_does_not_abort_the_remaining_references(self):
-        docs = {"bad": _doc(id="bad", title="Bad"), "good": _doc(id="good", title="Good")}
-        repo = MagicMock()
-        repo.get_by_id = AsyncMock(side_effect=lambda rid: docs[rid])
+    async def test_rules_and_learnings_keep_the_order_the_todo_lists_them_in(self):
+        owned = [
+            _doc(id=_ref_id(2), title="Second", canvas_content="## Standing rules\n- b"),
+            _doc(id=_ref_id(1), title="First", canvas_content="## Standing rules\n- a"),
+        ]
+        result, _ = await self._run([_ref_id(1), _ref_id(2)], owned)
 
-        async def _read(ref_id: str, _user_id: str) -> str:
-            if ref_id == "bad":
-                raise RuntimeError("canvas unavailable")
-            return "## Learnings\n- good lesson"
+        assert result.standing_rules == (
+            f'{REFERENCED_STANDING_RULES_LABEL}\nFrom "First":\n- a\n\nFrom "Second":\n- b'
+        )
 
-        with (
-            patch(f"{MODULE}.todo_repository", repo),
-            patch(f"{MODULE}.read_canvas", AsyncMock(side_effect=_read)),
-        ):
-            result = await _collect_reference_context(["bad", "good"], "user-1")
+    async def test_empty_sections_and_a_missing_canvas_add_nothing(self):
+        owned = [
+            _doc(
+                id=_ref_id(1), title="Empty", canvas_content="## Standing rules\n\n## Learnings\n"
+            ),
+            _doc(id=_ref_id(2), title="No canvas", canvas_content=None),
+        ]
+        result, _ = await self._run([_ref_id(1), _ref_id(2)], owned)
 
-        assert "- good lesson" in result
-        assert "Bad" not in result
-
-    async def test_references_without_learnings_produce_no_context_block(self):
-        docs = {"r1": _doc(id="r1", title="No lessons")}
-        canvases = {"r1": "## Current State\nnothing learned"}
-        result, _repo, _read = await self._run(["r1"], docs=docs, canvases=canvases)
-        assert result == ""
-
-    async def test_a_null_canvas_is_tolerated(self):
-        docs = {"r1": _doc(id="r1", title="Empty canvas")}
-        canvases = {"r1": None}
-        result, _repo, _read = await self._run(["r1"], docs=docs, canvases=canvases)
-        assert result == ""
+        assert result == _ReferenceContext()
 
 
 # ---------------------------------------------------------------------------
@@ -1038,26 +988,26 @@ class TestCollectReferenceContext:
 class TestBuildExecutionPrompt:
     def test_title_only(self):
         assert (
-            _build_execution_prompt(
-                _doc(title="Ship it"),
-                canvas_content=None,
-                activity_content=None,
-                reference_context="",
-            )
+            _build_execution_prompt(_doc(title="Ship it"))
             == f"Execute the following scheduled task: Ship it\n\n{DELIVERED_RESULT_GUIDANCE}"
         )
 
     def test_all_sections_appear_in_order(self):
         prompt = _build_execution_prompt(
-            _doc(title="Ship it", description="the release"),
-            canvas_content="## Current State\nblocked",
-            activity_content="- 2026-09-01T09:00:00+00:00 started",
-            reference_context="past stuff",
+            _doc(
+                title="Ship it",
+                description="the release",
+                canvas_content="## Current State\nblocked",
+                activity_content="- 2026-09-01T09:00:00+00:00 started",
+            ),
+            references=_ReferenceContext(standing_rules="inherited rules", learnings="past stuff"),
         )
         assert prompt.split("\n\n") == [
             "Execute the following scheduled task: Ship it",
             "Details: the release",
             "Canvas (canvas.md):\n## Current State\nblocked",
+            # Next to the canvas: rules the run obeys, not background reading.
+            "inherited rules",
             "Recent activity (activity.md):\n- 2026-09-01T09:00:00+00:00 started",
             "past stuff",
             # Last on purpose: the delivery contract is what the model should still
@@ -1067,22 +1017,14 @@ class TestBuildExecutionPrompt:
 
     def test_empty_bodies_are_omitted_not_rendered_as_empty_headers(self):
         prompt = _build_execution_prompt(
-            _doc(title="Ship it"),
-            canvas_content="",
-            activity_content="",
-            reference_context="",
+            _doc(title="Ship it", canvas_content="", activity_content="")
         )
         assert "canvas.md" not in prompt and "activity.md" not in prompt
 
     def test_long_activity_is_tail_truncated_and_says_so(self):
         """A recurring todo's activity grows forever; the prompt must not."""
         activity = "\n".join(f"- entry {i}" for i in range(2000))
-        prompt = _build_execution_prompt(
-            _doc(title="Ship it"),
-            canvas_content=None,
-            activity_content=activity,
-            reference_context="",
-        )
+        prompt = _build_execution_prompt(_doc(title="Ship it", activity_content=activity))
         assert "- entry 1999" in prompt
         assert "- entry 0\n" not in prompt
         assert "older entries omitted" in prompt
@@ -1091,12 +1033,7 @@ class TestBuildExecutionPrompt:
     def test_a_truncated_activity_carries_the_full_exact_label(self):
         """The marker is appended to the label, not substituted — a dropped or reworded marker hides the cut."""
         activity = "x" * (ACTIVITY_PROMPT_TAIL_CHARS + 1)
-        prompt = _build_execution_prompt(
-            _doc(title="Ship it"),
-            canvas_content=None,
-            activity_content=activity,
-            reference_context="",
-        )
+        prompt = _build_execution_prompt(_doc(title="Ship it", activity_content=activity))
 
         assert (
             "Recent activity (activity.md) "
@@ -1105,12 +1042,7 @@ class TestBuildExecutionPrompt:
         ) in prompt
 
     def test_short_activity_is_not_flagged_as_truncated(self):
-        prompt = _build_execution_prompt(
-            _doc(title="Ship it"),
-            canvas_content=None,
-            activity_content="- one line",
-            reference_context="",
-        )
+        prompt = _build_execution_prompt(_doc(title="Ship it", activity_content="- one line"))
         assert "older entries omitted" not in prompt
 
 
@@ -1119,12 +1051,80 @@ class TestTheCanvasIsBoundedInThePrompt:
         """Regression: todo 6a270074 failed every retry on a canvas past the request cap."""
         canvas = "## Key Details\n" + "x" * (CANVAS_PROMPT_MAX_CHARS * 2) + "\n## Learnings\nlast"
 
-        prompt = _build_execution_prompt(_doc(), canvas_content=canvas, reference_context="")
+        prompt = _build_execution_prompt(_doc(canvas_content=canvas))
 
         assert "## Key Details" in prompt
         assert "## Learnings\nlast" in prompt
         assert "[middle of canvas trimmed:" in prompt
         assert len(prompt) < CANVAS_PROMPT_MAX_CHARS + 2_000
+
+
+_DESK_ID = "66f838cc8829054e5f10e401"
+
+
+def _desk(rules: str = "- 2026-09-28: stop showing me newsletters") -> TodoDocument:
+    return TodoDocument(
+        id=_DESK_ID,
+        user_id="user-1",
+        title="Inbox desk",
+        canvas_content=f"## Standing rules\n{rules}\n\n## Learnings\n- VIPs reply fast\n",
+    )
+
+
+class TestStandingRulesReachTheRun:
+    """The user's instructions bind every run: its own, and those of the todos it references."""
+
+    async def _task(self, doc: TodoDocument, desk: TodoDocument) -> tuple[str, AsyncMock]:
+        docs = {doc.id: doc, desk.id: desk}
+        run = AsyncMock()
+        find = AsyncMock(return_value=[desk])
+        with (
+            patch.object(todo_repository, "find_by_ids", find),
+            patch.object(
+                todo_repository, "get", AsyncMock(side_effect=lambda i, user_id: docs.get(i))
+            ),
+            patch.object(todo_repository, "get_by_id", AsyncMock(side_effect=docs.get)),
+            patch(f"{MODULE}.run_todo_on_executor", run),
+            patch(f"{MODULE}.record_activity", AsyncMock()),
+        ):
+            await _execute_on_executor(doc, user_data=AuthenticatedUser(user_id="user-1"))
+        return run.await_args.args[0].task, find
+
+    async def test_a_referenced_todos_rules_reach_the_run_as_rules_to_obey(self):
+        task, _ = await self._task(_doc(references=[_DESK_ID]), _desk())
+
+        assert (
+            f'{REFERENCED_STANDING_RULES_LABEL}\nFrom "Inbox desk":\n'
+            "- 2026-09-28: stop showing me newsletters"
+        ) in task
+        assert (
+            "Past experience (from similar completed todos):\n"
+            'From past todo "Inbox desk":\n## Learnings\n- VIPs reply fast'
+        ) in task
+
+    async def test_references_are_read_only_from_the_runs_owner(self):
+        _, find = await self._task(_doc(references=[_DESK_ID]), _desk())
+
+        find.assert_awaited_once_with("user-1", [_DESK_ID])
+
+    async def test_inherited_rules_are_bounded(self):
+        rules = "r" * (STANDING_RULES_MAX_CHARS * 2)
+
+        task, _ = await self._task(_doc(references=[_DESK_ID]), _desk(rules))
+
+        assert f'From "Inbox desk":\n{rules[:STANDING_RULES_MAX_CHARS]}\n' in task
+        assert rules[: STANDING_RULES_MAX_CHARS + 1] not in task
+
+    async def test_the_runs_own_rules_survive_an_oversized_canvas(self):
+        canvas = (
+            "## Key Details\n" + "k" * CANVAS_PROMPT_MAX_CHARS + "\n\n"
+            "## Standing rules\n- 2026-09-28: brief me in bullets\n\n"
+            "## Context\n" + "c" * CANVAS_PROMPT_MAX_CHARS
+        )
+
+        task, _ = await self._task(_doc(canvas_content=canvas), _desk())
+
+        assert "## Standing rules\n- 2026-09-28: brief me in bullets" in task
 
 
 # ---------------------------------------------------------------------------
@@ -1499,8 +1499,6 @@ class TestTriggerEventsCoalesce:
             patch(f"{MODULE}.todo_repository", row),
             patch(f"{_DISPATCH}.todo_repository", row),
             patch(f"{MODULE}.run_todo_on_executor", run),
-            patch(f"{MODULE}.read_canvas", AsyncMock(return_value=None)),
-            patch(f"{MODULE}.read_activity", AsyncMock(return_value=None)),
             patch(f"{MODULE}.enforce_daily_cost_budget", self.budget),
             patch(
                 f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
@@ -1629,17 +1627,12 @@ class TestTriggerEventsCoalesce:
 class TestExecuteOnExecutor:
     """The worker hands the todo to the executor; comms is never in front of it."""
 
-    def _patches(self, *, run=None, canvas="## Current State\nall good", canvas_error=None):
+    def _patches(self, *, run=None):
         self.run = run or AsyncMock()
         self.timeline = AsyncMock(return_value=True)
-        read = (
-            AsyncMock(side_effect=canvas_error) if canvas_error else AsyncMock(return_value=canvas)
-        )
-        self.references = AsyncMock(return_value="")
+        self.references = AsyncMock(return_value=_ReferenceContext())
         return (
             patch(f"{MODULE}.run_todo_on_executor", self.run),
-            patch(f"{MODULE}.read_canvas", read),
-            patch(f"{MODULE}.read_activity", AsyncMock(return_value="- earlier run")),
             patch(f"{MODULE}.record_activity", self.timeline),
             patch(f"{MODULE}._collect_reference_context", self.references),
         )
@@ -1652,14 +1645,20 @@ class TestExecuteOnExecutor:
         return [f"[{c.args[2].value}] {c.args[3]}" for c in self.timeline.call_args_list]
 
     async def _execute(self, doc=None, origin=None, **patches):
-        p1, p2, p3, p4, p5 = self._patches(**patches)
+        p1, p2, p3 = self._patches(**patches)
         user = AuthenticatedUser(user_id="user-1")
-        with p1, p2, p3, p4, p5:
+        with p1, p2, p3:
             await _execute_on_executor(doc or _doc(), user_data=user, origin=origin)
         return user
 
     async def test_the_executor_gets_the_todo_brief_as_its_task(self):
-        user = await self._execute(_doc(description="verify staging"))
+        user = await self._execute(
+            _doc(
+                description="verify staging",
+                canvas_content="## Current State\nall good",
+                activity_content="- earlier run",
+            )
+        )
 
         request = self._request()
         assert request.user is user
@@ -1704,12 +1703,6 @@ class TestExecuteOnExecutor:
         await self._execute()
 
         assert self._request().conversation_id != first
-
-    async def test_a_canvas_read_failure_does_not_abort_the_run(self):
-        await self._execute(canvas_error=RuntimeError("mongo down"))
-
-        self.run.assert_awaited_once()
-        assert "Canvas (canvas.md)" not in self._request().task
 
     async def test_a_failed_run_leaves_a_failure_entry_and_propagates(self):
         with pytest.raises(TimeoutError):

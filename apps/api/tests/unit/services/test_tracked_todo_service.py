@@ -5,12 +5,13 @@ completion/archival, and the context-summary renderers the agent sees.
 """
 
 from datetime import UTC, datetime, timedelta
+import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.constants.todos import GAIA_TRACKED_LABEL, TodoActivityEvent
+from app.constants.todos import CANVAS_SECTIONS, GAIA_TRACKED_LABEL, TodoActivityEvent
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.models.todo_models import (
     ExternalRef,
@@ -25,6 +26,7 @@ from app.models.trigger_subscription_models import (
     SubscriptionAction,
     SubscriptionCondition,
 )
+from app.services.canvas_markdown import normalize_canvas
 from app.services.tracked_todo_service import (
     CANVAS_TEMPLATE,
     TrackedTodoService,
@@ -257,7 +259,7 @@ class TestCreateTrackedTodo:
         )
 
         update = mock_repo.update.await_args.kwargs["update"]
-        assert update.canvas_content.startswith("# T\n\n## Key Details\nk\n")
+        assert update.canvas_content.startswith("# T\n\n## Standing rules\n\n## Key Details\nk\n")
         assert update.activity_content.count("\n") == 0  # only the creation marker
 
     async def test_creates_with_template_canvas_and_indexes(self, mock_repo, mock_deps):
@@ -328,6 +330,22 @@ class TestCreateTrackedTodo:
 
         todo_model: TodoModel = mock_deps.create.call_args.args[0]
         assert set(todo_model.labels) == {"work", "finance", GAIA_TRACKED_LABEL}
+
+    async def test_the_todos_it_references_are_saved_with_it(self, mock_repo, mock_deps):
+        mock_deps.create.return_value = _todo_response()
+
+        await TrackedTodoService.create_tracked_todo(
+            USER_ID, "Reply to Sam", references=["desk-1", "lease-1"]
+        )
+
+        assert mock_deps.create.call_args.args[0].references == ["desk-1", "lease-1"]
+
+
+def test_the_template_opens_on_standing_rules_and_is_already_in_shape() -> None:
+    canvas = CANVAS_TEMPLATE.format(title="Inbox desk")
+
+    assert normalize_canvas(canvas) == (canvas, None)
+    assert re.findall(r"^## (.+)$", canvas, re.MULTILINE) == list(CANVAS_SECTIONS)
 
 
 class TestCompleteTrackedTodo:
@@ -568,6 +586,12 @@ class TestSingleton:
         assert Priority.NONE.value == "none"
 
 
+_CLEAN_CANVAS = (
+    "# T\n\n## Standing rules\n\n## Key Details\nk\n\n## Current State\n\n## Context\n\n"
+    "## Learnings\n"
+)
+
+
 class TestMigrateLegacyCanvas:
     LEGACY = (
         "# T\n\n## Key Details\nk\n\n## Activity Log\n- did x\n\n"
@@ -604,9 +628,7 @@ class TestMigrateLegacyCanvas:
         )
 
     async def test_clean_canvas_is_not_touched(self):
-        doc = _todo_doc(
-            canvas_content="# T\n\n## Key Details\nk\n\n## Current State\n\n## Context\n\n## Learnings\n"
-        )
+        doc = _todo_doc(canvas_content=_CLEAN_CANVAS)
         with patch(f"{_MOD}.write_canvas_and_activity", new_callable=AsyncMock) as write:
             assert await TrackedTodoService.normalize_stored_canvas(doc) is False
 
@@ -640,9 +662,7 @@ class TestMigrateLegacyCanvas:
         assert write.await_args_list[1].args == (fresh.id, fresh.user_id)
         assert write.await_args_list[0].kwargs["expected_updated_at"] == stale.updated_at
         assert write.await_args_list[1].kwargs["expected_updated_at"] == fresh.updated_at
-        assert write.await_args_list[1].kwargs["canvas"] == (
-            "# T\n\n## Key Details\nk\n\n## Learnings\n\n## Current State\n\n## Context\n"
-        )
+        assert write.await_args_list[1].kwargs["canvas"] == _CLEAN_CANVAS
         assert write.await_args_list[1].kwargs["activity"] == (
             "- 2026-01-01T00:00:00+00:00 first\n\n- 2026-01-02T00:00:00+00:00 second\n\n"
             "- did x\n\n- fresh here"
@@ -651,7 +671,7 @@ class TestMigrateLegacyCanvas:
     async def test_fresh_doc_already_clean_skips_retry(self, mock_repo):
         """When the re-read doc has no legacy sections, the migration gives up instead of reporting a write it never made."""
         fresh = _todo_doc(
-            canvas_content="# T\n\n## Key Details\nk\n\n## Current State\n\n## Context\n\n## Learnings\n",
+            canvas_content=_CLEAN_CANVAS,
             updated_at=datetime.now(UTC),
         )
         mock_repo.get.return_value = fresh

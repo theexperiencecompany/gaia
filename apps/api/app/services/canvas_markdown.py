@@ -8,7 +8,12 @@ activity inside the canvas) into the canvas.md / activity.md pair.
 from datetime import UTC, datetime
 import re
 
-from app.constants.todos import CANVAS_PROMPT_MAX_CHARS, CANVAS_SECTIONS
+from app.constants.todos import (
+    CANVAS_PROMPT_MAX_CHARS,
+    CANVAS_SECTIONS,
+    CANVAS_STANDING_RULES_SECTION,
+    STANDING_RULES_MAX_CHARS,
+)
 
 LEGACY_ACTIVITY_SECTIONS = ("Activity Log", "Timeline")
 # Activity entries the old append mode dumped into the canvas: "### 2026-08-20" blocks.
@@ -28,14 +33,21 @@ _ANY_DATED_BLOCK_RE = re.compile(r"^### \d{4}-\d{2}-\d{2}", re.MULTILINE)
 def bounded_canvas(canvas: str) -> str:
     """Trim an oversized canvas to its head and tail, within CANVAS_PROMPT_MAX_CHARS.
 
-    Key Details/Current State sit at the top and the latest notes at the bottom,
-    so the middle is dropped behind a marker the agent won't read as a gap.
+    Standing rules are the user's instructions, so they move to the top whole and
+    only the rest is trimmed: Key Details/Current State sit at its top and the
+    latest notes at its bottom, so its middle is dropped behind a marker.
     """
     if len(canvas) <= CANVAS_PROMPT_MAX_CHARS:
         return canvas
-    half = CANVAS_PROMPT_MAX_CHARS // 2
-    trimmed = len(canvas) - 2 * half
-    return f"{canvas[:half]}\n[middle of canvas trimmed: {trimmed} characters]\n{canvas[-half:]}"
+    rest, rules = _remove_section(canvas, CANVAS_STANDING_RULES_SECTION)
+    head = f"## {CANVAS_STANDING_RULES_SECTION}\n{rules}\n\n" if rules else ""
+    limit = CANVAS_PROMPT_MAX_CHARS - len(head)
+    if len(rest) <= limit:
+        return head + rest
+    half = max(limit, 0) // 2
+    trimmed = len(rest) - 2 * half
+    tail = rest[len(rest) - half :]
+    return f"{head}{rest[:half]}\n[middle of canvas trimmed: {trimmed} characters]\n{tail}"
 
 
 def _section_span(text: str, heading: str) -> tuple[int, int, int] | None:
@@ -177,16 +189,26 @@ def _headings(canvas: str) -> list[str]:
 
 
 def with_missing_sections(canvas: str) -> str:
-    """Append every template section the canvas lacks, empty, in template order."""
-    missing = [section for section in CANVAS_SECTIONS if section not in _headings(canvas)]
-    if not missing:
+    """Add every template section the canvas lacks, empty, before the next template section it has."""
+    present = set(_headings(canvas))
+    if present.issuperset(CANVAS_SECTIONS):
         return canvas
-    body = canvas.rstrip("\n")
-    return body + "".join(f"\n\n## {section}" for section in missing) + "\n"
+    text = canvas.rstrip("\n")
+    for index, section in enumerate(CANVAS_SECTIONS):
+        if section in present:
+            continue
+        follower = next((s for s in CANVAS_SECTIONS[index + 1 :] if s in present), None)
+        span = _section_span(text, follower) if follower else None
+        if span is None:
+            text += f"\n\n## {section}"
+        else:
+            text = f"{text[: span[0]]}## {section}\n\n{text[span[0] :]}"
+        present.add(section)
+    return text + "\n"
 
 
 def canvas_problems(canvas: str) -> list[str]:
-    """List what keeps a canvas from being a recall doc: repeated sections, or activity in it."""
+    """List what keeps a canvas from being a recall doc: repeated sections, activity, long rules."""
     headings = _headings(canvas)
     problems: list[str] = []
     for heading in dict.fromkeys(headings):
@@ -196,6 +218,12 @@ def canvas_problems(canvas: str) -> list[str]:
             problems.append(f'merge the {count} "## {heading}" sections into one')
     if _ANY_DATED_BLOCK_RE.search(canvas):
         problems.append('move the dated "### YYYY-MM-DD" entries into activity.md')
+    rules = section_body(canvas, CANVAS_STANDING_RULES_SECTION) or ""
+    if len(rules) > STANDING_RULES_MAX_CHARS:
+        problems.append(
+            f'shorten "## {CANVAS_STANDING_RULES_SECTION}" to {STANDING_RULES_MAX_CHARS} '
+            "characters: one line per rule, merged where they overlap"
+        )
     return problems
 
 

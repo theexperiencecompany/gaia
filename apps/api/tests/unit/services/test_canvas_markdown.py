@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.constants.todos import CANVAS_PROMPT_MAX_CHARS
+from app.constants.todos import CANVAS_PROMPT_MAX_CHARS, STANDING_RULES_MAX_CHARS
 from app.services.canvas_markdown import (
     _extract_entries,
     _line_timestamp,
@@ -353,15 +353,19 @@ class TestCanvasProblems:
 
 
 class TestWithMissingSections:
-    def test_only_the_missing_sections_are_added_in_template_order(self) -> None:
+    def test_each_missing_section_goes_to_its_place_in_the_template_order(self) -> None:
         canvas = "# T\n\n## Key Details\nk\n\n## Learnings\n"
 
         assert with_missing_sections(canvas) == (
-            "# T\n\n## Key Details\nk\n\n## Learnings\n\n## Current State\n\n## Context\n"
+            "# T\n\n## Standing rules\n\n## Key Details\nk\n\n## Current State\n\n"
+            "## Context\n\n## Learnings\n"
         )
 
     def test_a_complete_canvas_is_returned_as_is(self) -> None:
-        canvas = "## Key Details\n\n## Current State\n\n## Context\n\n## Learnings\n"
+        canvas = (
+            "## Standing rules\n\n## Key Details\n\n## Current State\n\n## Context\n\n"
+            "## Learnings\n"
+        )
         assert with_missing_sections(canvas) is canvas
 
 
@@ -413,7 +417,8 @@ class TestNormalizeCanvas:
 
         assert moved is None
         assert canvas == (
-            "## Key Details\na\nb\n\n## Current State\ns\n\n## Context\n\n## Learnings\nx\ny\n"
+            "## Standing rules\n\n## Key Details\na\nb\n\n## Current State\ns\n\n## Context\n\n"
+            "## Learnings\nx\ny\n"
         )
 
     def test_a_heading_with_trailing_spaces_is_the_same_section(self) -> None:
@@ -432,14 +437,20 @@ class TestNormalizeCanvas:
         )
 
         assert moved == "- a\n\n- b"
-        assert canvas == "## Key Details\n\n## Current State\n\n## Context\n\n## Learnings\n"
+        assert canvas == (
+            "## Standing rules\n\n## Key Details\n\n## Current State\n\n## Context\n\n"
+            "## Learnings\n"
+        )
 
     def test_the_result_ends_in_exactly_one_newline(self) -> None:
         canvas, _ = normalize_canvas(
             "## Key Details\nk\n\n## Current State\n\n## Context\n\n## Learnings\nl"
         )
 
-        assert canvas == "## Key Details\nk\n\n## Current State\n\n## Context\n\n## Learnings\nl\n"
+        assert canvas == (
+            "## Standing rules\n\n## Key Details\nk\n\n## Current State\n\n## Context\n\n"
+            "## Learnings\nl\n"
+        )
 
     @pytest.mark.parametrize(
         "preamble",
@@ -455,7 +466,7 @@ class TestNormalizeCanvas:
         )
 
         assert canvas == (
-            f"{preamble}\n\n## Key Details\n  - owner: MAX\n  - due: Friday X\n\n"
+            f"{preamble}\n\n## Standing rules\n\n## Key Details\n  - owner: MAX\n  - due: Friday X\n\n"
             "## Current State\n\n## Context\n\n## Learnings\n"
         )
 
@@ -468,5 +479,49 @@ class TestWithMissingSectionsKeepsTheLastLine:
         canvas = with_missing_sections(f"## Key Details\n{last_line}\n")
 
         assert canvas == (
-            f"## Key Details\n{last_line}\n\n## Current State\n\n## Context\n\n## Learnings\n"
+            f"## Standing rules\n\n## Key Details\n{last_line}\n\n## Current State\n\n"
+            "## Context\n\n## Learnings\n"
         )
+
+
+class TestStandingRules:
+    """The user's instructions for a todo: first in the canvas, never trimmed, bounded at write."""
+
+    def test_a_canvas_from_before_the_section_gains_it_first(self) -> None:
+        canvas = "# T\n\n## Key Details\nk\n\n## Current State\n\n## Context\n\n## Learnings\n"
+
+        assert normalize_canvas(canvas) == (
+            "# T\n\n## Standing rules\n\n## Key Details\nk\n\n## Current State\n\n"
+            "## Context\n\n## Learnings\n",
+            None,
+        )
+
+    def test_an_oversized_canvas_keeps_every_rule_and_stays_within_the_cap(self) -> None:
+        rules = "- 2026-09-28: skip newsletters\n- 2026-09-29: never draft to the landlord"
+        canvas = (
+            "## Key Details\n" + "k" * CANVAS_PROMPT_MAX_CHARS + "\n\n"
+            f"## Standing rules\n{rules}\n\n"
+            "## Context\n" + "c" * CANVAS_PROMPT_MAX_CHARS + "\n\n## Learnings\nlast"
+        )
+
+        bounded = bounded_canvas(canvas)
+
+        assert bounded.startswith(f"## Standing rules\n{rules}\n\n## Key Details\n")
+        assert bounded.endswith("## Learnings\nlast")
+        assert "[middle of canvas trimmed:" in bounded
+        assert len(bounded) <= CANVAS_PROMPT_MAX_CHARS + len(
+            "\n[middle of canvas trimmed: 00000 characters]\n"
+        )
+
+    def test_rules_longer_than_the_cap_are_refused_at_write(self) -> None:
+        canvas = f"## Standing rules\n{'r' * (STANDING_RULES_MAX_CHARS + 1)}\n\n## Key Details\n"
+
+        assert canvas_problems(canvas) == [
+            f'shorten "## Standing rules" to {STANDING_RULES_MAX_CHARS} characters: '
+            "one line per rule, merged where they overlap"
+        ]
+
+    def test_rules_at_the_cap_are_accepted(self) -> None:
+        canvas = f"## Standing rules\n{'r' * STANDING_RULES_MAX_CHARS}\n\n## Key Details\n"
+
+        assert canvas_problems(canvas) == []

@@ -57,11 +57,12 @@ class TestTrackedTodoDeliveryNote:
         assert "a question they already have" in _note()
         assert "never promise to follow up later" in _note()
 
-    def test_the_todos_standing_requests_sit_before_the_rules(self) -> None:
+    def test_the_todos_standing_rules_sit_before_the_defaults(self) -> None:
         """Regression: "tell me every time" lived only in the canvas, and a real model silenced every run."""
         note = tracked_todo_delivery_note("Word count", "- Tell me the result every time.")
 
         assert (
-            "kept in the todo. Its Key Details, where the user's standing requests are kept:\n"
+            "kept in the todo. Its Standing rules, the user's own instructions for this todo, "
+            "which win over the defaults below:\n"
             "- Tell me the result every time.\nMessage the user when"
         ) in note
