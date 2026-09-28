@@ -76,7 +76,7 @@ The worker tier. Has access to **everything** that does work.
 
 ### Initial tool IDs (the executor's initial bind set)
 
-`activate_integration`, `handoff`, `execute`, `get_tool_schema`, `plan_tasks`, `update_tasks`, `read`, `bash`, `deep_research`, `list_running_subagents`, `message_subagent`, `cancel_subagent`, `read_manual`, `create_tracked_todo`, `update_tracked_todo`, `update_tracked_todo_canvas`, `complete_tracked_todo`, `search_todo_context`, `list_tracked_todos`, `list_trigger_fields`, `subscribe_todo_to_trigger`, `unsubscribe_todo_from_trigger`, `save_learned_skill`, `write_playbook`, `decline_playbook`, `read_playbook`, `disable_playbook`, `add_device`, `approve_device_pairing`, `list_devices`, `run_on_device`.
+`activate_integration`, `handoff`, `execute`, `get_tool_schema`, `plan_tasks`, `update_tasks`, `read`, `bash`, `deep_research`, `list_running_subagents`, `message_subagent`, `cancel_subagent`, `read_manual`, `create_tracked_todo`, `update_tracked_todo`, `complete_tracked_todo`, `search_todo_context`, `list_tracked_todos`, `list_trigger_fields`, `subscribe_todo_to_trigger`, `unsubscribe_todo_from_trigger`, `save_learned_skill`, `write_playbook`, `decline_playbook`, `read_playbook`, `disable_playbook`, `add_device`, `approve_device_pairing`, `list_devices`, `run_on_device`.
 
 ### Handoff lifecycle (background, async)
 
@@ -472,7 +472,8 @@ Integration tools (Composio + per-user MCP — the thousands) are **never bound*
 - Working notes are two files per todo, `/workspace/gaia-tasks/<slug>-<shortid>/canvas.md` (recall doc) and `activity.md` (dated log), which the executor reads and edits with the generic `read`/`edit`/`write` tools.
 - `apps/api/app/services/gaia_task_files.py` — routes those paths inside the file tools to the todo document (`canvas_content` / `activity_content`), so the notes work in native dev with no JuiceFS and the disk tree stays a read-only projection.
 - `apps/api/app/services/todo_canvas_storage.py` — Mongo-backed read/write/append for canvas, activity and log bodies; every write re-embeds the todo in ChromaDB.
-- `apps/api/app/services/canvas_markdown.py` — section helpers + the one-shot legacy split (Activity Log / Timeline → activity.md) the maintenance sweep applies.
+- `apps/api/app/services/todo_activity.py` — the code-written half of activity.md: every lifecycle event (schedule and delivery changes with who made them, runs and their outcome, watches, trigger fires, retries, failure, completion) as `- <time> [event] detail`. The agent's own writes to activity.md are append-only, and canvas.md writes must keep the template's sections once each with no log inside (`canvas_markdown.canvas_problems`).
+- `apps/api/app/services/canvas_markdown.py` — section helpers, the canvas shape rules, and `normalize_canvas` (activity-like sections and dated blocks → activity.md, repeated sections merged, missing sections added), which creation and the maintenance sweep apply.
 - `apps/api/app/db/mongodb/collections.py` — `todos_collection`.
 - `apps/api/app/services/user_todos_fs.py` — VFS projection of todos.
 - `apps/api/app/services/gaia_tasks_fs.py` — VFS projection of GAIA tasks.

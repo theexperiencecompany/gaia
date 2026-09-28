@@ -18,7 +18,7 @@ import pytest
 
 from app.agents.core.agent import AgentRunOptions
 from app.constants.chat import MAX_MESSAGE_LENGTH
-from app.constants.todos import CANVAS_PROMPT_MAX_CHARS
+from app.constants.todos import CANVAS_PROMPT_MAX_CHARS, TodoActivityEvent
 from app.models.agent_models import SilentRunResult
 from app.models.message_models import MessageRequestWithHistory
 from app.models.notification.notification_models import (
@@ -41,7 +41,7 @@ from app.workers.tasks.maintenance_sweep_tasks import (
     _health_check_expired,
     _is_dormant,
     _is_user_daytime,
-    _migrate_all_legacy_canvases,
+    _normalize_all_canvases,
     _notify_overdue,
     _register_notification,
     _send_user_dormant_digest,
@@ -99,7 +99,7 @@ def _sweep_patches(**overrides) -> tuple[MagicMock, dict[str, AsyncMock], list]:
         "archive": AsyncMock(),
         "schedule": AsyncMock(),
         "store_schedule": AsyncMock(),
-        "system_log": AsyncMock(),
+        "activity": AsyncMock(),
         "add_labels": AsyncMock(),
         "notify": AsyncMock(),
         "migrate": AsyncMock(return_value=False),
@@ -118,10 +118,10 @@ def _sweep_patches(**overrides) -> tuple[MagicMock, dict[str, AsyncMock], list]:
         patch(f"{MODULE}.tracked_todo_service.archive_tracked_todo", mocks["archive"]),
         patch(f"{MODULE}.tracked_todo_service.schedule_execution", mocks["schedule"]),
         patch(f"{MODULE}.todo_repository.update", mocks["store_schedule"]),
-        patch(f"{MODULE}.tracked_todo_service.system_log", mocks["system_log"]),
+        patch(f"{MODULE}.record_activity", mocks["activity"]),
         patch(f"{MODULE}.todo_repository.add_labels", mocks["add_labels"]),
         patch(f"{MODULE}.notification_service.create_notification", mocks["notify"]),
-        patch(f"{MODULE}.tracked_todo_service.migrate_legacy_canvas", mocks["migrate"]),
+        patch(f"{MODULE}.tracked_todo_service.normalize_stored_canvas", mocks["migrate"]),
     ]
     return pool, mocks, patches
 
@@ -301,10 +301,14 @@ class TestHealthCheckExpired:
                 AsyncMock(return_value="NOTIFY: Your todo expired and needs a decision."),
             ),
             patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.record_activity", AsyncMock()) as activity,
         ):
             outcome = await _health_check_expired(_doc(title="Ship the report"), pool)
 
         assert outcome == "notified"
+        activity.assert_awaited_once_with(
+            "todo-1", "user-1", TodoActivityEvent.MAINTENANCE, "told the user this todo expired"
+        )
         request = notify.await_args.args[0]
         assert request.user_id == "user-1"
         assert request.source == NotificationSourceEnum.BACKGROUND_JOB
@@ -368,7 +372,7 @@ class TestHealthCheckDormant:
             ),
             patch(f"{MODULE}.tracked_todo_service.schedule_execution", schedule),
             patch(f"{MODULE}.todo_repository.update", store) as store,
-            patch(f"{MODULE}.tracked_todo_service.system_log", syslog),
+            patch(f"{MODULE}.record_activity", syslog),
         ):
             before = datetime.now(UTC)
             outcome = await _health_check_dormant(_doc(), pool)
@@ -386,8 +390,10 @@ class TestHealthCheckDormant:
             "scheduled_at": run_at
         }
         syslog.assert_awaited_once()
-        assert syslog.await_args.args[2] == "maintenance_requeued"
-        assert "send the follow-up email" in syslog.await_args.args[3]
+        todo_id, user_id, event, detail = syslog.await_args.args
+        assert (todo_id, user_id, event) == ("todo-1", "user-1", TodoActivityEvent.MAINTENANCE)
+        assert detail.startswith("re-queued after ")
+        assert detail.endswith(" idle days to: send the follow-up email")
         pool.set.assert_awaited_once_with(
             "gaia_maintenance_notified:todo-1", "1", ex=SECONDS_PER_DAY
         )
@@ -435,6 +441,7 @@ class TestNotifyOverdue:
         with (
             patch(f"{MODULE}.notification_service.create_notification", notify),
             patch(f"{MODULE}.todo_repository.add_labels", add_labels),
+            patch(f"{MODULE}.record_activity", AsyncMock()) as activity,
         ):
             # due_date is relative to real now — _notify_overdue computes
             # "days overdue" from its own clock, not the test's frozen NOW.
@@ -448,6 +455,12 @@ class TestNotifyOverdue:
         assert request.content.title == "Overdue: Pay the invoice"
         assert "2 days ago" in request.content.body
         add_labels.assert_awaited_once_with("todo-1", user_id="user-1", labels=["needs-follow-up"])
+        activity.assert_awaited_once_with(
+            "todo-1",
+            "user-1",
+            TodoActivityEvent.MAINTENANCE,
+            "told the user it is 2 day(s) overdue with nothing scheduled",
+        )
 
     async def test_muted_overdue_sends_nothing(self):
         pool = _pool()
@@ -612,9 +625,9 @@ class TestMigrateAllLegacyCanvases:
                 AsyncMock(return_value=[]),
                 create=True,
             ),
-            patch(f"{MODULE}._migrate_legacy_canvases", AsyncMock(return_value=0)) as migrate,
+            patch(f"{MODULE}._normalize_stored_canvases", AsyncMock(return_value=0)) as migrate,
         ):
-            assert await _migrate_all_legacy_canvases() == 0
+            assert await _normalize_all_canvases() == 0
 
         migrate.assert_not_awaited()
 
@@ -630,9 +643,9 @@ class TestMigrateAllLegacyCanvases:
                 finder,
                 create=True,
             ),
-            patch(f"{MODULE}._migrate_legacy_canvases", AsyncMock(return_value=2)) as migrate,
+            patch(f"{MODULE}._normalize_stored_canvases", AsyncMock(return_value=2)) as migrate,
         ):
-            assert await _migrate_all_legacy_canvases() == 4
+            assert await _normalize_all_canvases() == 4
 
         assert migrate.await_count == 2
         assert [c.args[0][0].id for c in migrate.await_args_list] == ["a0", "last"]
@@ -646,9 +659,9 @@ class TestMigrateAllLegacyCanvases:
                 finder,
                 create=True,
             ),
-            patch(f"{MODULE}._migrate_legacy_canvases", AsyncMock(return_value=1)),
+            patch(f"{MODULE}._normalize_stored_canvases", AsyncMock(return_value=1)),
         ):
-            assert await _migrate_all_legacy_canvases() == 1
+            assert await _normalize_all_canvases() == 1
 
         finder.assert_awaited_once()
 
@@ -657,55 +670,55 @@ class TestMigrateLegacyCanvases:
     """The per-page loop's count: each migrated todo adds one, nothing else."""
 
     async def test_counts_each_migrated_todo(self):
-        from app.workers.tasks.maintenance_sweep_tasks import _migrate_legacy_canvases
+        from app.workers.tasks.maintenance_sweep_tasks import _normalize_stored_canvases
 
         todos = [_doc(id="a", updated_at=NOW), _doc(id="b", updated_at=NOW)]
         with patch(
-            f"{MODULE}.tracked_todo_service.migrate_legacy_canvas",
+            f"{MODULE}.tracked_todo_service.normalize_stored_canvas",
             AsyncMock(side_effect=[True, True]),
         ) as migrate:
-            assert await _migrate_legacy_canvases(todos) == 2
+            assert await _normalize_stored_canvases(todos) == 2
 
         assert migrate.await_count == 2
 
     async def test_zero_when_nothing_migrates(self):
-        from app.workers.tasks.maintenance_sweep_tasks import _migrate_legacy_canvases
+        from app.workers.tasks.maintenance_sweep_tasks import _normalize_stored_canvases
 
         with patch(
-            f"{MODULE}.tracked_todo_service.migrate_legacy_canvas",
+            f"{MODULE}.tracked_todo_service.normalize_stored_canvas",
             AsyncMock(return_value=False),
         ):
-            assert await _migrate_legacy_canvases([_doc(id="a", updated_at=NOW)]) == 0
+            assert await _normalize_stored_canvases([_doc(id="a", updated_at=NOW)]) == 0
 
     async def test_a_failing_todo_is_logged_and_skipped(self):
         """One todo raising must not abort the batch, and the failure is logged with the todo id and the error."""
-        from app.workers.tasks.maintenance_sweep_tasks import _migrate_legacy_canvases
+        from app.workers.tasks.maintenance_sweep_tasks import _normalize_stored_canvases
 
         with (
             patch(
-                f"{MODULE}.tracked_todo_service.migrate_legacy_canvas",
+                f"{MODULE}.tracked_todo_service.normalize_stored_canvas",
                 AsyncMock(side_effect=RuntimeError("boom")),
             ),
             patch(f"{MODULE}.log") as mock_log,
         ):
-            assert await _migrate_legacy_canvases([_doc(id="a", updated_at=NOW)]) == 0
+            assert await _normalize_stored_canvases([_doc(id="a", updated_at=NOW)]) == 0
 
         mock_log.warning.assert_called_once_with(
-            "maintenance_sweep.legacy_canvas_migration_failed",
+            "maintenance_sweep.canvas_normalization_failed",
             todo_id="a",
             error_type="RuntimeError",
             error="boom",
         )
 
     async def test_a_failing_todo_does_not_stop_later_todos(self):
-        from app.workers.tasks.maintenance_sweep_tasks import _migrate_legacy_canvases
+        from app.workers.tasks.maintenance_sweep_tasks import _normalize_stored_canvases
 
         with patch(
-            f"{MODULE}.tracked_todo_service.migrate_legacy_canvas",
+            f"{MODULE}.tracked_todo_service.normalize_stored_canvas",
             AsyncMock(side_effect=[RuntimeError("boom"), True]),
         ) as migrate:
             assert (
-                await _migrate_legacy_canvases(
+                await _normalize_stored_canvases(
                     [_doc(id="a", updated_at=NOW), _doc(id="b", updated_at=NOW)]
                 )
                 == 1
@@ -748,7 +761,7 @@ class TestMaintenanceSweep:
             patch(f"{MODULE}._classify_tracked_todos", classify),
             patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=_pool())),
             patch(
-                f"{MODULE}.tracked_todo_service.migrate_legacy_canvas",
+                f"{MODULE}.tracked_todo_service.normalize_stored_canvas",
                 AsyncMock(return_value=False),
             ) as migrate,
         ):
@@ -1154,7 +1167,7 @@ class TestDormantTierDetails:
             ),
             patch(f"{MODULE}.tracked_todo_service.schedule_execution", AsyncMock()) as schedule,
             patch(f"{MODULE}.todo_repository.update", AsyncMock()),
-            patch(f"{MODULE}.tracked_todo_service.system_log", AsyncMock()),
+            patch(f"{MODULE}.record_activity", AsyncMock()),
             patch(f"{MODULE}.random.randint", return_value=42) as randint,
         ):
             outcome = await _health_check_dormant(_doc(), pool)

@@ -12,7 +12,7 @@ from arq.connections import ArqRedis
 
 from app.agents.core.agent import AgentRunOptions, call_agent_silent
 from app.agents.prompts.todo_prompts import HEALTH_CHECK_VERDICT_ONLY
-from app.constants.todos import BLOCKING_LABELS
+from app.constants.todos import BLOCKING_LABELS, TodoActivityEvent
 from app.db.repositories.todos import todo_repository
 from app.models.message_models import MessageRequestWithHistory
 from app.models.notification.notification_models import (
@@ -25,6 +25,7 @@ from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.user_models import AuthenticatedUser
 from app.services.canvas_markdown import bounded_canvas
 from app.services.notification_service import notification_service
+from app.services.todo_activity import record_activity
 from app.services.todos.todo_notifications import todo_redirect_action
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
@@ -74,7 +75,7 @@ async def maintenance_sweep_tracked_todos(_ctx: Mapping[str, object]) -> str:
     pool = await RedisPoolManager.get_pool()
 
     todos = await todo_repository.list_active_tracked_all_users(limit=200)
-    migrated = await _migrate_all_legacy_canvases()
+    migrated = await _normalize_all_canvases()
     expired, overdue, dormant = await _classify_tracked_todos(pool, now, todos)
 
     # Track health-check calls per user to cap LLM usage per sweep
@@ -117,11 +118,11 @@ async def maintenance_sweep_tracked_todos(_ctx: Mapping[str, object]) -> str:
     return summary
 
 
-async def _migrate_all_legacy_canvases() -> int:
-    """Cursor every tracked todo, active or completed, through the one-shot canvas-to-activity split.
+async def _normalize_all_canvases() -> int:
+    """Cursor every tracked todo, active or completed, through canvas normalization.
 
     The tier classification scans active todos only, so this loop covers completed
-    ones too; migration is idempotent, so re-scans are safe.
+    ones too; normalization is idempotent, so re-scans are safe.
     """
     migrated = 0
     after_id: str | None = None
@@ -131,23 +132,23 @@ async def _migrate_all_legacy_canvases() -> int:
         )
         if not page:
             break
-        migrated += await _migrate_legacy_canvases(page)
+        migrated += await _normalize_stored_canvases(page)
         if len(page) < _MIGRATION_PAGE_SIZE:
             break
         after_id = page[-1].id
     return migrated
 
 
-async def _migrate_legacy_canvases(todos: list[TodoDocument]) -> int:
-    """Offer every scanned todo to the one-shot canvas → activity split."""
+async def _normalize_stored_canvases(todos: list[TodoDocument]) -> int:
+    """Offer every scanned todo to canvas normalization."""
     migrated = 0
     for todo in todos:
         try:
-            if await tracked_todo_service.migrate_legacy_canvas(todo):
+            if await tracked_todo_service.normalize_stored_canvas(todo):
                 migrated += 1
         except Exception as exc:
             log.warning(
-                "maintenance_sweep.legacy_canvas_migration_failed",
+                "maintenance_sweep.canvas_normalization_failed",
                 todo_id=todo.id,
                 error_type=type(exc).__name__,
                 error=str(exc),
@@ -402,6 +403,9 @@ async def _health_check_expired(todo: TodoDocument, pool: ArqRedis) -> ExpiredOu
         todo_id=todo_id,
         notification_type=NotificationType.WARNING,
     )
+    await record_activity(
+        todo_id, user_id, TodoActivityEvent.MAINTENANCE, "told the user this todo expired"
+    )
     log.info("maintenance_sweep.expired_notified", todo_id=todo_id)
     return "notified"
 
@@ -445,11 +449,11 @@ async def _health_check_dormant(todo: TodoDocument, pool: ArqRedis) -> DormantOu
         )
         await tracked_todo_service.schedule_execution(todo_id, scheduled_at)
         action = response[len("EXECUTE:") :].strip()
-        await tracked_todo_service.system_log(
+        await record_activity(
             todo_id,
             user_id,
-            "maintenance_requeued",
-            f"Dormant todo re-queued by maintenance sweep (idle {idle_days}d). Action: {action}",
+            TodoActivityEvent.MAINTENANCE,
+            f"re-queued after {idle_days} idle days to: {action}",
         )
         # Re-queued for execution, not notified: a short cooldown avoids
         # re-processing before the scheduled run; no escalation strike consumed.
@@ -495,6 +499,12 @@ async def _notify_overdue(todo: TodoDocument, pool: ArqRedis) -> bool:
 
     # Add needs-follow-up label
     await todo_repository.add_labels(todo_id, user_id=user_id, labels=["needs-follow-up"])
+    await record_activity(
+        todo_id,
+        user_id,
+        TodoActivityEvent.MAINTENANCE,
+        f"told the user it is {days_overdue} day(s) overdue with nothing scheduled",
+    )
 
     log.info(
         "maintenance_sweep.overdue_notified",

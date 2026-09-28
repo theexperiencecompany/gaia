@@ -40,6 +40,7 @@ from app.models.todo_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.todo_activity import record_field_changes
 from app.services.todos.errors import TrackedTodoWorkflowError
 from app.services.todos.todo_service import ProjectService, TodoService
 from app.services.tracked_todo_service import tracked_todo_service
@@ -319,6 +320,9 @@ async def update_todo(
     )
     try:
         updated_todo = await TodoService.update_todo(todo_id, updates, user.user_id)
+
+        if GAIA_TRACKED_LABEL in updated_todo.labels:
+            await record_field_changes(todo_id, user.user_id, updates, by="the user in the app")
 
         # If this is a tracked todo and scheduled_at changed, reschedule ARQ job
         if updates.scheduled_at is not None and updated_todo.vfs_path:

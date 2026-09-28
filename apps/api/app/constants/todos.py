@@ -69,3 +69,36 @@ class TodoRunDeliveryOutcome(StrEnum):
     NOTIFY_OFF = "notify_off"
     NARRATION_FAILED = "narration_failed"
     INVALID_DIRECTIVE = "invalid_directive"
+
+
+class TodoActivityEvent(StrEnum):
+    """A lifecycle event code records in a tracked todo's activity.md, as "[event] detail"."""
+
+    CREATED = "created"
+    SCHEDULED = "scheduled"
+    SCHEDULE_CLEARED = "schedule_cleared"
+    RECURRENCE_CHANGED = "recurrence_changed"
+    DELIVERY_CHANGED = "delivery_changed"
+    EXPIRY_CHANGED = "expiry_changed"
+    DUE_DATE_CHANGED = "due_date_changed"
+    WATCH_ADDED = "watch_added"
+    WATCH_REMOVED = "watch_removed"
+    WATCH_PAUSED = "watch_paused"
+    WATCH_RESUMED = "watch_resumed"
+    TRIGGER_FIRED = "trigger_fired"
+    TRIGGER_ACTION_FAILED = "trigger_action_failed"
+    RUN_STARTED = "run_started"
+    RUN_FINISHED = "run_finished"
+    RUN_FAILED = "run_failed"
+    RUN_SKIPPED = "run_skipped"
+    RETRY_SCHEDULED = "retry_scheduled"
+    MARKED_FAILED = "marked_failed"
+    APPROVAL_GRANTED = "approval_granted"
+    APPROVAL_DENIED = "approval_denied"
+    MAINTENANCE = "maintenance"
+    COMPLETED = "completed"
+
+
+# The sections every canvas.md carries exactly once, in this order. Activity
+# (anything dated, any run log) belongs in activity.md, never here.
+CANVAS_SECTIONS: Final[tuple[str, ...]] = ("Key Details", "Current State", "Context", "Learnings")

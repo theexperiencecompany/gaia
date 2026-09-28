@@ -15,7 +15,6 @@ and the outbound transport.
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -39,6 +38,7 @@ from app.agents.core.background.todo_run import (
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
 from app.constants.agents import AgentTag
 from app.constants.general import NEW_MESSAGE_BREAKER
+from app.constants.todos import TodoActivityEvent
 from app.models.chat_models import ConversationSource
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
@@ -113,7 +113,7 @@ def _seams(
         patch.object(trd, "narrate_executor_result", seams.narrate),
         patch.object(trd, "deliver_result_to_platforms", seams.send),
         patch.object(trd, "todo_repository", seams.repo),
-        patch.object(trd.tracked_todo_service, "append_activity_entry", seams.activity),
+        patch.object(trd, "record_activity", seams.activity),
         patch.object(trd, "capture_event", seams.capture),
     ):
         yield seams
@@ -131,7 +131,10 @@ def _request() -> TodoRunRequest:
 
 
 def _activity(seams: _Seams) -> str:
-    return seams.activity.await_args.kwargs["entry"]
+    """Return the run's finish entry on the todo's timeline."""
+    todo_id, user_id, event, detail = seams.activity.await_args.args
+    assert (todo_id, user_id, event) == (TODO_ID, USER.user_id, TodoActivityEvent.RUN_FINISHED)
+    return detail
 
 
 class TestTheExecutorsResultIsWhatReachesTheUser:
@@ -240,8 +243,7 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
             await run_todo_on_executor(_request())
 
         entry = _activity(seams)
-        assert " ✓ run finished; result sent on telegram (summary='Checked staging." in entry
-        assert datetime.fromisoformat(entry.split(" ", 1)[0]).utcoffset() == timedelta(0)
+        assert entry.startswith("result sent on telegram (summary='Checked staging.")
         user_id, event, props = seams.capture.call_args.args
         assert (user_id, event) == (USER.user_id, AnalyticsEvents.TODO_RUN_RESULT_DELIVERED)
         assert props == {
@@ -260,7 +262,7 @@ class TestNothingIsSentWhenNothingShouldBe:
             await run_todo_on_executor(_request())
 
         seams.send.assert_not_awaited()
-        assert "; kept quiet: no-op wake, nothing changed (summary=" in _activity(seams)
+        assert _activity(seams).startswith("kept quiet: no-op wake, nothing changed (summary=")
         assert seams.capture.call_args.args[2]["outcome"] == "silenced"
 
     async def test_a_reaction_is_not_a_message_for_a_run_nobody_triggered(self) -> None:
@@ -278,7 +280,9 @@ class TestNothingIsSentWhenNothingShouldBe:
 
         seams.narrate.assert_not_awaited()
         seams.send.assert_not_awaited()
-        assert "; result not sent: delivery is off for this todo (summary=" in _activity(seams)
+        assert _activity(seams).startswith(
+            "result not sent: delivery is off for this todo (summary="
+        )
         assert seams.capture.call_args.args[2]["outcome"] == "notify_off"
 
     async def test_an_executor_error_raises_for_the_retry_ladder_and_sends_nothing(self) -> None:

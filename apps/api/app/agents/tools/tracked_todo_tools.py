@@ -29,7 +29,7 @@ from app.models.trigger_subscription_models import (
     TriggerSubscriptionStatus,
 )
 from app.services.storage._vfs_common import folder_name
-from app.services.todo_canvas_storage import read_canvas, write_canvas
+from app.services.todo_activity import record_field_changes
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.matchable_fields import MATCHABLE_TRIGGERS, get_matchable_trigger
 from app.services.triggers.scope_catalog import scope_fields_for
@@ -162,12 +162,19 @@ def _resolve_first_fire(
     return None, [], None
 
 
+def _agent_actor(conversation_id: str | None) -> str:
+    """Name who made a change from inside an agent run, for the todo's activity log."""
+    return f"GAIA in conversation {conversation_id[:8]}" if conversation_id else "GAIA"
+
+
 async def _persist_scheduling_fields(
     todo_id: str,
     user_id: str,
     parsed_scheduled_at: datetime | None,
     recurrence: str | None,
     expires_at: str | None,
+    *,
+    by: str,
 ) -> str | None:
     """Save scheduled_at / recurrence / expires_at onto a freshly-created todo doc."""
     if not (parsed_scheduled_at or recurrence or expires_at):
@@ -182,7 +189,9 @@ async def _persist_scheduling_fields(
             fields["expires_at"] = datetime.fromisoformat(expires_at.replace("Z", _UTC_OFFSET))
         except ValueError:
             return f"Error: invalid expires_at format '{expires_at}'."
-    await todo_repository.update(todo_id, user_id=user_id, update=TodoUpdate.model_validate(fields))
+    update = TodoUpdate.model_validate(fields)
+    await todo_repository.update(todo_id, user_id=user_id, update=update)
+    await record_field_changes(todo_id, user_id, update, by=by)
     return None
 
 
@@ -630,7 +639,12 @@ async def create_tracked_todo(
     )
 
     persist_error = await _persist_scheduling_fields(
-        result.id, user_id, parsed_scheduled_at, recurrence, expires_at
+        result.id,
+        user_id,
+        parsed_scheduled_at,
+        recurrence,
+        expires_at,
+        by=_agent_actor(source_conversation_id),
     )
     if persist_error:
         return persist_error
@@ -817,6 +831,12 @@ async def update_tracked_todo(
     # A real datetime here (agent-passed or cron-derived) means the ARQ job moves.
     if update.scheduled_at is not None:
         await tracked_todo_service.schedule_execution(todo_id, update.scheduled_at)
+    await record_field_changes(
+        todo_id,
+        user_id,
+        update,
+        by=_agent_actor(read_agent_configurable(config).conversation_id),
+    )
 
     updated_keys = list(update_fields)
     if references is not None:
@@ -827,47 +847,6 @@ async def update_tracked_todo(
     if notes:
         msg += "\nNotes:\n  - " + "\n  - ".join(notes)
     return msg
-
-
-@tool
-async def update_tracked_todo_canvas(
-    config: RunnableConfig,
-    todo_id: Annotated[str, "ID of the tracked todo whose canvas to update"],
-    content: Annotated[
-        str,
-        "New canvas content (mode='replace') or text to add at the end (mode='append')",
-    ],
-    mode: Annotated[
-        str,
-        "How to apply the update: 'replace' overwrites the whole canvas, "
-        "'append' adds to the end of it.",
-    ] = "replace",  # pragma: no mutate: mode is strip().lower()-normalized before any use
-) -> str:
-    """Update a tracked todo's working-memory canvas.
-
-    Use this to record progress, outcomes, IDs, learnings, or follow-ups that
-    must survive this turn. Prefer 'append' for progress notes; use 'replace'
-    when rewriting the canvas to reflect what is true right now.
-    """
-    user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
-    if not user_id:
-        return _ERR_NO_USER_ID
-
-    normalized = mode.strip().lower()
-    if normalized not in ("replace", "append"):
-        return f"Error: invalid mode '{mode}'. Use 'replace' or 'append'."
-    if normalized == "append":
-        current = await read_canvas(todo_id, user_id)
-        if current is None:
-            return f"Error: tracked todo {todo_id} not found."
-        if current:
-            suffix = content if content.startswith("\n") else f"\n{content}"
-            content = f"{current}{suffix}"
-
-    ok = await write_canvas(todo_id, user_id, content)
-    if not ok:
-        return f"Error: tracked todo {todo_id} not found."
-    return f"Canvas updated for tracked todo {todo_id} (mode: {normalized})."
 
 
 @tool
@@ -1098,7 +1077,6 @@ tools = [
     search_todo_context,
     complete_tracked_todo,
     update_tracked_todo,
-    update_tracked_todo_canvas,
     list_tracked_todos,
     list_trigger_fields,
     subscribe_todo_to_trigger,

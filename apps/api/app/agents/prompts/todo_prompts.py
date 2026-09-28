@@ -79,8 +79,8 @@ To create/update persistent tasks, use create_tracked_todo / update_tracked_todo
 TRIGGERED_RELEVANCE_GUIDANCE = (
     "Before you act, decide whether this event is actually the thing this todo is "
     "watching for. Treat a fire as a candidate to verify, not proof. If it is not "
-    "relevant, do not act on it: add a one-line non-match note to the canvas (what "
-    "fired, why it did not qualify) and leave the todo unchanged. If the canvas shows "
+    "relevant, do not act on it: append a one-line non-match entry to activity.md (what "
+    "fired, why it did not qualify) and leave the todo unchanged. If activity.md shows "
     "this same watch has now woken you on two or three things that did not qualify, the "
     "watch is too loose: tighten it so it stops costing a run on noise. Unsubscribe the "
     "current watch and re-subscribe with narrower conditions keyed on what actually "
