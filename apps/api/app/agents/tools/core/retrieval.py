@@ -35,7 +35,7 @@ from app.agents.tools.core.registry import (
 )
 from app.agents.tools.execute.resolver import ResolvedTool, is_catalog_slug, resolve_tool
 from app.agents.tools.execute.schema_docs import render_tool_doc
-from app.agents.tools.execute.tool_info import tool_contract
+from app.agents.tools.execute.tool_info import contract_from, tool_contract
 from app.agents.tools.research_tool import deep_research
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.config.oauth_config import OAUTH_INTEGRATIONS
@@ -47,6 +47,7 @@ from app.models.chat_models import ConversationSource
 from app.models.integration_models import PublicIntegrationSearchHit
 from app.models.integrations.composio_hooks import RunMetadata
 from app.override.langgraph_bigtool.utils import RetrieveToolsResult
+from app.services.feature_flags import is_inline_tool_returns_enabled
 from app.services.integrations.integration_service import (
     get_user_available_tool_namespaces,
 )
@@ -103,6 +104,7 @@ async def _resolve_for_retrieval(user_id: str | None, name: str) -> ResolvedTool
 
 async def _render_proxied_docs(user_id: str | None, names: list[str]) -> list[str]:
     docs: list[str] = []
+    inline_returns = bool(names) and await is_inline_tool_returns_enabled(user_id)
     for name in names:
         resolved = await _resolve_for_retrieval(user_id, name)
         if resolved is None:
@@ -112,7 +114,10 @@ async def _render_proxied_docs(user_id: str | None, names: list[str]) -> list[st
                 tool_name=name,
             )
             continue
-        docs.append(render_tool_doc(await tool_contract(resolved), RETURNS_INLINE_MAX_CHARS))
+        if inline_returns:
+            docs.append(render_tool_doc(await tool_contract(resolved), RETURNS_INLINE_MAX_CHARS))
+        else:
+            docs.append(render_tool_doc(contract_from(resolved, None), None))
     return docs
 
 
@@ -278,9 +283,10 @@ Resolves exact names so they can be run. Use this after discovery or when you al
   tool's args schema. They are NEVER bound and CANNOT be called by name. Run them with
   execute(task_description="...", tool_name="TOOL_NAME", data={...}) where `data`
   matches the schema exactly. task_description is one short user-facing line.
-  Docs show the args and the return shape. A large return shape is depth-collapsed;
-  for its deeper fields call get_tool_schema("TOOL_NAME") here, or inside bash
-  scripts gaia.schema("TOOL_NAME") / the cached tool-docs file. Never guess fields.
+  Docs show the args and may inline the return shape. With no Returns line, or a
+  depth-collapsed one, learn the shape before consuming output or chaining on its
+  fields: get_tool_schema("TOOL_NAME") here, or inside bash scripts
+  gaia.schema("TOOL_NAME") / the cached tool-docs file. Never guess fields.
 - INTERNAL tools (snake_case names like plan_tasks): bound as callable tools; call
   them directly.
 

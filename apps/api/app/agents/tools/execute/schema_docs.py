@@ -2,9 +2,8 @@
 
 This is what replaces bind_tools for proxied tools: the model reads this doc
 and constructs `data` for execute() from it. The args carry what building a
-call needs; the return shape is keys and types only, so a script can be
-written from the doc alone. Discovery docs and get_tool_schema render the same
-doc and differ only in how much of a large return shape they keep.
+call needs; the return shape is keys and types only. get_tool_schema always
+renders it; discovery docs render args only unless INLINE_TOOL_RETURNS is on.
 """
 
 from app.agents.tools.execute.schema_notation import (
@@ -22,22 +21,27 @@ _UNDOCUMENTED_RETURNS = (
 )
 
 
-def render_tool_doc(info: ToolContract, returns_budget: int) -> str:
-    """One tool's doc: description, args, and its return shape within returns_budget."""
+def render_tool_doc(info: ToolContract, returns_budget: int | None) -> str:
+    """One tool's doc: description, args, and its return shape within returns_budget; None renders args only."""
     lines = [f"## {info.tool_name}"]
     if info.description:
         lines.append(clip_text(info.description, _DESCRIPTION_MAX_CHARS))
     lines.append(f"Args for {EXECUTE_TOOL_NAME}(tool_name=..., data={{...}}), ? = optional:")
     lines.append(render_args_budgeted(info.input_schema, ARGS_SCHEMA_MAX_CHARS))
-    returns = info.effective_output_schema
-    if returns is None:
-        lines.append(_UNDOCUMENTED_RETURNS)
-    else:
-        lines.append(f"Returns: {render_compact_type_budgeted(returns, returns_budget)}")
-        if info.provider_output_schema is None:
-            lines.append(f"(shape observed from {info.observed_call_count} real calls)")
+    if returns_budget is not None:
+        lines.extend(_returns_lines(info, returns_budget))
     lines.append(
         f'Run it with: {EXECUTE_TOOL_NAME}(task_description="...", '
         f'tool_name="{info.tool_name}", data={{...}})'
     )
     return "\n".join(lines)
+
+
+def _returns_lines(info: ToolContract, budget: int) -> list[str]:
+    returns = info.effective_output_schema
+    if returns is None:
+        return [_UNDOCUMENTED_RETURNS]
+    lines = [f"Returns: {render_compact_type_budgeted(returns, budget)}"]
+    if info.provider_output_schema is None:
+        lines.append(f"(shape observed from {info.observed_call_count} real calls)")
+    return lines

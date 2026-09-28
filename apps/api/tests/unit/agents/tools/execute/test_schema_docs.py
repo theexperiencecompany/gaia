@@ -97,6 +97,21 @@ class TestRenderToolDoc:
             USAGE,
         ]
 
+    async def test_without_a_returns_budget_the_doc_carries_args_only(self) -> None:
+        output: dict[str, JsonValue] = {"type": "object", "properties": {"id": {"type": "string"}}}
+        with patch.object(tool_shapes_repository, "get_shape", new=AsyncMock(return_value=None)):
+            info = await tool_contract(
+                ResolvedTool("GMAIL_FETCH_EMAILS", _tool(output=output), True)
+            )
+        assert render_tool_doc(info, None).split("\n") == [
+            "## GMAIL_FETCH_EMAILS",
+            "Fetch emails.",
+            ARGS_HEADER,
+            "query: str  # Search query",
+            "max_results?: int  # [default: 25]",
+            USAGE,
+        ]
+
     async def test_a_tool_with_no_description_schema_or_shape_still_documents_its_call(
         self,
     ) -> None:

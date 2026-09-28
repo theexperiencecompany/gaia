@@ -32,6 +32,7 @@ class FeatureFlag(StrEnum):
 
     COMMS_OPENUI = "COMMS_OPENUI"
     CODE_MODE = "CODE_MODE"
+    INLINE_TOOL_RETURNS = "INLINE_TOOL_RETURNS"
     HIL_LEDGER = "HIL_LEDGER"
     HIL_JEV_JUDGE = "HIL_JEV_JUDGE"
     HIL_JEV_REPLY = "HIL_JEV_REPLY"
@@ -48,6 +49,11 @@ FEATURE_FLAG_DESCRIPTIONS: dict[FeatureFlag, str] = {
         "Bash runs seed the `gaia.execute` client and mint a per-invocation "
         "token; off runs bash with no GAIA_EXECUTE_* env. On by default "
         "(see ENABLE_CODE_MODE)."
+    ),
+    FeatureFlag.INLINE_TOOL_RETURNS: (
+        "retrieve_tools docs inline each integration tool's return shape next to "
+        "its args; off renders args only and never reads the observed-shape store. "
+        "Off by default (see ENABLE_INLINE_TOOL_RETURNS)."
     ),
     FeatureFlag.HIL_LEDGER: (
         "Gated calls register PENDING in the approval ledger and return "
@@ -74,6 +80,8 @@ def _default(flag: FeatureFlag) -> bool:
             return bool(settings.ENABLE_COMMS_OPENUI)
         case FeatureFlag.CODE_MODE:
             return bool(settings.ENABLE_CODE_MODE)
+        case FeatureFlag.INLINE_TOOL_RETURNS:
+            return bool(settings.ENABLE_INLINE_TOOL_RETURNS)
         case FeatureFlag.HIL_LEDGER:
             return bool(settings.ENABLE_HIL_LEDGER)
         case FeatureFlag.HIL_JEV_JUDGE:
@@ -185,6 +193,11 @@ def _track_evaluation(
 async def is_code_mode_enabled(user_id: str | None) -> bool:
     """Whether the user's bash runs get the gaia.execute client and a per-invocation token; off runs with no GAIA_EXECUTE_* env."""
     return await is_enabled(FeatureFlag.CODE_MODE, user_id)
+
+
+async def is_inline_tool_returns_enabled(user_id: str | None) -> bool:
+    """Whether the user's retrieve_tools docs inline each tool's return shape; off renders args only."""
+    return await is_enabled(FeatureFlag.INLINE_TOOL_RETURNS, user_id)
 
 
 async def is_hil_ledger_enabled(user_id: str | None) -> bool:

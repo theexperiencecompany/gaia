@@ -60,7 +60,11 @@ async def full_tool_info(user_id: str | None, tool_name: str) -> ToolContract | 
 
 async def tool_contract(resolved: ResolvedTool) -> ToolContract:
     """The contract of an already-resolved tool, with its observed shape read from the store."""
-    observed = await _observed_shape(resolved)
+    return contract_from(resolved, await _observed_shape(resolved))
+
+
+def contract_from(resolved: ResolvedTool, observed: ToolOutputShapeDocument | None) -> ToolContract:
+    """Build a resolved tool's contract around an observed shape, or none, without touching the store."""
     contract = ToolContract(
         tool_name=resolved.name,
         description=resolved.tool.description.strip(),

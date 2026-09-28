@@ -17,7 +17,7 @@ from app.agents.tools.core.registry import DESKTOP_TOOL_CATEGORY
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.execute.resolver import ResolvedTool
 from app.agents.tools.execute.schema_docs import render_tool_doc
-from app.agents.tools.execute.tool_info import tool_contract
+from app.agents.tools.execute.tool_info import contract_from
 from app.constants.execute import RETURNS_INLINE_MAX_CHARS
 from app.models.chat_models import ConversationSource
 from tests.helpers import captured_wide_event
@@ -42,10 +42,9 @@ def _gmail_tool() -> StructuredTool:
     )
 
 
-async def _doc(name: str, tool: StructuredTool) -> str:
-    return render_tool_doc(
-        await tool_contract(ResolvedTool(name, tool, True)), RETURNS_INLINE_MAX_CHARS
-    )
+def _doc(name: str, tool: StructuredTool) -> str:
+    """Render the doc discovery serves by default: args only, no return shape."""
+    return render_tool_doc(contract_from(ResolvedTool(name, tool, True), None), None)
 
 
 def _registry() -> MagicMock:
@@ -188,8 +187,38 @@ async def _bind(exact: list[str], resolver: AsyncMock, config: dict[str, Any] | 
         return await fn(store=MagicMock(), config=config or CONFIG, exact_tool_names=exact)
 
 
+def _tool_with_output(output: dict[str, Any]) -> StructuredTool:
+    return StructuredTool.from_function(
+        func=lambda **kwargs: None,
+        name="GMAIL_SEND_EMAIL",
+        description="Send an email.",
+        args_schema=_GmailSendArgs,
+        metadata={"output_parameters": output},
+    )
+
+
 @pytest.mark.unit
 class TestDocsCarryReturnShapes:
+    async def test_by_default_docs_carry_args_only_and_never_read_the_shape_store(
+        self, no_observed_tool_shapes: AsyncMock
+    ) -> None:
+        tool = _tool_with_output({"type": "object", "properties": {"id": {"type": "string"}}})
+        resolver = AsyncMock(return_value=ResolvedTool("GMAIL_SEND_EMAIL", tool, True))
+        text = (await _bind(["GMAIL_SEND_EMAIL"], resolver))["response_text"]
+        assert "recipient_email: str" in text
+        assert "Returns" not in text
+        assert "Return shape" not in text
+        no_observed_tool_shapes.assert_not_awaited()
+
+    async def test_with_the_flag_on_docs_inline_the_return_shape(self) -> None:
+        tool = _tool_with_output({"type": "object", "properties": {"id": {"type": "string"}}})
+        resolver = AsyncMock(return_value=ResolvedTool("GMAIL_SEND_EMAIL", tool, True))
+        flag = AsyncMock(return_value=True)
+        with patch(f"{MODULE}.is_inline_tool_returns_enabled", new=flag):
+            text = (await _bind(["GMAIL_SEND_EMAIL"], resolver))["response_text"]
+        assert "Returns: {id?:str}" in text
+        flag.assert_awaited_once_with("u1")
+
     async def test_a_large_return_shape_is_collapsed_to_the_inline_budget(self) -> None:
         fields = {
             f"field_{i}": {"type": "object", "properties": {"leaf": {"type": "string"}}}
@@ -199,15 +228,11 @@ class TestDocsCarryReturnShapes:
             "type": "object",
             "properties": {"data": {"type": "object", "properties": fields}},
         }
-        tool = StructuredTool.from_function(
-            func=lambda **kwargs: None,
-            name="GMAIL_SEND_EMAIL",
-            description="Send an email.",
-            args_schema=_GmailSendArgs,
-            metadata={"output_parameters": output},
+        resolver = AsyncMock(
+            return_value=ResolvedTool("GMAIL_SEND_EMAIL", _tool_with_output(output), True)
         )
-        resolver = AsyncMock(return_value=ResolvedTool("GMAIL_SEND_EMAIL", tool, True))
-        text = (await _bind(["GMAIL_SEND_EMAIL"], resolver))["response_text"]
+        with patch(f"{MODULE}.is_inline_tool_returns_enabled", new=AsyncMock(return_value=True)):
+            text = (await _bind(["GMAIL_SEND_EMAIL"], resolver))["response_text"]
         returns = text.split("Returns: ")[1].split("\n")
         assert "field_0?:obj" in returns[0]
         assert len(returns[0]) <= RETURNS_INLINE_MAX_CHARS
@@ -299,8 +324,8 @@ class TestRenderPreloadBlockContract:
             )
         assert block.split("\n\n") == [
             f"2 integration tool(s) preloaded below. {retrieval._EXECUTE_DOCS_INSTRUCTION}",
-            await _doc("GMAIL_SEND_EMAIL", gmail),
-            await _doc("ASANA_CREATE_TASK", asana),
+            _doc("GMAIL_SEND_EMAIL", gmail),
+            _doc("ASANA_CREATE_TASK", asana),
         ]
         assert resolver.await_args_list == [
             call("u1", "GMAIL_SEND_EMAIL"),
@@ -309,16 +334,18 @@ class TestRenderPreloadBlockContract:
 
     async def test_a_shape_store_outage_still_renders_the_doc(self) -> None:
         gmail = _gmail_tool()
-        resolver = AsyncMock(return_value=ResolvedTool("GMAIL_SEND_EMAIL", gmail, True))
+        resolved = ResolvedTool("GMAIL_SEND_EMAIL", gmail, True)
         with (
-            patch(f"{MODULE}.resolve_tool", new=resolver),
+            patch(f"{MODULE}.resolve_tool", new=AsyncMock(return_value=resolved)),
+            patch(f"{MODULE}.is_inline_tool_returns_enabled", new=AsyncMock(return_value=True)),
             patch(
                 "app.db.repositories.tool_shapes.tool_shapes_repository.get_shape",
                 new=AsyncMock(side_effect=ServerSelectionTimeoutError("mongo down")),
             ),
         ):
             block = await retrieval.render_preload_block("u1", ["GMAIL_SEND_EMAIL"])
-        assert block.split("\n\n")[1:] == [await _doc("GMAIL_SEND_EMAIL", gmail)]
+        without_observed = render_tool_doc(contract_from(resolved, None), RETURNS_INLINE_MAX_CHARS)
+        assert block.split("\n\n")[1:] == [without_observed]
 
     async def test_a_tool_that_vanished_is_skipped_with_a_warning_and_the_rest_render(
         self,
@@ -330,7 +357,7 @@ class TestRenderPreloadBlockContract:
                 block = await retrieval.render_preload_block(
                     "u1", ["GMAIL_GHOST", "GMAIL_SEND_EMAIL"]
                 )
-        assert block.split("\n\n")[1:] == [await _doc("GMAIL_SEND_EMAIL", gmail)]
+        assert block.split("\n\n")[1:] == [_doc("GMAIL_SEND_EMAIL", gmail)]
         (warning,) = event["warnings"]
         assert warning["msg"].endswith(
             "retrieve_tools: proxied tool vanished between validation and doc rendering"
