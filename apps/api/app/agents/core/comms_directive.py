@@ -7,8 +7,8 @@ A turn not worth a full message is a single control tag instead of prose:
 
 A directive is a whole bubble, so prose that merely mentions a tag never
 triggers one. A directive bubble is never shown to a user as text: beside
-other bubbles it is dropped, and visible_comms_text applies the same rule to
-a message still streaming.
+other bubbles it is dropped, and visible_comms_text_so_far applies the same
+rule to a message still streaming.
 """
 
 import re
@@ -67,37 +67,44 @@ def _could_become_directive(bubble: str) -> bool:
     return "\n" not in candidate or _bubble_directive(candidate.strip()) is not None
 
 
-def _bubbles_with_breaks(text: str) -> list[tuple[str, str]]:
-    """Split text into (the break before it, bubble) pairs, raw; the first break is ""."""
-    pieces: list[tuple[str, str]] = []
-    separator, start = "", 0
-    for match in MESSAGE_BREAK_SENTINEL_RE.finditer(text):
-        pieces.append((separator, text[start : match.start()]))
-        separator, start = match.group(0), match.end()
-    pieces.append((separator, text[start:]))
-    return pieces
+def _text_bubble(bubble: str) -> str | None:
+    """Return a finished bubble a user may see, or None for a blank or directive bubble."""
+    return bubble if bubble.strip() and _bubble_directive(bubble.strip()) is None else None
 
 
-def visible_comms_text(text: str, *, complete: bool) -> str:
-    """Return what a user may see of one comms message: never a directive bubble.
+def _joined(bubbles: list[str | None], separators: list[str]) -> str:
+    """Join the bubbles left visible (None is hidden), each after the break written before it."""
+    shown = [(index, bubble) for index, bubble in enumerate(bubbles) if bubble is not None]
+    if not shown:
+        return ""
+    (_, first), *rest = shown
+    return first + "".join(separators[index - 1] + bubble for index, bubble in rest)
 
-    While the message streams (complete=False) the last bubble is withheld as
-    long as it could still become a directive, and so is a half-written break.
-    Each result extends the one before, so a client can append the difference.
+
+def visible_comms_text(text: str) -> str:
+    """Return what a user may see of a finished comms message: never a directive bubble."""
+    *bubbles, last = MESSAGE_BREAK_SENTINEL_RE.split(text)
+    bubbles.append(strip_partial_message_break(last))
+    return _joined(
+        [_text_bubble(bubble) for bubble in bubbles], MESSAGE_BREAK_SENTINEL_RE.findall(text)
+    )
+
+
+def visible_comms_text_so_far(text: str) -> str:
+    """Return what a user may see of a comms message still streaming.
+
+    The last bubble stays hidden while it could still become a directive, and
+    so does a half-written break. Each result extends the one before, so a
+    client can append the difference.
     """
-    *closed, (last_separator, last) = _bubbles_with_breaks(text)
-    if complete:
-        closed.append((last_separator, strip_partial_message_break(last)))
-    visible = ""
-    for separator, bubble in closed:
-        if bubble.strip() and _bubble_directive(bubble.strip()) is None:
-            visible += (separator if visible else "") + bubble
-    if not complete:
-        tail = _BREAK_TAIL_RE.search(last)
-        shown = last[: tail.start()] if tail else last
-        if shown.strip() and not _could_become_directive(shown):
-            visible += (last_separator if visible else "") + shown
-    return visible
+    *bubbles, last = MESSAGE_BREAK_SENTINEL_RE.split(text)
+    tail = _BREAK_TAIL_RE.search(last)
+    shown = last[: tail.start()] if tail else last
+    writing = shown if shown.strip() and not _could_become_directive(shown) else None
+    return _joined(
+        [*(_text_bubble(bubble) for bubble in bubbles), writing],
+        MESSAGE_BREAK_SENTINEL_RE.findall(text),
+    )
 
 
 def interpret_comms_output(text: str) -> CommsDirective:
@@ -124,4 +131,4 @@ def interpret_comms_output(text: str) -> CommsDirective:
             {"kind": directive.kind.value, "payload": directive.payload} for directive in directives
         ],
     )
-    return CommsDirective(CommsDirectiveKind.REPLY, visible_comms_text(text, complete=True))
+    return CommsDirective(CommsDirectiveKind.REPLY, visible_comms_text(text))

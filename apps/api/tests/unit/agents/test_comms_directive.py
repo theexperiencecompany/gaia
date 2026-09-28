@@ -1,13 +1,18 @@
 """Parsing comms' non-text turn outcomes (<SILENCE> / <EMOJI>) vs an ordinary reply."""
 
 from itertools import pairwise
-from unittest.mock import patch
 
 import pytest
 
-from app.agents.core.comms_directive import interpret_comms_output, visible_comms_text
+from app.agents.core.comms_directive import (
+    interpret_comms_output,
+    visible_comms_text,
+    visible_comms_text_so_far,
+)
 from app.constants.comms import CommsDirectiveKind
 from app.constants.general import NEW_MESSAGE_BREAKER as BREAK
+from app.constants.log_tags import LogTag
+from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
@@ -107,19 +112,26 @@ class TestADirectiveBesideAReplyIsNeverDelivered:
         d = interpret_comms_output(f"<EMOJI>👍</EMOJI>{BREAK}<SILENCE>x</SILENCE>")
         assert (d.kind, d.payload) == (CommsDirectiveKind.REACT, "👍")
 
-    def test_the_dropped_directive_is_logged(self) -> None:
-        with patch("app.agents.core.comms_directive.log") as log:
-            interpret_comms_output(f"{PASSPORT}{BREAK}<SILENCE>threshold</SILENCE>")
-        log.warning.assert_called_once()
-        assert log.warning.call_args.kwargs["dropped_directives"] == [
-            {"kind": "silence", "payload": "threshold"}
-        ]
+    def test_a_last_bubble_that_only_starts_like_a_tag_is_kept(self) -> None:
+        """Held while streaming because it could have become one; once the reply ends, it is text."""
+        d = interpret_comms_output(f"<SILENCE>x</SILENCE>{BREAK}Re")
+        assert (d.kind, d.payload) == (CommsDirectiveKind.REPLY, "Re")
 
-    def test_a_reply_with_no_directive_is_untouched(self) -> None:
+    async def test_the_dropped_directive_is_logged(self) -> None:
+        async with captured_wide_event() as event:
+            interpret_comms_output(f"{PASSPORT}{BREAK}<SILENCE>threshold</SILENCE>")
+
+        (warning,) = event["warnings"]
+        assert warning["msg"] == (
+            f"{LogTag.AGENT} comms wrote a directive beside its reply; the directive was dropped"
+        )
+        assert warning["dropped_directives"] == [{"kind": "silence", "payload": "threshold"}]
+
+    async def test_a_reply_with_no_directive_is_untouched(self) -> None:
         text = f"On it.{BREAK}Done.{BREAK}"
-        with patch("app.agents.core.comms_directive.log") as log:
+        async with captured_wide_event() as event:
             assert interpret_comms_output(text).payload == text
-        log.warning.assert_not_called()
+        assert "warnings" not in event
 
 
 class TestVisibleCommsText:
@@ -152,10 +164,11 @@ class TestVisibleCommsText:
             (f"<SILENCE>x</SILENCE>{BREAK}Actually", "Actually"),
             (f"A.{BREAK}<SILENCE>x</SILENCE>{BREAK}C", f"A.{BREAK}C"),
             (f"A.{BREAK}REACT: 👍{BREAK}", "A."),
+            (f"A.{BREAK}{BREAK}C", f"A.{BREAK}C"),
         ],
     )
     def test_while_streaming(self, text: str, visible: str) -> None:
-        assert visible_comms_text(text, complete=False) == visible
+        assert visible_comms_text_so_far(text) == visible
 
     @pytest.mark.parametrize(
         ("text", "visible"),
@@ -168,18 +181,19 @@ class TestVisibleCommsText:
             (f"Hello there.{BREAK}", "Hello there."),
             ("Hello there.<NEW_MESS", "Hello there."),
             (f"A.{BREAK}<EMOJI>👍</EMOJI>{BREAK}C", f"A.{BREAK}C"),
+            (f"A.{BREAK}  {BREAK}C", f"A.{BREAK}C"),
         ],
     )
     def test_once_the_message_ended(self, text: str, visible: str) -> None:
-        assert visible_comms_text(text, complete=True) == visible
+        assert visible_comms_text(text) == visible
 
     def test_what_was_shown_is_always_a_prefix_of_what_is_shown_next(self) -> None:
         """Clients append each delta; text shown early and then retracted would stay on screen."""
         text = (
             f"Hi <b>there</b>.{BREAK}  <SILENCE>no</SILENCE>{BREAK}Re: your trip<NEW_LINE_BREAK>ok"
         )
-        shown = [visible_comms_text(text[:end], complete=False) for end in range(len(text) + 1)]
-        shown.append(visible_comms_text(text, complete=True))
+        shown = [visible_comms_text_so_far(text[:end]) for end in range(len(text) + 1)]
+        shown.append(visible_comms_text(text))
         for earlier, later in pairwise(shown):
             assert later.startswith(earlier)
         assert shown[-1] == f"Hi <b>there</b>.{BREAK}Re: your trip<NEW_LINE_BREAK>ok"

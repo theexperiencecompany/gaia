@@ -321,7 +321,7 @@ class _OneChunkThenFails:
         return stream()
 
 
-def _one_message(message_id: str, *pieces: str) -> list[GraphStreamEvent]:
+def _one_message(message_id: str | None, *pieces: str) -> list[GraphStreamEvent]:
     """Build the events of one kept message streamed as pieces."""
     return [
         *(message_chunk_event(message_id=message_id, content=piece) for piece in pieces),
@@ -413,11 +413,48 @@ class TestDirectiveHoldback:
         assert _frames(frames, "tool_data") == [{"tool_name": "tool_calls_data", "data": {}}]
         assert _frames(frames, "message_boundary") == [{"message_id": "m1", "discarded": True}]
 
-    async def test_a_run_cut_short_still_releases_its_visible_text(self) -> None:
+    @pytest.mark.parametrize("text", ["Sure", "REACT"])
+    async def test_a_run_cut_short_still_releases_its_visible_text(self, text: str) -> None:
         """A cancelled run never reaches its boundary; what the user may see must still go out."""
-        frames = await _run_streaming([message_chunk_event(message_id="m1", content="Sure")])
+        frames = await _run_streaming([message_chunk_event(message_id="m1", content=text)])
 
-        assert _frames(frames, "response") == ["Sure"]
+        assert _frames(frames, "response") == [text]
+
+    @pytest.mark.parametrize("message_id", ["m1", None])
+    async def test_text_held_to_the_end_goes_out_just_before_its_boundary(
+        self, message_id: str | None
+    ) -> None:
+        """A bare REACT could have become a directive until the message ended; then it is text."""
+        frames = await _run_streaming(_one_message(message_id, "REACT"))
+
+        payloads = [json.loads(f[len("data: ") :]) for f in frames if f.startswith("data: {")]
+        assert payloads == [
+            {"response": "REACT"},
+            {"message_boundary": {"message_id": message_id or "", "discarded": False}},
+        ]
+
+    async def test_a_message_with_no_text_sends_none(self) -> None:
+        frames = await _run_streaming([agent_update_event(AIMessage(id="m1", content=""))])
+
+        assert _frames(frames, "response") == []
+
+    async def test_a_second_message_under_the_same_id_streams_whole(self) -> None:
+        """Id-less messages share one key: what the first streamed must not eat into the next."""
+        frames = await _run_streaming([*_one_message(None, "on it."), *_one_message(None, "done.")])
+
+        assert _frames(frames, "response") == ["on it.", "done."]
+
+    async def test_a_retracted_draft_does_not_eat_into_its_rewrite(self) -> None:
+        """The style guard retracts a draft mid-node; the rewrite reuses the id-less key."""
+        frames = await _run_streaming(
+            [
+                message_chunk_event(message_id=None, content="Great question!"),
+                _custom({"message_boundary": {"message_id": None, "discarded": True}}),
+                *_one_message(None, "Sure."),
+            ]
+        )
+
+        assert _frames(frames, "response") == ["Great question!", "Sure."]
 
     async def test_ordinary_text_is_published_before_the_next_event_is_read(self) -> None:
         frames = execute_graph_streaming(_OneChunkThenFails(), {}, _CONFIG)

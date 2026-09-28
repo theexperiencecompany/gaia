@@ -15,7 +15,7 @@ from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.core.background.session import claim_tool_output
-from app.agents.core.comms_directive import visible_comms_text
+from app.agents.core.comms_directive import visible_comms_text, visible_comms_text_so_far
 from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.interruption import record_interruption
 from app.agents.core.subagents.registry import get_subagent_by_id
@@ -235,7 +235,7 @@ def _flush_held_messages(complete_message: str, held: dict[str, str]) -> str:
     return complete_message
 
 
-def drop_retracted_text(payload: object, held: dict[str, str]) -> None:
+def drop_retracted_text(payload: object, *held: dict[str, str]) -> None:
     """Forget text whose message was retracted mid-node, before its boundary.
 
     Retractions are normally announced at node end, except the style guard's,
@@ -246,7 +246,8 @@ def drop_retracted_text(payload: object, held: dict[str, str]) -> None:
         return
     boundary = _CustomEvent.model_validate(payload).message_boundary
     if boundary is not None and boundary.discarded:
-        held.pop(boundary.message_id or "", None)
+        for texts in held:
+            texts.pop(boundary.message_id or "", None)
 
 
 def last_ai_message(messages: Sequence[object]) -> AIMessage | None:
@@ -1133,8 +1134,8 @@ class _StreamAccumulators:
     # perf_counter of the first comms text yield in this run; None until then.
     # Only comms_agent text reaches the yield below, so executor runs never stamp.
     pipeline_ttft_perf: float | None = None
-    # Characters of each held message's visible text already streamed.
-    released_chars: dict[str, int] = field(default_factory=dict)
+    # The visible text of each held message already streamed.
+    released_text: dict[str, str] = field(default_factory=dict)
 
 
 async def _emit_mcp_app_event(
@@ -1296,10 +1297,10 @@ async def _stream_updates(
 
             # The node has finished, so the message's fate is decided (kept, or
             # a discarded handoff preamble); announce the boundary either way.
-            closing = last_ai_message(messages) if is_comms else None
-            closing_text = (
-                _release_visible_text(state, closing.id or "", complete=True) if closing else ""
-            )
+            closing = last_ai_message(messages)
+            closing_text = ""  # pragma: no mutate — no closing message, no boundary to yield it at
+            if closing is not None:
+                closing_text = _finish_visible_text(state, closing.id or "")
             state.complete_message, boundary_id, discarded = _settle_message_boundary(
                 messages,
                 is_comms,
@@ -1308,7 +1309,6 @@ async def _stream_updates(
                 state.tool_call_message_ids,
             )
             if boundary_id is not None:
-                state.released_chars.pop(boundary_id, None)
                 if closing_text and not discarded:
                     yield format_sse_response(closing_text)
                 yield format_sse_data(
@@ -1360,12 +1360,19 @@ async def _stream_tool_message_frames(
             yield frame
 
 
-def _release_visible_text(state: _StreamAccumulators, message_id: str, *, complete: bool) -> str:
-    """Return the next piece of a comms message a user may see, and mark it streamed."""
-    visible = visible_comms_text(state.message_texts.get(message_id, ""), complete=complete)
-    streamed = state.released_chars.get(message_id, 0)
-    state.released_chars[message_id] = len(visible)
-    return visible[streamed:]
+def _stream_visible_text(state: _StreamAccumulators, message_id: str) -> str:
+    """Return the next piece of a streaming comms message a user may see, and mark it streamed."""
+    visible = visible_comms_text_so_far(state.message_texts[message_id])
+    new = visible[len(state.released_text.get(message_id, "")) :]
+    if new:
+        state.released_text[message_id] = visible
+    return new
+
+
+def _finish_visible_text(state: _StreamAccumulators, message_id: str) -> str:
+    """Return the rest of a finished comms message a user may see, and forget it streamed."""
+    sent = state.released_text.pop(message_id, "")
+    return visible_comms_text(state.message_texts.get(message_id, ""))[len(sent) :]
 
 
 async def _stream_messages(
@@ -1388,7 +1395,7 @@ async def _stream_messages(
             if state.pipeline_ttft_perf is None:
                 state.pipeline_ttft_perf = time.perf_counter()
             state.message_texts[message_id] = state.message_texts.get(message_id, "") + held_text
-            if visible := _release_visible_text(state, message_id, complete=False):
+            if visible := _stream_visible_text(state, message_id):
                 yield format_sse_response(visible)
 
     # Emit tool_output when ToolMessage arrives
@@ -1405,12 +1412,7 @@ async def _stream_custom(
     user_id: str | None,
 ) -> AsyncGenerator[str, None]:
     """Handle one "custom" event: forward it, then honour subagent MCP App metadata."""
-    drop_retracted_text(payload, state.message_texts)
-    state.released_chars = {
-        message_id: chars
-        for message_id, chars in state.released_chars.items()
-        if message_id in state.message_texts
-    }
+    drop_retracted_text(payload, state.message_texts, state.released_text)
     yield f"data: {json.dumps(payload)}\n\n"
 
     if not isinstance(payload, dict):
@@ -1560,7 +1562,7 @@ async def execute_graph_streaming(
     # A run that ends without its closing node update (cancellation, a graph that
     # never reaches the agent node again) still owes the user what it streamed.
     for message_id in list(state.message_texts):
-        if visible := _release_visible_text(state, message_id, complete=True):
+        if visible := _finish_visible_text(state, message_id):
             yield format_sse_response(visible)
     state.complete_message = _flush_held_messages(state.complete_message, state.message_texts)
     if state.pipeline_ttft_perf is not None:
