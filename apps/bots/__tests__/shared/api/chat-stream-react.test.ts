@@ -9,9 +9,16 @@
  */
 import { Readable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
-import type { ChatStreamClient } from "../../../../../libs/shared/ts/src/bots/api/chat-stream";
+import type {
+  ChatStreamClient,
+  ReactionHandler,
+} from "../../../../../libs/shared/ts/src/bots/api/chat-stream";
 import { streamChat } from "../../../../../libs/shared/ts/src/bots/api/chat-stream";
 import type { ChatRequest } from "../../../../../libs/shared/ts/src/bots/types";
+import {
+  REACTION_OUTCOME,
+  type ReactionOutcome,
+} from "../../../../../libs/shared/ts/src/bots/utils/reaction-outcome";
 
 const REQUEST: ChatRequest = {
   message: "hi",
@@ -32,10 +39,7 @@ function makeDeps(sseBody: string): ChatStreamClient {
 }
 
 /** Drives one scripted SSE body through the real streamer. */
-async function drive(
-  sseBody: string,
-  onReaction?: (emoji: string) => Promise<boolean>,
-) {
+async function drive(sseBody: string, onReaction?: ReactionHandler) {
   const onChunk = vi.fn();
   const onDone = vi.fn();
   const onError = vi.fn();
@@ -100,7 +104,7 @@ describe("streamChat — emoji ack as a native reaction", () => {
   );
 
   it("delivers no text once the reaction attaches", async () => {
-    const onReaction = vi.fn(async () => true);
+    const onReaction = vi.fn(async () => REACTION_OUTCOME.ATTACHED);
 
     const { onChunk, onDone, onError } = await drive(ACK_TURN, onReaction);
 
@@ -110,15 +114,23 @@ describe("streamChat — emoji ack as a native reaction", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
-  it("delivers the emoji as the turn's text when the reaction is refused", async () => {
-    const { onChunk, onDone } = await drive(ACK_TURN, async () => false);
+  it.each<ReactionOutcome>([
+    "platform_unsupported",
+    "unmapped_emoji",
+    "attach_failed",
+    "no_target",
+  ])(
+    "delivers the emoji as the turn's text when the reaction ends %s",
+    async (outcome) => {
+      const { onChunk, onDone } = await drive(ACK_TURN, async () => outcome);
 
-    expect(onChunk.mock.calls.flat()).toEqual(["😅"]);
-    expect(onDone).toHaveBeenCalledWith("😅", "c1");
-  });
+      expect(onChunk.mock.calls.flat()).toEqual(["😅"]);
+      expect(onDone).toHaveBeenCalledWith("😅", "c1");
+    },
+  );
 
   it("does not ask to react on an ordinary reply", async () => {
-    const onReaction = vi.fn(async () => true);
+    const onReaction = vi.fn(async () => REACTION_OUTCOME.ATTACHED);
 
     await drive(frames({ text: "Sure." }, { done: true }), onReaction);
 

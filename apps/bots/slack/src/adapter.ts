@@ -30,6 +30,8 @@ import {
   hashLogIdentifier,
   type OutboundAttachment,
   type PlatformName,
+  REACTION_OUTCOME,
+  type ReactionOutcome,
   type RichMessage,
   type RichMessageTarget,
   renderForPlatform,
@@ -308,13 +310,13 @@ export class SlackAdapter extends BaseBotAdapter {
     platformMessageId: string,
     emoji: string,
     isChannel: boolean,
-  ): Promise<boolean> {
+  ): Promise<ReactionOutcome> {
     // reactions.add takes a shortcode (sweat_smile), not the emoji. An emoji
     // with no known shortcode is refused here and the caller sends it as text.
     const name = which(emoji);
     if (!name) {
       this.adapterLogger.warn("outbound_reaction_unmapped_emoji", { emoji });
-      return false;
+      return REACTION_OUTCOME.UNMAPPED_EMOJI;
     }
     const channel = isChannel
       ? destinationId
@@ -325,7 +327,7 @@ export class SlackAdapter extends BaseBotAdapter {
         timestamp: platformMessageId,
         name,
       });
-      return true;
+      return REACTION_OUTCOME.ATTACHED;
     } catch (err) {
       this.adapterLogger.warn("outbound_reaction_attach_failed", {
         channel_hash: hashLogIdentifier(channel),
@@ -333,7 +335,7 @@ export class SlackAdapter extends BaseBotAdapter {
           ? { error_type: err.name, error: err.message }
           : { error: String(err) }),
       });
-      return false;
+      return REACTION_OUTCOME.ATTACH_FAILED;
     }
   }
 
@@ -493,14 +495,14 @@ export class SlackAdapter extends BaseBotAdapter {
       await this.analyticsFor(userId),
       async (emoji: string) => {
         // A slash command has no inbound message to react to.
-        if (!inboundTs) return false;
-        const reacted = await this.reactToMessage(
+        if (!inboundTs) return REACTION_OUTCOME.NO_TARGET;
+        const outcome = await this.reactToMessage(
           channelId,
           inboundTs,
           emoji,
           true,
         );
-        if (!reacted) return false;
+        if (outcome !== REACTION_OUTCOME.ATTACHED) return outcome;
         try {
           await client.chat.delete({ channel: channelId, ts });
         } catch (err) {
@@ -511,7 +513,7 @@ export class SlackAdapter extends BaseBotAdapter {
             err,
           );
         }
-        return true;
+        return outcome;
       },
     );
   }

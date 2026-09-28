@@ -38,6 +38,12 @@ import {
   hashLogIdentifier,
   sanitizeErrorForLog,
 } from "./logger";
+import {
+  REACTION_OUTCOME,
+  REACTION_SURFACE,
+  type ReactionOutcome,
+  reactionDeliveredProperties,
+} from "./reaction-outcome";
 import { chunkResponse, PLATFORM_LIMITS } from "./text";
 import { wideLog, withWideEvent } from "./wide-events";
 
@@ -368,13 +374,14 @@ async function _handleStream(
    * Hands the turn's emoji ack to the adapter to attach natively, once any edit still in
    * flight has landed — the adapter may be about to delete the bubble that edit targets.
    */
-  const reactToTurn = async (emoji: string): Promise<boolean> => {
-    if (!onReaction) return false;
-    let reacted = false;
+  const reactToTurn = async (emoji: string): Promise<ReactionOutcome> => {
+    if (!onReaction) return REACTION_OUTCOME.NO_TARGET;
+    // Overwritten by the queued call; enqueue rejects if it throws.
+    let outcome: ReactionOutcome = REACTION_OUTCOME.NO_TARGET;
     await enqueue(async () => {
-      reacted = await onReaction(emoji);
+      outcome = await onReaction(emoji);
     });
-    return reacted;
+    return outcome;
   };
 
   try {
@@ -554,7 +561,9 @@ async function runStreamingChat(
   let discardedMessages = 0;
   let notices = 0;
   let conversationId = "";
-  let reactionDelivery: "native" | "fallback_text" | undefined;
+  let reactionDelivered:
+    | ReturnType<typeof reactionDeliveredProperties>
+    | undefined;
 
   analytics?.client.capture(analytics.distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
     interaction_type: "chat",
@@ -646,14 +655,17 @@ async function runStreamingChat(
         await deliverOutOfBand(text);
       },
       async (emoji: string) => {
-        const reacted = await reactToTurn(emoji);
-        reactionDelivery = reacted ? "native" : "fallback_text";
+        const outcome = await reactToTurn(emoji);
+        reactionDelivered = reactionDeliveredProperties(
+          outcome,
+          REACTION_SURFACE.LIVE,
+        );
         analytics?.client.capture(
           analytics.distinctId,
           BOT_EVENTS.REACTION_DELIVERED,
-          { success: true, delivery: reactionDelivery },
+          reactionDelivered,
         );
-        return reacted;
+        return outcome;
       },
     );
 
@@ -677,7 +689,8 @@ async function runStreamingChat(
       notices_delivered: notices,
       response_length: responseLength,
       conversation_id: conversationId || undefined,
-      reaction_delivery: reactionDelivery,
+      reaction_delivery: reactionDelivered?.delivery,
+      reaction_reason: reactionDelivered?.reason,
     });
     if (!hadError) {
       analytics?.client.capture(

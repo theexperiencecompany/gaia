@@ -38,6 +38,8 @@ import {
   type MediaKind,
   type OutboundAttachment,
   type PlatformName,
+  REACTION_OUTCOME,
+  type ReactionOutcome,
   type RichMessage,
   type RichMessageTarget,
   redeemLinkCode,
@@ -468,7 +470,7 @@ export class TelegramAdapter extends BaseBotAdapter {
     platformMessageId: string,
     emoji: string,
     _isChannel: boolean,
-  ): Promise<boolean> {
+  ): Promise<ReactionOutcome> {
     // Telegram accepts only a fixed emoji set, spelled without the U+FE0F
     // variation selector ("❤" not "❤️"), and 400s anything else; an off-list
     // emoji lands in the catch below and the caller sends text.
@@ -482,12 +484,12 @@ export class TelegramAdapter extends BaseBotAdapter {
         Number(platformMessageId),
         [{ type: "emoji", emoji: allowed }],
       );
-      return true;
+      return REACTION_OUTCOME.ATTACHED;
     } catch (err) {
       this.adapterLogger.warn("outbound_reaction_attach_failed", {
         ...sanitizeErrorForLog(err),
       });
-      return false;
+      return REACTION_OUTCOME.ATTACH_FAILED;
     }
   }
 
@@ -748,14 +750,14 @@ export class TelegramAdapter extends BaseBotAdapter {
         await this.analyticsFor(userId),
         async (emoji: string) => {
           const inboundId = ctx.msg?.message_id;
-          if (inboundId === undefined) return false;
-          const reacted = await this.reactToMessage(
+          if (inboundId === undefined) return REACTION_OUTCOME.NO_TARGET;
+          const outcome = await this.reactToMessage(
             chatId.toString(),
             inboundId.toString(),
             emoji,
             ctx.chat?.type !== "private",
           );
-          if (!reacted) return false;
+          if (outcome !== REACTION_OUTCOME.ATTACHED) return outcome;
           try {
             await ctx.api.deleteMessage(chatId, loading.message_id);
           } catch (e) {
@@ -769,7 +771,7 @@ export class TelegramAdapter extends BaseBotAdapter {
               e,
             );
           }
-          return true;
+          return outcome;
         },
       );
     } finally {

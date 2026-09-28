@@ -34,6 +34,8 @@ import {
   MEDIA_READ_TIMEOUT_MS,
   type OutboundAttachment,
   type PlatformName,
+  REACTION_OUTCOME,
+  type ReactionOutcome,
   type RichMessage,
   type RichMessageTarget,
   readBodyBounded,
@@ -940,7 +942,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     platformMessageId: string,
     emoji: string,
     _isChannel: boolean,
-  ): Promise<boolean> {
+  ): Promise<ReactionOutcome> {
     // WhatsApp (Kapso) has no group/channel outbound model — destinationId is
     // always a wa_id, same addressing as deliverOutbound.
     try {
@@ -949,12 +951,12 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         to: `+${destinationId}`,
         reaction: { messageId: platformMessageId, emoji },
       });
-      return true;
+      return REACTION_OUTCOME.ATTACHED;
     } catch (err) {
       this.adapterLogger.warn("outbound_reaction_attach_failed", {
         ...sanitizeErrorForLog(err),
       });
-      return false;
+      return REACTION_OUTCOME.ATTACH_FAILED;
     }
   }
 

@@ -6,6 +6,7 @@
 import type { AxiosInstance } from "axios";
 import type { ApprovalRequestData } from "../../chat";
 import type { BotUserContext } from "../types";
+import type { ReactionOutcome } from "../utils/reaction-outcome";
 
 /** Fired when a HIL approval frame arrives (bots render it out-of-band). */
 export type ApprovalUpdateHandler = (
@@ -38,10 +39,10 @@ export type NoticeHandler = (text: string) => void | Promise<void>;
 /**
  * Fired when the turn resolved to a one-emoji acknowledgment of the user's message.
  *
- * Resolves true once the emoji is attached natively to that message, which then
- * IS the reply; false sends the emoji as the turn's text instead.
+ * Resolves ATTACHED once the emoji is attached natively to that message, which
+ * then IS the reply; any other outcome sends the emoji as the turn's text instead.
  */
-export type ReactionHandler = (emoji: string) => Promise<boolean>;
+export type ReactionHandler = (emoji: string) => Promise<ReactionOutcome>;
 
 /**
  * The slice of {@link GaiaClient} the streamer needs: the HTTP client, auth

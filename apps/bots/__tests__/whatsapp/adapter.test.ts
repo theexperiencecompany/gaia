@@ -127,7 +127,11 @@ vi.mock("@gaia/shared/bots", async () => {
 // Now import the real adapter (which will use the mocks above).
 // ---------------------------------------------------------------------------
 
-import { handleStreamingChat, richMessageToMarkdown } from "@gaia/shared/bots";
+import {
+  handleStreamingChat,
+  type ReactionOutcome,
+  richMessageToMarkdown,
+} from "@gaia/shared/bots";
 // From source, not the mocked barrel: GaiaApiError is the error class the real
 // redeemLinkCode branches on, so a stub would prove nothing about the failure path.
 import { GaiaApiError } from "../../../../libs/shared/ts/src/bots/api";
@@ -911,7 +915,7 @@ type WhatsAppReactor = {
     platformMessageId: string,
     emoji: string,
     isChannel: boolean,
-  ) => Promise<boolean>;
+  ) => Promise<ReactionOutcome>;
 };
 
 describe("WhatsAppAdapter - reactToMessage", () => {
@@ -930,7 +934,7 @@ describe("WhatsAppAdapter - reactToMessage", () => {
       false,
     );
 
-    expect(attached).toBe(true);
+    expect(attached).toBe("attached");
     expect(mockSendReaction).toHaveBeenCalledWith({
       phoneNumberId: "test-phone-id",
       to: "+15551234567",
@@ -950,7 +954,7 @@ describe("WhatsAppAdapter - reactToMessage", () => {
       false,
     );
 
-    expect(attached).toBe(false);
+    expect(attached).toBe("attach_failed");
     expect(mockSendText).not.toHaveBeenCalled();
   });
 });
@@ -964,7 +968,7 @@ describe("WhatsAppAdapter - live turn reaction", () => {
     const adapter = makeAdapter();
     const react = vi
       .spyOn(adapter as unknown as WhatsAppReactor, "reactToMessage")
-      .mockResolvedValue(true);
+      .mockResolvedValue("attached");
 
     await (adapter as unknown as PrivateAdapter).handleStreamingMessage(
       "15551234567",
@@ -973,9 +977,9 @@ describe("WhatsAppAdapter - live turn reaction", () => {
     );
     const hook = vi.mocked(handleStreamingChat).mock.calls.at(-1)?.[8] as (
       emoji: string,
-    ) => Promise<boolean>;
+    ) => Promise<ReactionOutcome>;
 
-    await expect(hook("👍")).resolves.toBe(true);
+    await expect(hook("👍")).resolves.toBe("attached");
     expect(react).toHaveBeenCalledWith("15551234567", "wamid.in", "👍", false);
     expect(mockSendText).not.toHaveBeenCalled();
   });

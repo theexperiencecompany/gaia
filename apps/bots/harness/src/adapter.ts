@@ -24,6 +24,8 @@ import {
   extractSubcommandArgs,
   handleStreamingChat,
   type PlatformName,
+  REACTION_OUTCOME,
+  type ReactionOutcome,
   type RichMessage,
   type RichMessageTarget,
   richMessageToMarkdown,
@@ -124,14 +126,14 @@ export class HarnessAdapter extends BaseBotAdapter {
     destinationId: string,
     platformMessageId: string,
     emoji: string,
-  ): Promise<boolean> {
+  ): Promise<ReactionOutcome> {
     this.transcript.record({
       type: "reaction",
       destinationId,
       targetMessageId: platformMessageId,
       emoji,
     });
-    return Promise.resolve(true);
+    return Promise.resolve(REACTION_OUTCOME.ATTACHED);
   }
 
   // ---------------------------------------------------------------------------

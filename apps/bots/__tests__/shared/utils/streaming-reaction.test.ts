@@ -12,6 +12,8 @@ import {
   GaiaClient,
   handleStreamingChat,
   type PlatformName,
+  REACTION_OUTCOME,
+  type ReactionOutcome,
   STREAMING_DEFAULTS,
 } from "@gaia/shared/bots";
 import { describe, expect, it, vi } from "vitest";
@@ -53,7 +55,7 @@ interface Screen {
 async function runTurn(
   platform: PlatformName,
   sseBody: string,
-  react?: (emoji: string) => Promise<boolean>,
+  react?: (emoji: string) => Promise<ReactionOutcome>,
   analytics?: AnalyticsContext,
 ): Promise<Screen> {
   const screen: Screen = { messages: [PLACEHOLDER], errors: [], reactions: [] };
@@ -89,12 +91,12 @@ async function runTurn(
     analytics,
     react &&
       (async (emoji) => {
-        const reacted = await react(emoji);
-        if (reacted) {
+        const outcome = await react(emoji);
+        if (outcome === REACTION_OUTCOME.ATTACHED) {
           screen.reactions.push(emoji);
           screen.messages.splice(screen.messages.indexOf(PLACEHOLDER), 1);
         }
-        return reacted;
+        return outcome;
       }),
   );
   return screen;
@@ -104,7 +106,7 @@ describe("a live turn answered with a reaction", () => {
   it.each<PlatformName>(["telegram", "slack", "discord", "whatsapp"])(
     "%s attaches the emoji and posts nothing",
     async (platform) => {
-      const react = vi.fn(async () => true);
+      const react = vi.fn(async () => REACTION_OUTCOME.ATTACHED);
 
       const screen = await runTurn(platform, REACTION_TURN, react);
 
@@ -118,7 +120,11 @@ describe("a live turn answered with a reaction", () => {
   it.each<PlatformName>(["telegram", "whatsapp"])(
     "%s sends the emoji as text when the platform refuses the reaction",
     async (platform) => {
-      const screen = await runTurn(platform, REACTION_TURN, async () => false);
+      const screen = await runTurn(
+        platform,
+        REACTION_TURN,
+        async () => REACTION_OUTCOME.ATTACH_FAILED,
+      );
 
       expect(screen.messages).toEqual(["😅"]);
       expect(screen.reactions).toEqual([]);
@@ -138,32 +144,74 @@ describe("a live turn answered with a reaction", () => {
         { text: "<EMOJI>😅</EMOJI>" },
         { emoji_ack: { emoji: "😅", reacts_to_message_id: "u1" } },
       ),
-      async () => true,
+      async () => REACTION_OUTCOME.ATTACHED,
     );
 
     expect(screen.errors).toEqual([]);
     expect(screen.messages).toEqual([]);
   });
 
-  it.each([
-    [true, "native"],
-    [false, "fallback_text"],
-  ])(
-    "records the delivery when the reaction attaches: %s",
-    async (attached, delivery) => {
-      const capture = vi.fn();
-      const analytics = {
-        client: { capture },
-        distinctId: "gaia-user-1",
-      } as unknown as AnalyticsContext;
+  it.each<[ReactionOutcome, object]>([
+    [REACTION_OUTCOME.ATTACHED, { delivery: "native" }],
+    [
+      REACTION_OUTCOME.ATTACH_FAILED,
+      { delivery: "fallback_text", reason: "attach_failed" },
+    ],
+    [
+      REACTION_OUTCOME.UNMAPPED_EMOJI,
+      { delivery: "fallback_text", reason: "unmapped_emoji" },
+    ],
+  ])("records a live reaction that ended %s", async (outcome, expected) => {
+    const capture = vi.fn();
 
-      await runTurn("telegram", REACTION_TURN, async () => attached, analytics);
+    await runTurn(
+      "telegram",
+      REACTION_TURN,
+      async () => outcome,
+      analyticsCapturingTo(capture),
+    );
 
-      expect(capture).toHaveBeenCalledWith(
-        "gaia-user-1",
-        BOT_EVENTS.REACTION_DELIVERED,
-        { success: true, delivery },
-      );
-    },
-  );
+    expect(reactionCaptures(capture)).toStrictEqual([
+      { success: true, surface: "live", ...expected },
+    ]);
+  });
+
+  it("records no_target when the call site has nothing to react to", async () => {
+    const capture = vi.fn();
+
+    await runTurn(
+      "telegram",
+      REACTION_TURN,
+      undefined,
+      analyticsCapturingTo(capture),
+    );
+
+    expect(reactionCaptures(capture)).toStrictEqual([
+      {
+        success: true,
+        surface: "live",
+        delivery: "fallback_text",
+        reason: "no_target",
+      },
+    ]);
+  });
 });
+
+/** The properties of every reaction event, captured for the turn's user. */
+function reactionCaptures(capture: ReturnType<typeof vi.fn>): unknown[] {
+  return capture.mock.calls
+    .filter(
+      ([distinctId, event]) =>
+        distinctId === "gaia-user-1" && event === BOT_EVENTS.REACTION_DELIVERED,
+    )
+    .map(([, , properties]) => properties);
+}
+
+function analyticsCapturingTo(
+  capture: ReturnType<typeof vi.fn>,
+): AnalyticsContext {
+  return {
+    client: { capture },
+    distinctId: "gaia-user-1",
+  } as unknown as AnalyticsContext;
+}

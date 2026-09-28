@@ -13,6 +13,7 @@ import type { ApprovalRequestData } from "../../chat";
 import { NEW_MESSAGE_BREAK_TOKEN } from "../../utils/messageBreakUtils";
 import type { ChatRequest } from "../types";
 import { getHttpStatus } from "../utils/logger";
+import { REACTION_OUTCOME } from "../utils/reaction-outcome";
 import { wideLog } from "../utils/wide-events";
 import type {
   ApprovalUpdateHandler,
@@ -192,7 +193,7 @@ async function streamChatOnce(
   // directive, and never streams the directive's text. Attached as a reaction, the turn
   // delivers no text; otherwise the emoji is its one chunk, or streaming platforms show nothing.
   const applyEmojiAck = async (emoji: string): Promise<void> => {
-    if (await onReaction?.(emoji)) {
+    if ((await onReaction?.(emoji)) === REACTION_OUTCOME.ATTACHED) {
       reacted = true;
       fullText = "";
       return;

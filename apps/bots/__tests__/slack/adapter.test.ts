@@ -70,7 +70,7 @@ vi.mock("@gaia/shared/bots", async () => {
 // Import adapter after mocks are in place
 // ---------------------------------------------------------------------------
 
-import { handleStreamingChat } from "@gaia/shared/bots";
+import { handleStreamingChat, type ReactionOutcome } from "@gaia/shared/bots";
 import { SlackAdapter } from "../../slack/src/adapter";
 
 // ---------------------------------------------------------------------------
@@ -937,7 +937,7 @@ type SlackReactor = {
     platformMessageId: string,
     emoji: string,
     isChannel: boolean,
-  ) => Promise<boolean>;
+  ) => Promise<ReactionOutcome>;
   app: unknown;
 };
 
@@ -979,7 +979,7 @@ describe("SlackAdapter - reactToMessage", () => {
       true,
     );
 
-    expect(attached).toBe(true);
+    expect(attached).toBe("attached");
     expect(add).toHaveBeenCalledWith({
       channel: "C-group",
       timestamp: "123.456",
@@ -1011,7 +1011,7 @@ describe("SlackAdapter - reactToMessage", () => {
       true,
     );
 
-    expect(attached).toBe(true);
+    expect(attached).toBe("attached");
     expect(add).toHaveBeenCalledWith({
       channel: "C-group",
       timestamp: "123.456",
@@ -1030,7 +1030,7 @@ describe("SlackAdapter - reactToMessage", () => {
       true,
     );
 
-    expect(attached).toBe(false);
+    expect(attached).toBe("unmapped_emoji");
     expect(add).not.toHaveBeenCalled();
     expect(postMessageOf(adapter)).not.toHaveBeenCalled();
   });
@@ -1046,7 +1046,7 @@ describe("SlackAdapter - reactToMessage", () => {
       true,
     );
 
-    expect(attached).toBe(false);
+    expect(attached).toBe("attach_failed");
     expect(postMessageOf(adapter)).not.toHaveBeenCalled();
   });
 });
@@ -1067,17 +1067,17 @@ describe("SlackAdapter - live turn reaction", () => {
     vi.clearAllMocks();
   });
 
-  function lastReactionHook(): (emoji: string) => Promise<boolean> {
+  function lastReactionHook(): (emoji: string) => Promise<ReactionOutcome> {
     return vi.mocked(handleStreamingChat).mock.calls.at(-1)?.[8] as (
       emoji: string,
-    ) => Promise<boolean>;
+    ) => Promise<ReactionOutcome>;
   }
 
   it("reacts to the inbound message and deletes the Thinking... placeholder", async () => {
     const adapter = new SlackAdapter();
     const react = vi
       .spyOn(adapter as unknown as SlackReactor, "reactToMessage")
-      .mockResolvedValue(true);
+      .mockResolvedValue("attached");
     const client = makeSlackClient("ts-placeholder");
 
     await (adapter as unknown as Streamer).handleSlackStreaming(
@@ -1089,7 +1089,7 @@ describe("SlackAdapter - live turn reaction", () => {
       "111.222",
     );
 
-    await expect(lastReactionHook()("👍")).resolves.toBe(true);
+    await expect(lastReactionHook()("👍")).resolves.toBe("attached");
     expect(react).toHaveBeenCalledWith("D123", "111.222", "👍", true);
     expect(client.chat.delete).toHaveBeenCalledWith({
       channel: "D123",
@@ -1102,7 +1102,7 @@ describe("SlackAdapter - live turn reaction", () => {
     vi.spyOn(
       adapter as unknown as SlackReactor,
       "reactToMessage",
-    ).mockResolvedValue(false);
+    ).mockResolvedValue("unmapped_emoji");
     const client = makeSlackClient("ts-placeholder");
 
     await (adapter as unknown as Streamer).handleSlackStreaming(
@@ -1114,7 +1114,7 @@ describe("SlackAdapter - live turn reaction", () => {
       "111.222",
     );
 
-    await expect(lastReactionHook()("👍")).resolves.toBe(false);
+    await expect(lastReactionHook()("👍")).resolves.toBe("unmapped_emoji");
     expect(client.chat.delete).not.toHaveBeenCalled();
   });
 
@@ -1134,7 +1134,7 @@ describe("SlackAdapter - live turn reaction", () => {
       false,
     );
 
-    await expect(lastReactionHook()("👍")).resolves.toBe(false);
+    await expect(lastReactionHook()("👍")).resolves.toBe("no_target");
     expect(react).not.toHaveBeenCalled();
     expect(client.chat.delete).not.toHaveBeenCalled();
   });

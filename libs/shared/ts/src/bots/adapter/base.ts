@@ -61,6 +61,12 @@ import {
   OUTBOUND_FILE_LIMITS,
   processBotMedia,
 } from "../utils/media";
+import {
+  REACTION_OUTCOME,
+  REACTION_SURFACE,
+  type ReactionOutcome,
+  reactionDeliveredProperties,
+} from "../utils/reaction-outcome";
 import { wideLog, withWideEvent } from "../utils/wide-events";
 import { BotServer } from "./base-server";
 
@@ -388,16 +394,16 @@ export abstract class BaseBotAdapter {
 
   /**
    * Attaches `emoji` natively to an existing platform message — the one reaction
-   * primitive, used by live turns and the outbound consumer alike. Resolves false
-   * when the platform has no reaction API (this default) or refused this one.
+   * primitive, used by live turns and the outbound consumer alike. This default
+   * is for platforms with no reaction API.
    */
   protected reactToMessage(
     _destinationId: string,
     _platformMessageId: string,
     _emoji: string,
     _isChannel: boolean,
-  ): Promise<boolean> {
-    return Promise.resolve(false);
+  ): Promise<ReactionOutcome> {
+    return Promise.resolve(REACTION_OUTCOME.PLATFORM_UNSUPPORTED);
   }
 
   /**
@@ -409,22 +415,23 @@ export abstract class BaseBotAdapter {
     reaction: OutboundReaction,
     isChannel: boolean,
   ): Promise<void> {
-    const attached = await this.reactToMessage(
+    const outcome = await this.reactToMessage(
       destinationId,
       reaction.target_platform_message_id,
       reaction.emoji,
       isChannel,
     );
-    if (!attached) {
+    if (outcome !== REACTION_OUTCOME.ATTACHED) {
       wideLog.warning("outbound_reaction_fallback_text", {
         target_platform_message_id: reaction.target_platform_message_id,
+        reason: outcome,
       });
       await this.deliverOutbound(destinationId, reaction.emoji, isChannel);
     }
     this.analytics.capture(
       await this.resolveDistinctId(destinationId),
       BOT_EVENTS.REACTION_DELIVERED,
-      { success: true, delivery: attached ? "native" : "fallback_text" },
+      reactionDeliveredProperties(outcome, REACTION_SURFACE.OUTBOUND),
     );
   }
 

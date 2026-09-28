@@ -4,7 +4,11 @@
  */
 
 import { BOT_EVENTS } from "@gaia/shared/analytics";
-import { BaseBotAdapter } from "@gaia/shared/bots";
+import {
+  BaseBotAdapter,
+  REACTION_OUTCOME,
+  type ReactionOutcome,
+} from "@gaia/shared/bots";
 import { describe, expect, it, vi } from "vitest";
 
 const REACTION = { target_platform_message_id: "msg-7", emoji: "👍" };
@@ -40,7 +44,7 @@ class TestAdapter extends BaseBotAdapter {
   }
 }
 
-/** A platform whose native reaction call resolves to `attached`. */
+/** A platform whose native reaction call resolves to `outcome`. */
 class ReactingAdapter extends TestAdapter {
   readonly react =
     vi.fn<
@@ -49,18 +53,18 @@ class ReactingAdapter extends TestAdapter {
         messageId: string,
         emoji: string,
         isChannel: boolean,
-      ) => Promise<boolean>
+      ) => Promise<ReactionOutcome>
     >();
-  constructor(attached: boolean) {
+  constructor(outcome: ReactionOutcome) {
     super();
-    this.react.mockResolvedValue(attached);
+    this.react.mockResolvedValue(outcome);
   }
   protected override reactToMessage(
     destinationId: string,
     platformMessageId: string,
     emoji: string,
     isChannel: boolean,
-  ): Promise<boolean> {
+  ): Promise<ReactionOutcome> {
     return this.react(destinationId, platformMessageId, emoji, isChannel);
   }
 }
@@ -85,37 +89,61 @@ async function deliver(adapter: TestAdapter) {
 
 describe("BaseBotAdapter outbound reaction", () => {
   it("attaches natively and sends no text", async () => {
-    const adapter = new ReactingAdapter(true);
+    const adapter = new ReactingAdapter(REACTION_OUTCOME.ATTACHED);
 
     const capture = await deliver(adapter);
 
     expect(adapter.react).toHaveBeenCalledWith("chat-1", "msg-7", "👍", true);
     expect(adapter.sent).not.toHaveBeenCalled();
-    expect(capture).toHaveBeenCalledWith(
-      "telegram:chat-1",
-      BOT_EVENTS.REACTION_DELIVERED,
-      { success: true, delivery: "native" },
-    );
+    expect(capture.mock.calls).toStrictEqual([
+      [
+        "telegram:chat-1",
+        BOT_EVENTS.REACTION_DELIVERED,
+        { success: true, surface: "outbound", delivery: "native" },
+      ],
+    ]);
   });
 
-  it("sends the emoji as text when the platform refuses the reaction", async () => {
-    const adapter = new ReactingAdapter(false);
+  it.each<ReactionOutcome>(["attach_failed", "unmapped_emoji"])(
+    "sends the emoji as text and records why when the reaction ends %s",
+    async (outcome) => {
+      const adapter = new ReactingAdapter(outcome);
 
-    const capture = await deliver(adapter);
+      const capture = await deliver(adapter);
 
-    expect(adapter.sent).toHaveBeenCalledWith("chat-1", "👍", true);
-    expect(capture).toHaveBeenCalledWith(
-      "telegram:chat-1",
-      BOT_EVENTS.REACTION_DELIVERED,
-      { success: true, delivery: "fallback_text" },
-    );
-  });
+      expect(adapter.sent).toHaveBeenCalledWith("chat-1", "👍", true);
+      expect(capture.mock.calls).toStrictEqual([
+        [
+          "telegram:chat-1",
+          BOT_EVENTS.REACTION_DELIVERED,
+          {
+            success: true,
+            surface: "outbound",
+            delivery: "fallback_text",
+            reason: outcome,
+          },
+        ],
+      ]);
+    },
+  );
 
   it("sends the emoji as text on a platform with no reaction API", async () => {
     const adapter = new TestAdapter();
 
-    await deliver(adapter);
+    const capture = await deliver(adapter);
 
     expect(adapter.sent).toHaveBeenCalledWith("chat-1", "👍", true);
+    expect(capture.mock.calls).toStrictEqual([
+      [
+        "telegram:chat-1",
+        BOT_EVENTS.REACTION_DELIVERED,
+        {
+          success: true,
+          surface: "outbound",
+          delivery: "fallback_text",
+          reason: "platform_unsupported",
+        },
+      ],
+    ]);
   });
 });

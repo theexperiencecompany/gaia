@@ -96,7 +96,10 @@ vi.mock("discord.js", () => {
 // Mock @gaia/shared so we control handleStreamingChat.
 // ---------------------------------------------------------------------------
 
-vi.mock("@gaia/shared/bots", () => {
+vi.mock("@gaia/shared/bots", async () => {
+  const { REACTION_OUTCOME } = await import(
+    "../../../../libs/shared/ts/src/bots/utils/reaction-outcome"
+  );
   const BaseBotAdapter = class {
     platform = "discord";
     gaia = {};
@@ -221,6 +224,7 @@ vi.mock("@gaia/shared/bots", () => {
     parseTextArgs: vi.fn((text: string) => ({
       subcommand: text.split(" ")[0],
     })),
+    REACTION_OUTCOME,
   };
 });
 
@@ -228,7 +232,7 @@ vi.mock("@gaia/shared/bots", () => {
 // Now import the real adapter (which will use the mocks above).
 // ---------------------------------------------------------------------------
 
-import { handleStreamingChat } from "@gaia/shared/bots";
+import { handleStreamingChat, type ReactionOutcome } from "@gaia/shared/bots";
 import { DiscordAdapter } from "../../discord/src/adapter";
 
 // ---------------------------------------------------------------------------
@@ -926,7 +930,7 @@ describe("DiscordAdapter - context menu interaction", () => {
   function makeContextMenuInteraction(commandName: string, content: string) {
     return {
       commandName,
-      targetMessage: { content },
+      targetMessage: { content, id: "target-msg-by-someone-else" },
       user: { id: "user-ctx" },
       channelId: "channel-ctx",
       replied: false,
@@ -968,6 +972,24 @@ describe("DiscordAdapter - context menu interaction", () => {
         distinctId: expect.any(String),
       }),
     );
+  });
+
+  it("never records the target message as the user's own message", async () => {
+    // A later background reaction anchors to the stored id; the target is often
+    // someone else's message, and the turn's user message is GAIA's own prompt.
+    vi.clearAllMocks();
+    const adapter = new DiscordAdapter();
+
+    const interaction = makeContextMenuInteraction("Add as Todo", "buy milk");
+
+    await (
+      adapter as unknown as {
+        handleContextMenuInteraction: (i: typeof interaction) => Promise<void>;
+      }
+    ).handleContextMenuInteraction(interaction);
+
+    const request = vi.mocked(handleStreamingChat).mock.calls[0][1];
+    expect(request).not.toHaveProperty("platformMessageId");
   });
 
   it("calls handleStreamingChat for 'Add as Todo' with non-empty content", async () => {
@@ -1280,7 +1302,7 @@ type DiscordReactor = {
     platformMessageId: string,
     emoji: string,
     isChannel: boolean,
-  ) => Promise<boolean>;
+  ) => Promise<ReactionOutcome>;
   client: unknown;
 };
 
@@ -1309,7 +1331,7 @@ describe("DiscordAdapter - reactToMessage", () => {
       true,
     );
 
-    expect(attached).toBe(true);
+    expect(attached).toBe("attached");
     expect(fetchMessage).toHaveBeenCalledWith("msg-7");
     expect(react).toHaveBeenCalledWith("👍");
   });
@@ -1331,7 +1353,7 @@ describe("DiscordAdapter - reactToMessage", () => {
       false,
     );
 
-    expect(attached).toBe(true);
+    expect(attached).toBe("attached");
     expect(react).toHaveBeenCalledWith("👍");
   });
 
@@ -1355,7 +1377,7 @@ describe("DiscordAdapter - reactToMessage", () => {
       true,
     );
 
-    expect(attached).toBe(false);
+    expect(attached).toBe("attach_failed");
     expect(send).not.toHaveBeenCalled();
   });
 });
@@ -1366,15 +1388,15 @@ describe("DiscordAdapter - live turn reactions", () => {
   });
 
   /** The reaction hook the adapter handed to its last handleStreamingChat call. */
-  function lastReactionHook(): (emoji: string) => Promise<boolean> {
+  function lastReactionHook(): (emoji: string) => Promise<ReactionOutcome> {
     const call = vi.mocked(handleStreamingChat).mock.calls.at(-1);
-    return call?.[8] as (emoji: string) => Promise<boolean>;
+    return call?.[8] as (emoji: string) => Promise<ReactionOutcome>;
   }
 
   function spyReact(adapter: DiscordAdapter) {
     return vi
       .spyOn(adapter as unknown as DiscordReactor, "reactToMessage")
-      .mockResolvedValue(true);
+      .mockResolvedValue("attached");
   }
 
   it("reacts to a guild mention in its channel", async () => {
@@ -1388,7 +1410,7 @@ describe("DiscordAdapter - live turn reactions", () => {
       }
     ).handleMentionMessage(message, "bot-id");
 
-    await expect(lastReactionHook()("👍")).resolves.toBe(true);
+    await expect(lastReactionHook()("👍")).resolves.toBe("attached");
     expect(react).toHaveBeenCalledWith("channel-abc", "msg-in", "👍", true);
   });
 
@@ -1414,7 +1436,7 @@ describe("DiscordAdapter - live turn reactions", () => {
       }
     ).handleDMMessage(message);
 
-    await expect(lastReactionHook()("👍")).resolves.toBe(true);
+    await expect(lastReactionHook()("👍")).resolves.toBe("attached");
     expect(react).toHaveBeenCalledWith("user-dm", "dm-msg", "👍", false);
   });
 });
