@@ -45,7 +45,7 @@ from app.models.trigger_subscription_models import (
 from app.services.canvas_markdown import normalize_canvas
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from app.services.storage._vfs_common import folder_name
-from app.services.todo_activity import activity_line, record_activity
+from app.services.todo_activity import activity_line, record_activity, record_field_changes
 from app.services.todo_canvas_storage import (
     append_log,
     build_vfs_label,
@@ -89,6 +89,7 @@ class _RefWatch(NamedTuple):
 
 
 # A Gmail thread moves both ways: mail arrives on it, and the user replies from Gmail.
+# The inbox desk's ref is identity only: it runs on its schedule, not on mail.
 _REF_WATCHES: Mapping[ExternalRefSource, _RefWatch] = MappingProxyType(
     {
         ExternalRefSource.GMAIL_THREAD: _RefWatch(
@@ -99,8 +100,10 @@ _REF_WATCHES: Mapping[ExternalRefSource, _RefWatch] = MappingProxyType(
 
 
 async def _watch_external_ref(todo_id: str, user_id: str, ref: ExternalRef) -> None:
-    """Run the todo whenever its outside object changes."""
-    watch = _REF_WATCHES[ref.source]
+    """Run the todo whenever its outside object changes, for a source that has a watch."""
+    watch = _REF_WATCHES.get(ref.source)
+    if watch is None:
+        return
     on_ref = [
         SubscriptionCondition(
             field_name=watch.field_name, operator=ConditionOperator.EQUALS, value=ref.id
@@ -247,6 +250,14 @@ class TrackedTodoService:
         )
         schedule_gaia_tasks_sync(user_id)
         return result
+
+    @staticmethod
+    async def set_creation_fields(
+        todo_id: str, user_id: str, update: TodoUpdate, *, by: str
+    ) -> None:
+        """Store fields a create validated before its insert; schedule changes go on the timeline."""
+        await todo_repository.update(todo_id, user_id=user_id, update=update)
+        await record_field_changes(todo_id, user_id, update, by=by)
 
     @staticmethod
     async def complete_tracked_todo(todo_id: str, user_id: str, summary: str) -> bool:

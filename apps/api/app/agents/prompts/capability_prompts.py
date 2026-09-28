@@ -14,6 +14,7 @@ rendered prompt.
 from collections import Counter
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
+from app.constants.todos import INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
 from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
 from app.models.trigger_configs import CalendarEventStartingSoonConfig
 from app.models.workflow_models import CreateWorkflowRequest, TriggerConfig, TriggerType
@@ -139,6 +140,17 @@ def _channels_line() -> str:
     )
 
 
+def _inbox_desk_line() -> str:
+    return (
+        f"INBOX DESK: once Gmail is connected, GAIA keeps one tracked todo, the {INBOX_DESK_TITLE}, "
+        f"that runs {_describe_cron(INBOX_DESK_RECURRENCE)}. It triages new mail, opens a tracked "
+        "todo for every thread where the user owes a reply or is waiting on one, saves reply "
+        "drafts without sending them, puts personal events from mail on the calendar, and ends "
+        "with one briefing. The user changes when it runs or what it does by telling GAIA, like "
+        "any tracked todo."
+    )
+
+
 def build_capability_block() -> str:
     trigger_kinds = "; ".join(_TRIGGER_TEXT[kind] for kind in TriggerType)
     triggers = f"TRIGGERS: a run starts one of these ways: {trigger_kinds}."
@@ -162,6 +174,7 @@ def build_capability_block() -> str:
         _channels_line(),
         _MEMORY,
         _RESEARCH,
+        _inbox_desk_line(),
         built_in,
     )
     return f"{CAPABILITY_SECTION_HEADER}\n\n" + "\n\n".join(sections)

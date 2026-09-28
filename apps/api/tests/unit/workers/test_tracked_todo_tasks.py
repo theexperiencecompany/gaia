@@ -34,6 +34,7 @@ from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import TodoRunRequest
 from app.agents.prompts.todo_prompts import (
     DELIVERED_RESULT_GUIDANCE,
+    GMAIL_THREAD_RUN_GUIDANCE,
     REFERENCED_STANDING_RULES_LABEL,
     SILENT_RUN_GUIDANCE,
     TRIGGERED_RELEVANCE_GUIDANCE,
@@ -52,7 +53,7 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
 )
-from app.models.todo_models import TodoDocument, TodoUpdate
+from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import (
     ConditionOperator,
     SubscriptionAction,
@@ -1057,6 +1058,32 @@ class TestTheCanvasIsBoundedInThePrompt:
         assert "## Learnings\nlast" in prompt
         assert "[middle of canvas trimmed:" in prompt
         assert len(prompt) < CANVAS_PROMPT_MAX_CHARS + 2_000
+
+
+class TestAThreadTodoRunCarriesTheThreadContract:
+    """The desk opens thread todos with whatever description it writes; the contract rides on the run."""
+
+    def test_a_thread_todo_is_told_how_to_work_its_thread_next_to_its_details(self):
+        thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611")
+
+        prompt = _build_execution_prompt(
+            _doc(description="Sam asked for the lease", external_ref=thread)
+        )
+
+        assert prompt.split("\n\n")[1:3] == [
+            "Details: Sam asked for the lease",
+            GMAIL_THREAD_RUN_GUIDANCE.format(ref_id="18c2f0a9b7d4e611"),
+        ]
+
+    @pytest.mark.parametrize(
+        "external_ref",
+        [None, ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")],
+        ids=["no-ref", "inbox-desk"],
+    )
+    def test_a_todo_that_owns_no_thread_gets_no_thread_contract(self, external_ref):
+        prompt = _build_execution_prompt(_doc(external_ref=external_ref))
+
+        assert GMAIL_THREAD_RUN_GUIDANCE.split("{ref_id}")[0] not in prompt
 
 
 _DESK_ID = "66f838cc8829054e5f10e401"

@@ -720,8 +720,7 @@ async def create_tracked_todo(
         return f"Not created: the thread could not be watched ({e}). Nothing was saved."
 
     if creation_update is not None:
-        await todo_repository.update(result.id, user_id=user_id, update=creation_update)
-        await record_field_changes(
+        await tracked_todo_service.set_creation_fields(
             result.id, user_id, creation_update, by=_agent_actor(source_conversation_id)
         )
 

@@ -168,6 +168,17 @@ class TestCreateThreadTodo:
         await TrackedTodoService.create_tracked_todo(USER_ID, "Reply")
         watch.register.assert_not_awaited()
 
+    async def test_the_inbox_desk_ref_is_an_identity_that_watches_nothing(
+        self, mock_repo, mock_deps, watch
+    ):
+        desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
+        mock_deps.create.return_value = _todo_response()
+
+        await TrackedTodoService.create_tracked_todo(USER_ID, "Inbox desk", external_ref=desk)
+
+        assert mock_deps.create.await_args.kwargs["external_ref"] == desk
+        watch.register.assert_not_awaited()
+
     async def test_a_watch_that_fails_takes_the_todo_with_it(self, mock_repo, mock_deps, watch):
         """An unwatched thread todo would hold the thread's key, so every retry would get it back."""
         mock_deps.create.return_value = _todo_response()

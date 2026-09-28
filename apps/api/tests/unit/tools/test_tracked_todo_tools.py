@@ -61,10 +61,12 @@ _PAST_ISO = (datetime.now(UTC) - timedelta(days=1)).isoformat()
 
 @pytest.fixture(autouse=True)
 def recorded_changes() -> Iterator[AsyncMock]:
-    """Capture the scheduling changes the tools put on a todo's timeline."""
-    with patch(
-        "app.agents.tools.tracked_todo_tools.record_field_changes", new_callable=AsyncMock
-    ) as recorded:
+    """Capture the scheduling changes put on a todo's timeline, by the tools and at create."""
+    recorded = AsyncMock()
+    with (
+        patch("app.agents.tools.tracked_todo_tools.record_field_changes", recorded),
+        patch("app.services.tracked_todo_service.record_field_changes", recorded),
+    ):
         yield recorded
 
 

@@ -32,6 +32,8 @@ NEEDS_FOLLOW_UP_LABEL: Final[str] = "needs-follow-up"
 # reads them to judge whether an overdue todo is genuinely stuck, and
 # trigger-subscription paths set/clear them, so they live here, not a consumer.
 WAITING_FOR_REPLY_LABEL: Final[str] = "waiting-for-reply"
+# A thread todo's other state: the user owes the reply. Not blocking, the next move is theirs.
+NEEDS_REPLY_LABEL: Final[str] = "needs-reply"
 WAITING_FOR_APPROVAL_LABEL: Final[str] = "waiting-for-approval"
 BLOCKING_LABEL: Final[str] = "blocked"
 
@@ -123,3 +125,7 @@ EXISTING_TODO_STATE_EXCERPT_CHARS: Final[int] = 400
 
 # Most todos list_tracked_todos returns, filtered or not; the freshest win.
 LIST_TRACKED_TODOS_LIMIT: Final[int] = 50
+
+# The one tracked todo per user that triages mail, owns its threads and briefs each morning.
+INBOX_DESK_TITLE: Final[str] = "Inbox desk"
+INBOX_DESK_RECURRENCE: Final[str] = "0 8 * * *"
