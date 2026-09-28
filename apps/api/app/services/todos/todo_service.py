@@ -2,9 +2,10 @@ import asyncio
 from datetime import UTC, datetime
 from http import HTTPStatus
 import math
+from typing import NoReturn
 import uuid
 
-from pymongo.errors import DuplicateKeyError
+from pymongo.errors import BulkWriteError, DuplicateKeyError
 
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.approval_ledger import approval_ledger_repository
@@ -158,6 +159,26 @@ async def _refuse_a_bulk_tracked_label_change(
         raise TrackedLabelChangeError()
 
 
+async def _raise_ref_taken(
+    user_id: str, ref: ExternalRef | None, error: DuplicateKeyError
+) -> NoReturn:
+    """Re-raise the open-ref index's rejection as a conflict naming the open todo holding ref."""
+    holder = await todo_repository.find_open_by_external_ref(user_id, ref) if ref else None
+    if holder is None:
+        raise error
+    raise ExternalRefTakenError(holder) from error
+
+
+async def _refuse_a_bulk_reopen_of_a_taken_ref(user_id: str, todo_ids: list[str]) -> None:
+    """Refuse a bulk reopen that would give an outside object a second open todo."""
+    for todo in await todo_repository.find_by_ids(user_id, todo_ids):
+        if not todo.completed or todo.external_ref is None:
+            continue
+        holder = await todo_repository.find_open_by_external_ref(user_id, todo.external_ref)
+        if holder is not None:
+            raise ExternalRefTakenError(holder)
+
+
 def _drop_completion_fields(update: TodoUpdate) -> TodoUpdate:
     """Rebuild update without the completion fields.
 
@@ -254,13 +275,8 @@ class TodoService:
         try:
             created = await todo_repository.create(document)
         except DuplicateKeyError as e:
-            if external_ref is None:
-                raise
             # The open-ref unique index turned this insert away: the loser reads the winner.
-            holder = await todo_repository.find_open_by_external_ref(user_id, external_ref)
-            if holder is None:
-                raise
-            raise ExternalRefTakenError(holder) from e
+            await _raise_ref_taken(user_id, external_ref, e)
 
         # Index for search
         try:
@@ -421,7 +437,12 @@ class TodoService:
             raise TrackedTodoWorkflowError()
 
         if update.model_fields_set:
-            updated = await todo_repository.update(todo_id, user_id=user_id, update=update)
+            try:
+                updated = await todo_repository.update(todo_id, user_id=user_id, update=update)
+            except DuplicateKeyError as e:
+                # Reopening a todo whose outside object another open todo now holds.
+                reopened = await todo_repository.get(todo_id, user_id=user_id)
+                await _raise_ref_taken(user_id, reopened.external_ref if reopened else None, e)
         else:
             # A tracked completion or a workflow link already persisted + invalidated.
             updated = await todo_repository.get(todo_id, user_id=user_id)
@@ -510,6 +531,9 @@ class TodoService:
             await _refuse_a_bulk_tracked_label_change(
                 user_id, request.todo_ids, request.updates.labels
             )
+        reopening = request.updates.completed is False
+        if reopening:
+            await _refuse_a_bulk_reopen_of_a_taken_ref(user_id, request.todo_ids)
         update = _to_todo_update(request.updates)
         if not update.model_fields_set:
             return BulkOperationResponse(
@@ -521,7 +545,13 @@ class TodoService:
             if not project:
                 raise ValueError(f"Project {update.project_id} not found")
 
-        modified = await todo_repository.bulk_update(user_id, request.todo_ids, update)
+        try:
+            modified = await todo_repository.bulk_update(user_id, request.todo_ids, update)
+        except BulkWriteError:
+            # A create or reopen took a ref after the check above; the writes before it landed.
+            if reopening:
+                await _refuse_a_bulk_reopen_of_a_taken_ref(user_id, request.todo_ids)
+            raise
 
         if modified > 0:
             try:

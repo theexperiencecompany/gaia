@@ -18,6 +18,7 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pydantic import BaseModel, ConfigDict, ValidationError
 from pymongo import ReturnDocument, UpdateOne
+from pymongo.errors import BulkWriteError
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.mongodb.collections import get_async_collection
@@ -407,13 +408,21 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             operations.append(
                 UpdateOne({**self._identity_filter(doc_id), **scope_filter}, {"$set": set_fields})
             )
-        result = await get_async_collection(self.collection_name).bulk_write(operations)
+        try:
+            result = await get_async_collection(self.collection_name).bulk_write(operations)
+        except BulkWriteError:
+            # Ordered: the writes before the failing one landed, so their cache is stale too.
+            await self._evict_many(scope, [doc_id for doc_id, _ in updates])
+            raise
         modified = result.modified_count
         if modified:
-            for doc_id, _ in updates:
-                await self._cache_evict(scope, doc_id)
-            await self._invalidate(scope)
+            await self._evict_many(scope, [doc_id for doc_id, _ in updates])
         return modified
+
+    async def _evict_many(self, scope: str, doc_ids: Sequence[str]) -> None:
+        for doc_id in doc_ids:
+            await self._cache_evict(scope, doc_id)
+        await self._invalidate(scope)
 
     async def _bulk_delete(self, doc_ids: Sequence[str], *, scope: str) -> int:
         """Delete many documents in one round trip; all ids must share scope."""
@@ -427,9 +436,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         )
         deleted = result.deleted_count
         if deleted:
-            for doc_id in doc_ids:
-                await self._cache_evict(scope, doc_id)
-            await self._invalidate(scope)
+            await self._evict_many(scope, doc_ids)
         return deleted
 
     async def _apply_raw_update(

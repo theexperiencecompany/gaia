@@ -31,7 +31,9 @@ class ExternalRefTakenError(AppError):
 
     def __init__(self, existing: TodoDocument) -> None:
         super().__init__(
-            message="An open todo already tracks this item",
+            message=f'The open todo "{existing.title}" ({existing.id}) already tracks this',
             status_code=HTTPStatus.CONFLICT,
+            code="external_ref_taken",
+            public={"todo_id": existing.id},
         )
         self.existing = existing

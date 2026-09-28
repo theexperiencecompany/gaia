@@ -16,10 +16,19 @@ import pytest
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.db.mongodb.indexes import TODO_OPEN_EXTERNAL_REF_KEYS, TODO_OPEN_EXTERNAL_REF_OPTIONS
 from app.db.repositories.todos import todo_repository
-from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument, TodoResponse
+from app.models.todo_models import (
+    BulkUpdateRequest,
+    ExternalRef,
+    ExternalRefSource,
+    TodoDocument,
+    TodoModel,
+    TodoResponse,
+    TodoUpdateRequest,
+)
 from app.models.trigger_subscription_models import ConditionOperator, SubscriptionAction
 from app.models.workflow_models import TriggerConfig
 from app.services.todos.errors import ExternalRefTakenError
+from app.services.todos.todo_service import TodoService
 from app.services.tracked_todo_service import TrackedTodoService
 from app.services.triggers.subscription_service import SubscriptionError
 from app.services.workflow.trigger_service import TriggerService
@@ -132,3 +141,46 @@ async def test_a_watch_that_fails_leaves_no_todo_holding_the_thread(
     retried = await _create(user_id)
     holder = await todo_repository.find_open_by_external_ref(user_id, _THREAD)
     assert holder is not None and holder.id == retried.id
+
+
+async def _completed_and_reopened_thread_todos(user_id: str) -> tuple[str, str]:
+    """Return a completed thread todo and the open one created for the same thread after it."""
+    done = await _create(user_id)
+    await TrackedTodoService.complete_tracked_todo(done.id, user_id, summary="Sam replied")
+    current = await _create(user_id)
+    return done.id, current.id
+
+
+async def test_reopening_a_thread_todo_whose_thread_is_taken_is_a_conflict(
+    mongo_db: AsyncIOMotorDatabase, user_id: str
+) -> None:
+    done_id, current_id = await _completed_and_reopened_thread_todos(user_id)
+
+    with pytest.raises(ExternalRefTakenError) as taken:
+        await TodoService.update_todo(done_id, TodoUpdateRequest(completed=False), user_id)
+
+    assert taken.value.status_code == 409
+    assert current_id in taken.value.message
+    assert "Reply to Sam about the lease" in taken.value.message
+    by_id = {t.id: t for t in await _stored(mongo_db, user_id)}
+    assert by_id[done_id].completed and not by_id[current_id].completed
+
+
+async def test_a_bulk_reopen_with_one_taken_thread_reopens_nothing(
+    mongo_db: AsyncIOMotorDatabase, user_id: str
+) -> None:
+    done_id, current_id = await _completed_and_reopened_thread_todos(user_id)
+    plain = await TodoService.create_todo(TodoModel(title="Buy milk"), user_id)
+    await TodoService.update_todo(plain.id, TodoUpdateRequest(completed=True), user_id)
+
+    with pytest.raises(ExternalRefTakenError) as taken:
+        await TodoService.bulk_update_todos(
+            BulkUpdateRequest(
+                todo_ids=[plain.id, done_id], updates=TodoUpdateRequest(completed=False)
+            ),
+            user_id,
+        )
+
+    assert current_id in taken.value.message
+    by_id = {t.id: t for t in await _stored(mongo_db, user_id)}
+    assert by_id[plain.id].completed and by_id[done_id].completed
