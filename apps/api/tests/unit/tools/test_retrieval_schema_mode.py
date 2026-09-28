@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
+from pymongo.errors import ServerSelectionTimeoutError
 import pytest
 
 from app.agents.tools.core import retrieval
@@ -305,6 +306,19 @@ class TestRenderPreloadBlockContract:
             call("u1", "GMAIL_SEND_EMAIL"),
             call("u1", "ASANA_CREATE_TASK"),
         ]
+
+    async def test_a_shape_store_outage_still_renders_the_doc(self) -> None:
+        gmail = _gmail_tool()
+        resolver = AsyncMock(return_value=ResolvedTool("GMAIL_SEND_EMAIL", gmail, True))
+        with (
+            patch(f"{MODULE}.resolve_tool", new=resolver),
+            patch(
+                "app.db.repositories.tool_shapes.tool_shapes_repository.get_shape",
+                new=AsyncMock(side_effect=ServerSelectionTimeoutError("mongo down")),
+            ),
+        ):
+            block = await retrieval.render_preload_block("u1", ["GMAIL_SEND_EMAIL"])
+        assert block.split("\n\n")[1:] == [await _doc("GMAIL_SEND_EMAIL", gmail)]
 
     async def test_a_tool_that_vanished_is_skipped_with_a_warning_and_the_rest_render(
         self,

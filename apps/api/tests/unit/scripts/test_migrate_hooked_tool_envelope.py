@@ -63,6 +63,24 @@ class TestStaleReferences:
         reader = {"tool": "SLACK_SEND", "args": {"text": text}}
         assert stale_references(_playbook(SEARCH, other, reader), HOOKED) == []
 
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "$steps.search.data.tweets",
+            "$steps.search.successful",
+            "$steps.search.error",
+            "$last_run.TWITTER_RECENT_SEARCH.data.newest",
+        ],
+        ids=["already_migrated", "success_flag", "error_text", "migrated_last_run"],
+    )
+    def test_a_path_through_the_envelope_is_not_stale(self, text: str) -> None:
+        reader = {"tool": "SLACK_SEND", "args": {"text": text}}
+        assert stale_references(_playbook(SEARCH, reader), HOOKED) == []
+
+    def test_a_whole_value_reference_now_gets_the_envelope_and_is_reported(self) -> None:
+        reader = {"tool": "SLACK_SEND", "args": {"payload": "$steps.search"}}
+        assert stale_references(_playbook(SEARCH, reader), HOOKED) == ["$steps.search"]
+
     def test_a_hooked_step_without_an_id_cannot_be_referenced(self) -> None:
         anonymous = {"id": "", "tool": "TWITTER_RECENT_SEARCH", "args": {}}
         reader = {"tool": "SLACK_SEND", "args": {"text": "$steps..tweets"}}

@@ -18,11 +18,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.constants.execute import EXECUTE_TOOL_NAME
 from app.db.mongodb.collections import get_async_collection
+from app.models.integrations.composio_hooks import ComposioToolResponse
 from app.services.workflow.playbook.placeholders import placeholder_tokens
 from app.utils.composio_hooks import hook_registry
 
 STEPS_ROOT = "steps"
 LAST_RUN_ROOT = "last_run"
+# A path whose next segment is one of these already reads through the envelope.
+ENVELOPE_KEYS = frozenset(ComposioToolResponse.model_fields)
 
 
 def _calls(steps: object) -> Iterator[Mapping[str, object]]:
@@ -43,7 +46,7 @@ def _called_tool(step: Mapping[str, object]) -> object:
 
 
 def stale_references(playbook: Mapping[str, object], hooked_tools: frozenset[str]) -> list[str]:
-    """Every placeholder in a playbook that reads the output of a hooked tool."""
+    """Every placeholder in a playbook that reads a hooked tool's output without going through its envelope."""
     calls = list(_calls(playbook.get("steps")))
     hooked_ids = {step.get("id") for step in calls if _called_tool(step) in hooked_tools}
     hooked_ids.discard("")
@@ -51,11 +54,12 @@ def stale_references(playbook: Mapping[str, object], hooked_tools: frozenset[str
     found: list[str] = []
     for step in calls:
         for match in placeholder_tokens([step.get("args"), step.get("for_each")]):
-            head = match.group("path").lstrip(".").split(".", 1)[0]
+            head, *rest = match.group("path").lstrip(".").split(".")
             root = match.group("root")
-            if (root == STEPS_ROOT and head in hooked_ids) or (
+            reads_hooked = (root == STEPS_ROOT and head in hooked_ids) or (
                 root == LAST_RUN_ROOT and head in hooked_tools
-            ):
+            )
+            if reads_hooked and (not rest or rest[0] not in ENVELOPE_KEYS):
                 found.append(match.group(0))
     return found
 

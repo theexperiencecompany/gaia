@@ -11,12 +11,16 @@ from typing import Any, cast
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, JsonValue
+from pymongo.errors import PyMongoError
 
 from app.agents.tools.execute.resolver import ResolvedTool, resolve_tool
 from app.agents.tools.execute.schema_notation import render_compact_type
 from app.constants.execute import RESPONSE_SCHEMA_METADATA_KEYS
+from app.constants.log_tags import LogTag
 from app.db.repositories.tool_shapes import tool_shapes_repository
 from app.models.json_schema_models import JsonSchemaNode
+from app.models.tool_shape_models import ToolOutputShapeDocument
+from shared.py.wide_events import log
 
 # Composio's wrapper injects a config-passthrough parameter into the synthesized
 # signature; it is plumbing, never something the model supplies.
@@ -53,7 +57,7 @@ async def full_tool_info(user_id: str | None, tool_name: str) -> ToolContract | 
 
 async def tool_contract(resolved: ResolvedTool) -> ToolContract:
     """The contract of an already-resolved tool, with its observed shape read from the store."""
-    observed = await tool_shapes_repository.get_shape(resolved.shape_scope, resolved.name)
+    observed = await _observed_shape(resolved)
     contract = ToolContract(
         tool_name=resolved.name,
         description=resolved.tool.description.strip(),
@@ -65,6 +69,19 @@ async def tool_contract(resolved: ResolvedTool) -> ToolContract:
     effective = contract.effective_output_schema
     contract.compact_output_type = render_compact_type(effective) if effective else None
     return contract
+
+
+async def _observed_shape(resolved: ResolvedTool) -> ToolOutputShapeDocument | None:
+    """The shape learned from real calls, or None when the store is unreachable: it only enriches the doc."""
+    try:
+        return await tool_shapes_repository.get_shape(resolved.shape_scope, resolved.name)
+    except PyMongoError as e:
+        log.warning(
+            f"{LogTag.TOOL} tool contract: observed shape unavailable",
+            tool_name=resolved.name,
+            error_type=type(e).__name__,
+        )
+        return None
 
 
 def _args_schema_of(tool: BaseTool) -> dict[str, JsonValue]:
