@@ -11,7 +11,11 @@ from typing import ClassVar, NamedTuple
 from pydantic import BaseModel, ValidationError
 
 from app.constants.log_tags import LogTag
-from app.constants.triggers import GMAIL_EMAIL_SENT_COMPOSIO_SLUG, GMAIL_EMAIL_SENT_TRIGGER_NAME
+from app.constants.triggers import (
+    GMAIL_EMAIL_SENT_COMPOSIO_SLUG,
+    GMAIL_EMAIL_SENT_TRIGGER_NAME,
+    GMAIL_NEW_MESSAGE_TRIGGER_NAME,
+)
 from app.db.repositories.workflows import workflow_repository
 from app.models.composio_schemas import GmailEmailSentPayload, GmailNewMessagePayload
 from app.models.webhook_models import ComposioTriggerEventIds
@@ -30,7 +34,9 @@ class _GmailEvent(NamedTuple):
 # the only thing that keeps a sent-mail watch from waking on inbound mail.
 _EVENTS: Mapping[str, _GmailEvent] = MappingProxyType(
     {
-        "GMAIL_NEW_GMAIL_MESSAGE": _GmailEvent("gmail_new_message", GmailNewMessagePayload),
+        "GMAIL_NEW_GMAIL_MESSAGE": _GmailEvent(
+            GMAIL_NEW_MESSAGE_TRIGGER_NAME, GmailNewMessagePayload
+        ),
         GMAIL_EMAIL_SENT_COMPOSIO_SLUG: _GmailEvent(
             GMAIL_EMAIL_SENT_TRIGGER_NAME, GmailEmailSentPayload
         ),

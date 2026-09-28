@@ -16,7 +16,7 @@ nested value is itself a typed model.
 from collections.abc import Mapping
 from types import MappingProxyType
 
-from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME
+from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.models.composio_schemas import (
     AsanaTaskCreatedPayload,
     GitHubCommitEventPayload,
@@ -170,7 +170,7 @@ def _google_doc(payload_model: type, document_description: str) -> MatchableTrig
 MATCHABLE_TRIGGERS: Mapping[str, MatchableTrigger] = MappingProxyType(
     {
         # Gmail — the inbox and poll triggers deliver the same payload.
-        "gmail_new_message": _GMAIL_NEW_MESSAGE,
+        GMAIL_NEW_MESSAGE_TRIGGER_NAME: _GMAIL_NEW_MESSAGE,
         "gmail_poll_inbox": _GMAIL_NEW_MESSAGE,
         GMAIL_EMAIL_SENT_TRIGGER_NAME: _GMAIL_EMAIL_SENT,
         "calendar_event_created": MatchableTrigger(

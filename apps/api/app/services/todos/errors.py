@@ -2,6 +2,7 @@
 
 from http import HTTPStatus
 
+from app.models.todo_models import TodoDocument
 from app.utils.errors import AppError
 
 
@@ -23,3 +24,14 @@ class TrackedLabelChangeError(AppError):
             message="A label change cannot add or remove the tracked label",
             status_code=HTTPStatus.BAD_REQUEST,
         )
+
+
+class ExternalRefTakenError(AppError):
+    """Raised (409) when an open todo already tracks the same outside object; carries that todo."""
+
+    def __init__(self, existing: TodoDocument) -> None:
+        super().__init__(
+            message="An open todo already tracks this item",
+            status_code=HTTPStatus.CONFLICT,
+        )
+        self.existing = existing

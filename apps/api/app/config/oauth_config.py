@@ -143,7 +143,11 @@ from app.constants.hil_destructive_tools import (
     ZOOM_DESTRUCTIVE_TOOLS,
 )
 from app.constants.mcp import INSTACART_MCP_SERVER_URL, YELP_MCP_SERVER_URL
-from app.constants.triggers import GMAIL_EMAIL_SENT_COMPOSIO_SLUG, GMAIL_EMAIL_SENT_TRIGGER_NAME
+from app.constants.triggers import (
+    GMAIL_EMAIL_SENT_COMPOSIO_SLUG,
+    GMAIL_EMAIL_SENT_TRIGGER_NAME,
+    GMAIL_NEW_MESSAGE_TRIGGER_NAME,
+)
 from app.langchain.core.subgraphs.github_subgraph import GITHUB_TOOLS
 from app.langchain.core.subgraphs.slack_subgraph import SLACK_TOOLS
 from app.models.mcp_config import (
@@ -485,7 +489,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                 config={"labelIds": "INBOX", "user_id": "me", "interval": 1},
                 auto_activate=True,
                 workflow_trigger_schema=WorkflowTriggerSchema(
-                    slug="gmail_new_message",
+                    slug=GMAIL_NEW_MESSAGE_TRIGGER_NAME,
                     composio_slug="GMAIL_NEW_GMAIL_MESSAGE",
                     name="New Gmail Message",
                     description="Trigger when a new email arrives",

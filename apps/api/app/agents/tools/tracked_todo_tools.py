@@ -15,11 +15,22 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from pydantic import BaseModel, ConfigDict
 
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.todos import (
+    CANVAS_CURRENT_STATE_SECTION,
+    EXISTING_TODO_STATE_EXCERPT_CHARS,
+    GAIA_TRACKED_LABEL,
+)
 from app.db.repositories.todos import todo_repository
 from app.models.agent_models import read_agent_configurable
 from app.models.integrations.composio_hooks import RunMetadata
-from app.models.todo_models import Priority, TodoDocument, TodoResponse, TodoUpdate
+from app.models.todo_models import (
+    ExternalRef,
+    ExternalRefSource,
+    Priority,
+    TodoDocument,
+    TodoResponse,
+    TodoUpdate,
+)
 from app.models.trigger_subscription_models import (
     OPERATORS_BY_FIELD_TYPE,
     ConditionMatch,
@@ -28,8 +39,10 @@ from app.models.trigger_subscription_models import (
     SubscriptionCondition,
     TriggerSubscriptionStatus,
 )
+from app.services.canvas_markdown import section_body
 from app.services.storage._vfs_common import folder_name
 from app.services.todo_activity import record_field_changes
+from app.services.todos.errors import ExternalRefTakenError
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.matchable_fields import MATCHABLE_TRIGGERS, get_matchable_trigger
 from app.services.triggers.scope_catalog import scope_fields_for
@@ -43,6 +56,7 @@ from app.services.triggers.subscription_validation import validate_scope
 from app.services.user_service import get_user_by_id
 from app.utils.canvas_vector_utils import CanvasSearchMatch, search_canvas_context
 from app.utils.cron_utils import get_next_run_time
+from app.utils.general_utils import clip_text
 from app.utils.timezone import Timezone, is_valid_timezone
 from shared.py.wide_events import log
 
@@ -516,6 +530,17 @@ def _format_create_output(
     return out
 
 
+def _format_ref_taken_output(existing: TodoDocument, now: datetime) -> str:
+    """Point the model at the open todo that already owns the thread, instead of a new one."""
+    state = section_body(existing.canvas_content or "", CANVAS_CURRENT_STATE_SECTION)
+    return (
+        "Not created: this thread already has an open tracked todo. Update it with "
+        "update_tracked_todo and its canvas.md instead of creating another.\n"
+        f"{_format_tracked_todo_full(existing, now)}\n"
+        f"  Current State: {clip_text(state or '(empty)', EXISTING_TODO_STATE_EXCERPT_CHARS)}"
+    )
+
+
 @tool
 async def create_tracked_todo(
     config: RunnableConfig,
@@ -566,6 +591,13 @@ async def create_tracked_todo(
         bool,
         _NOTIFY_ON_RUN_DESC,
     ] = True,
+    gmail_thread_id: Annotated[
+        str | None,
+        "When the todo is about an email thread, pass its Gmail thread id. The todo "
+        "then watches the thread for new mail and for the user's own replies, and "
+        "the thread can have only one open todo: if it already has one, that todo "
+        "comes back instead, for you to update.",
+    ] = None,
 ) -> str:
     """
     Create a tracked todo: a GAIA-managed todo with a working-memory canvas.
@@ -605,6 +637,8 @@ async def create_tracked_todo(
                 expires_at = relevance window (expired = no longer worth tracking).
     notify_on_run: Whether each run's final message is delivered to the user's chat app.
                 On by default; turn it off for runs the user should not hear about.
+    gmail_thread_id: The Gmail thread id when the todo is about an email thread; it is
+                watched both ways and allowed one open todo.
     """
     user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
     if not user_id:
@@ -622,16 +656,27 @@ async def create_tracked_todo(
     if error:
         return error
 
-    result = await tracked_todo_service.create_tracked_todo(
-        user_id=user_id,
-        title=title,
-        description=description,
-        initial_canvas=initial_canvas,
-        labels=labels,
-        priority=priority,
-        source_conversation_id=source_conversation_id,
-        notify_on_run=notify_on_run,
+    external_ref = (
+        ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id=gmail_thread_id)
+        if gmail_thread_id
+        else None
     )
+    try:
+        result = await tracked_todo_service.create_tracked_todo(
+            user_id=user_id,
+            title=title,
+            description=description,
+            initial_canvas=initial_canvas,
+            labels=labels,
+            priority=priority,
+            source_conversation_id=source_conversation_id,
+            notify_on_run=notify_on_run,
+            external_ref=external_ref,
+        )
+    except ExternalRefTakenError as taken:
+        return _format_ref_taken_output(taken.existing, datetime.now(UTC))
+    except SubscriptionError as e:
+        return f"Not created: the thread could not be watched ({e}). Nothing was saved."
 
     persist_error = await _persist_scheduling_fields(
         result.id,

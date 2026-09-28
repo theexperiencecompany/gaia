@@ -41,8 +41,17 @@ from app.agents.tools.tracked_todo_tools import (
     update_tracked_todo,
 )
 from app.constants.todos import GAIA_TRACKED_LABEL
-from app.models.todo_models import Priority, TodoDocument, TodoResponse, TodoUpdate
+from app.models.todo_models import (
+    ExternalRef,
+    ExternalRefSource,
+    Priority,
+    TodoDocument,
+    TodoResponse,
+    TodoUpdate,
+)
 from app.models.user_models import UserDocument
+from app.services.todos.errors import ExternalRefTakenError
+from app.services.triggers.subscription_service import SubscriptionError
 from shared.py.wide_events import spawn_logged_task
 
 _FUTURE = (datetime.now(UTC) + timedelta(days=7)).replace(microsecond=0)
@@ -1432,6 +1441,79 @@ class TestCreateTrackedTodoSuccess:
                 config=_config(), title="t", expires_at="garbage"
             )
         assert "invalid expires_at format" in result
+
+
+class TestCreateThreadTrackedTodo:
+    """gmail_thread_id makes the todo the one open todo for that thread."""
+
+    _CREATE = "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo"
+
+    @staticmethod
+    def _response() -> TodoResponse:
+        now = datetime.now(UTC)
+        return TodoResponse(id="t1", user_id="user-1", title="t", created_at=now, updated_at=now)
+
+    @staticmethod
+    def _holder() -> TodoDocument:
+        return TodoDocument(
+            id="held-1",
+            user_id="user-1",
+            title="Reply to Sam about the lease",
+            labels=[GAIA_TRACKED_LABEL, "waiting-for-reply"],
+            canvas_content=(
+                "# Lease\n\n## Key Details\n- thread: abc\n\n"
+                "## Current State\nDraft sent Monday; waiting on Sam.\n\n## Context\n"
+            ),
+        )
+
+    async def test_the_thread_id_becomes_the_todo_ref(self):
+        with patch(self._CREATE, new_callable=AsyncMock, return_value=self._response()) as create:
+            await create_tracked_todo.coroutine(config=_config(), title="t", gmail_thread_id="abc")
+        assert create.await_args.kwargs["external_ref"] == ExternalRef(
+            source=ExternalRefSource.GMAIL_THREAD, id="abc"
+        )
+
+    async def test_no_thread_id_means_no_ref(self):
+        with patch(self._CREATE, new_callable=AsyncMock, return_value=self._response()) as create:
+            await create_tracked_todo.coroutine(config=_config(), title="t")
+        assert create.await_args.kwargs["external_ref"] is None
+
+    async def test_a_thread_already_tracked_returns_its_todo_to_update(self):
+        with (
+            patch(
+                self._CREATE,
+                new_callable=AsyncMock,
+                side_effect=ExternalRefTakenError(self._holder()),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
+                new_callable=AsyncMock,
+            ) as schedule,
+        ):
+            result = await create_tracked_todo.coroutine(
+                config=_config(), title="t", gmail_thread_id="abc", scheduled_at=_FUTURE_ISO
+            )
+
+        assert "Tracked todo created" not in result
+        assert "held-1" in result
+        assert "Reply to Sam about the lease" in result
+        assert "waiting-for-reply" in result
+        assert "Draft sent Monday; waiting on Sam." in result
+        assert "update_tracked_todo" in result
+        schedule.assert_not_awaited()
+
+    async def test_a_watch_that_cannot_be_set_reports_nothing_was_created(self):
+        with patch(
+            self._CREATE,
+            new_callable=AsyncMock,
+            side_effect=SubscriptionError("Could not register 'gmail_email_sent'"),
+        ):
+            result = await create_tracked_todo.coroutine(
+                config=_config(), title="t", gmail_thread_id="abc"
+            )
+
+        assert "Tracked todo created" not in result
+        assert "Could not register 'gmail_email_sent'" in result
 
 
 # ---------------------------------------------------------------------------

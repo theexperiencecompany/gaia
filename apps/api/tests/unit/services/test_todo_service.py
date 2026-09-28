@@ -14,12 +14,15 @@ from unittest.mock import AsyncMock, call, patch
 from bson import ObjectId
 from fastapi import HTTPException
 from pydantic import ValidationError
+from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.models.todo_models import (
     BulkMoveRequest,
     BulkUpdateRequest,
+    ExternalRef,
+    ExternalRefSource,
     PendingApprovalRef,
     Priority,
     ProjectCreate,
@@ -42,7 +45,11 @@ from app.models.trigger_subscription_models import (
     TriggerSubscription,
 )
 from app.services.analytics_service import AnalyticsEvents
-from app.services.todos.errors import TrackedLabelChangeError, TrackedTodoWorkflowError
+from app.services.todos.errors import (
+    ExternalRefTakenError,
+    TrackedLabelChangeError,
+    TrackedTodoWorkflowError,
+)
 from app.services.todos.todo_bulk_service import (
     bulk_complete_todos,
     bulk_delete_todos as bulk_service_delete_todos,
@@ -444,6 +451,53 @@ class TestCreateTodo:
                 TodoModel(title="Buy milk", project_id=FAKE_PROJECT_ID), FAKE_USER_ID
             )
         assert mock_capture.call_args.args[2]["has_project"] is True
+
+
+_THREAD = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="thread-1")
+
+
+class TestCreateTodoWithExternalRef:
+    async def test_the_ref_is_written_by_the_insert_itself(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_todo_repo.create = AsyncMock(return_value=_make_todo_doc())
+        await TodoService.create_todo(TodoModel(title="Reply"), FAKE_USER_ID, external_ref=_THREAD)
+        assert mock_todo_repo.create.await_args.args[0].external_ref == _THREAD
+
+    async def test_a_taken_ref_raises_with_the_open_todo_that_holds_it(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        winner = _make_todo_doc(title="Reply to Sam")
+        mock_todo_repo.create = AsyncMock(side_effect=DuplicateKeyError("E11000"))
+        mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=winner)
+
+        with pytest.raises(ExternalRefTakenError) as raised:
+            await TodoService.create_todo(
+                TodoModel(title="Reply"), FAKE_USER_ID, external_ref=_THREAD
+            )
+
+        assert raised.value.existing is winner
+        mock_todo_repo.find_open_by_external_ref.assert_awaited_once_with(FAKE_USER_ID, _THREAD)
+        mock_vector_utils["store_embedding"].assert_not_awaited()
+
+    async def test_a_duplicate_key_with_no_open_holder_is_not_disguised(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_todo_repo.create = AsyncMock(side_effect=DuplicateKeyError("E11000"))
+        mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=None)
+        with pytest.raises(DuplicateKeyError):
+            await TodoService.create_todo(
+                TodoModel(title="Reply"), FAKE_USER_ID, external_ref=_THREAD
+            )
+
+    async def test_a_duplicate_key_without_a_ref_propagates(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_todo_repo.create = AsyncMock(side_effect=DuplicateKeyError("E11000"))
+        mock_todo_repo.find_open_by_external_ref = AsyncMock()
+        with pytest.raises(DuplicateKeyError):
+            await TodoService.create_todo(TodoModel(title="Reply"), FAKE_USER_ID)
+        mock_todo_repo.find_open_by_external_ref.assert_not_awaited()
 
 
 class TestGetTodo:

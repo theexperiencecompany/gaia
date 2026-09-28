@@ -10,11 +10,18 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
+from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.constants.todos import GAIA_TRACKED_LABEL
+from app.db.mongodb.indexes import (
+    TODO_OPEN_EXTERNAL_REF_KEYS,
+    TODO_OPEN_EXTERNAL_REF_OPTIONS,
+)
 from app.db.repositories.todos import TodosRepository
 from app.models.todo_models import (
+    ExternalRef,
+    ExternalRefSource,
     Priority,
     SearchMode,
     SubTask,
@@ -736,3 +743,54 @@ class TestLinkWorkflow:
 
         fresh = await repo.get(created.id, user_id="u1")
         assert fresh is not None and fresh.workflow_id == "wf1"
+
+
+class TestOpenExternalRefIndex:
+    """One open todo per (user, external object), enforced by the index startup ships."""
+
+    @pytest.fixture(autouse=True)
+    async def _shipped_index(self, raw_collection) -> None:
+        await raw_collection.create_index(
+            TODO_OPEN_EXTERNAL_REF_KEYS, **TODO_OPEN_EXTERNAL_REF_OPTIONS
+        )
+
+    @staticmethod
+    def _thread(thread_id: str = "thread-1") -> ExternalRef:
+        return ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id=thread_id)
+
+    async def test_a_second_open_todo_for_the_same_thread_is_rejected(self, repo, make_doc):
+        await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
+        with pytest.raises(DuplicateKeyError):
+            await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
+
+    async def test_completing_the_todo_frees_the_thread(self, repo, make_doc):
+        first = await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
+        await repo.update(first.id, user_id="u1", update=TodoUpdate(completed=True))
+
+        second = await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
+
+        assert second.id != first.id
+        assert second.external_ref == self._thread()
+
+    async def test_todos_without_a_ref_never_collide(self, repo, make_doc):
+        for i in range(3):
+            await repo.create(make_doc(user_id="u1", title=f"plain {i}"))
+        assert await repo.count_for_user("u1") == 3
+
+    async def test_the_same_thread_is_independent_per_user_and_per_thread(self, repo, make_doc):
+        await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
+        await repo.create(make_doc(user_id="u2", external_ref=self._thread()))
+        await repo.create(make_doc(user_id="u1", external_ref=self._thread("thread-2")))
+        assert await repo.count_for_user("u1") == 2
+
+    async def test_find_open_by_external_ref_returns_only_the_open_owner_todo(self, repo, make_doc):
+        done = await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
+        await repo.update(done.id, user_id="u1", update=TodoUpdate(completed=True))
+        open_todo = await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
+        await repo.create(make_doc(user_id="u1", external_ref=self._thread("thread-2")))
+
+        found = await repo.find_open_by_external_ref("u1", self._thread())
+
+        assert found is not None and found.id == open_todo.id
+        assert await repo.find_open_by_external_ref("u2", self._thread()) is None
+        assert await repo.find_open_by_external_ref("u1", self._thread("thread-3")) is None

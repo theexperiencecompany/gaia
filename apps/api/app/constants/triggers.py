@@ -6,3 +6,6 @@ from typing import Final
 # the GAIA trigger name it is offered under.
 GMAIL_EMAIL_SENT_COMPOSIO_SLUG: Final = "GMAIL_EMAIL_SENT_TRIGGER"
 GMAIL_EMAIL_SENT_TRIGGER_NAME: Final = "gmail_email_sent"
+
+# The GAIA trigger name for inbound Gmail mail (Composio's GMAIL_NEW_GMAIL_MESSAGE).
+GMAIL_NEW_MESSAGE_TRIGGER_NAME: Final = "gmail_new_message"

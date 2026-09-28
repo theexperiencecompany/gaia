@@ -21,6 +21,7 @@ from app.constants.todos import GAIA_TRACKED_LABEL, ONBOARDING_LABEL
 from app.db.repositories.base import UserScopedRepository, cached_query
 from app.db.repositories.cache import CachePolicy
 from app.models.todo_models import (
+    ExternalRef,
     SearchMode,
     SubTask,
     TodoCounts,
@@ -361,6 +362,19 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
                         "regex": f"{re.escape(short_id)}$",
                     }
                 },
+            }
+        )
+
+    async def find_open_by_external_ref(
+        self, user_id: str, ref: ExternalRef
+    ) -> TodoDocument | None:
+        """Return the user's open todo about ref; uncached, as a losing insert reads the winner here."""
+        return await self._find_one(
+            {
+                "user_id": user_id,
+                "external_ref.source": ref.source.value,
+                "external_ref.id": ref.id,
+                "completed": False,
             }
         )
 

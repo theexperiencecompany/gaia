@@ -15,17 +15,33 @@ app/services/todo_canvas_storage.py for the storage primitives. No
 JuiceFS / FUSE mount is required, so tracked todos work in every dev mode.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
+from types import MappingProxyType
+from typing import NamedTuple
 
 from app.constants.todos import (
     EXECUTE_TRACKED_TODO_TASK,
     GAIA_TRACKED_LABEL,
     TodoActivityEvent,
 )
+from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.db.repositories.todos import todo_repository
-from app.models.todo_models import Priority, TodoDocument, TodoModel, TodoResponse, TodoUpdate
-from app.models.trigger_subscription_models import TriggerOrigin
+from app.models.todo_models import (
+    ExternalRef,
+    ExternalRefSource,
+    Priority,
+    TodoDocument,
+    TodoModel,
+    TodoResponse,
+    TodoUpdate,
+)
+from app.models.trigger_subscription_models import (
+    ConditionOperator,
+    SubscriptionAction,
+    SubscriptionCondition,
+    TriggerOrigin,
+)
 from app.services.canvas_markdown import normalize_canvas
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from app.services.storage._vfs_common import folder_name
@@ -36,7 +52,10 @@ from app.services.todo_canvas_storage import (
     write_canvas_and_activity,
 )
 from app.services.todos.todo_service import TodoService
-from app.services.triggers.subscription_service import teardown_subscriptions
+from app.services.triggers.subscription_service import (
+    register_subscription,
+    teardown_subscriptions,
+)
 from app.utils.canvas_vector_utils import mark_canvas_completed, store_canvas_embedding
 from app.utils.occurrence import occurrence_stamp
 from app.utils.redis_utils import RedisPoolManager
@@ -57,6 +76,41 @@ CANVAS_TEMPLATE = """# {title}
 ## Learnings
 <!-- written on completion: what worked, what did not, timing insights, reusable patterns -->
 """
+
+
+class _RefWatch(NamedTuple):
+    """How to see an outside object change: the payload field naming it, and its triggers."""
+
+    field_name: str
+    trigger_names: tuple[str, ...]
+
+
+# A Gmail thread moves both ways: mail arrives on it, and the user replies from Gmail.
+_REF_WATCHES: Mapping[ExternalRefSource, _RefWatch] = MappingProxyType(
+    {
+        ExternalRefSource.GMAIL_THREAD: _RefWatch(
+            "thread_id", (GMAIL_NEW_MESSAGE_TRIGGER_NAME, GMAIL_EMAIL_SENT_TRIGGER_NAME)
+        ),
+    }
+)
+
+
+async def _watch_external_ref(todo_id: str, user_id: str, ref: ExternalRef) -> None:
+    """Run the todo whenever its outside object changes."""
+    watch = _REF_WATCHES[ref.source]
+    on_ref = [
+        SubscriptionCondition(
+            field_name=watch.field_name, operator=ConditionOperator.EQUALS, value=ref.id
+        )
+    ]
+    for trigger_name in watch.trigger_names:
+        await register_subscription(
+            todo_id=todo_id,
+            user_id=user_id,
+            trigger_name=trigger_name,
+            conditions=on_ref,
+            action=SubscriptionAction.EXECUTE,
+        )
 
 
 def _pin_active_todo(docs: list[TodoDocument], active_todo_id: str | None) -> None:
@@ -112,13 +166,12 @@ class TrackedTodoService:
         initial_canvas: str | None = None,
         source_conversation_id: str | None = None,
         notify_on_run: bool = True,
+        external_ref: ExternalRef | None = None,
     ) -> TodoResponse:
-        """Create a todo with VFS canvas and ChromaDB indexing.
+        """Create a todo with its canvas, activity and log, indexed in ChromaDB.
 
-        1. Creates a regular todo with 'gaia-tracked' label
-        2. Initializes the canvas + log on the todo doc
-        3. Sets vfs_path on the todo document
-        4. Indexes canvas in ChromaDB
+        With external_ref it is the one open todo for that object, already watching it.
+        Raises ExternalRefTakenError when another open todo holds the ref.
         """
         all_labels = list(labels or [])
         if GAIA_TRACKED_LABEL not in all_labels:
@@ -133,7 +186,7 @@ class TrackedTodoService:
             labels=all_labels,
             notify_on_run=notify_on_run,
         )
-        result = await TodoService.create_todo(todo, user_id)
+        result = await TodoService.create_todo(todo, user_id, external_ref=external_ref)
         todo_id = result.id
 
         vfs_path = build_vfs_label(todo_id)
@@ -164,6 +217,14 @@ class TrackedTodoService:
                 source_conversation_id=source_conversation_id,
             ),
         )
+
+        if external_ref is not None:
+            try:
+                await _watch_external_ref(todo_id, user_id, external_ref)
+            except Exception:
+                # Unwatched, it would still hold the ref and answer every retry as a duplicate.
+                await TodoService.delete_todo(todo_id, user_id)
+                raise
 
         await store_canvas_embedding(
             todo_id=todo_id,

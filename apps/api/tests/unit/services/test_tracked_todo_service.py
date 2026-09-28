@@ -11,12 +11,26 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.todos import GAIA_TRACKED_LABEL, TodoActivityEvent
-from app.models.todo_models import Priority, TodoDocument, TodoModel, TodoResponse
+from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
+from app.models.todo_models import (
+    ExternalRef,
+    ExternalRefSource,
+    Priority,
+    TodoDocument,
+    TodoModel,
+    TodoResponse,
+)
+from app.models.trigger_subscription_models import (
+    ConditionOperator,
+    SubscriptionAction,
+    SubscriptionCondition,
+)
 from app.services.tracked_todo_service import (
     CANVAS_TEMPLATE,
     TrackedTodoService,
     tracked_todo_service,
 )
+from app.services.triggers.subscription_service import SubscriptionError
 from app.utils.occurrence import occurrence_stamp
 
 _MOD = "app.services.tracked_todo_service"
@@ -92,6 +106,75 @@ def mock_deps():
             teardown=m_teardown,
             record=m_record,
         )
+
+
+_THREAD = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="thread-1")
+
+
+@pytest.fixture
+def watch():
+    with (
+        patch(f"{_MOD}.register_subscription", new_callable=AsyncMock) as m_register,
+        patch(f"{_MOD}.TodoService.delete_todo", new_callable=AsyncMock) as m_delete,
+    ):
+        yield SimpleNamespace(register=m_register, delete=m_delete)
+
+
+class TestCreateThreadTodo:
+    """A todo about a Gmail thread is created already watching that thread both ways."""
+
+    async def test_the_ref_reaches_the_insert(self, mock_repo, mock_deps, watch):
+        mock_deps.create.return_value = _todo_response()
+        await TrackedTodoService.create_tracked_todo(USER_ID, "Reply", external_ref=_THREAD)
+        assert mock_deps.create.await_args.kwargs["external_ref"] == _THREAD
+
+    async def test_incoming_and_sent_mail_on_the_thread_both_run_the_todo(
+        self, mock_repo, mock_deps, watch
+    ):
+        mock_deps.create.return_value = _todo_response()
+
+        await TrackedTodoService.create_tracked_todo(USER_ID, "Reply", external_ref=_THREAD)
+
+        calls = [c.kwargs for c in watch.register.await_args_list]
+        assert sorted(c["trigger_name"] for c in calls) == sorted(
+            [GMAIL_NEW_MESSAGE_TRIGGER_NAME, GMAIL_EMAIL_SENT_TRIGGER_NAME]
+        )
+        on_thread = [
+            SubscriptionCondition(
+                field_name="thread_id", operator=ConditionOperator.EQUALS, value="thread-1"
+            )
+        ]
+        for kwargs in calls:
+            assert kwargs["todo_id"] == TODO_ID
+            assert kwargs["user_id"] == USER_ID
+            assert kwargs["conditions"] == on_thread
+            assert kwargs["action"] is SubscriptionAction.EXECUTE
+
+    async def test_the_watches_follow_the_creation_entry(self, mock_repo, mock_deps, watch):
+        """Each watch appends to activity.md, so it must land after the write that sets it."""
+        order: list[str] = []
+        mock_deps.create.return_value = _todo_response()
+        mock_repo.update.side_effect = lambda *a, **k: order.append("setup")
+        watch.register.side_effect = lambda **k: order.append(k["trigger_name"])
+
+        await TrackedTodoService.create_tracked_todo(USER_ID, "Reply", external_ref=_THREAD)
+
+        assert order[0] == "setup" and len(order) == 3
+
+    async def test_a_todo_without_a_ref_watches_nothing(self, mock_repo, mock_deps, watch):
+        mock_deps.create.return_value = _todo_response()
+        await TrackedTodoService.create_tracked_todo(USER_ID, "Reply")
+        watch.register.assert_not_awaited()
+
+    async def test_a_watch_that_fails_takes_the_todo_with_it(self, mock_repo, mock_deps, watch):
+        """An unwatched thread todo would hold the thread's key, so every retry would get it back."""
+        mock_deps.create.return_value = _todo_response()
+        watch.register.side_effect = [None, SubscriptionError("could not register")]
+
+        with pytest.raises(SubscriptionError):
+            await TrackedTodoService.create_tracked_todo(USER_ID, "Reply", external_ref=_THREAD)
+
+        watch.delete.assert_awaited_once_with(TODO_ID, USER_ID)
 
 
 class TestCreateTrackedTodo:

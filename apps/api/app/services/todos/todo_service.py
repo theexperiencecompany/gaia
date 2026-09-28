@@ -4,6 +4,8 @@ from http import HTTPStatus
 import math
 import uuid
 
+from pymongo.errors import DuplicateKeyError
+
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.projects import project_repository
@@ -13,6 +15,7 @@ from app.models.todo_models import (
     BulkMoveRequest,
     BulkOperationResponse,
     BulkUpdateRequest,
+    ExternalRef,
     PaginationMeta,
     PendingApprovalRef,
     Priority,
@@ -34,7 +37,11 @@ from app.models.todo_models import (
     UpdateProjectRequest,
 )
 from app.services.analytics_service import AnalyticsEvents, capture_event
-from app.services.todos.errors import TrackedLabelChangeError, TrackedTodoWorkflowError
+from app.services.todos.errors import (
+    ExternalRefTakenError,
+    TrackedLabelChangeError,
+    TrackedTodoWorkflowError,
+)
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.user_todos_fs import schedule_user_todos_sync
 from app.utils.canvas_vector_utils import delete_canvas_embedding
@@ -190,8 +197,13 @@ class TodoService:
 
     # CRUD Operations
     @classmethod
-    async def create_todo(cls, todo: TodoModel, user_id: str) -> TodoResponse:
-        """Create a new todo with automatic inbox assignment."""
+    async def create_todo(
+        cls, todo: TodoModel, user_id: str, *, external_ref: ExternalRef | None = None
+    ) -> TodoResponse:
+        """Create a new todo with automatic inbox assignment.
+
+        Raises ExternalRefTakenError when another open todo already holds external_ref.
+        """
         log.set(
             component="todo_service",
             operation="create_todo",
@@ -237,8 +249,18 @@ class TodoService:
             expires_at=todo.expires_at,
             references=todo.references,
             notify_on_run=todo.notify_on_run,
+            external_ref=external_ref,
         )
-        created = await todo_repository.create(document)
+        try:
+            created = await todo_repository.create(document)
+        except DuplicateKeyError as e:
+            if external_ref is None:
+                raise
+            # The open-ref unique index turned this insert away: the loser reads the winner.
+            holder = await todo_repository.find_open_by_external_ref(user_id, external_ref)
+            if holder is None:
+                raise
+            raise ExternalRefTakenError(holder) from e
 
         # Index for search
         try:

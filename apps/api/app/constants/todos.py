@@ -103,4 +103,13 @@ class TodoActivityEvent(StrEnum):
 
 # The sections every canvas.md carries exactly once, in this order. Activity
 # (anything dated, any run log) belongs in activity.md, never here.
-CANVAS_SECTIONS: Final[tuple[str, ...]] = ("Key Details", "Current State", "Context", "Learnings")
+CANVAS_CURRENT_STATE_SECTION: Final[str] = "Current State"
+CANVAS_SECTIONS: Final[tuple[str, ...]] = (
+    "Key Details",
+    CANVAS_CURRENT_STATE_SECTION,
+    "Context",
+    "Learnings",
+)
+
+# How much of an existing todo's Current State a refused duplicate create shows.
+EXISTING_TODO_STATE_EXCERPT_CHARS: Final[int] = 400
