@@ -11,9 +11,10 @@ under the same names, so consumers keep importing from there.
 
 from collections.abc import Mapping
 from enum import StrEnum
-from typing import Any, Literal, NotRequired, TypedDict, cast
+from typing import Any, Literal, NotRequired, cast
 
 from pydantic import BaseModel, ConfigDict
+from typing_extensions import TypedDict
 
 #: All home_timezone_from_config needs of a run config: a string-keyed mapping
 #: it reads configurable out of. Naming RunnableConfig here pulled langchain_core
