@@ -95,6 +95,10 @@ _DISCORD_ADDENDUM: Final[str] = _text_only_addendum(
     "Discord",
     "Discord code formatting: `code`, ```code blocks```, > quotes",
 )
+_IMESSAGE_ADDENDUM: Final[str] = _text_only_addendum(
+    "iMessage",
+    "iMessage shows no markup at all; a fenced ```code block``` is kept verbatim",
+)
 _SLACK_ADDENDUM: Final[str] = _text_only_addendum(
     "Slack",
     "Slack code formatting: `code`, ```code blocks```, > quotes",
@@ -112,6 +116,7 @@ COMMS_PROMPT_BY_SOURCE: Final[dict[str, str]] = {
     ConversationSource.TELEGRAM.value: COMMS_AGENT_PROMPT + _TELEGRAM_ADDENDUM,
     ConversationSource.DISCORD.value: COMMS_AGENT_PROMPT + _DISCORD_ADDENDUM,
     ConversationSource.SLACK.value: COMMS_AGENT_PROMPT + _SLACK_ADDENDUM,
+    ConversationSource.IMESSAGE.value: COMMS_AGENT_PROMPT + _IMESSAGE_ADDENDUM,
 }
 
 # Default (web-style) static prompt used when ``source`` is unknown/None.

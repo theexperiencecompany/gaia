@@ -20,7 +20,7 @@ class TestOpenuiVariants:
         assert OPENUI_MARKER in desktop
 
     def test_text_channels_get_platform_context_not_openui(self) -> None:
-        for source in ("whatsapp", "telegram", "discord", "slack"):
+        for source in ("whatsapp", "telegram", "discord", "slack", "imessage"):
             prompt = get_comms_static_prompt(source)
             assert PLATFORM_MARKER in prompt
             assert OPENUI_MARKER not in prompt
