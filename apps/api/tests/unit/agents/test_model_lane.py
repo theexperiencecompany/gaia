@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from redis.exceptions import DataError
 
-from app.agents.llm import lane as lane_module
+from app.agents.llm import client as client_module, lane as lane_module
 from app.agents.llm.client import PROVIDER_MODELS
 from app.agents.llm.lane import (
     AgentRole,
@@ -24,11 +24,13 @@ from app.agents.llm.lane import (
     _pro_monthly_budget_exhausted,
     dev_option,
     dev_option_for,
+    inherits_lane,
     resolve_lane,
 )
 from app.config.rate_limits import RateLimitPeriod
 from app.constants.cache import COST_BUDGET_NOTIFIED_KEY
 from app.constants.llm import (
+    COMMS_MODEL_NAME,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
@@ -700,3 +702,88 @@ class TestRebindOntoAFallbackLane:
         paid = self._paid()
 
         assert paid.rebind(dict(paid.binding_keys())) == dict(paid.binding_keys())
+
+
+@contextmanager
+def _openai_configured(available: bool = True) -> Iterator[None]:
+    """Switch the comms lane on or off: it exists only with an OpenAI key, and tests blank every key."""
+    with patch.object(lane_module, "openai_lane_available", lambda: available):
+        yield
+
+
+def _lane(provider: LLMProviderName, model: str) -> ModelLane:
+    return ModelLane(
+        provider=provider,
+        model=model,
+        reasoning=None,
+        provider_pin=None,
+        max_input_tokens=DEFAULT_MAX_TOKENS,
+    )
+
+
+class TestCommsLane:
+    @pytest.mark.parametrize("plan", [PlanType.FREE, PlanType.PRO])
+    async def test_comms_runs_its_own_openai_lane_on_every_plan(self, plan: PlanType) -> None:
+        with _openai_configured():
+            resolved = await _resolve(plan, AgentRole.COMMS)
+
+        assert resolved.provider == LLMProviderName.OPENAI
+        assert resolved.model == COMMS_MODEL_NAME
+        assert resolved.max_input_tokens == DEFAULT_MAX_TOKENS
+        # The effort is pinned on the client; a reasoning key would switch ChatOpenAI's wire.
+        assert "reasoning" not in resolved.binding_keys()
+
+    async def test_an_over_budget_pro_user_keeps_comms_on_its_lane(self) -> None:
+        """The monthly guard degrades the work tiers; comms is already the cheap lane."""
+        with _openai_configured():
+            resolved = await _resolve(PlanType.PRO, AgentRole.COMMS, over_budget=True)
+
+        assert resolved.provider == LLMProviderName.OPENAI
+
+    async def test_the_plan_is_still_resolved_for_the_budget_wall(self) -> None:
+        a, b, c = _plan(PlanType.PRO)
+        with a, b, c, _openai_configured():
+            _, plan = await resolve_lane(USER, AgentRole.COMMS)
+
+        assert plan == PlanType.PRO
+
+    async def test_no_user_still_gets_the_comms_lane(self) -> None:
+        with _openai_configured():
+            resolved, plan = await resolve_lane(None, AgentRole.COMMS)
+
+        assert resolved.provider == LLMProviderName.OPENAI
+        assert plan is None
+
+    @pytest.mark.parametrize("role", [AgentRole.EXECUTOR, AgentRole.SUBAGENT])
+    async def test_the_work_tiers_keep_the_plan_lane(self, role: AgentRole) -> None:
+        with _openai_configured():
+            resolved = await _resolve(PlanType.PRO, role)
+
+        assert resolved.provider == PAID_MODEL_PROVIDER
+        assert resolved.model == PAID_MODEL_NAME
+
+    async def test_without_an_openai_key_comms_runs_the_plan_lane(self) -> None:
+        with _openai_configured(available=False):
+            resolved = await _resolve(PlanType.FREE, AgentRole.COMMS)
+
+        assert resolved.provider == DEFAULT_LLM_PROVIDER
+        assert resolved.model == DEFAULT_MODEL_NAME
+
+    @pytest.mark.parametrize("role", [AgentRole.EXECUTOR, AgentRole.SUBAGENT])
+    def test_the_comms_lane_is_never_inherited_by_a_work_tier(self, role: AgentRole) -> None:
+        assert not inherits_lane(_lane(LLMProviderName.OPENAI, COMMS_MODEL_NAME), role)
+
+    def test_an_openrouter_parent_lane_is_still_inherited(self) -> None:
+        parent = _lane(LLMProviderName.OPENROUTER, PAID_MODEL_NAME)
+
+        assert inherits_lane(parent, AgentRole.EXECUTOR)
+        assert inherits_lane(parent, AgentRole.SUBAGENT)
+
+    def test_a_failed_comms_call_falls_back_to_openrouters_default(self) -> None:
+        available = {LLMProviderName.OPENROUTER: object(), LLMProviderName.OPENAI: object()}
+        with patch.object(client_module, "_get_available_providers", lambda: available):
+            fallback = _lane(LLMProviderName.OPENAI, COMMS_MODEL_NAME).fallback()
+
+        assert fallback is not None
+        assert fallback.provider == LLMProviderName.OPENROUTER
+        assert fallback.model == DEFAULT_MODEL_NAME

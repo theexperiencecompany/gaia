@@ -13,6 +13,7 @@ class LLMProviderName(StrEnum):
     GEMINI = "gemini"
     OPENROUTER = "openrouter"
     CUSTOM = "custom"
+    OPENAI = "openai"
 
 
 class LLMProviderKey(StrEnum):
@@ -25,6 +26,7 @@ class LLMProviderKey(StrEnum):
     GEMINI = "gemini_llm"
     OPENROUTER = "openrouter_llm"
     CUSTOM = "custom_llm"
+    OPENAI = "openai_llm"
 
 
 class DevModelOption(TypedDict):
@@ -171,6 +173,8 @@ LLM_RETRY_MAX_ATTEMPTS = 3
 # OpenRouter-only wire behaviour: Gemini rejects the key, and CUSTOM runs
 # ChatOpenAI where session_id is unsupported on AsyncCompletions.create.
 STICKY_ROUTING_PROVIDERS = frozenset({LLMProviderName.OPENROUTER})
+# OpenAI's equivalent: prompt_cache_key routes a chain to the machine holding its cached prefix.
+PROMPT_CACHE_KEY_PROVIDERS = frozenset({LLMProviderName.OPENAI})
 # Auxiliary one-shots route on their own sticky session: sharing the
 # conversation's key re-pinned its provider from a background call (measured).
 AUX_SESSION_SUFFIX = "-aux"
@@ -238,6 +242,13 @@ SIM_STUB_BASE_URL = "http://localhost:9797/api/v1"
 SIM_STUB_API_KEY = "sk-stub-dev"  # pragma: allowlist secret
 SIM_STUB_MODEL_NAME = "gaia-sim-stub"
 
+# Comms' own lane, direct to OpenAI on every plan; beat gpt-5.4-mini/nano on voice and
+# OpenUI at $0.0006 a turn, and gpt-6-luna re-dispatched the executor on every ack.
+COMMS_MODEL_NAME = "gpt-5.6-luna"
+# Chat completions reject function tools with any other effort, and comms always binds tools.
+COMMS_REASONING_EFFORT = "none"
+OPENAI_MAX_OUTPUT_TOKENS = 16_000
+
 # Per-plan model policy (hardcoded; not user-selectable). Both tiers run the SAME
 # model today, so the pro monthly-budget degrade in resolve_lane has nothing to
 # degrade to — kept so re-pointing PAID_MODEL_NAME makes that guard bite again.
@@ -267,11 +278,11 @@ HELPER_MAX_OUTPUT_TOKENS = 8_000
 
 # Default reasoning effort for OpenRouter thinking models (executor + subagents),
 # passed to ChatOpenRouter's native `reasoning` field.
-OPENROUTER_REASONING: dict[str, Any] = {"effort": "medium"}
+OPENROUTER_REASONING: dict[str, str] = {"effort": "medium"}
 # Its own constant so raising it doesn't move the executor's default. It sat at
 # "low" while free comms inherited "medium" — a paying user's agent thought LESS
 # than a free user's; paid comms must never be thinner than free.
-PAID_COMMS_REASONING: dict[str, Any] = {"effort": "medium"}
+PAID_COMMS_REASONING: dict[str, str] = {"effort": "medium"}
 
 # Output cap for the env-defined custom dev provider, well under the model's
 # 65,536 ceiling: these cheap lanes RESERVE max_tokens per request, so a 64k cap

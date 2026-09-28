@@ -78,6 +78,8 @@ export {
   unfetchableMediaMessage,
   unsupportedMediaMessage,
 } from "./media";
+export type { ReactionOutcome } from "./reaction-outcome";
+export { REACTION_OUTCOME } from "./reaction-outcome";
 export {
   BODY_READ_TIMEOUT,
   BODY_TOO_LARGE,

@@ -124,10 +124,6 @@ class CommonSettings(BaseAppSettings):
     DUMMY_IP: str = "8.8.8.8"
     WORKER_TYPE: str = "unknown"
     ENABLE_LAZY_LOADING: bool = True
-    # Experiment: include the OpenUI component reference (~27k chars) in the comms
-    # prompt on renderable channels (web/mobile/desktop). Off swaps a markdown-only
-    # note so voice rules are not crowded out; text-only channels are unaffected.
-    ENABLE_COMMS_OPENUI: bool = True
     # Code mode — bash-injected `gaia.execute` client letting sandbox scripts
     # call GAIA tools back server-side. On by default; off mints no token
     # (bash itself still runs; scripts just get no GAIA_EXECUTE_* env).

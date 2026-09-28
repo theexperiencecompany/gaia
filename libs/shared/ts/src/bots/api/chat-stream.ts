@@ -13,6 +13,10 @@ import type { ApprovalRequestData } from "../../chat";
 import { NEW_MESSAGE_BREAK_TOKEN } from "../../utils/messageBreakUtils";
 import type { ChatRequest } from "../types";
 import { getHttpStatus } from "../utils/logger";
+import {
+  REACTION_OUTCOME,
+  type ReactionHandler,
+} from "../utils/reaction-outcome";
 import { wideLog } from "../utils/wide-events";
 import type {
   ApprovalUpdateHandler,
@@ -22,6 +26,7 @@ import type {
   NoticeHandler,
 } from "./chat-stream.types";
 
+export type { ReactionHandler } from "../utils/reaction-outcome";
 export type {
   ApprovalUpdateHandler,
   ChatStreamClient,
@@ -58,6 +63,7 @@ export async function streamChat(
   onApprovalUpdate?: ApprovalUpdateHandler,
   onMessageBoundary?: MessageBoundaryHandler,
   onNotice?: NoticeHandler,
+  onReaction?: ReactionHandler,
   maxRetries = 2,
 ): Promise<string> {
   let lastError: Error | null = null;
@@ -76,6 +82,7 @@ export async function streamChat(
         onApprovalUpdate,
         onMessageBoundary,
         onNotice,
+        onReaction,
       );
     } catch (error: unknown) {
       lastError = error instanceof Error ? error : new Error(String(error));
@@ -158,6 +165,7 @@ async function streamChatOnce(
   onApprovalUpdate?: ApprovalUpdateHandler,
   onMessageBoundary?: MessageBoundaryHandler,
   onNotice?: NoticeHandler,
+  onReaction?: ReactionHandler,
 ): Promise<string> {
   let fullText = "";
   // Text streamed since the last message boundary; joins `fullText` only once the backend
@@ -166,6 +174,9 @@ async function streamChatOnce(
   let pendingText = "";
   let conversationId = "";
   let streamError: Error | null = null;
+  // A natively attached reaction is the whole reply, so the turn has content with no text.
+  let reacted = false;
+  const turnHasContent = (): boolean => reacted || fullText !== "";
 
   const keepPendingText = (): void => {
     if (!pendingText) return;
@@ -180,10 +191,15 @@ async function streamChatOnce(
     await onChunk(text);
   };
 
-  // The `<EMOJI>…</EMOJI>` ack: the backend never streams a directive's text, so
-  // the emoji is the turn's one chunk and its whole reply, or streaming
-  // platforms (rendering from onChunk) would show nothing.
+  // The `<EMOJI>…</EMOJI>` ack: the backend sends it only when the whole reply is the
+  // directive, and never streams the directive's text. Attached as a reaction, the turn
+  // delivers no text; otherwise the emoji is its one chunk, or streaming platforms show nothing.
   const applyEmojiAck = async (emoji: string): Promise<void> => {
+    if ((await onReaction?.(emoji)) === REACTION_OUTCOME.ATTACHED) {
+      reacted = true;
+      fullText = "";
+      return;
+    }
     fullText = emoji;
     await onChunk(emoji);
   };
@@ -248,7 +264,7 @@ async function streamChatOnce(
           finished = true;
           stream.destroy();
           keepPendingText();
-          if (fullText) {
+          if (turnHasContent()) {
             // If we got some content, consider it a success
             await onDone(fullText, conversationId);
           } else {
@@ -382,7 +398,7 @@ async function streamChatOnce(
           if (!finished) {
             finished = true;
             keepPendingText();
-            if (fullText) {
+            if (turnHasContent()) {
               // Got partial response - return what we have
               await onDone(fullText, conversationId);
             } else if (receivedKeepalive) {
@@ -418,10 +434,10 @@ async function streamChatOnce(
               err.message.includes(retryableErr),
             );
 
-            if (isRetryable && !fullText) {
+            if (isRetryable && !turnHasContent()) {
               // No content received yet — store for re-throw so streamChat can retry
               streamError = err;
-            } else if (fullText) {
+            } else if (turnHasContent()) {
               // The connection died but the answer is already assembled — deliver it exactly as
               // the `end` handler does. An error card here would lose an earned reply, and on a
               // non-streaming platform (Discord/WhatsApp render only at onDone) show nothing at all.
@@ -455,6 +471,7 @@ async function streamChatOnce(
         // Dropped here until now: a stale session token cost the retried
         // attempt every rate-limit notice it produced.
         onNotice,
+        onReaction,
       );
     }
 

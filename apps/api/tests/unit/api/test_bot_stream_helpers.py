@@ -289,6 +289,23 @@ class TestBuildBotMessageRequest:
         assert result.fileIds == []
         assert result.fileData == []
 
+    async def test_the_platform_message_id_reaches_the_persisted_request(self):
+        """Dropped here, the saved user message has no platform id and every background reaction falls back to emoji text."""
+        body = BotChatRequest(
+            message="hi",
+            platform="whatsapp",
+            platform_user_id="u1",
+            platform_message_id="wamid.ABC123",
+        )
+        with patch(
+            "app.services.bot_service.BotService.load_conversation_history",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            result = await build_bot_message_request(body, "conv-1", "user-1")
+
+        assert result.platform_message_id == "wamid.ABC123"
+
     async def test_defaults_file_ids_and_file_data_to_empty_lists_when_none(self):
         body = BotChatRequest(
             message="hi", platform="discord", platform_user_id="u1", file_ids=None, file_data=None

@@ -15,7 +15,11 @@ from pydantic import BaseModel, ConfigDict
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.config.settings import settings
-from app.constants.platform_links import IMESSAGE_PENDING_REGISTRATION_TTL
+from app.constants.platform_links import (
+    IMESSAGE_PENDING_REGISTRATION_TTL,
+    LINK_CONFLICT_ACCOUNT_HAS_OTHER,
+    LINK_CONFLICT_PLATFORM_TAKEN,
+)
 from app.db.redis import redis_cache
 from app.db.repositories.pending_platform_registrations import (
     pending_platform_registration_repository,
@@ -111,6 +115,30 @@ class AccountHasDifferentPlatformError(ValueError):
     the fix is on the GAIA side. Telling this person to "disconnect it from the
     other GAIA account" sends them looking for an account that does not exist.
     """
+
+
+def link_conflict_error(
+    e: PlatformAccountTakenError | AccountHasDifferentPlatformError,
+) -> AppError:
+    """Map a link conflict to its 409, with a distinct code per side of the conflict.
+
+    Conflating the two misdirected users to fix the wrong account.
+    """
+    if isinstance(e, PlatformAccountTakenError):
+        return create_error(
+            message=str(e),
+            why="the platform account is already linked to a different GAIA account",
+            fix="disconnect it from the other account, or link a different one",
+            status_code=409,
+            code=LINK_CONFLICT_PLATFORM_TAKEN,
+        )
+    return create_error(
+        message=str(e),
+        why="this GAIA account already has a different account on this platform",
+        fix="disconnect the one you already have in settings, then link this one",
+        status_code=409,
+        code=LINK_CONFLICT_ACCOUNT_HAS_OTHER,
+    )
 
 
 async def _release_imessage_number(user_id: str, phone_number: str) -> bool:
@@ -458,6 +486,27 @@ class PlatformLinkService:
         return await user_repository.list_platform_user_ids(platform, limit=limit)
 
     @staticmethod
+    async def ensure_linkable(
+        user_id: str, platform: str, platform_user_id: str
+    ) -> _StoredPlatformLink | None:
+        """Raise the link conflict that would block linking; returns the user's current link on this platform.
+
+        Writes nothing, so a caller linking several platforms can check them all first.
+        """
+        existing = await user_repository.get_by_platform_id(platform, platform_user_id)
+        if existing and existing.id != user_id:
+            raise PlatformAccountTakenError(
+                f"This {platform} account is already linked to another GAIA user"
+            )
+        user = await user_repository.get(user_id)
+        prior_link = _stored_link(user, platform)
+        if prior_link is not None and prior_link.id and prior_link.id != platform_user_id:
+            raise AccountHasDifferentPlatformError(
+                f"Your account already has a different {platform} account linked"
+            )
+        return prior_link
+
+    @staticmethod
     async def link_account(
         user_id: str,
         platform: str,
@@ -477,20 +526,7 @@ class PlatformLinkService:
         if not platform_user_id:
             raise ValueError("platform_user_id must not be empty")
 
-        # Reject if this platform ID is already linked to a different user
-        existing = await user_repository.get_by_platform_id(platform, platform_user_id)
-        if existing and existing.id != user_id:
-            raise PlatformAccountTakenError(
-                f"This {platform} account is already linked to another GAIA user"
-            )
-
-        # Reject if the user already has a different platform ID stored
-        user = await user_repository.get(user_id)
-        prior_link = _stored_link(user, platform)
-        if prior_link is not None and prior_link.id and prior_link.id != platform_user_id:
-            raise AccountHasDifferentPlatformError(
-                f"Your account already has a different {platform} account linked"
-            )
+        prior_link = await PlatformLinkService.ensure_linkable(user_id, platform, platform_user_id)
 
         now = datetime.now(UTC).isoformat()
 

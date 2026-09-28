@@ -23,10 +23,6 @@ os.environ["GAIA_SIM_MODE"] = "false"
 # Code mode mints per-invocation tokens; pin it off so a developer's .env
 # cannot leak execute env into hermetic bash tests. Opt in per test.
 os.environ["ENABLE_CODE_MODE"] = "false"
-# Same leak, opposite pin: the OpenUI experiment ships ON and the prompt-contract
-# tests assert the OpenUI variant, so a developer's ENABLE_COMMS_OPENUI=false in
-# .env would flip the suite's static prompts. Flag-off paths opt in per test.
-os.environ["ENABLE_COMMS_OPENUI"] = "true"
 # The HIL ledger ships ON too; barrier-path tests opt out via hil_barrier_mode.
 os.environ["ENABLE_HIL_LEDGER"] = "true"
 os.environ.setdefault(

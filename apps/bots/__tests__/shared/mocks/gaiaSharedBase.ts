@@ -22,6 +22,7 @@ import {
   consumeInboundLinkCode,
   redeemLinkCode,
 } from "../../../../../libs/shared/ts/src/bots/link-codes";
+import { REACTION_OUTCOME } from "../../../../../libs/shared/ts/src/bots/utils/reaction-outcome";
 
 interface GaiaSharedMockOptions {
   /** Per-platform streaming configuration object */
@@ -204,6 +205,8 @@ export function makeGaiaSharedMock(
     // Plain shared constant every adapter's download path imports — the real
     // value, so a test asserting the deadline asserts production's.
     MEDIA_READ_TIMEOUT_MS: 30_000,
+    // The real outcome set, so an adapter's reaction result is production's value.
+    REACTION_OUTCOME,
     unsupportedMediaMessage: vi.fn(
       (kind: string) => `I can't process ${kind} yet.`,
     ),
