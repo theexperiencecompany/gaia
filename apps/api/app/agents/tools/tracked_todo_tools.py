@@ -19,6 +19,7 @@ from app.constants.todos import (
     CANVAS_CURRENT_STATE_SECTION,
     EXISTING_TODO_STATE_EXCERPT_CHARS,
     GAIA_TRACKED_LABEL,
+    LIST_TRACKED_TODOS_LIMIT,
 )
 from app.db.repositories.todos import todo_repository
 from app.models.agent_models import read_agent_configurable
@@ -176,37 +177,37 @@ def _resolve_first_fire(
     return None, [], None
 
 
+def _gmail_thread_ref(gmail_thread_id: str | None) -> ExternalRef | None:
+    if not gmail_thread_id:
+        return None
+    return ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id=gmail_thread_id)
+
+
 def _agent_actor(conversation_id: str | None) -> str:
     """Name who made a change from inside an agent run, for the todo's activity log."""
     return f"GAIA in conversation {conversation_id[:8]}" if conversation_id else "GAIA"
 
 
-async def _persist_scheduling_fields(
-    todo_id: str,
-    user_id: str,
+def _creation_field_update(
     parsed_scheduled_at: datetime | None,
     recurrence: str | None,
+    due_date: str | None,
     expires_at: str | None,
-    *,
-    by: str,
-) -> str | None:
-    """Save scheduled_at / recurrence / expires_at onto a freshly-created todo doc."""
-    if not (parsed_scheduled_at or recurrence or expires_at):
-        return None
+) -> tuple[TodoUpdate | None, str | None]:
+    """Validate the fields a create sets after its insert, before anything is saved.
+
+    Returns (update, error); update is None when there is nothing to set. An empty
+    date means unset here, not the update tool's clear.
+    """
     fields: dict[str, object] = {}
     if parsed_scheduled_at:
         fields["scheduled_at"] = parsed_scheduled_at
     if recurrence:
         fields["recurrence"] = recurrence
-    if expires_at:
-        try:
-            fields["expires_at"] = datetime.fromisoformat(expires_at.replace("Z", _UTC_OFFSET))
-        except ValueError:
-            return f"Error: invalid expires_at format '{expires_at}'."
-    update = TodoUpdate.model_validate(fields)
-    await todo_repository.update(todo_id, user_id=user_id, update=update)
-    await record_field_changes(todo_id, user_id, update, by=by)
-    return None
+    for field_name, value in (("due_date", due_date), ("expires_at", expires_at)):
+        if error := _build_clearable_datetime_update(value or None, field_name, fields):
+            return None, error
+    return (TodoUpdate.model_validate(fields) if fields else None), None
 
 
 async def _schedule_execution_after_create(
@@ -446,6 +447,8 @@ def _format_tracked_todo_full(doc: TodoDocument, now: datetime) -> str:
         f"  Priority: {doc.priority.value} | Age: {age_days}d | Last updated: {last_update}d ago",
         f"  files: /workspace/gaia-tasks/{folder_name(doc.id, doc.title)}/",
     ]
+    if doc.external_ref:
+        parts.append(f"  Owns {doc.external_ref.source.value}: {doc.external_ref.id}")
     detail_parts = _build_list_detail_parts(doc, now)
     if detail_parts:
         parts.append(f"  {' | '.join(detail_parts)}")
@@ -579,6 +582,11 @@ async def create_tracked_todo(
         "daily, ONE recurrence, two fires per day; do NOT create two todos. "
         "Do NOT bake timezone offsets into the cron string itself.",
     ] = None,
+    due_date: Annotated[
+        str | None,
+        "ISO datetime deadline: when this should be done by. Include the user's timezone "
+        "offset. May be in the past: an overdue todo still needs doing.",
+    ] = None,
     expires_at: Annotated[
         str | None,
         "ISO datetime string when this todo becomes irrelevant. "
@@ -614,12 +622,14 @@ async def create_tracked_todo(
     email and awaits a reply, created an issue, posted to Slack, scheduled
     recurring work, or an ongoing multi-step initiative.
 
-    Do NOT create one for read-only work (fetching, listing, searching, or
-    summarizing data), no matter how complex it is or how often it runs (a
-    recurring daily summary is still a read). Saving or persisting a summary,
-    digest, or briefing is NOT tracking: return the summary, do not store it as a
-    tracked todo. Search existing tracked todos first (search_todo_context) and
-    update a match instead of creating a duplicate.
+    Judge the work by what it does, not by what it reports. Do NOT create one for
+    work that only reads (fetching, listing, searching, or summarizing data), no
+    matter how complex it is or how often it runs; saving or persisting a summary,
+    digest, or briefing is NOT tracking: return the summary instead. Recurring work
+    that also writes on the user's behalf does qualify even when its final message
+    is a summary (an inbox desk that opens a todo per email thread and saves reply
+    drafts, then briefs the user). Search existing tracked todos first
+    (search_todo_context) and update a match instead of creating a duplicate.
 
     IMPORTANT: Before creating a tracked todo with scheduling (scheduled_at, recurrence),
     read the "tracked-todo-working-memory" skill first for scheduling best practices,
@@ -632,13 +642,15 @@ async def create_tracked_todo(
     recurrence: How often to repeat. Options: 'daily', 'weekly', 'every_4h', or a cron expression.
                 Cron does NOT require scheduled_at; delta shortcuts use scheduled_at as their
                 first-fire anchor.
+    due_date: ISO datetime deadline, validated like update_tracked_todo's due_date.
     expires_at: ISO datetime string when this todo becomes irrelevant regardless of completion.
                 Different from due_date: due_date = deadline (overdue = still needs doing),
                 expires_at = relevance window (expired = no longer worth tracking).
     notify_on_run: Whether each run's final message is delivered to the user's chat app.
                 On by default; turn it off for runs the user should not hear about.
     gmail_thread_id: The Gmail thread id when the todo is about an email thread; it is
-                watched both ways and allowed one open todo.
+                watched both ways and allowed one open todo. If the thread already has
+                one, nothing is created and that todo comes back: update it instead.
     """
     user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
     if not user_id:
@@ -655,12 +667,13 @@ async def create_tracked_todo(
     parsed_scheduled_at, notes, error = _resolve_first_fire(recurrence, scheduled_at, user_tz_name)
     if error:
         return error
-
-    external_ref = (
-        ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id=gmail_thread_id)
-        if gmail_thread_id
-        else None
+    creation_update, error = _creation_field_update(
+        parsed_scheduled_at, recurrence, due_date, expires_at
     )
+    if error:
+        return error
+
+    external_ref = _gmail_thread_ref(gmail_thread_id)
     try:
         result = await tracked_todo_service.create_tracked_todo(
             user_id=user_id,
@@ -678,16 +691,11 @@ async def create_tracked_todo(
     except SubscriptionError as e:
         return f"Not created: the thread could not be watched ({e}). Nothing was saved."
 
-    persist_error = await _persist_scheduling_fields(
-        result.id,
-        user_id,
-        parsed_scheduled_at,
-        recurrence,
-        expires_at,
-        by=_agent_actor(source_conversation_id),
-    )
-    if persist_error:
-        return persist_error
+    if creation_update is not None:
+        await todo_repository.update(result.id, user_id=user_id, update=creation_update)
+        await record_field_changes(
+            result.id, user_id, creation_update, by=_agent_actor(source_conversation_id)
+        )
 
     if parsed_scheduled_at:
         schedule_error = await _schedule_execution_after_create(result.id, parsed_scheduled_at)
@@ -892,20 +900,37 @@ async def update_tracked_todo(
 @tool
 async def list_tracked_todos(
     config: RunnableConfig,
+    labels: Annotated[
+        list[str] | None,
+        "Only todos carrying every one of these labels, e.g. ['needs-reply'].",
+    ] = None,
+    gmail_thread_id: Annotated[
+        str | None,
+        "Only the open todo that owns this Gmail thread, if there is one.",
+    ] = None,
 ) -> str:
-    """List all active tracked todos with full metadata.
+    """List active tracked todos with full metadata, optionally filtered.
 
-    Returns a formatted list of all tracked todos (not completed) with their
-    ID, title, labels, due_date, scheduled_at, recurrence, expires_at,
-    priority, and age. Use this when you need a complete picture of all
-    tracked work, beyond what's in the ACTIVE TRACKED TODOS context block.
+    Returns open tracked todos, most recently updated first, with their
+    ID, title, labels, due_date, scheduled_at, recurrence, expires_at, priority,
+    age, watches, and the email thread a thread todo owns. Use this when you need
+    a complete picture of tracked work, beyond the ACTIVE TRACKED TODOS context
+    block, or to read the todos in one state by label (e.g. every thread waiting
+    on a reply) or the todo for one thread.
     """
     user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
     if not user_id:
         return _ERR_NO_USER_ID
 
-    docs = await todo_repository.list_active_tracked(user_id, limit=50)
+    docs = await todo_repository.list_active_tracked(
+        user_id,
+        limit=LIST_TRACKED_TODOS_LIMIT,
+        labels=labels,
+        external_ref=_gmail_thread_ref(gmail_thread_id),
+    )
     if not docs:
+        if labels or gmail_thread_id:
+            return "No active tracked todos match those filters."
         return "No active tracked todos."
 
     now = datetime.now(UTC)

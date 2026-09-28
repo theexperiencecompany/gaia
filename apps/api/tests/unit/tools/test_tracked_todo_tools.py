@@ -23,13 +23,13 @@ from app.agents.tools.tracked_todo_tools import (
     _build_priority_update,
     _build_recurrence_update,
     _build_scheduled_at_update,
+    _creation_field_update,
     _format_create_output,
     _format_first_fire_note,
     _format_tracked_todo_full,
     _get_user_tz,
     _is_cron_expression,
     _parse_iso_future_datetime,
-    _persist_scheduling_fields,
     _resolve_cron_first_fire,
     _resolve_first_fire,
     _schedule_execution_after_create,
@@ -677,50 +677,32 @@ class TestResolveCronFirstFire:
 
 
 # ---------------------------------------------------------------------------
-# _persist_scheduling_fields
+# _creation_field_update
 # ---------------------------------------------------------------------------
 
 
-class TestPersistSchedulingFields:
-    async def test_nothing_to_persist_is_a_no_op(self):
-        with patch(
-            "app.agents.tools.tracked_todo_tools.todo_repository.update",
-            new_callable=AsyncMock,
-        ) as mock_update:
-            error = await _persist_scheduling_fields("t1", "u1", None, None, None, by="GAIA")
-        assert error is None
-        mock_update.assert_not_awaited()
+class TestCreationFieldUpdate:
+    def test_nothing_to_set_is_no_update(self):
+        assert _creation_field_update(None, None, None, None) == (None, None)
 
-    async def test_persists_scheduled_at_and_recurrence(self):
-        with (
-            patch(
-                "app.agents.tools.tracked_todo_tools.todo_repository.update",
-                new_callable=AsyncMock,
-            ) as mock_update,
-            patch(
-                "app.agents.tools.tracked_todo_tools.record_field_changes", new_callable=AsyncMock
-            ) as recorded,
-        ):
-            error = await _persist_scheduling_fields(
-                "t1", "u1", _FUTURE, "daily", None, by="GAIA in conversation c1"
-            )
-        assert error is None
-        update_arg = mock_update.await_args.kwargs["update"]
-        mock_update.assert_awaited_once_with("t1", user_id="u1", update=update_arg)
-        assert update_arg.scheduled_at == _FUTURE
-        assert update_arg.recurrence == "daily"
-        # The first schedule is on the timeline with who set it, like any later one.
-        recorded.assert_awaited_once_with("t1", "u1", update_arg, by="GAIA in conversation c1")
+    def test_an_empty_date_is_unset_not_a_clear(self):
+        assert _creation_field_update(None, None, "", "") == (None, None)
 
-    async def test_invalid_expires_at_format_returns_error_without_persisting(self):
-        with patch(
-            "app.agents.tools.tracked_todo_tools.todo_repository.update",
-            new_callable=AsyncMock,
-        ) as mock_update:
-            error = await _persist_scheduling_fields("t1", "u1", None, None, "garbage", by="GAIA")
-        assert error is not None
-        assert "invalid expires_at format" in error
-        mock_update.assert_not_awaited()
+    def test_collects_every_field_the_create_sets(self):
+        update, error = _creation_field_update(_FUTURE, "daily", _PAST_ISO, _FUTURE_ISO)
+        assert error is None
+        assert update.scheduled_at == _FUTURE
+        assert update.recurrence == "daily"
+        # A past due date is still a deadline: overdue work still needs doing.
+        assert update.due_date == datetime.fromisoformat(_PAST_ISO)
+        assert update.expires_at == _FUTURE
+
+    @pytest.mark.parametrize("field", ["due_date", "expires_at"])
+    def test_an_unparseable_date_is_an_error(self, field):
+        dates = {"due_date": None, "expires_at": None, field: "garbage"}
+        update, error = _creation_field_update(_FUTURE, "daily", **dates)
+        assert update is None
+        assert error == f"Error: invalid {field} format 'garbage'."
 
 
 # ---------------------------------------------------------------------------
@@ -906,6 +888,18 @@ class TestFormatTrackedTodoFull:
         result = _format_tracked_todo_full(doc, now)
 
         assert "files: /workspace/gaia-tasks/fix-the-thing-5f10e407/" in result
+
+    def test_a_thread_todo_names_the_thread_it_owns(self):
+        now = datetime.now(UTC)
+        doc = TodoDocument(
+            id="t1",
+            user_id="u1",
+            title="Reply to Sam",
+            external_ref=ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18f3a2b"),
+            created_at=now,
+            updated_at=now,
+        )
+        assert "Owns gmail_thread: 18f3a2b" in _format_tracked_todo_full(doc, now)
 
     def test_includes_detail_line_when_scheduling_fields_present(self):
         now = datetime.now(UTC)
@@ -1424,8 +1418,28 @@ class TestCreateTrackedTodoSuccess:
         assert "Details:" in result
         assert "ignored" in result
 
-    async def test_persist_scheduling_failure_is_surfaced_after_todo_is_already_created(self):
-        """The todo row already exists by the time scheduling fields are persisted — a persist failure must still be reported, not swallowed just because create_tracked_todo itself succeeded."""
+    @pytest.mark.parametrize("field", ["due_date", "expires_at"])
+    async def test_an_unparseable_date_creates_nothing(self, field):
+        """A create that reports an error must not leave a todo behind for the retry to duplicate."""
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+                new_callable=AsyncMock,
+                return_value=self._response(),
+            ) as create,
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.update",
+                new_callable=AsyncMock,
+            ) as update,
+        ):
+            result = await create_tracked_todo.coroutine(
+                config=_config(), title="t", **{field: "garbage"}
+            )
+        assert f"invalid {field} format" in result
+        create.assert_not_awaited()
+        update.assert_not_awaited()
+
+    async def test_due_date_is_saved_and_put_on_the_timeline(self, recorded_changes):
         with (
             patch(
                 "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
@@ -1435,12 +1449,17 @@ class TestCreateTrackedTodoSuccess:
             patch(
                 "app.agents.tools.tracked_todo_tools.todo_repository.update",
                 new_callable=AsyncMock,
-            ),
+            ) as update,
         ):
             result = await create_tracked_todo.coroutine(
-                config=_config(), title="t", expires_at="garbage"
+                config=_config(), title="t", due_date=_PAST_ISO
             )
-        assert "invalid expires_at format" in result
+        assert "Tracked todo created: t1" in result
+        saved = update.await_args.kwargs["update"]
+        update.assert_awaited_once_with("t1", user_id="user-1", update=saved)
+        assert saved.due_date == datetime.fromisoformat(_PAST_ISO)
+        assert saved.model_fields_set == {"due_date"}
+        recorded_changes.assert_awaited_once_with("t1", "user-1", saved, by="GAIA")
 
 
 class TestCreateThreadTrackedTodo:
@@ -1520,6 +1539,8 @@ class TestCreateThreadTrackedTodo:
 # list_tracked_todos
 # ---------------------------------------------------------------------------
 
+_LIST_ACTIVE = "app.agents.tools.tracked_todo_tools.todo_repository.list_active_tracked"
+
 
 class TestListTrackedTodos:
     async def test_missing_user_id_returns_error(self):
@@ -1538,6 +1559,25 @@ class TestListTrackedTodos:
         ):
             result = await list_tracked_todos.coroutine(config=_config())
         assert result == "No active tracked todos."
+
+    async def test_labels_filter_asks_for_todos_carrying_all_of_them(self):
+        with patch(_LIST_ACTIVE, new_callable=AsyncMock, return_value=[]) as listed:
+            await list_tracked_todos.coroutine(config=_config(), labels=["needs-reply", "vip"])
+        assert listed.await_args.kwargs["labels"] == ["needs-reply", "vip"]
+        assert listed.await_args.kwargs["external_ref"] is None
+
+    async def test_thread_filter_asks_for_the_todo_owning_the_thread(self):
+        with patch(_LIST_ACTIVE, new_callable=AsyncMock, return_value=[]) as listed:
+            await list_tracked_todos.coroutine(config=_config(), gmail_thread_id="abc")
+        assert listed.await_args.kwargs["external_ref"] == ExternalRef(
+            source=ExternalRefSource.GMAIL_THREAD, id="abc"
+        )
+        assert listed.await_args.kwargs["labels"] is None
+
+    async def test_an_empty_filtered_list_says_nothing_matched(self):
+        with patch(_LIST_ACTIVE, new_callable=AsyncMock, return_value=[]):
+            result = await list_tracked_todos.coroutine(config=_config(), labels=["needs-reply"])
+        assert result == "No active tracked todos match those filters."
 
     async def test_active_todos_are_listed_with_count(self):
         docs = [

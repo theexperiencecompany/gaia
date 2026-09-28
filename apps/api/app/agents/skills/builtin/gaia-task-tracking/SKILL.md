@@ -14,6 +14,8 @@ When the user says "email Rahul about the contract" and months later asks "what 
 
 **One todo per initiative.** "Email Rahul, create a Linear issue, follow up Friday" = ONE tracked todo ("Contract negotiation with Rahul") whose canvas.md holds the email thread ID, Linear issue URL, and follow-up schedule.
 
+**One todo per email thread.** A todo about one email thread is created with `gmail_thread_id`; it then watches the thread for new mail and for the user's own replies. A thread has at most one open todo: creating another returns the existing one instead of creating anything, so update that one.
+
 ## Files
 
 Every tracked todo is a folder under `/workspace/gaia-tasks/<slug>-<shortid>/` (the create result and the ACTIVE TRACKED TODOS block both name it):
@@ -32,7 +34,7 @@ Always available to the executor — no `retrieve_tools` needed:
 - `update_tracked_todo` — update labels, due_date, priority, scheduled_at, recurrence, expires_at, references
 - `complete_tracked_todo` — mark done, requires completion summary
 - `search_todo_context` — semantic search across all notes (canvas + activity, ChromaDB); includes completed
-- `list_tracked_todos` — list all active tracked todos (up to 50) with full metadata
+- `list_tracked_todos` — list active tracked todos (up to 50) with full metadata; `labels=[...]` keeps the todos carrying all of those labels, `gmail_thread_id=...` returns the todo that owns that thread
 
 ## Search First, Create Last
 
@@ -50,7 +52,7 @@ search_todo_context(query="relevant keywords")
 
 **Do NOT create for:**
 
-- Pure reads with no side effects ("what's the weather?", "summarize my emails") — no matter how complex or how often they run; a recurring daily summary is still a read, and saving the summary as a todo is not tracking
+- Work that only reads ("what's the weather?", "summarize my emails") — no matter how complex or how often it runs, and saving the summary as a todo is not tracking. Judge by what the work does, not what it reports: recurring work that also writes on the user's behalf (an inbox desk that opens a todo per email thread and saves reply drafts, then briefs the user) DOES get a tracked todo, even though its final message is a summary
 - Steps in your current orchestration (use `plan_tasks`)
 - Casual conversation or one-off questions
 - Anything clearly continuing an existing tracked todo — update that one instead
@@ -149,9 +151,9 @@ Add an entry by editing the end of the file: `read` it, then `edit` its last lin
 - `priority` — `high` | `medium` | `low` | `none` (default `none`)
 - `scheduled_at` — ISO datetime when GAIA should auto-execute (must be future). Omit for cron recurrence — first fire is computed from the cron.
 - `recurrence` — repeat pattern. Cron-style works alone (no `scheduled_at` needed); shortcut values still need `scheduled_at` as anchor.
+- `due_date` — ISO datetime deadline; may be in the past (overdue still needs doing)
 - `expires_at` — ISO datetime when todo becomes irrelevant (skipped if expired)
-
-`due_date` is only settable via `update_tracked_todo`, not at creation time.
+- `gmail_thread_id` — the email thread this todo is about (one open todo per thread; see above)
 
 ## Scheduling & Recurrence
 
@@ -171,7 +173,7 @@ ALWAYS evaluated in the user's stored timezone — pass cron in user-local wall-
 
 ### `due_date` vs `expires_at`
 
-- **`due_date`** = deadline. Overdue tasks still need doing. Set via `update_tracked_todo`.
+- **`due_date`** = deadline. Overdue tasks still need doing. Set at creation or via `update_tracked_todo`.
 - **`expires_at`** = relevance window. Expired tasks are skipped entirely.
 - Both can be set together (e.g., "file taxes": due April 15, expires April 15).
 - Don't set `expires_at` on open-ended tasks with no natural expiry.
@@ -268,20 +270,22 @@ create_tracked_todo(
 # - 2026-03-25T14:02:00+00:00 Gmail agent: sent email re: Q2 contract. Tools: GMAIL_CREATE_DRAFT → GMAIL_SEND_DRAFT. Thread ID: 18f3a2b.
 ```
 
-### Recurring: daily check
+### Recurring: work that writes, then reports
 
 ```python
 create_tracked_todo(
-    title="Daily HN top posts summary", scheduled_at="2026-03-26T08:00:00Z", recurrence="daily"
+    title="Inbox desk",
+    description="Each morning: open a thread todo per email that needs a reply, save reply drafts, then brief the user.",
+    recurrence="0 8 * * *",
 )
 ```
+
+A daily summary that only reads (top news, "what's in my inbox") gets no tracked todo.
 
 ### Recurring: weekday cron
 
 ```python
-create_tracked_todo(
-    title="Weekday standup prep", scheduled_at="2026-03-26T09:00:00Z", recurrence="0 9 * * 1-5"
-)
+create_tracked_todo(title="Weekday standup prep", recurrence="0 9 * * 1-5")
 ```
 
 ### Update after creation

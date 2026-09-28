@@ -99,7 +99,9 @@ GAIA owns them and keeps working notes as files (a recall doc plus a dated activ
 log) so it can act on them over time. They are distinct from the user's own
 hand-created action items. Create one only when GAIA performs or schedules a real
 action on an external system it needs to remember, follow up on, or repeat; never
-for read-only work (fetching, listing, summarizing), no matter how often it runs.
+for work that only reads (fetching, listing, summarizing), no matter how often it
+runs. Recurring work that also writes on the user's behalf (an inbox desk that saves
+reply drafts) qualifies even when its final message is a summary.
 When the user says "email Rahul about the contract" and months later asks "what
 happened with Rahul's contract?", the tracked todo and its canvas surface the answer.
 

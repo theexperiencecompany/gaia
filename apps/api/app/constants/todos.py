@@ -113,3 +113,6 @@ CANVAS_SECTIONS: Final[tuple[str, ...]] = (
 
 # How much of an existing todo's Current State a refused duplicate create shows.
 EXISTING_TODO_STATE_EXCERPT_CHARS: Final[int] = 400
+
+# Most todos list_tracked_todos returns, filtered or not; the freshest win.
+LIST_TRACKED_TODOS_LIMIT: Final[int] = 50
