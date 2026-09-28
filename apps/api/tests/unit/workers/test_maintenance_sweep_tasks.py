@@ -301,10 +301,14 @@ class TestHealthCheckExpired:
                 AsyncMock(return_value="NOTIFY: Your todo expired and needs a decision."),
             ),
             patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.record_activity", AsyncMock()) as activity,
         ):
             outcome = await _health_check_expired(_doc(title="Ship the report"), pool)
 
         assert outcome == "notified"
+        activity.assert_awaited_once_with(
+            "todo-1", "user-1", TodoActivityEvent.MAINTENANCE, "told the user this todo expired"
+        )
         request = notify.await_args.args[0]
         assert request.user_id == "user-1"
         assert request.source == NotificationSourceEnum.BACKGROUND_JOB
@@ -437,6 +441,7 @@ class TestNotifyOverdue:
         with (
             patch(f"{MODULE}.notification_service.create_notification", notify),
             patch(f"{MODULE}.todo_repository.add_labels", add_labels),
+            patch(f"{MODULE}.record_activity", AsyncMock()) as activity,
         ):
             # due_date is relative to real now — _notify_overdue computes
             # "days overdue" from its own clock, not the test's frozen NOW.
@@ -450,6 +455,12 @@ class TestNotifyOverdue:
         assert request.content.title == "Overdue: Pay the invoice"
         assert "2 days ago" in request.content.body
         add_labels.assert_awaited_once_with("todo-1", user_id="user-1", labels=["needs-follow-up"])
+        activity.assert_awaited_once_with(
+            "todo-1",
+            "user-1",
+            TodoActivityEvent.MAINTENANCE,
+            "told the user it is 2 day(s) overdue with nothing scheduled",
+        )
 
     async def test_muted_overdue_sends_nothing(self):
         pool = _pool()

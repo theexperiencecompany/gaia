@@ -137,6 +137,22 @@ class TestCreateTrackedTodo:
             f"{update.canvas_content}\n\n- did x\n\n- 2026-09-13T12:00:00+00:00 [created]"
         )
 
+    async def test_the_creation_entry_names_its_conversation_at_the_creation_time(
+        self, mock_repo, mock_deps
+    ):
+        mock_deps.create.return_value = _todo_response()
+        fixed = datetime(2026, 9, 13, 12, 0, tzinfo=UTC)
+
+        with patch(f"{_MOD}.datetime") as m_now:
+            m_now.now.return_value = fixed
+            await TrackedTodoService.create_tracked_todo(
+                USER_ID, "Prepare Q3 report", source_conversation_id="0123abcd-ffff-4444"
+            )
+
+        assert mock_repo.update.await_args.kwargs["update"].activity_content == (
+            "- 2026-09-13T12:00:00+00:00 [created] from conversation 0123abcd"
+        )
+
     async def test_an_initial_canvas_missing_sections_gets_them(self, mock_repo, mock_deps):
         """A canvas a later edit would refuse for its shape must not be created in that shape."""
         mock_deps.create.return_value = _todo_response()

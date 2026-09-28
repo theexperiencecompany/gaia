@@ -1,6 +1,6 @@
 """The code-written entries of a tracked todo's activity.md timeline."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -23,6 +23,11 @@ class TestActivityLine:
 
     def test_an_entry_with_no_detail_has_no_trailing_space(self) -> None:
         assert activity_line(TodoActivityEvent.CREATED, "", at=AT).endswith("[created]")
+
+    def test_an_unstamped_entry_is_stamped_now_in_utc(self) -> None:
+        stamp = activity_line(TodoActivityEvent.CREATED, "").split(" ")[1]
+
+        assert datetime.fromisoformat(stamp).utcoffset() == timedelta(0)
 
 
 class TestRecordActivity:
@@ -88,6 +93,17 @@ class TestRecordFieldChanges:
         assert entries == [
             ("delivery_changed", "runs never message the user, by GAIA in conversation 00f7c88f")
         ]
+
+    async def test_turning_delivery_on_is_recorded(self) -> None:
+        entries = await self._recorded(TodoUpdateRequest(notify_on_run=True))
+
+        assert entries == [
+            ("delivery_changed", "runs may message the user, by GAIA in conversation 00f7c88f")
+        ]
+
+    async def test_a_delivery_setting_sent_as_null_records_nothing(self) -> None:
+        """An explicit null leaves the setting as it was, so nothing changed."""
+        assert await self._recorded(TodoUpdateRequest(notify_on_run=None)) == []
 
     async def test_fields_the_update_did_not_set_record_nothing(self) -> None:
         assert await self._recorded(TodoUpdateRequest(title="renamed", priority=None)) == []

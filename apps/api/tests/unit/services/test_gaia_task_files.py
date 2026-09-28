@@ -258,6 +258,35 @@ class TestWriteFile:
         canvas.assert_not_awaited()
         syslog.assert_not_awaited()
 
+    async def test_a_canvas_refusal_says_every_problem_and_the_shape_to_keep(self, writers):
+        body = VALID_CANVAS + "\n## Learnings\nagain\n\n### 2026-09-26 research\n- found\n"
+
+        refusal = await write_file(TaskFile(_doc(), GaiaTaskFile.CANVAS), USER_ID, body)
+
+        assert refusal == (
+            'Error: canvas.md was not saved: merge the 2 "## Learnings" sections into one; '
+            'move the dated "### YYYY-MM-DD" entries into activity.md. The canvas keeps one '
+            "section each for Key Details, Current State, Context, Learnings (plus any of "
+            "your own); dated entries and run logs belong in activity.md."
+        )
+
+    async def test_an_activity_refusal_says_how_to_append(self, writers):
+        refusal = await write_file(TaskFile(_doc(), GaiaTaskFile.ACTIVITY), USER_ID, "- replaced")
+
+        assert refusal == (
+            "Error: activity.md is append-only. Keep every existing entry exactly as it is and "
+            "add yours at the end; read the file again, since entries may have been added "
+            "since you last read it."
+        )
+
+    async def test_an_append_after_a_stored_trailing_newline_is_accepted(self, writers):
+        _canvas, activity, _syslog = writers
+        doc = _doc(activity_content="- 2026-09-01T09:00:00+00:00 started\n")
+        appended = "- 2026-09-01T09:00:00+00:00 started\n- 2026-09-02T10:00:00+00:00 replied"
+
+        assert await write_file(TaskFile(doc, GaiaTaskFile.ACTIVITY), USER_ID, appended) is None
+        activity.assert_awaited_once()
+
     async def test_activity_write_goes_to_mongo(self, writers):
         canvas, activity, syslog = writers
         doc = _doc()

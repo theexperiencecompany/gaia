@@ -116,6 +116,8 @@ def activity() -> Iterator[AsyncMock]:
 
 
 def _recorded(activity: AsyncMock) -> list[tuple[TodoActivityEvent, str]]:
+    """Return (event, detail) of every entry, after checking each landed on todo-1's owner."""
+    assert {c.args[:2] for c in activity.await_args_list} <= {("todo-1", "user-1")}
     return [(c.args[2], c.args[3]) for c in activity.await_args_list]
 
 
@@ -264,6 +266,7 @@ class TestTriggeredExecutionLock:
 
         assert result.startswith("dropped:todo-1")
         enqueue.assert_not_awaited()
+        repo.get_by_id.assert_awaited_once_with("todo-1")
         # The lost event is on the todo's own timeline, not only in the logs.
         todo_id, user_id, event, detail = recorded.await_args.args
         assert (todo_id, user_id, event) == ("todo-1", "user-1", TodoActivityEvent.RUN_SKIPPED)
@@ -581,7 +584,9 @@ class TestExecuteTodoWithRetryEarlyExits:
         past = datetime.now(UTC) - timedelta(seconds=1)
         _result, repo, _run = await self._run(_doc(expires_at=past))
 
-        assert _updates(repo) == [{"scheduled_at": None}]
+        repo.update.assert_awaited_once_with(
+            "todo-1", user_id="user-1", update=TodoUpdate(scheduled_at=None)
+        )
         ((event, detail),) = _recorded(activity)
         assert event is TodoActivityEvent.RUN_SKIPPED
         assert detail == f"not run: the todo expired at {past.isoformat()}"
@@ -1261,6 +1266,14 @@ class TestExecuteOnExecutor:
 
         _start, failed = self._entries()
         assert failed == "[run_failed] scheduled run failed (TimeoutError: executor stalled)"
+        assert {c.args[:2] for c in self.timeline.call_args_list} == {("todo-1", "user-1")}
+
+    async def test_a_long_failure_reason_is_cut_to_160_characters(self):
+        with pytest.raises(RuntimeError):
+            await self._execute(run=AsyncMock(side_effect=RuntimeError("x" * 200)))
+
+        _start, failed = self._entries()
+        assert failed == f"[run_failed] scheduled run failed (RuntimeError: {'x' * 160})"
 
 
 # ---------------------------------------------------------------------------
@@ -1301,8 +1314,12 @@ class TestMarkTodoFailed:
         ):
             await _mark_todo_failed("todo-1", "user-1", _doc())
 
-        ((todo_id, user_id, event, _detail),) = (c.args for c in activity.await_args_list)
+        ((todo_id, user_id, event, detail),) = (c.args for c in activity.await_args_list)
         assert (todo_id, user_id, event) == ("todo-1", "user-1", TodoActivityEvent.MARKED_FAILED)
+        assert detail == (
+            f"stopped after {MAX_RETRY_ATTEMPTS} failed attempts; runs resume once the failed "
+            "label is removed"
+        )
 
     async def test_a_notification_failure_never_loses_the_failed_label(self):
         repo = MagicMock()
@@ -1584,6 +1601,15 @@ class TestResumeTrackedTodo:
         assert run.entries()[-1] == "[run_failed] approval resume failed (RuntimeError: model down)"
         assert run.timeline.call_args_list[-1].args[:2] == ("todo-1", "user-7")
         run.pool.delete.assert_awaited_once_with("gaia_todo_exec:todo-1")
+
+    async def test_a_long_resume_failure_is_cut_to_160_characters(self) -> None:
+        run = self._build(agent=AsyncMock(side_effect=RuntimeError("y" * 200)))
+        with self._patched(run), pytest.raises(RuntimeError):
+            await resume_tracked_todo({}, "todo-1", "conv-parked", "ap_1", "Send briefing")
+
+        assert run.entries()[-1] == (
+            f"[run_failed] approval resume failed (RuntimeError: {'y' * 160})"
+        )
 
     async def test_completed_todo_needs_no_resume(self) -> None:
         run = await self._resume(

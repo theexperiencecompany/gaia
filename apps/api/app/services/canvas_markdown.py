@@ -39,8 +39,8 @@ def bounded_canvas(canvas: str) -> str:
 
 
 def _section_span(text: str, heading: str) -> tuple[int, int, int] | None:
-    """(heading_start, body_start, section_end) for an exact "## {heading}" line."""
-    pattern = re.compile(rf"(?:^|(?<=\n))## {re.escape(heading)}(?=\n|\Z)")
+    """(heading_start, body_start, section_end) for a "## {heading}" line, trailing blanks allowed."""
+    pattern = re.compile(rf"(?:^|(?<=\n))## {re.escape(heading)}[ \t]*(?=\n|\Z)")
     match = pattern.search(text)
     if match is None:
         return None
@@ -201,18 +201,21 @@ def canvas_problems(canvas: str) -> list[str]:
 
 def _merge_duplicate_sections(canvas: str) -> str:
     """Fold every repeat of a "## " section into its first occurrence."""
-    for heading in dict.fromkeys(_headings(canvas)):
-        while _headings(canvas).count(heading) > 1:
-            first = _section_span(canvas, heading)
-            if first is None:
-                break
-            rest = canvas[first[2] :]
-            rest, repeat_body = _remove_section(rest, heading)
-            canvas = canvas[: first[2]].rstrip("\n")
-            if repeat_body:
-                canvas += f"\n{repeat_body}"
-            canvas += ("\n" if rest.startswith("\n") else "\n\n") + rest.lstrip("\n")
-    return canvas
+    headings = _headings(canvas)
+    if len(set(headings)) == len(headings):
+        return canvas
+    preamble, *segments = _SECTION_START_RE.split(f"\n{canvas}")
+    bodies: dict[str, list[str]] = {}
+    for segment in segments:
+        # Every segment after the split is "\n## <heading>\n<body>".
+        heading_line, _, body = segment.removeprefix("\n").partition("\n")
+        heading = heading_line.removeprefix("## ").rstrip()
+        bodies.setdefault(heading, []).append(body.strip("\n"))
+    sections = [
+        "\n".join([f"## {heading}", *(part for part in parts if part)])
+        for heading, parts in bodies.items()
+    ]
+    return "\n\n".join(filter(None, [preamble.strip("\n"), *sections])) + "\n"
 
 
 def normalize_canvas(canvas: str) -> tuple[str, str | None]:

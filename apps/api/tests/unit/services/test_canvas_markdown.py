@@ -404,3 +404,69 @@ class TestNormalizeCanvas:
         assert section_body(canvas, "Context") == "Why we track it."
         assert "## Research" in canvas
         assert normalize_canvas(canvas) == (canvas, None)
+
+    def test_repeats_merge_into_the_first_with_sections_a_blank_line_apart(self) -> None:
+        canvas, moved = normalize_canvas(
+            "## Key Details\na\n\n## Current State\ns\n\n## Key Details\nb\n\n"
+            "## Context\n\n## Learnings\nx\n\n## Learnings\ny"
+        )
+
+        assert moved is None
+        assert canvas == (
+            "## Key Details\na\nb\n\n## Current State\ns\n\n## Context\n\n## Learnings\nx\ny\n"
+        )
+
+    def test_a_heading_with_trailing_spaces_is_the_same_section(self) -> None:
+        """Regression: "## Context " twice survived the sweep, and the write check refused the result."""
+        canvas, _ = normalize_canvas(
+            "## Key Details\n\n## Current State\n\n## Context \nc1\n\n## Context\nc2\n\n## Learnings\n"
+        )
+
+        assert canvas_problems(canvas) == []
+        assert section_body(canvas, "Context") == "c1\nc2"
+
+    def test_every_log_section_moves_out_a_blank_line_apart(self) -> None:
+        canvas, moved = normalize_canvas(
+            "## Key Details\n\n## Activity Log\n- a\n\n## History\n- b\n\n"
+            "## Current State\n\n## Context\n\n## Learnings\n"
+        )
+
+        assert moved == "- a\n\n- b"
+        assert canvas == "## Key Details\n\n## Current State\n\n## Context\n\n## Learnings\n"
+
+    def test_the_result_ends_in_exactly_one_newline(self) -> None:
+        canvas, _ = normalize_canvas(
+            "## Key Details\nk\n\n## Current State\n\n## Context\n\n## Learnings\nl"
+        )
+
+        assert canvas == "## Key Details\nk\n\n## Current State\n\n## Context\n\n## Learnings\nl\n"
+
+    @pytest.mark.parametrize(
+        "preamble",
+        ["# Ship the BOX", "# Ship the box "],
+        ids=["ends-in-a-letter", "ends-in-a-space"],
+    )
+    def test_merging_keeps_the_title_line_and_indented_bodies_as_written(
+        self, preamble: str
+    ) -> None:
+        canvas, _ = normalize_canvas(
+            f"{preamble}\n\n## Key Details\n  - owner: MAX\n\n## Current State\n\n"
+            "## Key Details\n  - due: Friday X\n\n## Context\n\n## Learnings\n"
+        )
+
+        assert canvas == (
+            f"{preamble}\n\n## Key Details\n  - owner: MAX\n  - due: Friday X\n\n"
+            "## Current State\n\n## Context\n\n## Learnings\n"
+        )
+
+
+class TestWithMissingSectionsKeepsTheLastLine:
+    @pytest.mark.parametrize("last_line", ["- owner: MAX", "- owner: max  "])
+    def test_only_trailing_newlines_are_dropped_before_the_added_sections(
+        self, last_line: str
+    ) -> None:
+        canvas = with_missing_sections(f"## Key Details\n{last_line}\n")
+
+        assert canvas == (
+            f"## Key Details\n{last_line}\n\n## Current State\n\n## Context\n\n## Learnings\n"
+        )

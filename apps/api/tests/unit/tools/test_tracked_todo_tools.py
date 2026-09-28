@@ -696,8 +696,8 @@ class TestPersistSchedulingFields:
                 "t1", "u1", _FUTURE, "daily", None, by="GAIA in conversation c1"
             )
         assert error is None
-        mock_update.assert_awaited_once()
         update_arg = mock_update.await_args.kwargs["update"]
+        mock_update.assert_awaited_once_with("t1", user_id="u1", update=update_arg)
         assert update_arg.scheduled_at == _FUTURE
         assert update_arg.recurrence == "daily"
         # The first schedule is on the timeline with who set it, like any later one.
@@ -1319,6 +1319,39 @@ class TestCreateTrackedTodoSuccess:
                 title="t",
             )
         assert create.await_args.kwargs["source_conversation_id"] == "conv-9"
+
+    @pytest.mark.parametrize(
+        ("configurable", "actor"),
+        [
+            ({"conversation_id": "00f7c88f-4ac1-4169"}, "GAIA in conversation 00f7c88f"),
+            ({}, "GAIA"),
+        ],
+        ids=["from-a-conversation", "outside-a-conversation"],
+    )
+    async def test_the_first_schedule_names_who_set_it(self, recorded_changes, configurable, actor):
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+                new_callable=AsyncMock,
+                return_value=self._response(),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.update",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+        ):
+            await create_tracked_todo.coroutine(
+                config={"configurable": configurable, "metadata": {"user_id": "user-1"}},
+                title="t",
+                scheduled_at=_FUTURE_ISO,
+            )
+
+        assert recorded_changes.await_args.kwargs == {"by": actor}
 
     async def test_create_with_scheduled_at_persists_and_schedules(self):
         with (
