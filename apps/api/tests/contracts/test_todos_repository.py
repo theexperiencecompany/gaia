@@ -609,6 +609,9 @@ class TestUpdateIfScheduledAt:
         )
 
         assert updated is not None and updated.scheduled_at == due + timedelta(days=1)
+        # Read back through the user's cache scope, which the earlier get populated.
+        reread = await repo.get(created.id, user_id="u1")
+        assert reread is not None and reread.scheduled_at == due + timedelta(days=1)
 
     async def test_a_schedule_set_meanwhile_is_kept(self, repo, make_doc):
         due = datetime(2026, 9, 27, 9, 0, tzinfo=UTC)
