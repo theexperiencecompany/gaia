@@ -205,6 +205,10 @@ class TestReturnsFoldNullIntoOptional:
                 "{x:int|str}",
             ),
             ({"properties": {"x": True}, "required": ["x"]}, "{x:any}"),
+            (
+                {"properties": {"x": {"anyOf": [True, {"type": "string"}]}}, "required": ["x"]},
+                "{x:str}",
+            ),
             ({"anyOf": [{"type": "null"}]}, "null"),
             ({"type": ["null"]}, "null"),
             (
@@ -226,6 +230,7 @@ class TestReturnsFoldNullIntoOptional:
             "a_null_only_union_field_stays_required",
             "a_union_without_null_stays_required",
             "a_non_schema_field_stays_required",
+            "a_non_schema_arm_is_not_null",
             "a_null_only_union_stays",
             "a_null_only_type_list_stays",
             "nested_in_array_items",

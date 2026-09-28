@@ -13,7 +13,7 @@ from typing import cast
 
 from pydantic import JsonValue
 
-from app.models.json_schema_models import JsonSchemaNode
+from app.models.json_schema_models import JsonSchemaNode, JsonSchemaRef
 from app.utils.general_utils import clip_text
 
 # Returns: a larger enum renders as its base type. Args list more members,
@@ -22,7 +22,6 @@ _COMPACT_ENUM_MAX_MEMBERS = 6
 _ARG_ENUM_MAX_MEMBERS = 25
 _ANY = "any"
 _NULL = "null"
-_UNION_KEYS = ("anyOf", "oneOf")
 _COMPACT_PRIMITIVES = {
     "string": "str",
     "integer": "int",
@@ -116,7 +115,7 @@ def _inline(
         for key, value in node.items()
         if key not in _DEFS_KEYS and key != "$ref"
     }
-    name = _local_ref_name(node.get("$ref"))
+    name = _local_ref_name(JsonSchemaRef.model_validate(node).ref)
     if name is None or name not in definitions:
         return rest
     if name in expanding:
@@ -132,24 +131,32 @@ def _without_null(node: JsonValue) -> JsonValue:
         return [_without_null(item) for item in node]
     if not isinstance(node, dict):
         return node
-    folded = {key: _without_null(value) for key, value in node.items()}
-    properties = node.get("properties")
+    schema: JsonSchemaNode = cast(JsonSchemaNode, node)
+    folded: JsonSchemaNode = cast(
+        JsonSchemaNode, {key: _without_null(value) for key, value in node.items()}
+    )
+    properties = schema.get("properties")
     required = folded.get("required")
     if isinstance(properties, dict) and isinstance(required, list):
         nullable = {name for name, sub in properties.items() if _is_nullable(sub)}
         folded["required"] = [name for name in required if name not in nullable]
-    for key in _UNION_KEYS:
-        arms = folded.get(key)
-        if isinstance(arms, list):
-            kept = [arm for arm in arms if not _is_null(arm)]
-            if kept:
-                folded[key] = kept
+    if "anyOf" in folded:
+        folded["anyOf"] = _without_null_arms(folded["anyOf"])
+    if "oneOf" in folded:
+        folded["oneOf"] = _without_null_arms(folded["oneOf"])
     type_ = folded.get("type")
     if isinstance(type_, list):
         kept_types = [t for t in type_ if t != _NULL]
         if kept_types:
             folded["type"] = kept_types
-    return folded
+    return cast(JsonValue, folded)
+
+
+def _without_null_arms(arms: JsonValue) -> JsonValue:
+    """A union's arms minus the null ones; a union of null alone stays as it is."""
+    if not isinstance(arms, list):
+        return arms
+    return [arm for arm in arms if not _is_null(arm)] or arms
 
 
 def _is_nullable(node: JsonValue) -> bool:
@@ -162,7 +169,10 @@ def _is_nullable(node: JsonValue) -> bool:
 
 
 def _is_null(node: JsonValue) -> bool:
-    return isinstance(node, dict) and node.get("type") == _NULL
+    if not isinstance(node, dict):
+        return False
+    schema: JsonSchemaNode = cast(JsonSchemaNode, node)
+    return schema.get("type") == _NULL
 
 
 def _local_ref_name(ref: JsonValue) -> str | None:
@@ -343,7 +353,8 @@ def _field_comment(node: JsonValue, description_cap: int | None) -> str:
     if not isinstance(node, dict):
         return ""
     parts: list[str] = []
-    description = node.get("description")
+    schema: JsonSchemaNode = cast(JsonSchemaNode, node)
+    description = schema.get("description")
     if description_cap != 0 and isinstance(description, str) and description.strip():
         text = " ".join(description.split())
         parts.append(text if description_cap is None else clip_text(text, description_cap))

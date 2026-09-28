@@ -38,7 +38,7 @@ class ToolContract(BaseModel):
     compact_output_type: str | None = None
 
     @property
-    def effective_output_schema(self) -> dict[str, Any] | None:
+    def effective_output_schema(self) -> dict[str, JsonValue] | None:
         """The provider's return shape, else the one observed from real calls."""
         return self.provider_output_schema or self.observed_output_schema
 

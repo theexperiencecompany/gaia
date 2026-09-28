@@ -17,6 +17,7 @@ from pydantic import ValidationError
 
 from app.constants.log_tags import LogTag
 from app.models.integrations.composio_hooks import (
+    ComposioDataError,
     ComposioToolCall,
     ComposioToolResponse,
     RunnableConfigTransport,
@@ -219,7 +220,7 @@ def _failed_envelope(response: ToolExecutionResponse) -> ToolExecutionResponse |
     if not envelope.successful:
         return response
     data = envelope.data
-    error = data.get("error") if isinstance(data, dict) else None
+    error = ComposioDataError.model_validate(data).error if isinstance(data, dict) else None
     if not error:
         return None
     text = error if isinstance(error, str) else json.dumps(error)
