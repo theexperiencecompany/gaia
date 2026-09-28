@@ -6,6 +6,7 @@ trigger ids alone finds nothing there — and that is the entire reply-watching
 flow, failing silently.
 """
 
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -77,11 +78,13 @@ def deps():
         patch(f"{_MOD}.tracked_todo_service.complete_tracked_todo", new_callable=AsyncMock) as done,
         patch(f"{_MOD}.capture_event") as capture,
         patch(f"{_MOD}.record_activity", new_callable=AsyncMock) as activity,
+        patch(f"{_MOD}.buffer_todo_trigger_event", new_callable=AsyncMock) as hold,
     ):
         repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
         repo.find_active_by_user_and_trigger = AsyncMock(return_value=[])
         repo.update = AsyncMock(return_value=None)
         redis.redis = MagicMock(set=AsyncMock(return_value=True))
+        hold.return_value = True
         yield SimpleNamespace(
             repo=repo,
             redis=redis,
@@ -91,6 +94,7 @@ def deps():
             capture=capture,
             pool=get_pool.return_value,
             activity=activity,
+            hold=hold,
         )
 
 
@@ -316,14 +320,61 @@ class TestGating:
 
     async def test_a_held_cooldown_suppresses_the_repeat(self, deps) -> None:
         deps.redis.redis.set = AsyncMock(return_value=None)  # NX lost the race
-        deps.repo.find_active_by_user_and_trigger.return_value = [_todo()]
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[_subscription(action=SubscriptionAction.NOTIFY)])
+        ]
 
         assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {}) == 0
+        deps.notify.assert_not_awaited()
+
+    async def test_a_held_trigger_window_holds_the_repeat_for_the_next_run(self, deps) -> None:
+        """A second reply inside the window used to be dropped; it must ride the todo's next run."""
+        deps.redis.redis.set = AsyncMock(return_value=None)  # the window is already open
+        sub = _subscription()
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[sub])
+        ]
+        payload = {"thread_id": "t-1", "message_id": "m-2"}
+
+        assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, payload) == 1
+
+        deps.hold.assert_awaited_once_with(
+            TODO_ID, TriggerOrigin(subscription_id=sub.id, trigger_name=GMAIL, payload=payload)
+        )
         deps.enqueue.assert_not_awaited()
+
+    async def test_a_repeat_that_cannot_be_held_runs_now_rather_than_vanish(self, deps) -> None:
+        deps.redis.redis.set = AsyncMock(return_value=None)
+        deps.hold.return_value = False
+        deps.repo.find_active_by_user_and_trigger.return_value = [_todo()]
+
+        assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {}) == 1
+        assert deps.enqueue.await_args.args[1:3] == ("execute_tracked_todo", TODO_ID)
+
+    async def test_execute_claims_the_todos_trigger_window(self, deps) -> None:
+        # One window per todo, so its subscriptions share one run per window.
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(
+                trigger_subscriptions=[
+                    _subscription(cooldown_seconds=300),
+                    _subscription(trigger_name=SLACK, cooldown_seconds=900),
+                ]
+            )
+        ]
+        before = int(time.time())
+
+        await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
+
+        call = deps.redis.redis.set.await_args
+        assert call.args[0] == f"todo_trigger_window:{TODO_ID}"
+        assert before + 900 <= int(call.args[1]) <= int(time.time()) + 900
+        assert call.kwargs["nx"] is True
+        assert call.kwargs["ex"] == 900
+        deps.hold.assert_not_awaited()
 
     async def test_the_cooldown_is_claimed_with_set_if_absent(self, deps) -> None:
         # Read-then-write would let two events in the same second both through.
-        sub = _subscription(cooldown_seconds=900)
+        sub = _subscription(action=SubscriptionAction.NOTIFY, cooldown_seconds=900)
         deps.repo.find_active_by_user_and_trigger.return_value = [
             _todo(trigger_subscriptions=[sub])
         ]
@@ -458,7 +509,6 @@ class TestActions:
         assert isinstance(origin, TriggerOrigin)
         assert origin.trigger_name == GMAIL
         assert origin.payload == payload
-        assert origin.defer_attempts == 0
 
     async def test_notify_sends_a_deep_link_and_changes_nothing(self, deps) -> None:
         sub = _subscription(action=SubscriptionAction.NOTIFY)
@@ -557,16 +607,28 @@ class TestAnalytics:
             "action": "execute",
             "resolution": "account",
             "condition_count": 0,
+            "coalesced": False,
         }
 
     async def test_a_suppressed_fire_is_not_counted(self, deps) -> None:
         # Counting arrivals rather than actions would make every funnel read high.
         deps.redis.redis.set = AsyncMock(return_value=None)
-        deps.repo.find_active_by_user_and_trigger.return_value = [_todo()]
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[_subscription(action=SubscriptionAction.NOTIFY)])
+        ]
 
         await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
 
         deps.capture.assert_not_called()
+
+    async def test_a_held_execute_fire_is_counted_as_coalesced(self, deps) -> None:
+        # It will run, with the todo's next run, so it is a fire, marked as held.
+        deps.redis.redis.set = AsyncMock(return_value=None)
+        deps.repo.find_active_by_user_and_trigger.return_value = [_todo()]
+
+        await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
+
+        assert deps.capture.call_args.args[2]["coalesced"] is True
 
     async def test_a_non_matching_event_is_not_counted(self, deps) -> None:
         deps.repo.find_active_by_user_and_trigger.return_value = [

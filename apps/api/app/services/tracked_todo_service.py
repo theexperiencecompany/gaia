@@ -15,6 +15,7 @@ app/services/todo_canvas_storage.py for the storage primitives. No
 JuiceFS / FUSE mount is required, so tracked todos work in every dev mode.
 """
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from app.constants.todos import (
@@ -298,13 +299,15 @@ class TrackedTodoService:
         scheduled_at: datetime,
         *,
         origin: TriggerOrigin | None = None,
+        coalesced: Sequence[TriggerOrigin] = (),
         defer_until: datetime | None = None,
     ) -> bool:
         """Queue the run armed for scheduled_at; False when that occurrence is already queued.
 
         Store scheduled_at on the todo first: the job id dedupes a repeat enqueue,
         and a fire whose todo has moved off its stamp is dropped as stale, which is
-        how a reschedule retires the job ARQ cannot cancel. defer_until only delays it.
+        how a reschedule retires the job ARQ cannot cancel. defer_until only delays it;
+        a trigger run's retry passes origin and coalesced so it keeps every event it carried.
         """
         # Mongo stores a naive datetime as UTC, so the stamp must name that instant.
         armed_for = scheduled_at if scheduled_at.tzinfo else scheduled_at.replace(tzinfo=UTC)
@@ -316,6 +319,7 @@ class TrackedTodoService:
             todo_id,
             origin,
             stamp,
+            coalesced=list(coalesced),
             _job_id=f"{EXECUTE_TRACKED_TODO_TASK}:{todo_id}:{stamp}",
             _defer_until=defer_until or armed_for,
         )

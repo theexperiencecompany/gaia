@@ -36,6 +36,7 @@ from app.services.triggers.subscription_dispatch import dispatch_to_subscribed_t
 pytestmark = pytest.mark.e2e
 
 _MOD = "app.services.triggers.subscription_dispatch"
+_BATCHING = "app.services.triggers.batching"
 GMAIL = "gmail_new_message"
 GMAIL_SENT = "gmail_email_sent"
 SLACK = "slack_new_message"
@@ -208,24 +209,35 @@ class TestTriggerDispatchAgainstRealInfra:
         assert fired == 1
         assert enqueue.await_count == 1
 
-    async def test_cooldown_suppresses_the_second_fire(self, _new_user) -> None:
-        await _seed_watch(
+    async def test_a_second_fire_inside_the_window_is_held_for_the_next_run(
+        self, _new_user, real_redis
+    ) -> None:
+        todo_id, sub = await _seed_watch(
             _new_user,
             cooldown_seconds=300,
             conditions=[_condition("thread_id", ConditionOperator.EQUALS, "t-1")],
         )
-        payload = {"thread_id": "t-1"}
 
-        with patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue:
-            with patch(f"{_MOD}.capture_event"):
-                first = await dispatch_to_subscribed_todos(GMAIL, None, _new_user, payload)
-                second = await dispatch_to_subscribed_todos(GMAIL, None, _new_user, payload)
+        with (
+            patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue,
+            patch(f"{_BATCHING}.enqueue_worker_job", new_callable=AsyncMock) as drain,
+            patch(f"{_MOD}.capture_event"),
+        ):
+            first = await dispatch_to_subscribed_todos(
+                GMAIL, None, _new_user, {"thread_id": "t-1", "message_id": "m-1"}
+            )
+            second = await dispatch_to_subscribed_todos(
+                GMAIL, None, _new_user, {"thread_id": "t-1", "message_id": "m-2"}
+            )
 
-        # The real Redis SET NX cooldown slot is claimed on the first fire and
-        # still held on the second, within the 300s window.
-        assert first == 1
-        assert second == 0
+        # The real SET NX window is claimed by the first fire, which runs now; the
+        # second lands inside the 300s window and waits in the todo's buffer.
+        assert (first, second) == (1, 1)
         assert enqueue.await_count == 1
+        (held,) = await real_redis.lrange(f"trigger_batch:todo:{todo_id}", 0, -1)
+        origin = TriggerOrigin.model_validate_json(held)
+        assert (origin.subscription_id, origin.payload["message_id"]) == (sub.id, "m-2")
+        assert drain.await_args.args[1:3] == ("execute_tracked_todo", todo_id)
 
     async def test_notify_writes_a_notification_and_leaves_the_todo_open(
         self, _new_user, mongo_db
