@@ -18,6 +18,8 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Any
 
+from pydantic import TypeAdapter
+
 from app.agents.llm.client import PROVIDER_MODELS, next_fallback_provider, openai_lane_available
 from app.config.rate_limits import RateLimitPeriod, get_reset_time, get_time_window_key
 from app.config.settings import settings
@@ -43,6 +45,7 @@ from app.constants.llm import (
 )
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
+from app.models.agent_config import LaneRecord
 from app.models.agent_models import AgentConfigurable
 from app.models.notification.notification_models import (
     NotificationContent,
@@ -55,6 +58,8 @@ from app.services.notification_service import notification_service
 from app.services.payments.payment_service import payment_service
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
+
+_LANE_RECORD: TypeAdapter[LaneRecord] = TypeAdapter(LaneRecord)
 
 #: Every configurable key a lane owns. These must be REPLACED wholesale on a lane
 #: change, never merged into — a leftover key is the previous lane still steering
@@ -95,7 +100,7 @@ class ModelLane:
     provider_pin: dict[str, Any] | None
     max_input_tokens: int
 
-    def to_configurable(self) -> dict[str, Any]:
+    def to_configurable(self) -> LaneRecord:
         """Return the JSON-safe form stored on configurable[LANE_CONFIG_KEY]."""
         return {
             "provider": self.provider,
@@ -124,7 +129,7 @@ class ModelLane:
             keys["model_kwargs"] = self.provider_pin
         return keys
 
-    def rebind(self, configurable: Mapping[str, Any]) -> dict[str, Any]:
+    def rebind(self, configurable: Mapping[str, object]) -> dict[str, object]:
         """Build configurable with THIS lane's binding keys, and the previous lane's cleared.
 
         A plain merge is not enough: LangChain merges a passed config OVER a
@@ -147,12 +152,13 @@ class ModelLane:
         """
         if not isinstance(raw, dict) or "provider" not in raw:
             return None
+        record: LaneRecord = _LANE_RECORD.validate_python(raw)
         return cls(
-            provider=LLMProviderName(raw["provider"]),
-            model=raw.get("model"),
-            reasoning=raw.get("reasoning"),
-            provider_pin=raw.get("provider_pin"),
-            max_input_tokens=int(raw.get("max_input_tokens") or DEFAULT_MAX_TOKENS),
+            provider=LLMProviderName(record["provider"]),
+            model=record.get("model"),
+            reasoning=record.get("reasoning"),
+            provider_pin=record.get("provider_pin"),
+            max_input_tokens=record.get("max_input_tokens") or DEFAULT_MAX_TOKENS,
         )
 
     def fallback(self) -> "ModelLane | None":
@@ -169,7 +175,7 @@ class ModelLane:
         return replace(self, provider=provider, model=model, provider_pin=None, reasoning=None)
 
 
-def _reasoning_for(role: AgentRole) -> dict[str, Any]:
+def _reasoning_for(role: AgentRole) -> dict[str, str]:
     """Return the effort a PAID lane gives each role. The free lane's is fixed in :func:_default_lane.
 
     Comms gets its own knob so it can be raised past the executor's default.

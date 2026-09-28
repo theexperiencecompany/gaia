@@ -278,11 +278,11 @@ HELPER_MAX_OUTPUT_TOKENS = 8_000
 
 # Default reasoning effort for OpenRouter thinking models (executor + subagents),
 # passed to ChatOpenRouter's native `reasoning` field.
-OPENROUTER_REASONING: dict[str, Any] = {"effort": "medium"}
+OPENROUTER_REASONING: dict[str, str] = {"effort": "medium"}
 # Its own constant so raising it doesn't move the executor's default. It sat at
 # "low" while free comms inherited "medium" — a paying user's agent thought LESS
 # than a free user's; paid comms must never be thinner than free.
-PAID_COMMS_REASONING: dict[str, Any] = {"effort": "medium"}
+PAID_COMMS_REASONING: dict[str, str] = {"effort": "medium"}
 
 # Output cap for the env-defined custom dev provider, well under the model's
 # 65,536 ceiling: these cheap lanes RESERVE max_tokens per request, so a 64k cap

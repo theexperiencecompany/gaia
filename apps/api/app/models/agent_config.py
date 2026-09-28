@@ -11,7 +11,7 @@ under the same names, so consumers keep importing from there.
 
 from collections.abc import Mapping
 from enum import StrEnum
-from typing import Any, Literal, TypedDict, cast
+from typing import Any, Literal, NotRequired, TypedDict, cast
 
 from pydantic import BaseModel, ConfigDict
 
@@ -52,6 +52,19 @@ class SubagentResumeItem(TypedDict):
     integration_id: str
     inherited_tool_names: list[str]
     parent_configurable: "AgentConfigurable"
+
+
+class LaneRecord(TypedDict):
+    """The stored form of a resolved model lane, as it rides on configurable["lane"].
+
+    Only provider is guaranteed: a lane written before a field existed lacks it.
+    """
+
+    provider: str
+    model: NotRequired[str | None]
+    reasoning: NotRequired[dict[str, Any] | None]
+    provider_pin: NotRequired[dict[str, Any] | None]
+    max_input_tokens: NotRequired[int]
 
 
 class AgentConfigurable(TypedDict, total=False):
@@ -120,7 +133,7 @@ class AgentConfigurable(TypedDict, total=False):
     # --- model selection ----------------------------------------------------
     #: THE model selection, resolved once per turn and inherited verbatim.
     #: **This is the only model key GAIA code reads.**
-    lane: dict[str, Any]
+    lane: LaneRecord
     #: LangChain's own binding keys, written from ``lane`` and read ONLY by
     #: LangChain's field resolution — the expansion, not the decision.
     provider: str
@@ -230,7 +243,7 @@ class AgentConfigurableView(BaseModel):
     user_preferences: dict[str, object] | None = None
     writing_style: dict[str, object] | None = None
     root_request_id: str | None = None
-    lane: dict[str, object] | None = None
+    lane: LaneRecord | None = None
     #: LangChain's binding key — logged, never used to pick a model (read ``lane``).
     model: str | None = None
     selected_tool: str | None = None
