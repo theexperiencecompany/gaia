@@ -38,7 +38,6 @@ from app.agents.core.background.todo_run import (
 )
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
 from app.constants.agents import AgentTag
-from app.constants.comms import SILENCE_KEYWORD
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.models.chat_models import ConversationSource
 from app.models.todo_models import TodoDocument
@@ -163,6 +162,16 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
         assert f"<{AgentTag.DELIVERY_INSTRUCTIONS}>" in seams.narrate.await_args.kwargs["preamble"]
         seams.repo.get_by_id.assert_awaited_once_with(TODO_ID)
 
+    @pytest.mark.regression
+    async def test_a_silence_bubble_after_the_message_never_reaches_the_chat_app(self) -> None:
+        """Live on Telegram: 7 of 12 deliveries carried the raw <SILENCE> tag after the message."""
+        message = "Your passport expires in 13 days. Please book your renewal appointment."
+        narrated = f"{message}{NEW_MESSAGE_BREAKER}<SILENCE>Within the 30-day threshold.</SILENCE>"
+        with _seams(todo=_todo(), narrated=narrated) as seams:
+            await run_todo_on_executor(_request())
+
+        assert seams.send.await_args.kwargs["notification_text"] == message
+
     async def test_the_run_conversation_is_never_written(self) -> None:
         """It has no transport and does not exist: a save there 404s and drops the result."""
         with _seams(todo=_todo()) as seams:
@@ -246,7 +255,7 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
 
 class TestNothingIsSentWhenNothingShouldBe:
     async def test_a_silenced_result_sends_nothing_and_says_why(self) -> None:
-        silenced = f"{SILENCE_KEYWORD}: no-op wake, nothing changed{NEW_MESSAGE_BREAKER}"
+        silenced = f"<SILENCE>no-op wake, nothing changed</SILENCE>{NEW_MESSAGE_BREAKER}"
         with _seams(todo=_todo(), narrated=silenced) as seams:
             await run_todo_on_executor(_request())
 
@@ -255,7 +264,7 @@ class TestNothingIsSentWhenNothingShouldBe:
         assert seams.capture.call_args.args[2]["outcome"] == "silenced"
 
     async def test_a_reaction_is_not_a_message_for_a_run_nobody_triggered(self) -> None:
-        with _seams(todo=_todo(), narrated="REACT: 👍") as seams:
+        with _seams(todo=_todo(), narrated="<EMOJI>👍</EMOJI>") as seams:
             await run_todo_on_executor(_request())
 
         seams.send.assert_not_awaited()

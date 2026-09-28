@@ -1,3 +1,4 @@
+import { groupReactions } from "@shared/utils";
 import type { MessageReaction } from "@/config/registries/baseMessageRegistry";
 import { cn } from "@/lib/utils";
 
@@ -19,11 +20,6 @@ export function MessageReactions({
 }: MessageReactionsProps) {
   if (reactions.length === 0) return null;
 
-  const grouped = new Map<string, number>();
-  for (const reaction of reactions) {
-    grouped.set(reaction.emoji, (grouped.get(reaction.emoji) ?? 0) + 1);
-  }
-
   return (
     <div
       className={cn(
@@ -31,7 +27,7 @@ export function MessageReactions({
         align === "end" ? "justify-end" : "justify-start",
       )}
     >
-      {[...grouped].map(([emoji, count]) => (
+      {groupReactions(reactions).map(({ emoji, count }) => (
         <span
           key={emoji}
           className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-sm leading-none select-none"

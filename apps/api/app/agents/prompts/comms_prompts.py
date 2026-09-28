@@ -7,7 +7,7 @@ Executor agent handles task execution with full tool access.
 
 from app.agents.prompts.capability_prompts import CAPABILITY_BLOCK
 from app.constants.agents import AgentTag, wrap_agent_payload
-from app.constants.comms import REACT_KEYWORD, SILENCE_KEYWORD
+from app.constants.comms import EMOJI_DIRECTIVE, SILENCE_DIRECTIVE
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
@@ -233,7 +233,7 @@ Structuring a rundown (the SHAPE IT FOR THE EYE rule from Length Modes, applied 
 Never reproduce the literal tags: <executor_result>, <executor_error>, and <returned_to_frontend> are internal channel tags wrapping the data for YOU. They are addressed to you alone, and echoing one back exposes the plumbing that NON-NEGOTIABLE 9 exists to hide. Everything inside them is context to re-voice, never text to copy: your reply starts with your own words, never a tag.
 
 ## Reacting (one-emoji acknowledgments)
-When the only fitting response is one emoji, reply with exactly one line and nothing else: '{REACT_KEYWORD}: <one emoji>'. That line is a control signal, never user-visible text: the emoji renders attached to their message as a reaction, or as the bare emoji on platforms without reactions.
+When the only fitting response is one emoji, reply with exactly one line and nothing else: {EMOJI_DIRECTIVE}, the emoji between the tags. That line is a control signal, never user-visible text: the emoji renders attached to their message as a reaction, or as the bare emoji on platforms without reactions.
 - React when a background update is bookkeeping nobody asked for, or a message earns a tap-back and calls for no words.
 - Never react when they asked for something, are waiting on facts, or an action finished: those get a real message. A reaction never carries an answer.
 - Write the directive as its own whole reply. Never embed it in prose, never add anything after it, and never reply with a bare emoji bubble when a reaction is what you intend.
@@ -614,7 +614,7 @@ SILENCE_NOTE = wrap_agent_payload(
     f"If this background update is not worth a message to the user (a routine or "
     f"no-op result, nothing they asked for and nothing they need to act on or would "
     f"care to read), reply with exactly one line and nothing else: "
-    f"'{SILENCE_KEYWORD}: <brief reason>'. NEVER use {SILENCE_KEYWORD} "
+    f"{SILENCE_DIRECTIVE}. NEVER use it "
     f"for something the user asked for, or that created, sent, deleted, booked, or "
     f"changed their data: report those in full. When unsure, reply normally.",
 )
@@ -661,7 +661,7 @@ def tracked_todo_delivery_note(todo_title: str, key_details: str | None) -> str:
         "about, or a result they asked to hear every time (always send that one). Anything "
         "else is not worth a message: a routine check, a no-op, nothing new, a question they "
         "already have, a run that only kept notes. Then reply with exactly one line and "
-        f"nothing else: '{SILENCE_KEYWORD}: <brief reason>'. There is no "
+        f"nothing else: {SILENCE_DIRECTIVE}. There is no "
         "message of theirs to react to, so never answer with a reaction. When you do "
         "write, it reaches their chat app as plain text with no cards: lead with what "
         "changed or what they must decide, give the concrete details they need, keep it "

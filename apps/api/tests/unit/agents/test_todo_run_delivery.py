@@ -143,7 +143,7 @@ class TestTheWideEventSaysWhatHappened:
         }
 
     async def test_a_silenced_result_keeps_the_reason(self) -> None:
-        with _seams(todo=_todo(), narrated="SILENCE: routine check"):
+        with _seams(todo=_todo(), narrated="<SILENCE>routine check</SILENCE>"):
             async with captured_wide_event() as event:
                 await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
@@ -178,7 +178,7 @@ class TestTheWideEventSaysWhatHappened:
         assert error["todo_id"] == "todo-1"
 
     async def test_a_reaction_is_an_error_naming_the_emoji(self) -> None:
-        with _seams(todo=_todo(), narrated="REACT: 👍"):
+        with _seams(todo=_todo(), narrated="<EMOJI>👍</EMOJI>"):
             async with captured_wide_event() as event:
                 await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 

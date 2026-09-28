@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ReactionFoldable } from "./reactions";
-import { foldReactionAcks, isReactionAck } from "./reactions";
+import { foldReactionAcks, groupReactions, isReactionAck } from "./reactions";
 
 interface ContentMessage extends ReactionFoldable {
   content: string;
@@ -158,5 +158,20 @@ describe("isReactionAck", () => {
     expect(
       isReactionAck(contentMessage({ id: "a", content: "👍" }), contentText),
     ).toBe(false);
+  });
+});
+
+describe("groupReactions", () => {
+  it("collapses same-emoji reactions into one counted pill, in first-seen order", () => {
+    expect(
+      groupReactions([
+        { emoji: "👍", ackId: "a" },
+        { emoji: "✅", ackId: "b" },
+        { emoji: "👍", ackId: "c" },
+      ]),
+    ).toEqual([
+      { emoji: "👍", count: 2 },
+      { emoji: "✅", count: 1 },
+    ]);
   });
 });

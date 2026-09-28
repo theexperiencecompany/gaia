@@ -232,12 +232,11 @@ class EmojiAckPayload(BaseModel):
 
 
 class EmojiAckFrame(BaseModel):
-    """The turn resolved to comms' ``REACT: <emoji>`` control line.
+    """The turn resolved to comms' ``<EMOJI>…</EMOJI>`` control tag.
 
-    The model streams the directive as ordinary text, so by the time the full
-    reply is known the client has already shown it as a bubble. This frame tells
-    the client to take that back: the emoji is a reaction badge attached to the
-    ``reacts_to_message_id`` message, never a bubble of its own. Only emitted on
+    The driver never streams a directive's text (visible_comms_text), so this
+    frame is the turn's whole visible outcome: the emoji is a reaction badge on
+    the ``reacts_to_message_id`` message, never a bubble of its own. Only emitted on
     the interactive path (background executor results announce the same outcome
     over the WebSocket notification instead).
     """
