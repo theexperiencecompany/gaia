@@ -32,6 +32,7 @@ from app.constants.llm import (
 )
 from app.constants.log_tags import LogTag
 from app.constants.summarization import (
+    COMMS_SUMMARIZATION_TRIGGER_TOKENS,
     COMPACTION_THRESHOLD,
     MAX_OUTPUT_CHARS,
     SUMMARIZATION_KEEP_TOKENS,
@@ -255,7 +256,10 @@ def create_comms_middleware(chat_llm: LanguageModelLike | None = None) -> AgentM
         agent_name="comms_agent",
         chat_llm=chat_llm,
         subagent=SubagentStackOptions(enabled=False),
-        context=ContextOptions(compact=False),
+        context=ContextOptions(
+            compact=False,
+            summarization_trigger=("tokens", COMMS_SUMMARIZATION_TRIGGER_TOKENS),
+        ),
     )
     # Innermost of all: the retry has to happen before anything reads the
     # completion, so what the turn delivers is the model's real reply rather
