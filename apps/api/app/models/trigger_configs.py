@@ -10,9 +10,9 @@ To add a new trigger:
 3. Add the class to the TriggerConfigData union
 """
 
-from typing import Annotated, Any, Literal, Union
+from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, Discriminator, Field, model_validator
+from pydantic import AliasChoices, BaseModel, Discriminator, Field
 
 # Upper bound for the Gmail polling interval. Allows day-scale intervals (e.g.
 # a weekly digest) while staying within a sane range Composio will accept.
@@ -328,25 +328,17 @@ class AsanaTaskTriggerConfig(BaseTriggerConfigData):
     """Config for asana_task_trigger (Composio ASANA_TASK_CREATED)."""
 
     trigger_name: Literal["asana_task_trigger"] = "asana_task_trigger"
+    # Stored workflows from the retired unscoped trigger carry `project_id`; reading
+    # it here keeps their project scope instead of failing registration.
     project_gid: str = Field(
         default="",
+        validation_alias=AliasChoices("project_gid", "project_id"),
         description="Asana GID of the project to monitor",
     )
     workspace_id: str = Field(
         default="",
         description="Legacy field; ignored by the current Composio trigger config",
     )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _migrate_legacy_project_id(cls, data: Any) -> Any:  # noqa: ANN401 -- forwards raw stored document into pydantic validation
-        # Stored workflows from the retired unscoped trigger carry `project_id`;
-        # migrate it so registration keeps the project scope instead of failing.
-        if isinstance(data, dict) and not data.get("project_gid"):
-            legacy = data.get("project_id")
-            if legacy:
-                data["project_gid"] = legacy
-        return data
 
 
 # =============================================================================

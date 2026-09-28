@@ -6,7 +6,7 @@ Handles the account-level Gmail triggers: new inbox messages and mail the user s
 
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Any, ClassVar, NamedTuple
+from typing import ClassVar, NamedTuple
 
 from pydantic import BaseModel, ValidationError
 
@@ -14,6 +14,7 @@ from app.constants.log_tags import LogTag
 from app.constants.triggers import GMAIL_EMAIL_SENT_COMPOSIO_SLUG, GMAIL_EMAIL_SENT_TRIGGER_NAME
 from app.db.repositories.workflows import workflow_repository
 from app.models.composio_schemas import GmailEmailSentPayload, GmailNewMessagePayload
+from app.models.webhook_models import ComposioTriggerEventIds
 from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.triggers.base import TriggerHandler
 from app.services.triggers.scope_catalog import TRIGGER_CONFIG_CLASSES
@@ -90,7 +91,7 @@ class GmailTriggerHandler(TriggerHandler):
         return []  # No explicit trigger IDs for Gmail
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: dict[str, Any]
+        self, event_type: str, trigger_id: str, data: dict[str, object]
     ) -> list[Workflow]:
         """Find workflows for a Gmail event.
 
@@ -109,7 +110,7 @@ class GmailTriggerHandler(TriggerHandler):
                     error_type=type(e).__name__,
                 )
 
-            user_id = data.get("user_id")
+            user_id = ComposioTriggerEventIds.model_validate(data).user_id
             if not user_id and not trigger_id:
                 log.error(f"{LogTag.TRIGGER} Gmail webhook has neither user_id nor trigger_id")
                 return []
