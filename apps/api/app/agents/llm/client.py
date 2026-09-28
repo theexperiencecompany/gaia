@@ -142,14 +142,13 @@ PROVIDER_MODELS: dict[LLMProviderName, str] = {
     LLMProviderName.CUSTOM: settings.DEV_LLM_MODEL or "",
     LLMProviderName.OPENAI: COMMS_MODEL_NAME,
 }
-# OPENAI is last: it serves only the comms lane, so it is never a fallback target
-# for another lane, and a failed comms call falls back to OpenRouter's default.
 PROVIDER_PRIORITY: dict[int, LLMProviderName] = {
     1: LLMProviderName.OPENROUTER,
     2: LLMProviderName.GEMINI,
     3: LLMProviderName.CUSTOM,
-    4: LLMProviderName.OPENAI,
 }
+# Selected only by name (the comms lane), so never a primary or fallback for another lane.
+LANE_ONLY_PROVIDERS: frozenset[LLMProviderName] = frozenset({LLMProviderName.OPENAI})
 
 
 def _secret_or_none(api_key: str | None) -> SecretStr | None:
@@ -514,6 +513,14 @@ def _get_ordered_providers(
                 ordered.append(
                     LLMProvider(name=provider_name, instance=remaining_providers[provider_name])
                 )
+
+    # Registered as alternatives so a lane can select them, never as the primary.
+    if fallback_enabled and ordered:
+        ordered.extend(
+            LLMProvider(name=name, instance=instance)
+            for name, instance in remaining_providers.items()
+            if name in LANE_ONLY_PROVIDERS
+        )
 
     return ordered
 
