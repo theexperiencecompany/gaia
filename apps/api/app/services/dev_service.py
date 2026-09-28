@@ -36,7 +36,13 @@ from app.schemas.dev_schemas import (
 from app.services.conversation_service import create_conversation_service
 from app.services.files import FileService
 from app.services.oauth.oauth_service import store_user_info
-from app.services.platform_link_service import Platform, PlatformLinkService
+from app.services.platform_link_service import (
+    AccountHasDifferentPlatformError,
+    Platform,
+    PlatformAccountTakenError,
+    PlatformLinkService,
+    link_conflict_error,
+)
 from app.services.todos.todo_service import TodoService
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.utils.errors import create_error
@@ -147,6 +153,26 @@ async def seed_dev_data(
     # by consumers.
     platform_user_ids = {platform: f"dev-{platform}-{user_id}" for platform in platform_links}
 
+    # Links go first: a dev user whose real platform account is already linked
+    # must get its 409 before any todo or conversation is written.
+    try:
+        await asyncio.gather(
+            *(
+                PlatformLinkService.link_account(
+                    user_id=user_id,
+                    platform=platform,
+                    platform_user_id=platform_user_id,
+                    profile={
+                        "username": f"dev_{platform}",
+                        "display_name": user.name or email,
+                    },
+                )
+                for platform, platform_user_id in platform_user_ids.items()
+            )
+        )
+    except (PlatformAccountTakenError, AccountHasDifferentPlatformError) as e:
+        raise link_conflict_error(e) from e
+
     await asyncio.gather(
         *(
             TodoService.create_todo_with_workflow(TodoModel(title=f"Sample todo {i + 1}"), user_id)
@@ -162,18 +188,6 @@ async def seed_dev_data(
                 AuthenticatedUser(user_id=user_id),
             )
             for i in range(conversations)
-        ),
-        *(
-            PlatformLinkService.link_account(
-                user_id=user_id,
-                platform=platform,
-                platform_user_id=platform_user_id,
-                profile={
-                    "username": f"dev_{platform}",
-                    "display_name": user.name or email,
-                },
-            )
-            for platform, platform_user_id in platform_user_ids.items()
         ),
     )
 

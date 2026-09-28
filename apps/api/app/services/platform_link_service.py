@@ -15,7 +15,11 @@ from pydantic import BaseModel, ConfigDict
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.config.settings import settings
-from app.constants.platform_links import IMESSAGE_PENDING_REGISTRATION_TTL
+from app.constants.platform_links import (
+    IMESSAGE_PENDING_REGISTRATION_TTL,
+    LINK_CONFLICT_ACCOUNT_HAS_OTHER,
+    LINK_CONFLICT_PLATFORM_TAKEN,
+)
 from app.db.redis import redis_cache
 from app.db.repositories.pending_platform_registrations import (
     pending_platform_registration_repository,
@@ -111,6 +115,30 @@ class AccountHasDifferentPlatformError(ValueError):
     the fix is on the GAIA side. Telling this person to "disconnect it from the
     other GAIA account" sends them looking for an account that does not exist.
     """
+
+
+def link_conflict_error(
+    e: PlatformAccountTakenError | AccountHasDifferentPlatformError,
+) -> AppError:
+    """Map a link conflict to its 409, with a distinct code per side of the conflict.
+
+    Conflating the two misdirected users to fix the wrong account.
+    """
+    if isinstance(e, PlatformAccountTakenError):
+        return create_error(
+            message=str(e),
+            why="the platform account is already linked to a different GAIA account",
+            fix="disconnect it from the other account, or link a different one",
+            status_code=409,
+            code=LINK_CONFLICT_PLATFORM_TAKEN,
+        )
+    return create_error(
+        message=str(e),
+        why="this GAIA account already has a different account on this platform",
+        fix="disconnect the one you already have in settings, then link this one",
+        status_code=409,
+        code=LINK_CONFLICT_ACCOUNT_HAS_OTHER,
+    )
 
 
 async def _release_imessage_number(user_id: str, phone_number: str) -> bool:

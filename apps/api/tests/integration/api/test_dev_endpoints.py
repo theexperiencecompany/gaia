@@ -478,6 +478,44 @@ class TestDevServiceLogic:
         assert exc.value.status_code == 400
         mock_todo.assert_not_awaited()
 
+    async def test_seed_link_conflict_is_a_409_and_writes_nothing_else(self):
+        """A dev user whose real platform account is already linked got an unhandled 500 and half-seeded data."""
+        from app.constants.platform_links import LINK_CONFLICT_ACCOUNT_HAS_OTHER
+        from app.services import dev_service
+        from app.services.platform_link_service import AccountHasDifferentPlatformError
+        from app.utils.errors import AppError
+
+        user = dev_service.UserDocument.model_validate({"id": str(ObjectId()), "email": DEV_EMAIL})
+        with (
+            patch.object(
+                dev_service.user_repository,
+                "get_by_email",
+                new_callable=AsyncMock,
+                return_value=user,
+            ),
+            patch.object(dev_service.user_repository, "complete_onboarding", AsyncMock()),
+            patch.object(
+                dev_service.TodoService, "create_todo_with_workflow", new_callable=AsyncMock
+            ) as mock_todo,
+            patch.object(
+                dev_service, "create_conversation_service", new_callable=AsyncMock
+            ) as mock_convo,
+            patch.object(
+                dev_service.PlatformLinkService,
+                "link_account",
+                AsyncMock(side_effect=AccountHasDifferentPlatformError("already linked")),
+            ),
+        ):
+            with pytest.raises(AppError) as exc:
+                await dev_service.seed_dev_data(
+                    DEV_EMAIL, todos=2, conversations=1, platform_links=["telegram"]
+                )
+
+        assert exc.value.status_code == 409
+        assert exc.value.code == LINK_CONFLICT_ACCOUNT_HAS_OTHER
+        mock_todo.assert_not_awaited()
+        mock_convo.assert_not_awaited()
+
     async def test_seed_missing_user_404_with_hint(self):
         from app.services import dev_service
         from app.utils.errors import AppError
