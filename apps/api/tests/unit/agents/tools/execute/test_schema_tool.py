@@ -244,6 +244,29 @@ class TestArgsSchemaOf:
             "required": ["q"],
         }
 
+    def test_a_field_named_title_is_kept_while_title_annotations_go(self) -> None:
+        """Regression: every key named title was dropped, so a required title argument vanished from the doc."""
+        tool = _catalog_tool(None)
+        tool.args_schema = {
+            "title": "CreateIssue",
+            "type": "object",
+            "properties": {
+                "title": {"title": "Title", "type": "string"},
+                "labels": {"type": "array", "items": {"title": "Label", "type": "string"}},
+            },
+            "required": ["title"],
+            "$defs": {"title": {"title": "TitleModel", "type": "string"}},
+        }
+        assert _args_schema_of(tool) == {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "labels": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["title"],
+            "$defs": {"title": {"type": "string"}},
+        }
+
     def test_a_tool_without_a_schema_takes_no_args(self) -> None:
         tool = _catalog_tool(None)
         tool.args_schema = None

@@ -25,6 +25,9 @@ from shared.py.wide_events import log
 # Composio's wrapper injects a config-passthrough parameter into the synthesized
 # signature; it is plumbing, never something the model supplies.
 _INTERNAL_ARG_NAMES = {"__runnable_config__"}
+_TITLE = "title"
+# Keywords whose value maps names to schemas: a key there is a field, never an annotation.
+_SCHEMA_MAPS = frozenset({"properties", "patternProperties", "$defs", "definitions"})
 
 
 class ToolContract(BaseModel):
@@ -118,9 +121,14 @@ def _compact_schema(schema: dict[str, JsonValue]) -> dict[str, JsonValue]:
     return compacted
 
 
-def _strip_noise(node: JsonValue) -> JsonValue:
+def _strip_noise(node: JsonValue, *, keys_are_names: bool = False) -> JsonValue:
+    """Drop the title annotation; a key of a name-to-schema map is a field name and stays."""
     if isinstance(node, dict):
-        return {key: _strip_noise(value) for key, value in node.items() if key not in {"title"}}
+        return {
+            key: _strip_noise(value, keys_are_names=not keys_are_names and key in _SCHEMA_MAPS)
+            for key, value in node.items()
+            if keys_are_names or key != _TITLE
+        }
     if isinstance(node, list):
         return [_strip_noise(item) for item in node]
     return node

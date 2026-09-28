@@ -8,6 +8,7 @@ it sheds any structure. Examples are never rendered: they are the bulk of real
 provider schemas and repeat what the description already says.
 """
 
+from dataclasses import dataclass
 import json
 from typing import cast
 
@@ -49,6 +50,9 @@ _INDENT = "  "
 _LOCAL_REF_PREFIXES = ("#/$defs/", "#/definitions/")
 _DEFS_KEYS = ("$defs", "definitions")
 _RECURSIVE_REF: dict[str, JsonValue] = {"type": "object"}
+# Shared definitions re-expand at every reference, so a fan-out of them grows
+# exponentially; real tool schemas use a handful, a hostile MCP schema millions.
+_MAX_REF_EXPANSIONS = 256
 
 _SCHEMA_TRUNCATED_MARKER = "..."
 # Progressively shallower renders tried when the full schema exceeds its budget.
@@ -94,33 +98,45 @@ def render_args_budgeted(schema: dict[str, JsonValue], budget: int) -> str:
 
 
 def inline_local_refs(schema: dict[str, JsonValue]) -> dict[str, JsonValue]:
-    """Replace local $refs with their definitions; a ref back into its own definition becomes obj."""
+    """Replace local $refs with their definitions; a recursive ref, or one past the expansion cap, becomes obj."""
     definitions: dict[str, JsonValue] = {}
     for key in _DEFS_KEYS:
         defs = schema.get(key)
         if isinstance(defs, dict):
             definitions.update(defs)
-    return cast(dict[str, JsonValue], _inline(schema, definitions, frozenset()))
+    budget = _RefBudget(remaining=_MAX_REF_EXPANSIONS)
+    return cast(dict[str, JsonValue], _inline(schema, definitions, frozenset(), budget))
+
+
+@dataclass
+class _RefBudget:
+    """Expansions left across the whole traversal, shared by every branch of it."""
+
+    remaining: int
 
 
 def _inline(
-    node: JsonValue, definitions: dict[str, JsonValue], expanding: frozenset[str]
+    node: JsonValue,
+    definitions: dict[str, JsonValue],
+    expanding: frozenset[str],
+    budget: _RefBudget,
 ) -> JsonValue:
     if isinstance(node, list):
-        return [_inline(item, definitions, expanding) for item in node]
+        return [_inline(item, definitions, expanding, budget) for item in node]
     if not isinstance(node, dict):
         return node
     rest = {
-        key: _inline(value, definitions, expanding)
+        key: _inline(value, definitions, expanding, budget)
         for key, value in node.items()
         if key not in _DEFS_KEYS and key != "$ref"
     }
     name = _local_ref_name(JsonSchemaRef.model_validate(node).ref)
     if name is None or name not in definitions:
         return rest
-    if name in expanding:
+    if name in expanding or budget.remaining <= 0:
         return {**_RECURSIVE_REF, **rest}
-    target = _inline(definitions[name], definitions, expanding | {name})
+    budget.remaining -= 1
+    target = _inline(definitions[name], definitions, expanding | {name}, budget)
     # Siblings of a $ref (a field's own description) override the definition's.
     return {**target, **rest} if isinstance(target, dict) else rest
 

@@ -73,6 +73,7 @@ def writer() -> Iterator[MagicMock]:
 class TestAfterHookEnvelope:
     def test_the_registry_knows_every_hooked_tool(self) -> None:
         assert hook_registry.after_hook_tools == HOOKED_TOOLS
+        assert hook_registry.has_broad_after_hook is False
 
     @pytest.mark.parametrize("tool", sorted(HOOKED_TOOLS))
     def test_a_failed_call_reaches_the_caller_untouched_and_streams_nothing(

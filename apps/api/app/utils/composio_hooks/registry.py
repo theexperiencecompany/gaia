@@ -62,6 +62,8 @@ class ComposioHookRegistry:
         # Registry for after_execute hooks, and the tools they are scoped to
         self._after_hooks: list[AfterHookFn] = []
         self.after_hook_tools: set[str] = set()
+        # A toolkit-wide or unfiltered after-hook reaches tools no name list can enumerate.
+        self.has_broad_after_hook = False
 
         # Registry for schema modifiers
         self._schema_modifiers: list[SchemaModifierFn] = []
@@ -329,6 +331,8 @@ def register_after_hook(
 
         hook_registry.register_after_hook(conditional_hook)
         hook_registry.after_hook_tools.update(target_tools)
+        if target_toolkits or not target_tools:
+            hook_registry.has_broad_after_hook = True
         return func
 
     return decorator

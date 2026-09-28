@@ -350,6 +350,39 @@ class TestInlineLocalRefs:
         }
         assert render_compact_type(schema) == "{steps?:{tool?:str, steps?:obj[]}[]}"
 
+    def test_a_fan_out_of_shared_definitions_stays_bounded(self) -> None:
+        """Each definition referencing the next twice doubles per level: 2^18 expansions uncapped."""
+        levels = 18
+        defs: dict[str, JsonValue] = {
+            f"D{i}": {
+                "type": "object",
+                "properties": {
+                    "a": {"$ref": f"#/$defs/D{i + 1}"},
+                    "b": {"$ref": f"#/$defs/D{i + 1}"},
+                },
+            }
+            for i in range(levels)
+        }
+        defs[f"D{levels}"] = {"type": "string"}
+        schema: dict[str, JsonValue] = {"$defs": defs, "properties": {"x": {"$ref": "#/$defs/D0"}}}
+        rendered = render_compact_type(schema)
+        assert len(rendered) < 20_000
+        assert "obj" in rendered
+
+    def test_expansions_past_the_cap_become_bare_objects(self) -> None:
+        cap = schema_notation._MAX_REF_EXPANSIONS
+        schema: dict[str, JsonValue] = {
+            "$defs": {"Leaf": {"type": "string"}},
+            "properties": {f"f{i:03d}": {"$ref": "#/$defs/Leaf"} for i in range(cap + 1)},
+        }
+        fields = inline_local_refs(schema)["properties"]
+        assert isinstance(fields, dict)
+        assert [fields[f"f{i:03d}"] for i in (0, cap - 1, cap)] == [
+            {"type": "string"},
+            {"type": "string"},
+            {"type": "object"},
+        ]
+
     @pytest.mark.parametrize(
         "ref",
         ["#/$defs/Missing", "https://example.com/schema.json", "#/properties/x", 7],
