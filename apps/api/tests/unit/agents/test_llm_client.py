@@ -1393,6 +1393,18 @@ class TestConstants:
         for cls in (ChatGoogleGenerativeAIError, ServerError, ClientError, APIError):
             assert issubclass(cls, LLM_FALLBACK_EXCEPTIONS), cls.__name__
 
+    @pytest.mark.parametrize(
+        ("sim_mode", "api_key", "available"),
+        [(False, "sk-test", True), (True, None, True), (False, None, False)],
+    )
+    def test_the_openai_lane_needs_a_key_or_sim_mode(
+        self, monkeypatch: pytest.MonkeyPatch, sim_mode: bool, api_key: str | None, available: bool
+    ) -> None:
+        monkeypatch.setattr(client_module.settings, "GAIA_SIM_MODE", sim_mode)
+        monkeypatch.setattr(client_module.settings, "OPENAI_API_KEY", api_key)
+
+        assert client_module.openai_lane_available() is available
+
     def test_openai_transient_errors_are_retried_and_every_openai_error_falls_back(self) -> None:
         """The comms lane runs the OpenAI SDK: without these an OpenAI outage fails the turn with no fallback."""
         request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")

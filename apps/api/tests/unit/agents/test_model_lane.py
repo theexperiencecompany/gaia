@@ -729,6 +729,7 @@ class TestCommsLane:
 
         assert resolved.provider == LLMProviderName.OPENAI
         assert resolved.model == COMMS_MODEL_NAME
+        assert resolved.max_input_tokens == DEFAULT_MAX_TOKENS
         # The effort is pinned on the client; a reasoning key would switch ChatOpenAI's wire.
         assert "reasoning" not in resolved.binding_keys()
 

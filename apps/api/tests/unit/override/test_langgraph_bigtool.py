@@ -1070,6 +1070,13 @@ class TestBindSessionId:
         llm.bind.assert_called_once_with(prompt_cache_key="conv-1-comms_agent")
         assert bound is llm.bind.return_value
 
+    def test_openai_without_a_session_id_binds_no_cache_key(self) -> None:
+        llm = MagicMock()
+        bound = _bind_session_id(llm, {"provider": LLMProviderName.OPENAI}, "comms_agent")
+
+        llm.bind.assert_not_called()
+        assert bound is llm
+
     def test_gemini_is_left_alone(self) -> None:
         """session_id is an OpenRouter routing hint; Gemini has no stickiness to pin, so sending it is an unsupported argument."""
 

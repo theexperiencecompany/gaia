@@ -383,6 +383,29 @@ class TestBuildAgentConfig:
 
     @patch("app.helpers.agent_helpers.resolve_lane")
     @patch("app.helpers.agent_helpers.providers")
+    async def test_a_comms_run_keeps_the_comms_lane_it_inherits(self, mock_providers, mock_resolve):
+        mock_providers.get.return_value = None
+        comms_lane = ModelLane(
+            provider=LLMProviderName.OPENAI,
+            model="comms-model",
+            reasoning=None,
+            provider_pin=None,
+            max_input_tokens=128_000,
+        )
+
+        config = await build_agent_config(
+            identity=AgentIdentity(
+                conversation_id=CONV_ID, user=FAKE_USER, agent_name="comms_agent"
+            ),
+            thread=AgentThread(base_configurable={"lane": comms_lane.to_configurable()}),
+            lane=AgentLane(role=AgentRole.COMMS),
+        )
+
+        assert ModelLane.from_configurable(config["configurable"]["lane"]) == comms_lane
+        mock_resolve.assert_not_awaited()
+
+    @patch("app.helpers.agent_helpers.resolve_lane")
+    @patch("app.helpers.agent_helpers.providers")
     async def test_an_executor_dispatched_by_comms_resolves_its_own_lane(
         self, mock_providers, mock_resolve
     ):
