@@ -129,8 +129,6 @@ function makeGaia(script: StreamScript) {
 function reactionTurnGaia(emoji: string): GaiaClient {
   const gaia = new GaiaClient("http://gaia.test", "key", "http://web.test");
   const body = [
-    { text: `<EMOJI>${emoji}</EMOJI>` },
-    { message_boundary: { message_id: "m1", discarded: false } },
     { emoji_ack: { emoji, reacts_to_message_id: "u1" } },
     { done: true, conversation_id: "conv-1" },
   ]

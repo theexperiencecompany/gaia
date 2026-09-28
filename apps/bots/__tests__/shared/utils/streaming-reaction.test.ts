@@ -26,8 +26,6 @@ function frames(...payloads: object[]): string {
 }
 
 const REACTION_TURN = frames(
-  { text: "<EMOJI>😅</EMOJI>" },
-  { message_boundary: { message_id: "m1", discarded: false } },
   { emoji_ack: { emoji: "😅", reacts_to_message_id: "u1" } },
   { done: true, conversation_id: "c1" },
 );
@@ -140,10 +138,7 @@ describe("a live turn answered with a reaction", () => {
   it("counts a reaction as the reply when the stream closes without a done frame", async () => {
     const screen = await runTurn(
       "whatsapp",
-      frames(
-        { text: "<EMOJI>😅</EMOJI>" },
-        { emoji_ack: { emoji: "😅", reacts_to_message_id: "u1" } },
-      ),
+      frames({ emoji_ack: { emoji: "😅", reacts_to_message_id: "u1" } }),
       async () => REACTION_OUTCOME.ATTACHED,
     );
 

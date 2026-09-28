@@ -97,8 +97,6 @@ describe("streamChat — emoji acks", () => {
 
 describe("streamChat — emoji ack as a native reaction", () => {
   const ACK_TURN = frames(
-    { text: "<EMOJI>😅</EMOJI>" },
-    { message_boundary: { message_id: "m1", discarded: false } },
     { emoji_ack: { emoji: "😅", reacts_to_message_id: "u1" } },
     { done: true, conversation_id: "c1" },
   );
