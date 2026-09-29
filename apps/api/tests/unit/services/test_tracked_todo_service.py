@@ -602,7 +602,7 @@ class TestMigrateLegacyCanvas:
     async def test_legacy_canvas_is_split_into_both_fields(self):
         doc = _todo_doc(canvas_content=self.LEGACY, activity_content=None)
         with patch(
-            f"{_MOD}.write_canvas_and_activity", new_callable=AsyncMock, return_value=True
+            f"{_MOD}.repair_canvas_and_activity", new_callable=AsyncMock, return_value=True
         ) as write:
             assert await TrackedTodoService.normalize_stored_canvas(doc) is True
 
@@ -617,7 +617,7 @@ class TestMigrateLegacyCanvas:
     async def test_moved_legacy_entries_come_before_existing_activity(self):
         doc = _todo_doc(canvas_content=self.LEGACY, activity_content="- already here")
         with patch(
-            f"{_MOD}.write_canvas_and_activity", new_callable=AsyncMock, return_value=True
+            f"{_MOD}.repair_canvas_and_activity", new_callable=AsyncMock, return_value=True
         ) as write:
             await TrackedTodoService.normalize_stored_canvas(doc)
 
@@ -629,14 +629,14 @@ class TestMigrateLegacyCanvas:
 
     async def test_clean_canvas_is_not_touched(self):
         doc = _todo_doc(canvas_content=_CLEAN_CANVAS)
-        with patch(f"{_MOD}.write_canvas_and_activity", new_callable=AsyncMock) as write:
+        with patch(f"{_MOD}.repair_canvas_and_activity", new_callable=AsyncMock) as write:
             assert await TrackedTodoService.normalize_stored_canvas(doc) is False
 
         write.assert_not_awaited()
 
     async def test_empty_canvas_is_not_touched(self):
         doc = _todo_doc(canvas_content=None)
-        with patch(f"{_MOD}.write_canvas_and_activity", new_callable=AsyncMock) as write:
+        with patch(f"{_MOD}.repair_canvas_and_activity", new_callable=AsyncMock) as write:
             assert await TrackedTodoService.normalize_stored_canvas(doc) is False
 
         write.assert_not_awaited()
@@ -650,7 +650,7 @@ class TestMigrateLegacyCanvas:
         )
         mock_repo.get.return_value = fresh
         with patch(
-            f"{_MOD}.write_canvas_and_activity",
+            f"{_MOD}.repair_canvas_and_activity",
             new_callable=AsyncMock,
             side_effect=[False, True],
         ) as write:
@@ -676,7 +676,7 @@ class TestMigrateLegacyCanvas:
         )
         mock_repo.get.return_value = fresh
         with patch(
-            f"{_MOD}.write_canvas_and_activity", new_callable=AsyncMock, return_value=False
+            f"{_MOD}.repair_canvas_and_activity", new_callable=AsyncMock, return_value=False
         ) as write:
             assert (
                 await TrackedTodoService.normalize_stored_canvas(
@@ -690,7 +690,7 @@ class TestMigrateLegacyCanvas:
     async def test_vanished_todo_is_not_retried(self, mock_repo):
         mock_repo.get.return_value = None
         with patch(
-            f"{_MOD}.write_canvas_and_activity", new_callable=AsyncMock, return_value=False
+            f"{_MOD}.repair_canvas_and_activity", new_callable=AsyncMock, return_value=False
         ) as write:
             assert (
                 await TrackedTodoService.normalize_stored_canvas(
