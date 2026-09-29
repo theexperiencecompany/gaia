@@ -332,10 +332,8 @@ async def test_hard_stop_never_blocks_a_different_tool() -> None:
 
 
 async def test_a_success_elsewhere_lifts_the_failure_stop_but_not_the_repeat_stop() -> None:
-    # The consecutive failure streak is global, not per tool: any successful call
-    # clears it, so the identical-failure stop lifts even for an unrelated tool.
-    # The call is still the same call issued again this run, so the per-run
-    # repeat count — which interleaving cannot reset — is what stops it.
+    # Any success clears the consecutive failure streak, so the identical-failure
+    # stop lifts; the per-run repeat count, which interleaving cannot reset, stops it.
     executed = 0
 
     async def broken(_request: ToolCallRequest) -> ToolMessage:
@@ -663,9 +661,8 @@ async def test_an_identical_failing_run_reports_the_failure_stop_not_the_repeat_
 
 
 # --- per-run repeat counting and per-call hard stop ----------------------------- #
-# A live background run issued the same retrieve_tools query 14 times, interleaved
-# with other calls, until the recursion limit: a consecutive-only counter reset on
-# every interleaved call, and the build-time hard-stop flag was never on.
+# Live: one retrieve_tools query 14 times, interleaved, to the recursion limit — a
+# consecutive-only count reset each time, and the build-time hard stop was off.
 
 
 @pytest.mark.regression

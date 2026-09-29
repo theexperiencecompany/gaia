@@ -2046,9 +2046,9 @@ def get_integration_by_toolkit(toolkit: str) -> OAuthIntegration | None:
 def get_integration_by_tool_slug(tool_name: str) -> OAuthIntegration | None:
     """Get the Composio integration a tool slug belongs to ("GMAIL_SEND_EMAIL" -> gmail).
 
-    Composio slugs are ``<TOOLKIT>_<ACTION>``; the longest matching toolkit wins
-    so a toolkit that prefixes another's name cannot claim its tools. Not
-    cached: the name is model-supplied, and the scan is over a small fixed list.
+    Composio slugs are TOOLKIT_ACTION; the longest matching toolkit wins so a
+    toolkit that prefixes another's name cannot claim its tools. Not cached: the
+    name is model-supplied, and the scan is over a small fixed list.
     """
     matches = [
         (i.composio_config.toolkit, i)

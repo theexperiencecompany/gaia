@@ -1,20 +1,15 @@
 """Tool-loop guardrail middleware.
 
-Detects a model stuck retrying a tool call and nudges it to change strategy.
 Tracks identical failures (same tool + args returning status="error"),
-same-tool failures (one tool failing repeatedly regardless of args), and
-repeats (the same tool + args issued again this run, whatever the outcome).
-Escalates: warn thresholds append an in-band note to the ToolMessage; a
-background run (no user present) stops executing the offending call and
-returns a synthetic error once stop thresholds hit. Interactive runs only warn.
+same-tool failures, and repeats (the same tool + args issued again this run,
+whatever the outcome). Warn thresholds append an in-band note to the
+ToolMessage; in a background run (no user present) stop thresholds skip the
+call and return a synthetic error. Interactive runs only warn.
 
-Counters are keyed by run — thread_id plus the turn's root_request_id — not
-the middleware instance, since the graph is a per-process singleton cached by
-the lazy provider, and the executor keeps one thread per conversation across
-every turn and scheduled run. A bounded LRU over recent runs keeps memory flat.
-
-retrieve_tools runs in the select_tools graph node rather than the tool node,
-so that node consults this same guard directly (see create_agent).
+Counters are keyed by run (thread_id + root_request_id): the graph is a
+per-process singleton, and the executor keeps one thread per conversation
+across every turn and scheduled run. A bounded LRU keeps memory flat.
+retrieve_tools runs in the select_tools node, which consults this same guard.
 """
 
 from __future__ import annotations
@@ -64,24 +59,17 @@ class _RunCounters:
         self.last_failure_key: tuple[str, str] | None = None
         # tool_name -> total failures for this tool this run
         self.per_tool: dict[str, int] = {}
-        # (tool_name, args_hash) -> times issued this run, whatever the outcome.
-        # Counts redundant duplicate calls a weak model loops on even when they
-        # *succeed* or are interleaved with other calls — the failure counters
-        # never see those, and a consecutive-only count resets on every
-        # interleaved call (a live run issued one query 14 times that way).
+        # (tool_name, args_hash) -> times issued this run, whatever the outcome,
+        # consecutive or not: interleaving reset a consecutive-only count while a
+        # live run issued one query 14 times.
         self.calls: dict[tuple[str, str], int] = {}
 
 
 class LoopGuardMiddleware(AgentMiddleware):
     """Nudge a model looping on a tool call; halt it in a background run.
 
-    Whether a call may be blocked is decided per call from the run's
-    ``execution_mode``: the executor graph is one per-process singleton shared
-    by interactive and background runs, so it cannot be fixed at build time.
-
-    Usage::
-
-        middleware = LoopGuardMiddleware()
+    Blocking is decided per call from the run's execution_mode: the executor
+    graph is one per-process singleton shared by both run kinds.
     """
 
     def __init__(self, max_tracked_runs: int = LOOP_GUARD_MAX_TRACKED_RUNS) -> None:

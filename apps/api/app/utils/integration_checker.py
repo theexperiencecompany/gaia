@@ -6,10 +6,8 @@ also produce the card. Splitting them is what left users chasing a button that
 was never rendered.
 
 The wording depends on the client: UI clients render a connect card, so the
-agent text must stay URL-free; text-only clients (bots) need the link inline
-because there is no card to click. A background run has no user present at
-all, so it is told to record the gap in its result and carry on — nothing it
-retries can connect the integration.
+agent text stays URL-free; bots need the link inline. A background run has no
+user present, so it is told to record the gap and carry on.
 
 It also depends on whether the user *had* this connected and the grant died,
 versus never connected it at all — "sign in again" and "connect this" are
@@ -44,12 +42,9 @@ async def request_integration_connection(
 ) -> str:
     """Show the (re)connect card for an unusable integration and return the agent's instruction.
 
-    On UI clients the card carries the connect flow, so the text stays
-    URL-free. On text-only clients the agent relays the single-use,
-    login-free link (valid for 1 hour), or the login-required integrations
-    page if none could be minted. A background run gets the integrations page
-    (its result is read after any single-use link has died) and is told to
-    record the gap and carry on instead of retrying.
+    UI clients get a URL-free text; text-only clients relay the single-use
+    link (valid 1 hour) or the integrations page. A background run gets the
+    integrations page, read after any single-use link has died, and carries on.
     """
     # Only Composio grants ever reach the ``expired`` status, so MCP integrations
     # fall through to the never-connected wording without needing a special case.
