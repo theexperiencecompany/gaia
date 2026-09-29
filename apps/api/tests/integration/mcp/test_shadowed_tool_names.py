@@ -16,8 +16,10 @@ import pytest
 
 from app.agents.core.subagents.base_subagent import build_scoped_tool_dict
 from app.agents.tools.execute.execute_tool import execute as gaia_execute
+from app.agents.tools.execute.resolver import ResolvedTool
 from app.agents.tools.execute.schema_docs import render_tool_doc
-from app.constants.execute import EXECUTE_TOOL_NAME
+from app.agents.tools.execute.tool_info import tool_contract
+from app.constants.execute import EXECUTE_TOOL_NAME, RETURNS_INLINE_MAX_CHARS
 from app.models.mcp_config import MCPConfig
 from app.services.mcp import mcp_client as mcp_client_module
 from app.services.mcp.mcp_client import MCPClient
@@ -89,6 +91,7 @@ class TestShadowedToolNames:
         assert {t.name for t in tools} == {RENAMED_EXECUTE, "search_docs"}
         assert client.find_integration(RENAMED_EXECUTE) == INTEGRATION_ID
 
+    @pytest.mark.usefixtures("no_observed_tool_shapes")
     async def test_the_model_is_told_the_server_calls_it_by_its_old_name(
         self, dodo_like_server_url: str
     ) -> None:
@@ -97,7 +100,8 @@ class TestShadowedToolNames:
         untouched = next(t for t in tools if t.name == "search_docs")
 
         bound = convert_to_openai_tool(renamed)["function"]["description"]
-        documented = render_tool_doc(renamed)
+        contract = await tool_contract(ResolvedTool(renamed.name, renamed, True))
+        documented = render_tool_doc(contract, RETURNS_INLINE_MAX_CHARS)
 
         for seen_by_model in (bound, documented):
             assert "called execute on its own server" in seen_by_model

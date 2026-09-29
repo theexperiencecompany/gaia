@@ -124,7 +124,8 @@ class TestCandidateLiveness:
         fact = make_fact()
         row = make_row(content=fact.content, forget_after=NOW - timedelta(days=1))
 
-        results, llm = await _reconcile_one(fact, row)
+        with freeze_time(NOW):
+            results, llm = await _reconcile_one(fact, row)
 
         (reconciled,) = results
         assert reconciled.outcome is ReconcileOutcome.NEW
@@ -147,7 +148,8 @@ class TestCandidateLiveness:
         fact = make_fact()
         row = make_row(content=fact.content, forget_after=NOW + timedelta(days=30))
 
-        results, llm = await _reconcile_one(fact, row)
+        with freeze_time(NOW):
+            results, llm = await _reconcile_one(fact, row)
 
         (reconciled,) = results
         assert reconciled.outcome is ReconcileOutcome.DUPLICATE

@@ -2,7 +2,7 @@
 
 from typing import TypedDict
 
-from pydantic import JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 
 class JsonSchemaNode(TypedDict, total=False):
@@ -19,4 +19,14 @@ class JsonSchemaNode(TypedDict, total=False):
     anyOf: JsonValue
     oneOf: JsonValue
     enum: JsonValue
+    const: JsonValue
+    description: JsonValue
     additionalProperties: JsonValue
+
+
+class JsonSchemaRef(BaseModel):
+    """A schema node's $ref pointer, a key no TypedDict field can name; any value is kept."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    ref: JsonValue = Field(default=None, alias="$ref")

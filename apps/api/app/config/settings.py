@@ -128,6 +128,10 @@ class CommonSettings(BaseAppSettings):
     # call GAIA tools back server-side. On by default; off mints no token
     # (bash itself still runs; scripts just get no GAIA_EXECUTE_* env).
     ENABLE_CODE_MODE: bool = True
+    # Inline each integration tool's return shape in the retrieve_tools doc so a
+    # script can be written without a get_tool_schema call. App-wide, not per user.
+    # Off by default: discovery docs carry args only and never read the observed-shape store.
+    ENABLE_INLINE_TOOL_RETURNS: bool = False
     # Executor-free HIL ledger — gated calls register PENDING and return
     # instead of parking the run on an interrupt. On by default; off keeps the
     # interrupt-and-resume barrier.

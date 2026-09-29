@@ -137,6 +137,7 @@ class TestSplitStartupTools:
 
 @pytest.mark.unit
 class TestRenderPreloadBlock:
+    @pytest.mark.usefixtures("no_observed_tool_shapes")
     async def test_renders_docs_with_execute_guidance(self) -> None:
         from langchain_core.tools import tool as langchain_tool
 
@@ -281,6 +282,7 @@ class TestFactoryDoesNotBindIntegrationTools:
 class TestPrepareInjectsPreloadDocs:
     """prepare_subagent_execution opens the run with the integration's startup schemas inside the static system message — no binding, no retrieve_tools round trip."""
 
+    @pytest.mark.usefixtures("no_observed_tool_shapes")
     async def test_system_message_carries_preloaded_schemas(self) -> None:
         from langchain_core.tools import tool as langchain_tool
 
@@ -511,6 +513,7 @@ class TestPreloadedStartupDocs:
         with patch.object(retrieval, "get_subagent_by_id", return_value=subagent):
             assert await retrieval.preloaded_startup_docs("u1", "gmail") == ""
 
+    @pytest.mark.usefixtures("no_observed_tool_shapes")
     async def test_extra_initial_tools_preload_for_the_calling_user(self) -> None:
         mcp_names = AsyncMock(return_value=set())
         resolver = AsyncMock(
