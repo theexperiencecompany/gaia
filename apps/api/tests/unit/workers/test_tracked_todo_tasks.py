@@ -874,6 +874,7 @@ class TestATrackedTodoAlwaysRunsTheAgent:
         repo = MagicMock()
         repo.get_by_id = AsyncMock(return_value=_doc(workflow_id="wf-9"))
         repo.update = AsyncMock()
+        repo.update_if_scheduled_at = AsyncMock(return_value=_doc())
         via_agent = AsyncMock(return_value="done")
         queue = AsyncMock(return_value=True)
         with (
@@ -887,8 +888,9 @@ class TestATrackedTodoAlwaysRunsTheAgent:
                 f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
             ),
         ):
-            await _execute_todo_with_retry("todo-1")
+            result = await _execute_todo_with_retry("todo-1")
 
+        assert result == "success:todo-1"
         queue.assert_not_awaited()
         via_agent.assert_awaited_once()
         assert via_agent.await_args.args[0].id == "todo-1"
