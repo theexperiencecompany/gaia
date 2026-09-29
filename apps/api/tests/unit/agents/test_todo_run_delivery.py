@@ -21,6 +21,7 @@ from app.models.chat_models import ConversationSource
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
+from app.services.tracked_todo_service import CANVAS_TEMPLATE
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
@@ -207,6 +208,26 @@ class TestTheDecisionSeesTheStandingRules:
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
             "Watch the deploy", None
+        )
+
+    @pytest.mark.regression
+    async def test_a_new_todo_template_carries_no_rules(self) -> None:
+        todo = _todo(canvas_content=CANVAS_TEMPLATE.format(title="Watch the deploy"))
+        with _seams(todo=todo) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
+            "Watch the deploy", None
+        )
+
+    @pytest.mark.regression
+    async def test_a_title_cased_heading_still_reaches_the_write_up(self) -> None:
+        todo = _todo(canvas_content="## Standing Rules\n- 2026-09-28: tell me every time.\n")
+        with _seams(todo=todo) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
+            "Watch the deploy", "- 2026-09-28: tell me every time."
         )
 
     async def test_a_todo_without_standing_rules_gets_the_defaults_alone(self) -> None:
