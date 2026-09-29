@@ -9,10 +9,11 @@ This module provides the retrieve_tools function factory that supports:
 """
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 import json
 from typing import (
     Annotated,
+    NamedTuple,
     NotRequired,
     TypeAlias,
     TypedDict,
@@ -26,7 +27,7 @@ from langgraph.store.base import BaseStore, SearchItem
 from pydantic import Field, TypeAdapter
 
 from app.agents.core.subagents.active_integrations import get_active
-from app.agents.core.subagents.registry import get_subagent_by_id
+from app.agents.core.subagents.registry import get_subagent_by_id, providers_named_in
 from app.agents.tools.core.registry import (
     DESKTOP_TOOL_CATEGORY,
     DESKTOP_TOOL_SPACE,
@@ -38,7 +39,7 @@ from app.agents.tools.execute.schema_docs import render_tool_doc
 from app.agents.tools.execute.tool_info import contract_from, tool_contract
 from app.agents.tools.research_tool import deep_research
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
-from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_tool_slug
 from app.config.settings import settings
 from app.constants.execute import RETURNS_INLINE_MAX_CHARS
 from app.constants.log_tags import LogTag
@@ -53,7 +54,10 @@ from app.services.integrations.integration_service import (
 )
 from app.services.integrations.user_integrations import get_user_integrations
 from app.services.mcp.mcp_client import get_mcp_client
-from app.services.oauth.oauth_service import get_all_integrations_status
+from app.services.oauth.oauth_service import (
+    check_integration_status,
+    get_all_integrations_status,
+)
 from app.utils.mcp_utils import canonical_tool_name_map
 from shared.py.wide_events import log
 
@@ -67,6 +71,74 @@ _EXECUTE_DOCS_INSTRUCTION = (
     "from each schema below and call "
     'execute(task_description="...", tool_name="<NAME>", data={...}):'
 )
+
+
+class _UnconnectedIntegration(NamedTuple):
+    """An integration a retrieve_tools call needs that the user has not connected."""
+
+    id: str
+    name: str
+
+
+def _not_connected_line(
+    integration: _UnconnectedIntegration, background: bool, tool_names: Sequence[str] = ()
+) -> str:
+    """The one definitive answer for an unconnected integration, in either mode.
+
+    Searching again or re-requesting its tools cannot connect it; a live run
+    loops through both until its recursion limit when told anything else.
+    """
+    requested = f" ({', '.join(tool_names)})" if tool_names else ""
+    lead = (
+        f"{integration.name} needs to be connected: none of its tools{requested} can run "
+        "until the user connects it, so do not search for or re-request them."
+    )
+    if background:
+        return (
+            f"{lead} This is a background run and no user is present to connect it: record "
+            f"in your result that {integration.name} is not connected, then carry on with the "
+            "rest of the task."
+        )
+    return (
+        f'{lead} Call activate_integration(integration_id="{integration.id}") once: that '
+        "shows the user the connect card."
+    )
+
+
+async def _unconnected_for_tools(
+    user_id: str | None, tool_names: Sequence[str]
+) -> dict[str, _UnconnectedIntegration]:
+    """Map each Composio tool name whose integration the user has not connected to it."""
+    if not user_id:
+        return {}
+    connected: dict[str, bool] = {}
+    unconnected: dict[str, _UnconnectedIntegration] = {}
+    for name in tool_names:
+        integration = get_integration_by_tool_slug(name)
+        if integration is None:
+            continue
+        if integration.id not in connected:
+            connected[integration.id] = await check_integration_status(integration.id, user_id)
+        if not connected[integration.id]:
+            unconnected[name] = _UnconnectedIntegration(integration.id, integration.name)
+    return unconnected
+
+
+async def _unconnected_named_in(
+    user_id: str | None, query: str | None
+) -> list[_UnconnectedIntegration]:
+    """The provider integrations a discovery query names that the user has not connected.
+
+    Covers the integrations activate_integration itself gates on a connection;
+    per-user MCP integrations route through handoff instead.
+    """
+    if not user_id or not query:
+        return []
+    return [
+        _UnconnectedIntegration(provider.id, provider.name)
+        for provider in providers_named_in(query)
+        if provider.managed_by != "mcp" and not await check_integration_status(provider.id, user_id)
+    ]
 
 
 def _is_execute_routed(tool_registry: ToolRegistry, name: str, mcp_tool_names: set[str]) -> bool:
@@ -731,6 +803,9 @@ def _render_discovery_response(
     query: str | None,
     total_candidates: int,
     limit: int,
+    *,
+    not_connected: Sequence[_UnconnectedIntegration] = (),
+    background: bool = False,
 ) -> str:
     """Render discovery hits as the JSON the model acts on.
 
@@ -740,7 +815,9 @@ def _render_discovery_response(
     ``integration:`` pointers to not-yet-connected integrations (activating
     one renders its connect card). Provider and built-in integrations surface
     as their tools, never as pointers. ``connected_integrations`` only labels
-    each tool entry with its source.
+    each tool entry with its source. ``not_connected`` lists provider
+    integrations the query names that the user has not connected; their
+    definitive line leads ``next``, whatever else the search matched.
     """
     bindable: list[str] = []
     mcp: list[tuple[str, str | None]] = []
@@ -777,8 +854,19 @@ def _render_discovery_response(
     }
     if total_candidates > limit:
         payload["truncated"] = {"shown": len(final_tools), "total": total_candidates}
+    if not_connected:
+        payload["not_connected"] = [
+            {"id": integration.id, "name": integration.name} for integration in not_connected
+        ]
+    not_connected_lines = [
+        _not_connected_line(integration, background) for integration in not_connected
+    ]
 
-    if total_candidates == 0:
+    if total_candidates == 0 and not_connected_lines:
+        # Nothing else matched: the missing connection is the whole answer, so
+        # there is no broader query worth retrying.
+        payload["next"] = " ".join(not_connected_lines)
+    elif total_candidates == 0:
         payload["search_matched_nothing"] = True
         payload["next"] = (
             "The search matched NOTHING. Retry ONCE with a broader query "
@@ -805,7 +893,7 @@ def _render_discovery_response(
                 "activate_integration(id) anyway — that call is what shows the user "
                 "the connect card."
             )
-        payload["next"] = " ".join(steps)
+        payload["next"] = " ".join([*not_connected_lines, *steps])
     if query:
         payload["query"] = query
     return json.dumps(payload, indent=2)
@@ -855,6 +943,8 @@ def get_retrieve_tools_function(
         exact_tool_names: list[str] = Field(default_factory=list),
     ) -> RetrieveToolsResult:
         configurable: AgentConfigurable = agent_configurable(config)
+        # No user is present to connect anything, so an unconnected integration is reported.
+        background = configurable.get("execution_mode") == "background"
         log.info(
             f"{LogTag.TOOL} retrieve_tools called",
             query=query,
@@ -951,6 +1041,20 @@ def get_retrieve_tools_function(
                 else:
                     unknown_tool_names.append(tool_name)
 
+            # An unconnected integration's tools cannot run, so they are neither
+            # rescued nor documented: one line says so and names the next step.
+            # Per-user MCP tools exist only while connected, so never need this.
+            unconnected = await _unconnected_for_tools(
+                user_id,
+                [
+                    name
+                    for name in [*validated_tool_names, *unknown_tool_names]
+                    if name not in mcp_tool_names_set
+                ],
+            )
+            validated_tool_names = [n for n in validated_tool_names if n not in unconnected]
+            unknown_tool_names = [n for n in unknown_tool_names if n not in unconnected]
+
             # Catalog slugs never materialize locally — rescue them through the
             # resolver instead of reporting a capability the catalog HAS as unknown.
             still_unknown: list[str] = []
@@ -1001,6 +1105,7 @@ def get_retrieve_tools_function(
                     "tools_filtered": len(exact_tool_names)
                     - len(validated_tool_names)
                     - len(proxied_names),
+                    "tools_not_connected": len(unconnected),
                 }
             )
 
@@ -1015,6 +1120,13 @@ def get_retrieve_tools_function(
                     "main executor, not this subagent. Do not retry binding them; finish "
                     "your task here and let the executor handle them."
                 )
+            tools_by_integration: dict[_UnconnectedIntegration, list[str]] = {}
+            for name, integration in unconnected.items():
+                tools_by_integration.setdefault(integration, []).append(name)
+            guidance.extend(
+                _not_connected_line(integration, background, names)
+                for integration, names in tools_by_integration.items()
+            )
             response = [*validated_tool_names, *proxied_names, *guidance]
 
             bind_lines: list[str] = []
@@ -1120,6 +1232,9 @@ def get_retrieve_tools_function(
         )
 
         final_tools = _deduplicate_and_sort(all_results, limit)
+        # A scoped worker searches its own, connected space; only the main
+        # context can be asked about an integration it has not connected.
+        not_connected = await _unconnected_named_in(user_id, query) if include_subagents else []
 
         log.set(
             tool_retrieval={
@@ -1135,6 +1250,7 @@ def get_retrieve_tools_function(
                 "per_namespace_hits": per_namespace_hits,
                 "candidates_after_filter": len(all_results),
                 "chroma_preview": chroma_preview,
+                "not_connected": [integration.id for integration in not_connected],
             }
         )
         if chroma_hits == 0:
@@ -1154,6 +1270,8 @@ def get_retrieve_tools_function(
                 query,
                 len(all_results),
                 limit,
+                not_connected=not_connected,
+                background=background,
             ),
         )
 

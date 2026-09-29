@@ -18,11 +18,14 @@ import pytest
 
 from app.agents.llm import lane as lane_module
 from app.agents.llm.lane import ModelLane
+from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
     DEFAULT_MAX_TOKENS,
     LANE_FIELD_ID,
+    LOOP_GUARD_STOP_REPEAT,
+    LOOP_GUARD_WARN_REPEAT,
     RECURSION_WRAPUP_THRESHOLD_STEPS,
     LLMProviderName,
 )
@@ -916,6 +919,96 @@ class TestSelectTools:
 
         result = await select_node.runnable.afunc(tool_calls, config, store=store)  # type: ignore[union-attr]  # RunnableCallable types func/afunc as Optional
         assert "dummy_tool_a" in result["selected_tool_ids"]
+
+
+class TestSelectToolsLoopGuard:
+    """retrieve_tools runs in the select_tools node, outside the tool node's middleware chain.
+
+    Live, an executor issued the same retrieve_tools query 14 times in one run and
+    the loop guard never saw one of them, since only the tool node consulted it.
+    """
+
+    @staticmethod
+    def _node(executed: list[str]) -> Any:
+        async def retrieve(query: str) -> dict:
+            """Retrieve tools."""
+            executed.append(query)
+            return {
+                "tools_to_bind": ["dummy_tool_a"],
+                "response": ["dummy_tool_a"],
+                "response_text": "found dummy_tool_a",
+            }
+
+        builder = create_agent(
+            _make_llm(),
+            _make_tool_registry(dummy_tool_a),
+            tools_config=ToolRetrievalConfig(retrieve_tools_coroutine=retrieve),
+            agent_config=AgentConfig(middleware=[LoopGuardMiddleware()]),
+        )  # type: ignore[arg-type]  # test stub returns a bare dict, not the declared RetrieveToolsResult union
+        return builder.nodes["select_tools"].runnable
+
+    @pytest.mark.regression
+    async def test_a_repeated_query_is_warned_in_an_interactive_run(self) -> None:
+        executed: list[str] = []
+        node = self._node(executed)
+        config = _make_config(thread_id="t1", execution_mode="interactive")
+
+        results = [
+            await node.afunc(
+                [{"id": f"tc{i}", "args": {"query": "calendar"}}], config, store=MagicMock()
+            )
+            for i in range(LOOP_GUARD_WARN_REPEAT)
+        ]
+
+        assert len(executed) == LOOP_GUARD_WARN_REPEAT
+        assert "[Loop guard:" not in results[0]["messages"][0].content
+        last = results[-1]["messages"][0]
+        assert last.content.startswith("found dummy_tool_a")
+        assert f"called {LOOP_GUARD_WARN_REPEAT} times this run" in last.content
+        assert last.tool_call_id == f"tc{LOOP_GUARD_WARN_REPEAT - 1}"
+        assert results[-1]["selected_tool_ids"] == ["dummy_tool_a"]
+
+    @pytest.mark.regression
+    async def test_a_repeated_query_is_blocked_in_a_background_run(self) -> None:
+        executed: list[str] = []
+        node = self._node(executed)
+        config = _make_config(thread_id="t1", execution_mode="background")
+
+        results = [
+            await node.afunc(
+                [{"id": f"tc{i}", "args": {"query": "calendar"}}], config, store=MagicMock()
+            )
+            for i in range(LOOP_GUARD_STOP_REPEAT)
+        ]
+
+        assert len(executed) == LOOP_GUARD_STOP_REPEAT - 1  # the last never ran
+        blocked = results[-1]["messages"][0]
+        assert blocked.additional_kwargs["loop_guard_stopped"] is True
+        assert blocked.tool_call_id == f"tc{LOOP_GUARD_STOP_REPEAT - 1}"
+        assert results[-1]["selected_tool_ids"] == []
+
+    async def test_without_a_loop_guard_every_call_runs(self) -> None:
+        executed: list[str] = []
+
+        async def retrieve(query: str) -> list:
+            """Retrieve tools."""
+            executed.append(query)
+            return ["dummy_tool_a"]
+
+        builder = create_agent(
+            _make_llm(),
+            _make_tool_registry(dummy_tool_a),
+            tools_config=ToolRetrievalConfig(retrieve_tools_coroutine=retrieve),
+        )
+        node = builder.nodes["select_tools"].runnable
+        config = _make_config(thread_id="t1", execution_mode="background")
+
+        for i in range(LOOP_GUARD_STOP_REPEAT):
+            await node.afunc(
+                [{"id": f"tc{i}", "args": {"query": "calendar"}}], config, store=MagicMock()
+            )
+
+        assert len(executed) == LOOP_GUARD_STOP_REPEAT
 
 
 class TestBindSessionId:
@@ -1933,7 +2026,14 @@ class TestSelectToolsTwinWiring:
 
         await node.afunc([tool_call], config, store=store)
 
-        mock_call_kwargs.assert_called_once_with(tool_call, "store", store, config)
+        # The async twin normalizes the call into the ToolCall its loop-guard
+        # request carries; the args and id flowing down are the model's own.
+        mock_call_kwargs.assert_called_once_with(
+            {"name": retrieve_tools.name, "args": {"query": "calendar"}, "id": "c1"},
+            "store",
+            store,
+            config,
+        )
         retrieve_tools.ainvoke.assert_awaited_once_with(
             {"query": "calendar", "store": store}, config=config
         )

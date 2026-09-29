@@ -424,6 +424,7 @@ class TestRetrieveToolsBinding:
             "tools_bound": 1,
             "tools_proxied": 0,
             "tools_filtered": 1,
+            "tools_not_connected": 0,
         }
 
     @pytest.mark.asyncio
@@ -606,6 +607,7 @@ class TestRetrieveToolsDiscovery:
             "candidates_after_filter": 1,
             "chroma_preview": ["('general',)::TOOL_A", "('general',)::TOOL_B"],
             "active_namespaces": [],
+            "not_connected": [],
         }
 
     @pytest.mark.asyncio
@@ -1174,3 +1176,70 @@ class TestDiscoveryCallContract:
             )
         user_context.assert_awaited_once_with("u1", "gmail", False)
         assert result["response"] == ["GMAIL_SEND_EMAIL"]
+
+
+async def _discover(query: str, status: dict[str, bool], configurable: dict[str, str]) -> dict:
+    """Run a discovery call whose searches all come back empty — no public-store hits."""
+    store = MagicMock()
+    store.asearch = AsyncMock(return_value=[])
+    registry = MagicMock()
+    registry.get_tool_names.return_value = []
+    with (
+        patch.object(retrieval, "get_tool_registry", new=AsyncMock(return_value=registry)),
+        patch.object(retrieval, "_get_user_context", new=AsyncMock(return_value=({"general"}, {}))),
+        patch.object(retrieval, "_user_mcp_tool_names", new=AsyncMock(return_value=set())),
+        patch.object(retrieval, "get_active", new=AsyncMock(return_value=set())),
+        patch.object(retrieval, "search_public_integrations", new=AsyncMock(return_value=[])),
+        patch(
+            "app.services.oauth.oauth_service.get_all_integrations_status",
+            new=AsyncMock(return_value=status),
+        ),
+    ):
+        fn = retrieval.get_retrieve_tools_function()
+        result = await fn(
+            store=store,
+            config={"configurable": {"user_id": "u1", **configurable}},
+            query=query,
+            exact_tool_names=[],
+        )
+    return json.loads(result["response_text"])
+
+
+@pytest.mark.unit
+class TestDiscoveryNamesAnUnconnectedIntegration:
+    """A query naming an unconnected platform integration says so, with no public-store hit.
+
+    Live: "Google Calendar list events for today" with Google Calendar unconnected
+    matched only unrelated general tools, and the next step sent the model to bind
+    them — 14 identical queries in one run.
+    """
+
+    @pytest.mark.regression
+    async def test_an_interactive_run_is_told_to_activate_it_once(self) -> None:
+        body = await _discover(
+            "Google Calendar list events for today", {"googlecalendar": False}, {}
+        )
+
+        assert body["not_connected"] == [{"id": "googlecalendar", "name": "Google Calendar"}]
+        assert body["next"].startswith("Google Calendar needs to be connected")
+        assert 'activate_integration(integration_id="googlecalendar")' in body["next"]
+
+    @pytest.mark.regression
+    async def test_a_background_run_is_told_to_report_it_and_carry_on(self) -> None:
+        body = await _discover(
+            "Google Calendar list events for today",
+            {"googlecalendar": False},
+            {"execution_mode": "background"},
+        )
+
+        assert body["not_connected"] == [{"id": "googlecalendar", "name": "Google Calendar"}]
+        assert "carry on with the rest of the task" in body["next"]
+        assert "activate_integration" not in body["next"]
+
+    async def test_a_connected_integration_named_in_the_query_is_not_flagged(self) -> None:
+        body = await _discover(
+            "Google Calendar list events for today", {"googlecalendar": True}, {}
+        )
+
+        assert "not_connected" not in body
+        assert "needs to be connected" not in body["next"]

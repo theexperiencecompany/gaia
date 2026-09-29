@@ -26,6 +26,7 @@ def _graph_run(
     connect_url: str | None = _MAGIC_LINK,
     *,
     expired: bool = False,
+    execution_mode: str | None = None,
 ) -> Iterator[MagicMock]:
     """Run the prompt inside a graph run of category, yielding its stream writer.
 
@@ -38,6 +39,9 @@ def _graph_run(
         return expired and (user_id, integration_id) == (_USER, _INTEGRATION_ID)
 
     writer = MagicMock()
+    configurable = {"source_category": category}
+    if execution_mode is not None:
+        configurable["execution_mode"] = execution_mode
     config_patch = (
         patch(
             "app.utils.integration_checker.get_config",
@@ -46,7 +50,7 @@ def _graph_run(
         if category is None
         else patch(
             "app.utils.integration_checker.get_config",
-            return_value={"configurable": {"source_category": category}},
+            return_value={"configurable": configurable},
         )
     )
     with (
@@ -163,3 +167,28 @@ class TestExpiredConnectionPrompt:
         assert self._card(writer)["message"] == (
             "To use Gmail features, please connect your account first."
         )
+
+
+class TestBackgroundRunPrompt:
+    """A background run has nobody to click a card or a link, so it must not wait to retry."""
+
+    @pytest.mark.regression
+    async def test_background_copy_says_carry_on_and_never_asks_to_retry(self) -> None:
+        with _graph_run("bg", execution_mode="background"):
+            msg = await request_integration_connection("gmail", "Gmail", "user1")
+
+        assert "Gmail needs to be connected" in msg
+        assert "no user is present" in msg
+        assert "carry on with the rest of the task" in msg
+        assert "try again" not in msg
+        # The single-use link dies within the hour; the result is read later.
+        assert _MAGIC_LINK not in msg
+        assert f"{_FAKE_FRONTEND}/integrations" in msg
+
+    @pytest.mark.regression
+    async def test_background_copy_for_an_expired_grant_says_sign_in_again(self) -> None:
+        with _graph_run("bg", execution_mode="background", expired=True):
+            msg = await request_integration_connection("gmail", "Gmail", "user1")
+
+        assert "EXPIRED" in msg
+        assert "carry on with the rest of the task" in msg
