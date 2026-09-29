@@ -50,6 +50,37 @@ class TestTheCommsTurnAnsweringADeliveredResult:
         assert texts.index(DELIVERED.content) < texts.index(FEEDBACK)
 
 
+class TestFeedbackOnAChatDraft:
+    """Redrafting in chat is ordinary conversation: the rule must not pull it onto a todo."""
+
+    async def _static(self) -> str:
+        messages = await effective_context(
+            AgentTier.COMMS,
+            ContextSeed(
+                query="write to Sarah more formally",
+                prior_messages=[
+                    HumanMessage(content="draft a note to Sarah about the lease"),
+                    AIMessage(content="Here's a draft: Hi Sarah, the lease looks good to me."),
+                ],
+            ),
+        )
+        return text_of(message_in_slot(messages, PromptSlot.STATIC))
+
+    @pytest.mark.regression
+    async def test_the_rule_names_only_a_delivered_result_or_a_named_todo(self) -> None:
+        static = await self._static()
+
+        assert ("It applies in two cases only: they reply to a result a todo delivered") in static
+        assert "Any other feedback, like notes on a draft you are writing together" in static
+
+    @pytest.mark.regression
+    async def test_the_rule_carries_no_email_writing_examples(self) -> None:
+        static = await self._static()
+
+        assert "write to Sarah more formally" not in static
+        assert "never draft replies to my landlord" not in static
+
+
 class TestTheExecutorApplyingTheFeedback:
     async def _context(self) -> str:
         messages = await effective_context(
