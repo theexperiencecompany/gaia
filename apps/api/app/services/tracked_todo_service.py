@@ -49,7 +49,7 @@ from app.services.todo_activity import activity_line, record_activity, record_fi
 from app.services.todo_canvas_storage import (
     append_log,
     build_vfs_label,
-    write_canvas_and_activity,
+    repair_canvas_and_activity,
 )
 from app.services.todos.todo_service import TodoService
 from app.services.triggers.subscription_service import (
@@ -342,7 +342,7 @@ class TrackedTodoService:
         if canvas == doc.canvas_content:
             return False
         parts = [p for p in (moved, doc.activity_content) if p]
-        if await write_canvas_and_activity(
+        if await repair_canvas_and_activity(
             doc.id,
             doc.user_id,
             canvas=canvas,
@@ -360,7 +360,7 @@ class TrackedTodoService:
         if canvas == fresh.canvas_content:
             return False
         parts = [p for p in (moved, fresh.activity_content) if p]
-        return await write_canvas_and_activity(
+        return await repair_canvas_and_activity(
             fresh.id,
             fresh.user_id,
             canvas=canvas,

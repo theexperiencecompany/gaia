@@ -366,7 +366,7 @@ class TestWithMissingSections:
             "## Standing rules\n\n## Key Details\n\n## Current State\n\n## Context\n\n"
             "## Learnings\n"
         )
-        assert with_missing_sections(canvas) is canvas
+        assert with_missing_sections(canvas) == canvas
 
 
 class TestNormalizeCanvas:
@@ -523,5 +523,84 @@ class TestStandingRules:
 
     def test_rules_at_the_cap_are_accepted(self) -> None:
         canvas = f"## Standing rules\n{'r' * STANDING_RULES_MAX_CHARS}\n\n## Key Details\n"
+
+        assert canvas_problems(canvas) == []
+
+
+class TestSectionHeadingCase:
+    """One Standing rules section whatever its casing: "## Standing Rules" is the same section."""
+
+    @pytest.mark.regression
+    def test_a_title_cased_heading_is_read_as_the_section(self) -> None:
+        canvas = "## Standing Rules\n- 2026-09-28: tell me every time\n\n## Key Details\n"
+
+        assert section_body(canvas, "Standing rules") == "- 2026-09-28: tell me every time"
+
+    @pytest.mark.regression
+    def test_a_title_cased_heading_is_not_added_twice(self) -> None:
+        canvas = (
+            "# T\n\n## Standing Rules\n- 2026-09-28: tell me every time\n\n## Key Details\nk\n\n"
+            "## Current State\n\n## Context\n\n## Learnings\n"
+        )
+
+        assert normalize_canvas(canvas) == (
+            "# T\n\n## Standing rules\n- 2026-09-28: tell me every time\n\n## Key Details\nk\n\n"
+            "## Current State\n\n## Context\n\n## Learnings\n",
+            None,
+        )
+
+    @pytest.mark.regression
+    def test_a_write_canonicalizes_the_heading(self) -> None:
+        canvas = "## STANDING RULES\n- r\n\n## key details\nk\n"
+
+        assert with_missing_sections(canvas) == (
+            "## Standing rules\n- r\n\n## Key Details\nk\n\n## Current State\n\n## Context\n\n"
+            "## Learnings\n"
+        )
+
+    @pytest.mark.regression
+    def test_the_cap_holds_for_a_title_cased_heading(self) -> None:
+        canvas = f"## Standing Rules\n{'r' * (STANDING_RULES_MAX_CHARS + 1)}\n\n## Key Details\n"
+
+        assert canvas_problems(canvas) == [
+            f'shorten "## Standing rules" to {STANDING_RULES_MAX_CHARS} characters: '
+            "one line per rule, merged where they overlap"
+        ]
+
+    @pytest.mark.regression
+    def test_two_casings_of_one_section_are_a_repeat(self) -> None:
+        canvas = "## Standing rules\n- a\n\n## Standing Rules\n- b\n"
+
+        assert canvas_problems(canvas) == ['merge the 2 "## Standing rules" sections into one']
+
+    @pytest.mark.regression
+    def test_the_prompt_trim_keeps_title_cased_rules_whole(self) -> None:
+        canvas = (
+            "## Key Details\n" + "k" * CANVAS_PROMPT_MAX_CHARS + "\n\n"
+            "## Standing Rules\n- keep me\n\n## Learnings\nlast"
+        )
+
+        assert bounded_canvas(canvas).startswith("## Standing rules\n- keep me\n\n## Key Details\n")
+
+
+class TestTemplateComments:
+    """The template's HTML comments are guidance for the writer, never section content."""
+
+    @pytest.mark.regression
+    def test_an_all_comment_section_reads_as_empty(self) -> None:
+        canvas = "## Standing rules\n<!-- the user's rules,\none line each -->\n\n## Key Details\n"
+
+        assert section_body(canvas, "Standing rules") == ""
+
+    @pytest.mark.regression
+    def test_a_comment_beside_real_rules_is_dropped(self) -> None:
+        canvas = "## Standing rules\n<!-- guidance -->\n- 2026-09-28: skip newsletters\n"
+
+        assert section_body(canvas, "Standing rules") == "- 2026-09-28: skip newsletters"
+
+    @pytest.mark.regression
+    def test_template_comments_do_not_count_toward_the_cap(self) -> None:
+        rules = "r" * STANDING_RULES_MAX_CHARS
+        canvas = f"## Standing rules\n<!-- guidance for the writer -->\n{rules}\n\n## Key Details\n"
 
         assert canvas_problems(canvas) == []

@@ -1,7 +1,8 @@
 """Markdown section helpers for tracked-todo canvases.
 
 Canvases are markdown split into sections by "## Heading" lines. These helpers
-locate a section by exact heading, and split legacy canvases (which carried
+locate a section by heading, case-insensitively (a template section's heading is
+written back in the template's casing), and split legacy canvases (which carried
 activity inside the canvas) into the canvas.md / activity.md pair.
 """
 
@@ -28,6 +29,9 @@ _ACTIVITY_HEADING_RE = re.compile(
     r"^(activity|timeline|history|changelog|run log|log)\b", re.IGNORECASE
 )
 _ANY_DATED_BLOCK_RE = re.compile(r"^### \d{4}-\d{2}-\d{2}", re.MULTILINE)
+# The template's "<!-- ... -->" guidance for whoever writes the section.
+_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+_TEMPLATE_HEADINGS = {section.casefold(): section for section in CANVAS_SECTIONS}
 
 
 def bounded_canvas(canvas: str) -> str:
@@ -52,7 +56,7 @@ def bounded_canvas(canvas: str) -> str:
 
 def _section_span(text: str, heading: str) -> tuple[int, int, int] | None:
     """(heading_start, body_start, section_end) for a "## {heading}" line, trailing blanks allowed."""
-    pattern = re.compile(rf"(?:^|(?<=\n))## {re.escape(heading)}[ \t]*(?=\n|\Z)")
+    pattern = re.compile(rf"(?:^|(?<=\n))## {re.escape(heading)}[ \t]*(?=\n|\Z)", re.IGNORECASE)
     match = pattern.search(text)
     if match is None:
         return None
@@ -63,12 +67,12 @@ def _section_span(text: str, heading: str) -> tuple[int, int, int] | None:
 
 
 def section_body(text: str, heading: str) -> str | None:
-    """Body of "## {heading}" (stripped), or None when the section is absent."""
+    """Body of "## {heading}" without its HTML comments, stripped; None when the section is absent."""
     span = _section_span(text, heading)
     if span is None:
         return None
     _, body_start, section_end = span
-    return text[body_start:section_end].strip()
+    return _HTML_COMMENT_RE.sub("", text[body_start:section_end]).strip()
 
 
 def _remove_section(text: str, heading: str) -> tuple[str, str | None]:
@@ -184,12 +188,32 @@ def split_legacy_canvas(canvas: str) -> tuple[str, str | None]:
     return text, "\n\n".join(merged) if merged else None
 
 
+def _template_casing(heading: str) -> str:
+    """Return a template section's heading in the template's casing; any other heading as is."""
+    return _TEMPLATE_HEADINGS.get(heading.casefold(), heading)
+
+
 def _headings(canvas: str) -> list[str]:
-    return [match.group(1) for match in _HEADING_RE.finditer(canvas)]
+    return [_template_casing(match.group(1)) for match in _HEADING_RE.finditer(canvas)]
+
+
+def _with_template_casing(canvas: str) -> str:
+    """Rewrite every template section's heading line in the template's casing."""
+
+    def recased(match: re.Match[str]) -> str:
+        heading = match.group(1)
+        canonical = _template_casing(heading)
+        return match.group(0) if canonical == heading else f"## {canonical}"
+
+    return _HEADING_RE.sub(recased, canvas)
 
 
 def with_missing_sections(canvas: str) -> str:
-    """Add every template section the canvas lacks, empty, before the next template section it has."""
+    """Add every template section the canvas lacks, empty, before the next template section it has.
+
+    Template headings are written back in the template's casing first.
+    """
+    canvas = _with_template_casing(canvas)
     present = set(_headings(canvas))
     if present.issuperset(CANVAS_SECTIONS):
         return canvas
@@ -237,7 +261,7 @@ def _merge_duplicate_sections(canvas: str) -> str:
     for segment in segments:
         # Every segment after the split is "\n## <heading>\n<body>".
         heading_line, _, body = segment.removeprefix("\n").partition("\n")
-        heading = heading_line.removeprefix("## ").rstrip()
+        heading = _template_casing(heading_line.removeprefix("## ").rstrip())
         bodies.setdefault(heading, []).append(body.strip("\n"))
     sections = [
         "\n".join([f"## {heading}", *(part for part in parts if part)])

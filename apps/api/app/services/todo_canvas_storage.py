@@ -80,26 +80,30 @@ async def write_canvas(
     return False
 
 
-async def write_canvas_and_activity(
+async def repair_canvas_and_activity(
     todo_id: str,
     user_id: str,
     *,
     canvas: str,
     activity: str,
-    expected_updated_at: datetime | None = None,
+    expected_updated_at: datetime | None,
 ) -> bool:
-    """Replace both bodies in one update (the legacy-canvas migration path)."""
+    """Replace both bodies as a system repair of their shape, which is not activity.
+
+    updated_at stays put (dormancy and recency read it), and nothing is re-embedded:
+    a repair only moves text between the two bodies and adds empty headings.
+    """
     updated = await todo_repository.replace_note_fields(
         todo_id,
         user_id,
         update=TodoUpdate(canvas_content=canvas, activity_content=activity),
         expected_updated_at=expected_updated_at,
+        touch=False,
     )
-    if updated is not None:
-        schedule_gaia_tasks_sync(user_id)
-        _schedule_reindex(updated)
-        return True
-    return False
+    if updated is None:
+        return False
+    schedule_gaia_tasks_sync(user_id)
+    return True
 
 
 async def read_activity(todo_id: str, user_id: str) -> str | None:

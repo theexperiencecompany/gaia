@@ -621,15 +621,17 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         *,
         update: TodoUpdate,
         expected_updated_at: datetime | None,
+        touch: bool = True,
     ) -> TodoDocument | None:
         """Replace note bodies, optionally gated by expected_updated_at (compare-and-set).
 
-        Returns None on mismatch.
+        Returns None on mismatch. touch=False keeps updated_at, for a system repair
+        that is not activity on the todo.
         """
         extra: dict[str, object] = {"user_id": user_id}
         if expected_updated_at is not None:
             extra["updated_at"] = expected_updated_at
-        return await self._apply_update(todo_id, user_id, extra, update)
+        return await self._apply_update(todo_id, user_id, extra, update, touch=touch)
 
     async def update_if_scheduled_at(
         self, todo_id: str, user_id: str, *, expected: datetime | None, update: TodoUpdate
