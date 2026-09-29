@@ -14,7 +14,6 @@ from app.services.feature_flags import (
     is_code_mode_enabled,
     is_enabled,
     is_hil_ledger_enabled,
-    is_inline_tool_returns_enabled,
 )
 
 
@@ -162,16 +161,6 @@ class TestFlags:
         assert await is_hil_ledger_enabled("u1") is True
         mock_client.get_feature_flag.assert_called_once_with("HIL_LEDGER", "u1")
 
-    async def test_inline_tool_returns_is_off_by_default(self, no_client: None) -> None:
-        assert await is_inline_tool_returns_enabled("u1") is False
-
-    async def test_is_inline_tool_returns_enabled_live(
-        self, mock_client: MagicMock, evaluated: MagicMock
-    ) -> None:
-        mock_client.get_feature_flag.return_value = True
-        assert await is_inline_tool_returns_enabled("u1") is True
-        mock_client.get_feature_flag.assert_called_once_with("INLINE_TOOL_RETURNS", "u1")
-
     def test_feature_flag_evaluated_event_name(self) -> None:
         assert AnalyticsEvents.FEATURE_FLAG_EVALUATED == "feature_flag:evaluated"
 
@@ -317,7 +306,6 @@ class TestCodeModeDefaultFollowsSettings:
 FLAG_KILL_SWITCHES = {
     FeatureFlag.COMMS_OPENUI: "ENABLE_COMMS_OPENUI",
     FeatureFlag.CODE_MODE: "ENABLE_CODE_MODE",
-    FeatureFlag.INLINE_TOOL_RETURNS: "ENABLE_INLINE_TOOL_RETURNS",
     FeatureFlag.HIL_LEDGER: "ENABLE_HIL_LEDGER",
     FeatureFlag.HIL_JEV_JUDGE: "ENABLE_HIL_JEV_JUDGE",
     FeatureFlag.HIL_JEV_REPLY: "ENABLE_HIL_JEV_REPLY",
@@ -329,10 +317,6 @@ class TestShippedDefaults:
     @pytest.mark.parametrize("settings_class", [CommonSettings, ProductionSettings])
     def test_ships_on(self, setting: str, settings_class: type[CommonSettings]) -> None:
         assert settings_class.model_fields[setting].default is True
-
-    @pytest.mark.parametrize("settings_class", [CommonSettings, ProductionSettings])
-    def test_inline_tool_returns_ships_off(self, settings_class: type[CommonSettings]) -> None:
-        assert settings_class.model_fields["ENABLE_INLINE_TOOL_RETURNS"].default is False
 
 
 class TestEveryFlagFailsOpenToItsOwnSetting:

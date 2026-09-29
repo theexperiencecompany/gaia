@@ -3,7 +3,7 @@
 This is what replaces bind_tools for proxied tools: the model reads this doc
 and constructs `data` for execute() from it. The args carry what building a
 call needs; the return shape is keys and types only. get_tool_schema always
-renders it; discovery docs render args only unless INLINE_TOOL_RETURNS is on.
+renders it; discovery docs render args only unless ENABLE_INLINE_TOOL_RETURNS is on.
 """
 
 from app.agents.tools.execute.schema_notation import (

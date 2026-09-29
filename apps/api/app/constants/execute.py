@@ -19,7 +19,7 @@ TICKET_NAMES = frozenset({TICKET_APPROVE_NAME, TICKET_REVOKE_NAME})
 # render inline for the model.
 ARGS_SCHEMA_MAX_CHARS = 3000
 # A doc is context the model re-pays for on every later turn, so each section
-# is budgeted. With INLINE_TOOL_RETURNS on, discovery docs inline the return
+# is budgeted. With ENABLE_INLINE_TOOL_RETURNS on, discovery docs inline the return
 # shape up to this size (93% of 1074 sampled Composio shapes fit).
 RETURNS_INLINE_MAX_CHARS = 1000
 # The get_tool_schema tool's return-shape bound: full depth for almost every

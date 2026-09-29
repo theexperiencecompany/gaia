@@ -39,6 +39,7 @@ from app.agents.tools.execute.tool_info import contract_from, tool_contract
 from app.agents.tools.research_tool import deep_research
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.settings import settings
 from app.constants.execute import RETURNS_INLINE_MAX_CHARS
 from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import search_public_integrations
@@ -47,7 +48,6 @@ from app.models.chat_models import ConversationSource
 from app.models.integration_models import PublicIntegrationSearchHit
 from app.models.integrations.composio_hooks import RunMetadata
 from app.override.langgraph_bigtool.utils import RetrieveToolsResult
-from app.services.feature_flags import is_inline_tool_returns_enabled
 from app.services.integrations.integration_service import (
     get_user_available_tool_namespaces,
 )
@@ -104,7 +104,6 @@ async def _resolve_for_retrieval(user_id: str | None, name: str) -> ResolvedTool
 
 async def _render_proxied_docs(user_id: str | None, names: list[str]) -> list[str]:
     docs: list[str] = []
-    inline_returns = bool(names) and await is_inline_tool_returns_enabled(user_id)
     for name in names:
         resolved = await _resolve_for_retrieval(user_id, name)
         if resolved is None:
@@ -114,7 +113,7 @@ async def _render_proxied_docs(user_id: str | None, names: list[str]) -> list[st
                 tool_name=name,
             )
             continue
-        if inline_returns:
+        if settings.ENABLE_INLINE_TOOL_RETURNS:
             docs.append(render_tool_doc(await tool_contract(resolved), RETURNS_INLINE_MAX_CHARS))
         else:
             docs.append(render_tool_doc(contract_from(resolved, None), None))
