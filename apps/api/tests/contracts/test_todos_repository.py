@@ -632,6 +632,41 @@ class TestReplaceNoteFields:
 
         assert updated is not None and updated.canvas_content == "v2"
 
+    @pytest.mark.regression
+    async def test_untouched_replace_keeps_updated_at(self, repo, make_doc, raw_collection):
+        """A canvas repair is not activity: dormancy and recency read updated_at."""
+        created = await repo.create(make_doc(user_id="u1", canvas_content="v1"))
+        idle_since = datetime(2026, 9, 1, tzinfo=UTC)
+        await raw_collection.update_one(
+            {"_id": repo._id_value(created.id)}, {"$set": {"updated_at": idle_since}}
+        )
+
+        updated = await repo.replace_note_fields(
+            created.id,
+            "u1",
+            update=TodoUpdate(canvas_content="v2"),
+            expected_updated_at=idle_since,
+            touch=False,
+        )
+
+        assert updated is not None and updated.canvas_content == "v2"
+        stored = await repo.get_by_id(created.id)
+        assert stored is not None and stored.updated_at == idle_since
+
+    async def test_untouched_replace_still_refuses_a_stale_revision(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1", canvas_content="v1"))
+
+        assert (
+            await repo.replace_note_fields(
+                created.id,
+                "u1",
+                update=TodoUpdate(canvas_content="v2"),
+                expected_updated_at=datetime(2020, 1, 1, tzinfo=UTC),
+                touch=False,
+            )
+            is None
+        )
+
 
 class TestUpdateIfScheduledAt:
     """A finished run moves the schedule on only if nothing rescheduled the todo while it ran."""

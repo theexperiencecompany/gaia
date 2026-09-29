@@ -254,7 +254,13 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         return doc
 
     async def _apply_update(
-        self, doc_id: str, scope: str, extra_filter: Mapping[str, object], update: TUpdate
+        self,
+        doc_id: str,
+        scope: str,
+        extra_filter: Mapping[str, object],
+        update: TUpdate,
+        *,
+        touch: bool = True,
     ) -> TDoc | None:
         set_fields = update.model_dump(exclude_unset=True)
         if not set_fields:
@@ -263,7 +269,11 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
                 why="a write that changes nothing is a bug (a typo'd or empty update)",
                 fix="set at least one field on the update model",
             )
-        if self.auto_stamp_timestamps and "updated_at" in self.document_model.model_fields:
+        if (
+            touch
+            and self.auto_stamp_timestamps
+            and "updated_at" in self.document_model.model_fields
+        ):
             set_fields["updated_at"] = datetime.now(UTC)
         raw = await get_async_collection(self.collection_name).find_one_and_update(
             {**self._identity_filter(doc_id), **extra_filter},
