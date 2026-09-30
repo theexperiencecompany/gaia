@@ -116,7 +116,7 @@ def _expired_connection_delivery() -> dict:
     }
 
 
-def _workflow() -> Workflow:
+def _workflow(trigger_name: str = "gmail_new_message") -> Workflow:
     return Workflow(
         id=WORKFLOW_ID,
         user_id=USER_ID,
@@ -127,7 +127,7 @@ def _workflow() -> Workflow:
         trigger_config=TriggerConfig(
             type=TriggerType.INTEGRATION,
             enabled=True,
-            trigger_name="gmail_new_message",
+            trigger_name=trigger_name,
             composio_trigger_ids=[],
         ),
     )
@@ -305,6 +305,50 @@ class TestTriggerDeliveryToQueuedExecution:
         assert trigger_id == "ti_sent_nano"
         assert user_id == USER_ID
         assert payload["thread_id"] == "thread-1"
+
+    async def test_a_sent_mail_delivery_buffers_its_workflow_on_the_daily_window(
+        self,
+        unauthenticated_client: AsyncClient,
+        _webhook_secret: None,
+        _redis: MagicMock,
+        _spawned: list,
+    ) -> None:
+        """Sent mail fires once per message too; a burst must join one batch, not queue a run each."""
+        queue = AsyncMock()
+        buffer = AsyncMock(return_value=True)
+        body = _gmail_sent_delivery()
+        with (
+            patch(
+                f"{GMAIL_HANDLER_MODULE}.workflow_repository.find_active_integration_workflows",
+                AsyncMock(return_value=[_workflow("gmail_email_sent")]),
+            ),
+            patch(
+                f"{GMAIL_HANDLER_MODULE}.workflow_repository.find_active_by_composio_trigger",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "app.services.triggers.base.get_signal_matching_context",
+                AsyncMock(return_value=""),
+            ),
+            patch("app.services.triggers.base.RedisPoolManager.get_pool", AsyncMock()),
+            patch("app.services.triggers.base.enqueue_worker_job", AsyncMock()),
+            patch("app.services.triggers.base.buffer_trigger_event", buffer),
+            patch.object(WorkflowQueueService, "queue_workflow_execution", queue),
+        ):
+            response = await unauthenticated_client.post(
+                ENDPOINT,
+                content=json.dumps(body).encode(),
+                headers=_signed_headers(body, "wh-e2e-sent-batch-1"),
+            )
+            await _drain(_spawned)
+
+        assert response.status_code == 200
+        buffer.assert_awaited_once()
+        workflow_id, _user_id, data, window_seconds, _context = buffer.await_args.args
+        assert workflow_id == WORKFLOW_ID
+        assert data["thread_id"] == "thread-1"
+        assert window_seconds == PER_EMAIL_FALLBACK_WINDOW_SECONDS
+        queue.assert_not_awaited()
 
     async def test_a_bad_signature_is_refused_and_never_reaches_the_handler(
         self,

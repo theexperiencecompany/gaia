@@ -538,7 +538,8 @@ def _format_create_output(
 
 def _format_ref_taken_output(existing: TodoDocument, now: datetime) -> str:
     """Point the model at the open todo that already owns the thread, instead of a new one."""
-    state = section_body(existing.canvas_content or "", CANVAS_CURRENT_STATE_SECTION)
+    canvas = existing.canvas_content
+    state = canvas and section_body(canvas, CANVAS_CURRENT_STATE_SECTION)
     return (
         "Not created: this thread already has an open tracked todo. Update it with "
         "update_tracked_todo and its canvas.md instead of creating another.\n"

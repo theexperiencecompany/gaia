@@ -23,6 +23,7 @@ from uuid import uuid4
 from redis.exceptions import RedisError
 
 from app.constants.log_tags import LogTag
+from app.constants.triggers import PER_EMAIL_TRIGGER_NAMES
 from app.db.redis import redis_cache
 from app.models.trigger_configs import GmailPollInboxConfig
 from app.models.workflow_models import TriggerConfig
@@ -46,9 +47,9 @@ MAX_TRIGGER_BATCH_EVENTS = 50
 TRIGGER_BATCH_TTL_MULTIPLIER = 4
 TRIGGER_BATCH_TTL_FLOOR_SECONDS = 60 * 60
 
-# Window for per-email triggers with no declared interval (gmail_new_message).
-# Daily, deliberately: everything built on this trigger is digest-shaped, and
-# one free-tier run costs the whole free daily budget.
+# Window for per-email triggers with no declared interval. Daily, deliberately:
+# everything built on them is digest-shaped, and one free-tier run costs the
+# whole free daily budget.
 PER_EMAIL_FALLBACK_WINDOW_SECONDS = 24 * 60 * 60
 
 
@@ -67,13 +68,13 @@ def coalesce_window_seconds(trigger_config: TriggerConfig) -> int:
 
     A poll trigger's window IS its configured interval, so "polls your inbox
     every N minutes" finally describes what the workflow does. The account-level
-    per-email trigger declares no interval at all, so it gets the daily fallback
-    — it fires once per inbound email, which is never a cadence anyone chose.
+    per-email triggers declare no interval at all, so they get the daily fallback
+    — they fire once per email, which is never a cadence anyone chose.
     """
     trigger_data = trigger_config.trigger_data
     if isinstance(trigger_data, GmailPollInboxConfig):
         return trigger_data.interval * 60
-    if trigger_config.trigger_name == "gmail_new_message":
+    if trigger_config.trigger_name in PER_EMAIL_TRIGGER_NAMES:
         return PER_EMAIL_FALLBACK_WINDOW_SECONDS
     return 0
 

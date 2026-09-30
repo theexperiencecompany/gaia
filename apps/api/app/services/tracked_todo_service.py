@@ -15,32 +15,21 @@ app/services/todo_canvas_storage.py for the storage primitives. No
 JuiceFS / FUSE mount is required, so tracked todos work in every dev mode.
 """
 
-from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
-from types import MappingProxyType
-from typing import NamedTuple
 
 from app.constants.todos import (
     EXECUTE_TRACKED_TODO_TASK,
     GAIA_TRACKED_LABEL,
     TodoActivityEvent,
 )
-from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import (
     ExternalRef,
-    ExternalRefSource,
     Priority,
     TodoDocument,
     TodoModel,
     TodoResponse,
     TodoUpdate,
-)
-from app.models.trigger_subscription_models import (
-    ConditionOperator,
-    SubscriptionAction,
-    SubscriptionCondition,
-    TriggerOrigin,
 )
 from app.services.canvas_markdown import normalize_canvas
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
@@ -56,11 +45,9 @@ from app.services.todo_canvas_storage import (
     build_vfs_label,
     write_canvas_and_activity,
 )
+from app.services.todos.external_ref_watch import watch_external_ref
 from app.services.todos.todo_service import TodoService
-from app.services.triggers.subscription_service import (
-    register_subscription,
-    teardown_subscriptions,
-)
+from app.services.triggers.subscription_service import teardown_subscriptions
 from app.utils.canvas_vector_utils import mark_canvas_completed, store_canvas_embedding
 from app.utils.occurrence import occurrence_stamp
 from app.utils.redis_utils import RedisPoolManager
@@ -83,39 +70,19 @@ CANVAS_TEMPLATE = """# {title}
 """
 
 
-class _RefWatch(NamedTuple):
-    """How to see an outside object change: the payload field naming it, and its triggers."""
-
-    field_name: str
-    trigger_names: tuple[str, ...]
-
-
-# A Gmail thread moves both ways: mail arrives on it, and the user replies from Gmail.
-_REF_WATCHES: Mapping[ExternalRefSource, _RefWatch] = MappingProxyType(
-    {
-        ExternalRefSource.GMAIL_THREAD: _RefWatch(
-            "thread_id", (GMAIL_NEW_MESSAGE_TRIGGER_NAME, GMAIL_EMAIL_SENT_TRIGGER_NAME)
-        ),
-    }
-)
-
-
-async def _watch_external_ref(todo_id: str, user_id: str, ref: ExternalRef) -> None:
-    """Run the todo whenever its outside object changes."""
-    watch = _REF_WATCHES[ref.source]
-    on_ref = [
-        SubscriptionCondition(
-            field_name=watch.field_name, operator=ConditionOperator.EQUALS, value=ref.id
-        )
-    ]
-    for trigger_name in watch.trigger_names:
-        await register_subscription(
+async def _discard_unwatched_todo(todo_id: str, user_id: str, watch_error: Exception) -> None:
+    """Delete a todo whose watch failed; a failed delete is logged and noted on watch_error."""
+    try:
+        await TodoService.delete_todo(todo_id, user_id)
+    except Exception as delete_error:
+        log.error(
+            "tracked_todo.unwatched_discard_failed",
             todo_id=todo_id,
             user_id=user_id,
-            trigger_name=trigger_name,
-            conditions=on_ref,
-            action=SubscriptionAction.EXECUTE,
+            error=str(delete_error),
+            error_type=type(delete_error).__name__,
         )
+        watch_error.add_note(f"Deleting the unwatched todo {todo_id} failed too: {delete_error!r}")
 
 
 def _pin_active_todo(docs: list[TodoDocument], active_todo_id: str | None) -> None:
@@ -232,10 +199,10 @@ class TrackedTodoService:
 
         if external_ref is not None:
             try:
-                await _watch_external_ref(todo_id, user_id, external_ref)
-            except Exception:
+                await watch_external_ref(todo_id, user_id, external_ref, ())
+            except Exception as watch_error:
                 # Unwatched, it would still hold the ref and answer every retry as a duplicate.
-                await TodoService.delete_todo(todo_id, user_id)
+                await _discard_unwatched_todo(todo_id, user_id, watch_error)
                 raise
 
         await store_canvas_embedding(
@@ -371,16 +338,13 @@ class TrackedTodoService:
         todo_id: str,
         scheduled_at: datetime,
         *,
-        origin: TriggerOrigin | None = None,
-        coalesced: Sequence[TriggerOrigin] = (),
         defer_until: datetime | None = None,
     ) -> bool:
         """Queue the run armed for scheduled_at; False when that occurrence is already queued.
 
         Store scheduled_at on the todo first: the job id dedupes a repeat enqueue,
         and a fire whose todo has moved off its stamp is dropped as stale, which is
-        how a reschedule retires the job ARQ cannot cancel. defer_until only delays it;
-        a trigger run's retry passes origin and coalesced so it keeps every event it carried.
+        how a reschedule retires the job ARQ cannot cancel. defer_until only delays it.
         """
         # Mongo stores a naive datetime as UTC, so the stamp must name that instant.
         armed_for = scheduled_at if scheduled_at.tzinfo else scheduled_at.replace(tzinfo=UTC)
@@ -390,9 +354,7 @@ class TrackedTodoService:
             pool,
             EXECUTE_TRACKED_TODO_TASK,
             todo_id,
-            origin,
-            stamp,
-            coalesced=list(coalesced),
+            scheduled_for=stamp,
             _job_id=f"{EXECUTE_TRACKED_TODO_TASK}:{todo_id}:{stamp}",
             _defer_until=defer_until or armed_for,
         )

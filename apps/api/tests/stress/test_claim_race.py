@@ -5,7 +5,9 @@ app/workers/tasks/tracked_todo_tasks.py — every execution claims the todo
 with SET gaia_todo_exec:{todo_id} 1 NX EX 1800 and releases it in a
 finally. Redis is an in-process fake whose set has no await between
 check and write, mirroring Redis's single-threaded command atomicity, so the
-race resolves deterministically: exactly one of N concurrent claims wins.
+race resolves deterministically: exactly one of N concurrent claims wins. The
+trigger-drain check every run ends with reads redis_cache, backed per test by
+fakeredis: the process-wide client is bound to whichever test loop used it first.
 
 The double-claims invariant: at most one runner inside the critical section at
 a time, losers never release a lock they did not acquire, and the lock is held
@@ -62,6 +64,7 @@ async def _yielding_execution(*_args: Any, **_kwargs: Any) -> str:
     return "success:todo-1"
 
 
+@pytest.mark.usefixtures("fake_redis")
 class TestTrackedTodoClaimRace:
     async def test_exactly_one_claim_wins_under_concurrent_race(self):
         pool = _FakePool()
