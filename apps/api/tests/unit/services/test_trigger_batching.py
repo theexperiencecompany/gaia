@@ -406,6 +406,20 @@ class TestObservableBehaviour:
             batch_key=key,
         )
 
+    async def test_a_refill_is_logged_with_the_workflow_identified(
+        self, fake_redis: _FakeRedis, enqueue: Any, batch_log: Any
+    ) -> None:
+        key = TRIGGER_BATCH_KEY.format(workflow_id="wf_1")
+        fake_redis.store[key] = [json.dumps({"id": 1})]
+
+        await reschedule_if_refilled("wf_1", key, 900, {})
+
+        batch_log.info.assert_called_once_with(
+            "[TRIGGER] Trigger batch refilled mid-run — follow-up run scheduled",
+            workflow_id="wf_1",
+            window_seconds=900,
+        )
+
     async def test_refill_job_id_shape_is_exact(self, fake_redis: _FakeRedis, enqueue: Any) -> None:
         key = TRIGGER_BATCH_KEY.format(workflow_id="wf_1")
         fake_redis.store[key] = [json.dumps({"id": 1})]
