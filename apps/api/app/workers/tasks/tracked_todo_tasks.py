@@ -25,6 +25,7 @@ from app.agents.prompts.todo_prompts import (
 )
 from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
+    EXECUTE_TRACKED_TODO_TASK,
     FAILED_LABEL,
     TODO_SCHEDULE_FIRE_GRACE,
     TodoActivityEvent,
@@ -224,14 +225,6 @@ async def _execute_todo_with_retry(
 
     try:
         await _execute_on_executor(doc, user_data=user_data, origin=origin, coalesced=coalesced)
-        # A watch firing is not the todo's schedule, so only a scheduled run moves it on.
-        advanced = origin is None and await _advance_schedule(doc, user_tz.value)
-        if not advanced:
-            await todo_repository.update(
-                todo_id, user_id=user_id, update=TodoUpdate(gaia_retry_count=0)
-            )
-        return f"success:{todo_id}"
-
     except Exception as exc:
         log.exception("tracked_todo.execution_failed", todo_id=todo_id, error=str(exc))
         new_retry_count = retry_count + 1
@@ -247,20 +240,29 @@ async def _execute_todo_with_retry(
         backoff_index = min(new_retry_count - 1, len(RETRY_BACKOFF) - 1)
         backoff = RETRY_BACKOFF[backoff_index]
         next_attempt = datetime.now(UTC) + backoff
-        # A scheduled retry parks scheduled_at on the backoff target: left in the
-        # past it matches the safety net's due-query, which fires it on the next
-        # 30-minute scan. A triggered retry carries its origin and needs no park.
-        update = (
-            TodoUpdate(gaia_retry_count=new_retry_count, scheduled_at=next_attempt)
-            if origin is None
-            else TodoUpdate(gaia_retry_count=new_retry_count)
-        )
-        await todo_repository.update(todo_id, user_id=user_id, update=update)
-        # Without origin the retry silently becomes an ordinary scheduled run:
-        # wrong attribution, and the payload the todo was woken to act on gone.
-        await tracked_todo_service.schedule_execution(
-            todo_id, next_attempt, origin=origin, coalesced=coalesced
-        )
+        if origin is None:
+            # Parked on the backoff target: left in the past, scheduled_at matches
+            # the safety net's due-query, which fires it on the next 30-minute scan.
+            await todo_repository.update(
+                todo_id,
+                user_id=user_id,
+                update=TodoUpdate(gaia_retry_count=new_retry_count, scheduled_at=next_attempt),
+            )
+            await tracked_todo_service.schedule_execution(todo_id, next_attempt)
+        else:
+            await todo_repository.update(
+                todo_id, user_id=user_id, update=TodoUpdate(gaia_retry_count=new_retry_count)
+            )
+            # Carries origin and every event it coalesced, or the retry loses the payloads
+            # it was woken for; no occurrence job id, which would fold it into a scheduled run.
+            await enqueue_worker_job(
+                await RedisPoolManager.get_pool(),
+                EXECUTE_TRACKED_TODO_TASK,
+                todo_id,
+                origin,
+                coalesced=list(coalesced),
+                _defer_until=next_attempt,
+            )
         await record_activity(
             todo_id,
             user_id,
@@ -275,6 +277,15 @@ async def _execute_todo_with_retry(
             max_attempts=MAX_RETRY_ATTEMPTS,
         )
         return f"retry:{todo_id} (attempt {new_retry_count})"
+
+    # The run is delivered: a failure queueing what follows must not run it again.
+    # A watch firing is not the todo's schedule, so only a scheduled run moves it on.
+    advanced = origin is None and await _advance_schedule(doc, user_tz.value)
+    if not advanced:
+        await todo_repository.update(
+            todo_id, user_id=user_id, update=TodoUpdate(gaia_retry_count=0)
+        )
+    return f"success:{todo_id}"
 
 
 async def _advance_schedule(doc: TodoDocument, user_tz: str) -> bool:

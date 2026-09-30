@@ -725,9 +725,10 @@ class TestScheduleExecutionAfterCreate:
             "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
             new_callable=AsyncMock,
             return_value=True,
-        ):
+        ) as schedule:
             error = await _schedule_execution_after_create("t1", _FUTURE)
         assert error is None
+        schedule.assert_awaited_once_with("t1", _FUTURE)
 
     async def test_scheduler_exception_yields_user_facing_warning_not_a_crash(self):
         with patch(

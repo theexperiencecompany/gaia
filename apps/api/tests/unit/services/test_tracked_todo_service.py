@@ -410,7 +410,8 @@ class TestScheduleExecution:
         pool.enqueue_job.assert_awaited_once()
         args, kwargs = pool.enqueue_job.await_args
         stamp = occurrence_stamp(when)
-        assert args == ("execute_tracked_todo", TODO_ID, None, stamp)
+        assert args == ("execute_tracked_todo", TODO_ID)
+        assert kwargs["scheduled_for"] == stamp
         # One job id per occurrence: a repeat enqueue for it dedupes in ARQ.
         assert kwargs["_job_id"] == f"execute_tracked_todo:{TODO_ID}:{stamp}"
         assert kwargs["_defer_until"] == when
@@ -423,8 +424,8 @@ class TestScheduleExecution:
 
         await TrackedTodoService.schedule_execution(TODO_ID, due, defer_until=later)
 
-        args, kwargs = pool.enqueue_job.await_args
-        assert args[-1] == occurrence_stamp(due)
+        kwargs = pool.enqueue_job.await_args.kwargs
+        assert kwargs["scheduled_for"] == occurrence_stamp(due)
         assert kwargs["_defer_until"] == later
 
     async def test_a_naive_time_is_stamped_as_the_utc_instant_mongo_stores(
@@ -436,8 +437,11 @@ class TestScheduleExecution:
 
         await TrackedTodoService.schedule_execution(TODO_ID, naive)
 
-        args, _kwargs = pool.enqueue_job.await_args
-        assert args[-1] == occurrence_stamp(naive.replace(tzinfo=UTC))
+        aware = naive.replace(tzinfo=UTC)
+        kwargs = pool.enqueue_job.await_args.kwargs
+        assert kwargs["scheduled_for"] == occurrence_stamp(aware)
+        # A naive defer time would be read as the worker's local time, not UTC.
+        assert kwargs["_defer_until"] == aware
 
     async def test_false_when_the_occurrence_is_already_queued(self, mock_repo, mock_deps):
         pool = AsyncMock()
