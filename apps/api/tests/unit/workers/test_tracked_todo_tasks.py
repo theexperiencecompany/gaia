@@ -826,6 +826,8 @@ class TestExecuteTodoWithRetryFailure:
         _result, repo, pool, _mf = await self._run(_doc(gaia_retry_count=0))
 
         (payload,) = _updates(repo)
+        assert repo.update.await_args.args == ("todo-1",)
+        assert repo.update.await_args.kwargs["user_id"] == "user-1"
         assert payload["gaia_retry_count"] == 1
         assert payload["scheduled_at"] == pool.enqueue_job.await_args.kwargs["_defer_until"]
         assert payload["scheduled_at"] > datetime.now(UTC)
