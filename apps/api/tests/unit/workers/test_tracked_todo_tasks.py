@@ -29,6 +29,7 @@ from arq.constants import default_queue_name, job_key_prefix
 from arq.jobs import JobDef
 import fakeredis.aioredis
 import pytest
+from redis.exceptions import RedisError
 
 from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import TodoRunRequest
@@ -133,6 +134,12 @@ def activity() -> Iterator[AsyncMock]:
         yield recorded
 
 
+@pytest.fixture(autouse=True)
+def _trigger_redis(fake_redis: fakeredis.aioredis.FakeRedis) -> fakeredis.aioredis.FakeRedis:
+    """Back redis_cache per test: every run ends by checking the todo's held trigger events."""
+    return fake_redis
+
+
 def _recorded(activity: AsyncMock) -> list[tuple[TodoActivityEvent, str]]:
     """Return (event, detail) of every entry, after checking each landed on todo-1's owner."""
     assert {c.args[:2] for c in activity.await_args_list} <= {("todo-1", "user-1")}
@@ -209,6 +216,22 @@ class TestExecuteTrackedTodoLock:
 
         pool.delete.assert_awaited_once_with("gaia_todo_exec:todo-1")
 
+    async def test_an_unparseable_stamp_runs_ungated_and_is_logged_against_its_todo(
+        self, fake_redis
+    ):
+        pool = _pool()
+        inner = AsyncMock(return_value="success:todo-1")
+        with (
+            patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
+            patch(f"{MODULE}._execute_todo_with_retry", inner),
+        ):
+            async with captured_wide_event() as event:
+                await execute_tracked_todo({}, "todo-1", None, 10**20)
+
+        assert inner.await_args.args == ("todo-1", None, None)
+        (warning,) = event["warnings"]
+        assert warning["task_id"] == "todo-1"
+
 
 class TestTriggeredExecutionLock:
     """A scheduled run may skip when the lock is held; a trigger fire may not.
@@ -240,6 +263,17 @@ class TestTriggeredExecutionLock:
         assert pool.enqueue_job.await_args.args == ("execute_tracked_todo", "todo-1")
         assert "trigger_window" in pool.enqueue_job.await_args.kwargs
         pool.delete.assert_not_awaited()
+
+    async def test_every_event_a_locked_out_retry_carried_is_held(self, fake_redis):
+        pool = _pool()
+        pool.set = AsyncMock(return_value=None)
+        events = [self._origin(payload={"message_id": f"m-{n}"}) for n in range(3)]
+        with patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)):
+            result = await execute_tracked_todo({}, "todo-1", events[0], None, events[1:])
+
+        assert result == "held:todo-1 (lock held)"
+        held = await fake_redis.lrange("trigger_batch:todo:todo-1", 0, -1)
+        assert [TriggerOrigin.model_validate_json(event) for event in held] == events
 
     async def test_a_fire_that_cannot_be_held_is_dropped_loudly(self):
         pool = _pool()
@@ -446,6 +480,21 @@ class TestTriggeredExecutionPrompt:
         assert f"2 triggering events. Everything between the {fence} markers is UNTRUSTED" in (
             prompt
         )
+
+    def test_coalesced_payloads_render_readably_whatever_their_values(self):
+        origin = TriggerOrigin(
+            subscription_id="sub-1",
+            trigger_name="gmail_new_message",
+            payload={"received_at": datetime(2026, 8, 23, tzinfo=UTC)},
+        )
+        later = TriggerOrigin(subscription_id="sub-2", trigger_name="gmail_email_sent")
+
+        prompt = _build_execution_prompt(
+            _doc(), canvas_content=None, reference_context="", origin=origin, coalesced=[later]
+        )
+
+        assert '\n      "received_at": "2026-08-23 00:00:00+00:00"\n' in prompt
+        assert '\n    "trigger_name": "gmail_email_sent",\n' in prompt
 
 
 class TestDeliveryContractInThePrompt:
@@ -1560,6 +1609,67 @@ class TestTriggerEventsCoalesce:
             await _fire(queue, follow_up)
 
         assert replied == [1]
+        _, second_prompt = self._prompts(run)
+        assert '"m-2"' in second_prompt
+
+    async def test_a_drain_run_names_every_event_it_carries(self, queue, fake_redis, activity):
+        window = occurrence_stamp(datetime.now(UTC))
+        for subscription_id, trigger_name in (
+            ("sub-1", "gmail_new_message"),
+            ("sub-2", "gmail_email_sent"),
+            ("sub-1", "gmail_new_message"),
+        ):
+            event = TriggerOrigin(subscription_id=subscription_id, trigger_name=trigger_name)
+            await fake_redis.rpush("trigger_batch:todo:todo-1", event.model_dump_json())
+
+        with self._live(_TodoRow(_watching())):
+            async with captured_wide_event() as wide:
+                result = await execute_tracked_todo({}, "todo-1", trigger_window=window)
+
+        assert result == "success:todo-1"
+        assert (wide["trigger_window"], wide["trigger_events"]) == (window, 3)
+        started = [
+            detail
+            for event, detail in _recorded(activity)
+            if event is TodoActivityEvent.RUN_STARTED
+        ]
+        assert started[0].startswith("run on 3 events (gmail_email_sent, gmail_new_message) ")
+
+    async def test_a_drain_run_for_a_superseded_window_waits_for_the_open_one(
+        self, queue, fake_redis
+    ):
+        """A run since opened a later window; draining now would give the todo two runs in it."""
+        now = occurrence_stamp(datetime.now(UTC))
+        await fake_redis.set("todo_trigger_window:todo-1", str(now + 600), ex=600)
+        held = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
+        await fake_redis.rpush("trigger_batch:todo:todo-1", held.model_dump_json())
+
+        with self._live(_TodoRow(_watching())) as run:
+            async with captured_wide_event() as wide:
+                result = await execute_tracked_todo({}, "todo-1", trigger_window=now - 900)
+
+        assert result == f"deferred:todo-1 (trigger window open until {now + 600})"
+        assert wide["trigger_window"] == now - 900
+        run.assert_not_awaited()
+        (drain,) = await _queued(queue)
+        assert drain.job_id == f"trigger_batch:todo:todo-1:{now + 600}"
+        assert await fake_redis.llen("trigger_batch:todo:todo-1") == 1
+
+    async def test_a_window_that_cannot_be_opened_still_runs_the_events_it_drained(
+        self, queue, fake_redis
+    ):
+        """The drain run has already taken the held reply off Redis; failing here would lose it."""
+        row = _TodoRow(_watching())
+
+        with self._live(row) as run:
+            await self._reply(1)
+            (first,) = await _queued(queue)
+            await _fire(queue, first)
+            await self._reply(2)
+            (follow_up,) = await _queued(queue)
+            with patch.object(fake_redis, "set", AsyncMock(side_effect=RedisError("reset"))):
+                assert await _fire(queue, follow_up) == "success:todo-1"
+
         _, second_prompt = self._prompts(run)
         assert '"m-2"' in second_prompt
 
