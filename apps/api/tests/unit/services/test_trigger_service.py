@@ -681,6 +681,56 @@ class TestGmailTriggerHandler:
             USER_ID, ["gmail_email_sent"]
         )
 
+    @patch("app.services.triggers.handlers.gmail.log")
+    @patch("app.services.triggers.handlers.gmail.workflow_repository")
+    async def test_a_well_formed_sent_payload_reports_no_schema_drift(self, mock_repo, mock_log):
+        mock_repo.find_active_integration_workflows = AsyncMock(return_value=[])
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
+
+        await GmailTriggerHandler().find_workflows(
+            "GMAIL_EMAIL_SENT_TRIGGER", TRIGGER_ID, {"user_id": USER_ID, "thread_id": "t-1"}
+        )
+
+        mock_log.debug.assert_not_called()
+
+    @patch("app.services.triggers.handlers.gmail.log")
+    @patch("app.services.triggers.handlers.gmail.workflow_repository")
+    async def test_a_malformed_sent_payload_reports_schema_drift_and_still_matches(
+        self, mock_repo, mock_log
+    ):
+        mock_repo.find_active_integration_workflows = AsyncMock(return_value=[])
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
+
+        await GmailTriggerHandler().find_workflows(
+            "GMAIL_EMAIL_SENT_TRIGGER", TRIGGER_ID, {"user_id": USER_ID, "thread_id": 42}
+        )
+
+        (drift,) = mock_log.debug.call_args_list
+        assert drift.kwargs["error_type"] == "ValidationError"
+        mock_repo.find_active_integration_workflows.assert_awaited_once_with(
+            USER_ID, ["gmail_email_sent"]
+        )
+
+    @patch("app.services.triggers.handlers.gmail.workflow_repository")
+    async def test_a_sent_email_hands_only_the_sent_trigger_to_todo_dispatch(self, mock_repo):
+        # Account-level todo watches are told apart by trigger name alone.
+        mock_repo.find_active_integration_workflows = AsyncMock(return_value=[])
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
+        enqueue = AsyncMock()
+        with (
+            patch("app.services.triggers.base.RedisPoolManager.get_pool", AsyncMock()),
+            patch("app.services.triggers.base.enqueue_worker_job", enqueue),
+        ):
+            await GmailTriggerHandler().process_event(
+                "GMAIL_EMAIL_SENT_TRIGGER", TRIGGER_ID, USER_ID, {"user_id": USER_ID}
+            )
+
+        enqueue.assert_awaited_once()
+        assert enqueue.await_args.args[1:3] == (
+            "dispatch_todo_subscriptions",
+            ["gmail_email_sent"],
+        )
+
     @patch("app.services.triggers.handlers.gmail.workflow_repository")
     async def test_find_workflows_poll_query_also_runs(self, mock_repo):
         """Both strategies run: account-level empty, poll matches by trigger id."""
