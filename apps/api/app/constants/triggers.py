@@ -6,3 +6,6 @@ from typing import Final
 # the GAIA trigger name it is offered under.
 GMAIL_EMAIL_SENT_COMPOSIO_SLUG: Final = "GMAIL_EMAIL_SENT_TRIGGER"
 GMAIL_EMAIL_SENT_TRIGGER_NAME: Final = "gmail_email_sent"
+
+# Account-level Gmail triggers that fire once per message, inbound or sent.
+PER_EMAIL_TRIGGER_NAMES: Final = frozenset({"gmail_new_message", GMAIL_EMAIL_SENT_TRIGGER_NAME})

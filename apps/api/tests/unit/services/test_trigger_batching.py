@@ -144,6 +144,16 @@ class TestCoalesceWindow:
         )
         assert coalesce_window_seconds(config) == PER_EMAIL_FALLBACK_WINDOW_SECONDS
 
+    @pytest.mark.regression
+    def test_sent_mail_trigger_batches_on_the_daily_window(self) -> None:
+        """gmail_email_sent also fires once per message, so a burst of sent mail must not become a burst of runs."""
+        config = TriggerConfig(
+            type=TriggerType.INTEGRATION,
+            trigger_name="gmail_email_sent",
+            trigger_data=None,
+        )
+        assert coalesce_window_seconds(config) == PER_EMAIL_FALLBACK_WINDOW_SECONDS
+
 
 @pytest.mark.unit
 class TestBufferTriggerEvent:
