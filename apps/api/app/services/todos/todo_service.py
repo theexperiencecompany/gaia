@@ -1,4 +1,5 @@
 import asyncio
+from collections import Counter
 from datetime import UTC, datetime
 from http import HTTPStatus
 import math
@@ -39,10 +40,12 @@ from app.models.todo_models import (
 )
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.todos.errors import (
+    ExternalRefReopenedTwiceError,
     ExternalRefTakenError,
     TrackedLabelChangeError,
     TrackedTodoWorkflowError,
 )
+from app.services.todos.external_ref_watch import watch_external_ref
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.user_todos_fs import schedule_user_todos_sync
 from app.utils.canvas_vector_utils import delete_canvas_embedding
@@ -169,14 +172,33 @@ async def _raise_ref_taken(
     raise ExternalRefTakenError(holder) from error
 
 
-async def _refuse_a_bulk_reopen_of_a_taken_ref(user_id: str, todo_ids: list[str]) -> None:
-    """Refuse a bulk reopen that would give an outside object a second open todo."""
-    for todo in await todo_repository.find_by_ids(user_id, todo_ids):
-        if not todo.completed or todo.external_ref is None:
-            continue
-        holder = await todo_repository.find_open_by_external_ref(user_id, todo.external_ref)
+async def _refuse_a_reopen_of_a_taken_ref(
+    user_id: str, todo_ids: list[str]
+) -> list[tuple[TodoDocument, ExternalRef]]:
+    """Refuse a reopen that would give an outside object a second open todo.
+
+    Returns each completed todo among todo_ids that holds a ref, with that ref.
+    """
+    reopened = [
+        (todo, todo.external_ref)
+        for todo in await todo_repository.find_by_ids(user_id, todo_ids)
+        if todo.completed and todo.external_ref is not None
+    ]
+    ref_counts = Counter(ref for _, ref in reopened)
+    sharing = [todo.id for todo, ref in reopened if ref_counts[ref] > 1]
+    if sharing:
+        raise ExternalRefReopenedTwiceError(sharing)
+    for _, ref in reopened:
+        holder = await todo_repository.find_open_by_external_ref(user_id, ref)
         if holder is not None:
             raise ExternalRefTakenError(holder)
+    return reopened
+
+
+async def _claim_refs_to_reopen(user_id: str, todo_ids: list[str]) -> None:
+    """Watch each reopened todo's ref again before the reopen; a completed todo's watch never fires."""
+    for todo, ref in await _refuse_a_reopen_of_a_taken_ref(user_id, todo_ids):
+        await watch_external_ref(todo.id, user_id, ref, todo.trigger_subscriptions)
 
 
 def _drop_completion_fields(update: TodoUpdate) -> TodoUpdate:
@@ -430,6 +452,9 @@ class TodoService:
                     log.warning("tracked_todo.ui_complete_failed", todo_id=todo_id, error=str(e))
                 update = _drop_completion_fields(update)
 
+        if update.completed is False:
+            await _claim_refs_to_reopen(user_id, [todo_id])
+
         if updates.workflow_id is not None and not await todo_repository.link_workflow(
             todo_id, user_id=user_id, workflow_id=updates.workflow_id
         ):
@@ -533,7 +558,7 @@ class TodoService:
             )
         reopening = request.updates.completed is False
         if reopening:
-            await _refuse_a_bulk_reopen_of_a_taken_ref(user_id, request.todo_ids)
+            await _claim_refs_to_reopen(user_id, request.todo_ids)
         update = _to_todo_update(request.updates)
         if not update.model_fields_set:
             return BulkOperationResponse(
@@ -550,7 +575,7 @@ class TodoService:
         except BulkWriteError:
             # A create or reopen took a ref after the check above; the writes before it landed.
             if reopening:
-                await _refuse_a_bulk_reopen_of_a_taken_ref(user_id, request.todo_ids)
+                await _refuse_a_reopen_of_a_taken_ref(user_id, request.todo_ids)
             raise
 
         if modified > 0:

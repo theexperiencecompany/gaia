@@ -109,12 +109,13 @@ def mock_deps():
 
 
 _THREAD = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="thread-1")
+_REGISTER = "app.services.todos.external_ref_watch.register_subscription"
 
 
 @pytest.fixture
 def watch():
     with (
-        patch(f"{_MOD}.register_subscription", new_callable=AsyncMock) as m_register,
+        patch(_REGISTER, new_callable=AsyncMock) as m_register,
         patch(f"{_MOD}.TodoService.delete_todo", new_callable=AsyncMock) as m_delete,
     ):
         yield SimpleNamespace(register=m_register, delete=m_delete)
@@ -126,6 +127,7 @@ class TestCreateThreadTodo:
     async def test_the_ref_reaches_the_insert(self, mock_repo, mock_deps, watch):
         mock_deps.create.return_value = _todo_response()
         await TrackedTodoService.create_tracked_todo(USER_ID, "Reply", external_ref=_THREAD)
+        assert mock_deps.create.await_args.args[1] == USER_ID
         assert mock_deps.create.await_args.kwargs["external_ref"] == _THREAD
 
     async def test_incoming_and_sent_mail_on_the_thread_both_run_the_todo(
@@ -175,6 +177,29 @@ class TestCreateThreadTodo:
             await TrackedTodoService.create_tracked_todo(USER_ID, "Reply", external_ref=_THREAD)
 
         watch.delete.assert_awaited_once_with(TODO_ID, USER_ID)
+
+    async def test_a_rollback_that_fails_still_raises_the_watch_error(
+        self, mock_repo, mock_deps, watch
+    ):
+        """The watch error is the one the caller can act on; the failed delete rides along on it."""
+        mock_deps.create.return_value = _todo_response()
+        watch.register.side_effect = SubscriptionError("could not register")
+        watch.delete.side_effect = RuntimeError("mongo down")
+
+        with patch(f"{_MOD}.log") as log_mock, pytest.raises(SubscriptionError) as raised:
+            await TrackedTodoService.create_tracked_todo(USER_ID, "Reply", external_ref=_THREAD)
+
+        assert str(raised.value) == "could not register"
+        assert raised.value.__notes__ == [
+            f"Deleting the unwatched todo {TODO_ID} failed too: RuntimeError('mongo down')"
+        ]
+        log_mock.error.assert_called_once_with(
+            "tracked_todo.unwatched_discard_failed",
+            todo_id=TODO_ID,
+            user_id=USER_ID,
+            error="mongo down",
+            error_type="RuntimeError",
+        )
 
 
 class TestCreateTrackedTodo:
