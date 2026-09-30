@@ -40,7 +40,7 @@ from app.agents.tools.tracked_todo_tools import (
     search_todo_context,
     update_tracked_todo,
 )
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.todos import GAIA_TRACKED_LABEL, LIST_TRACKED_TODOS_LIMIT
 from app.models.todo_models import (
     ExternalRef,
     ExternalRefSource,
@@ -164,6 +164,15 @@ class TestBuildClearableDatetimeUpdate:
         fields: dict[str, object] = {}
         error = _build_clearable_datetime_update("garbage", "due_date", fields)
         assert "invalid due_date format" in error
+        assert fields == {}
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("value", ["2026-09-30", "2026-09-30T17:00:00"])
+    def test_a_date_without_an_offset_is_refused(self, value):
+        """A naive wall time would be saved as UTC, off by the user's offset."""
+        fields: dict[str, object] = {}
+        error = _build_clearable_datetime_update(value, "due_date", fields)
+        assert error == f"Error: due_date '{value}' must include a timezone offset."
         assert fields == {}
 
     def test_valid_datetime_sets_field_no_future_requirement(self):
@@ -1313,49 +1322,12 @@ class TestCreateTrackedTodoSuccess:
             )
         assert create.await_args.kwargs["source_conversation_id"] == "conv-9"
 
-    @pytest.mark.parametrize(
-        ("configurable", "actor"),
-        [
-            ({"conversation_id": "00f7c88f-4ac1-4169"}, "GAIA in conversation 00f7c88f"),
-            ({}, "GAIA"),
-        ],
-        ids=["from-a-conversation", "outside-a-conversation"],
-    )
-    async def test_the_first_schedule_names_who_set_it(self, recorded_changes, configurable, actor):
-        with (
-            patch(
-                "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
-                new_callable=AsyncMock,
-                return_value=self._response(),
-            ),
-            patch(
-                "app.agents.tools.tracked_todo_tools.todo_repository.update",
-                new_callable=AsyncMock,
-            ),
-            patch(
-                "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
-                new_callable=AsyncMock,
-                return_value=True,
-            ),
-        ):
-            await create_tracked_todo.coroutine(
-                config={"configurable": configurable, "metadata": {"user_id": "user-1"}},
-                title="t",
-                scheduled_at=_FUTURE_ISO,
-            )
-
-        assert recorded_changes.await_args.kwargs == {"by": actor}
-
     async def test_create_with_scheduled_at_persists_and_schedules(self):
         with (
             patch(
                 "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
                 new_callable=AsyncMock,
                 return_value=self._response(),
-            ),
-            patch(
-                "app.agents.tools.tracked_todo_tools.todo_repository.update",
-                new_callable=AsyncMock,
             ),
             patch(
                 "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
@@ -1377,10 +1349,6 @@ class TestCreateTrackedTodoSuccess:
                 return_value=self._response(),
             ),
             patch(
-                "app.agents.tools.tracked_todo_tools.todo_repository.update",
-                new_callable=AsyncMock,
-            ),
-            patch(
                 "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
                 new_callable=AsyncMock,
                 side_effect=ConnectionError("redis down"),
@@ -1398,10 +1366,6 @@ class TestCreateTrackedTodoSuccess:
                 "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
                 new_callable=AsyncMock,
                 return_value=self._response(),
-            ),
-            patch(
-                "app.agents.tools.tracked_todo_tools.todo_repository.update",
-                new_callable=AsyncMock,
             ),
             patch(
                 "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
@@ -1427,39 +1391,65 @@ class TestCreateTrackedTodoSuccess:
                 new_callable=AsyncMock,
                 return_value=self._response(),
             ) as create,
-            patch(
-                "app.agents.tools.tracked_todo_tools.todo_repository.update",
-                new_callable=AsyncMock,
-            ) as update,
         ):
             result = await create_tracked_todo.coroutine(
                 config=_config(), title="t", **{field: "garbage"}
             )
         assert f"invalid {field} format" in result
         create.assert_not_awaited()
-        update.assert_not_awaited()
 
-    async def test_due_date_is_saved_and_put_on_the_timeline(self, recorded_changes):
+    @pytest.mark.regression
+    async def test_a_create_saves_its_schedule_with_the_insert(self, recorded_changes):
+        """A second write after the insert left a half-made todo behind when it failed, for a retry to duplicate."""
         with (
             patch(
                 "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
                 new_callable=AsyncMock,
                 return_value=self._response(),
-            ),
+            ) as create,
             patch(
                 "app.agents.tools.tracked_todo_tools.todo_repository.update",
                 new_callable=AsyncMock,
             ) as update,
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
+                new_callable=AsyncMock,
+            ),
         ):
             result = await create_tracked_todo.coroutine(
-                config=_config(), title="t", due_date=_PAST_ISO
+                config=_config(),
+                title="t",
+                scheduled_at=_FUTURE_ISO,
+                recurrence="daily",
+                due_date=_PAST_ISO,
+                expires_at=_FUTURE_ISO,
             )
+
         assert "Tracked todo created: t1" in result
-        saved = update.await_args.kwargs["update"]
-        update.assert_awaited_once_with("t1", user_id="user-1", update=saved)
-        assert saved.due_date == datetime.fromisoformat(_PAST_ISO)
-        assert saved.model_fields_set == {"due_date"}
-        recorded_changes.assert_awaited_once_with("t1", "user-1", saved, by="GAIA")
+        schedule = create.await_args.kwargs["schedule"]
+        assert schedule.model_fields_set == {"scheduled_at", "recurrence", "due_date", "expires_at"}
+        assert schedule.scheduled_at == _FUTURE
+        assert schedule.recurrence == "daily"
+        assert schedule.due_date == datetime.fromisoformat(_PAST_ISO)
+        assert schedule.expires_at == _FUTURE
+        update.assert_not_awaited()
+        recorded_changes.assert_not_awaited()
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("due_date", ["2026-09-30", "2026-09-30T17:00:00"])
+    async def test_a_due_date_without_an_offset_creates_nothing(self, due_date):
+        """Mongo reads a naive wall time as UTC, which moves the user's local deadline."""
+        with patch(
+            "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+            new_callable=AsyncMock,
+            return_value=self._response(),
+        ) as create:
+            result = await create_tracked_todo.coroutine(
+                config=_config(), title="t", due_date=due_date
+            )
+
+        assert result == f"Error: due_date '{due_date}' must include a timezone offset."
+        create.assert_not_awaited()
 
 
 class TestCreateThreadTrackedTodo:
@@ -1559,6 +1549,12 @@ class TestListTrackedTodos:
         ):
             result = await list_tracked_todos.coroutine(config=_config())
         assert result == "No active tracked todos."
+
+    async def test_reads_the_callers_todos_up_to_the_list_limit(self):
+        with patch(_LIST_ACTIVE, new_callable=AsyncMock, return_value=[]) as listed:
+            await list_tracked_todos.coroutine(config=_config())
+        assert listed.await_args.args == ("user-1",)
+        assert listed.await_args.kwargs["limit"] == LIST_TRACKED_TODOS_LIMIT
 
     async def test_labels_filter_asks_for_todos_carrying_all_of_them(self):
         with patch(_LIST_ACTIVE, new_callable=AsyncMock, return_value=[]) as listed:

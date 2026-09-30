@@ -19,6 +19,7 @@ from app.models.todo_models import (
     TodoDocument,
     TodoModel,
     TodoResponse,
+    TodoUpdate,
 )
 from app.models.trigger_subscription_models import (
     ConditionOperator,
@@ -236,6 +237,53 @@ class TestCreateTrackedTodo:
         assert mock_repo.update.await_args.kwargs["update"].activity_content == (
             "- 2026-09-13T12:00:00+00:00 [created] from conversation 0123abcd"
         )
+
+    @pytest.mark.regression
+    async def test_the_schedule_is_saved_with_the_insert(self, mock_repo, mock_deps):
+        """A schedule written after the insert could fail and leave the todo half-made for a retry to duplicate."""
+        mock_deps.create.return_value = _todo_response()
+        at = datetime(2026, 10, 3, 9, 0, tzinfo=UTC)
+        due = datetime(2026, 10, 2, 17, 0, tzinfo=UTC)
+        expires = datetime(2026, 10, 9, 0, 0, tzinfo=UTC)
+        schedule = TodoUpdate(scheduled_at=at, recurrence="daily", due_date=due, expires_at=expires)
+
+        await TrackedTodoService.create_tracked_todo(
+            USER_ID, "Prepare Q3 report", schedule=schedule
+        )
+
+        inserted: TodoModel = mock_deps.create.call_args.args[0]
+        assert (inserted.scheduled_at, inserted.recurrence) == (at, "daily")
+        assert (inserted.due_date, inserted.expires_at) == (due, expires)
+        assert mock_repo.update.await_args.kwargs["update"].model_fields_set.isdisjoint(
+            {"scheduled_at", "recurrence", "due_date", "expires_at"}
+        )
+
+    @pytest.mark.parametrize(
+        ("conversation_id", "actor"),
+        [("00f7c88f-4ac1-4169", "GAIA in conversation 00f7c88f"), (None, "GAIA")],
+        ids=["from-a-conversation", "outside-a-conversation"],
+    )
+    async def test_the_schedule_is_on_the_timeline_naming_who_set_it(
+        self, mock_repo, mock_deps, conversation_id, actor
+    ):
+        mock_deps.create.return_value = _todo_response()
+        fixed = datetime(2026, 9, 13, 12, 0, tzinfo=UTC)
+        due = datetime(2026, 10, 2, 17, 0, tzinfo=UTC)
+
+        with patch(f"{_MOD}.datetime") as m_now:
+            m_now.now.return_value = fixed
+            await TrackedTodoService.create_tracked_todo(
+                USER_ID,
+                "Prepare Q3 report",
+                source_conversation_id=conversation_id,
+                schedule=TodoUpdate(due_date=due),
+            )
+
+        activity = mock_repo.update.await_args.kwargs["update"].activity_content
+        assert activity.splitlines()[-1] == (
+            f"- 2026-09-13T12:00:00+00:00 [due_date_changed] due {due.isoformat()}, by {actor}"
+        )
+        assert activity.count("\n") == 1  # the creation marker, then the due date
 
     async def test_an_initial_canvas_missing_sections_gets_them(self, mock_repo, mock_deps):
         """A canvas a later edit would refuse for its shape must not be created in that shape."""

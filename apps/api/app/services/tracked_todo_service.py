@@ -45,7 +45,12 @@ from app.models.trigger_subscription_models import (
 from app.services.canvas_markdown import normalize_canvas
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from app.services.storage._vfs_common import folder_name
-from app.services.todo_activity import activity_line, record_activity
+from app.services.todo_activity import (
+    activity_line,
+    agent_actor,
+    field_change_lines,
+    record_activity,
+)
 from app.services.todo_canvas_storage import (
     append_log,
     build_vfs_label,
@@ -166,12 +171,15 @@ class TrackedTodoService:
         source_conversation_id: str | None = None,
         notify_on_run: bool = True,
         external_ref: ExternalRef | None = None,
+        schedule: TodoUpdate | None = None,
     ) -> TodoResponse:
         """Create a todo with its canvas, activity and log, indexed in ChromaDB.
 
+        schedule's scheduled_at, recurrence, due_date and expires_at are saved with the insert.
         With external_ref it is the one open todo for that object, already watching it.
         Raises ExternalRefTakenError when another open todo holds the ref.
         """
+        schedule = schedule or TodoUpdate()
         all_labels = list(labels or [])
         if GAIA_TRACKED_LABEL not in all_labels:
             all_labels.append(GAIA_TRACKED_LABEL)
@@ -183,6 +191,10 @@ class TrackedTodoService:
             priority=priority,
             labels=all_labels,
             notify_on_run=notify_on_run,
+            scheduled_at=schedule.scheduled_at,
+            recurrence=schedule.recurrence,
+            due_date=schedule.due_date,
+            expires_at=schedule.expires_at,
         )
         result = await TodoService.create_todo(todo, user_id, external_ref=external_ref)
         todo_id = result.id
@@ -194,12 +206,14 @@ class TrackedTodoService:
         canvas_content, moved_activity = normalize_canvas(canvas_content)
         now = datetime.now(UTC)
         # Moved legacy entries come first (oldest-first, like the migration); the
-        # creation marker stays last so an edit-append has a line to anchor on,
+        # creation entries stay last so an edit-append has a line to anchor on,
         # and models reach for edit before write.
-        created = activity_line(
-            TodoActivityEvent.CREATED,
-            f"from conversation {source_conversation_id[:8]}" if source_conversation_id else "",
-            at=now,
+        origin = f"from conversation {source_conversation_id[:8]}" if source_conversation_id else ""
+        created = "\n".join(
+            [
+                activity_line(TodoActivityEvent.CREATED, origin, at=now),
+                *field_change_lines(schedule, by=agent_actor(source_conversation_id), at=now),
+            ]
         )
         activity_content = "\n\n".join(p for p in (moved_activity, created) if p)
         log_content = f"# System Log: {title}\n"
