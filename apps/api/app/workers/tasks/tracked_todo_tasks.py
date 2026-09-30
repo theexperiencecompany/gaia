@@ -132,14 +132,16 @@ async def execute_tracked_todo(
         return await _handle_held_lock(todo_id, origin, coalesced or [])
 
     try:
-        armed_for = parse_occurrence_stamp(scheduled_for, todo_id)
         if origin is None and trigger_window is None:
-            return await _execute_todo_with_retry(todo_id, None, armed_for)
+            return await _execute_todo_with_retry(
+                todo_id, None, parse_occurrence_stamp(scheduled_for, todo_id)
+            )
         events = await _take_trigger_events(todo_id, origin, coalesced or [])
         if not events:
             return f"skipped:{todo_id} (no held trigger events)"
+        # A trigger run is not an occurrence of the schedule, so it is never stale.
         first, *rest = events
-        return await _execute_todo_with_retry(todo_id, first, armed_for, rest)
+        return await _execute_todo_with_retry(todo_id, first, coalesced=rest)
     finally:
         await pool.delete(lock_key)
         # After the release, so a drain scheduled for now cannot find this run's lock.
