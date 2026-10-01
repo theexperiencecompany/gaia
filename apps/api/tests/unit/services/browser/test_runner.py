@@ -316,7 +316,7 @@ async def test_a_timed_out_handoff_fails_the_run_even_when_browser_use_swallows_
 # ---------------------------------------------------------------------------
 
 
-async def test_each_silence_gets_one_note_and_a_repeat_names_the_step(
+async def test_each_silence_gets_one_note(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(runner_mod, "_STALL_POLL_SECONDS", 0.01)
@@ -333,9 +333,7 @@ async def test_each_silence_gets_one_note_and_a_repeat_names_the_step(
     await _run(_runner(_slow, note=note)[0])
 
     said = [call.args[0] for call in note.await_args_list]
-    assert said[0] == BROWSER_STALL_NOTE
-    assert len(said) == 2
-    assert said[1].startswith("Still on step 2")
+    assert said == [BROWSER_STALL_NOTE.format(seconds=0)] * 2
 
 
 async def test_waiting_on_the_user_is_not_a_stall(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -866,7 +864,7 @@ async def test_a_run_silent_from_its_start_gets_the_stall_note(
     note = AsyncMock()
     await _run(_runner(_silent, note=note)[0])
 
-    note.assert_awaited_once_with(BROWSER_STALL_NOTE)
+    note.assert_awaited_once_with(BROWSER_STALL_NOTE.format(seconds=5))
 
 
 async def test_steps_arriving_in_time_are_never_a_stall(monkeypatch: pytest.MonkeyPatch) -> None:

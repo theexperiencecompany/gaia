@@ -73,9 +73,8 @@ _OUTPUT_MAX_CHARS = 1000
 #: Browser-Use's typing action.
 _INPUT_ACTION = "input"
 
-#: Caption for a step that produced no action to describe — one whose actions
-#: errored or whose observation stalled.
-STEP_ERROR_CAPTION = "That didn't respond, trying again"
+#: Caption for a step that failed before it picked an action to describe.
+STEP_ERROR_CAPTION = "That step failed"
 
 
 class _ActionInputs(TypedDict, total=False):

@@ -501,7 +501,7 @@ JEV_CAPTCHA_FRAME_MARKERS = ("recaptcha", "hcaptcha", "turnstile", "arkoselabs",
 # A step that shows nothing for this long gets one line saying so. The Berlin
 # article measured 40 to 71 s of clean render with no error left to caption.
 BROWSER_STALL_NOTE_AFTER_SECONDS = 25.0
-BROWSER_STALL_NOTE = "Still waiting on the page, it's a slow one."
+BROWSER_STALL_NOTE = "No update from the browser for {seconds} s."
 
 # What the agent's continue_in_full_browser call answers: the run ends here and resumes there.
 BROWSER_ENGINE_SWITCH_ACK = (
