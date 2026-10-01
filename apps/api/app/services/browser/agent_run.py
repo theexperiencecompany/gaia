@@ -19,7 +19,7 @@ from typing import Any, TypedDict
 
 from browser_use import Agent, Browser
 from browser_use.agent.views import ActionResult, AgentHistoryList, AgentOutput
-from browser_use.browser.events import BrowserConnectedEvent
+from browser_use.browser.events import BrowserConnectedEvent, NavigationCompleteEvent
 from browser_use.browser.session import BrowserSession
 from browser_use.browser.views import BrowserStateSummary
 from pydantic import BaseModel, TypeAdapter
@@ -242,6 +242,7 @@ class BrowserAgentRun:
             browser = Browser(**browser_options(self._session.cdp_url))
             stalls = self._stalls = StalledLoads(browser)
             browser.event_bus.on(BrowserConnectedEvent, stalls.attach)
+            browser.event_bus.on(NavigationCompleteEvent, stalls.on_navigation_complete)
 
             def runner_for() -> JevRunner:
                 return JevRunner(
@@ -326,13 +327,15 @@ class BrowserAgentRun:
         return str(url) if url else None
 
     async def _on_step_start(self, agent: object) -> None:
-        """Hand the agent what the user said since its last step, and any load the browser stopped."""
+        """Hand the agent what the user said since its last step, and any load the browser stopped or did not finish."""
         del agent
         for message in await self._hooks.take_user_messages():
             self._agent.message_manager.add_new_task(self._secrets.mask(message))
-        if self._stalls is not None and (stalled := self._stalls.take()):
+        if self._stalls is not None and (
+            loads := [*self._stalls.take(), *self._stalls.take_unfinished()]
+        ):
             # How Browser-Use itself reports a wait between steps: a result the next prompt carries.
-            notes = [ActionResult(long_term_memory=self._secrets.mask(note)) for note in stalled]
+            notes = [ActionResult(long_term_memory=self._secrets.mask(note)) for note in loads]
             self._agent.state.last_result = [*(self._agent.state.last_result or []), *notes]
 
     async def _switch_engine(self, switch: SwitchEngineFn, category: EngineSwitchReason) -> str:

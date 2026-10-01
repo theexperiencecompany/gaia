@@ -452,13 +452,15 @@ class TestBetweenSteps:
         self, harness: _Harness
     ) -> None:
         harness.run._stalls = SimpleNamespace(
-            take=lambda: ["https://slow.test/ sent nothing for 15 s"]
-        )  # type: ignore[assignment]  # the take() the run reads
+            take=lambda: ["https://slow.test/ sent nothing for 15 s"],
+            take_unfinished=lambda: ["https://late.test/ had not finished loading"],
+        )  # type: ignore[assignment]  # the takes the run reads
 
         await harness.run._on_step_start(None)
 
-        [note] = harness.run._agent.state.last_result
-        assert "slow.test" in note.long_term_memory
+        stalled, unfinished = harness.run._agent.state.last_result
+        assert "slow.test" in stalled.long_term_memory
+        assert "late.test" in unfinished.long_term_memory
 
 
 class _Client:
@@ -533,7 +535,12 @@ class _Browser:
         )
         page_events = {
             name: (lambda handler, name=name: self.watched.append(name))
-            for name in ("frameStartedNavigating", "frameNavigated", "frameStoppedLoading")
+            for name in (
+                "frameRequestedNavigation",
+                "frameStartedNavigating",
+                "frameNavigated",
+                "frameStoppedLoading",
+            )
         }
         self.cdp_client = SimpleNamespace(
             register=SimpleNamespace(Page=SimpleNamespace(**page_events))
@@ -702,11 +709,15 @@ class TestExecute:
         await harness.run.execute("read my orders")
         browser = _Agent.built[-1].options["browser"]
 
-        [(event, attach)] = browser.listeners
+        [(connected, attach), (navigated, _)] = browser.listeners
         await attach(SimpleNamespace())
 
-        assert event.__name__ == "BrowserConnectedEvent"
+        assert (connected.__name__, navigated.__name__) == (
+            "BrowserConnectedEvent",
+            "NavigationCompleteEvent",
+        )
         assert browser.watched == [
+            "frameRequestedNavigation",
             "frameStartedNavigating",
             "frameNavigated",
             "frameStoppedLoading",

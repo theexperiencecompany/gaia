@@ -179,6 +179,28 @@ class TestStalledLoads:
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    ("finished", "error", "told"),
+    [(False, None, True), (True, None, False), (False, "net::ERR_ABORTED", False)],
+)
+async def test_the_agent_hears_of_a_load_the_browser_stopped_waiting_on_while_it_still_runs(
+    watched: tuple[StalledLoads, _FakeClient], finished: bool, error: str | None, told: bool
+) -> None:
+    guard, client = watched
+    _start(client, "S1")
+    client.handlers["committed"]({"frame": {"id": TAB}, "type": "Navigation"}, "S1")
+    guard.on_navigation_complete(SimpleNamespace(target_id=TAB, error_message=error))
+    if finished:
+        client.handlers["stopped"]({"frameId": TAB}, "S1")
+
+    notes = guard.take_unfinished()
+
+    assert [("http://example.com:81/" in note) for note in notes] == ([True] if told else [])
+    assert guard.take_unfinished() == []
+    assert guard.take() == []
+
+
+@pytest.mark.unit
 @pytest.mark.regression
 @pytest.mark.parametrize(
     ("reason", "kind"),

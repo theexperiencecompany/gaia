@@ -291,6 +291,11 @@ BROWSER_LOAD_STALLED_NOTE = (
     "{url} did not respond within {seconds:.0f} s, so its loading was stopped and the tab "
     "stayed on the page it was on."
 )
+#: What the agent reads about a page Browser-Use read before its load had finished.
+BROWSER_LOAD_UNFINISHED_NOTE = (
+    "{url} had not finished loading (its load event had not fired) when the browser stopped "
+    "waiting for it, so the step went on with the page as it was then."
+)
 # A decision can wait out a layout pass, a part judgement and Jev; Browser-Use's 75s cut it off.
 BROWSER_AGENT_LLM_TIMEOUT_SECONDS = 180
 
