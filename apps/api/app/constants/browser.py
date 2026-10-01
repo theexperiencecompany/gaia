@@ -468,6 +468,7 @@ class JevStop(StrEnum):
     STALE = "stale"
     UNRESPONSIVE = "unresponsive"
     LOADING = "loading"
+    NO_PAGE = "no_page"
     USER_MESSAGE = "user_message"
     STOPPED = "stopped"
     GATEWAY = "gateway"

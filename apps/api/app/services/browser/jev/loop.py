@@ -14,6 +14,7 @@ from dataclasses import dataclass, field, replace
 import json
 from time import perf_counter
 from typing import Protocol
+from urllib.parse import urlsplit
 
 from browser_use.llm.exceptions import ModelError
 from browser_use.llm.messages import BaseMessage, SystemMessage, UserMessage
@@ -75,6 +76,7 @@ from app.services.browser.jev.secrets import (
 )
 from app.services.browser.ledger import CallComponent, ExecutedAction, ModelCall, RunLedger
 from app.services.browser.run_contract import FlagFn
+from app.utils.url_safety import HTTP_SCHEMES
 from shared.py.wide_events import log
 
 #: Why a burst ended, and what the agent is told about it.
@@ -94,6 +96,7 @@ _OVERLAID: _Ending = (
 )
 _JUDGED_BLOCKED: _Ending = (JevStop.BLOCKED, "Jev found no operation that makes progress here.")
 _JUDGED_DONE: _Ending = (JevStop.DONE, "Jev judged the goal done.")
+_NO_PAGE: _Ending = (JevStop.NO_PAGE, "No page to open: the tab is blank.")
 _NO_CHANGE: _Ending = (
     JevStop.NO_PROGRESS,
     f"{JEV_UNCHANGED_LIMIT} actions in a row changed nothing.",
@@ -323,15 +326,23 @@ class JevRunner:
                 return spent
             # Each decision is on the page as it is now, results that arrived since included.
             state.page = await self._page.observe()
+            addresses = self._addresses(state.page)
+            if not addresses and _blank(state.page):
+                return _NO_PAGE
             try:
-                ended = await self._execute(state, await self._decide(state))
+                ended = await self._execute(state, await self._decide(state, addresses))
             except (JevGatewayError, JevDecisionError) as exc:
                 # Deciding the step, its option or its value; an action already taken stays recorded.
                 return JevStop.GATEWAY, f"Jev could not decide this step: {exc}"
             if ended is not None:
                 return ended
 
-    async def _decide(self, state: _Burst) -> Decision:
+    def _addresses(self, page: PageState) -> list[str]:
+        """Return the pages NAVIGATE may open from page: the starts given and pages visited, on the web, but this one."""
+        known = dict.fromkeys([*self._starts, *(v.url for v in self.visited)])
+        return [url for url in known if url != page.url and _on_the_web(url)]
+
+    async def _decide(self, state: _Burst, addresses: list[str]) -> Decision:
         state.decisions += 1
         started = perf_counter()
         decision = await decide(
@@ -340,7 +351,7 @@ class JevRunner:
             state.goal,
             _history(state),
             self.visited,
-            list(dict.fromkeys([*self._starts, *(v.url for v in self.visited)])),
+            addresses,
             self._secrets.mask,
         )
         self._record_call(decision.evaluation, _elapsed_ms(started))
@@ -640,6 +651,16 @@ def _budget_spent(state: _Burst) -> _Ending | None:
         (state.covered >= JEV_COVERED_LIMIT, _OVERLAID),
     )
     return next((ending for hit, ending in spent if hit), None)
+
+
+def _blank(page: PageState) -> bool:
+    """Whether page is a tab with no web page in it (about:blank, a browser page) and no control on it."""
+    return not _on_the_web(page.url) and not any("node" in action for action in page.actions)
+
+
+def _on_the_web(url: str) -> bool:
+    """Whether url is a web page (http or https), not a blank tab or a browser page."""
+    return urlsplit(url).scheme in HTTP_SCHEMES
 
 
 def _hidden_frames(frames: list[Frame]) -> list[str]:

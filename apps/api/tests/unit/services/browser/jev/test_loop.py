@@ -513,6 +513,24 @@ async def test_a_tab_that_goes_away_mid_burst_ends_it_with_every_step_it_took(
     assert [step.label for step in result.steps] == ["Next"]
 
 
+@pytest.mark.regression
+async def test_a_blank_tab_is_never_an_address_and_with_none_to_open_the_burst_ends_at_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: from about:blank with no start_url, Jev reopened about:blank to its action budget."""
+    wait = PageAction(id="wait", kind="wait", label="Wait for the page to update")
+    blank = replace(page_state(url="about:blank"), actions=[wait])
+    page = FakePage(blank, *_pages("a", "b"))
+    run = _run(monkeypatch, page, decision(JevOperation.CLICK, BUTTON), decision(JevOperation.DONE))
+
+    stranded = await run.burst("open the docs")
+    await run.burst("open the docs", "https://site.test/a")
+
+    assert (stranded.stop, stranded.steps) == (JevStop.NO_PAGE, [])
+    # The page Jev is on is no address to open either.
+    assert [d["addresses"] for d in run.jev.decided] == [[], ["https://site.test/a"]]
+
+
 async def test_a_start_address_on_a_tab_that_is_gone_ends_the_burst_with_no_page(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
