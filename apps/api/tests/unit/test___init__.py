@@ -4,7 +4,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-_API_ROOT = Path(__file__).resolve().parents[4]
+_API_ROOT = Path(__file__).resolve().parents[2]
 _PROBE = (
     "import app\n"
     "from browser_use.config import CONFIG\n"
