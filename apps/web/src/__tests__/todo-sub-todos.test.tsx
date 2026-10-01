@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { todoApi } from "@/features/todo/api/todoApi";
 import { SubTodosSection } from "@/features/todo/components/SubTodosSection";
 import TodoItem from "@/features/todo/components/TodoItem";
+import { SUB_TODOS_PAGE_SIZE } from "@/features/todo/constants";
 import { makeTodo } from "./fixtures/todo";
 
 vi.mock("@/features/chat/utils/toolIcons", () => ({
@@ -79,6 +80,7 @@ describe("sub-todos", () => {
     expect(screen.getByText("Completed")).toBeTruthy();
     expect(todoApi.getAllTodos).toHaveBeenCalledWith({
       parent_todo_id: "desk",
+      limit: SUB_TODOS_PAGE_SIZE,
     });
   });
 });
