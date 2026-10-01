@@ -69,7 +69,7 @@ async def test_a_frame_and_its_code_expire_with_the_recap(
 async def test_storing_and_reading_a_frame_leave_its_run_size_and_time_on_the_event(
     fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    ticks = iter([1.0, 1.25])
+    ticks = iter([1.0, 3.0])
     monkeypatch.setattr(shot_store, "perf_counter", lambda: next(ticks))
 
     async with captured_wide_event() as stored:
@@ -82,7 +82,7 @@ async def test_storing_and_reading_a_frame_leave_its_run_size_and_time_on_the_ev
         "session_id": "sess-9",
         "shot_backend": "redis",
         "shot_bytes": 5,
-        "shot_store_ms": 250,
+        "shot_store_ms": 2000,
     }
     assert read["browser"] == {"session_id": "sess-9"}
 
