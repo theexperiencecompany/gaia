@@ -369,7 +369,7 @@ class JevPage:
 
     def _on_parsed(self, event: DomContentEventFiredEvent, session_id: str | None) -> None:
         del event
-        waiting = self._parsing.get(session_id or "")
+        waiting = self._parsing.get(session_id) if session_id is not None else None
         if waiting is not None:
             waiting.set()
 
