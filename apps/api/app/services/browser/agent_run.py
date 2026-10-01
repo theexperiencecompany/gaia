@@ -242,7 +242,7 @@ class BrowserAgentRun:
         self._user_id = setup.user_id
         self._resumed_from = setup.resumed_from
         #: The task as the runner gave it, without the rules the agent is told alongside.
-        self._task = ""
+        self._task: str
         self._agent: Any = None
         self._page: JevPage | None = None
         self._stalls: StalledLoads | None = None
@@ -372,7 +372,8 @@ class BrowserAgentRun:
         """Return the primary agent's state to go on from, told where the run now is, or None for a new run."""
         if self._resumed_from is None:
             return None
-        note = BROWSER_ENGINE_RESUMED_NOTE.format(page=self._config.start_url or "a blank page")
+        # With no page to reopen, the fallback's session opens on a blank tab.
+        note = BROWSER_ENGINE_RESUMED_NOTE.format(page=self._config.start_url or "about:blank")
         return self._resumed_from.model_copy(
             update={
                 "stopped": False,
@@ -469,7 +470,7 @@ class BrowserAgentRun:
         if url:
             self.last_url = url
         photo = (
-            spawn_background_task(self._screenshot(self._page), name="browser_step_photo")
+            spawn_background_task(self._screenshot(self._page))
             if self._page is not None and self._config.stream_screenshots
             else None
         )
