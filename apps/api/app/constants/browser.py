@@ -213,8 +213,8 @@ BROWSER_RUN_HANDOFF_LIMIT_SUMMARY = (
     "Stopped: the task needed you to take over more than {limit} times, the most one task may."
 )
 
-# Reaches the user verbatim on the failure card, so it reads like a person. Shared
-# by the Jev BLOCKED action and the run that ends because no guidance arrived.
+# Reaches the user verbatim on the failure card of a run that ended because no
+# guidance arrived, so it reads like a person.
 BROWSER_RUN_BLOCKED_SUMMARY = "I couldn't find a way to move forward on this page."
 
 # Fixed copy, no exception text: many exceptions stringify to "", which left
