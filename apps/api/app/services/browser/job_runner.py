@@ -11,7 +11,6 @@ from collections.abc import Awaitable, Callable
 import contextlib
 from functools import partial
 from time import perf_counter
-from urllib.parse import urlsplit
 import uuid
 
 from app.config.feature_flags import FeatureFlag
@@ -66,7 +65,6 @@ from app.services.browser.handoff import (
     fail_handoff,
     reply_address,
 )
-from app.services.browser.jev.decision import goal_addresses
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.job_events import (
     JOB_GUIDANCE_FRAME,
@@ -706,14 +704,7 @@ async def _run_job(request: BrowserJobRequest, emitter: ProgressEmitter) -> Brow
             else BrowserEngine.CHROMIUM
         )
         host_url, fallback_host = hosts_for(engine)
-        secrets = RunSecrets(
-            request.secrets,
-            sites=[
-                host
-                for url in (request.start_url, *goal_addresses(request.task))
-                if url and (host := urlsplit(url).hostname)
-            ],
-        )
+        secrets = RunSecrets(request.secrets)
         async with contextlib.AsyncExitStack() as sessions:
             # Its own stack, so a run handed over to the fallback releases it there and then.
             primary = contextlib.AsyncExitStack()

@@ -62,9 +62,14 @@ Args:
         Describe a control the way the user did (its position, the words they used);
         never invent a label for it, a wrong label sends the browser to the wrong
         control and it skips the step.
-    start_url (str, optional): A URL to open first, if the user named a site.
+    start_url (str, optional): The page to open first. Pass it whenever the task
+        names a site or page: the run starts there, with the user's saved login for
+        that site. Without it the run starts on a blank page.
     secrets (dict, optional): Credentials the user gave for this task, by a short
-        name ({"password": "..."}); the task refers to each as <secret>name</secret>.
+        name, each with the site it belongs to:
+        {"password": {"value": "...", "site": "github.com"}}. A credential is typed
+        only on its own site (and its subdomains), never elsewhere. The task refers
+        to each as <secret>name</secret>.
 
 Returns:
     str: Confirmation that the run has STARTED, with its job id. Never a result.

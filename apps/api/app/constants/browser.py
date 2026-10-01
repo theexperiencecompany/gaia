@@ -12,7 +12,7 @@ user, through its handoff actions.
 """
 
 from enum import Enum, StrEnum
-from typing import Literal, Self
+from typing import Literal
 
 # ---------------------------------------------------------------------------
 # Tool identity
@@ -169,9 +169,11 @@ BROWSER_HANDOFF_KEY_PREFIX = "browser:handoff:"
 BROWSER_HANDOFF_REPLY_KEY_PREFIX = "browser:handoff:reply:"
 # The last line of a handoff a bot user is sent: only their word ends it.
 BROWSER_HANDOFF_REPLY_PROMPT = "Reply here when you're done, or tell me to stop."
-# How often the paused run touches the host session so the idle reaper (default
-# 300s TTL) never disposes a browser the user was asked to come back to.
-BROWSER_HANDOFF_KEEPALIVE_SECONDS = 60
+# A host session lives on a lease the run renews while its job is alive, paused
+# or not; one it stops renewing (its worker died) is disposed when the lease runs out.
+BROWSER_SESSION_LEASE_SECONDS = 90.0
+# Three renewals per lease, so one slow or lost renewal never costs a live run its browser.
+BROWSER_SESSION_LEASE_RENEW_SECONDS = BROWSER_SESSION_LEASE_SECONDS / 3
 
 # A short capability code for the bot's live-view link (browser.heygaia.io/{code}):
 # the code IS the secret and maps to the session + owner in Redis, so the link
@@ -452,37 +454,27 @@ class JevOperation(StrEnum):
 
 
 class JevStop(StrEnum):
-    """Why a Jev burst handed control back to the agent, and whether Jev's own judgement caused it.
+    """Why a Jev burst handed control back to the agent."""
 
-    A goal Jev made no progress on is refused again only after a stop Jev
-    caused, which the same goal would repeat; the site, the page, the user or
-    the run causing it leaves the goal free to send again.
-    """
-
-    jev_caused: bool
-
-    def __new__(cls, value: str, jev_caused: bool) -> Self:
-        member = str.__new__(cls, value)
-        member._value_ = value
-        member.jev_caused = jev_caused
-        return member
-
-    DONE = "done", True
-    BLOCKED = "blocked", True
-    NEEDS_INPUT = "needs_input", True
-    NO_PROGRESS = "no_progress", True
-    CYCLE = "cycle", True
-    MAX_ACTIONS = "max_actions", True
-    MAX_DECISIONS = "max_decisions", True
-    COVERED = "covered", False
-    STALE = "stale", False
-    CAPTCHA = "captcha", False
-    UNRESPONSIVE = "unresponsive", False
-    USER_MESSAGE = "user_message", False
-    STOPPED = "stopped", False
-    GATEWAY = "gateway", False
-    LOAD_STALLED = "load_stalled", False
-    NAVIGATION_FAILED = "navigation_failed", False
+    DONE = "done"
+    BLOCKED = "blocked"
+    NEEDS_INPUT = "needs_input"
+    SECRET_WITHHELD = "secret_withheld"
+    NO_PROGRESS = "no_progress"
+    CYCLE = "cycle"
+    MAX_ACTIONS = "max_actions"
+    MAX_DECISIONS = "max_decisions"
+    COVERED = "covered"
+    STALE = "stale"
+    UNRESPONSIVE = "unresponsive"
+    USER_MESSAGE = "user_message"
+    STOPPED = "stopped"
+    GATEWAY = "gateway"
+    LOAD_STALLED = "load_stalled"
+    NAVIGATION_FAILED = "navigation_failed"
+    FIELD_UNFOCUSED = "field_unfocused"
+    TAB_UNAVAILABLE = "tab_unavailable"
+    PAGE_SCRIPT_ERROR = "page_script_error"
 
 
 #: Controls offered to Jev per request, in DOM order within the viewport. Vercel's
@@ -492,11 +484,6 @@ JEV_GATEWAY_TIMEOUT_SECONDS = 8.0
 JEV_GATEWAY_MAX_ATTEMPTS = 3
 #: After a 402 (out of credit) the failover client skips that gateway this long.
 JEV_OUT_OF_CREDIT_SECONDS = 300.0
-#: What the agent reads when it sends Jev a goal Jev already made no progress on.
-JEV_REPEATED_GOAL_REFUSAL = (
-    "Jev already made no progress on exactly this goal. Act yourself with browser actions, "
-    "or give Jev a different, sharper goal."
-)
 #: How much of the final page's visible text a burst report hands the agent, and of each
 #: other page the burst opened (the most recent ones, up to the count).
 JEV_REPORT_PAGE_TEXT_CHARS = 2000
@@ -512,14 +499,16 @@ JEV_BURST_MAX_DECISIONS = 2 * JEV_BURST_MAX_ACTIONS
 JEV_UNCHANGED_LIMIT = 3
 JEV_STALE_LIMIT = 3
 JEV_COVERED_LIMIT = 2
-#: Snapshot retries while a navigation replaces the document.
+#: Snapshot reads while a navigation replaces the document; Chrome holds each until the new one commits.
 JEV_OBSERVE_ATTEMPTS = 50
-JEV_OBSERVE_RETRY_SECONDS = 0.1
 #: Longest any one of Jev's CDP calls may take; a page or session that does not answer
 #: ends the burst instead of holding it until the task's budget runs out.
 JEV_CDP_TIMEOUT_SECONDS = 20.0
-#: An explicit WAIT; the next observation also waits a frame or two after any input.
+#: The longest an explicit WAIT waits for the page to change at all.
 JEV_WAIT_SECONDS = 1.0
+#: The longest the read after an input waits for its requests to finish and the DOM to go quiet:
+#: a page that animates or polls never does.
+JEV_SETTLE_MAX_SECONDS = 2.0
 JEV_SCREENSHOT_QUALITY = 70
 #: The tiny model writes a value only when no literal from the goal fits; it reads this much page text.
 JEV_TEXT_TIMEOUT_SECONDS = 30.0
@@ -531,10 +520,10 @@ JEV_PAGE_TEXT_MAX_CHARS = 6000
 JEV_TEXT_VALUE_MAX_CHARS = 2000
 # Stands in for a value typed into a password field wherever the run's text reaches a person.
 JEV_SECRET_MASK = "[hidden]"  # nosec B105 -- the placeholder shown in place of a typed password, not a credential
+#: What a step says a password field holds when it is not the secret typed: never its value.
+JEV_SECRET_DIFFERS = "a value other than the secret"  # nosec B105 -- report wording, not a credential
 # Probability mass across a choice question must sum to ~1; the gateway rounds.
 JEV_PROBABILITY_SUM_TOLERANCE = 0.02
-#: Frames whose source names a CAPTCHA provider; one visible ends the burst for the CAPTCHA handoff.
-JEV_CAPTCHA_FRAME_MARKERS = ("recaptcha", "hcaptcha", "turnstile", "arkoselabs", "funcaptcha")
 
 
 # A step that shows nothing for this long gets one line saying so. The Berlin
@@ -698,9 +687,12 @@ class HostRequestFailure(StrEnum):
     """Why the browser host refused a request; its request event's reason field."""
 
     INVALID_HOST_KEY = "invalid_host_key"
+    INVALID_SESSION_TOKEN = "invalid_session_token"
     SESSION_NOT_FOUND = "session_not_found"
     AT_CAPACITY = "at_capacity"
     ENGINE_UNRESPONSIVE = "engine_unresponsive"
+    ENGINE_REFUSED = "engine_refused"
+    DEADLINE_EXCEEDED = "deadline_exceeded"
 
 
 class HostAdmissionRefusal(StrEnum):
@@ -708,6 +700,22 @@ class HostAdmissionRefusal(StrEnum):
 
     SESSION_CEILING = "session_ceiling"
     MEMORY = "memory"
+
+
+class HostSessionEnd(StrEnum):
+    """How a session left the browser host; the operation its wide event carries."""
+
+    DISPOSED = "dispose"
+    LEASE_EXPIRED = "lease_expired"
+    CONNECTION_LOST = "connection_lost"
+    ENGINE_LOST = "engine_lost"
+
+
+# The header every browser-host REST call carries the shared host key in.
+BROWSER_HOST_KEY_HEADER = "X-Host-Key"
+# The header a host client sends its own deadline in, so the host finishes or gives
+# up inside it instead of working on for a caller that has stopped listening.
+BROWSER_HOST_DEADLINE_HEADER = "X-Host-Deadline"
 
 
 # Browser-Use's own env switches (browser_use/config.py), forced off in every GAIA

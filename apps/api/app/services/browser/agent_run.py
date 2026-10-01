@@ -172,6 +172,14 @@ def _summarize_action_result(result: ActionResult) -> str | None:
     return collapsed[: _OUTPUT_MAX_CHARS - 1].rstrip() + "…"
 
 
+#: The controls a guidance ask lists: what a person clicks, fills or picks, not scrolls or keys.
+_GUIDANCE_KINDS = frozenset({"click", "fill", "secret", "select"})
+
+
+def _is_control(action: PageAction) -> bool:
+    return action["kind"] in _GUIDANCE_KINDS
+
+
 def _guidance_element(action: PageAction) -> GuidanceElement:
     """Return one control as a guidance ask lists it: its label and role."""
     return GuidanceElement(label=action["label"], role=action.get("role", action["kind"]))
@@ -444,7 +452,7 @@ class BrowserAgentRun:
             elements=[
                 _guidance_element(action)
                 for action in page.actions[:BROWSER_GUIDANCE_MAX_ELEMENTS]
-                if "node" in action
+                if _is_control(action)
             ],
             recent_actions=[
                 GuidanceAction(action=a.description)

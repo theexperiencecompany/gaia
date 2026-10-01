@@ -52,6 +52,7 @@ from app.schemas.browser import (
     BrowserResultSnapshot,
     BrowserSessionSnapshot,
     BrowserStepSnapshot,
+    BrowserTaskSecret,
     HandoffOutcome,
     HandoffRequest,
 )
@@ -70,7 +71,7 @@ from tests.helpers import captured_wide_event
 pytestmark = pytest.mark.unit
 
 PAGE = "https://example.test/book"
-SECRETS = RunSecrets({"password": "hunter2"}, ["example.test"])
+SECRETS = RunSecrets({"password": BrowserTaskSecret(value="hunter2", site="example.test")})
 
 #: What one scripted run does with the hooks the runner handed it.
 Script = Callable[["_ScriptedRun"], Awaitable[RunOutcome]]

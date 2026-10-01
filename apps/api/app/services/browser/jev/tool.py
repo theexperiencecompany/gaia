@@ -10,13 +10,13 @@ page's text.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from typing import Protocol
 
 from browser_use import Tools
 from browser_use.agent.views import ActionResult
 from pydantic import BaseModel, Field
 
 from app.constants.browser import (
-    JEV_REPEATED_GOAL_REFUSAL,
     JEV_REPORT_OPENED_PAGE_CHARS,
     JEV_REPORT_OPENED_PAGES,
     JEV_REPORT_PAGE_TEXT_CHARS,
@@ -24,13 +24,20 @@ from app.constants.browser import (
     JevStop,
 )
 from app.schemas.browser import BrowserAction
-from app.services.browser.jev.decision import OPTION_SEPARATOR
-from app.services.browser.jev.loop import BurstResult, JevRunner, JevStep
+from app.services.browser.jev.loop import BurstResult, JevStep
 
 #: Emits one card for a finished burst: its caption source, and the page it ended on.
 BurstEmitFn = Callable[[list[BrowserAction], str, str], Awaitable[None]]
+
+
+class Bursts(Protocol):
+    """What the agent's jev action runs: one burst per goal, on the run's tab."""
+
+    async def burst(self, goal: str, start_url: str | None) -> BurstResult: ...
+
+
 #: Builds the burst runner, on the Agent's browser session, at the first burst.
-RunnerFactory = Callable[[], JevRunner]
+RunnerFactory = Callable[[], Bursts]
 
 JEV_ACTION = "jev"
 
@@ -66,20 +73,30 @@ _STOP_MEANING = {
     ),
     JevStop.BLOCKED: "Jev found nothing on this page that advances the goal.",
     JevStop.NEEDS_INPUT: "The goal gives no value for a field: ask the user, or hand the step over.",
+    JevStop.SECRET_WITHHELD: (
+        "A secret is typed only on the site it was given for, and this page is on another; "
+        "nothing was typed."
+    ),
     JevStop.NO_PROGRESS: "Jev's last actions changed nothing on the page.",
     JevStop.CYCLE: "Jev went back and forth without progress.",
     JevStop.MAX_ACTIONS: "Jev used its action budget for one burst; it may be partway.",
     JevStop.MAX_DECISIONS: "Jev used its decision budget for one burst without settling on the page.",
     JevStop.COVERED: "An overlay or hidden control blocks the target; deal with it yourself.",
     JevStop.STALE: "The page kept changing under Jev's decisions.",
-    JevStop.CAPTCHA: "A CAPTCHA is on the page: hand it to the user with solve_captcha_with_help.",
     JevStop.UNRESPONSIVE: "The page stopped answering; an input sent just then may or may not have landed.",
     JevStop.USER_MESSAGE: "The user sent a message; read it (it is in your task) before going on.",
     JevStop.STOPPED: "The run is stopping.",
     JevStop.GATEWAY: "Jev could not decide; continue yourself.",
     JevStop.LOAD_STALLED: "The site did not answer in time; the tab stayed on the page before it.",
     JevStop.NAVIGATION_FAILED: "The page could not be opened; the tab stayed where it was.",
+    JevStop.FIELD_UNFOCUSED: "Clicking the field did not focus it, so nothing was typed.",
+    JevStop.TAB_UNAVAILABLE: "The tab Jev was driving is gone or refused it; check which tab is open.",
+    JevStop.PAGE_SCRIPT_ERROR: "Jev could not read this page (its script failed here); continue yourself.",
 }
+
+
+#: Whether an action changed the page, as its report line says.
+_CHANGED = {True: " (page changed)", False: " (no change)"}
 
 
 class JevParams(BaseModel):
@@ -91,25 +108,49 @@ class JevParams(BaseModel):
     )
 
 
-def _normalized(goal: str) -> tuple[str, ...]:
-    """Return the goal as its words, so case and spacing never make it a new goal."""
-    return tuple(goal.casefold().split())
-
-
 def _step_action(step: JevStep) -> BrowserAction:
     name = _STEP_ACTION[step.operation]
     inputs: dict[str, object] = {}
     if step.operation is JevOperation.TYPE_TEXT and step.text is not None:
         inputs["text"] = step.text
-    elif step.operation is JevOperation.SELECT:
-        # A select step is named "field → option"; an option may hold an arrow itself.
-        inputs["text"] = step.label.partition(OPTION_SEPARATOR)[2]
-    elif step.operation is JevOperation.NAVIGATE:
-        inputs["url"] = step.label.removeprefix("Open ")
+    elif step.option is not None:
+        inputs["text"] = step.option
+    elif step.opened is not None:
+        inputs["url"] = step.opened
     elif step.operation is JevOperation.PRESS_ENTER:
         inputs["keys"] = "Enter"
     target = step.label if step.operation in (JevOperation.CLICK, JevOperation.TYPE_TEXT) else None
     return BrowserAction(name=name, inputs=inputs, target=target)
+
+
+def _step_line(n: int, step: JevStep) -> str:
+    """Return one action as the report lists it: what it targeted, set or typed, and what changed."""
+    ident = f" [#{step.ident}]" if step.ident else ""
+    link = f" -> {step.href}" if step.href else ""
+    chosen = f' -> "{step.option}"' if step.option is not None else ""
+    typed = f' = "{step.text}"' if step.text is not None else ""
+    held = f" (the field holds {step.held})" if step.held is not None else ""
+    changed = "" if step.page_changed is None else _CHANGED[step.page_changed]
+    return f"  {n}. {step.operation.value} {step.label}{ident}{link}{chosen}{typed}{held}{changed}"
+
+
+def _page_lines(result: BurstResult) -> list[str]:
+    """Return what the report says of the page Jev ended on: its text, controls left out and hidden frames."""
+    lines = [f"Now on: {result.title} ({result.url})"]
+    if result.text:
+        lines.append(
+            f"Visible text of this page, verbatim:\n{result.text[:JEV_REPORT_PAGE_TEXT_CHARS]}"
+        )
+    if result.omitted_controls:
+        lines.append(
+            f"This page has {result.omitted_controls} more controls than Jev reads; it saw "
+            "only the first ones in the page's order."
+        )
+    if result.hidden_frames:
+        lines.append(
+            "Frames on this page Jev cannot see into: " + ", ".join(result.hidden_frames[:5])
+        )
+    return lines
 
 
 def report(result: BurstResult) -> str:
@@ -120,54 +161,31 @@ def report(result: BurstResult) -> str:
     ]
     if result.steps:
         lines.append(f"Actions ({len(result.steps)}):")
-        for n, step in enumerate(result.steps, 1):
-            typed = f' = "{step.text}"' if step.text is not None else ""
-            changed = (
-                ""
-                if step.page_changed is None
-                else (" (page changed)" if step.page_changed else " (no change)")
-            )
-            ident = f" [#{step.ident}]" if step.ident else ""
-            link = f" -> {step.href}" if step.href else ""
-            lines.append(f"  {n}. {step.operation.value} {step.label}{ident}{link}{typed}{changed}")
+        lines.extend(_step_line(n, step) for n, step in enumerate(result.steps, 1))
     else:
         lines.append("Actions: none.")
     earlier = result.opened[-JEV_REPORT_OPENED_PAGES:]
     if earlier:
         lines.append("Other pages Jev opened in this burst, with the start of their text:")
-        for page in earlier:
-            lines.append(
-                f"--- {page.title} ({page.url})\n{page.text[:JEV_REPORT_OPENED_PAGE_CHARS]}"
-            )
-    lines.append(f"Now on: {result.title} ({result.url})")
-    if result.text:
-        visible = result.text[:JEV_REPORT_PAGE_TEXT_CHARS]
-        lines.append(f"Visible text of this page, verbatim:\n{visible}")
-    if result.hidden_frames:
-        lines.append(
-            "Frames on this page Jev cannot see into: " + ", ".join(result.hidden_frames[:5])
+        lines.extend(
+            f"--- {page.title} ({page.url})\n{page.text[:JEV_REPORT_OPENED_PAGE_CHARS]}"
+            for page in earlier
         )
-    return "\n".join(lines)
+    return "\n".join([*lines, *_page_lines(result)])
 
 
 class JevDelegate:
-    """The agent's handle on Jev for one run: bursts, and the goals that went nowhere."""
+    """The agent's handle on Jev for one run: one runner, built at the first burst."""
 
     def __init__(self, *, runner_for: RunnerFactory, emit: BurstEmitFn) -> None:
         self._runner_for = runner_for
         self._emit = emit
-        self._runner: JevRunner | None = None
-        self._fruitless: set[tuple[str, ...]] = set()
+        self._runner: Bursts | None = None
 
     async def run(self, params: JevParams) -> ActionResult:
-        goal = _normalized(params.goal)
-        if goal in self._fruitless:
-            return ActionResult(error=JEV_REPEATED_GOAL_REFUSAL)
         if self._runner is None:
             self._runner = self._runner_for()
         result = await self._runner.burst(params.goal, params.start_url)
-        if not result.progressed and result.stop.jev_caused:
-            self._fruitless.add(goal)
         if result.steps:
             await self._emit(
                 [_step_action(step) for step in result.steps], result.url, result.title

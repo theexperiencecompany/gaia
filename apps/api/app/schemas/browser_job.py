@@ -10,7 +10,7 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 from app.models.chat_models import ConversationSource
-from app.schemas.browser import BrowserResultSnapshot
+from app.schemas.browser import BrowserResultSnapshot, BrowserTaskSecret
 
 
 class BrowserJobRequest(BaseModel):
@@ -28,7 +28,7 @@ class BrowserJobRequest(BaseModel):
     source_category: str | None = None
     conversation_source: ConversationSource | None = None
     #: Credentials the user gave for the task, by the name the task's <secret>name</secret> uses.
-    secrets: dict[str, str] = Field(default_factory=dict)
+    secrets: dict[str, BrowserTaskSecret] = Field(default_factory=dict)
 
 
 class BrowserJobStatus(StrEnum):

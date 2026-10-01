@@ -1,6 +1,7 @@
 import asyncio
 from collections import defaultdict, deque
 from collections.abc import AsyncIterator, Sequence
+import contextlib
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from typing import Any
@@ -20,7 +21,7 @@ from app.constants.search import (
 )
 from app.utils.background_tasks import spawn_background_task
 from app.utils.concurrency import loop_bound_semaphore
-from app.utils.crawl_obscura import ensure_crawl_obscura
+from app.utils.crawl_obscura import crawl_obscura
 from shared.py.wide_events import log
 
 # Tags that are almost never primary content; dropped before markdown conversion.
@@ -89,18 +90,16 @@ def _is_obscura() -> bool:
     return settings.BROWSER_ENGINE is BrowserEngine.OBSCURA
 
 
-async def _build_browser_config() -> BrowserConfig:
-    """Return the crawl4ai browser config for the active engine.
+def _browser_config(cdp_url: str | None) -> BrowserConfig:
+    """Return the crawl4ai browser config: over CDP to the crawl Obscura at cdp_url, else a dedicated Chromium.
 
-    Obscura: connect over CDP to the dedicated crawl Obscura (one shared process,
-    started on demand). cdp_cleanup_on_close=False so a crawler's teardown never
-    closes the shared engine out from under a concurrent crawl. Chromium: launch
-    a dedicated Playwright browser as before.
+    cdp_cleanup_on_close=False so a crawler's teardown never closes the shared
+    engine out from under a concurrent crawl.
     """
-    if _is_obscura():
+    if cdp_url is not None:
         return BrowserConfig(
             browser_mode="cdp",
-            cdp_url=await ensure_crawl_obscura(),
+            cdp_url=cdp_url,
             headless=True,
             verbose=False,
             cdp_cleanup_on_close=False,
@@ -141,29 +140,32 @@ async def managed_crawler(*, context_name: str = "crawl4ai") -> AsyncIterator[As
     Detaching close() as its own task keeps the caller's cancellation from
     interrupting it; browser_reaper is the backstop for anything that slips through.
     """
-    crawler = AsyncWebCrawler(config=await _build_browser_config())
-    try:
-        await crawler.start()
-    except BaseException:
-        # start() may have spawned the driver before failing — close it too.
-        _spawn_shielded_close(crawler, context_name)
-        raise
-    try:
-        yield crawler
-    finally:
-        close_task = _spawn_shielded_close(crawler, context_name)
+    async with contextlib.AsyncExitStack() as engine_hold:
+        # The crawl Obscura is held for the crawler's life, so it is never replaced under it.
+        cdp_url = await engine_hold.enter_async_context(crawl_obscura()) if _is_obscura() else None
+        crawler = AsyncWebCrawler(config=_browser_config(cdp_url))
         try:
-            await asyncio.wait_for(
-                asyncio.shield(close_task), timeout=CRAWL4AI_CLOSE_TIMEOUT_SECONDS
-            )
-        except TimeoutError:
-            # close() is wedged; it keeps running detached and the reaper
-            # collects the driver if it never finishes.
-            log.warning(
-                f"{LogTag.TOOL} browser close still running ; leaving it to finish in background",
-                context_name=context_name,
-                crawl4ai_close_timeout_seconds=CRAWL4AI_CLOSE_TIMEOUT_SECONDS,
-            )
+            await crawler.start()
+        except BaseException:
+            # start() may have spawned the driver before failing — close it too.
+            _spawn_shielded_close(crawler, context_name)
+            raise
+        try:
+            yield crawler
+        finally:
+            close_task = _spawn_shielded_close(crawler, context_name)
+            try:
+                await asyncio.wait_for(
+                    asyncio.shield(close_task), timeout=CRAWL4AI_CLOSE_TIMEOUT_SECONDS
+                )
+            except TimeoutError:
+                # close() is wedged; it keeps running detached and the reaper
+                # collects the driver if it never finishes.
+                log.warning(
+                    f"{LogTag.TOOL} browser close still running ; leaving it to finish in background",
+                    context_name=context_name,
+                    crawl4ai_close_timeout_seconds=CRAWL4AI_CLOSE_TIMEOUT_SECONDS,
+                )
 
 
 def _normalize_url(url: str) -> str:

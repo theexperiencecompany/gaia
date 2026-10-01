@@ -38,6 +38,17 @@ class TestBrowserHostEntrypoint:
         assert kwargs["port"] == 8930
         assert kwargs["log_config"] is None
 
+    def test_a_host_that_gave_up_on_its_engine_exits_non_zero_for_a_restart(self) -> None:
+        with (
+            patch("uvicorn.run"),
+            patch.object(entrypoint, "configure_file_logging"),
+            patch.object(entrypoint, "host_failed", return_value=True),
+            pytest.raises(SystemExit) as exited,
+        ):
+            entrypoint.main()
+
+        assert exited.value.code == 1
+
     def test_the_image_bind_address_reaches_uvicorn(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_BIND_ADDRESS", "10.0.0.7")
         with (

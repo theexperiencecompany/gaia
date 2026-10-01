@@ -1,45 +1,66 @@
-"""The browser-host HTTP/WS service, one Chromium behind a small JSON API.
+"""The browser-host HTTP/WS service: one engine behind a small JSON API.
 
 Endpoints (all internal; the port is never published):
-  * POST   /sessions            create an isolated context (429 at capacity)
-  * DELETE /sessions/{id}       dispose it, returning its storage_state
-  * GET    /sessions/{id}/storage-state  its live storage_state, session kept
-  * GET    /sessions/{id}       liveness + current page url/title
-  * GET    /healthz             CDP responsiveness (503 when wedged)
-  * WS     /cdp/{id}            the per-session CDP filtering proxy
-  * WS     /live/{id}           the screencast + input live view
+  * POST   /sessions                      create an isolated context (429 at capacity)
+  * DELETE /sessions/{id}                 dispose it, returning its storage_state
+  * GET    /sessions/{id}/storage-state   its live storage_state, session kept
+  * POST   /sessions/{id}/lease           renew the lease its run holds on it
+  * GET    /sessions/{id}                 liveness + current page url/title
+  * GET    /healthz                       CDP responsiveness (503 when wedged)
+  * WS     /cdp/{id}                      the per-session CDP filtering proxy
+  * WS     /live/{id}                     the screencast + input live view
 
-The single :class:ChromiumHost is created at import (no side effects) and
-started/stopped by the app lifespan.
+REST calls carry the shared host key; a websocket carries its session's own
+token, so a leaked URL reaches that one session and nothing else.
 """
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from functools import partial
+import os
 import secrets
+import signal
+from typing import TypeVar
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket
+from fastapi.responses import JSONResponse
 from playwright.sync_api import StorageState
 from pydantic import BaseModel
 
+from app.browser_host.cdp_mux import CdpCommandError, CdpConnectionClosed, CDPTimeoutError
 from app.browser_host.chromium import (
     AtCapacityError,
-    CDPTimeoutError,
     ChromiumHost,
     EngineUnresponsiveError,
+    HostSession,
     SessionNotFoundError,
 )
 from app.browser_host.proxy import run_cdp_proxy
 from app.browser_host.screencast import run_live_view
 from app.config.browser_host_settings import browser_host_settings
-from app.constants.browser import BrowserEngine, HostRequestFailure
+from app.constants.browser import (
+    BROWSER_HOST_DEADLINE_HEADER,
+    BROWSER_HOST_KEY_HEADER,
+    BROWSER_SESSION_LEASE_SECONDS,
+    BrowserEngine,
+    HostRequestFailure,
+)
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log, log_context
 
-# WebSocket close code for "session unknown or dead" (application 4xxx range).
+# WebSocket close codes in the application 4xxx range.
 _WS_AUTH_FAILED = 4401
 _WS_SESSION_GONE = 4404
+_WS_TOKEN_PARAM = "token"
+# Kept back from the caller's deadline for the answer to travel home in.
+_DEADLINE_MARGIN_SECONDS = 1.0
+_ALLOWED_WS_ORIGIN_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+_T = TypeVar("_T")
 
 
 class CreateSessionRequest(BaseModel):
@@ -49,17 +70,16 @@ class CreateSessionRequest(BaseModel):
 
 
 class CreateSessionResponse(BaseModel):
-    """Handle for a created context: CDP + live websocket URLs, the context id, and the engine it runs on."""
+    """Handle for a created session: its CDP and live-view websocket URLs and the engine it runs on."""
 
     session_id: str
     cdp_ws: str
     live_ws: str
-    context_id: str
     engine: BrowserEngine
 
 
 class DeleteSessionResponse(BaseModel):
-    """Result of disposing a context: the storage state to persist, or None."""
+    """Result of disposing a context: the storage state to persist."""
 
     storage_state: StorageState
 
@@ -68,6 +88,13 @@ class SessionStorageStateResponse(BaseModel):
     """A live context's cookies and localStorage, read without disposing it."""
 
     storage_state: StorageState
+
+
+class LeaseResponse(BaseModel):
+    """The renewed lease: how long the session lives unless renewed again."""
+
+    session_id: str
+    lease_seconds: float
 
 
 class AggregateResponse(BaseModel):
@@ -82,13 +109,12 @@ class AggregateResponse(BaseModel):
 class SessionMetricsResponse(BaseModel):
     """Live per-session profiling numbers. Aggregates are null until first sampled.
 
-    ``rss_mb``/``cpu_percent`` describe the whole Chromium process tree, which
-    every session on this host shares — see ``browser_host/metrics.py``.
+    rss_mb/cpu_percent describe the whole engine process tree, which every
+    session on that engine shares (see browser_host/metrics.py).
     """
 
     session_lifetime_seconds: float
     navigation_count: int
-    context_count: int
     page_count: int
     rss_mb: AggregateResponse | None = None
     cpu_percent: AggregateResponse | None = None
@@ -96,108 +122,97 @@ class SessionMetricsResponse(BaseModel):
 
 
 class SessionInfoResponse(BaseModel):
-    """Live status for a session: activity timestamp, url, title, viewer state."""
+    """Live status for a session: whether it serves, and its focused page's url and title."""
 
     session_id: str
     live: bool
-    last_activity_at: float
     url: str | None = None
     title: str | None = None
     metrics: SessionMetricsResponse
 
 
-class TouchSessionResponse(BaseModel):
-    """Acknowledgement that the session's activity clock was reset."""
-
-    session_id: str
-
-
 class HealthResponse(BaseModel):
-    """Host health probe: process liveness plus a real CDP round-trip result."""
+    """Host health probe: engine liveness plus a real CDP round-trip result."""
 
     ok: bool
     sessions: int
-    chromium_up: bool
+    engine_up: bool
     cdp_responsive: bool
 
 
-_host = ChromiumHost()
+class _DeadlineExceeded(RuntimeError):
+    """Raised when a request outlives the deadline its caller sent."""
 
 
-# --- host-key authentication ---------------------------------------------
-# A rendered page can fetch() localhost, so every endpoint requires the shared key
-# (REST: X-Host-Key header; WS: ?hk= query param). Production refuses to serve without one.
+def _exit_for_restart() -> None:
+    """Shut the process down so its orchestrator starts a fresh one; __main__ exits non-zero."""
+    os.kill(os.getpid(), signal.SIGTERM)
+
+
+_host = ChromiumHost(on_fatal=_exit_for_restart)
+
+
+def host_failed() -> bool:
+    """Whether the host gave up because no engine could be brought back."""
+    return _host.failed
+
+
+# --- authentication -------------------------------------------------------
+# A rendered page can fetch() localhost, so every REST endpoint requires the shared
+# key and every websocket its session's token. Production refuses to serve keyless.
 
 
 def _key_valid(candidate: str | None) -> bool:
-    key: str | None = browser_host_settings.BROWSER_HOST_KEY
+    key = browser_host_settings.BROWSER_HOST_KEY
     if key is None:
-        # No key configured: fine outside production (local dev tooling). In
-        # production this host is unsafe to serve — fail loud instead of
-        # silently running unauthenticated.
-        return bool(browser_host_settings.ENV != "production")
-    return bool(candidate) and secrets.compare_digest(candidate, key)
+        # Fine outside production (local dev tooling); in production an unkeyed
+        # host is unsafe to serve, so every request fails loud instead.
+        return browser_host_settings.ENV != "production"
+    return candidate is not None and secrets.compare_digest(candidate, key)
 
 
 def _require_host_key(request: Request) -> None:
-    if not _key_valid(request.headers.get("X-Host-Key")):
+    if not _key_valid(request.headers.get(BROWSER_HOST_KEY_HEADER)):
         log.fail(HostRequestFailure.INVALID_HOST_KEY)
         raise HTTPException(status_code=401, detail="missing or invalid host key")
 
 
-def _session_not_found() -> HTTPException:
-    log.fail(HostRequestFailure.SESSION_NOT_FOUND)
-    return HTTPException(status_code=404, detail="session not found")
-
-
-def _engine_unresponsive() -> HTTPException:
-    log.fail(HostRequestFailure.ENGINE_UNRESPONSIVE)
-    return HTTPException(status_code=503, detail="browser engine unresponsive")
-
-
-_ALLOWED_WS_ORIGIN_HOSTS = {"localhost", "127.0.0.1", "::1"}
-
-
-def _ws_authorized(websocket: WebSocket) -> bool:
-    if not _key_valid(websocket.query_params.get("hk")):
-        return False
-    # Defense-in-depth: server-side WS clients send no Origin; a rendered page
-    # opening a raw socket would. Reject any non-loopback Origin even with a valid
-    # key, so a leaked key alone is not enough. Rejections are logged.
+def _ws_origin_allowed(websocket: WebSocket) -> bool:
+    """Reject a non-loopback Origin: server-side clients send none, a rendered page would."""
     origin = websocket.headers.get("origin")
     if not origin:
         return True
-    try:
-        netloc = (origin.split("://", 1)[1] if "://" in origin else origin).split("/")[0]
-        host = netloc.rsplit(":", 1)[0]
-    except (ValueError, IndexError) as exc:
-        log.set(browser={"operation": "ws_origin_reject"})
-        log.warning(
-            f"{LogTag.BROWSER} live-view WS rejected: unparsable Origin",
-            error_type=type(exc).__name__,
-        )
-        return False
+    host = urlsplit(origin if "://" in origin else f"//{origin}").hostname
     if host not in _ALLOWED_WS_ORIGIN_HOSTS:
-        log.set(browser={"operation": "ws_origin_reject"})
-        log.warning(f"{LogTag.BROWSER} live-view WS rejected: cross-origin Origin")
+        log.warning(f"{LogTag.BROWSER} browser host WS rejected: cross-origin Origin")
         return False
     return True
 
 
-def _ws_url(path: str) -> str:
-    """Absolute ws(s) URL for a host path, derived from BROWSER_HOST_URL."""
-    # One replace per line so each carries its own suppression: the literals only
-    # UPGRADE the configured scheme to its websocket form (https becomes wss); the
+def _ws_url(path: str, token: str) -> str:
+    """Absolute ws(s) URL for a host path, derived from BROWSER_HOST_URL, carrying the session's token."""
+    # Each replace only UPGRADES the configured scheme to its websocket form; the
     # http arm applies only when the operator configured a plaintext host URL.
     base = browser_host_settings.BROWSER_HOST_URL.replace(
         "https://", "wss://", 1
     )  # NOSONAR python:S5332
     base = base.replace("http://", "ws://", 1)  # NOSONAR python:S5332
-    url = f"{base.rstrip('/')}{path}"
-    key = browser_host_settings.BROWSER_HOST_KEY
-    if key:
-        url = f"{url}?hk={key}" if "?" not in url else f"{url}&hk={key}"
-    return url
+    return f"{base.rstrip('/')}{path}?{_WS_TOKEN_PARAM}={token}"
+
+
+async def _within_deadline(request: Request, work: Callable[[], Awaitable[_T]]) -> _T:
+    """Run work inside the deadline the caller sent, so the host never works on for nobody."""
+    header = request.headers.get(BROWSER_HOST_DEADLINE_HEADER)
+    if header is None:
+        return await work()
+    budget = float(header) - _DEADLINE_MARGIN_SECONDS
+    try:
+        async with asyncio.timeout(budget) as scope:
+            return await work()
+    except TimeoutError as exc:
+        if scope.expired():
+            raise _DeadlineExceeded(f"deadline of {header}s passed") from exc
+        raise
 
 
 @asynccontextmanager
@@ -210,6 +225,31 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(lifespan=_lifespan)
+
+
+_GONE = (404, HostRequestFailure.SESSION_NOT_FOUND, "session not found")
+_UNRESPONSIVE = (503, HostRequestFailure.ENGINE_UNRESPONSIVE, "browser engine unresponsive")
+# Every route's failures map here, in one table: a session that is gone (never
+# was, ended, or its connection dropped) is a 404 wherever it is noticed.
+_REFUSALS: dict[type[Exception], tuple[int, HostRequestFailure, str]] = {
+    SessionNotFoundError: _GONE,
+    CdpConnectionClosed: _GONE,
+    EngineUnresponsiveError: _UNRESPONSIVE,
+    CDPTimeoutError: _UNRESPONSIVE,
+    CdpCommandError: (502, HostRequestFailure.ENGINE_REFUSED, "browser engine refused the request"),
+    _DeadlineExceeded: (504, HostRequestFailure.DEADLINE_EXCEEDED, "the caller's deadline passed"),
+}
+
+
+async def _refuse(_request: Request, exc: Exception) -> Response:
+    """Answer a failure from the table with its status, and log why on the request's event."""
+    status, failure, detail = _REFUSALS[type(exc)]
+    log.fail(failure, error_type=type(exc).__name__)
+    return JSONResponse(status_code=status, content={"detail": detail})
+
+
+for _refused_type in _REFUSALS:
+    app.add_exception_handler(_refused_type, _refuse)
 
 # Polled by the orchestrator; a degraded engine is logged by healthz itself.
 _UNLOGGED_PATHS = frozenset({"/healthz"})
@@ -239,7 +279,9 @@ async def create_session(request: Request, payload: CreateSessionRequest) -> Cre
     _require_host_key(request)
     log.set(browser={"operation": "create"})
     try:
-        session = await _host.create_context(payload.storage_state)
+        session = await _within_deadline(
+            request, partial(_host.create_context, payload.storage_state)
+        )
     except AtCapacityError as exc:
         admission = {
             "admission": exc.gate.value,
@@ -254,24 +296,18 @@ async def create_session(request: Request, payload: CreateSessionRequest) -> Cre
         raise HTTPException(status_code=429, detail="at_capacity") from exc
     return CreateSessionResponse(
         session_id=session.session_id,
-        cdp_ws=_ws_url(f"/cdp/{session.session_id}"),
-        live_ws=_ws_url(f"/live/{session.session_id}"),
-        context_id=session.context_id,
-        engine=browser_host_settings.BROWSER_ENGINE,
+        cdp_ws=_ws_url(f"/cdp/{session.session_id}", session.token),
+        live_ws=_ws_url(f"/live/{session.session_id}", session.token),
+        engine=session.engine.kind,
     )
 
 
 @app.delete("/sessions/{session_id}")
 async def delete_session(request: Request, session_id: str) -> DeleteSessionResponse:
-    """Dispose the context and return the storage state to persist; 503 when its engine is down."""
+    """Dispose the context and return the storage state to persist."""
     _require_host_key(request)
     log.set(browser={"session_id": session_id, "operation": "delete"})
-    try:
-        storage_state = await _host.dispose_context(session_id)
-    except SessionNotFoundError as exc:
-        raise _session_not_found() from exc
-    except (EngineUnresponsiveError, CDPTimeoutError) as exc:
-        raise _engine_unresponsive() from exc
+    storage_state = await _within_deadline(request, partial(_host.dispose_context, session_id))
     return DeleteSessionResponse(storage_state=storage_state)
 
 
@@ -279,32 +315,20 @@ async def delete_session(request: Request, session_id: str) -> DeleteSessionResp
 async def get_session_storage_state(
     request: Request, session_id: str
 ) -> SessionStorageStateResponse:
-    """Read the live context's storage state; 404 when the session is gone, 503 when its engine does not answer."""
+    """Read the live context's storage state, leaving the session running."""
     _require_host_key(request)
     log.set(browser={"session_id": session_id, "operation": "storage_state"})
-    try:
-        storage_state = await _host.storage_state(session_id)
-    except SessionNotFoundError as exc:
-        raise _session_not_found() from exc
-    except (EngineUnresponsiveError, CDPTimeoutError) as exc:
-        raise _engine_unresponsive() from exc
+    storage_state = await _within_deadline(request, partial(_host.storage_state, session_id))
     return SessionStorageStateResponse(storage_state=storage_state)
 
 
-@app.post("/sessions/{session_id}/touch")
-async def touch_session(request: Request, session_id: str) -> TouchSessionResponse:
-    """Reset the session's idle clock.
-
-    The API calls this while a handoff is pending: the user may take minutes to
-    come sign in, no CDP or live-view traffic flows in the meantime, and the idle
-    reaper must not dispose the very browser the user was asked to return to.
-    """
+@app.post("/sessions/{session_id}/lease")
+async def renew_session_lease(request: Request, session_id: str) -> LeaseResponse:
+    """Renew the lease the session's run holds; a session whose run stops renewing is disposed."""
     _require_host_key(request)
-    log.set(browser={"session_id": session_id, "operation": "touch"})
-    if _host.get(session_id) is None:
-        raise _session_not_found()
-    _host.touch(session_id)
-    return TouchSessionResponse(session_id=session_id)
+    log.set(browser={"session_id": session_id, "operation": "lease"})
+    _host.renew_lease(session_id)
+    return LeaseResponse(session_id=session_id, lease_seconds=BROWSER_SESSION_LEASE_SECONDS)
 
 
 @app.get("/sessions/{session_id}")
@@ -312,12 +336,7 @@ async def get_session(request: Request, session_id: str) -> SessionInfoResponse:
     """Fetch live session info; 404 when the session is gone, 503 when its engine does not answer."""
     _require_host_key(request)
     log.set(browser={"session_id": session_id, "operation": "get"})
-    try:
-        info = await _host.session_info(session_id)
-    except SessionNotFoundError as exc:
-        raise _session_not_found() from exc
-    except EngineUnresponsiveError as exc:
-        raise _engine_unresponsive() from exc
+    info = await _within_deadline(request, partial(_host.session_info, session_id))
     return SessionInfoResponse.model_validate(info)
 
 
@@ -342,18 +361,31 @@ def _ws_wide_event(operation: str, session_id: str) -> AbstractAsyncContextManag
     return boundary
 
 
+async def _admit_ws(websocket: WebSocket, session_id: str) -> HostSession | None:
+    """Return the live session this websocket's token opens, or close it and return None."""
+    session = _host.get(session_id)
+    if session is None:
+        log.fail(HostRequestFailure.SESSION_NOT_FOUND)
+        await websocket.close(code=_WS_SESSION_GONE)
+        return None
+    token = websocket.query_params.get(_WS_TOKEN_PARAM)
+    if token is None or not secrets.compare_digest(token, session.token):
+        log.fail(HostRequestFailure.INVALID_SESSION_TOKEN)
+        await websocket.close(code=_WS_AUTH_FAILED)
+        return None
+    if not _ws_origin_allowed(websocket):
+        log.fail(HostRequestFailure.INVALID_SESSION_TOKEN)
+        await websocket.close(code=_WS_AUTH_FAILED)
+        return None
+    return session
+
+
 @app.websocket("/cdp/{session_id}")
 async def cdp_endpoint(websocket: WebSocket, session_id: str) -> None:
     """CDP websocket endpoint for one context, proxied through the filter."""
     async with _ws_wide_event("cdp_ws", session_id):
-        if not _ws_authorized(websocket):
-            log.fail(HostRequestFailure.INVALID_HOST_KEY)
-            await websocket.close(code=_WS_AUTH_FAILED)
-            return
-        session = _host.get(session_id)
-        if session is None or session.dead:
-            log.fail(HostRequestFailure.SESSION_NOT_FOUND)
-            await websocket.close(code=_WS_SESSION_GONE)
+        session = await _admit_ws(websocket, session_id)
+        if session is None:
             return
         await websocket.accept()
         await run_cdp_proxy(_host, session, websocket)
@@ -363,14 +395,8 @@ async def cdp_endpoint(websocket: WebSocket, session_id: str) -> None:
 async def live_endpoint(websocket: WebSocket, session_id: str) -> None:
     """Screencast + input websocket for one session's live view."""
     async with _ws_wide_event("live_ws", session_id):
-        if not _ws_authorized(websocket):
-            log.fail(HostRequestFailure.INVALID_HOST_KEY)
-            await websocket.close(code=_WS_AUTH_FAILED)
-            return
-        session = _host.get(session_id)
-        if session is None or session.dead:
-            log.fail(HostRequestFailure.SESSION_NOT_FOUND)
-            await websocket.close(code=_WS_SESSION_GONE)
+        session = await _admit_ws(websocket, session_id)
+        if session is None:
             return
         await websocket.accept()
         await run_live_view(_host, session, websocket)
