@@ -16,6 +16,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from functools import partial
 from itertools import compress
+from pathlib import Path
+import shutil
 from time import perf_counter
 from typing import Any, TypedDict, cast
 
@@ -206,6 +208,19 @@ def failure_from_history(
     return None
 
 
+def _remove_directories(*directories: str | Path) -> None:
+    """Delete each directory and what it holds; a failure is logged, never raised over the run's own ending."""
+    for directory in dict.fromkeys(Path(d) for d in directories):
+        try:
+            shutil.rmtree(directory)
+        except OSError as exc:
+            log.warning(
+                f"{LogTag.BROWSER} Browser agent files not removed",
+                path=str(directory),
+                error_type=type(exc).__name__,
+            )
+
+
 @dataclass(frozen=True)
 class _Step:
     """The agent step in flight: when it started, the actions it picked, and the card of its own."""
@@ -343,6 +358,9 @@ class BrowserAgentRun:
                 )
             finally:
                 stalls.close()
+                # Browser-Use writes its file system and every step's screenshot under the temp
+                # dir and never removes them; nothing reads them once the agent stops.
+                _remove_directories(self._agent.agent_directory, self._agent.file_system_path)
         self.last_url = await self._current_url()
         success, final = outcome_from_history(history)
         summary = self._secrets.redact(final) if final else None

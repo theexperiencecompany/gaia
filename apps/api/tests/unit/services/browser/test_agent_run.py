@@ -12,6 +12,7 @@ import asyncio
 from collections.abc import AsyncIterator, Awaitable
 from contextlib import asynccontextmanager
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, ClassVar
 from unittest.mock import MagicMock
@@ -649,9 +650,16 @@ class _Agent:
     history: ClassVar[_History] = _History("done")
     raises: ClassVar[BaseException | None] = None
     built: ClassVar[list[_Agent]] = []
+    #: Where it writes to disk, as Browser-Use does under the temp dir.
+    files: ClassVar[Path]
 
     def __init__(self, **options: Any) -> None:
         self.options = options
+        # Step screenshots, and the file system, which a resumed agent restores where the primary had it.
+        self.agent_directory = self.files / f"agent_{len(_Agent.built)}"
+        (self.agent_directory / "screenshots").mkdir(parents=True)
+        self.file_system_path = str(self.files / "file_system")
+        Path(self.file_system_path).mkdir(exist_ok=True)
         self.ran_steps = 0
         self.stopped = False
         self.browser_session = SimpleNamespace(
@@ -730,7 +738,7 @@ class _JevGateway:
 
 
 @pytest.fixture
-def built_with(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, object]]:
+def built_with(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[tuple[str, object]]:
     """Stand Browser-Use, the models and the stall watcher in for a run; record what each model was built for."""
     built: list[tuple[str, object]] = []
 
@@ -752,6 +760,7 @@ def built_with(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, object]]:
     monkeypatch.setattr(_Agent, "history", _History("done"))
     monkeypatch.setattr(_Agent, "raises", None)
     monkeypatch.setattr(_Agent, "built", [])
+    monkeypatch.setattr(_Agent, "files", tmp_path, raising=False)
     monkeypatch.setattr(_Stalls, "closed", False)
     return built
 
@@ -853,6 +862,7 @@ class TestExecute:
             await harness.run.execute("read my orders")
 
         assert (_Stalls.closed, _JevGateway.open) == (True, False)
+        assert list(_Agent.files.iterdir()) == []
         # A run that never finished has no page to resume at.
         assert harness.run.last_url is None
 
@@ -901,6 +911,7 @@ class TestExecute:
         await harness.run.execute("read my orders")
 
         assert (_Stalls.closed, _JevGateway.open) == (True, False)
+        assert list(_Agent.files.iterdir()) == []
 
 
 @pytest.mark.usefixtures("built_with")
