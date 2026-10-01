@@ -115,4 +115,3 @@ class TestObscuraNavigatePatch:
             assert BrowserSession._navigate_and_wait is patch_module._navigate_and_wait
         finally:
             type.__setattr__(BrowserSession, "_navigate_and_wait", installed)
-
