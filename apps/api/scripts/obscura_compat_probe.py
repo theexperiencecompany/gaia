@@ -249,7 +249,6 @@ async def _start_obscura(obscura_bin: str) -> asyncio.subprocess.Process:
         [obscura_bin, "serve", "--port", str(OBSCURA_PORT), "--stealth"],
         env={
             **os.environ,
-            "OBSCURA_NAV_TIMEOUT_MS": "90000",
             "OBSCURA_SCRIPT_DEADLINE_MS": "60000",
         },
     )

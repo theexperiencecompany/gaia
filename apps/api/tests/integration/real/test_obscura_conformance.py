@@ -737,6 +737,38 @@ async def test_opening_and_switching_tabs_over_target_works(page: tuple[Cdp, str
 # --- navigation ----------------------------------------------------------------
 
 
+async def test_page_navigate_answers_at_commit_and_reports_load_later(
+    page: tuple[Cdp, str],
+) -> None:
+    # session.py:_navigate_and_wait -- Browser-Use bounds Page.navigate at 20s
+    # and then waits for a lifecycle event carrying the loaderId it returned.
+    # Chrome answers at commit; so does Obscura since engine patch 0030.
+    client, session_id = page
+    result, error, answered_after = await client.call("Page.navigate", {"url": _WIKI}, session_id)
+    assert error is None and result is not None
+    loader_id = result["loaderId"]
+    lifecycle = [
+        event["params"]
+        for event in client.events
+        if event.get("method") == "Page.lifecycleEvent"
+        and event["params"].get("loaderId") == loader_id
+    ]
+    assert "commit" in [step["name"] for step in lifecycle]
+
+    deadline = time.perf_counter() + 60
+    while time.perf_counter() < deadline:
+        names = [
+            event["params"]["name"]
+            for event in client.events
+            if event.get("method") == "Page.lifecycleEvent"
+            and event["params"].get("loaderId") == loader_id
+        ]
+        if "load" in names:
+            break
+        await asyncio.sleep(0.1)
+    assert "load" in names, f"no load for the navigation's loader after {answered_after:.1f}s"
+
+
 async def test_going_back_through_the_history_entry_works(
     at_wiki: tuple[Cdp, str, Evaluate],
 ) -> None:

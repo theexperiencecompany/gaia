@@ -50,10 +50,6 @@ class BrowserHostSettings(BaseSettings):
     # Path to the Obscura binary; required when BROWSER_ENGINE=obscura (the gaia
     # image sets it via ENV). Missing it fails the host launch loud, no fallback.
     OBSCURA_BIN: str | None = None
-    # Page.navigate blocks until load or this deadline; past it the page's
-    # remaining scripts never run. On a 70 KB/s link one 353 KB stylesheet took
-    # 25 s, so a 30 s deadline left jQuery pages inert (measured 2026-09-22).
-    OBSCURA_NAV_TIMEOUT_SECONDS: int = 90
     # How long Obscura gives a page's script phase before it stops running them.
     OBSCURA_SCRIPT_DEADLINE_SECONDS: int = 60
     # An idle engine tree over this many MB is relaunched; None disables it.

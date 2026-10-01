@@ -36,10 +36,9 @@ def obscura_serve_argv(port: int) -> list[str]:
 
 
 def obscura_serve_env() -> dict[str, str]:
-    """Return the environment an Obscura process runs with: ours plus its load deadlines."""
+    """Return the environment an Obscura process runs with: ours plus its script deadline."""
     return {
         **os.environ,
-        "OBSCURA_NAV_TIMEOUT_MS": str(browser_host_settings.OBSCURA_NAV_TIMEOUT_SECONDS * 1000),
         "OBSCURA_SCRIPT_DEADLINE_MS": str(
             browser_host_settings.OBSCURA_SCRIPT_DEADLINE_SECONDS * 1000
         ),

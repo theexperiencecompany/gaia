@@ -27,17 +27,15 @@ def test_private_targets_are_always_refused(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 @pytest.mark.unit
-def test_obscura_receives_both_load_deadlines_in_milliseconds(
+def test_obscura_receives_its_script_deadline_in_milliseconds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Obscura reads its deadlines as *_MS env vars; seconds settings must arrive scaled, under those exact names."""
-    monkeypatch.setattr(browser_host_settings, "OBSCURA_NAV_TIMEOUT_SECONDS", 45)
+    """Obscura reads its deadline as an *_MS env var; the seconds setting must arrive scaled, under that exact name."""
     monkeypatch.setattr(browser_host_settings, "OBSCURA_SCRIPT_DEADLINE_SECONDS", 7)
     monkeypatch.setenv("OBSCURA_PROBE_PASSTHROUGH", "kept")
 
     env = obscura_serve_env()
 
-    assert env["OBSCURA_NAV_TIMEOUT_MS"] == "45000"
     assert env["OBSCURA_SCRIPT_DEADLINE_MS"] == "7000"
     assert env["OBSCURA_PROBE_PASSTHROUGH"] == "kept"
 
@@ -74,8 +72,8 @@ async def test_launch_obscura_builds_the_serve_command(
     ]
     kwargs = spawn.call_args.kwargs
     assert (kwargs["stdout"], kwargs["stderr"]) == (subprocess.DEVNULL, subprocess.DEVNULL)
-    assert kwargs["env"]["OBSCURA_NAV_TIMEOUT_MS"] == str(
-        browser_host_settings.OBSCURA_NAV_TIMEOUT_SECONDS * 1000
+    assert kwargs["env"]["OBSCURA_SCRIPT_DEADLINE_MS"] == str(
+        browser_host_settings.OBSCURA_SCRIPT_DEADLINE_SECONDS * 1000
     )
     mkdtemp.assert_not_called()
     assert host._user_data_dir is None

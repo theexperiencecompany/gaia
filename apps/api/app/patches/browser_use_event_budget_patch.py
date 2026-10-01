@@ -16,14 +16,8 @@ Pinned to browser-use==0.11.13; the import fails loudly if the events move.
 from collections.abc import Callable
 
 from browser_use.browser import events
-from browser_use.browser.events import (
-    BrowserStateRequestEvent,
-    NavigateToUrlEvent,
-    ScreenshotEvent,
-)
+from browser_use.browser.events import BrowserStateRequestEvent, ScreenshotEvent
 from bubus import BaseEvent
-
-from app.config.settings import settings
 
 # The state read carries the screenshot, so its budget has to sit above it.
 _SCREENSHOT_SECONDS = 60.0
@@ -31,10 +25,6 @@ _SCREENSHOT_SECONDS = 60.0
 # behind, once per page; waiting it out beats failing the step twice and ending
 # the run (measured 2026-09-22: 57-62s stalls on a long Wikipedia article).
 _STATE_READ_SECONDS = 120.0
-# Obscura answers Page.navigate only once the page has loaded or its own
-# deadline has passed (OBSCURA_NAV_TIMEOUT_SECONDS); a shorter budget here
-# interrupted the load and left the page without its scripts.
-_NAVIGATE_SECONDS = float(settings.OBSCURA_NAV_TIMEOUT_SECONDS + 10)
 
 
 def _budget(env_var: str, seconds: float) -> Callable[[], float | None]:
@@ -47,12 +37,11 @@ def _set_default_budget(event: type[BaseEvent[object]], env_var: str, seconds: f
 
 
 def apply() -> None:
-    """Raise the three default budgets, leaving the environment override in charge."""
+    """Raise the two default budgets, leaving the environment override in charge."""
     _set_default_budget(ScreenshotEvent, "TIMEOUT_ScreenshotEvent", _SCREENSHOT_SECONDS)
     _set_default_budget(
         BrowserStateRequestEvent, "TIMEOUT_BrowserStateRequestEvent", _STATE_READ_SECONDS
     )
-    _set_default_budget(NavigateToUrlEvent, "TIMEOUT_NavigateToUrlEvent", _NAVIGATE_SECONDS)
 
 
 apply()

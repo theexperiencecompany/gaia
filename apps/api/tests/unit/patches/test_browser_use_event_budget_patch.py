@@ -4,21 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from browser_use.browser.events import (
-    BrowserStateRequestEvent,
-    NavigateToUrlEvent,
-    ScreenshotEvent,
-)
+from browser_use.browser.events import BrowserStateRequestEvent, ScreenshotEvent
 import pytest
 
-from app.config.settings import settings
 from app.patches import browser_use_event_budget_patch as patch_mod
 
 pytestmark = pytest.mark.unit
 
 # Slowest first screenshot measured on a very long page, in seconds.
 _SLOWEST_MEASURED_SCREENSHOT = 35.0
-_PATCHED_EVENTS = (ScreenshotEvent, BrowserStateRequestEvent, NavigateToUrlEvent)
+_PATCHED_EVENTS = (ScreenshotEvent, BrowserStateRequestEvent)
 # A budget no real default uses, so a test sees whether apply() replaced it.
 _UNPATCHED_BUDGET = 1.5
 
@@ -64,26 +59,11 @@ def test_the_state_read_outlasts_the_screenshot_it_contains(
     assert state_read.event_timeout > screenshot.event_timeout
 
 
-def test_a_navigation_outlasts_the_engines_own_load_deadline(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Obscura answers Page.navigate only once its own deadline has passed, so a
-    # shorter budget here would cut the load short.
-    monkeypatch.delenv("TIMEOUT_NavigateToUrlEvent", raising=False)
-    patch_mod.apply()
-
-    event = NavigateToUrlEvent(url="https://example.test")
-
-    assert event.event_timeout is not None
-    assert event.event_timeout > settings.OBSCURA_NAV_TIMEOUT_SECONDS
-
-
 @pytest.mark.parametrize(
     ("event_type", "env_var", "kwargs"),
     [
         (ScreenshotEvent, "TIMEOUT_ScreenshotEvent", {}),
         (BrowserStateRequestEvent, "TIMEOUT_BrowserStateRequestEvent", {}),
-        (NavigateToUrlEvent, "TIMEOUT_NavigateToUrlEvent", {"url": "https://example.test"}),
     ],
 )
 def test_an_operators_own_budget_is_left_alone(
