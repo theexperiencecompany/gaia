@@ -10,9 +10,11 @@ from app.services.browser.jev.decision import Decision
 from app.services.browser.jev.gateway import JevEvaluation
 from app.services.browser.jev.page import PageAction, PageState, StalePage
 
-BUTTON = PageAction(id="e1", node=1, kind="click", label="Next", role="button")
+BUTTON = PageAction(id="e1", node=1, kind="click", label="Next", role="button", value="")
 FIELD = PageAction(id="e2", node=2, kind="fill", label="Name", role="textbox", value="")
 PASSWORD = PageAction(id="e3", node=3, kind="secret", label="Password", role="password", value="")
+BACK = PageAction(id="go_back", kind="back", label="Go back to Site", entry=1)
+ENTER = PageAction(id="enter", kind="enter", node=2, label="Press Enter in Name")
 
 
 def page_state(url: str = "https://site.test/a", text: str = "page", **extra: Any) -> PageState:
@@ -20,8 +22,9 @@ def page_state(url: str = "https://site.test/a", text: str = "page", **extra: An
         url=url,
         title="Site",
         text=text,
+        text_cut=extra.get("text_cut", False),
         actions=[BUTTON, FIELD, PASSWORD],
-        page_key=None,
+        page_key=url,
         guards={},
         frames=extra.get("frames", []),
         fingerprint=f"{url}|{text}",
@@ -33,7 +36,9 @@ class FakePage:
 
     act_raises is one error for every input, or one outcome per input (None executes it).
     new_tab is a page the first input opens in a tab of its own; unsettled makes every
-    read after an input fail as a page that never settles.
+    read after an input fail as a page that never settles; holds maps a text to what a field
+    holds once it was typed (by default, the text); read_fails is the read after which
+    every read raises an error, and navigate_fails the error every navigation raises.
     """
 
     def __init__(
@@ -42,6 +47,9 @@ class FakePage:
         act_raises: Exception | list[Exception | None] | None = None,
         new_tab: PageState | None = None,
         unsettled: bool = False,
+        holds: dict[str, str | None] | None = None,
+        read_fails: tuple[int, Exception] | None = None,
+        navigate_fails: Exception | None = None,
     ) -> None:
         self._states: Iterator[PageState] = iter(states)
         self.current = next(self._states)
@@ -49,29 +57,31 @@ class FakePage:
         self.acted: list[str] = []
         self._act_raises = act_raises
         self.navigated: list[str] = []
-        self.went_back = 0
-        self.entered = 0
         self._new_tab = new_tab
-        self._tabs = {"tab-1"}
-        self.followed: list[set[str]] = []
+        self.followed = 0
         self._unsettled = unsettled
+        self._holds = holds or {}
         self._inputs = 0
+        self._reads = 0
+        self._read_fails = read_fails
+        self._navigate_fails = navigate_fails
 
     def _moved(self) -> None:
         self._inputs += 1
-        if self._new_tab is not None:
-            self._tabs.add("tab-2")
         self.current = next(self._states, self.current)
 
     async def observe(self) -> PageState:
+        self._reads += 1
         if self._unsettled and self._inputs:
             raise StalePage("The page did not settle.")
+        if self._read_fails is not None and self._reads > self._read_fails[0]:
+            raise self._read_fails[1]
         return self.current
 
     async def fresh(self, page: PageState, action: PageAction | None = None) -> bool:
         return page.fingerprint == self.current.fingerprint
 
-    async def act(self, action: PageAction, page: PageState, text: str | None = None) -> None:
+    async def act(self, action: PageAction, page: PageState, text: str | None = None) -> str | None:
         raises = self._act_raises
         outcome = raises.pop(0) if isinstance(raises, list) else raises
         if outcome is not None:
@@ -81,25 +91,19 @@ class FakePage:
         self.acted.append(action["id"])
         self.typed.append(text)
         self._moved()
+        if text is None:
+            return None
+        return self._holds.get(text, text)
 
     async def navigate(self, url: str) -> None:
+        if self._navigate_fails is not None:
+            raise self._navigate_fails
         self.navigated.append(url)
         self._moved()
 
-    async def go_back(self) -> None:
-        self.went_back += 1
-        self._moved()
-
-    async def press_enter(self) -> None:
-        self.entered += 1
-        self._moved()
-
-    async def tab_ids(self) -> set[str]:
-        return set(self._tabs)
-
-    async def follow_new_tab(self, tabs: set[str]) -> bool:
-        self.followed.append(tabs)
-        if self._new_tab is None or not self._tabs - tabs:
+    async def follow_new_tab(self) -> bool:
+        self.followed += 1
+        if self._new_tab is None:
             return False
         self.current, self._new_tab = self._new_tab, None
         return True
@@ -118,7 +122,6 @@ def decision(
         operation=operation,
         target=target,
         url=url,
-        confidence=0.9,
         latency_ms=5,
         evaluation=JevEvaluation(answers={}, provider="openrouter"),
     )

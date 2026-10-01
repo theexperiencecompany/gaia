@@ -28,7 +28,7 @@ from app.constants.browser import (
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc, with_rate_limiting
 from app.models.chat_models import ConversationSource
-from app.schemas.browser import BrowserResultSnapshot
+from app.schemas.browser import BrowserResultSnapshot, BrowserTaskSecret
 from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJobStatus
 from app.services.browser.agent_guidance import (
     clear_guidance_request,
@@ -36,7 +36,6 @@ from app.services.browser.agent_guidance import (
     guidance_message,
 )
 from app.services.browser.handoff import resolve_handoff
-from app.services.browser.jev.decision import named_sites, named_urls
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.job_relay import relay_job_events
 from app.services.browser.job_runner import agent_result_message
@@ -142,23 +141,13 @@ def _run_params(config: RunnableConfig) -> _RunParams:
     )
 
 
-def _the_one_page_in(task: str) -> str | None:
-    """Return the http(s) URL the task names, when it names that page and no other.
-
-    A site named without its scheme ("news.ycombinator.com") is a page too, so a
-    task that also names one has no single start.
-    """
-    pages = set(named_urls(task))
-    return pages.pop() if len(pages) == 1 and not named_sites(task) else None
-
-
 def _job_request(
     params: _RunParams,
     job_id: str,
     tool_call_id: str,
     task: str,
     start_url: str | None,
-    secrets: dict[str, str],
+    secrets: dict[str, BrowserTaskSecret],
 ) -> BrowserJobRequest:
     return BrowserJobRequest(
         secrets=secrets,
@@ -182,12 +171,17 @@ async def browser_task(
     config: RunnableConfig,
     tool_call_id: Annotated[str, InjectedToolCallId],
     task: Annotated[str, "Clear, self-contained description of what to do in the browser."],
-    start_url: Annotated[str | None, "Optional URL to open first."] = None,
+    start_url: Annotated[
+        str | None,
+        "The page to open first. Pass it whenever the task names a site or page: the run "
+        "starts there with the user's saved login for that site.",
+    ] = None,
     secrets: Annotated[
-        dict[str, str] | None,
+        dict[str, BrowserTaskSecret] | None,
         "Credentials the user gave for this task (passwords, usernames of accounts), by a short "
-        'name, e.g. {"password": "..."}. In the task write <secret>name</secret> wherever one '
-        "is used, never the value.",
+        'name, each with the site it belongs to, e.g. {"password": {"value": "...", "site": '
+        '"github.com"}}. Each is typed only on its site. In the task write <secret>name</secret> '
+        "wherever one is used, never the value.",
     ] = None,
 ) -> str:
     """Start a browser run as a background job and return immediately.
@@ -198,10 +192,6 @@ async def browser_task(
     params = _run_params(config)
     log.set(browser={"operation": "task", "source_category": params.source_category})
 
-    # A task that names one page starts there, as Browser-Use would open it: the
-    # session is then seeded with that site's saved login, and a sign-in is saved
-    # under it. Given only in the task's words, the URL once seeded nothing.
-    start_url = start_url or _the_one_page_in(task)
     if start_url:
         try:
             assert_safe_url_shape(start_url)
@@ -218,9 +208,9 @@ async def browser_task(
         log.set_ns("browser", refused="slot_held", slot_holder=holder)
         return _SLOT_HELD.format(holder=holder)
 
-    given = {name: value for name, value in (secrets or {}).items() if value}
+    given = {name: secret for name, secret in (secrets or {}).items() if secret.value}
     # The task is the executor's own; a secret value it wrote is put back as its placeholder.
-    task = RunSecrets(given, sites=[]).mask(task)
+    task = RunSecrets(given).mask(task)
     request = _job_request(params, job_id, tool_call_id, task, start_url, given)
     await put_job_state(BrowserJobState(job_id=job_id, status=BrowserJobStatus.QUEUED, task=task))
     if not await _enqueue(request):

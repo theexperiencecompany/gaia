@@ -34,7 +34,12 @@ from app.constants.browser import (
     JevStop,
 )
 from app.patches.obscura_sessions import on_obscura
-from app.schemas.browser import AgentGuidanceRequest, BrowserAction, GuidanceElement
+from app.schemas.browser import (
+    AgentGuidanceRequest,
+    BrowserAction,
+    BrowserTaskSecret,
+    GuidanceElement,
+)
 from app.services.browser import agent_run as agent_run_mod
 from app.services.browser.agent_run import STEP_ERROR_CAPTION, AgentRunSetup, BrowserAgentRun
 from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserUnavailableError
@@ -155,7 +160,9 @@ class _Harness:
             setup=AgentRunSetup(
                 user_id="user-1",
                 ledger=self.ledger,
-                secrets=RunSecrets({"password": SECRET}, ["example.test"]),
+                secrets=RunSecrets(
+                    {"password": BrowserTaskSecret(value=SECRET, site="example.test")}
+                ),
                 resumed_from=resumed_from,
             ),
         )
@@ -1099,7 +1106,10 @@ class TestGuidance:
             harness.run._hooks, guidance=_guidance, guidance_allowed=_allowed
         )
         harness.run._task = "buy the ticket"
-        scroll = PageAction(id="scroll_down", kind="scroll", label="Scroll down", delta=560)
+        # An inner area to scroll is on the page, but is no control to name.
+        scroll = PageAction(
+            id="scroll_down_99", node=99, kind="scroll", label="Scroll down in List", delta=240
+        )
         links = [
             PageAction(id=f"e{n}", node=n, kind="click", label=f"Link {n}", role="link")
             for n in range(BROWSER_GUIDANCE_MAX_ELEMENTS + 5)
