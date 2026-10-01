@@ -211,6 +211,20 @@ async def _references_refusal(user_id: str, references: list[str]) -> str | None
     )
 
 
+async def _link_refusal(
+    user_id: str, todo_id: str, references: list[str] | None, parent_todo_id: str | None
+) -> str | None:
+    """Refuse links the update may not make; None when every link is allowed."""
+    if references and (refusal := await _references_refusal(user_id, references)):
+        return refusal
+    if parent_todo_id:
+        try:
+            await require_sub_todo_parent(user_id, parent_todo_id, child_id=todo_id)
+        except SubTodoParentError as refused:
+            return f"Error: {refused.message} Nothing was saved."
+    return None
+
+
 def _creation_field_update(
     parsed_scheduled_at: datetime | None,
     recurrence: str | None,
@@ -558,6 +572,17 @@ def _format_create_output(
     return out
 
 
+def _format_refused_create_output(
+    refused: ExternalRefTakenError | SubTodoParentError | SubscriptionError,
+) -> str:
+    """Tell the model why nothing was created and what to do instead."""
+    if isinstance(refused, ExternalRefTakenError):
+        return _format_ref_taken_output(refused.existing, datetime.now(UTC))
+    if isinstance(refused, SubTodoParentError):
+        return f"Not created: {refused.message} Nothing was saved."
+    return f"Not created: the thread could not be watched ({refused}). Nothing was saved."
+
+
 def _format_ref_taken_output(existing: TodoDocument, now: datetime) -> str:
     """Point the model at the open todo that already owns the thread, instead of a new one."""
     state = section_body(existing.canvas_content or "", CANVAS_CURRENT_STATE_SECTION)
@@ -726,12 +751,8 @@ async def create_tracked_todo(
             references=references,
             parent_todo_id=parent_todo_id,
         )
-    except ExternalRefTakenError as taken:
-        return _format_ref_taken_output(taken.existing, datetime.now(UTC))
-    except SubTodoParentError as refused:
-        return f"Not created: {refused.message} Nothing was saved."
-    except SubscriptionError as e:
-        return f"Not created: the thread could not be watched ({e}). Nothing was saved."
+    except (ExternalRefTakenError, SubTodoParentError, SubscriptionError) as refused:
+        return _format_refused_create_output(refused)
 
     if creation_update is not None:
         await tracked_todo_service.set_creation_fields(
@@ -915,10 +936,13 @@ async def update_tracked_todo(
     )
     if error := await _apply_field_updates(inputs, user_id, update_fields, notes):
         return error
-    if notify_on_run is not None:
-        update_fields["notify_on_run"] = notify_on_run
-    if parent_todo_id:
-        update_fields["parent_todo_id"] = parent_todo_id
+    # Moved under a parent, a todo reports to it like a new sub-todo unless told otherwise.
+    moved_default = False if parent_todo_id else None
+    plain_fields = {
+        "notify_on_run": moved_default if notify_on_run is None else notify_on_run,
+        "parent_todo_id": parent_todo_id or None,
+    }
+    update_fields.update({name: value for name, value in plain_fields.items() if value is not None})
 
     if not update_fields and not references:
         return "No fields to update. Provide at least one field to change."
@@ -928,13 +952,8 @@ async def update_tracked_todo(
     existing = await todo_repository.get(todo_id, user_id=user_id)
     if not existing:
         return f"Error: tracked todo {todo_id} not found or not a tracked todo."
-    if references and (refusal := await _references_refusal(user_id, references)):
+    if refusal := await _link_refusal(user_id, todo_id, references, parent_todo_id):
         return refusal
-    if parent_todo_id:
-        try:
-            await require_sub_todo_parent(user_id, parent_todo_id, child_id=todo_id)
-        except SubTodoParentError as refused:
-            return f"Error: {refused.message} Nothing was saved."
 
     if update_fields:
         actor = _agent_actor(read_agent_configurable(config).conversation_id)

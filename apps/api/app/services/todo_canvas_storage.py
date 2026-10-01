@@ -106,14 +106,6 @@ async def repair_canvas_and_activity(
     return True
 
 
-async def read_activity(todo_id: str, user_id: str) -> str | None:
-    """Return the todo's activity body, or None when the todo does not exist."""
-    doc = await todo_repository.get(todo_id, user_id=user_id)
-    if not doc:
-        return None
-    return doc.activity_content or ""
-
-
 async def write_activity(
     todo_id: str, user_id: str, content: str, *, expected_updated_at: datetime | None = None
 ) -> bool:

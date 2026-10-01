@@ -119,18 +119,6 @@ class TestWriteCanvasCompareAndSet:
 
 
 class TestActivity:
-    async def test_read_none_for_missing_todo(self, mock_repo):
-        from app.services.todo_canvas_storage import read_activity
-
-        assert await read_activity(TODO_ID, USER_ID) is None
-
-    async def test_read_empty_string_when_unset(self, mock_repo):
-        from app.services.todo_canvas_storage import read_activity
-
-        mock_repo.get.return_value = _todo_doc(activity_content=None)
-
-        assert await read_activity(TODO_ID, USER_ID) == ""
-
     async def test_write_and_triggers_sync(self, mock_repo, mock_sync, captured_reindex):
         from app.services.todo_canvas_storage import write_activity
 

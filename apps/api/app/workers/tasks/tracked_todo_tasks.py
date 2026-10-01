@@ -545,10 +545,8 @@ def _build_execution_prompt(
         prompt_parts.append(ref_guidance)
     if doc.canvas_content:
         prompt_parts.append(f"Canvas (canvas.md):\n{bounded_canvas(doc.canvas_content)}")
-    if context.parent_rules:
-        prompt_parts.append(context.parent_rules)
-    if context.sub_todos:
-        prompt_parts.append(context.sub_todos)
+    # Next to the canvas: rules the run obeys and the sub-todos it answers for.
+    prompt_parts.extend(part for part in (context.parent_rules, context.sub_todos) if part)
     if activity_content := doc.activity_content:
         tail = activity_content[-ACTIVITY_PROMPT_TAIL_CHARS:]
         truncated = " (older entries omitted; read activity.md for the full log)"

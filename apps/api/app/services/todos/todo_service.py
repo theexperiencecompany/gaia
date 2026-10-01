@@ -721,6 +721,9 @@ class TodoService:
                 filters=filters,
             )
 
+        # Embeddings carry no parent id, so the filter applies to the hydrated results.
+        if params.parent_todo_id:
+            results = [todo for todo in results if todo.parent_todo_id == params.parent_todo_id]
         total = len(results)
         start = (params.page - 1) * params.per_page
         paginated_results = results[start : start + params.per_page]

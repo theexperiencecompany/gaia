@@ -85,7 +85,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
             <CanvasViewer todoId={todo.id} todoTitle={todo.title} />
           )}
 
-          {todo.sub_todo_count > 0 && (
+          {isTrackedTodo(todo) && !todo.parent_todo_id && (
             <SubTodosSection
               parentTodoId={todo.id}
               openCount={todo.sub_todo_count}
