@@ -1,20 +1,16 @@
 """Stop a page load the site never answers, as a person presses Stop.
 
 While a tab's top-level navigation waits for the server's first byte, Chrome
-answers no Runtime.evaluate on that tab, so one silent site freezes every read
-Jev and Browser-Use make. Page.stopLoading is still answered, releases the
-queued reads at once, and leaves the tab on the page it was on (measured
-2026-09-25 against a server that never responds, for typed, clicked and
+answers no Runtime.evaluate on that tab; Page.stopLoading is still answered and
+leaves the tab on its page (measured 2026-09-25 for typed, clicked and
 cross-site navigations alike).
 
-A form submission is never stopped: the server may already be acting on it, and
-a stop would leave the user's submission in an unknown state. Chrome names it
-in Page.frameRequestedNavigation, which reaches the tab before the navigation
-starts with the same URL (measured 2026-10-02 for POST and GET forms).
+A form submission is never stopped: the server may already be acting on it.
+Chrome names one in Page.frameRequestedNavigation, before the navigation starts
+with the same URL (measured 2026-10-02 for POST and GET forms).
 
-It also tells the agent when Browser-Use stopped waiting on a page whose load
-had not finished: its readiness wait is capped (browser_use_page_ready_patch),
-and the cap alone is silent.
+It also tells the agent when Browser-Use's capped readiness wait
+(browser_use_page_ready_patch) went on before a page finished loading.
 """
 
 from __future__ import annotations
