@@ -13,10 +13,11 @@ import asyncio
 from dataclasses import dataclass, field, replace
 import json
 from time import perf_counter
+from typing import Protocol
 
-from browser_use.llm.base import BaseChatModel
 from browser_use.llm.exceptions import ModelError
-from browser_use.llm.messages import SystemMessage, UserMessage
+from browser_use.llm.messages import BaseMessage, SystemMessage, UserMessage
+from browser_use.llm.views import ChatInvokeCompletion
 from pydantic import BaseModel, Field
 
 from app.constants.browser import (
@@ -49,13 +50,12 @@ from app.services.browser.jev.decision import (
     describe_field,
     masked_json,
 )
-from app.services.browser.jev.gateway import JevDecisionsClient, JevEvaluation, JevGatewayError
+from app.services.browser.jev.gateway import JevDecider, JevEvaluation, JevGatewayError
 from app.services.browser.jev.page import (
     Covered,
     DocumentReplaced,
     FieldUnfocused,
     Frame,
-    JevPage,
     NavigationFailed,
     PageAction,
     PageScriptError,
@@ -74,7 +74,6 @@ from app.services.browser.jev.secrets import (
 )
 from app.services.browser.ledger import CallComponent, ExecutedAction, ModelCall, RunLedger
 from app.services.browser.run_contract import FlagFn
-from app.services.browser.stalled_loads import StalledLoads
 from shared.py.wide_events import log
 
 #: Why a burst ended, and what the agent is told about it.
@@ -114,6 +113,36 @@ def _elapsed_ms(started: float) -> int:
 
 class _TextValue(BaseModel):
     text: str | None = Field(default=None, max_length=JEV_TEXT_VALUE_MAX_CHARS)
+
+
+class JevTab(Protocol):
+    """The tab as a burst drives it: JevPage on the run's browser."""
+
+    async def observe(self) -> PageState: ...
+
+    async def act(
+        self, action: PageAction, page: PageState, text: str | None = None
+    ) -> str | None: ...
+
+    async def navigate(self, url: str) -> None: ...
+
+    async def follow_new_tab(self) -> bool: ...
+
+    async def body_text(self, limit: int) -> str: ...
+
+
+class ValueWriter(Protocol):
+    """The tiny model as Jev asks it: one structured answer."""
+
+    async def ainvoke(
+        self, messages: list[BaseMessage], output_format: type[_TextValue]
+    ) -> ChatInvokeCompletion[_TextValue]: ...
+
+
+class LoadStalls(Protocol):
+    """The loads the browser stopped because their site never answered."""
+
+    def take(self) -> list[str]: ...
 
 
 @dataclass(frozen=True)
@@ -209,7 +238,7 @@ class BurstContext:
 
     ledger: RunLedger
     secrets: RunSecrets
-    stalls: StalledLoads
+    stalls: LoadStalls
     #: Asked between decisions: whether the run must stop, and whether the user sent a message.
     should_stop: FlagFn
     user_waiting: FlagFn
@@ -221,9 +250,9 @@ class JevRunner:
     def __init__(
         self,
         *,
-        page: JevPage,
-        client: JevDecisionsClient,
-        text_model: BaseChatModel,
+        page: JevTab,
+        client: JevDecider,
+        text_model: ValueWriter,
         run: BurstContext,
     ) -> None:
         self._page = page
@@ -383,7 +412,7 @@ class JevRunner:
         target = self._named(action)
         page = state.current
         if operation is JevOperation.SELECT:
-            option = await self._option_for(state, action)
+            option: PageAction = await self._option_for(state, action)
             await self._page.act(option, page)
             return replace(target, option=self._secrets.mask(option["current_value"]))
         if operation is not JevOperation.TYPE_TEXT:

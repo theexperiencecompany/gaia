@@ -8,8 +8,9 @@ from dataclasses import dataclass, field
 import json
 import re
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
+from browser_use.browser.session import BrowserSession
 import pytest
 
 from app.constants.browser import JEV_SCREENSHOT_QUALITY
@@ -107,7 +108,7 @@ class _Tab:
     set: object = "2026-10-01"
     settle: list[object] = field(default_factory=lambda: [True])
     history: dict[str, Any] = field(default_factory=lambda: {"currentIndex": 0, "entries": []})
-    body: str = ""
+    body: object = ""
     hangs: str | None = None
     #: Whether the tab still answers a call after refusing one.
     alive: bool = True
@@ -213,7 +214,7 @@ class _Tab:
             r"\(document\.body \? document\.body\.innerText : ''\)\.slice\(0, (\d+)\)", expression
         )
         assert body is not None, f"the tab was sent a script it does not know: {expression[:80]}"
-        return self.body[: int(body.group(1))]
+        return self.body if self.body is GONE else str(self.body)[: int(body.group(1))]
 
     async def _mouse(self, params: dict[str, Any], session_id: str | None) -> dict[str, Any]:
         await self._command("Input.dispatchMouseEvent", session_id)
@@ -270,7 +271,7 @@ class _Browser:
 
 def _page(tab: _Tab, **browser: Any) -> tuple[JevPage, _Browser]:
     session = _Browser(tab, **browser)
-    return JevPage(session), session  # type: ignore[arg-type]  # the calls JevPage makes of a session
+    return JevPage(cast("BrowserSession", session)), session
 
 
 # --- reading the page --------------------------------------------------------------------
@@ -628,15 +629,10 @@ async def test_the_page_text_is_read_from_the_whole_body_up_to_the_limit() -> No
 
 
 async def test_a_document_replaced_under_a_read_raises_as_replaced() -> None:
-    page, _ = _page(_Tab(body="x"))
-    page._evaluate = _gone  # type: ignore[method-assign]  # the body read lands on a replaced document
+    page, _ = _page(_Tab(body=GONE))
 
     with pytest.raises(DocumentReplaced):
         await page.body_text(4)
-
-
-async def _gone(expression: str) -> object:
-    raise DocumentReplaced(expression)
 
 
 async def test_the_card_photo_is_a_jpeg_of_the_tab() -> None:

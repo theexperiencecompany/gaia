@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from typing import cast
 
 import pytest
 
@@ -41,7 +42,9 @@ pytestmark = pytest.mark.unit
 
 
 def _action(action_id: str, node: int, kind: str, label: str, **extra: object) -> PageAction:
-    return PageAction(id=action_id, node=node, kind=kind, label=label, **extra)  # type: ignore[typeddict-item]  # a test's own snapshot row
+    return cast(
+        "PageAction", {"id": action_id, "node": node, "kind": kind, "label": label, **extra}
+    )
 
 
 def _page(*actions: PageAction, omitted: int = 0) -> PageState:
@@ -111,7 +114,9 @@ class _Jev:
             for name, question in request.questions.items()
             if name in self._choices
         }
-        return JevEvaluation(answers=answers, latency_ms=3, usage=JevUsage(inputTokens=9))
+        return JevEvaluation.model_validate(
+            {"answers": answers, "latency_ms": 3, "usage": {"inputTokens": 9}}
+        )
 
 
 class _Answers(_Jev):

@@ -13,7 +13,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 import json
 from time import monotonic, perf_counter
-from typing import Literal
+from typing import Literal, Protocol
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
@@ -256,6 +256,14 @@ class JevFailoverClient:
 
 #: What the policy asks for a decision: one gateway, or one with a fallback behind it.
 JevDecisionsClient = JevGatewayClient | JevFailoverClient
+
+
+class JevDecider(Protocol):
+    """What a decision needs of a gateway: the model it names, and one evaluation."""
+
+    model: str
+
+    async def evaluate(self, request: JevEvaluationRequest) -> JevEvaluation: ...
 
 
 def _elapsed_ms(since: float) -> int:

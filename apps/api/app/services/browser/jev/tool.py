@@ -10,6 +10,7 @@ page's text.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from typing import Protocol
 
 from browser_use import Tools
 from browser_use.agent.views import ActionResult
@@ -23,12 +24,20 @@ from app.constants.browser import (
     JevStop,
 )
 from app.schemas.browser import BrowserAction
-from app.services.browser.jev.loop import BurstResult, JevRunner, JevStep
+from app.services.browser.jev.loop import BurstResult, JevStep
 
 #: Emits one card for a finished burst: its caption source, and the page it ended on.
 BurstEmitFn = Callable[[list[BrowserAction], str, str], Awaitable[None]]
+
+
+class Bursts(Protocol):
+    """What the agent's jev action runs: one burst per goal, on the run's tab."""
+
+    async def burst(self, goal: str, start_url: str | None) -> BurstResult: ...
+
+
 #: Builds the burst runner, on the Agent's browser session, at the first burst.
-RunnerFactory = Callable[[], JevRunner]
+RunnerFactory = Callable[[], Bursts]
 
 JEV_ACTION = "jev"
 
@@ -163,7 +172,7 @@ class JevDelegate:
     def __init__(self, *, runner_for: RunnerFactory, emit: BurstEmitFn) -> None:
         self._runner_for = runner_for
         self._emit = emit
-        self._runner: JevRunner | None = None
+        self._runner: Bursts | None = None
 
     async def run(self, params: JevParams) -> ActionResult:
         if self._runner is None:

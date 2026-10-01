@@ -27,9 +27,11 @@ from cdp_use.cdp.network.events import (
     RequestWillBeSentEvent,
 )
 from cdp_use.cdp.page.commands import CaptureScreenshotReturns, GetNavigationHistoryReturns
+from cdp_use.cdp.page.types import NavigationEntry
 from cdp_use.cdp.runtime.commands import EvaluateReturns
-from cdp_use.cdp.runtime.types import RemoteObject
+from cdp_use.cdp.runtime.types import ExceptionDetails, RemoteObject
 from cdp_use.cdp.target.events import TargetCreatedEvent
+from cdp_use.cdp.target.types import TargetInfo
 from cdp_use.client import CDPClient
 
 from app.constants.browser import (
@@ -248,9 +250,19 @@ def _key_events(char: str) -> tuple[DispatchKeyEventParameters, DispatchKeyEvent
     return down, up
 
 
-def _protocol_error(exc: RuntimeError) -> bool:
-    """Whether exc is the browser's own answer refusing a call (cdp_use raises it with the error object)."""
-    return bool(exc.args) and isinstance(exc.args[0], dict)
+class _Refusal(TypedDict, total=False):
+    """The error object the browser answers a refused call with."""
+
+    code: int
+    message: str
+
+
+def _refusal(exc: RuntimeError) -> _Refusal | None:
+    """Return the browser's own error object when exc is it refusing a call (cdp_use raises it so)."""
+    if exc.args and isinstance(exc.args[0], dict):
+        refusal: _Refusal = cast("_Refusal", exc.args[0])
+        return refusal
+    return None
 
 
 async def _bounded(call: Awaitable[_T], what: str) -> _T:
@@ -261,11 +273,10 @@ async def _bounded(call: Awaitable[_T], what: str) -> _T:
         log.warning(f"{LogTag.BROWSER} Jev CDP call got no answer", call=what)
         raise PageUnresponsive(f"{what} got no answer in {JEV_CDP_TIMEOUT_SECONDS:.0f}s") from exc
     except RuntimeError as exc:
-        if not _protocol_error(exc):
+        refusal: _Refusal | None = _refusal(exc)
+        if refusal is None:
             raise
-        raise TabUnavailable(
-            f"{what} was refused: {exc.args[0].get('message', exc.args[0])}"
-        ) from exc
+        raise TabUnavailable(f"{what} was refused: {refusal.get('message', '')}") from exc
 
 
 class _Requests:
@@ -367,7 +378,7 @@ class JevPage:
 
     def _on_target_created(self, event: TargetCreatedEvent, session_id: str | None) -> None:
         del session_id
-        info = event["targetInfo"]
+        info: TargetInfo = event["targetInfo"]
         opener = info.get("openerId")
         if info["type"] == "page" and opener:
             self._opened.append((opener, info["targetId"]))
@@ -381,15 +392,16 @@ class JevPage:
         """
         session = await self._session()
         try:
-            response = await self._run(session, expression)
+            response: EvaluateReturns = await self._run(session, expression)
         except TabUnavailable:
             # Refused by a navigation that committed mid-call, or by a tab that is gone:
             # only a tab that answers the next call is still there.
             await self._run(session, "0")
             raise DocumentReplaced(_REPLACED) from None
-        details = response.get("exceptionDetails")
-        if details:
-            thrown = details.get("exception", {}).get("description") or details.get("text", "")
+        details: ExceptionDetails | None = response.get("exceptionDetails")
+        if details is not None:
+            exception: RemoteObject | None = details.get("exception")
+            thrown = (exception.get("description") if exception else None) or details["text"]
             raise PageScriptError(f"Jev's page script failed: {thrown}")
         result: RemoteObject = response["result"]
         if result["type"] == "undefined":
@@ -474,7 +486,7 @@ class JevPage:
         index = history["currentIndex"]
         if index <= 0:
             return None
-        previous = history["entries"][index - 1]
+        previous: NavigationEntry = history["entries"][index - 1]
         title = previous["title"] or previous["url"]
         return PageAction(
             id="go_back", kind="back", label=f"Go back to {title}", entry=previous["id"]
@@ -537,7 +549,7 @@ class JevPage:
         if kind == "enter":
             await self._keys(session, _ENTER)
             return None
-        point = cast("_Point", target)
+        point: _Point = cast("_Point", target)
         if kind == "scroll":
             await self._mouse(session, self._wheel(action, point))
             return None
@@ -615,8 +627,11 @@ class JevPage:
         try:
             await self._browser.navigate_to(url)
         except RuntimeError as exc:
-            if _protocol_error(exc):
-                raise TabUnavailable(f"Opening {url} was refused: {exc.args[0]}") from exc
+            refusal: _Refusal | None = _refusal(exc)
+            if refusal is not None:
+                raise TabUnavailable(
+                    f"Opening {url} was refused: {refusal.get('message', '')}"
+                ) from exc
             # Browser-Use's own report of a navigation the page failed: its error text, or no answer.
             raise NavigationFailed(str(exc)) from exc
 

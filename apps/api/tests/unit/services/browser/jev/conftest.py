@@ -37,7 +37,8 @@ class FakePage:
     act_raises is one error for every input, or one outcome per input (None executes it).
     new_tab is a page the first input opens in a tab of its own; unsettled makes every
     read after an input fail as a page that never settles; holds is what a field holds
-    after text is put into it (by default, the text).
+    after text is put into it (by default, the text); read_fails is the read after which
+    every read raises an error, and navigate_fails the error every navigation raises.
     """
 
     def __init__(
@@ -47,6 +48,8 @@ class FakePage:
         new_tab: PageState | None = None,
         unsettled: bool = False,
         holds: str | None = None,
+        read_fails: tuple[int, Exception] | None = None,
+        navigate_fails: Exception | None = None,
     ) -> None:
         self._states: Iterator[PageState] = iter(states)
         self.current = next(self._states)
@@ -59,14 +62,20 @@ class FakePage:
         self._unsettled = unsettled
         self._holds = holds
         self._inputs = 0
+        self._reads = 0
+        self._read_fails = read_fails
+        self._navigate_fails = navigate_fails
 
     def _moved(self) -> None:
         self._inputs += 1
         self.current = next(self._states, self.current)
 
     async def observe(self) -> PageState:
+        self._reads += 1
         if self._unsettled and self._inputs:
             raise StalePage("The page did not settle.")
+        if self._read_fails is not None and self._reads > self._read_fails[0]:
+            raise self._read_fails[1]
         return self.current
 
     async def fresh(self, page: PageState, action: PageAction | None = None) -> bool:
@@ -87,6 +96,8 @@ class FakePage:
         return text if self._holds is None else self._holds
 
     async def navigate(self, url: str) -> None:
+        if self._navigate_fails is not None:
+            raise self._navigate_fails
         self.navigated.append(url)
         self._moved()
 

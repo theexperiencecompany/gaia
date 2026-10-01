@@ -58,7 +58,7 @@ def _delegate(runner: _Runner) -> tuple[JevDelegate, list[Any]]:
     async def _emit(actions: Any, url: str, title: str) -> None:
         emitted.append((actions, url))
 
-    return JevDelegate(runner_for=lambda: runner, emit=_emit), emitted  # type: ignore[arg-type,return-value]  # a scripted runner
+    return JevDelegate(runner_for=lambda: runner, emit=_emit), emitted
 
 
 async def test_a_burst_that_acted_gets_one_card_with_its_actions() -> None:

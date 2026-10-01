@@ -7,11 +7,12 @@ from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass, field, replace
 import itertools
 import json
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
 from browser_use.llm.exceptions import ModelProviderError
+from browser_use.llm.messages import BaseMessage
+from browser_use.llm.views import ChatInvokeCompletion
 import pytest
 
 from app.constants.browser import (
@@ -33,7 +34,12 @@ from app.services.browser.jev.decision import (
     Visited,
     describe_field,
 )
-from app.services.browser.jev.gateway import JevEvaluation, JevGatewayError, JevUsage
+from app.services.browser.jev.gateway import (
+    JevEvaluation,
+    JevEvaluationRequest,
+    JevGatewayError,
+    JevUsage,
+)
 from app.services.browser.jev.loop import BurstContext, BurstResult, JevRunner, JevStep, OpenedPage
 from app.services.browser.jev.page import (
     Covered,
@@ -154,15 +160,17 @@ class _TextModel:
         self._text = text
         self._hangs = hangs
         self._raises = raises
-        self.asked: list[tuple[list[Any], type[Any]]] = []
+        self.asked: list[tuple[list[BaseMessage], type[loop_mod._TextValue]]] = []
 
-    async def ainvoke(self, messages: list[Any], output_format: type[Any]) -> SimpleNamespace:
+    async def ainvoke(
+        self, messages: list[BaseMessage], output_format: type[loop_mod._TextValue]
+    ) -> ChatInvokeCompletion[loop_mod._TextValue]:
         self.asked.append((messages, output_format))
         if self._hangs:
             await asyncio.Event().wait()
         if self._raises is not None:
             raise self._raises
-        return SimpleNamespace(completion=output_format(text=self._text))
+        return ChatInvokeCompletion(completion=output_format(text=self._text), usage=None)
 
 
 @dataclass
@@ -206,13 +214,13 @@ def _run(
     ledger = RunLedger()
     around = around or _Around()
     runner = JevRunner(
-        page=page,  # type: ignore[arg-type]  # the tab, scripted
+        page=page,
         client=MagicMock(model="jev"),
-        text_model=text_model or _TextModel(),  # type: ignore[arg-type]  # the one call the loop makes
+        text_model=text_model or _TextModel(),
         run=BurstContext(
             ledger=ledger,
             secrets=secrets or RunSecrets({}),
-            stalls=around.stalls,  # type: ignore[arg-type]  # the one method the loop reads
+            stalls=around.stalls,
             should_stop=around.should_stop,
             user_waiting=around.user_waiting,
         ),
@@ -463,12 +471,7 @@ async def test_a_page_the_browser_stopped_loading_ends_the_burst_with_why(
 async def test_an_address_that_cannot_be_opened_ends_the_burst_on_the_page_it_was_on(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    page = FakePage(page_state())
-
-    async def _fails(url: str) -> None:
-        raise NavigationFailed("net::ERR_NAME_NOT_RESOLVED")
-
-    page.navigate = _fails  # type: ignore[method-assign]  # this one tab's navigation fails
+    page = FakePage(page_state(), navigate_fails=NavigationFailed("net::ERR_NAME_NOT_RESOLVED"))
     gone = f"https://gone.test/?pw={SECRET}"
     run = _run(
         monkeypatch, page, decision(JevOperation.NAVIGATE, url=gone), secrets=_secrets("gone.test")
@@ -486,12 +489,7 @@ async def test_an_address_that_cannot_be_opened_ends_the_burst_on_the_page_it_wa
 async def test_a_navigation_the_browser_stopped_ends_the_burst_as_a_stalled_load(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    page = FakePage(page_state())
-
-    async def _fails(url: str) -> None:
-        raise NavigationFailed("net::ERR_ABORTED")
-
-    page.navigate = _fails  # type: ignore[method-assign]  # the browser stopped this load
+    page = FakePage(page_state(), navigate_fails=NavigationFailed("net::ERR_ABORTED"))
     note = "https://slow.test/ did not respond within 15 s"
     run = _run(
         monkeypatch,
@@ -522,12 +520,7 @@ async def test_a_burst_given_a_start_address_opens_it_before_jev_decides(
 async def test_a_start_address_that_cannot_be_opened_ends_the_burst_undecided(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    page = FakePage(page_state())
-
-    async def _fails(url: str) -> None:
-        raise NavigationFailed("net::ERR_CONNECTION_REFUSED")
-
-    page.navigate = _fails  # type: ignore[method-assign]  # the start page never opens
+    page = FakePage(page_state(), navigate_fails=NavigationFailed("net::ERR_CONNECTION_REFUSED"))
     run = _run(monkeypatch, page)
 
     result = await run.burst(start_url="https://down.test/")
@@ -573,20 +566,9 @@ async def test_a_tab_that_stops_answering_ends_the_burst(monkeypatch: pytest.Mon
 async def test_a_tab_that_goes_away_mid_burst_ends_it_with_every_step_it_took(
     monkeypatch: pytest.MonkeyPatch, error: Exception, stop: JevStop
 ) -> None:
-    page = FakePage(*_pages("a", "b"))
+    # The burst's first read and the read before deciding; the tab goes under the read after the click.
+    page = FakePage(*_pages("a", "b"), read_fails=(2, error))
     run = _run(monkeypatch, page, decision(JevOperation.CLICK, BUTTON), decision(JevOperation.DONE))
-    reads = 0
-    observe = page.observe
-
-    async def _gone_after_the_click() -> PageState:
-        nonlocal reads
-        reads += 1
-        if reads > 2:
-            # The popup the click opened closed itself under the next read.
-            raise error
-        return await observe()
-
-    page.observe = _gone_after_the_click  # type: ignore[method-assign]  # the tab, going away
 
     result = await run.burst()
 
@@ -597,12 +579,7 @@ async def test_a_tab_that_goes_away_mid_burst_ends_it_with_every_step_it_took(
 async def test_a_start_address_on_a_tab_that_is_gone_ends_the_burst_with_no_page(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    page = FakePage(page_state())
-
-    async def _gone(url: str) -> None:
-        raise TabUnavailable("Target tab-1 has detached")
-
-    page.navigate = _gone  # type: ignore[method-assign]  # the tab, gone before the burst
+    page = FakePage(page_state(), navigate_fails=TabUnavailable("Target tab-1 has detached"))
     run = _run(monkeypatch, page)
 
     result = await run.burst("go", "https://site.test/a")
@@ -691,17 +668,9 @@ async def test_a_page_that_never_settles_on_a_reread_ends_the_burst(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Covered, then read again while the page is still being replaced.
-    page = FakePage(page_state(), act_raises=Covered("covered"))
+    unsettled = StalePage("The page did not settle.")
+    page = FakePage(page_state(), act_raises=Covered("covered"), read_fails=(2, unsettled))
     run = _run(monkeypatch, page, decision(JevOperation.CLICK, BUTTON))
-    reads = iter([page.current])
-
-    async def _observe() -> PageState:
-        read = next(reads, None)
-        if read is None:
-            raise StalePage("The page did not settle.")
-        return read
-
-    page.observe = _observe  # type: ignore[method-assign]  # only the burst's first read settles
 
     result = await run.burst()
 
@@ -754,7 +723,7 @@ class _RecordingJev:
         self._choices = choices
         self.sent: list[str] = []
 
-    async def evaluate(self, request: Any) -> JevEvaluation:
+    async def evaluate(self, request: JevEvaluationRequest) -> JevEvaluation:
         self.sent.append(request.model_dump_json())
         answers = {}
         for name, question in request.questions.items():
@@ -815,13 +784,13 @@ async def test_no_secret_reaches_jev_or_the_text_model_and_a_masked_address_stil
     )
     text_model = _TextModel("Ada")
     runner = JevRunner(
-        page=page,  # type: ignore[arg-type]  # the tab, scripted
-        client=jev,  # type: ignore[arg-type]  # the gateway, scripted
-        text_model=text_model,  # type: ignore[arg-type]  # the one call the loop makes
+        page=page,
+        client=jev,
+        text_model=text_model,
         run=BurstContext(
             ledger=RunLedger(),
             secrets=_secrets(),
-            stalls=_Stalls(),  # type: ignore[arg-type]  # the one method the loop reads
+            stalls=_Stalls(),
             should_stop=_flag(False),
             user_waiting=_flag(False),
         ),
@@ -936,7 +905,7 @@ async def test_a_value_the_goal_only_implies_is_written_by_the_text_model(
     [(messages, output_format)] = text_model.asked
     assert output_format is loop_mod._TextValue
     assert messages[0].content == TEXT_VALUE
-    assert json.loads(messages[1].content) == {
+    assert json.loads(str(messages[1].content)) == {
         "goal": "sign up as the first programmer",
         "field": describe_field(FIELD),
         "page": {"title": "Site", "text": f"{MASKED}"[:12]},

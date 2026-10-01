@@ -24,13 +24,13 @@ from app.constants.browser import (
 from app.services.browser.exceptions import BrowserAutomationError
 from app.services.browser.jev.gateway import (
     JevChoiceAnswer,
-    JevDecisionsClient,
+    JevDecider,
     JevEvaluation,
     JevEvaluationRequest,
     JevQuestion,
     JsonInput,
 )
-from app.services.browser.jev.page import PageAction, PageState
+from app.services.browser.jev.page import PageAction, PageState, SelectOption
 from app.services.browser.jev.questions import (
     NAVIGATE_TARGET,
     NEXT_ACTION,
@@ -252,7 +252,7 @@ def masked_json(value: object, mask: Mask) -> object:
 
 
 async def _ask(
-    client: JevDecisionsClient,
+    client: JevDecider,
     state: dict[str, object],
     questions: dict[str, JevQuestion],
     mask: Mask,
@@ -289,7 +289,7 @@ def _validate_choice(evaluation: JevEvaluation, question: str, ids: set[str]) ->
 
 
 async def decide(
-    client: JevDecisionsClient,
+    client: JevDecider,
     page: PageState,
     goal: str,
     history: list[RecentAction],
@@ -364,7 +364,7 @@ async def decide(
 
 
 async def choose_option(
-    client: JevDecisionsClient,
+    client: JevDecider,
     page: PageState,
     goal: str,
     dropdown: PageAction,
@@ -372,10 +372,9 @@ async def choose_option(
     mask: Mask,
 ) -> tuple[PageAction, JevEvaluation]:
     """Pick which of a chosen dropdown's options to set: asked apart, so a long list never swells the step."""
-    options = dropdown["options"]
-    criteria: dict[str, JsonInput] = {
-        f"O{n}": option["label"] for n, option in enumerate(options, 1)
-    }
+    options: list[SelectOption] = dropdown["options"]
+    labels = [option["label"] for option in options]
+    criteria: dict[str, JsonInput] = {f"O{n}": label for n, label in enumerate(labels, 1)}
     question = JevQuestion(
         criteria=criteria,
         instructions={
@@ -389,7 +388,9 @@ async def choose_option(
         "recent_actions": [{"action": h.action, "text": h.text} for h in history],
     }
     evaluation = await _ask(client, state, {_OPTION_QUESTION: question}, mask)
-    option = options[int(_validate_choice(evaluation, _OPTION_QUESTION, set(criteria))[1:]) - 1]
+    option: SelectOption = options[
+        int(_validate_choice(evaluation, _OPTION_QUESTION, set(criteria))[1:]) - 1
+    ]
     chosen = dropdown.copy()
     del chosen["options"]
     chosen["value"] = option["value"]
@@ -398,7 +399,7 @@ async def choose_option(
 
 
 async def choose_value(
-    client: JevDecisionsClient,
+    client: JevDecider,
     page: PageState,
     goal: str,
     target: PageAction,
