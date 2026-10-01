@@ -96,20 +96,24 @@ _DYNAMIC_CAPTIONS: dict[str, Callable[[_ActionParams, str | None], str]] = {
     "done": _done_caption,
 }
 
+_SCROLLING = "Scrolling"
+_READING = "Reading the page"
+_HANDING_OVER = "Handing this step to you"
+
 # Actions whose caption is the same verb every time, regardless of params.
 _STATIC_CAPTIONS: dict[str, str] = {
-    "scroll": "Scrolling",
-    "scroll_to_text": "Scrolling",
-    "extract": "Reading the page",
-    "read_file": "Reading the page",
-    "read_long_content": "Reading the page",
-    "find_text": "Reading the page",
-    "find_elements": "Reading the page",
+    "scroll": _SCROLLING,
+    "scroll_to_text": _SCROLLING,
+    "extract": _READING,
+    "read_file": _READING,
+    "read_long_content": _READING,
+    "find_text": _READING,
+    "find_elements": _READING,
     "upload_file": "Uploading a file",
     "go_back": "Going back",
     "wait": "Waiting for the page",
-    BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER: "Handing this step to you",
-    BrowserHandoffAction.SOLVE_CAPTCHA_WITH_HELP: "Handing this step to you",
+    BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER: _HANDING_OVER,
+    BrowserHandoffAction.SOLVE_CAPTCHA_WITH_HELP: _HANDING_OVER,
     # The agent round trip is not the user's business; they see only that the
     # run is looking for another route.
     BrowserHandoffAction.REQUEST_AGENT_GUIDANCE: BROWSER_AGENT_GUIDANCE_CAPTION,

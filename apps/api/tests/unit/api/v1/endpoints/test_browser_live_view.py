@@ -14,6 +14,7 @@ from fastapi.responses import HTMLResponse
 from httpx import ASGITransport, AsyncClient
 from jose import JWTError
 import pytest
+from tests.helpers import captured_wide_event
 import websockets
 
 from app.api.v1.endpoints import browser_live_view as blv
@@ -92,9 +93,14 @@ class TestStepScreenshot:
         assert url is not None
         code = url.split("/shots/")[1].split("/")[0] if index == 2 else "never-minted"
 
-        with pytest.raises(HTTPException) as exc:
-            await blv.step_screenshot(code, index)
-        assert exc.value.status_code == status.HTTP_404_NOT_FOUND
+        async with captured_wide_event() as event:
+            with pytest.raises(HTTPException) as exc:
+                await blv.step_screenshot(code, index)
+        assert (exc.value.status_code, exc.value.detail) == (
+            status.HTTP_404_NOT_FOUND,
+            "Screenshot not found or expired",
+        )
+        assert event["browser"]["operation"] == "step_screenshot"
 
     @pytest.mark.parametrize("index", ["..", "%2e%2e", "-", "1.jpg", "step_1"])
     async def test_a_non_integer_index_is_refused_by_the_route_itself(self, index: str) -> None:
