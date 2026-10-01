@@ -1525,6 +1525,8 @@ class TestCreateThreadTrackedTodo:
             "source_conversation_id": None,
             "notify_on_run": False,
             "external_ref": ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="abc"),
+            "references": None,
+            "schedule": None,
         }
 
     async def test_no_thread_id_means_no_ref(self):

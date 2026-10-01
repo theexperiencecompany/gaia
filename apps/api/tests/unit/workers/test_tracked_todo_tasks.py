@@ -497,9 +497,7 @@ class TestTriggeredExecutionPrompt:
         )
         later = TriggerOrigin(subscription_id="sub-2", trigger_name="gmail_email_sent")
 
-        prompt = _build_execution_prompt(
-            _doc(), canvas_content=None, reference_context="", origin=origin, coalesced=[later]
-        )
+        prompt = _build_execution_prompt(_doc(), origin=origin, coalesced=[later])
 
         assert '\n      "received_at": "2026-08-23 00:00:00+00:00"\n' in prompt
         assert '\n    "trigger_name": "gmail_email_sent",\n' in prompt
