@@ -38,7 +38,14 @@ async def test_an_unsuccessful_run_is_failed_with_the_reason_it_was_given() -> N
     event = await _event_after(False, BrowserRunFailure.STEP_LIMIT)
 
     assert (event["outcome"], event["reason"]) == ("failed", BrowserRunFailure.STEP_LIMIT)
-    assert (event["browser"]["steps"], event["browser"]["actions"]) == (3, 5)
+    assert event["browser"] == {
+        "status": "failed",
+        "success": False,
+        "steps": 3,
+        "actions": 5,
+        "run_ms": 1,
+        "engine_fallback": True,
+    }
 
 
 async def test_a_successful_run_is_not_failed() -> None:

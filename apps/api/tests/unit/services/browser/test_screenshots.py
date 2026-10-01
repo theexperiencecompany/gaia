@@ -191,6 +191,7 @@ class TestPublishStepScreenshot:
         assert result is not None
         assert await _read_back(result, 1) == b"jpegbytes"
         mock_warn.assert_called_once()
+        assert "upload failed" in mock_warn.call_args[0][0]
         assert mock_warn.call_args[1].get("error_type") == "RuntimeError"
 
     async def test_a_frame_redis_did_not_take_returns_none_and_no_photo(self, no_r2, no_redis):

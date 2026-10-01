@@ -81,7 +81,7 @@ async def store_step_screenshot(jpeg: bytes, session_id: str, index: int) -> str
     started = perf_counter()
     stored = await redis_cache.set(
         _frame_key(session_id, index),
-        base64.b64encode(jpeg).decode("ascii"),
+        base64.b64encode(jpeg).decode(),
         ttl=BROWSER_REPLAY_CODE_TTL_SECONDS,
     )
     if not stored:

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import secrets
+
 import fakeredis
 import pytest
 
-from app.constants.browser import BROWSER_REPLAY_CODE_TTL_SECONDS
+from app.constants.browser import BROWSER_LIVE_CODE_ENTROPY_BYTES, BROWSER_REPLAY_CODE_TTL_SECONDS
 from app.services.browser import shot_store
+from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
@@ -49,12 +52,39 @@ async def test_every_step_of_a_run_shares_one_code_and_another_run_gets_its_own(
 async def test_a_frame_and_its_code_expire_with_the_recap(
     fake_redis: fakeredis.aioredis.FakeRedis,
 ) -> None:
-    await shot_store.store_step_screenshot(b"a", "sess-1", 1)
+    url = await shot_store.store_step_screenshot(b"a", "sess-1", 1)
 
     ttls = {key: await fake_redis.ttl(key) for key in await fake_redis.keys()}
 
     assert len(ttls) == 3
-    assert all(0 < ttl <= BROWSER_REPLAY_CODE_TTL_SECONDS for ttl in ttls.values())
+    assert all(
+        BROWSER_REPLAY_CODE_TTL_SECONDS - 60 < ttl <= BROWSER_REPLAY_CODE_TTL_SECONDS
+        for ttl in ttls.values()
+    )
+    # One code as short as a live view's, the same capability size.
+    assert url is not None
+    assert len(_code(url)) == len(secrets.token_urlsafe(BROWSER_LIVE_CODE_ENTROPY_BYTES))
+
+
+async def test_storing_and_reading_a_frame_leave_its_run_size_and_time_on_the_event(
+    fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ticks = iter([1.0, 1.25])
+    monkeypatch.setattr(shot_store, "perf_counter", lambda: next(ticks))
+
+    async with captured_wide_event() as stored:
+        url = await shot_store.store_step_screenshot(b"12345", "sess-9", 1)
+    assert url is not None
+    async with captured_wide_event() as read:
+        await shot_store.read_step_screenshot(_code(url), 1)
+
+    assert stored["browser"] == {
+        "session_id": "sess-9",
+        "shot_backend": "redis",
+        "shot_bytes": 5,
+        "shot_store_ms": 250,
+    }
+    assert read["browser"] == {"session_id": "sess-9"}
 
 
 async def test_an_unknown_code_or_a_session_id_opens_nothing(
