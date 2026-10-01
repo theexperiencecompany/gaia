@@ -44,9 +44,9 @@ async def create_live_view_link(session_id: str, user_id: str) -> str:
 def render_live_view_page(session_id: str) -> str:
     """Self-contained HTML viewer served to a bot user opening the tokened link.
 
-    Reads its own URL to open the WebSocket (carrying the ?t= token or the
-    same-origin session cookie), draws each JPEG frame onto a canvas, and forwards
-    pointer/keyboard input as CDP-shaped mouse/key messages.
+    Opens the WebSocket at its own URL (?t= token or same-origin cookie), draws
+    each JPEG frame onto a canvas, and forwards input as CDP-shaped messages; on
+    a phone a drag scrolls and a Keyboard button sends the soft keyboard's text.
     """
     safe_session = html.escape(session_id)
     return _VIEWER_TEMPLATE.replace("__SESSION_ID__", safe_session).replace(
@@ -54,9 +54,9 @@ def render_live_view_page(session_id: str) -> str:
     )
 
 
-# Kept byte-for-byte parallel with the React canvas in BrowserTaskSection.tsx:
-# both translate DOM pointer/key events into the CDP shapes screencast.py applies.
-_VIEWER_TEMPLATE = """<!doctype html>
+# Parallel with the React canvas's useLiveInput.ts. Raw, so the script is the exact
+# JavaScript the browser runs: a "\r" Python resolved inside a // comment broke the page.
+_VIEWER_TEMPLATE = r"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -81,13 +81,24 @@ _VIEWER_TEMPLATE = """<!doctype html>
   #screen { max-width: 100%; max-height: 100%; border-radius: 10px;
     box-shadow: 0 0 0 1px rgba(255,255,255,0.07); background: #18181b;
     cursor: crosshair; outline: none; touch-action: none; }
+  .right { display: flex; align-items: center; gap: 12px; }
+  #kbButton { display: none; font: inherit; font-size: 13px; color: #e4e4e7; background: #27272a;
+    border: 0; border-radius: 999px; padding: 6px 12px; }
+  @media (pointer: coarse) { #kbButton { display: inline-block; } }
+  /* Off-screen but focusable: focusing it is what raises a phone's keyboard.
+     16px keeps iOS from zooming the page when it takes focus. */
+  #kb { position: fixed; left: -1000px; top: 0; width: 1px; height: 1px; opacity: 0; font-size: 16px; }
 </style>
 </head>
 <body>
 <header>
   <div class="brand"><img src="__WORDMARK__" alt="GAIA" /></div>
-  <div id="status" class="status connecting"><span class="dot"></span><span id="statusLabel">Connecting\u2026</span></div>
+  <div class="right">
+    <button id="kbButton" type="button">Keyboard</button>
+    <div id="status" class="status connecting"><span class="dot"></span><span id="statusLabel">Connecting&hellip;</span></div>
+  </div>
 </header>
+<input id="kb" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Type into the live browser" />
 <main><canvas id="screen" width="1280" height="800" tabindex="0"></canvas></main>
 <script>
 (function () {
@@ -96,7 +107,7 @@ _VIEWER_TEMPLATE = """<!doctype html>
   var statusEl = document.getElementById("status");
   var statusLabel = document.getElementById("statusLabel");
   function setStatus(state, label) { statusEl.className = "status " + state; statusLabel.textContent = label; }
-  // cssW/H: the page's CSS pixel size (per-frame metadata) \u2014 the space CDP input
+  // cssW/H: the page's CSS pixel size (per-frame metadata), the space CDP input
   // expects. The frame bitmap may be a downscaled rendering of it, so pointer
   // math uses THIS, never the bitmap size, or clicks land short of the target.
   var cssW = 1280, cssH = 800;
@@ -126,7 +137,7 @@ _VIEWER_TEMPLATE = """<!doctype html>
       y: Math.round((e.clientY - r.top) * (cssH / r.height))
     };
   }
-  // CDP modifier bitmask (Alt=1, Ctrl=2, Meta=4, Shift=8) \u2014 without it,
+  // CDP modifier bitmask (Alt=1, Ctrl=2, Meta=4, Shift=8), without it,
   // Shift-selection and Cmd/Ctrl shortcuts silently no-op.
   function toModifiers(e) {
     return (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.metaKey ? 4 : 0) | (e.shiftKey ? 8 : 0);
@@ -159,16 +170,74 @@ _VIEWER_TEMPLATE = """<!doctype html>
   }, { passive: false });
   function keyEvent(kind, e) {
     // CDP fires a key's default action (submit a form, insert a newline) only
-    // when `text` is set: printables send themselves, Enter must send "\r".
+    // when `text` is set: printables send themselves, Enter must send a carriage return.
     // A char typed with Ctrl/Meta held is a shortcut, not text.
     var printable = e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey;
     var msg = { type: "key", event: kind, key: e.key, code: e.code, windowsVirtualKeyCode: e.keyCode, nativeVirtualKeyCode: e.keyCode, modifiers: toModifiers(e) };
     if (kind === "keyDown" && printable) msg.text = e.key;
-    if (kind === "keyDown" && e.key === "Enter") msg.text = "\\r";
+    if (kind === "keyDown" && e.key === "Enter") msg.text = "\r";
     send(msg);
   }
   canvas.addEventListener("keydown", function (e) { e.preventDefault(); keyEvent("keyDown", e); });
   canvas.addEventListener("keyup", function (e) { e.preventDefault(); keyEvent("keyUp", e); });
+
+  // Touch: a tap already arrives as mousedown/mouseup; a drag scrolls the page
+  // as a wheel at the point it started, in page pixels, coalesced per frame.
+  var touch = null, pendingWheel = null, wheelRaf = 0;
+  function flushWheel() {
+    wheelRaf = 0;
+    if (pendingWheel) { send(pendingWheel); pendingWheel = null; }
+  }
+  canvas.addEventListener("touchstart", function (e) {
+    if (e.touches.length !== 1) { touch = null; return; }
+    var t = e.touches[0];
+    touch = { start: toPagePoint(t), x: t.clientX, y: t.clientY, moved: false };
+  }, { passive: true });
+  canvas.addEventListener("touchmove", function (e) {
+    if (!touch || e.touches.length !== 1) return;
+    e.preventDefault();
+    var t = e.touches[0], r = canvas.getBoundingClientRect();
+    var dx = (touch.x - t.clientX) * (cssW / r.width), dy = (touch.y - t.clientY) * (cssH / r.height);
+    touch.x = t.clientX; touch.y = t.clientY; touch.moved = true;
+    var acc = pendingWheel || { type: "mouse", event: "mouseWheel", x: touch.start.x, y: touch.start.y, deltaX: 0, deltaY: 0 };
+    acc.deltaX += dx; acc.deltaY += dy; pendingWheel = acc;
+    if (!wheelRaf) wheelRaf = requestAnimationFrame(flushWheel);
+  }, { passive: false });
+  canvas.addEventListener("touchend", function (e) {
+    // A drag is not a click: cancelling the end stops the emulated mouse events.
+    if (touch && touch.moved) e.preventDefault();
+    touch = null;
+  }, { passive: false });
+
+  // A phone keyboard reports committed text, not keys: the hidden input holds
+  // one placeholder character, and whatever it gains or loses after an edit is
+  // what the user typed or erased. A word being composed is read once it lands.
+  var kb = document.getElementById("kb");
+  var KB_PLACEHOLDER = " ";
+  var composing = false;
+  function resetKb() { kb.value = KB_PLACEHOLDER; kb.setSelectionRange(1, 1); }
+  function pressKey(key, code, keyCode, text) {
+    var down = { type: "key", event: "keyDown", key: key, code: code, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode };
+    if (text) down.text = text;
+    send(down);
+    send({ type: "key", event: "keyUp", key: key, code: code, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode });
+  }
+  function readKb() {
+    var value = kb.value;
+    if (value.length < KB_PLACEHOLDER.length) {
+      pressKey("Backspace", "Backspace", 8);
+    } else if (value.length > KB_PLACEHOLDER.length) {
+      send({ type: "text", text: value.slice(KB_PLACEHOLDER.length) });
+    }
+    resetKb();
+  }
+  kb.addEventListener("compositionstart", function () { composing = true; });
+  kb.addEventListener("compositionend", function () { composing = false; readKb(); });
+  kb.addEventListener("input", function () { if (!composing) readKb(); });
+  kb.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); pressKey("Enter", "Enter", 13, "\r"); }
+  });
+  document.getElementById("kbButton").addEventListener("click", function () { resetKb(); kb.focus(); });
 })();
 </script>
 </body>

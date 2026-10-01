@@ -899,6 +899,17 @@ async def test_live_view_dispatches_the_users_keys_on_the_page_session() -> None
 
 
 @pytest.mark.unit
+async def test_live_view_inserts_a_phone_keyboards_text_on_the_page_session() -> None:
+    # A soft keyboard commits text (a word, an autocorrection), not key presses.
+    mux = make_mux()
+
+    await _view_with_client_input(mux, [{"type": "text", "text": "hello wörld"}])
+
+    assert _wire(mux, "Input.insertText") == [({"text": "hello wörld"}, _PAGE_SESSION)]
+    assert _wire(mux, "Input.dispatchKeyEvent") == []
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     ("resize", "expected"),
     [
