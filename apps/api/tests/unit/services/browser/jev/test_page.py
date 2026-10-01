@@ -364,7 +364,6 @@ async def test_a_document_being_replaced_or_still_parsing_is_read_again() -> Non
     assert state.url == SNAPSHOT["url"]
 
 
-@pytest.mark.regression
 async def test_a_document_that_does_not_finish_parsing_is_reported_still_loading(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

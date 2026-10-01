@@ -505,7 +505,6 @@ async def test_a_tab_that_goes_away_mid_burst_ends_it_with_every_step_it_took(
     assert [step.label for step in result.steps] == ["Next"]
 
 
-@pytest.mark.regression
 async def test_a_blank_tab_is_never_an_address_and_with_none_to_open_the_burst_ends_at_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

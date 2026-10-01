@@ -11,6 +11,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 import json
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -865,11 +866,17 @@ async def test_a_stop_while_the_user_is_asked_to_sign_in_ends_the_run_stopped_at
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Regression: a stop during a handoff waited out the handoff window, and the run then read as timed out, not stopped."""
+    from app.agents.tools import executor_tool
     from app.agents.tools.executor_tool import cancel_executor
     from app.config.settings import settings
 
     # Short, so a stop the wait never hears ends as the timeout it once was, not a hang.
     monkeypatch.setattr(settings, "BROWSER_USE_HANDOFF_TIMEOUT_SECONDS", 5)
+    # A stop-everything also clears the conversation's approvals, which live in Mongo:
+    # stand in for them, as the executor tool's own tests do, so this journey only
+    # exercises the browser stop and never reaches the process-wide Mongo client.
+    monkeypatch.setattr(executor_tool, "cancel_conversation_approvals", AsyncMock(return_value=[]))
+    monkeypatch.setattr(executor_tool, "cancel_ledger_approvals", AsyncMock(return_value=[]))
     async with browser_job_world(STREAM, steps=[SIGN_IN, BOOK_SIGNED_IN]) as world:
         async with executor_graph([RETRIEVE, START, "Started."]) as graph:
             await run_graph(
