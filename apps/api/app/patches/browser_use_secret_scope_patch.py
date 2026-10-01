@@ -62,27 +62,31 @@ def _usable(sensitive_data: dict[str, str | dict[str, str]], url: str | None) ->
     return names
 
 
+def _refusals(action_name: str, named: list[str], kwargs: dict[str, object]) -> list[str]:
+    """Return why the action may not type the secrets it names, one line per secret."""
+    if action_name == _KEYS_ACTION:
+        # Keys never carry a value, so a placeholder there would be typed as it is.
+        return [f"{name} is typed only into its field, never as keys" for name in named]
+    if action_name != _SECRET_TYPING_ACTION:
+        return []
+    # Browser-Use's own keywords, passed with these types (Registry.execute_action).
+    url = _focused_url(cast("BrowserSession | None", kwargs.get("browser_session")))
+    secrets = cast("dict[str, str | dict[str, str]] | None", kwargs.get("sensitive_data"))
+    usable = _usable(secrets or {}, url)
+    host = (urlsplit(url).hostname if url else None) or "this page"
+    return [f"{name} is not used on {host}" for name in named if name not in usable]
+
+
 async def _execute_action(
     self: Registry[Any], action_name: str, params: dict[str, Any], **kwargs: object
 ) -> object:
     """Execute the action, with secret values only for the input action on each secret's own site."""
     # Browser-Use passes everything by keyword; a positional call fails loudly here.
     named = sorted(set(_PLACEHOLDER.findall(json.dumps(params))))
-    refused: list[str] = []
-    if action_name == _SECRET_TYPING_ACTION:
-        # Browser-Use's own keywords, passed with these types (Registry.execute_action).
-        url = _focused_url(cast("BrowserSession | None", kwargs.get("browser_session")))
-        secrets = cast("dict[str, str | dict[str, str]] | None", kwargs.get("sensitive_data"))
-        usable = _usable(secrets or {}, url)
-        host = (urlsplit(url).hostname if url else None) or "this page"
-        refused = [f"{name} is not used on {host}" for name in named if name not in usable]
-    else:
-        kwargs["sensitive_data"] = None
-        if action_name == _KEYS_ACTION:
-            # Keys never carry a value, so a placeholder there would be typed as it is.
-            refused = [f"{name} is typed only into its field, never as keys" for name in named]
-    if refused:
+    if refused := _refusals(action_name, named, kwargs):
         return ActionResult(error=f"{'; '.join(refused)}; nothing was typed.")
+    if action_name != _SECRET_TYPING_ACTION:
+        kwargs["sensitive_data"] = None
     return await _original_execute_action(self, action_name=action_name, params=params, **kwargs)
 
 
