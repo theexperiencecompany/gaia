@@ -84,6 +84,7 @@ _STOP_MEANING = {
     JevStop.COVERED: "An overlay or hidden control blocks the target; deal with it yourself.",
     JevStop.STALE: "The page kept changing under Jev's decisions.",
     JevStop.UNRESPONSIVE: "The page stopped answering; an input sent just then may or may not have landed.",
+    JevStop.LOADING: "The page had not finished loading, so Jev could not read it; nothing was done on it.",
     JevStop.USER_MESSAGE: "The user sent a message; read it (it is in your task) before going on.",
     JevStop.STOPPED: "The run is stopping.",
     JevStop.GATEWAY: "Jev could not decide; continue yourself.",

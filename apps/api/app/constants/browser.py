@@ -467,6 +467,7 @@ class JevStop(StrEnum):
     COVERED = "covered"
     STALE = "stale"
     UNRESPONSIVE = "unresponsive"
+    LOADING = "loading"
     USER_MESSAGE = "user_message"
     STOPPED = "stopped"
     GATEWAY = "gateway"
@@ -509,6 +510,9 @@ JEV_WAIT_SECONDS = 1.0
 #: The longest the read after an input waits for its requests to finish and the DOM to go quiet:
 #: a page that animates or polls never does.
 JEV_SETTLE_MAX_SECONDS = 2.0
+#: The longest a read waits for a document still parsing (a script in its head not yet
+#: arrived) to fire DOMContentLoaded: the time a site gets to answer before a load is stopped.
+JEV_PARSE_WAIT_SECONDS = BROWSER_LOAD_STALL_SECONDS
 JEV_SCREENSHOT_QUALITY = 70
 #: The tiny model writes a value only when no literal from the goal fits; it reads this much page text.
 JEV_TEXT_TIMEOUT_SECONDS = 30.0

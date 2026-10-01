@@ -38,10 +38,10 @@
   const inViewport = (r, ox, oy) =>
     r.width>0 && r.height>0 && r.bottom+oy>0 && r.top+oy<innerHeight && r.right+ox>0 && r.left+ox<innerWidth;
 
-  // A document with no body yet is read once it has one; one that never has one offers nothing.
+  // A document still parsing has no body yet, and says so at once: the caller waits for it.
+  // One that is parsed and never has a body offers nothing.
   function bodiless(cache) {
-    if (document.readyState==='loading')
-      return new Promise(resolve=>document.addEventListener('DOMContentLoaded',()=>resolve(null),{once:true}));
+    if (document.readyState==='loading') return {loading:true,url:location.href};
     cache.pageKey=()=>[performance.timeOrigin,location.href];
     cache.guard=()=>null;
     return {url:location.href,title:document.title,text:'',text_cut:false,actions:[WAIT],

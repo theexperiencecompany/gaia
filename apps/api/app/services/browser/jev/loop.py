@@ -58,6 +58,7 @@ from app.services.browser.jev.page import (
     Frame,
     NavigationFailed,
     PageAction,
+    PageLoading,
     PageScriptError,
     PageState,
     PageUnresponsive,
@@ -282,6 +283,8 @@ class JevRunner:
             stop, detail = opening or await self._run(state)
         except PageUnresponsive as exc:
             stop, detail = JevStop.UNRESPONSIVE, str(exc)
+        except PageLoading as exc:
+            stop, detail = JevStop.LOADING, str(exc)
         except StalePage as exc:
             # A read that never settles, before or after an action (which is recorded first).
             stop, detail = JevStop.STALE, str(exc)

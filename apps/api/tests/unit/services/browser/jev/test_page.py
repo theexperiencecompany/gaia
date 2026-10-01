@@ -21,6 +21,7 @@ from app.services.browser.jev.page import (
     JevPage,
     NavigationFailed,
     PageAction,
+    PageLoading,
     PageScriptError,
     PageState,
     PageUnresponsive,
@@ -54,6 +55,8 @@ THROWS_TEXT = object()
 GONE = object()
 #: A call the browser refuses outright (cdp_use raises it with the error object).
 REFUSED = object()
+#: What the snapshot answers on a document still parsing.
+PARSING = {"loading": True, "url": "https://site.test/slow"}
 
 SNAPSHOT: dict[str, Any] = {
     "url": "https://site.test/",
@@ -111,9 +114,13 @@ class _Tab:
     history: dict[str, Any] = field(default_factory=lambda: {"currentIndex": 0, "entries": []})
     body: object = ""
     hangs: str | None = None
+    #: Whether a document still parsing goes on to fire DOMContentLoaded.
+    parses: bool = True
     #: Whether the tab still answers a call after refusing one.
     alive: bool = True
     focus: list[bool] = field(default_factory=list, init=False)
+    #: Page sessions told to report their page's events.
+    page_events: list[str | None] = field(default_factory=list, init=False)
     scripts: list[str] = field(default_factory=list, init=False)
     #: Each script call's name and argument, in order.
     calls: list[tuple[str, object]] = field(default_factory=list, init=False)
@@ -131,6 +138,7 @@ class _Tab:
             Runtime=SimpleNamespace(evaluate=self._evaluate),
             Input=SimpleNamespace(dispatchMouseEvent=self._mouse, dispatchKeyEvent=self._key),
             Page=SimpleNamespace(
+                enable=self._page_enable,
                 captureScreenshot=self._screenshot,
                 getNavigationHistory=self._history,
                 navigateToHistoryEntry=self._go_to_entry,
@@ -138,6 +146,7 @@ class _Tab:
         )
         self.register = SimpleNamespace(
             Target=SimpleNamespace(targetCreated=self._on("Target.targetCreated")),
+            Page=SimpleNamespace(domContentEventFired=self._on("Page.domContentEventFired")),
             Network=SimpleNamespace(
                 requestWillBeSent=self._on("Network.requestWillBeSent"),
                 loadingFinished=self._on("Network.loadingFinished"),
@@ -163,6 +172,11 @@ class _Tab:
     async def _focus(self, params: dict[str, Any], session_id: str | None) -> dict[str, Any]:
         await self._command("Emulation.setFocusEmulationEnabled", session_id)
         self.focus.append(params["enabled"])
+        return {}
+
+    async def _page_enable(self, session_id: str | None) -> dict[str, Any]:
+        await self._command("Page.enable", session_id)
+        self.page_events.append(session_id)
         return {}
 
     async def _evaluate(self, params: dict[str, Any], session_id: str | None) -> dict[str, Any]:
@@ -193,7 +207,13 @@ class _Tab:
     def _run(self, expression: str) -> object:
         if expression == page_mod._SNAPSHOT_JS:
             self.scripts.append("snapshot")
-            return self._next(self.snapshots)
+            snapshot = self._next(self.snapshots)
+            if snapshot is PARSING and self.parses:
+                # The parse ends after the read that saw it going: Chrome reports it to the page's session.
+                asyncio.get_running_loop().call_soon(
+                    self.emit, "Page.domContentEventFired", {"timestamp": 1.0}
+                )
+            return snapshot
         if expression == "0":
             return 0
         for name, script in [
@@ -337,11 +357,23 @@ async def test_the_fingerprint_changes_with_what_a_person_sees_never_with_where_
 
 
 async def test_a_document_being_replaced_or_still_parsing_is_read_again() -> None:
-    page, _ = _page(_Tab(snapshots=[GONE, None, REFUSED, SNAPSHOT]))
+    page, _ = _page(_Tab(snapshots=[GONE, PARSING, REFUSED, SNAPSHOT]))
 
     state = await page.observe()
 
     assert state.url == SNAPSHOT["url"]
+
+
+@pytest.mark.regression
+async def test_a_document_that_does_not_finish_parsing_is_reported_still_loading(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: a stalled head script held the read inside the page until it timed out as unresponsive."""
+    monkeypatch.setattr(page_mod, "JEV_PARSE_WAIT_SECONDS", 0.01)
+    page, _ = _page(_Tab(snapshots=[PARSING], parses=False))
+
+    with pytest.raises(PageLoading, match="still loading: https://site.test/slow"):
+        await page.observe()
 
 
 async def test_a_page_that_never_settles_is_stale(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -644,10 +676,12 @@ async def test_a_tab_the_clicked_tab_opened_is_followed_and_one_another_tab_open
 async def test_a_failed_navigation_says_whether_the_site_or_the_browser_failed(
     error: Exception, raised: type[Exception]
 ) -> None:
-    page, _ = _page(_Tab(), navigate_error=error)
+    page, browser = _page(_Tab(), navigate_error=error)
 
     with pytest.raises(raised, match="ERR_NAME_NOT_RESOLVED|navigation refused"):
         await page.navigate("https://site.test/b")
+
+    assert browser.navigated == ["https://site.test/b"]
 
 
 @pytest.mark.parametrize(
@@ -659,6 +693,8 @@ async def test_a_failed_navigation_says_whether_the_site_or_the_browser_failed(
         ("Input.dispatchKeyEvent", ENTER),
         ("Page.navigateToHistoryEntry", BACK),
         ("Page.getNavigationHistory", None),
+        ("Emulation.setFocusEmulationEnabled", None),
+        ("Page.enable", None),
     ],
 )
 async def test_a_call_the_tab_never_answers_raises_and_names_the_call(
@@ -676,7 +712,7 @@ async def test_a_call_the_tab_never_answers_raises_and_names_the_call(
     assert warning["call"] == ("the page's CDP session" if hangs == "session" else hangs)
 
 
-async def test_the_tab_is_told_to_render_as_focused_once_not_on_every_call() -> None:
+async def test_the_tab_is_told_once_to_render_as_focused_and_to_report_its_page() -> None:
     tab = _Tab()
     page, _ = _page(tab)
 
@@ -684,3 +720,4 @@ async def test_the_tab_is_told_to_render_as_focused_once_not_on_every_call() -> 
     await page.observe()
 
     assert tab.focus == [True]
+    assert tab.page_events == [SESSION]
