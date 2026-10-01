@@ -10,7 +10,7 @@ from app.services.browser.jev.decision import Decision
 from app.services.browser.jev.gateway import JevEvaluation
 from app.services.browser.jev.page import PageAction, PageState, StalePage
 
-BUTTON = PageAction(id="e1", node=1, kind="click", label="Next", role="button")
+BUTTON = PageAction(id="e1", node=1, kind="click", label="Next", role="button", value="")
 FIELD = PageAction(id="e2", node=2, kind="fill", label="Name", role="textbox", value="")
 PASSWORD = PageAction(id="e3", node=3, kind="secret", label="Password", role="password", value="")
 
@@ -20,6 +20,7 @@ def page_state(url: str = "https://site.test/a", text: str = "page", **extra: An
         url=url,
         title="Site",
         text=text,
+        text_cut=extra.get("text_cut", False),
         actions=[BUTTON, FIELD, PASSWORD],
         page_key=None,
         guards={},

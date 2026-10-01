@@ -49,6 +49,7 @@ def _page(*actions: PageAction) -> PageState:
         url="https://shop.test/",
         title="Shop",
         text="Search the shop",
+        text_cut=False,
         actions=list(actions),
         page_key=None,
         guards={},
@@ -149,6 +150,10 @@ class _Answers(_Jev):
         return JevEvaluation(answers=answers)
 
 
+def _unmasked(text: str) -> str:
+    return text
+
+
 def _asked(jev: _Jev) -> JevEvaluationRequest:
     assert jev.request is not None
     return jev.request
@@ -213,7 +218,7 @@ async def test_jev_is_asked_about_the_page_its_elements_what_it_did_and_where_it
     visited = [Visited("Home", "https://shop.test/"), Visited("Results", "https://shop.test/r")]
     page = _page(SEARCH, OPEN_SEARCH, BUY, SIZE, PASSWORD, NAME, REMEMBER, REVIEWS, SCROLL)
 
-    await decide(jev, page, "buy shoes", history, visited, [])
+    await decide(jev, page, "buy shoes", history, visited, [], _unmasked)
 
     assert _asked(jev).state == {
         "page": {"url": "https://shop.test/", "title": "Shop", "text": "Search the shop"},
@@ -289,7 +294,13 @@ async def test_the_operation_question_offers_what_the_page_and_the_run_allow_und
     visited = [Visited("A", "https://a.test/"), Visited("B", "https://b.test/")]
 
     await decide(
-        jev, _page(SEARCH, BUY, SIZE, SCROLL, WAIT), "go", [], visited, ["https://c.test/"]
+        jev,
+        _page(SEARCH, BUY, SIZE, SCROLL, WAIT),
+        "go",
+        [],
+        visited,
+        ["https://c.test/"],
+        _unmasked,
     )
 
     question = _asked(jev).questions["operation"]
@@ -312,7 +323,9 @@ async def test_the_operation_question_offers_what_the_page_and_the_run_allow_und
 async def test_only_operations_the_page_and_the_run_allow_are_offered() -> None:
     jev = _Jev(operation="DONE")
 
-    await decide(jev, _page(BUY), "buy it", [], [Visited("Shop", "https://shop.test/")], [])
+    await decide(
+        jev, _page(BUY), "buy it", [], [Visited("Shop", "https://shop.test/")], [], _unmasked
+    )
 
     # No field to type into, no address named, and nowhere to go back to.
     assert set(_asked(jev).questions["operation"].criteria) == {"CLICK", "DONE", "BLOCKED"}
@@ -322,7 +335,7 @@ async def test_each_target_question_offers_that_operations_own_targets_as_they_s
     jev = _Jev(operation="DONE")
     page = _page(NAME, REMEMBER, REVIEWS, SIZE, PASSWORD)
 
-    await decide(jev, page, "check out", [], [], ["https://a.test/", "https://b.test/"])
+    await decide(jev, page, "check out", [], [], ["https://a.test/", "https://b.test/"], _unmasked)
 
     questions = _asked(jev).questions
     assert questions["type_text_target"].criteria == {
@@ -397,6 +410,7 @@ async def test_the_decision_names_the_chosen_snapshot_action_or_address(
         [],
         [],
         ["https://a.test/", "https://b.test/"],
+        _unmasked,
     )
 
     assert (decision.operation, decision.target, decision.url) == (
@@ -412,9 +426,9 @@ async def test_a_target_answer_is_validated_like_the_operation() -> None:
     jev = _Jev(operation="CLICK", click_target="7")
 
     with pytest.raises(JevDecisionError, match=decision_mod._NO_ANSWER):
-        await decide(_Jev(operation="CLICK"), _page(BUY), "buy it", [], [], [])
+        await decide(_Jev(operation="CLICK"), _page(BUY), "buy it", [], [], [], _unmasked)
     with pytest.raises(JevDecisionError, match=decision_mod._INVALID_ANSWER):
-        await decide(jev, _page(BUY), "buy it", [], [], [])
+        await decide(jev, _page(BUY), "buy it", [], [], [], _unmasked)
 
 
 def _choice(choice: str, confidence: float | None = 0.8, **probabilities: float) -> JevChoiceAnswer:
@@ -441,12 +455,12 @@ async def test_a_malformed_answer_is_refused_and_nothing_is_executed(
     answer: JevChoiceAnswer,
 ) -> None:
     with pytest.raises(JevDecisionError, match=decision_mod._INVALID_ANSWER):
-        await decide(_Answers(answer), _page(), "buy it", [], [], [])
+        await decide(_Answers(answer), _page(), "buy it", [], [], [], _unmasked)
 
 
 async def test_no_answer_is_refused() -> None:
     with pytest.raises(JevDecisionError, match=decision_mod._NO_ANSWER):
-        await decide(_Answers(None), _page(), "buy it", [], [], [])
+        await decide(_Answers(None), _page(), "buy it", [], [], [], _unmasked)
 
 
 @pytest.mark.parametrize(
@@ -461,7 +475,7 @@ async def test_no_answer_is_refused() -> None:
     ],
 )
 async def test_an_answer_at_the_edges_of_valid_is_taken(answer: JevChoiceAnswer) -> None:
-    decision = await decide(_Answers(answer), _page(), "buy it", [], [], [])
+    decision = await decide(_Answers(answer), _page(), "buy it", [], [], [], _unmasked)
 
     assert (decision.operation, decision.confidence) == (JevOperation.DONE, answer.confidence)
 
@@ -473,7 +487,13 @@ async def test_probabilities_off_by_exactly_the_tolerance_are_refused(
 
     with pytest.raises(JevDecisionError):
         await decide(
-            _Answers(_choice("DONE", 0.8, DONE=0.75, BLOCKED=0.5)), _page(), "g", [], [], []
+            _Answers(_choice("DONE", 0.8, DONE=0.75, BLOCKED=0.5)),
+            _page(),
+            "g",
+            [],
+            [],
+            [],
+            _unmasked,
         )
 
 
@@ -481,7 +501,13 @@ async def test_a_password_field_is_offered_the_runs_secrets_and_nothing_else() -
     jev = _Jev(value="V1")
 
     value, _ = await choose_value(
-        jev, _page(PASSWORD), 'log in as "ada" with "hunter2"', PASSWORD, [], ["password"]
+        jev,
+        _page(PASSWORD),
+        'log in as "ada" with "hunter2"',
+        PASSWORD,
+        [],
+        ["password"],
+        _unmasked,
     )
 
     assert value == "<secret>password</secret>"
@@ -496,7 +522,13 @@ async def test_any_other_field_is_offered_the_goals_literals_or_a_written_value(
     history = [RecentAction(action="Search", kind="TYPE_TEXT", text="x", page_changed=False)]
 
     value, evaluation = await choose_value(
-        jev, _page(SEARCH), 'search "red shoes" then email ada@example.com', SEARCH, history, ["pw"]
+        jev,
+        _page(SEARCH),
+        'search "red shoes" then email ada@example.com',
+        SEARCH,
+        history,
+        ["pw"],
+        _unmasked,
     )
 
     assert value == "ada@example.com"
@@ -522,7 +554,9 @@ async def test_any_other_field_is_offered_the_goals_literals_or_a_written_value(
 
 @pytest.mark.parametrize("choice", [GENERATE, NONE_VALUE])
 async def test_a_field_with_no_literal_comes_back_as_generate_or_none(choice: str) -> None:
-    value, _ = await choose_value(_Jev(value=choice), _page(SEARCH), "find shoes", SEARCH, [], [])
+    value, _ = await choose_value(
+        _Jev(value=choice), _page(SEARCH), "find shoes", SEARCH, [], [], _unmasked
+    )
 
     assert value == choice
 

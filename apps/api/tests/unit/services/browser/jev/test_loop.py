@@ -94,6 +94,7 @@ class _Jev:
         history: list[RecentAction],
         visited: list[Visited],
         addresses: list[str],
+        mask: Callable[[str], str],
     ) -> Decision:
         self.decided.append(
             {
@@ -117,6 +118,7 @@ class _Jev:
         target: PageAction,
         history: list[RecentAction],
         secrets: list[str],
+        mask: Callable[[str], str],
     ) -> tuple[str, JevEvaluation]:
         self.chosen.append(
             {
@@ -695,37 +697,118 @@ async def test_a_page_that_never_settles_after_an_action_ends_the_burst_with_the
 # --- what Jev is asked -------------------------------------------------------------------
 
 
-async def test_jev_decides_on_the_masked_page_with_the_goal_its_recent_actions_and_where_it_has_been(
+async def test_jev_decides_with_the_goal_its_recent_actions_and_where_it_has_been(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(loop_mod, "JEV_RECENT_ACTIONS", 2)
-    first = page_state(url=f"https://site.test/a?pw={SECRET}", text=f"hi {SECRET}")
-    page = FakePage(first, *_pages("b", "c", "d"))
+    page = FakePage(*_pages("a", "b", "c", "d"))
     clicks = [decision(JevOperation.CLICK, BUTTON)] * 3
-    run = _run(monkeypatch, page, *clicks, decision(JevOperation.DONE), secrets=_secrets())
+    run = _run(monkeypatch, page, *clicks, decision(JevOperation.DONE))
 
     await run.burst("open https://docs.test/ then log in")
 
-    asked = run.jev.decided
-    assert (asked[0]["page"].url, asked[0]["page"].text) == (
-        f"https://site.test/a?pw={MASKED}",
-        f"hi {MASKED}",
-    )
-    last = asked[3]
+    last = run.jev.decided[3]
     assert last["goal"] == "open https://docs.test/ then log in"
     assert last["client"] is run.runner._client
     step = RecentAction(action="Next", kind="CLICK", text=None, page_changed=True)
     assert last["history"] == [step, step]
-    visited = [
-        f"https://site.test/a?pw={MASKED}",
-        "https://site.test/b",
-        "https://site.test/c",
-        "https://site.test/d",
-    ]
+    visited = [f"https://site.test/{name}" for name in "abcd"]
     assert [v.url for v in last["visited"]] == visited
     assert [v.title for v in last["visited"]] == ["Site"] * 4
-    # The pages the goal names, then every page visited, each once.
-    assert last["addresses"] == ["https://docs.test/", *visited]
+
+
+class _RecordingJev:
+    """The real decisions protocol, answered by script: each question's choice, and every request kept."""
+
+    model = "jev"
+
+    def __init__(self, operations: list[str], **choices: Callable[[list[str]], str]) -> None:
+        self._operations = operations
+        self._choices = choices
+        self.sent: list[str] = []
+
+    async def evaluate(self, request: Any) -> JevEvaluation:
+        self.sent.append(request.model_dump_json())
+        answers = {}
+        for name, question in request.questions.items():
+            ids = list(question.criteria)
+            if name == "operation":
+                choice = self._operations.pop(0)
+            elif name in self._choices:
+                choice = self._choices[name](ids)
+            else:
+                continue
+            answers[name] = {
+                "type": "choice",
+                "choice": choice,
+                "probabilities": {i: float(i == choice) for i in ids},
+                "confidence": 1.0,
+            }
+        return JevEvaluation.model_validate({"answers": answers, "provider": "openrouter"})
+
+
+async def test_no_secret_reaches_jev_or_the_text_model_and_a_masked_address_still_opens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The value sits in every field a page can carry it in, and cut short where the text ends.
+    link = PageAction(
+        id="e4",
+        node=4,
+        kind="click",
+        label=f"Signed in as {SECRET}",
+        role="link",
+        ident=SECRET,
+        href=f"https://site.test/me?u={SECRET}",
+        value=SECRET,
+    )
+    named = PageAction(
+        id="e5", node=5, kind="fill", label=f"Name for {SECRET}", role="textbox", value=SECRET
+    )
+    choice = PageAction(
+        id="e6",
+        node=6,
+        kind="select",
+        label="Account",
+        role="combobox",
+        value="a",
+        current_value=SECRET,
+        options=[{"value": SECRET, "label": f"Use {SECRET}"}],
+    )
+    home = f"https://site.test/a?pw={SECRET}"
+    first = replace(
+        page_state(url=home, text=f"hi {SECRET} and {SECRET[:7]}", text_cut=True),
+        title=f"Account of {SECRET}",
+        actions=[link, named, choice],
+    )
+    page = FakePage(first, page_state(url="https://site.test/b"), page_state(url=home))
+    jev = _RecordingJev(
+        ["TYPE_TEXT", "NAVIGATE", "DONE"],
+        type_text_target=lambda ids: ids[0],
+        value=lambda ids: GENERATE,
+        navigate_target=lambda ids: ids[0],
+    )
+    text_model = _TextModel("Ada")
+    runner = JevRunner(
+        page=page,  # type: ignore[arg-type]  # the tab, scripted
+        client=jev,  # type: ignore[arg-type]  # the gateway, scripted
+        text_model=text_model,  # type: ignore[arg-type]  # the one call the loop makes
+        run=BurstContext(
+            ledger=RunLedger(),
+            secrets=_secrets(),
+            stalls=_Stalls(),  # type: ignore[arg-type]  # the one method the loop reads
+            should_stop=_flag(False),
+            user_waiting=_flag(False),
+        ),
+    )
+
+    result = await runner.burst(f"rename {SECRET} to Ada", None)
+
+    sent = [*jev.sent, *(message.content for message in text_model.asked[0][0])]
+    assert len(jev.sent) == 4
+    assert not [request for request in sent if SECRET[:7] in request]
+    assert SECRET[:7] not in repr(result)
+    # Shown masked, opened as it is.
+    assert page.navigated == [home]
 
 
 async def test_a_page_that_changed_since_it_was_read_is_read_again_before_jev_decides(

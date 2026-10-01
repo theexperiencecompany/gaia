@@ -155,6 +155,7 @@ class _Snapshot(TypedDict):
     url: str
     title: str
     text: str
+    text_cut: bool
     actions: list[PageAction]
     page_key: object
     guards: dict[str, object]
@@ -170,6 +171,8 @@ class PageState:
     url: str
     title: str
     text: str
+    #: Whether text was cut at the snapshot's budget, possibly inside a word.
+    text_cut: bool
     actions: list[PageAction]
     page_key: object
     guards: dict[str, object]
@@ -250,6 +253,7 @@ class JevPage:
                     url=snapshot["url"],
                     title=snapshot["title"],
                     text=snapshot["text"],
+                    text_cut=snapshot["text_cut"],
                     actions=snapshot["actions"],
                     page_key=snapshot["page_key"],
                     guards=snapshot["guards"],

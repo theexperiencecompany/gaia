@@ -130,7 +130,7 @@
       }
     }
   }
-  const text=words.join('\n').slice(0,6000), height=document.documentElement.scrollHeight;
+  const joined=words.join('\n'), text=joined.slice(0,6000), height=document.documentElement.scrollHeight;
   const page_key=cache.pageKey(), guards={};
   for (const a of actions) if (!(a.node in guards)) guards[a.node]=cache.guard(cache.nodes.get(a.node));
   const omitted_actions=Math.max(0,actions.length-250);
@@ -139,6 +139,6 @@
   if (scrollY+innerHeight<height-2) actions.push({id:'scroll_down',kind:'scroll',label:'Scroll down',delta:560});
   if (scrollY>0) actions.push({id:'scroll_up',kind:'scroll',label:'Scroll up',delta:-560});
   actions.push({id:'wait',kind:'wait',label:'Wait for the page to update'});
-  return {url:location.href,title:document.title,w:innerWidth,h:innerHeight,text,
+  return {url:location.href,title:document.title,w:innerWidth,h:innerHeight,text,text_cut:joined.length>6000,
     scroll:{y:scrollY,height},actions,page_key,guards,omitted_actions,frames};
 })()

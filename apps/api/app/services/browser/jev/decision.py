@@ -9,6 +9,7 @@ spells out.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 import math
 import re
@@ -79,6 +80,9 @@ _HOST = re.compile(r"\b(?:[a-z0-9-]+\.)+[a-z0-9-]+\b", re.I)
 # The bundled Public Suffix List snapshot: no fetch or cache at run time.
 _SUFFIXES = tldextract.TLDExtract(cache_dir=None, suffix_list_urls=())
 _SECRET_PLACEHOLDER = re.compile(r"<secret>([\w.-]+)</secret>")
+
+#: Replaces every secret value in a string with its placeholder.
+Mask = Callable[[str], str]
 
 
 class JevDecisionError(BrowserAutomationError):
@@ -266,6 +270,30 @@ def _page(page: PageState) -> dict[str, object]:
     return {"url": page.url, "title": page.title, "text": page.text}
 
 
+def masked_json(value: object, mask: Mask) -> object:
+    """Return value with mask applied to every string in it; keys are code-owned ids and stay."""
+    if isinstance(value, str):
+        return mask(value)
+    if isinstance(value, dict):
+        return {key: masked_json(item, mask) for key, item in value.items()}
+    if isinstance(value, list):
+        return [masked_json(item, mask) for item in value]
+    return value
+
+
+async def _ask(
+    client: JevDecisionsClient,
+    state: dict[str, object],
+    questions: dict[str, JevQuestion],
+    mask: Mask,
+) -> JevEvaluation:
+    """Send one evaluation with no secret value anywhere in it: the page, the targets or the goal."""
+    request = JevEvaluationRequest(state=state, questions=questions)
+    return await client.evaluate(
+        JevEvaluationRequest.model_validate(masked_json(request.model_dump(), mask))
+    )
+
+
 def _validate_choice(answer: JevChoiceAnswer | None, ids: set[str]) -> _Choice:
     if answer is None:
         raise JevDecisionError(_NO_ANSWER)
@@ -289,6 +317,7 @@ async def decide(
     history: list[RecentAction],
     visited: list[Visited],
     addresses: list[str],
+    mask: Mask,
 ) -> Decision:
     """Ask Jev for this step's operation and target; raises JevDecisionError on a malformed answer."""
     space = action_space(page.actions)
@@ -337,7 +366,7 @@ async def decide(
         ],
         "visited": [{"title": v.title, "url": v.url} for v in visited],
     }
-    evaluation = await client.evaluate(JevEvaluationRequest(state=state, questions=questions))
+    evaluation = await _ask(client, state, questions, mask)
     operation_answer = _validate_choice(
         evaluation.answers.get(_OPERATION_QUESTION), set(operations)
     )
@@ -371,6 +400,7 @@ async def choose_value(
     target: PageAction,
     history: list[RecentAction],
     secrets: list[str],
+    mask: Mask,
 ) -> tuple[str, JevEvaluation]:
     """Pick what to type into target: a literal from the goal, one of the run's secrets, GENERATE, or NONE.
 
@@ -391,9 +421,7 @@ async def choose_value(
         "page": _page(page),
         "recent_actions": [{"action": h.action, "text": h.text} for h in history],
     }
-    evaluation = await client.evaluate(
-        JevEvaluationRequest(state=state, questions={_VALUE_QUESTION: question})
-    )
+    evaluation = await _ask(client, state, {_VALUE_QUESTION: question}, mask)
     answer = _validate_choice(evaluation.answers.get(_VALUE_QUESTION), set(criteria))
     if answer.choice in (GENERATE, NONE_VALUE):
         return answer.choice, evaluation

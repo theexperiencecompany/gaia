@@ -22,18 +22,25 @@ def _encodings(value: str) -> set[str]:
 
 
 class _Replacer:
-    """Replace each form with its stand-in in one pass, so no stand-in is rewritten again."""
+    """Replace each form with its stand-in in one pass, so no stand-in is rewritten again.
+
+    A placeholder already in the text is kept whole, so masking twice changes nothing
+    even when a value occurs inside a placeholder ("<secret>admin</secret>" for "admin").
+    """
 
     def __init__(self, stand_ins: dict[str, str]) -> None:
         self._stand_ins = stand_ins
         # Alternatives compete only where one starts another; reverse order puts the longer first.
         forms = sorted(stand_ins, reverse=True)
-        self._pattern = re.compile("|".join(map(re.escape, forms))) if forms else None
+        alternatives = [_PLACEHOLDER.pattern, *map(re.escape, forms)]
+        self._pattern = re.compile("|".join(alternatives)) if forms else None
 
     def __call__(self, text: str) -> str:
         if self._pattern is None:
             return text
-        return self._pattern.sub(lambda match: self._stand_ins[match.group(0)], text)
+        return self._pattern.sub(
+            lambda match: self._stand_ins.get(match.group(0), match.group(0)), text
+        )
 
 
 def _masked_by_name(values: dict[str, str]) -> _Replacer:
@@ -79,6 +86,17 @@ class RunSecrets:
 
     def mask(self, text: str) -> str:
         """Replace every secret value in text with its placeholder, for text a model reads."""
+        return self._mask(text)
+
+    def excerpt(self, text: str, cut: bool) -> str:
+        """Mask text that was cut at its end: a value the cut split leaves no prefix behind."""
+        if cut:
+            forms = {form for value in self._values.values() for form in _encodings(value)}
+            split = max(
+                (k for form in forms for k in range(1, len(form)) if text.endswith(form[:k])),
+                default=0,
+            )
+            text = text[: len(text) - split]
         return self._mask(text)
 
     def learn(self, typed: str) -> None:

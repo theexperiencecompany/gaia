@@ -47,6 +47,7 @@ from app.services.browser.jev.decision import (
     decide,
     describe_field,
     goal_addresses,
+    masked_json,
 )
 from app.services.browser.jev.gateway import JevDecisionsClient, JevEvaluation, JevGatewayError
 from app.services.browser.jev.page import (
@@ -225,22 +226,23 @@ class JevRunner:
             # A read that never settles, before or after an action (which is recorded first).
             stop, detail = JevStop.STALE, str(exc)
         final = state.page
-        final_url = self._secrets.mask(final.url)
+        mask = self._secrets.mask
+        final_url = mask(final.url)
         log.info(
             f"{LogTag.BROWSER} Jev burst ended",
             stop=stop.value,
             actions=len(state.steps),
         )
         return BurstResult(
-            goal=goal,
+            goal=mask(goal),
             stop=stop,
             detail=detail,
             steps=state.steps,
             url=final_url,
-            title=final.title,
-            text=self._secrets.mask(final.text),
+            title=mask(final.title),
+            text=self._secrets.excerpt(final.text, final.text_cut),
             opened=[page for url, page in state.opened.items() if url != final_url],
-            hidden_frames=_hidden_frames(final.frames),
+            hidden_frames=[mask(src) for src in _hidden_frames(final.frames)],
         )
 
     async def _run(self, state: _Burst) -> _Ending:
@@ -271,11 +273,12 @@ class JevRunner:
         started = perf_counter()
         decision = await decide(
             self._client,
-            self._masked(state.page),
+            self._shown(state.page),
             state.goal,
             _history(state),
             self.visited,
             list(dict.fromkeys([*state.addresses, *(v.url for v in self.visited)])),
+            self._secrets.mask,
         )
         self._record_call(decision.evaluation, _elapsed_ms(started))
         return decision
@@ -327,7 +330,8 @@ class JevRunner:
         operation = decision.operation
         if decision.url is not None:
             failed = await self._open(decision.url)
-            return failed if failed is not None else _Performed(label=f"Open {decision.url}")
+            opened = _Performed(label=self._secrets.mask(f"Open {decision.url}"))
+            return failed if failed is not None else opened
         action: PageAction | None = decision.target
         if action is None:
             # GO_BACK and PRESS_ENTER act on the page, not on an observed target.
@@ -337,10 +341,11 @@ class JevRunner:
             else:
                 await self._page.press_enter()
             return _Performed(label=label)
+        mask = self._secrets.mask
         target = _Performed(
-            label=action["label"],
-            ident=action.get("ident", ""),
-            href=self._secrets.mask(action.get("href", "")),
+            label=mask(action["label"]),
+            ident=mask(action.get("ident", "")),
+            href=mask(action.get("href", "")),
         )
         if operation is JevOperation.TYPE_TEXT:
             value = await self._value_for(state, action)
@@ -384,15 +389,15 @@ class JevRunner:
     async def _read(self, state: _Burst) -> None:
         """Note the page the action led to: visited, and its text read once for the report."""
         self._visit(state.page)
-        opened = self._masked(state.page)
-        if opened.url not in state.opened:
+        mask = self._secrets.mask
+        url = mask(state.page.url)
+        if url not in state.opened:
             # Read once per page: the viewport text of an article is mostly its header.
             body = await self._page.body_text(JEV_REPORT_OPENED_PAGE_CHARS)
-            state.opened[opened.url] = OpenedPage(
-                url=opened.url, title=opened.title, text=self._secrets.mask(body)
-            )
+            text = self._secrets.excerpt(body, cut=len(body) >= JEV_REPORT_OPENED_PAGE_CHARS)
+            state.opened[url] = OpenedPage(url=url, title=mask(state.page.title), text=text)
         else:
-            state.opened[opened.url] = state.opened.pop(opened.url)
+            state.opened[url] = state.opened.pop(url)
 
     async def _open(self, url: str) -> _Ending | None:
         """Open url; return why the burst ends when the page could not be opened."""
@@ -424,11 +429,16 @@ class JevRunner:
 
     async def _value_for(self, state: _Burst, action: PageAction) -> tuple[str, str] | None:
         """Return what to type into action, as (shown, typed); None when the goal gives no value."""
-        page = self._masked(state.page)
         history = _history(state)
         started = perf_counter()
         choice, evaluation = await choose_value(
-            self._client, page, state.goal, action, history, self._secrets.names
+            self._client,
+            self._shown(state.page),
+            state.goal,
+            action,
+            history,
+            self._secrets.names,
+            self._secrets.mask,
         )
         self._record_call(evaluation, _elapsed_ms(started))
         if choice == NONE_VALUE:
@@ -448,17 +458,19 @@ class JevRunner:
 
         A model that fails or never answers is a step Jev could not decide.
         """
-        page = self._masked(state.page)
+        page = self._shown(state.page)
         context = {
             "goal": state.goal,
             "field": describe_field(action),
             "page": {"title": page.title, "text": page.text[:JEV_PAGE_TEXT_MAX_CHARS]},
             "recent_actions": [{"action": h.action, "text": h.text} for h in history],
         }
+        # The field's label and value, the page and the goal can each hold a secret's value.
+        masked = json.dumps(masked_json(context, self._secrets.mask))
         try:
             completion = await asyncio.wait_for(
                 self._text_model.ainvoke(
-                    [SystemMessage(content=TEXT_VALUE), UserMessage(content=json.dumps(context))],
+                    [SystemMessage(content=TEXT_VALUE), UserMessage(content=masked)],
                     output_format=_TextValue,
                 ),
                 timeout=JEV_TEXT_TIMEOUT_SECONDS,
@@ -470,14 +482,15 @@ class JevRunner:
         value = completion.completion.text
         return value if value and value.strip() else None
 
+    def _shown(self, page: PageState) -> PageState:
+        """Return page with its text masked before any cut of it, so a split value leaves no prefix."""
+        return replace(page, text=self._secrets.excerpt(page.text, page.text_cut), text_cut=False)
+
     def _visit(self, page: PageState) -> None:
-        url = self._secrets.mask(page.url)
+        """Keep the page's real address, to open it again; every question masks it."""
+        url = page.url
         self.visited = [v for v in self.visited if v.url != url][-(JEV_VISITED_PAGES - 1) :]
         self.visited.append(Visited(title=page.title, url=url))
-
-    def _masked(self, page: PageState) -> PageState:
-        """Return the page as Jev may read it: no secret value in its address or text."""
-        return replace(page, url=self._secrets.mask(page.url), text=self._secrets.mask(page.text))
 
     def _record_call(self, evaluation: JevEvaluation, latency_ms: int) -> None:
         usage = evaluation.usage
