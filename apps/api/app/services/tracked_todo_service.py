@@ -318,12 +318,8 @@ class TrackedTodoService:
         if doc.completed:
             return True
 
-        # Sub-todos first: a retry after a partial failure finds the parent still open.
-        for child in await todo_repository.find_sub_todos(user_id, [todo_id]):
-            if not child.completed:
-                await TrackedTodoService.complete_tracked_todo(
-                    child.id, user_id, summary=f'Parent "{doc.title}" completed: {summary}'
-                )
+        # Sub-todos first, so a retry after a partial failure finds the parent still open.
+        await TrackedTodoService._complete_open_sub_todos(doc, summary)
 
         now = datetime.now(UTC)
 
@@ -348,9 +344,30 @@ class TrackedTodoService:
         # the callers (tool, sweep, worker) so no completion path can forget it.
         await teardown_subscriptions(todo_id, user_id, reason="completed")
 
+        # Again, for any sub-todo created after the first sweep and before the parent closed.
+        await TrackedTodoService._complete_open_sub_todos(doc, summary)
+        # A sub-todo reports to its parent: its outcome is in the parent's next run.
+        if doc.parent_todo_id:
+            await record_activity(
+                doc.parent_todo_id,
+                user_id,
+                TodoActivityEvent.SUB_TODO_COMPLETED,
+                f'"{doc.title}" ({todo_id}): {summary}',
+            )
+
         log.info("tracked_todo.completed", todo_id=todo_id, user_id=user_id, summary=summary)
         schedule_gaia_tasks_sync(user_id)
         return True
+
+    @staticmethod
+    async def _complete_open_sub_todos(parent: TodoDocument, summary: str) -> None:
+        for child in await todo_repository.find_sub_todos(parent.user_id, [parent.id]):
+            if not child.completed:
+                await TrackedTodoService.complete_tracked_todo(
+                    child.id,
+                    parent.user_id,
+                    summary=f'Parent "{parent.title}" completed: {summary}',
+                )
 
     @staticmethod
     async def get_active_tracked_summary(user_id: str, active_todo_id: str | None = None) -> str:

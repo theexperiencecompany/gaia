@@ -6,6 +6,7 @@ import { Clock01Icon, Tag01Icon } from "@icons";
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
 
+import { SUB_TODOS_PAGE_SIZE } from "@/features/todo/constants";
 import { useSubTodos } from "@/features/todo/hooks/useSubTodos";
 
 interface SubTodosSectionProps {
@@ -22,6 +23,9 @@ export function SubTodosSection({
     isLoading,
     isError,
   } = useSubTodos(parentTodoId, openCount);
+
+  // Finished sub-todos still show; a todo that never had any shows nothing.
+  if (subTodos?.length === 0 || (openCount === 0 && isLoading)) return null;
 
   return (
     <section className="space-y-2" aria-label="Sub-todos">
@@ -80,6 +84,11 @@ export function SubTodosSection({
           </li>
         ))}
       </ul>
+      {subTodos && subTodos.length >= SUB_TODOS_PAGE_SIZE && (
+        <p className="text-xs text-zinc-500">
+          Showing the first {SUB_TODOS_PAGE_SIZE}.
+        </p>
+      )}
     </section>
   );
 }

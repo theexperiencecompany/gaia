@@ -465,6 +465,11 @@ class TestCompletingAParentCompletesItsSubTodos:
             [docs[_CHILD_ID]] if parent_ids == [_PARENT_ID] else []
         )
 
+        async def _write(todo_id: str, *, user_id: str, update: object) -> None:
+            docs[todo_id] = docs[todo_id].model_copy(update={"completed": True})
+
+        mock_repo.update.side_effect = _write
+
         await TrackedTodoService.complete_tracked_todo(_PARENT_ID, USER_ID, "Desk retired")
 
         completed = [c.args[0] for c in mock_repo.update.await_args_list]
