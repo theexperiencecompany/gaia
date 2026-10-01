@@ -29,10 +29,11 @@ NAVIGATE_TARGET = """Choose the address to open if the next operation is NAVIGAT
 names, or a page already visited that the goal needs again. Choose only an offered address."""
 
 VALUE = """Choose the value to type into this field. Choose the literal the goal gives for exactly
-this field. For a password field choose the stored secret the goal names for it. Choose GENERATE
-only when the goal implies a value for this field without spelling it out character for character
-(a search query, a username written without quotes). Choose NONE when the goal gives no value for
-this field. Never choose a value meant for a different field."""
+this field. Choose a stored secret where the goal names it for this field (a password, or a
+username or account id it gives as <secret>name</secret>). Choose GENERATE only when the goal
+implies a value for this field without spelling it out character for character (a search query, a
+username written without quotes). Choose NONE when the goal gives no value for this field. Never
+choose a value meant for a different field."""
 
 #: The value question's two ways out: a value the goal implies, and no value at all.
 VALUE_GENERATE = "None of these: write the value from what the goal implies."

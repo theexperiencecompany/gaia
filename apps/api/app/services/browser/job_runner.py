@@ -11,7 +11,6 @@ from collections.abc import Awaitable, Callable
 import contextlib
 from functools import partial
 from time import perf_counter
-from urllib.parse import urlsplit
 import uuid
 
 from app.config.feature_flags import FeatureFlag
@@ -56,7 +55,6 @@ from app.services.browser.bot_delivery import BotProgressDelivery
 from app.services.browser.exceptions import BrowserConcurrencyLimit, BrowserUnavailableError
 from app.services.browser.fingerprint import reset_fingerprint_seed, set_fingerprint_seed
 from app.services.browser.handoff import await_handoff, create_pending_handoff
-from app.services.browser.jev.decision import goal_addresses
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.job_events import publish_job_event
 from app.services.browser.jobs import (
@@ -575,14 +573,7 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
         )
         host_url, fallback_host = hosts_for(engine)
         log.set_ns("browser", engine=engine.value)
-        secrets = RunSecrets(
-            request.secrets,
-            sites=[
-                host
-                for url in (request.start_url, *goal_addresses(request.task))
-                if url and (host := urlsplit(url).hostname)
-            ],
-        )
+        secrets = RunSecrets(request.secrets)
         async with contextlib.AsyncExitStack() as sessions:
             session = await sessions.enter_async_context(
                 browser_session(

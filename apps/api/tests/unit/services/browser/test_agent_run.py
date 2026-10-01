@@ -32,6 +32,7 @@ from app.constants.browser import (
     JevStop,
 )
 from app.schemas.browser import AgentGuidanceRequest, BrowserAction, GuidanceElement
+from app.schemas.browser_job import BrowserTaskSecret
 from app.services.browser import agent_run as agent_run_mod
 from app.services.browser.agent_run import STEP_ERROR_CAPTION, AgentRunSetup, BrowserAgentRun
 from app.services.browser.exceptions import BrowserUnavailableError
@@ -137,7 +138,9 @@ class _Harness:
             setup=AgentRunSetup(
                 user_id="user-1",
                 ledger=self.ledger,
-                secrets=RunSecrets({"password": SECRET}, ["example.test"]),
+                secrets=RunSecrets(
+                    {"password": BrowserTaskSecret(value=SECRET, site="example.test")}
+                ),
             ),
         )
         self.new_tasks: list[str] = []

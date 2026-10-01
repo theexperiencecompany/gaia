@@ -12,7 +12,12 @@ from app.agents.tools.browser_tool import browser_task
 from app.constants.browser import BROWSER_JOB_QUEUE, BROWSER_JOB_TASK
 from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationSource
-from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJobStatus
+from app.schemas.browser_job import (
+    BrowserJobRequest,
+    BrowserJobState,
+    BrowserJobStatus,
+    BrowserTaskSecret,
+)
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
@@ -210,12 +215,17 @@ async def test_a_credential_reaches_the_job_and_never_the_task_anyone_reads(
     await browser_task.ainvoke(
         {
             "task": "log in with hunter2-secret",
-            "secrets": {"password": "hunter2-secret", "otp": ""},
+            "secrets": {
+                "password": {"value": "hunter2-secret", "site": "https://www.Shop.test/login"},
+                "otp": {"value": "", "site": "shop.test"},
+            },
         },
         config=UI_CONFIG,
     )
 
-    assert recorder.request.secrets == {"password": "hunter2-secret"}
+    assert recorder.request.secrets == {
+        "password": BrowserTaskSecret(value="hunter2-secret", site="shop.test")
+    }
     assert "hunter2-secret" not in recorder.request.task
     assert "hunter2-secret" not in recorder.states[0].task
 
@@ -488,68 +498,3 @@ async def test_a_turn_with_no_user_request_leaves_the_task_alone(
     await browser_task.ainvoke({"task": "book a table"}, config=config)
 
     assert recorder.request.task == "book a table"
-
-
-async def test_a_task_that_names_one_page_starts_there_so_its_saved_login_is_used(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Regression: with no start URL, a signed-in /secure bounced to login and its login saved nowhere."""
-    recorder = _install(monkeypatch)
-
-    await browser_task.ainvoke(
-        {"task": "Open https://the-internet.herokuapp.com/secure and read the heading."},
-        config=UI_CONFIG,
-    )
-
-    assert recorder.request.start_url == "https://the-internet.herokuapp.com/secure"
-
-
-@pytest.mark.parametrize(
-    ("task", "page"),
-    [
-        ("Read https://en.wikipedia.org/wiki/SpaceX.", "https://en.wikipedia.org/wiki/SpaceX"),
-        ("Is it up? https://example.com/status?", "https://example.com/status"),
-        ("Check the rules.https://example.com/rules", "https://example.com/rules"),
-    ],
-    ids=["full-stop-after", "question-mark-after", "full-stop-before"],
-)
-async def test_the_sentence_around_the_one_page_is_not_part_of_it(
-    monkeypatch: pytest.MonkeyPatch, task: str, page: str
-) -> None:
-    """Punctuation closing the sentence is not in the URL, and a full stop typed right before it names no second site."""
-    recorder = _install(monkeypatch)
-
-    await browser_task.ainvoke({"task": task}, config=UI_CONFIG)
-
-    assert recorder.request.start_url == page
-
-
-@pytest.mark.parametrize(
-    "task",
-    [
-        "Go to news.ycombinator.com, then https://en.wikipedia.org and compare them.",
-        "Find the cheapest flight to London.",
-    ],
-    ids=["two-sites", "no-url"],
-)
-async def test_a_task_without_exactly_one_page_gets_no_start_url(
-    monkeypatch: pytest.MonkeyPatch, task: str
-) -> None:
-    recorder = _install(monkeypatch)
-
-    await browser_task.ainvoke({"task": task}, config=UI_CONFIG)
-
-    assert recorder.request.start_url is None
-
-
-async def test_a_private_page_named_in_the_task_is_refused_before_any_job_exists(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    recorder = _install(monkeypatch)
-
-    reply = await browser_task.ainvoke(
-        {"task": "read http://169.254.169.254/latest/meta-data for me"}, config=UI_CONFIG
-    )
-
-    assert "can't open" in reply
-    assert recorder.enqueued == []

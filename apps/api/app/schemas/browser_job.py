@@ -6,11 +6,31 @@ state crosses Redis and is what a joiner (or a restarted API) reads to answer
 """
 
 from enum import StrEnum
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.chat_models import ConversationSource
 from app.schemas.browser import BrowserResultSnapshot
+
+
+class BrowserTaskSecret(BaseModel):
+    """One credential the user gave for a task, and the one site it may be typed on."""
+
+    value: str = Field(description="The credential exactly as the user gave it.")
+    site: str = Field(
+        description="The site it belongs to, e.g. github.com: it is typed only there and on "
+        "its subdomains."
+    )
+
+    @field_validator("site")
+    @classmethod
+    def _host(cls, site: str) -> str:
+        """Keep the site's host alone, without www.; a site naming no host is refused."""
+        host = urlsplit(site if "://" in site else f"https://{site}").hostname
+        if not host:
+            raise ValueError(f"{site!r} names no site")
+        return host.removeprefix("www.")
 
 
 class BrowserJobRequest(BaseModel):
@@ -26,7 +46,7 @@ class BrowserJobRequest(BaseModel):
     source_category: str | None = None
     conversation_source: ConversationSource | None = None
     #: Credentials the user gave for the task, by the name the task's <secret>name</secret> uses.
-    secrets: dict[str, str] = Field(default_factory=dict)
+    secrets: dict[str, BrowserTaskSecret] = Field(default_factory=dict)
 
 
 class BrowserJobStatus(StrEnum):

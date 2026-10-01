@@ -14,8 +14,6 @@ from dataclasses import dataclass, field
 import math
 import re
 
-import tldextract
-
 from app.constants.browser import (
     JEV_MAX_ELEMENTS,
     JEV_PROBABILITY_SUM_TOLERANCE,
@@ -75,10 +73,6 @@ _QUOTED = re.compile(r"\"([^\"]{1,200})\"|“([^”]{1,200})”|(?<![\w])'([^']{
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 _DATE = re.compile(r"\b\d{1,4}[/.-]\d{1,2}[/.-]\d{1,4}\b")
 _URL = re.compile(r"https?://[^\s<>\"'()\[\]]+")
-# A dotted name; a site only when its last labels are a public suffix.
-_HOST = re.compile(r"\b(?:[a-z0-9-]+\.)+[a-z0-9-]+\b", re.I)
-# The bundled Public Suffix List snapshot: no fetch or cache at run time.
-_SUFFIXES = tldextract.TLDExtract(cache_dir=None, suffix_list_urls=())
 _SECRET_PLACEHOLDER = re.compile(r"<secret>([\w.-]+)</secret>")
 
 #: Replaces every secret value in a string with its placeholder.
@@ -216,24 +210,6 @@ def literals(goal: str) -> list[str]:
             match.group(0).rstrip(_TRAILING_PUNCTUATION) for match in pattern.finditer(goal)
         )
     return list(dict.fromkeys(value for value in found if not _SECRET_PLACEHOLDER.fullmatch(value)))
-
-
-def named_urls(text: str) -> list[str]:
-    """Return the http(s) URLs text names, without the punctuation closing its sentence."""
-    return [match.group(0).rstrip(_TRAILING_PUNCTUATION) for match in _URL.finditer(text)]
-
-
-def named_sites(text: str) -> list[str]:
-    """Return the hosts text names bare, outside its URLs and email addresses, lowercased."""
-    pieces = (piece for outside in _URL.split(text) for piece in _EMAIL.split(outside))
-    hosts = (match.group(0).lower() for piece in pieces for match in _HOST.finditer(piece))
-    return [host for host in hosts if (parts := _SUFFIXES(host)).domain and parts.suffix]
-
-
-def goal_addresses(goal: str) -> list[str]:
-    """Return the pages a goal names: its URLs, and bare sites outside them as https addresses."""
-    sites = [f"https://{host}/" for host in named_sites(goal)]
-    return list(dict.fromkeys([*named_urls(goal), *sites]))
 
 
 def describe_field(target: PageAction) -> dict[str, object]:
@@ -393,11 +369,13 @@ async def choose_value(
 ) -> tuple[str, JevEvaluation]:
     """Pick what to type into target: a literal from the goal, one of the run's secrets, GENERATE, or NONE.
 
-    A password field is offered the run's secrets only, and any other field never a secret.
+    A password field is offered the run's secrets only; any other field the goal's
+    literals and the secrets too, since a username or an account id can be one.
     history is the recent actions Jev may see, already cut to that window.
     """
     is_secret = target["kind"] == "secret"
-    options = [f"<secret>{name}</secret>" for name in secrets] if is_secret else literals(goal)
+    placeholders = [f"<secret>{name}</secret>" for name in secrets]
+    options = placeholders if is_secret else [*literals(goal), *placeholders]
     criteria: dict[str, JsonInput] = {f"V{i + 1}": value for i, value in enumerate(options)}
     if not is_secret:
         criteria[GENERATE] = VALUE_GENERATE

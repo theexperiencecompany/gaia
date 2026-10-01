@@ -14,6 +14,7 @@ from app.constants.browser import (
     BROWSER_VIEWPORT_HEIGHT,
     BROWSER_VIEWPORT_WIDTH,
 )
+from app.schemas.browser_job import BrowserTaskSecret
 from app.services.browser.agent_options import agent_options, browser_options
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.jev.tool import JEV_ACTION
@@ -35,7 +36,7 @@ TASK = "log in with <secret>password</secret> and open the orders page"
 
 
 def test_jev_acts_first_on_the_whole_task_from_the_start_page() -> None:
-    options = agent_options(TASK, CONFIG, RunSecrets({}, []))
+    options = agent_options(TASK, CONFIG, RunSecrets({}))
 
     assert options["initial_actions"] == [
         {JEV_ACTION: {"goal": TASK, "start_url": "https://shop.test/"}}
@@ -45,8 +46,9 @@ def test_jev_acts_first_on_the_whole_task_from_the_start_page() -> None:
 
 
 def test_the_runs_secrets_fill_the_agents_placeholders_and_none_means_none() -> None:
-    given = agent_options(TASK, CONFIG, RunSecrets({"password": "hunter2"}, ["shop.test"]))
-    none = agent_options(TASK, CONFIG, RunSecrets({}, ["shop.test"]))
+    secret = BrowserTaskSecret(value="hunter2", site="shop.test")
+    given = agent_options(TASK, CONFIG, RunSecrets({"password": secret}))
+    none = agent_options(TASK, CONFIG, RunSecrets({}))
 
     assert given["sensitive_data"] == {
         "https://shop.test": {"password": "hunter2"},
@@ -56,7 +58,7 @@ def test_the_runs_secrets_fill_the_agents_placeholders_and_none_means_none() -> 
 
 
 def test_the_agent_reads_whole_urls_as_text_with_no_judge() -> None:
-    options = agent_options(TASK, CONFIG, RunSecrets({}, []))
+    options = agent_options(TASK, CONFIG, RunSecrets({}))
 
     # Regression: Browser-Use shortened query strings past 25 characters (bdc1578d4).
     assert options["_url_shortening_limit"] == BROWSER_AGENT_URL_QUERY_MAX_CHARS
@@ -68,7 +70,7 @@ def test_the_agent_reads_whole_urls_as_text_with_no_judge() -> None:
 
 
 def test_each_step_gets_the_runs_step_budget_and_limits() -> None:
-    options = agent_options(TASK, CONFIG, RunSecrets({}, []))
+    options = agent_options(TASK, CONFIG, RunSecrets({}))
 
     assert options["step_timeout"] == CONFIG.step_budget_seconds
     assert options["max_actions_per_step"] == 3

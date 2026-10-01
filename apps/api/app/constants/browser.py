@@ -421,6 +421,7 @@ class JevStop(StrEnum):
     DONE = "done"
     BLOCKED = "blocked"
     NEEDS_INPUT = "needs_input"
+    SECRET_WITHHELD = "secret_withheld"
     NO_PROGRESS = "no_progress"
     CYCLE = "cycle"
     MAX_ACTIONS = "max_actions"

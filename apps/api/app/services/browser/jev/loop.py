@@ -45,7 +45,6 @@ from app.services.browser.jev.decision import (
     choose_value,
     decide,
     describe_field,
-    goal_addresses,
     masked_json,
 )
 from app.services.browser.jev.gateway import JevDecisionsClient, JevEvaluation, JevGatewayError
@@ -61,7 +60,12 @@ from app.services.browser.jev.page import (
     UncertainSelect,
 )
 from app.services.browser.jev.questions import TEXT_VALUE
-from app.services.browser.jev.secrets import RunSecrets
+from app.services.browser.jev.secrets import (
+    RunSecrets,
+    SecretWithheld,
+    holds_placeholder,
+    is_placeholder,
+)
 from app.services.browser.ledger import CallComponent, ExecutedAction, ModelCall, RunLedger
 from app.services.browser.run_contract import FlagFn
 from app.services.browser.stalled_loads import StalledLoads
@@ -164,7 +168,6 @@ class _Burst:
 
     goal: str
     page: PageState
-    addresses: list[str]
     steps: list[JevStep] = field(default_factory=list)
     opened: dict[str, OpenedPage] = field(default_factory=dict)
     decisions: int = 0
@@ -204,13 +207,17 @@ class JevRunner:
         self._should_stop = run.should_stop
         self._user_waiting = run.user_waiting
         self.visited: list[Visited] = []
+        #: Every start address the agent gave a burst: the pages NAVIGATE may open besides those visited.
+        self._starts: list[str] = []
 
     async def burst(self, goal: str, start_url: str | None) -> BurstResult:
         """Run Jev on goal from the current page (or start_url) until it stops."""
+        if start_url and start_url not in self._starts:
+            self._starts.append(start_url)
         opening = await self._open(start_url) if start_url else None
         page = await self._page.observe()
         self._visit(page)
-        state = _Burst(goal=goal, page=page, addresses=goal_addresses(goal))
+        state = _Burst(goal=goal, page=page)
         try:
             stop, detail = opening or await self._run(state)
         except PageUnresponsive as exc:
@@ -265,7 +272,7 @@ class JevRunner:
             state.goal,
             _history(state),
             self.visited,
-            list(dict.fromkeys([*state.addresses, *(v.url for v in self.visited)])),
+            list(dict.fromkeys([*self._starts, *(v.url for v in self.visited)])),
             self._secrets.mask,
         )
         self._record_call(decision.evaluation, _elapsed_ms(started))
@@ -336,7 +343,10 @@ class JevRunner:
             href=mask(action.get("href", "")),
         )
         if operation is JevOperation.TYPE_TEXT:
-            value = await self._value_for(state, action)
+            try:
+                value = await self._value_for(state, action)
+            except SecretWithheld as exc:
+                return JevStop.SECRET_WITHHELD, str(exc)
             if value is None:
                 return (
                     JevStop.NEEDS_INPUT,
@@ -434,9 +444,8 @@ class JevRunner:
         if choice == GENERATE:
             written = await self._write_value(state, action, history)
             return (written, written) if written else None
-        if action["kind"] == "secret":
-            secret = self._secrets.value_for(choice, state.page.url)
-            return (choice, secret) if secret else None
+        if is_placeholder(choice):
+            return choice, self._secrets.value_for(choice, state.page.url)
         return choice, choice
 
     async def _write_value(
@@ -468,6 +477,9 @@ class JevRunner:
                 f"The value could not be written ({type(exc).__name__})."
             ) from exc
         value = completion.completion.text
+        if value and holds_placeholder(value):
+            # A secret is typed only as itself, on its own site, never inside a written value.
+            raise JevDecisionError("The written value names a secret; nothing was typed.")
         return value if value and value.strip() else None
 
     def _shown(self, page: PageState) -> PageState:

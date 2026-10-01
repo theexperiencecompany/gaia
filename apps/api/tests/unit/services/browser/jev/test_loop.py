@@ -22,6 +22,7 @@ from app.constants.browser import (
     JevOperation,
     JevStop,
 )
+from app.schemas.browser_job import BrowserTaskSecret
 from app.services.browser.jev import loop as loop_mod
 from app.services.browser.jev.decision import (
     GENERATE,
@@ -61,8 +62,8 @@ MASKED = "<secret>password</secret>"
 SCROLL = PageAction(id="scroll_down", kind="scroll", label="Scroll down", delta=560)
 
 
-def _secrets(*sites: str) -> RunSecrets:
-    return RunSecrets({"password": SECRET}, list(sites or ["site.test"]))
+def _secrets(site: str = "site.test") -> RunSecrets:
+    return RunSecrets({"password": BrowserTaskSecret(value=SECRET, site=site)})
 
 
 class _Stalls:
@@ -205,7 +206,7 @@ def _run(
         text_model=text_model or _TextModel(),  # type: ignore[arg-type]  # the one call the loop makes
         run=BurstContext(
             ledger=ledger,
-            secrets=secrets or RunSecrets({}, []),
+            secrets=secrets or RunSecrets({}),
             stalls=around.stalls,  # type: ignore[arg-type]  # the one method the loop reads
             should_stop=around.should_stop,
             user_waiting=around.user_waiting,
@@ -919,21 +920,22 @@ async def test_a_secret_is_typed_into_the_page_and_never_into_what_the_agent_rea
     assert (result.url, result.text) == (f"https://site.test/b?pw={MASKED}", f"welcome {MASKED}")
 
 
-async def test_a_secret_is_never_typed_on_a_site_the_task_does_not_name(
+async def test_a_secret_is_never_typed_off_its_own_site_and_the_agent_is_told_so(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     page = FakePage(page_state())
     run = _run(
         monkeypatch,
         page,
-        decision(JevOperation.TYPE_TEXT, PASSWORD),
+        decision(JevOperation.TYPE_TEXT, FIELD),
         value=MASKED,
         secrets=_secrets("bank.test"),
     )
 
     result = await run.burst(f"log in with {MASKED}")
 
-    assert result.stop is JevStop.NEEDS_INPUT
+    assert result.stop is JevStop.SECRET_WITHHELD
+    assert "bank.test" in result.detail
     assert page.typed == []
 
 

@@ -65,6 +65,10 @@ _STOP_MEANING = {
     ),
     JevStop.BLOCKED: "Jev found nothing on this page that advances the goal.",
     JevStop.NEEDS_INPUT: "The goal gives no value for a field: ask the user, or hand the step over.",
+    JevStop.SECRET_WITHHELD: (
+        "A secret is typed only on the site it was given for, and this page is on another; "
+        "nothing was typed."
+    ),
     JevStop.NO_PROGRESS: "Jev's last actions changed nothing on the page.",
     JevStop.CYCLE: "Jev went back and forth without progress.",
     JevStop.MAX_ACTIONS: "Jev used its action budget for one burst; it may be partway.",

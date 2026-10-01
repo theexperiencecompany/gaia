@@ -44,7 +44,7 @@ from app.services.analytics_service import AnalyticsEvents
 from app.services.browser import job_runner as jr
 from app.services.browser.exceptions import BrowserConcurrencyLimit, BrowserUnavailableError
 from app.services.browser.fingerprint import current_fingerprint_seed, seed_for_user
-from app.services.browser.jev.secrets import RunSecrets
+from app.services.browser.jev.secrets import RunSecrets, SecretWithheld
 from app.services.browser.ledger import CallComponent, ExecutedAction, RunLedger
 from app.services.browser.runner import BrowserRunConfig, BrowserRunnerCallbacks
 from app.services.browser.session import BrowserHostSession
@@ -2065,7 +2065,7 @@ async def test_the_engine_is_the_users_own_obscura_choice(
     assert event["browser"]["engine"] == engine
 
 
-async def test_a_credential_is_typed_only_on_the_sites_the_task_names(
+async def test_a_credential_is_typed_only_on_the_site_named_for_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     h = _install(monkeypatch)
@@ -2074,36 +2074,17 @@ async def test_a_credential_is_typed_only_on_the_sites_the_task_names(
         h,
         _request(
             task="log in with <secret>password</secret>, then open https://mail.test/inbox",
-            start_url="https://shop.test/login",
-            secrets={"password": "hunter2"},
+            start_url="https://mail.test/login",
+            secrets={"password": {"value": "hunter2", "site": "shop.test"}},
         ),
     )
 
     secrets: RunSecrets = h.runner_kwargs["secrets"]
     placeholder = "<secret>password</secret>"
     assert secrets.value_for(placeholder, "https://shop.test/login") == "hunter2"
-    assert secrets.value_for(placeholder, "https://mail.test/") == "hunter2"
-    assert secrets.value_for(placeholder, "https://evil.test/") is None
-
-
-async def test_a_credential_is_typed_on_a_bare_site_the_task_names_never_on_its_email_domain(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    h = _install(monkeypatch)
-
-    await _run(
-        h,
-        _request(
-            task="log in to netflix.ca as me@gmail.com with <secret>password</secret>",
-            secrets={"password": "hunter2"},
-        ),
-    )
-
-    secrets: RunSecrets = h.runner_kwargs["secrets"]
-    placeholder = "<secret>password</secret>"
-    assert secrets.value_for(placeholder, "https://www.netflix.ca/login") == "hunter2"
-    assert secrets.value_for(placeholder, "https://gmail.com/") is None
-    assert secrets.value_for(placeholder, "https://accounts.gmail.com/") is None
+    # Neither the start page nor a page the task names opens it.
+    with pytest.raises(SecretWithheld):
+        secrets.value_for(placeholder, "https://mail.test/login")
 
 
 async def test_the_run_hears_this_jobs_messages(monkeypatch: pytest.MonkeyPatch) -> None:
