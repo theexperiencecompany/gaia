@@ -83,6 +83,8 @@ class _ScriptedBrowser:
         self.session = kwargs["session"]
         self.used_fallback = False
         self.ledger = RunLedger()
+        #: The run below succeeds, so it gives no reason it failed.
+        self.failure = None
 
     async def run(self, task: str) -> BrowserResultSnapshot:
         emit: EmitFn = self._callbacks.emit
