@@ -30,6 +30,7 @@ from app.services.browser.jev.gateway import (
 )
 from app.services.browser.jev.page import PageAction, PageState
 from app.services.browser.jev.questions import (
+    NAVIGATE_TARGET,
     NEXT_ACTION,
     OPERATIONS,
     OPTION,
@@ -255,6 +256,11 @@ async def test_the_operation_question_offers_only_what_this_page_and_the_run_all
 
     question = _asked(jev).questions["operation"]
     assert question.instructions == {"goal": "go", "rules": NEXT_ACTION}
+    navigate = _asked(jev).questions["navigate_target"]
+    assert (navigate.criteria, navigate.instructions) == (
+        {"U1": "https://c.test/"},
+        {"goal": "go", "operation": "NAVIGATE", "rules": NAVIGATE_TARGET},
+    )
     assert question.criteria == {
         "TYPE_TEXT": OPERATIONS[JevOperation.TYPE_TEXT],
         "CLICK": OPERATIONS[JevOperation.CLICK],

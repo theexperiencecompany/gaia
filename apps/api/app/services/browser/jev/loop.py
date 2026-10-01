@@ -276,7 +276,7 @@ class JevRunner:
 
     async def burst(self, goal: str, start_url: str | None) -> BurstResult:
         """Run Jev on goal from the current page (or start_url) until it stops; every step it took is reported."""
-        if start_url and start_url not in self._starts:
+        if start_url:
             self._starts.append(start_url)
         state = _Burst(goal=goal)
         try:
