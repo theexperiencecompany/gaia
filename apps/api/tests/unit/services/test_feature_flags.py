@@ -21,7 +21,6 @@ from app.constants.feature_flags import (
 from app.models.user_models import UserDocument
 from app.services.analytics_service import AnalyticsEvents
 from app.services.feature_flags import (
-    _answer_enables,
     _get_posthog_client,
     is_code_mode_enabled,
     is_enabled,
@@ -136,13 +135,33 @@ class TestEvaluationEvent:
         assert evaluated.call_args.args[2]["fallback_reason"] == "posthog_unconfigured"
 
 
-class TestCoerce:
-    def test_control_strings_disable(self) -> None:
-        for variant in ("false", "control", "disabled", "off"):
-            assert _answer_enables(variant) is False
+class TestBooleansOnly:
+    @pytest.mark.parametrize("variant", ["test-variant", "true", "control", 1])
+    async def test_a_non_boolean_answer_serves_the_default(
+        self, variant: object, mock_client: MagicMock, evaluated: MagicMock
+    ) -> None:
+        mock_client.get_feature_flag.return_value = variant
 
-    def test_variant_string_enables(self) -> None:
-        assert _answer_enables("test-variant") is True
+        with patch("app.services.feature_flags.log") as mock_log:
+            assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1", default=False) is False
+        assert evaluated.call_args.args[2]["fallback_reason"] == "flag_unevaluated"
+        mock_log.warning.assert_called_once_with(
+            "Feature flag answered a variant, not a boolean; ignoring it",
+            flag="HIL_LEDGER",
+            answer_type=type(variant).__name__,
+        )
+
+    async def test_a_kill_switch_answering_a_variant_is_ignored_and_named(
+        self, mock_client: MagicMock, evaluated: MagicMock
+    ) -> None:
+        mock_client.get_feature_flag.return_value = "on"
+
+        with (
+            patch("app.services.feature_flags.log") as mock_log,
+            patch("app.services.feature_flags._stored_choice", AsyncMock(return_value=True)),
+        ):
+            assert await is_enabled(FeatureFlag.BROWSER_OBSCURA, "u1") is True
+        assert mock_log.warning.call_args.kwargs["flag"] == "BROWSER_OBSCURA_KILL"
 
 
 class TestFlags:
@@ -248,19 +267,6 @@ class TestTrackingNeverBreaksEvaluation:
         assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
 
 
-class TestCoerceExtended:
-    def test_whitespace_and_case_insensitive(self) -> None:
-        assert _answer_enables(" False ") is False
-        assert _answer_enables("CONTROL") is False
-        assert _answer_enables("True") is True
-
-    def test_non_string_truthiness(self) -> None:
-        assert _answer_enables(True) is True
-        assert _answer_enables(False) is False
-        assert _answer_enables(1) is True
-        assert _answer_enables(0) is False
-
-
 class TestHelpersWithoutUser:
     async def test_code_mode_none_user_is_default(self, evaluated: MagicMock) -> None:
         assert await is_code_mode_enabled(None) is False
@@ -352,11 +358,6 @@ class TestEveryFlagFailsOpenToItsOwnSetting:
         monkeypatch.setattr(app_settings, FLAG_KILL_SWITCHES[flag], env_value)
 
         assert await is_enabled(flag, "u1") is env_value
-
-
-class TestCoerceEmptyString:
-    def test_empty_string_disables(self) -> None:
-        assert _answer_enables("") is False
 
 
 class TestTrackingIdentity:
@@ -620,20 +621,17 @@ class TestKillSwitch:
         )
         assert evaluated.call_args.args[2]["fallback_reason"] == "user_choice"
 
-    async def test_an_unanswered_kill_switch_is_logged_and_off(
+    @pytest.mark.regression
+    async def test_a_kill_switch_never_created_is_off_and_warns_nothing(
         self, stored_user: AsyncMock, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
-        """The SDK turns a connection error into None, so None must be as visible as a raise."""
+        """The switch exists on the dashboard only once pulled; its absence warned on every evaluation."""
         stored_user.return_value = _user_with_choices({"BROWSER_OBSCURA": True})
         _posthog_serves(mock_client, {})
 
         with patch("app.services.feature_flags.log") as mock_log:
             assert await is_enabled(FeatureFlag.BROWSER_OBSCURA, USER_ID) is True
-        mock_log.warning.assert_called_once_with(
-            "Feature flag kill switch unevaluated, leaving it disengaged",
-            flag="BROWSER_OBSCURA",
-            kill_switch="BROWSER_OBSCURA_KILL",
-        )
+        mock_log.warning.assert_not_called()
 
     async def test_unconfigured_posthog_leaves_the_kill_switch_off(
         self, stored_user: AsyncMock, no_client: None, evaluated: MagicMock

@@ -4,7 +4,6 @@ Postgres, Chroma, the embedder and the projection scheduler are mocked; the
 id-resolution and lineage logic under test is real.
 """
 
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
@@ -19,41 +18,34 @@ from app.models.memory_db_models import MemoryRecord
 USER = "user-1"
 
 
-@dataclass(frozen=True)
-class RowLineage:
-    """Version-chain state for a fabricated MemoryRecord row."""
-
-    is_latest: bool = True
-    is_forgotten: bool = False
-    version: int = 1
-    root_id: uuid.UUID | None = None
-
-
 def make_row(
     *,
     content: str = "sam works at acme",
-    lineage: RowLineage = RowLineage(),
+    is_latest: bool = True,
+    is_forgotten: bool = False,
+    version: int = 1,
+    root_id: uuid.UUID | None = None,
     shelf_life: MemoryShelfLife = MemoryShelfLife.DURABLE,
     forget_after: datetime | None = None,
     category_path: str = "work",
+    source_id: str | None = None,
 ) -> MemoryRecord:
-    """Build a durable, current memory row; set the rarer fields on the result you get back."""
     row = MemoryRecord(
         user_id=USER,
         kind=MemoryKind.FACT.value,
-        shelf_life=MemoryShelfLife.DURABLE.value,
+        shelf_life=shelf_life.value,
         content=content,
         category_path=category_path,
         source_type=MemorySourceType.CONVERSATION.value,
-        source_id=None,
+        source_id=source_id,
         importance=0.5,
-        forget_after=None,
+        forget_after=forget_after,
     )
     row.id = uuid.uuid4()
-    row.version = lineage.version
-    row.is_latest = lineage.is_latest
-    row.is_forgotten = lineage.is_forgotten
-    row.root_id = lineage.root_id
+    row.version = version
+    row.is_latest = is_latest
+    row.is_forgotten = is_forgotten
+    row.root_id = root_id
     row.created_at = datetime.now(UTC)
     return row
 
@@ -97,15 +89,11 @@ class TestUpdateMemoryResolvesTheChainHead:
     async def test_a_superseded_id_is_resolved_to_the_live_head(
         self, boundaries: MagicMock
     ) -> None:
-        head = make_row(content="sam is a staff engineer at acme", lineage=RowLineage(version=2))
-        stale = make_row(
-            content="sam works at acme", lineage=RowLineage(is_latest=False, root_id=head.id)
-        )
+        head = make_row(content="sam is a staff engineer at acme", version=2)
+        stale = make_row(content="sam works at acme", is_latest=False, root_id=head.id)
         boundaries.get_memory.return_value = stale
         boundaries.get_chain.return_value = [head, stale]
-        boundaries.supersede_memory.return_value = make_row(
-            content="corrected", lineage=RowLineage(version=3)
-        )
+        boundaries.supersede_memory.return_value = make_row(content="corrected", version=3)
 
         await update_memory(USER, str(stale.id), "corrected")
 
@@ -114,9 +102,7 @@ class TestUpdateMemoryResolvesTheChainHead:
     async def test_a_live_head_is_updated_directly(self, boundaries: MagicMock) -> None:
         head = make_row()
         boundaries.get_memory.return_value = head
-        boundaries.supersede_memory.return_value = make_row(
-            content="corrected", lineage=RowLineage(version=2)
-        )
+        boundaries.supersede_memory.return_value = make_row(content="corrected", version=2)
 
         await update_memory(USER, str(head.id), "corrected")
 
@@ -127,13 +113,9 @@ class TestUpdateMemoryResolvesTheChainHead:
         self, boundaries: MagicMock
     ) -> None:
         expiry = datetime(2026, 12, 1, tzinfo=UTC)
-        head = make_row()
-        head.shelf_life = MemoryShelfLife.STATE.value
-        head.forget_after = expiry
+        head = make_row(shelf_life=MemoryShelfLife.STATE, forget_after=expiry)
         boundaries.get_memory.return_value = head
-        boundaries.supersede_memory.return_value = make_row(
-            content="corrected", lineage=RowLineage(version=2)
-        )
+        boundaries.supersede_memory.return_value = make_row(content="corrected", version=2)
 
         await update_memory(USER, str(head.id), "corrected")
 
@@ -144,13 +126,11 @@ class TestUpdateMemoryResolvesTheChainHead:
     async def test_the_lookup_is_scoped_to_the_caller(self, boundaries: MagicMock) -> None:
         # A memory id belonging to somebody else must not resolve: the owner is
         # half of the key, not a filter applied afterwards.
-        stale = make_row(lineage=RowLineage(is_latest=False))
-        head = make_row(lineage=RowLineage(version=2))
+        stale = make_row(is_latest=False)
+        head = make_row(version=2)
         boundaries.get_memory.return_value = stale
         boundaries.get_chain.return_value = [head]
-        boundaries.supersede_memory.return_value = make_row(
-            content="corrected", lineage=RowLineage(version=3)
-        )
+        boundaries.supersede_memory.return_value = make_row(content="corrected", version=3)
 
         await update_memory(USER, str(stale.id), "corrected")
 
@@ -178,7 +158,7 @@ class TestUpdateMemoryFailsLoud:
 
     async def test_a_forgotten_memory_raises(self, boundaries: MagicMock) -> None:
         memory_id = str(uuid.uuid4())
-        boundaries.get_memory.return_value = make_row(lineage=RowLineage(is_forgotten=True))
+        boundaries.get_memory.return_value = make_row(is_forgotten=True)
 
         with pytest.raises(MemoryNotFoundError) as raised:
             await update_memory(USER, memory_id, "corrected")
@@ -186,9 +166,9 @@ class TestUpdateMemoryFailsLoud:
         assert raised.value.meta == {"memory_id": memory_id}
 
     async def test_a_chain_with_no_live_head_raises(self, boundaries: MagicMock) -> None:
-        stale = make_row(lineage=RowLineage(is_latest=False))
+        stale = make_row(is_latest=False)
         boundaries.get_memory.return_value = stale
-        boundaries.get_chain.return_value = [make_row(lineage=RowLineage(is_latest=False)), stale]
+        boundaries.get_chain.return_value = [make_row(is_latest=False), stale]
 
         with pytest.raises(MemoryNotFoundError) as raised:
             await update_memory(USER, str(stale.id), "corrected")
@@ -217,9 +197,7 @@ class TestUpdateMemoryStoresAPassageEmbedding:
         # document embedding degrades ANN recall against passage vectors.
         head = make_row()
         boundaries.get_memory.return_value = head
-        boundaries.supersede_memory.return_value = make_row(
-            content="corrected", lineage=RowLineage(version=2)
-        )
+        boundaries.supersede_memory.return_value = make_row(content="corrected", version=2)
 
         await update_memory(USER, str(head.id), "corrected")
 
@@ -255,7 +233,7 @@ class TestForgetAndUpdateReconsolidateCoreDocuments:
         head = make_row(category_path="relationships/sam")
         boundaries.get_memory.return_value = head
         boundaries.supersede_memory.return_value = make_row(
-            content="corrected", lineage=RowLineage(version=2), category_path="relationships/sam"
+            content="corrected", version=2, category_path="relationships/sam"
         )
 
         await update_memory(USER, str(head.id), "corrected")
@@ -281,8 +259,7 @@ class TestForgetAndUpdateReconsolidateCoreDocuments:
     ) -> None:
         # A state value never feeds a consolidated document, so forgetting it
         # must not trigger a rewrite.
-        row = make_row()
-        row.shelf_life = MemoryShelfLife.STATE.value
+        row = make_row(shelf_life=MemoryShelfLife.STATE)
         boundaries.get_memory.return_value = row
 
         assert await forget_memory(USER, str(row.id), "stale") is True
@@ -305,8 +282,7 @@ class TestForgetMemoryDeletesConversationChunks:
     async def test_forgetting_a_sourced_fact_deletes_that_conversations_chunks(
         self, boundaries: MagicMock
     ) -> None:
-        row = make_row()
-        row.source_id = "conv-42"
+        row = make_row(source_id="conv-42")
         boundaries.get_memory.return_value = row
 
         assert await forget_memory(USER, str(row.id), "user asked") is True
@@ -324,9 +300,7 @@ class TestForgetMemoryDeletesConversationChunks:
         management.chroma_store.delete_conversation_chunks.assert_not_awaited()
 
     async def test_a_failed_forget_deletes_no_chunks(self, boundaries: MagicMock) -> None:
-        sourced = make_row()
-        sourced.source_id = "conv-42"
-        boundaries.get_memory.return_value = sourced
+        boundaries.get_memory.return_value = make_row(source_id="conv-42")
         boundaries.mark_forgotten.return_value = False
 
         assert await forget_memory(USER, str(uuid.uuid4()), "user asked") is False
@@ -351,7 +325,7 @@ class TestMemoryNotFoundError:
         assert error.fix == (
             "Call search_memory to get the current id of the fact you mean, "
             "then retry the correction with that id. Do NOT tell the user "
-            "the memory was corrected. It was not."
+            "the memory was corrected — it was not."
         )
         assert error.status_code == 404
         assert error.meta == {"memory_id": "mem-42"}

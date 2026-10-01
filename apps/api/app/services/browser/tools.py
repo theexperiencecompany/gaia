@@ -1,12 +1,12 @@
 """Custom Browser-Use actions the agent can call mid-run.
 
-Three seams the agent reaches for itself: request_human_takeover is the agent's
-own way to pause for the human at a sensitive step (payment, credentials,
-irreversible); because it is a normal action that blocks and returns a result
-string, Browser-Use resumes its loop natively afterwards with full task
-memory, no dispose or recreate. solve_captcha_with_help hands a CAPTCHA to a
-human takeover since there is no automatic solver. request_agent_guidance
-pauses the same way but asks the agent that started the run, not the user.
+Seams the agent reaches for itself: request_human_takeover is the agent's own
+way to pause for the human at a sensitive step (payment, credentials,
+irreversible); solve_captcha_with_help hands a CAPTCHA to the human since there
+is no automatic solver; request_agent_guidance asks the agent that started the
+run, not the user; continue_in_full_browser moves the run to Chrome. Each ends
+its step's action sequence: the page is about to change hands, so an action
+queued behind one would act on a page nobody looked at.
 """
 
 from __future__ import annotations
@@ -45,9 +45,9 @@ def build_browser_tools(
 ) -> Tools[None]:
     """Build the Browser-Use Tools the agent can call during a run.
 
-    handle_takeover and handle_guidance return the text the agent reads next, or
-    raise to stop the run; handle_engine_switch, given only on the fast engine,
-    moves the run to the full browser.
+    Each handler returns the text the agent reads as the action's result;
+    handle_engine_switch, given only on the fast engine, moves the run to the
+    full browser.
     """
     tools: Tools[None] = Tools()
 
@@ -59,7 +59,8 @@ def build_browser_tools(
             "It answers with ONE concrete instruction and you then continue. `reason` "
             "says what you tried and what the page does instead; it is read by an "
             "assistant, not by the user, so write it as a plain statement of fact."
-        )
+        ),
+        terminates_sequence=True,
     )
     async def request_agent_guidance(reason: str) -> str:
         """Return the guidance tool that asks the agent that started the run how to proceed."""
@@ -79,6 +80,7 @@ def build_browser_tools(
             "is one of payment | credentials | irreversible."
         ),
         param_model=TakeoverParams,
+        terminates_sequence=True,
     )
     async def request_human_takeover(params: TakeoverParams) -> str:
         """Return the takeover tool that hands control to the user via live view."""
@@ -94,10 +96,10 @@ def build_browser_tools(
                 "fills itself in by script never does. Do NOT use it for a login, a CAPTCHA, a "
                 "paywall, an error message the site itself shows, or a site that is down or "
                 "slow: those look the same in any browser. The run continues from this page in "
-                "the full browser, still signed in. `category` is renders_wrong | "
-                "control_broken | stays_empty."
+                "the full browser. `category` is renders_wrong | control_broken | stays_empty."
             ),
             param_model=EngineSwitchParams,
+            terminates_sequence=True,
         )
         async def continue_in_full_browser(params: EngineSwitchParams) -> str:
             """Return the tool that moves the run to the full browser, carrying its logins."""
@@ -113,7 +115,8 @@ def build_browser_tools(
                 "as their instruction, so write it as a short second-person directive "
                 "describing exactly what to solve (e.g. 'Select all squares with "
                 "motorcycles, then click Verify')."
-            )
+            ),
+            terminates_sequence=True,
         )
         async def solve_captcha_with_help(challenge: str) -> str:
             """Return the CAPTCHA tool that asks the user to solve it in live view."""

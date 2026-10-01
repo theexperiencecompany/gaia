@@ -7,7 +7,6 @@ external services (Redis registry, takeover tokens, WebSockets, auth deps).
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, status
@@ -15,12 +14,12 @@ from fastapi.responses import HTMLResponse
 from httpx import ASGITransport, AsyncClient
 from jose import JWTError
 import pytest
+from tests.helpers import captured_wide_event
 import websockets
 
 from app.api.v1.endpoints import browser_live_view as blv
 from app.models.user_models import AuthenticatedUser
 from app.schemas.browser import LiveCodeRecord, ReplayRecord
-from app.services.browser import shot_store
 from app.services.browser.registry import SessionRegistryEntry
 from app.services.browser.shot_store import store_step_screenshot
 
@@ -56,34 +55,16 @@ def _make_ws(
 
 
 # ---------------------------------------------------------------------------
-# step_screenshot — the local backend's serving half
+# step_screenshot — the Redis backend's serving half
 # ---------------------------------------------------------------------------
 
 
-class _FakeRedisCache:
-    """Enough of redis_cache for the shot store's one-code-per-run mapping."""
-
-    def __init__(self) -> None:
-        self.values: dict[str, object] = {}
-
-    async def set(self, key: str, value: object, ttl: int = 3600, model: object = None) -> bool:
-        self.values[key] = value
-        return True
-
-    async def get(self, key: str, model: object = None) -> object:
-        return self.values.get(key)
-
-
 @pytest.fixture
-def shot_backend(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    """Run the real shot store against this test's own directory and code store."""
-    root = tmp_path / "shots"
-    monkeypatch.setattr(shot_store, "SHOT_ROOT", root)
-    monkeypatch.setattr(shot_store, "redis_cache", _FakeRedisCache())
+def shot_backend(monkeypatch: pytest.MonkeyPatch, fake_redis: object) -> None:
+    """Run the real shot store against this test's own Redis."""
     monkeypatch.setattr(
         "app.services.browser.links.settings.BROWSER_LIVE_VIEW_BASE_URL", "https://browser.test"
     )
-    return root
 
 
 def _shots_app() -> FastAPI:
@@ -92,95 +73,46 @@ def _shots_app() -> FastAPI:
     return app
 
 
+@pytest.mark.usefixtures("shot_backend")
 class TestStepScreenshot:
-    async def test_a_stored_frame_is_served_back_by_the_url_the_store_returned(
-        self, shot_backend: Path
-    ) -> None:
-        url = await store_step_screenshot(b"\x89PNG-payload", "sess-1", 2)
-        path = url.removeprefix("https://browser.test")
+    async def test_a_frame_the_worker_stored_is_served_by_the_url_it_returned(self) -> None:
+        url = await store_step_screenshot(b"\xff\xd8jpeg-payload", "sess-1", 2)
+        assert url is not None
 
         transport = ASGITransport(app=_shots_app())
         async with AsyncClient(transport=transport, base_url="https://browser.test") as client:
-            resp = await client.get(path)
+            resp = await client.get(url.removeprefix("https://browser.test"))
 
         assert resp.status_code == 200
-        assert resp.content == b"\x89PNG-payload"
-        assert resp.headers["content-type"] == "image/png"
+        assert resp.content == b"\xff\xd8jpeg-payload"
+        assert resp.headers["content-type"] == "image/jpeg"
 
-    async def test_unknown_or_expired_code_is_404(self, shot_backend: Path) -> None:
-        with pytest.raises(HTTPException) as exc:
-            await blv.step_screenshot("never-minted", 1)
-        assert exc.value.status_code == status.HTTP_404_NOT_FOUND
-        assert exc.value.detail == "Screenshot not found or expired"
+    @pytest.mark.parametrize("index", [1, 2])
+    async def test_an_unknown_code_or_frame_is_404(self, index: int) -> None:
+        url = await store_step_screenshot(b"jpeg", "sess-1", 1)
+        assert url is not None
+        code = url.split("/shots/")[1].split("/")[0] if index == 2 else "never-minted"
 
-    async def test_a_known_code_with_no_such_frame_is_404(self, shot_backend: Path) -> None:
-        url = await store_step_screenshot(b"png", "sess-1", 1)
-        code = url.split("/shots/")[1].split("/")[0]
+        async with captured_wide_event() as event:
+            with pytest.raises(HTTPException) as exc:
+                await blv.step_screenshot(code, index)
+        assert (exc.value.status_code, exc.value.detail) == (
+            status.HTTP_404_NOT_FOUND,
+            "Screenshot not found or expired",
+        )
+        assert event["browser"]["operation"] == "step_screenshot"
 
-        with pytest.raises(HTTPException) as exc:
-            await blv.step_screenshot(code, 2)
-        assert exc.value.status_code == status.HTTP_404_NOT_FOUND
-        assert exc.value.detail == "Screenshot not found"
-
-    async def test_a_directory_at_the_frames_path_is_404_not_a_served_response(
-        self, shot_backend: Path
-    ) -> None:
-        url = await store_step_screenshot(b"png", "sess-1", 1)
-        code = url.split("/shots/")[1].split("/")[0]
-        (shot_backend / "sess-1" / "step_9.png").mkdir(parents=True)
-
-        with pytest.raises(HTTPException) as exc:
-            await blv.step_screenshot(code, 9)
-        assert exc.value.status_code == status.HTTP_404_NOT_FOUND
-
-    @pytest.mark.parametrize("index", ["..", "%2e%2e", "-", "1.png", "step_1"])
-    async def test_a_non_integer_index_is_refused_by_the_route_itself(
-        self, shot_backend: Path, index: str
-    ) -> None:
-        # The index is typed int; prove the route rejects a non-int before any
-        # filename is built from it, rather than assuming the annotation bites.
-        url = await store_step_screenshot(b"png", "sess-1", 1)
+    @pytest.mark.parametrize("index", ["..", "%2e%2e", "-", "1.jpg", "step_1"])
+    async def test_a_non_integer_index_is_refused_by_the_route_itself(self, index: str) -> None:
+        url = await store_step_screenshot(b"jpeg", "sess-1", 1)
+        assert url is not None
         code = url.split("/shots/")[1].split("/")[0]
 
         transport = ASGITransport(app=_shots_app())
         async with AsyncClient(transport=transport, base_url="https://browser.test") as client:
-            resp = await client.get(f"/shots/{code}/{index}.png")
+            resp = await client.get(f"/shots/{code}/{index}.jpg")
 
         assert resp.status_code == 422
-
-    @pytest.mark.parametrize(
-        "traversal", ["..%2f..%2f..%2fsecret", "../../secret", "1/../../secret"]
-    )
-    async def test_a_traversal_index_never_serves_a_file_outside_the_run(
-        self, shot_backend: Path, traversal: str, tmp_path: Path
-    ) -> None:
-        (tmp_path / "secret.png").write_bytes(b"top-secret")
-        url = await store_step_screenshot(b"png", "sess-1", 1)
-        code = url.split("/shots/")[1].split("/")[0]
-
-        transport = ASGITransport(app=_shots_app())
-        async with AsyncClient(transport=transport, base_url="https://browser.test") as client:
-            resp = await client.get(f"/shots/{code}/{traversal}.png")
-
-        # A traversal the client normalises out of /shots lands on another route (401/404).
-        assert not resp.is_success
-        assert b"top-secret" not in resp.content
-
-    async def test_logs_the_operation_and_the_resolved_session(self, shot_backend: Path) -> None:
-        url = await store_step_screenshot(b"png", "sess-1", 1)
-        code = url.split("/shots/")[1].split("/")[0]
-
-        with patch.object(blv, "log") as mock_log:
-            await blv.step_screenshot(code, 1)
-
-        mock_log.set.assert_any_call(browser={"operation": "step_screenshot"})
-        mock_log.set.assert_any_call(browser={"session_id": "sess-1"})
-
-    async def test_an_unresolved_code_never_touches_the_disk(self, shot_backend: Path) -> None:
-        with patch.object(blv, "shot_path") as mock_path:
-            with pytest.raises(HTTPException):
-                await blv.step_screenshot("bogus", 1)
-        mock_path.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -732,7 +664,7 @@ class TestRouter:
         paths = {getattr(r, "path", None) for r in blv.router.routes}
         assert "/replays/{code}" in paths
         assert "/live/{code}" in paths
-        assert "/shots/{code}/{index}.png" in paths
+        assert "/shots/{code}/{index}.jpg" in paths
 
     def test_ws_route_exists(self) -> None:
         assert any(getattr(r, "path", None) == "/live/{code}" for r in blv.router.routes)

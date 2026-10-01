@@ -46,7 +46,7 @@ _original_scroll_with_cdp_gesture = DefaultActionWatchdog._scroll_with_cdp_gestu
 
 async def _scroll_with_cdp_gesture(self: DefaultActionWatchdog, pixels: int) -> bool:
     """Scroll by pixels (positive is down) and report whether anything actually moved."""
-    if not on_obscura(self.browser_session):
+    if not on_obscura():
         return await _original_scroll_with_cdp_gesture(self, pixels)
     cdp_session = await self.browser_session.get_or_create_cdp_session()
     response: dict[str, Any] = dict(

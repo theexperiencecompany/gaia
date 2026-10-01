@@ -1969,11 +1969,9 @@
         "type": "object"
       },
       "BrowserSessionStatus": {
-        "description": "Lifecycle state of a browser session: created to live/working to ended/failed.",
+        "description": "Lifecycle state of a browser session: working, then how it ended.",
         "enum": [
-          "starting",
           "running",
-          "paused",
           "completed",
           "failed",
           "cancelled"
@@ -4325,7 +4323,7 @@
                 "type": "null"
               }
             ],
-            "description": "Integration ids this workflow uses, picked by the user or identified from intent. Scopes the tool palette when generating steps.",
+            "description": "Integration ids this workflow uses \u2014 picked by the user or identified from intent. Scopes the tool palette when generating steps.",
             "title": "Integration Ids"
           },
           "is_system_workflow": {
@@ -9301,18 +9299,6 @@
       "MemorySearchResult": {
         "description": "Results from a memory search.",
         "properties": {
-          "degraded": {
-            "default": false,
-            "description": "Whether the embedding sidecar failed fast and recall ran without dense search or the reranker; such a result is never cached",
-            "title": "Degraded",
-            "type": "boolean"
-          },
-          "has_confident_match": {
-            "default": false,
-            "description": "Whether any memory matched the query confidently rather than as a weak fallback",
-            "title": "Has Confident Match",
-            "type": "boolean"
-          },
           "memories": {
             "description": "List of matching memories",
             "items": {
@@ -9330,9 +9316,7 @@
         },
         "required": [
           "memories",
-          "total_count",
-          "has_confident_match",
-          "degraded"
+          "total_count"
         ],
         "title": "MemorySearchResult",
         "type": "object"
@@ -10273,7 +10257,7 @@
             "type": "string"
           },
           "handoff_text": {
-            "description": "first_message with ' #<code>' appended, the exact text a WhatsApp or iMessage user sends. Used to build the iMessage sms: link, whose number is only known after the phone is registered on Photon's pool.",
+            "description": "first_message with ' #<code>' appended \u2014 the exact text a WhatsApp or iMessage user sends. Used to build the iMessage sms: link, whose number is only known after the phone is registered on Photon's pool.",
             "title": "Handoff Text",
             "type": "string"
           },
@@ -10281,7 +10265,7 @@
             "additionalProperties": {
               "type": "string"
             },
-            "description": "Deep link per platform that carries the code. iMessage is absent by construction; its number is assigned per user.",
+            "description": "Deep link per platform that carries the code. iMessage is absent by construction \u2014 its number is assigned per user.",
             "title": "Links",
             "type": "object"
           }
@@ -13572,7 +13556,7 @@
             "type": "boolean"
           },
           "first_contact": {
-            "description": "Ordered bubbles the bot must send itself because delivery failed. Empty whenever delivered is true, because sending them then would say everything twice.",
+            "description": "Ordered bubbles the bot must send itself because delivery failed. Empty whenever delivered is true \u2014 sending them then would say everything twice.",
             "items": {
               "type": "string"
             },
@@ -18893,7 +18877,7 @@
           },
           "has_ever_subscribed": {
             "default": false,
-            "description": "Whether the user has ever had a subscription, in any status; separates a lapsed subscriber from one who has never paid",
+            "description": "Whether the user has ever had a subscription, in any status \u2014 separates a lapsed subscriber from one who has never paid",
             "title": "Has Ever Subscribed",
             "type": "boolean"
           },
@@ -19829,7 +19813,7 @@
                 "type": "null"
               }
             ],
-            "description": "Why the workflow is not activated. None means the user turned it off themselves. Only system-paused workflows may be resumed automatically."
+            "description": "Why the workflow is not activated. None means the user turned it off themselves \u2014 only system-paused workflows may be resumed automatically."
           },
           "description": {
             "default": "",
@@ -19889,7 +19873,7 @@
             "type": "string"
           },
           "integration_ids": {
-            "description": "Integration ids this workflow uses, picked by the user or identified from intent by the workflow assistant. Scopes the tool palette when generating steps. Connection state is never stored here: required/missing integrations are derived from the steps at read time.",
+            "description": "Integration ids this workflow uses \u2014 picked by the user or identified from intent by the workflow assistant. Scopes the tool palette when generating steps. Connection state is never stored here: required/missing integrations are derived from the steps at read time.",
             "items": {
               "type": "string"
             },
@@ -35848,7 +35832,6 @@
         "operationId": "todos_list_todos",
         "parameters": [
           {
-            "description": "Search query",
             "in": "query",
             "name": "q",
             "required": false,
@@ -35861,19 +35844,16 @@
                   "type": "null"
                 }
               ],
-              "description": "Search query",
               "title": "Q"
             }
           },
           {
-            "description": "Search mode: text, semantic, or hybrid",
             "in": "query",
             "name": "mode",
             "required": false,
             "schema": {
               "$ref": "#/components/schemas/SearchMode",
-              "default": "hybrid",
-              "description": "Search mode: text, semantic, or hybrid"
+              "default": "hybrid"
             }
           },
           {
@@ -35958,26 +35938,6 @@
           },
           {
             "in": "query",
-            "name": "labels",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Labels"
-            }
-          },
-          {
-            "description": "Due date after this date",
-            "in": "query",
             "name": "due_after",
             "required": false,
             "schema": {
@@ -35990,12 +35950,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Due date after this date",
               "title": "Due After"
             }
           },
           {
-            "description": "Due date before this date",
             "in": "query",
             "name": "due_before",
             "required": false,
@@ -36009,30 +35967,25 @@
                   "type": "null"
                 }
               ],
-              "description": "Due date before this date",
               "title": "Due Before"
             }
           },
           {
-            "description": "Only todos due today",
             "in": "query",
             "name": "due_today",
             "required": false,
             "schema": {
               "default": false,
-              "description": "Only todos due today",
               "title": "Due Today",
               "type": "boolean"
             }
           },
           {
-            "description": "Only todos due this week",
             "in": "query",
             "name": "due_this_week",
             "required": false,
             "schema": {
               "default": false,
-              "description": "Only todos due this week",
               "title": "Due This Week",
               "type": "boolean"
             }
@@ -36062,18 +36015,36 @@
             }
           },
           {
-            "description": "Include statistics in response",
             "in": "query",
             "name": "include_stats",
             "required": false,
             "schema": {
               "default": false,
-              "description": "Include statistics in response",
               "title": "Include Stats",
               "type": "boolean"
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Labels"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -40598,9 +40569,9 @@
         ]
       }
     },
-    "/shots/{code}/{index}.png": {
+    "/shots/{code}/{index}.jpg": {
       "get": {
-        "description": "One step frame of a finished run, for deployments with no object store.\n\nSame capability model as the recap page it feeds: the code is the secret, so\na frame cannot be reached by guessing a session id, and it expires with the\ncode. The index is an int, so it cannot walk out of the run's directory.",
+        "description": "One step frame of a run, for deployments with no object store.\n\nSame capability model as the recap page it feeds: the code is the secret, so\na frame cannot be reached by guessing a session id, and it expires with the\ncode.",
         "operationId": "browser_step_screenshot",
         "parameters": [
           {

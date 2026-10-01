@@ -2,8 +2,8 @@
 
 Cards are numbered by what the user saw, never silent on an errored step, and
 never shown twice for a step Jev's own burst card already covers; the agent
-hears the user's mid-task words and any load the browser stopped; a run that
-repeats itself on an unchanged page ends; a wedged connection is reported.
+hears the user's mid-task words and any load the browser stopped; a wedged
+connection is reported.
 """
 
 from __future__ import annotations
@@ -16,33 +16,38 @@ from types import SimpleNamespace
 from typing import Any, ClassVar
 from unittest.mock import MagicMock
 
+from browser_use.agent.views import AgentState
 import pytest
 
 from app.constants.browser import (
-    BROWSER_AGENT_NO_PROGRESS_STEPS,
+    BROWSER_ENGINE_RESUMED_NOTE,
     BROWSER_GUIDANCE_MAX_ELEMENTS,
     BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS,
     BROWSER_GUIDANCE_RECENT_ACTIONS,
     BROWSER_NO_GUIDANCE_AVAILABLE,
-    BROWSER_RUN_NO_PROGRESS_SUMMARY,
     BROWSER_TAKEOVER_DONE_NOTE,
+    BrowserEngine,
     BrowserHandoffAction,
+    BrowserRunFailure,
     EngineSwitchReason,
     JevOperation,
     JevStop,
 )
+from app.patches.obscura_sessions import on_obscura
 from app.schemas.browser import AgentGuidanceRequest, BrowserAction, GuidanceElement
 from app.services.browser import agent_run as agent_run_mod
 from app.services.browser.agent_run import STEP_ERROR_CAPTION, AgentRunSetup, BrowserAgentRun
-from app.services.browser.exceptions import BrowserUnavailableError
+from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserUnavailableError
 from app.services.browser.jev import loop as loop_mod
 from app.services.browser.jev.decision import GENERATE
 from app.services.browser.jev.gateway import JevEvaluation
-from app.services.browser.jev.page import PageAction
+from app.services.browser.jev.page import PageAction, PageUnresponsive
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.jev.tool import JEV_ACTION
 from app.services.browser.ledger import CallComponent, ExecutedAction, RunLedger
-from app.services.browser.run_contract import BrowserRunConfig, RunHooks, RunOutcome, StepFrame
+from app.services.browser.run_contract import BrowserRunConfig, RunHooks, StepFrame
+from app.services.browser.session import BrowserHostSession
+from app.services.browser.stalled_loads import StalledLoads
 from tests.helpers import captured_wide_event
 from tests.unit.services.browser.jev.conftest import BUTTON, FIELD, FakePage, decision, page_state
 
@@ -118,13 +123,27 @@ def _state(
 class _Harness:
     """A run wired to record its cards and outputs, with Browser-Use's callbacks driven by hand."""
 
-    def __init__(self, *, messages: list[str] | None = None, started: bool = True) -> None:
+    def __init__(
+        self,
+        *,
+        messages: list[str] | None = None,
+        started: bool = True,
+        engine: BrowserEngine = BrowserEngine.CHROMIUM,
+        resumed_from: AgentState | None = None,
+    ) -> None:
         self.frames: list[StepFrame] = []
         self.outputs: list[tuple[int, list[str]]] = []
         self.ledger = RunLedger()
         self._messages = list(messages or [])
         self.run = BrowserAgentRun(
-            session=SimpleNamespace(cdp_url="ws://browser.test/cdp", session_id="sess-1"),  # type: ignore[arg-type]  # a duck-typed host session
+            session=BrowserHostSession(
+                session_id="sess-1",
+                cdp_url="ws://browser.test/cdp",
+                live_view_url="https://browser.test/live/sess-1",
+                context_id="ctx-1",
+                host_url="http://browser.test",
+                engine=engine,
+            ),
             config=CONFIG,
             hooks=RunHooks(
                 step=self.frames.append,
@@ -138,6 +157,7 @@ class _Harness:
                 user_id="user-1",
                 ledger=self.ledger,
                 secrets=RunSecrets({"password": SECRET}, ["example.test"]),
+                resumed_from=resumed_from,
             ),
         )
         self.new_tasks: list[str] = []
@@ -335,7 +355,7 @@ class TestCards:
         [action] = harness.ledger.actions
         assert (action.component, action.description, action.count) == (
             CallComponent.AGENT,
-            "click",
+            "Clicking",
             1,
         )
 
@@ -385,7 +405,7 @@ class TestStepRecords:
         [frame] = harness.frames
         assert frame.goal == STEP_ERROR_CAPTION
         # No page was open yet to photograph, and no step ran to record.
-        assert frame.raw_screenshot is None
+        assert frame.photo is None
         assert harness.ledger.actions == []
 
     async def test_a_step_card_carries_the_page_the_step_acted_on(self, harness: _Harness) -> None:
@@ -397,7 +417,43 @@ class TestStepRecords:
             "https://example.test/cart",
             "Example",
         )
-        assert (frame.raw_screenshot, frame.since_prev_ms) == ("c2hvdA==", 0)
+        assert frame.photo is not None
+        assert (await frame.photo, frame.since_prev_ms) == ("c2hvdA==", 0)
+
+    async def test_a_page_that_does_not_answer_its_photo_leaves_the_card_without_one(
+        self, harness: _Harness, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def _unanswered() -> str:
+            raise PageUnresponsive("Page.captureScreenshot got no answer in 20s")
+
+        await harness.step(index=4)
+        monkeypatch.setattr(harness.run._page, "screenshot", _unanswered)
+        async with captured_wide_event() as event:
+            await harness.step(index=5)
+            assert harness.frames[1].photo is not None
+            assert await harness.frames[1].photo is None
+        [warning] = event["warnings"]
+        assert (warning["msg"].endswith("Step photo not taken"), warning["error_type"]) == (
+            True,
+            "PageUnresponsive",
+        )
+
+    async def test_the_last_page_a_card_showed_is_where_a_resume_would_reopen(
+        self, harness: _Harness
+    ) -> None:
+        await harness.step(url="https://example.test/cart", index=4)
+
+        assert harness.run.last_url == "https://example.test/cart"
+
+    async def test_a_run_with_nowhere_to_mirror_results_still_records_its_steps(
+        self, harness: _Harness
+    ) -> None:
+        harness.run._hooks = replace(harness.run._hooks, action_results=None)
+
+        await harness.step(index=4)
+        await harness.end(_Result(content="clicked"))
+
+        assert harness.ledger.action_count == 1
 
     async def test_a_step_is_recorded_with_its_actions_and_how_long_they_took(
         self, harness: _Harness, monkeypatch: pytest.MonkeyPatch
@@ -414,7 +470,7 @@ class TestStepRecords:
 
         [action] = harness.ledger.actions
         assert (action.description, action.duration_ms, action.count) == (
-            "click, navigate",
+            "Clicking, Opening x.test",
             2000,
             2,
         )
@@ -439,22 +495,19 @@ class TestStepRecords:
         assert run.last_url is None
 
 
-async def test_the_same_actions_on_an_unchanged_page_end_the_run(harness: _Harness) -> None:
-    for _ in range(BROWSER_AGENT_NO_PROGRESS_STEPS - 1):
-        await harness.step(index=4)
-    assert harness.run.no_progress is False
+class _ReportingLoads(StalledLoads):
+    """The run's load watcher, with loads it already saw stall or not finish."""
 
-    await harness.step(index=4)
+    def __init__(self, *, stalled: list[str], unfinished: list[str]) -> None:
+        super().__init__(MagicMock())
+        self._seen_stalled = stalled
+        self._seen_unfinished = unfinished
 
-    assert harness.run.no_progress is True
-    assert await harness.run._should_stop() is True
+    def take(self) -> list[str]:
+        return self._seen_stalled
 
-
-async def test_a_different_page_is_progress_even_with_the_same_action(harness: _Harness) -> None:
-    for n in range(BROWSER_AGENT_NO_PROGRESS_STEPS):
-        await harness.step(index=4, url=f"https://example.test/page/{n}")
-
-    assert harness.run.no_progress is False
+    def take_unfinished(self) -> list[str]:
+        return self._seen_unfinished
 
 
 class TestBetweenSteps:
@@ -471,14 +524,16 @@ class TestBetweenSteps:
     async def test_a_load_the_browser_stopped_reaches_the_agent_as_a_result(
         self, harness: _Harness
     ) -> None:
-        harness.run._stalls = SimpleNamespace(
-            take=lambda: ["https://slow.test/ sent nothing for 15 s"]
-        )  # type: ignore[assignment]  # the take() the run reads
+        harness.run._stalls = _ReportingLoads(
+            stalled=["https://slow.test/ sent nothing for 15 s"],
+            unfinished=["https://late.test/ had not finished loading"],
+        )
 
         await harness.run._on_step_start(None)
 
-        [note] = harness.run._agent.state.last_result
-        assert "slow.test" in note.long_term_memory
+        stalled, unfinished = harness.run._agent.state.last_result
+        assert "slow.test" in stalled.long_term_memory
+        assert "late.test" in unfinished.long_term_memory
 
 
 class _Client:
@@ -526,10 +581,26 @@ async def test_a_model_that_cannot_be_built_is_named_on_the_runs_event(
 
 
 class _History:
-    def __init__(self, answer: str | None, *, done: bool = True, successful: bool = True) -> None:
+    def __init__(
+        self,
+        answer: str | None,
+        *,
+        done: bool = True,
+        successful: bool = True,
+        errors: list[str | None] | None = None,
+        steps: int = 1,
+    ) -> None:
         self._answer = answer
         self._done = done
         self._successful = successful
+        self._errors = errors or [None]
+        self._steps = steps
+
+    def errors(self) -> list[str | None]:
+        return self._errors
+
+    def number_of_steps(self) -> int:
+        return self._steps
 
     def final_result(self) -> str | None:
         return self._answer
@@ -553,7 +624,12 @@ class _Browser:
         )
         page_events = {
             name: (lambda handler, name=name: self.watched.append(name))
-            for name in ("frameStartedNavigating", "frameNavigated", "frameStoppedLoading")
+            for name in (
+                "frameRequestedNavigation",
+                "frameStartedNavigating",
+                "frameNavigated",
+                "frameStoppedLoading",
+            )
         }
         self.cdp_client = SimpleNamespace(
             register=SimpleNamespace(Page=SimpleNamespace(**page_events))
@@ -596,6 +672,7 @@ class _Agent:
         return await self.options["tools"].registry.execute_action(action, params)
 
     async def run(self, max_steps: int, on_step_start: Any, on_step_end: Any) -> _History:
+        self.on_obscura_during_run = on_obscura()
         if self.raises is not None:
             raise self.raises
         for action in self.steps[:max_steps]:
@@ -704,15 +781,24 @@ class TestExecute:
 
         assert (outcome.success, outcome.summary) == (success, history.final_result() or "")
 
-    async def test_a_run_that_repeats_itself_stops_and_says_so(self, harness: _Harness) -> None:
-        _Agent.steps = [_Action("click", {"index": 4})] * (BROWSER_AGENT_NO_PROGRESS_STEPS + 3)
+    @pytest.mark.parametrize(
+        ("history", "failure"),
+        [
+            (_History("gave up", successful=False), BrowserRunFailure.GOAL_NOT_ACHIEVED),
+            (_History(None, done=False, errors=[None, "page gone"]), BrowserRunFailure.STEP_FAILED),
+            (_History(None, done=False, steps=CONFIG.max_steps), BrowserRunFailure.STEP_LIMIT),
+            (_History(None, done=False), None),
+            (_History("done"), None),
+        ],
+    )
+    async def test_a_run_that_did_not_succeed_says_why_from_its_history(
+        self, harness: _Harness, history: _History, failure: BrowserRunFailure | None
+    ) -> None:
+        _Agent.history = history
 
         outcome = await harness.run.execute("read my orders")
 
-        assert outcome == RunOutcome(False, BROWSER_RUN_NO_PROGRESS_SUMMARY)
-        assert _Agent.built[-1].ran_steps == BROWSER_AGENT_NO_PROGRESS_STEPS
-        # Each step the agent took reached the user as a card.
-        assert len(harness.frames) == BROWSER_AGENT_NO_PROGRESS_STEPS
+        assert outcome.failure == failure
 
     async def test_the_agent_runs_on_the_users_models_and_this_runs_browser(
         self, harness: _Harness, built_with: list[tuple[str, object]]
@@ -732,11 +818,20 @@ class TestExecute:
         await harness.run.execute("read my orders")
         browser = _Agent.built[-1].options["browser"]
 
-        [(event, attach)] = browser.listeners
+        (connected, mark), (_, attach), (navigated, note) = browser.listeners
+        assert harness.run.connected is False
+        mark(SimpleNamespace())
         await attach(SimpleNamespace())
+        note(SimpleNamespace(target_id="tab", error_message=None))
 
-        assert event.__name__ == "BrowserConnectedEvent"
+        assert harness.run.connected is True
+        assert [event.__name__ for event, _ in browser.listeners] == [
+            "BrowserConnectedEvent",
+            "BrowserConnectedEvent",
+            "NavigationCompleteEvent",
+        ]
         assert browser.watched == [
+            "frameRequestedNavigation",
             "frameStartedNavigating",
             "frameNavigated",
             "frameStoppedLoading",
@@ -754,6 +849,38 @@ class TestExecute:
         assert (_Stalls.closed, _JevGateway.open) == (True, False)
         # A run that never finished has no page to resume at.
         assert harness.run.last_url is None
+
+    @pytest.mark.parametrize(
+        ("start_url", "page"),
+        [("https://shop.test/cart", "https://shop.test/cart"), (None, "about:blank")],
+    )
+    async def test_a_run_resumed_on_the_fallback_goes_on_from_the_primarys_state(
+        self, monkeypatch: pytest.MonkeyPatch, start_url: str | None, page: str
+    ) -> None:
+        primary = AgentState(n_steps=7, stopped=True, paused=True, consecutive_failures=3)
+        run = _Harness(started=False, resumed_from=primary).run
+        monkeypatch.setattr(agent_run_mod, "JevPage", lambda session: FakePage(page_state()))
+        run._config = replace(CONFIG, start_url=start_url)
+
+        await run.execute("buy the ticket")
+
+        options = _Agent.built[-1].options
+        resumed = options["injected_agent_state"]
+        assert (resumed.n_steps, resumed.stopped, resumed.paused) == (7, False, False)
+        assert (resumed.consecutive_failures, options["initial_actions"]) == (0, None)
+        assert resumed.last_result[-1].long_term_memory == BROWSER_ENGINE_RESUMED_NOTE.format(
+            page=page
+        )
+
+    @pytest.mark.parametrize(
+        ("engine", "on_obscura"), [(BrowserEngine.OBSCURA, True), (BrowserEngine.CHROMIUM, False)]
+    )
+    async def test_everything_the_run_starts_sees_the_engine_its_host_reported(
+        self, engine: BrowserEngine, on_obscura: bool
+    ) -> None:
+        await _Harness(started=False, engine=engine).run.execute("read my orders")
+
+        assert _Agent.built[-1].on_obscura_during_run is on_obscura
 
     async def test_a_run_stops_at_its_step_limit(self, harness: _Harness) -> None:
         _Agent.steps = [_Action("click", {"index": n}) for n in range(CONFIG.max_steps + 5)]
@@ -786,13 +913,59 @@ class TestTools:
 
         harness.run._hooks = replace(harness.run._hooks, takeover=_takeover)
         await harness.run.execute("buy the ticket")
+        agent = _Agent.built[-1]
 
-        result = await _Agent.built[-1].act(
+        await agent.act(
+            "request_human_takeover", {"reason": "Enter your card.", "category": "payment"}
+        )
+        # The wait runs once the step ends, outside the step's own budget.
+        assert asked == []
+        await harness.run._on_step_end(agent)
+
+        assert asked == [("Enter your card.", "payment")]
+        assert agent.state.last_result[-1].long_term_memory == read
+
+    async def test_a_handoff_that_ends_the_run_reaches_the_agent_as_an_error(
+        self, harness: _Harness
+    ) -> None:
+        async def _cancelled(reason: str, category: str) -> str | None:
+            raise BrowserHandoffCancelled("cancelled")
+
+        harness.run._hooks = replace(harness.run._hooks, takeover=_cancelled)
+        await harness.run.execute("buy the ticket")
+        agent = _Agent.built[-1]
+        await agent.act(
             "request_human_takeover", {"reason": "Enter your card.", "category": "payment"}
         )
 
-        assert asked == [("Enter your card.", "payment")]
-        assert result == read
+        await harness.run._on_step_end(agent)
+
+        assert "cancelled" in agent.state.last_result[-1].error
+
+    async def test_guidance_is_asked_with_the_task_the_run_was_given(
+        self, harness: _Harness
+    ) -> None:
+        asked: list[AgentGuidanceRequest] = []
+
+        async def _guidance(request: AgentGuidanceRequest) -> str:
+            asked.append(request)
+            return "Click Next."
+
+        async def _allowed() -> bool:
+            return True
+
+        harness.run._hooks = replace(
+            harness.run._hooks, guidance=_guidance, guidance_allowed=_allowed
+        )
+        _Agent.steps = [_Action("click", {"index": 1})]
+        await harness.run.execute("buy the ticket")
+        agent = _Agent.built[-1]
+
+        await agent.act("request_agent_guidance", {"reason": "stuck"})
+        await harness.run._on_step_end(agent)
+
+        [request] = asked
+        assert request.task == "buy the ticket"
 
     async def test_the_agent_asking_for_guidance_hears_that_none_is_available(
         self, harness: _Harness
@@ -926,7 +1099,7 @@ class TestGuidance:
         harness.run._hooks = replace(
             harness.run._hooks, guidance=_guidance, guidance_allowed=_allowed
         )
-        harness.run._agent.task = "buy the ticket"
+        harness.run._task = "buy the ticket"
         scroll = PageAction(id="scroll_down", kind="scroll", label="Scroll down", delta=560)
         links = [
             PageAction(id=f"e{n}", node=n, kind="click", label=f"Link {n}", role="link")
@@ -949,9 +1122,10 @@ class TestGuidance:
     async def test_the_agent_that_started_the_run_answers_with_the_page_in_view(
         self, harness: _Harness, asked: list[AgentGuidanceRequest]
     ) -> None:
-        answer = await harness.run._guidance("nothing moves the task forward")
+        await harness.run._guidance("nothing moves the task forward")
+        await harness.run._on_step_end(harness.run._agent)
 
-        assert answer == "Click Next."
+        assert harness.run._agent.state.last_result[-1].long_term_memory == "Click Next."
         [request] = asked
         assert (request.reason, request.task, request.title) == (
             "nothing moves the task forward",
@@ -964,8 +1138,8 @@ class TestGuidance:
         assert len(request.page_text) == BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS
         # Controls only, numbered as listed; a control with no role goes by its kind.
         assert request.elements[:2] == [
-            GuidanceElement(index=2, label="Link 0", role="link"),
-            GuidanceElement(index=3, label="Name", role="fill"),
+            GuidanceElement(label="Link 0", role="link"),
+            GuidanceElement(label="Name", role="fill"),
         ]
         assert len(request.elements) == BROWSER_GUIDANCE_MAX_ELEMENTS - 1
         assert [a.action for a in request.recent_actions] == [

@@ -92,7 +92,7 @@ from app.services.storage import flush_fs_metrics
 from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
 from app.utils.message_breaks import strip_partial_message_break
-from app.utils.stream_utils import ReasoningEvent, absorb_reasoning, reconstruct_subagent_groups
+from app.utils.stream_utils import reconstruct_subagent_groups
 from shared.py.wide_events import ChatContext, get_trace_id, log, wide_task
 
 
@@ -129,13 +129,12 @@ async def run_chat_stream_background(
         )
 
 
-class _ErrorOrReasoningChunk(BaseModel):
-    """A ``data:`` chunk, read only for the error or reasoning frame it carries."""
+class _ErrorChunk(BaseModel):
+    """A ``data:`` chunk, read only for the error an error frame carries."""
 
     model_config = ConfigDict(extra="ignore")
 
     error: object = None
-    reasoning: ReasoningEvent | None = None
 
 
 class _CompleteMessageMarker(BaseModel):
@@ -211,6 +210,8 @@ class _StreamState:
         "queued",
         "reacts_to_message_id",
         "saved",
+        "subagent_ends",
+        "subagent_starts",
         "t0_perf",
         "todo_progress_accumulated",
         "tool_data",
@@ -228,7 +229,13 @@ class _StreamState:
         # The accumulators process_data_chunk fills, and the envelope around them
         # that recovery, grouping and persistence (chat.state) take as one dict.
         self.tool_entries: list[ToolDataEntry] = []
-        self.tool_data: dict[str, Any] = {"tool_data": self.tool_entries}
+        self.subagent_starts: dict[str, dict[str, object]] = {}
+        self.subagent_ends: dict[str, dict[str, object]] = {}
+        self.tool_data: dict[str, Any] = {
+            "tool_data": self.tool_entries,
+            "subagent_starts": self.subagent_starts,
+            "subagent_ends": self.subagent_ends,
+        }
         self.tool_outputs: dict[str, str] = {}
         self.todo_progress_accumulated: dict[str, dict[str, object]] = {}
         self.follow_up_actions: list[str] = []
@@ -750,67 +757,46 @@ async def _consume_agent_stream(
             state.is_cancelled = state.is_cancelled or was_cancelled
             continue
 
-        await _dispatch_stream_chunk(chunk, stream_id, turn, state)
+        if chunk.startswith("data: ") and '"error"' in chunk:
+            # Errors reach this loop as raised exceptions (state.error, caught
+            # elsewhere) or as error frames yielded by call_agent's setup guard;
+            # record the latter so the persisted message carries the failure.
+            with contextlib.suppress(json.JSONDecodeError):
+                payload = json.loads(chunk[len("data: ") :])
+                if isinstance(payload, dict):
+                    frame_error = _ErrorChunk.model_validate(payload).error
+                    if frame_error:
+                        state.error = str(frame_error)
+
+        if chunk.startswith("data: "):
+            if state.ttft_perf is None and extract_response_text(chunk):
+                # Init/description/keepalive/tool frames carry no "response"
+                # key — this is first reply text, not first byte.
+                state.ttft_perf = time.perf_counter()
+            try:
+                state.follow_up_actions, _ = await process_data_chunk(
+                    stream_id,
+                    chunk,
+                    ChunkAccumulators(
+                        tool_entries=state.tool_entries,
+                        subagent_starts=state.subagent_starts,
+                        subagent_ends=state.subagent_ends,
+                        tool_outputs=state.tool_outputs,
+                        todo_progress=state.todo_progress_accumulated,
+                        follow_up_actions=state.follow_up_actions,
+                    ),
+                )
+            except Exception as e:  # fall back to passthrough
+                log.error(
+                    f"{LogTag.CHAT} Error processing chunk",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    conversation_id=turn.conversation_id,
+                )
+                await stream_manager.publish_chunk(stream_id, chunk)
+        else:
+            await stream_manager.publish_chunk(stream_id, chunk)
     return description_task
-
-
-async def _dispatch_stream_chunk(
-    chunk: str,
-    stream_id: str,
-    turn: _TurnContext,
-    state: _StreamState,
-) -> None:
-    """Route one non-control chunk: parse a data frame into tool_data, or pass any other frame straight through to the client."""
-    if not chunk.startswith("data: "):
-        await stream_manager.publish_chunk(stream_id, chunk)
-        return
-
-    if '"error"' in chunk or '"reasoning"' in chunk:
-        payload = _data_frame_payload(chunk)
-        # Errors reach this loop as raised exceptions (state.error, caught
-        # elsewhere) or as error frames yielded by call_agent's setup guard;
-        # record the latter so the persisted message carries the failure.
-        frames = _ErrorOrReasoningChunk.model_validate(payload) if payload is not None else None
-        if frames is not None and frames.error:
-            state.error = str(frames.error)
-        # Comms' thinking arrives as a plain `reasoning` frame (the executor's rides
-        # the tool-event collector). Same helper for both so a reloaded turn keeps
-        # one identical thinking-block shape.
-        if frames is not None and frames.reasoning is not None:
-            absorb_reasoning(frames.reasoning, state.tool_entries)
-
-    if state.ttft_perf is None and extract_response_text(chunk):
-        # Init/description/keepalive/tool frames carry no "response"
-        # key — this is first reply text, not first byte.
-        state.ttft_perf = time.perf_counter()
-    try:
-        state.follow_up_actions, _ = await process_data_chunk(
-            stream_id,
-            chunk,
-            ChunkAccumulators(
-                tool_entries=state.tool_entries,
-                tool_outputs=state.tool_outputs,
-                todo_progress=state.todo_progress_accumulated,
-                follow_up_actions=state.follow_up_actions,
-            ),
-        )
-    except Exception as e:  # fall back to passthrough
-        log.error(
-            f"{LogTag.CHAT} Error processing chunk",
-            error=str(e),
-            error_type=type(e).__name__,
-            conversation_id=turn.conversation_id,
-        )
-        await stream_manager.publish_chunk(stream_id, chunk)
-
-
-def _data_frame_payload(chunk: str) -> dict[str, object] | None:
-    """Return the JSON object a data: frame carries, or None for a split or foreign frame."""
-    with contextlib.suppress(json.JSONDecodeError):
-        payload = json.loads(chunk[len("data: ") :])
-        if isinstance(payload, dict):
-            return payload
-    return None
 
 
 def _parse_complete_message(chunk: str) -> tuple[str, bool]:

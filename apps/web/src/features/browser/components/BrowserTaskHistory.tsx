@@ -29,9 +29,7 @@ const STATUS_META: Record<
   completed: { label: "Done", dot: "bg-emerald-500", text: "text-emerald-400" },
   cancelled: { label: "Stopped", dot: "bg-zinc-500", text: "text-zinc-400" },
   failed: { label: "Failed", dot: "bg-red-500", text: "text-red-400" },
-  starting: { label: "Starting", dot: "bg-[#00bbff]", text: "text-[#00bbff]" },
   running: { label: "Working", dot: "bg-[#00bbff]", text: "text-[#00bbff]" },
-  paused: { label: "Working", dot: "bg-[#00bbff]", text: "text-[#00bbff]" },
 };
 
 // Sources whose conversation lives in this app, so we can deep-link to it.
@@ -41,27 +39,19 @@ function MetaDot() {
   return <span className="size-[3px] rounded-full bg-zinc-600" />;
 }
 
-// Brand mark for tasks that ran from Telegram, shown when a task has no
-// recap frame to thumbnail.
-const TELEGRAM_LOGO_URL =
-  "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5a/Telegram_black_logo.svg/960px-Telegram_black_logo.svg.png?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=thumbnail&_=20251118201653";
-
 function TaskThumb({
   thumb,
   hasRecap,
-  source,
 }: {
   thumb: string | undefined;
   hasRecap: boolean;
-  source: string;
 }) {
   const [failed, setFailed] = useState(false);
-  const src = thumb ?? (source === "telegram" ? TELEGRAM_LOGO_URL : undefined);
   return (
     <div className="relative size-11 shrink-0 overflow-hidden rounded-lg bg-zinc-900 ring-1 ring-white/5">
-      {src && !failed ? (
+      {thumb && !failed ? (
         <Image
-          src={src}
+          src={thumb}
           alt=""
           width={64}
           height={64}
@@ -191,11 +181,7 @@ function TaskRow({
         role={hasRecap ? "button" : undefined}
         tabIndex={hasRecap ? 0 : undefined}
       >
-        <TaskThumb
-          thumb={task.frames[0]?.url}
-          hasRecap={hasRecap}
-          source={task.source}
-        />
+        <TaskThumb thumb={task.frames[0]?.url} hasRecap={hasRecap} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-zinc-100">
             {task.task}

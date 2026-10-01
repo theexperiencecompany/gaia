@@ -56,7 +56,7 @@ async def _click_element_node_impl(
     self: DefaultActionWatchdog, element_node: EnhancedDOMTreeNode
 ) -> dict[str, Any] | None:
     """Click the element in the page and return the real centre Browser-Use records."""
-    if _needs_browser_use(element_node) or not on_obscura(self.browser_session):
+    if _needs_browser_use(element_node) or not on_obscura():
         return await _original_click_element_node_impl(self, element_node)
 
     cdp_session = await self.browser_session.cdp_client_for_node(element_node)

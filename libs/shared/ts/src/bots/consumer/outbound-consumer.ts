@@ -7,11 +7,13 @@
  * markdown and hands each (chunked) message to the adapter. Fire-and-forget
  * with a one-retry + dead-letter-queue safety net, and a single consumer per
  * platform in Phase 1 (see the idempotency note in {@link OutboundConsumer.handle}).
+ * A send the platform rate-limits is sent again after the wait it asked for.
  */
 
 import { type Channel, type ConsumeMessage, connect } from "amqplib";
 import type { PlatformName } from "../types";
 import { segmentIntoBubbles } from "../utils/bubbles";
+import { retryAfterMs } from "../utils/delivery-errors";
 import {
   BOT_FAILURE_REASON,
   isTransientBotFailure,
@@ -384,7 +386,9 @@ export class OutboundConsumer {
   ): Promise<void> {
     wideLog.set({ attachment_filename: attachment.filename });
     try {
-      await this.deliverFile(destinationId, attachment, isChannel);
+      await sendHonouringRateLimit(() =>
+        this.deliverFile(destinationId, attachment, isChannel),
+      );
       this.settle(channel, () => channel.ack(msg));
     } catch (err) {
       recordBotFailure("outbound_file_delivery_failed", err, {
@@ -392,8 +396,8 @@ export class OutboundConsumer {
         redelivered: msg.fields.redelivered,
       });
       // Never requeue a file: deliverFile fetches AND uploads, so a failure can surface after
-      // the platform already accepted the upload. We can't tell a pre-send from a post-send
-      // failure, so requeueing risks a duplicate; dead-letter instead for manual replay.
+      // the platform already accepted the upload. Only a rate limit proves it accepted
+      // nothing, and that was already retried; dead-letter the rest for manual replay.
       this.settle(channel, () => channel.nack(msg, false, false));
     }
   }
@@ -515,10 +519,31 @@ export class OutboundConsumer {
         // rule) renders to nothing; platform send APIs reject empty text, so
         // skip it instead of throwing and dead-lettering the whole envelope.
         if (!rendered.trim()) continue;
-        await this.deliver(destinationId, rendered, isChannel);
+        await sendHonouringRateLimit(() =>
+          this.deliver(destinationId, rendered, isChannel),
+        );
         progress.delivered += 1;
       }
     }
+  }
+}
+
+/**
+ * Sends once and, when the platform rate-limited it, once more after the wait
+ * the platform named. A rate limit is the one failure where the platform
+ * provably accepted nothing, so the resend cannot duplicate a message.
+ */
+async function sendHonouringRateLimit(
+  send: () => Promise<void>,
+): Promise<void> {
+  try {
+    await send();
+  } catch (err) {
+    const waitMs = retryAfterMs(err);
+    if (waitMs === null) throw err;
+    wideLog.set({ rate_limited_wait_ms: waitMs });
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+    await send();
   }
 }
 

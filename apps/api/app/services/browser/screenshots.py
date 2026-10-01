@@ -5,13 +5,13 @@ logged-in pages, so they must never be persisted as base64 in the conversation
 document (Mongo bloat). With credentials they go to a Cloudflare R2 bucket and
 are referenced by their public URL, which is the only thing persisted; R2 is on
 Cloudflare's edge and free-tier, and the upload runs off the browser loop's
-critical path (see runner _emit_step). Without credentials they go to local disk
-and are served back through a short code (see shot_store), so a run with no
-object store still produces real URLs for web and bots alike.
+critical path (see runner _emit_step). Without credentials they go to Redis and
+are served back through a short code (see shot_store), so a run with no object
+store still produces real URLs for web and bots alike.
 
-Best-effort throughout: a failed upload falls back to disk, and only a failed
-local write returns None, leaving the caller to degrade to an inline data URL
-rather than failing the run.
+Best-effort throughout: a failed upload falls back to Redis, and only a frame
+neither took returns None, which leaves the step without a photo rather than
+failing the run. Every frame is a JPEG, as the page is captured.
 """
 
 import asyncio
@@ -24,10 +24,11 @@ from botocore.config import Config
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from app.services.browser.shot_store import store_step_screenshot
+from app.services.browser.shot_store import SHOT_SUFFIX, store_step_screenshot
 from shared.py.wide_events import log
 
 _UPLOAD_TIMEOUT_SECONDS = 15
+_CONTENT_TYPE = "image/jpeg"
 
 
 class _S3Putter(Protocol):
@@ -68,32 +69,33 @@ def _r2_client() -> _S3Putter:
 
 
 def _put(image: bytes, key: str) -> None:
-    # Browser-Use captures PNG, and a frame stored under the wrong type is also
-    # *served* under it, so the type is stated once here rather than passed in.
-    _r2_client().put_object(Bucket=settings.R2_BUCKET, Key=key, Body=image, ContentType="image/png")
+    # A frame stored under the wrong type is also *served* under it.
+    _r2_client().put_object(
+        Bucket=settings.R2_BUCKET, Key=key, Body=image, ContentType=_CONTENT_TYPE
+    )
 
 
-async def publish_step_screenshot(png: bytes, conversation_id: str, index: int) -> str | None:
+async def publish_step_screenshot(jpeg: bytes, session_id: str, index: int) -> str | None:
     """Publish one step screenshot and return the URL that serves it, or None."""
-    size_bytes = len(png)
+    size_bytes = len(jpeg)
     started = perf_counter()
     base = _r2_public_base()
     if base is None:
-        url = await _store_locally(png, conversation_id, index)
-        _log_published(index, size_bytes, "local", url is not None, started)
+        url = await store_step_screenshot(jpeg, session_id, index)
+        _log_published(index, size_bytes, "redis", url is not None, started)
         return url
-    key = f"browser_steps/{conversation_id}/step_{index}.png"
+    key = f"browser_steps/{session_id}/step_{index}{SHOT_SUFFIX}"
     try:
         # boto3 is blocking — run it off the event loop.
-        await asyncio.to_thread(_put, png, key)
+        await asyncio.to_thread(_put, jpeg, key)
     except Exception as exc:  # a screenshot is non-essential progress
         log.warning(
-            f"{LogTag.BROWSER} Browser screenshot upload failed; storing it locally instead",
+            f"{LogTag.BROWSER} Browser screenshot upload failed; storing it in Redis instead",
             error_type=type(exc).__name__,
             size_bytes=size_bytes,
         )
-        url = await _store_locally(png, conversation_id, index)
-        _log_published(index, size_bytes, "local_fallback", url is not None, started)
+        url = await store_step_screenshot(jpeg, session_id, index)
+        _log_published(index, size_bytes, "redis_fallback", url is not None, started)
         return url
     _log_published(index, size_bytes, "r2", True, started)
     return f"{base}/{key}"
@@ -118,16 +120,3 @@ def _log_published(index: int, size_bytes: int, backend: str, ok: bool, started:
         upload_ms=upload_ms,
         success=ok,
     )
-
-
-async def _store_locally(png: bytes, conversation_id: str, index: int) -> str | None:
-    """Keep the frame on this host, or None when even that fails."""
-    try:
-        return await store_step_screenshot(png, conversation_id, index)
-    except OSError as exc:
-        log.warning(
-            f"{LogTag.BROWSER} Browser screenshot could not be stored; using inline fallback",
-            error_type=type(exc).__name__,
-            size_bytes=len(png),
-        )
-        return None

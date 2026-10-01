@@ -105,3 +105,6 @@ def test_render_live_view_page_sends_carriage_return_on_enter_keydown():
     page = live_view.render_live_view_page("x")
 
     assert '"\\r"' in page
+    # The escape must reach the browser as an escape: a real carriage return in
+    # the script ends a // comment early, and the page's whole script fails to parse.
+    assert "\r" not in page

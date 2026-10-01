@@ -33,7 +33,7 @@ from app.browser_host.chromium import (
 from app.browser_host.proxy import run_cdp_proxy
 from app.browser_host.screencast import run_live_view
 from app.config.browser_host_settings import browser_host_settings
-from app.constants.browser import HostRequestFailure
+from app.constants.browser import BrowserEngine, HostRequestFailure
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log, log_context
 
@@ -49,12 +49,13 @@ class CreateSessionRequest(BaseModel):
 
 
 class CreateSessionResponse(BaseModel):
-    """Handle for a created context: CDP + live websocket URLs and the context id."""
+    """Handle for a created context: CDP + live websocket URLs, the context id, and the engine it runs on."""
 
     session_id: str
     cdp_ws: str
     live_ws: str
     context_id: str
+    engine: BrowserEngine
 
 
 class DeleteSessionResponse(BaseModel):
@@ -256,6 +257,7 @@ async def create_session(request: Request, payload: CreateSessionRequest) -> Cre
         cdp_ws=_ws_url(f"/cdp/{session.session_id}"),
         live_ws=_ws_url(f"/live/{session.session_id}"),
         context_id=session.context_id,
+        engine=browser_host_settings.BROWSER_ENGINE,
     )
 
 

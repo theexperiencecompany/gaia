@@ -62,9 +62,9 @@ def battery(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Battery]:
 #: notes, the note that the run moved to the fallback engine, the three lines
 #: of a handoff prompt, and the closing recap link.
 _PROGRESS_LINE = re.compile(
-    r"^(Step \d+ ·|Still on step|Open the live browser:|📽 |"
+    r"^(Step \d+ ·|Open the live browser:|📽 |"
     f"{re.escape(BROWSER_HANDOFF_REPLY_PROMPT)}|"
-    f"{re.escape(BROWSER_STALL_NOTE)}|{re.escape(BROWSER_ENGINE_FALLBACK_NOTE)})"
+    f"{re.escape(BROWSER_STALL_NOTE.split('{')[0])}|{re.escape(BROWSER_ENGINE_FALLBACK_NOTE)})"
 )
 #: One reply delivered as several messages arrives within this many seconds.
 _ONE_REPLY_SECONDS = 2.0

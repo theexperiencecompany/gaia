@@ -5,7 +5,6 @@ import { FullScreenIcon } from "@icons";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight } from "@/components/shared/icons";
-import { CursorArrow } from "@/features/chat/components/bubbles/bot/AgentCursor";
 import { useImageDialog } from "@/stores/uiStore";
 
 export interface RecapShot {
@@ -13,8 +12,6 @@ export interface RecapShot {
   url: string;
   /** What the agent was doing at this step ("Searching for …"). */
   caption?: string | null;
-  /** Where the agent acted on this frame, as [x, y] fractions of the viewport. */
-  point?: [number, number] | null;
 }
 
 /**
@@ -87,20 +84,6 @@ export function RecapSlideshow({
             className="h-auto w-full"
             unoptimized
           />
-          {current.point && (
-            <span
-              className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
-              style={{
-                left: `${current.point[0] * 100}%`,
-                top: `${current.point[1] * 100}%`,
-              }}
-              aria-hidden
-            >
-              {/* A soft ring marks the spot; the arrow says it's the cursor. */}
-              <span className="absolute -left-3.5 -top-3.5 size-7 rounded-full bg-[#00bbff]/25 ring-1 ring-[#00bbff]/50" />
-              <CursorArrow />
-            </span>
-          )}
           <span className="pointer-events-none absolute right-2.5 top-2.5 flex size-7 items-center justify-center rounded-full bg-black/45 text-white opacity-0 backdrop-blur-sm transition group-hover:opacity-100">
             <FullScreenIcon className="size-3.5" />
           </span>

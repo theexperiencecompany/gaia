@@ -195,15 +195,15 @@ class BrowserThreadMirror:
 
     The card shows what the browser is doing; this shows what it called — every
     action with its arguments, grouped under one "Browser" row exactly like a
-    subagent's tool calls, instead of one opaque browser_task row.
-
-    Stateful because only the session snapshot carries the session id, and the
-    group id has to outlive it for the steps and the result that follow.
+    subagent's tool calls, instead of one opaque browser_task row. The group is
+    keyed by the browser_task call that started the run, so a client pairs the
+    call with its group by id, and a move to the fallback engine keeps it.
     """
 
-    def __init__(self, publish: FramePublisher) -> None:
+    def __init__(self, publish: FramePublisher, tool_call_id: str) -> None:
         self._publish = publish
-        # "" reads as falsy exactly like None.
+        self._group = f"browser:{tool_call_id}"
+        # "" reads as falsy exactly like None: set while the group is open.
         self._group_id: str | None = None  # pragma: no mutate
         #: Set when the group opens; nothing reads it before then.
         self._started_at: float
@@ -217,16 +217,16 @@ class BrowserThreadMirror:
 
     async def mirror(self, snapshot: BrowserCardSnapshot) -> None:
         if isinstance(snapshot, BrowserSessionSnapshot):
-            await self._open(snapshot)
+            await self._open()
         elif isinstance(snapshot, BrowserStepSnapshot):
             await self._actions(snapshot)
         elif isinstance(snapshot, BrowserResultSnapshot):
             await self._close()
 
-    async def _open(self, snapshot: BrowserSessionSnapshot) -> None:
-        if self._group_id or not snapshot.session_id:
+    async def _open(self) -> None:
+        if self._group_id:
             return
-        self._group_id = f"browser:{snapshot.session_id}"
+        self._group_id = self._group
         self._started_at = perf_counter()
         await self._publish(
             {
@@ -343,8 +343,8 @@ async def _deliver_snapshot_to_bot(
 class ProgressEmitter:
     """Publishes each card snapshot into the run's feed and to the bot platform.
 
-    Records the CDN screenshots and captions the history recap reads back once
-    the run finishes, and the run's session and last result card, which a
+    Records the published screenshots and captions the history recap reads back
+    once the run finishes, and the run's session and last result card, which a
     cancelled run is ended with.
     """
 
@@ -359,9 +359,7 @@ class ProgressEmitter:
         self._bot_delivery = bot_delivery
         # Captions for the recap ("what's going on" per step), keyed by step index.
         self.step_goals: dict[int, str] = {}
-        # Only the screenshots that actually reached the CDN. A step whose upload
-        # failed falls back to an inline data URL, which must not be stored as a
-        # history frame — it would render as a permanently broken image.
+        # The screenshots that were published, by step; a step with no photo has none.
         self.step_shots: dict[int, str] = {}
         #: The session the latest session card named; None until the browser opened.
         self.session_id: str | None = None
@@ -383,7 +381,7 @@ class ProgressEmitter:
         elif isinstance(snapshot, BrowserStepSnapshot):
             if snapshot.goal:
                 self.step_goals[snapshot.index] = snapshot.goal
-            if snapshot.screenshot and snapshot.screenshot.startswith("http"):
+            if snapshot.screenshot is not None:
                 self.step_shots[snapshot.index] = snapshot.screenshot
         if self._bot_delivery is not None:
             await _deliver_snapshot_to_bot(self._bot_delivery, snapshot)
@@ -402,6 +400,8 @@ def _handoff_snapshot(
         session_id=session.session_id,
         live_view_url=session.live_view_url,
         status=status,
+        saves_login=req.category == SensitiveCategory.CREDENTIALS
+        and settings.BROWSER_PERSIST_LOGINS,
     )
 
 
@@ -602,20 +602,16 @@ async def _record_finished_run(
 
 
 def hosts_for(engine: BrowserEngine) -> tuple[str, str | None]:
-    """Return the host a run on engine opens on, and the Chrome host it falls back to (Obscura only).
+    """Return the host a run that wants engine opens on, and the Chrome host behind it.
 
-    BROWSER_HOST_URL is the host running BROWSER_ENGINE; BROWSER_FALLBACK_HOST_URL
-    is a Chromium host. Chrome is the default engine, Obscura an opt-in one.
+    BROWSER_FALLBACK_HOST_URL, when set, is a Chrome host. BROWSER_HOST_URL is the
+    primary, whichever engine it runs; its sessions report that engine. Chrome is
+    the default engine, Obscura an opt-in one.
     """
-    primary_is_chrome = settings.BROWSER_ENGINE is BrowserEngine.CHROMIUM
-    chrome_host = (
-        settings.BROWSER_HOST_URL if primary_is_chrome else settings.BROWSER_FALLBACK_HOST_URL
-    )
-    if engine is BrowserEngine.OBSCURA and not primary_is_chrome:
+    chrome_host = settings.BROWSER_FALLBACK_HOST_URL
+    if engine is BrowserEngine.OBSCURA:
         return settings.BROWSER_HOST_URL, chrome_host
-    if chrome_host is None:
-        raise BrowserUnavailableError(BROWSER_NO_CHROME_HOST)
-    return chrome_host, None
+    return chrome_host or settings.BROWSER_HOST_URL, None
 
 
 async def _end_on(
@@ -659,7 +655,9 @@ async def settle_job(request: BrowserJobRequest, result: BrowserResultSnapshot) 
 def _emitter_for(request: BrowserJobRequest) -> ProgressEmitter:
     emit_frame = partial(publish_frame_to_job, request.job_id)
     return ProgressEmitter(
-        emit_frame, BrowserThreadMirror(emit_frame), _build_bot_delivery(request)
+        emit_frame,
+        BrowserThreadMirror(emit_frame, request.tool_call_id),
+        _build_bot_delivery(request),
     )
 
 
@@ -723,7 +721,6 @@ async def _run_job(request: BrowserJobRequest, emitter: ProgressEmitter) -> Brow
             else BrowserEngine.CHROMIUM
         )
         host_url, fallback_host = hosts_for(engine)
-        log.set_ns("browser", engine=engine.value)
         secrets = RunSecrets(
             request.secrets,
             sites=[
@@ -746,6 +743,10 @@ async def _run_job(request: BrowserJobRequest, emitter: ProgressEmitter) -> Brow
             log.set(browser={"session_id": session.session_id})
             # A run that fails before its first card still links the recap of this session.
             emitter.session_id = session.session_id
+            log.set_ns("browser", engine=session.engine.value)
+            if engine is BrowserEngine.CHROMIUM and session.engine is not BrowserEngine.CHROMIUM:
+                # The host says it is not Chrome: a user who never chose Obscura is not run on it.
+                raise BrowserUnavailableError(BROWSER_NO_CHROME_HOST)
             await put_job_state(
                 BrowserJobState(
                     job_id=request.job_id,
@@ -761,6 +762,7 @@ async def _run_job(request: BrowserJobRequest, emitter: ProgressEmitter) -> Brow
                 callbacks=BrowserRunnerCallbacks(
                     emit=emitter.emit,
                     request_handoff=partial(_run_handoff, emit=emitter.emit, request=request),
+                    # Only a run the host put on Obscura has anywhere to move to.
                     open_fallback_session=(
                         partial(
                             _hand_over_to_fallback,
@@ -769,7 +771,7 @@ async def _run_job(request: BrowserJobRequest, emitter: ProgressEmitter) -> Brow
                             request.user_id,
                             fallback_host,
                         )
-                        if fallback_host
+                        if fallback_host and session.engine is BrowserEngine.OBSCURA
                         else None
                     ),
                     is_cancelled=partial(job_cancel_requested, request.job_id),
@@ -801,6 +803,7 @@ async def _run_job(request: BrowserJobRequest, emitter: ProgressEmitter) -> Brow
                 actions=runner.ledger.action_count,
                 engine_fallback=runner.used_fallback,
                 run_ms=round((perf_counter() - run_t0) * 1000),
+                failure=runner.failure,
             )
         await _record_finished_run(request, finished, emitter)
         return result
