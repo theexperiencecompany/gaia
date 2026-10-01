@@ -1,0 +1,56 @@
+"""Keep an open todo about an outside object watching that object for changes."""
+
+from collections.abc import Mapping, Sequence
+from types import MappingProxyType
+from typing import NamedTuple
+
+from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
+from app.models.todo_models import ExternalRef, ExternalRefSource
+from app.models.trigger_subscription_models import (
+    ConditionOperator,
+    SubscriptionAction,
+    SubscriptionCondition,
+    TriggerSubscription,
+)
+from app.services.triggers.subscription_service import register_subscription
+
+
+class _RefWatch(NamedTuple):
+    """How to see an outside object change: the payload field naming it, and its triggers."""
+
+    field_name: str
+    trigger_names: tuple[str, ...]
+
+
+# A Gmail thread moves both ways: mail arrives on it, and the user replies from Gmail.
+# The inbox desk's ref is identity only: it runs on its schedule, not on mail.
+_REF_WATCHES: Mapping[ExternalRefSource, _RefWatch] = MappingProxyType(
+    {
+        ExternalRefSource.GMAIL_THREAD: _RefWatch(
+            "thread_id", (GMAIL_NEW_MESSAGE_TRIGGER_NAME, GMAIL_EMAIL_SENT_TRIGGER_NAME)
+        ),
+    }
+)
+
+
+async def watch_external_ref(
+    todo_id: str, user_id: str, ref: ExternalRef, subscriptions: Sequence[TriggerSubscription]
+) -> None:
+    """Run the todo whenever ref changes, adding only the watches subscriptions lacks."""
+    watch = _REF_WATCHES.get(ref.source)
+    if watch is None:
+        return
+    on_ref = SubscriptionCondition(
+        field_name=watch.field_name, operator=ConditionOperator.EQUALS, value=ref.id
+    )
+    watched = {sub.trigger_name for sub in subscriptions if on_ref in sub.conditions}
+    for trigger_name in watch.trigger_names:
+        if trigger_name in watched:
+            continue
+        await register_subscription(
+            todo_id=todo_id,
+            user_id=user_id,
+            trigger_name=trigger_name,
+            conditions=[on_ref],
+            action=SubscriptionAction.EXECUTE,
+        )

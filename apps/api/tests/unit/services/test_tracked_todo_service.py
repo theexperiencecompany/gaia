@@ -20,6 +20,7 @@ from app.models.todo_models import (
     TodoDocument,
     TodoModel,
     TodoResponse,
+    TodoUpdate,
 )
 from app.models.trigger_subscription_models import (
     ConditionOperator,
@@ -116,12 +117,13 @@ def mock_deps():
 
 
 _THREAD = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="thread-1")
+_REGISTER = "app.services.todos.external_ref_watch.register_subscription"
 
 
 @pytest.fixture
 def watch():
     with (
-        patch(f"{_MOD}.register_subscription", new_callable=AsyncMock) as m_register,
+        patch(_REGISTER, new_callable=AsyncMock) as m_register,
         patch(f"{_MOD}.TodoService.delete_todo", new_callable=AsyncMock) as m_delete,
     ):
         yield SimpleNamespace(register=m_register, delete=m_delete)
@@ -133,6 +135,7 @@ class TestCreateThreadTodo:
     async def test_the_ref_reaches_the_insert(self, mock_repo, mock_deps, watch):
         mock_deps.create.return_value = _todo_response()
         await TrackedTodoService.create_tracked_todo(USER_ID, "Reply", external_ref=_THREAD)
+        assert mock_deps.create.await_args.args[1] == USER_ID
         assert mock_deps.create.await_args.kwargs["external_ref"] == _THREAD
 
     async def test_incoming_and_sent_mail_on_the_thread_both_run_the_todo(
@@ -194,6 +197,29 @@ class TestCreateThreadTodo:
 
         watch.delete.assert_awaited_once_with(TODO_ID, USER_ID)
 
+    async def test_a_rollback_that_fails_still_raises_the_watch_error(
+        self, mock_repo, mock_deps, watch
+    ):
+        """The watch error is the one the caller can act on; the failed delete rides along on it."""
+        mock_deps.create.return_value = _todo_response()
+        watch.register.side_effect = SubscriptionError("could not register")
+        watch.delete.side_effect = RuntimeError("mongo down")
+
+        with patch(f"{_MOD}.log") as log_mock, pytest.raises(SubscriptionError) as raised:
+            await TrackedTodoService.create_tracked_todo(USER_ID, "Reply", external_ref=_THREAD)
+
+        assert str(raised.value) == "could not register"
+        assert raised.value.__notes__ == [
+            f"Deleting the unwatched todo {TODO_ID} failed too: RuntimeError('mongo down')"
+        ]
+        log_mock.error.assert_called_once_with(
+            "tracked_todo.unwatched_discard_failed",
+            todo_id=TODO_ID,
+            user_id=USER_ID,
+            error="mongo down",
+            error_type="RuntimeError",
+        )
+
 
 class TestCreateTrackedTodo:
     async def test_activity_in_the_initial_canvas_is_moved_to_activity_md(
@@ -254,6 +280,53 @@ class TestCreateTrackedTodo:
         assert mock_repo.update.await_args.kwargs["update"].activity_content == (
             "- 2026-09-13T12:00:00+00:00 [created] from conversation 0123abcd"
         )
+
+    @pytest.mark.regression
+    async def test_the_schedule_is_saved_with_the_insert(self, mock_repo, mock_deps):
+        """A schedule written after the insert could fail and leave the todo half-made for a retry to duplicate."""
+        mock_deps.create.return_value = _todo_response()
+        at = datetime(2026, 10, 3, 9, 0, tzinfo=UTC)
+        due = datetime(2026, 10, 2, 17, 0, tzinfo=UTC)
+        expires = datetime(2026, 10, 9, 0, 0, tzinfo=UTC)
+        schedule = TodoUpdate(scheduled_at=at, recurrence="daily", due_date=due, expires_at=expires)
+
+        await TrackedTodoService.create_tracked_todo(
+            USER_ID, "Prepare Q3 report", schedule=schedule
+        )
+
+        inserted: TodoModel = mock_deps.create.call_args.args[0]
+        assert (inserted.scheduled_at, inserted.recurrence) == (at, "daily")
+        assert (inserted.due_date, inserted.expires_at) == (due, expires)
+        assert mock_repo.update.await_args.kwargs["update"].model_fields_set.isdisjoint(
+            {"scheduled_at", "recurrence", "due_date", "expires_at"}
+        )
+
+    @pytest.mark.parametrize(
+        ("conversation_id", "actor"),
+        [("00f7c88f-4ac1-4169", "GAIA in conversation 00f7c88f"), (None, "GAIA")],
+        ids=["from-a-conversation", "outside-a-conversation"],
+    )
+    async def test_the_schedule_is_on_the_timeline_naming_who_set_it(
+        self, mock_repo, mock_deps, conversation_id, actor
+    ):
+        mock_deps.create.return_value = _todo_response()
+        fixed = datetime(2026, 9, 13, 12, 0, tzinfo=UTC)
+        due = datetime(2026, 10, 2, 17, 0, tzinfo=UTC)
+
+        with patch(f"{_MOD}.datetime") as m_now:
+            m_now.now.return_value = fixed
+            await TrackedTodoService.create_tracked_todo(
+                USER_ID,
+                "Prepare Q3 report",
+                source_conversation_id=conversation_id,
+                schedule=TodoUpdate(due_date=due),
+            )
+
+        activity = mock_repo.update.await_args.kwargs["update"].activity_content
+        assert activity.splitlines()[-1] == (
+            f"- 2026-09-13T12:00:00+00:00 [due_date_changed] due {due.isoformat()}, by {actor}"
+        )
+        assert activity.count("\n") == 1  # the creation marker, then the due date
 
     async def test_an_initial_canvas_missing_sections_gets_them(self, mock_repo, mock_deps):
         """A canvas a later edit would refuse for its shape must not be created in that shape."""
@@ -709,7 +782,8 @@ class TestScheduleExecution:
         pool.enqueue_job.assert_awaited_once()
         args, kwargs = pool.enqueue_job.await_args
         stamp = occurrence_stamp(when)
-        assert args == ("execute_tracked_todo", TODO_ID, None, stamp)
+        assert args == ("execute_tracked_todo", TODO_ID)
+        assert kwargs["scheduled_for"] == stamp
         # One job id per occurrence: a repeat enqueue for it dedupes in ARQ.
         assert kwargs["_job_id"] == f"execute_tracked_todo:{TODO_ID}:{stamp}"
         assert kwargs["_defer_until"] == when
@@ -722,8 +796,8 @@ class TestScheduleExecution:
 
         await TrackedTodoService.schedule_execution(TODO_ID, due, defer_until=later)
 
-        args, kwargs = pool.enqueue_job.await_args
-        assert args[-1] == occurrence_stamp(due)
+        kwargs = pool.enqueue_job.await_args.kwargs
+        assert kwargs["scheduled_for"] == occurrence_stamp(due)
         assert kwargs["_defer_until"] == later
 
     async def test_a_naive_time_is_stamped_as_the_utc_instant_mongo_stores(
@@ -735,8 +809,11 @@ class TestScheduleExecution:
 
         await TrackedTodoService.schedule_execution(TODO_ID, naive)
 
-        args, _kwargs = pool.enqueue_job.await_args
-        assert args[-1] == occurrence_stamp(naive.replace(tzinfo=UTC))
+        aware = naive.replace(tzinfo=UTC)
+        kwargs = pool.enqueue_job.await_args.kwargs
+        assert kwargs["scheduled_for"] == occurrence_stamp(aware)
+        # A naive defer time would be read as the worker's local time, not UTC.
+        assert kwargs["_defer_until"] == aware
 
     async def test_false_when_the_occurrence_is_already_queued(self, mock_repo, mock_deps):
         pool = AsyncMock()

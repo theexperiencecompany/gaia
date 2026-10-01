@@ -14,6 +14,7 @@ from app.decorators.entitlements import is_paid
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument, TodoUpdate
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.integrations.user_integrations import get_connected_integration_ids
+from app.services.todo_activity import record_field_changes
 from app.services.todos.errors import ExternalRefTakenError
 from app.services.tracked_todo_service import starting_canvas, tracked_todo_service
 from app.services.user_service import get_profile_timezone
@@ -29,7 +30,7 @@ async def provision_inbox_desk(user_id: str) -> None:
     """Make sure a Pro user with Gmail has a scheduled Inbox desk; never revive one they stopped.
 
     Free users get none, as they get no active system workflow. Safe to call on every
-    Gmail connect: an open desk is only re-armed when it has no schedule.
+    Gmail connect: an open desk is re-armed only when it has no schedule.
     """
     log.set_ns("inbox_desk", operation="provision", user_id=user_id)
     if not await is_paid(user_id):
@@ -39,12 +40,15 @@ async def provision_inbox_desk(user_id: str) -> None:
     if existing is not None and existing.completed:
         log.set_ns("inbox_desk", outcome="stopped_by_user", todo_id=existing.id)
         return
-    desk = existing or await _open_desk(user_id)
-    if desk.scheduled_at is not None:
-        log.set_ns("inbox_desk", outcome="exists", todo_id=desk.id)
-        return
-    first_run = await _arm(desk.id, user_id)
-    log.set_ns("inbox_desk", outcome="armed", todo_id=desk.id, first_run=first_run.isoformat())
+    desk = existing or await _open_desk(user_id, await _next_morning(user_id))
+    if desk.scheduled_at is None:
+        desk = await _rearm(desk, await _next_morning(user_id))
+    next_run = desk.scheduled_at
+    if next_run is None:
+        raise LookupError(f"Inbox desk {desk.id} has no next run after it was armed")
+    # The job id dedupes an occurrence already queued; a lost job is queued again.
+    await tracked_todo_service.schedule_execution(desk.id, next_run)
+    log.set_ns("inbox_desk", outcome="armed", todo_id=desk.id, next_run=next_run.isoformat())
 
 
 async def provision_inbox_desk_for_gmail_user(user_id: str) -> None:
@@ -53,8 +57,12 @@ async def provision_inbox_desk_for_gmail_user(user_id: str) -> None:
         await provision_inbox_desk(user_id)
 
 
-async def _open_desk(user_id: str) -> TodoDocument:
-    """Create the desk, or return the one a concurrent provisioning created first."""
+async def _next_morning(user_id: str) -> datetime:
+    return get_next_run_time(INBOX_DESK_RECURRENCE, tz=await get_profile_timezone(user_id))
+
+
+async def _open_desk(user_id: str, first_run: datetime) -> TodoDocument:
+    """Create the desk with its schedule, or return the one a concurrent provisioning created."""
     try:
         created = await tracked_todo_service.create_tracked_todo(
             user_id,
@@ -63,6 +71,7 @@ async def _open_desk(user_id: str) -> TodoDocument:
             initial_canvas=starting_canvas(INBOX_DESK_TITLE, [INBOX_DESK_DELIVERY_RULE]),
             external_ref=INBOX_DESK_REF,
             notify_on_run=True,
+            schedule=TodoUpdate(recurrence=INBOX_DESK_RECURRENCE, scheduled_at=first_run),
         )
     except ExternalRefTakenError as taken:
         return taken.existing
@@ -73,10 +82,11 @@ async def _open_desk(user_id: str) -> TodoDocument:
     return desk
 
 
-async def _arm(desk_id: str, user_id: str) -> datetime:
-    """Give the desk its daily recurrence and queue its next morning run."""
-    first_run = get_next_run_time(INBOX_DESK_RECURRENCE, tz=await get_profile_timezone(user_id))
-    schedule = TodoUpdate(recurrence=INBOX_DESK_RECURRENCE, scheduled_at=first_run)
-    await tracked_todo_service.set_creation_fields(desk_id, user_id, schedule, by=_PROVISIONED_BY)
-    await tracked_todo_service.schedule_execution(desk_id, first_run)
-    return first_run
+async def _rearm(desk: TodoDocument, next_run: datetime) -> TodoDocument:
+    """Give a desk left without a schedule its daily recurrence back, on its timeline."""
+    schedule = TodoUpdate(recurrence=INBOX_DESK_RECURRENCE, scheduled_at=next_run)
+    rearmed = await todo_repository.update(desk.id, user_id=desk.user_id, update=schedule)
+    if rearmed is None:
+        raise LookupError(f"Inbox desk {desk.id} vanished while it was being re-armed")
+    await record_field_changes(desk.id, desk.user_id, schedule, by=_PROVISIONED_BY)
+    return rearmed
