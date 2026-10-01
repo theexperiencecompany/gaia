@@ -43,7 +43,7 @@ from app.models.trigger_subscription_models import (
 from app.services.canvas_markdown import section_body
 from app.services.storage._vfs_common import folder_name
 from app.services.todo_activity import agent_actor, record_field_changes
-from app.services.todos.errors import ExternalRefTakenError
+from app.services.todos.errors import CanvasShapeError, ExternalRefTakenError
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.matchable_fields import MATCHABLE_TRIGGERS, get_matchable_trigger
 from app.services.triggers.scope_catalog import scope_fields_for
@@ -191,18 +191,21 @@ def _gmail_thread_ref(gmail_thread_id: str | None) -> ExternalRef | None:
     return ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id=gmail_thread_id)
 
 
-async def _references_refusal(user_id: str, references: list[str]) -> str | None:
-    """Refuse reference ids that name none of the user's todos; None when every one does.
+async def _references_refusal(
+    user_id: str, references: list[str], todo_id: str | None = None
+) -> str | None:
+    """Refuse reference ids that name none of the user's other tracked todos; None when all do.
 
-    A run obeys its references' Standing rules, so a foreign or mistyped id must not link.
+    A run obeys its references' Standing rules, so a foreign, untracked or mistyped id must not link.
     """
     valid = [ref for ref in references if todo_repository.is_valid_id(ref)]
-    owned = {doc.id for doc in await todo_repository.find_by_ids(user_id, valid)}
-    unknown = [ref for ref in references if ref not in owned]
+    docs = await todo_repository.find_by_ids(user_id, valid)
+    tracked = {doc.id for doc in docs if GAIA_TRACKED_LABEL in doc.labels and doc.id != todo_id}
+    unknown = [ref for ref in references if ref not in tracked]
     if not unknown:
         return None
     return (
-        f"Error: no tracked todo of this user has the id {', '.join(unknown)}. "
+        f"Error: no other tracked todo of this user has the id {', '.join(unknown)}. "
         "Nothing was saved; pass ids from list_tracked_todos or search_todo_context."
     )
 
@@ -552,6 +555,17 @@ def _format_create_output(
     return out
 
 
+def _format_refused_create_output(
+    refused: ExternalRefTakenError | CanvasShapeError | SubscriptionError,
+) -> str:
+    """Tell the model why nothing was created and what to do instead."""
+    if isinstance(refused, ExternalRefTakenError):
+        return _format_ref_taken_output(refused.existing, datetime.now(UTC))
+    if isinstance(refused, CanvasShapeError):
+        return f"Not created: {refused.message} Nothing was saved."
+    return f"Not created: the thread could not be watched ({refused}). Nothing was saved."
+
+
 def _format_ref_taken_output(existing: TodoDocument, now: datetime) -> str:
     """Point the model at the open todo that already owns the thread, instead of a new one."""
     canvas = existing.canvas_content
@@ -719,10 +733,8 @@ async def create_tracked_todo(
             references=references,
             schedule=creation_update,
         )
-    except ExternalRefTakenError as taken:
-        return _format_ref_taken_output(taken.existing, datetime.now(UTC))
-    except SubscriptionError as e:
-        return f"Not created: the thread could not be watched ({e}). Nothing was saved."
+    except (ExternalRefTakenError, CanvasShapeError, SubscriptionError) as refused:
+        return _format_refused_create_output(refused)
 
     if parsed_scheduled_at:
         schedule_error = await _schedule_execution_after_create(result.id, parsed_scheduled_at)
@@ -910,7 +922,7 @@ async def update_tracked_todo(
     existing = await todo_repository.get(todo_id, user_id=user_id)
     if not existing:
         return f"Error: tracked todo {todo_id} not found or not a tracked todo."
-    if references and (refusal := await _references_refusal(user_id, references)):
+    if references and (refusal := await _references_refusal(user_id, references, todo_id)):
         return refusal
 
     if update_fields:

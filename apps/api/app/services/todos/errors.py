@@ -49,3 +49,14 @@ class ExternalRefReopenedTwiceError(AppError):
             code="external_ref_reopened_twice",
             public={"todo_ids": todo_ids},
         )
+
+
+class CanvasShapeError(AppError):
+    """Raised (400) when a new todo's canvas breaks a rule that normalizing cannot repair."""
+
+    def __init__(self, problems: list[str]) -> None:
+        super().__init__(
+            message=f"initial_canvas breaks the canvas shape: {'; '.join(problems)}.",
+            status_code=HTTPStatus.BAD_REQUEST,
+            code="canvas_shape_invalid",
+        )
