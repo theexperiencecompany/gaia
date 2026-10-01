@@ -206,10 +206,6 @@ class CommonSettings(BaseAppSettings):
     # --- Browser-Use (autonomous browser automation) ---
     # Always on in every environment; an unreachable host fails loudly at task time.
 
-    # Dev-only: suffixes every ChromaDB collection name so parallel worktrees,
-    # which share one local Chroma, stop deleting each other's indexed tools.
-    # Empty in production (dedicated Chroma); set per worktree by `mise run wt:env`.
-    CHROMA_COLLECTION_NAMESPACE: str = ""
     # Cloudflare R2, the fast edge store for browser step screenshots; Cloudinary
     # stays the durable store for arbitrary user files. Optional: any unset field
     # falls back to inline data URLs. Use a custom domain in prod, r2.dev is rate-limited.
