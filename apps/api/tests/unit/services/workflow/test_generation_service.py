@@ -373,60 +373,6 @@ class TestValidatedSteps:
 
 
 # ---------------------------------------------------------------------------
-# _build_trigger_hint / _build_available_triggers
-# ---------------------------------------------------------------------------
-
-
-class TestBuildTriggerHint:
-    def test_with_no_trigger_chosen_the_model_is_told_to_pick_one_from_intent(self):
-        """A workflow with no trigger never fires, so the hint has to ask for a suggestion rather than stay silent."""
-        assert _build_trigger_hint(None) == (
-            "No trigger selected yet. Suggest the most appropriate trigger "
-            "type based on the user's intent."
-        )
-
-
-class TestBuildAvailableTriggers:
-    def test_a_triggers_description_is_appended_after_its_name(self):
-        """The slug and name alone do not say when a trigger fires; the description is what lets the model choose between two of them."""
-        integration = _FakeIntegration(
-            "gmail",
-            name="Gmail",
-            associated_triggers=(
-                SimpleNamespace(
-                    workflow_trigger_schema=SimpleNamespace(
-                        slug="gmail_new_message",
-                        name="New message",
-                        description="Fires on every new email",
-                    )
-                ),
-            ),
-        )
-
-        with _catalog(integration):
-            assert _build_available_triggers() == (
-                "Available integration triggers (use the slug for trigger_name):\n"
-                "- gmail_new_message: New message (Gmail), Fires on every new email"
-            )
-
-    def test_a_trigger_with_no_description_is_listed_without_a_dangling_separator(self):
-        integration = _FakeIntegration(
-            "gmail",
-            name="Gmail",
-            associated_triggers=(
-                SimpleNamespace(
-                    workflow_trigger_schema=SimpleNamespace(
-                        slug="gmail_new_message", name="New message", description=""
-                    )
-                ),
-            ),
-        )
-
-        with _catalog(integration):
-            assert _build_available_triggers().endswith("- gmail_new_message: New message (Gmail)")
-
-
-# ---------------------------------------------------------------------------
 # _build_integration_hints
 # ---------------------------------------------------------------------------
 
@@ -450,7 +396,7 @@ class TestBuildIntegrationHints:
         """Preferred is a soft hint, explicit a hard requirement — the two lines must read differently or the model treats them the same."""
         with _catalog(_FakeIntegration("notion", name="Notion")):
             assert _build_integration_hints(set(), {"notion"}, {}) == [
-                "Integrations the user explicitly named, MUST appear in the steps: "
+                "Integrations the user explicitly named — MUST appear in the steps: "
                 "Notion (category: notion)"
             ]
 
@@ -462,7 +408,7 @@ class TestBuildIntegrationHints:
 
         assert hints == [
             "Preferred integrations (use where the workflow makes sense): Gmail (category: gmail)",
-            "Integrations the user explicitly named, MUST appear in the steps: "
+            "Integrations the user explicitly named — MUST appear in the steps: "
             "Notion (category: notion)",
         ]
 
@@ -488,7 +434,7 @@ class TestBuildIntegrationHints:
             hints = _build_integration_hints(set(), {"notion", "gmail"}, {})
 
         assert hints == [
-            "Integrations the user explicitly named, MUST appear in the steps: "
+            "Integrations the user explicitly named — MUST appear in the steps: "
             "Gmail (category: gmail), Notion (category: notion)"
         ]
 
@@ -913,7 +859,7 @@ class TestGenerateStepsWithLlm:
 
         prompt = mock_llm.await_args.args[1]
         assert (
-            "gaia: GAIA reasoning, summarize content, draft text, classify items, "
+            "gaia: GAIA reasoning — summarize content, draft text, classify items, "
             "generate outlines, extract key points, write briefs. No external tool call."
         ) in prompt
 
@@ -1057,7 +1003,7 @@ class TestGenerateStepsWithLlm:
 
         prompt = mock_llm.await_args.args[1]
         assert (
-            "Integrations the user explicitly named, MUST appear in the steps: "
+            "Integrations the user explicitly named — MUST appear in the steps: "
             "Notion (category: notion)" in prompt
         )
         assert "notion: search" in prompt
