@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 from browser_use.tools.registry.service import Registry
@@ -12,6 +13,14 @@ import app.patches.browser_use_secret_scope_patch as patch_module
 pytestmark = pytest.mark.unit
 
 SECRETS = {"https://example.test": {"password": "hunter2"}}
+
+
+def _on(url: str) -> SimpleNamespace:
+    """Return a Browser-Use session whose focused tab is on url."""
+    tab = SimpleNamespace(url=url)
+    return SimpleNamespace(
+        agent_focus_target_id="tab-1", session_manager=SimpleNamespace(get_target=lambda _: tab)
+    )
 
 
 @pytest.fixture
@@ -32,9 +41,10 @@ async def test_a_typing_action_gets_the_secret_values(
 ) -> None:
     params = {"index": 3, "text": "<secret>password</secret>"}
     registry: Registry[Any] = Registry()
+    session = _on("https://example.test/login")
 
     answer = await patch_module._execute_action(
-        registry, action, params, sensitive_data=SECRETS, browser_session="session"
+        registry, action, params, sensitive_data=SECRETS, browser_session=session
     )
 
     assert answer == "done"
@@ -44,9 +54,24 @@ async def test_a_typing_action_gets_the_secret_values(
             "action_name": action,
             "params": params,
             "sensitive_data": SECRETS,
-            "browser_session": "session",
+            "browser_session": session,
         }
     ]
+
+
+async def test_a_typing_action_naming_a_secret_off_its_site_fails_and_types_nothing(
+    executed: list[dict[str, Any]],
+) -> None:
+    answer = await patch_module._execute_action(
+        Registry(),
+        "input",
+        {"index": 3, "text": "<secret>password</secret>"},
+        sensitive_data=SECRETS,
+        browser_session=_on("https://evil.test/login"),
+    )
+
+    assert executed == []
+    assert answer.error == "password is not used on evil.test; nothing was typed."
 
 
 @pytest.mark.parametrize("action", ["done", "jev", "navigate", "click"])
