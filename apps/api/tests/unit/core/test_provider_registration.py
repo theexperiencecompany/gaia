@@ -23,7 +23,6 @@ import pytest
 
 from app.core import provider_registration
 from app.core.provider_registration import unified_startup
-from app.utils.concurrency import reset_captured_loop
 
 _MOD = "app.core.provider_registration"
 
@@ -38,13 +37,6 @@ _EAGER_ENTRYPOINTS = (
     "declare_outbound_topology_on_startup",
     "warmup_tools_cache",
 )
-
-
-@pytest.fixture(autouse=True)
-def _release_captured_loop() -> Iterator[None]:
-    """Forget the server loop unified_startup captures; it is this test's loop, closed after it."""
-    yield
-    reset_captured_loop()
 
 
 @pytest.fixture
