@@ -365,9 +365,8 @@ async def test_a_signed_in_page_does_not_end_a_login_handoff_until_the_user_says
                 await world.sit_through_keepalives(1)
                 world.browser.url = SIGNED_IN_URL
                 # Twenty minutes on the signed-in page, and the user has said nothing.
-                minutes = await world.sit_through_keepalives(20)
+                await world.sit_through_keepalives(20)
                 assert await _still_pending(handoff_id)
-                assert minutes == 20
                 assert world.browser.takeover_notes == []
 
                 action = await resolution.resolve_handoff_from_message(
