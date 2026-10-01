@@ -44,6 +44,8 @@ from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.jev.tool import JEV_ACTION
 from app.services.browser.ledger import CallComponent, ExecutedAction, RunLedger
 from app.services.browser.run_contract import BrowserRunConfig, RunHooks, StepFrame
+from app.services.browser.session import BrowserHostSession
+from app.services.browser.stalled_loads import StalledLoads
 from tests.helpers import captured_wide_event
 from tests.unit.services.browser.jev.conftest import BUTTON, FIELD, FakePage, decision, page_state
 
@@ -125,9 +127,12 @@ class _Harness:
         self.ledger = RunLedger()
         self._messages = list(messages or [])
         self.run = BrowserAgentRun(
-            session=SimpleNamespace(  # type: ignore[arg-type]  # a duck-typed host session
-                cdp_url="ws://browser.test/cdp",
+            session=BrowserHostSession(
                 session_id="sess-1",
+                cdp_url="ws://browser.test/cdp",
+                live_view_url="https://browser.test/live/sess-1",
+                context_id="ctx-1",
+                host_url="http://browser.test",
                 engine=BrowserEngine.CHROMIUM,
             ),
             config=CONFIG,
@@ -458,6 +463,21 @@ class TestStepRecords:
         assert run.last_url is None
 
 
+class _ReportingLoads(StalledLoads):
+    """The run's load watcher, with loads it already saw stall or not finish."""
+
+    def __init__(self, *, stalled: list[str], unfinished: list[str]) -> None:
+        super().__init__(MagicMock())
+        self._seen_stalled = stalled
+        self._seen_unfinished = unfinished
+
+    def take(self) -> list[str]:
+        return self._seen_stalled
+
+    def take_unfinished(self) -> list[str]:
+        return self._seen_unfinished
+
+
 class TestBetweenSteps:
     async def test_the_users_words_reach_the_agent_as_a_follow_up_request_with_secrets_masked(
         self,
@@ -472,10 +492,10 @@ class TestBetweenSteps:
     async def test_a_load_the_browser_stopped_reaches_the_agent_as_a_result(
         self, harness: _Harness
     ) -> None:
-        harness.run._stalls = SimpleNamespace(
-            take=lambda: ["https://slow.test/ sent nothing for 15 s"],
-            take_unfinished=lambda: ["https://late.test/ had not finished loading"],
-        )  # type: ignore[assignment]  # the takes the run reads
+        harness.run._stalls = _ReportingLoads(
+            stalled=["https://slow.test/ sent nothing for 15 s"],
+            unfinished=["https://late.test/ had not finished loading"],
+        )
 
         await harness.run._on_step_start(None)
 

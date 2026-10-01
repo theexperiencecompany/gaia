@@ -12,16 +12,33 @@ pytestmark = pytest.mark.unit
 
 
 class _Calls:
-    """Each call waits its scripted delay, then answers or raises."""
+    """Each call waits its scripted delay, or until its gate opens, then answers or raises."""
 
-    def __init__(self, *script: tuple[float, object]) -> None:
+    def __init__(self, *script: tuple[float | asyncio.Event, object]) -> None:
         self._script = list(script)
         self.started = 0
+        #: Set when a call is cut off before it answered.
+        self.cut_off = asyncio.Event()
+        #: Set when every call started has ended, however it ended.
+        self.all_ended = asyncio.Event()
+        self._running = 0
 
     async def __call__(self) -> object:
         self.started += 1
-        delay, outcome = self._script[self.started - 1]
-        await asyncio.sleep(delay)
+        self._running += 1
+        wait, outcome = self._script[self.started - 1]
+        try:
+            if isinstance(wait, asyncio.Event):
+                await wait.wait()
+            else:
+                await asyncio.sleep(wait)
+        except asyncio.CancelledError:
+            self.cut_off.set()
+            raise
+        finally:
+            self._running -= 1
+            if self._running == 0:
+                self.all_ended.set()
         if isinstance(outcome, BaseException):
             raise outcome
         return outcome
@@ -68,10 +85,37 @@ async def test_no_answer_within_the_deadline_times_out() -> None:
 
 
 async def test_the_losing_call_runs_to_its_end_and_its_answer_is_handed_over() -> None:
-    calls = _Calls((0.05, "slow"), (0, "spare"))
+    release = asyncio.Event()
+    calls = _Calls((release, "slow"), (0, "spare"))
     late: list[object] = []
 
-    assert await first_answer(calls, hedge_after=0.01, deadline=1, on_late=late.append) == "spare"
-    await asyncio.sleep(0.1)
+    assert await first_answer(calls, hedge_after=0.01, deadline=5, on_late=late.append) == "spare"
+    release.set()
+    await asyncio.wait_for(calls.all_ended.wait(), timeout=5)
+    await asyncio.sleep(0)  # the loser's done-callback runs on the next turn of the loop
 
     assert late == ["slow"]
+
+
+async def test_a_losing_call_that_never_answers_is_cut_off_at_the_deadline() -> None:
+    calls = _Calls((asyncio.Event(), "stalled"), (0, "spare"))
+
+    assert await first_answer(calls, hedge_after=0.01, deadline=0.1, on_late=_unexpected) == "spare"
+
+    await asyncio.wait_for(calls.cut_off.wait(), timeout=5)
+
+
+async def test_a_losing_call_that_fails_is_never_handed_over_or_left_unhandled() -> None:
+    release = asyncio.Event()
+    calls = _Calls((release, ValueError("late failure")), (0, "spare"))
+    unhandled: list[dict[str, object]] = []
+    asyncio.get_running_loop().set_exception_handler(
+        lambda loop, context: unhandled.append(context)
+    )
+
+    assert await first_answer(calls, hedge_after=0.01, deadline=5, on_late=_unexpected) == "spare"
+    release.set()
+    await asyncio.wait_for(calls.all_ended.wait(), timeout=5)
+    await asyncio.sleep(0)  # the loser's done-callback runs on the next turn of the loop
+
+    assert unhandled == []
