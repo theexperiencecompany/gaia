@@ -289,6 +289,22 @@ async def test_a_run_that_never_signed_in_saves_nothing(monkeypatch: pytest.Monk
     session_mod.save_storage_state.assert_not_awaited()
 
 
+async def test_a_saved_login_the_site_asks_to_sign_in_over_again_is_not_overwritten(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _make_session_fakes(monkeypatch)
+    monkeypatch.setattr(
+        session_mod, "load_storage_state", AsyncMock(return_value={"cookies": ["seeded"]})
+    )
+
+    async with session_mod.browser_session(
+        host_url=_HOST, user_id="u1", start_url="https://foo.example.com/x"
+    ) as session:
+        session.forget_login("https://foo.example.com/login")
+
+    session_mod.save_storage_state.assert_not_awaited()
+
+
 async def test_a_run_whose_login_takeover_completed_saves_its_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
