@@ -19,9 +19,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 import hashlib
 import json
-from typing import Any, Protocol, TypedDict, cast
-
-from pydantic import BaseModel, ConfigDict
+from typing import Any, TypedDict, cast
 
 from app.agents.core.background.session import RunKind, get_session
 from app.constants.cache import HIL_DECLINED_PREFIX
@@ -90,45 +88,15 @@ class ApprovalOutcome:
     auto: bool = False
 
 
-@dataclass(frozen=True)
-class GatedApproval:
-    """Identity of a gated call being surfaced — shared by request and receipt."""
-
-    approval_id: str
-    stream_id: str
-    user_id: str
-    conversation_id: str
-    tool_call: GatedCall
-    summary: str
-    integration_name: str | None
-
-
-class ApprovalCard(Protocol):
-    """What an approval card renders, the slice of GatedApproval the entry reads."""
-
-    @property
-    def approval_id(self) -> str: ...
-    @property
-    def tool_call(self) -> GatedCall: ...
-    @property
-    def summary(self) -> str: ...
-    @property
-    def integration_name(self) -> str | None: ...
-
-
-@dataclass(frozen=True)
-class SettledApprovalCard:
-    """A decided call's card, rebuilt from its persisted record to redraw it settled."""
-
-    approval_id: str
-    tool_call: GatedCall
-    summary: str
-    integration_name: str | None
-
-
 async def publish_approval_request(
-    approval: GatedApproval,
     *,
+    approval_id: str,
+    stream_id: str,
+    user_id: str,
+    conversation_id: str,
+    tool_call: GatedCall,
+    summary: str,
+    integration_name: str | None,
     auto_reason: str | None = None,
     subagent_resume: SubagentResumeItem | None = None,
     subagent_thread_id: str | None = None,
@@ -140,15 +108,15 @@ async def publish_approval_request(
     actually created the record. A replay is a no-op.
     """
     created = await upsert_pending_approval(
-        approval_id=approval.approval_id,
-        user_id=approval.user_id,
-        conversation_id=approval.conversation_id,
-        stream_id=approval.stream_id,
-        tool_name=approval.tool_call.name,
-        tool_call_id=approval.tool_call.id,
-        args=approval.tool_call.args,
-        summary=approval.summary,
-        integration_name=approval.integration_name,
+        approval_id=approval_id,
+        user_id=user_id,
+        conversation_id=conversation_id,
+        stream_id=stream_id,
+        tool_name=tool_call.name,
+        tool_call_id=tool_call.id,
+        args=tool_call.args,
+        summary=summary,
+        integration_name=integration_name,
         subagent_thread_id=subagent_thread_id,
         subagent_resume=subagent_resume,
     )
@@ -159,25 +127,30 @@ async def publish_approval_request(
     # so a resume replay is a no-op) — not at the decision, where it would count
     # decisions and miss still-pending pauses.
     observe_hil_pause()
-    log.set(
-        hil={
-            "approval_id": approval.approval_id,
-            "tool": approval.tool_call.name,
-            "stream_id": approval.stream_id,
-        }
-    )
+    log.set(hil={"approval_id": approval_id, "tool": tool_call.name, "stream_id": stream_id})
     await _publish_entry(
-        approval.stream_id,
-        _approval_entry(approval, HILApprovalStatus.PENDING, auto_reason=auto_reason),
+        stream_id,
+        _approval_entry(
+            approval_id,
+            tool_call,
+            HILApprovalStatus.PENDING,
+            summary,
+            integration_name,
+            auto_reason=auto_reason,
+        ),
     )
-    _schedule_pending_notification(
-        approval.user_id, approval.conversation_id, approval.approval_id, approval.summary
-    )
+    _schedule_pending_notification(user_id, conversation_id, approval_id, summary)
 
 
 async def publish_ledger_request(
-    approval: GatedApproval,
     *,
+    approval_id: str,
+    stream_id: str,
+    user_id: str,
+    conversation_id: str,
+    tool_call: GatedCall,
+    summary: str,
+    integration_name: str | None,
     rationale: str | None = None,
     auto_reason: str | None = None,
     live: bool = True,
@@ -191,15 +164,15 @@ async def publish_ledger_request(
     end-of-run drain, no SSE until then); background runs publish immediately,
     nobody being there to watch the stream.
     """
-    stream_id = approval.stream_id
-    log.set(
-        hil={
-            "approval_id": approval.approval_id,
-            "tool": approval.tool_call.name,
-            "stream_id": stream_id,
-        }
+    log.set(hil={"approval_id": approval_id, "tool": tool_call.name, "stream_id": stream_id})
+    entry = _approval_entry(
+        approval_id,
+        tool_call,
+        HILApprovalStatus.PENDING,
+        summary,
+        integration_name,
+        auto_reason=auto_reason,
     )
-    entry = _approval_entry(approval, HILApprovalStatus.PENDING, auto_reason=auto_reason)
     entry.data.rationale = rationale
     entry.data.age_seconds = 0
     entry.data.ledger_version = 0
@@ -207,11 +180,11 @@ async def publish_ledger_request(
     # streamed — the card exists either way. Explicit user_id: bridge paths
     # carry no request context to attribute from.
     capture_event(
-        approval.user_id,
+        user_id,
         AnalyticsEvents.HIL_CARD_SHOWN,
         {
-            "approval_id": approval.approval_id,
-            "tool_name": approval.tool_call.name,
+            "approval_id": approval_id,
+            "tool_name": tool_call.name,
             "ledger_version": 0,
             "background": not live,
         },
@@ -222,16 +195,14 @@ async def publish_ledger_request(
         # Background owner parked here: surface its conversation in the
         # sidebar while the approval lives (hidden otherwise).
         await conversation_repository.mark_background_with_live_approval(
-            approval.conversation_id, user_id=approval.user_id
+            conversation_id, user_id=user_id
         )
     if not held:
         # Background, detached-queued, and session-less runs publish immediately:
         # nobody is watching this stream (or there is none to drain), so holding
         # would hide the card until a drain that never comes.
         await _publish_entry(stream_id, entry)
-        _schedule_pending_notification(
-            approval.user_id, approval.conversation_id, approval.approval_id, approval.summary
-        )
+        _schedule_pending_notification(user_id, conversation_id, approval_id, summary)
         return
     frame = {"tool_data": entry.model_dump(), "_held_approval": True}
     session.tool_events.append(frame)
@@ -270,13 +241,17 @@ async def publish_decision(
     closed. The client follows the new stream via executor.stream_started, so a card
     settled on the old one resolves where nobody is looking.
     """
-    card = SettledApprovalCard(
-        approval_id=record.approval_id,
-        tool_call=GatedCall(name=record.tool_name, id=record.tool_call_id, args=record.args),
-        summary=record.summary,
-        integration_name=record.integration_name,
+    await _publish_entry(
+        stream_id,
+        _approval_entry(
+            record.approval_id,
+            GatedCall(name=record.tool_name, id=record.tool_call_id, args=record.args),
+            status,
+            record.summary,
+            record.integration_name,
+            feedback,
+        ),
     )
-    await _publish_entry(stream_id, _approval_entry(card, status, feedback=feedback))
     # Settle the PERSISTED frame now too, since a later pause before final delivery
     # reconciles would otherwise show a dead pending card. Isolated: the caller
     # (the gate) fails CLOSED, so a write error here must not become a denial.
@@ -296,7 +271,17 @@ async def publish_decision(
         )
 
 
-async def publish_auto_approval(approval: GatedApproval, *, reason: str) -> None:
+async def publish_auto_approval(
+    *,
+    approval_id: str,
+    stream_id: str,
+    user_id: str,
+    conversation_id: str,
+    tool_call: GatedCall,
+    summary: str,
+    integration_name: str | None,
+    reason: str,
+) -> None:
     """Record and surface an action auto mode ran without asking.
 
     The card is published already settled, so it needs no decision and wakes nobody — it
@@ -304,20 +289,27 @@ async def publish_auto_approval(approval: GatedApproval, *, reason: str) -> None
     done in their name.
     """
     await record_auto_approval(
-        approval_id=approval.approval_id,
-        user_id=approval.user_id,
-        conversation_id=approval.conversation_id,
-        stream_id=approval.stream_id,
-        tool_name=approval.tool_call.name,
-        tool_call_id=approval.tool_call.id,
-        args=approval.tool_call.args,
-        summary=approval.summary,
-        integration_name=approval.integration_name,
+        approval_id=approval_id,
+        user_id=user_id,
+        conversation_id=conversation_id,
+        stream_id=stream_id,
+        tool_name=tool_call.name,
+        tool_call_id=tool_call.id,
+        args=tool_call.args,
+        summary=summary,
+        integration_name=integration_name,
         reason=reason,
     )
     await _publish_entry(
-        approval.stream_id,
-        _approval_entry(approval, HILApprovalStatus.AUTO_APPROVED, auto_reason=reason),
+        stream_id,
+        _approval_entry(
+            approval_id,
+            tool_call,
+            HILApprovalStatus.AUTO_APPROVED,
+            summary,
+            integration_name,
+            auto_reason=reason,
+        ),
     )
 
 
@@ -360,26 +352,8 @@ async def recall_declined_call(
     )
 
 
-class _BrowserTaskArgs(BaseModel):
-    """The one browser_task argument the approval card summarises."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    task: str = ""
-
-
 def build_summary(tool_name: str, args: Mapping[str, object], integration_name: str | None) -> str:
     """Deterministic one-line summary of a gated call (no LLM in the hot path)."""
-    if tool_name == "browser_task":
-        # A browser task's whole intent is its ``task`` — but a weak model can
-        # write a long paragraph, so keep the card scannable: the first sentence,
-        # or a clipped lead. Never dump ``start_url`` or truncate mid-word.
-        task = _BrowserTaskArgs.model_validate(args).task.strip()
-        if not task:
-            return "Start a browser task"
-        first = task.split(". ")[0].strip().rstrip(".")
-        concise = first if 0 < len(first) <= 140 else clip_text(task, 140)
-        return f"Start a browser task — {concise}"
     label = tool_name.replace("_", " ").strip().capitalize()
     if integration_name:
         label = f"{label} ({integration_name})"
@@ -582,21 +556,23 @@ def _is_held(event: object) -> bool:
 
 
 def _approval_entry(
-    card: ApprovalCard,
+    approval_id: str,
+    tool_call: GatedCall,
     status: HILApprovalStatus,
+    summary: str,
+    integration_name: str | None,
     feedback: str | None = None,
     auto_reason: str | None = None,
 ) -> ApprovalRequestEntry:
-    tool_call = card.tool_call
     return ApprovalRequestEntry(
         tool_name=APPROVAL_REQUEST_TOOL_NAME,
         tool_category=APPROVAL_TOOL_CATEGORY,
         data=ApprovalRequestEntryData(
-            approval_id=card.approval_id,
+            approval_id=approval_id,
             tool_call_id=tool_call.id,
             gated_tool_name=tool_call.name,
-            integration_name=card.integration_name,
-            summary=card.summary,
+            integration_name=integration_name,
+            summary=summary,
             args_preview=tool_call.args,
             status=status,
             feedback=feedback,
