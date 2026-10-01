@@ -116,6 +116,9 @@ PARENT_STANDING_RULES_LABEL = (
     "like its own (where they conflict, this todo's own Standing rules win):"
 )
 
+# Names the running todo, so a run can pass its own id as a sub-todo's parent_todo_id.
+TODO_ID_LINE = "This todo's id: {todo_id}."
+
 # Heads a parent's open sub-todos in its run: they report here instead of to the user.
 SUB_TODOS_LABEL = (
     "Your open sub-todos. They report to you, not to the user, so their news reaches the "
@@ -165,13 +168,13 @@ TO_REPLY: the user owes an answer to a question or request, or something they pr
 AWAITING_REPLY: the user awaits an answer to their question or request.
 FYI: no question or request.
 ACTIONED: all answered, nobody waiting.
-5. For TO_REPLY and AWAITING_REPLY: create_tracked_todo(gmail_thread_id, references=[this todo's id], labels=["{NEEDS_REPLY_LABEL}"] or ["{WAITING_FOR_REPLY_LABEL}"]); a thread's existing todo comes back: update it.
+5. TO_REPLY / AWAITING_REPLY: create_tracked_todo(gmail_thread_id, parent_todo_id=this todo's id, labels=["{NEEDS_REPLY_LABEL}"] or ["{WAITING_FOR_REPLY_LABEL}"], scheduled_at=2 business days out, 3 if waiting); an existing thread todo comes back: use it.
 6. If memory and the thread can answer, save a reply draft (GMAIL_CREATE_EMAIL_DRAFT) unless its todo has one. Never send.
 7. Note mail carrying events: flights, bookings, invites, deadlines. Only if CONNECTED INTEGRATIONS lists Google Calendar: add the user's own events not yet on it, skip invite files, propose events with others in the briefing. Otherwise call no calendar tool.
 8. Last write, once every fetched thread is handled: set the last processed time to the fetch time. Until then leave it unchanged.
 9. Your final report is the user's briefing, in this order, empty sections omitted:
-Needs you: list_tracked_todos(labels=["{NEEDS_REPLY_LABEL}"]); each: sender, the ask in one line, deadline, "draft ready" if drafted.
-Waiting on others: list_tracked_todos(labels=["{WAITING_FOR_REPLY_LABEL}"]); overdue follow-ups.
+Needs you: your {NEEDS_REPLY_LABEL} sub-todos; each: sender, the ask in one line, deadline, "draft ready" if drafted.
+Waiting on others: your {WAITING_FOR_REPLY_LABEL} sub-todos; overdue follow-ups.
 Today: today's events and those added from mail; without Google Calendar, the events found (count, a few words each) and a request to connect it.
 FYI: one line each, no preamble.
 Filtered: the count only.

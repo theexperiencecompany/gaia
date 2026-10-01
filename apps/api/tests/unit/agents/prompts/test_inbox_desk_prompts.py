@@ -31,7 +31,14 @@ def test_each_thread_class_is_defined_where_threads_are_classified() -> None:
 @pytest.mark.parametrize("label", [NEEDS_REPLY_LABEL, WAITING_FOR_REPLY_LABEL])
 def test_thread_todos_are_filed_and_briefed_under_the_label_constants(label: str) -> None:
     assert f'["{label}"]' in "\n".join(_step(5))
-    assert f'list_tracked_todos(labels=["{label}"])' in "\n".join(_step(9))
+    assert f"your {label} sub-todos" in "\n".join(_step(9))
+
+
+def test_thread_todos_are_opened_as_the_desks_sub_todos() -> None:
+    step = "\n".join(_step(5))
+
+    assert "parent_todo_id=this todo's id" in step
+    assert "references" not in step
 
 
 def test_the_prompt_fits_in_a_todo_description() -> None:

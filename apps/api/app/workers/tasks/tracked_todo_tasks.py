@@ -26,6 +26,7 @@ from app.agents.prompts.todo_prompts import (
     PARENT_STANDING_RULES_LABEL,
     SILENT_RUN_GUIDANCE,
     SUB_TODOS_LABEL,
+    TODO_ID_LINE,
     TRIGGERED_RELEVANCE_GUIDANCE,
 )
 from app.constants.todos import (
@@ -537,6 +538,7 @@ def _build_execution_prompt(
     labelled untrusted. doc.notify_on_run decides which delivery contract is stated.
     """
     prompt_parts = _opening_parts(doc.title, origin, coalesced)
+    prompt_parts.append(TODO_ID_LINE.format(todo_id=doc.id))
     if doc.description:
         prompt_parts.append(f"Details: {doc.description}")
     if ref_guidance := _external_ref_guidance(doc):

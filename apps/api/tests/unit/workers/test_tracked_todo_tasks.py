@@ -1001,10 +1001,21 @@ class TestCollectReferenceLearnings:
 
 class TestBuildExecutionPrompt:
     def test_title_only(self):
-        assert (
-            _build_execution_prompt(_doc(title="Ship it"))
-            == f"Execute the following scheduled task: Ship it\n\n{DELIVERED_RESULT_GUIDANCE}"
+        assert _build_execution_prompt(_doc(title="Ship it")) == (
+            "Execute the following scheduled task: Ship it\n\n"
+            "This todo's id: todo-1.\n\n"
+            f"{DELIVERED_RESULT_GUIDANCE}"
         )
+
+    def test_a_triggered_run_is_told_its_own_id_too(self):
+        """A run links a sub-todo to itself with parent_todo_id, so it must know its own id."""
+        origin = TriggerOrigin(
+            subscription_id="sub-1", trigger_name="gmail_new_message", payload={"thread_id": "t"}
+        )
+
+        prompt = _build_execution_prompt(_doc(id="desk-9"), origin=origin)
+
+        assert "This todo's id: desk-9." in prompt
 
     def test_all_sections_appear_in_order(self):
         prompt = _build_execution_prompt(
@@ -1020,6 +1031,7 @@ class TestBuildExecutionPrompt:
         )
         assert prompt.split("\n\n") == [
             "Execute the following scheduled task: Ship it",
+            "This todo's id: todo-1.",
             "Details: the release",
             "Canvas (canvas.md):\n## Current State\nblocked",
             # Next to the canvas: rules the run obeys, not background reading.
@@ -1086,7 +1098,7 @@ class TestAThreadTodoRunCarriesTheThreadContract:
             _doc(description="Sam asked for the lease", external_ref=thread)
         )
 
-        assert prompt.split("\n\n")[1:3] == [
+        assert prompt.split("\n\n")[2:4] == [
             "Details: Sam asked for the lease",
             GMAIL_THREAD_RUN_GUIDANCE.format(ref_id="18c2f0a9b7d4e611"),
         ]
