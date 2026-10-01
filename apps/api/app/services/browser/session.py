@@ -78,8 +78,8 @@ class LiveSessionState:
     """A live session's cookies and localStorage, and the session they were read from.
 
     What a run takes with it to another engine, so it opens there as the same
-    signed-in browser. The source keeps its right to save its logins until the
-    session opened with this state has saved them itself.
+    signed-in browser. The session opened with it takes over the source's
+    logins, so the source, released after the handover, never saves one.
     """
 
     storage_state: StorageState
@@ -93,17 +93,22 @@ async def hand_over_state(session: BrowserHostSession) -> LiveSessionState:
 
 
 async def keep_session_alive(session: BrowserHostSession) -> None:
-    """Periodically reset the host's idle clock while a handoff is pending.
+    """Periodically reset the host's idle clock while a handoff is pending; return once the host has lost the session.
 
-    A paused session has no CDP or live-view traffic and the idle TTL is
-    shorter than the handoff timeout, so without this the reaper disposes the
-    browser. Best-effort: a failed touch is only logged. Run under
-    spawn_background_task and cancel when the handoff resolves.
+    A paused session has no CDP or live-view traffic and the idle TTL is shorter
+    than the handoff timeout. An unanswered touch is logged and tried on the next
+    beat; a session the host no longer has is gone for good.
     """
     while True:
         await asyncio.sleep(BROWSER_HANDOFF_KEEPALIVE_SECONDS)
         try:
             await host_client.touch_session(session.session_id, session.host_url)
+        except BrowserSessionGone:
+            log.warning(
+                f"{LogTag.BROWSER} Browser session gone while a handoff waited on it",
+                browser={"session_id": session.session_id, "operation": "handoff_keepalive"},
+            )
+            return
         except BrowserUnavailableError as exc:
             log.warning(
                 f"{LogTag.BROWSER} Browser handoff keepalive failed",
@@ -153,9 +158,13 @@ async def browser_session(
         # The sites the source opened on or held a login for: a logout there can leave no cookie behind to show it.
         held = {site for site in (source.start_domain, *source.login_domains) if site}
         storage_state = overlay_storage_state(saved_login, carried.storage_state, held)
-        login_domains |= source.login_domains
 
     host = await host_client.create_session(storage_state, host_url)
+    if carried is not None:
+        # This session holds the source's logins from here on: a sign-in the run is
+        # asked to repeat is forgotten here, and the source saves none on release.
+        login_domains |= carried.source.login_domains
+        carried.source.login_domains.clear()
     session = BrowserHostSession(
         session_id=host.session_id,
         cdp_url=host.cdp_ws,
@@ -187,9 +196,6 @@ async def browser_session(
                 await save_storage_state(
                     user_id, login_domain, storage_state_for_host(returned_state, login_domain)
                 )
-                if carried is not None:
-                    # Saved newer than the source holds; its later release must not write over it.
-                    carried.source.login_domains.discard(login_domain)
             log.info(f"{LogTag.BROWSER} Browser session released")
         except Exception as exc:
             log.warning(

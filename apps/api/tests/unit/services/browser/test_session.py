@@ -634,12 +634,12 @@ async def test_a_login_is_saved_from_the_primary_when_the_fallback_cannot_open(
     )
 
 
-async def test_a_login_is_saved_from_the_primary_when_the_fallback_cannot_save_it(
+@pytest.mark.regression
+async def test_a_sign_in_asked_for_again_after_the_switch_is_saved_by_neither_browser(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _host_per_session(
-        monkeypatch, fallback_release_error=BrowserUnavailableError("fallback host gone")
-    )
+    """Regression: the fallback forgot the login it was asked to redo, and the primary, released later, saved it anyway."""
+    _host_per_session(monkeypatch)
 
     async with session_mod.browser_session(
         host_url=_HOST, user_id="u1", start_url="https://x.com"
@@ -648,12 +648,10 @@ async def test_a_login_is_saved_from_the_primary_when_the_fallback_cannot_save_i
         carried = await session_mod.hand_over_state(primary)
         async with session_mod.browser_session(
             host_url=_FALLBACK_HOST, user_id="u1", start_url="https://x.com/feed", carried=carried
-        ):
-            pass
+        ) as fallback:
+            fallback.forget_login("https://x.com/login")
 
-    session_mod.save_storage_state.assert_awaited_once_with(
-        "u1", "x.com", _login_on("x.com", "primary")
-    )
+    session_mod.save_storage_state.assert_not_awaited()
 
 
 async def test_release_failure_is_caught_logged_and_unregister_still_runs(
