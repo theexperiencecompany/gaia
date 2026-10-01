@@ -282,7 +282,7 @@ class TestDeliveredResultsReachTheSessionThread:
         delivered = "Report is ready.\n\nIt has 3 pages."
         record.assert_awaited_once_with(
             "tg-conv",
-            f"[Delivered to the user on Telegram (result of {self.ORIGIN})]: {delivered}",
+            f"[Delivered to the user on Telegram — result of {self.ORIGIN}]: {delivered}",
         )
 
     async def test_recorded_text_excludes_break_sentinel(self) -> None:
@@ -311,9 +311,7 @@ class TestDeliveredResultsReachTheSessionThread:
                 notification_text="hello",
                 origin=self.ORIGIN,
             )
-        assert recorder.await_args.args[1].startswith(
-            "[Delivered to the user on WhatsApp (result of"
-        )
+        assert recorder.await_args.args[1].startswith("[Delivered to the user on WhatsApp —")
 
     async def test_imessage_is_spelled_the_way_apple_spells_it(self) -> None:
         """IMessage is the one platform whose display name is not a plain capitalization."""
@@ -334,9 +332,7 @@ class TestDeliveredResultsReachTheSessionThread:
                 notification_text="hello",
                 origin=self.ORIGIN,
             )
-        assert recorder.await_args.args[1].startswith(
-            "[Delivered to the user on iMessage (result of"
-        )
+        assert recorder.await_args.args[1].startswith("[Delivered to the user on iMessage —")
 
     async def test_a_result_that_was_not_delivered_is_not_recorded(self) -> None:
         record = await self._deliver(OutboundResult.FAILED)

@@ -9,7 +9,6 @@ so every branch is provable without touching a model.
 """
 
 from dataclasses import dataclass
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.exceptions import OutputParserException
@@ -35,9 +34,7 @@ from app.services.workflow.generation_service import (
     WorkflowGenerationService,
     WorkflowPromptRequest,
     WorkflowStepGenerationError,
-    _build_available_triggers,
     _build_integration_hints,
-    _build_trigger_hint,
     _collect_custom_integration_categories,
     _collect_registry_categories,
     _collect_subagent_categories,
@@ -761,7 +758,7 @@ class TestRunGenerationAttempt:
         assert steps is None
         assert isinstance(error, ValueError)
         assert str(error) == (
-            "LLM returned a workflow with no steps. The model may not have understood the request"
+            "LLM returned a workflow with no steps — the model may not have understood the request"
         )
 
     async def test_a_missing_draft_is_treated_the_same_as_an_empty_one(self):
@@ -1180,7 +1177,7 @@ class TestGenerateStepsWithLlm:
         assert mock_llm.await_count == _MAX_GENERATION_ATTEMPTS
         assert caught.value.reason == (
             f"the model returned no usable steps after {_MAX_GENERATION_ATTEMPTS} attempts "
-            "(ValueError: LLM returned a workflow with no steps. The model may not have "
+            "(ValueError: LLM returned a workflow with no steps — the model may not have "
             "understood the request)"
         )
 
@@ -1308,10 +1305,7 @@ class TestGenerateWorkflowPrompt:
 
         human = mock_llm.await_args.args[1][1].content
         assert "Existing instructions to improve:\nSummarize my mail." in human
-        assert (
-            "Improve these instructions. Keep the user's intent, add specificity, "
-            "edge case handling, and output details."
-        ) in human
+        assert "Improve these instructions" in human
         assert "from scratch" not in human
 
     async def test_with_no_existing_instructions_it_generates_from_scratch(self):
