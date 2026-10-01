@@ -51,8 +51,8 @@ CdpFrame = dict[str, Any]
 FrameSink = Callable[[CdpFrame], None]
 # A sink plus the CDP session id it claims, or None when it takes the open stream.
 Subscription = tuple[FrameSink, str | None]
-# Runs on a tracked command's reply (None: it never left) and whether its caller gave up.
-ReplyHook = Callable[[CdpFrame | None, bool], None]
+# Runs on a tracked command's reply, in the read loop; None when the command never left.
+ReplyHook = Callable[[CdpFrame | None], None]
 
 
 def _session_of(frame: CdpFrame) -> str | None:
@@ -191,11 +191,16 @@ class CdpMux:
             "params": {"targetId": target_id, "flatten": True},
         }
         self._attaching[target_id] = self._attaching.get(target_id, 0) + 1
+        waiting = True
 
-        def settle(reply: CdpFrame | None, abandoned: bool) -> None:
-            self._settle_attach(target_id, owner, reply, abandoned)
+        def settle(reply: CdpFrame | None) -> None:
+            self._settle_attach(target_id, owner if waiting else _discard, reply)
 
-        reply = await self._send_tracked(message, on_reply=settle)
+        try:
+            reply = await self._send_tracked(message, on_reply=settle)
+        except BaseException:
+            waiting = False
+            raise
         if "error" in reply:
             raise CdpCommandError(reply["error"])
         return str(reply["result"]["sessionId"])
@@ -258,7 +263,7 @@ class CdpMux:
             self._pending.pop(mux_id, None)
             hook = self._reply_hooks.pop(mux_id, None)
             if hook is not None:
-                hook(None, True)
+                hook(None)
             raise
         try:
             return await future
@@ -318,7 +323,7 @@ class CdpMux:
         pending = self._pending.pop(message_id, None)
         hook = self._reply_hooks.pop(message_id, None)
         if hook is not None:
-            hook(frame, pending is None or pending.done())
+            hook(frame)
         if pending is not None:
             if not pending.done():
                 pending.set_result(frame)
@@ -342,32 +347,27 @@ class CdpMux:
                 error_type="OrphanCdpReply",
             )
 
-    def _settle_attach(
-        self, target_id: str, owner: FrameSink, reply: CdpFrame | None, abandoned: bool
-    ) -> None:
-        """Claim an attach's session for its owner and release what was withheld; runs in the read loop.
+    def _settle_attach(self, target_id: str, owner: FrameSink, reply: CdpFrame | None) -> None:
+        """Claim an attach's session for owner and release what was withheld; runs in the read loop.
 
         reply is None when the command never left, so no session exists to claim.
+        The owner _discard means the caller gave up: the session is let go unheard.
         """
-        remaining = self._attaching.pop(target_id, 1) - 1
+        remaining = self._attaching[target_id] - 1
         if remaining:
             self._attaching[target_id] = remaining
+        else:
+            del self._attaching[target_id]
         result = reply.get("result") if reply is not None else None
         session_id = result.get("sessionId") if isinstance(result, dict) else None
         if isinstance(session_id, str):
-            if abandoned:
-                # Its caller gave up: the session is let go and its frames go nowhere.
-                owner = _discard
-                spawn_background_task(
-                    self._detach_abandoned(session_id), name="cdp_detach_abandoned"
-                )
             self._sinks.append((owner, session_id))
+            if owner is _discard:
+                spawn_background_task(self._detach_abandoned(session_id))
+        # Claimed first, so the owner's own announcement routes to it like any of its frames.
         withheld, self._withheld = self._withheld, []
         for frame in withheld:
-            announced = _announced_target(frame)
-            if announced == target_id and _session_of(frame) == session_id:
-                self._deliver(owner, frame)
-            elif announced is not None and announced in self._attaching:
+            if _announced_target(frame) in self._attaching:
                 self._withheld.append(frame)
             else:
                 self._fan_out(frame)

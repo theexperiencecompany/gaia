@@ -107,6 +107,16 @@ def test_a_create_refused_at_capacity_is_a_429_whose_event_names_the_gate(
     event = _event(loguru)
     assert resp.status_code == 429
     assert resp.json() == {"detail": "at_capacity"}
+    [warning] = event["warnings"]
+    assert "at capacity" in warning["msg"]
+    assert warning["browser"] == {
+        "admission": "memory",
+        "used_mb": 900.0,
+        "limit_mb": 1000.0,
+        "projected_mb": 1100.0,
+        "sessions": 3,
+        "pending": 1,
+    }
     assert (event["reason"], event["engine"]) == ("at_capacity", "chromium")
     assert event["browser"] == {
         "operation": "create",
@@ -196,6 +206,8 @@ def test_every_route_answers_a_failure_from_one_table(
     assert resp.status_code == status
     assert resp.json() == {"detail": detail}
     assert event["reason"] == reason
+    assert event["error_type"] == type(raised).__name__
+    assert event["status_code"] == status
     assert event["browser"] == {"session_id": "abc", "operation": operation}
 
 
@@ -206,8 +218,10 @@ def test_a_lease_for_a_gone_session_is_a_404(client: TestClient, host: _HostStub
 
 
 def test_healthz_is_503_when_the_engine_does_not_answer(
-    client: TestClient, host: _HostStub
+    client: TestClient, host: _HostStub, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    recorded = MagicMock()
+    monkeypatch.setattr(server_mod.log, "set", recorded)
     assert client.get("/healthz").json() == {
         "ok": True,
         "sessions": 0,
@@ -221,6 +235,7 @@ def test_healthz_is_503_when_the_engine_does_not_answer(
         "cdp_responsive": False,
     }
     assert client.get("/healthz").status_code == 503
+    recorded.assert_called_with(browser={"operation": "healthz", "session_id": ""})
 
 
 # --- the caller's deadline ---
@@ -246,6 +261,18 @@ def test_work_inside_the_deadline_answers_normally(client: TestClient, host: _Ho
     resp = client.delete("/sessions/abc", headers={"X-Host-Deadline": "15"})
 
     assert resp.status_code == 200
+
+
+async def test_the_deadline_keeps_back_a_second_for_the_answer_to_travel() -> None:
+    request = MagicMock(headers={"X-Host-Deadline": "1.0"})
+
+    async def _one_yield() -> str:
+        await asyncio.sleep(0)
+        return "answered"
+
+    with pytest.raises(server_mod._DeadlineExceeded) as late:
+        await server_mod._within_deadline(request, _one_yield)
+    assert late.value.args == ("deadline of 1.0s passed",)
 
 
 async def test_a_timeout_of_the_works_own_is_not_the_callers_deadline() -> None:
@@ -280,6 +307,7 @@ def test_a_rest_call_without_the_host_key_is_refused_and_leaves_a_trail(
 
     event = _event(loguru)
     assert resp.status_code == 401
+    assert resp.json() == {"detail": "missing or invalid host key"}
     assert (event["task"], event["method"], event["path"]) == (
         "browser_host_request",
         "DELETE",
@@ -333,7 +361,9 @@ def test_a_socket_with_its_sessions_token_is_bridged(
     ):
         pass
 
-    assert bridge.await_args.args[:2] == (host, session)
+    host_arg, session_arg, socket_arg = bridge.await_args.args
+    assert (host_arg, session_arg) == (host, session)
+    assert socket_arg.url.path == path
     host.get.assert_called_with("s1")
 
 
@@ -369,16 +399,21 @@ def test_a_socket_without_its_sessions_token_closes_4401_even_with_the_host_key(
 
 
 def test_a_socket_opened_from_a_web_page_is_refused_even_with_its_token(
-    client: TestClient, host: _HostStub
+    client: TestClient, host: _HostStub, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _live_session(host)
-    with pytest.raises(WebSocketDisconnect) as closed:
-        with client.websocket_connect(
-            f"/live/s1?token={_TOKEN}", headers={"origin": "https://evil.example"}
-        ):
-            pass
+    warning = MagicMock()
+    monkeypatch.setattr(server_mod.log, "warning", warning)
+    with patch("shared.py.wide_events._loguru") as loguru:
+        with pytest.raises(WebSocketDisconnect) as closed:
+            with client.websocket_connect(
+                f"/live/s1?token={_TOKEN}", headers={"origin": "https://evil.example"}
+            ):
+                pass
 
     assert closed.value.code == 4401
+    assert _event(loguru)["reason"] == "invalid_session_token"
+    assert "cross-origin" in warning.call_args.args[0]
 
 
 @pytest.mark.parametrize(

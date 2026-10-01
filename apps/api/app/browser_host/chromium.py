@@ -16,7 +16,6 @@ from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 import secrets
-import time
 from typing import Any
 import uuid
 
@@ -56,8 +55,6 @@ _ADMISSION_WAIT_SECONDS = 5.0
 # A context lives exactly as long as its session's connection: Chromium disposes
 # it when that connection drops, so no failure path can leave one behind.
 _CTX_OPTS: dict[str, Any] = {"disposeOnDetach": True}
-# Bytes of randomness in a session's websocket credential.
-_SESSION_TOKEN_BYTES = 32
 
 
 @dataclass(eq=False, slots=True)
@@ -75,7 +72,6 @@ class HostSession:
     engine: Engine
     # The credential its CDP and live-view websocket URLs carry, good for this session only.
     token: str
-    created_at: float
     # The page the agent last brought to the front; the live view streams it.
     focused_target_id: str
     # Set (and replaced) whenever the focus moves, so every watcher wakes once per move.
@@ -240,8 +236,7 @@ class ChromiumHost:
             page_session=page_session,
             mux=mux,
             engine=engine,
-            token=secrets.token_urlsafe(_SESSION_TOKEN_BYTES),
-            created_at=time.monotonic(),
+            token=secrets.token_urlsafe(),
             focused_target_id=target_id,
             metrics=SessionMetrics(page_count=1),
         )
@@ -559,36 +554,39 @@ class ChromiumHost:
         create and this one) stays under the high watermark. The ceiling is a
         backstop, not the gate; 0 disables it.
         """
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + _ADMISSION_WAIT_SECONDS
+        refusals: list[AtCapacityError] = []
+        try:
+            async with asyncio.timeout(_ADMISSION_WAIT_SECONDS), self._lock:
+                while True:
+                    refusal = self._admission_refusal()
+                    if refusal is None:
+                        self._pending_slots += 1
+                        return
+                    refusals.append(refusal)
+                    await self._slot_freed.wait()
+        except TimeoutError as exc:
+            raise refusals[-1] from exc
+
+    def _admission_refusal(self) -> AtCapacityError | None:
+        """Why one more session cannot be admitted right now, or None when it can."""
+        used, limit = memory_usage_mb()
         ceiling = browser_host_settings.BROWSER_HOST_MAX_SESSIONS
-        async with self._lock:
-            while True:
-                used, limit = memory_usage_mb()
-                estimate = self._estimate_session_cost_mb()
-                hard_mb = limit * browser_host_settings.BROWSER_HOST_MEMORY_HIGH_WATERMARK
-                sessions, pending = len(self._sessions), self._pending_slots
-                over_ceiling = ceiling > 0 and sessions + pending >= ceiling
-                projected = used + (pending + 1) * estimate
-                if not over_ceiling and projected <= hard_mb:
-                    self._pending_slots += 1
-                    return
-                remaining = deadline - loop.time()
-                if remaining <= 0:
-                    raise AtCapacityError(
-                        HostAdmissionRefusal.SESSION_CEILING
-                        if over_ceiling
-                        else HostAdmissionRefusal.MEMORY,
-                        used_mb=used,
-                        limit_mb=limit,
-                        projected_mb=projected,
-                        sessions=sessions,
-                        pending=pending,
-                    )
-                try:
-                    await asyncio.wait_for(self._slot_freed.wait(), remaining)
-                except TimeoutError:
-                    continue
+        sessions, pending = len(self._sessions), self._pending_slots
+        over_ceiling = ceiling > 0 and sessions + pending >= ceiling
+        projected = used + (pending + 1) * self._estimate_session_cost_mb()
+        if (
+            not over_ceiling
+            and projected <= limit * browser_host_settings.BROWSER_HOST_MEMORY_HIGH_WATERMARK
+        ):
+            return None
+        return AtCapacityError(
+            HostAdmissionRefusal.SESSION_CEILING if over_ceiling else HostAdmissionRefusal.MEMORY,
+            used_mb=used,
+            limit_mb=limit,
+            projected_mb=projected,
+            sessions=sessions,
+            pending=pending,
+        )
 
     async def _focused_page_meta(self, session: HostSession) -> tuple[str | None, str | None]:
         """Read the session's page url and title; none while a heavy page holds its connection."""

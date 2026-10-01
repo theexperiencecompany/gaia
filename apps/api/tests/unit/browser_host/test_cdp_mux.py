@@ -13,13 +13,15 @@ import asyncio
 from collections.abc import Awaitable, Callable
 import json
 from typing import Any, cast
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.browser_host import cdp_mux
 from app.browser_host.cdp_mux import CdpConnectionClosed, CdpMux
 from app.constants.log_tags import LogTag
+from app.utils import background_tasks
+from tests.helpers import captured_wide_event
 
 _URL = "ws://127.0.0.1:9222/devtools/browser/fake"
 # The one message every path that ends the connection reports, spelled out here
@@ -367,6 +369,7 @@ async def test_a_host_attached_session_never_reaches_a_client_sharing_the_connec
     mux.subscribe(agent.append)
 
     session_id = await _attach(mux, ws, viewer.append)
+    asked = ws.sent[-1]
     frame = {"method": "Page.screencastFrame", "sessionId": session_id, "params": {}}
     ws.deliver(frame)
     detach = asyncio.create_task(mux.detach(session_id))
@@ -375,9 +378,102 @@ async def test_a_host_attached_session_never_reaches_a_client_sharing_the_connec
     ws.deliver(detached, {"id": sent["id"], "result": {}})
     await asyncio.wait_for(detach, timeout=1.0)
 
+    assert asked == {
+        "id": asked["id"],
+        "method": "Target.attachToTarget",
+        "params": {"targetId": "page-1", "flatten": True},
+    }
     assert session_id == "S1"
     assert agent == []
     assert viewer == [_announcement("page-1", "S1"), frame, detached]
+    await mux.close()
+
+
+@pytest.mark.unit
+async def test_two_host_attaches_to_one_page_each_keep_their_own_session() -> None:
+    ws = _FakeWebSocket()
+    mux = await _started_mux(ws)
+    agent: list[dict[str, Any]] = []
+    first: list[dict[str, Any]] = []
+    second: list[dict[str, Any]] = []
+    mux.subscribe(agent.append)
+    one = asyncio.create_task(mux.attach("page-1", first.append))
+    sent_one = await _next_write(ws)
+    two = asyncio.create_task(mux.attach("page-1", second.append))
+    sent_two = await _next_write(ws)
+
+    ws.deliver(_announcement("page-1", "A"), {"id": sent_one["id"], "result": {"sessionId": "A"}})
+    ws.deliver(_announcement("page-1", "B"), {"id": sent_two["id"], "result": {"sessionId": "B"}})
+    await asyncio.wait_for(asyncio.gather(one, two), timeout=1.0)
+
+    assert agent == []
+    assert first == [_announcement("page-1", "A")]
+    assert second == [_announcement("page-1", "B")]
+    await mux.close()
+
+
+@pytest.mark.unit
+async def test_only_a_pending_attachs_own_announcement_is_held_back() -> None:
+    """A target event, or an announcement on a session (an auto-attach), is no host attach's."""
+    ws = _FakeWebSocket()
+    mux = await _started_mux(ws)
+    agent: list[dict[str, Any]] = []
+    mux.subscribe(agent.append)
+    call = asyncio.create_task(mux.attach("page-1", lambda _frame: None))
+    await _next_write(ws)
+
+    changed = {
+        "method": "Target.targetInfoChanged",
+        "params": {"targetInfo": {"targetId": "page-1"}},
+    }
+    nested = {**_announcement("page-1", "CHILD"), "sessionId": "CLIENT-SESSION"}
+    ws.deliver(changed, nested)
+    await asyncio.sleep(0)
+
+    assert agent == [changed, nested]
+    call.cancel()
+    await mux.close()
+
+
+@pytest.mark.unit
+async def test_an_announcement_made_on_a_host_session_belongs_to_its_owner() -> None:
+    ws = _FakeWebSocket()
+    mux = await _started_mux(ws)
+    agent: list[dict[str, Any]] = []
+    viewer: list[dict[str, Any]] = []
+    mux.subscribe(agent.append)
+    session_id = await _attach(mux, ws, viewer.append)
+
+    on_it = {**_announcement("frame-1", "CHILD"), "sessionId": session_id}
+    ws.deliver(on_it)
+    await asyncio.sleep(0)
+
+    assert agent == []
+    assert viewer[-1] == on_it
+    await mux.close()
+
+
+@pytest.mark.unit
+async def test_a_detached_session_returns_to_the_open_stream_and_nothing_else_moves() -> None:
+    ws = _FakeWebSocket()
+    mux = await _started_mux(ws)
+    agent: list[dict[str, Any]] = []
+    viewer: list[dict[str, Any]] = []
+    other: list[dict[str, Any]] = []
+    mux.subscribe(agent.append)
+    await _attach(mux, ws, other.append, target_id="page-2", session_id="S2")
+    session_id = await _attach(mux, ws, viewer.append)
+    detach = asyncio.create_task(mux.detach(session_id))
+    ws.deliver({"id": (await _next_write(ws))["id"], "result": {}})
+    await asyncio.wait_for(detach, timeout=1.0)
+
+    late = {"method": "Page.loadEventFired", "sessionId": session_id, "params": {}}
+    kept = {"method": "Page.loadEventFired", "sessionId": "S2", "params": {}}
+    ws.deliver(late, kept)
+    await asyncio.sleep(0)
+
+    assert agent == [late]
+    assert other[-1] == kept
     await mux.close()
 
 
@@ -399,7 +495,9 @@ async def test_a_clients_own_attach_to_the_same_page_still_reaches_the_client() 
 
 
 @pytest.mark.unit
-async def test_an_attach_whose_caller_gave_up_is_let_go_and_heard_by_nobody() -> None:
+async def test_an_attach_whose_caller_gave_up_is_let_go_and_heard_by_nobody(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     ws = _FakeWebSocket()
     mux = await _started_mux(ws)
     agent: list[dict[str, Any]] = []
@@ -410,6 +508,8 @@ async def test_an_attach_whose_caller_gave_up_is_let_go_and_heard_by_nobody() ->
     with pytest.raises(asyncio.CancelledError):
         await call
 
+    warning = MagicMock()
+    monkeypatch.setattr(cdp_mux.log, "warning", warning)
     ws.deliver(_announcement("page-1", "LATE"), {"id": sent["id"], "result": {"sessionId": "LATE"}})
     detach = await _next_write(ws)
     ws.deliver({"method": "Page.loadEventFired", "sessionId": "LATE", "params": {}})
@@ -418,7 +518,31 @@ async def test_an_attach_whose_caller_gave_up_is_let_go_and_heard_by_nobody() ->
     assert detach["method"] == "Target.detachFromTarget"
     assert detach["params"] == {"sessionId": "LATE"}
     assert agent == []
+    warning.assert_not_called()
     await mux.close()
+
+
+@pytest.mark.unit
+async def test_an_abandoned_session_on_a_connection_that_closes_is_let_go_quietly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    failure = MagicMock()
+    monkeypatch.setattr(background_tasks, "emit_unobserved_task_failure", failure)
+    ws = _FakeWebSocket()
+    mux = await _started_mux(ws)
+    call = asyncio.create_task(mux.attach("page-1", lambda _frame: None))
+    sent = await _next_write(ws)
+    call.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await call
+
+    ws.deliver({"id": sent["id"], "result": {"sessionId": "LATE"}})
+    await asyncio.sleep(0)
+    await mux.close()
+    for _ in range(5):
+        await asyncio.sleep(0)
+
+    failure.assert_not_called()
 
 
 @pytest.mark.unit
@@ -452,8 +576,9 @@ async def test_an_attach_the_engine_refuses_raises_and_holds_back_nothing() -> N
     sent = await _next_write(ws)
     ws.deliver({"id": sent["id"], "error": {"message": "No target with given id found"}})
 
-    with pytest.raises(cdp_mux.CdpCommandError):
+    with pytest.raises(cdp_mux.CdpCommandError) as refused:
         await asyncio.wait_for(call, timeout=1.0)
+    assert refused.value.args == ({"message": "No target with given id found"},)
     theirs = _announcement("page-gone", "CLIENT")
     ws.deliver(theirs)
     await asyncio.sleep(0)
@@ -607,7 +732,9 @@ async def test_a_non_dict_result_fails_the_call_naming_the_method_and_the_payloa
 
 
 @pytest.mark.unit
-async def test_a_late_reply_to_a_call_its_caller_gave_up_on_reaches_no_client() -> None:
+async def test_a_late_reply_to_a_call_its_caller_gave_up_on_reaches_no_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Its id is the mux's own, so a client handed it could take it for an answer of its own."""
     ws = _FakeWebSocket()
     mux = await _started_mux(ws)
@@ -619,11 +746,41 @@ async def test_a_late_reply_to_a_call_its_caller_gave_up_on_reaches_no_client() 
     with pytest.raises(asyncio.CancelledError):
         await call
 
+    warning = MagicMock()
+    monkeypatch.setattr(cdp_mux.log, "warning", warning)
     ws.deliver({"id": sent["id"], "result": {"answered anyway": True}})
     ws.deliver({"id": 4242, "result": {"targetInfos": []}})
     await asyncio.sleep(0)
 
     assert seen == []
+    assert [c.kwargs for c in warning.call_args_list] == [{"error_type": "OrphanCdpReply"}] * 2
+    assert "reply nobody awaits" in warning.call_args.args[0]
+    await mux.close()
+
+
+@pytest.mark.unit
+async def test_a_late_reply_to_a_command_that_failed_to_send_reaches_no_one_either(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ws = _FakeWebSocket()
+    mux = await _started_mux(ws)
+    seen: list[dict[str, Any]] = []
+    mux.subscribe(seen.append)
+
+    async def _half_sent(raw: str) -> None:
+        ws.sent.append(json.loads(raw))
+        raise ConnectionResetError("write failed")
+
+    ws.send_hook = _half_sent
+    with pytest.raises(ConnectionResetError):
+        await mux.send_raw("Page.enable")
+    warning = MagicMock()
+    monkeypatch.setattr(cdp_mux.log, "warning", warning)
+    ws.deliver({"id": ws.sent[-1]["id"], "result": {}})
+    await asyncio.sleep(0)
+
+    assert seen == []
+    assert [c.kwargs for c in warning.call_args_list] == [{"error_type": "OrphanCdpReply"}]
     await mux.close()
 
 
@@ -735,14 +892,24 @@ class _SilentTransport:
 
 @pytest.mark.unit
 async def test_a_call_the_engine_never_answers_fails_naming_its_method() -> None:
-    with pytest.raises(cdp_mux.CDPTimeoutError, match="Target.getTargets"):
-        await cdp_mux.cdp_call(_SilentTransport(), "Target.getTargets", timeout=0.01)
+    async with captured_wide_event() as event:
+        with pytest.raises(cdp_mux.CDPTimeoutError) as timed_out:
+            await cdp_mux.cdp_call(_SilentTransport(), "Target.getTargets", timeout=0.01)
+
+    assert timed_out.value.args == ("Target.getTargets",)
+    [error] = event["errors"]
+    assert "CDP call timed out" in error["msg"]
+    assert error["error_type"] == "CDPTimeoutError"
+    assert error["browser"] == {"cdp_method": "Target.getTargets", "timeout_seconds": 0.01}
 
 
 @pytest.mark.unit
 async def test_an_attach_or_detach_the_engine_never_answers_fails_like_a_call() -> None:
     silent = cast(CdpMux, _SilentTransport())
-    with pytest.raises(cdp_mux.CDPTimeoutError, match="Target.attachToTarget"):
+    with pytest.raises(cdp_mux.CDPTimeoutError) as attaching:
         await cdp_mux.cdp_attach(silent, "page-1", lambda _frame: None, timeout=0.01)
-    with pytest.raises(cdp_mux.CDPTimeoutError, match="Target.detachFromTarget"):
+    with pytest.raises(cdp_mux.CDPTimeoutError) as detaching:
         await cdp_mux.cdp_detach(silent, "S1", timeout=0.01)
+
+    assert attaching.value.args == ("Target.attachToTarget",)
+    assert detaching.value.args == ("Target.detachFromTarget",)

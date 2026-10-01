@@ -307,15 +307,13 @@ async def _read_favicon(mux: CdpMux, page_session: str) -> str | None:
     return value if isinstance(value, str) else None
 
 
-async def _refresh_meta(mux: CdpMux, stream: _Stream) -> bool:
-    """Reload the tab metadata from the target; returns whether the url changed."""
+async def _refresh_meta(mux: CdpMux, stream: _Stream) -> None:
+    """Reload the tab metadata from the target."""
     info = await cdp_call(mux, "Target.getTargetInfo", {"targetId": stream.target_id})
     target_info = info.get("targetInfo", {})
-    previous_url = stream.meta.url
     stream.meta.url = target_info.get("url")
     stream.meta.title = target_info.get("title")
     stream.meta.favicon = await _read_favicon(mux, stream.page_session)
-    return stream.meta.url != previous_url
 
 
 def _image_params() -> dict[str, Any]:

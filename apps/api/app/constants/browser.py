@@ -656,6 +656,8 @@ class HostSessionEnd(StrEnum):
     ENGINE_LOST = "engine_lost"
 
 
+# The header every browser-host REST call carries the shared host key in.
+BROWSER_HOST_KEY_HEADER = "X-Host-Key"
 # The header a host client sends its own deadline in, so the host finishes or gives
 # up inside it instead of working on for a caller that has stopped listening.
 BROWSER_HOST_DEADLINE_HEADER = "X-Host-Deadline"

@@ -13,6 +13,8 @@ from typing import Any
 import httpx
 import pytest
 
+from app.browser_host import server
+from app.constants.browser import BROWSER_HOST_KEY_HEADER
 from app.services.browser import host_client
 from app.services.browser.exceptions import (
     BrowserConcurrencyLimit,
@@ -32,6 +34,7 @@ class _Host:
     def __init__(self, routes: dict[str, httpx.Response]) -> None:
         self.routes = routes
         self.requests: list[httpx.Request] = []
+        self.timeouts: list[object] = []
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
@@ -44,14 +47,16 @@ def host(monkeypatch: pytest.MonkeyPatch) -> Callable[[dict[str, httpx.Response]
 
     def _install(routes: dict[str, httpx.Response]) -> _Host:
         fake = _Host(routes)
-        monkeypatch.setattr(
-            host_client.httpx,
-            "AsyncClient",
-            lambda **kw: real(transport=httpx.MockTransport(fake.handle), **kw),
-        )
+
+        def _client(**kw: Any) -> httpx.AsyncClient:
+            fake.timeouts.append(kw.get("timeout"))
+            return real(transport=httpx.MockTransport(fake.handle), **kw)
+
+        monkeypatch.setattr(host_client.httpx, "AsyncClient", _client)
         return fake
 
     monkeypatch.setattr(host_client.settings, "BROWSER_HOST_KEY", "the-key")
+    monkeypatch.setattr(server.browser_host_settings, "BROWSER_HOST_KEY", "the-key")
     return _install
 
 
@@ -69,15 +74,17 @@ async def test_a_session_is_created_with_its_seed_the_key_and_a_deadline(host: A
     assert created == host_client.HostSession(session_id="s1", cdp_ws="ws://c", live_ws="ws://l")
     sent = fake.requests[0]
     assert json.loads(sent.content) == {"storage_state": _STATE}
-    assert sent.headers["X-Host-Key"] == "the-key"
+    assert server._key_valid(sent.headers.get(BROWSER_HOST_KEY_HEADER)) is True
     assert sent.headers["X-Host-Deadline"] == "30.0"
+    assert fake.timeouts == [30.0]
 
 
 async def test_a_host_at_capacity_is_a_concurrency_limit(host: Any) -> None:
     host({"POST /sessions": httpx.Response(429, json={"detail": "at_capacity"})})
 
-    with pytest.raises(BrowserConcurrencyLimit):
+    with pytest.raises(BrowserConcurrencyLimit) as refused:
         await host_client.create_session(None, _HOST)
+    assert refused.value.args == ("The browser host is at capacity; try again shortly.",)
 
 
 async def test_a_dispose_and_a_live_read_return_the_state(host: Any) -> None:
@@ -127,6 +134,7 @@ async def test_session_info_is_read_inside_the_callers_own_deadline(host: Any) -
 
     assert info == host_client.HostSessionInfo(session_id="s1", live=True, url="https://x.com")
     assert fake.requests[0].headers["X-Host-Deadline"] == "5.0"
+    assert fake.timeouts == [5.0]
 
 
 async def test_without_a_key_none_is_sent(host: Any, monkeypatch: pytest.MonkeyPatch) -> None:

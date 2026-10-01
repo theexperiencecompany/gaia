@@ -367,6 +367,7 @@ class StubEngine:
         self.sampler = MagicMock(sample=MagicMock(return_value=(512.0, 10.0)))
         self.current_rss_mb: float | None = rss_mb
         self.answers = True
+        self.asked_within: list[float] = []
         self.is_alive = True
         self.shutdowns: list[bool] = []
         self.failure = asyncio.get_running_loop().create_future()
@@ -376,6 +377,7 @@ class StubEngine:
         return self.is_alive
 
     async def responsive(self, timeout: float) -> bool:
+        self.asked_within.append(timeout)
         return self.is_alive and self.answers
 
     def rss_mb(self) -> float | None:
@@ -452,6 +454,5 @@ def make_session(
         mux=cast(CdpMux, mux if mux is not None else FakeMux()),
         engine=as_engine(engine if engine is not None else StubEngine()),
         token="tok",
-        created_at=0.0,
         focused_target_id=target_id,
     )

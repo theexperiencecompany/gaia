@@ -12,6 +12,7 @@ available" message rather than a raw stack trace.
 
 from __future__ import annotations
 
+from http import HTTPMethod
 from typing import TypedDict
 
 import httpx
@@ -19,7 +20,7 @@ from playwright.sync_api import StorageState
 from pydantic import BaseModel, ConfigDict
 
 from app.config.settings import settings
-from app.constants.browser import BROWSER_HOST_DEADLINE_HEADER
+from app.constants.browser import BROWSER_HOST_DEADLINE_HEADER, BROWSER_HOST_KEY_HEADER
 from app.services.browser.exceptions import (
     BrowserConcurrencyLimit,
     BrowserSessionGone,
@@ -61,7 +62,7 @@ class HostSessionInfo(BaseModel):
 
 
 async def _request(
-    method: str,
+    method: HTTPMethod,
     path: str,
     host_url: str,
     *,
@@ -71,10 +72,10 @@ async def _request(
     """Make one keyed request to the host, carrying the deadline the host must answer inside."""
     headers = {BROWSER_HOST_DEADLINE_HEADER: str(timeout)}
     if settings.BROWSER_HOST_KEY:
-        headers["X-Host-Key"] = settings.BROWSER_HOST_KEY
+        headers[BROWSER_HOST_KEY_HEADER] = settings.BROWSER_HOST_KEY
     try:
         async with httpx.AsyncClient(base_url=host_url, timeout=timeout, headers=headers) as client:
-            response = await client.request(method, path, json=json)
+            response = await client.request(method.value, path, json=json)
     except httpx.HTTPError as exc:
         raise BrowserUnavailableError(
             f"Could not reach the browser host at {host_url}: {exc}"
@@ -97,7 +98,7 @@ async def create_session(storage_state: StorageState | None, host_url: str) -> H
     The session lives on a lease: call renew_session_lease while the run is alive.
     """
     response = await _request(
-        "POST",
+        HTTPMethod.POST,
         "/sessions",
         host_url,
         timeout=_CREATE_TIMEOUT_SECONDS,
@@ -108,14 +109,14 @@ async def create_session(storage_state: StorageState | None, host_url: str) -> H
 
 async def delete_session(session_id: str, host_url: str) -> StorageState:
     """Dispose the session and return its storage_state for persistence."""
-    response = await _request("DELETE", f"/sessions/{session_id}", host_url)
+    response = await _request(HTTPMethod.DELETE, f"/sessions/{session_id}", host_url)
     body: _StorageStateBody = response.json()
     return body["storage_state"]
 
 
 async def get_storage_state(session_id: str, host_url: str) -> StorageState:
     """Read a live session's storage_state, leaving the session running."""
-    response = await _request("GET", f"/sessions/{session_id}/storage-state", host_url)
+    response = await _request(HTTPMethod.GET, f"/sessions/{session_id}/storage-state", host_url)
     body: _StorageStateBody = response.json()
     return body["storage_state"]
 
@@ -126,12 +127,12 @@ async def renew_session_lease(session_id: str, host_url: str) -> None:
     Call every BROWSER_SESSION_LEASE_RENEW_SECONDS for as long as the job is alive,
     paused for the user or the agent included. Raises BrowserSessionGone once it has ended.
     """
-    await _request("POST", f"/sessions/{session_id}/lease", host_url)
+    await _request(HTTPMethod.POST, f"/sessions/{session_id}/lease", host_url)
 
 
 async def get_session(
     session_id: str, host_url: str, *, timeout: float = _DEFAULT_TIMEOUT_SECONDS
 ) -> HostSessionInfo:
     """Fetch the host's current view of a session."""
-    response = await _request("GET", f"/sessions/{session_id}", host_url, timeout=timeout)
+    response = await _request(HTTPMethod.GET, f"/sessions/{session_id}", host_url, timeout=timeout)
     return HostSessionInfo.model_validate(response.json())

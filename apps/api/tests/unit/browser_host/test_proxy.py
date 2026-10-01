@@ -525,7 +525,7 @@ async def test_a_client_too_slow_for_the_engine_is_cut_off_rather_than_fed_parti
         running.mux.emit({"method": "Page.lifecycleEvent", "params": {"n": index}})
 
     assert running.task is not None
-    with pytest.raises(proxy._ClientTooSlow):
+    with pytest.raises(proxy._ClientTooSlow, match="client fell 10000 frames behind the engine"):
         await asyncio.wait_for(running.task, timeout=1.0)
     assert running.mux.sinks == []
 
@@ -604,6 +604,23 @@ async def test_a_refused_command_is_answered_and_never_reaches_the_engine(
             "browser": {"session_id": "s1", "method": "Page.navigate", "reason": reason},
         }
     ]
+
+
+async def test_a_command_reaching_into_another_context_never_reaches_the_engine(
+    running: _Proxy,
+) -> None:
+    running.client.send(
+        {"id": 9, "method": "Browser.getWindowForTarget", "params": {"browserContextId": _FOREIGN}}
+    )
+
+    reply = await running.client.next_frame()
+    running.client.send(
+        {"id": 10, "method": "Browser.getWindowForTarget", "params": {"browserContextId": _OWN}}
+    )
+
+    assert reply["id"] == 9
+    assert _FOREIGN in reply["error"]["message"]
+    assert (await running.mux.next_forwarded())["id"] == 10
 
 
 async def test_a_navigation_to_a_private_address_is_refused(

@@ -166,7 +166,7 @@ async def browser_session(
     log.set(browser={"session_id": session.session_id, "operation": "create"})
     log.info(f"{LogTag.BROWSER} Browser session created")
     # The job holds the session's lease for its whole life, paused or not.
-    lease = spawn_background_task(keep_session_alive(session), name="browser_session_lease")
+    lease = spawn_background_task(keep_session_alive(session))
 
     try:
         registered = await register_session(session.session_id, user_id, live_ws=host.live_ws)

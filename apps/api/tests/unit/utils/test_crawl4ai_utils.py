@@ -12,6 +12,7 @@ import pytest
 from app.config.settings import settings
 from app.constants.browser import BrowserEngine
 from app.constants.log_tags import LogTag
+from app.utils import crawl4ai_utils
 
 
 def _pin_engine(monkeypatch: pytest.MonkeyPatch, engine: BrowserEngine) -> None:
@@ -353,6 +354,61 @@ class TestManagedCrawler:
         config = mock_crawler_cls.call_args.kwargs["config"]
         assert isinstance(config, BrowserConfig)
         assert config.browser_mode == "dedicated"
+
+    @patch("app.utils.crawl4ai_utils.crawl_obscura", side_effect=_held_engine)
+    @patch("app.utils.crawl4ai_utils.AsyncWebCrawler")
+    async def test_an_obscura_crawler_drives_the_engine_it_holds(
+        self, mock_crawler_cls: MagicMock, mock_ensure: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _pin_engine(monkeypatch, BrowserEngine.OBSCURA)
+        _stub_crawler(mock_crawler_cls)
+        from app.utils.crawl4ai_utils import managed_crawler
+
+        async with managed_crawler(context_name="test"):
+            pass
+
+        assert mock_crawler_cls.call_args.kwargs["config"].cdp_url == "http://127.0.0.1:9223"
+
+    @patch("app.utils.crawl4ai_utils.log")
+    @patch("app.utils.crawl4ai_utils.AsyncWebCrawler")
+    async def test_a_crawler_that_fails_to_start_is_still_closed(
+        self, mock_crawler_cls: MagicMock, mock_log: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _pin_engine(monkeypatch, BrowserEngine.CHROMIUM)
+        crawler_inst = _stub_crawler(mock_crawler_cls)
+        crawler_inst.start = AsyncMock(side_effect=RuntimeError("no driver"))
+        crawler_inst.close = AsyncMock(side_effect=RuntimeError("driver gone"))
+        from app.utils.crawl4ai_utils import managed_crawler
+
+        with pytest.raises(RuntimeError, match="no driver"):
+            async with managed_crawler(context_name="profile crawl"):
+                pass
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+        crawler_inst.close.assert_awaited_once_with()
+        assert _warning_kwargs(mock_log, "browser close failed")["context_name"] == "profile crawl"
+
+    @patch("app.utils.crawl4ai_utils.log")
+    @patch("app.utils.crawl4ai_utils.AsyncWebCrawler")
+    async def test_a_wedged_close_is_left_to_finish_and_said_so(
+        self, mock_crawler_cls: MagicMock, mock_log: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _pin_engine(monkeypatch, BrowserEngine.CHROMIUM)
+        monkeypatch.setattr(crawl4ai_utils, "CRAWL4AI_CLOSE_TIMEOUT_SECONDS", 0.01)
+        crawler_inst = _stub_crawler(mock_crawler_cls)
+        released = asyncio.Event()
+        crawler_inst.close = AsyncMock(side_effect=released.wait)
+        from app.utils.crawl4ai_utils import managed_crawler
+
+        async with managed_crawler(context_name="deep_research"):
+            pass
+
+        assert _warning_kwargs(mock_log, "browser close still running") == {
+            "context_name": "deep_research",
+            "crawl4ai_close_timeout_seconds": 0.01,
+        }
+        released.set()
 
 
 class TestRecoveryAfterBatchTimeout:

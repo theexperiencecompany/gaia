@@ -43,7 +43,9 @@ _CONTEXT_SCOPED_EVENTS = frozenset(
 # Network.setBlockedURLs filters subresources only and does not stop a top-level
 # navigation, so file:///etc/passwd and chrome:// are refused here, before the engine.
 _ALLOWED_NAVIGATION_SCHEMES = frozenset({"http", "https"})
-_NAVIGATION_METHODS = frozenset({"Page.navigate", "Target.createTarget"})
+_NAVIGATE_METHOD = "Page.navigate"
+_CREATE_TARGET_METHOD = "Target.createTarget"
+_NAVIGATION_METHODS = frozenset({_NAVIGATE_METHOD, _CREATE_TARGET_METHOD})
 # The engine's inert blank page, the one non-web URL the host itself opens.
 _BLANK_URL = "about:blank"
 # The load signal that closes a navigation's timing (see metrics.py).
@@ -51,11 +53,12 @@ _LOAD_EVENT_METHOD = "Page.loadEventFired"
 # CDP's implementation-defined server-error code, used for a refused command.
 _CDP_REFUSED_CODE = -32000
 _CONTEXT_PARAM = "browserContextId"
+_TARGET_INFOS = "targetInfos"
 # Commands that act on the browser's default context when they name none: pinned
 # to this session's, or they would read and write a jar every tenant shares.
 _CONTEXT_DEFAULTED_METHODS = frozenset(
     {
-        "Target.createTarget",
+        _CREATE_TARGET_METHOD,
         "Storage.getCookies",
         "Storage.setCookies",
         "Storage.clearCookies",
@@ -196,9 +199,9 @@ def _filter_downstream(
     if isinstance(message_id, int) and message_id in gettargets_ids:
         gettargets_ids.discard(message_id)
         result = message.get("result")
-        if isinstance(result, dict) and isinstance(result.get("targetInfos"), list):
-            result["targetInfos"] = [
-                ti for ti in result["targetInfos"] if ti.get(_CONTEXT_PARAM) == context_id
+        if isinstance(result, dict) and isinstance(result.get(_TARGET_INFOS), list):
+            result[_TARGET_INFOS] = [
+                ti for ti in result[_TARGET_INFOS] if ti.get(_CONTEXT_PARAM) == context_id
             ]
         return message
 
@@ -213,9 +216,9 @@ def _filter_downstream(
 def _note_command(host: ChromiumHost, session: HostSession, message: dict[str, Any]) -> None:
     """Record what a forwarded command tells the host: navigation timing, a new page, a tab brought forward."""
     method = message.get("method")
-    if method == "Page.navigate":
+    if method == _NAVIGATE_METHOD:
         host.note_navigation_started(session.session_id)
-    elif method == "Target.createTarget":
+    elif method == _CREATE_TARGET_METHOD:
         host.note_page_created(session.session_id)
     elif method == _ACTIVATE_TARGET_METHOD:
         target_id = (message.get("params") or {}).get("targetId")
@@ -223,66 +226,80 @@ def _note_command(host: ChromiumHost, session: HostSession, message: dict[str, A
             host.note_focus(session.session_id, target_id)
 
 
-async def run_cdp_proxy(host: ChromiumHost, session: HostSession, client_ws: WebSocket) -> None:
-    """Bridge a browser-use client socket to the session's engine connection, filtered to one context."""
-    gettargets_ids: set[int] = set()
-    downstream: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=_DOWNSTREAM_BACKLOG_LIMIT)
-    overflowed = asyncio.Event()
+class _Bridge:
+    """One client socket bridged to its session's engine connection, filtered to one context."""
 
-    def enqueue(frame: dict[str, Any]) -> None:
+    def __init__(self, host: ChromiumHost, session: HostSession, client_ws: WebSocket) -> None:
+        self.host = host
+        self.session = session
+        self.client_ws = client_ws
+        self.gettargets_ids: set[int] = set()
+        self.downstream: asyncio.Queue[dict[str, Any]] = asyncio.Queue(
+            maxsize=_DOWNSTREAM_BACKLOG_LIMIT
+        )
+        self.overflowed = asyncio.Event()
+
+    def enqueue(self, frame: dict[str, Any]) -> None:
         """Hand a frame to the drain task; runs inside the mux read loop, so it never awaits."""
         try:
-            downstream.put_nowait(frame)
+            self.downstream.put_nowait(frame)
         except asyncio.QueueFull:
-            overflowed.set()
+            self.overflowed.set()
 
-    async def client_to_engine() -> None:
-        """Forward one upstream-cleaned frame from the client to the engine."""
+    async def client_to_engine(self) -> None:
+        """Forward each client command, refused or rewritten for this context."""
         while True:
-            message = json.loads(await client_ws.receive_text())
-            reason = _refusal_reason(message, session.context_id) or await _refused_private_target(
-                message
-            )
+            message = json.loads(await self.client_ws.receive_text())
+            reason = _refusal_reason(message, self.session.context_id)
+            reason = reason or await _refused_private_target(message)
             if reason is not None:
-                log.warning(
-                    f"{LogTag.BROWSER} browser cdp command refused",
-                    error_type="RefusedCdpCommand",
-                    browser={
-                        "session_id": session.session_id,
-                        "method": message.get("method"),
-                        "reason": reason,
-                    },
-                )
-                refused_id = message.get("id")
-                await client_ws.send_text(
-                    _refusal_reply(refused_id if isinstance(refused_id, int) else None, reason)
-                )
+                await self._refuse(message, reason)
                 continue
-            _note_command(host, session, message)
-            await session.mux.forward(
-                _rewrite_upstream(message, session.context_id, gettargets_ids), enqueue
+            _note_command(self.host, self.session, message)
+            await self.session.mux.forward(
+                _rewrite_upstream(message, self.session.context_id, self.gettargets_ids),
+                self.enqueue,
             )
 
-    async def engine_to_client() -> None:
-        """Forward one queued frame from the engine back to the client."""
+    async def engine_to_client(self) -> None:
+        """Forward each queued engine frame this context may see back to the client."""
         while True:
-            frame = await downstream.get()
+            frame = await self.downstream.get()
             if frame.get("method") == _LOAD_EVENT_METHOD:
-                host.note_navigation_finished(session.session_id)
-            forward = _filter_downstream(frame, session.context_id, gettargets_ids)
+                self.host.note_navigation_finished(self.session.session_id)
+            forward = _filter_downstream(frame, self.session.context_id, self.gettargets_ids)
             if forward is not None:
-                await client_ws.send_text(json.dumps(forward))
+                await self.client_ws.send_text(json.dumps(forward))
 
-    async def give_up_on_a_slow_client() -> None:
-        await overflowed.wait()
+    async def give_up_on_a_slow_client(self) -> None:
+        await self.overflowed.wait()
         raise _ClientTooSlow(f"client fell {_DOWNSTREAM_BACKLOG_LIMIT} frames behind the engine")
 
-    unsubscribe = session.mux.subscribe(enqueue)
+    async def _refuse(self, message: dict[str, Any], reason: str) -> None:
+        log.warning(
+            f"{LogTag.BROWSER} browser cdp command refused",
+            error_type="RefusedCdpCommand",
+            browser={
+                "session_id": self.session.session_id,
+                "method": message.get("method"),
+                "reason": reason,
+            },
+        )
+        refused_id = message.get("id")
+        await self.client_ws.send_text(
+            _refusal_reply(refused_id if isinstance(refused_id, int) else None, reason)
+        )
+
+
+async def run_cdp_proxy(host: ChromiumHost, session: HostSession, client_ws: WebSocket) -> None:
+    """Bridge a browser-use client socket to the session's engine connection, filtered to one context."""
+    bridge = _Bridge(host, session, client_ws)
+    unsubscribe = session.mux.subscribe(bridge.enqueue)
     try:
         await pump_until_first_close(
-            client_to_engine(),
-            engine_to_client(),
-            give_up_on_a_slow_client(),
+            bridge.client_to_engine(),
+            bridge.engine_to_client(),
+            bridge.give_up_on_a_slow_client(),
             session.mux.wait_closed(),
             sockets=(client_ws,),
         )

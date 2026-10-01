@@ -29,7 +29,6 @@ from app.config.browser_host_settings import browser_host_settings
 _CDP_READY_TIMEOUT_SECONDS = 30.0
 # Neither engine announces readiness, so where it publishes is asked until it answers.
 _CDP_READY_POLL_SECONDS = 0.2
-_CDP_READY_REQUEST_TIMEOUT_SECONDS = 2.0
 # How long a terminated engine gets to exit before it is killed.
 _STOP_GRACE_SECONDS = 5.0
 _LOOPBACK = "127.0.0.1"
@@ -64,7 +63,7 @@ class _DevToolsVersion(BaseModel):
 
 def free_local_port() -> int:
     """Return a loopback port nothing listens on now, for an engine that only serves a port it is named."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+    with socket.socket() as probe:
         probe.bind((_LOOPBACK, 0))
         port: int = probe.getsockname()[1]
     return port
@@ -141,10 +140,7 @@ def _json_version_reader(
 
     async def read() -> str | None:
         try:
-            resp = await client.get(
-                f"http://{_LOOPBACK}:{port}/json/version",
-                timeout=_CDP_READY_REQUEST_TIMEOUT_SECONDS,
-            )
+            resp = await client.get(f"http://{_LOOPBACK}:{port}/json/version")
             resp.raise_for_status()
             return _DevToolsVersion.model_validate(resp.json()).web_socket_debugger_url
         except (httpx.HTTPError, ValidationError):
@@ -224,4 +220,6 @@ def _stop_all(procs: list[psutil.Process]) -> None:
     for proc in alive:
         with contextlib.suppress(psutil.NoSuchProcess):
             proc.kill()
-    psutil.wait_procs(alive, timeout=_STOP_GRACE_SECONDS)
+    # SIGKILL cannot be ignored, so the bound only matters for a process stuck in
+    # uninterruptible sleep, which nothing can produce on demand to test it.
+    psutil.wait_procs(alive, timeout=_STOP_GRACE_SECONDS)  # pragma: no mutate

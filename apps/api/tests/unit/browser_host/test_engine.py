@@ -267,7 +267,10 @@ async def test_a_headless_chromium_is_relaunched_announcing_plain_chrome(
 
     assert engine is second
     assert agent == "M Chrome/153"
-    assert launch.await_args_list[1].args == (BrowserEngine.CHROMIUM, _SHELL, "M Chrome/153")
+    assert [c.args for c in launch.await_args_list] == [
+        (BrowserEngine.CHROMIUM, _SHELL, None),
+        (BrowserEngine.CHROMIUM, _SHELL, "M Chrome/153"),
+    ]
     shutdown.assert_awaited_once()
 
 
@@ -289,7 +292,7 @@ async def test_an_engine_that_already_announces_a_plain_browser_is_launched_once
     engine, learned = await launch_engine(kind, _SHELL, agent)
 
     assert engine is only
-    assert launch.await_count == 1
+    assert [c.args for c in launch.await_args_list] == [(kind, _SHELL, agent)]
     assert learned == (agent if kind is BrowserEngine.OBSCURA or agent else announced)
 
 
@@ -386,6 +389,7 @@ async def test_a_profile_that_cannot_be_removed_is_a_warning_not_a_failed_stop(
     await _engine(profile="/nowhere").shutdown()
 
     assert warning.call_args.kwargs == {"error_type": "OSError"}
+    assert "profile not removed" in warning.call_args.args[0]
 
 
 async def test_an_engines_memory_is_its_process_trees(monkeypatch: pytest.MonkeyPatch) -> None:

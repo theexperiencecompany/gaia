@@ -44,6 +44,7 @@ from app.browser_host.screencast import run_live_view
 from app.config.browser_host_settings import browser_host_settings
 from app.constants.browser import (
     BROWSER_HOST_DEADLINE_HEADER,
+    BROWSER_HOST_KEY_HEADER,
     BROWSER_SESSION_LEASE_SECONDS,
     HostRequestFailure,
 )
@@ -169,7 +170,7 @@ def _key_valid(candidate: str | None) -> bool:
 
 
 def _require_host_key(request: Request) -> None:
-    if not _key_valid(request.headers.get("X-Host-Key")):
+    if not _key_valid(request.headers.get(BROWSER_HOST_KEY_HEADER)):
         log.fail(HostRequestFailure.INVALID_HOST_KEY)
         raise HTTPException(status_code=401, detail="missing or invalid host key")
 
@@ -224,42 +225,29 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(lifespan=_lifespan)
 
 
-def _refusal(
-    status: int, failure: HostRequestFailure, detail: str
-) -> Callable[[Request, Exception], Awaitable[Response]]:
-    """Build the one handler that answers an exception type with a status and logs why."""
-
-    async def handle(_request: Request, exc: Exception) -> Response:
-        log.fail(failure, error_type=type(exc).__name__)
-        return JSONResponse(status_code=status, content={"detail": detail})
-
-    return handle
-
-
+_GONE = (404, HostRequestFailure.SESSION_NOT_FOUND, "session not found")
+_UNRESPONSIVE = (503, HostRequestFailure.ENGINE_UNRESPONSIVE, "browser engine unresponsive")
 # Every route's failures map here, in one table: a session that is gone (never
 # was, ended, or its connection dropped) is a 404 wherever it is noticed.
-app.add_exception_handler(
-    SessionNotFoundError, _refusal(404, HostRequestFailure.SESSION_NOT_FOUND, "session not found")
-)
-app.add_exception_handler(
-    CdpConnectionClosed, _refusal(404, HostRequestFailure.SESSION_NOT_FOUND, "session not found")
-)
-app.add_exception_handler(
-    EngineUnresponsiveError,
-    _refusal(503, HostRequestFailure.ENGINE_UNRESPONSIVE, "browser engine unresponsive"),
-)
-app.add_exception_handler(
-    CDPTimeoutError,
-    _refusal(503, HostRequestFailure.ENGINE_UNRESPONSIVE, "browser engine unresponsive"),
-)
-app.add_exception_handler(
-    CdpCommandError,
-    _refusal(502, HostRequestFailure.ENGINE_REFUSED, "browser engine refused the request"),
-)
-app.add_exception_handler(
-    _DeadlineExceeded,
-    _refusal(504, HostRequestFailure.DEADLINE_EXCEEDED, "the caller's deadline passed"),
-)
+_REFUSALS: dict[type[Exception], tuple[int, HostRequestFailure, str]] = {
+    SessionNotFoundError: _GONE,
+    CdpConnectionClosed: _GONE,
+    EngineUnresponsiveError: _UNRESPONSIVE,
+    CDPTimeoutError: _UNRESPONSIVE,
+    CdpCommandError: (502, HostRequestFailure.ENGINE_REFUSED, "browser engine refused the request"),
+    _DeadlineExceeded: (504, HostRequestFailure.DEADLINE_EXCEEDED, "the caller's deadline passed"),
+}
+
+
+async def _refuse(_request: Request, exc: Exception) -> Response:
+    """Answer a failure from the table with its status, and log why on the request's event."""
+    status, failure, detail = _REFUSALS[type(exc)]
+    log.fail(failure, error_type=type(exc).__name__)
+    return JSONResponse(status_code=status, content={"detail": detail})
+
+
+for _refused_type in _REFUSALS:
+    app.add_exception_handler(_refused_type, _refuse)
 
 # Polled by the orchestrator; a degraded engine is logged by healthz itself.
 _UNLOGGED_PATHS = frozenset({"/healthz"})

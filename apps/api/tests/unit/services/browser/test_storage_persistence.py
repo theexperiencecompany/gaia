@@ -6,6 +6,7 @@ These pin the happy paths plus the fail-loud behavior on a missing/invalid key
 (never a silent fallback).
 """
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 from cryptography.fernet import Fernet
@@ -391,3 +392,14 @@ def test_a_malformed_key_fails_loud_naming_the_setting_and_the_expected_shape(
     )
     assert exc_info.value.__cause__ is not None
     assert sp._cipher is None
+
+
+async def test_states_that_leave_out_cookies_or_origins_still_merge(profiles: _Profiles) -> None:
+    without_origins: Any = {"cookies": []}
+    without_cookies: Any = {"origins": [_TOKEN_ORIGIN]}
+    profiles.blobs[("u1", "example.com")] = sp._encrypt_state(without_origins)
+    await save_storage_state("u1", "example.com", without_cookies)
+    assert await _saved(profiles, "example.com") == {"cookies": [], "origins": [_TOKEN_ORIGIN]}
+
+    await save_storage_state("u1", "example.com", without_origins)
+    assert await _saved(profiles, "example.com") == {"cookies": [], "origins": [_TOKEN_ORIGIN]}

@@ -13,6 +13,7 @@ from unittest.mock import MagicMock
 
 from fastapi import WebSocketDisconnect
 import pytest
+from starlette.websockets import WebSocketState
 
 from app.browser_host import screencast
 from app.browser_host.cdp_mux import CdpCommandError
@@ -33,10 +34,17 @@ class _Viewer:
         self.inbound: asyncio.Queue[str | None] = asyncio.Queue()
         self.sent: list[dict[str, Any]] = []
         self.got_frame = asyncio.Event()
+        self.client_state = WebSocketState.CONNECTED
+        self.application_state = WebSocketState.CONNECTED
+        # Starlette's way of reporting a read after the socket closed, instead of a disconnect.
+        self.closed_under_read = False
 
     async def receive_text(self) -> str:
         raw = await self.inbound.get()
         if raw is None:
+            if self.closed_under_read:
+                self.client_state = WebSocketState.DISCONNECTED
+                raise RuntimeError('WebSocket is not connected. Need to call "accept" first.')
             raise WebSocketDisconnect
         return raw
 
@@ -348,6 +356,7 @@ async def test_a_favicon_read_that_fails_is_warned_about_and_left_empty(
 
     assert await screencast._read_favicon(cast(Any, mux), "S") is None
     assert warning.call_args.kwargs == {"error_type": "CdpCommandError"}
+    assert "Could not read page favicon" in warning.call_args.args[0]
 
 
 @pytest.mark.parametrize(
@@ -399,24 +408,238 @@ async def test_a_pull_waits_while_frames_keep_arriving_and_carries_their_css_siz
 
 async def test_a_failing_pull_is_warned_once_per_streak(monkeypatch: pytest.MonkeyPatch) -> None:
     run = _Run()
-    run.mux.send_error = CdpCommandError({"message": "navigating"})
     stream = screencast._Stream(target_id="t1", page_session="S")
-    warning = MagicMock()
+    warned_at: list[int] = []
+    warning = MagicMock(side_effect=lambda *a, **k: warned_at.append(ticks))
     monkeypatch.setattr(screencast.log, "warning", warning)
+    failing = CdpCommandError({"message": "navigating"})
+    # tick: 1-3 fail, 4 a screencast frame arrives, 5-7 fail, 8 succeeds, 9-11 fail
+    plan = {1: failing, 4: "frame", 5: failing, 8: None, 9: failing, 12: "stop"}
     ticks = 0
 
     async def _tick(_seconds: float) -> None:
         nonlocal ticks
         ticks += 1
-        if ticks == 3:
-            run.mux.send_error = None
-        if ticks == 4:
-            run.mux.send_error = CdpCommandError({"message": "again"})
-        if ticks == 6:
+        step = plan.get(ticks)
+        if step == "stop":
             raise asyncio.CancelledError
+        if step == "frame":
+            stream.latest = screencast._Frame("<cast>", 1, 1)
+        elif ticks in plan:
+            run.mux.send_error = cast(Any, step)
 
     monkeypatch.setattr(screencast.asyncio, "sleep", _tick)
     with pytest.raises(asyncio.CancelledError):
         await screencast._pull_frames(cast(Any, run.mux), stream, asyncio.Queue(maxsize=2))
 
-    assert warning.call_count == 2
+    assert warned_at == [1, 5, 9]
+    assert "Could not pull a live-view frame" in warning.call_args.args[0]
+    assert warning.call_args.kwargs == {"error_type": "CdpCommandError"}
+
+
+_ON_ITS_PAGE = {
+    "Page.enable",
+    "Page.startScreencast",
+    "Page.stopScreencast",
+    "Page.screencastFrameAck",
+    "Page.captureScreenshot",
+    "Runtime.evaluate",
+    "Input.dispatchMouseEvent",
+    "Input.dispatchKeyEvent",
+}
+
+
+async def test_everything_the_view_does_to_its_page_rides_its_own_page_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(browser_host_settings, "BROWSER_ENGINE", BrowserEngine.OBSCURA)
+    monkeypatch.setattr(screencast, "_PULL_INTERVAL_SECONDS", 0.0)
+    run = _Run()
+    await run.start()
+    run.frame("<jpeg>")
+    run.viewer.say(type="mouse", event="mouseMoved", x=1, y=2)
+    run.viewer.say(type="key", event="keyUp", key="a")
+    run.viewer.say(type="resize")
+    await _settle()
+    page = run.page_session
+    run.viewer.leave()
+    await run.finish()
+
+    on_page = [c for c in run.mux.calls if c[0] in _ON_ITS_PAGE]
+    assert {c[0] for c in on_page} == _ON_ITS_PAGE
+    assert all(session == page for _, _, session in on_page)
+    assert (
+        "Runtime.evaluate",
+        {"expression": screencast._FAVICON_JS, "returnByValue": True},
+        page,
+    ) in run.mux.calls
+    assert all(
+        params == {"targetId": "t1"}
+        for m, params, _ in run.mux.calls
+        if m == "Target.getTargetInfo"
+    )
+    assert run.mux.params_for("Page.captureScreenshot")[0] == {"format": "jpeg", "quality": 72}
+    assert run.mux.params_for("Page.startScreencast")[-1] == {
+        "format": "jpeg",
+        "quality": 72,
+        "maxWidth": BROWSER_VIEWPORT_WIDTH,
+        "maxHeight": BROWSER_VIEWPORT_HEIGHT,
+    }
+
+
+async def test_a_view_that_closes_logs_which_session_it_watched(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded = MagicMock()
+    monkeypatch.setattr(screencast.log, "set", recorded)
+    for pages, ends in ((["t1"], "leave"), ([], "nothing to show")):
+        recorded.reset_mock()
+        run = _Run(pages=pages)
+        if ends == "leave":
+            await run.start()
+            run.viewer.leave()
+            await run.finish()
+        else:
+            await screencast.run_live_view(cast(Any, run.host), run.session, cast(Any, run.viewer))
+
+        recorded.assert_called_with(
+            browser={"session_id": run.session.session_id, "operation": "live_view_closed"}
+        )
+
+
+async def test_a_viewer_whose_socket_closed_under_a_read_ends_the_view_cleanly() -> None:
+    run = _Run()
+    run.viewer.closed_under_read = True
+    await run.start()
+
+    run.viewer.leave()
+
+    await run.finish()
+
+
+async def test_a_page_that_never_answers_its_attach_fails_the_view_inside_the_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(screencast, "BROWSER_HOST_LIVENESS_TIMEOUT_SECONDS", 0.01)
+    run = _Run()
+    run.mux.hang_on = "Target.attachToTarget"
+
+    with pytest.raises(screencast.CDPTimeoutError):
+        await screencast.run_live_view(cast(Any, run.host), run.session, cast(Any, run.viewer))
+
+
+@pytest.mark.parametrize("hangs", ["Page.stopScreencast", "Target.detachFromTarget"])
+async def test_a_page_that_never_lets_go_is_left_inside_the_budget(
+    monkeypatch: pytest.MonkeyPatch, hangs: str
+) -> None:
+    warning = MagicMock()
+    monkeypatch.setattr(screencast.log, "warning", warning)
+    run = _Run()
+    await run.start()
+    monkeypatch.setattr(screencast, "BROWSER_HOST_LIVENESS_TIMEOUT_SECONDS", 0.01)
+    run.mux.hang_on = hangs
+
+    run.viewer.leave()
+    await run.finish()
+
+    assert "left its page attached" in warning.call_args.args[0]
+    assert warning.call_args.kwargs == {"error_type": "CDPTimeoutError"}
+
+
+async def test_a_navigation_without_a_frame_and_a_tab_without_info_are_still_read() -> None:
+    run = _Run()
+    run.mux.responses["Target.getTargetInfo"] = {}
+    run.mux.responses["Runtime.evaluate"] = {}
+    await run.start()
+    reads = run.mux.methods.count("Target.getTargetInfo")
+
+    run.mux.emit({"method": "Page.frameNavigated", "sessionId": run.page_session, "params": {}})
+    await _settle()
+    run.frame("<jpeg>")
+    await asyncio.wait_for(run.viewer.got_frame.wait(), 1.0)
+    run.viewer.leave()
+    await run.finish()
+
+    assert run.mux.methods.count("Target.getTargetInfo") == reads + 1
+    assert (
+        run.viewer.sent[0]["url"],
+        run.viewer.sent[0]["title"],
+        run.viewer.sent[0]["favicon"],
+    ) == (
+        None,
+        None,
+        None,
+    )
+
+
+async def test_a_pull_on_obscura_carries_the_css_size_the_screencast_last_reported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(browser_host_settings, "BROWSER_ENGINE", BrowserEngine.OBSCURA)
+    monkeypatch.setattr(screencast, "_PULL_INTERVAL_SECONDS", 0.0)
+    run = _Run()
+    await run.start()
+
+    run.frame("<cast>")
+    for _ in range(200):
+        if any(f["data"] == "<pulled>" and f["cssWidth"] == 800 for f in run.viewer.sent):
+            break
+        await asyncio.sleep(0)
+    run.viewer.leave()
+    await run.finish()
+
+    assert any(f["data"] == "<pulled>" and f["cssWidth"] == 800 for f in run.viewer.sent)
+
+
+async def test_the_first_pull_captures_a_page_that_never_repainted() -> None:
+    run = _Run()
+    stream = screencast._Stream(target_id="t1", page_session="S")
+    frames: asyncio.Queue[screencast._Frame] = asyncio.Queue(maxsize=2)
+    ticks = 0
+
+    async def _tick(_seconds: float) -> None:
+        nonlocal ticks
+        ticks += 1
+        if ticks == 2:
+            raise asyncio.CancelledError
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(screencast.asyncio, "sleep", _tick)
+        with pytest.raises(asyncio.CancelledError):
+            await screencast._pull_frames(cast(Any, run.mux), stream, frames)
+
+    assert frames.get_nowait().data == "<pulled>"
+
+
+async def test_a_pull_into_a_full_queue_is_dropped_and_the_pull_goes_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = _Run()
+    stream = screencast._Stream(target_id="t1", page_session="S")
+    frames: asyncio.Queue[screencast._Frame] = asyncio.Queue(maxsize=1)
+    ticks = 0
+
+    async def _tick(_seconds: float) -> None:
+        nonlocal ticks
+        ticks += 1
+        if ticks == 4:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(screencast.asyncio, "sleep", _tick)
+    with pytest.raises(asyncio.CancelledError):
+        await screencast._pull_frames(cast(Any, run.mux), stream, frames)
+
+    assert run.mux.methods.count("Page.captureScreenshot") == 3
+
+
+async def test_a_finished_side_task_leaves_the_views_set() -> None:
+    background: set[asyncio.Task[Any]] = set()
+
+    async def _done() -> None:
+        return None
+
+    screencast._spawn(background, _done())
+    assert len(background) == 1
+    await _settle()
+
+    assert background == set()

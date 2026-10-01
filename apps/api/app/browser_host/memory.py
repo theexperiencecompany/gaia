@@ -10,10 +10,12 @@ machine still has free is the room. BROWSER_HOST_MEMORY_LIMIT_MB pins or caps it
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import psutil
 
+from app.browser_host.obscura_launch import process_tree_rss_mb
 from app.config.browser_host_settings import browser_host_settings
 
 # cgroup v2 (unified) then v1 (legacy): usage, limit, and the stat file whose
@@ -50,9 +52,9 @@ def _stat_value(path: Path, key: str) -> int:
     except OSError:
         return 0
     for line in lines:
-        name, _, value = line.partition(" ")
-        if name == key and value.strip().isdigit():
-            return int(value)
+        fields = line.split()
+        if fields[:1] == [key] and len(fields) == 2 and fields[1].isdigit():
+            return int(fields[1])
     return 0
 
 
@@ -66,18 +68,6 @@ def _cgroup_working_set_and_limit_bytes() -> tuple[int, int] | None:
     return None
 
 
-def _own_tree_rss_bytes() -> int:
-    """Resident memory of this process and every process it started (the engines)."""
-    me = psutil.Process()
-    total: int = me.memory_info().rss
-    for child in me.children(recursive=True):
-        try:
-            total += child.memory_info().rss
-        except psutil.NoSuchProcess:
-            continue
-    return total
-
-
 def memory_usage_mb() -> tuple[float, float]:
     """Return the current (used_mb, limit_mb) the host admits sessions against."""
     override = browser_host_settings.BROWSER_HOST_MEMORY_LIMIT_MB
@@ -86,6 +76,8 @@ def memory_usage_mb() -> tuple[float, float]:
         used = cgroup[0] / _BYTES_PER_MB
         limit = cgroup[1] / _BYTES_PER_MB
         return used, (min(limit, float(override)) if override else limit)
-    used = _own_tree_rss_bytes() / _BYTES_PER_MB
+    used = process_tree_rss_mb(os.getpid())
+    if used is None:
+        raise RuntimeError("the browser host cannot read its own memory")
     room = psutil.virtual_memory().available / _BYTES_PER_MB
     return used, (float(override) if override else used + room)

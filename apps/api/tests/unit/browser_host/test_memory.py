@@ -6,11 +6,10 @@ them, so the parsing is real.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
-import psutil
 import pytest
 
 from app.browser_host import memory
@@ -118,17 +117,18 @@ def test_a_working_set_never_reads_below_zero(
     assert memory.memory_usage_mb()[0] == 0.0
 
 
-def _off_container(monkeypatch: pytest.MonkeyPatch, *, own: int, available: int) -> None:
-    child, gone = MagicMock(), MagicMock()
-    child.memory_info.return_value.rss = own // 2
-    gone.memory_info.side_effect = psutil.NoSuchProcess(1)
-    me = MagicMock()
-    me.memory_info.return_value.rss = own - own // 2
-    me.children.return_value = [child, gone]
-    monkeypatch.setattr(memory.psutil, "Process", MagicMock(return_value=me))
+def _off_container(monkeypatch: pytest.MonkeyPatch, *, own: int, available: int) -> list[int]:
+    asked: list[int] = []
+
+    def _tree(pid: int) -> float:
+        asked.append(pid)
+        return own / _MB
+
+    monkeypatch.setattr(memory, "process_tree_rss_mb", _tree)
     monkeypatch.setattr(
         memory.psutil, "virtual_memory", lambda: SimpleNamespace(available=available)
     )
+    return asked
 
 
 @pytest.mark.parametrize(
@@ -143,9 +143,21 @@ def test_off_a_limited_container_the_host_is_charged_its_own_tree_against_what_i
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, v2: dict[str, str] | None
 ) -> None:
     _cgroup(tmp_path, monkeypatch, v2=v2)
-    _off_container(monkeypatch, own=300 * _MB, available=1000 * _MB)
+    asked = _off_container(monkeypatch, own=300 * _MB, available=1000 * _MB)
 
     assert memory.memory_usage_mb() == (300.0, 1300.0)
+    assert asked == [os.getpid()]
+
+
+def test_a_host_that_cannot_read_its_own_memory_says_so(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _cgroup(tmp_path, monkeypatch)
+    monkeypatch.setattr(memory, "process_tree_rss_mb", lambda pid: None)
+
+    with pytest.raises(RuntimeError) as unread:
+        memory.memory_usage_mb()
+    assert unread.value.args == ("the browser host cannot read its own memory",)
 
 
 def test_off_a_container_a_configured_limit_is_the_budget(
@@ -158,7 +170,10 @@ def test_off_a_container_a_configured_limit_is_the_budget(
     assert memory.memory_usage_mb() == (300.0, 800.0)
 
 
-@pytest.mark.parametrize("text", ["", "inactive_file\n", "inactive_file lots\n", "other 5\n"])
+@pytest.mark.parametrize(
+    "text",
+    ["", "inactive_file\n", "inactive_file lots\n", "other 5\n", "inactive_file 5 extra\n"],
+)
 def test_an_unreadable_stat_counts_no_cache(tmp_path: Path, text: str) -> None:
     stat = tmp_path / "memory.stat"
     stat.write_text(text)

@@ -72,8 +72,10 @@ async def test_an_engine_that_died_is_replaced_for_the_next_crawl(engines: _Engi
 
 
 async def test_a_bloated_engine_drains_its_crawls_while_a_fresh_one_takes_new_ones(
-    engines: _Engines,
+    engines: _Engines, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    warning = MagicMock()
+    monkeypatch.setattr(crawl_obscura.log, "warning", warning)
     async with crawl_obscura.crawl_obscura():
         long_crawl = crawl_obscura.crawl_obscura()
         assert await long_crawl.__aenter__() == "http://127.0.0.1:9000"
@@ -85,6 +87,10 @@ async def test_a_bloated_engine_drains_its_crawls_while_a_fresh_one_takes_new_on
     await long_crawl.__aexit__(None, None, None)
 
     assert engines.stopped == [9000]
+    assert "replaced over its memory limit" in warning.call_args.args[0]
+    assert warning.call_args.kwargs == {"rss_mb": 1500, "limit_mb": 1000}
+    await crawl_obscura.shutdown_crawl_obscura()
+    assert engines.stopped == [9000, 9001]
 
 
 @pytest.mark.parametrize(("limit", "rss"), [(1000, 1000.0), (None, 9000.0), (1000, None)])
