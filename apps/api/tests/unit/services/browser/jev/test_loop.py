@@ -10,6 +10,7 @@ import json
 from typing import Any
 from unittest.mock import MagicMock
 
+from browser_use.llm.exceptions import ModelError
 from browser_use.llm.messages import BaseMessage
 from browser_use.llm.views import ChatInvokeCompletion
 import pytest
@@ -18,8 +19,10 @@ from app.constants.browser import (
     JEV_BURST_MAX_ACTIONS,
     JEV_SECRET_DIFFERS,
     JEV_SECRET_MASK,
+    JEV_SECRET_WRITTEN,
     JEV_STALE_LIMIT,
     JEV_UNCHANGED_LIMIT,
+    JEV_VISITED_PAGES,
     JevOperation,
     JevStop,
 )
@@ -30,6 +33,7 @@ from app.services.browser.jev.decision import (
     NONE_VALUE,
     Decision,
     RecentAction,
+    Situation,
     Visited,
     describe_field,
 )
@@ -45,6 +49,7 @@ from app.services.browser.jev.page import (
     FieldUnfocused,
     NavigationFailed,
     PageAction,
+    PageLoading,
     PageScriptError,
     PageState,
     PageUnresponsive,
@@ -101,21 +106,14 @@ class _Jev:
     chosen: list[dict[str, Any]] = field(default_factory=list)
 
     async def decide(
-        self,
-        client: object,
-        page: PageState,
-        goal: str,
-        history: list[RecentAction],
-        visited: list[Visited],
-        addresses: list[str],
-        mask: Callable[[str], str],
+        self, client: object, situation: Situation, visited: list[Visited], addresses: list[str]
     ) -> Decision:
         self.decided.append(
             {
                 "client": client,
-                "page": page,
-                "goal": goal,
-                "history": history,
+                "page": situation.page,
+                "goal": situation.goal,
+                "history": situation.history,
                 "visited": list(visited),
                 "addresses": addresses,
             }
@@ -125,22 +123,15 @@ class _Jev:
         return self.decisions.pop(0)
 
     async def choose_value(
-        self,
-        client: object,
-        page: PageState,
-        goal: str,
-        target: PageAction,
-        history: list[RecentAction],
-        secrets: list[str],
-        mask: Callable[[str], str],
+        self, client: object, situation: Situation, target: PageAction, secrets: list[str]
     ) -> tuple[str, JevEvaluation]:
         self.chosen.append(
             {
                 "client": client,
-                "page": page,
-                "goal": goal,
+                "page": situation.page,
+                "goal": situation.goal,
                 "target": target,
-                "history": history,
+                "history": situation.history,
                 "secrets": secrets,
             }
         )
@@ -150,15 +141,11 @@ class _Jev:
         return value, JevEvaluation(answers={}, provider="openrouter")
 
     async def choose_option(
-        self,
-        client: object,
-        page: PageState,
-        goal: str,
-        dropdown: PageAction,
-        history: list[RecentAction],
-        mask: Callable[[str], str],
+        self, client: object, situation: Situation, dropdown: PageAction
     ) -> tuple[PageAction, JevEvaluation]:
-        self.optioned.append((client, page.url, goal, history, mask(SECRET)))
+        self.optioned.append(
+            (client, situation.page.url, situation.goal, situation.history, situation.mask(SECRET))
+        )
         [option] = [o for o in dropdown["options"] if o["value"] == self.option]
         chosen = dropdown.copy()
         del chosen["options"]
@@ -263,15 +250,21 @@ def _pages(*urls: str) -> list[PageState]:
 # --- why a burst stops -------------------------------------------------------------------
 
 
+@pytest.mark.parametrize(
+    ("judged", "stop"),
+    [(JevOperation.DONE, JevStop.DONE), (JevOperation.BLOCKED, JevStop.BLOCKED)],
+)
 async def test_a_burst_ends_when_jev_judges_the_goal_done_and_reports_what_it_did(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, judged: JevOperation, stop: JevStop
 ) -> None:
-    page = FakePage(page_state(), page_state(url="https://site.test/b", text="done page"))
-    run = _run(monkeypatch, page, decision(JevOperation.CLICK, BUTTON), decision(JevOperation.DONE))
+    final = replace(page_state(url="https://site.test/b", text="done page"), omitted_actions=4)
+    page = FakePage(page_state(), final)
+    run = _run(monkeypatch, page, decision(JevOperation.CLICK, BUTTON), decision(judged))
 
     result = await run.burst("go next")
 
-    assert (result.goal, result.stop) == ("go next", JevStop.DONE)
+    assert (result.goal, result.stop, result.omitted_controls) == ("go next", stop, 4)
+    assert [d["goal"] for d in run.jev.decided] == ["go next", "go next"]
     assert result.steps == [
         JevStep(
             operation=JevOperation.CLICK,
@@ -417,7 +410,7 @@ async def test_a_covered_control_twice_ends_the_burst(monkeypatch: pytest.Monkey
 
     result = await run.burst()
 
-    assert (result.stop, result.steps) == (JevStop.COVERED, [])
+    assert (result.stop, result.steps, len(run.jev.decided)) == (JevStop.COVERED, [], 2)
 
 
 async def test_a_page_the_browser_stopped_loading_ends_the_burst_with_why(
@@ -495,6 +488,7 @@ async def test_a_field_the_goal_gives_no_value_for_asks_the_agent_naming_the_fie
     [
         (TabUnavailable("No valid agent focus available"), JevStop.TAB_UNAVAILABLE),
         (PageUnresponsive("Runtime.evaluate got no answer in 20s"), JevStop.UNRESPONSIVE),
+        (PageLoading("The page is still loading: https://site.test/b"), JevStop.LOADING),
         (PageScriptError("Jev's page script failed: TypeError"), JevStop.PAGE_SCRIPT_ERROR),
     ],
 )
@@ -509,6 +503,43 @@ async def test_a_tab_that_goes_away_mid_burst_ends_it_with_every_step_it_took(
 
     assert (result.stop, result.detail) == (stop, str(error))
     assert [step.label for step in result.steps] == ["Next"]
+
+
+@pytest.mark.regression
+async def test_a_blank_tab_is_never_an_address_and_with_none_to_open_the_burst_ends_at_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: from about:blank with no start_url, Jev reopened about:blank to its action budget."""
+    wait = PageAction(id="wait", kind="wait", label="Wait for the page to update")
+    blank = replace(page_state(url="about:blank"), actions=[wait])
+    page = FakePage(blank, *_pages("a", "b"))
+    run = _run(monkeypatch, page, decision(JevOperation.CLICK, BUTTON), decision(JevOperation.DONE))
+
+    stranded = await run.burst("open the docs")
+    await run.burst("open the docs", "https://site.test/a")
+
+    assert (stranded.stop, stranded.steps) == (JevStop.NO_PAGE, [])
+    # The page Jev is on is no address to open either.
+    assert [d["addresses"] for d in run.jev.decided] == [[], ["https://site.test/a"]]
+
+
+@pytest.mark.parametrize(
+    "tab",
+    [
+        # A window its opener wrote a form into.
+        page_state(url="about:blank"),
+        replace(page_state(), actions=[]),
+    ],
+    ids=["blank-with-a-control", "web-page-with-none"],
+)
+async def test_a_tab_with_a_control_or_on_the_web_is_decided_on_though_nothing_is_to_open(
+    monkeypatch: pytest.MonkeyPatch, tab: PageState
+) -> None:
+    run = _run(monkeypatch, FakePage(tab), decision(JevOperation.DONE))
+
+    result = await run.burst()
+
+    assert (result.stop, run.jev.decided[0]["addresses"]) == (JevStop.DONE, [])
 
 
 async def test_a_start_address_on_a_tab_that_is_gone_ends_the_burst_with_no_page(
@@ -588,10 +619,12 @@ async def test_a_burst_sets_a_dropdown_and_types_what_each_field_takes(
         (run.runner._client, "https://site.test/a", "sign up as the first programmer", [], MASKED)
     ]
     assert {call.latency_ms for call in run.ledger.calls} == {1000}
-    assert (asked["goal"], asked["field"]) == (
-        "sign up as the first programmer",
-        describe_field(FIELD),
-    )
+    assert asked == {
+        "goal": "sign up as the first programmer",
+        "field": describe_field(FIELD),
+        "page": {"title": "Site", "text": "page"},
+        "recent_actions": [{"action": f"Size: Large {MASKED}", "text": None}],
+    }
 
 
 async def test_a_page_the_burst_outran_resets_only_when_an_input_lands_and_the_start_page_stays_offered(
@@ -647,6 +680,45 @@ async def test_a_gateway_failure_choosing_a_value_ends_the_burst_with_its_steps(
     assert result.stop is JevStop.GATEWAY
     assert "503 from the gateway" in result.detail
     assert [step.label for step in result.steps] == ["Next"]
+
+
+@pytest.mark.parametrize(
+    ("text_model", "failure"),
+    [
+        (_TextModel(hangs=True), "TimeoutError"),
+        (_TextModel(raises=ModelError("busy")), "ModelError"),
+    ],
+)
+async def test_a_value_the_text_model_never_writes_ends_the_burst_with_nothing_typed(
+    monkeypatch: pytest.MonkeyPatch, text_model: _TextModel, failure: str
+) -> None:
+    monkeypatch.setattr(loop_mod, "JEV_TEXT_TIMEOUT_SECONDS", 0.01)
+    page = FakePage(page_state())
+    run = _run(
+        monkeypatch,
+        page,
+        decision(JevOperation.TYPE_TEXT, FIELD),
+        value=GENERATE,
+        text_model=text_model,
+    )
+
+    result = await run.burst("sign up")
+
+    assert (result.stop, result.detail) == (
+        JevStop.GATEWAY,
+        f"Jev could not decide this step: The value could not be written ({failure}).",
+    )
+    assert page.typed == []
+
+
+async def test_jev_is_shown_the_pages_it_visited_last(monkeypatch: pytest.MonkeyPatch) -> None:
+    pages = _pages(*(str(n) for n in range(JEV_VISITED_PAGES + 2)))
+    clicks = [decision(JevOperation.CLICK, BUTTON)] * (len(pages) - 1)
+    run = _run(monkeypatch, FakePage(*pages), *clicks, decision(JevOperation.DONE))
+
+    await run.burst()
+
+    assert run.runner.visited == [Visited("Site", p.url) for p in pages[-JEV_VISITED_PAGES:]]
 
 
 async def test_a_page_that_never_settles_after_an_action_ends_the_burst_with_the_action_recorded(
@@ -731,7 +803,13 @@ async def test_no_secret_reaches_jev_or_the_text_model_and_a_masked_address_stil
     final = page_state(url=home, text=f"bye {SECRET[:9]}", text_cut=True)
     final = replace(
         final,
-        frames=[{"src": f"https://pay.test/?u={SECRET}", "same_origin": False, "visible": True}],
+        frames=[
+            {"src": f"https://pay.test/?u={SECRET}", "same_origin": False, "visible": True},
+            # Jev reads a same-origin frame, and an unseen or unnamed one is nothing to report.
+            {"src": "https://site.test/inner", "same_origin": True, "visible": True},
+            {"src": "https://ads.test/", "same_origin": False, "visible": False},
+            {"src": "", "same_origin": False, "visible": True},
+        ],
     )
     page = FakePage(first, page_state(url="https://site.test/b"), final)
     jev = _RecordingJev(
@@ -868,7 +946,7 @@ async def test_a_written_value_that_names_a_secret_is_never_typed(
     result = await run.burst("sign in")
 
     assert result.stop is JevStop.GATEWAY
-    assert loop_mod._SECRET_WRITTEN in result.detail
+    assert JEV_SECRET_WRITTEN in result.detail
     assert page.typed == []
 
 

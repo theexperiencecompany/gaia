@@ -49,8 +49,9 @@ _DESCRIPTION = (
     "searching and choosing, clicking through pages. Jev only operates controls: it cannot "
     "read, summarise, count or compare content, so never ask it to; open the page and use "
     "extract yourself for that. Give a concrete, self-contained goal naming the values to "
-    "type (quote them) and what counts as done. Never give Jev the same goal again after it "
-    "made no progress on it."
+    "type (quote them) and what counts as done. When the browser is on a blank tab, pass "
+    "start_url with the page to start on. Never give Jev the same goal again after it made no "
+    "progress on it."
 )
 
 # Jev's steps as the Browser-Use actions the card and the thread already know how to name.
@@ -84,6 +85,8 @@ _STOP_MEANING = {
     JevStop.COVERED: "An overlay or hidden control blocks the target; deal with it yourself.",
     JevStop.STALE: "The page kept changing under Jev's decisions.",
     JevStop.UNRESPONSIVE: "The page stopped answering; an input sent just then may or may not have landed.",
+    JevStop.LOADING: "The page had not finished loading, so Jev could not read it; nothing was done on it.",
+    JevStop.NO_PAGE: "Pass start_url with the page to start on, or open the page yourself.",
     JevStop.USER_MESSAGE: "The user sent a message; read it (it is in your task) before going on.",
     JevStop.STOPPED: "The run is stopping.",
     JevStop.GATEWAY: "Jev could not decide; continue yourself.",
@@ -104,7 +107,8 @@ class JevParams(BaseModel):
         description="What Jev should achieve, self-contained, with every value quoted."
     )
     start_url: str | None = Field(
-        default=None, description="Open this page first; omit to start where the browser is."
+        default=None,
+        description="Open this page first; omit to start where the browser is (never a blank tab).",
     )
 
 

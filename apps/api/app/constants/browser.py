@@ -467,6 +467,8 @@ class JevStop(StrEnum):
     COVERED = "covered"
     STALE = "stale"
     UNRESPONSIVE = "unresponsive"
+    LOADING = "loading"
+    NO_PAGE = "no_page"
     USER_MESSAGE = "user_message"
     STOPPED = "stopped"
     GATEWAY = "gateway"
@@ -509,6 +511,9 @@ JEV_WAIT_SECONDS = 1.0
 #: The longest the read after an input waits for its requests to finish and the DOM to go quiet:
 #: a page that animates or polls never does.
 JEV_SETTLE_MAX_SECONDS = 2.0
+#: The longest a read waits for a document still parsing (a script in its head not yet
+#: arrived) to fire DOMContentLoaded: the time a site gets to answer before a load is stopped.
+JEV_PARSE_WAIT_SECONDS = BROWSER_LOAD_STALL_SECONDS
 JEV_SCREENSHOT_QUALITY = 70
 #: The tiny model writes a value only when no literal from the goal fits; it reads this much page text.
 JEV_TEXT_TIMEOUT_SECONDS = 30.0
@@ -522,6 +527,8 @@ JEV_TEXT_VALUE_MAX_CHARS = 2000
 JEV_SECRET_MASK = "[hidden]"  # nosec B105 -- the placeholder shown in place of a typed password, not a credential
 #: What a step says a password field holds when it is not the secret typed: never its value.
 JEV_SECRET_DIFFERS = "a value other than the secret"  # nosec B105 -- report wording, not a credential
+#: Why a written value is not typed when it names a secret.
+JEV_SECRET_WRITTEN = "The written value names a secret; nothing was typed."  # nosec B105 -- report wording, not a credential
 # Probability mass across a choice question must sum to ~1; the gateway rounds.
 JEV_PROBABILITY_SUM_TOLERANCE = 0.02
 

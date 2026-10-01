@@ -14,6 +14,7 @@ from dataclasses import dataclass, field, replace
 import json
 from time import perf_counter
 from typing import Protocol
+from urllib.parse import urlsplit
 
 from browser_use.llm.exceptions import ModelError
 from browser_use.llm.messages import BaseMessage, SystemMessage, UserMessage
@@ -28,6 +29,7 @@ from app.constants.browser import (
     JEV_RECENT_ACTIONS,
     JEV_REPORT_OPENED_PAGE_CHARS,
     JEV_SECRET_DIFFERS,
+    JEV_SECRET_WRITTEN,
     JEV_STALE_LIMIT,
     JEV_TEXT_TIMEOUT_SECONDS,
     JEV_TEXT_VALUE_MAX_CHARS,
@@ -43,6 +45,7 @@ from app.services.browser.jev.decision import (
     Decision,
     JevDecisionError,
     RecentAction,
+    Situation,
     Visited,
     choose_option,
     choose_value,
@@ -58,6 +61,7 @@ from app.services.browser.jev.page import (
     Frame,
     NavigationFailed,
     PageAction,
+    PageLoading,
     PageScriptError,
     PageState,
     PageUnresponsive,
@@ -74,6 +78,7 @@ from app.services.browser.jev.secrets import (
 )
 from app.services.browser.ledger import CallComponent, ExecutedAction, ModelCall, RunLedger
 from app.services.browser.run_contract import FlagFn
+from app.utils.url_safety import HTTP_SCHEMES
 from shared.py.wide_events import log
 
 #: Why a burst ended, and what the agent is told about it.
@@ -93,6 +98,7 @@ _OVERLAID: _Ending = (
 )
 _JUDGED_BLOCKED: _Ending = (JevStop.BLOCKED, "Jev found no operation that makes progress here.")
 _JUDGED_DONE: _Ending = (JevStop.DONE, "Jev judged the goal done.")
+_NO_PAGE: _Ending = (JevStop.NO_PAGE, "No page to open: the tab is blank.")
 _NO_CHANGE: _Ending = (
     JevStop.NO_PROGRESS,
     f"{JEV_UNCHANGED_LIMIT} actions in a row changed nothing.",
@@ -103,7 +109,6 @@ _CYCLED: _Ending = (
 )
 #: How many steps one back-and-forth spans: there, back, there again, back again.
 _CYCLE_STEPS = 4
-_SECRET_WRITTEN = "The written value names a secret; nothing was typed."
 #: Unreachable by construction: decide offers an operation only with its target.
 _NO_TARGET = "Jev chose an operation with no target on this page; nothing was executed."
 
@@ -272,7 +277,7 @@ class JevRunner:
 
     async def burst(self, goal: str, start_url: str | None) -> BurstResult:
         """Run Jev on goal from the current page (or start_url) until it stops; every step it took is reported."""
-        if start_url and start_url not in self._starts:
+        if start_url:
             self._starts.append(start_url)
         state = _Burst(goal=goal)
         try:
@@ -282,6 +287,8 @@ class JevRunner:
             stop, detail = opening or await self._run(state)
         except PageUnresponsive as exc:
             stop, detail = JevStop.UNRESPONSIVE, str(exc)
+        except PageLoading as exc:
+            stop, detail = JevStop.LOADING, str(exc)
         except StalePage as exc:
             # A read that never settles, before or after an action (which is recorded first).
             stop, detail = JevStop.STALE, str(exc)
@@ -320,26 +327,26 @@ class JevRunner:
                 return spent
             # Each decision is on the page as it is now, results that arrived since included.
             state.page = await self._page.observe()
+            addresses = self._addresses(state.page)
+            if not addresses and _blank(state.page):
+                return _NO_PAGE
             try:
-                ended = await self._execute(state, await self._decide(state))
+                ended = await self._execute(state, await self._decide(state, addresses))
             except (JevGatewayError, JevDecisionError) as exc:
                 # Deciding the step, its option or its value; an action already taken stays recorded.
                 return JevStop.GATEWAY, f"Jev could not decide this step: {exc}"
             if ended is not None:
                 return ended
 
-    async def _decide(self, state: _Burst) -> Decision:
+    def _addresses(self, page: PageState) -> list[str]:
+        """Return the pages NAVIGATE may open from page: the starts given and pages visited, on the web, but this one."""
+        known = dict.fromkeys([*self._starts, *(v.url for v in self.visited)])
+        return [url for url in known if url != page.url and _on_the_web(url)]
+
+    async def _decide(self, state: _Burst, addresses: list[str]) -> Decision:
         state.decisions += 1
         started = perf_counter()
-        decision = await decide(
-            self._client,
-            self._shown(state.current),
-            state.goal,
-            _history(state),
-            self.visited,
-            list(dict.fromkeys([*self._starts, *(v.url for v in self.visited)])),
-            self._secrets.mask,
-        )
+        decision = await decide(self._client, self._situation(state), self.visited, addresses)
         self._record_call(decision.evaluation, _elapsed_ms(started))
         return decision
 
@@ -521,55 +528,39 @@ class JevRunner:
     async def _option_for(self, state: _Burst, dropdown: PageAction) -> PageAction:
         """Return the chosen dropdown set to the option the goal asks for."""
         started = perf_counter()
-        option, evaluation = await choose_option(
-            self._client,
-            self._shown(state.current),
-            state.goal,
-            dropdown,
-            _history(state),
-            self._secrets.mask,
-        )
+        option, evaluation = await choose_option(self._client, self._situation(state), dropdown)
         self._record_call(evaluation, _elapsed_ms(started))
         return option
 
     async def _value_for(self, state: _Burst, action: PageAction) -> tuple[str, str] | None:
         """Return what to type into action, as (shown, typed); None when the goal gives no value."""
-        history = _history(state)
-        page = state.current
+        situation = self._situation(state)
         started = perf_counter()
         choice, evaluation = await choose_value(
-            self._client,
-            self._shown(page),
-            state.goal,
-            action,
-            history,
-            self._secrets.names,
-            self._secrets.mask,
+            self._client, situation, action, self._secrets.names
         )
         self._record_call(evaluation, _elapsed_ms(started))
         if choice == NONE_VALUE:
             return None
         if choice == GENERATE:
-            written = await self._write_value(state, action, history)
+            written = await self._write_value(situation, action)
             return (written, written) if written else None
         if is_placeholder(choice):
-            return choice, self._secrets.value_for(choice, page.url)
+            return choice, self._secrets.value_for(choice, state.current.url)
         return choice, choice
 
-    async def _write_value(
-        self, state: _Burst, action: PageAction, history: list[RecentAction]
-    ) -> str | None:
+    async def _write_value(self, situation: Situation, action: PageAction) -> str | None:
         """Ask the tiny model for a value the goal implies but does not spell out.
 
         A value written for the same context and not typed yet (the page moved first) is reused.
         A model that fails or never answers is a step Jev could not decide.
         """
-        page = self._shown(state.current)
+        page = situation.page
         context = {
-            "goal": state.goal,
+            "goal": situation.goal,
             "field": describe_field(action),
             "page": {"title": page.title, "text": page.text[:JEV_PAGE_TEXT_MAX_CHARS]},
-            "recent_actions": [{"action": h.action, "text": h.text} for h in history],
+            "recent_actions": [{"action": h.action, "text": h.text} for h in situation.history],
         }
         # The field's label and value, the page and the goal can each hold a secret's value.
         masked = json.dumps(masked_json(context, self._secrets.mask))
@@ -590,15 +581,22 @@ class JevRunner:
         value = completion.completion.text
         if value and holds_placeholder(value):
             # A secret is typed only as itself, on its own site, never inside a written value.
-            raise JevDecisionError(_SECRET_WRITTEN)
+            raise JevDecisionError(JEV_SECRET_WRITTEN)
         if not (value and value.strip()):
             return None
         self._pending_text = (masked, value)
         return value
 
-    def _shown(self, page: PageState) -> PageState:
-        """Return page with its text masked before any cut of it, so a split value leaves no prefix."""
-        return replace(page, text=self._secrets.excerpt(page.text, page.text_cut))
+    def _situation(self, state: _Burst) -> Situation:
+        """Return the step as Jev's questions are asked on it: the page shown, the goal and recent actions."""
+        page = state.current
+        return Situation(
+            # Masked before any cut of the text, so a value split there leaves no prefix.
+            page=replace(page, text=self._secrets.excerpt(page.text, page.text_cut)),
+            goal=state.goal,
+            history=_history(state),
+            mask=self._secrets.mask,
+        )
 
     def _visit(self, page: PageState) -> None:
         """Keep the page's real address, to open it again; every question masks it."""
@@ -637,6 +635,16 @@ def _budget_spent(state: _Burst) -> _Ending | None:
         (state.covered >= JEV_COVERED_LIMIT, _OVERLAID),
     )
     return next((ending for hit, ending in spent if hit), None)
+
+
+def _blank(page: PageState) -> bool:
+    """Whether page is a tab with no web page in it (about:blank, a browser page) and no control on it."""
+    return not _on_the_web(page.url) and not any("node" in action for action in page.actions)
+
+
+def _on_the_web(url: str) -> bool:
+    """Whether url is a web page (http or https), not a blank tab or a browser page."""
+    return urlsplit(url).scheme in HTTP_SCHEMES
 
 
 def _hidden_frames(frames: list[Frame]) -> list[str]:

@@ -16,7 +16,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
-from typing import Literal, NotRequired, TypedDict, TypeVar, cast
+from typing import Literal, NotRequired, TypedDict, TypeVar, cast, final
 
 from browser_use.browser.events import SwitchTabEvent
 from browser_use.browser.session import BrowserSession, CDPSession
@@ -27,6 +27,7 @@ from cdp_use.cdp.network.events import (
     RequestWillBeSentEvent,
 )
 from cdp_use.cdp.page.commands import CaptureScreenshotReturns, GetNavigationHistoryReturns
+from cdp_use.cdp.page.events import DomContentEventFiredEvent
 from cdp_use.cdp.page.types import NavigationEntry
 from cdp_use.cdp.runtime.commands import EvaluateReturns
 from cdp_use.cdp.runtime.types import ExceptionDetails, RemoteObject
@@ -37,6 +38,7 @@ from cdp_use.client import CDPClient
 from app.constants.browser import (
     JEV_CDP_TIMEOUT_SECONDS,
     JEV_OBSERVE_ATTEMPTS,
+    JEV_PARSE_WAIT_SECONDS,
     JEV_SCREENSHOT_QUALITY,
     JEV_SETTLE_MAX_SECONDS,
     JEV_WAIT_SECONDS,
@@ -121,6 +123,10 @@ class FieldUnfocused(BrowserAutomationError):
     """A field was clicked but did not take focus, so nothing was typed into it."""
 
 
+class PageLoading(BrowserAutomationError):
+    """The document was still parsing (a script it loads had not arrived) when the wait for it ended."""
+
+
 class PageUnresponsive(BrowserAutomationError):
     """A CDP call got no answer in time; whether an input it carried took effect is unknown."""
 
@@ -162,6 +168,9 @@ class PageAction(TypedDict):
     ident: NotRequired[str]
     #: An <input>'s type attribute, which says what format its value takes.
     input_type: NotRequired[str]
+    #: A field's placeholder and pattern attributes: the format the page asks a typed value in.
+    placeholder: NotRequired[str]
+    pattern: NotRequired[str]
     value: NotRequired[str]
     current_value: NotRequired[str]
     checked: NotRequired[str]
@@ -188,6 +197,15 @@ class _Point(TypedDict):
     y: float
 
 
+@final
+class _Parsing(TypedDict):
+    """A document still parsing: it has no body to read yet."""
+
+    loading: Literal[True]
+    url: str
+
+
+@final
 class _Snapshot(TypedDict):
     url: str
     title: str
@@ -310,8 +328,10 @@ class JevPage:
         self._browser = browser
         #: The last input, whose effect the next observation waits for.
         self._after_input: PageAction | None = None
-        #: Page sessions already told to render as if focused.
+        #: Page sessions already told to render as if focused and to report their page's events.
         self._focused: set[str] = set()
+        #: Page session -> the read waiting for its document to finish parsing.
+        self._parsing: dict[str, asyncio.Event] = {}
         #: (opener, target) for every tab the browser opened while listening.
         self._opened: list[tuple[str, str]] = []
         #: The tab the last click was on, and how many tabs had opened before it.
@@ -335,12 +355,23 @@ class JevPage:
                 ),
                 "Emulation.setFocusEmulationEnabled",
             )
+            # The page's events (DOMContentLoaded) reach this connection only once enabled.
+            await _bounded(
+                session.cdp_client.send.Page.enable(session_id=session.session_id), "Page.enable"
+            )
             self._focused.add(session.session_id)
         return session
 
     def _listen(self, client: CDPClient) -> None:
-        """Hear which tab opened which, and every request a tab makes, on this connection."""
+        """Hear which tab opened which, and each tab's document finishing its parse, on this connection."""
         client.register.Target.targetCreated(self._on_target_created)
+        client.register.Page.domContentEventFired(self._on_parsed)
+
+    def _on_parsed(self, event: DomContentEventFiredEvent, session_id: str | None) -> None:
+        del event
+        waiting = self._parsing.get(session_id) if session_id is not None else None
+        if waiting is not None:
+            waiting.set()
 
     def _on_target_created(self, event: TargetCreatedEvent, session_id: str | None) -> None:
         del session_id
@@ -425,19 +456,33 @@ class JevPage:
             await self._requests.idle()
 
     async def observe(self) -> PageState:
-        """Read the page once the last input has settled; read again while a navigation replaces it."""
+        """Read the page once the last input has settled; read again while a navigation replaces it.
+
+        A document still parsing is read again once the tab reports DOMContentLoaded;
+        PageLoading when it has not within JEV_PARSE_WAIT_SECONDS.
+        """
         if self._after_input is not None:
             action, self._after_input = self._after_input, None
             await self._settle(action)
+        parse_deadline = asyncio.get_running_loop().time() + JEV_PARSE_WAIT_SECONDS
         for _ in range(JEV_OBSERVE_ATTEMPTS):
+            session = await self._session()
+            # Set before the read: DOMContentLoaded fired after the read saw "loading" lands here.
+            parsed = self._parsing[session.session_id] = asyncio.Event()
             try:
-                value = await self._evaluate(_SNAPSHOT_JS)
+                snapshot: _Snapshot | _Parsing = cast(
+                    "_Snapshot | _Parsing", await self._evaluate(_SNAPSHOT_JS)
+                )
             except DocumentReplaced:
                 # The next read waits for the new document: Chrome holds it until that commits.
                 continue
-            # None: a document still parsing, read again once its body exists.
-            if value is not None:
-                return await self._state(cast("_Snapshot", value))
+            if "loading" not in snapshot:
+                return await self._state(snapshot)
+            try:
+                async with asyncio.timeout_at(parse_deadline):
+                    await parsed.wait()
+            except TimeoutError:
+                raise PageLoading(f"The page is still loading: {snapshot['url']}") from None
         raise StalePage(_NOT_SETTLED)
 
     async def _state(self, snapshot: _Snapshot) -> PageState:

@@ -25,7 +25,8 @@ import httpx
 
 from app.constants.search import MAX_HTTPX_REDIRECTS
 
-_ALLOWED_SCHEMES = ("http", "https")
+#: The schemes of pages on the web, the only ones fetched or opened.
+HTTP_SCHEMES = ("http", "https")
 
 # Opens one hop and yields its response. Streaming or buffered is the caller's
 # choice; ``client.stream("GET", url)`` is already this shape.
@@ -40,7 +41,7 @@ def _parse_http_host_port(url: str) -> tuple[str, int]:
         parsed = httpx.URL(url)
     except httpx.InvalidURL as e:
         raise ValueError(f"malformed URL: {e}") from e
-    if parsed.scheme not in _ALLOWED_SCHEMES:
+    if parsed.scheme not in HTTP_SCHEMES:
         raise ValueError(f"unsupported URL scheme: {parsed.scheme!r}")
     host = parsed.host
     if not host:
