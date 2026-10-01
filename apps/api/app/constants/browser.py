@@ -382,13 +382,6 @@ BROWSER_NO_GUIDANCE_AVAILABLE = (
     "with an honest account of what could not be done."
 )
 
-# The same action list on the same page for this many agent steps in a row ends the run.
-BROWSER_AGENT_NO_PROGRESS_STEPS = 3
-BROWSER_RUN_NO_PROGRESS_SUMMARY = (
-    "The browser kept repeating the same step on the same page without getting anywhere, "
-    "so it stopped. Nothing after that point was done."
-)
-
 # Desktop viewport (the ~800x600 CDP default collapses sites to mobile layout). The live
 # view caps its stream at this same size (screencast.py imports it): wider only buys a
 # downscaled stream, a takeover coordinate mismatch and bigger vision payloads.

@@ -42,7 +42,7 @@ SwitchEngineFn = Callable[[EngineSwitchReason, str | None], Awaitable[str]]
 class BrowserRunConfig:
     """One browser run's settings: the BROWSER_USE_* knobs, and the page it starts on."""
 
-    #: Browser-Use's step backstop; the run ends on the agent's own finish, no progress, or a budget.
+    #: Browser-Use's step backstop; the run ends on the agent's own finish or a budget.
     max_steps: int
     max_actions_per_step: int
     task_timeout_seconds: int

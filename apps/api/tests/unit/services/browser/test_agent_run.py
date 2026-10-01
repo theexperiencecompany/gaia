@@ -2,8 +2,8 @@
 
 Cards are numbered by what the user saw, never silent on an errored step, and
 never shown twice for a step Jev's own burst card already covers; the agent
-hears the user's mid-task words and any load the browser stopped; a run that
-repeats itself on an unchanged page ends; a wedged connection is reported.
+hears the user's mid-task words and any load the browser stopped; a wedged
+connection is reported.
 """
 
 from __future__ import annotations
@@ -19,12 +19,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.constants.browser import (
-    BROWSER_AGENT_NO_PROGRESS_STEPS,
     BROWSER_GUIDANCE_MAX_ELEMENTS,
     BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS,
     BROWSER_GUIDANCE_RECENT_ACTIONS,
     BROWSER_NO_GUIDANCE_AVAILABLE,
-    BROWSER_RUN_NO_PROGRESS_SUMMARY,
     BROWSER_TAKEOVER_DONE_NOTE,
     BrowserHandoffAction,
     EngineSwitchReason,
@@ -42,7 +40,7 @@ from app.services.browser.jev.page import PageAction
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.jev.tool import JEV_ACTION
 from app.services.browser.ledger import CallComponent, ExecutedAction, RunLedger
-from app.services.browser.run_contract import BrowserRunConfig, RunHooks, RunOutcome, StepFrame
+from app.services.browser.run_contract import BrowserRunConfig, RunHooks, StepFrame
 from tests.helpers import captured_wide_event
 from tests.unit.services.browser.jev.conftest import BUTTON, FIELD, FakePage, decision, page_state
 
@@ -439,24 +437,6 @@ class TestStepRecords:
         assert run.last_url is None
 
 
-async def test_the_same_actions_on_an_unchanged_page_end_the_run(harness: _Harness) -> None:
-    for _ in range(BROWSER_AGENT_NO_PROGRESS_STEPS - 1):
-        await harness.step(index=4)
-    assert harness.run.no_progress is False
-
-    await harness.step(index=4)
-
-    assert harness.run.no_progress is True
-    assert await harness.run._should_stop() is True
-
-
-async def test_a_different_page_is_progress_even_with_the_same_action(harness: _Harness) -> None:
-    for n in range(BROWSER_AGENT_NO_PROGRESS_STEPS):
-        await harness.step(index=4, url=f"https://example.test/page/{n}")
-
-    assert harness.run.no_progress is False
-
-
 class TestBetweenSteps:
     async def test_the_users_words_reach_the_agent_as_a_follow_up_request_with_secrets_masked(
         self,
@@ -703,16 +683,6 @@ class TestExecute:
         outcome = await harness.run.execute("read my orders")
 
         assert (outcome.success, outcome.summary) == (success, history.final_result() or "")
-
-    async def test_a_run_that_repeats_itself_stops_and_says_so(self, harness: _Harness) -> None:
-        _Agent.steps = [_Action("click", {"index": 4})] * (BROWSER_AGENT_NO_PROGRESS_STEPS + 3)
-
-        outcome = await harness.run.execute("read my orders")
-
-        assert outcome == RunOutcome(False, BROWSER_RUN_NO_PROGRESS_SUMMARY)
-        assert _Agent.built[-1].ran_steps == BROWSER_AGENT_NO_PROGRESS_STEPS
-        # Each step the agent took reached the user as a card.
-        assert len(harness.frames) == BROWSER_AGENT_NO_PROGRESS_STEPS
 
     async def test_the_agent_runs_on_the_users_models_and_this_runs_browser(
         self, harness: _Harness, built_with: list[tuple[str, object]]

@@ -25,18 +25,15 @@ from browser_use.browser.views import BrowserStateSummary
 from pydantic import BaseModel, TypeAdapter
 
 from app.constants.browser import (
-    BROWSER_AGENT_NO_PROGRESS_STEPS,
     BROWSER_ENGINE_PROBE_TIMEOUT_SECONDS,
     BROWSER_GUIDANCE_MAX_ELEMENTS,
     BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS,
     BROWSER_GUIDANCE_RECENT_ACTIONS,
     BROWSER_NO_GUIDANCE_AVAILABLE,
-    BROWSER_RUN_NO_PROGRESS_SUMMARY,
     BROWSER_TAKEOVER_DONE_NOTE,
     EngineSwitchReason,
     SensitiveCategory,
 )
-from app.constants.log_tags import LogTag
 from app.patches.browser_use_run_lock_patch import isolate_run_events
 from app.schemas.browser import (
     AgentGuidanceRequest,
@@ -188,10 +185,6 @@ class _Step:
     frame: int | None
 
 
-#: What makes two agent steps the same: the page and the actions with their arguments.
-_Signature = tuple[str, list[tuple[str, dict[str, Any]]]]
-
-
 @dataclass(frozen=True)
 class AgentRunSetup:
     """Who a run works for and what it carries across engines: the user, its ledger and secrets, the steps shown."""
@@ -227,9 +220,6 @@ class BrowserAgentRun:
         # A run resumed on the fallback engine numbers on from the steps the user already saw.
         self._frames = setup.steps_before
         self._step: _Step | None = None
-        #: Each agent step's page and actions, to see the agent repeat itself on an unchanged page.
-        self._signatures: list[_Signature] = []
-        self.no_progress = False
         #: Where the run was when it ended, for a resume on the fallback engine.
         self.last_url: str | None = None
 
@@ -285,7 +275,7 @@ class BrowserAgentRun:
                 browser=browser,
                 tools=tools,
                 register_new_step_callback=self._on_step,
-                register_should_stop_callback=self._should_stop,
+                register_should_stop_callback=self._hooks.should_stop,
                 page_extraction_llm=text_model,
             )
             try:
@@ -297,8 +287,6 @@ class BrowserAgentRun:
             finally:
                 stalls.close()
         self.last_url = await self._current_url()
-        if self.no_progress:
-            return RunOutcome(False, BROWSER_RUN_NO_PROGRESS_SUMMARY)
         success, final = outcome_from_history(history)
         summary = self._secrets.redact(final) if final else None
         return RunOutcome(success, summary or "")
@@ -336,9 +324,6 @@ class BrowserAgentRun:
             return None
         url = await self._agent.browser_session.get_current_page_url()
         return str(url) if url else None
-
-    async def _should_stop(self) -> bool:
-        return self.no_progress or await self._hooks.should_stop()
 
     async def _on_step_start(self, agent: object) -> None:
         """Hand the agent what the user said since its last step, and any load the browser stopped."""
@@ -440,15 +425,6 @@ class BrowserAgentRun:
         for action in actions:
             if (typed := _password_typed(action, browser_state_summary)) is not None:
                 self._secrets.learn(typed)
-        signature: _Signature = (browser_state_summary.url, [(a.name, a.inputs) for a in actions])
-        self._signatures.append(signature)
-        recent = self._signatures[-BROWSER_AGENT_NO_PROGRESS_STEPS:]
-        if len(recent) == BROWSER_AGENT_NO_PROGRESS_STEPS and all(
-            earlier == signature for earlier in recent
-        ):
-            # The same action list on the same page, step after step: the run is going nowhere.
-            self.no_progress = True
-            log.info(f"{LogTag.BROWSER} Browser agent repeated itself; ending the run")
         own = [a for a in actions if a.name != JEV_ACTION]
         # A step with no card of its own has no own results to place, so "" would read the same.
         frame: int | None = None  # pragma: no mutate
