@@ -420,12 +420,14 @@ def _install(
             self.session = kwargs["session"]
             self.used_fallback = False
             self.ledger = RunLedger()
+            self.failure: BrowserRunFailure | None = None
 
         async def run(self, task: str) -> BrowserResultSnapshot:
             h.run_task = task
-            if run_body is not None:
-                return await run_body(h)
-            return final
+            result = await run_body(h) if run_body is not None else final
+            if not result.success:
+                self.failure = BrowserRunFailure.GOAL_NOT_ACHIEVED
+            return result
 
     monkeypatch.setattr(jr, "BrowserTaskRunner", _Runner)
 

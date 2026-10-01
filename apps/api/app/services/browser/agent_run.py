@@ -35,6 +35,7 @@ from app.constants.browser import (
     BROWSER_GUIDANCE_RECENT_ACTIONS,
     BROWSER_NO_GUIDANCE_AVAILABLE,
     BROWSER_TAKEOVER_DONE_NOTE,
+    BrowserRunFailure,
     EngineSwitchReason,
     SensitiveCategory,
 )
@@ -183,6 +184,20 @@ def outcome_from_history(history: AgentHistoryList[BaseModel]) -> tuple[bool, st
     return success, final
 
 
+def failure_from_history(
+    history: AgentHistoryList[BaseModel], max_steps: int
+) -> BrowserRunFailure | None:
+    """Return why an agent that did not succeed ended, as its history shows; None when nothing there says."""
+    if history.is_done():
+        return BrowserRunFailure.GOAL_NOT_ACHIEVED
+    errors = history.errors()
+    if errors and errors[-1]:
+        return BrowserRunFailure.STEP_FAILED
+    if history.number_of_steps() >= max_steps:
+        return BrowserRunFailure.STEP_LIMIT
+    return None
+
+
 @dataclass(frozen=True)
 class _Step:
     """The agent step in flight: when it started, the actions it picked, and the card of its own."""
@@ -323,7 +338,8 @@ class BrowserAgentRun:
         self.last_url = await self._current_url()
         success, final = outcome_from_history(history)
         summary = self._secrets.redact(final) if final else None
-        return RunOutcome(success, summary or "")
+        failure = None if success else failure_from_history(history, self._config.max_steps)
+        return RunOutcome(success, summary or "", failure)
 
     def stop(self) -> None:
         if self._agent is not None:

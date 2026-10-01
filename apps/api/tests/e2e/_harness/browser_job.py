@@ -142,6 +142,12 @@ class _History:
     def is_successful(self) -> bool:
         return self._successful
 
+    def errors(self) -> list[str | None]:
+        return [None]
+
+    def number_of_steps(self) -> int:
+        return 1
+
 
 class BrowserDouble:
     """The scripted Browser-Use run, and what it observed while running."""

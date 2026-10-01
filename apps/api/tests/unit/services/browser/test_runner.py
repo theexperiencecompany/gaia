@@ -760,8 +760,7 @@ async def test_a_run_past_the_wall_clock_is_stopped_and_fails(
 
     runner, _ = _runner(_never, task_timeout=0, handoff_timeout=0.01)
 
-    async with captured_wide_event() as event:
-        result = await _run(runner)
+    result = await _run(runner)
 
     assert _ScriptedRun.made[0].stopped is True
     assert (result.status, result.success, result.summary) == (
@@ -769,7 +768,7 @@ async def test_a_run_past_the_wall_clock_is_stopped_and_fails(
         False,
         BROWSER_RUN_WALL_CLOCK_SUMMARY.format(seconds=0),
     )
-    assert event["reason"] == BrowserRunFailure.TASK_TIMEOUT
+    assert runner.failure == BrowserRunFailure.TASK_TIMEOUT
 
 
 @pytest.mark.parametrize(("work", "stops"), [(20.0, False), (20.5, True)])
@@ -785,11 +784,10 @@ async def test_the_work_budget_ends_a_run_only_once_passed(
         return RunOutcome(True, "booked")
 
     runner, _ = _runner(_works, task_timeout=20)
-    async with captured_wide_event() as event:
-        await _run(runner)
+    await _run(runner)
 
     assert _ScriptedRun.made[0].stops is stops
-    assert (event.get("reason") == BrowserRunFailure.TASK_TIMEOUT) is stops
+    assert (runner.failure == BrowserRunFailure.TASK_TIMEOUT) is stops
 
 
 async def test_waiting_on_the_user_twice_is_not_counted_twice_as_work(
@@ -1332,11 +1330,12 @@ async def test_an_unexpected_failure_is_logged_with_its_type_and_session() -> No
     async def _crashes(run: _ScriptedRun) -> RunOutcome:
         raise RuntimeError("history unreadable")
 
+    runner, _ = _runner(_crashes)
     async with captured_wide_event() as event:
-        result = await _run(_runner(_crashes)[0])
+        result = await _run(runner)
 
     assert result.success is False
-    assert event["reason"] == BrowserRunFailure.RUN_CRASHED
+    assert runner.failure == BrowserRunFailure.RUN_CRASHED
     [error] = event["errors"]
     assert "failed unexpectedly" in error["msg"]
     assert (error["error_type"], error["error"], error["browser"]) == (

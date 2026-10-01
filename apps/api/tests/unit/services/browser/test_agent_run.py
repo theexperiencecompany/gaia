@@ -27,6 +27,7 @@ from app.constants.browser import (
     BROWSER_TAKEOVER_DONE_NOTE,
     BrowserEngine,
     BrowserHandoffAction,
+    BrowserRunFailure,
     EngineSwitchReason,
     JevOperation,
     JevStop,
@@ -528,10 +529,26 @@ async def test_a_model_that_cannot_be_built_is_named_on_the_runs_event(
 
 
 class _History:
-    def __init__(self, answer: str | None, *, done: bool = True, successful: bool = True) -> None:
+    def __init__(
+        self,
+        answer: str | None,
+        *,
+        done: bool = True,
+        successful: bool = True,
+        errors: list[str | None] | None = None,
+        steps: int = 1,
+    ) -> None:
         self._answer = answer
         self._done = done
         self._successful = successful
+        self._errors = errors or [None]
+        self._steps = steps
+
+    def errors(self) -> list[str | None]:
+        return self._errors
+
+    def number_of_steps(self) -> int:
+        return self._steps
 
     def final_result(self) -> str | None:
         return self._answer
@@ -710,6 +727,25 @@ class TestExecute:
         outcome = await harness.run.execute("read my orders")
 
         assert (outcome.success, outcome.summary) == (success, history.final_result() or "")
+
+    @pytest.mark.parametrize(
+        ("history", "failure"),
+        [
+            (_History("gave up", successful=False), BrowserRunFailure.GOAL_NOT_ACHIEVED),
+            (_History(None, done=False, errors=[None, "page gone"]), BrowserRunFailure.STEP_FAILED),
+            (_History(None, done=False, steps=CONFIG.max_steps), BrowserRunFailure.STEP_LIMIT),
+            (_History(None, done=False), None),
+            (_History("done"), None),
+        ],
+    )
+    async def test_a_run_that_did_not_succeed_says_why_from_its_history(
+        self, harness: _Harness, history: _History, failure: BrowserRunFailure | None
+    ) -> None:
+        _Agent.history = history
+
+        outcome = await harness.run.execute("read my orders")
+
+        assert outcome.failure == failure
 
     async def test_the_agent_runs_on_the_users_models_and_this_runs_browser(
         self, harness: _Harness, built_with: list[tuple[str, object]]

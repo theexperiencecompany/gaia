@@ -651,6 +651,7 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
                 actions=runner.ledger.action_count,
                 engine_fallback=runner.used_fallback,
                 run_ms=round((perf_counter() - run_t0) * 1000),
+                failure=runner.failure,
             )
             record_run_result(finished)
             await persist_run_outcome(request, finished, emitter=emitter)

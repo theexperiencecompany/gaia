@@ -14,7 +14,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from time import perf_counter
 
-from app.constants.browser import EngineSwitchReason, SensitiveCategory
+from app.constants.browser import BrowserRunFailure, EngineSwitchReason, SensitiveCategory
 from app.schemas.browser import (
     AgentGuidanceRequest,
     BrowserAction,
@@ -82,6 +82,8 @@ class FinishedRun:
     actions: int
     engine_fallback: bool
     run_ms: int
+    #: Why the run did not succeed; None when it did.
+    failure: BrowserRunFailure | None
 
 
 @dataclass(frozen=True)
@@ -90,6 +92,8 @@ class RunOutcome:
 
     success: bool
     summary: str
+    #: Why the agent's own run did not succeed, as its history shows; None when it did.
+    failure: BrowserRunFailure | None = None
 
 
 @dataclass(frozen=True)

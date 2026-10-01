@@ -600,12 +600,17 @@ class BrowserRunFailure(StrEnum):
     """Why a browser run did not succeed; the worker event's reason field."""
 
     BLOCKED = "blocked"
+    #: The agent finished and said the task was not achieved.
     GOAL_NOT_ACHIEVED = "goal_not_achieved"
+    #: The agent never finished: its last step ended in an error.
+    STEP_FAILED = "step_failed"
+    #: The agent never finished: it used every step Browser-Use allows.
+    STEP_LIMIT = "step_limit"
     HANDOFF_TIMEOUT = "handoff_timeout"
     HANDOFF_LIMIT = "handoff_limit"
     CANCELLED = "cancelled"
     TASK_TIMEOUT = "task_timeout"
-    LLM_ERROR = "llm_error"
+    COST_BUDGET = "cost_budget"
     HOST_UNAVAILABLE = "host_unavailable"
     HOST_AT_CAPACITY = "host_at_capacity"
     RUN_CRASHED = "run_crashed"
