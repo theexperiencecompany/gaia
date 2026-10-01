@@ -19,7 +19,6 @@ from arq.worker import Worker
 
 from app.constants.browser import BROWSER_JOB_QUEUE, BROWSER_JOB_TASK, BrowserEngine
 from app.constants.log_tags import LogTag
-from app.services.browser.exceptions import BrowserUnavailableError
 from app.services.browser.job_lifetime import browser_job_deadline_seconds
 from app.services.browser.job_runner import hosts_for
 from app.utils.background_tasks import spawn_background_task
@@ -78,15 +77,9 @@ def build_browser_worker() -> Worker:
 def start_browser_worker(ctx: MutableMapping[str, object]) -> None:
     """Start serving the browser queue beside the main worker, once the process is ready.
 
-    Says at boot, loudly, when no Chrome host is configured: every default user's run opens there.
+    Refuses to boot without a Chrome host (BrowserUnavailableError): every default user's run opens there.
     """
-    try:
-        hosts_for(BrowserEngine.CHROMIUM)
-    except BrowserUnavailableError as exc:
-        log.error(
-            f"{LogTag.WORKER} No Chrome browser host: every default user's browser run will fail",
-            error_type=type(exc).__name__,
-        )
+    hosts_for(BrowserEngine.CHROMIUM)
     worker = build_browser_worker()
     task = spawn_background_task(
         worker.async_run(), name="browser_worker", on_done=_stop_process_if_it_ended

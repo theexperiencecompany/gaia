@@ -18,6 +18,7 @@ import pytest
 
 from app.config.settings import settings
 from app.constants.browser import BROWSER_JOB_QUEUE, BROWSER_JOB_TASK, BrowserEngine
+from app.services.browser.exceptions import BrowserUnavailableError
 from app.services.browser.job_lifetime import browser_job_deadline_seconds
 from app.workers import browser_worker as browser_worker_mod
 from app.workers.config.worker_settings import (
@@ -141,6 +142,12 @@ class _FakeWorker:
         self._stop.set()
 
 
+@pytest.fixture(autouse=True)
+def _a_chrome_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give the worker a Chrome host to boot with; the tests that take it away say so."""
+    monkeypatch.setattr(settings, "BROWSER_FALLBACK_HOST_URL", "http://chrome:8931")
+
+
 @pytest.fixture
 def raised_signals(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     raise_signal = MagicMock()
@@ -210,31 +217,45 @@ async def test_shutdown_after_a_startup_that_never_started_it_is_a_no_op() -> No
 
 
 @pytest.mark.parametrize(
-    ("engine", "chrome_host", "warned"),
-    [
-        (BrowserEngine.OBSCURA, None, True),
-        (BrowserEngine.OBSCURA, "http://chrome:8931", False),
-        (BrowserEngine.CHROMIUM, None, False),
-    ],
+    ("engine", "chrome_host"),
+    [(BrowserEngine.OBSCURA, "http://chrome:8931"), (BrowserEngine.CHROMIUM, None)],
 )
-async def test_a_worker_with_no_chrome_host_says_so_at_boot(
+async def test_a_worker_with_a_chrome_host_boots(
     monkeypatch: pytest.MonkeyPatch,
     raised_signals: MagicMock,
     engine: BrowserEngine,
     chrome_host: str | None,
-    warned: bool,
 ) -> None:
-    """Every default user's run opens on the Chrome host; without one they all fail."""
     monkeypatch.setattr(settings, "BROWSER_ENGINE", engine)
     monkeypatch.setattr(settings, "BROWSER_FALLBACK_HOST_URL", chrome_host)
     monkeypatch.setattr(browser_worker_mod, "build_browser_worker", _FakeWorker)
-    error = MagicMock()
-    monkeypatch.setattr(browser_worker_mod.log, "error", error)
     ctx: dict[str, Any] = {}
 
     browser_worker_mod.start_browser_worker(ctx)
     await browser_worker_mod.stop_browser_worker(ctx)
 
-    assert error.called is warned
-    if warned:
-        assert error.call_args.kwargs == {"error_type": "BrowserUnavailableError"}
+
+async def test_a_worker_with_no_chrome_host_refuses_to_boot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every default user's run opens on the Chrome host; without one they would all fail."""
+    monkeypatch.setattr(settings, "BROWSER_ENGINE", BrowserEngine.OBSCURA)
+    monkeypatch.setattr(settings, "BROWSER_FALLBACK_HOST_URL", None)
+    build = MagicMock()
+    monkeypatch.setattr(browser_worker_mod, "build_browser_worker", build)
+    asked: list[object] = []
+    real_hosts_for = browser_worker_mod.hosts_for
+
+    def _hosts_for(engine: BrowserEngine) -> tuple[str, str | None]:
+        asked.append(engine)
+        return real_hosts_for(engine)
+
+    monkeypatch.setattr(browser_worker_mod, "hosts_for", _hosts_for)
+    ctx: dict[str, Any] = {}
+
+    with pytest.raises(BrowserUnavailableError, match="No Chrome browser host"):
+        browser_worker_mod.start_browser_worker(ctx)
+
+    assert asked == [BrowserEngine.CHROMIUM]
+    build.assert_not_called()
+    assert ctx == {}
