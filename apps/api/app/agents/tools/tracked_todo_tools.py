@@ -42,7 +42,7 @@ from app.models.trigger_subscription_models import (
 )
 from app.services.canvas_markdown import section_body
 from app.services.storage._vfs_common import folder_name
-from app.services.todo_activity import record_field_changes
+from app.services.todo_activity import agent_actor, record_field_changes
 from app.services.todos.errors import ExternalRefTakenError
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.matchable_fields import MATCHABLE_TRIGGERS, get_matchable_trigger
@@ -106,14 +106,22 @@ def _is_cron_expression(recurrence: str) -> bool:
     return recurrence not in _RECURRENCE_SHORTCUTS
 
 
-def _parse_iso_future_datetime(iso_str: str, field_name: str) -> tuple[datetime | None, str | None]:
-    """Parse an ISO datetime; require it to be in the future. Returns (parsed, error)."""
+def _parse_iso_datetime(iso_str: str, field_name: str) -> tuple[datetime | None, str | None]:
+    """Parse an ISO datetime that carries its offset; a naive one would be saved as UTC."""
     try:
         parsed = datetime.fromisoformat(iso_str.replace("Z", _UTC_OFFSET))
     except ValueError:
         return None, f"Error: invalid {field_name} format '{iso_str}'."
     if parsed.tzinfo is None:
         return None, f"Error: {field_name} '{iso_str}' must include a timezone offset."
+    return parsed, None
+
+
+def _parse_iso_future_datetime(iso_str: str, field_name: str) -> tuple[datetime | None, str | None]:
+    """Parse an ISO datetime; require it to be in the future. Returns (parsed, error)."""
+    parsed, error = _parse_iso_datetime(iso_str, field_name)
+    if parsed is None:
+        return None, error
     if parsed <= datetime.now(UTC):
         return None, f"Error: {field_name} must be in the future."
     return parsed, None
@@ -183,11 +191,6 @@ def _gmail_thread_ref(gmail_thread_id: str | None) -> ExternalRef | None:
     return ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id=gmail_thread_id)
 
 
-def _agent_actor(conversation_id: str | None) -> str:
-    """Name who made a change from inside an agent run, for the todo's activity log."""
-    return f"GAIA in conversation {conversation_id[:8]}" if conversation_id else "GAIA"
-
-
 async def _references_refusal(user_id: str, references: list[str]) -> str | None:
     """Refuse reference ids that name none of the user's todos; None when every one does.
 
@@ -210,7 +213,7 @@ def _creation_field_update(
     due_date: str | None,
     expires_at: str | None,
 ) -> tuple[TodoUpdate | None, str | None]:
-    """Validate the fields a create sets after its insert, before anything is saved.
+    """Validate the scheduling fields a create saves with its insert, before anything is saved.
 
     Returns (update, error); update is None when there is nothing to set. An empty
     date means unset here, not the update tool's clear.
@@ -283,10 +286,10 @@ def _build_clearable_datetime_update(
     if value == "":
         update_fields[field_name] = None
         return None
-    try:
-        update_fields[field_name] = datetime.fromisoformat(value.replace("Z", _UTC_OFFSET))
-    except ValueError:
-        return f"Error: invalid {field_name} format '{value}'."
+    parsed, error = _parse_iso_datetime(value, field_name)
+    if parsed is None:
+        return error
+    update_fields[field_name] = parsed
     return None
 
 
@@ -551,7 +554,8 @@ def _format_create_output(
 
 def _format_ref_taken_output(existing: TodoDocument, now: datetime) -> str:
     """Point the model at the open todo that already owns the thread, instead of a new one."""
-    state = section_body(existing.canvas_content or "", CANVAS_CURRENT_STATE_SECTION)
+    canvas = existing.canvas_content
+    state = canvas and section_body(canvas, CANVAS_CURRENT_STATE_SECTION)
     return (
         "Not created: this thread already has an open tracked todo. Update it with "
         "update_tracked_todo and its canvas.md instead of creating another.\n"
@@ -713,17 +717,12 @@ async def create_tracked_todo(
             notify_on_run=notify_on_run,
             external_ref=external_ref,
             references=references,
+            schedule=creation_update,
         )
     except ExternalRefTakenError as taken:
         return _format_ref_taken_output(taken.existing, datetime.now(UTC))
     except SubscriptionError as e:
         return f"Not created: the thread could not be watched ({e}). Nothing was saved."
-
-    if creation_update is not None:
-        await todo_repository.update(result.id, user_id=user_id, update=creation_update)
-        await record_field_changes(
-            result.id, user_id, creation_update, by=_agent_actor(source_conversation_id)
-        )
 
     if parsed_scheduled_at:
         schedule_error = await _schedule_execution_after_create(result.id, parsed_scheduled_at)
@@ -832,7 +831,8 @@ async def update_tracked_todo(
     ] = None,
     due_date: Annotated[
         str | None,
-        "ISO datetime string for the deadline. Set to empty string '' to clear.",
+        "ISO datetime string for the deadline, with the user's timezone offset. "
+        "Set to empty string '' to clear.",
     ] = None,
     priority: Annotated[Priority | None, "Priority"] = None,
     scheduled_at: Annotated[
@@ -851,7 +851,8 @@ async def update_tracked_todo(
     ] = None,
     expires_at: Annotated[
         str | None,
-        "ISO datetime when this todo becomes irrelevant. Set to empty string '' to clear. "
+        "ISO datetime when this todo becomes irrelevant, with the user's timezone offset. "
+        "Set to empty string '' to clear. "
         "Different from due_date: due_date = deadline (overdue = still needs doing), "
         "expires_at = relevance window (expired = no longer worth tracking).",
     ] = None,
@@ -913,7 +914,7 @@ async def update_tracked_todo(
         return refusal
 
     if update_fields:
-        actor = _agent_actor(read_agent_configurable(config).conversation_id)
+        actor = agent_actor(read_agent_configurable(config).conversation_id)
         update = TodoUpdate.model_validate(update_fields)
         if error := await _save_field_update(existing, update, actor):
             return error

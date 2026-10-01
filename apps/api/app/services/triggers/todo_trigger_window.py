@@ -10,10 +10,16 @@ targets that end and ARQ dedupes them into one job.
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from redis.exceptions import RedisError
+
 from app.constants.todos import EXECUTE_TRACKED_TODO_TASK
 from app.db.redis import redis_cache
 from app.models.todo_models import TodoDocument
-from app.models.trigger_subscription_models import SubscriptionAction, TriggerOrigin
+from app.models.trigger_subscription_models import (
+    SubscriptionAction,
+    TriggerOrigin,
+    TriggerSubscriptionStatus,
+)
 from app.services.triggers.batching import (
     BatchDrainJob,
     buffer_batch_event,
@@ -40,31 +46,43 @@ class TriggerWindow:
 
 
 def trigger_window(todo: TodoDocument) -> TriggerWindow:
-    """Size the window by the longest cooldown among the todo's execute subscriptions."""
+    """Size the window by the longest cooldown among the todo's active execute subscriptions."""
     seconds = max(
         (
             subscription.cooldown_seconds
             for subscription in todo.trigger_subscriptions
             if subscription.action is SubscriptionAction.EXECUTE
+            and subscription.status is TriggerSubscriptionStatus.ACTIVE
         ),
         default=0,
     )
+    now = occurrence_stamp(datetime.now(UTC))  # pragma: no mutate — naive now() stamps the same
     return TriggerWindow(
-        key=TODO_TRIGGER_WINDOW_KEY.format(todo_id=todo.id),
-        seconds=seconds,
-        end=occurrence_stamp(datetime.now(UTC)) + seconds,
+        key=TODO_TRIGGER_WINDOW_KEY.format(todo_id=todo.id), seconds=seconds, end=now + seconds
     )
 
 
 async def open_trigger_window(window: TriggerWindow) -> None:
-    """Open (or move on) the window for a trigger run starting now; a zero window stays shut."""
+    """Open (or move on) the window for a trigger run starting now; a zero window stays shut.
+
+    Redis failing only costs the coalescing: the run already holds its events,
+    so it goes on and later events run at once instead of waiting.
+    """
     if window.seconds <= 0:
         return
     client = redis_cache.redis
     if client is None:
         log.warning("todo_trigger.window_unavailable", window_key=window.key)
         return
-    await client.set(window.key, str(window.end), ex=window.seconds)
+    try:
+        await client.set(window.key, str(window.end), ex=window.seconds)
+    except (RedisError, OSError) as e:
+        log.warning(
+            "todo_trigger.window_unavailable",
+            window_key=window.key,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 async def trigger_window_end(todo_id: str) -> int | None:
@@ -78,7 +96,7 @@ async def trigger_window_end(todo_id: str) -> int | None:
 
 async def _drain_slot(todo_id: str) -> tuple[int, int]:
     """Return when the todo's buffered events run (its window's end, or now) and the seconds until then."""
-    now = occurrence_stamp(datetime.now(UTC))
+    now = occurrence_stamp(datetime.now(UTC))  # pragma: no mutate — naive now() stamps the same
     window_end = max(await trigger_window_end(todo_id) or now, now)
     return window_end, window_end - now
 
