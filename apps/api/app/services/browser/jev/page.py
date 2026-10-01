@@ -168,6 +168,9 @@ class PageAction(TypedDict):
     ident: NotRequired[str]
     #: An <input>'s type attribute, which says what format its value takes.
     input_type: NotRequired[str]
+    #: A field's placeholder and pattern attributes: the format the page asks a typed value in.
+    placeholder: NotRequired[str]
+    pattern: NotRequired[str]
     value: NotRequired[str]
     current_value: NotRequired[str]
     checked: NotRequired[str]

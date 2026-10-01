@@ -73,7 +73,7 @@ _ELEMENT_FIELDS = (
 #: What a target question shows of each candidate besides its label and current value.
 _TARGET_FIELDS = ("role", "ident", "input_type", "checked", "selected", "expanded", "filled")
 #: What the value question and the text model see of the field being typed into.
-_FIELD_KEYS = ("label", "role", "ident", "input_type", "value")
+_FIELD_KEYS = ("label", "role", "ident", "input_type", "placeholder", "pattern", "value")
 #: A choice this close to the most likely option is a tie, not a lower-ranked pick.
 _TIE_TOLERANCE = 1e-6
 _TRAILING_PUNCTUATION = ".,;:!?"
@@ -230,7 +230,7 @@ def literals(goal: str) -> list[str]:
 
 def describe_field(target: PageAction) -> dict[str, object]:
     """Return the field being typed into as the value question and the text model see it."""
-    return {key: target.get(key) for key in _FIELD_KEYS}
+    return _fields(target, _FIELD_KEYS)
 
 
 def _target_question(operation: JevOperation) -> str:

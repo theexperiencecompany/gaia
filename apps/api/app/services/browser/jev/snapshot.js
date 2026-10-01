@@ -227,6 +227,11 @@
     const base={node:cache.identity(e),role:rname,label:(accessibleName(e)||rname).slice(0,LABEL_CHARS),
       ident:e.id || e.getAttribute('name') || '',rect:{x:ox+r.x,y:oy+r.y,w:r.width,h:r.height}};
     if (e.tagName==='INPUT') base.input_type=e.type;
+    // The format a typed value takes, as the field states it.
+    for (const key of ['placeholder','pattern']) {
+      const hint=e.getAttribute(key);
+      if (hint) base[key]=hint;
+    }
     if (e.tagName==='A' && e.href) base.href=e.href;
     for (const key of ['checked','selected','expanded']) {
       const value=e.getAttribute('aria-'+key);

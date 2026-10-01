@@ -80,7 +80,19 @@ SIZE = _action(
 PASSWORD = _action(
     "e5", 14, "secret", "Password", role="textbox", ident="pw", value="", filled=False
 )
-DAY = _action("e6", 15, "fill", "Day", role="textbox", ident="d", input_type="date", value="")
+#: A date picker typed as text: the format its value takes is what the field states.
+DAY = _action(
+    "e6",
+    15,
+    "fill",
+    "Day",
+    role="textbox",
+    ident="d",
+    input_type="text",
+    placeholder="dd/mm/yyyy",
+    pattern=r"\d{2}/\d{2}/\d{4}",
+    value="",
+)
 LIST = _action("scroll_down_16", 16, "scroll", "Scroll down in Results", delta=240)
 SCROLL = PageAction(id="scroll_down", kind="scroll", label="Scroll down the page", delta=560)
 LIST_UP = PageAction(
@@ -214,7 +226,7 @@ async def test_jev_is_asked_about_the_page_its_elements_what_it_did_and_where_it
         {
             "role": "textbox",
             "ident": "d",
-            "input_type": "date",
+            "input_type": "text",
             "index": "3",
             "label": "Day",
             "operations": ["TYPE_TEXT"],
@@ -490,7 +502,9 @@ async def test_any_other_field_is_offered_the_goals_literals_the_secrets_or_a_wr
             "label": "Day",
             "role": "textbox",
             "ident": "d",
-            "input_type": "date",
+            "input_type": "text",
+            "placeholder": "dd/mm/yyyy",
+            "pattern": r"\d{2}/\d{2}/\d{4}",
             "value": "",
         },
         "rules": VALUE,
