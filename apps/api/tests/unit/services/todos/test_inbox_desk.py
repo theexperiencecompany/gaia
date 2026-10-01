@@ -9,7 +9,11 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from app.agents.prompts.todo_prompts import INBOX_DESK_DELIVERY_RULE, INBOX_DESK_DESCRIPTION
-from app.constants.todos import INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
+from app.constants.todos import (
+    INBOX_DESK_RECURRENCE,
+    INBOX_DESK_TITLE,
+    PROVISION_INBOX_DESK_TASK,
+)
 from app.models.todo_models import (
     ExternalRef,
     ExternalRefSource,
@@ -20,7 +24,7 @@ from app.models.todo_models import (
 from app.models.user_models import UserDocument
 from app.services.analytics_service import AnalyticsEvents
 from app.services.todos.errors import ExternalRefTakenError
-from app.services.todos.inbox_desk import provision_inbox_desk, provision_inbox_desk_for_gmail_user
+from app.services.todos.inbox_desk import provision_inbox_desk, queue_inbox_desk_provision
 from app.services.tracked_todo_service import TrackedTodoService
 
 MODULE = "app.services.todos.inbox_desk"
@@ -70,6 +74,9 @@ def seams() -> Iterator[SimpleNamespace]:
     repo.update = AsyncMock(side_effect=_update)
     with (
         patch(f"{MODULE}.is_paid", AsyncMock(return_value=True)) as paid,
+        patch(
+            f"{MODULE}.get_connected_integration_ids", AsyncMock(return_value={"gmail"})
+        ) as connected,
         patch(f"{MODULE}.todo_repository", repo),
         patch(
             "app.services.user_service.get_user_by_id",
@@ -86,6 +93,7 @@ def seams() -> Iterator[SimpleNamespace]:
     ):
         yield SimpleNamespace(
             paid=paid,
+            connected=connected,
             repo=repo,
             stored=stored,
             create=create,
@@ -180,11 +188,22 @@ async def test_a_desk_that_cannot_be_queued_fails_loud(seams: SimpleNamespace) -
         await provision_inbox_desk(USER_ID)
 
 
-@pytest.mark.parametrize(("connected", "provisioned"), [({"gmail"}, True), (set(), False)])
-async def test_a_new_plan_opens_the_desk_only_for_a_gmail_user(
-    seams: SimpleNamespace, connected: set[str], provisioned: bool
-) -> None:
-    with patch(f"{MODULE}.get_connected_integration_ids", AsyncMock(return_value=connected)):
-        await provision_inbox_desk_for_gmail_user(USER_ID)
+async def test_a_user_without_gmail_gets_no_desk(seams: SimpleNamespace) -> None:
+    seams.connected.return_value = set()
 
-    assert seams.create.await_count == (1 if provisioned else 0)
+    await provision_inbox_desk(USER_ID)
+
+    seams.connected.assert_awaited_once_with(USER_ID)
+    seams.create.assert_not_awaited()
+    seams.schedule.assert_not_awaited()
+
+
+async def test_queueing_hands_the_user_to_the_provisioning_job() -> None:
+    pool = MagicMock()
+    with (
+        patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
+        patch(f"{MODULE}.enqueue_worker_job", AsyncMock()) as enqueue,
+    ):
+        await queue_inbox_desk_provision(USER_ID)
+
+    enqueue.assert_awaited_once_with(pool, PROVISION_INBOX_DESK_TASK, USER_ID)

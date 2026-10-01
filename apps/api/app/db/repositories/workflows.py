@@ -170,6 +170,19 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             }
         )
 
+    async def find_live_system_workflows(self, system_workflow_key: str) -> list[WorkflowDocument]:
+        """Every user's system workflow under system_workflow_key that runs or that GAIA may resume.
+
+        A row the user switched off themselves (no deactivated_reason) is not live.
+        """
+        return await self._find(
+            {
+                "system_workflow_key": system_workflow_key,
+                "is_system_workflow": True,
+                "$or": [{"activated": True}, {"deactivated_reason": {"$ne": None}}],
+            }
+        )
+
     async def get_system_workflow_for_user(
         self, workflow_id: str, user_id: str
     ) -> WorkflowDocument | None:

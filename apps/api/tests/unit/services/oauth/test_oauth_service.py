@@ -98,9 +98,9 @@ def mock_provision_system_workflows():
 
 
 @pytest.fixture
-def mock_provision_inbox_desk():
+def mock_queue_inbox_desk():
     with patch(
-        "app.services.oauth.oauth_service.provision_inbox_desk",
+        "app.services.oauth.oauth_service.queue_inbox_desk_provision",
         new_callable=AsyncMock,
     ) as mock_fn:
         yield mock_fn
@@ -846,7 +846,7 @@ class TestHandleOAuthConnection:
         mock_user_repo,
         mock_update_user_integration_status,
         mock_provision_system_workflows,
-        mock_provision_inbox_desk,
+        mock_queue_inbox_desk,
         mock_redis_pool_manager,
         mock_enqueue_personalization,
     ):
@@ -860,7 +860,7 @@ class TestHandleOAuthConnection:
             background_tasks=background_tasks,
         )
 
-        background_tasks.add_task.assert_any_call(mock_provision_inbox_desk, "user123")
+        background_tasks.add_task.assert_any_call(mock_queue_inbox_desk, "user123")
         queued = [call.args[0] for call in background_tasks.add_task.call_args_list]
         assert mock_provision_system_workflows not in queued
 

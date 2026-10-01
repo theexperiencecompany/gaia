@@ -8,7 +8,11 @@ from datetime import datetime
 
 from app.agents.prompts.todo_prompts import INBOX_DESK_DELIVERY_RULE, INBOX_DESK_DESCRIPTION
 from app.constants.integrations import GMAIL_INTEGRATION_ID
-from app.constants.todos import INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
+from app.constants.todos import (
+    INBOX_DESK_RECURRENCE,
+    INBOX_DESK_TITLE,
+    PROVISION_INBOX_DESK_TASK,
+)
 from app.db.repositories.todos import todo_repository
 from app.decorators.entitlements import is_paid
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument, TodoUpdate
@@ -19,6 +23,8 @@ from app.services.todos.errors import ExternalRefTakenError
 from app.services.tracked_todo_service import starting_canvas, tracked_todo_service
 from app.services.user_service import get_profile_timezone
 from app.utils.cron_utils import get_next_run_time
+from app.utils.redis_utils import RedisPoolManager
+from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log
 
 INBOX_DESK_REF = ExternalRef(source=ExternalRefSource.INBOX_DESK, id=GMAIL_INTEGRATION_ID)
@@ -29,12 +35,15 @@ _PROVISIONED_BY = "GAIA, setting up the Inbox desk"
 async def provision_inbox_desk(user_id: str) -> None:
     """Make sure a Pro user with Gmail has a scheduled Inbox desk; never revive one they stopped.
 
-    Free users get none, as they get no active system workflow. Safe to call on every
-    Gmail connect: an open desk is re-armed only when it has no schedule.
+    Free users get none, as they get no active system workflow. Safe to repeat on every
+    Gmail connect or plan start: an open desk is re-armed only when it has no schedule.
     """
     log.set_ns("inbox_desk", operation="provision", user_id=user_id)
     if not await is_paid(user_id):
         log.set_ns("inbox_desk", outcome="skipped_unpaid")
+        return
+    if GMAIL_INTEGRATION_ID not in await get_connected_integration_ids(user_id):
+        log.set_ns("inbox_desk", outcome="skipped_no_gmail")
         return
     existing = await todo_repository.find_latest_by_external_ref(user_id, INBOX_DESK_REF)
     if existing is not None and existing.completed:
@@ -51,10 +60,10 @@ async def provision_inbox_desk(user_id: str) -> None:
     log.set_ns("inbox_desk", outcome="armed", todo_id=desk.id, next_run=next_run.isoformat())
 
 
-async def provision_inbox_desk_for_gmail_user(user_id: str) -> None:
-    """Give a user who connected Gmail before paying the desk their connect could not open."""
-    if GMAIL_INTEGRATION_ID in await get_connected_integration_ids(user_id):
-        await provision_inbox_desk(user_id)
+async def queue_inbox_desk_provision(user_id: str) -> None:
+    """Hand provision_inbox_desk to the worker, which retries it until the desk is armed."""
+    pool = await RedisPoolManager.get_pool()
+    await enqueue_worker_job(pool, PROVISION_INBOX_DESK_TASK, user_id)
 
 
 async def _next_morning(user_id: str) -> datetime:

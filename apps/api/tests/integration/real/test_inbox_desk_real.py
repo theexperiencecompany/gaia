@@ -1,6 +1,6 @@
 """One Inbox desk per user, however many times Gmail connects, against real Mongo.
 
-The plan read, analytics, ChromaDB embeddings and the VFS projection are patched
+The plan and Gmail reads, analytics, ChromaDB embeddings and the VFS projection are patched
 seams; the run is enqueued on a fakeredis ArqRedis so no real worker picks it up.
 """
 
@@ -16,6 +16,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 
 from app.agents.prompts.todo_prompts import INBOX_DESK_DESCRIPTION
+from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.todos import GAIA_TRACKED_LABEL, INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
 from app.db.mongodb.indexes import TODO_OPEN_EXTERNAL_REF_KEYS, TODO_OPEN_EXTERNAL_REF_OPTIONS
 from app.models.todo_models import TodoDocument
@@ -30,6 +31,10 @@ def _offline_seams() -> Iterator[MagicMock]:
     pool = ArqRedis(pool_or_conn=fakeredis.aioredis.FakeRedis().connection_pool)
     with (
         patch("app.services.todos.inbox_desk.is_paid", AsyncMock(return_value=True)),
+        patch(
+            "app.services.todos.inbox_desk.get_connected_integration_ids",
+            AsyncMock(return_value={GMAIL_INTEGRATION_ID}),
+        ),
         patch("app.services.todos.inbox_desk.capture_event") as capture,
         patch("app.services.todos.todo_service.store_todo_embedding", new_callable=AsyncMock),
         patch("app.services.todos.todo_service.schedule_user_todos_sync"),
