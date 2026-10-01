@@ -7598,7 +7598,7 @@ export interface components {
             icon_color?: string | null;
             /**
              * Integration Ids
-             * @description Integration ids this workflow uses, picked by the user or identified from intent. Scopes the tool palette when generating steps.
+             * @description Integration ids this workflow uses — picked by the user or identified from intent. Scopes the tool palette when generating steps.
              */
             integration_ids?: string[] | null;
             /**
@@ -10142,18 +10142,6 @@ export interface components {
          */
         MemorySearchResult: {
             /**
-             * Degraded
-             * @description Whether the embedding sidecar failed fast and recall ran without dense search or the reranker; such a result is never cached
-             * @default false
-             */
-            degraded: boolean;
-            /**
-             * Has Confident Match
-             * @description Whether any memory matched the query confidently rather than as a weak fallback
-             * @default false
-             */
-            has_confident_match: boolean;
-            /**
              * Memories
              * @description List of matching memories
              */
@@ -10467,12 +10455,12 @@ export interface components {
             first_message: string;
             /**
              * Handoff Text
-             * @description first_message with ' #<code>' appended, the exact text a WhatsApp or iMessage user sends. Used to build the iMessage sms: link, whose number is only known after the phone is registered on Photon's pool.
+             * @description first_message with ' #<code>' appended — the exact text a WhatsApp or iMessage user sends. Used to build the iMessage sms: link, whose number is only known after the phone is registered on Photon's pool.
              */
             handoff_text: string;
             /**
              * Links
-             * @description Deep link per platform that carries the code. iMessage is absent by construction; its number is assigned per user.
+             * @description Deep link per platform that carries the code. iMessage is absent by construction — its number is assigned per user.
              */
             links: {
                 [key: string]: string;
@@ -12012,7 +12000,7 @@ export interface components {
             delivered: boolean;
             /**
              * First Contact
-             * @description Ordered bubbles the bot must send itself because delivery failed. Empty whenever delivered is true, because sending them then would say everything twice.
+             * @description Ordered bubbles the bot must send itself because delivery failed. Empty whenever delivered is true — sending them then would say everything twice.
              */
             first_contact?: string[];
             /**
@@ -14569,7 +14557,7 @@ export interface components {
             days_remaining: number | null;
             /**
              * Has Ever Subscribed
-             * @description Whether the user has ever had a subscription, in any status; separates a lapsed subscriber from one who has never paid
+             * @description Whether the user has ever had a subscription, in any status — separates a lapsed subscriber from one who has never paid
              * @default false
              */
             has_ever_subscribed: boolean;
@@ -15090,7 +15078,7 @@ export interface components {
              * @default 0
              */
             current_step_index: number;
-            /** @description Why the workflow is not activated. None means the user turned it off themselves. Only system-paused workflows may be resumed automatically. */
+            /** @description Why the workflow is not activated. None means the user turned it off themselves — only system-paused workflows may be resumed automatically. */
             deactivated_reason: components["schemas"]["DeactivationReason"] | null;
             /**
              * Description
@@ -15125,7 +15113,7 @@ export interface components {
             id: string;
             /**
              * Integration Ids
-             * @description Integration ids this workflow uses, picked by the user or identified from intent by the workflow assistant. Scopes the tool palette when generating steps. Connection state is never stored here: required/missing integrations are derived from the steps at read time.
+             * @description Integration ids this workflow uses — picked by the user or identified from intent by the workflow assistant. Scopes the tool palette when generating steps. Connection state is never stored here: required/missing integrations are derived from the steps at read time.
              */
             integration_ids: string[];
             /**
@@ -27798,33 +27786,29 @@ export interface operations {
         parameters: {
             query?: {
                 completed?: boolean | null;
-                /** @description Due date after this date */
                 due_after?: string | null;
-                /** @description Due date before this date */
                 due_before?: string | null;
-                /** @description Only todos due this week */
                 due_this_week?: boolean;
-                /** @description Only todos due today */
                 due_today?: boolean;
                 has_due_date?: boolean | null;
-                /** @description Include statistics in response */
                 include_stats?: boolean;
-                labels?: string[] | null;
-                /** @description Search mode: text, semantic, or hybrid */
                 mode?: components["schemas"]["SearchMode"];
                 overdue?: boolean | null;
                 page?: number;
                 per_page?: number;
                 priority?: components["schemas"]["Priority"] | null;
                 project_id?: string | null;
-                /** @description Search query */
                 q?: string | null;
             };
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": string[] | null;
+            };
+        };
         responses: {
             /** @description Client Error */
             "4XX": {
