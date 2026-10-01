@@ -25,10 +25,12 @@ import pytest
 
 from app.constants.browser import (
     BROWSER_ENGINE_FALLBACK_NOTE,
+    BROWSER_HANDOFF_REPLY_PROMPT,
     BROWSER_STALL_NOTE,
     JEV_SECRET_MASK,
 )
 from tests.integration.real.battery.harness import (
+    OUTCOME_DELIVERY_SECONDS,
     Battery,
     RunOutcome,
     battery_enabled,
@@ -60,7 +62,8 @@ def battery(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Battery]:
 #: notes, the note that the run moved to the fallback engine, the three lines
 #: of a handoff prompt, and the closing recap link.
 _PROGRESS_LINE = re.compile(
-    r"^(Step \d+ ·|Still on step|Open the live browser:|Reply \"done\"|📽 |"
+    r"^(Step \d+ ·|Still on step|Open the live browser:|📽 |"
+    f"{re.escape(BROWSER_HANDOFF_REPLY_PROMPT)}|"
     f"{re.escape(BROWSER_STALL_NOTE)}|{re.escape(BROWSER_ENGINE_FALLBACK_NOTE)})"
 )
 #: One reply delivered as several messages arrives within this many seconds.
@@ -266,9 +269,8 @@ _LOGIN_JS = """(() => {
   document.querySelector('#password').value = 'SuperSecretPassword!';
   document.querySelector('#login').submit();
 })()"""
-#: A login handoff resolves itself once the page leaves the sign-in URL
-#: (HANDOFF_AUTORESOLVE_*: two 2 s polls); a user who says "done" first wins.
-_LOGIN_AUTORESOLVE_SECONDS = 20.0
+#: Long enough for any watcher to have ended the handoff on its own, which none may.
+_SIGNED_IN_AND_SILENT_SECONDS = 20.0
 
 
 def test_a_login_is_handed_to_the_user_then_reused_without_a_second_handoff(
@@ -285,9 +287,10 @@ def test_a_login_is_handed_to_the_user_then_reused_without_a_second_handoff(
         assert urlsplit(landed).path == "/secure", (
             f"the live login did not land on the secure area: {landed}"
         )
-        status = b.wait_while_pending(handoff_id, timeout=_LOGIN_AUTORESOLVE_SECONDS)
-        if status == "pending":
-            status = b.decide_handoff(handoff_id, "continue")
+        # Signed in, and the user has said nothing yet: only their word ends the handoff.
+        assert b.wait_while_pending(handoff_id, timeout=_SIGNED_IN_AND_SILENT_SECONDS) == "pending"
+        b.reply("ok I'm logged in")
+        status = b.wait_while_pending(handoff_id, timeout=OUTCOME_DELIVERY_SECONDS)
         assert status == "completed", status
         return [record]
 

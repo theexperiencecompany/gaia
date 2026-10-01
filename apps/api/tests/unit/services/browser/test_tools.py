@@ -2,9 +2,10 @@
 
 from collections.abc import Awaitable, Callable
 
+from pydantic import ValidationError
 import pytest
 
-from app.constants.browser import EngineSwitchReason
+from app.constants.browser import EngineSwitchReason, SensitiveCategory
 from app.services.browser.tools import build_browser_tools
 
 CAPTCHA_DESCRIPTION = (
@@ -32,11 +33,11 @@ class _FakeTakeover:
     """Records every call to the takeover seam and returns a canned result."""
 
     def __init__(self) -> None:
-        self.calls: list[tuple[str, str]] = []
+        self.calls: list[tuple[str, SensitiveCategory]] = []
 
-    async def __call__(self, reason: str, category: str) -> str:
+    async def __call__(self, reason: str, category: SensitiveCategory) -> str:
         self.calls.append((reason, category))
-        return f"resolved:{reason}:{category}"
+        return f"resolved:{reason}:{category.value}"
 
 
 def _get_action(tools, name: str):
@@ -50,7 +51,7 @@ async def _call_action(tools, name: str, **kwargs) -> str:
 
 
 def test_registers_takeover_action_only_when_captcha_disabled() -> None:
-    takeover: Callable[[str, str], Awaitable[str]] = _FakeTakeover()
+    takeover: Callable[[str, SensitiveCategory], Awaitable[str]] = _FakeTakeover()
     guidance = _FakeGuidance()
 
     tools = build_browser_tools(
@@ -63,7 +64,7 @@ def test_registers_takeover_action_only_when_captcha_disabled() -> None:
 
 
 def test_registers_both_actions_when_captcha_enabled() -> None:
-    takeover: Callable[[str, str], Awaitable[str]] = _FakeTakeover()
+    takeover: Callable[[str, SensitiveCategory], Awaitable[str]] = _FakeTakeover()
     guidance = _FakeGuidance()
 
     tools = build_browser_tools(
@@ -75,17 +76,16 @@ def test_registers_both_actions_when_captcha_enabled() -> None:
     assert "solve_captcha_with_help" in actions
 
 
-async def test_takeover_defaults_category_to_irreversible() -> None:
-    takeover = _FakeTakeover()
-    guidance = _FakeGuidance()
+@pytest.mark.parametrize("arguments", [{}, {"category": "shipping"}])
+def test_a_takeover_needs_one_of_the_known_categories(arguments: dict[str, str]) -> None:
     tools = build_browser_tools(
-        solve_captcha=False, handle_takeover=takeover, handle_guidance=guidance
+        solve_captcha=False, handle_takeover=_FakeTakeover(), handle_guidance=_FakeGuidance()
     )
 
-    result = await _call_action(tools, "request_human_takeover", reason="Enter your password")
-
-    assert takeover.calls == [("Enter your password", "irreversible")]
-    assert result == "resolved:Enter your password:irreversible"
+    with pytest.raises(ValidationError):
+        _get_action(tools, "request_human_takeover").param_model(
+            reason="Confirm the order", **arguments
+        )
 
 
 async def test_takeover_passes_explicit_category_through_unchanged() -> None:
@@ -115,7 +115,9 @@ async def test_takeover_propagates_cancellation_from_seam() -> None:
     )
 
     with pytest.raises(_Cancelled):
-        await _call_action(tools, "request_human_takeover", reason="Confirm the purchase")
+        await _call_action(
+            tools, "request_human_takeover", reason="Confirm the purchase", category="irreversible"
+        )
 
 
 async def test_captcha_action_always_uses_none_category() -> None:

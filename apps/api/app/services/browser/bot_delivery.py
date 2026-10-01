@@ -9,6 +9,7 @@ instead of a pasted link.
 
 from app.constants.browser import (
     BROWSER_CREDENTIALS_SAVED_NOTE,
+    BROWSER_HANDOFF_REPLY_PROMPT,
     HandoffStatus,
     SensitiveCategory,
 )
@@ -117,7 +118,7 @@ class BotProgressDelivery:
             blocks[0] += f"\n{BROWSER_CREDENTIALS_SAVED_NOTE}"
         if snapshot.session_id:
             blocks.append(f"Open the live browser: {await self._link(snapshot.session_id)}")
-        blocks.append('Reply "done" when you\'ve finished, or "stop" to cancel.')
+        blocks.append(BROWSER_HANDOFF_REPLY_PROMPT)
         await self.note(NEW_MESSAGE_BREAKER.join(blocks))
 
     async def result(self, snapshot: BrowserResultSnapshot) -> None:

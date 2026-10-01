@@ -37,7 +37,6 @@ from app.constants.browser import (
     BROWSER_STALL_NOTE,
     BROWSER_STALL_NOTE_AFTER_SECONDS,
     BROWSER_TASK_FAILED_PREFIX,
-    HANDOFF_AUTORESOLVED_NOTE,
     MAX_HANDOFFS_PER_TASK,
     BrowserEngine,
     BrowserRunFailure,
@@ -506,7 +505,7 @@ class BrowserTaskRunner:
             name="browser_meter_call",
         )
 
-    async def _handle_takeover(self, reason: str, category: str) -> str | None:
+    async def _handle_takeover(self, reason: str, category: SensitiveCategory) -> str | None:
         """Pause for the human (the agent's takeover hook) and return the note they left, if any.
 
         Raises to stop the run on cancel."""
@@ -514,16 +513,12 @@ class BrowserTaskRunner:
         if self._handoffs > MAX_HANDOFFS_PER_TASK:
             self._stopped = True
             raise BrowserHandoffCancelled("max-handoffs")
-        try:
-            cat = SensitiveCategory(category)
-        except ValueError:
-            cat = SensitiveCategory.IRREVERSIBLE
 
         self._waiting_on_someone = True
         waiting_since = perf_counter()
         try:
             outcome = await self._request_handoff(
-                HandoffRequest(category=cat, reason=reason), self._session
+                HandoffRequest(category=category, reason=reason), self._session
             )
         finally:
             # None reads as falsy exactly like False.
@@ -533,9 +528,7 @@ class BrowserTaskRunner:
         if outcome.status == HandoffStatus.COMPLETED:
             log.info(f"{LogTag.BROWSER} Browser takeover completed by user; agent continuing.")
             note = (outcome.message or "").strip() or None
-            # The auto-resolver's own resume note is not an instruction the user
-            # typed, so it must never redirect the task or the closing reply.
-            if note and note != HANDOFF_AUTORESOLVED_NOTE:
+            if note:
                 self._user_notes.append(note)
             return note
         self._stopped = True

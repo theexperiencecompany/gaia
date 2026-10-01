@@ -16,9 +16,9 @@ from collections.abc import Awaitable, Callable
 from browser_use import Tools
 from pydantic import BaseModel
 
-from app.constants.browser import EngineSwitchReason
+from app.constants.browser import EngineSwitchReason, SensitiveCategory
 
-TakeoverFn = Callable[[str, str], Awaitable[str]]
+TakeoverFn = Callable[[str, SensitiveCategory], Awaitable[str]]
 AgentGuidanceFn = Callable[[str], Awaitable[str]]
 EngineSwitchFn = Callable[[EngineSwitchReason], Awaitable[str]]
 
@@ -27,6 +27,13 @@ class EngineSwitchParams(BaseModel):
     """The continue_in_full_browser action's one argument: which engine-caused breakage it was."""
 
     category: EngineSwitchReason
+
+
+class TakeoverParams(BaseModel):
+    """The request_human_takeover action's arguments: the ask shown to the user, and what kind of step it is."""
+
+    reason: str
+    category: SensitiveCategory
 
 
 def build_browser_tools(
@@ -64,17 +71,18 @@ def build_browser_tools(
             "Hand control to the human for a step you must NOT do yourself: "
             "entering a payment, a password / OTP / 2FA, or confirming an "
             "irreversible action. Call this BEFORE such a step. The user completes "
-            "it in the live browser; you then continue. `reason` is shown to the "
-            "user verbatim as the ask itself, so write it as the ask: two short "
-            "second-person sentences, what to do plus what happens after "
-            "(e.g. 'Enter your password and sign in. I'll carry on the moment you're through.'). "
+            "it in the live browser and tells you when they are done; you then continue. "
+            "`reason` is shown to the user verbatim as the ask itself, so write it as the "
+            "ask: two short second-person sentences, what to do plus what happens after "
+            "(e.g. 'Enter your password and sign in. After that I'll finish the booking.'). "
             "No third-person explanation, no field names, no element ids. `category` "
             "is one of payment | credentials | irreversible."
-        )
+        ),
+        param_model=TakeoverParams,
     )
-    async def request_human_takeover(reason: str, category: str = "irreversible") -> str:
+    async def request_human_takeover(params: TakeoverParams) -> str:
         """Return the takeover tool that hands control to the user via live view."""
-        return await handle_takeover(reason, category)
+        return await handle_takeover(params.reason, params.category)
 
     if handle_engine_switch is not None:
         # Registered by function name; the tool exists only on the fast engine.
@@ -109,6 +117,6 @@ def build_browser_tools(
         )
         async def solve_captcha_with_help(challenge: str) -> str:
             """Return the CAPTCHA tool that asks the user to solve it in live view."""
-            return await handle_takeover(challenge, "none")
+            return await handle_takeover(challenge, SensitiveCategory.NONE)
 
     return tools

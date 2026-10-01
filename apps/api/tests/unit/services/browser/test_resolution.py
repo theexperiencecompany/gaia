@@ -12,8 +12,6 @@ from app.services.browser import resolution as res_mod
 from app.services.browser.exceptions import BrowserHandoffNotOwned
 from app.services.browser.resolution import (
     HandoffReplyDecision,
-    _interpret,
-    keyword_reply_decision,
     resolve_handoff_from_message,
 )
 
@@ -47,7 +45,7 @@ def _pending(monkeypatch, action: str, note: str | None = None):
     _handoff_store(monkeypatch, {"h1": _PENDING})
     monkeypatch.setattr(
         res_mod,
-        "_interpret",
+        "ainvoke_structured_gemini",
         AsyncMock(return_value=HandoffReplyDecision(action=action, note=note)),
     )
 
@@ -93,7 +91,7 @@ async def test_handoff_record_missing_returns_none(monkeypatch):
     monkeypatch.setattr(res_mod, "get_conversation_pending_handoff", AsyncMock(return_value="h1"))
     monkeypatch.setattr(res_mod, "get_handoff", AsyncMock(return_value=None))
     interpret = AsyncMock()
-    monkeypatch.setattr(res_mod, "_interpret", interpret)
+    monkeypatch.setattr(res_mod, "ainvoke_structured_gemini", interpret)
 
     assert await resolve_handoff_from_message("c1", "u1", "hi") is None
     interpret.assert_not_awaited()
@@ -111,7 +109,7 @@ async def test_handoff_already_resolved_returns_none(monkeypatch):
         ),
     )
     interpret = AsyncMock()
-    monkeypatch.setattr(res_mod, "_interpret", interpret)
+    monkeypatch.setattr(res_mod, "ainvoke_structured_gemini", interpret)
 
     assert await resolve_handoff_from_message("c1", "u1", "hi") is None
     interpret.assert_not_awaited()
@@ -161,104 +159,21 @@ async def test_the_classifier_reads_the_reply_against_the_paused_step(monkeypatc
     assert classify.await_args.kwargs == {"label": "browser_handoff_conversational_resolve"}
 
 
-def _classifier_down(monkeypatch) -> _FakeLog:
+@pytest.mark.regression
+async def test_a_reply_the_classifier_could_not_read_leaves_the_handoff_pending(monkeypatch):
+    """Regression: a classifier outage fell back to reading the first word, so "ok, one sec" finished the handoff."""
+    monkeypatch.setattr(res_mod, "get_conversation_pending_handoff", AsyncMock(return_value="h1"))
+    _handoff_store(monkeypatch, {"h1": _PENDING})
     monkeypatch.setattr(
         res_mod, "ainvoke_structured_gemini", AsyncMock(side_effect=RuntimeError("llm down"))
     )
-    fake_log = _FakeLog()
-    monkeypatch.setattr(res_mod, "log", fake_log)
-    return fake_log
-
-
-async def test_a_failed_classifier_degrades_to_the_keyword_rule_and_still_says_so(monkeypatch):
-    """Regression: any classifier failure became unrelated, so the user's 'done' started a new turn."""
-    fake_log = _classifier_down(monkeypatch)
-
-    decision = await _interpret("no, stop it", "pay")
-
-    assert decision == HandoffReplyDecision(action="cancel")
-    assert fake_log.warning_calls == [
-        (
-            f"{LogTag.BROWSER} Browser handoff resolve failed, using the keyword rule",
-            {"error_type": "RuntimeError"},
-        )
-    ]
-
-
-async def test_a_go_ahead_still_resolves_when_the_classifier_is_down(monkeypatch):
-    """The real _interpret runs here: the degrade must survive the whole resolve path."""
-    monkeypatch.setattr(res_mod, "get_conversation_pending_handoff", AsyncMock(return_value="h1"))
-    monkeypatch.setattr(
-        res_mod,
-        "get_handoff",
-        AsyncMock(
-            return_value=HandoffRecord(
-                status=HandoffStatus.PENDING, user_id="u1", conversation_id="c1", reason="pay"
-            )
-        ),
-    )
-    _classifier_down(monkeypatch)
-    resolve = AsyncMock(return_value=HandoffStatus.COMPLETED)
+    resolve = AsyncMock()
     monkeypatch.setattr(res_mod, "resolve_handoff", resolve)
 
-    action = await resolve_handoff_from_message(
-        "c1", "u1", "done, skip the login and just tell me the page title"
-    )
+    with pytest.raises(RuntimeError):
+        await resolve_handoff_from_message("c1", "u1", "ok, one sec")
 
-    assert action == "continue"
-    resolve.assert_awaited_once_with(
-        "h1",
-        HandoffDecision.CONTINUE,
-        "u1",
-        message="skip the login and just tell me the page title",
-    )
-
-
-@pytest.mark.parametrize(
-    ("reply", "expected"),
-    [
-        (
-            "done, skip the login and just tell me the page title",
-            ("continue", "skip the login and just tell me the page title"),
-        ),
-        ("Done.", ("continue", None)),
-        ("okay", ("continue", None)),
-        ("yes go on", ("continue", "go on")),
-        ("stop", ("cancel", None)),
-        ("Cancel!", ("cancel", None)),
-        ("no", ("cancel", None)),
-        ("what's the weather", ("unrelated", None)),
-        ("", ("unrelated", None)),
-    ],
-)
-def test_the_keyword_rule_reads_the_first_word_and_keeps_the_rest(reply, expected):
-    action, note = expected
-
-    assert keyword_reply_decision(reply) == HandoffReplyDecision(action=action, note=note)
-
-
-@pytest.mark.parametrize(
-    "reply",
-    [
-        "never mind the login, just tell me what the github.com homepage headline says",
-        "skip the upvote, just tell me the title of the top post on r/python",
-        "nevermind the sign-in, read me the first paragraph",
-        "forget the payment, just tell me the total",
-        "don't bother logging in, give me the page title",
-        "no need to log in, just read the banner",
-        "instead, tell me what the top story is",
-    ],
-)
-def test_declining_the_step_with_a_new_instruction_is_a_redirect(reply):
-    """The whole reply is the instruction the paused run must follow."""
-    assert keyword_reply_decision(reply) == HandoffReplyDecision(action="redirect", note=reply)
-
-
-@pytest.mark.parametrize(
-    "reply", ["skip", "never mind", "nevermind.", "skipper is my dog", "skips the ads too?"]
-)
-def test_a_decline_without_a_new_instruction_is_not_a_redirect(reply):
-    assert keyword_reply_decision(reply).action != "redirect"
+    resolve.assert_not_awaited()
 
 
 async def test_a_redirect_resumes_the_run_with_the_whole_instruction(monkeypatch):
@@ -272,46 +187,6 @@ async def test_a_redirect_resumes_the_run_with_the_whole_instruction(monkeypatch
 
     assert action == "redirect"
     resolve.assert_awaited_once_with("h1", HandoffDecision.CONTINUE, "u1", message=note)
-
-
-@pytest.mark.parametrize(
-    ("action", "note"),
-    [("cancel", "stop"), ("continue", "Done."), ("continue", "ok, yes")],
-)
-async def test_an_acknowledgement_only_note_is_dropped(monkeypatch, action, note):
-    """The classifier feeding the go-ahead word back would reach the agent as an instruction."""
-    monkeypatch.setattr(
-        res_mod,
-        "ainvoke_structured_gemini",
-        AsyncMock(return_value=HandoffReplyDecision(action=action, note=note)),
-    )
-
-    assert await _interpret(note, "pay") == HandoffReplyDecision(action=action, note=None)
-
-
-async def test_a_redirect_keeps_its_note_even_when_it_reads_like_a_go_ahead(monkeypatch):
-    """A redirect's note is the whole new instruction; blanking it strands the run with none."""
-    monkeypatch.setattr(
-        res_mod,
-        "ainvoke_structured_gemini",
-        AsyncMock(return_value=HandoffReplyDecision(action="redirect", note="no, stop")),
-    )
-
-    decision = await _interpret("never mind the login. no, stop", "log in")
-
-    assert decision == HandoffReplyDecision(action="redirect", note="no, stop")
-
-
-async def test_a_real_instruction_note_survives_normalisation(monkeypatch):
-    monkeypatch.setattr(
-        res_mod,
-        "ainvoke_structured_gemini",
-        AsyncMock(return_value=HandoffReplyDecision(action="continue", note="use the other card")),
-    )
-
-    decision = await _interpret("done, use the other card", "pay")
-
-    assert decision == HandoffReplyDecision(action="continue", note="use the other card")
 
 
 async def test_note_typed_with_the_reply_reaches_the_run(monkeypatch):

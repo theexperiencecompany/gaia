@@ -77,7 +77,6 @@ from app.services.browser.runner import (
 from app.services.browser.session import (
     BrowserHostSession,
     LiveSessionState,
-    auto_resolve_handoff_on_navigation,
     browser_session,
     keep_session_alive,
 )
@@ -376,28 +375,6 @@ def _handoff_snapshot(
     )
 
 
-def _spawn_handoff_watchers(
-    handoff_id: str, req: HandoffRequest, session: BrowserHostSession, user_id: str
-) -> list[asyncio.Task[None]]:
-    # The paused session produces no CDP/live-view traffic, so keep its idle
-    # clock fresh until the user decides — otherwise the host reaps the browser
-    # they were asked to come back to.
-    watchers = [
-        spawn_background_task(keep_session_alive(session), name="browser_handoff_keepalive")
-    ]
-    # A login handoff can auto-complete when the page navigates off the sign-in
-    # URL — the user just signs in, no extra tap. Only for credentials; a
-    # payment/confirmation has no such signal.
-    if req.category == SensitiveCategory.CREDENTIALS:
-        watchers.append(
-            spawn_background_task(
-                auto_resolve_handoff_on_navigation(handoff_id, session, user_id),
-                name="browser_handoff_autoresolve",
-            )
-        )
-    return watchers
-
-
 async def _run_handoff(
     req: HandoffRequest,
     session: BrowserHostSession,
@@ -408,18 +385,24 @@ async def _run_handoff(
 ) -> HandoffOutcome:
     """Pause the run and hand the user a live view to complete the step themselves.
 
-    Returns the outcome (completed with optional note, cancelled, or timed out)
-    so the loop resumes natively.
+    Only the user ends it, by saying they are done or tapping the button; the
+    outcome (completed with optional note, cancelled, or timed out) resumes the loop.
     """
     handoff_id = uuid.uuid4().hex
+    if req.category == SensitiveCategory.CREDENTIALS:
+        # Asked to sign in again here, so an earlier "done" did not leave a login to save.
+        page = await host_client.get_session(session.session_id, session.host_url)
+        session.forget_login(page.url)
     await create_pending_handoff(handoff_id, user_id, conversation_id, req.reason)
     await emit(_handoff_snapshot(handoff_id, req, session, HandoffStatus.PENDING))
-    watchers = _spawn_handoff_watchers(handoff_id, req, session, user_id)
+    # The paused session produces no CDP/live-view traffic, so keep its idle
+    # clock fresh until the user decides, or the host reaps the browser
+    # they were asked to come back to.
+    keepalive = spawn_background_task(keep_session_alive(session), name="browser_handoff_keepalive")
     try:
         outcome = await await_handoff(handoff_id, settings.BROWSER_USE_HANDOFF_TIMEOUT_SECONDS)
     finally:
-        for watcher in watchers:
-            watcher.cancel()
+        keepalive.cancel()
     log.set_ns(
         "browser",
         handoff_kind=HandoffKind.USER.value,
