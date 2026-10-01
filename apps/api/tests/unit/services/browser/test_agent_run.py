@@ -20,6 +20,7 @@ from browser_use.agent.views import AgentState
 import pytest
 
 from app.constants.browser import (
+    BROWSER_ENGINE_RESUMED_NOTE,
     BROWSER_GUIDANCE_MAX_ELEMENTS,
     BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS,
     BROWSER_GUIDANCE_RECENT_ACTIONS,
@@ -867,7 +868,9 @@ class TestExecute:
         resumed = options["injected_agent_state"]
         assert (resumed.n_steps, resumed.stopped, resumed.paused) == (7, False, False)
         assert (resumed.consecutive_failures, options["initial_actions"]) == (0, None)
-        assert page in resumed.last_result[-1].long_term_memory
+        assert resumed.last_result[-1].long_term_memory == BROWSER_ENGINE_RESUMED_NOTE.format(
+            page=page
+        )
 
     @pytest.mark.parametrize(
         ("engine", "on_obscura"), [(BrowserEngine.OBSCURA, True), (BrowserEngine.CHROMIUM, False)]
