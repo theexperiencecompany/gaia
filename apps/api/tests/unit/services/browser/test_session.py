@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.constants.browser import BrowserEngine
 from app.services.browser import session as session_mod
 from app.services.browser.exceptions import (
     BrowserConcurrencyLimit,
@@ -25,6 +26,7 @@ def _handle(session_id: str = "sess-1") -> BrowserHostSession:
         live_view_url="https://live",
         context_id="ctx-1",
         host_url=_HOST,
+        engine=BrowserEngine.CHROMIUM,
     )
 
 
@@ -161,6 +163,7 @@ async def test_session_fields_are_mapped_from_the_host_response(
         context_id="ctx-y",
         cdp_ws="ws://cdp-endpoint",  # NOSONAR
         live_ws="ws://live-endpoint",  # NOSONAR
+        engine=BrowserEngine.OBSCURA,
     )
     monkeypatch.setattr(session_mod.host_client, "create_session", AsyncMock(return_value=host))
     live_view_calls: list[str] = []
@@ -178,6 +181,7 @@ async def test_session_fields_are_mapped_from_the_host_response(
         assert s.context_id == "ctx-y"
         assert s.live_view_url == "LV:sid-x"
         assert s.host_url == _HOST
+        assert s.engine is BrowserEngine.OBSCURA
         # A later handover protects this site's login by it.
         assert s.start_domain == "x"
     assert live_view_calls == ["sid-x"]

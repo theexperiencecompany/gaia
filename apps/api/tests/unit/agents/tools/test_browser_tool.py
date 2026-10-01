@@ -17,6 +17,18 @@ from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
+TOOL_CALL_ID = "call-browser-1"
+
+
+async def _start(args: dict[str, Any], config: RunnableConfig) -> str:
+    """Call browser_task as the tool node does: a model tool call carrying its id."""
+    message = await browser_task.ainvoke(
+        {"args": args, "name": "browser_task", "type": "tool_call", "id": TOOL_CALL_ID},
+        config=config,
+    )
+    return str(message.content)
+
+
 UI_CONFIG: RunnableConfig = {
     "configurable": {"user_id": "u1", "thread_id": "c1", "stream_id": "s1", "source_category": "ui"}
 }
@@ -119,7 +131,7 @@ async def test_a_private_start_url_is_refused_before_any_job_exists(
     """A literal loopback/metadata start URL never reaches the host; the model is told why."""
     recorder = _install(monkeypatch)
 
-    out = await browser_task.ainvoke(
+    out = await _start(
         {"task": "read the metadata", "start_url": "http://169.254.169.254/latest/meta-data"},
         config=UI_CONFIG,
     )
@@ -139,7 +151,7 @@ async def test_a_refused_start_url_is_reported_on_the_wide_event_with_its_reason
     _install(monkeypatch)
 
     async with captured_wide_event() as event:
-        await browser_task.ainvoke(
+        await _start(
             {"task": "x", "start_url": "http://169.254.169.254/latest/meta-data"},
             config=UI_CONFIG,
         )
@@ -162,7 +174,7 @@ async def test_the_job_crosses_the_queue_under_the_name_the_worker_registers(
     """The enqueue site and worker.py share one constant; a drifting string enqueues a job nobody runs."""
     recorder = _install(monkeypatch)
 
-    await browser_task.ainvoke({"task": "x"}, config=UI_CONFIG)
+    await _start({"task": "x"}, config=UI_CONFIG)
 
     ((function, _payload),) = recorder.enqueued
     assert function == BROWSER_JOB_TASK
@@ -184,12 +196,11 @@ async def test_the_job_carries_the_turns_identity_and_provenance(
         }
     }
 
-    await browser_task.ainvoke(
-        {"task": "book a table", "start_url": "https://resy.com"}, config=config
-    )
+    await _start({"task": "book a table", "start_url": "https://resy.com"}, config=config)
 
     request = recorder.request
     assert request.model_dump(exclude={"job_id"}) == {
+        "tool_call_id": TOOL_CALL_ID,
         "user_id": "u1",
         "conversation_id": "conv-9",
         "task": "book a table",
@@ -207,7 +218,7 @@ async def test_a_credential_reaches_the_job_and_never_the_task_anyone_reads(
 ) -> None:
     recorder = _install(monkeypatch)
 
-    await browser_task.ainvoke(
+    await _start(
         {
             "task": "log in with hunter2-secret",
             "secrets": {"password": "hunter2-secret", "otp": ""},
@@ -226,7 +237,7 @@ async def test_the_claimed_slot_the_queued_state_and_the_job_all_name_one_job(
     """Three keys are minted from this id; a mismatch orphans the state a joiner reads or the slot the worker releases."""
     recorder = _install(monkeypatch)
 
-    await browser_task.ainvoke({"task": "book a table"}, config=UI_CONFIG)
+    await _start({"task": "book a table"}, config=UI_CONFIG)
 
     job_id = recorder.request.job_id
     assert recorder.claims == [("c1", job_id)]
@@ -248,7 +259,7 @@ async def test_conversation_id_prefers_the_user_facing_conversation(
         }
     }
 
-    await browser_task.ainvoke({"task": "x"}, config=config)
+    await _start({"task": "x"}, config=config)
 
     assert recorder.request.conversation_id == "conv-9"
 
@@ -257,7 +268,7 @@ async def test_conversation_id_falls_back_to_thread_id(monkeypatch: pytest.Monke
     recorder = _install(monkeypatch)
     config: RunnableConfig = {"configurable": {"user_id": "u1", "thread_id": "t-7"}}
 
-    await browser_task.ainvoke({"task": "x"}, config=config)
+    await _start({"task": "x"}, config=config)
 
     assert recorder.request.conversation_id == "t-7"
 
@@ -271,7 +282,7 @@ async def test_an_unknown_conversation_source_is_dropped_rather_than_carried(
         "configurable": {"user_id": "u1", "thread_id": "c1", "conversation_source": "carrier-dove"}
     }
 
-    await browser_task.ainvoke({"task": "x"}, config=config)
+    await _start({"task": "x"}, config=config)
 
     assert recorder.request.conversation_source is None
 
@@ -281,7 +292,7 @@ async def test_missing_identifiers_degrade_to_blank_and_none(
 ) -> None:
     recorder = _install(monkeypatch)
 
-    await browser_task.ainvoke({"task": "x"}, config={"configurable": {}})
+    await _start({"task": "x"}, config={"configurable": {}})
 
     request = recorder.request
     assert request.user_id == ""
@@ -296,7 +307,7 @@ async def test_a_config_with_no_configurable_key_still_degrades_cleanly(
     """Use the raw coroutine, not ainvoke, because LangChain's ensure_config always injects configurable; without the empty-dict fallback the next line raises AttributeError on None."""
     recorder = _install(monkeypatch)
 
-    await browser_task.coroutine(config={}, task="x")
+    await browser_task.coroutine(config={}, tool_call_id=TOOL_CALL_ID, task="x")
 
     assert recorder.request.user_id == ""
 
@@ -305,8 +316,8 @@ async def test_each_call_describes_its_own_job(monkeypatch: pytest.MonkeyPatch) 
     """The job id keys the run's state, feed and cancel flag; a shared id would cross two runs' wires."""
     recorder = _install(monkeypatch)
 
-    await browser_task.ainvoke({"task": "x"}, config=UI_CONFIG)
-    await browser_task.ainvoke({"task": "y"}, config=UI_CONFIG)
+    await _start({"task": "x"}, config=UI_CONFIG)
+    await _start({"task": "y"}, config=UI_CONFIG)
 
     first, second = (BrowserJobRequest.model_validate(p) for _, p in recorder.enqueued)
     assert len(first.job_id) == 32
@@ -324,7 +335,7 @@ async def test_a_refused_task_does_not_release_the_running_jobs_slot(
     """Releasing here would free the slot out from under the run that owns it."""
     recorder = _install(monkeypatch, holder="job-already-running")
 
-    await browser_task.ainvoke({"task": "x"}, config=UI_CONFIG)
+    await _start({"task": "x"}, config=UI_CONFIG)
 
     assert recorder.released == []
     assert recorder.spawned == []
@@ -337,7 +348,7 @@ async def test_a_second_task_is_pointed_at_the_run_already_holding_the_slot(
     recorder = _install(monkeypatch, holder="job-already-running")
 
     async with captured_wide_event() as event:
-        out = await browser_task.ainvoke({"task": "x"}, config=UI_CONFIG)
+        out = await _start({"task": "x"}, config=UI_CONFIG)
 
     assert out == tool_mod._SLOT_HELD.format(holder="job-already-running")
     assert recorder.enqueued == []
@@ -360,7 +371,7 @@ async def test_a_dropped_enqueue_frees_the_slot_and_says_so(
     """A wedged slot would refuse every later browser task in this conversation for a run that never started."""
     recorder = _install(monkeypatch, enqueued_job=None)
 
-    out = await browser_task.ainvoke({"task": "x"}, config=UI_CONFIG)
+    out = await _start({"task": "x"}, config=UI_CONFIG)
 
     assert out == "I couldn't start the browser task right now. Try again in a moment."
     assert recorder.released == [("c1", recorder.request.job_id)]
@@ -374,7 +385,7 @@ async def test_a_job_the_queue_did_not_take_is_an_error_on_the_wide_event(
     recorder = _install(monkeypatch, enqueued_job=None)
 
     async with captured_wide_event() as event:
-        await browser_task.ainvoke({"task": "x"}, config=UI_CONFIG)
+        await _start({"task": "x"}, config=UI_CONFIG)
 
     (error,) = event["errors"]
     assert error["msg"].startswith(LogTag.BROWSER)
@@ -387,7 +398,7 @@ async def test_an_enqueue_that_raises_is_reported_and_frees_the_slot(
     """Redis being down must not surface as a tool exception the model narrates as a browser failure."""
     recorder = _install(monkeypatch, enqueue_error=ConnectionError("redis is down"))
 
-    out = await browser_task.ainvoke({"task": "x"}, config=UI_CONFIG)
+    out = await _start({"task": "x"}, config=UI_CONFIG)
 
     assert out == "I couldn't start the browser task right now. Try again in a moment."
     assert recorder.released == [("c1", recorder.request.job_id)]
@@ -400,7 +411,7 @@ async def test_an_enqueue_that_raises_carries_the_cause_on_the_wide_event(
     recorder = _install(monkeypatch, enqueue_error=ConnectionError("redis is down"))
 
     async with captured_wide_event() as event:
-        await browser_task.ainvoke({"task": "x"}, config=UI_CONFIG)
+        await _start({"task": "x"}, config=UI_CONFIG)
 
     (error,) = event["errors"]
     assert error["msg"].startswith(LogTag.BROWSER)
@@ -414,7 +425,7 @@ async def test_the_job_is_queued_on_the_shared_worker_pool(
 ) -> None:
     recorder = _install(monkeypatch)
 
-    await browser_task.ainvoke({"task": "x"}, config=UI_CONFIG)
+    await _start({"task": "x"}, config=UI_CONFIG)
 
     assert recorder.pools == [recorder.pool]
 
@@ -431,7 +442,7 @@ async def test_a_started_task_keeps_its_slot_and_relays_its_cards_onto_this_turn
     recorder = _install(monkeypatch)
 
     async with captured_wide_event() as event:
-        out = await browser_task.ainvoke({"task": "x"}, config=UI_CONFIG)
+        out = await _start({"task": "x"}, config=UI_CONFIG)
 
     job_id = recorder.request.job_id
     assert out == tool_mod._STARTED.format(job_id=job_id)
@@ -448,46 +459,29 @@ async def test_no_stream_means_no_relay_but_the_job_still_runs(
     """A turn with no stream has nowhere to replay to; the worker still runs the job and delivers the result itself."""
     recorder = _install(monkeypatch)
 
-    await browser_task.ainvoke(
-        {"task": "x"}, config={"configurable": {"user_id": "u1", "thread_id": "c1"}}
-    )
+    await _start({"task": "x"}, config={"configurable": {"user_id": "u1", "thread_id": "c1"}})
 
     assert recorder.relays == []
     assert len(recorder.enqueued) == 1
 
 
-async def test_the_users_own_words_ride_along_with_the_executors_task(
+@pytest.mark.regression
+async def test_the_job_runs_the_executors_task_never_the_users_raw_message(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The executor twice rewrote "tick the second checkbox" into an invented label, and the step was skipped."""
+    """A password typed in chat must not ride into the task, the job state and the run's logs."""
     recorder = _install(monkeypatch)
     config: RunnableConfig = {
         "configurable": {
             "user_id": "u1",
             "conversation_id": "conv-9",
-            "user_request": "use the browser:   tick the second checkbox\nand submit",
+            "user_request": "log into my bank, my password is hunter2",
         }
     }
 
-    await browser_task.ainvoke(
-        {"task": "Tick the box labeled Checked, then submit."}, config=config
-    )
+    await _start({"task": "Log into the bank"}, config=config)
 
-    task = recorder.request.task
-    assert task.startswith("Tick the box labeled Checked, then submit.")
-    assert "own words" in task
-    assert "use the browser: tick the second checkbox and submit" in task
-
-
-async def test_a_turn_with_no_user_request_leaves_the_task_alone(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    recorder = _install(monkeypatch)
-    config: RunnableConfig = {"configurable": {"user_id": "u1", "conversation_id": "conv-9"}}
-
-    await browser_task.ainvoke({"task": "book a table"}, config=config)
-
-    assert recorder.request.task == "book a table"
+    assert recorder.request.task == "Log into the bank"
 
 
 async def test_a_task_that_names_one_page_starts_there_so_its_saved_login_is_used(
@@ -496,7 +490,7 @@ async def test_a_task_that_names_one_page_starts_there_so_its_saved_login_is_use
     """Regression: with no start URL, a signed-in /secure bounced to login and its login saved nowhere."""
     recorder = _install(monkeypatch)
 
-    await browser_task.ainvoke(
+    await _start(
         {"task": "Open https://the-internet.herokuapp.com/secure and read the heading."},
         config=UI_CONFIG,
     )
@@ -519,7 +513,7 @@ async def test_the_sentence_around_the_one_page_is_not_part_of_it(
     """Punctuation closing the sentence is not in the URL, and a full stop typed right before it names no second site."""
     recorder = _install(monkeypatch)
 
-    await browser_task.ainvoke({"task": task}, config=UI_CONFIG)
+    await _start({"task": task}, config=UI_CONFIG)
 
     assert recorder.request.start_url == page
 
@@ -537,7 +531,7 @@ async def test_a_task_without_exactly_one_page_gets_no_start_url(
 ) -> None:
     recorder = _install(monkeypatch)
 
-    await browser_task.ainvoke({"task": task}, config=UI_CONFIG)
+    await _start({"task": task}, config=UI_CONFIG)
 
     assert recorder.request.start_url is None
 
@@ -547,7 +541,7 @@ async def test_a_private_page_named_in_the_task_is_refused_before_any_job_exists
 ) -> None:
     recorder = _install(monkeypatch)
 
-    reply = await browser_task.ainvoke(
+    reply = await _start(
         {"task": "read http://169.254.169.254/latest/meta-data for me"}, config=UI_CONFIG
     )
 

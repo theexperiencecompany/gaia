@@ -175,16 +175,14 @@ class HandoffRequest(BaseModel):
 class GuidanceElement(BaseModel):
     """One visible control, exactly as the browser policy saw it when it got stuck."""
 
-    index: int
     label: str
     role: str
 
 
 class GuidanceAction(BaseModel):
-    """One recent step, and whether it moved the page at all."""
+    """One recent step, captioned with what it acted on."""
 
     action: str
-    page_changed: bool | None = None
 
 
 class AgentGuidanceRequest(BaseModel):

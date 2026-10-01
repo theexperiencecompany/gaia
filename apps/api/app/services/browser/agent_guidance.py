@@ -64,24 +64,14 @@ def _changed_instruction(request: AgentGuidanceRequest) -> str:
 def _recent_actions(request: AgentGuidanceRequest) -> str:
     if not request.recent_actions:
         return ""
-    lines = "\n".join(
-        f"  - {action.action}{_changed(action.page_changed)}" for action in request.recent_actions
-    )
+    lines = "\n".join(f"  - {action.action}" for action in request.recent_actions)
     return f"What it already tried, oldest first:\n{lines}"
-
-
-def _changed(page_changed: bool | None) -> str:
-    if page_changed is None:
-        return ""
-    return " (the page changed)" if page_changed else " (the page did not change)"
 
 
 def _elements(request: AgentGuidanceRequest) -> str:
     if not request.elements:
         return ""
-    lines = "\n".join(
-        f"  [{element.index}] {element.label} ({element.role})" for element in request.elements
-    )
+    lines = "\n".join(f"  - {element.label} ({element.role})" for element in request.elements)
     return f"Controls it can see on this screen:\n{lines}"
 
 

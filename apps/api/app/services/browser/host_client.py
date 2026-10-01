@@ -18,6 +18,7 @@ from playwright.sync_api import StorageState
 from pydantic import BaseModel, ConfigDict
 
 from app.config.settings import settings
+from app.constants.browser import BrowserEngine
 from app.services.browser.exceptions import (
     BrowserConcurrencyLimit,
     BrowserSessionGone,
@@ -38,7 +39,7 @@ class _StorageStateBody(TypedDict):
 
 
 class HostSession(BaseModel):
-    """A live session on the host: the ids and websocket URLs the runner needs."""
+    """A live session on the host: the ids and websocket URLs the runner needs, and the engine it runs on."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -46,6 +47,7 @@ class HostSession(BaseModel):
     cdp_ws: str
     live_ws: str
     context_id: str
+    engine: BrowserEngine
 
 
 class HostSessionInfo(BaseModel):

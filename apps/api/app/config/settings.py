@@ -232,17 +232,16 @@ class CommonSettings(BaseAppSettings):
 
     # Hard limits — everything is bounded so no browser task can run away. The
     # agent's step count is only Browser-Use's required backstop: a run ends on
-    # the agent's finish, no progress, or its time and cost budgets.
+    # the agent's finish or its time and cost budgets.
     BROWSER_USE_MAX_STEPS: int = 100
     BROWSER_USE_MAX_ACTIONS_PER_STEP: int = 5
     BROWSER_USE_TASK_TIMEOUT_SECONDS: int = 600
     # How long a paused run waits for the user's handoff step (a login, a CAPTCHA).
-    # The one source: the job deadline, its TTLs, the relay's wait and the per-step
-    # budget all derive from it (job_lifetime.py); resolving sooner resumes at once.
+    # The one source: the job deadline, its TTLs and the relay's wait all derive
+    # from it (job_lifetime.py); resolving sooner resumes at once.
     BROWSER_USE_HANDOFF_TIMEOUT_SECONDS: int = 600
-    # Active work budget for a single step. The effective per-step timeout adds the
-    # handoff timeout on top, so a step that pauses for a human live-view takeover
-    # is never killed as "stuck" while the user is completing it.
+    # Active work budget for a single step. A handoff waits after its step ends,
+    # outside this budget, so a step is never killed while the user completes one.
     BROWSER_USE_STEP_TIMEOUT_SECONDS: int = 180
     # Stream per-step screenshots into the chat card / bot messages.
     BROWSER_USE_STREAM_SCREENSHOTS: bool = True

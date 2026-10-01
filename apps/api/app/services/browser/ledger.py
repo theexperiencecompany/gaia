@@ -25,10 +25,13 @@ class ModelCall:
     provider: str
     model: str
     latency_ms: int
+    #: The whole prompt, cached tokens included.
     input_tokens: int
     output_tokens: int
     #: What the provider reported the call cost; None when it reports nothing.
     cost_usd: float | None = None
+    #: The part of the prompt the provider served from its cache, billed at its cached rate.
+    cached_tokens: int = 0
 
 
 @dataclass(frozen=True)

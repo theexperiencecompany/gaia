@@ -742,7 +742,7 @@ export const REASONING_TOOL_NAME = "reasoning";
 export const SUBAGENT_GROUP_TOOL_NAME = "subagent_group";
 
 // The browser tool and the category its own actions carry. Mirrors
-// BROWSER_TOOL_NAME / BROWSER_TOOL_CATEGORY in app/constants/browser.py — the
+// the browser_task tool and BROWSER_TOOL_CATEGORY in app/constants/browser.py — the
 // call and the "Browser" group it opens are matched by these on the client.
 export const BROWSER_TASK_TOOL_NAME = "browser_task";
 export const BROWSER_TOOL_CATEGORY = "browser";

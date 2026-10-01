@@ -59,6 +59,7 @@ def _request(**overrides: Any) -> BrowserJobRequest:
     """Build the payload the tool enqueues for a web run, varying whatever this case needs."""
     fields: dict[str, Any] = {
         "job_id": "job-1",
+        "tool_call_id": "call-1",
         "user_id": "u1",
         "conversation_id": "c1",
         "task": "x",
@@ -282,7 +283,9 @@ class Harness:
     def __init__(self) -> None:
         self.writes: list[dict[str, Any]] = []
         self.published_to: list[str] = []
-        self.session = MagicMock(session_id="sess-1", live_view_url="https://live/abc")
+        self.session = MagicMock(
+            session_id="sess-1", live_view_url="https://live/abc", engine=BrowserEngine.CHROMIUM
+        )
         self.session_kwargs: dict[str, Any] = {}
         self.runner_kwargs: dict[str, Any] = {}
         #: The runner the job built; a run body can move it onto a fallback session.
@@ -386,7 +389,6 @@ def _install(
 
     # Chrome, the default engine, on the configured host; Obscura is an opt-in flag.
     monkeypatch.setattr(jr, "is_enabled", _obscura_off)
-    monkeypatch.setattr(jr.settings, "BROWSER_ENGINE", BrowserEngine.CHROMIUM)
     monkeypatch.setattr(jr.settings, "BROWSER_HOST_URL", PRIMARY_HOST)
     monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", None)
     monkeypatch.setattr(jr, "publish_frame_to_job", h.publish)
@@ -418,12 +420,14 @@ def _install(
             self.session = kwargs["session"]
             self.used_fallback = False
             self.ledger = RunLedger()
+            self.failure: BrowserRunFailure | None = None
 
         async def run(self, task: str) -> BrowserResultSnapshot:
             h.run_task = task
-            if run_body is not None:
-                return await run_body(h)
-            return final
+            result = await run_body(h) if run_body is not None else final
+            if not result.success:
+                self.failure = BrowserRunFailure.GOAL_NOT_ACHIEVED
+            return result
 
     monkeypatch.setattr(jr, "BrowserTaskRunner", _Runner)
 
@@ -1116,11 +1120,11 @@ async def test_each_handoff_gets_its_own_id(monkeypatch: pytest.MonkeyPatch) -> 
 async def test_history_records_step_captions_and_uploaded_screenshots_in_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Steps are 1-indexed, gaps stay blank, and a data-URL fallback is never stored — it would render as a permanently broken thumbnail in the recap."""
+    """Steps are 1-indexed, and a step with no photo stays blank."""
 
     async def body(h: Harness) -> BrowserResultSnapshot:
         await h.emit(BrowserStepSnapshot(index=1, goal="open", screenshot="https://cdn/1.png"))
-        await h.emit(BrowserStepSnapshot(index=2, goal="", screenshot="data:image/png;base64,zz"))
+        await h.emit(BrowserStepSnapshot(index=2, goal="", screenshot=None))
         await h.emit(BrowserStepSnapshot(index=3, goal="submit", screenshot=None))
         await h.emit(BrowserStepSnapshot(index=4, goal="done", screenshot="http://cdn/4.png"))
         return _result(BrowserSessionStatus.COMPLETED, True, "done", steps=4)
@@ -1482,7 +1486,7 @@ def _mirror() -> tuple[jr.BrowserThreadMirror, list[dict[str, Any]]]:
     async def publish(payload: dict[str, Any]) -> None:
         writes.append(payload)
 
-    return jr.BrowserThreadMirror(publish), writes
+    return jr.BrowserThreadMirror(publish, "call-1"), writes
 
 
 def _session_snapshot(session_id: str | None = "sess-1") -> BrowserSessionSnapshot:
@@ -1491,28 +1495,15 @@ def _session_snapshot(session_id: str | None = "sess-1") -> BrowserSessionSnapsh
     )
 
 
-async def test_mirror_without_a_session_id_opens_no_group_and_drops_its_rows() -> None:
-    """No session id means no stable group id, so opening one would strand every action row under an id the result can never close."""
-    mirror, writes = _mirror()
-
-    await mirror.mirror(_session_snapshot(session_id=None))
-    await mirror.mirror(
-        BrowserStepSnapshot(index=1, goal="g", actions=[BrowserAction(name="click", inputs={})])
-    )
-    await mirror.mirror(_result(BrowserSessionStatus.COMPLETED, True, "done"))
-
-    assert writes == []
-
-
-async def test_mirror_opens_the_group_once_for_a_re_reported_session() -> None:
-    """The runner re-emits the session card as its status changes; a second subagent_start would render a duplicate Browser row."""
+async def test_mirror_opens_one_group_keyed_by_the_tool_call_across_engines() -> None:
+    """The runner re-emits the session card, on the fallback engine with a new session; a second subagent_start would render a duplicate Browser row."""
     mirror, writes = _mirror()
 
     await mirror.mirror(_session_snapshot())
     await mirror.mirror(_session_snapshot(session_id="sess-2"))
 
     starts = [w["subagent_start"] for w in writes if "subagent_start" in w]
-    assert [s["subagent_id"] for s in starts] == ["browser:sess-1"]
+    assert [s["subagent_id"] for s in starts] == ["browser:call-1"]
 
 
 async def test_mirror_numbers_each_action_within_its_step() -> None:
@@ -1532,10 +1523,10 @@ async def test_mirror_numbers_each_action_within_its_step() -> None:
     )
 
     rows = [w["tool_data"] for w in writes if "tool_data" in w]
-    assert [r["data"]["tool_call_id"] for r in rows] == ["browser:sess-1:4:0", "browser:sess-1:4:1"]
+    assert [r["data"]["tool_call_id"] for r in rows] == ["browser:call-1:4:0", "browser:call-1:4:1"]
     # The tag is what nests each row under the run's Browser group; untagged, the
     # actions render as loose top-level rows in the thread.
-    assert [r["subagent_id"] for r in rows] == ["browser:sess-1", "browser:sess-1"]
+    assert [r["subagent_id"] for r in rows] == ["browser:call-1", "browser:call-1"]
 
 
 async def test_mirror_tags_each_action_output_with_the_group_it_belongs_to() -> None:
@@ -1551,9 +1542,9 @@ async def test_mirror_tags_each_action_output_with_the_group_it_belongs_to() -> 
 
     (output,) = [w["tool_output"] for w in writes if "tool_output" in w]
     assert output == {
-        "tool_call_id": "browser:sess-1:1:0",
+        "tool_call_id": "browser:call-1:1:0",
         "output": "ok",
-        "subagent_id": "browser:sess-1",
+        "subagent_id": "browser:call-1",
     }
 
 
@@ -1610,7 +1601,7 @@ async def test_an_already_normalized_mirror_frame_is_published_unchanged(
     assert feeds == {"job-1"}
 
     (start,) = [p["subagent_start"] for p in published if "subagent_start" in p]
-    assert start["subagent_id"] == "browser:s1"
+    assert start["subagent_id"] == "browser:call-1"
 
 
 # ---------------------------------------------------------------------------
@@ -1889,8 +1880,8 @@ async def test_an_obscura_runs_fallback_session_opens_on_the_chrome_host_for_thi
         return True
 
     monkeypatch.setattr(jr, "is_enabled", _obscura_on)
-    monkeypatch.setattr(jr.settings, "BROWSER_ENGINE", BrowserEngine.OBSCURA)
     monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", "http://fallback:8930")
+    h.session.engine = BrowserEngine.OBSCURA
 
     await _run(h, _request(user_id="u7"))
 
@@ -2036,39 +2027,54 @@ async def test_mirror_closes_the_group_with_how_long_the_run_took(
 
 
 @pytest.mark.parametrize(
-    ("deployed", "engine", "hosts"),
+    ("chrome_host", "engine", "hosts"),
     [
-        (BrowserEngine.OBSCURA, BrowserEngine.OBSCURA, (PRIMARY_HOST, "http://chrome:8930")),
-        (BrowserEngine.OBSCURA, BrowserEngine.CHROMIUM, ("http://chrome:8930", None)),
-        # A user opted into Obscura on a Chrome-only deployment runs on Chrome.
-        (BrowserEngine.CHROMIUM, BrowserEngine.OBSCURA, (PRIMARY_HOST, None)),
-        (BrowserEngine.CHROMIUM, BrowserEngine.CHROMIUM, (PRIMARY_HOST, None)),
+        ("http://chrome:8930", BrowserEngine.OBSCURA, (PRIMARY_HOST, "http://chrome:8930")),
+        ("http://chrome:8930", BrowserEngine.CHROMIUM, ("http://chrome:8930", None)),
+        (None, BrowserEngine.OBSCURA, (PRIMARY_HOST, None)),
+        (None, BrowserEngine.CHROMIUM, (PRIMARY_HOST, None)),
     ],
 )
-def test_a_run_opens_on_its_engines_host_and_only_obscura_has_a_fallback(
+def test_a_run_opens_on_its_engines_host_with_the_chrome_host_behind_obscura(
     monkeypatch: pytest.MonkeyPatch,
-    deployed: BrowserEngine,
+    chrome_host: str | None,
     engine: BrowserEngine,
     hosts: tuple[str, str | None],
 ) -> None:
-    monkeypatch.setattr(jr.settings, "BROWSER_ENGINE", deployed)
     monkeypatch.setattr(jr.settings, "BROWSER_HOST_URL", PRIMARY_HOST)
-    monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", "http://chrome:8930")
+    monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", chrome_host)
 
     assert jr.hosts_for(engine) == hosts
 
 
-async def test_a_chrome_run_with_no_chrome_host_fails_saying_so(
+async def test_a_chrome_run_the_host_put_on_obscura_fails_saying_so(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     h = _install(monkeypatch)
-    monkeypatch.setattr(jr.settings, "BROWSER_ENGINE", BrowserEngine.OBSCURA)
+    h.session.engine = BrowserEngine.OBSCURA
 
     event = await _run_event(h, _request())
 
     assert h.cards == [_failed_card(BROWSER_NO_CHROME_HOST)]
     assert event["reason"] == BrowserRunFailure.HOST_UNAVAILABLE
-    assert h.session_kwargs == {}
+    assert h.runner_kwargs == {}
+
+
+async def test_an_obscura_run_the_host_put_on_chrome_has_nowhere_to_move(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    h = _install(monkeypatch)
+
+    async def _obscura_on(flag: object, user_id: str | None, default: bool | None = None) -> bool:
+        return True
+
+    monkeypatch.setattr(jr, "is_enabled", _obscura_on)
+    monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", "http://chrome:8930")
+
+    event = await _run_event(h, _request())
+
+    assert h.callbacks.open_fallback_session is None
+    assert event["browser"]["engine"] == "chromium"
 
 
 @pytest.mark.parametrize(("opted_in", "engine"), [(True, "obscura"), (False, "chromium")])
@@ -2083,12 +2089,14 @@ async def test_the_engine_is_the_users_own_obscura_choice(
         return opted_in
 
     monkeypatch.setattr(jr, "is_enabled", _is_enabled)
-    monkeypatch.setattr(jr.settings, "BROWSER_ENGINE", BrowserEngine.OBSCURA)
     monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", "http://chrome:8930")
+    h.session.engine = BrowserEngine(engine)
 
     event = await _run_event(h, _request(user_id="u7"))
 
     assert asked == [(FeatureFlag.BROWSER_OBSCURA, "u7")]
+    assert h.session_kwargs["host_url"] == (PRIMARY_HOST if opted_in else "http://chrome:8930")
+    # The engine the run is on is what the host reported for its session.
     assert event["browser"]["engine"] == engine
 
 

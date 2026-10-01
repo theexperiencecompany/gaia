@@ -17,6 +17,8 @@ class BrowserJobRequest(BaseModel):
     """Everything the worker needs to run one browser task on behalf of a turn."""
 
     job_id: str
+    #: The browser_task call that started the run; the run's thread group is keyed by it.
+    tool_call_id: str
     user_id: str
     conversation_id: str
     task: str

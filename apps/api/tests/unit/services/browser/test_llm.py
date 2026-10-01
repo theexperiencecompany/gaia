@@ -189,8 +189,14 @@ class _Completion:
         self.usage = usage
 
 
-def _usage(prompt_tokens: int, completion_tokens: int) -> SimpleNamespace:
-    return SimpleNamespace(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
+def _usage(
+    prompt_tokens: int, completion_tokens: int, cached: int | None = None
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        prompt_cached_tokens=cached,
+    )
 
 
 class _Inner:
@@ -220,7 +226,7 @@ async def test_every_call_is_recorded_into_the_run_ledger_with_its_tokens_and_la
     monkeypatch.setattr(llm_mod, "perf_counter", lambda: next(ticks))
     seen: list[object] = []
     ledger = RunLedger(on_call=seen.append)
-    model = _metered(_Inner(_usage(120, 7)), ledger)
+    model = _metered(_Inner(_usage(120, 7, cached=100)), ledger)
 
     result = await model.ainvoke([])
 
@@ -228,6 +234,7 @@ async def test_every_call_is_recorded_into_the_run_ledger_with_its_tokens_and_la
     [call] = ledger.calls
     assert (call.component, call.provider, call.model) == (CallComponent.TEXT, "openai", "model-x")
     assert (call.input_tokens, call.output_tokens, call.latency_ms) == (120, 7, 2500)
+    assert call.cached_tokens == 100
     assert seen == [call]
 
 
@@ -238,7 +245,16 @@ async def test_a_reply_without_usage_is_recorded_as_zero_tokens() -> None:
     await _metered(inner, ledger).ainvoke([])
 
     [call] = ledger.calls
-    assert (call.input_tokens, call.output_tokens) == (0, 0)
+    assert (call.input_tokens, call.output_tokens, call.cached_tokens) == (0, 0, 0)
+
+
+async def test_a_reply_with_no_cached_count_is_recorded_as_none_cached() -> None:
+    ledger = RunLedger()
+
+    await _metered(_Inner(_usage(120, 7, cached=None)), ledger).ainvoke([])
+
+    [call] = ledger.calls
+    assert call.cached_tokens == 0
 
 
 async def test_the_call_reaches_the_provider_exactly_as_the_agent_made_it() -> None:
@@ -300,6 +316,38 @@ async def test_a_stalled_call_is_hedged_after_the_models_own_delay_and_metered_o
     assert provider.requests == 2
     [call] = ledger.calls
     assert (call.component, call.input_tokens, call.output_tokens) == (component, 3, 2)
+
+
+async def test_a_hedged_call_that_lost_is_metered_once_it_lands(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The provider bills the request it already took, answered or not."""
+    _on_openrouter(monkeypatch)
+    monkeypatch.setattr(llm_mod, "BROWSER_AGENT_HEDGE_SECONDS", 0.01)
+    release = asyncio.Event()
+    requests = 0
+
+    async def _first_is_late(
+        self: object, messages: list[object], output_format: object = None, **kwargs: object
+    ) -> _Completion:
+        nonlocal requests
+        requests += 1
+        if requests == 1:
+            await release.wait()
+            return _Completion("late", _usage(50, 9))
+        return _Completion("ok", _usage(3, 2))
+
+    monkeypatch.setattr(ChatOpenAI, "ainvoke", _first_is_late)
+    landed = asyncio.Event()
+    ledger = RunLedger(on_call=lambda call: landed.set() if call.output_tokens == 9 else None)
+    model = await build_agent_llm(_USER, ledger)
+
+    task = await _settle(model.ainvoke([]))
+    release.set()
+    await asyncio.wait_for(landed.wait(), timeout=5)
+
+    assert task.result().completion == "ok"
+    assert [(call.input_tokens, call.output_tokens) for call in ledger.calls] == [(3, 2), (50, 9)]
 
 
 async def test_a_call_nothing_answers_gives_up_at_the_llm_deadline(

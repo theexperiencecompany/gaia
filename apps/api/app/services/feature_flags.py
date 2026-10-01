@@ -49,11 +49,16 @@ from app.utils.errors import AppError
 from shared.py.wide_events import log
 
 
-def _answer_enables(answer: object) -> bool:
-    """Interpret a flag value PostHog did evaluate: any non-control variant string counts as enabled."""
-    if isinstance(answer, str):
-        return answer.strip().lower() not in ("", "false", "off", "disabled", "control")
-    return bool(answer)
+def _boolean_answer(key: str, answer: object) -> bool | None:
+    """Return PostHog's answer for a boolean flag, or None when it gave none or a non-boolean one."""
+    if answer is None or isinstance(answer, bool):
+        return answer
+    log.warning(
+        "Feature flag answered a variant, not a boolean; ignoring it",
+        flag=key,
+        answer_type=type(answer).__name__,
+    )
+    return None
 
 
 def _get_posthog_client() -> Posthog | None:
@@ -96,7 +101,7 @@ class _Resolution(NamedTuple):
 
 
 async def _kill_switch_engaged(flag: FeatureFlag, user_id: str) -> bool:
-    """Whether ops forced the flag off; an unreachable or unconfigured PostHog never engages it."""
+    """Whether ops forced the flag off; a kill switch never created, or a PostHog that cannot answer, never engages it."""
     client = _get_posthog_client()
     if client is None:
         return False
@@ -112,15 +117,8 @@ async def _kill_switch_engaged(flag: FeatureFlag, user_id: str) -> bool:
             error_type=type(e).__name__,
         )
         return False
-    if result is None:
-        # The SDK swallows transport errors into None, so this is also the unreachable case.
-        log.warning(
-            "Feature flag kill switch unevaluated, leaving it disengaged",
-            flag=flag.value,
-            kill_switch=key,
-        )
-        return False
-    return _answer_enables(result)
+    # None is the usual answer: the switch is created on the dashboard only to pull it.
+    return _boolean_answer(key, result) is True
 
 
 async def _posthog_value(flag: FeatureFlag, user_id: str, fallback: bool) -> bool:
@@ -141,10 +139,11 @@ async def _posthog_value(flag: FeatureFlag, user_id: str, fallback: bool) -> boo
         _track_evaluation(user_id, flag, fallback, fallback_reason="evaluation_error")
         return fallback
 
-    if result is None:
+    answer = _boolean_answer(flag.value, result)
+    if answer is None:
         _track_evaluation(user_id, flag, fallback, fallback_reason="flag_unevaluated")
         return fallback
-    return _answer_enables(result)
+    return answer
 
 
 async def _resolve(flag: FeatureFlag, user_id: str, fallback: bool) -> _Resolution:
