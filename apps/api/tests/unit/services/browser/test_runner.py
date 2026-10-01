@@ -395,7 +395,7 @@ async def test_only_uploaded_frames_become_recap_frames(monkeypatch: pytest.Monk
 
     steps = [card for card in seen["emitted"] if isinstance(card, BrowserStepSnapshot)]
     # A step whose photo was not stored shows none, and a recap never promises it.
-    assert steps[1].screenshot is None
+    assert [step.screenshot for step in steps] == ["https://cdn.test/1.png", None]
     recap.assert_awaited_once_with("s-primary", ["https://cdn.test/1.png"])
     assert result.replay_url == "https://gaia.test/replay/r"
 
@@ -915,11 +915,12 @@ async def test_the_handoff_past_the_limit_stops_the_run() -> None:
             await run.hooks.takeover("Enter the code again", "credentials")
         except BrowserHandoffCancelled as exc:
             run.refusal = str(exc)
+        run.stops = await run.hooks.should_stop()
         return RunOutcome(False, "")
 
     result = await _run(_runner(_asks_too_often)[0])
 
-    assert _ScriptedRun.made[0].refusal == "max-handoffs"
+    assert (_ScriptedRun.made[0].refusal, _ScriptedRun.made[0].stops) == ("max-handoffs", True)
     # The earlier handoffs the user completed do not make a refused one a success,
     # and the user did not stop it: the run says it hit the limit.
     assert (result.status, result.success, result.summary) == (
@@ -1311,7 +1312,13 @@ async def test_a_run_that_never_attached_tells_the_user_plainly_and_logs_what_to
 
     assert str(raised.value) == BROWSER_CDP_ATTACH_FAILED
     [error] = event["errors"]
-    assert (error["error"], error["hint"]) == ("cdp refused", BROWSER_CDP_ATTACH_HINT)
+    assert "could not attach" in error["msg"]
+    assert (error["error_type"], error["error"], error["hint"], error["browser"]) == (
+        "ConnectionRefusedError",
+        "cdp refused",
+        BROWSER_CDP_ATTACH_HINT,
+        {"session_id": "s-primary"},
+    )
 
 
 async def test_a_connection_lost_mid_run_is_a_failed_run_not_an_attach_failure() -> None:

@@ -110,6 +110,14 @@ __all__ = [
 
 
 @dataclass(frozen=True)
+class _BudgetStop:
+    """A bound the run hit: the summary the user reads and its typed reason."""
+
+    summary: str
+    failure: BrowserRunFailure
+
+
+@dataclass(frozen=True)
 class BrowserRunnerCallbacks:
     """The runner's injected seams — how it streams progress, pauses for the human, checks cancellation, and mirrors per-action results into the thread."""
 
@@ -178,12 +186,10 @@ class BrowserTaskRunner:
         self._started_at = perf_counter()
         #: Seconds spent waiting on the user or the agent: the task budget does not run then.
         self._waited = 0.0
-        #: Why the run stopped itself, when a budget ended it, and its typed reason.
-        # "" reads as falsy exactly like None.
-        self._budget_summary: str | None = None  # pragma: no mutate
-        self._budget_failure: BrowserRunFailure | None = None
-        #: Why the run did not succeed, once it has ended; None while it runs or when it did.
-        self.failure: BrowserRunFailure | None = None
+        #: The bound that ended the run, when one did.
+        self._budget_stop: _BudgetStop | None = None
+        #: Why the run did not succeed, set when it ends; None when it succeeded.
+        self.failure: BrowserRunFailure | None
         # None reads as falsy exactly like False.
         self._stopped = False  # pragma: no mutate
         #: What the user told the run to do instead when they took over.
@@ -451,9 +457,9 @@ class BrowserTaskRunner:
                 BROWSER_RUN_HANDOFF_TIMED_OUT,
                 BrowserRunFailure.HANDOFF_TIMEOUT,
             )
-        if self._budget_summary and self._budget_failure:
+        if self._budget_stop is not None:
             return await self._finish(
-                BrowserSessionStatus.FAILED, self._budget_summary, self._budget_failure
+                BrowserSessionStatus.FAILED, self._budget_stop.summary, self._budget_stop.failure
             )
         if self._stopped:
             return await self._finish(
@@ -475,15 +481,14 @@ class BrowserTaskRunner:
             return True
         active = perf_counter() - self._started_at - self._waited
         if active > self._task_timeout:
-            self._budget_summary = BROWSER_RUN_WORK_BUDGET_SUMMARY.format(
-                seconds=self._task_timeout
+            self._budget_stop = _BudgetStop(
+                BROWSER_RUN_WORK_BUDGET_SUMMARY.format(seconds=self._task_timeout),
+                BrowserRunFailure.TASK_TIMEOUT,
             )
-            self._budget_failure = BrowserRunFailure.TASK_TIMEOUT
             return True
         check = await get_budget_stop_reason(self._user_id, None, self._root_request_id)
         if check is not None and check.stop_reason is not None:
-            self._budget_summary = check.stop_reason
-            self._budget_failure = BrowserRunFailure.COST_BUDGET
+            self._budget_stop = _BudgetStop(check.stop_reason, BrowserRunFailure.COST_BUDGET)
             return True
         return False
 
@@ -521,10 +526,10 @@ class BrowserTaskRunner:
         self._handoffs += 1
         if self._handoffs > MAX_HANDOFFS_PER_TASK:
             self._stopped = True
-            self._budget_summary = BROWSER_RUN_HANDOFF_LIMIT_SUMMARY.format(
-                limit=MAX_HANDOFFS_PER_TASK
+            self._budget_stop = _BudgetStop(
+                BROWSER_RUN_HANDOFF_LIMIT_SUMMARY.format(limit=MAX_HANDOFFS_PER_TASK),
+                BrowserRunFailure.HANDOFF_LIMIT,
             )
-            self._budget_failure = BrowserRunFailure.HANDOFF_LIMIT
             raise BrowserHandoffCancelled("max-handoffs")
 
         self._waiting_on_someone = True
