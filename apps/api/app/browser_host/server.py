@@ -55,7 +55,7 @@ from shared.py.wide_events import log, log_context
 # WebSocket close codes in the application 4xxx range.
 _WS_AUTH_FAILED = 4401
 _WS_SESSION_GONE = 4404
-_WS_TOKEN_PARAM = "token"
+_WS_TOKEN_PARAM = "token"  # nosec B105 -- the query parameter's name, not a credential
 # Kept back from the caller's deadline for the answer to travel home in.
 _DEADLINE_MARGIN_SECONDS = 1.0
 _ALLOWED_WS_ORIGIN_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})

@@ -26,7 +26,7 @@ from browser_use.tools.registry.service import Registry
 from browser_use.utils import match_url_with_domain_pattern
 
 #: The one action whose typed text Browser-Use logs only by its placeholder name.
-_SECRET_TYPING_ACTION = "input"
+_SECRET_TYPING_ACTION = "input"  # nosec B105 -- a Browser-Use action name, not a credential
 #: Types text as keys; Browser-Use logs those keys, so it never gets a secret's value.
 _KEYS_ACTION = "send_keys"
 #: Browser-Use's own placeholder pattern (Registry._replace_sensitive_data).

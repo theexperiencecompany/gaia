@@ -459,7 +459,7 @@ class JevStop(StrEnum):
     DONE = "done"
     BLOCKED = "blocked"
     NEEDS_INPUT = "needs_input"
-    SECRET_WITHHELD = "secret_withheld"
+    SECRET_WITHHELD = "secret_withheld"  # nosec B105 -- a stop reason, not a credential
     NO_PROGRESS = "no_progress"
     CYCLE = "cycle"
     MAX_ACTIONS = "max_actions"
@@ -687,7 +687,7 @@ class HostRequestFailure(StrEnum):
     """Why the browser host refused a request; its request event's reason field."""
 
     INVALID_HOST_KEY = "invalid_host_key"
-    INVALID_SESSION_TOKEN = "invalid_session_token"
+    INVALID_SESSION_TOKEN = "invalid_session_token"  # nosec B105 -- a refusal reason, not a credential
     SESSION_NOT_FOUND = "session_not_found"
     AT_CAPACITY = "at_capacity"
     ENGINE_UNRESPONSIVE = "engine_unresponsive"
