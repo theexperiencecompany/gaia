@@ -14,6 +14,7 @@ from contextlib import AbstractContextManager, ExitStack, asynccontextmanager, c
 from dataclasses import dataclass, field
 import inspect
 import json
+import tempfile
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -231,6 +232,9 @@ class _ScriptedAgent:
         self.browser_session = _BrowserSession(double)
         self.new_tasks: list[str] = []
         self.message_manager = SimpleNamespace(add_new_task=self.new_tasks.append)
+        # Where the real agent writes its file system and step screenshots; the run removes it.
+        self.agent_directory = tempfile.mkdtemp(prefix="browser_use_agent_")
+        self.file_system_path = self.agent_directory
 
     def stop(self) -> None:
         self._stopped = True
