@@ -36,9 +36,12 @@ _original_execute_action: Callable[..., Awaitable[object]] = Registry.execute_ac
 
 def _focused_url(browser_session: BrowserSession | None) -> str | None:
     """Return the address of the tab the action runs on, read as Browser-Use reads it to fill secrets."""
-    if browser_session is None or browser_session.agent_focus_target_id is None:
+    if browser_session is None:
         return None
-    target = browser_session.session_manager.get_target(browser_session.agent_focus_target_id)
+    focus = browser_session.agent_focus_target_id
+    if focus is None:
+        return None
+    target = browser_session.session_manager.get_target(focus)
     if target is None:
         return None
     url: str = target.url
@@ -46,12 +49,14 @@ def _focused_url(browser_session: BrowserSession | None) -> str | None:
 
 
 def _usable(sensitive_data: dict[str, str | dict[str, str]], url: str | None) -> set[str]:
-    """Return the secret names Browser-Use fills on url: each scoped one only on its own site."""
+    """Return the secret names Browser-Use fills on url; the run scopes every one to its own site."""
     names: set[str] = set()
     for pattern, values in sensitive_data.items():
-        if not isinstance(values, dict):
-            names.add(pattern)
-        elif url is not None and match_url_with_domain_pattern(url, pattern):
+        if (
+            isinstance(values, dict)
+            and url is not None
+            and match_url_with_domain_pattern(url, pattern)
+        ):
             names.update(values)
     return names
 
@@ -63,19 +68,15 @@ async def _execute_action(
     # Browser-Use passes everything by keyword; a positional call fails loudly here.
     if action_name not in _TYPING_ACTIONS:
         kwargs["sensitive_data"] = None
-        return await _original_execute_action(
-            self, action_name=action_name, params=params, **kwargs
-        )
-    named = set(_PLACEHOLDER.findall(json.dumps(params)))
-    # Browser-Use's own keywords, passed with these types (Registry.execute_action).
-    url = _focused_url(cast("BrowserSession | None", kwargs.get("browser_session")))
-    secrets = cast("dict[str, str | dict[str, str]] | None", kwargs.get("sensitive_data"))
-    withheld = sorted(named - _usable(secrets or {}, url))
-    if withheld:
-        host = (urlsplit(url).hostname if url else None) or "this page"
-        return ActionResult(
-            error=f"{', '.join(withheld)} is not used on {host}; nothing was typed."
-        )
+    else:
+        named = set(_PLACEHOLDER.findall(json.dumps(params)))
+        # Browser-Use's own keywords, passed with these types (Registry.execute_action).
+        url = _focused_url(cast("BrowserSession | None", kwargs.get("browser_session")))
+        secrets = cast("dict[str, str | dict[str, str]] | None", kwargs.get("sensitive_data"))
+        if withheld := sorted(named - _usable(secrets or {}, url)):
+            host = (urlsplit(url).hostname if url else None) or "this page"
+            refused = "; ".join(f"{name} is not used on {host}" for name in withheld)
+            return ActionResult(error=f"{refused}; nothing was typed.")
     return await _original_execute_action(self, action_name=action_name, params=params, **kwargs)
 
 

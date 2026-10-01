@@ -19,7 +19,10 @@ def _on(url: str) -> SimpleNamespace:
     """Return a Browser-Use session whose focused tab is on url."""
     tab = SimpleNamespace(url=url)
     return SimpleNamespace(
-        agent_focus_target_id="tab-1", session_manager=SimpleNamespace(get_target=lambda _: tab)
+        agent_focus_target_id="tab-1",
+        session_manager=SimpleNamespace(
+            get_target=lambda target: tab if target == "tab-1" else None
+        ),
     )
 
 
@@ -62,16 +65,24 @@ async def test_a_typing_action_gets_the_secret_values(
 async def test_a_typing_action_naming_a_secret_off_its_site_fails_and_types_nothing(
     executed: list[dict[str, Any]],
 ) -> None:
-    answer = await patch_module._execute_action(
-        Registry(),
-        "input",
-        {"index": 3, "text": "<secret>password</secret>"},
-        sensitive_data=SECRETS,
-        browser_session=_on("https://evil.test/login"),
+    text = {"index": 3, "text": "<secret>user</secret> <secret>password</secret>"}
+    unfocused = _on("https://example.test/")
+    unfocused.agent_focus_target_id = None
+
+    off_site = await patch_module._execute_action(
+        Registry(), "input", text, sensitive_data=SECRETS, browser_session=_on("https://evil.test/")
+    )
+    no_tab = await patch_module._execute_action(
+        Registry(), "input", text, sensitive_data=SECRETS, browser_session=unfocused
     )
 
     assert executed == []
-    assert answer.error == "password is not used on evil.test; nothing was typed."
+    assert off_site.error == (
+        "password is not used on evil.test; user is not used on evil.test; nothing was typed."
+    )
+    assert no_tab.error == (
+        "password is not used on this page; user is not used on this page; nothing was typed."
+    )
 
 
 @pytest.mark.parametrize("action", ["done", "jev", "navigate", "click"])
@@ -84,6 +95,7 @@ async def test_every_other_action_keeps_the_placeholder(
 
     [call] = executed
     assert call["sensitive_data"] is None
+    assert (call["action_name"], call["params"]) == (action, {"text": "<secret>password</secret>"})
 
 
 def test_apply_routes_every_action_through_the_patch(monkeypatch: pytest.MonkeyPatch) -> None:
