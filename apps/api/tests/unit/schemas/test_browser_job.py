@@ -46,8 +46,7 @@ def test_state_round_trips_its_result_snapshot() -> None:
         job_id="job-1",
         status=BrowserJobStatus.DONE,
         task="book a table",
-        session_id="sess-1",
-        live_view_url="https://browser.example/abc",
+        relay_stream_id="stream-1",
         agent_message="Browser task completed.",
         result=BrowserResultSnapshot(
             status=BrowserSessionStatus.COMPLETED, success=True, summary="booked", steps=4
@@ -60,11 +59,10 @@ def test_state_round_trips_its_result_snapshot() -> None:
 
 
 @pytest.mark.unit
-def test_state_starts_queued_with_no_session_and_no_result() -> None:
+def test_state_starts_queued_with_no_relay_and_no_result() -> None:
     state = BrowserJobState(job_id="job-1", status=BrowserJobStatus.QUEUED, task="book a table")
-    assert state.session_id is None
-    assert state.live_view_url is None
-    assert state.agent_message is None
+    assert state.relay_stream_id is None
+    assert state.agent_message == ""
     assert state.result is None
 
 
