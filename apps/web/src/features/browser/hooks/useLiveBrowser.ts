@@ -12,13 +12,9 @@ const RECONNECT_DELAY_MS = 1500;
 
 /**
  * Streams live-view JPEG frames onto a canvas and, when interactive, forwards
- * the user's input (see useLiveInput).
- *
- * A dropped socket (API restart, network blip, a lapsed token) asks `onDropped`
- * for a fresh URL and is redialled a few times before the view is declared
- * over; a session that is really gone refuses every redial and settles on
- * "closed". A new `socketUrl` (a renewed token, a fallback session) always
- * dials at once.
+ * the user's input (see useLiveInput). A dropped socket asks `onDropped` for a
+ * fresh URL and is redialled a few times; a session that refuses every redial
+ * settles on "closed". A new `socketUrl` always dials at once.
  */
 export function useLiveBrowser(
   socketUrl: string | null,
