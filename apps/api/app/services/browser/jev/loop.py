@@ -45,6 +45,7 @@ from app.services.browser.jev.decision import (
     Decision,
     JevDecisionError,
     RecentAction,
+    Situation,
     Visited,
     choose_option,
     choose_value,
@@ -345,15 +346,7 @@ class JevRunner:
     async def _decide(self, state: _Burst, addresses: list[str]) -> Decision:
         state.decisions += 1
         started = perf_counter()
-        decision = await decide(
-            self._client,
-            self._shown(state.current),
-            state.goal,
-            _history(state),
-            self.visited,
-            addresses,
-            self._secrets.mask,
-        )
+        decision = await decide(self._client, self._situation(state), self.visited, addresses)
         self._record_call(decision.evaluation, _elapsed_ms(started))
         return decision
 
@@ -535,55 +528,39 @@ class JevRunner:
     async def _option_for(self, state: _Burst, dropdown: PageAction) -> PageAction:
         """Return the chosen dropdown set to the option the goal asks for."""
         started = perf_counter()
-        option, evaluation = await choose_option(
-            self._client,
-            self._shown(state.current),
-            state.goal,
-            dropdown,
-            _history(state),
-            self._secrets.mask,
-        )
+        option, evaluation = await choose_option(self._client, self._situation(state), dropdown)
         self._record_call(evaluation, _elapsed_ms(started))
         return option
 
     async def _value_for(self, state: _Burst, action: PageAction) -> tuple[str, str] | None:
         """Return what to type into action, as (shown, typed); None when the goal gives no value."""
-        history = _history(state)
-        page = state.current
+        situation = self._situation(state)
         started = perf_counter()
         choice, evaluation = await choose_value(
-            self._client,
-            self._shown(page),
-            state.goal,
-            action,
-            history,
-            self._secrets.names,
-            self._secrets.mask,
+            self._client, situation, action, self._secrets.names
         )
         self._record_call(evaluation, _elapsed_ms(started))
         if choice == NONE_VALUE:
             return None
         if choice == GENERATE:
-            written = await self._write_value(state, action, history)
+            written = await self._write_value(situation, action)
             return (written, written) if written else None
         if is_placeholder(choice):
-            return choice, self._secrets.value_for(choice, page.url)
+            return choice, self._secrets.value_for(choice, state.current.url)
         return choice, choice
 
-    async def _write_value(
-        self, state: _Burst, action: PageAction, history: list[RecentAction]
-    ) -> str | None:
+    async def _write_value(self, situation: Situation, action: PageAction) -> str | None:
         """Ask the tiny model for a value the goal implies but does not spell out.
 
         A value written for the same context and not typed yet (the page moved first) is reused.
         A model that fails or never answers is a step Jev could not decide.
         """
-        page = self._shown(state.current)
+        page = situation.page
         context = {
-            "goal": state.goal,
+            "goal": situation.goal,
             "field": describe_field(action),
             "page": {"title": page.title, "text": page.text[:JEV_PAGE_TEXT_MAX_CHARS]},
-            "recent_actions": [{"action": h.action, "text": h.text} for h in history],
+            "recent_actions": [{"action": h.action, "text": h.text} for h in situation.history],
         }
         # The field's label and value, the page and the goal can each hold a secret's value.
         masked = json.dumps(masked_json(context, self._secrets.mask))
@@ -610,9 +587,16 @@ class JevRunner:
         self._pending_text = (masked, value)
         return value
 
-    def _shown(self, page: PageState) -> PageState:
-        """Return page with its text masked before any cut of it, so a split value leaves no prefix."""
-        return replace(page, text=self._secrets.excerpt(page.text, page.text_cut))
+    def _situation(self, state: _Burst) -> Situation:
+        """Return the step as Jev's questions are asked on it: the page shown, the goal and recent actions."""
+        page = state.current
+        return Situation(
+            # Masked before any cut of the text, so a value split there leaves no prefix.
+            page=replace(page, text=self._secrets.excerpt(page.text, page.text_cut)),
+            goal=state.goal,
+            history=_history(state),
+            mask=self._secrets.mask,
+        )
 
     def _visit(self, page: PageState) -> None:
         """Keep the page's real address, to open it again; every question masks it."""

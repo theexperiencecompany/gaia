@@ -116,6 +116,18 @@ class Visited:
 
 
 @dataclass(frozen=True)
+class Situation:
+    """What every question about one step is asked on: the page as read, the goal, and what Jev did."""
+
+    page: PageState
+    goal: str
+    #: The recent actions Jev may see, already cut to that window.
+    history: list[RecentAction]
+    #: Puts every secret value back as its placeholder before anything is sent.
+    mask: Mask
+
+
+@dataclass(frozen=True)
 class Decision:
     """What to execute, with what the call cost."""
 
@@ -253,6 +265,14 @@ def _page(page: PageState) -> dict[str, object]:
     return {"url": page.url, "title": page.title, "text": page.text}
 
 
+def _read(situation: Situation) -> dict[str, object]:
+    """Return the state a field's question reads: the page and what Jev did, without whether it changed the page."""
+    return {
+        "page": _page(situation.page),
+        "recent_actions": [{"action": h.action, "text": h.text} for h in situation.history],
+    }
+
+
 def masked_json(value: object, mask: Mask) -> object:
     """Return value with mask applied to every string in it; keys are code-owned ids and stay."""
     if isinstance(value, str):
@@ -302,15 +322,10 @@ def _validate_choice(evaluation: JevEvaluation, question: str, ids: set[str]) ->
 
 
 async def decide(
-    client: JevDecider,
-    page: PageState,
-    goal: str,
-    history: list[RecentAction],
-    visited: list[Visited],
-    addresses: list[str],
-    mask: Mask,
+    client: JevDecider, situation: Situation, visited: list[Visited], addresses: list[str]
 ) -> Decision:
     """Ask Jev for this step's operation and target; raises JevDecisionError on a malformed answer."""
+    page, goal, history = situation.page, situation.goal, situation.history
     space = action_space(page.actions)
     controls: dict[JevOperation, PageAction] = space.controls
     operations: dict[str, JsonInput] = {op.value: OPERATIONS[op] for op in space.targets}
@@ -356,7 +371,7 @@ async def decide(
     left_out = page.omitted_actions + space.left_out
     if left_out:
         state["elements_left_out"] = left_out
-    evaluation = await _ask(client, state, questions, mask)
+    evaluation = await _ask(client, state, questions, situation.mask)
     operation = JevOperation(_validate_choice(evaluation, _OPERATION_QUESTION, set(operations)))
     chosen: PageAction | None = None
     url: str | None = None
@@ -377,12 +392,7 @@ async def decide(
 
 
 async def choose_option(
-    client: JevDecider,
-    page: PageState,
-    goal: str,
-    dropdown: PageAction,
-    history: list[RecentAction],
-    mask: Mask,
+    client: JevDecider, situation: Situation, dropdown: PageAction
 ) -> tuple[PageAction, JevEvaluation]:
     """Pick which of a chosen dropdown's options to set: asked apart, so a long list never swells the step."""
     options: list[SelectOption] = dropdown["options"]
@@ -391,16 +401,13 @@ async def choose_option(
     question = JevQuestion(
         criteria=criteria,
         instructions={
-            "goal": goal,
+            "goal": situation.goal,
             "field": {"label": dropdown["label"], "current_value": dropdown["current_value"]},
             "rules": OPTION,
         },
     )
-    state: dict[str, object] = {
-        "page": _page(page),
-        "recent_actions": [{"action": h.action, "text": h.text} for h in history],
-    }
-    evaluation = await _ask(client, state, {_OPTION_QUESTION: question}, mask)
+    state = _read(situation)
+    evaluation = await _ask(client, state, {_OPTION_QUESTION: question}, situation.mask)
     option: SelectOption = options[
         int(_validate_choice(evaluation, _OPTION_QUESTION, set(criteria))[1:]) - 1
     ]
@@ -412,36 +419,26 @@ async def choose_option(
 
 
 async def choose_value(
-    client: JevDecider,
-    page: PageState,
-    goal: str,
-    target: PageAction,
-    history: list[RecentAction],
-    secrets: list[str],
-    mask: Mask,
+    client: JevDecider, situation: Situation, target: PageAction, secrets: list[str]
 ) -> tuple[str, JevEvaluation]:
     """Pick what to type into target: a literal from the goal, one of the run's secrets, GENERATE, or NONE.
 
     A password field is offered the run's secrets only; any other field the goal's
     literals and the secrets too, since a username or an account id can be one.
-    history is the recent actions Jev may see, already cut to that window.
     """
     is_secret = target["kind"] == "secret"
     placeholders = [f"<secret>{name}</secret>" for name in secrets]
-    options = placeholders if is_secret else [*literals(goal), *placeholders]
+    options = placeholders if is_secret else [*literals(situation.goal), *placeholders]
     criteria: dict[str, JsonInput] = {f"V{i + 1}": value for i, value in enumerate(options)}
     if not is_secret:
         criteria[GENERATE] = VALUE_GENERATE
     criteria[NONE_VALUE] = VALUE_NONE
     question = JevQuestion(
         criteria=criteria,
-        instructions={"goal": goal, "field": describe_field(target), "rules": VALUE},
+        instructions={"goal": situation.goal, "field": describe_field(target), "rules": VALUE},
     )
-    state: dict[str, object] = {
-        "page": _page(page),
-        "recent_actions": [{"action": h.action, "text": h.text} for h in history],
-    }
-    evaluation = await _ask(client, state, {_VALUE_QUESTION: question}, mask)
+    state = _read(situation)
+    evaluation = await _ask(client, state, {_VALUE_QUESTION: question}, situation.mask)
     answer = _validate_choice(evaluation, _VALUE_QUESTION, set(criteria))
     if answer in (GENERATE, NONE_VALUE):
         return answer, evaluation

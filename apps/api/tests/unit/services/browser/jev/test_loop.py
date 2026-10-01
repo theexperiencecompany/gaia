@@ -33,6 +33,7 @@ from app.services.browser.jev.decision import (
     NONE_VALUE,
     Decision,
     RecentAction,
+    Situation,
     Visited,
     describe_field,
 )
@@ -105,21 +106,14 @@ class _Jev:
     chosen: list[dict[str, Any]] = field(default_factory=list)
 
     async def decide(
-        self,
-        client: object,
-        page: PageState,
-        goal: str,
-        history: list[RecentAction],
-        visited: list[Visited],
-        addresses: list[str],
-        mask: Callable[[str], str],
+        self, client: object, situation: Situation, visited: list[Visited], addresses: list[str]
     ) -> Decision:
         self.decided.append(
             {
                 "client": client,
-                "page": page,
-                "goal": goal,
-                "history": history,
+                "page": situation.page,
+                "goal": situation.goal,
+                "history": situation.history,
                 "visited": list(visited),
                 "addresses": addresses,
             }
@@ -129,22 +123,15 @@ class _Jev:
         return self.decisions.pop(0)
 
     async def choose_value(
-        self,
-        client: object,
-        page: PageState,
-        goal: str,
-        target: PageAction,
-        history: list[RecentAction],
-        secrets: list[str],
-        mask: Callable[[str], str],
+        self, client: object, situation: Situation, target: PageAction, secrets: list[str]
     ) -> tuple[str, JevEvaluation]:
         self.chosen.append(
             {
                 "client": client,
-                "page": page,
-                "goal": goal,
+                "page": situation.page,
+                "goal": situation.goal,
                 "target": target,
-                "history": history,
+                "history": situation.history,
                 "secrets": secrets,
             }
         )
@@ -154,15 +141,11 @@ class _Jev:
         return value, JevEvaluation(answers={}, provider="openrouter")
 
     async def choose_option(
-        self,
-        client: object,
-        page: PageState,
-        goal: str,
-        dropdown: PageAction,
-        history: list[RecentAction],
-        mask: Callable[[str], str],
+        self, client: object, situation: Situation, dropdown: PageAction
     ) -> tuple[PageAction, JevEvaluation]:
-        self.optioned.append((client, page.url, goal, history, mask(SECRET)))
+        self.optioned.append(
+            (client, situation.page.url, situation.goal, situation.history, situation.mask(SECRET))
+        )
         [option] = [o for o in dropdown["options"] if o["value"] == self.option]
         chosen = dropdown.copy()
         del chosen["options"]
