@@ -115,8 +115,15 @@ CANVAS_SECTIONS: Final[tuple[str, ...]] = (
 # trimmed, so a canvas write that grows it past this is refused instead.
 STANDING_RULES_MAX_CHARS: Final[int] = 2_000
 
-# How many referenced todos a run reads Standing rules and Learnings from.
+# How many referenced todos a run reads Learnings from.
 REFERENCED_TODOS_PROMPT_LIMIT: Final[int] = 5
+
+# Top-level tracked todos in every agent's ACTIVE TRACKED TODOS block; sub-todos fold into a count.
+ACTIVE_TRACKED_SUMMARY_LIMIT: Final[int] = 15
+
+# Open sub-todos a parent's run reads, and how much of each one's Current State.
+SUB_TODOS_PROMPT_LIMIT: Final[int] = 50
+SUB_TODO_STATE_EXCERPT_CHARS: Final[int] = 300
 
 # How much of an existing todo's Current State a refused duplicate create shows.
 EXISTING_TODO_STATE_EXCERPT_CHARS: Final[int] = 400

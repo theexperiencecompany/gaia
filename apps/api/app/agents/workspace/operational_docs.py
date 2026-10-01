@@ -122,9 +122,10 @@ These live at `/workspace/gaia-tasks/`:
 ## Tools (always available: no retrieve_tools)
 
 - `create_tracked_todo`: create a todo; the result names its folder.
-  `references=[...]` links the user's todos it builds on.
+  `parent_todo_id=` makes it a sub-todo of a larger tracked job; `references=[...]`
+  links past todos whose Learnings it reads.
 - `update_tracked_todo`: labels, due_date, priority, scheduled_at,
-  recurrence, expires_at, references.
+  recurrence, expires_at, references, parent_todo_id.
 - `complete_tracked_todo`: mark done (requires a completion summary).
 - `search_todo_context`: semantic search over all notes (includes done).
 - `list_tracked_todos`: active tracked todos (≤50) with metadata.
@@ -223,7 +224,7 @@ this todo: ...") is kept in exactly one place, so every later run obeys it:
 - How GAIA writes email, to one person or in general: the Gmail integration
   instructions (`update_integration_instructions`), so chat drafting obeys it too.
 - When it runs: `update_tracked_todo` with `recurrence` / `scheduled_at`.
-A run also obeys the Standing rules of the todos it references.
+A sub-todo's run also obeys its parent's Standing rules.
 
 ## Anti-patterns
 

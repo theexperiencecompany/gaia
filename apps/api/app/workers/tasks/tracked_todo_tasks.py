@@ -9,6 +9,7 @@ Handles:
 - Safety-net cron for orphaned todos
 """
 
+import asyncio
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 import json
@@ -20,16 +21,21 @@ from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import TodoRunRequest, run_todo_on_executor
 from app.agents.prompts.todo_prompts import (
     DELIVERED_RESULT_GUIDANCE,
-    REFERENCED_STANDING_RULES_LABEL,
+    PARENT_STANDING_RULES_LABEL,
     SILENT_RUN_GUIDANCE,
+    SUB_TODOS_LABEL,
     TRIGGERED_RELEVANCE_GUIDANCE,
 )
 from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
+    CANVAS_CURRENT_STATE_SECTION,
     CANVAS_STANDING_RULES_SECTION,
     FAILED_LABEL,
+    GAIA_TRACKED_LABEL,
     REFERENCED_TODOS_PROMPT_LIMIT,
     STANDING_RULES_MAX_CHARS,
+    SUB_TODO_STATE_EXCERPT_CHARS,
+    SUB_TODOS_PROMPT_LIMIT,
     TODO_SCHEDULE_FIRE_GRACE,
     TodoActivityEvent,
 )
@@ -61,6 +67,7 @@ from app.services.triggers.todo_trigger_window import (
 )
 from app.utils.auth_utils import load_user_context
 from app.utils.cron_utils import CronError, get_next_run_time
+from app.utils.general_utils import clip_text
 from app.utils.occurrence import occurrence_stamp, parse_occurrence_stamp
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import Timezone
@@ -396,47 +403,87 @@ def _trigger_type(origin: TriggerOrigin | None) -> TriggerType:
     return TriggerType.SCHEDULED_TODO if origin is None else TriggerType.TODO_TRIGGER
 
 
-class _ReferenceContext(NamedTuple):
-    """What a run inherits from the todos it references: rules to obey, and past lessons."""
+class _RunContext(NamedTuple):
+    """What a run reads from other todos: its parent's rules, its sub-todos, past lessons."""
 
-    standing_rules: str = ""
+    parent_rules: str = ""
+    sub_todos: str = ""
     learnings: str = ""
 
 
-async def _collect_reference_context(ref_ids: list[str], user_id: str) -> _ReferenceContext:
-    """Gather Standing rules and Learnings from the first referenced todos the user owns."""
+async def _collect_run_context(doc: TodoDocument) -> _RunContext:
+    """Gather everything a run reads from the owner's other todos."""
+    parent_rules, sub_todos, learnings = await asyncio.gather(
+        _collect_parent_rules(doc.parent_todo_id, doc.user_id),
+        _collect_sub_todo_states(doc),
+        _collect_reference_learnings(doc.references, doc.user_id),
+    )
+    return _RunContext(parent_rules=parent_rules, sub_todos=sub_todos, learnings=learnings)
+
+
+async def _collect_parent_rules(parent_todo_id: str | None, user_id: str) -> str:
+    """Render the parent's Standing rules, which a sub-todo's run obeys like its own."""
+    if parent_todo_id is None:
+        return ""
+    parent = await todo_repository.get(parent_todo_id, user_id=user_id)
+    if parent is None:
+        return ""
+    rules = section_body(parent.canvas_content or "", CANVAS_STANDING_RULES_SECTION)
+    if not rules:
+        return ""
+    return (
+        f'{PARENT_STANDING_RULES_LABEL}\nFrom "{parent.title}":\n{rules[:STANDING_RULES_MAX_CHARS]}'
+    )
+
+
+async def _collect_sub_todo_states(doc: TodoDocument) -> str:
+    """Each open sub-todo's Current State: a sub-todo reports here, not to the user."""
+    if doc.parent_todo_id is not None:
+        return ""  # one level deep: a sub-todo has no sub-todos to read
+    children = await todo_repository.list_active_tracked(
+        doc.user_id, limit=SUB_TODOS_PROMPT_LIMIT, parent_todo_id=doc.id
+    )
+    return _labelled(SUB_TODOS_LABEL, [_sub_todo_block(child) for child in children], "\n")
+
+
+def _sub_todo_block(child: TodoDocument) -> str:
+    labels = [label for label in child.labels if label != GAIA_TRACKED_LABEL]
+    labels_str = f" [{', '.join(labels)}]" if labels else ""
+    state = section_body(child.canvas_content or "", CANVAS_CURRENT_STATE_SECTION)
+    return (
+        f'- "{child.title}"{labels_str} (ID: {child.id})\n'
+        f"  Current State: {clip_text(state or '(empty)', SUB_TODO_STATE_EXCERPT_CHARS)}"
+    )
+
+
+async def _collect_reference_learnings(ref_ids: list[str], user_id: str) -> str:
+    """Gather Learnings from the first referenced todos the user owns."""
     wanted = [
         ref for ref in ref_ids[:REFERENCED_TODOS_PROMPT_LIMIT] if todo_repository.is_valid_id(ref)
     ]
     if not wanted:
-        return _ReferenceContext()
+        return ""
     owned = {doc.id: doc for doc in await todo_repository.find_by_ids(user_id, wanted)}
-    rules: list[str] = []
-    learnings: list[str] = []
-    for doc in (owned[ref] for ref in wanted if ref in owned):
-        canvas = doc.canvas_content or ""
-        if ref_rules := section_body(canvas, CANVAS_STANDING_RULES_SECTION):
-            rules.append(f'From "{doc.title}":\n{ref_rules[:STANDING_RULES_MAX_CHARS]}')
-        if ref_learnings := section_body(canvas, "Learnings"):
-            learnings.append(f'From past todo "{doc.title}":\n## Learnings\n{ref_learnings}')
-    return _ReferenceContext(
-        standing_rules=_labelled(REFERENCED_STANDING_RULES_LABEL, rules),
-        learnings=_labelled("Past experience (from similar completed todos):", learnings),
-    )
+    learnings = [
+        f'From past todo "{doc.title}":\n## Learnings\n{ref_learnings}'
+        for doc in (owned[ref] for ref in wanted if ref in owned)
+        if (ref_learnings := section_body(doc.canvas_content or "", "Learnings"))
+    ]
+    return _labelled("Past experience (from similar completed todos):", learnings)
 
 
-def _labelled(label: str, blocks: list[str]) -> str:
+def _labelled(label: str, blocks: list[str], joiner: str = "\n\n") -> str:
     """Join blocks under their label, or nothing when there are none."""
-    return f"{label}\n" + "\n\n".join(blocks) if blocks else ""
+    return f"{label}\n" + joiner.join(blocks) if blocks else ""
 
 
-_NO_REFERENCES = _ReferenceContext()
+_NO_CONTEXT = _RunContext()
 
 
 def _build_execution_prompt(
     doc: TodoDocument,
     *,
-    references: _ReferenceContext = _NO_REFERENCES,
+    context: _RunContext = _NO_CONTEXT,
     origin: TriggerOrigin | None = None,
     coalesced: Sequence[TriggerOrigin] = (),
 ) -> str:
@@ -474,8 +521,10 @@ def _build_execution_prompt(
         prompt_parts.append(f"Details: {doc.description}")
     if doc.canvas_content:
         prompt_parts.append(f"Canvas (canvas.md):\n{bounded_canvas(doc.canvas_content)}")
-    if references.standing_rules:
-        prompt_parts.append(references.standing_rules)
+    if context.parent_rules:
+        prompt_parts.append(context.parent_rules)
+    if context.sub_todos:
+        prompt_parts.append(context.sub_todos)
     if activity_content := doc.activity_content:
         tail = activity_content[-ACTIVITY_PROMPT_TAIL_CHARS:]
         truncated = " (older entries omitted; read activity.md for the full log)"
@@ -483,8 +532,8 @@ def _build_execution_prompt(
         if len(activity_content) > len(tail):
             label += truncated
         prompt_parts.append(f"{label}:\n{tail}")
-    if references.learnings:
-        prompt_parts.append(references.learnings)
+    if context.learnings:
+        prompt_parts.append(context.learnings)
     prompt_parts.append(DELIVERED_RESULT_GUIDANCE if doc.notify_on_run else SILENT_RUN_GUIDANCE)
     return "\n\n".join(prompt_parts)
 
@@ -501,7 +550,7 @@ async def _execute_on_executor(
     user_id = doc.user_id
     prompt = _build_execution_prompt(
         doc,
-        references=await _collect_reference_context(doc.references, user_id),
+        context=await _collect_run_context(doc),
         origin=origin,
         coalesced=coalesced,
     )

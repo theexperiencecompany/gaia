@@ -146,7 +146,7 @@ edit(
 )
 ```
 
-One short line per rule. Rewrite a rule the new feedback changes instead of adding a contradicting one; remove a rule only when the user retracts it. Every run obeys its own Standing rules, and those of the todos it references, over its own defaults.
+One short line per rule. Rewrite a rule the new feedback changes instead of adding a contradicting one; remove a rule only when the user retracts it. Every run obeys its own Standing rules over its defaults, and a sub-todo's run also obeys its parent's.
 
 ## activity.md
 
@@ -178,7 +178,8 @@ Add an entry by editing the end of the file: `read` it, then `edit` its last lin
 - `due_date` — ISO datetime deadline; may be in the past (overdue still needs doing)
 - `expires_at` — ISO datetime when todo becomes irrelevant (skipped if expired)
 - `gmail_thread_id` — the email thread this todo is about (one open todo per thread; see above)
-- `references` — ids of the user's tracked todos this one builds on (a thread todo references the inbox desk); every run obeys their Standing rules and reads their Learnings
+- `references` — ids of the user's tracked todos this one builds on, usually completed ones; every run reads their Learnings
+- `parent_todo_id` — the open tracked todo this one is a sub-todo of (see Sub-todos)
 
 ## Scheduling & Recurrence
 
@@ -227,22 +228,40 @@ ALWAYS evaluated in the user's stored timezone — pass cron in user-local wall-
 - So end with a factual report (what you did, what changed, what needs them),
   and do NOT call `send_notification` to announce it — that sends it twice.
 - Every run's outcome, sent or not, is recorded in activity.md for you.
-- `notify_on_run` (default `True`, settable on create/update) turns delivery off
+- `notify_on_run` (default `True`, `False` for a sub-todo, settable on create/update) turns delivery off
   entirely. It is the user's setting: change it only when they ask. A silent
   todo reaches the user only via a deliberate `send_notification`.
+
+## Sub-todos
+
+A tracked job made of many pieces of the same kind (the inbox desk and one todo per email thread it handles) is one parent with a sub-todo per piece:
+
+```
+create_tracked_todo(title="Reply to Sam about the lease", gmail_thread_id="18f3a2b", parent_todo_id="desk_todo_id")
+update_tracked_todo(todo_id="abc", parent_todo_id="desk_todo_id")   # move an existing todo under it
+list_tracked_todos(parent_todo_id="desk_todo_id")                    # its open sub-todos
+```
+
+- A sub-todo obeys its parent's Standing rules on top of its own, so a rule the user gives the parent reaches every piece.
+- It reports to its parent, not to the user: its runs do not message the user (unless created with `notify_on_run=True`), and each parent run sees every open sub-todo's Current State. Keep that section true after each sub-todo run; it is the sub-todo's report.
+- Completing or deleting the parent completes or deletes its open sub-todos.
+- One level deep: a sub-todo cannot have sub-todos, and the parent must be an open tracked todo.
+- The ACTIVE TRACKED TODOS block shows a parent once with its open sub-todo count; the sub-todos themselves are listed by `list_tracked_todos(parent_todo_id=...)`.
+
+These are not the checklist items (subtasks) inside a todo: those are lines to tick off, not todos GAIA runs.
 
 ## Institutional Memory
 
 ### References
 
-Link the todos this one builds on, at creation or later:
+Link past todos this one builds on, at creation or later:
 
 ```
-create_tracked_todo(title="Reply to Sam about the lease", gmail_thread_id="18f3a2b", references=["desk_todo_id"])
+create_tracked_todo(title="Plan the Q4 launch", references=["q3_launch_todo_id"])
 update_tracked_todo(todo_id="abc", references=["old_todo_id_1"])
 ```
 
-References are appended (not replaced) and must be the user's own todos. Each run of the todo obeys their Standing rules and reads their Learnings. Use `search_todo_context` to find past todos worth referencing, then `read` their canvas.md to understand past approaches.
+References are appended (not replaced) and must be the user's own todos. Each run of the todo reads their Learnings. Use `search_todo_context` to find past todos worth referencing, then `read` their canvas.md to understand past approaches.
 
 ### Writing Learnings Before Completion
 

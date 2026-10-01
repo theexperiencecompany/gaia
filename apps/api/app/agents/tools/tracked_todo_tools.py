@@ -43,8 +43,8 @@ from app.models.trigger_subscription_models import (
 from app.services.canvas_markdown import section_body
 from app.services.storage._vfs_common import folder_name
 from app.services.todo_activity import record_field_changes
-from app.services.todos.errors import ExternalRefTakenError
-from app.services.tracked_todo_service import tracked_todo_service
+from app.services.todos.errors import ExternalRefTakenError, SubTodoParentError
+from app.services.tracked_todo_service import require_sub_todo_parent, tracked_todo_service
 from app.services.triggers.matchable_fields import MATCHABLE_TRIGGERS, get_matchable_trigger
 from app.services.triggers.scope_catalog import scope_fields_for
 from app.services.triggers.subscription_service import (
@@ -65,10 +65,17 @@ _RECURRENCE_SHORTCUTS = {"daily", "weekly", "every_4h", "every_1h"}
 _UTC_OFFSET = "+00:00"
 _NOTIFY_ON_RUN_DESC = (
     "Whether a scheduled or triggered run may message the user's chat app when it "
-    "finds something that matters (routine runs never do). Default True. The "
-    "user's setting: set it only when they ask to stop or resume hearing about "
-    "this todo; a silent run can still reach them with send_notification when "
-    "something genuinely needs them."
+    "finds something that matters (routine runs never do). Default True, except for "
+    "a sub-todo, which reports to its parent's runs instead. The user's setting: set "
+    "it only when they ask to stop or resume hearing about this todo; a silent run "
+    "can still reach them with send_notification when something genuinely needs them."
+)
+_PARENT_TODO_DESC = (
+    "ID of the user's open tracked todo that owns this one as a sub-todo, when this is "
+    "one piece of a larger tracked job (a thread todo the inbox desk opens). The "
+    "sub-todo obeys its parent's Standing rules, reports to the parent's runs instead "
+    "of messaging the user, and is completed or deleted with its parent. One level "
+    "deep: a sub-todo cannot have sub-todos."
 )
 _ERR_NO_USER_ID = "Error: user_id not found in config"
 
@@ -191,7 +198,7 @@ def _agent_actor(conversation_id: str | None) -> str:
 async def _references_refusal(user_id: str, references: list[str]) -> str | None:
     """Refuse reference ids that name none of the user's todos; None when every one does.
 
-    A run obeys its references' Standing rules, so a foreign or mistyped id must not link.
+    A run reads its references' Learnings, so a foreign or mistyped id must not link.
     """
     valid = [ref for ref in references if todo_repository.is_valid_id(ref)]
     owned = {doc.id for doc in await todo_repository.find_by_ids(user_id, valid)}
@@ -465,6 +472,8 @@ def _format_tracked_todo_full(doc: TodoDocument, now: datetime) -> str:
     ]
     if doc.external_ref:
         parts.append(f"  Owns {doc.external_ref.source.value}: {doc.external_ref.id}")
+    if doc.parent_todo_id:
+        parts.append(f"  Sub-todo of {doc.parent_todo_id}")
     detail_parts = _build_list_detail_parts(doc, now)
     if detail_parts:
         parts.append(f"  {' | '.join(detail_parts)}")
@@ -612,9 +621,9 @@ async def create_tracked_todo(
         "Different from due_date: due_date means 'should be done by'; expires_at means 'no longer matters after'.",
     ] = None,
     notify_on_run: Annotated[
-        bool,
+        bool | None,
         _NOTIFY_ON_RUN_DESC,
-    ] = True,
+    ] = None,
     gmail_thread_id: Annotated[
         str | None,
         "When the todo is about an email thread, pass its Gmail thread id. The todo "
@@ -624,10 +633,10 @@ async def create_tracked_todo(
     ] = None,
     references: Annotated[
         list[str] | None,
-        "IDs of the user's other tracked todos this one builds on (a thread todo the "
-        "inbox desk opens references the desk). Every run of this todo obeys their "
-        "Standing rules and reads their Learnings.",
+        "IDs of the user's other tracked todos this one builds on, usually completed "
+        "ones found with search_todo_context. Every run of this todo reads their Learnings.",
     ] = None,
+    parent_todo_id: Annotated[str | None, _PARENT_TODO_DESC] = None,
 ) -> str:
     """
     Create a tracked todo: a GAIA-managed todo with a working-memory canvas.
@@ -669,12 +678,14 @@ async def create_tracked_todo(
                 Different from due_date: due_date = deadline (overdue = still needs doing),
                 expires_at = relevance window (expired = no longer worth tracking).
     notify_on_run: Whether each run's final message is delivered to the user's chat app.
-                On by default; turn it off for runs the user should not hear about.
+                On by default, off by default for a sub-todo.
     gmail_thread_id: The Gmail thread id when the todo is about an email thread; it is
                 watched both ways and allowed one open todo. If the thread already has
                 one, nothing is created and that todo comes back: update it instead.
-    references: IDs of the user's tracked todos this one builds on; its runs obey their
-                Standing rules. An id that is not one of the user's todos creates nothing.
+    references: IDs of the user's tracked todos this one builds on; its runs read their
+                Learnings. An id that is not one of the user's todos creates nothing.
+    parent_todo_id: The open tracked todo this one is a sub-todo of; a parent that is not
+                usable creates nothing and says why.
     """
     user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
     if not user_id:
@@ -713,9 +724,12 @@ async def create_tracked_todo(
             notify_on_run=notify_on_run,
             external_ref=external_ref,
             references=references,
+            parent_todo_id=parent_todo_id,
         )
     except ExternalRefTakenError as taken:
         return _format_ref_taken_output(taken.existing, datetime.now(UTC))
+    except SubTodoParentError as refused:
+        return f"Not created: {refused.message} Nothing was saved."
     except SubscriptionError as e:
         return f"Not created: the thread could not be watched ({e}). Nothing was saved."
 
@@ -858,11 +872,14 @@ async def update_tracked_todo(
     references: Annotated[
         list[str] | None,
         "IDs of the user's other tracked todos to link; appended to existing references. "
-        "Every run of this todo obeys their Standing rules and reads their Learnings.",
+        "Every run of this todo reads their Learnings.",
     ] = None,
     notify_on_run: Annotated[
         bool | None,
         _NOTIFY_ON_RUN_DESC,
+    ] = None,
+    parent_todo_id: Annotated[
+        str | None, "Move this todo under that parent as its sub-todo. " + _PARENT_TODO_DESC
     ] = None,
 ) -> str:
     """Update properties of an existing tracked todo.
@@ -881,6 +898,7 @@ async def update_tracked_todo(
         expires_at: Set or clear the expiry datetime (when the todo becomes irrelevant).
         references: IDs of the user's tracked todos to link (appended to existing).
         notify_on_run: Turn this todo's run-result delivery on or off.
+        parent_todo_id: Make this todo a sub-todo of that parent.
     """
     user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
     if not user_id:
@@ -900,6 +918,8 @@ async def update_tracked_todo(
         return error
     if notify_on_run is not None:
         update_fields["notify_on_run"] = notify_on_run
+    if parent_todo_id:
+        update_fields["parent_todo_id"] = parent_todo_id
 
     if not update_fields and not references:
         return "No fields to update. Provide at least one field to change."
@@ -911,6 +931,11 @@ async def update_tracked_todo(
         return f"Error: tracked todo {todo_id} not found or not a tracked todo."
     if references and (refusal := await _references_refusal(user_id, references)):
         return refusal
+    if parent_todo_id:
+        try:
+            await require_sub_todo_parent(user_id, parent_todo_id, child_id=todo_id)
+        except SubTodoParentError as refused:
+            return f"Error: {refused.message} Nothing was saved."
 
     if update_fields:
         actor = _agent_actor(read_agent_configurable(config).conversation_id)
@@ -939,15 +964,20 @@ async def list_tracked_todos(
         str | None,
         "Only the open todo that owns this Gmail thread, if there is one.",
     ] = None,
+    parent_todo_id: Annotated[
+        str | None,
+        "Only the open sub-todos of this tracked todo.",
+    ] = None,
 ) -> str:
     """List active tracked todos with full metadata, optionally filtered.
 
     Returns open tracked todos, most recently updated first, with their
     ID, title, labels, due_date, scheduled_at, recurrence, expires_at, priority,
-    age, watches, and the email thread a thread todo owns. Use this when you need
-    a complete picture of tracked work, beyond the ACTIVE TRACKED TODOS context
-    block, or to read the todos in one state by label (e.g. every thread waiting
-    on a reply) or the todo for one thread.
+    age, watches, the email thread a thread todo owns, and a sub-todo's parent. Use
+    this when you need a complete picture of tracked work, beyond the ACTIVE TRACKED
+    TODOS context block (which folds sub-todos into a count), or to read the todos in
+    one state by label (e.g. every thread waiting on a reply), the todo for one
+    thread, or the sub-todos of one todo.
     """
     user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
     if not user_id:
@@ -958,9 +988,10 @@ async def list_tracked_todos(
         limit=LIST_TRACKED_TODOS_LIMIT,
         labels=labels,
         external_ref=_gmail_thread_ref(gmail_thread_id),
+        parent_todo_id=parent_todo_id,
     )
     if not docs:
-        if labels or gmail_thread_id:
+        if labels or gmail_thread_id or parent_todo_id:
             return "No active tracked todos match those filters."
         return "No active tracked todos."
 

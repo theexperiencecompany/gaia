@@ -50,7 +50,7 @@ from app.models.todo_models import (
     TodoUpdate,
 )
 from app.models.user_models import UserDocument
-from app.services.todos.errors import ExternalRefTakenError
+from app.services.todos.errors import ExternalRefTakenError, SubTodoParentError
 from app.services.triggers.subscription_service import SubscriptionError
 from shared.py.wide_events import spawn_logged_task
 
@@ -511,7 +511,8 @@ class TestCreateTrackedTodoValidation:
             )
             await create_tracked_todo.coroutine(config=_config(), title="t")
 
-        assert create.await_args.kwargs["notify_on_run"] is True
+        # Unset reaches the service, which delivers a top-level todo's runs and not a sub-todo's.
+        assert create.await_args.kwargs["notify_on_run"] is None
 
     async def test_the_agent_can_create_a_silent_tracked_todo(self):
         with patch(
@@ -1619,6 +1620,92 @@ class TestTrackedTodoReferences:
         assert result.startswith(f"Error: no tracked todo of this user has the id {self.DESK}.")
         update.assert_not_awaited()
         add.assert_not_awaited()
+
+
+class TestSubTodoTools:
+    """A sub-todo is created or re-parented under a parent the service accepts, or not at all."""
+
+    _CREATE = "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo"
+    _REQUIRE = "app.agents.tools.tracked_todo_tools.require_sub_todo_parent"
+    _GET = "app.agents.tools.tracked_todo_tools.todo_repository.get"
+    _UPDATE = "app.agents.tools.tracked_todo_tools.todo_repository.update"
+    DESK = "66f838cc8829054e5f10e401"
+
+    @staticmethod
+    def _response() -> TodoResponse:
+        now = datetime.now(UTC)
+        return TodoResponse(id="t1", user_id="user-1", title="t", created_at=now, updated_at=now)
+
+    async def test_the_parent_reaches_the_service(self):
+        with patch(self._CREATE, AsyncMock(return_value=self._response())) as create:
+            result = await create_tracked_todo.coroutine(
+                config=_config(), title="Reply to Sam", parent_todo_id=self.DESK
+            )
+
+        assert "Tracked todo created: t1" in result
+        assert create.await_args.kwargs["parent_todo_id"] == self.DESK
+
+    async def test_a_refused_parent_creates_nothing_and_says_why(self):
+        refusal = SubTodoParentError(
+            f"{self.DESK} is itself a sub-todo; sub-todos go one level deep."
+        )
+        with (
+            patch(self._CREATE, AsyncMock(side_effect=refusal)),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
+                new_callable=AsyncMock,
+            ) as schedule,
+        ):
+            result = await create_tracked_todo.coroutine(
+                config=_config(),
+                title="Reply to Sam",
+                parent_todo_id=self.DESK,
+                scheduled_at=_FUTURE_ISO,
+            )
+
+        assert result == f"Not created: {refusal.message} Nothing was saved."
+        schedule.assert_not_awaited()
+
+    async def test_an_existing_todo_is_moved_under_an_accepted_parent(self):
+        existing = TodoDocument(id="t1", user_id="user-1", title="Reply to Sam")
+        with (
+            patch(self._GET, AsyncMock(return_value=existing)),
+            patch(self._REQUIRE, AsyncMock()) as require,
+            patch(self._UPDATE, AsyncMock(return_value=existing)) as update,
+        ):
+            result = await update_tracked_todo.coroutine(
+                config=_config(), todo_id="t1", parent_todo_id=self.DESK
+            )
+
+        require.assert_awaited_once_with("user-1", self.DESK, child_id="t1")
+        written = update.await_args.kwargs["update"]
+        assert written.model_dump(exclude_unset=True) == {"parent_todo_id": self.DESK}
+        assert result == "Updated tracked todo t1: parent_todo_id"
+
+    async def test_a_refused_parent_on_update_saves_nothing(self):
+        existing = TodoDocument(id="t1", user_id="user-1", title="Reply to Sam")
+        refusal = SubTodoParentError("t1 has sub-todos of its own, so it cannot become one.")
+        with (
+            patch(self._GET, AsyncMock(return_value=existing)),
+            patch(self._REQUIRE, AsyncMock(side_effect=refusal)),
+            patch(self._UPDATE, AsyncMock()) as update,
+        ):
+            result = await update_tracked_todo.coroutine(
+                config=_config(), todo_id="t1", priority=Priority.HIGH, parent_todo_id=self.DESK
+            )
+
+        assert result == f"Error: {refusal.message} Nothing was saved."
+        update.assert_not_awaited()
+
+    async def test_listing_one_parents_sub_todos(self):
+        child = TodoDocument(
+            id="t1", user_id="user-1", title="Reply to Sam", parent_todo_id=self.DESK
+        )
+        with patch(_LIST_ACTIVE, new_callable=AsyncMock, return_value=[child]) as listed:
+            result = await list_tracked_todos.coroutine(config=_config(), parent_todo_id=self.DESK)
+
+        assert listed.await_args.kwargs["parent_todo_id"] == self.DESK
+        assert f"Sub-todo of {self.DESK}" in result
 
 
 # ---------------------------------------------------------------------------

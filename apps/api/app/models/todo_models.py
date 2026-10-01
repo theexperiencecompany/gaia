@@ -165,6 +165,11 @@ class TodoResponse(TodoBase, ResponseModel):
         default=None,
         description="Oldest live approval parked against this todo, if any — the UI's jump link to the card's conversation",
     )
+    parent_todo_id: str | None = Field(
+        default=None,
+        description="Read-only; the tracked todo this one is a sub-todo of, set by GAIA",
+    )
+    sub_todo_count: int = Field(default=0, description="Open sub-todos of this tracked todo")
 
     @classmethod
     def from_document(
@@ -173,16 +178,18 @@ class TodoResponse(TodoBase, ResponseModel):
         *,
         workflow_categories: list[str] | None = None,
         pending_approval: PendingApprovalRef | None = None,
+        sub_todo_count: int = 0,
     ) -> "TodoResponse":
         """Project a stored ``TodoDocument`` onto the API response shape. The
         tracked-only fields (canvas/log content, retry state) are dropped by
-        ``extra="ignore"``; ``workflow_categories`` and ``pending_approval``
-        are enrichment, not stored."""
+        ``extra="ignore"``; ``workflow_categories``, ``pending_approval`` and
+        ``sub_todo_count`` are enrichment, not stored."""
         return cls.model_validate(
             {
                 **doc.model_dump(),
                 "workflow_categories": workflow_categories or [],
                 "pending_approval": pending_approval,
+                "sub_todo_count": sub_todo_count,
             }
         )
 
@@ -259,6 +266,13 @@ class PaginationMeta(ResponseModel):
     has_prev: bool = Field(..., description="Whether there's a previous page")
 
 
+class SubTodoCount(BaseModel):
+    """One parent with the number of its open sub-todos."""
+
+    parent_todo_id: str
+    count: int
+
+
 class TodoLabelCount(BaseModel):
     """One label with the number of (incomplete) todos carrying it."""
 
@@ -308,6 +322,7 @@ class TodoSearchParams(BaseModel):
     due_date_start: datetime | None = None
     due_date_end: datetime | None = None
     labels: list[str] | None = None
+    parent_todo_id: str | None = None
     page: int = Field(default=1, ge=1)
     per_page: int = Field(default=50, ge=1, le=100)
     include_stats: bool = Field(default=False)
@@ -328,6 +343,9 @@ class TodoListParams(BaseModel):
     has_due_date: bool | None = None
     overdue: bool | None = None
     labels: list[str] | None = None
+    parent_todo_id: str | None = Field(
+        default=None, description="Only sub-todos of this tracked todo"
+    )
     due_after: datetime | None = Field(default=None, description="Due date after this date")
     due_before: datetime | None = Field(default=None, description="Due date before this date")
     due_today: bool = Field(default=False, description="Only todos due today")
@@ -344,6 +362,7 @@ class TodoListParams(BaseModel):
             ("completed", self.completed is not None),
             ("priority", bool(self.priority)),
             ("labels", bool(self.labels)),
+            ("parent", bool(self.parent_todo_id)),
             ("due_today", self.due_today),
             ("due_this_week", self.due_this_week),
             ("date_range", bool(self.due_after or self.due_before)),
@@ -376,6 +395,7 @@ class TodoListParams(BaseModel):
             due_date_start=due_after,
             due_date_end=due_before,
             labels=self.labels,
+            parent_todo_id=self.parent_todo_id,
             page=self.page,
             per_page=self.per_page,
             include_stats=self.include_stats,
@@ -465,6 +485,8 @@ class TodoDocument(UserScopedDocument):
     gaia_retry_count: int = 0
     expires_at: datetime | None = None
     references: list[str] = Field(default_factory=list)
+    # Set only through tracked_todo_service, which enforces one level under an open tracked todo.
+    parent_todo_id: str | None = None
     notify_on_run: bool = True
     completed_at: datetime | None = None
     # Canvas + activity + log bodies for tracked todos live on the document itself.
@@ -504,6 +526,7 @@ class TodoUpdate(BaseModel):
     gaia_retry_count: int | None = None
     expires_at: datetime | None = None
     references: list[str] | None = None
+    parent_todo_id: str | None = None
     notify_on_run: bool | None = None
     completed_at: datetime | None = None
     canvas_content: str | None = None
