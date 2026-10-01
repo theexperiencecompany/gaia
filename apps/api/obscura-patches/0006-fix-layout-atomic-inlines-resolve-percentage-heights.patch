@@ -1,7 +1,7 @@
 From 75922943e32a6cf2ad8d6cd34edab6570a688de1 Mon Sep 17 00:00:00 2001
 From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
 Date: Wed, 23 Sep 2026 17:05:14 +0530
-Subject: [PATCH 06/18] fix(layout): atomic inlines resolve percentage heights
+Subject: [PATCH] fix(layout): atomic inlines resolve percentage heights
  against their block container
 
 An inline-level atomic box (inline-block, input, textarea) is laid out as a

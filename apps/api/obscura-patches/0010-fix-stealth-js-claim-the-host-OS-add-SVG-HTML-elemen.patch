@@ -1,8 +1,8 @@
 From 8d284220c6d579e1b2a25d54523db928093bc7e0 Mon Sep 17 00:00:00 2001
 From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
 Date: Wed, 23 Sep 2026 18:34:25 +0530
-Subject: [PATCH 10/18] fix(stealth,js): claim the host OS, add SVG/HTML
- element interfaces, return service worker registrations
+Subject: [PATCH] fix(stealth,js): claim the host OS, add SVG/HTML element
+ interfaces, return service worker registrations
 
 Stealth identity: the wreq emulation, UA, navigator.platform and client
 hints claimed Windows on every host. From a Linux host that mismatch got

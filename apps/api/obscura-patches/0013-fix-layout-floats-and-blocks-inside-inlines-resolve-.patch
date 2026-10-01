@@ -1,7 +1,7 @@
 From 3848b156132065f9b182c9e99edd9dffc00f8b4d Mon Sep 17 00:00:00 2001
 From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
 Date: Wed, 23 Sep 2026 18:51:52 +0530
-Subject: [PATCH 13/18] fix(layout): floats and blocks inside inlines resolve
+Subject: [PATCH] fix(layout): floats and blocks inside inlines resolve
  percentage heights against their block container
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

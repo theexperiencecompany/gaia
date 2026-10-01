@@ -181,6 +181,3 @@ index 0000000..2e535e4
 +    click_element(&mut ctx, 60, &sid, "#off").await;
 +    assert_eq!(active(&mut ctx, 70, &sid).await, "body");
 +}
--- 
-2.43.0
-

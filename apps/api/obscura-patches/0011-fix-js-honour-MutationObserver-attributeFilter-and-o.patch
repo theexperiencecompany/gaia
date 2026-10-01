@@ -1,7 +1,7 @@
 From bf4e3259024f2116fa83cab1089a3ffa72e35a44 Mon Sep 17 00:00:00 2001
 From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
 Date: Wed, 23 Sep 2026 18:31:02 +0530
-Subject: [PATCH 11/18] fix(js): honour MutationObserver attributeFilter and
+Subject: [PATCH] fix(js): honour MutationObserver attributeFilter and
  observe() options
 
 MutationObserver ignored attributeFilter, so an observer that watches only

@@ -1,8 +1,8 @@
 From c278b13de031cb6dc41c7aeaf05f089ea89e5755 Mon Sep 17 00:00:00 2001
 From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
 Date: Wed, 23 Sep 2026 20:42:45 +0530
-Subject: [PATCH 16/18] fix(render): scope :has() removal invalidation to the
- removed features
+Subject: [PATCH] fix(render): scope :has() removal invalidation to the removed
+ features
 
 Every light-DOM removal re-cascaded the whole document on nytimes.com
 (`planned_dirty=5470`, 2.4-3.5 s per geometry read after a removeChild).

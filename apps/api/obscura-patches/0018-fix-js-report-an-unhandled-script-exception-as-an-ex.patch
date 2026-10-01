@@ -1,7 +1,7 @@
 From 68d2c0f889d135984d59e1acd865ab7c712446bd Mon Sep 17 00:00:00 2001
 From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
 Date: Thu, 24 Sep 2026 14:53:59 +0530
-Subject: [PATCH 18/18] fix(js): report an unhandled script exception as an
+Subject: [PATCH] fix(js): report an unhandled script exception as an
  exception, not a console.error
 
 HTML "report an exception" fires onerror and the error event and, when no

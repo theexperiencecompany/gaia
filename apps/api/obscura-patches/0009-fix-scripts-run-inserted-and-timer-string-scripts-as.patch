@@ -1,8 +1,8 @@
 From 5cbebd018ba10428c6db57e00de6c7c24dd7fab1 Mon Sep 17 00:00:00 2001
 From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
 Date: Wed, 23 Sep 2026 17:51:16 +0530
-Subject: [PATCH 09/18] fix(scripts): run inserted and timer-string scripts as
- their own V8 scripts
+Subject: [PATCH] fix(scripts): run inserted and timer-string scripts as their
+ own V8 scripts
 
 Dynamically inserted scripts (fetched and inline) and setTimeout/setInterval
 string handlers ran through `(0, eval)(body)` in bootstrap.js. Their stacks

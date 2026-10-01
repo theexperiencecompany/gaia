@@ -1,8 +1,8 @@
 From dad4530340852f64076329ad64c37974eb5200c3 Mon Sep 17 00:00:00 2001
 From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
 Date: Wed, 23 Sep 2026 16:54:00 +0530
-Subject: [PATCH 04/18] fix(layout): stretched grid-item form controls keep
- their intrinsic block size
+Subject: [PATCH] fix(layout): stretched grid-item form controls keep their
+ intrinsic block size
 
 A native control that is a stretch-aligned grid item keeps height:auto so
 it can fill its track, but an empty control (e.g. a textarea) has no

@@ -162,6 +162,3 @@ index 7de1470..ffba27d 100644
      #[test]
      fn shadow_rendered_children_distribute_named_and_default_slots() {
          let tree = parse_html(
--- 
-2.43.0
-

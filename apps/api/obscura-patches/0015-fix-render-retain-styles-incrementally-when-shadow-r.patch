@@ -1,8 +1,8 @@
 From e4a0bde68cd229f7f9e473e4c8d5d1cc092b6d08 Mon Sep 17 00:00:00 2001
 From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
 Date: Wed, 23 Sep 2026 19:59:33 +0530
-Subject: [PATCH 15/18] fix(render): retain styles incrementally when shadow
- roots carry stylesheets
+Subject: [PATCH] fix(render): retain styles incrementally when shadow roots
+ carry stylesheets
 
 Any document with a native shadow root switched the retained-style path
 off, so every geometry read after a DOM change re-cascaded the whole

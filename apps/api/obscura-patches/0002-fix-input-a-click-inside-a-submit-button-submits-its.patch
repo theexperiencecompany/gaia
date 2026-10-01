@@ -1,8 +1,7 @@
 From 9db29319289def98a42fa2ce4118f52b8b95c53a Mon Sep 17 00:00:00 2001
 From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
 Date: Wed, 23 Sep 2026 15:34:49 +0530
-Subject: [PATCH 02/18] fix(input): a click inside a submit button submits its
- form
+Subject: [PATCH] fix(input): a click inside a submit button submits its form
 
 Hit testing an icon-only submit button lands on its <svg>; the click's
 activation behaviour belongs to the nearest enclosing submit button, as in
