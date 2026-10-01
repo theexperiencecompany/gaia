@@ -15,8 +15,9 @@ from app.agents.core.background import todo_run_delivery as trd
 from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
 from app.agents.core.background.todo_run_delivery import deliver_todo_run_result
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
+from app.constants import todos as todo_constants
 from app.constants.log_tags import LogTag
-from app.constants.todos import STANDING_RULES_MAX_CHARS, TodoActivityEvent
+from app.constants.todos import TodoActivityEvent
 from app.models.chat_models import ConversationSource
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
@@ -205,7 +206,9 @@ class TestTheWideEventSaysWhatHappened:
 
 class TestTheDecisionSeesTheStandingRules:
     async def test_the_standing_rules_reach_the_write_up_bounded(self) -> None:
-        long_rules = "- 2026-09-28: tell me every time.\n" + "x" * STANDING_RULES_MAX_CHARS
+        long_rules = (
+            "- 2026-09-28: tell me every time.\n" + "x" * todo_constants.STANDING_RULES_MAX_CHARS
+        )
         todo = _todo(
             canvas_content=f"## Standing rules\n{long_rules}\n\n## Key Details\n- thread abc\n"
         )
@@ -213,7 +216,7 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", long_rules[:STANDING_RULES_MAX_CHARS]
+            "Watch the deploy", long_rules[: todo_constants.STANDING_RULES_MAX_CHARS]
         )
 
     async def test_key_details_alone_are_not_rules(self) -> None:

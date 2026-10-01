@@ -4,7 +4,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.constants.todos import CANVAS_PROMPT_MAX_CHARS, STANDING_RULES_MAX_CHARS
+from app.constants import todos as todo_constants
+from app.constants.todos import CANVAS_PROMPT_MAX_CHARS
 from app.services.canvas_markdown import (
     _extract_entries,
     _line_timestamp,
@@ -514,15 +515,15 @@ class TestStandingRules:
         )
 
     def test_rules_longer_than_the_cap_are_refused_at_write(self) -> None:
-        canvas = f"## Standing rules\n{'r' * (STANDING_RULES_MAX_CHARS + 1)}\n\n## Key Details\n"
+        canvas = f"## Standing rules\n{'r' * (todo_constants.STANDING_RULES_MAX_CHARS + 1)}\n\n## Key Details\n"
 
         assert canvas_problems(canvas) == [
-            f'shorten "## Standing rules" to {STANDING_RULES_MAX_CHARS} characters: '
+            f'shorten "## Standing rules" to {todo_constants.STANDING_RULES_MAX_CHARS} characters: '
             "one line per rule, merged where they overlap"
         ]
 
     def test_rules_at_the_cap_are_accepted(self) -> None:
-        canvas = f"## Standing rules\n{'r' * STANDING_RULES_MAX_CHARS}\n\n## Key Details\n"
+        canvas = f"## Standing rules\n{'r' * todo_constants.STANDING_RULES_MAX_CHARS}\n\n## Key Details\n"
 
         assert canvas_problems(canvas) == []
 
@@ -560,10 +561,10 @@ class TestSectionHeadingCase:
 
     @pytest.mark.regression
     def test_the_cap_holds_for_a_title_cased_heading(self) -> None:
-        canvas = f"## Standing Rules\n{'r' * (STANDING_RULES_MAX_CHARS + 1)}\n\n## Key Details\n"
+        canvas = f"## Standing Rules\n{'r' * (todo_constants.STANDING_RULES_MAX_CHARS + 1)}\n\n## Key Details\n"
 
         assert canvas_problems(canvas) == [
-            f'shorten "## Standing rules" to {STANDING_RULES_MAX_CHARS} characters: '
+            f'shorten "## Standing rules" to {todo_constants.STANDING_RULES_MAX_CHARS} characters: '
             "one line per rule, merged where they overlap"
         ]
 
@@ -600,7 +601,7 @@ class TestTemplateComments:
 
     @pytest.mark.regression
     def test_template_comments_do_not_count_toward_the_cap(self) -> None:
-        rules = "r" * STANDING_RULES_MAX_CHARS
+        rules = "r" * todo_constants.STANDING_RULES_MAX_CHARS
         canvas = f"## Standing rules\n<!-- guidance for the writer -->\n{rules}\n\n## Key Details\n"
 
         assert canvas_problems(canvas) == []
