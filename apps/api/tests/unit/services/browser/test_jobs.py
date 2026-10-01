@@ -49,9 +49,11 @@ async def test_the_result_is_told_once_by_whoever_claims_it_first() -> None:
     assert await jobs_mod.claim_result_delivery("job-2", worker) is worker
 
 
-async def test_a_turn_drops_only_its_own_join() -> None:
+async def test_a_turn_drops_only_its_own_join(redis: fakeredis.aioredis.FakeRedis) -> None:
     """A stale turn dropping another turn's lease would hand the result to the worker while that turn still waits."""
     await jobs_mod.take_joiner_lease("job-1", "stream-a")
+    # A lease, not a flag: a turn whose API died lets it lapse.
+    assert await redis.ttl("browser:job:joiner:job-1") > 0
 
     await jobs_mod.drop_joiner_lease("job-1", "stream-b")
     assert await jobs_mod.joiner_lease_held("job-1") is True

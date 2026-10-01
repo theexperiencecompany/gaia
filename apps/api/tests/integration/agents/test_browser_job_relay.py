@@ -275,3 +275,33 @@ async def test_a_relay_past_the_feeds_life_gives_up_and_says_so(
     [warning] = event["warnings"]
     assert "gave up before the job finished" in warning["msg"]
     assert warning["browser"] == {"job_id": JOB_ID}
+
+
+async def test_a_run_still_going_is_relayed_to_even_with_its_turn_stream_gone(
+    chunks: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The executor that started the job still collects onto its message after the live stream ended."""
+    create_session(STREAM_ID, RunKind.LIVE)
+    await _publish_cards(end=False)
+    first_read = asyncio.Event()
+    read_feed = relay_mod.read_job_events
+
+    async def _read_then_mark(job_id: str, cursor: str) -> Any:
+        events = await read_feed(job_id, cursor)
+        first_read.set()
+        return events
+
+    monkeypatch.setattr(relay_mod, "read_job_events", _read_then_mark)
+    relay = asyncio.create_task(relay_job_events(JOB_ID, STREAM_ID))
+    await first_read.wait()
+    await publish_frame_to_job(
+        JOB_ID,
+        _card(
+            BrowserResultSnapshot(status=BrowserSessionStatus.COMPLETED, success=True, summary="ok")
+        ),
+    )
+    await publish_job_event(JOB_ID, JOB_TERMINAL_FRAME)
+    signal_executor_done(STREAM_ID)
+    await asyncio.wait_for(relay, timeout=5)
+
+    assert _kinds(chunks) == ["session", "step", "result"]

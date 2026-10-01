@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from app.constants.browser import BROWSER_GUIDANCE_ANSWER, BROWSER_GUIDANCE_HEADER
+from app.constants.browser import (
+    BROWSER_GUIDANCE_ANSWER,
+    BROWSER_GUIDANCE_CHANGED_INSTRUCTION,
+    BROWSER_GUIDANCE_HEADER,
+    BROWSER_GUIDANCE_USER_SAID,
+)
 from app.schemas.browser import (
     AgentGuidanceRequest,
     GuidanceAction,
@@ -42,10 +47,21 @@ def test_the_changed_instruction_is_stated_before_the_task_it_overrides() -> Non
     assert message.index(note) < message.index("Upvote the top post on r/python")
 
 
-def test_the_guidance_is_told_never_to_send_the_run_back_to_a_declined_step() -> None:
-    message = guidance_message(_request(user_notes=["skip the upvote, just tell me the title"]))
+def test_only_a_replaced_instruction_is_stated_as_one_and_the_rest_as_what_the_user_said() -> None:
+    """The reply classifier alone calls a message a new instruction; anything else the user said is theirs for the executor to weigh."""
+    said, replaced = "make it quick", ["skip the upvote", "just tell me the title"]
 
-    assert "declined" in message.lower()
+    sections = _sections(
+        guidance_message(_request(user_notes=[said, *replaced], redirects=replaced))
+    )
+
+    assert (
+        BROWSER_GUIDANCE_CHANGED_INSTRUCTION.format(
+            changed='"skip the upvote", then "just tell me the title"'
+        )
+        in sections
+    )
+    assert BROWSER_GUIDANCE_USER_SAID.format(said='"make it quick"') in sections
 
 
 def test_a_run_nobody_redirected_is_told_nothing_about_a_changed_instruction() -> None:

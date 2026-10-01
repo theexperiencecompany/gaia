@@ -943,6 +943,7 @@ async def test_step_card_is_written_as_json_under_the_browser_event_key(
         "title": "Menu",
         "screenshot": "https://cdn/2.png",
         "elapsed_ms": None,
+        "frame_digest": None,
     }
 
 

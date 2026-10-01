@@ -140,7 +140,6 @@ class _Harness:
                 session_id="sess-1",
                 cdp_url="ws://browser.test/cdp",
                 live_view_url="https://browser.test/live/sess-1",
-                context_id="ctx-1",
                 host_url="http://browser.test",
                 engine=engine,
             ),

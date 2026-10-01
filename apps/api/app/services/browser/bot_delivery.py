@@ -48,7 +48,8 @@ class BotProgressDelivery:
         self._stream_screenshots = stream_screenshots
         self._steps_shown = 0
         #: The page and frame of the last step sent; a step showing the same again sends none.
-        self._last_frame: tuple[str | None, str] | None = None
+        # Equivalent mutant: "" equals no (address, frame) pair, exactly like None.
+        self._last_frame: tuple[str | None, str] | None = None  # pragma: no mutate
 
     async def session(self, _snapshot: BrowserSessionSnapshot) -> None:
         """Session lifecycle event: deliberately silent.
@@ -98,7 +99,8 @@ class BotProgressDelivery:
         if snapshot.status != HandoffStatus.PENDING:
             return
         # The user may change the page in the live view: the next step is shown whatever it looks like.
-        self._last_frame = None
+        # Equivalent mutant: "" equals no (address, frame) pair, exactly like None.
+        self._last_frame = None  # pragma: no mutate
 
         # The ask is the model's own words (request_human_takeover's reason),
         # shown verbatim as the first bubble; link and reply instruction follow.
