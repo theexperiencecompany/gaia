@@ -7,8 +7,8 @@ moves the selection while its getter still reads the old index.
 
 Browser-Use's handler writes all three in that order, then verifies with
 element.value !== expectedValue. The middle write leaves the element
-inconsistent, the check fails, and Jev is told the page reverted a selection a
-plain value assignment would have made -- so it retries forever. So this
+inconsistent, the check fails, and the agent is told the page reverted a
+selection a plain value assignment would have made. So this
 assigns value alone (or selectedIndex when option values repeat, the one case
 value cannot address) and verifies against selectedIndex.
 

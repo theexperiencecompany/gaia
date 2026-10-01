@@ -1,9 +1,8 @@
 """Turn a Browser-Use action into a human-readable caption.
 
 Used by both the SSE step card (runner.py) and the bot's photo caption
-(bot_delivery.py). The model's own next_goal is used only for a step that
-finishes the run: everywhere else Jev fills that field with its raw decision
-label ("CLICK [6] Log In"), not a caption.
+(bot_delivery.py). Captions are built from the actions and the elements they
+target; the agent's own next_goal names only a step that finishes the run.
 """
 
 from __future__ import annotations
@@ -18,10 +17,6 @@ from app.constants.browser import (
     BrowserHandoffAction,
 )
 from app.schemas.browser import BrowserAction
-
-# Actions whose whole meaning is the element they hit — a bare verb reads as
-# noise ("Clicking"), the element's text reads as intent ("Clicking Add to cart").
-_TARGETED_ACTIONS = {"click", "select_dropdown", "upload_file"}
 
 
 def _shorten(text: str) -> str:
@@ -69,8 +64,7 @@ def _select_dropdown_caption(params: _ActionParams, target: str | None) -> str:
 
 
 def _done_caption(params: _ActionParams, _target: str | None) -> str:
-    # DoneAction.success defaults to True; Jev ends a run it cannot advance
-    # with success=False, and "BLOCKED" is not something to show a reader.
+    # DoneAction.success defaults to True; the agent sets it False on a run it could not finish.
     if not params.success:
         return "Could not find a way forward on this page"
     # The result message that follows this photo carries the run's answer in
