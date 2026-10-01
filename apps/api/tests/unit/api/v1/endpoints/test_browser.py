@@ -224,7 +224,7 @@ class TestDecideBrowserHandoff:
     ) -> None:
         """A bot user has no web session: the code that opened the page is the authority, and only for its own handoff."""
         code = await mint_live_code("sess-1", "u1", "h1")
-        payload = HandoffDecisionRequest(decision=HandoffDecision.CANCEL, message="not now")
+        payload = HandoffDecisionRequest(decision=HandoffDecision.CANCEL)
 
         async with captured_wide_event() as event:
             resp = await live_view_ep.decide_live_view_handoff(code, payload)
@@ -239,9 +239,9 @@ class TestDecideBrowserHandoff:
         }
         record = await get_handoff("h1")
         assert record is not None
-        assert record.message == "not now"
+        assert record.message is None
         assert button_world == [
-            ("c1", "[From the browser handoff card] cancel: not now", BROWSER_HANDOFF_ACK_CANCEL)
+            ("c1", "[From the browser handoff card] cancel", BROWSER_HANDOFF_ACK_CANCEL)
         ]
         # Settled, the link no longer opens anything.
         with pytest.raises(HTTPException) as exc:
