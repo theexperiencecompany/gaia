@@ -21,7 +21,6 @@
  * @module
  */
 
-import { BOT_EVENTS } from "@gaia/shared/analytics";
 import {
   BaseBotAdapter,
   type BotCommand,
@@ -38,8 +37,9 @@ import {
   MEDIA_READ_TIMEOUT_MS,
   type MediaKind,
   type OutboundAttachment,
-  type OutboundReaction,
   type PlatformName,
+  REACTION_OUTCOME,
+  type ReactionOutcome,
   type RichMessage,
   type RichMessageTarget,
   recordBotFailure,
@@ -468,38 +468,31 @@ export class TelegramAdapter extends BaseBotAdapter {
     );
   }
 
-  protected override async deliverOutboundReaction(
+  protected override async reactToMessage(
     destinationId: string,
-    reaction: OutboundReaction,
+    platformMessageId: string,
+    emoji: string,
     _isChannel: boolean,
-  ): Promise<void> {
-    // Telegram accepts only a fixed emoji set and 400s anything else; an
-    // off-list emoji falls into the catch below and goes out as a text bubble.
-    const emoji = reaction.emoji as Extract<
+  ): Promise<ReactionOutcome> {
+    // Telegram accepts only a fixed emoji set, spelled without the U+FE0F
+    // variation selector ("❤" not "❤️"), and 400s anything else; an off-list
+    // emoji lands in the catch below and the caller sends text.
+    const allowed = emoji.replaceAll("\uFE0F", "") as Extract<
       ReactionType,
       { type: "emoji" }
     >["emoji"];
     try {
       await this.bot.api.setMessageReaction(
         destinationId,
-        Number(reaction.target_platform_message_id),
-        [{ type: "emoji", emoji }],
+        Number(platformMessageId),
+        [{ type: "emoji", emoji: allowed }],
       );
-      this.analytics.capture(
-        await this.resolveDistinctId(destinationId),
-        BOT_EVENTS.REACTION_DELIVERED,
-        { success: true, delivery: "native" },
-      );
+      return REACTION_OUTCOME.ATTACHED;
     } catch (err) {
       this.adapterLogger.warn("outbound_reaction_attach_failed", {
         ...sanitizeErrorForLog(err),
       });
-      await this.deliverOutbound(destinationId, reaction.emoji, _isChannel);
-      this.analytics.capture(
-        await this.resolveDistinctId(destinationId),
-        BOT_EVENTS.REACTION_DELIVERED,
-        { success: true, delivery: "fallback_text", reason: "attach_failed" },
-      );
+      return REACTION_OUTCOME.ATTACH_FAILED;
     }
   }
 
@@ -762,6 +755,31 @@ export class TelegramAdapter extends BaseBotAdapter {
         },
         STREAMING_DEFAULTS.telegram,
         await this.analyticsFor(userId),
+        async (emoji: string) => {
+          const inboundId = ctx.msg?.message_id;
+          if (inboundId === undefined) return REACTION_OUTCOME.NO_TARGET;
+          const outcome = await this.reactToMessage(
+            chatId.toString(),
+            inboundId.toString(),
+            emoji,
+            ctx.chat?.type !== "private",
+          );
+          if (outcome !== REACTION_OUTCOME.ATTACHED) return outcome;
+          try {
+            await ctx.api.deleteMessage(chatId, loading.message_id);
+          } catch (e) {
+            // The reaction is already the reply; a stale "Thinking..." is all this costs.
+            this.adapterLogger.error(
+              "placeholder_delete_failed",
+              {
+                channel_hash: hashLogIdentifier(chatId),
+                message_id: loading.message_id,
+              },
+              e,
+            );
+          }
+          return outcome;
+        },
       );
     } finally {
       clearTyping();

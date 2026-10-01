@@ -1,7 +1,7 @@
 /**
  * Bubble segmentation for bot delivery.
  *
- * The model owns the splits via `<NEW_MESSAGE_BREAK>` (see Chat Bubbles in
+ * The model owns the splits via `<NEW_MESSAGE_BREAK>` (see Bubbles in
  * the comms prompt): a reply with no sentinel ships as ONE bubble, and
  * nothing here invents blank-line splits. Blank lines are line breaks inside
  * a bubble, never boundaries.

@@ -1060,6 +1060,23 @@ class TestBindSessionId:
         assert first.bind.call_args.kwargs["session_id"] == "conv-1-comms_agent"
         assert second.bind.call_args.kwargs["session_id"] == "conv-2-comms_agent"
 
+    def test_openai_gets_the_agent_key_as_its_prompt_cache_key(self) -> None:
+        """OpenAI keeps a chain's cached prefix on one machine via prompt_cache_key; session_id is not its field."""
+        llm = MagicMock()
+        bound = _bind_session_id(
+            llm, {"provider": LLMProviderName.OPENAI, "session_id": "conv-1"}, "comms_agent"
+        )
+
+        llm.bind.assert_called_once_with(prompt_cache_key="conv-1-comms_agent")
+        assert bound is llm.bind.return_value
+
+    def test_openai_without_a_session_id_binds_no_cache_key(self) -> None:
+        llm = MagicMock()
+        bound = _bind_session_id(llm, {"provider": LLMProviderName.OPENAI}, "comms_agent")
+
+        llm.bind.assert_not_called()
+        assert bound is llm
+
     def test_gemini_is_left_alone(self) -> None:
         """session_id is an OpenRouter routing hint; Gemini has no stickiness to pin, so sending it is an unsupported argument."""
 

@@ -460,16 +460,16 @@ def gmail_compose_before_hook(
 @register_after_hook(tools=["GMAIL_CREATE_EMAIL_DRAFT"])
 def gmail_create_draft_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> ToolExecutionResponse:
-    """Stream the held compose card, now that the draft it describes exists; the response passes through untouched.
+) -> AfterHookResponse:
+    """Stream the held compose card, now that the draft it describes exists; the data passes through untouched.
 
     A card with attachments gets the draft's id so its Send button sends this draft rather than recomposing from the card's visible fields — the only path that keeps the files. Without an id the card is dropped instead of shown with attachments it cannot deliver; a card with no attachments stays editable and is sent as a fresh compose.
     """
     card = _pending_draft_card.get()
     _pending_draft_card.set(None)
-    if card is None:
-        return response
     data = ComposioToolResponse.model_validate(response).data
+    if card is None:
+        return data
     draft_id = GmailDraftCreatedData.model_validate(data).id if isinstance(data, dict) else None
     if card.attachments:
         if not draft_id:
@@ -477,7 +477,7 @@ def gmail_create_draft_after_hook(
             # visible fields, so it would go out without the files the card is
             # showing. No card at all beats a card that silently drops them.
             log.warning(GMAIL_DRAFT_ID_MISSING_LOG, tool=tool)  # pragma: no mutate
-            return response
+            return data
         # Only a card that MUST be sent as the stored draft carries the id: it is
         # what makes Send send this draft, and it is why the card renders
         # read-only (the draft's files cannot be re-attached to an edited copy).
@@ -485,7 +485,7 @@ def gmail_create_draft_after_hook(
     writer = get_stream_writer()
     if writer is not None:
         writer({"email_compose_data": [card.payload()]})
-    return response
+    return data
 
 
 @register_after_hook(tools=["GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"])
@@ -616,9 +616,6 @@ def gmail_attachment_after_hook(
     # so both branches below pass the raw value through unprocessed.
     data = result.data
     try:
-        if not result.successful:
-            return data
-
         # Extract only metadata, not the base64 content
         if not isinstance(data, dict):
             return data

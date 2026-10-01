@@ -101,6 +101,30 @@ class TestPlatform:
         assert set(Platform.values()) == {"discord", "imessage", "slack", "telegram", "whatsapp"}
 
 
+class TestEnsureLinkable:
+    async def test_checks_exactly_this_platform_account_and_this_user(
+        self, mock_repo, sample_user_id
+    ):
+        mock_repo.get.return_value = _user(id=sample_user_id, platform_links={})
+
+        await PlatformLinkService.ensure_linkable(sample_user_id, "discord", "discord456")
+
+        mock_repo.get_by_platform_id.assert_awaited_once_with("discord", "discord456")
+        mock_repo.get.assert_awaited_once_with(sample_user_id)
+
+    async def test_the_owner_relinking_the_same_account_is_no_conflict(
+        self, mock_repo, sample_user_id
+    ):
+        owner = _user(id=sample_user_id, platform_links={"discord": {"id": "discord456"}})
+        mock_repo.get_by_platform_id.return_value = owner
+        mock_repo.get.return_value = owner
+        mock_repo.link_platform.return_value = owner
+
+        result = await PlatformLinkService.link_account(sample_user_id, "discord", "discord456")
+
+        assert result.is_new_link is False
+
+
 class TestLinkAccount:
     async def test_link_new_account(self, mock_repo, sample_user_id):
         mock_repo.get.return_value = _user(id=sample_user_id, platform_links={})

@@ -25,6 +25,8 @@ import {
   handleStreamingChat,
   type OutboundAttachment,
   type PlatformName,
+  REACTION_OUTCOME,
+  type ReactionOutcome,
   type RichMessage,
   type RichMessageTarget,
   richMessageToMarkdown,
@@ -161,6 +163,24 @@ export class HarnessAdapter extends BaseBotAdapter {
     });
   }
 
+  /**
+   * Records a native reaction. Every emulated platform has a reaction API, so
+   * live acks and outbound reactions both land as `reaction` events.
+   */
+  protected override reactToMessage(
+    destinationId: string,
+    platformMessageId: string,
+    emoji: string,
+  ): Promise<ReactionOutcome> {
+    this.transcript.record({
+      type: "reaction",
+      destinationId,
+      targetMessageId: platformMessageId,
+      emoji,
+    });
+    return Promise.resolve(REACTION_OUTCOME.ATTACHED);
+  }
+
   // ---------------------------------------------------------------------------
   // Inbound simulation
   // ---------------------------------------------------------------------------
@@ -177,7 +197,14 @@ export class HarnessAdapter extends BaseBotAdapter {
     options: SimulateOptions = {},
   ): Promise<void> {
     const channelId = options.channelId ?? userId;
-    this.transcript.record({ type: "inbound", userId, channelId, text });
+    const messageId = `in${this.nextMessageId++}`;
+    this.transcript.record({
+      type: "inbound",
+      userId,
+      channelId,
+      messageId,
+      text,
+    });
 
     if (text.startsWith("/")) {
       const withoutSlash = text.slice(1);
@@ -199,11 +226,23 @@ export class HarnessAdapter extends BaseBotAdapter {
         );
         return;
       }
-      await this.streamTurn(userId, channelId, rest, options.attachments);
+      await this.streamTurn(
+        userId,
+        channelId,
+        messageId,
+        rest,
+        options.attachments,
+      );
       return;
     }
 
-    await this.streamTurn(userId, channelId, text, options.attachments);
+    await this.streamTurn(
+      userId,
+      channelId,
+      messageId,
+      text,
+      options.attachments,
+    );
   }
 
   /**
@@ -216,6 +255,7 @@ export class HarnessAdapter extends BaseBotAdapter {
   private async streamTurn(
     userId: string,
     channelId: string,
+    inboundMessageId: string,
     message: string,
     attachments: BotFileData[] = [],
   ): Promise<void> {
@@ -305,6 +345,7 @@ export class HarnessAdapter extends BaseBotAdapter {
         platform: this.platform,
         platformUserId: userId,
         channelId,
+        platformMessageId: inboundMessageId,
         ...(attachments.length > 0
           ? { fileIds: attachments.map((a) => a.fileId), fileData: attachments }
           : {}),
@@ -315,6 +356,8 @@ export class HarnessAdapter extends BaseBotAdapter {
       onGenericError,
       this.emulation.streaming,
       await this.analyticsFor(userId),
+      (emoji: string) =>
+        this.reactToMessage(channelId, inboundMessageId, emoji),
     );
 
     this.transcript.record({ type: "typing", state: "stop" });

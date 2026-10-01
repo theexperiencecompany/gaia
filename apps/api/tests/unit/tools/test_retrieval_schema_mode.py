@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
+from pymongo.errors import ServerSelectionTimeoutError
 import pytest
 
 from app.agents.tools.core import retrieval
@@ -16,8 +17,13 @@ from app.agents.tools.core.registry import DESKTOP_TOOL_CATEGORY
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.execute.resolver import ResolvedTool
 from app.agents.tools.execute.schema_docs import render_tool_doc
+from app.agents.tools.execute.tool_info import contract_from
+from app.config.settings import CommonSettings, ProductionSettings, settings
+from app.constants.execute import RETURNS_INLINE_MAX_CHARS
 from app.models.chat_models import ConversationSource
 from tests.helpers import captured_wide_event
+
+pytestmark = pytest.mark.usefixtures("no_observed_tool_shapes")
 
 MODULE = "app.agents.tools.core.retrieval"
 CONFIG: dict[str, Any] = {"configurable": {"user_id": "u1"}}
@@ -35,6 +41,11 @@ def _gmail_tool() -> StructuredTool:
         description="Send an email.",
         args_schema=_GmailSendArgs,
     )
+
+
+def _doc(name: str, tool: StructuredTool) -> str:
+    """Render the doc discovery serves by default: args only, no return shape."""
+    return render_tool_doc(contract_from(ResolvedTool(name, tool, True), None), None)
 
 
 def _registry() -> MagicMock:
@@ -177,6 +188,74 @@ async def _bind(exact: list[str], resolver: AsyncMock, config: dict[str, Any] | 
         return await fn(store=MagicMock(), config=config or CONFIG, exact_tool_names=exact)
 
 
+def _tool_with_output(output: dict[str, Any]) -> StructuredTool:
+    return StructuredTool.from_function(
+        func=lambda **kwargs: None,
+        name="GMAIL_SEND_EMAIL",
+        description="Send an email.",
+        args_schema=_GmailSendArgs,
+        metadata={"output_parameters": output},
+    )
+
+
+@pytest.mark.unit
+class TestDocsCarryReturnShapes:
+    @pytest.mark.parametrize("settings_class", [CommonSettings, ProductionSettings])
+    def test_inline_returns_ship_off(self, settings_class: type[CommonSettings]) -> None:
+        assert settings_class.model_fields["ENABLE_INLINE_TOOL_RETURNS"].default is False
+
+    async def test_by_default_docs_carry_args_only_and_never_read_the_shape_store(
+        self, no_observed_tool_shapes: AsyncMock
+    ) -> None:
+        tool = _tool_with_output({"type": "object", "properties": {"id": {"type": "string"}}})
+        resolver = AsyncMock(return_value=ResolvedTool("GMAIL_SEND_EMAIL", tool, True))
+        text = (await _bind(["GMAIL_SEND_EMAIL"], resolver))["response_text"]
+        assert "recipient_email: str" in text
+        assert "Returns" not in text
+        assert "Return shape" not in text
+        no_observed_tool_shapes.assert_not_awaited()
+
+    async def test_with_the_setting_on_docs_inline_the_return_shape(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENABLE_INLINE_TOOL_RETURNS", True)
+        tool = _tool_with_output({"type": "object", "properties": {"id": {"type": "string"}}})
+        resolver = AsyncMock(return_value=ResolvedTool("GMAIL_SEND_EMAIL", tool, True))
+        text = (await _bind(["GMAIL_SEND_EMAIL"], resolver))["response_text"]
+        assert "Returns: {id?:str}" in text
+
+    async def test_the_setting_is_app_wide_and_no_per_user_flag_turns_it_on(self) -> None:
+        posthog = MagicMock()
+        posthog.get_feature_flag.return_value = True
+        tool = _tool_with_output({"type": "object", "properties": {"id": {"type": "string"}}})
+        resolver = AsyncMock(return_value=ResolvedTool("GMAIL_SEND_EMAIL", tool, True))
+        with patch("app.services.feature_flags._get_posthog_client", return_value=posthog):
+            text = (await _bind(["GMAIL_SEND_EMAIL"], resolver))["response_text"]
+        assert "Returns" not in text
+        posthog.get_feature_flag.assert_not_called()
+
+    async def test_a_large_return_shape_is_collapsed_to_the_inline_budget(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENABLE_INLINE_TOOL_RETURNS", True)
+        fields = {
+            f"field_{i}": {"type": "object", "properties": {"leaf": {"type": "string"}}}
+            for i in range(50)
+        }
+        output = {
+            "type": "object",
+            "properties": {"data": {"type": "object", "properties": fields}},
+        }
+        resolver = AsyncMock(
+            return_value=ResolvedTool("GMAIL_SEND_EMAIL", _tool_with_output(output), True)
+        )
+        text = (await _bind(["GMAIL_SEND_EMAIL"], resolver))["response_text"]
+        returns = text.split("Returns: ")[1].split("\n")
+        assert "field_0?:obj" in returns[0]
+        assert len(returns[0]) <= RETURNS_INLINE_MAX_CHARS
+        assert returns[1] == "(deeper fields omitted for size; the real data has them)"
+
+
 @pytest.mark.unit
 class TestProxiedResolutionIsPerUser:
     async def test_a_proxied_tools_doc_is_resolved_for_the_calling_user(self) -> None:
@@ -262,13 +341,30 @@ class TestRenderPreloadBlockContract:
             )
         assert block.split("\n\n") == [
             f"2 integration tool(s) preloaded below. {retrieval._EXECUTE_DOCS_INSTRUCTION}",
-            render_tool_doc(gmail),
-            render_tool_doc(asana),
+            _doc("GMAIL_SEND_EMAIL", gmail),
+            _doc("ASANA_CREATE_TASK", asana),
         ]
         assert resolver.await_args_list == [
             call("u1", "GMAIL_SEND_EMAIL"),
             call("u1", "ASANA_CREATE_TASK"),
         ]
+
+    async def test_a_shape_store_outage_still_renders_the_doc(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ENABLE_INLINE_TOOL_RETURNS", True)
+        gmail = _gmail_tool()
+        resolved = ResolvedTool("GMAIL_SEND_EMAIL", gmail, True)
+        with (
+            patch(f"{MODULE}.resolve_tool", new=AsyncMock(return_value=resolved)),
+            patch(
+                "app.db.repositories.tool_shapes.tool_shapes_repository.get_shape",
+                new=AsyncMock(side_effect=ServerSelectionTimeoutError("mongo down")),
+            ),
+        ):
+            block = await retrieval.render_preload_block("u1", ["GMAIL_SEND_EMAIL"])
+        without_observed = render_tool_doc(contract_from(resolved, None), RETURNS_INLINE_MAX_CHARS)
+        assert block.split("\n\n")[1:] == [without_observed]
 
     async def test_a_tool_that_vanished_is_skipped_with_a_warning_and_the_rest_render(
         self,
@@ -280,7 +376,7 @@ class TestRenderPreloadBlockContract:
                 block = await retrieval.render_preload_block(
                     "u1", ["GMAIL_GHOST", "GMAIL_SEND_EMAIL"]
                 )
-        assert block.split("\n\n")[1:] == [render_tool_doc(gmail)]
+        assert block.split("\n\n")[1:] == [_doc("GMAIL_SEND_EMAIL", gmail)]
         (warning,) = event["warnings"]
         assert warning["msg"].endswith(
             "retrieve_tools: proxied tool vanished between validation and doc rendering"

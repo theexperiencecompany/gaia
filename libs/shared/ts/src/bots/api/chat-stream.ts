@@ -13,7 +13,10 @@ import type { ApprovalRequestData } from "../../chat";
 import { NEW_MESSAGE_BREAK_TOKEN } from "../../utils/messageBreakUtils";
 import type { ChatRequest } from "../types";
 import { getHttpStatus } from "../utils/logger";
-import { couldBecomeReactDirective } from "../utils/react-directive";
+import {
+  REACTION_OUTCOME,
+  type ReactionHandler,
+} from "../utils/reaction-outcome";
 import { wideLog } from "../utils/wide-events";
 import type {
   ApprovalUpdateHandler,
@@ -23,6 +26,7 @@ import type {
   NoticeHandler,
 } from "./chat-stream.types";
 
+export type { ReactionHandler } from "../utils/reaction-outcome";
 export type {
   ApprovalUpdateHandler,
   ChatStreamClient,
@@ -59,6 +63,7 @@ export async function streamChat(
   onApprovalUpdate?: ApprovalUpdateHandler,
   onMessageBoundary?: MessageBoundaryHandler,
   onNotice?: NoticeHandler,
+  onReaction?: ReactionHandler,
   maxRetries = 2,
 ): Promise<string> {
   let lastError: Error | null = null;
@@ -77,6 +82,7 @@ export async function streamChat(
         onApprovalUpdate,
         onMessageBoundary,
         onNotice,
+        onReaction,
       );
     } catch (error: unknown) {
       lastError = error instanceof Error ? error : new Error(String(error));
@@ -159,77 +165,50 @@ async function streamChatOnce(
   onApprovalUpdate?: ApprovalUpdateHandler,
   onMessageBoundary?: MessageBoundaryHandler,
   onNotice?: NoticeHandler,
+  onReaction?: ReactionHandler,
 ): Promise<string> {
   let fullText = "";
   // Text streamed since the last message boundary; joins `fullText` only once the backend
   // confirms the message was a real reply (a handoff preamble streams first and can be
   // retracted). `fullText` is the whole reply on render-at-end platforms (Discord/WhatsApp/iMessage).
   let pendingText = "";
-  // How much of `pendingText` has already been forwarded via `onChunk`. Text
-  // held back as a possible REACT directive lags the buffered whole.
-  let forwardedLength = 0;
-  // Held text from already-kept messages, still owed to `onChunk` unless an
-  // `emoji_ack` replaces the turn.
-  let heldKeptText = "";
   let conversationId = "";
   let streamError: Error | null = null;
-
-  /** The turn as the backend's complete_message sees it: kept messages plus the one in flight. */
-  const joinTurn = (kept: string, inFlight: string): string =>
-    kept ? `${kept}${NEW_MESSAGE_BREAK_TOKEN}${inFlight}` : inFlight;
+  // A natively attached reaction is the whole reply, so the turn has content with no text.
+  let reacted = false;
+  const turnHasContent = (): boolean => reacted || fullText !== "";
 
   const keepPendingText = (): void => {
-    heldKeptText += pendingText.slice(forwardedLength);
-    if (pendingText) fullText = joinTurn(fullText, pendingText);
+    if (!pendingText) return;
+    fullText = fullText
+      ? `${fullText}${NEW_MESSAGE_BREAK_TOKEN}${pendingText}`
+      : pendingText;
     pendingText = "";
-    forwardedLength = 0;
   };
 
-  /** Forward every held-back chunk — the turn is proven not to be a REACT directive. */
-  const releaseHeldText = async (): Promise<void> => {
-    const held = heldKeptText + pendingText.slice(forwardedLength);
-    heldKeptText = "";
-    forwardedLength = pendingText.length;
-    if (held) await onChunk(held);
-  };
-
-  /** End of turn with no `emoji_ack`: whatever was held is an ordinary reply. */
-  const settleTurnText = async (): Promise<void> => {
-    await releaseHeldText();
-    keepPendingText();
-  };
-
-  // Held while the turn could still be the REACT control line, so per-chunk
-  // adapters never paint the directive; a lookalike (`Real…`) flushes whole
-  // once the next frame disambiguates it.
   const applyText = async (text: string): Promise<void> => {
     pendingText += text;
-    if (!couldBecomeReactDirective(joinTurn(fullText, pendingText))) {
-      await releaseHeldText();
-    }
+    await onChunk(text);
   };
 
-  // The `REACT: <emoji>` ack: the delivered message is the bare emoji, not the
-  // raw directive, which was never forwarded — so the emoji is the turn's one
-  // chunk, or streaming platforms (rendering from onChunk) would show nothing.
+  // The `<EMOJI>…</EMOJI>` ack: the backend sends it only when the whole reply is the
+  // directive, and never streams the directive's text. Attached as a reaction, the turn
+  // delivers no text; otherwise the emoji is its one chunk, or streaming platforms show nothing.
   const applyEmojiAck = async (emoji: string): Promise<void> => {
-    pendingText = "";
-    forwardedLength = 0;
-    heldKeptText = "";
+    if ((await onReaction?.(emoji)) === REACTION_OUTCOME.ATTACHED) {
+      reacted = true;
+      fullText = "";
+      return;
+    }
     fullText = emoji;
-    if (fullText) await onChunk(fullText);
+    await onChunk(emoji);
   };
 
   const applyMessageBoundary = async (discarded: boolean): Promise<void> => {
     if (discarded) {
       pendingText = "";
-      forwardedLength = 0;
     } else {
       keepPendingText();
-      // Whatever follows joins after a break, so this decides it now.
-      if (!couldBecomeReactDirective(joinTurn(fullText, ""))) {
-        await releaseHeldText();
-      }
     }
     // A kept boundary tells a streaming platform its message is final and may now be
     // split into bubbles — announcing any earlier would leave nothing for a retraction
@@ -284,8 +263,8 @@ async function streamChatOnce(
         if (!finished) {
           finished = true;
           stream.destroy();
-          await settleTurnText();
-          if (fullText) {
+          keepPendingText();
+          if (turnHasContent()) {
             // If we got some content, consider it a success
             await onDone(fullText, conversationId);
           } else {
@@ -349,7 +328,7 @@ async function streamChatOnce(
         await applyFrameUpdate(frame);
         if (frame.done) {
           finish();
-          await settleTurnText();
+          keepPendingText();
           conversationId = frame.conversation_id || "";
           await onDone(fullText, conversationId);
           return true;
@@ -428,8 +407,8 @@ async function streamChatOnce(
         try {
           if (!finished) {
             finished = true;
-            await settleTurnText();
-            if (fullText) {
+            keepPendingText();
+            if (turnHasContent()) {
               // Got partial response - return what we have
               await onDone(fullText, conversationId);
             } else if (receivedKeepalive) {
@@ -465,15 +444,15 @@ async function streamChatOnce(
         try {
           if (!finished) {
             finished = true;
-            await settleTurnText();
+            keepPendingText();
             const isRetryable = RETRYABLE_ERRORS.some((retryableErr) =>
               err.message.includes(retryableErr),
             );
 
-            if (isRetryable && !fullText) {
+            if (isRetryable && !turnHasContent()) {
               // No content received yet — store for re-throw so streamChat can retry
               streamError = err;
-            } else if (fullText) {
+            } else if (turnHasContent()) {
               // The connection died but the answer is already assembled — deliver it exactly as
               // the `end` handler does. An error card here would lose an earned reply, and on a
               // non-streaming platform (Discord/WhatsApp render only at onDone) show nothing at all.
@@ -512,6 +491,7 @@ async function streamChatOnce(
         // Dropped here until now: a stale session token cost the retried
         // attempt every rate-limit notice it produced.
         onNotice,
+        onReaction,
       );
     }
 

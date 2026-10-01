@@ -16,14 +16,19 @@
  * 7. outbound delivery → deliverOutbound records an outbound-delivery event
  * 7b. outbound photo → deliverOutboundFile fetches the bytes and records the caption
  * 8. command path → an ephemeral reply records an ephemeral event
+ * 9. reactions → a live emoji ack and an outbound reaction record reaction events
  */
 
-import type { PlatformName } from "@gaia/shared/bots";
+import { Readable } from "node:stream";
+import { GaiaClient, type PlatformName } from "@gaia/shared/bots";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HarnessAdapter } from "../../harness/src/adapter";
 import { resolveEmulation } from "../../harness/src/emulation";
 import { TranscriptRecorder } from "../../harness/src/transcript";
-import type { TranscriptEvent } from "../../harness/src/transcript.types";
+import type {
+  InboundEvent,
+  TranscriptEvent,
+} from "../../harness/src/transcript.types";
 
 /** A scripted stand-in for the GaiaClient streaming/network boundary. */
 interface StreamScript {
@@ -293,5 +298,77 @@ describe("TranscriptRecorder — wall-clock stamp", () => {
 
     expect(event.at).toBeGreaterThanOrEqual(before);
     expect(event.at).toBeLessThanOrEqual(Date.now());
+  });
+});
+
+describe("HarnessAdapter — reactions", () => {
+  /** A real GaiaClient whose transport replays a comms turn that resolved to a reaction. */
+  function reactionTurnGaia(): GaiaClient {
+    const gaia = new GaiaClient("http://gaia.test", "key", "http://web.test");
+    const body = [
+      { emoji_ack: { emoji: "😅", reacts_to_message_id: "u1" } },
+      { done: true, conversation_id: "c1" },
+    ]
+      .map((frame) => `data: ${JSON.stringify(frame)}\n\n`)
+      .join("");
+    (gaia as unknown as { client: unknown }).client = {
+      post: vi.fn(async () => ({ data: Readable.from([body]) })),
+    };
+    return gaia;
+  }
+
+  it.each<PlatformName>(["telegram", "slack", "discord", "whatsapp"])(
+    "%s records the live ack as a reaction on the inbound message, and no text",
+    async (platform) => {
+      const recorder = new TranscriptRecorder(platform);
+      const adapter = new HarnessAdapter(resolveEmulation(platform), recorder);
+      (adapter as unknown as { gaia: GaiaClient }).gaia = reactionTurnGaia();
+
+      await adapter.simulateMessage("dev-user-1", "that fixed it, thanks");
+
+      const events = recorder.getEvents();
+      const inbound = events.find(
+        (e): e is InboundEvent => e.type === "inbound",
+      );
+      expect(inbound?.messageId).toBeTruthy();
+      expect(events.filter((e) => e.type === "reaction")).toEqual([
+        expect.objectContaining({
+          destinationId: "dev-user-1",
+          targetMessageId: inbound?.messageId,
+          emoji: "😅",
+        }),
+      ]);
+      expect(events.some((e) => e.type === "send" || e.type === "edit")).toBe(
+        false,
+      );
+    },
+  );
+
+  it("records an outbound reaction natively rather than as text", async () => {
+    const recorder = new TranscriptRecorder("telegram");
+    const adapter = new HarnessAdapter(resolveEmulation("telegram"), recorder);
+
+    await (
+      adapter as unknown as {
+        deliverOutboundReaction: (
+          id: string,
+          reaction: { target_platform_message_id: string; emoji: string },
+          isChannel: boolean,
+        ) => Promise<void>;
+      }
+    ).deliverOutboundReaction(
+      "dev-telegram-42",
+      { target_platform_message_id: "in7", emoji: "👍" },
+      false,
+    );
+
+    expect(recorder.getEvents()).toEqual([
+      expect.objectContaining({
+        type: "reaction",
+        destinationId: "dev-telegram-42",
+        targetMessageId: "in7",
+        emoji: "👍",
+      }),
+    ]);
   });
 });

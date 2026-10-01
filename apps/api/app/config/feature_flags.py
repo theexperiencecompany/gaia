@@ -21,7 +21,6 @@ from app.config.settings import settings
 class FeatureFlag(StrEnum):
     """PostHog flag keys GAIA evaluates; member name is the code handle, value the dashboard key."""
 
-    COMMS_OPENUI = "COMMS_OPENUI"
     CODE_MODE = "CODE_MODE"
     HIL_LEDGER = "HIL_LEDGER"
     HIL_JEV_JUDGE = "HIL_JEV_JUDGE"
@@ -67,13 +66,6 @@ class FlagSpec:
 
 
 FEATURE_FLAGS: dict[FeatureFlag, FlagSpec] = {
-    FeatureFlag.COMMS_OPENUI: FlagSpec(
-        description=(
-            "Include the OpenUI component reference in the comms prompt on "
-            "renderable channels; off serves the markdown fallback."
-        ),
-        default=lambda: settings.ENABLE_COMMS_OPENUI,
-    ),
     FeatureFlag.CODE_MODE: FlagSpec(
         description=(
             "Bash runs seed the `gaia.execute` client and mint a per-invocation "

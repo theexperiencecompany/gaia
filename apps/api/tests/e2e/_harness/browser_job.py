@@ -607,7 +607,9 @@ async def _unused_jev_client() -> AsyncIterator[object]:
     yield object()
 
 
-async def _narrate(result_text: str, msg_type: str, conversation_id: str, user: Any) -> str:
+async def _narrate(
+    result_text: str, msg_type: str, conversation_id: str, user: Any, *, preamble: str
+) -> str:
     """Stand in for the comms re-voicing, which is an LLM call; the run's own text is what matters here."""
     return f"NARRATED: {result_text}"
 

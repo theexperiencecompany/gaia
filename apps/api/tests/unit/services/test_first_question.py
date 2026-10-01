@@ -45,8 +45,8 @@ class TestVoiceRules:
     def test_the_rules_come_from_the_comms_prompt_itself(self) -> None:
         rules = comms_voice_rules()
         assert rules.startswith("## Voice")
-        assert "TONE MIRRORING" in rules
-        assert "## Length Modes" not in rules
+        assert "MATCH THEM." in rules
+        assert "## Reply, react, or stay silent" not in rules
 
 
 @pytest.mark.unit

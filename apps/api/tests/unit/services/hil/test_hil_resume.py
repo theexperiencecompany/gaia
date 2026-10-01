@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.log_tags import LogTag
+from app.constants.todos import TodoActivityEvent
 from app.models.hil_models import LedgerState
 from app.services.analytics_service import AnalyticsEvents
 from app.services.hil import resume as resume_module
@@ -128,30 +129,6 @@ class TestResumeWorkflow:
         assert queued["context"]["approval_result"] == "granted"
 
 
-class TestRecordDeny:
-    async def test_todo_deny_leaves_a_skip_trace(self) -> None:
-        service = MagicMock()
-        service.append_activity_entry = AsyncMock(return_value=True)
-        with patch(
-            f"{MODULE}.tracked_todo_service",
-            service,
-        ):
-            await record_owner_deny(_row(owner_run_type="todo", owner_id="todo-3"), "too pricey")
-        entry = service.append_activity_entry.await_args.kwargs["entry"]
-        assert "denied" in entry and "too pricey" in entry
-
-    async def test_workflow_and_live_denies_record_nothing(self) -> None:
-        service = MagicMock()
-        service.append_activity_entry = AsyncMock()
-        with patch(
-            f"{MODULE}.tracked_todo_service",
-            service,
-        ):
-            await record_owner_deny(_row(owner_run_type="workflow", owner_id="wf-1"), None)
-            await record_owner_deny(_row(), "nope")
-        service.append_activity_entry.assert_not_called()
-
-
 class TestResumedEvent:
     async def test_todo_resume_emits_event_with_user_id(self) -> None:
         pool = MagicMock()
@@ -217,8 +194,6 @@ def seams() -> Iterator[ResumeSeams]:
     async def _brief(workflow_id: str, user_id: str) -> str:
         return "last run drafted the briefing" if (workflow_id, user_id) == ("wf-7", "u1") else ""
 
-    todos = MagicMock()
-    todos.append_activity_entry = AsyncMock(return_value=True)
     with (
         patch(f"{MODULE}.approval_ledger_repository") as repo,
         patch(f"{MODULE}.log") as log,
@@ -228,7 +203,7 @@ def seams() -> Iterator[ResumeSeams]:
         patch(
             f"{MODULE}.WorkflowQueueService.queue_workflow_execution", new=AsyncMock()
         ) as queue_workflow,
-        patch(f"{MODULE}.tracked_todo_service", new=todos),
+        patch(f"{MODULE}.record_activity", new=AsyncMock(return_value=True)) as activity,
         patch(f"{MODULE}.capture_event"),
     ):
         repo.claim_resume = AsyncMock(side_effect=_claim)
@@ -239,7 +214,7 @@ def seams() -> Iterator[ResumeSeams]:
             enqueue=enqueue,
             brief=brief,
             queue_workflow=queue_workflow,
-            append_activity=todos.append_activity_entry,
+            append_activity=activity,
         )
 
 
@@ -340,32 +315,27 @@ class TestResumeRouting:
 
 class TestDenyTrace:
     @pytest.mark.parametrize(
-        ("feedback", "entry"),
+        ("feedback", "detail"),
         [
-            ("too pricey", "Approval ap_bg1 denied — 'too pricey': skipped Send briefing."),
-            (None, "Approval ap_bg1 denied: skipped Send briefing."),
+            ("too pricey", "ap_bg1 ('too pricey'): skipped Send briefing"),
+            (None, "ap_bg1: skipped Send briefing"),
         ],
         ids=["with-words", "bare"],
     )
     async def test_a_todo_deny_is_logged_on_that_todo(
-        self, seams: ResumeSeams, feedback: str | None, entry: str
+        self, seams: ResumeSeams, feedback: str | None, detail: str
     ) -> None:
         await record_owner_deny(_row(owner_run_type="todo", owner_id="todo-3"), feedback)
 
-        seams.append_activity.assert_awaited_once_with(todo_id="todo-3", user_id="u1", entry=entry)
+        seams.append_activity.assert_awaited_once_with(
+            "todo-3", "u1", TodoActivityEvent.APPROVAL_DENIED, detail
+        )
 
-    async def test_a_failed_trace_is_reported(self, seams: ResumeSeams) -> None:
-        seams.append_activity.side_effect = RuntimeError("mongo down")
+    async def test_workflow_and_live_denies_record_nothing(self, seams: ResumeSeams) -> None:
+        await record_owner_deny(_row(owner_run_type="workflow", owner_id="wf-1"), None)
+        await record_owner_deny(_row(), None)
 
-        await record_owner_deny(_row(owner_run_type="todo", owner_id="todo-3"), None)
-
-        assert _warned(seams.log) == {
-            f"{LogTag.HIL} deny trace failed": {
-                "approval_id": "ap_bg1",
-                "error": "mongo down",
-                "error_type": "RuntimeError",
-            }
-        }
+        seams.append_activity.assert_not_awaited()
 
 
 def _warned(log: MagicMock) -> dict[str, dict[str, object]]:

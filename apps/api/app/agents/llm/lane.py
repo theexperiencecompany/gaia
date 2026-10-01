@@ -19,11 +19,12 @@ from enum import StrEnum
 
 from pydantic import TypeAdapter
 
-from app.agents.llm.client import PROVIDER_MODELS, next_fallback_provider
+from app.agents.llm.client import PROVIDER_MODELS, next_fallback_provider, openai_lane_available
 from app.agents.llm.dev_lane import dev_default_model_id, dev_default_option
 from app.config.rate_limits import RateLimitPeriod, get_reset_time, get_time_window_key
 from app.constants.cache import COST_BUDGET_NOTIFIED_KEY
 from app.constants.llm import (
+    COMMS_MODEL_NAME,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
@@ -199,6 +200,25 @@ def _default_lane() -> ModelLane:
     )
 
 
+def _comms_lane() -> ModelLane | None:
+    """Return comms' own direct-OpenAI lane, or None when OpenAI is not configured."""
+    if not openai_lane_available():
+        return None
+    return ModelLane(
+        provider=LLMProviderName.OPENAI,
+        model=COMMS_MODEL_NAME,
+        # The effort is fixed on the client; a reasoning key would only be ignored.
+        reasoning=None,
+        provider_pin=None,
+        max_input_tokens=DEFAULT_MAX_TOKENS,
+    )
+
+
+def inherits_lane(parent_lane: ModelLane, role: AgentRole) -> bool:
+    """Whether a child run in role takes its parent's lane; comms' OpenAI lane never passes down."""
+    return role is AgentRole.COMMS or parent_lane.provider is not LLMProviderName.OPENAI
+
+
 def _dev_lane(option: DevModelOption, role: AgentRole) -> ModelLane:
     """Build a lane pinned from the DEV-ONLY model menu.
 
@@ -249,24 +269,28 @@ async def resolve_lane(
 ) -> tuple[ModelLane, PlanType | None]:
     """Choose the single model. Returns the lane and the plan tier it was resolved from.
 
-    Free runs the default model; every paid tier gets the paid model. A paid
-    user past the monthly economic guard degrades to the free lane rather than
-    being blocked. In development an explicit dev_option, else DEV_DEFAULT_MODEL,
-    wins over all of it: every top-level run, not only chat, starts on it.
+    Comms runs its own lane on every plan, otherwise free runs the default model
+    and paid the paid model; a paid user past the monthly guard degrades to free.
+    In development an explicit dev_option, else DEV_DEFAULT_MODEL, wins over all
+    of it: every top-level run, not only chat, starts on it.
     """
     dev_option = dev_option or dev_default_option()
     if dev_option is not None:
         return _dev_lane(dev_option, role), None
 
+    comms_lane = _comms_lane() if role is AgentRole.COMMS else None
     if not user_id:
-        return _default_lane(), None
+        return comms_lane or _default_lane(), None
 
     try:
         plan = await payment_service.get_cached_plan_type(user_id)
     except Exception as e:
         # A transient lookup failure must not fail the turn — keep the default.
         log.warning(f"{LogTag.AGENT} plan lookup failed; keeping the default lane", error=str(e))
-        return _default_lane(), None
+        return comms_lane or _default_lane(), None
+
+    if comms_lane is not None:
+        return comms_lane, plan
 
     if plan == PlanType.FREE:
         return _default_lane(), plan

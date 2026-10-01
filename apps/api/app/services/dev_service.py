@@ -39,7 +39,9 @@ from app.services.oauth.oauth_service import store_user_info
 from app.services.platform_link_service import (
     AccountHasDifferentPlatformError,
     Platform,
+    PlatformAccountTakenError,
     PlatformLinkService,
+    link_conflict_error,
 )
 from app.services.todos.todo_service import TodoService
 from app.services.triggers.subscription_service import teardown_subscriptions
@@ -151,6 +153,35 @@ async def seed_dev_data(
     # by consumers.
     platform_user_ids = {platform: f"dev-{platform}-{user_id}" for platform in platform_links}
 
+    # Every link is checked before any is written, so another user's account is a 409
+    # with nothing written; a different account of this user's own is replaced, since
+    # the seed decides who the harness's synthetic id reaches.
+    try:
+        replaced = [
+            platform
+            for platform, platform_user_id in platform_user_ids.items()
+            if await _holds_other_account(user_id, platform, platform_user_id)
+        ]
+        await asyncio.gather(
+            *(PlatformLinkService.unlink_account(user_id, platform) for platform in replaced)
+        )
+        await asyncio.gather(
+            *(
+                PlatformLinkService.link_account(
+                    user_id=user_id,
+                    platform=platform,
+                    platform_user_id=platform_user_id,
+                    profile={
+                        "username": f"dev_{platform}",
+                        "display_name": user.name or email,
+                    },
+                )
+                for platform, platform_user_id in platform_user_ids.items()
+            )
+        )
+    except (PlatformAccountTakenError, AccountHasDifferentPlatformError) as e:
+        raise link_conflict_error(e) from e
+
     await asyncio.gather(
         *(
             TodoService.create_todo_with_workflow(TodoModel(title=f"Sample todo {i + 1}"), user_id)
@@ -166,18 +197,6 @@ async def seed_dev_data(
                 AuthenticatedUser(user_id=user_id),
             )
             for i in range(conversations)
-        ),
-        *(
-            _link_replacing(
-                user_id=user_id,
-                platform=platform,
-                platform_user_id=platform_user_id,
-                profile={
-                    "username": f"dev_{platform}",
-                    "display_name": user.name or email,
-                },
-            )
-            for platform, platform_user_id in platform_user_ids.items()
         ),
     )
 
@@ -199,25 +218,13 @@ async def seed_dev_data(
     )
 
 
-async def _link_replacing(
-    *, user_id: str, platform: str, platform_user_id: str, profile: dict[str, str]
-) -> None:
-    """Make platform_user_id the user's link for platform, replacing a different one.
-
-    A seed says which platform identity should reach this user; on a dev box
-    the user often already has a real one linked (the bot harness's synthetic
-    id and a real Telegram account cannot both hold the one slot), and the
-    seed is the dev tool that decides.
-    """
+async def _holds_other_account(user_id: str, platform: str, platform_user_id: str) -> bool:
+    """Return whether the user has a different account linked on platform; raise if another user holds this one."""
     try:
-        await PlatformLinkService.link_account(
-            user_id=user_id, platform=platform, platform_user_id=platform_user_id, profile=profile
-        )
+        await PlatformLinkService.ensure_linkable(user_id, platform, platform_user_id)
     except AccountHasDifferentPlatformError:
-        await PlatformLinkService.unlink_account(user_id, platform)
-        await PlatformLinkService.link_account(
-            user_id=user_id, platform=platform, platform_user_id=platform_user_id, profile=profile
-        )
+        return True
+    return False
 
 
 async def delete_dev_user(email: str) -> DeleteDevUserResponse:

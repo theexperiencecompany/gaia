@@ -11,9 +11,10 @@ under the same names, so consumers keep importing from there.
 
 from collections.abc import Mapping
 from enum import StrEnum
-from typing import Any, Literal, TypedDict, cast
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict
+from typing_extensions import TypedDict
 
 from app.constants.llm import LaneConfig, OpenRouterModelKwargs, OpenRouterReasoning
 
@@ -236,7 +237,7 @@ class AgentConfigurableView(BaseModel):
     user_preferences: dict[str, object] | None = None
     writing_style: dict[str, object] | None = None
     root_request_id: str | None = None
-    lane: dict[str, object] | None = None
+    lane: LaneConfig | None = None
     #: LangChain's binding key — logged, never used to pick a model (read ``lane``).
     model: str | None = None
     selected_tool: str | None = None

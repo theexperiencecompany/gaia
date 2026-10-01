@@ -23,6 +23,7 @@ import {
   type ApprovalUpdateHandler,
   type MessageBoundaryHandler,
   type NoticeHandler,
+  type ReactionHandler,
   streamChat,
 } from "./chat-stream";
 import {
@@ -194,6 +195,7 @@ export class GaiaClient {
     onApprovalUpdate?: ApprovalUpdateHandler,
     onMessageBoundary?: MessageBoundaryHandler,
     onNotice?: NoticeHandler,
+    onReaction?: ReactionHandler,
   ): Promise<string> {
     return streamChat(
       {
@@ -210,6 +212,7 @@ export class GaiaClient {
       onApprovalUpdate,
       onMessageBoundary,
       onNotice,
+      onReaction,
     );
   }
 

@@ -15,10 +15,6 @@ outbound_delivery already imports that module.
 from collections.abc import Mapping
 
 from app.constants.outbound import OUTBOUND_TTL_SECONDS_GREETING
-from app.constants.platform_links import (
-    LINK_CONFLICT_ACCOUNT_HAS_OTHER,
-    LINK_CONFLICT_PLATFORM_TAKEN,
-)
 from app.models.chat_models import ConversationSource
 from app.models.platform_models import PlatformLinkCompletion
 from app.services.account_fs import schedule_account_sync
@@ -32,8 +28,8 @@ from app.services.platform_link_service import (
     AccountHasDifferentPlatformError,
     PlatformAccountTakenError,
     PlatformLinkService,
+    link_conflict_error,
 )
-from app.utils.errors import create_error
 from shared.py.wide_events import log
 
 
@@ -77,24 +73,9 @@ async def complete_platform_link(
             error_type=type(e).__name__,
             error=str(e),
         )
-        # Distinct codes for the two conflicts: conflating them misdirected users
-        # to fix the wrong account. A bare ValueError (empty platform_user_id, a
-        # missing user) is deliberately NOT caught here — it's an internal fault, not a 409.
-        if isinstance(e, PlatformAccountTakenError):
-            raise create_error(
-                message=str(e),
-                why="the platform account is already linked to a different GAIA account",
-                fix="disconnect it from the other account, or link a different one",
-                status_code=409,
-                code=LINK_CONFLICT_PLATFORM_TAKEN,
-            ) from e
-        raise create_error(
-            message=str(e),
-            why="this GAIA account already has a different account on this platform",
-            fix="disconnect the one you already have in settings, then link this one",
-            status_code=409,
-            code=LINK_CONFLICT_ACCOUNT_HAS_OTHER,
-        ) from e
+        # A bare ValueError (empty platform_user_id, a missing user) is deliberately
+        # NOT caught here: it's an internal fault, not a 409.
+        raise link_conflict_error(e) from e
 
     # Everything below runs against a link that is already written: a failure is
     # re-raised, nothing swallowed, but named so a caller holding a single-use

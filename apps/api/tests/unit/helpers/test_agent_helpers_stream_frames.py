@@ -41,6 +41,7 @@ from app.helpers.agent_helpers import (
 )
 from app.models.mcp_app_models import McpUiMetadata
 from app.utils.agent_utils import IntegrationDisplayMetadata
+from tests.helpers import ScriptedGraph
 
 HELPERS = "app.helpers.agent_helpers"
 
@@ -945,20 +946,6 @@ async def test_a_chunk_with_no_thinking_emits_no_reasoning_frame() -> None:
 # ── execute_graph_streaming ──────────────────────────────────────────
 
 
-class _FakeGraph:
-    """A graph whose astream replays a fixed list of stream events."""
-
-    def __init__(self, events: list[tuple[Any, ...]]) -> None:
-        self._events = events
-
-    def astream(self, *_args: Any, **_kwargs: Any) -> AsyncGenerator[tuple[Any, ...], None]:
-        async def _gen() -> AsyncGenerator[tuple[Any, ...], None]:
-            for event in self._events:
-                yield event
-
-        return _gen()
-
-
 def _config(stream_id: str | None, user_id: str) -> dict[str, Any]:
     return {
         "agent_name": "comms_agent",
@@ -974,7 +961,7 @@ async def test_streaming_run_threads_the_user_id_into_every_stream_mode() -> Non
         id="msg-1",
         tool_calls=[{"id": "call_1", "name": "get_time", "args": {}}],
     )
-    graph = _FakeGraph(
+    graph = ScriptedGraph(
         [
             (("ns",), "updates", {"agent": {"messages": [reply]}}),
             (("ns",), "custom", {"progress": "working"}),
@@ -1003,7 +990,7 @@ async def test_a_streaming_run_threads_the_user_id_into_every_mcp_resource_fetch
     """Both deferred-app paths — the ToolMessage one and the subagent one — need the user."""
     second_entry = _mcp_tool_entry()
     second_entry["data"] = dict(second_entry["data"], tool_call_id="call_2")
-    graph = _FakeGraph(
+    graph = ScriptedGraph(
         [
             (("ns",), "custom", {"tool_data": _mcp_tool_entry()}),
             (
@@ -1034,7 +1021,7 @@ async def test_a_streaming_run_threads_the_user_id_into_every_mcp_resource_fetch
 @pytest.mark.asyncio
 async def test_a_streaming_run_claims_tool_outputs_under_its_own_stream_id() -> None:
     chunk = ToolMessage(content="12:00 UTC", tool_call_id="call_1", name="get_time")
-    graph = _FakeGraph([(("ns",), "messages", (chunk, {})), (("ns",), "messages", (chunk, {}))])
+    graph = ScriptedGraph([(("ns",), "messages", (chunk, {})), (("ns",), "messages", (chunk, {}))])
     create_session("stream-1", RunKind.LIVE)
     try:
         with patch(f"{HELPERS}.stream_manager.is_cancelled", AsyncMock(return_value=False)):
@@ -1055,7 +1042,7 @@ async def test_a_streaming_run_claims_tool_outputs_under_its_own_stream_id() -> 
 @pytest.mark.asyncio
 async def test_a_cancelled_run_emits_the_cancelled_nostream_frame() -> None:
     chunk = AIMessage(content="partial answer", id="msg-1")
-    graph = _FakeGraph(
+    graph = ScriptedGraph(
         [
             (("ns",), "messages", (chunk, {})),
             (("ns",), "custom", {"progress": "never reached"}),

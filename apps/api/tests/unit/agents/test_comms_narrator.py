@@ -2,8 +2,8 @@
 
 Locks: the executor result is re-voiced through the comms graph as a
 HumanMessage framed in the right internal tag (never a SystemMessage — the
-regression the comment block warns about), the platform-delivery note is
-prepended for workflow delivery, and every degradation path returns an empty
+regression the comment block warns about), the caller's delivery
+instructions come first, and every degradation path returns an empty
 string instead of crashing the caller. Also the cancellation record appended
 to the comms checkpoint.
 """
@@ -20,11 +20,6 @@ from app.agents.core.background.comms_narrator import (
 )
 from app.agents.core.graph_manager import GraphUnavailableError
 from app.agents.llm.lane import AgentRole
-from app.agents.prompts.comms_prompts import (
-    INTERACTIVE_DELIVERY_NOTE,
-    PLATFORM_DELIVERY_NOTE,
-    SILENCE_NOTE,
-)
 from app.agents.tools.executor_tool import call_executor
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.general import NEW_MESSAGE_BREAKER
@@ -37,7 +32,7 @@ MODULE = "app.agents.core.background.comms_narrator"
 USER = AuthenticatedUser(user_id="user-1", email="u@gaia.local")
 CONVERSATION_ID = "conv-1"
 RESULT_TEXT = f"Downloaded the report.{NEW_MESSAGE_BREAKER}It has 3 pages."
-CARD_NOTE = wrap_agent_payload(AgentTag.RETURNED_TO_FRONTEND, "a card is on screen")
+PREAMBLE = wrap_agent_payload(AgentTag.DELIVERY_INSTRUCTIONS, "where the reply goes")
 
 
 def _fake_comms_graph() -> MagicMock:
@@ -60,17 +55,17 @@ class TestNarrateExecutorResult:
                 AsyncMock(return_value=(f"Done. {RESULT_TEXT}", {})),
             ) as silent,
         ):
-            text = await narrate_executor_result(RESULT_TEXT, "result", CONVERSATION_ID, USER)
+            text = await narrate_executor_result(
+                RESULT_TEXT, "result", CONVERSATION_ID, USER, preamble=PREAMBLE
+            )
 
         assert text == f"Done. {RESULT_TEXT}"
         initial = silent.await_args.args[1]
         message = initial["messages"][0]
         assert isinstance(message, HumanMessage)
         assert message.name == "background_executor"
-        assert message.content == (
-            INTERACTIVE_DELIVERY_NOTE
-            + SILENCE_NOTE
-            + wrap_agent_payload(AgentTag.EXECUTOR_RESULT, RESULT_TEXT)
+        assert message.content == PREAMBLE + wrap_agent_payload(
+            AgentTag.EXECUTOR_RESULT, RESULT_TEXT
         )
         config = silent.await_args.args[2]
         assert config["configurable"]["conversation_id"] == CONVERSATION_ID
@@ -94,7 +89,7 @@ class TestNarrateExecutorResult:
             ) as silent,
         ):
             await narrate_executor_result(
-                RESULT_TEXT, "result", CONVERSATION_ID, user_with_onboarding
+                RESULT_TEXT, "result", CONVERSATION_ID, user_with_onboarding, preamble=PREAMBLE
             )
 
         config = silent.await_args.args[2]
@@ -108,54 +103,11 @@ class TestNarrateExecutorResult:
                 f"{MODULE}.execute_graph_silent", AsyncMock(return_value=("revoiced", []))
             ) as silent,
         ):
-            await narrate_executor_result("boom", "error", CONVERSATION_ID, USER)
+            await narrate_executor_result("boom", "error", CONVERSATION_ID, USER, preamble=PREAMBLE)
 
         initial = silent.await_args.args[1]
-        assert initial["messages"][0].content == (
-            INTERACTIVE_DELIVERY_NOTE
-            + SILENCE_NOTE
-            + wrap_agent_payload(AgentTag.EXECUTOR_ERROR, "boom")
-        )
-
-    async def test_workflow_delivery_prepends_the_platform_delivery_note(self) -> None:
-        with (
-            _patch_graph(_fake_comms_graph()),
-            patch(
-                f"{MODULE}.execute_graph_silent", AsyncMock(return_value=("revoiced", []))
-            ) as silent,
-        ):
-            await narrate_executor_result(
-                RESULT_TEXT,
-                "result",
-                CONVERSATION_ID,
-                USER,
-                returned_note=CARD_NOTE,
-                workflow_id="wf-1",
-            )
-
-        content = silent.await_args.args[1]["messages"][0].content
-        assert content.startswith(PLATFORM_DELIVERY_NOTE)
-        assert f"<{AgentTag.EXECUTOR_RESULT}>" in content
-
-    async def test_interactive_chat_prepends_the_returned_note(self) -> None:
-        with (
-            _patch_graph(_fake_comms_graph()),
-            patch(
-                f"{MODULE}.execute_graph_silent", AsyncMock(return_value=("revoiced", []))
-            ) as silent,
-        ):
-            await narrate_executor_result(
-                RESULT_TEXT, "result", CONVERSATION_ID, USER, returned_note=CARD_NOTE
-            )
-
-        content = silent.await_args.args[1]["messages"][0].content
-        # The card note comes first, then the bubble-split instruction, then the
-        # result — comms reads "already shown" before it decides how to split.
-        assert content == (
-            CARD_NOTE
-            + INTERACTIVE_DELIVERY_NOTE
-            + SILENCE_NOTE
-            + wrap_agent_payload(AgentTag.EXECUTOR_RESULT, RESULT_TEXT)
+        assert initial["messages"][0].content == PREAMBLE + wrap_agent_payload(
+            AgentTag.EXECUTOR_ERROR, "boom"
         )
 
     async def test_parroted_internal_tags_are_stripped(self) -> None:
@@ -168,7 +120,9 @@ class TestNarrateExecutorResult:
                 AsyncMock(return_value=(parroted, {})),
             ),
         ):
-            text = await narrate_executor_result(RESULT_TEXT, "result", CONVERSATION_ID, USER)
+            text = await narrate_executor_result(
+                RESULT_TEXT, "result", CONVERSATION_ID, USER, preamble=PREAMBLE
+            )
 
         assert text == "done"
 
@@ -177,14 +131,24 @@ class TestNarrateExecutorResult:
             f"{MODULE}.GraphManager.get_graph",
             AsyncMock(side_effect=GraphUnavailableError("comms_agent", "no graph")),
         ):
-            assert await narrate_executor_result(RESULT_TEXT, "result", CONVERSATION_ID, USER) == ""
+            assert (
+                await narrate_executor_result(
+                    RESULT_TEXT, "result", CONVERSATION_ID, USER, preamble=PREAMBLE
+                )
+                == ""
+            )
 
     async def test_narration_failure_returns_empty_string(self) -> None:
         with (
             _patch_graph(_fake_comms_graph()),
             patch(f"{MODULE}.execute_graph_silent", AsyncMock(side_effect=RuntimeError("boom"))),
         ):
-            assert await narrate_executor_result(RESULT_TEXT, "result", CONVERSATION_ID, USER) == ""
+            assert (
+                await narrate_executor_result(
+                    RESULT_TEXT, "result", CONVERSATION_ID, USER, preamble=PREAMBLE
+                )
+                == ""
+            )
 
     async def test_the_narration_turn_cannot_dispatch_new_executor_work(self) -> None:
         """The run being narrated still holds the busy lock: a dispatch here would queue a duplicate task."""
@@ -194,7 +158,9 @@ class TestNarrateExecutorResult:
                 f"{MODULE}.execute_graph_silent", AsyncMock(return_value=("revoiced", []))
             ) as silent,
         ):
-            await narrate_executor_result(RESULT_TEXT, "result", CONVERSATION_ID, USER)
+            await narrate_executor_result(
+                RESULT_TEXT, "result", CONVERSATION_ID, USER, preamble=PREAMBLE
+            )
         narration_config = silent.await_args.args[2]
 
         with patch("app.agents.tools.executor_tool._dispatch_executor", AsyncMock()) as dispatch:
@@ -320,6 +286,7 @@ class TestNarrationResolvesItsOwnCommsLane:
                 msg_type="final",
                 conversation_id=CONVERSATION_ID,
                 user=USER,
+                preamble=PREAMBLE,
             )
 
         kwargs = built.await_args.kwargs

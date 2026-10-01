@@ -157,7 +157,7 @@ class TestUpdateFeature:
             distinct_id=USER_ID, properties={"feature_browser_obscura": True}
         )
 
-    @pytest.mark.parametrize("flag", ["COMMS_OPENUI", "CODE_MODE", "NOT_A_FLAG"])
+    @pytest.mark.parametrize("flag", ["HIL_LEDGER", "CODE_MODE", "NOT_A_FLAG"])
     async def test_internal_and_unknown_flags_are_404(
         self, client: AsyncClient, store: _UserStore, posthog: MagicMock, flag: str
     ) -> None:

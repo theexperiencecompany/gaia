@@ -76,6 +76,13 @@ MODEL_PRICING: dict[str, ModelPricing] = {
         output_cost_per_1k=0.0,
         cached_input_cost_per_1k=0.0,
     ),
+    # COMMS_MODEL_NAME, the comms lane direct on OpenAI. List price 2026-09-26:
+    # $0.20/$1.20 per 1M in/out, $0.02 cached (developers.openai.com/api/docs/pricing).
+    "gpt-5.6-luna": ModelPricing(
+        input_cost_per_1k=0.0002,
+        output_cost_per_1k=0.0012,
+        cached_input_cost_per_1k=0.00002,
+    ),
     # LOCAL DEV TESTING ONLY (DEV_LLM_MODEL=gpt-4.1-mini over the OpenAI custom
     # lane) - do not ship. OpenAI list price: $0.40/$1.60 per 1M in/out, $0.10 cached.
     "gpt-4.1-mini": ModelPricing(

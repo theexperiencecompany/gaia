@@ -86,3 +86,14 @@ export function foldReactionAcks<T extends ReactionFoldable>(
     return [{ ...message, reactions: merged }];
   });
 }
+
+/** One pill per distinct emoji, counting its reactions, in first-seen order. */
+export function groupReactions(
+  reactions: readonly Pick<ReactionBadge, "emoji">[],
+): { emoji: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const { emoji } of reactions) {
+    counts.set(emoji, (counts.get(emoji) ?? 0) + 1);
+  }
+  return [...counts].map(([emoji, count]) => ({ emoji, count }));
+}

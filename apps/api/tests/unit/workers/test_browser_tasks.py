@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.agents.prompts.comms_prompts import INTERACTIVE_DELIVERY_NOTE
 from app.constants.browser import (
     BROWSER_JOB_HEARTBEAT_SECONDS,
     BROWSER_JOB_JOINER_LEASE_SECONDS,
@@ -13,6 +14,8 @@ from app.constants.browser import (
     BROWSER_TASK_EVENT,
     BrowserSessionStatus,
 )
+from app.constants.comms import EMOJI_TAG, SILENCE_TAG
+from app.constants.general import NEW_MESSAGE_BREAKER
 from app.schemas.browser import BrowserResultSnapshot
 from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJobStatus
 from app.services.browser.job_events import JOB_TERMINAL_FRAME
@@ -48,6 +51,7 @@ class Worker:
         self.heartbeats: list[tuple[str, str]] = []
         self.released: list[tuple[str, str]] = []
         self.narrated: list[tuple[str, str, str, object]] = []
+        self.preambles: list[str] = []
         self.claims: list[tuple[str, str]] = []
         self.loaded_users: list[str] = []
         self.delivered: list[dict[str, Any]] = []
@@ -99,8 +103,11 @@ def _install(
         w.loaded_users.append(user_id)
         return None if missing_user else MagicMock(user_id=user_id)
 
-    async def _narrate(text: str, msg_type: str, conversation_id: str, user: object) -> str:
+    async def _narrate(
+        text: str, msg_type: str, conversation_id: str, user: object, *, preamble: str
+    ) -> str:
         w.narrated.append((text, msg_type, conversation_id, user))
+        w.preambles.append(preamble)
         return narration
 
     async def _deliver(**kwargs: Any) -> None:
@@ -381,6 +388,46 @@ async def test_nothing_is_delivered_when_the_narration_comes_back_empty(
     [warning] = event["warnings"]
     assert "narration was empty" in warning["msg"]
     assert warning["browser"] == {"job_id": "job-1"}
+
+
+async def test_an_unjoined_result_is_narrated_as_a_reply_never_a_silence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The run's result is the first result of something the user asked for, which the silence note itself rules out."""
+    w = _install(monkeypatch, lease=[])
+
+    await tasks_mod.run_browser_job({}, PAYLOAD)
+
+    assert w.preambles == [INTERACTIVE_DELIVERY_NOTE]
+
+
+async def test_a_directive_written_beside_the_reply_never_reaches_the_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    w = _install(
+        monkeypatch,
+        lease=[],
+        narration=f"Booked it for you.{NEW_MESSAGE_BREAKER}<{EMOJI_TAG}>👍</{EMOJI_TAG}>",
+    )
+
+    await tasks_mod.run_browser_job({}, PAYLOAD)
+
+    [delivery] = w.delivered
+    assert delivery["text"] == "Booked it for you."
+
+
+async def test_a_narration_that_is_only_a_directive_is_not_delivered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A raw tag sent as the run's answer would reach the chat app as the literal text."""
+    w = _install(monkeypatch, lease=[], narration=f"<{SILENCE_TAG}>nothing new</{SILENCE_TAG}>")
+
+    event = await _run_logged()
+
+    assert w.delivered == []
+    [warning] = event["warnings"]
+    assert "narration was a directive" in warning["msg"]
+    assert warning["browser"] == {"job_id": "job-1", "directive": "silence"}
 
 
 async def test_a_job_whose_user_is_gone_is_not_delivered_anywhere(

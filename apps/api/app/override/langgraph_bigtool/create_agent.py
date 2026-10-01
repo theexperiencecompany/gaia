@@ -55,6 +55,7 @@ from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
     LANE_FIELD_ID,
     MAX_COMPLETION_NUDGES,
+    PROMPT_CACHE_KEY_PROVIDERS,
     RECURSION_WRAPUP_THRESHOLD_STEPS,
     STICKY_ROUTING_PROVIDERS,
 )
@@ -163,6 +164,8 @@ def _bind_session_id(
     key = _agent_sticky_key(model_configurations, agent_name)
     if key and _is_openrouter_wire(llm_with_tools):
         return llm_with_tools.bind(session_id=key)
+    if key and model_configurations.get("provider") in PROMPT_CACHE_KEY_PROVIDERS:
+        return llm_with_tools.bind(prompt_cache_key=key)
     return llm_with_tools
 
 
@@ -175,7 +178,10 @@ def _agent_sticky_key(
     dropping every agent back into one shared chain. None when the provider
     has no stickiness to pin (Gemini) or no session_id is configured.
     """
-    if model_configurations.get("provider") not in STICKY_ROUTING_PROVIDERS:
+    if (
+        model_configurations.get("provider")
+        not in STICKY_ROUTING_PROVIDERS | PROMPT_CACHE_KEY_PROVIDERS
+    ):
         return None
     session_id = model_configurations.get("session_id")
     if not session_id:

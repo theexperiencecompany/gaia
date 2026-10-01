@@ -127,14 +127,14 @@ class CommonSettings(BaseAppSettings):
     DUMMY_IP: str = "8.8.8.8"
     WORKER_TYPE: str = "unknown"
     ENABLE_LAZY_LOADING: bool = True
-    # Experiment: include the OpenUI component reference (~27k chars) in the comms
-    # prompt on renderable channels (web/mobile/desktop). Off swaps a markdown-only
-    # note so voice rules are not crowded out; text-only channels are unaffected.
-    ENABLE_COMMS_OPENUI: bool = True
     # Code mode — bash-injected `gaia.execute` client letting sandbox scripts
     # call GAIA tools back server-side. On by default; off mints no token
     # (bash itself still runs; scripts just get no GAIA_EXECUTE_* env).
     ENABLE_CODE_MODE: bool = True
+    # Inline each integration tool's return shape in the retrieve_tools doc so a
+    # script can be written without a get_tool_schema call. App-wide, not per user.
+    # Off by default: discovery docs carry args only and never read the observed-shape store.
+    ENABLE_INLINE_TOOL_RETURNS: bool = False
     # Executor-free HIL ledger — gated calls register PENDING and return
     # instead of parking the run on an interrupt. On by default; off keeps the
     # interrupt-and-resume barrier.

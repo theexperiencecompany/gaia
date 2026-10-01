@@ -45,7 +45,7 @@ QUESTION_TEMPERATURE = 0.4
 #: The voice section of the comms prompt, read out of the prompt itself so the
 #: seeded question and the agent the user talks to next cannot drift apart.
 _VOICE_SECTION_START = "## Voice"
-_VOICE_SECTION_END = "## Length Modes"
+_VOICE_SECTION_END = "## Reply, react, or stay silent"
 
 
 class FirstQuestion(BaseModel):

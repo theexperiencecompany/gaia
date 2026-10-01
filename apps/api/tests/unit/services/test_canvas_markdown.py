@@ -4,12 +4,17 @@ from datetime import UTC, datetime
 
 import pytest
 
+from app.constants.todos import CANVAS_PROMPT_MAX_CHARS
 from app.services.canvas_markdown import (
     _extract_entries,
     _line_timestamp,
     _remove_section,
+    bounded_canvas,
+    canvas_problems,
+    normalize_canvas,
     section_body,
     split_legacy_canvas,
+    with_missing_sections,
 )
 
 LEGACY = """# Fix the thing
@@ -288,3 +293,180 @@ def test_split_removes_each_legacy_section_alone(heading: str):
 
     assert f"## {heading}" not in new_canvas
     assert activity == "- entry"
+
+
+class TestBoundedCanvas:
+    def test_a_canvas_within_the_cap_is_untouched(self) -> None:
+        canvas = "x" * CANVAS_PROMPT_MAX_CHARS
+        assert bounded_canvas(canvas) is canvas
+
+    def test_an_oversized_canvas_keeps_equal_halves_around_a_marker(self) -> None:
+        half = CANVAS_PROMPT_MAX_CHARS // 2
+        canvas = "h" * half + "m" * 100 + "t" * half
+
+        assert bounded_canvas(canvas) == (
+            "h" * half + "\n[middle of canvas trimmed: 100 characters]\n" + "t" * half
+        )
+
+
+# The shape of the pitch-prep canvas from 2026-09-26: the removed append-mode tool
+# left a "## Activity Log (append)" section, a dated block and a doubled Learnings.
+MANGLED = """# GAIA Pitch Prep Research
+
+## Key Details
+- Pitch: Dodo Payments Pitch Days.
+
+## Current State
+- Research stored in Notion.
+
+## Customer-Depth Research Goal
+- What users like and want.
+
+## Learnings
+
+## Learnings
+
+## Activity Log (append)
+2026-09-26 01:45 IST: stored the research in Notion.
+### 2026-09-26 Paying-user demographics
+- 15 external payers
+"""
+
+
+class TestCanvasProblems:
+    def test_the_mangled_canvas_names_every_problem(self) -> None:
+        assert canvas_problems(MANGLED) == [
+            'merge the 2 "## Learnings" sections into one',
+            'move "## Activity Log (append)" into activity.md',
+            'move the dated "### YYYY-MM-DD" entries into activity.md',
+        ]
+
+    @pytest.mark.parametrize("heading", ["Timeline", "History", "Run log", "Log of runs"])
+    def test_a_log_by_any_name_is_activity(self, heading: str) -> None:
+        assert canvas_problems(f"## Key Details\n\n## {heading}\n- x\n") == [
+            f'move "## {heading}" into activity.md'
+        ]
+
+    def test_a_template_canvas_with_its_own_sections_is_fine(self) -> None:
+        canvas = "## Key Details\n\n## Current State\n\n## Risks\n\n## Context\n\n## Learnings\n"
+        assert canvas_problems(canvas) == []
+
+
+class TestWithMissingSections:
+    def test_only_the_missing_sections_are_added_in_template_order(self) -> None:
+        canvas = "# T\n\n## Key Details\nk\n\n## Learnings\n"
+
+        assert with_missing_sections(canvas) == (
+            "# T\n\n## Key Details\nk\n\n## Learnings\n\n## Current State\n\n## Context\n"
+        )
+
+    def test_a_complete_canvas_is_returned_as_is(self) -> None:
+        canvas = "## Key Details\n\n## Current State\n\n## Context\n\n## Learnings\n"
+        assert with_missing_sections(canvas) is canvas
+
+
+class TestNormalizeCanvas:
+    def test_the_mangled_canvas_becomes_a_recall_doc(self) -> None:
+        canvas, moved = normalize_canvas(MANGLED)
+
+        assert canvas_problems(canvas) == []
+        assert canvas.count("## Learnings") == 1
+        assert "## Customer-Depth Research Goal\n- What users like and want." in canvas
+        assert "## Context" in canvas
+        assert moved is not None
+        assert "stored the research in Notion" in moved
+        assert "15 external payers" in moved
+
+    def test_normalizing_is_idempotent(self) -> None:
+        canvas, _ = normalize_canvas(MANGLED)
+
+        assert normalize_canvas(canvas) == (canvas, None)
+
+    def test_repeated_sections_keep_every_body(self) -> None:
+        canvas, moved = normalize_canvas(
+            "## Key Details\na\n\n## Current State\n\n## Key Details\nb\n\n"
+            "## Context\n\n## Learnings\n"
+        )
+
+        assert moved is None
+        assert canvas.count("## Key Details") == 1
+        assert section_body(canvas, "Key Details") == "a\nb"
+
+    def test_dated_blocks_under_any_section_move_out(self) -> None:
+        """Regression: a dated block under Context survived the sweep, and every later write was refused."""
+        canvas, moved = normalize_canvas(
+            "## Key Details\n\n## Current State\n\n## Context\nWhy we track it.\n\n"
+            "### 2026-09-26\n- noted\n\n## Learnings\n\n## Research\n### 2026-09-27 call\n- done\n"
+        )
+
+        assert canvas_problems(canvas) == []
+        assert moved == "### 2026-09-26\n- noted\n\n### 2026-09-27 call\n- done"
+        assert section_body(canvas, "Context") == "Why we track it."
+        assert "## Research" in canvas
+        assert normalize_canvas(canvas) == (canvas, None)
+
+    def test_repeats_merge_into_the_first_with_sections_a_blank_line_apart(self) -> None:
+        canvas, moved = normalize_canvas(
+            "## Key Details\na\n\n## Current State\ns\n\n## Key Details\nb\n\n"
+            "## Context\n\n## Learnings\nx\n\n## Learnings\ny"
+        )
+
+        assert moved is None
+        assert canvas == (
+            "## Key Details\na\nb\n\n## Current State\ns\n\n## Context\n\n## Learnings\nx\ny\n"
+        )
+
+    def test_a_heading_with_trailing_spaces_is_the_same_section(self) -> None:
+        """Regression: "## Context " twice survived the sweep, and the write check refused the result."""
+        canvas, _ = normalize_canvas(
+            "## Key Details\n\n## Current State\n\n## Context \nc1\n\n## Context\nc2\n\n## Learnings\n"
+        )
+
+        assert canvas_problems(canvas) == []
+        assert section_body(canvas, "Context") == "c1\nc2"
+
+    def test_every_log_section_moves_out_a_blank_line_apart(self) -> None:
+        canvas, moved = normalize_canvas(
+            "## Key Details\n\n## Activity Log\n- a\n\n## History\n- b\n\n"
+            "## Current State\n\n## Context\n\n## Learnings\n"
+        )
+
+        assert moved == "- a\n\n- b"
+        assert canvas == "## Key Details\n\n## Current State\n\n## Context\n\n## Learnings\n"
+
+    def test_the_result_ends_in_exactly_one_newline(self) -> None:
+        canvas, _ = normalize_canvas(
+            "## Key Details\nk\n\n## Current State\n\n## Context\n\n## Learnings\nl"
+        )
+
+        assert canvas == "## Key Details\nk\n\n## Current State\n\n## Context\n\n## Learnings\nl\n"
+
+    @pytest.mark.parametrize(
+        "preamble",
+        ["# Ship the BOX", "# Ship the box "],
+        ids=["ends-in-a-letter", "ends-in-a-space"],
+    )
+    def test_merging_keeps_the_title_line_and_indented_bodies_as_written(
+        self, preamble: str
+    ) -> None:
+        canvas, _ = normalize_canvas(
+            f"{preamble}\n\n## Key Details\n  - owner: MAX\n\n## Current State\n\n"
+            "## Key Details\n  - due: Friday X\n\n## Context\n\n## Learnings\n"
+        )
+
+        assert canvas == (
+            f"{preamble}\n\n## Key Details\n  - owner: MAX\n  - due: Friday X\n\n"
+            "## Current State\n\n## Context\n\n## Learnings\n"
+        )
+
+
+class TestWithMissingSectionsKeepsTheLastLine:
+    @pytest.mark.parametrize("last_line", ["- owner: MAX", "- owner: max  "])
+    def test_only_trailing_newlines_are_dropped_before_the_added_sections(
+        self, last_line: str
+    ) -> None:
+        canvas = with_missing_sections(f"## Key Details\n{last_line}\n")
+
+        assert canvas == (
+            f"## Key Details\n{last_line}\n\n## Current State\n\n## Context\n\n## Learnings\n"
+        )

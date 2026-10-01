@@ -1,6 +1,6 @@
 """Comms text that accompanies a tool call must never reach the user.
 
-The comms prompt's "MOMENT 1: SILENT" rule was the only thing stopping the model
+The comms prompt's "only the tool call, no text" rule was the only thing stopping the model
 from narrating its own handoff, and models ignore it: in production the comms
 agent answered "yeah, i can set all that up. let me get the tasks created…" with
 a call_executor tool call attached, then answered again with the real

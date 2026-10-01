@@ -7,7 +7,12 @@ module-level globals next to the invocation logic.
 from google.genai.errors import APIError as GeminiAPIError, ServerError as GeminiServerError
 from langchain_core.exceptions import OutputParserException
 from langchain_google_genai.chat_models import ChatGoogleGenerativeAIError
-import openai
+from openai import (
+    APIConnectionError as OpenAIConnectionError,
+    APIError as OpenAIError,
+    InternalServerError as OpenAIServerError,
+    RateLimitError as OpenAIRateLimitError,
+)
 from openrouter.errors import (
     BadGatewayResponseError,
     EdgeNetworkTimeoutResponseError,
@@ -52,14 +57,6 @@ _OPENROUTER_TRANSIENT_ERRORS: tuple[type[BaseException], ...] = (
     NoResponseError,
 )
 
-# OpenAI SDK transient failures (the custom dev lane's ChatOpenAI). APIConnectionError
-# covers APITimeoutError; the SDK's own retry is off, so these are the only retries.
-_OPENAI_TRANSIENT_ERRORS: tuple[type[BaseException], ...] = (
-    openai.APIConnectionError,
-    openai.RateLimitError,
-    openai.InternalServerError,
-)
-
 # Transient provider/infra errors — safe to retry; the app rate limiter's
 # LangChainRateLimitError must NOT be. Gemini wraps every 4xx (including 429s) into
 # ChatGoogleGenerativeAIError, hiding the status class, so Gemini 429s fall through to fallback.
@@ -68,8 +65,10 @@ LLM_RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
     GeminiServerError,
     # OpenRouter SDK
     *_OPENROUTER_TRANSIENT_ERRORS,
-    # OpenAI SDK
-    *_OPENAI_TRANSIENT_ERRORS,
+    # OpenAI SDK (the comms lane and the custom dev lane); its connection error is no ConnectionError
+    OpenAIRateLimitError,
+    OpenAIServerError,
+    OpenAIConnectionError,
     # stdlib
     ConnectionError,
     TimeoutError,
@@ -83,7 +82,7 @@ LLM_RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
 LLM_FALLBACK_EXCEPTIONS: tuple[type[BaseException], ...] = (
     OpenRouterError,  # every OpenRouter response error, incl. 402 insufficient credits
     NoResponseError,
-    openai.APIError,  # every OpenAI SDK response and connection error
+    OpenAIError,  # every OpenAI SDK failure, incl. auth, quota and connection
     ChatGoogleGenerativeAIError,
     GeminiAPIError,
     ConnectionError,

@@ -41,6 +41,8 @@ from app.config.settings import settings
 from app.constants.llm import (
     AUX_MODEL_NAME,
     AUX_SESSION_SUFFIX,
+    COMMS_MODEL_NAME,
+    COMMS_REASONING_EFFORT,
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_LLM_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
@@ -55,6 +57,7 @@ from app.constants.llm import (
     MEMORY_MODEL_NAME,
     MODEL_FIELD_ID,
     MODEL_KWARGS_FIELD_ID,
+    OPENAI_MAX_OUTPUT_TOKENS,
     OPENROUTER_APP_CATEGORIES,
     OPENROUTER_APP_TITLE,
     OPENROUTER_DEV_APP_TITLE,
@@ -145,12 +148,15 @@ PROVIDER_MODELS: dict[LLMProviderName, str] = {
     # The env-defined custom dev endpoint; empty when unset — the provider is
     # only registered in development with all DEV_LLM_* settings present.
     LLMProviderName.CUSTOM: settings.DEV_LLM_MODEL or "",
+    LLMProviderName.OPENAI: COMMS_MODEL_NAME,
 }
 PROVIDER_PRIORITY: dict[int, LLMProviderName] = {
     1: LLMProviderName.OPENROUTER,
     2: LLMProviderName.GEMINI,
     3: LLMProviderName.CUSTOM,
 }
+# Selected only by name (the comms lane), so never a primary or fallback for another lane.
+LANE_ONLY_PROVIDERS: frozenset[LLMProviderName] = frozenset({LLMProviderName.OPENAI})
 
 
 def _secret_or_none(api_key: str | None) -> SecretStr | None:
@@ -330,6 +336,41 @@ def init_custom_llm() -> LanguageModelLike:
     ).configurable_fields(model_name=_MODEL_FIELD)
 
 
+@lazy_provider(
+    name=LLMProviderKey.OPENAI,
+    required_keys=[SIM_STUB_API_KEY if settings.GAIA_SIM_MODE else settings.OPENAI_API_KEY],
+    strategy=MissingKeyStrategy.WARN,
+    warning_message="OpenAI API key not configured. Comms falls back to the default OpenRouter lane.",
+)
+def init_openai_llm() -> LanguageModelLike:
+    """Initialize the direct OpenAI client that serves the comms lane.
+
+    reasoning_effort, never reasoning=: any reasoning= switches ChatOpenAI to the
+    Responses API, while comms stays on chat completions.
+    """
+    if settings.GAIA_SIM_MODE:
+        return _sim_llm()
+    llm = without_sdk_retry(
+        ChatOpenAI(
+            model=PROVIDER_MODELS[LLMProviderName.OPENAI],
+            reasoning_effort=COMMS_REASONING_EFFORT,
+            temperature=DEFAULT_LLM_TEMPERATURE,
+            streaming=True,
+            stream_usage=True,
+            max_completion_tokens=OPENAI_MAX_OUTPUT_TOKENS,
+            max_retries=0,
+            api_key=_secret_or_none(settings.OPENAI_API_KEY),
+        )
+    )
+    llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
+    return llm.configurable_fields(model_name=_MODEL_FIELD)
+
+
+def openai_lane_available() -> bool:
+    """Whether the direct OpenAI comms lane can serve a call; without it comms runs the default lane."""
+    return bool(settings.GAIA_SIM_MODE or settings.OPENAI_API_KEY)
+
+
 def init_llm(
     preferred_provider: str | None = None,
     fallback_enabled: bool = True,
@@ -384,6 +425,7 @@ def _get_available_providers() -> dict[LLMProviderName, ProviderLLM]:
         LLMProviderName.GEMINI: LLMProviderKey.GEMINI,
         LLMProviderName.OPENROUTER: LLMProviderKey.OPENROUTER,
         LLMProviderName.CUSTOM: LLMProviderKey.CUSTOM,
+        LLMProviderName.OPENAI: LLMProviderKey.OPENAI,
     }
 
     available: dict[LLMProviderName, ProviderLLM] = {}
@@ -446,6 +488,14 @@ def _get_ordered_providers(
                     LLMProvider(name=provider_name, instance=remaining_providers[provider_name])
                 )
 
+    # Registered as alternatives so a lane can select them, never as the primary.
+    if fallback_enabled and ordered:
+        ordered.extend(
+            LLMProvider(name=name, instance=instance)
+            for name, instance in remaining_providers.items()
+            if name in LANE_ONLY_PROVIDERS
+        )
+
     return ordered
 
 
@@ -474,6 +524,7 @@ def register_llm_providers() -> None:
     """Register LLM providers in the lazy loader."""
     init_gemini_llm()
     init_openrouter_llm()
+    init_openai_llm()
     # The custom endpoint is a dev/testing-only lane — never registered in
     # production, so DEV_LLM_* vars present in a prod environment can't route
     # real traffic.

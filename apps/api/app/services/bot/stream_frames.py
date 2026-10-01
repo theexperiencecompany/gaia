@@ -62,7 +62,7 @@ def message_boundary_frame(boundary: object) -> str:
 
 
 def emoji_ack_frame(emoji: str, reacts_to_message_id: str) -> str:
-    """Forward a comms REACT ack: the client takes the streamed directive back."""
+    """Forward a comms emoji ack, the whole outcome of a turn that streamed no text."""
     return sse_frame({"emoji_ack": {"emoji": emoji, "reacts_to_message_id": reacts_to_message_id}})
 
 

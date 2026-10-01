@@ -12,12 +12,15 @@ from collections.abc import Mapping
 from app.agents.core.background.comms_narrator import narrate_executor_result
 from app.agents.core.background.executor_capture import tool_data_from_events
 from app.agents.core.background.result_delivery import deliver_message_to_conversation
+from app.agents.core.comms_directive import interpret_comms_output
+from app.agents.prompts.comms_prompts import INTERACTIVE_DELIVERY_NOTE
 from app.constants.browser import (
     BROWSER_JOB_HEARTBEAT_SECONDS,
     BROWSER_JOB_JOINER_LEASE_SECONDS,
     BROWSER_JOB_JOINER_REFRESH_SECONDS,
     BROWSER_JOB_POLL_INTERVAL_SECONDS,
 )
+from app.constants.comms import CommsDirectiveKind
 from app.constants.log_tags import LogTag
 from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJobStatus
 from app.services.browser.job_events import (
@@ -122,18 +125,28 @@ async def _deliver(request: BrowserJobRequest, agent_message: str) -> None:
             browser={"job_id": request.job_id},
         )
         return
-    text = await narrate_executor_result(agent_message, "result", request.conversation_id, user)
+    # No SILENCE note: the result of a run the user asked for is never a no-op update.
+    text = await narrate_executor_result(
+        agent_message, "result", request.conversation_id, user, preamble=INTERACTIVE_DELIVERY_NOTE
+    )
     if not text:
         log.warning(
             f"{LogTag.BROWSER} Browser job result undelivered: the narration was empty",
             browser={"job_id": request.job_id},
         )
         return
+    directive = interpret_comms_output(text)
+    if directive.kind is not CommsDirectiveKind.REPLY:
+        log.warning(
+            f"{LogTag.BROWSER} Browser job result undelivered: the narration was a directive",
+            browser={"job_id": request.job_id, "directive": directive.kind.value},
+        )
+        return
     log.set_ns("browser", delivered_by="worker")
     await deliver_message_to_conversation(
         conversation_id=request.conversation_id,
         user=user,
-        text=text,
+        text=directive.payload,
         # The relay died with the turn, so nothing in an API process collected
         # these: the job's own feed is the only copy of the run's cards left.
         tool_data=tool_data_from_events(

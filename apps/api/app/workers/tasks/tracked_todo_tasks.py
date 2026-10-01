@@ -17,19 +17,21 @@ from uuid import uuid4
 
 from arq.connections import ArqRedis
 
-from app.agents.core.agent import AgentRunOptions, call_agent_silent
-from app.agents.core.background.workflow_platform_delivery import (
-    deliver_result_to_platforms,
-)
+from app.agents.core.background.session import TodoRun
+from app.agents.core.background.todo_run import TodoRunRequest, run_todo_on_executor
 from app.agents.prompts.todo_prompts import (
     DELIVERED_RESULT_GUIDANCE,
     SILENT_RUN_GUIDANCE,
     TRIGGERED_RELEVANCE_GUIDANCE,
 )
-from app.constants.todos import ACTIVITY_PROMPT_TAIL_CHARS, FAILED_LABEL
+from app.constants.todos import (
+    ACTIVITY_PROMPT_TAIL_CHARS,
+    FAILED_LABEL,
+    TODO_SCHEDULE_FIRE_GRACE,
+    TodoActivityEvent,
+)
 from app.db.repositories.todos import todo_repository
 from app.decorators import enforce_daily_cost_budget
-from app.models.message_models import MessageRequestWithHistory
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
@@ -40,12 +42,11 @@ from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import TriggerOrigin
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
-from app.services.analytics_service import AnalyticsEvents, capture_event
-from app.services.canvas_markdown import section_body
+from app.services.canvas_markdown import bounded_canvas, section_body
 from app.services.hil.utils import untrusted_fence
 from app.services.notification_service import notification_service
+from app.services.todo_activity import record_activity
 from app.services.todo_canvas_storage import read_activity, read_canvas
-from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.utils.auth_utils import load_user_context
 from app.utils.cron_utils import CronError, get_next_run_time
@@ -133,6 +134,15 @@ async def _handle_held_lock(todo_id: str, pool: ArqRedis, origin: TriggerOrigin 
             subscription_id=origin.subscription_id,
             defer_attempts=origin.defer_attempts,
         )
+        doc = await todo_repository.get_by_id(todo_id)
+        if doc is not None:
+            await record_activity(
+                todo_id,
+                doc.user_id,
+                TodoActivityEvent.RUN_SKIPPED,
+                f"dropped a {origin.trigger_name} event: a run was still going after "
+                f"{origin.defer_attempts} retries",
+            )
         return f"dropped:{todo_id} (lock held after {origin.defer_attempts} defers)"
 
     delay = LOCK_DEFER_BACKOFF[origin.defer_attempts]
@@ -163,30 +173,11 @@ async def _execute_todo_with_retry(
         log.warning("tracked_todo.execute_not_found", todo_id=todo_id)
         return f"not_found:{todo_id}"
 
-    if doc.completed:
-        log.info("tracked_todo.execute_already_completed", todo_id=todo_id)
-        return f"completed:{todo_id}"
-
-    # Skip expired todos — let maintenance sweep handle gracefully
-    if doc.expires_at and doc.expires_at <= datetime.now(UTC):
-        log.info(
-            "tracked_todo.execute_expired",
-            todo_id=todo_id,
-            expires_at=doc.expires_at.isoformat(),
-        )
-        return f"expired:{todo_id}"
-
-    # Skip failed todos — user must manually reset before re-execution
-    if FAILED_LABEL in doc.labels:
-        log.info("tracked_todo.execute_marked_failed", todo_id=todo_id)
-        return f"skipped:{todo_id} (marked failed)"
+    if skipped := await _skip_reason(doc, origin):
+        return skipped
 
     user_id = doc.user_id
     retry_count = doc.gaia_retry_count
-
-    if not user_id:
-        log.error("tracked_todo.execute_missing_user_id", todo_id=todo_id)
-        return f"error:{todo_id} (missing user_id)"
 
     # Single user fetch per run (matches workflow_tasks.py:416-427): reused for
     # execution and the next-run computation, so a tz change applies immediately
@@ -200,35 +191,13 @@ async def _execute_todo_with_retry(
         await enforce_daily_cost_budget(user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
 
     try:
-        await _execute_via_agent(doc, user_id, user_data=user_data, origin=origin)
-
-        # scheduled_at must name the NEXT execution (find_due_tracked_all_users
-        # selects on it), or the safety net re-enqueues this todo every scan.
-        # Recurrence uses the timezone looked up at the top of this run.
-        next_run = (
-            _compute_next_run(doc.recurrence, user_tz.value, anchor=doc.scheduled_at)
-            if doc.recurrence
-            else None
-        )
-        await todo_repository.update(
-            todo_id,
-            user_id=user_id,
-            update=TodoUpdate(gaia_retry_count=0, scheduled_at=next_run),
-        )
-
-        if next_run:
-            await enqueue_worker_job(
-                pool,
-                "execute_tracked_todo",
-                todo_id,
-                _defer_until=next_run,
+        await _execute_on_executor(doc, user_data=user_data, origin=origin)
+        # A watch firing is not the todo's schedule, so only a scheduled run moves it on.
+        advanced = origin is None and await _advance_schedule(doc, pool, user_tz.value)
+        if not advanced:
+            await todo_repository.update(
+                todo_id, user_id=user_id, update=TodoUpdate(gaia_retry_count=0)
             )
-            log.info(
-                "tracked_todo.re_enqueued",
-                todo_id=todo_id,
-                next_run=next_run.isoformat(),
-            )
-
         return f"success:{todo_id}"
 
     except Exception as exc:
@@ -246,14 +215,15 @@ async def _execute_todo_with_retry(
         backoff_index = min(new_retry_count - 1, len(RETRY_BACKOFF) - 1)
         backoff = RETRY_BACKOFF[backoff_index]
         next_attempt = datetime.now(UTC) + backoff
-        # Park scheduled_at on the backoff target as well: left in the past it
-        # keeps matching the safety net's due-query, which would fire the retry
-        # on the next 30-minute scan and flatten the 1h/4h ladder.
-        await todo_repository.update(
-            todo_id,
-            user_id=user_id,
-            update=TodoUpdate(gaia_retry_count=new_retry_count, scheduled_at=next_attempt),
+        # A scheduled retry parks scheduled_at on the backoff target: left in the
+        # past it matches the safety net's due-query, which fires it on the next
+        # 30-minute scan. A triggered retry carries its origin and needs no park.
+        update = (
+            TodoUpdate(gaia_retry_count=new_retry_count, scheduled_at=next_attempt)
+            if origin is None
+            else TodoUpdate(gaia_retry_count=new_retry_count)
         )
+        await todo_repository.update(todo_id, user_id=user_id, update=update)
         await enqueue_worker_job(
             pool,
             "execute_tracked_todo",
@@ -262,6 +232,12 @@ async def _execute_todo_with_retry(
             # wrong attribution, and the payload the todo was woken to act on gone.
             origin,
             _defer_until=next_attempt,
+        )
+        await record_activity(
+            todo_id,
+            user_id,
+            TodoActivityEvent.RETRY_SCHEDULED,
+            f"attempt {new_retry_count + 1} of {MAX_RETRY_ATTEMPTS} at {next_attempt.isoformat()}",
         )
         log.info(
             "tracked_todo.retry_enqueued",
@@ -273,23 +249,98 @@ async def _execute_todo_with_retry(
         return f"retry:{todo_id} (attempt {new_retry_count})"
 
 
+async def _advance_schedule(doc: TodoDocument, pool: ArqRedis, user_tz: str) -> bool:
+    """Move scheduled_at to the next run and queue it; False when it was rescheduled mid-run.
+
+    scheduled_at must name the next execution or the safety net re-queues the todo every scan.
+    """
+    next_run = (
+        _compute_next_run(doc.recurrence, user_tz, anchor=doc.scheduled_at)
+        if doc.recurrence
+        else None
+    )
+    advanced = await todo_repository.update_if_scheduled_at(
+        doc.id,
+        doc.user_id,
+        expected=doc.scheduled_at,
+        update=TodoUpdate(gaia_retry_count=0, scheduled_at=next_run),
+    )
+    if advanced is None:
+        # The run or the user set a new time while it ran; that time and its queued fire stand.
+        log.info("tracked_todo.rescheduled_during_run", todo_id=doc.id)
+        return False
+    if next_run:
+        await enqueue_worker_job(pool, "execute_tracked_todo", doc.id, _defer_until=next_run)
+        await record_activity(
+            doc.id,
+            doc.user_id,
+            TodoActivityEvent.SCHEDULED,
+            f"next run {next_run.isoformat()} ({doc.recurrence})",
+        )
+        log.info("tracked_todo.re_enqueued", todo_id=doc.id, next_run=next_run.isoformat())
+    return True
+
+
+async def _skip_reason(doc: TodoDocument, origin: TriggerOrigin | None) -> str | None:
+    """Return the result of a fire this todo must not run, or None when it runs."""
+    todo_id = doc.id
+    if doc.completed:
+        log.info("tracked_todo.execute_already_completed", todo_id=todo_id)
+        return f"completed:{todo_id}"
+
+    # Skip expired todos — let maintenance sweep handle gracefully. Clearing the
+    # schedule stops the safety net re-queueing this skip every 30 minutes.
+    if doc.expires_at and doc.expires_at <= datetime.now(UTC):
+        log.info(
+            "tracked_todo.execute_expired",
+            todo_id=todo_id,
+            expires_at=doc.expires_at.isoformat(),
+        )
+        if doc.scheduled_at is not None:
+            await todo_repository.update(
+                todo_id, user_id=doc.user_id, update=TodoUpdate(scheduled_at=None)
+            )
+            await record_activity(
+                todo_id,
+                doc.user_id,
+                TodoActivityEvent.RUN_SKIPPED,
+                f"not run: the todo expired at {doc.expires_at.isoformat()}",
+            )
+        return f"expired:{todo_id}"
+
+    # Skip failed todos — user must manually reset before re-execution
+    if FAILED_LABEL in doc.labels:
+        log.info("tracked_todo.execute_marked_failed", todo_id=todo_id)
+        return f"skipped:{todo_id} (marked failed)"
+
+    if origin is None and not _is_due(doc):
+        scheduled = doc.scheduled_at.isoformat() if doc.scheduled_at else None
+        log.warning("tracked_todo.stale_fire_skipped", todo_id=todo_id, scheduled_at=scheduled)
+        await record_activity(
+            todo_id,
+            doc.user_id,
+            TodoActivityEvent.RUN_SKIPPED,
+            "dropped a leftover fire from an earlier schedule "
+            f"(now scheduled: {scheduled or 'nothing'})",
+        )
+        return f"stale:{todo_id}"
+
+    if not doc.user_id:
+        log.error("tracked_todo.execute_missing_user_id", todo_id=todo_id)
+        return f"error:{todo_id} (missing user_id)"
+    return None
+
+
+def _is_due(doc: TodoDocument) -> bool:
+    """Whether this fire is the todo's current schedule; ARQ cannot cancel a superseded job."""
+    return doc.scheduled_at is not None and doc.scheduled_at <= (
+        datetime.now(UTC) + TODO_SCHEDULE_FIRE_GRACE
+    )
+
+
 def _trigger_type(origin: TriggerOrigin | None) -> TriggerType:
     """Name what woke this run: its own schedule, or a watch that fired."""
     return TriggerType.SCHEDULED_TODO if origin is None else TriggerType.TODO_TRIGGER
-
-
-def _execution_context(todo_id: str | None, origin: TriggerOrigin | None) -> dict[str, object]:
-    """Build the trigger stamp a todo run and its approval resume both put on the agent."""
-    trigger_type = _trigger_type(origin).value
-    if origin is None:
-        return {"trigger_type": trigger_type, "todo_id": todo_id}
-    return {
-        "trigger_type": trigger_type,
-        "todo_id": todo_id,
-        "trigger_name": origin.trigger_name,
-        "subscription_id": origin.subscription_id,
-        "trigger_data": origin.payload,
-    }
 
 
 def _extract_learnings(ref_canvas: str) -> str | None:
@@ -331,10 +382,9 @@ def _build_execution_prompt(
 ) -> str:
     """Assemble the run prompt from the todo's fields and context.
 
-    The trigger payload goes in the prompt itself because the agent path never
-    calls format_workflow_execution_message, the only other way it would reach
-    the model. It is attacker-influenceable, so it is fenced and labelled
-    untrusted. doc.notify_on_run decides which delivery contract is stated.
+    The trigger payload goes in the prompt itself, the only way it reaches the
+    model. It is attacker-influenceable, so it is fenced and labelled untrusted.
+    doc.notify_on_run decides which delivery contract is stated.
     """
     title = doc.title
     if origin is None:
@@ -354,7 +404,7 @@ def _build_execution_prompt(
     if doc.description:
         prompt_parts.append(f"Details: {doc.description}")
     if canvas_content:
-        prompt_parts.append(f"Canvas (canvas.md):\n{canvas_content}")
+        prompt_parts.append(f"Canvas (canvas.md):\n{bounded_canvas(canvas_content)}")
     if activity_content:
         tail = activity_content[-ACTIVITY_PROMPT_TAIL_CHARS:]
         truncated = " (older entries omitted; read activity.md for the full log)"
@@ -368,20 +418,15 @@ def _build_execution_prompt(
     return "\n\n".join(prompt_parts)
 
 
-async def _execute_via_agent(
+async def _execute_on_executor(
     doc: TodoDocument,
-    user_id: str,
     *,
     user_data: AuthenticatedUser,
     origin: TriggerOrigin | None = None,
-) -> str:
-    """Run the todo on the agent, from its canvas, activity and references.
-
-    Never a workflow: a replayed playbook freezes the calls and cannot explore.
-
-    Returns the first 200 chars of the agent response.
-    """
+) -> None:
+    """Run the todo on the executor; its delivery step writes the finish entry and any message."""
     todo_id = doc.id
+    user_id = doc.user_id
 
     canvas_content: str | None = None
     activity_content: str | None = None  # pragma: no mutate — falsy; reassigned before truth test
@@ -395,102 +440,43 @@ async def _execute_via_agent(
             error=str(exc),
         )
 
-    # Read referenced canvases for institutional memory
-    reference_context = await _collect_reference_context(doc.references, user_id)
-
-    # Build prompt
-    title = doc.title
     prompt = _build_execution_prompt(
         doc,
         canvas_content=canvas_content,
         activity_content=activity_content,
-        reference_context=reference_context,
+        reference_context=await _collect_reference_context(doc.references, user_id),
         origin=origin,
     )
 
-    # Generate a fresh conversation_id for each execution to prevent
-    # history accumulation in PostgreSQL. Each execution is independent.
+    # A fresh conversation per run: runs are independent, and history must not
+    # accumulate in the checkpointer.
     conversation_id = str(uuid4())
-
-    request = MessageRequestWithHistory(
-        message=prompt,
-        # message has to be here too: construct_langchain_messages reads content
-        # from messages[-1], not message (query= only feeds memory retrieval).
-        # workflow_tasks gets away with messages=[] only via selectedWorkflow.
-        messages=[{"role": "user", "content": prompt}],
+    woken_by = "scheduled run" if origin is None else f"run on {origin.trigger_name}"
+    await record_activity(
+        todo_id,
+        user_id,
+        TodoActivityEvent.RUN_STARTED,
+        f"{woken_by} (conversation {conversation_id[:8]})",
     )
-
-    trigger_context = {
-        **_execution_context(todo_id, origin),
-        "todo_title": title,
-        "active_todo_id": todo_id,
-        "execution_mode": "background",
-    }
-
-    # Structural paper trail: a start marker in activity.md BEFORE the agent
-    # runs, so the run leaves evidence even if the LLM forgets.
-    short_conv = conversation_id[:8]
-    start_iso = datetime.now(UTC).isoformat()
-    await tracked_todo_service.append_activity_entry(
-        todo_id=todo_id,
-        user_id=user_id,
-        entry=f"{start_iso} ▶ scheduled run started (conversation_id={short_conv})",
-    )
-
-    complete_message: str = ""
     try:
-        run = await call_agent_silent(
-            request=request,
-            conversation_id=conversation_id,
-            user=user_data,
-            options=AgentRunOptions(trigger_context=trigger_context),
+        await run_todo_on_executor(
+            TodoRunRequest(
+                user=user_data,
+                todo_run=TodoRun(todo_id=todo_id, trigger_type=_trigger_type(origin)),
+                todo_title=doc.title,
+                task=prompt,
+                conversation_id=conversation_id,
+            )
         )
     except Exception as exc:
-        # End marker: failure
-        fail_iso = datetime.now(UTC).isoformat()
-        await tracked_todo_service.append_activity_entry(
-            todo_id=todo_id,
-            user_id=user_id,
-            entry=f"{fail_iso} ✗ scheduled run failed ({type(exc).__name__})",
+        await record_activity(
+            todo_id,
+            user_id,
+            TodoActivityEvent.RUN_FAILED,
+            f"{woken_by} failed ({type(exc).__name__}: {str(exc)[:160]})",
         )
         raise
-
-    complete_message = run.message
-
-    # End marker: success
-    end_iso = datetime.now(UTC).isoformat()
-    summary = (complete_message or "").strip().replace("\n", " ")[:120]
-    await tracked_todo_service.append_activity_entry(
-        todo_id=todo_id,
-        user_id=user_id,
-        entry=f"{end_iso} ✓ scheduled run finished (summary={summary!r})",
-    )
-
-    # The same delivery a finished workflow gets, and the reason the run is told
-    # in its prompt not to also send_notification. Swallows its own failures and
-    # skips an empty message, so the work never re-runs over a delivery problem.
-    if doc.notify_on_run:
-        delivered_to = await deliver_result_to_platforms(
-            user=user_data,
-            user_id=user_id,
-            notification_text=complete_message,
-            origin=f'tracked todo "{doc.title}" (id {doc.id})',
-        )
-        # A worker has no request context, so the user id is passed explicitly or
-        # the event lands on an anonymous profile.
-        capture_event(
-            user_id,
-            AnalyticsEvents.TODO_RUN_RESULT_DELIVERED,
-            {
-                "delivered": delivered_to is not None,
-                "platform": delivered_to.value if delivered_to else None,
-                "trigger_type": _trigger_type(origin).value,
-                "recurring": bool(doc.recurrence),
-            },
-        )
-
-    log.info("tracked_todo.agent_completed", todo_id=todo_id)
-    return complete_message[:200] if complete_message else ""
+    log.info("tracked_todo.run_completed", todo_id=todo_id)
 
 
 async def resume_tracked_todo(
@@ -542,11 +528,11 @@ async def resume_tracked_todo(
         user_data, _ = await _load_user_with_tz(user_id)
         await enforce_daily_cost_budget(user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
 
-        start_iso = datetime.now(UTC).isoformat()
-        await tracked_todo_service.append_activity_entry(
-            todo_id=todo_id,
-            user_id=user_id,
-            entry=f"{start_iso} ▶ approval resume started ({approval_id}: {receipt} — granted, continuing in this thread)",
+        await record_activity(
+            todo_id,
+            user_id,
+            TodoActivityEvent.APPROVAL_GRANTED,
+            f"{approval_id}: {receipt}; continuing the run in its own thread",
         )
 
         message = (
@@ -554,57 +540,23 @@ async def resume_tracked_todo(
             "The action has run — verify with a read if you need certainty, "
             "never re-run the granted call blind. Continue the run from here."
         )
-        run = await call_agent_silent(
-            request=MessageRequestWithHistory(
-                message=message,
-                messages=[{"role": "user", "content": message}],
-            ),
-            conversation_id=conversation_id,
-            user=user_data,
-            options=AgentRunOptions(
-                trigger_context={
-                    **_execution_context(todo_id, None),
-                    "todo_title": doc.title,
-                    "active_todo_id": todo_id,
-                    "execution_mode": "background",
-                    "resume_from_approval": approval_id,
-                }
-            ),
-        )
-
-        complete_message = run.message
-        end_iso = datetime.now(UTC).isoformat()
-        summary = (complete_message or "").strip().replace("\n", " ")[:120]
-        await tracked_todo_service.append_activity_entry(
-            todo_id=todo_id,
-            user_id=user_id,
-            entry=f"{end_iso} ✓ approval resume finished (summary={summary!r})",
-        )
-
-        if doc.notify_on_run:
-            delivered_to = await deliver_result_to_platforms(
+        # The parked conversation, so the executor continues its own thread.
+        await run_todo_on_executor(
+            TodoRunRequest(
                 user=user_data,
-                user_id=user_id,
-                notification_text=complete_message,
-                origin=f'tracked todo "{doc.title}" (id {doc.id})',
+                todo_run=TodoRun(todo_id=todo_id, trigger_type=_trigger_type(None)),
+                todo_title=doc.title,
+                task=message,
+                conversation_id=conversation_id,
             )
-            capture_event(
-                user_id,
-                AnalyticsEvents.TODO_RUN_RESULT_DELIVERED,
-                {
-                    "delivered": delivered_to is not None,
-                    "platform": delivered_to.value if delivered_to else None,
-                    "trigger_type": _trigger_type(None).value,
-                    "recurring": bool(doc.recurrence),
-                },
-            )
+        )
         return f"resumed:{todo_id}"
     except Exception as exc:
-        fail_iso = datetime.now(UTC).isoformat()
-        await tracked_todo_service.append_activity_entry(
-            todo_id=todo_id,
-            user_id=user_id,
-            entry=f"{fail_iso} ✗ approval resume failed ({type(exc).__name__})",
+        await record_activity(
+            todo_id,
+            user_id,
+            TodoActivityEvent.RUN_FAILED,
+            f"approval resume failed ({type(exc).__name__}: {str(exc)[:160]})",
         )
         raise
     finally:
@@ -617,6 +569,13 @@ async def _mark_todo_failed(todo_id: str, user_id: str, doc: TodoDocument) -> No
     # The execution path skips failed todos until a manual reset, so leaving the
     # subscriptions armed would burn events on a todo that can never run.
     await teardown_subscriptions(todo_id, user_id, reason="failed")
+    await record_activity(
+        todo_id,
+        user_id,
+        TodoActivityEvent.MARKED_FAILED,
+        f"stopped after {MAX_RETRY_ATTEMPTS} failed attempts; runs resume once the failed "
+        "label is removed",
+    )
     log.info("tracked_todo.marked_failed", todo_id=todo_id)
 
     title: str = doc.title

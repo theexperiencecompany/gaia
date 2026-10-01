@@ -5,14 +5,15 @@ import json
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.tools import StructuredTool
+from pymongo.errors import ServerSelectionTimeoutError
 import pytest
 
 from app.agents.tools.execute.resolver import ResolvedTool
-from app.agents.tools.execute.schema_docs import _args_schema_of
 from app.agents.tools.execute.schema_tool import get_tool_schema
-from app.agents.tools.execute.tool_info import ToolContract, full_tool_info
+from app.agents.tools.execute.tool_info import ToolContract, _args_schema_of, full_tool_info
 from app.db.repositories.tool_shapes import tool_shapes_repository
 from app.models.tool_shape_models import ToolOutputShapeDocument
+from tests.helpers import captured_wide_event
 
 MODULE = "app.agents.tools.execute.schema_tool"
 INFO = "app.agents.tools.execute.tool_info"
@@ -43,7 +44,7 @@ class TestGetToolSchema:
             doc = await get_tool_schema.ainvoke({"tool_name": "GMAIL_FETCH_EMAILS"}, config=CONFIG)
         info.assert_awaited_once_with("u1", "GMAIL_FETCH_EMAILS")
         assert "## GMAIL_FETCH_EMAILS" in doc
-        assert '"max_results"' in doc  # args stay JSON schema
+        assert "max_results?: int" in doc  # args are field lines
         assert "Returns: {data:obj}" in doc  # returns are type notation
         assert '"provider_output_schema"' not in doc  # never the raw dump
 
@@ -81,16 +82,18 @@ class TestGetToolSchemaLayout:
         assert doc.split("\n") == [
             "## GMAIL_FETCH_EMAILS",
             "Fetch emails.",
-            "Args schema:",
-            '{"type":"object","properties":{"max_results":{"type":"integer"}}}',
+            "Args for execute(tool_name=..., data={...}), ? = optional:",
+            "max_results?: int",
             "Returns: {data:obj}",
+            'Run it with: execute(task_description="...", '
+            'tool_name="GMAIL_FETCH_EMAILS", data={...})',
         ]
 
     async def test_an_undocumented_return_shape_tells_the_model_to_inspect_first(self) -> None:
         info = _info(provider_output_schema=None, observed_output_schema=None)
         with patch(f"{MODULE}.full_tool_info", new=AsyncMock(return_value=info)):
             doc = await get_tool_schema.ainvoke({"tool_name": "GMAIL_FETCH_EMAILS"}, config=CONFIG)
-        assert doc.split("\n")[-1] == (
+        assert doc.split("\n")[-2] == (
             "Return shape: not documented yet; it is learned from real calls. "
             "Inspect the first response before consuming fields."
         )
@@ -190,6 +193,25 @@ class TestFullToolInfo:
         assert contract.provider_output_schema is None
         assert contract.compact_output_type is None
 
+    async def test_a_shape_store_outage_leaves_the_provider_contract(self) -> None:
+        resolved = ResolvedTool("GMAIL_FETCH_EMAILS", _catalog_tool(PROVIDER), True)
+        outage = AsyncMock(side_effect=ServerSelectionTimeoutError("mongo down"))
+        with (
+            patch(f"{INFO}.resolve_tool", new=AsyncMock(return_value=resolved)),
+            patch.object(tool_shapes_repository, "get_shape", new=outage),
+        ):
+            async with captured_wide_event() as event:
+                contract = await full_tool_info("u1", "GMAIL_FETCH_EMAILS")
+        assert contract is not None
+        assert contract.provider_output_schema == PROVIDER
+        assert contract.observed_output_schema is None
+        assert contract.observed_call_count == 0
+        assert contract.compact_output_type == "{data:obj}"
+        (warning,) = event["warnings"]
+        assert warning["msg"].endswith("tool contract: observed shape unavailable")
+        assert warning["tool_name"] == "GMAIL_FETCH_EMAILS"
+        assert warning["error_type"] == "ServerSelectionTimeoutError"
+
     async def test_a_never_observed_undocumented_tool_has_no_return_shape(self) -> None:
         resolved = ResolvedTool("GMAIL_FETCH_EMAILS", _catalog_tool(None), True)
         with (
@@ -201,3 +223,73 @@ class TestFullToolInfo:
         assert contract.observed_output_schema is None
         assert contract.observed_call_count == 0
         assert contract.compact_output_type is None
+
+
+@pytest.mark.unit
+class TestArgsSchemaOf:
+    def test_internal_params_leave_required_and_titles_leave_nested_variants(self) -> None:
+        tool = _catalog_tool(None)
+        tool.args_schema = {
+            "type": "object",
+            "title": "Args",
+            "properties": {
+                "q": {"anyOf": [{"type": "string", "title": "Q"}]},
+                "__runnable_config__": {"type": "object"},
+            },
+            "required": ["q", "__runnable_config__"],
+        }
+        assert _args_schema_of(tool) == {
+            "type": "object",
+            "properties": {"q": {"anyOf": [{"type": "string"}]}},
+            "required": ["q"],
+        }
+
+    def test_a_field_named_title_is_kept_while_title_annotations_go(self) -> None:
+        """Regression: every key named title was dropped, so a required title argument vanished from the doc."""
+        tool = _catalog_tool(None)
+        tool.args_schema = {
+            "title": "CreateIssue",
+            "type": "object",
+            "properties": {
+                "title": {"title": "Title", "type": "string"},
+                "labels": {"type": "array", "items": {"title": "Label", "type": "string"}},
+            },
+            "required": ["title"],
+            "$defs": {"title": {"title": "TitleModel", "type": "string"}},
+        }
+        assert _args_schema_of(tool) == {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "labels": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["title"],
+            "$defs": {"title": {"type": "string"}},
+        }
+
+    @pytest.mark.parametrize(
+        ("required", "cleaned"),
+        [([{"x": 1}, "a", 5, None], ["a"]), (5, []), ("abc", [])],
+        ids=["non_string_members", "not_a_list", "a_bare_string"],
+    )
+    def test_a_malformed_required_keeps_only_its_string_names(
+        self, required: object, cleaned: list[str]
+    ) -> None:
+        """A provider's malformed required crashed doc rendering (unhashable member, non-iterable value)."""
+        tool = _catalog_tool(None)
+        tool.args_schema = {
+            "type": "object",
+            "properties": {
+                "a": {"type": "string"},
+                "required": {"type": "object", "properties": {}, "required": required},
+            },
+            "required": required,
+        }
+        schema = _args_schema_of(tool)
+        assert schema["required"] == cleaned
+        assert schema["properties"]["required"]["required"] == cleaned
+
+    def test_a_tool_without_a_schema_takes_no_args(self) -> None:
+        tool = _catalog_tool(None)
+        tool.args_schema = None
+        assert _args_schema_of(tool) == {"type": "object", "properties": {}}

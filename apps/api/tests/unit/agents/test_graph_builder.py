@@ -439,7 +439,6 @@ class TestBuildCommsGraph:
                 "complete_tracked_todo",
                 "search_todo_context",
                 "list_tracked_todos",
-                "update_tracked_todo_canvas",
             ):
                 assert name not in tool_registry, f"{name} must stay executor-only"
             # Comms runs open-web lookups itself instead of delegating to the executor.
@@ -648,7 +647,6 @@ class TestBuildExecutorGraph:
                 "read_manual",
                 "create_tracked_todo",
                 "update_tracked_todo",
-                "update_tracked_todo_canvas",
                 "complete_tracked_todo",
                 "search_todo_context",
                 "list_tracked_todos",

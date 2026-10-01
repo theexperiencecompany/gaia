@@ -42,6 +42,7 @@ from app.agents.middleware.summarization import (
 )
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.constants.llm import EXECUTOR_RECURSION_LIMIT
+from app.constants.summarization import COMMS_SUMMARIZATION_TRIGGER_TOKENS
 from app.services.storage import JuiceFSUnavailable
 from tests.helpers import BindableToolsFakeModel
 
@@ -123,6 +124,16 @@ class TestChatLlmWiring:
         )
         assert summarizer.model is llm
         assert not any(isinstance(mw, WorkspaceCompactionMiddleware) for mw in stack)
+
+    def test_comms_summarizes_before_openai_long_context_pricing(self) -> None:
+        """Past 272K input tokens OpenAI bills the whole request at 2x; a fraction of the 1M window crosses it."""
+        stack = create_comms_middleware(chat_llm=_fake_llm())
+
+        summarizer = next(
+            mw for mw in stack if isinstance(mw, WorkspaceArchivingSummarizationMiddleware)
+        )
+        assert summarizer.trigger == ("tokens", COMMS_SUMMARIZATION_TRIGGER_TOKENS)
+        assert COMMS_SUMMARIZATION_TRIGGER_TOKENS < 272_000
 
     def test_subagent_stack_rides_its_own_llm(self) -> None:
         llm = _fake_llm()
@@ -563,7 +574,10 @@ class TestCommsAndSubagentDelegation:
             "agent_name": "comms_agent",
             "chat_llm": llm,
             "subagent": SubagentStackOptions(enabled=False),
-            "context": ContextOptions(compact=False),
+            "context": ContextOptions(
+                compact=False,
+                summarization_trigger=("tokens", COMMS_SUMMARIZATION_TRIGGER_TOKENS),
+            ),
         }
 
     def test_the_comms_stack_is_this_exact_sequence(self) -> None:

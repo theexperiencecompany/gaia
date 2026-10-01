@@ -127,7 +127,11 @@ vi.mock("@gaia/shared/bots", async () => {
 // Now import the real adapter (which will use the mocks above).
 // ---------------------------------------------------------------------------
 
-import { handleStreamingChat, richMessageToMarkdown } from "@gaia/shared/bots";
+import {
+  handleStreamingChat,
+  type ReactionOutcome,
+  richMessageToMarkdown,
+} from "@gaia/shared/bots";
 // From source, not the mocked barrel: GaiaApiError is the error class the real
 // redeemLinkCode branches on, so a stub would prove nothing about the failure path.
 import { GaiaApiError } from "../../../../libs/shared/ts/src/bots/api";
@@ -186,7 +190,11 @@ type PrivateAdapter = {
     text: string,
     messageId: string,
   ) => Promise<void>;
-  handleStreamingMessage: (waId: string, text: string) => Promise<void>;
+  handleStreamingMessage: (
+    waId: string,
+    text: string,
+    messageId?: string,
+  ) => Promise<void>;
   sendWelcome: (waId: string) => Promise<void>;
   welcomeSent: Set<string>;
   dispatchCommand: (
@@ -513,6 +521,7 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      expect.any(Function), // onReaction
     );
   });
 
@@ -581,6 +590,7 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      expect.any(Function), // onReaction
     );
   });
 
@@ -603,6 +613,7 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      expect.any(Function), // onReaction
     );
   });
 });
@@ -675,6 +686,7 @@ describe("WhatsAppAdapter - handleStreamingMessage", () => {
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      expect.any(Function), // onReaction
     );
   });
 
@@ -894,39 +906,35 @@ describe("WhatsAppAdapter - welcome message", () => {
 });
 
 // ---------------------------------------------------------------------------
-// deliverOutboundReaction — native attach with text fallback
+// reactToMessage — the native reaction primitive, and the live turn using it
 // ---------------------------------------------------------------------------
 
-describe("WhatsAppAdapter - deliverOutboundReaction", () => {
-  type Reactor = {
-    deliverOutboundReaction: (
-      destinationId: string,
-      reaction: { target_platform_message_id: string; emoji: string },
-      isChannel: boolean,
-    ) => Promise<void>;
-    analytics: { capture: (...args: unknown[]) => void };
-  };
+type WhatsAppReactor = {
+  reactToMessage: (
+    destinationId: string,
+    platformMessageId: string,
+    emoji: string,
+    isChannel: boolean,
+  ) => Promise<ReactionOutcome>;
+};
 
-  function makeReactor() {
-    const adapter = makeAdapter() as unknown as Reactor;
-    adapter.analytics = { capture: vi.fn() };
-    return adapter;
-  }
-
+describe("WhatsAppAdapter - reactToMessage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it("attaches via sendReaction with the Kapso addressing", async () => {
     mockSendReaction.mockResolvedValue({ messages: [{ id: "r1" }] });
-    const adapter = makeReactor();
+    const adapter = makeAdapter() as unknown as WhatsAppReactor;
 
-    await adapter.deliverOutboundReaction(
+    const attached = await adapter.reactToMessage(
       "15551234567",
-      { target_platform_message_id: "wamid.123", emoji: "👍" },
+      "wamid.123",
+      "👍",
       false,
     );
 
+    expect(attached).toBe("attached");
     expect(mockSendReaction).toHaveBeenCalledWith({
       phoneNumberId: "test-phone-id",
       to: "+15551234567",
@@ -935,19 +943,44 @@ describe("WhatsAppAdapter - deliverOutboundReaction", () => {
     expect(mockSendText).not.toHaveBeenCalled();
   });
 
-  it("falls back to a text bubble when attach fails", async () => {
+  it("refuses without sending text when Kapso rejects the reaction", async () => {
     mockSendReaction.mockRejectedValueOnce(new Error("too old to react"));
-    mockSendText.mockResolvedValue({ messages: [{ id: "wa-msg-9" }] });
-    const adapter = makeReactor();
+    const adapter = makeAdapter() as unknown as WhatsAppReactor;
 
-    await adapter.deliverOutboundReaction(
+    const attached = await adapter.reactToMessage(
       "15551234567",
-      { target_platform_message_id: "wamid.123", emoji: "👍" },
+      "wamid.123",
+      "👍",
       false,
     );
 
-    expect(mockSendText).toHaveBeenCalledWith(
-      expect.objectContaining({ body: "👍" }),
+    expect(attached).toBe("attach_failed");
+    expect(mockSendText).not.toHaveBeenCalled();
+  });
+});
+
+describe("WhatsAppAdapter - live turn reaction", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("reacts to the inbound wamid", async () => {
+    const adapter = makeAdapter();
+    const react = vi
+      .spyOn(adapter as unknown as WhatsAppReactor, "reactToMessage")
+      .mockResolvedValue("attached");
+
+    await (adapter as unknown as PrivateAdapter).handleStreamingMessage(
+      "15551234567",
+      "thanks!",
+      "wamid.in",
     );
+    const hook = vi.mocked(handleStreamingChat).mock.calls.at(-1)?.[8] as (
+      emoji: string,
+    ) => Promise<ReactionOutcome>;
+
+    await expect(hook("👍")).resolves.toBe("attached");
+    expect(react).toHaveBeenCalledWith("15551234567", "wamid.in", "👍", false);
+    expect(mockSendText).not.toHaveBeenCalled();
   });
 });

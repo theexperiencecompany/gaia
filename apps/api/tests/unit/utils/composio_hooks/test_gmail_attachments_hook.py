@@ -372,14 +372,14 @@ class TestCreateDraftAfterHook:
         sent: list[dict] = []
         return sent, (lambda payload: sent.append(payload))
 
-    def test_response_passes_through_untouched(self):
+    def test_the_data_passes_through_untouched(self):
         sent, writer = self._capture()
         response = {"data": {"id": "d-1", "message": {"threadId": "t"}}}
         with patch(f"{HOOKS}.get_stream_writer", return_value=writer):
             _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", _compose(DRAFT_ARGS), [])
             assert (
                 gmail_create_draft_after_hook("GMAIL_CREATE_EMAIL_DRAFT", "gmail", response)
-                is response
+                is response["data"]
             )
 
     def test_no_held_card_streams_nothing(self):

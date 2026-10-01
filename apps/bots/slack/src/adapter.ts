@@ -20,7 +20,6 @@
  * @module
  */
 
-import { BOT_EVENTS } from "@gaia/shared/analytics";
 import {
   BaseBotAdapter,
   type BotCommand,
@@ -30,8 +29,9 @@ import {
   handleStreamingChat,
   hashLogIdentifier,
   type OutboundAttachment,
-  type OutboundReaction,
   type PlatformName,
+  REACTION_OUTCOME,
+  type ReactionOutcome,
   type RichMessage,
   type RichMessageTarget,
   recordBotFailure,
@@ -42,6 +42,7 @@ import {
   withWideEvent,
 } from "@gaia/shared/bots";
 import { App, type CodedError, type Context } from "@slack/bolt";
+import { which } from "node-emoji";
 
 /** Bolt's respond function for slash command responses. */
 type SlackRespondFn = (
@@ -57,30 +58,6 @@ interface SlackMessageEvent {
   subtype?: string;
   ts?: string;
 }
-
-/**
- * Emoji → Slack shortcode for the ack reactions comms emits. reactions.add
- * takes a name (white_check_mark), not the glyph. Curated to the small set
- * comms actually uses for acknowledgments; anything unmapped falls back to a
- * text bubble at the call site.
- */
-const SLACK_EMOJI_SHORTCODES: Record<string, string> = {
-  "👍": "thumbsup",
-  "👎": "thumbsdown",
-  "✅": "white_check_mark",
-  "☑️": "ballot_box_with_check",
-  "👌": "ok_hand",
-  "👏": "clap",
-  "🙏": "pray",
-  "❤️": "heart",
-  "🎉": "tada",
-  "👀": "eyes",
-  "💯": "100",
-  "🔥": "fire",
-  "✔️": "heavy_check_mark",
-  "❌": "x",
-  "🤝": "handshake",
-};
 
 /** Minimal Slack Web API client shape used by the adapter. */
 interface SlackWebClient {
@@ -99,6 +76,7 @@ interface SlackWebClient {
       user: string;
       text: string;
     }) => Promise<unknown>;
+    delete: (args: { channel: string; ts: string }) => Promise<unknown>;
   };
 }
 
@@ -358,25 +336,18 @@ export class SlackAdapter extends BaseBotAdapter {
     );
   }
 
-  protected override async deliverOutboundReaction(
+  protected override async reactToMessage(
     destinationId: string,
-    reaction: OutboundReaction,
+    platformMessageId: string,
+    emoji: string,
     isChannel: boolean,
-  ): Promise<void> {
-    // reactions.add takes a shortcode (white_check_mark), not the emoji.
-    // Unmapped emoji falls back to the text bubble — logged, never lost.
-    const name = SLACK_EMOJI_SHORTCODES[reaction.emoji];
+  ): Promise<ReactionOutcome> {
+    // reactions.add takes a shortcode (sweat_smile), not the emoji. An emoji
+    // with no known shortcode is refused here and the caller sends it as text.
+    const name = which(emoji);
     if (!name) {
-      this.adapterLogger.warn("outbound_reaction_unmapped_emoji", {
-        emoji: reaction.emoji,
-      });
-      await this.deliverOutbound(destinationId, reaction.emoji, isChannel);
-      this.analytics.capture(
-        await this.resolveDistinctId(destinationId),
-        BOT_EVENTS.REACTION_DELIVERED,
-        { success: true, delivery: "fallback_text", reason: "unmapped_emoji" },
-      );
-      return;
+      this.adapterLogger.warn("outbound_reaction_unmapped_emoji", { emoji });
+      return REACTION_OUTCOME.UNMAPPED_EMOJI;
     }
     const channel = isChannel
       ? destinationId
@@ -384,14 +355,10 @@ export class SlackAdapter extends BaseBotAdapter {
     try {
       await this.app.client.reactions.add({
         channel,
-        timestamp: reaction.target_platform_message_id,
+        timestamp: platformMessageId,
         name,
       });
-      this.analytics.capture(
-        await this.resolveDistinctId(destinationId),
-        BOT_EVENTS.REACTION_DELIVERED,
-        { success: true, delivery: "native" },
-      );
+      return REACTION_OUTCOME.ATTACHED;
     } catch (err) {
       this.adapterLogger.warn("outbound_reaction_attach_failed", {
         channel_hash: hashLogIdentifier(channel),
@@ -399,12 +366,7 @@ export class SlackAdapter extends BaseBotAdapter {
           ? { error_type: err.name, error: err.message }
           : { error: String(err) }),
       });
-      await this.deliverOutbound(destinationId, reaction.emoji, isChannel);
-      this.analytics.capture(
-        await this.resolveDistinctId(destinationId),
-        BOT_EVENTS.REACTION_DELIVERED,
-        { success: true, delivery: "fallback_text", reason: "attach_failed" },
-      );
+      return REACTION_OUTCOME.ATTACH_FAILED;
     }
   }
 
@@ -562,6 +524,28 @@ export class SlackAdapter extends BaseBotAdapter {
       },
       STREAMING_DEFAULTS.slack,
       await this.analyticsFor(userId),
+      async (emoji: string) => {
+        // A slash command has no inbound message to react to.
+        if (!inboundTs) return REACTION_OUTCOME.NO_TARGET;
+        const outcome = await this.reactToMessage(
+          channelId,
+          inboundTs,
+          emoji,
+          true,
+        );
+        if (outcome !== REACTION_OUTCOME.ATTACHED) return outcome;
+        try {
+          await client.chat.delete({ channel: channelId, ts });
+        } catch (err) {
+          // The reaction is already the reply; a stale "Thinking..." is all this costs.
+          this.adapterLogger.error(
+            "placeholder_delete_failed",
+            { channel_hash: hashLogIdentifier(channelId) },
+            err,
+          );
+        }
+        return outcome;
+      },
     );
   }
 

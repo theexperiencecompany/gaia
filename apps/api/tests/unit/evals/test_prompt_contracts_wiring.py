@@ -114,8 +114,8 @@ def test_tightening_an_openui_rule_moves_the_rubric_with_it(
         monkeypatch,
         "openui",
         lambda text: text.replace(
-            "   - Links, or content where links are the point",
-            f"   {added}\n   - Links, or content where links are the point",
+            "   - Places or a route: MapBlock.",
+            f"   {added}\n   - Places or a route: MapBlock.",
             1,
         ),
     )
@@ -148,7 +148,7 @@ def test_deleting_an_openui_rule_fails_the_case_instead_of_grading_a_ghost(
         monkeypatch,
         "openui",
         lambda text: text.replace(
-            "3. Casual chat, a single-sentence answer, an opinion, emotional support", "3. Removed"
+            "3. Casual chat, a one-line answer, an opinion, feelings", "3. Removed"
         ),
     )
 

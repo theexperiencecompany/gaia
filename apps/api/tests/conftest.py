@@ -802,6 +802,16 @@ def posthog_provider() -> Iterator[Callable[..., None]]:
 
 
 @pytest.fixture
+def no_observed_tool_shapes() -> Iterator[AsyncMock]:
+    """Empty the shape store, so a rendered tool doc carries only the provider's return shape."""
+    with patch(
+        "app.db.repositories.tool_shapes.tool_shapes_repository.get_shape",
+        new=AsyncMock(return_value=None),
+    ) as get_shape:
+        yield get_shape
+
+
+@pytest.fixture
 def hil_barrier_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     """Gate on the interrupt barrier: HIL_LEDGER's kill-switch path, not the shipped default."""
     monkeypatch.setattr(app_settings, "ENABLE_HIL_LEDGER", False)

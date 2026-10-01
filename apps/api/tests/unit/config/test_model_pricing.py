@@ -24,6 +24,7 @@ from app.config.model_pricing import (
 from app.config.settings import settings
 from app.constants.llm import (
     AUX_MODEL_NAME,
+    COMMS_MODEL_NAME,
     DEFAULT_MODEL_NAME,
     HIL_JUDGE_MODEL_NAME,
     MEMORY_MODEL_NAME,
@@ -53,6 +54,7 @@ RUNTIME_MODEL_IDS = sorted(
         MEMORY_MODEL_NAME,
         VISION_MODEL_NAME,
         HIL_JUDGE_MODEL_NAME,
+        COMMS_MODEL_NAME,
     }
 )
 

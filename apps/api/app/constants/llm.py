@@ -14,6 +14,7 @@ class LLMProviderName(StrEnum):
     GEMINI = "gemini"
     OPENROUTER = "openrouter"
     CUSTOM = "custom"
+    OPENAI = "openai"
 
 
 class LLMProviderKey(StrEnum):
@@ -26,6 +27,7 @@ class LLMProviderKey(StrEnum):
     GEMINI = "gemini_llm"
     OPENROUTER = "openrouter_llm"
     CUSTOM = "custom_llm"
+    OPENAI = "openai_llm"
 
 
 class ModelUse(StrEnum):
@@ -248,6 +250,8 @@ LLM_RETRY_MAX_ATTEMPTS = 3
 # OpenRouter-only wire behaviour: Gemini rejects the key, and CUSTOM runs
 # ChatOpenAI where session_id is unsupported on AsyncCompletions.create.
 STICKY_ROUTING_PROVIDERS = frozenset({LLMProviderName.OPENROUTER})
+# OpenAI's equivalent: prompt_cache_key routes a chain to the machine holding its cached prefix.
+PROMPT_CACHE_KEY_PROVIDERS = frozenset({LLMProviderName.OPENAI})
 # Auxiliary one-shots route on their own sticky session: sharing the
 # conversation's key re-pinned its provider from a background call (measured).
 AUX_SESSION_SUFFIX = "-aux"
@@ -314,6 +318,13 @@ VISION_MODEL_NAME = DEFAULT_GEMINI_MODEL_NAME
 SIM_STUB_BASE_URL = "http://localhost:9797/api/v1"
 SIM_STUB_API_KEY = "sk-stub-dev"  # pragma: allowlist secret
 SIM_STUB_MODEL_NAME = "gaia-sim-stub"
+
+# Comms' own lane, direct to OpenAI on every plan; beat gpt-5.4-mini/nano on voice and
+# OpenUI at $0.0006 a turn, and gpt-6-luna re-dispatched the executor on every ack.
+COMMS_MODEL_NAME = "gpt-5.6-luna"
+# Chat completions reject function tools with any other effort, and comms always binds tools.
+COMMS_REASONING_EFFORT = "none"
+OPENAI_MAX_OUTPUT_TOKENS = 16_000
 
 # Per-plan model policy (hardcoded; not user-selectable). Both tiers run the SAME
 # model today, so the pro monthly-budget degrade in resolve_lane has nothing to

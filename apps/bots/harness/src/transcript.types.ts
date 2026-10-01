@@ -39,6 +39,8 @@ export interface InboundEvent extends TranscriptEventBase {
   userId: string;
   /** Channel/conversation id (defaults to the user id for DM-style platforms). */
   channelId: string;
+  /** Synthetic platform message id, the target a reaction to this message names. */
+  messageId: string;
   /** The raw message text as the user "typed" it (pre-conversion). */
   text: string;
 }
@@ -128,6 +130,16 @@ export interface OutboundAttachmentEvent extends TranscriptEventBase {
   contentType: string;
 }
 
+/** An emoji attached natively to an existing message — a live ack or an outbound reaction. */
+export interface ReactionEvent extends TranscriptEventBase {
+  type: "reaction";
+  /** Platform-native destination (chat/channel/user) the reacted message lives in. */
+  destinationId: string;
+  /** Platform message id the emoji was attached to. */
+  targetMessageId: string;
+  emoji: string;
+}
+
 /** Discriminated union of every transcript event. */
 export type TranscriptEvent =
   | InboundEvent
@@ -138,7 +150,8 @@ export type TranscriptEvent =
   | RichEvent
   | SplitEvent
   | OutboundDeliveryEvent
-  | OutboundAttachmentEvent;
+  | OutboundAttachmentEvent
+  | ReactionEvent;
 
 /** Event payload before the recorder stamps `platform`, `seq`, and `t`. */
 export type TranscriptEventInput =
@@ -150,4 +163,5 @@ export type TranscriptEventInput =
   | Omit<RichEvent, keyof TranscriptEventBase>
   | Omit<SplitEvent, keyof TranscriptEventBase>
   | Omit<OutboundDeliveryEvent, keyof TranscriptEventBase>
-  | Omit<OutboundAttachmentEvent, keyof TranscriptEventBase>;
+  | Omit<OutboundAttachmentEvent, keyof TranscriptEventBase>
+  | Omit<ReactionEvent, keyof TranscriptEventBase>;

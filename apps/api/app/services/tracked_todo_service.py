@@ -17,14 +17,14 @@ JuiceFS / FUSE mount is required, so tracked todos work in every dev mode.
 
 from datetime import UTC, datetime
 
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.todos import GAIA_TRACKED_LABEL, TodoActivityEvent
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import Priority, TodoDocument, TodoModel, TodoResponse, TodoUpdate
-from app.services.canvas_markdown import split_legacy_canvas
+from app.services.canvas_markdown import normalize_canvas
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from app.services.storage._vfs_common import folder_name
+from app.services.todo_activity import activity_line, record_activity
 from app.services.todo_canvas_storage import (
-    append_activity,
     append_log,
     build_vfs_label,
     write_canvas_and_activity,
@@ -131,22 +131,20 @@ class TrackedTodoService:
 
         vfs_path = build_vfs_label(todo_id)
         canvas_content = initial_canvas or CANVAS_TEMPLATE.format(title=title)
-        # Models still compose an "## Activity Log" inside initial_canvas; keep
-        # canvas.md a recall doc from the first write by splitting it here.
-        canvas_content, moved_activity = split_legacy_canvas(canvas_content)
+        # Models still compose an "## Activity Log" (or skip a section) inside
+        # initial_canvas; keep canvas.md in the template's shape from the first write.
+        canvas_content, moved_activity = normalize_canvas(canvas_content)
         now = datetime.now(UTC)
         # Moved legacy entries come first (oldest-first, like the migration); the
         # creation marker stays last so an edit-append has a line to anchor on,
         # and models reach for edit before write.
-        activity_content = "\n\n".join(
-            p for p in (moved_activity, f"- {now.isoformat()} ▶ tracked todo created") if p
+        created = activity_line(
+            TodoActivityEvent.CREATED,
+            f"from conversation {source_conversation_id[:8]}" if source_conversation_id else "",
+            at=now,
         )
-        log_content = (
-            f"# System Log: {title}\n\n"
-            f"## {now.isoformat()} [CREATED]\n"
-            f"- Source: agent\n"
-            f"- Labels: {', '.join(all_labels)}\n"
-        )
+        activity_content = "\n\n".join(p for p in (moved_activity, created) if p)
+        log_content = f"# System Log: {title}\n"
 
         await todo_repository.update(
             todo_id,
@@ -192,11 +190,7 @@ class TrackedTodoService:
 
         now = datetime.now(UTC)
 
-        await append_log(
-            todo_id,
-            user_id,
-            f"\n## {now.isoformat()} [COMPLETED]\n- Summary: {summary}\n",
-        )
+        await record_activity(todo_id, user_id, TodoActivityEvent.COMPLETED, summary)
 
         # Always derive the archived label — never persist a stored one back.
         # Legacy docs still carry the host-side /users/<uid>/todos/<id> format;
@@ -240,20 +234,6 @@ class TrackedTodoService:
         return "\n".join(lines)
 
     @staticmethod
-    async def append_activity_entry(todo_id: str, user_id: str, entry: str) -> bool:
-        """Append one dated line to activity.md.
-
-        Called by code (not the agent) so scheduled runs leave a paper trail
-        regardless of what the LLM writes.
-        """
-        line = entry if entry.startswith("- ") else f"- {entry}"
-        try:
-            return await append_activity(todo_id, user_id, line)
-        except Exception as e:
-            log.warning("tracked_todo.activity_append_failed", todo_id=todo_id, error=str(e))
-            return False
-
-    @staticmethod
     async def system_log(todo_id: str, user_id: str, event_type: str, details: str) -> None:
         """Append a system log entry to a tracked todo's log.
 
@@ -267,17 +247,16 @@ class TrackedTodoService:
         )
 
     @staticmethod
-    async def migrate_legacy_canvas(doc: TodoDocument) -> bool:
-        """One-shot split of a pre-activity.md canvas. Returns True when it wrote.
+    async def normalize_stored_canvas(doc: TodoDocument) -> bool:
+        """Repair a canvas into the template's shape (see normalize_canvas). True when it wrote.
 
-        Legacy canvases carried an Activity Log / Timeline section inside the
-        canvas (and append mode stranded dated entries under Learnings). Those
-        move to activity_content; moved legacy entries come first because they
-        predate anything written to activity.md post-deploy.
+        Activity inside the canvas (legacy sections, append-mode dated entries,
+        "Activity Log (append)" and the like) moves to activity_content, first,
+        because it predates anything written to activity.md since.
         """
         if not doc.canvas_content:
             return False
-        canvas, moved = split_legacy_canvas(doc.canvas_content)
+        canvas, moved = normalize_canvas(doc.canvas_content)
         if canvas == doc.canvas_content:
             return False
         parts = [p for p in (moved, doc.activity_content) if p]
@@ -295,7 +274,7 @@ class TrackedTodoService:
         fresh = await todo_repository.get(doc.id, user_id=doc.user_id)
         if fresh is None or not fresh.canvas_content:
             return False
-        canvas, moved = split_legacy_canvas(fresh.canvas_content)
+        canvas, moved = normalize_canvas(fresh.canvas_content)
         if canvas == fresh.canvas_content:
             return False
         parts = [p for p in (moved, fresh.activity_content) if p]
@@ -311,7 +290,10 @@ class TrackedTodoService:
     async def schedule_execution(todo_id: str, scheduled_at: datetime) -> bool:
         """Enqueue an ARQ deferred job to execute this tracked todo at scheduled_at.
 
-        Returns True if job was enqueued successfully, False otherwise.
+        The todo's stored scheduled_at must already name this time: a fire that
+        finds it moved is dropped as stale, which is also how a reschedule
+        retires the job it replaces (ARQ cannot cancel a deferred job).
+        Returns True if the job was enqueued.
         """
         try:
             pool = await RedisPoolManager.get_pool()
@@ -327,29 +309,13 @@ class TrackedTodoService:
             return False
 
     @staticmethod
-    async def reschedule_execution(todo_id: str, new_scheduled_at: datetime) -> bool:
-        """Cancel any existing ARQ job for this todo and enqueue a new one.
-
-        Note: ARQ does not support cancelling deferred jobs by argument.
-        We enqueue a new job; the task itself uses a Redis lock to prevent
-        double-execution. This is safe — at most one execution fires per lock window.
-        """
-        return await TrackedTodoService.schedule_execution(todo_id, new_scheduled_at)
-
-    @staticmethod
     async def archive_tracked_todo(todo_id: str, user_id: str, reason: str) -> bool:
         """Archive a tracked todo by marking it completed with a system-generated summary.
 
-        Used by maintenance sweep when a todo expires cleanly (no action needed).
-        Logs the archival reason to log.md before completing.
+        Used by maintenance sweep when a todo expires cleanly (no action needed);
+        the completion entry in activity.md carries the reason.
         """
         try:
-            await TrackedTodoService.system_log(
-                todo_id,
-                user_id,
-                "auto_archived",
-                f"Archived by maintenance sweep: {reason}",
-            )
             return await TrackedTodoService.complete_tracked_todo(
                 todo_id, user_id, summary=f"Auto-archived: {reason}"
             )

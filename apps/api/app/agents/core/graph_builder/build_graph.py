@@ -74,7 +74,6 @@ EXECUTOR_INITIAL_TOOL_IDS = [
     "read_manual",
     "create_tracked_todo",
     "update_tracked_todo",
-    "update_tracked_todo_canvas",
     "complete_tracked_todo",
     "search_todo_context",
     "list_tracked_todos",

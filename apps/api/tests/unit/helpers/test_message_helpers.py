@@ -51,7 +51,7 @@ class TestCreateSystemMessage:
         # Output-format addenda are inline in the static per-channel prompt (web
         # has OpenUI, text-only has platform restrictions). Assert on the addendum
         # marker, not the fence literal: the base prompt names :::openui either way.
-        assert "---OpenUI Lang (Rich UI Components)---" in web_a.content
+        assert "## Output Format (this app renders rich components)" in web_a.content
         assert "Platform Context" in whatsapp.content
 
     def test_executor_agent_is_static(self) -> None:

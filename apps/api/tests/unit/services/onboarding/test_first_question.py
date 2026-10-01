@@ -132,7 +132,7 @@ class TestCommsVoiceRules:
         from app.agents.prompts.comms_prompts import COMMS_AGENT_PROMPT
 
         start = COMMS_AGENT_PROMPT.index("## Voice")
-        end = COMMS_AGENT_PROMPT.index("## Length Modes")
+        end = COMMS_AGENT_PROMPT.index("## Reply, react, or stay silent")
 
         assert comms_voice_rules() == COMMS_AGENT_PROMPT[start:end].strip()
 
@@ -141,36 +141,38 @@ class TestCommsVoiceRules:
 
         assert rules.startswith("## Voice\n")
         assert not rules.endswith("\n")
-        assert "## Length Modes" not in rules
-        assert "TONE MIRRORING" in rules
+        assert "## Reply, react, or stay silent" not in rules
+        assert "MATCH THEM." in rules
 
     def test_a_voice_section_at_the_very_start_is_still_read_whole(self) -> None:
         """The end marker is searched from just after the start marker, or the section is lost when it opens the prompt."""
-        prompt = "## Voice\nbe brief\n\n## Length Modes\nshort"
+        prompt = "## Voice\nbe brief\n\n## Reply, react, or stay silent\nshort"
         with patch(f"{MODULE}.COMMS_AGENT_PROMPT", prompt):
             assert comms_voice_rules() == "## Voice\nbe brief"
 
     def test_a_voice_section_one_character_in_is_still_read(self) -> None:
         """Guards a boundary the compiler cannot: index 1 is ordinary, not a sentinel meaning "missing"."""
-        prompt = "\n## Voice\nbe brief\n\n## Length Modes\nshort"
+        prompt = "\n## Voice\nbe brief\n\n## Reply, react, or stay silent\nshort"
         with patch(f"{MODULE}.COMMS_AGENT_PROMPT", prompt):
             assert comms_voice_rules() == "## Voice\nbe brief"
 
     def test_the_first_voice_heading_wins_over_a_later_mention(self) -> None:
         """Taking the last occurrence instead picks up a cross-reference further down and hands the model everything between."""
-        prompt = "## Voice\nbe brief\n\n## Length Modes\nshort\n\nsee ## Voice above"
+        prompt = (
+            "## Voice\nbe brief\n\n## Reply, react, or stay silent\nshort\n\nsee ## Voice above"
+        )
         with patch(f"{MODULE}.COMMS_AGENT_PROMPT", prompt):
             assert comms_voice_rules() == "## Voice\nbe brief"
 
     def test_the_closing_heading_is_looked_for_after_the_section_starts(self) -> None:
-        """An earlier "## Length Modes" is not this section's end; searching from the top would return an empty slice."""
-        prompt = "## Length Modes\nearly\n\n## Voice\nbe brief\n\n## Length Modes\nshort"
+        """An earlier closing heading is not this section's end; searching from the top would return an empty slice."""
+        prompt = "## Reply, react, or stay silent\nearly\n\n## Voice\nbe brief\n\n## Reply, react, or stay silent\nshort"
         with patch(f"{MODULE}.COMMS_AGENT_PROMPT", prompt):
             assert comms_voice_rules() == "## Voice\nbe brief"
 
     def test_the_section_stops_at_the_first_closing_heading_not_the_last(self) -> None:
         """Taking the last closing heading instead would swallow every section in between into the voice rules."""
-        prompt = "## Voice\nbe brief\n\n## Length Modes\nshort\n\n## Length Modes\nagain"
+        prompt = "## Voice\nbe brief\n\n## Reply, react, or stay silent\nshort\n\n## Reply, react, or stay silent\nagain"
         with patch(f"{MODULE}.COMMS_AGENT_PROMPT", prompt):
             assert comms_voice_rules() == "## Voice\nbe brief"
 
@@ -185,7 +187,7 @@ class TestCommsVoiceRules:
 
     def test_a_prompt_without_the_voice_heading_contributes_nothing(self) -> None:
         """A rename upstream must drop the section, not paste the whole comms prompt (or a stray tail) into the question prompt."""
-        with patch(f"{MODULE}.COMMS_AGENT_PROMPT", "## Length Modes\nshort"):
+        with patch(f"{MODULE}.COMMS_AGENT_PROMPT", "## Reply, react, or stay silent\nshort"):
             assert comms_voice_rules() == ""
 
     def test_a_prompt_without_the_following_heading_contributes_nothing(self) -> None:

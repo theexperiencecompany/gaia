@@ -16,6 +16,7 @@ from dataclasses import replace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
+import httpx
 from langchain_core.callbacks import AsyncCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.outputs import ChatGeneration, Generation, LLMResult
@@ -26,9 +27,11 @@ from langchain_core.runnables import (
     RunnableLambda,
     RunnableSequence,
 )
+from langchain_core.runnables.configurable import RunnableConfigurableFields
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
+from openai import APIConnectionError, AuthenticationError, RateLimitError
 from pydantic import BaseModel, SecretStr
 import pytest
 
@@ -72,13 +75,17 @@ from app.agents.llm.types import LLMProvider
 from app.config.settings import settings
 from app.constants.llm import (
     AUX_MODEL_NAME,
+    COMMS_MODEL_NAME,
+    COMMS_REASONING_EFFORT,
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_LLM_TEMPERATURE,
+    DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
     HELPER_MAX_OUTPUT_TOKENS,
     HIL_JUDGE_FALLBACK_MODEL_NAMES,
     HIL_JUDGE_MODEL_NAME,
     MEMORY_MODEL_NAME,
+    OPENAI_MAX_OUTPUT_TOKENS,
     OPENROUTER_APP_CATEGORIES,
     OPENROUTER_APP_TITLE,
     OPENROUTER_DEV_APP_TITLE,
@@ -233,6 +240,17 @@ class TestNextFallbackProvider:
         ):
             assert client_module.next_fallback_provider(LLMProviderName.OPENROUTER) is None
 
+    def test_the_comms_model_is_never_another_lanes_fallback(self) -> None:
+        with self._available(LLMProviderName.OPENROUTER, LLMProviderName.OPENAI):
+            assert client_module.next_fallback_provider(LLMProviderName.OPENROUTER) is None
+
+    def test_a_failed_comms_call_falls_back_to_the_default(self) -> None:
+        with self._available(LLMProviderName.OPENAI, LLMProviderName.GEMINI):
+            assert client_module.next_fallback_provider(LLMProviderName.OPENAI) == (
+                LLMProviderName.GEMINI,
+                DEFAULT_GEMINI_MODEL_NAME,
+            )
+
     def test_a_configured_custom_endpoint_is_a_real_fallback_target(self) -> None:
         with (
             self._available(LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM),
@@ -325,6 +343,24 @@ class TestGetOrderedProviders:
         # No preferred, ordered is empty, so all providers by priority added
         names = [p.name for p in ordered]
         assert names == ["openrouter", "gemini"]
+
+    def test_the_comms_model_is_never_an_unpreferred_primary(self) -> None:
+        available: dict[str, Any] = {"openai": _make_fake_provider("openai")}
+        ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=True)
+
+        assert ordered == []
+
+    def test_the_comms_model_stays_selectable_by_name(self) -> None:
+        available: dict[str, Any] = {
+            "openai": _make_fake_provider("openai"),
+            "openrouter": _make_fake_provider("openrouter"),
+        }
+        ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=True)
+
+        assert [(p.name, p.instance) for p in ordered] == [
+            ("openrouter", available["openrouter"]),
+            ("openai", available["openai"]),
+        ]
 
     def test_empty_available(self) -> None:
         ordered = _get_ordered_providers({}, preferred_provider=None, fallback_enabled=True)
@@ -425,15 +461,15 @@ class TestInitLlm:
         mock_log: MagicMock,
     ) -> None:
         """A missing entry logs the provider name, not an empty model."""
-        primary = _make_llm_provider("openai")
-        mock_available.return_value = {"openai": primary.instance}
+        primary = _make_llm_provider("cerebras")
+        mock_available.return_value = {"cerebras": primary.instance}
         mock_ordered.return_value = [primary]
         mock_create.return_value = MagicMock()
 
         init_llm()
 
-        assert "openai" not in PROVIDER_MODELS
-        assert mock_log.set.call_args.kwargs["llm"]["model"] == "openai"
+        assert "cerebras" not in PROVIDER_MODELS
+        assert mock_log.set.call_args.kwargs["llm"]["model"] == "cerebras"
 
     def test_invalid_provider_raises_value_error(self) -> None:
         with pytest.raises(ValueError, match="Invalid preferred_provider 'cerebras'"):
@@ -1297,7 +1333,7 @@ class TestRegisterLlmProviders:
 
 class TestConstants:
     def test_provider_models_keys(self) -> None:
-        assert set(PROVIDER_MODELS.keys()) == {"gemini", "openrouter", "custom"}
+        assert set(PROVIDER_MODELS.keys()) == {"gemini", "openrouter", "custom", "openai"}
 
     def test_provider_priority_values(self) -> None:
         assert set(PROVIDER_PRIORITY.values()) == {"gemini", "openrouter", "custom"}
@@ -1331,6 +1367,61 @@ class TestConstants:
 
         for cls in (ChatGoogleGenerativeAIError, ServerError, ClientError, APIError):
             assert issubclass(cls, LLM_FALLBACK_EXCEPTIONS), cls.__name__
+
+    @pytest.mark.parametrize(
+        ("sim_mode", "api_key", "available"),
+        [(False, "sk-test", True), (True, None, True), (False, None, False)],
+    )
+    def test_the_openai_lane_needs_a_key_or_sim_mode(
+        self, monkeypatch: pytest.MonkeyPatch, sim_mode: bool, api_key: str | None, available: bool
+    ) -> None:
+        monkeypatch.setattr(client_module.settings, "GAIA_SIM_MODE", sim_mode)
+        monkeypatch.setattr(client_module.settings, "OPENAI_API_KEY", api_key)
+
+        assert client_module.openai_lane_available() is available
+
+    def test_the_openai_lane_builds_a_tool_capable_luna_client(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Chat completions rejects function tools at any reasoning effort but none."""
+        monkeypatch.setattr(client_module.settings, "GAIA_SIM_MODE", False)
+        monkeypatch.setattr(client_module.settings, "OPENAI_API_KEY", "sk-test")
+        # langchain drops its own stream_usage default under a base-URL override
+        monkeypatch.setenv("OPENAI_BASE_URL", "https://proxy.example/v1")
+
+        llm = client_module.init_openai_llm().loader_func()
+
+        assert isinstance(llm, RunnableConfigurableFields)
+        assert llm.fields == {"model_name": _MODEL_FIELD}
+        chat = llm.default
+        assert isinstance(chat, ChatOpenAI)
+        assert chat.model_name == COMMS_MODEL_NAME
+        assert chat.reasoning_effort == COMMS_REASONING_EFFORT == "none"
+        assert chat.max_tokens == OPENAI_MAX_OUTPUT_TOKENS
+        assert chat.streaming is True
+        assert chat.stream_usage is True
+        assert chat.max_retries == 0
+        assert chat.temperature == DEFAULT_LLM_TEMPERATURE
+        assert chat.openai_api_key is not None
+        assert chat.openai_api_key.get_secret_value() == "sk-test"  # pragma: allowlist secret
+        assert chat.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
+
+    def test_openai_transient_errors_are_retried_and_every_openai_error_falls_back(self) -> None:
+        """The comms lane runs the OpenAI SDK: without these an OpenAI outage fails the turn with no fallback."""
+        request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+        rate_limited = RateLimitError(
+            "slow down", response=httpx.Response(429, request=request), body=None
+        )
+        unauthorized = AuthenticationError(
+            "bad key", response=httpx.Response(401, request=request), body=None
+        )
+        disconnected = APIConnectionError(request=request)
+
+        assert isinstance(rate_limited, LLM_RETRYABLE_EXCEPTIONS)
+        assert isinstance(disconnected, LLM_RETRYABLE_EXCEPTIONS)
+        assert not isinstance(unauthorized, LLM_RETRYABLE_EXCEPTIONS)
+        for exc in (rate_limited, unauthorized, disconnected):
+            assert isinstance(exc, LLM_FALLBACK_EXCEPTIONS), type(exc).__name__
 
     def test_non_retryable_exception_not_in_tuple(self) -> None:
         assert not isinstance(ValueError("bad"), LLM_RETRYABLE_EXCEPTIONS)
