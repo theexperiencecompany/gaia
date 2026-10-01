@@ -1279,6 +1279,20 @@ async def test_the_session_the_run_opened_is_logged_onto_the_wide_event(
     assert {"session_id": "sess-1"} in logged
 
 
+async def test_a_paused_run_keeps_its_own_browser_alive(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def body(h: Harness) -> BrowserResultSnapshot:
+        await h.request_handoff(HandoffRequest(category=SensitiveCategory.PAYMENT, reason="pay"))
+        return _result(BrowserSessionStatus.COMPLETED, True, "done")
+
+    keep_alive = AsyncMock()
+    monkeypatch.setattr(jr, "keep_session_alive", keep_alive)
+    h = _install(monkeypatch, run_body=body)
+
+    await _run(h, _request(task="x"))
+
+    keep_alive.assert_called_once_with(h.session)
+
+
 async def test_a_completed_login_takeover_marks_the_session_worth_saving(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
