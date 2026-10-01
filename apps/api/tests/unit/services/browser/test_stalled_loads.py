@@ -228,6 +228,41 @@ async def test_a_form_submission_is_never_stopped(
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("ended_by", ["a_link_request", "its_commit"])
+async def test_a_form_submission_mark_ends_with_its_navigation(
+    watched: tuple[StalledLoads, _FakeClient], ended_by: str
+) -> None:
+    guard, client = watched
+    request = {"frameId": TAB, "url": "http://example.com:81/", "disposition": "currentTab"}
+    client.handlers["requested"]({**request, "reason": "formSubmissionPost"}, "S1")
+    if ended_by == "a_link_request":
+        client.handlers["requested"]({**request, "reason": "anchorClick"}, "S1")
+    else:
+        client.handlers["committed"]({"frame": {"id": TAB}, "type": "Navigation"}, "S1")
+
+    _start(client, "S1")
+    await _settle()
+
+    assert client.stopped == ["S1"]
+
+
+@pytest.mark.unit
+async def test_a_load_that_finished_before_browser_use_called_it_done_is_not_reported(
+    watched: tuple[StalledLoads, _FakeClient],
+) -> None:
+    guard, client = watched
+    _start(client, "S1")
+    client.handlers["committed"]({"frame": {"id": TAB}, "type": "Navigation"}, "S1")
+    client.handlers["stopped"]({"frameId": TAB}, "S1")
+    # A child frame that stops loading was never a tab's load.
+    client.handlers["stopped"]({"frameId": "IFRAME-1"}, "S1")
+
+    guard.on_navigation_complete(SimpleNamespace(target_id=TAB, error_message=None))
+
+    assert guard.take_unfinished() == []
+
+
+@pytest.mark.unit
 async def test_a_stop_the_tab_never_answers_is_logged_not_waited_on(
     watched: tuple[StalledLoads, _FakeClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
