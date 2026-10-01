@@ -34,6 +34,7 @@ from app.constants.browser import (
     JevOperation,
     JevStop,
 )
+from app.constants.log_tags import LogTag
 from app.patches.obscura_sessions import on_obscura
 from app.schemas.browser import (
     AgentGuidanceRequest,
@@ -865,6 +866,29 @@ class TestExecute:
         assert list(_Agent.files.iterdir()) == []
         # A run that never finished has no page to resume at.
         assert harness.run.last_url is None
+
+    async def test_files_that_cannot_be_removed_are_named_and_the_run_keeps_its_own_ending(
+        self, harness: _Harness, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        class _Unremovable(_Agent):
+            def __init__(self, **options: Any) -> None:
+                super().__init__(**options)
+                # A file where a directory should be: removing it fails.
+                self.file_system_path = str(self.files / "not_a_directory")
+                Path(self.file_system_path).write_text("")
+
+        monkeypatch.setattr(agent_run_mod, "Agent", _Unremovable)
+        _Agent.raises = RuntimeError("engine gone")
+
+        async with captured_wide_event() as event:
+            with pytest.raises(RuntimeError, match="engine gone"):
+                await harness.run.execute("read my orders")
+
+        assert {
+            "msg": f"{LogTag.BROWSER} Browser agent files not removed",
+            "path": str(_Agent.files / "not_a_directory"),
+            "error_type": "NotADirectoryError",
+        } in event["warnings"]
 
     @pytest.mark.parametrize(
         ("start_url", "page"),
