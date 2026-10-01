@@ -201,16 +201,31 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", long_rules[: todo_constants.STANDING_RULES_MAX_CHARS]
+            "Watch the deploy",
+            long_rules[: todo_constants.STANDING_RULES_MAX_CHARS],
+            "- thread abc",
         )
 
-    async def test_key_details_alone_are_not_rules(self) -> None:
+    async def test_key_details_reach_the_write_up_as_details_not_rules(self) -> None:
         todo = _todo(canvas_content="## Standing rules\n\n## Key Details\n- thread abc\n")
         with _seams(todo=todo) as seams:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", None
+            "Watch the deploy", None, "- thread abc"
+        )
+
+    @pytest.mark.regression
+    async def test_a_request_an_older_todo_kept_in_key_details_still_reaches_the_write_up(
+        self,
+    ) -> None:
+        details = "- tell me every time.\n" + "x" * todo_constants.DELIVERY_KEY_DETAILS_MAX_CHARS
+        todo = _todo(canvas_content=f"## Key Details\n{details}\n\n## Current State\n- ok\n")
+        with _seams(todo=todo) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
+            "Watch the deploy", None, details[: todo_constants.DELIVERY_KEY_DETAILS_MAX_CHARS]
         )
 
     @pytest.mark.regression
@@ -220,7 +235,7 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", None
+            "Watch the deploy", None, None
         )
 
     @pytest.mark.regression
@@ -230,7 +245,7 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", "- 2026-09-28: tell me every time."
+            "Watch the deploy", "- 2026-09-28: tell me every time.", None
         )
 
     async def test_a_todo_without_standing_rules_gets_the_defaults_alone(self) -> None:
@@ -238,7 +253,7 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", None
+            "Watch the deploy", None, None
         )
 
     async def test_a_todo_with_no_canvas_gets_the_defaults_alone(self) -> None:
@@ -246,5 +261,5 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", None
+            "Watch the deploy", None, None
         )

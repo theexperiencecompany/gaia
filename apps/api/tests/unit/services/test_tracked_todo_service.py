@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants import todos as todo_constants
 from app.constants.todos import CANVAS_SECTIONS, GAIA_TRACKED_LABEL, TodoActivityEvent
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.models.todo_models import (
@@ -28,6 +29,7 @@ from app.models.trigger_subscription_models import (
     SubscriptionCondition,
 )
 from app.services.canvas_markdown import normalize_canvas
+from app.services.todos import errors as todo_errors
 from app.services.todos.errors import SubTodoParentError
 from app.services.tracked_todo_service import (
     CANVAS_TEMPLATE,
@@ -417,6 +419,17 @@ class TestCreateTrackedTodo:
         )
 
         assert mock_deps.create.call_args.args[0].references == ["desk-1", "lease-1"]
+
+    async def test_standing_rules_over_their_cap_save_nothing(self, mock_repo, mock_deps):
+        rules = "- " + "x" * todo_constants.STANDING_RULES_MAX_CHARS
+
+        with pytest.raises(todo_errors.CanvasShapeError, match="shorten"):
+            await TrackedTodoService.create_tracked_todo(
+                USER_ID, "Inbox desk", initial_canvas=f"## Standing rules\n{rules}\n"
+            )
+
+        mock_deps.create.assert_not_awaited()
+        mock_repo.update.assert_not_awaited()
 
 
 _PARENT_ID = "66f838cc8829054e5f10e401"

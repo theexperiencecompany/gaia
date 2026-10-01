@@ -12,7 +12,7 @@ pytestmark = pytest.mark.unit
 
 def _note() -> str:
     # Built per test, not at import: mutmut only credits a test with code it runs.
-    return tracked_todo_delivery_note("Watch the deploy", None)
+    return tracked_todo_delivery_note("Watch the deploy", None, None)
 
 
 class TestTrackedTodoDeliveryNote:
@@ -59,10 +59,18 @@ class TestTrackedTodoDeliveryNote:
 
     def test_the_todos_standing_rules_sit_before_the_defaults(self) -> None:
         """Regression: "tell me every time" lived only in the canvas, and a real model silenced every run."""
-        note = tracked_todo_delivery_note("Word count", "- Tell me the result every time.")
+        note = tracked_todo_delivery_note("Word count", "- Tell me the result every time.", None)
 
         assert (
             "kept in the todo. Its Standing rules, the user's own instructions for this todo, "
             "which win over the defaults below:\n"
             "- Tell me the result every time.\nMessage the user when"
+        ) in note
+
+    def test_key_details_follow_the_rules_as_details_of_their_own(self) -> None:
+        note = tracked_todo_delivery_note("Word count", "- Be brief.", "- tell me every time")
+
+        assert (
+            "- Be brief.\nIts Key Details, which can also hold a request of theirs:\n"
+            "- tell me every time\nMessage the user when"
         ) in note
