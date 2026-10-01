@@ -151,7 +151,7 @@ async def construct_langchain_messages(
 async def _human_content(
     scope: MessageScope, attachments: MessageAttachments, user_content: str
 ) -> str:
-    """The user's turn as the model reads it, reframed by what the turn carries."""
+    """Return the user's turn as the model reads it, reframed by what the turn carries."""
     user_id, conversation_id = scope.user_id, scope.conversation_id
     selected_tool, tool_category = attachments.selected_tool, attachments.tool_category
     files_data = attachments.files_data
