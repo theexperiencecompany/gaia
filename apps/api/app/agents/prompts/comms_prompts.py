@@ -479,12 +479,14 @@ PLATFORM_DELIVERY_NOTE = wrap_agent_payload(
 )
 
 
-def tracked_todo_delivery_note(todo_title: str, standing_rules: str | None) -> str:
+def tracked_todo_delivery_note(
+    todo_title: str, standing_rules: str | None, key_details: str | None
+) -> str:
     """Build the delivery instructions for a tracked todo's own background run.
 
     Nobody asked for this result, so comms decides only whether it is worth a message.
-    Standing rules ride along because a request like "tell me every time" lives there,
-    and the run's report proved too lossy a relay for it.
+    A request like "tell me every time" lives in Standing rules, or in Key Details on a
+    todo written before that section existed; the run's report is too lossy a relay.
     """
     standing = (
         "Its Standing rules, the user's own instructions for this todo, which win over "
@@ -492,6 +494,8 @@ def tracked_todo_delivery_note(todo_title: str, standing_rules: str | None) -> s
         if standing_rules
         else ""
     )
+    if key_details:
+        standing += f"Its Key Details, which can also hold a request of theirs:\n{key_details}\n"
     return wrap_agent_payload(
         AgentTag.DELIVERY_INSTRUCTIONS,
         f'This is the result of a background run of the user\'s tracked todo "{todo_title}". '

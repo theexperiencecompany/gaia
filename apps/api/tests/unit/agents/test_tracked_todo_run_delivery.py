@@ -159,7 +159,7 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
         assert user.user_id == USER.user_id
         assert seams.narrate.await_args.kwargs == {
             "preamble": tracked_todo_delivery_note(
-                "Watch the staging deploy", "- Tell me when a deploy fails."
+                "Watch the staging deploy", "- Tell me when a deploy fails.", None
             )
         }
         assert f"<{AgentTag.DELIVERY_INSTRUCTIONS}>" in seams.narrate.await_args.kwargs["preamble"]
