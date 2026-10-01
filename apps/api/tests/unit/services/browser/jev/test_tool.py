@@ -178,4 +178,7 @@ def test_each_action_line_says_what_it_targeted_set_typed_and_whether_the_page_c
         "  4. SCROLL_DOWN Scroll down",
     ]
     assert lines[7] == "Now on: B (https://site.test/b)"
-    assert "12 more controls" in lines[8]
+    assert lines[8] == (
+        "This page has 12 more controls than Jev reads; it saw only the first ones in the "
+        "page's order."
+    )

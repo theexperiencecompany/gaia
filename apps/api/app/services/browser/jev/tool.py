@@ -95,6 +95,10 @@ _STOP_MEANING = {
 }
 
 
+#: Whether an action changed the page, as its report line says.
+_CHANGED = {True: " (page changed)", False: " (no change)"}
+
+
 class JevParams(BaseModel):
     goal: str = Field(
         description="What Jev should achieve, self-contained, with every value quoted."
@@ -109,14 +113,44 @@ def _step_action(step: JevStep) -> BrowserAction:
     inputs: dict[str, object] = {}
     if step.operation is JevOperation.TYPE_TEXT and step.text is not None:
         inputs["text"] = step.text
-    elif step.operation is JevOperation.SELECT and step.option is not None:
+    elif step.option is not None:
         inputs["text"] = step.option
-    elif step.operation is JevOperation.NAVIGATE and step.opened is not None:
+    elif step.opened is not None:
         inputs["url"] = step.opened
     elif step.operation is JevOperation.PRESS_ENTER:
         inputs["keys"] = "Enter"
     target = step.label if step.operation in (JevOperation.CLICK, JevOperation.TYPE_TEXT) else None
     return BrowserAction(name=name, inputs=inputs, target=target)
+
+
+def _step_line(n: int, step: JevStep) -> str:
+    """Return one action as the report lists it: what it targeted, set or typed, and what changed."""
+    ident = f" [#{step.ident}]" if step.ident else ""
+    link = f" -> {step.href}" if step.href else ""
+    chosen = f' -> "{step.option}"' if step.option is not None else ""
+    typed = f' = "{step.text}"' if step.text is not None else ""
+    held = f" (the field holds {step.held})" if step.held is not None else ""
+    changed = "" if step.page_changed is None else _CHANGED[step.page_changed]
+    return f"  {n}. {step.operation.value} {step.label}{ident}{link}{chosen}{typed}{held}{changed}"
+
+
+def _page_lines(result: BurstResult) -> list[str]:
+    """Return what the report says of the page Jev ended on: its text, controls left out and hidden frames."""
+    lines = [f"Now on: {result.title} ({result.url})"]
+    if result.text:
+        lines.append(
+            f"Visible text of this page, verbatim:\n{result.text[:JEV_REPORT_PAGE_TEXT_CHARS]}"
+        )
+    if result.omitted_controls:
+        lines.append(
+            f"This page has {result.omitted_controls} more controls than Jev reads; it saw "
+            "only the first ones in the page's order."
+        )
+    if result.hidden_frames:
+        lines.append(
+            "Frames on this page Jev cannot see into: " + ", ".join(result.hidden_frames[:5])
+        )
+    return lines
 
 
 def report(result: BurstResult) -> str:
@@ -127,43 +161,17 @@ def report(result: BurstResult) -> str:
     ]
     if result.steps:
         lines.append(f"Actions ({len(result.steps)}):")
-        for n, step in enumerate(result.steps, 1):
-            typed = f' = "{step.text}"' if step.text is not None else ""
-            chosen = f' -> "{step.option}"' if step.option is not None else ""
-            held = f" (the field holds {step.held})" if step.held is not None else ""
-            changed = (
-                ""
-                if step.page_changed is None
-                else (" (page changed)" if step.page_changed else " (no change)")
-            )
-            ident = f" [#{step.ident}]" if step.ident else ""
-            link = f" -> {step.href}" if step.href else ""
-            lines.append(
-                f"  {n}. {step.operation.value} {step.label}{ident}{link}{chosen}{typed}{held}{changed}"
-            )
+        lines.extend(_step_line(n, step) for n, step in enumerate(result.steps, 1))
     else:
         lines.append("Actions: none.")
     earlier = result.opened[-JEV_REPORT_OPENED_PAGES:]
     if earlier:
         lines.append("Other pages Jev opened in this burst, with the start of their text:")
-        for page in earlier:
-            lines.append(
-                f"--- {page.title} ({page.url})\n{page.text[:JEV_REPORT_OPENED_PAGE_CHARS]}"
-            )
-    lines.append(f"Now on: {result.title} ({result.url})")
-    if result.text:
-        visible = result.text[:JEV_REPORT_PAGE_TEXT_CHARS]
-        lines.append(f"Visible text of this page, verbatim:\n{visible}")
-    if result.omitted_controls:
-        lines.append(
-            f"This page has {result.omitted_controls} more controls than Jev reads; it saw "
-            "only the first ones in the page's order."
+        lines.extend(
+            f"--- {page.title} ({page.url})\n{page.text[:JEV_REPORT_OPENED_PAGE_CHARS]}"
+            for page in earlier
         )
-    if result.hidden_frames:
-        lines.append(
-            "Frames on this page Jev cannot see into: " + ", ".join(result.hidden_frames[:5])
-        )
-    return "\n".join(lines)
+    return "\n".join([*lines, *_page_lines(result)])
 
 
 class JevDelegate:

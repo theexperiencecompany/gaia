@@ -514,36 +514,48 @@ class JevPage:
         """
         if not await self.fresh(page, action):
             raise StalePage(_MOVED_ON)
-        kind = action["kind"]
         session = await self._session()
         # Chrome gives a tab's main frame its target's id.
         self._requests.watch(session.session_id, session.target_id)
-        if kind == "wait":
-            self._after_input = action
+        if action["kind"] in ("wait", "back") or (
+            action["kind"] == "scroll" and "node" not in action
+        ):
+            await self._on_page(session, action)
             return None
-        if kind == "scroll" and "node" not in action:
-            await self._mouse(session, self._wheel(action, None))
-            self._after_input = action
-            return None
-        if kind == "back":
+        if text is not None and action.get("input_type") in _SET_IN_PAGE:
+            return await self._set(action, text)
+        target = await self._evaluate(_ACT.call(action))
+        if target is None:
+            raise Covered(_COVERED)
+        self._after_input = action
+        return await self._on_target(session, action, target, text)
+
+    async def _on_page(self, session: CDPSession, action: PageAction) -> None:
+        """Act on the page as a whole: wait for it, go back in its history, or scroll it."""
+        self._after_input = action
+        if action["kind"] == "back":
             await _bounded(
                 session.cdp_client.send.Page.navigateToHistoryEntry(
                     params={"entryId": action["entry"]}, session_id=session.session_id
                 ),
                 "Page.navigateToHistoryEntry",
             )
-            self._after_input = action
-            return None
-        if text is not None and action.get("input_type") in _SET_IN_PAGE:
-            held = await self._evaluate(_SET.call({"node": action["node"], "text": text}))
-            if held is None:
-                raise Covered(_COVERED)
-            self._after_input = action
-            return str(held)
-        target = await self._evaluate(_ACT.call(action))
-        if target is None:
+        elif action["kind"] == "scroll":
+            await self._mouse(session, self._wheel(action, None))
+
+    async def _set(self, action: PageAction, text: str) -> str:
+        """Set a field whose value is a format in the page; return what it holds after."""
+        held = await self._evaluate(_SET.call({"node": action["node"], "text": text}))
+        if held is None:
             raise Covered(_COVERED)
         self._after_input = action
+        return str(held)
+
+    async def _on_target(
+        self, session: CDPSession, action: PageAction, target: object, text: str | None
+    ) -> str | None:
+        """Send the input a reachable target takes: none for a set dropdown, Enter, the wheel, or a press."""
+        kind = action["kind"]
         if kind == "select":
             return None
         if kind == "enter":
@@ -553,6 +565,10 @@ class JevPage:
         if kind == "scroll":
             await self._mouse(session, self._wheel(action, point))
             return None
+        await self._press(session, point)
+        return None if text is None else await self._fill(session, action, text)
+
+    async def _press(self, session: CDPSession, point: _Point) -> None:
         self._click_mark = (session.target_id, len(self._opened))
         for event in ("mousePressed", "mouseReleased"):
             await self._mouse(
@@ -565,8 +581,9 @@ class JevPage:
                     "clickCount": 1,
                 },
             )
-        if text is None:
-            return None
+
+    async def _fill(self, session: CDPSession, action: PageAction, text: str) -> str | None:
+        """Type text into the field the press focused; return what it holds after, None once the page went on."""
         try:
             focused = await self._evaluate(_FOCUSED.call(action["node"]))
         except DocumentReplaced:

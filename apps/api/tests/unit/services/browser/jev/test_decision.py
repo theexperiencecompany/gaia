@@ -33,6 +33,7 @@ from app.services.browser.jev.questions import (
     NEXT_ACTION,
     OPERATIONS,
     OPTION,
+    TARGET,
     VALUE,
     VALUE_GENERATE,
     VALUE_NONE,
@@ -171,12 +172,16 @@ def test_a_page_with_more_elements_than_one_request_carries_counts_the_ones_left
     assert space.controls == {JevOperation.WAIT: WAIT}
 
 
-async def test_jev_is_asked_about_the_page_its_elements_what_it_did_and_where_it_has_been() -> None:
+async def test_jev_is_asked_about_the_page_its_elements_what_it_did_and_where_it_has_been(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(decision_mod, "JEV_MAX_ELEMENTS", 3)
     jev = _Jev(operation="DONE")
     history = [RecentAction(action="Search", kind="TYPE_TEXT", text="shoes", page_changed=True)]
     visited = [Visited("Home", "https://shop.test/")]
+    page = _page(SEARCH, SIZE, DAY, BUY, omitted=7)
 
-    await decide(jev, _page(SEARCH, SIZE, DAY, omitted=7), "buy", history, visited, [], _unmasked)
+    await decide(jev, page, "buy", history, visited, [], _unmasked)
 
     state = _asked(jev).state
     assert state["page"] == {
@@ -215,7 +220,8 @@ async def test_jev_is_asked_about_the_page_its_elements_what_it_did_and_where_it
         {"action": "Search", "kind": "TYPE_TEXT", "text": "shoes", "page_changed": True}
     ]
     assert state["visited"] == [{"title": "Home", "url": "https://shop.test/"}]
-    assert state["elements_left_out"] == 7
+    # The snapshot's own cut, and the one a request makes.
+    assert state["elements_left_out"] == 8
 
 
 async def test_the_operation_question_offers_only_what_this_page_and_the_run_allow() -> None:
@@ -304,6 +310,39 @@ async def test_a_chosen_dropdown_is_asked_which_of_its_options_to_set() -> None:
         "field": {"label": "Shirt size", "current_value": "Medium"},
         "rules": OPTION,
     }
+    assert _asked(jev).state == {
+        "page": {"url": "https://shop.test/", "title": "Shop", "text": "Search the shop"},
+        "recent_actions": [{"action": "Buy now", "text": None}],
+    }
+
+
+async def test_each_target_question_shows_its_candidates_as_they_stand_now() -> None:
+    jev = _Jev(operation="DONE")
+    named = _action("e7", 17, "fill", "Name", role="textbox", ident="name", value="Ada")
+
+    await decide(jev, _page(named, BUY, SIZE, SCROLL), "check out", [], [], [], _unmasked)
+
+    questions = _asked(jev).questions
+    assert questions["type_text_target"].criteria == {
+        "1": {"element": "[1] Name", "current_value": "Ada", "role": "textbox", "ident": "name"}
+    }
+    # A dropdown shows the option it holds, not its value; the page scrolls as one target.
+    assert questions["select_target"].criteria == {
+        "3": {
+            "element": "[3] Shirt size",
+            "current_value": "Medium",
+            "role": "combobox",
+            "ident": "size",
+        }
+    }
+    assert questions["scroll_down_target"].criteria == {
+        PAGE_TARGET: {"element": f"[{PAGE_TARGET}] Scroll down the page", "current_value": ""}
+    }
+    assert questions["click_target"].instructions == {
+        "goal": "check out",
+        "operation": "CLICK",
+        "rules": [NEXT_ACTION, TARGET],
+    }
 
 
 def _choice(choice: str, **probabilities: float) -> JevChoiceAnswer:
@@ -318,6 +357,7 @@ def _choice(choice: str, **probabilities: float) -> JevChoiceAnswer:
         pytest.param(
             _choice("DONE", DONE=1.2, BLOCKED=-0.2).model_dump(), id="negative-probability"
         ),
+        pytest.param(_choice("DONE", DONE=1.01, BLOCKED=0.0).model_dump(), id="above-one"),
         pytest.param(_choice("DONE", DONE=math.nan, BLOCKED=0.2).model_dump(), id="not-a-number"),
         pytest.param(
             _choice("DONE", DONE=0.5, BLOCKED=0.3).model_dump(), id="probabilities-sum-short"

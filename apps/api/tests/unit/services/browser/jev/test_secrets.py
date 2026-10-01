@@ -91,6 +91,7 @@ def test_a_text_cut_inside_a_value_keeps_no_prefix_of_it() -> None:
     secrets = _secrets(password="hunter2-secret")
 
     assert secrets.excerpt("welcome back hunter2-se", cut=True) == "welcome back "
+    assert secrets.excerpt("welcome back h", cut=True) == "welcome back "
     assert secrets.excerpt("welcome back hunter2-secret", cut=True) == (
         "welcome back <secret>password</secret>"
     )

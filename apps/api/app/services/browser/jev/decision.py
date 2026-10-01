@@ -151,50 +151,61 @@ class _ActionSpace:
     #: Per target operation: target index -> snapshot action.
     targets: dict[JevOperation, dict[str, PageAction]] = field(default_factory=dict)
     controls: dict[JevOperation, PageAction] = field(default_factory=dict)
-    #: Elements the page offered beyond what one request may carry.
-    left_out: int = 0
+    _by_node: dict[int, _Element] = field(default_factory=dict)
+    #: The nodes the page offered beyond what one request may carry.
+    _left_out: set[int] = field(default_factory=set)
+
+    @property
+    def left_out(self) -> int:
+        return len(self._left_out)
+
+    def add(self, action: PageAction) -> None:
+        """Index one snapshot action: a page-level control, the page's own scroll, or an element's."""
+        kind = action["kind"]
+        if kind in _CONTROL_OPERATION:
+            self.controls[_CONTROL_OPERATION[kind]] = action
+            return
+        operation = _KIND_OPERATION[kind] if kind != "scroll" else _scroll_operation(action)
+        if kind == "scroll" and "node" not in action:
+            self.targets.setdefault(operation, {})[PAGE_TARGET] = action
+            return
+        element = self._element(action)
+        if element is None:
+            return
+        if operation not in element.operations:
+            element.operations.append(operation)
+        self.targets.setdefault(operation, {})[element.index] = action
+
+    def _element(self, action: PageAction) -> _Element | None:
+        """Return the element an action targets, indexed once; None past the request's limit."""
+        node = action["node"]
+        if node in self._by_node:
+            return self._by_node[node]
+        if len(self._by_node) >= JEV_MAX_ELEMENTS:
+            self._left_out.add(node)
+            return None
+        fields = {k: v for k, v in _fields(action, _ELEMENT_FIELDS).items() if v != ""}
+        if action["kind"] == "select":
+            # A dropdown shows its current choice; its options are asked once it is chosen.
+            fields["value"] = action["current_value"]
+        element = _Element(index=str(len(self.elements) + 1), label=action["label"], fields=fields)
+        self._by_node[node] = element
+        self.elements.append(element)
+        return element
 
 
 def action_space(actions: list[PageAction]) -> _ActionSpace:
     """One index per observed element; each operation has its own valid targets."""
     space = _ActionSpace()
-    by_node: dict[int, _Element] = {}
-    left_out: set[int] = set()
     for action in actions:
-        kind = action["kind"]
-        if kind in _CONTROL_OPERATION:
-            space.controls[_CONTROL_OPERATION[kind]] = action
-            continue
-        operation = (
-            _KIND_OPERATION[kind]
-            if kind != "scroll"
-            else JevOperation.SCROLL_DOWN
-            if action["delta"] > 0
-            else JevOperation.SCROLL_UP
-        )
-        if kind == "scroll" and "node" not in action:
-            space.targets.setdefault(operation, {})[PAGE_TARGET] = action
-            continue
-        node = action["node"]
-        element = by_node.get(node)
-        if element is None:
-            if len(by_node) >= JEV_MAX_ELEMENTS:
-                left_out.add(node)
-                continue
-            fields = {k: v for k, v in _fields(action, _ELEMENT_FIELDS).items() if v != ""}
-            if kind == "select":
-                # A dropdown shows its current choice; its options are asked once it is chosen.
-                fields["value"] = action["current_value"]
-            element = _Element(
-                index=str(len(space.elements) + 1), label=action["label"], fields=fields
-            )
-            by_node[node] = element
-            space.elements.append(element)
-        if operation not in element.operations:
-            element.operations.append(operation)
-        space.targets.setdefault(operation, {})[element.index] = action
-    space.left_out = len(left_out)
+        space.add(action)
     return space
+
+
+def _scroll_operation(action: PageAction) -> JevOperation:
+    """Return which way a scroll turns: its delta is a whole number of pixels, never 0."""
+    up = action["delta"] < 0  # pragma: no mutate — <, <= 0 and < 1 differ only at a delta of 0
+    return JevOperation.SCROLL_UP if up else JevOperation.SCROLL_DOWN
 
 
 def _fields(action: PageAction, keys: tuple[str, ...]) -> dict[str, object]:
