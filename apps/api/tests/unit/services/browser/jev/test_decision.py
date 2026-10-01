@@ -83,6 +83,9 @@ PASSWORD = _action(
 DAY = _action("e6", 15, "fill", "Day", role="textbox", ident="d", input_type="date", value="")
 LIST = _action("scroll_down_16", 16, "scroll", "Scroll down in Results", delta=240)
 SCROLL = PageAction(id="scroll_down", kind="scroll", label="Scroll down the page", delta=560)
+LIST_UP = PageAction(
+    id="scroll_up_16", node=16, kind="scroll", label="Scroll up in Results", delta=-240
+)
 WAIT = PageAction(id="wait", kind="wait", label="Wait for the page to update")
 ENTER = PageAction(id="enter", kind="enter", node=11, label="Press Enter in Search")
 BACK = PageAction(id="go_back", kind="back", label="Go back to Home", entry=3)
@@ -141,7 +144,7 @@ def _asked(jev: _Jev) -> JevEvaluationRequest:
 
 
 def test_each_element_gets_one_index_and_each_operation_its_own_targets() -> None:
-    space = action_space([SEARCH, OPEN_SEARCH, BUY, SIZE, LIST, SCROLL, WAIT, ENTER, BACK])
+    space = action_space([SEARCH, OPEN_SEARCH, BUY, SIZE, LIST, LIST_UP, SCROLL, WAIT, ENTER, BACK])
 
     assert [(e.index, e.label) for e in space.elements] == [
         ("1", "Search"),
@@ -155,6 +158,7 @@ def test_each_element_gets_one_index_and_each_operation_its_own_targets() -> Non
     assert space.targets[JevOperation.SELECT] == {"3": SIZE}
     # The page scrolls as one target, beside each inner area that scrolls.
     assert space.targets[JevOperation.SCROLL_DOWN] == {PAGE_TARGET: SCROLL, "4": LIST}
+    assert space.targets[JevOperation.SCROLL_UP] == {"4": LIST_UP}
     assert space.controls == {
         JevOperation.WAIT: WAIT,
         JevOperation.PRESS_ENTER: ENTER,

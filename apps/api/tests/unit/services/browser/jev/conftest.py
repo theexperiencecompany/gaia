@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, cast
 
 from app.constants.browser import JevOperation
 from app.services.browser.jev.decision import Decision
@@ -14,6 +14,8 @@ BUTTON = PageAction(id="e1", node=1, kind="click", label="Next", role="button", 
 FIELD = PageAction(id="e2", node=2, kind="fill", label="Name", role="textbox", value="")
 PASSWORD = PageAction(id="e3", node=3, kind="secret", label="Password", role="password", value="")
 BACK = PageAction(id="go_back", kind="back", label="Go back to Site", entry=1)
+#: What a field holds after typing when nothing else is said: what was typed.
+TYPED = object()
 ENTER = PageAction(id="enter", kind="enter", node=2, label="Press Enter in Name")
 
 
@@ -47,7 +49,7 @@ class FakePage:
         act_raises: Exception | list[Exception | None] | None = None,
         new_tab: PageState | None = None,
         unsettled: bool = False,
-        holds: str | None = None,
+        holds: object = TYPED,
         read_fails: tuple[int, Exception] | None = None,
         navigate_fails: Exception | None = None,
     ) -> None:
@@ -93,7 +95,7 @@ class FakePage:
         self._moved()
         if text is None:
             return None
-        return text if self._holds is None else self._holds
+        return text if self._holds is TYPED else cast("str | None", self._holds)
 
     async def navigate(self, url: str) -> None:
         if self._navigate_fails is not None:

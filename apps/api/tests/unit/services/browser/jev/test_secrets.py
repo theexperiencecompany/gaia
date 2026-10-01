@@ -96,6 +96,7 @@ def test_a_text_cut_inside_a_value_keeps_no_prefix_of_it() -> None:
         "welcome back <secret>password</secret>"
     )
     assert secrets.excerpt("a hunter", cut=False) == "a hunter"
+    assert RunSecrets({}).excerpt("a hunter", cut=True) == "a hunter"
 
 
 def test_a_password_the_task_spelled_out_is_hidden_from_people_once_it_is_typed() -> None:

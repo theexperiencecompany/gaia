@@ -103,6 +103,7 @@ _CYCLED: _Ending = (
 )
 #: How many steps one back-and-forth spans: there, back, there again, back again.
 _CYCLE_STEPS = 4
+_SECRET_WRITTEN = "The written value names a secret; nothing was typed."
 #: Unreachable by construction: decide offers an operation only with its target.
 _NO_TARGET = "Jev chose an operation with no target on this page; nothing was executed."
 
@@ -589,7 +590,7 @@ class JevRunner:
         value = completion.completion.text
         if value and holds_placeholder(value):
             # A secret is typed only as itself, on its own site, never inside a written value.
-            raise JevDecisionError("The written value names a secret; nothing was typed.")
+            raise JevDecisionError(_SECRET_WRITTEN)
         if not (value and value.strip()):
             return None
         self._pending_text = (masked, value)
@@ -597,7 +598,7 @@ class JevRunner:
 
     def _shown(self, page: PageState) -> PageState:
         """Return page with its text masked before any cut of it, so a split value leaves no prefix."""
-        return replace(page, text=self._secrets.excerpt(page.text, page.text_cut), text_cut=False)
+        return replace(page, text=self._secrets.excerpt(page.text, page.text_cut))
 
     def _visit(self, page: PageState) -> None:
         """Keep the page's real address, to open it again; every question masks it."""
@@ -623,7 +624,7 @@ class JevRunner:
 def _standing(page: PageState) -> tuple[str, list[str]]:
     """Return what a judgement on page rests on: its key and its controls, wherever they sit."""
     return json.dumps(page.page_key), sorted(
-        json.dumps(control, sort_keys=True) for control in controls(page.actions)
+        json.dumps(control) for control in controls(page.actions)
     )
 
 

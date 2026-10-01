@@ -54,6 +54,8 @@ _CONTROL_OPERATION = {
     "enter": JevOperation.PRESS_ENTER,
     "back": JevOperation.GO_BACK,
 }
+#: How the snapshot names every scroll that turns up: the page's, and each container's.
+_SCROLL_UP_ID = "scroll_up"
 #: The scroll target that is the page itself, beside any inner container's element index.
 PAGE_TARGET = "page"
 NONE_VALUE = "NONE"
@@ -203,8 +205,8 @@ def action_space(actions: list[PageAction]) -> _ActionSpace:
 
 
 def _scroll_operation(action: PageAction) -> JevOperation:
-    """Return which way a scroll turns: its delta is a whole number of pixels, never 0."""
-    up = action["delta"] < 0  # pragma: no mutate — <, <= 0 and < 1 differ only at a delta of 0
+    """Return which way a scroll turns, as the snapshot names it."""
+    up = action["id"].startswith(_SCROLL_UP_ID)
     return JevOperation.SCROLL_UP if up else JevOperation.SCROLL_DOWN
 
 

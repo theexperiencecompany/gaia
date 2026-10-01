@@ -96,9 +96,7 @@ _SET_IN_PAGE = frozenset({"date", "time", "datetime-local", "month", "week", "ra
 _STREAMS = frozenset({"EventSource"})
 
 _NOT_SETTLED = "The page did not settle."
-_REPLACED = "The document was replaced during the call."
 _MOVED_ON = "The page changed since this decision."
-_COVERED = "The target changed or is covered."
 _NOT_FOCUSED = "The field did not take focus when clicked; nothing was typed."
 _SESSION_CALL = "the page's CDP session"
 
@@ -250,19 +248,9 @@ def _key_events(char: str) -> tuple[DispatchKeyEventParameters, DispatchKeyEvent
     return down, up
 
 
-class _Refusal(TypedDict, total=False):
-    """The error object the browser answers a refused call with."""
-
-    code: int
-    message: str
-
-
-def _refusal(exc: RuntimeError) -> _Refusal | None:
-    """Return the browser's own error object when exc is it refusing a call (cdp_use raises it so)."""
-    if exc.args and isinstance(exc.args[0], dict):
-        refusal: _Refusal = cast("_Refusal", exc.args[0])
-        return refusal
-    return None
+def _refused(exc: RuntimeError) -> bool:
+    """Whether exc is the browser's own answer refusing a call: cdp_use raises it with the error object."""
+    return bool(exc.args) and isinstance(exc.args[0], dict)
 
 
 async def _bounded(call: Awaitable[_T], what: str) -> _T:
@@ -273,27 +261,20 @@ async def _bounded(call: Awaitable[_T], what: str) -> _T:
         log.warning(f"{LogTag.BROWSER} Jev CDP call got no answer", call=what)
         raise PageUnresponsive(f"{what} got no answer in {JEV_CDP_TIMEOUT_SECONDS:.0f}s") from exc
     except RuntimeError as exc:
-        refusal: _Refusal | None = _refusal(exc)
-        if refusal is None:
+        if not _refused(exc):
             raise
-        raise TabUnavailable(f"{what} was refused: {refusal.get('message', '')}") from exc
+        raise TabUnavailable(f"{what} was refused: {exc.args[0]}") from exc
 
 
 class _Requests:
-    """The requests one tab started since its last input and has not finished, as CDP reports them."""
+    """The requests one tab started since an input and has not finished, as CDP reports them."""
 
-    def __init__(self) -> None:
-        self._session: str | None = None
+    def __init__(self, session_id: str, frame_id: str) -> None:
+        self._session = session_id
         #: The tab's main frame, whose new document ends every load of the one before.
-        self._frame: str | None = None
-        #: Request id -> the document (loader) it loads for.
-        self._open: dict[str, str] = {}
+        self._frame = frame_id
+        self._open: set[str] = set()
         self._idle = asyncio.Event()
-        self._idle.set()
-
-    def watch(self, session_id: str, frame_id: str) -> None:
-        """Start counting the requests session_id starts from now on."""
-        self._session, self._frame, self._open = session_id, frame_id, {}
         self._idle.set()
 
     @property
@@ -303,28 +284,23 @@ class _Requests:
     def started(self, event: RequestWillBeSentEvent, session_id: str | None) -> None:
         if session_id != self._session or event.get("type") in _STREAMS:
             return
-        loader = event["loaderId"]
         if event.get("type") == "Document" and event.get("frameId") == self._frame:
-            # A new top document: the old one's loads end with it, reported or not.
-            self._open = {rid: lid for rid, lid in self._open.items() if lid == loader}
-        self._open[event["requestId"]] = loader
+            # A new top document: the old one's loads end with it, reported or not, and its
+            # own start only after its response.
+            self._open = set()
+        self._open.add(event["requestId"])
         self._idle.clear()
 
     def ended(
         self, event: LoadingFinishedEvent | LoadingFailedEvent, session_id: str | None
     ) -> None:
         if session_id == self._session:
-            self._open.pop(event["requestId"], None)
+            self._open.discard(event["requestId"])
             if not self._open:
                 self._idle.set()
 
-    async def quiet(self, timeout: float) -> bool:
-        """Wait until every request the input started has finished; False when timeout came first."""
-        try:
-            await asyncio.wait_for(self._idle.wait(), timeout=timeout)
-        except TimeoutError:
-            return False
-        return True
+    async def idle(self) -> None:
+        await self._idle.wait()
 
 
 class JevPage:
@@ -336,9 +312,6 @@ class JevPage:
         self._after_input: PageAction | None = None
         #: Page sessions already told to render as if focused.
         self._focused: set[str] = set()
-        #: The CDP client whose tab and network events this page listens to.
-        self._listening: CDPClient | None = None
-        self._requests = _Requests()
         #: (opener, target) for every tab the browser opened while listening.
         self._opened: list[tuple[str, str]] = []
         #: The tab the last click was on, and how many tabs had opened before it.
@@ -350,8 +323,8 @@ class JevPage:
         except ValueError as exc:
             # Browser-Use's own word that the tab it focused is gone (a popup that closed).
             raise TabUnavailable(str(exc)) from exc
-        if session.cdp_client is not self._listening:
-            self._listen(session.cdp_client)
+        # Again on every call: a reconnect brings a new client, and registering replaces a handler.
+        self._listen(session.cdp_client)
         if session.session_id not in self._focused:
             # A tab behind another (a page that opened a window, a tab the run left)
             # stops producing frames, so requestAnimationFrame never fires and reads
@@ -367,14 +340,7 @@ class JevPage:
 
     def _listen(self, client: CDPClient) -> None:
         """Hear which tab opened which, and every request a tab makes, on this connection."""
-        self._listening = client
         client.register.Target.targetCreated(self._on_target_created)
-        # Obscura reports a page's requests only once its navigation is done, never as they
-        # finish, so there the read after an input waits on the DOM alone.
-        if not on_obscura(self._browser):
-            client.register.Network.requestWillBeSent(self._requests.started)
-            client.register.Network.loadingFinished(self._requests.ended)
-            client.register.Network.loadingFailed(self._requests.ended)
 
     def _on_target_created(self, event: TargetCreatedEvent, session_id: str | None) -> None:
         del session_id
@@ -397,7 +363,7 @@ class JevPage:
             # Refused by a navigation that committed mid-call, or by a tab that is gone:
             # only a tab that answers the next call is still there.
             await self._run(session, "0")
-            raise DocumentReplaced(_REPLACED) from None
+            raise DocumentReplaced from None
         details: ExceptionDetails | None = response.get("exceptionDetails")
         if details is not None:
             exception: RemoteObject | None = details.get("exception")
@@ -405,7 +371,7 @@ class JevPage:
             raise PageScriptError(f"Jev's page script failed: {thrown}")
         result: RemoteObject = response["result"]
         if result["type"] == "undefined":
-            raise DocumentReplaced(_REPLACED)
+            raise DocumentReplaced
         return result.get("value")
 
     async def _run(self, session: CDPSession, expression: str) -> EvaluateReturns:
@@ -417,29 +383,46 @@ class JevPage:
             "Runtime.evaluate",
         )
 
+    def _watch(self, session: CDPSession) -> None:
+        """Count the requests the tab starts from this input on: the new count replaces the last one's."""
+        # Chrome gives a tab's main frame its target's id.
+        self._requests = _Requests(session.session_id, session.target_id)
+        # Obscura reports a page's requests only once its navigation is done, never as they
+        # finish, so there the read after an input waits on the DOM alone.
+        if not on_obscura(self._browser):
+            client = session.cdp_client
+            client.register.Network.requestWillBeSent(self._requests.started)
+            client.register.Network.loadingFinished(self._requests.ended)
+            client.register.Network.loadingFailed(self._requests.ended)
+
     async def _settle(self, action: PageAction) -> None:
         """Wait for what the last input set off: its requests done and the DOM quiet for a frame after.
 
         A document the input replaced is settled in turn, as Chrome holds the call
         until it commits. Capped, since a page that animates or polls is never quiet.
         """
-        clock = asyncio.get_running_loop()
-        deadline = clock.time() + JEV_SETTLE_MAX_SECONDS
+        try:
+            async with asyncio.timeout(JEV_SETTLE_MAX_SECONDS):
+                await self._until_quiet(action)
+        except TimeoutError:
+            # The cap: the page animates or polls, and is read as it stands.
+            return
+
+    async def _until_quiet(self, action: PageAction) -> None:
         if action["kind"] == "wait":
             # A navigation ends the wait as any other change would.
             with contextlib.suppress(DocumentReplaced):
-                await self._evaluate(_WAIT.call(round(JEV_WAIT_SECONDS * 1000)))
-        while (left := deadline - clock.time()) > 0:
+                await self._evaluate(_WAIT.call(JEV_WAIT_SECONDS))
+        while True:
             try:
-                # True: a quiet frame; False: the cap came first.
-                quiet = await self._evaluate(_SETTLE.call(round(left * 1000)))
+                # True: a quiet frame; False: the page's own cap came first.
+                quiet = await self._evaluate(_SETTLE.call(JEV_SETTLE_MAX_SECONDS))
             except DocumentReplaced:
                 # A navigation committed: settle the document it brought in turn.
                 continue
             if not quiet or not self._requests.pending:
                 return
-            if not await self._requests.quiet(max(deadline - clock.time(), 0)):
-                return
+            await self._requests.idle()
 
     async def observe(self) -> PageState:
         """Read the page once the last input has settled; read again while a navigation replaces it."""
@@ -462,7 +445,6 @@ class JevPage:
         back = await self._previous_entry()
         if back is not None:
             actions = [*actions, back]
-            snapshot = {**snapshot, "actions": actions}
         return PageState(
             url=snapshot["url"],
             title=snapshot["title"],
@@ -515,8 +497,7 @@ class JevPage:
         if not await self.fresh(page, action):
             raise StalePage(_MOVED_ON)
         session = await self._session()
-        # Chrome gives a tab's main frame its target's id.
-        self._requests.watch(session.session_id, session.target_id)
+        self._watch(session)
         if action["kind"] in ("wait", "back") or (
             action["kind"] == "scroll" and "node" not in action
         ):
@@ -526,7 +507,7 @@ class JevPage:
             return await self._set(action, text)
         target = await self._evaluate(_ACT.call(action))
         if target is None:
-            raise Covered(_COVERED)
+            raise Covered
         self._after_input = action
         return await self._on_target(session, action, target, text)
 
@@ -547,7 +528,7 @@ class JevPage:
         """Set a field whose value is a format in the page; return what it holds after."""
         held = await self._evaluate(_SET.call({"node": action["node"], "text": text}))
         if held is None:
-            raise Covered(_COVERED)
+            raise Covered
         self._after_input = action
         return str(held)
 
@@ -644,11 +625,8 @@ class JevPage:
         try:
             await self._browser.navigate_to(url)
         except RuntimeError as exc:
-            refusal: _Refusal | None = _refusal(exc)
-            if refusal is not None:
-                raise TabUnavailable(
-                    f"Opening {url} was refused: {refusal.get('message', '')}"
-                ) from exc
+            if _refused(exc):
+                raise TabUnavailable(f"Opening {url} was refused: {exc.args[0]}") from exc
             # Browser-Use's own report of a navigation the page failed: its error text, or no answer.
             raise NavigationFailed(str(exc)) from exc
 

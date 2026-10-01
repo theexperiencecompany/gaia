@@ -99,8 +99,7 @@ class RunSecrets:
         host = urlsplit(url).hostname
         if host is None or not (host == secret.site or host.endswith("." + secret.site)):
             raise SecretWithheld(
-                f"{placeholder} is typed only on {secret.site}, and this page is not on it, "
-                "so nothing was typed."
+                f"{placeholder} is typed only on {secret.site}; this page is not on it."
             )
         return secret.value
 
