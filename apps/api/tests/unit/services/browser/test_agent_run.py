@@ -16,6 +16,7 @@ from types import SimpleNamespace
 from typing import Any, ClassVar
 from unittest.mock import MagicMock
 
+from browser_use.agent.views import AgentState
 import pytest
 
 from app.constants.browser import (
@@ -32,11 +33,11 @@ from app.constants.browser import (
 from app.schemas.browser import AgentGuidanceRequest, BrowserAction, GuidanceElement
 from app.services.browser import agent_run as agent_run_mod
 from app.services.browser.agent_run import STEP_ERROR_CAPTION, AgentRunSetup, BrowserAgentRun
-from app.services.browser.exceptions import BrowserUnavailableError
+from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserUnavailableError
 from app.services.browser.jev import loop as loop_mod
 from app.services.browser.jev.decision import GENERATE
 from app.services.browser.jev.gateway import JevEvaluation
-from app.services.browser.jev.page import PageAction
+from app.services.browser.jev.page import PageAction, PageUnresponsive
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.jev.tool import JEV_ACTION
 from app.services.browser.ledger import CallComponent, ExecutedAction, RunLedger
@@ -333,7 +334,7 @@ class TestCards:
         [action] = harness.ledger.actions
         assert (action.component, action.description, action.count) == (
             CallComponent.AGENT,
-            "click",
+            "Clicking",
             1,
         )
 
@@ -383,7 +384,7 @@ class TestStepRecords:
         [frame] = harness.frames
         assert frame.goal == STEP_ERROR_CAPTION
         # No page was open yet to photograph, and no step ran to record.
-        assert frame.raw_screenshot is None
+        assert frame.photo is None
         assert harness.ledger.actions == []
 
     async def test_a_step_card_carries_the_page_the_step_acted_on(self, harness: _Harness) -> None:
@@ -395,7 +396,21 @@ class TestStepRecords:
             "https://example.test/cart",
             "Example",
         )
-        assert (frame.raw_screenshot, frame.since_prev_ms) == ("c2hvdA==", 0)
+        assert frame.photo is not None
+        assert (await frame.photo, frame.since_prev_ms) == ("c2hvdA==", 0)
+
+    async def test_a_page_that_does_not_answer_its_photo_leaves_the_card_without_one(
+        self, harness: _Harness, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def _unanswered() -> str:
+            raise PageUnresponsive("Page.captureScreenshot got no answer in 20s")
+
+        await harness.step(index=4)
+        monkeypatch.setattr(harness.run._page, "screenshot", _unanswered)
+        await harness.step(index=5)
+
+        assert harness.frames[1].photo is not None
+        assert await harness.frames[1].photo is None
 
     async def test_a_step_is_recorded_with_its_actions_and_how_long_they_took(
         self, harness: _Harness, monkeypatch: pytest.MonkeyPatch
@@ -412,7 +427,7 @@ class TestStepRecords:
 
         [action] = harness.ledger.actions
         assert (action.description, action.duration_ms, action.count) == (
-            "click, navigate",
+            "Clicking, Opening x.test",
             2000,
             2,
         )
@@ -709,10 +724,10 @@ class TestExecute:
         await harness.run.execute("read my orders")
         browser = _Agent.built[-1].options["browser"]
 
-        [(connected, attach), (navigated, _)] = browser.listeners
+        connected, (_, attach), (navigated, _) = browser.listeners
         await attach(SimpleNamespace())
 
-        assert (connected.__name__, navigated.__name__) == (
+        assert (connected[0].__name__, navigated.__name__) == (
             "BrowserConnectedEvent",
             "NavigationCompleteEvent",
         )
@@ -735,6 +750,20 @@ class TestExecute:
         assert (_Stalls.closed, _JevGateway.open) == (True, False)
         # A run that never finished has no page to resume at.
         assert harness.run.last_url is None
+
+    async def test_a_run_resumed_on_the_fallback_goes_on_from_the_primarys_state(
+        self, harness: _Harness
+    ) -> None:
+        primary = AgentState(n_steps=7, stopped=True)
+        harness.run._resumed_from = primary
+        harness.run._config = replace(CONFIG, start_url="https://shop.test/cart")
+
+        await harness.run.execute("buy the ticket")
+
+        options = _Agent.built[-1].options
+        resumed = options["injected_agent_state"]
+        assert (resumed.n_steps, resumed.stopped, options["initial_actions"]) == (7, False, None)
+        assert "https://shop.test/cart" in resumed.last_result[-1].long_term_memory
 
     async def test_a_run_stops_at_its_step_limit(self, harness: _Harness) -> None:
         _Agent.steps = [_Action("click", {"index": n}) for n in range(CONFIG.max_steps + 5)]
@@ -767,13 +796,34 @@ class TestTools:
 
         harness.run._hooks = replace(harness.run._hooks, takeover=_takeover)
         await harness.run.execute("buy the ticket")
+        agent = _Agent.built[-1]
 
-        result = await _Agent.built[-1].act(
+        await agent.act(
+            "request_human_takeover", {"reason": "Enter your card.", "category": "payment"}
+        )
+        # The wait runs once the step ends, outside the step's own budget.
+        assert asked == []
+        await harness.run._on_step_end(agent)
+
+        assert asked == [("Enter your card.", "payment")]
+        assert agent.state.last_result[-1].long_term_memory == read
+
+    async def test_a_handoff_that_ends_the_run_reaches_the_agent_as_an_error(
+        self, harness: _Harness
+    ) -> None:
+        async def _cancelled(reason: str, category: str) -> str | None:
+            raise BrowserHandoffCancelled("cancelled")
+
+        harness.run._hooks = replace(harness.run._hooks, takeover=_cancelled)
+        await harness.run.execute("buy the ticket")
+        agent = _Agent.built[-1]
+        await agent.act(
             "request_human_takeover", {"reason": "Enter your card.", "category": "payment"}
         )
 
-        assert asked == [("Enter your card.", "payment")]
-        assert result == read
+        await harness.run._on_step_end(agent)
+
+        assert "cancelled" in agent.state.last_result[-1].error
 
     async def test_the_agent_asking_for_guidance_hears_that_none_is_available(
         self, harness: _Harness
@@ -907,7 +957,7 @@ class TestGuidance:
         harness.run._hooks = replace(
             harness.run._hooks, guidance=_guidance, guidance_allowed=_allowed
         )
-        harness.run._agent.task = "buy the ticket"
+        harness.run._task = "buy the ticket"
         scroll = PageAction(id="scroll_down", kind="scroll", label="Scroll down", delta=560)
         links = [
             PageAction(id=f"e{n}", node=n, kind="click", label=f"Link {n}", role="link")
@@ -930,9 +980,10 @@ class TestGuidance:
     async def test_the_agent_that_started_the_run_answers_with_the_page_in_view(
         self, harness: _Harness, asked: list[AgentGuidanceRequest]
     ) -> None:
-        answer = await harness.run._guidance("nothing moves the task forward")
+        await harness.run._guidance("nothing moves the task forward")
+        await harness.run._on_step_end(harness.run._agent)
 
-        assert answer == "Click Next."
+        assert harness.run._agent.state.last_result[-1].long_term_memory == "Click Next."
         [request] = asked
         assert (request.reason, request.task, request.title) == (
             "nothing moves the task forward",
@@ -945,8 +996,8 @@ class TestGuidance:
         assert len(request.page_text) == BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS
         # Controls only, numbered as listed; a control with no role goes by its kind.
         assert request.elements[:2] == [
-            GuidanceElement(index=2, label="Link 0", role="link"),
-            GuidanceElement(index=3, label="Name", role="fill"),
+            GuidanceElement(label="Link 0", role="link"),
+            GuidanceElement(label="Name", role="fill"),
         ]
         assert len(request.elements) == BROWSER_GUIDANCE_MAX_ELEMENTS - 1
         assert [a.action for a in request.recent_actions] == [

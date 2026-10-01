@@ -9,6 +9,7 @@ back through RunHooks and returns a RunOutcome.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from time import perf_counter
@@ -54,11 +55,6 @@ class BrowserRunConfig:
     #: task gives up when the task names more than one.
     start_url: str | None = None
 
-    @property
-    def step_budget_seconds(self) -> int:
-        """Return one step's budget: active work plus a whole handoff, so a paused step is never cut as stuck."""
-        return self.step_timeout_seconds + self.handoff_timeout_seconds
-
 
 @dataclass(frozen=True)
 class StepFrame:
@@ -71,7 +67,8 @@ class StepFrame:
     actions: list[BrowserAction]
     url: str | None
     title: str | None
-    raw_screenshot: str | None
+    #: The page's photo as base64 JPEG, taken while the step goes on; None when photos are off.
+    photo: asyncio.Task[str | None] | None
     since_prev_ms: int
 
 

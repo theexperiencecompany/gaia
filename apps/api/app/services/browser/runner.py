@@ -14,12 +14,16 @@ import asyncio
 import base64
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
+from functools import partial
 from time import perf_counter
 from typing import Any
 from urllib.parse import urlsplit
 
+from browser_use.agent.views import AgentState
+
 from app.constants.browser import (
     BROWSER_AGENT_GUIDANCE_MAX,
+    BROWSER_CDP_ATTACH_FAILED,
     BROWSER_CDP_ATTACH_HINT,
     BROWSER_ENGINE_FALLBACK_NOTE,
     BROWSER_ENGINE_FALLBACK_WITHOUT_STATE_NOTE,
@@ -27,8 +31,9 @@ from app.constants.browser import (
     BROWSER_ENGINE_UNRESPONSIVE_SUMMARY,
     BROWSER_RUN_BLOCKED_SUMMARY,
     BROWSER_RUN_CANCELLED_SUMMARY,
+    BROWSER_RUN_CRASHED_SUMMARY,
     BROWSER_RUN_DONE_SUMMARY,
-    BROWSER_RUN_HANDOFF_ENDED_SUMMARY,
+    BROWSER_RUN_HANDOFF_LIMIT_SUMMARY,
     BROWSER_RUN_HANDOFF_TIMED_OUT,
     BROWSER_RUN_NOT_DONE_SUMMARY,
     BROWSER_RUN_STOPPED_SUMMARY,
@@ -36,7 +41,6 @@ from app.constants.browser import (
     BROWSER_RUN_WORK_BUDGET_SUMMARY,
     BROWSER_STALL_NOTE,
     BROWSER_STALL_NOTE_AFTER_SECONDS,
-    BROWSER_TASK_FAILED_PREFIX,
     MAX_HANDOFFS_PER_TASK,
     BrowserEngine,
     BrowserRunFailure,
@@ -209,7 +213,7 @@ class BrowserTaskRunner:
         """The browser session the run is on now; the fallback's after a switch."""
         return self._session
 
-    def _build_agent_run(self) -> BrowserAgentRun:
+    def _build_agent_run(self, resumed_from: AgentState | None = None) -> BrowserAgentRun:
         hooks = RunHooks(
             step=self._record_step,
             takeover=self._handle_takeover,
@@ -217,8 +221,13 @@ class BrowserTaskRunner:
             user_waiting=self._callbacks.user_waiting,
             take_user_messages=self._take_user_messages,
             action_results=self._action_results,
-            guidance_allowed=self._guidance_allowed,
-            guidance=self._handle_guidance,
+            # Both or neither: a run nothing can reach back to is never offered guidance.
+            guidance_allowed=self._guidance_allowed if self._request_guidance else None,
+            guidance=(
+                partial(self._handle_guidance, self._request_guidance)
+                if self._request_guidance
+                else None
+            ),
             # Only on the fast engine: a run already on the fallback has nowhere to move.
             switch_engine=(
                 self._handle_engine_switch
@@ -235,6 +244,7 @@ class BrowserTaskRunner:
                 ledger=self.ledger,
                 secrets=self._secrets,
                 steps_before=self._last_step,
+                resumed_from=resumed_from,
             ),
         )
 
@@ -255,8 +265,6 @@ class BrowserTaskRunner:
                 outcome = await asyncio.wait_for(
                     self._execute(task), timeout=self._wall_clock_timeout
                 )
-            except (BrowserHandoffCancelled, InterruptedError):
-                return await self._finish_from_handoff()
             except TimeoutError:
                 self._agent_run.stop()
                 log.fail(BrowserRunFailure.TASK_TIMEOUT)
@@ -265,17 +273,22 @@ class BrowserTaskRunner:
                     False,
                     BROWSER_RUN_WALL_CLOCK_SUMMARY.format(seconds=self._task_timeout),
                 )
-            except (ConnectionError, OSError) as exc:
-                # The host created the session but the agent couldn't attach over CDP —
-                # almost always the host's CDP proxy websocket isn't reachable from here.
-                raise BrowserUnavailableError(
-                    f"Could not attach to the browser over CDP at {self._session.cdp_url}: {exc}. "
-                    + BROWSER_CDP_ATTACH_HINT
-                ) from exc
+            except BrowserUnavailableError:
+                raise
             except Exception as exc:
-                # Any unexpected agent/runtime failure must not leave the card stuck in
-                # RUNNING: emit a terminal FAILED result with an honest reason.
-                # CancelledError is BaseException, so it is never caught here.
+                if not self._agent_run.connected:
+                    # The host made the session but the agent never attached: almost
+                    # always the host's CDP proxy is not reachable from here.
+                    log.error(
+                        f"{LogTag.BROWSER} Browser agent could not attach over CDP",
+                        error_type=type(exc).__name__,
+                        error=str(exc),
+                        hint=BROWSER_CDP_ATTACH_HINT,
+                        browser={"session_id": self._session.session_id},
+                    )
+                    raise BrowserUnavailableError(BROWSER_CDP_ATTACH_FAILED) from exc
+                # An unexpected failure must not leave the card RUNNING; the
+                # exception is for the logs, the user reads a fixed line.
                 log.error(
                     f"{LogTag.BROWSER} Browser agent failed unexpectedly",
                     error_type=type(exc).__name__,
@@ -284,9 +297,7 @@ class BrowserTaskRunner:
                 )
                 log.fail(BrowserRunFailure.RUN_CRASHED)
                 return await self._finish(
-                    BrowserSessionStatus.FAILED,
-                    False,
-                    f"{BROWSER_TASK_FAILED_PREFIX}{exc}",
+                    BrowserSessionStatus.FAILED, False, BROWSER_RUN_CRASHED_SUMMARY
                 )
 
             return await self._finish_after_execute(outcome)
@@ -306,8 +317,6 @@ class BrowserTaskRunner:
             ended = await run_watched(
                 self._agent_run, task, self._session, paused=lambda: self._waiting_on_someone
             )
-        except (BrowserHandoffCancelled, InterruptedError):
-            raise
         except Exception as exc:
             # Browser-Use raises only when it cannot attach at all; the host says
             # whether that was the engine or something the fallback would not fix.
@@ -319,7 +328,7 @@ class BrowserTaskRunner:
                 browser={"session_id": self._session.session_id},
             )
             return await self._resume_on_fallback(task, self._open_fallback_session)
-        if self._engine_switch is not None:
+        if self._engine_switch is not None and not await self._should_stop():
             return await self._resume_on_fallback(task, self._open_fallback_session)
         if isinstance(ended, EngineFailure):
             if await self._should_stop():
@@ -368,15 +377,15 @@ class BrowserTaskRunner:
     async def _resume_on_fallback(
         self, task: str, open_session: OpenFallbackSessionFn
     ) -> RunOutcome:
-        """Open the fallback engine where the run left off and run the task there from that page."""
-        url = self._agent_run.last_url
+        """Open the fallback engine on the last page the run was seen on and go on from there, its history kept."""
+        url = self._agent_run.last_url or self._config.start_url
         self._config = replace(self._config, start_url=url)
         log.info(
             f"{LogTag.BROWSER} Browser run moving to the fallback engine",
             browser={
                 "session_id": self._session.session_id,
                 "operation": "engine_fallback",
-                "resume_url": url[:120] if url is not None else None,
+                "resume_url": self._secrets.redact(url)[:120] if url is not None else None,
             },
         )
         log.set_ns("browser", primary_session_id=self._session.session_id)
@@ -399,7 +408,7 @@ class BrowserTaskRunner:
             )
         # Continues the step count, so the fallback's first step follows the
         # primary's last on the card, in the recap and in the history.
-        self._agent_run = self._build_agent_run()
+        self._agent_run = self._build_agent_run(resumed_from=self._agent_run.agent_state)
         return await self._agent_run.execute(task)
 
     async def _primary_state(self) -> LiveSessionState | None:
@@ -424,24 +433,11 @@ class BrowserTaskRunner:
         log.set_ns("browser", state_carry=carry.value)
         return state
 
-    async def _finish_from_handoff(self) -> BrowserResultSnapshot:
-        """Judge a run the handoff ended: blocked with no guidance, expired, or stopped."""
-        if self._blocked_summary:
-            return await self._finish(BrowserSessionStatus.FAILED, False, self._blocked_summary)
-        if self._handoff_timed_out:
-            return await self._finish(
-                BrowserSessionStatus.FAILED, False, BROWSER_RUN_HANDOFF_TIMED_OUT
-            )
-        return await self._finish(
-            BrowserSessionStatus.CANCELLED, False, BROWSER_RUN_HANDOFF_ENDED_SUMMARY
-        )
-
     async def _finish_after_execute(self, outcome: RunOutcome) -> BrowserResultSnapshot:
         """Judge a run whose agent loop returned, cancellation and handoff first.
 
-        Browser-Use catches BrowserHandoffCancelled inside the registered action
-        and turns it into an action error, so on a timeout the loop returns
-        normally and only the flag the takeover hook set still knows.
+        A handoff that ends the run reaches the agent as an error result, so the
+        loop returns normally and only the flags the hooks set still know.
         """
         if self._blocked_summary:
             return await self._finish(BrowserSessionStatus.FAILED, False, self._blocked_summary)
@@ -493,7 +489,7 @@ class BrowserTaskRunner:
                 usage=TokenUsage(
                     input_tokens=call.input_tokens,
                     output_tokens=call.output_tokens,
-                    cached_tokens=0,
+                    cached_tokens=call.cached_tokens,
                     reasoning_tokens=0,
                 ),
                 root_request_id=self._root_request_id,
@@ -508,10 +504,14 @@ class BrowserTaskRunner:
     async def _handle_takeover(self, reason: str, category: SensitiveCategory) -> str | None:
         """Pause for the human (the agent's takeover hook) and return the note they left, if any.
 
-        Raises to stop the run on cancel."""
+        Raises to stop the run on cancel, timeout, or one handoff past the limit."""
         self._handoffs += 1
         if self._handoffs > MAX_HANDOFFS_PER_TASK:
             self._stopped = True
+            self._budget_summary = BROWSER_RUN_HANDOFF_LIMIT_SUMMARY.format(
+                limit=MAX_HANDOFFS_PER_TASK
+            )
+            log.fail(BrowserRunFailure.HANDOFF_LIMIT)
             raise BrowserHandoffCancelled("max-handoffs")
 
         self._waiting_on_someone = True
@@ -538,23 +538,21 @@ class BrowserTaskRunner:
 
     async def _guidance_allowed(self) -> bool:
         """Whether a blocked step may still ask the agent that started this run."""
-        if self._request_guidance is None or self._agent_joined is None:
-            return False
-        if self._guidances >= BROWSER_AGENT_GUIDANCE_MAX:
+        if self._agent_joined is None or self._guidances >= BROWSER_AGENT_GUIDANCE_MAX:
             return False
         return await self._agent_joined()
 
-    async def _handle_guidance(self, request: AgentGuidanceRequest) -> str:
+    async def _handle_guidance(
+        self, request_guidance: RequestGuidanceFn, request: AgentGuidanceRequest
+    ) -> str:
         """Ask the joined agent for one instruction; raise to end the run blocked when none comes back."""
-        if self._request_guidance is None:
-            raise BrowserHandoffCancelled("no-guidance-channel")
         self._guidances += 1
         self._waiting_on_someone = True
         waiting_since = perf_counter()
         try:
             # What the user told the run since it started: without it the agent is
             # guided back to a step the user already declined.
-            outcome = await self._request_guidance(
+            outcome = await request_guidance(
                 request.model_copy(update={"user_notes": list(self._user_notes)})
             )
         finally:
@@ -608,7 +606,7 @@ class BrowserTaskRunner:
         async with self._emit_lock:
             shot_t0 = perf_counter()
             screenshot = await self._render_screenshot(frame)
-            if screenshot and screenshot.startswith("http"):
+            if screenshot is not None:
                 self._shots.append(screenshot)
             # Feeds only the info-level step timing line.
             screenshot_ms = round((perf_counter() - shot_t0) * 1000)  # pragma: no mutate
@@ -636,20 +634,12 @@ class BrowserTaskRunner:
             )
 
     async def _render_screenshot(self, frame: StepFrame) -> str | None:
-        """Return a step frame as a signed CDN URL, or an inline data URL when the CDN is unconfigured.
-
-        Return None when screenshots are off or the frame has none.
-        """
-        raw_b64 = frame.raw_screenshot
-        if not raw_b64 or not self._config.stream_screenshots:
-            return None
-        try:
-            image = base64.b64decode(raw_b64)
-        except (ValueError, TypeError):
+        """Return the URL that serves a step frame's photo, or None when it has none to show."""
+        photo = await frame.photo if frame.photo is not None else None
+        if photo is None:
             return None
         # Keyed by session id (not conversation) so each run is its own replay folder.
-        url = await publish_step_screenshot(image, frame.session_id, frame.index)
-        return url or f"data:image/png;base64,{raw_b64}"
+        return await publish_step_screenshot(base64.b64decode(photo), frame.session_id, frame.index)
 
     async def _finish(
         self, status: BrowserSessionStatus, success: bool, summary: str

@@ -34,7 +34,6 @@ def _failed(status: BrowserSessionStatus = BrowserSessionStatus.FAILED) -> Brows
     [
         (_failed(BrowserSessionStatus.CANCELLED), None, BrowserRunFailure.CANCELLED),
         (_failed(), {"handoff_result": "timeout"}, BrowserRunFailure.HANDOFF_TIMEOUT),
-        (_failed(), {"blocked": "never_opened"}, BrowserRunFailure.NEVER_OPENED),
         (_failed(), {"blocked": "blocked"}, BrowserRunFailure.BLOCKED),
         (_failed(), {"llm_error": "JevGatewayError"}, BrowserRunFailure.LLM_ERROR),
         (_failed(), None, BrowserRunFailure.GOAL_NOT_ACHIEVED),

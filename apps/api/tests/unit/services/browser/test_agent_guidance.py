@@ -93,37 +93,19 @@ def test_the_user_notes_reach_the_guidance_in_the_order_they_were_sent() -> None
     assert '"skip the upvote", then "just read the title"' in message
 
 
-def test_each_recent_action_says_whether_it_moved_the_page() -> None:
-    actions = [
-        GuidanceAction(action="click Upvote", page_changed=True),
-        GuidanceAction(action="type hello", page_changed=False),
-        GuidanceAction(action="scroll down"),
-    ]
-
-    (section,) = [
-        s
-        for s in _sections(guidance_message(_request(recent_actions=actions)))
-        if "click Upvote" in s
-    ]
-
-    assert section.splitlines()[1:] == [
-        "  - click Upvote (the page changed)",
-        "  - type hello (the page did not change)",
-        "  - scroll down",
-    ]
-
-
-def test_each_visible_control_is_listed_by_the_index_the_run_acts_on() -> None:
+def test_each_recent_action_and_visible_control_is_listed_in_order() -> None:
+    actions = [GuidanceAction(action='Clicking "Upvote"'), GuidanceAction(action="Scrolling")]
     elements = [
-        GuidanceElement(index=3, label="Upvote", role="button"),
-        GuidanceElement(index=7, label="Search", role="textbox"),
+        GuidanceElement(label="Upvote", role="button"),
+        GuidanceElement(label="Search", role="textbox"),
     ]
 
-    (section,) = [
-        s for s in _sections(guidance_message(_request(elements=elements))) if "[3] Upvote" in s
-    ]
+    sections = _sections(guidance_message(_request(recent_actions=actions, elements=elements)))
 
-    assert section.splitlines()[1:] == ["  [3] Upvote (button)", "  [7] Search (textbox)"]
+    (tried,) = [s for s in sections if "Scrolling" in s]
+    (controls,) = [s for s in sections if "(textbox)" in s]
+    assert tried.splitlines()[1:] == ['  - Clicking "Upvote"', "  - Scrolling"]
+    assert controls.splitlines()[1:] == ["  - Upvote (button)", "  - Search (textbox)"]
 
 
 def test_the_screen_text_is_passed_on_when_the_run_has_it() -> None:

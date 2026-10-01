@@ -189,8 +189,14 @@ class _Completion:
         self.usage = usage
 
 
-def _usage(prompt_tokens: int, completion_tokens: int) -> SimpleNamespace:
-    return SimpleNamespace(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
+def _usage(
+    prompt_tokens: int, completion_tokens: int, cached: int | None = None
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        prompt_cached_tokens=cached,
+    )
 
 
 class _Inner:
@@ -220,7 +226,7 @@ async def test_every_call_is_recorded_into_the_run_ledger_with_its_tokens_and_la
     monkeypatch.setattr(llm_mod, "perf_counter", lambda: next(ticks))
     seen: list[object] = []
     ledger = RunLedger(on_call=seen.append)
-    model = _metered(_Inner(_usage(120, 7)), ledger)
+    model = _metered(_Inner(_usage(120, 7, cached=100)), ledger)
 
     result = await model.ainvoke([])
 
@@ -228,6 +234,7 @@ async def test_every_call_is_recorded_into_the_run_ledger_with_its_tokens_and_la
     [call] = ledger.calls
     assert (call.component, call.provider, call.model) == (CallComponent.TEXT, "openai", "model-x")
     assert (call.input_tokens, call.output_tokens, call.latency_ms) == (120, 7, 2500)
+    assert call.cached_tokens == 100
     assert seen == [call]
 
 

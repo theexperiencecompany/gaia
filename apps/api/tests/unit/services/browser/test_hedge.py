@@ -1,4 +1,4 @@
-"""A slow call gets one spare; the first answer wins, errors are not retried, and the deadline holds."""
+"""A slow call gets one spare; the first answer wins, the loser's answer is still handed over, errors are not retried, and the deadline holds."""
 
 from __future__ import annotations
 
@@ -27,17 +27,21 @@ class _Calls:
         return outcome
 
 
+def _unexpected(late: object) -> None:
+    raise AssertionError(f"no call should lose and answer: {late}")
+
+
 async def test_a_fast_call_is_never_hedged() -> None:
     calls = _Calls((0, "first"))
 
-    assert await first_answer(calls, hedge_after=0.05, deadline=1) == "first"
+    assert await first_answer(calls, hedge_after=0.05, deadline=1, on_late=_unexpected) == "first"
     assert calls.started == 1
 
 
 async def test_a_slow_call_gets_one_spare_and_the_spares_answer_wins() -> None:
     calls = _Calls((3600, "stalled"), (0, "spare"))
 
-    assert await first_answer(calls, hedge_after=0.01, deadline=30) == "spare"
+    assert await first_answer(calls, hedge_after=0.01, deadline=30, on_late=_unexpected) == "spare"
     assert calls.started == 2
 
 
@@ -45,19 +49,29 @@ async def test_an_error_is_not_hedged_and_is_raised() -> None:
     calls = _Calls((0, ValueError("refused")))
 
     with pytest.raises(ValueError, match="refused"):
-        await first_answer(calls, hedge_after=0.05, deadline=1)
+        await first_answer(calls, hedge_after=0.05, deadline=1, on_late=_unexpected)
     assert calls.started == 1
 
 
 async def test_a_spare_that_fails_leaves_the_slow_call_to_answer() -> None:
     calls = _Calls((0.05, "slow"), (0, ValueError("spare failed")))
 
-    assert await first_answer(calls, hedge_after=0.01, deadline=1) == "slow"
+    assert await first_answer(calls, hedge_after=0.01, deadline=1, on_late=_unexpected) == "slow"
 
 
 async def test_no_answer_within_the_deadline_times_out() -> None:
     calls = _Calls((10, "late"), (10, "late too"))
 
     with pytest.raises(TimeoutError, match="no answer within"):
-        await first_answer(calls, hedge_after=0.01, deadline=0.05)
+        await first_answer(calls, hedge_after=0.01, deadline=0.05, on_late=_unexpected)
     assert calls.started == 2
+
+
+async def test_the_losing_call_runs_to_its_end_and_its_answer_is_handed_over() -> None:
+    calls = _Calls((0.05, "slow"), (0, "spare"))
+    late: list[object] = []
+
+    assert await first_answer(calls, hedge_after=0.01, deadline=1, on_late=late.append) == "spare"
+    await asyncio.sleep(0.1)
+
+    assert late == ["slow"]
