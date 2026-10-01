@@ -900,7 +900,7 @@ async def test_step_card_is_written_as_json_under_the_browser_event_key(
         "kind": "step",
         "index": 2,
         "goal": "find the menu",
-        "actions": [{"name": "click", "inputs": {"index": 2}, "target": None, "point": None}],
+        "actions": [{"name": "click", "inputs": {"index": 2}, "target": None}],
         "url": "https://x",
         "title": "Menu",
         "screenshot": "https://cdn/2.png",
@@ -1738,6 +1738,33 @@ async def test_a_handoff_card_points_the_user_at_the_paused_session(
         ("pending", "payment", "confirm the order", "sess-1", "https://live/abc"),
         ("completed", "payment", "confirm the order", "sess-1", "https://live/abc"),
     ]
+
+
+@pytest.mark.parametrize(
+    ("category", "persist_logins", "saves_login"),
+    [
+        (SensitiveCategory.CREDENTIALS, True, True),
+        (SensitiveCategory.CREDENTIALS, False, False),
+        (SensitiveCategory.PAYMENT, True, False),
+    ],
+    ids=["sign-in-kept", "sign-in-with-persistence-off", "payment"],
+)
+async def test_a_handoff_card_promises_a_saved_login_only_when_one_will_be_kept(
+    monkeypatch: pytest.MonkeyPatch,
+    category: SensitiveCategory,
+    persist_logins: bool,
+    saves_login: bool,
+) -> None:
+    async def body(h: Harness) -> BrowserResultSnapshot:
+        await h.request_handoff(HandoffRequest(category=category, reason="sign in"))
+        return _result(BrowserSessionStatus.COMPLETED, True, "done")
+
+    h = _install(monkeypatch, run_body=body)
+    monkeypatch.setattr(jr.settings, "BROWSER_PERSIST_LOGINS", persist_logins)
+
+    await _run(h, _request())
+
+    assert [c["saves_login"] for c in h.cards if c["kind"] == "handoff"] == [saves_login] * 2
 
 
 async def test_a_bot_user_is_sent_every_card_the_run_emits(

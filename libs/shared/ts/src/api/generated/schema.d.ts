@@ -6495,10 +6495,10 @@ export interface components {
         };
         /**
          * BrowserSessionStatus
-         * @description Lifecycle state of a browser session: created to live/working to ended/failed.
+         * @description Lifecycle state of a browser session: working, then how it ended.
          * @enum {string}
          */
-        BrowserSessionStatus: "starting" | "running" | "paused" | "completed" | "failed" | "cancelled";
+        BrowserSessionStatus: "running" | "completed" | "failed" | "cancelled";
         /**
          * BrowserTaskFrame
          * @description One recap frame: a step screenshot plus what the agent was doing.

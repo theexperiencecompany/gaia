@@ -519,6 +519,12 @@ class TestPublishOutboundPhoto:
             "content_type": None,
             "caption": "Step 2 reading the page",
         }
+        # A step shot expires like a queued message: delivered a day late it shows
+        # a page the run has long since left.
+        assert (
+            publisher.publish_outbound.await_args.kwargs["expiration"]
+            == OUTBOUND_TTL_SECONDS_DEFAULT
+        )
 
 
 class TestNotifyAccountLinked:

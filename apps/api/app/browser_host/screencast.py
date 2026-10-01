@@ -3,7 +3,8 @@
 WS /live/{session_id} is the backend of the live view the user watches (and,
 during a handoff, drives). It attaches to the context's focused page, streams
 JPEG frames out as {"type":"frame", data, url, title}, and turns inbound
-{"type":"mouse"|"key"|"resize"} messages into CDP input. Obscura screencasts
+{"type":"mouse"|"key"|"text"|"resize"} messages into CDP input (text is a
+phone keyboard's committed text, inserted as one edit). Obscura screencasts
 only the session that caused the repaint, so a paced capture fills the gaps
 when the stream goes quiet; both feed one queue and one sender.
 
@@ -398,6 +399,14 @@ async def _apply_input(
                 mux,
                 "Input.dispatchKeyEvent",
                 _key_params(message),
+                session_id=page_session,
+            )
+        elif kind == "text":
+            # A phone's soft keyboard yields committed text, not key presses.
+            await cdp_call(
+                mux,
+                "Input.insertText",
+                {"text": message["text"]},
                 session_id=page_session,
             )
         elif kind == "resize":

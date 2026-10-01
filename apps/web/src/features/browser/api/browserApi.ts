@@ -65,28 +65,16 @@ export const browserApi = {
 
   /**
    * Continue (the user finished the sensitive step in the live browser) or
-   * cancel a browser handoff, unblocking the agent that is waiting on it.
+   * stop the browser task, unblocking the agent that is waiting on it.
    */
   postHandoffDecision: (
     handoffId: string,
     decision: BrowserHandoffDecision,
-    message?: string,
   ): Promise<HandoffDecisionResponse> =>
     api.post("/api/v1/browser/handoffs/{handoff_id}/decision", {
       path: { handoff_id: handoffId },
-      body: { decision, message },
-      silent: true,
-    }),
-
-  /**
-   * Current status of a handoff. The card polls this while pending so a reload,
-   * or a resolution made via chat / another device, is reflected reliably —
-   * the server (Redis) is the source of truth, not the streamed snapshot.
-   */
-  getHandoffStatus: (handoffId: string): Promise<HandoffDecisionResponse> =>
-    api.get("/api/v1/browser/handoffs/{handoff_id}", {
-      path: { handoff_id: handoffId },
-      silent: true,
+      body: { decision },
+      errorMessage: "Could not send your answer to the browser task",
     }),
 
   /**

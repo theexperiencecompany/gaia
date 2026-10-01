@@ -337,7 +337,9 @@ async def publish_outbound_photo(
         )
         return False
     try:
-        await publisher.publish_outbound(queue_name, envelope.model_dump_json().encode())
+        await publisher.publish_outbound(
+            queue_name, envelope.model_dump_json().encode(), expiration=OUTBOUND_TTL_SECONDS_DEFAULT
+        )
     except Exception as e:
         log.error(
             "publish_outbound_photo: publish failed",
