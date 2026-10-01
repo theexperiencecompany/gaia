@@ -1,6 +1,20 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+// The dismissible mode's HeroUI Tabs measure themselves via ResizeObserver,
+// which jsdom doesn't implement.
+class MockResizeObserver {
+  observe() {
+    // no-op: jsdom has no layout to observe
+  }
+  unobserve() {
+    // no-op: jsdom has no layout to observe
+  }
+  disconnect() {
+    // no-op: jsdom has no layout to observe
+  }
+}
 
 const openCheckoutOverlay = vi.fn();
 const logout = vi.fn();
@@ -80,6 +94,12 @@ import { trackEvent } from "@/lib/analytics";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
 describe("UpgradeModal", () => {
+  beforeAll(() => {
+    (
+      globalThis as unknown as { ResizeObserver: typeof MockResizeObserver }
+    ).ResizeObserver = MockResizeObserver;
+  });
+
   beforeEach(() => {
     useUpgradeModalStore.setState({
       open: false,
