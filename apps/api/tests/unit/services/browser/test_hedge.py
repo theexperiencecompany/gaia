@@ -86,19 +86,11 @@ async def test_an_error_is_not_hedged_and_is_raised() -> None:
 
 
 async def test_a_spare_that_fails_leaves_the_slow_call_to_answer() -> None:
-    release = asyncio.Event()
-    started = 0
+    calls = _Calls((asyncio.Event(), "stalled"), (None, ValueError("spare failed")))
 
-    async def _call() -> object:
-        nonlocal started
-        started += 1
-        if started == 1:
-            await release.wait()
-            return "slow"
-        release.set()
-        raise ValueError("spare failed")
-
-    assert await first_answer(_call, hedge_after=0, deadline=_NEVER, on_late=_unexpected) == "slow"
+    # Still waiting on the slow call when the deadline ends it, not raising the spare's error.
+    with pytest.raises(TimeoutError, match="no answer within"):
+        await first_answer(calls, hedge_after=0, deadline=0.05, on_late=_unexpected)
 
 
 async def test_no_answer_within_the_deadline_times_out() -> None:
