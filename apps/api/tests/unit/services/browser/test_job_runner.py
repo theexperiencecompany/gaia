@@ -59,6 +59,7 @@ def _request(**overrides: Any) -> BrowserJobRequest:
     """Build the payload the tool enqueues for a web run, varying whatever this case needs."""
     fields: dict[str, Any] = {
         "job_id": "job-1",
+        "tool_call_id": "call-1",
         "user_id": "u1",
         "conversation_id": "c1",
         "task": "x",
@@ -1482,7 +1483,7 @@ def _mirror() -> tuple[jr.BrowserThreadMirror, list[dict[str, Any]]]:
     async def publish(payload: dict[str, Any]) -> None:
         writes.append(payload)
 
-    return jr.BrowserThreadMirror(publish), writes
+    return jr.BrowserThreadMirror(publish, "call-1"), writes
 
 
 def _session_snapshot(session_id: str | None = "sess-1") -> BrowserSessionSnapshot:
@@ -1491,28 +1492,15 @@ def _session_snapshot(session_id: str | None = "sess-1") -> BrowserSessionSnapsh
     )
 
 
-async def test_mirror_without_a_session_id_opens_no_group_and_drops_its_rows() -> None:
-    """No session id means no stable group id, so opening one would strand every action row under an id the result can never close."""
-    mirror, writes = _mirror()
-
-    await mirror.mirror(_session_snapshot(session_id=None))
-    await mirror.mirror(
-        BrowserStepSnapshot(index=1, goal="g", actions=[BrowserAction(name="click", inputs={})])
-    )
-    await mirror.mirror(_result(BrowserSessionStatus.COMPLETED, True, "done"))
-
-    assert writes == []
-
-
-async def test_mirror_opens_the_group_once_for_a_re_reported_session() -> None:
-    """The runner re-emits the session card as its status changes; a second subagent_start would render a duplicate Browser row."""
+async def test_mirror_opens_one_group_keyed_by_the_tool_call_across_engines() -> None:
+    """The runner re-emits the session card, on the fallback engine with a new session; a second subagent_start would render a duplicate Browser row."""
     mirror, writes = _mirror()
 
     await mirror.mirror(_session_snapshot())
     await mirror.mirror(_session_snapshot(session_id="sess-2"))
 
     starts = [w["subagent_start"] for w in writes if "subagent_start" in w]
-    assert [s["subagent_id"] for s in starts] == ["browser:sess-1"]
+    assert [s["subagent_id"] for s in starts] == ["browser:call-1"]
 
 
 async def test_mirror_numbers_each_action_within_its_step() -> None:
@@ -1532,10 +1520,10 @@ async def test_mirror_numbers_each_action_within_its_step() -> None:
     )
 
     rows = [w["tool_data"] for w in writes if "tool_data" in w]
-    assert [r["data"]["tool_call_id"] for r in rows] == ["browser:sess-1:4:0", "browser:sess-1:4:1"]
+    assert [r["data"]["tool_call_id"] for r in rows] == ["browser:call-1:4:0", "browser:call-1:4:1"]
     # The tag is what nests each row under the run's Browser group; untagged, the
     # actions render as loose top-level rows in the thread.
-    assert [r["subagent_id"] for r in rows] == ["browser:sess-1", "browser:sess-1"]
+    assert [r["subagent_id"] for r in rows] == ["browser:call-1", "browser:call-1"]
 
 
 async def test_mirror_tags_each_action_output_with_the_group_it_belongs_to() -> None:
@@ -1551,9 +1539,9 @@ async def test_mirror_tags_each_action_output_with_the_group_it_belongs_to() -> 
 
     (output,) = [w["tool_output"] for w in writes if "tool_output" in w]
     assert output == {
-        "tool_call_id": "browser:sess-1:1:0",
+        "tool_call_id": "browser:call-1:1:0",
         "output": "ok",
-        "subagent_id": "browser:sess-1",
+        "subagent_id": "browser:call-1",
     }
 
 
@@ -1610,7 +1598,7 @@ async def test_an_already_normalized_mirror_frame_is_published_unchanged(
     assert feeds == {"job-1"}
 
     (start,) = [p["subagent_start"] for p in published if "subagent_start" in p]
-    assert start["subagent_id"] == "browser:s1"
+    assert start["subagent_id"] == "browser:call-1"
 
 
 # ---------------------------------------------------------------------------

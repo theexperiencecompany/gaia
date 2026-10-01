@@ -174,15 +174,15 @@ class BrowserThreadMirror:
 
     The card shows what the browser is doing; this shows what it called — every
     action with its arguments, grouped under one "Browser" row exactly like a
-    subagent's tool calls, instead of one opaque browser_task row.
-
-    Stateful because only the session snapshot carries the session id, and the
-    group id has to outlive it for the steps and the result that follow.
+    subagent's tool calls, instead of one opaque browser_task row. The group is
+    keyed by the browser_task call that started the run, so a client pairs the
+    call with its group by id, and a move to the fallback engine keeps it.
     """
 
-    def __init__(self, publish: FramePublisher) -> None:
+    def __init__(self, publish: FramePublisher, tool_call_id: str) -> None:
         self._publish = publish
-        # "" reads as falsy exactly like None.
+        self._group = f"browser:{tool_call_id}"
+        # "" reads as falsy exactly like None: set while the group is open.
         self._group_id: str | None = None  # pragma: no mutate
         #: Set when the group opens; nothing reads it before then.
         self._started_at: float
@@ -196,16 +196,16 @@ class BrowserThreadMirror:
 
     async def mirror(self, snapshot: BrowserCardSnapshot) -> None:
         if isinstance(snapshot, BrowserSessionSnapshot):
-            await self._open(snapshot)
+            await self._open()
         elif isinstance(snapshot, BrowserStepSnapshot):
             await self._actions(snapshot)
         elif isinstance(snapshot, BrowserResultSnapshot):
             await self._close()
 
-    async def _open(self, snapshot: BrowserSessionSnapshot) -> None:
-        if self._group_id or not snapshot.session_id:
+    async def _open(self) -> None:
+        if self._group_id:
             return
-        self._group_id = f"browser:{snapshot.session_id}"
+        self._group_id = self._group
         self._started_at = perf_counter()
         await self._publish(
             {
@@ -545,7 +545,7 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
     as a bare exception, and a cancellation emits its card before propagating.
     """
     emit_frame = partial(publish_frame_to_job, request.job_id)
-    thread_mirror = BrowserThreadMirror(emit_frame)
+    thread_mirror = BrowserThreadMirror(emit_frame, request.tool_call_id)
     emitter = ProgressEmitter(
         emit_frame,
         thread_mirror,

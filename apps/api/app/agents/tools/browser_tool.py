@@ -14,7 +14,7 @@ from typing import Annotated
 import uuid
 
 from langchain_core.runnables.config import RunnableConfig
-from langchain_core.tools import tool
+from langchain_core.tools import InjectedToolCallId, tool
 from pydantic import BaseModel, ConfigDict
 
 from app.constants.browser import (
@@ -169,11 +169,17 @@ def _the_one_page_in(task: str) -> str | None:
 
 
 def _job_request(
-    params: _RunParams, job_id: str, task: str, start_url: str | None, secrets: dict[str, str]
+    params: _RunParams,
+    job_id: str,
+    tool_call_id: str,
+    task: str,
+    start_url: str | None,
+    secrets: dict[str, str],
 ) -> BrowserJobRequest:
     return BrowserJobRequest(
         secrets=secrets,
         job_id=job_id,
+        tool_call_id=tool_call_id,
         user_id=params.user_id,
         conversation_id=params.conversation_id,
         task=task,
@@ -190,6 +196,7 @@ def _job_request(
 @with_doc(BROWSER_TASK)
 async def browser_task(
     config: RunnableConfig,
+    tool_call_id: Annotated[str, InjectedToolCallId],
     task: Annotated[str, "Clear, self-contained description of what to do in the browser."],
     start_url: Annotated[str | None, "Optional URL to open first."] = None,
     secrets: Annotated[
@@ -231,7 +238,7 @@ async def browser_task(
     # The user's own words carry the values verbatim; only the page may see them.
     masked = RunSecrets(given, sites=[])
     task = masked.mask(_with_the_users_words(masked.mask(task), params.user_request))
-    request = _job_request(params, job_id, task, start_url, given)
+    request = _job_request(params, job_id, tool_call_id, task, start_url, given)
     await put_job_state(BrowserJobState(job_id=job_id, status=BrowserJobStatus.QUEUED, task=task))
     if not await _enqueue(request):
         await release_conversation_slot(params.conversation_id, job_id)

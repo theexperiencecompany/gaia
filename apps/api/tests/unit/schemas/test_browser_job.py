@@ -12,6 +12,7 @@ from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJ
 def test_request_round_trips_its_conversation_source_through_json() -> None:
     request = BrowserJobRequest(
         job_id="job-1",
+        tool_call_id="call-1",
         user_id="user-1",
         conversation_id="conv-1",
         task="book a table",
@@ -29,7 +30,11 @@ def test_request_round_trips_its_conversation_source_through_json() -> None:
 @pytest.mark.unit
 def test_request_defaults_every_optional_field_to_none() -> None:
     request = BrowserJobRequest(
-        job_id="job-1", user_id="user-1", conversation_id="conv-1", task="book a table"
+        job_id="job-1",
+        tool_call_id="call-1",
+        user_id="user-1",
+        conversation_id="conv-1",
+        task="book a table",
     )
     assert (request.start_url, request.stream_id, request.root_request_id) == (None, None, None)
     assert (request.source_category, request.conversation_source) == (None, None)

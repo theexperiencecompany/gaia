@@ -194,6 +194,7 @@ def browser(monkeypatch: pytest.MonkeyPatch) -> None:
 def _request(**overrides: Any) -> BrowserJobRequest:
     return BrowserJobRequest(
         job_id=JOB_ID,
+        tool_call_id="call-7",
         user_id="user-7",
         conversation_id="conv-7",
         task="book a table for two at 7pm",
@@ -265,7 +266,7 @@ async def test_the_runs_cards_are_collected_onto_the_turns_message_under_one_gro
     assert [card["data"]["kind"] for card in cards] == ["session", "step", "result"]
     groups = [e for e in entries if e["tool_name"] == "subagent_group"]
     assert len(groups) == 1
-    assert groups[0]["data"]["subagent_id"] == "browser:sess-7"
+    assert groups[0]["data"]["subagent_id"] == "browser:call-7"
     group_calls = groups[0]["data"]["tool_calls"]
     assert [call["tool_name"] for call in group_calls] == ["go_to_url"]
     assert group_calls[0]["output"] == "opened example.test/book"
