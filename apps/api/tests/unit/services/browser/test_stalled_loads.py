@@ -1,4 +1,4 @@
-"""A top-level load the site never answers is stopped once per tab, and nothing else is."""
+"""A top-level load the site never answers is stopped once per tab, and nothing else is: never a form submission."""
 
 from __future__ import annotations
 
@@ -26,6 +26,7 @@ class _FakeClient:
         self.stop_hangs = False
         self.register = SimpleNamespace(
             Page=SimpleNamespace(
+                frameRequestedNavigation=lambda h: self.handlers.__setitem__("requested", h),
                 frameStartedNavigating=lambda h: self.handlers.__setitem__("started", h),
                 frameNavigated=lambda h: self.handlers.__setitem__("committed", h),
                 frameStoppedLoading=lambda h: self.handlers.__setitem__("stopped", h),
@@ -175,6 +176,33 @@ class TestStalledLoads:
         assert client.stopped == ["S1"]
         assert guard.take() == []
         guard.close()
+
+
+@pytest.mark.unit
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("reason", "kind"),
+    [
+        ("formSubmissionPost", "differentDocument"),
+        ("formSubmissionGet", "differentDocument"),
+        ("anchorClick", "restoreWithPost"),
+    ],
+)
+async def test_a_form_submission_is_never_stopped(
+    watched: tuple[StalledLoads, _FakeClient], reason: str, kind: str
+) -> None:
+    guard, client = watched
+    client.handlers["requested"](
+        {"frameId": TAB, "reason": reason, "url": "http://example.com:81/", "disposition": "x"},
+        "S1",
+    )
+
+    _start(client, "S1", kind=kind)
+    _start(client, "S2", kind=kind)
+    await _settle()
+
+    assert client.stopped == []
+    assert guard.take() == []
 
 
 @pytest.mark.unit

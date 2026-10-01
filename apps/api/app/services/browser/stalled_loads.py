@@ -6,6 +6,11 @@ Jev and Browser-Use make. Page.stopLoading is still answered, releases the
 queued reads at once, and leaves the tab on the page it was on (measured
 2026-09-25 against a server that never responds, for typed, clicked and
 cross-site navigations alike).
+
+A form submission is never stopped: the server may already be acting on it, and
+a stop would leave the user's submission in an unknown state. Chrome names it
+in Page.frameRequestedNavigation, which reaches the tab before the navigation
+starts with the same URL (measured 2026-10-02 for POST and GET forms).
 """
 
 from __future__ import annotations
@@ -26,6 +31,7 @@ if TYPE_CHECKING:
     from browser_use.browser.session import BrowserSession
     from cdp_use.cdp.page.events import (
         FrameNavigatedEvent,
+        FrameRequestedNavigationEvent,
         FrameStartedNavigatingEvent,
         FrameStoppedLoadingEvent,
     )
@@ -33,6 +39,10 @@ if TYPE_CHECKING:
 
 #: Navigation types that stay on the current document and never wait on a server.
 _SAME_DOCUMENT = frozenset({"sameDocument", "historySameDocument"})
+#: Why a page asks to navigate when it submits a form.
+_FORM_SUBMISSIONS = frozenset({"formSubmissionGet", "formSubmissionPost"})
+#: A history navigation that sends a form's POST again.
+_RESTORE_WITH_POST = "restoreWithPost"
 
 
 class StalledLoads:
@@ -43,12 +53,15 @@ class StalledLoads:
         #: Tab (main frame) id -> the timer that stops its pending load. A tab can carry
         #: several CDP sessions, and each reports the same navigation.
         self._timers: dict[str, asyncio.Task[None]] = {}
+        #: Tab -> the URL its page asked to submit a form to, until that load ends.
+        self._form_submissions: dict[str, str] = {}
         self._stalled: list[str] = []
 
     async def attach(self, event: BrowserConnectedEvent) -> None:
         """Listen on the session's CDP connection; runs on every (re)connect."""
         del event
         client = self._browser.cdp_client
+        client.register.Page.frameRequestedNavigation(self._on_requested)
         client.register.Page.frameStartedNavigating(self._on_started)
         client.register.Page.frameNavigated(self._on_committed)
         client.register.Page.frameStoppedLoading(self._on_stopped)
@@ -63,6 +76,13 @@ class StalledLoads:
         for tab in list(self._timers):
             self._cancel(tab)
 
+    def _on_requested(self, event: FrameRequestedNavigationEvent, session_id: str | None) -> None:
+        del session_id
+        if event["reason"] in _FORM_SUBMISSIONS:
+            self._form_submissions[event["frameId"]] = event["url"]
+        else:
+            self._form_submissions.pop(event["frameId"], None)
+
     def _on_started(self, event: FrameStartedNavigatingEvent, session_id: str | None) -> None:
         tab = event["frameId"]
         # Chrome gives a tab's main frame its target's id.
@@ -73,17 +93,26 @@ class StalledLoads:
         ):
             return
         self._cancel(tab)
+        if (
+            event["navigationType"] == _RESTORE_WITH_POST
+            or self._form_submissions.get(tab) == event["url"]
+        ):
+            return
         self._timers[tab] = asyncio.create_task(self._stop_after(tab, session_id, event["url"]))
 
     def _on_committed(self, event: FrameNavigatedEvent, session_id: str | None) -> None:
         del session_id
         frame: Frame = event["frame"]
-        # A child frame's id is never a tab's, so only a tab's own commit cancels.
-        self._cancel(frame["id"])
+        # A child frame's id is never a tab's, so only a tab's own commit ends its load.
+        self._ended(frame["id"])
 
     def _on_stopped(self, event: FrameStoppedLoadingEvent, session_id: str | None) -> None:
         del session_id
-        self._cancel(event["frameId"])
+        self._ended(event["frameId"])
+
+    def _ended(self, tab: str) -> None:
+        self._form_submissions.pop(tab, None)
+        self._cancel(tab)
 
     def _cancel(self, tab: str) -> None:
         timer = self._timers.pop(tab, None)

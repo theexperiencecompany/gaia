@@ -289,8 +289,7 @@ BROWSER_LOAD_STOP_TIMEOUT_SECONDS = 5.0
 #: What the agent reads about a load the browser stopped: the plain fact, no retry rule.
 BROWSER_LOAD_STALLED_NOTE = (
     "{url} did not respond within {seconds:.0f} s, so its loading was stopped and the tab "
-    "stayed on the page it was on. Sites are often briefly slow; the page may load if "
-    "opened again."
+    "stayed on the page it was on."
 )
 # A decision can wait out a layout pass, a part judgement and Jev; Browser-Use's 75s cut it off.
 BROWSER_AGENT_LLM_TIMEOUT_SECONDS = 180
