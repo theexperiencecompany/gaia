@@ -470,7 +470,9 @@ class JevPage:
             # Set before the read: DOMContentLoaded fired after the read saw "loading" lands here.
             parsed = self._parsing[session.session_id] = asyncio.Event()
             try:
-                snapshot = cast("_Snapshot | _Parsing", await self._evaluate(_SNAPSHOT_JS))
+                snapshot: _Snapshot | _Parsing = cast(
+                    "_Snapshot | _Parsing", await self._evaluate(_SNAPSHOT_JS)
+                )
             except DocumentReplaced:
                 # The next read waits for the new document: Chrome holds it until that commits.
                 continue
