@@ -7,6 +7,7 @@ the same artifact the web card renders, through the platform's native image
 message instead of a pasted link.
 """
 
+from app.config.settings import settings
 from app.constants.browser import (
     BROWSER_CREDENTIALS_SAVED_NOTE,
     BROWSER_HANDOFF_REPLY_PROMPT,
@@ -101,7 +102,8 @@ class BotProgressDelivery:
         # The ask is the model's own words (request_human_takeover's reason),
         # shown verbatim as the first bubble; link and reply instruction follow.
         blocks = [snapshot.reason]
-        if snapshot.category == SensitiveCategory.CREDENTIALS:
+        # Only true where logins are kept: a deployment can turn persistence off.
+        if snapshot.category == SensitiveCategory.CREDENTIALS and settings.BROWSER_PERSIST_LOGINS:
             blocks[0] += f"\n{BROWSER_CREDENTIALS_SAVED_NOTE}"
         if snapshot.session_id:
             blocks.append(f"Open the live browser: {await self._link(snapshot.session_id)}")

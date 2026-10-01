@@ -96,9 +96,9 @@ class SensitiveCategory(str, Enum):
     IRREVERSIBLE = "irreversible"
 
 
-# Shown on a CREDENTIALS handoff: the session is saved (Fernet-encrypted per
-# user+site) and reused so the next task skips the login. Kept truthful to
-# storage_persistence.py; the Browser settings page can list/remove saved sites.
+# Shown on a CREDENTIALS handoff where BROWSER_PERSIST_LOGINS keeps logins: the
+# session is saved (Fernet-encrypted per user+site) and reused so the next task
+# skips the login. The Browser settings page can list/remove saved sites.
 BROWSER_CREDENTIALS_SAVED_NOTE = (
     "Once you're signed in, I'll save this site's session, encrypted, so I can "
     "skip the login next time. You can remove saved sites anytime in "

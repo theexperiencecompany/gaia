@@ -454,16 +454,26 @@ class TestBotProgressDeliveryHandoff:
                 f"{BROWSER_HANDOFF_REPLY_PROMPT}"
             )
 
-    async def test_non_credentials_handoff_omits_the_saved_note(self, delivery):
-        """A payment handoff must NOT promise to store anything — nothing is saved for a payment, so the note would be a false reassurance."""
+    @pytest.mark.parametrize(
+        ("category", "persist"),
+        [("payment", True), ("credentials", False)],
+        ids=["payment", "logins-not-kept"],
+    )
+    async def test_a_handoff_that_saves_nothing_omits_the_saved_note(
+        self, delivery, monkeypatch, category, persist
+    ):
+        """Nothing is saved for a payment, or anywhere logins are not kept, so the note would be false."""
         from app.constants.browser import BROWSER_CREDENTIALS_SAVED_NOTE, SensitiveCategory
 
+        monkeypatch.setattr(
+            "app.services.browser.bot_delivery.settings.BROWSER_PERSIST_LOGINS", persist
+        )
         snap = BrowserHandoffSnapshot(
             handoff_id="h1",
             reason="Complete the payment.",
             session_id="sess-1",
             status=HandoffStatus.PENDING,
-            category=SensitiveCategory.PAYMENT,
+            category=SensitiveCategory(category),
         )
         with (
             patch(
