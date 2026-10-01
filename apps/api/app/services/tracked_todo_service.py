@@ -21,6 +21,7 @@ from types import MappingProxyType
 from typing import NamedTuple
 
 from app.constants.todos import (
+    ACTIVE_TRACKED_SUMMARY_LIMIT,
     EXECUTE_TRACKED_TODO_TASK,
     GAIA_TRACKED_LABEL,
     TodoActivityEvent,
@@ -51,6 +52,7 @@ from app.services.todo_canvas_storage import (
     build_vfs_label,
     repair_canvas_and_activity,
 )
+from app.services.todos.errors import SubTodoParentError
 from app.services.todos.todo_service import TodoService
 from app.services.triggers.subscription_service import (
     register_subscription,
@@ -119,14 +121,55 @@ async def _watch_external_ref(todo_id: str, user_id: str, ref: ExternalRef) -> N
         )
 
 
-def _pin_active_todo(docs: list[TodoDocument], active_todo_id: str | None) -> None:
-    """Move the matching todo to the front of docs in-place (no-op if not found)."""
+async def require_sub_todo_parent(
+    user_id: str, parent_todo_id: str, *, child_id: str | None = None
+) -> None:
+    """Refuse a parent that is not an open, top-level tracked todo of the user.
+
+    child_id names an existing todo being moved under it, which must not be the
+    parent itself nor have sub-todos of its own: sub-todos go one level deep.
+    """
+    parent = (
+        await todo_repository.get(parent_todo_id, user_id=user_id)
+        if todo_repository.is_valid_id(parent_todo_id)
+        else None
+    )
+    if parent is None:
+        raise SubTodoParentError(f"The user has no open tracked todo with the id {parent_todo_id}.")
+    if GAIA_TRACKED_LABEL not in parent.labels:
+        raise SubTodoParentError(
+            f'"{parent.title}" is not a tracked todo, so it cannot have sub-todos.'
+        )
+    if parent.completed:
+        raise SubTodoParentError(f'"{parent.title}" is completed; a sub-todo needs an open parent.')
+    if parent.parent_todo_id is not None:
+        raise SubTodoParentError(
+            f'"{parent.title}" is itself a sub-todo; sub-todos go one level deep.'
+        )
+    if child_id is None:
+        return
+    if child_id == parent_todo_id:
+        raise SubTodoParentError("A todo cannot be its own parent.")
+    if await todo_repository.find_sub_todos(user_id, [child_id]):
+        raise SubTodoParentError(f"{child_id} has sub-todos of its own, so it cannot become one.")
+
+
+async def _active_todo_first(
+    docs: list[TodoDocument], user_id: str, active_todo_id: str | None
+) -> None:
+    """Put the run's own todo first in docs, fetching it when the listing left it out.
+
+    A sub-todo is never in the top-level listing, and neither is a todo past its limit.
+    """
     if not active_todo_id:
         return
     for i, d in enumerate(docs):
-        if d.id == active_todo_id and i > 0:
+        if d.id == active_todo_id:
             docs.insert(0, docs.pop(i))
             return
+    active = await todo_repository.get(active_todo_id, user_id=user_id)
+    if active is not None and not active.completed:
+        docs.insert(0, active)
 
 
 def _format_due_string(due_date: datetime | None, now: datetime) -> str:
@@ -139,16 +182,23 @@ def _format_due_string(due_date: datetime | None, now: datetime) -> str:
     return f" due({days_until}d)"
 
 
-def _format_tracked_todo_line(doc: TodoDocument, now: datetime, active_todo_id: str | None) -> str:
+def _format_tracked_todo_line(
+    doc: TodoDocument, now: datetime, active_todo_id: str | None, open_sub_todos: int
+) -> str:
     """Format one tracked-todo doc as a context-injection summary line."""
     age_days = (now - (doc.created_at or now)).days
     last_update = (now - (doc.updated_at or now)).days
     labels = [lbl for lbl in doc.labels if lbl != GAIA_TRACKED_LABEL]
     labels_str = f" [{', '.join(labels)}]" if labels else ""
     prefix = "⭐ ACTIVE " if doc.id == active_todo_id else ""
+    family = ""
+    if doc.parent_todo_id:
+        family = f" | sub-todo of {doc.parent_todo_id}"
+    elif open_sub_todos:
+        family = f" | {open_sub_todos} open sub-todos"
     return (
         f'  {prefix}"{doc.title}"{labels_str}{_format_due_string(doc.due_date, now)}'
-        f" — {age_days}d old, updated {last_update}d ago"
+        f" — {age_days}d old, updated {last_update}d ago{family}"
         f" | ID: {doc.id} | files: /workspace/gaia-tasks/{folder_name(doc.id, doc.title)}/"
     )
 
@@ -170,15 +220,22 @@ class TrackedTodoService:
         labels: list[str] | None = None,
         initial_canvas: str | None = None,
         source_conversation_id: str | None = None,
-        notify_on_run: bool = True,
+        notify_on_run: bool | None = None,
         external_ref: ExternalRef | None = None,
         references: list[str] | None = None,
+        parent_todo_id: str | None = None,
     ) -> TodoResponse:
         """Create a todo with its canvas, activity and log, indexed in ChromaDB.
 
         With external_ref it is the one open todo for that object, already watching it.
-        Raises ExternalRefTakenError when another open todo holds the ref.
+        A sub-todo reports to its parent, so its runs reach the user only on request.
+        Raises ExternalRefTakenError when another open todo holds the ref, and
+        SubTodoParentError when parent_todo_id is not a usable parent.
         """
+        if parent_todo_id is not None:
+            await require_sub_todo_parent(user_id, parent_todo_id)
+        if notify_on_run is None:
+            notify_on_run = parent_todo_id is None
         all_labels = list(labels or [])
         if GAIA_TRACKED_LABEL not in all_labels:
             all_labels.append(GAIA_TRACKED_LABEL)
@@ -192,7 +249,9 @@ class TrackedTodoService:
             notify_on_run=notify_on_run,
             references=references or [],
         )
-        result = await TodoService.create_todo(todo, user_id, external_ref=external_ref)
+        result = await TodoService.create_todo(
+            todo, user_id, external_ref=external_ref, parent_todo_id=parent_todo_id
+        )
         todo_id = result.id
 
         vfs_path = build_vfs_label(todo_id)
@@ -261,7 +320,7 @@ class TrackedTodoService:
 
     @staticmethod
     async def complete_tracked_todo(todo_id: str, user_id: str, summary: str) -> bool:
-        """Complete a tracked todo: append completion to log, mark done, archive label."""
+        """Complete a tracked todo and its open sub-todos: log it, mark done, archive label."""
         doc = await todo_repository.get(todo_id, user_id=user_id)
         if not doc:
             return False
@@ -269,6 +328,13 @@ class TrackedTodoService:
         # Guard against double-completion
         if doc.completed:
             return True
+
+        # Sub-todos first: a retry after a partial failure finds the parent still open.
+        for child in await todo_repository.find_sub_todos(user_id, [todo_id]):
+            if not child.completed:
+                await TrackedTodoService.complete_tracked_todo(
+                    child.id, user_id, summary=f'Parent "{doc.title}" completed: {summary}'
+                )
 
         now = datetime.now(UTC)
 
@@ -299,20 +365,25 @@ class TrackedTodoService:
 
     @staticmethod
     async def get_active_tracked_summary(user_id: str, active_todo_id: str | None = None) -> str:
-        """Format active tracked todos for context injection.
+        """Format active top-level tracked todos, each with its open sub-todo count.
 
-        When active_todo_id is provided, that todo is pinned at the top with an
-        ⭐ ACTIVE marker so the agent can identify the run's bound canvas.
+        When active_todo_id is provided, that todo (a sub-todo included) is pinned at
+        the top with an ⭐ ACTIVE marker so the agent can identify the run's bound canvas.
         """
-        docs = await todo_repository.list_active_tracked(user_id, limit=15)
+        docs = await todo_repository.list_active_tracked(
+            user_id, limit=ACTIVE_TRACKED_SUMMARY_LIMIT, top_level=True
+        )
+        await _active_todo_first(docs, user_id, active_todo_id)
         if not docs:
             return ""
 
-        _pin_active_todo(docs, active_todo_id)
-
+        counts = await todo_repository.count_open_sub_todos(user_id, [doc.id for doc in docs])
         now = datetime.now(UTC)
         lines = ["ACTIVE TRACKED TODOS:"]
-        lines.extend(_format_tracked_todo_line(doc, now, active_todo_id) for doc in docs)
+        lines.extend(
+            _format_tracked_todo_line(doc, now, active_todo_id, counts.get(doc.id, 0))
+            for doc in docs
+        )
         return "\n".join(lines)
 
     @staticmethod

@@ -27,9 +27,11 @@ from app.models.trigger_subscription_models import (
     SubscriptionCondition,
 )
 from app.services.canvas_markdown import normalize_canvas
+from app.services.todos.errors import SubTodoParentError
 from app.services.tracked_todo_service import (
     CANVAS_TEMPLATE,
     TrackedTodoService,
+    require_sub_todo_parent,
     tracked_todo_service,
 )
 from app.services.triggers.subscription_service import SubscriptionError
@@ -78,6 +80,9 @@ def mock_repo():
         m.get = AsyncMock(return_value=None)
         m.update = AsyncMock(return_value=None)
         m.list_active_tracked = AsyncMock(return_value=[])
+        m.find_sub_todos = AsyncMock(return_value=[])
+        m.count_open_sub_todos = AsyncMock(return_value={})
+        m.is_valid_id = MagicMock(side_effect=lambda todo_id: len(todo_id) == 24)
         yield m
 
 
@@ -350,6 +355,183 @@ class TestCreateTrackedTodo:
         )
 
         assert mock_deps.create.call_args.args[0].references == ["desk-1", "lease-1"]
+
+
+_PARENT_ID = "66f838cc8829054e5f10e401"
+_CHILD_ID = "66f838cc8829054e5f10e402"
+
+
+def _parent(**overrides: object) -> TodoDocument:
+    return _todo_doc(id=_PARENT_ID, title="Inbox desk", **overrides)
+
+
+def _child(**overrides: object) -> TodoDocument:
+    fields: dict[str, object] = {"id": _CHILD_ID, "title": "Reply to Sam"}
+    fields.update(overrides)
+    return _todo_doc(parent_todo_id=_PARENT_ID, **fields)
+
+
+class TestSubTodoParent:
+    """One level deep, same owner, open and tracked: anything else is refused before a write."""
+
+    async def test_an_open_tracked_todo_of_the_same_user_is_accepted(self, mock_repo):
+        mock_repo.get.return_value = _parent()
+
+        await require_sub_todo_parent(USER_ID, _PARENT_ID)
+
+        mock_repo.get.assert_awaited_once_with(_PARENT_ID, user_id=USER_ID)
+
+    @pytest.mark.parametrize(
+        ("parent", "reason"),
+        [
+            pytest.param(None, "no open tracked todo", id="missing-or-another-users"),
+            pytest.param(_todo_doc(id=_PARENT_ID, completed=True), "is completed", id="completed"),
+            pytest.param(
+                _todo_doc(id=_PARENT_ID, labels=["work"]), "not a tracked todo", id="untracked"
+            ),
+            pytest.param(
+                _todo_doc(id=_PARENT_ID, parent_todo_id=_CHILD_ID),
+                "itself a sub-todo",
+                id="grandchild",
+            ),
+        ],
+    )
+    async def test_an_unusable_parent_is_refused_with_the_reason(self, mock_repo, parent, reason):
+        mock_repo.get.return_value = parent
+
+        with pytest.raises(SubTodoParentError, match=reason):
+            await require_sub_todo_parent(USER_ID, _PARENT_ID)
+
+    async def test_a_malformed_id_is_refused_without_a_lookup(self, mock_repo):
+        with pytest.raises(SubTodoParentError, match="no open tracked todo"):
+            await require_sub_todo_parent(USER_ID, "not-an-id")
+
+        mock_repo.get.assert_not_awaited()
+
+    async def test_a_todo_cannot_be_its_own_parent(self, mock_repo):
+        mock_repo.get.return_value = _parent()
+
+        with pytest.raises(SubTodoParentError, match="its own parent"):
+            await require_sub_todo_parent(USER_ID, _PARENT_ID, child_id=_PARENT_ID)
+
+    async def test_a_todo_with_sub_todos_cannot_become_one(self, mock_repo):
+        mock_repo.get.return_value = _parent()
+        mock_repo.find_sub_todos.return_value = [_child()]
+
+        with pytest.raises(SubTodoParentError, match="has sub-todos of its own"):
+            await require_sub_todo_parent(USER_ID, _PARENT_ID, child_id=TODO_ID)
+
+        mock_repo.find_sub_todos.assert_awaited_once_with(USER_ID, [TODO_ID])
+
+
+class TestCreateSubTodo:
+    async def test_the_parent_reaches_the_insert(self, mock_repo, mock_deps):
+        mock_repo.get.return_value = _parent()
+        mock_deps.create.return_value = _todo_response()
+
+        await TrackedTodoService.create_tracked_todo(
+            USER_ID, "Reply to Sam", parent_todo_id=_PARENT_ID
+        )
+
+        assert mock_deps.create.await_args.kwargs["parent_todo_id"] == _PARENT_ID
+
+    async def test_a_sub_todo_reports_to_its_parent_instead_of_the_user_by_default(
+        self, mock_repo, mock_deps
+    ):
+        mock_repo.get.return_value = _parent()
+        mock_deps.create.return_value = _todo_response()
+
+        await TrackedTodoService.create_tracked_todo(
+            USER_ID, "Reply to Sam", parent_todo_id=_PARENT_ID
+        )
+
+        assert mock_deps.create.call_args.args[0].notify_on_run is False
+
+    async def test_a_sub_todo_can_still_ask_to_message_the_user(self, mock_repo, mock_deps):
+        mock_repo.get.return_value = _parent()
+        mock_deps.create.return_value = _todo_response()
+
+        await TrackedTodoService.create_tracked_todo(
+            USER_ID, "Reply to Sam", parent_todo_id=_PARENT_ID, notify_on_run=True
+        )
+
+        assert mock_deps.create.call_args.args[0].notify_on_run is True
+
+    async def test_an_unusable_parent_creates_nothing(self, mock_repo, mock_deps):
+        with pytest.raises(SubTodoParentError):
+            await TrackedTodoService.create_tracked_todo(
+                USER_ID, "Reply to Sam", parent_todo_id=_PARENT_ID
+            )
+
+        mock_deps.create.assert_not_awaited()
+
+
+class TestCompletingAParentCompletesItsSubTodos:
+    """A sub-todo does not outlive its parent: completion goes through the one completion path."""
+
+    async def test_each_open_sub_todo_is_completed_and_stops_watching(self, mock_repo, mock_deps):
+        docs = {_PARENT_ID: _parent(), _CHILD_ID: _child()}
+        mock_repo.get.side_effect = lambda todo_id, user_id: docs.get(todo_id)
+        mock_repo.find_sub_todos.side_effect = lambda user_id, parent_ids: (
+            [docs[_CHILD_ID]] if parent_ids == [_PARENT_ID] else []
+        )
+
+        await TrackedTodoService.complete_tracked_todo(_PARENT_ID, USER_ID, "Desk retired")
+
+        completed = [c.args[0] for c in mock_repo.update.await_args_list]
+        assert completed == [_CHILD_ID, _PARENT_ID]
+        assert [c.args[0] for c in mock_deps.teardown.await_args_list] == [_CHILD_ID, _PARENT_ID]
+        child_entry = mock_deps.record.await_args_list[0].args
+        assert child_entry[0] == _CHILD_ID
+        assert child_entry[2] is TodoActivityEvent.COMPLETED
+        assert "Inbox desk" in child_entry[3]
+
+    async def test_a_sub_todo_already_completed_is_left_alone(self, mock_repo, mock_deps):
+        docs = {_PARENT_ID: _parent(), _CHILD_ID: _child(completed=True)}
+        mock_repo.get.side_effect = lambda todo_id, user_id: docs.get(todo_id)
+        mock_repo.find_sub_todos.return_value = [docs[_CHILD_ID]]
+
+        await TrackedTodoService.complete_tracked_todo(_PARENT_ID, USER_ID, "Desk retired")
+
+        assert [c.args[0] for c in mock_repo.update.await_args_list] == [_PARENT_ID]
+
+
+class TestTheSummaryCollapsesSubTodos:
+    """Sub-todos would push every other todo out of the 15 the agent sees; they fold under a count."""
+
+    async def test_only_top_level_todos_are_listed_each_with_its_open_sub_todo_count(
+        self, mock_repo
+    ):
+        mock_repo.list_active_tracked.return_value = [_parent()]
+        mock_repo.count_open_sub_todos.return_value = {_PARENT_ID: 12}
+
+        summary = await TrackedTodoService.get_active_tracked_summary(USER_ID)
+
+        assert mock_repo.list_active_tracked.await_args.kwargs["top_level"] is True
+        mock_repo.count_open_sub_todos.assert_awaited_once_with(USER_ID, [_PARENT_ID])
+        assert f"ID: {_PARENT_ID}" in summary
+        assert "12 open sub-todos" in summary
+
+    async def test_the_running_sub_todo_is_shown_even_though_sub_todos_are_folded(self, mock_repo):
+        mock_repo.list_active_tracked.return_value = [_parent()]
+        mock_repo.count_open_sub_todos.return_value = {_PARENT_ID: 1}
+        mock_repo.get.return_value = _child()
+
+        summary = await TrackedTodoService.get_active_tracked_summary(
+            USER_ID, active_todo_id=_CHILD_ID
+        )
+
+        lines = summary.split("\n")
+        assert lines[1].startswith('  ⭐ ACTIVE "Reply to Sam"')
+        assert f"sub-todo of {_PARENT_ID}" in lines[1]
+        mock_repo.get.assert_awaited_once_with(_CHILD_ID, user_id=USER_ID)
+
+    async def test_a_todo_without_sub_todos_shows_no_count(self, mock_repo):
+        mock_repo.list_active_tracked.return_value = [_todo_doc()]
+
+        summary = await TrackedTodoService.get_active_tracked_summary(USER_ID)
+
+        assert "sub-todo" not in summary
 
 
 def test_the_template_opens_on_standing_rules_and_is_already_in_shape() -> None:

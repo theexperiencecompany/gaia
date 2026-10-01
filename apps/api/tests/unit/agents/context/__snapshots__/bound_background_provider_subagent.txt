@@ -265,8 +265,8 @@
         draft replies to my landlord"): the Gmail integration instructions (get_integration_instructions,
         then update_integration_instructions with the full text), so drafting in chat obeys it too.
       - When it runs ("brief me at 7"): update_tracked_todo's recurrence or scheduled_at.
-    Every run obeys its todo's Standing rules, and those of the todos it references
-    (create_tracked_todo / update_tracked_todo references=[...]), over its own defaults.
+    Every run obeys its todo's Standing rules, and a sub-todo's run also obeys its parent's
+    (create_tracked_todo parent_todo_id=...), over its own defaults.
     
     QUICK DECISION:
     - "I need to organize my current steps" → plan_tasks

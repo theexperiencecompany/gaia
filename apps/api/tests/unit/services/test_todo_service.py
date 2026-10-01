@@ -9,7 +9,7 @@ and the ProjectService guards.
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from bson import ObjectId
 from fastapi import HTTPException
@@ -74,6 +74,8 @@ FAKE_TODO_ID = str(ObjectId())
 FAKE_PROJECT_ID = str(ObjectId())
 FAKE_INBOX_ID = str(ObjectId())
 NOW = datetime.now(UTC)
+_PARENT = str(ObjectId())
+_CHILD = str(ObjectId())
 
 
 @pytest.fixture(autouse=True)
@@ -113,6 +115,7 @@ def _make_todo_doc(
     subtasks: list[dict] | None = None,
     workflow_id: str | None = None,
     vfs_path: str | None = None,
+    parent_todo_id: str | None = None,
 ) -> TodoDocument:
     return TodoDocument.model_validate(
         {
@@ -127,6 +130,7 @@ def _make_todo_doc(
             "subtasks": subtasks or [],
             "workflow_id": workflow_id,
             "vfs_path": vfs_path,
+            "parent_todo_id": parent_todo_id,
             "created_at": NOW,
             "updated_at": NOW,
         }
@@ -171,6 +175,8 @@ def mock_todo_repo():
         repo.bulk_update = AsyncMock(return_value=0)
         repo.bulk_delete = AsyncMock(return_value=0)
         repo.move_todos_to_project = AsyncMock(return_value=0)
+        repo.find_sub_todos = AsyncMock(return_value=[])
+        repo.count_open_sub_todos = AsyncMock(return_value={})
         yield repo
 
 
@@ -436,6 +442,7 @@ class TestCreateTodo:
                 # No project on the request — the Inbox default must not read as
                 # the user having chosen one.
                 "has_project": False,
+                "is_sub_todo": False,
             },
         )
 
@@ -498,6 +505,83 @@ class TestCreateTodoWithExternalRef:
         with pytest.raises(DuplicateKeyError):
             await TodoService.create_todo(TodoModel(title="Reply"), FAKE_USER_ID)
         mock_todo_repo.find_open_by_external_ref.assert_not_awaited()
+
+
+class TestCreateSubTodo:
+    async def test_the_parent_is_written_by_the_insert_itself(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_todo_repo.create = AsyncMock(return_value=_make_todo_doc(parent_todo_id=_PARENT))
+
+        await TodoService.create_todo(
+            TodoModel(title="Reply"), FAKE_USER_ID, parent_todo_id=_PARENT
+        )
+
+        assert mock_todo_repo.create.await_args.args[0].parent_todo_id == _PARENT
+
+    def test_a_client_cannot_name_a_parent_on_the_create_request(self):
+        """Only the tracked-todo service sets a parent, after validating it."""
+        assert "parent_todo_id" not in TodoModel.model_fields
+
+    async def test_the_created_event_says_whether_it_is_a_sub_todo(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_todo_repo.create = AsyncMock(return_value=_make_todo_doc(parent_todo_id=_PARENT))
+        with patch("app.services.todos.todo_service.capture_event") as capture:
+            await TodoService.create_todo(
+                TodoModel(title="Reply"), FAKE_USER_ID, parent_todo_id=_PARENT
+            )
+
+        assert capture.call_args.args[2]["is_sub_todo"] is True
+
+
+class TestSubTodoCounts:
+    """A parent row carries its open sub-todo count; the UI shows it as a chip."""
+
+    async def test_each_listed_todo_carries_its_own_count(
+        self, mock_todo_repo, mock_project_repo, mock_workflow_repo
+    ):
+        desk = _make_todo_doc(todo_id=_PARENT, vfs_path="/workspace/gaia-tasks/x")
+        plain = _make_todo_doc()
+        mock_todo_repo.list_page = AsyncMock(return_value=TodoPage(items=[desk, plain], total=2))
+        mock_todo_repo.count_open_sub_todos = AsyncMock(return_value={_PARENT: 3})
+
+        result = await TodoService.list_todos(
+            FAKE_USER_ID, TodoSearchParams(mode=SearchMode.TEXT, page=1, per_page=50)
+        )
+
+        by_id = {item.id: item for item in result.data}
+        assert by_id[_PARENT].sub_todo_count == 3
+        assert by_id[plain.id].sub_todo_count == 0
+        mock_todo_repo.count_open_sub_todos.assert_awaited_once_with(
+            FAKE_USER_ID, [_PARENT, plain.id]
+        )
+
+    async def test_a_single_todo_carries_its_count_and_its_parent(
+        self, mock_todo_repo, mock_project_repo
+    ):
+        mock_todo_repo.get = AsyncMock(
+            return_value=_make_todo_doc(todo_id=FAKE_TODO_ID, parent_todo_id=_PARENT)
+        )
+        mock_todo_repo.count_open_sub_todos = AsyncMock(return_value={FAKE_TODO_ID: 2})
+
+        result = await TodoService.get_todo(FAKE_TODO_ID, FAKE_USER_ID)
+
+        assert result.sub_todo_count == 2
+        assert result.parent_todo_id == _PARENT
+
+    async def test_listing_one_parents_sub_todos_is_not_scoped_to_the_inbox(
+        self, mock_todo_repo, mock_project_repo, mock_workflow_repo
+    ):
+        mock_todo_repo.list_page = AsyncMock(return_value=TodoPage(items=[], total=0))
+
+        await TodoService.list_todos(
+            FAKE_USER_ID,
+            TodoSearchParams(mode=SearchMode.TEXT, page=1, per_page=50, parent_todo_id=_PARENT),
+        )
+
+        assert mock_todo_repo.list_page.await_args.kwargs["inbox_project_id"] is None
+        assert mock_todo_repo.list_page.await_args.kwargs["params"].parent_todo_id == _PARENT
 
 
 class TestGetTodo:
@@ -867,6 +951,143 @@ class TestDeleteTodo:
         teardown.assert_not_awaited()
 
 
+class TestDeletingAParentDeletesItsSubTodos:
+    async def test_each_sub_todo_goes_through_the_single_delete_first(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        parent = _make_todo_doc(todo_id=_PARENT, vfs_path="/workspace/gaia-tasks/p")
+        child = _make_todo_doc(todo_id=_CHILD, parent_todo_id=_PARENT, completed=True)
+        docs = {_PARENT: parent, _CHILD: child}
+        mock_todo_repo.get = AsyncMock(side_effect=lambda todo_id, user_id: docs.get(todo_id))
+        mock_todo_repo.find_sub_todos = AsyncMock(
+            side_effect=lambda user_id, parent_ids: [child] if parent_ids == [_PARENT] else []
+        )
+
+        await TodoService.delete_todo(_PARENT, FAKE_USER_ID)
+
+        assert mock_todo_repo.delete.await_args_list == [
+            call(_CHILD, user_id=FAKE_USER_ID),
+            call(_PARENT, user_id=FAKE_USER_ID),
+        ]
+
+    async def test_a_bulk_delete_takes_the_selected_parents_sub_todos_with_it(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        child = _make_todo_doc(todo_id=_CHILD, parent_todo_id=_PARENT)
+        mock_todo_repo.find_sub_todos = AsyncMock(return_value=[child])
+        mock_todo_repo.bulk_delete = AsyncMock(return_value=2)
+
+        await TodoService.bulk_delete_todos([_PARENT], FAKE_USER_ID)
+
+        mock_todo_repo.find_sub_todos.assert_awaited_once_with(FAKE_USER_ID, [_PARENT])
+        mock_todo_repo.bulk_delete.assert_awaited_once_with(FAKE_USER_ID, [_PARENT, _CHILD])
+
+    async def test_the_agents_bulk_delete_takes_them_too(self, mock_bulk_repos):
+        todo_repo, _ = mock_bulk_repos
+        child = _make_todo_doc(todo_id=_CHILD, parent_todo_id=_PARENT)
+        todo_repo.find_by_ids = AsyncMock(return_value=[_make_todo_doc(todo_id=_PARENT), child])
+        todo_repo.find_sub_todos.return_value = [child]
+        todo_repo.bulk_delete = AsyncMock(return_value=2)
+
+        await bulk_service_delete_todos([_PARENT], FAKE_USER_ID)
+
+        todo_repo.find_sub_todos.assert_awaited_once_with(FAKE_USER_ID, [_PARENT])
+        todo_repo.find_by_ids.assert_awaited_once_with(FAKE_USER_ID, [_PARENT, _CHILD])
+        todo_repo.bulk_delete.assert_awaited_once_with(FAKE_USER_ID, [_PARENT, _CHILD])
+
+
+_TRACKED_PATH = "/workspace/gaia-tasks/x"
+_COMPLETE_TRACKED = "app.services.tracked_todo_service.tracked_todo_service.complete_tracked_todo"
+
+
+class TestBulkCompleteRunsTheTrackedLifecycle:
+    """A bulk complete must close a tracked todo the way a single complete does: watches torn down, sub-todos completed."""
+
+    async def test_a_tracked_todo_completes_through_its_lifecycle_and_plain_ones_in_bulk(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        tracked = _make_todo_doc(todo_id="t", vfs_path=_TRACKED_PATH)
+        plain = _make_todo_doc(todo_id="p")
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[tracked, plain])
+        mock_todo_repo.bulk_update = AsyncMock(return_value=1)
+        req = BulkUpdateRequest(todo_ids=["t", "p"], updates=TodoUpdateRequest(completed=True))
+
+        with patch(_COMPLETE_TRACKED, new_callable=AsyncMock, return_value=True) as complete:
+            result = await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+
+        complete.assert_awaited_once_with("t", FAKE_USER_ID, summary="Completed via bulk operation")
+        assert mock_todo_repo.bulk_update.await_args.args[1] == ["p"]
+        assert sorted(result.success) == ["p", "t"]
+
+    async def test_only_tracked_todos_means_no_plain_write(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_todo_repo.find_by_ids = AsyncMock(
+            return_value=[_make_todo_doc(todo_id="t", vfs_path=_TRACKED_PATH)]
+        )
+        req = BulkUpdateRequest(todo_ids=["t"], updates=TodoUpdateRequest(completed=True))
+
+        with patch(_COMPLETE_TRACKED, new_callable=AsyncMock, return_value=True):
+            result = await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+
+        mock_todo_repo.bulk_update.assert_not_awaited()
+        assert result.success == ["t"]
+
+    async def test_a_tracked_completion_that_fails_fails_the_bulk_operation(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_todo_repo.find_by_ids = AsyncMock(
+            return_value=[_make_todo_doc(todo_id="t", vfs_path=_TRACKED_PATH)]
+        )
+        req = BulkUpdateRequest(todo_ids=["t"], updates=TodoUpdateRequest(completed=True))
+
+        with (
+            patch(_COMPLETE_TRACKED, new_callable=AsyncMock, side_effect=RuntimeError("down")),
+            pytest.raises(RuntimeError),
+        ):
+            await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+
+
+class TestBulkDeleteClosesTriggers:
+    async def test_a_subscribed_todo_unregisters_before_the_bulk_delete(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        subscribed = _make_todo_doc(todo_id="a", vfs_path=_TRACKED_PATH)
+        subscribed.trigger_subscriptions = [
+            TriggerSubscription(
+                trigger_name="gmail_new_message",
+                action=SubscriptionAction.EXECUTE,
+                resolution=SubscriptionResolution.ACCOUNT,
+            )
+        ]
+        order: list[str] = []
+        mock_todo_repo.find_by_ids = AsyncMock(
+            return_value=[subscribed, _make_todo_doc(todo_id="b")]
+        )
+
+        async def _delete(*_args: object) -> int:
+            order.append("delete")
+            return 2
+
+        async def _teardown(*_args: object, **_kwargs: object) -> int:
+            order.append("teardown")
+            return 1
+
+        mock_todo_repo.bulk_delete = AsyncMock(side_effect=_delete)
+        teardown = AsyncMock(side_effect=_teardown)
+        with (
+            patch("app.services.todos.todo_service.teardown_subscriptions", teardown),
+            patch(
+                "app.services.todos.todo_service.delete_canvas_embedding", new_callable=AsyncMock
+            ) as canvas,
+        ):
+            await TodoService.bulk_delete_todos(["a", "b"], FAKE_USER_ID)
+
+        assert order == ["teardown", "delete"]
+        teardown.assert_awaited_once_with("a", FAKE_USER_ID, reason="bulk_deleted")
+        canvas.assert_awaited_once_with("a")
+
+
 class TestBulkOps:
     async def test_bulk_update_delegates(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
@@ -1100,17 +1321,18 @@ class TestCompatibilityWrappers:
 
 
 @pytest.fixture
-def mock_bulk_repos():
+def mock_bulk_repos(mock_vector_utils, mock_sync):
+    # The agent's bulk complete/delete run through TodoService: one repository for both modules.
+    todo_repo = MagicMock()
+    todo_repo.find_by_ids = AsyncMock(return_value=[])
+    todo_repo.bulk_update = AsyncMock(return_value=0)
+    todo_repo.bulk_delete = AsyncMock(return_value=0)
+    todo_repo.find_sub_todos = AsyncMock(return_value=[])
     with (
-        patch("app.services.todos.todo_bulk_service.todo_repository") as todo_repo,
+        patch("app.services.todos.todo_service.todo_repository", todo_repo),
+        patch("app.services.todos.todo_bulk_service.todo_repository", todo_repo),
         patch("app.services.todos.todo_bulk_service.project_repository") as project_repo,
-        patch(
-            "app.services.todos.todo_bulk_service.delete_canvas_embedding", new_callable=AsyncMock
-        ),
     ):
-        todo_repo.find_by_ids = AsyncMock(return_value=[])
-        todo_repo.bulk_update = AsyncMock(return_value=0)
-        todo_repo.bulk_delete = AsyncMock(return_value=0)
         project_repo.get = AsyncMock(return_value=None)
         yield todo_repo, project_repo
 
@@ -1150,13 +1372,12 @@ class TestBulkServiceComplete:
         todo_repo.bulk_update = AsyncMock(return_value=1)
         with (
             patch("app.services.todos.todo_bulk_service.capture_event") as mock_capture,
-            patch(
-                "app.services.todos.todo_bulk_service.tracked_todo_service.complete_tracked_todo",
-                new_callable=AsyncMock,
-            ) as mock_tracked,
+            patch(_COMPLETE_TRACKED, new_callable=AsyncMock) as mock_tracked,
         ):
             await bulk_complete_todos(["a", "b"], FAKE_USER_ID)
-        mock_tracked.assert_awaited_once_with("b", FAKE_USER_ID, "Completed via bulk operation")
+        mock_tracked.assert_awaited_once_with(
+            "b", FAKE_USER_ID, summary="Completed via bulk operation"
+        )
         mock_capture.assert_called_once_with(
             FAKE_USER_ID, AnalyticsEvents.TODO_TOGGLED, {"count": 2}
         )
@@ -1200,7 +1421,7 @@ class TestBulkServiceDelete:
             return_value=[_make_todo_doc(todo_id="a"), _make_todo_doc(todo_id="b")]
         )
         todo_repo.bulk_delete = AsyncMock(return_value=2)
-        with patch("app.services.todos.todo_bulk_service.capture_event") as mock_capture:
+        with patch("app.services.todos.todo_service.capture_event") as mock_capture:
             await bulk_service_delete_todos(["a", "b"], FAKE_USER_ID)
         mock_capture.assert_called_once_with(
             FAKE_USER_ID, AnalyticsEvents.TODO_DELETED, {"count": 2}
@@ -1229,7 +1450,7 @@ class TestBulkServiceDelete:
         todo_repo.find_by_ids = AsyncMock(return_value=[subscribed, plain])
         todo_repo.bulk_delete = AsyncMock(return_value=2)
         teardown = AsyncMock(return_value=1)
-        with patch("app.services.todos.todo_bulk_service.teardown_subscriptions", teardown):
+        with patch("app.services.todos.todo_service.teardown_subscriptions", teardown):
             await bulk_service_delete_todos(["a", "b"], FAKE_USER_ID)
         # Only the subscribed doc tears down, and with its exact id/user/reason.
         teardown.assert_awaited_once_with("a", FAKE_USER_ID, reason="bulk_deleted")

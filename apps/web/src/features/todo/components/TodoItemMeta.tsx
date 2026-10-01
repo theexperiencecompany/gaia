@@ -10,6 +10,7 @@ import {
   Flag02Icon,
   Folder02Icon,
   Tag01Icon,
+  TaskDone01Icon,
 } from "@icons";
 import { isTrackedTodo } from "@shared/todos";
 import { formatDistanceToNow } from "date-fns";
@@ -37,6 +38,7 @@ const todoHasMeta = (todo: Todo): boolean =>
   !!todo.scheduled_at ||
   !!todo.expires_at ||
   isTrackedTodo(todo) ||
+  todo.sub_todo_count > 0 ||
   todo.labels.length > 0;
 
 const dueChipColor = (isToday: boolean, isOverdue: boolean) => {
@@ -132,6 +134,20 @@ export function TodoItemMeta({
           startContent={<AiBrainIcon width={14} height={14} className="mx-1" />}
         >
           Tracked
+        </Chip>
+      )}
+
+      {todo.sub_todo_count > 0 && (
+        <Chip
+          className="flex items-center text-zinc-400 px-1"
+          size="sm"
+          radius="sm"
+          variant="flat"
+          startContent={
+            <TaskDone01Icon width={15} height={15} className="mx-1" />
+          }
+        >
+          {todo.sub_todo_count} sub-todos
         </Chip>
       )}
 

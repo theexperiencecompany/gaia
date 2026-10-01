@@ -50,8 +50,8 @@ exactly one place, so every later run obeys it:
     draft replies to my landlord"): the Gmail integration instructions (get_integration_instructions,
     then update_integration_instructions with the full text), so drafting in chat obeys it too.
   - When it runs ("brief me at 7"): update_tracked_todo's recurrence or scheduled_at.
-Every run obeys its todo's Standing rules, and those of the todos it references
-(create_tracked_todo / update_tracked_todo references=[...]), over its own defaults.
+Every run obeys its todo's Standing rules, and a sub-todo's run also obeys its parent's
+(create_tracked_todo parent_todo_id=...), over its own defaults.
 
 QUICK DECISION:
 - "I need to organize my current steps" → plan_tasks
@@ -109,11 +109,17 @@ TRIGGERED_RELEVANCE_GUIDANCE = (
 )
 
 
-# Heads the Standing rules a run inherits from the todos it references (a thread
-# todo from the inbox desk): the user's instructions, not past experience.
-REFERENCED_STANDING_RULES_LABEL = (
-    "Standing rules of the todos this one references: the user's instructions, which this "
-    "run obeys like its own (where they conflict, this todo's own Standing rules win):"
+# Heads the Standing rules a sub-todo's run inherits from its parent: the user's
+# instructions, not past experience.
+PARENT_STANDING_RULES_LABEL = (
+    "Standing rules of this todo's parent: the user's instructions, which this run obeys "
+    "like its own (where they conflict, this todo's own Standing rules win):"
+)
+
+# Heads a parent's open sub-todos in its run: they report here instead of to the user.
+SUB_TODOS_LABEL = (
+    "Your open sub-todos. They report to you, not to the user, so their news reaches the "
+    "user only through your report. Each one's Current State:"
 )
 
 

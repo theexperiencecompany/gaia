@@ -37,3 +37,14 @@ class ExternalRefTakenError(AppError):
             public={"todo_id": existing.id},
         )
         self.existing = existing
+
+
+class SubTodoParentError(AppError):
+    """Raised (400) when a todo cannot go under the named parent; the message says why."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(
+            message=reason,
+            status_code=HTTPStatus.BAD_REQUEST,
+            code="sub_todo_parent_invalid",
+        )

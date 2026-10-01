@@ -323,6 +323,85 @@ class TestTodosRepository(UserScopedRepositoryContract):
 
         assert [t.title for t in found] == ["owner"]
 
+    # ---- sub-todos ----------------------------------------------------------
+
+    async def test_top_level_listing_leaves_out_every_sub_todo(self, repo, make_doc):
+        tracked = [GAIA_TRACKED_LABEL]
+        desk = await repo.create(make_doc(user_id="u", title="desk", labels=tracked))
+        await repo.create(
+            make_doc(user_id="u", title="thread", labels=tracked, parent_todo_id=desk.id)
+        )
+        # A document written before sub-todos existed has no parent_todo_id field at all.
+        await repo.create(make_doc(user_id="u", title="legacy", labels=tracked))
+
+        found = await repo.list_active_tracked("u", limit=10, top_level=True)
+
+        assert sorted(t.title for t in found) == ["desk", "legacy"]
+
+    async def test_one_parents_open_sub_todos_are_listed(self, repo, make_doc):
+        tracked = [GAIA_TRACKED_LABEL]
+        desk = await repo.create(make_doc(user_id="u", title="desk", labels=tracked))
+        other = await repo.create(make_doc(user_id="u", title="other", labels=tracked))
+        await repo.create(
+            make_doc(user_id="u", title="open", labels=tracked, parent_todo_id=desk.id)
+        )
+        await repo.create(
+            make_doc(
+                user_id="u", title="done", labels=tracked, parent_todo_id=desk.id, completed=True
+            )
+        )
+        await repo.create(
+            make_doc(user_id="u", title="elsewhere", labels=tracked, parent_todo_id=other.id)
+        )
+
+        found = await repo.list_active_tracked("u", limit=10, parent_todo_id=desk.id)
+
+        assert [t.title for t in found] == ["open"]
+
+    async def test_open_sub_todos_are_counted_per_parent_for_the_caller_only(self, repo, make_doc):
+        tracked = [GAIA_TRACKED_LABEL]
+        desk = await repo.create(make_doc(user_id="u", title="desk", labels=tracked))
+        lone = await repo.create(make_doc(user_id="u", title="lone", labels=tracked))
+        for i in range(3):
+            await repo.create(make_doc(user_id="u", title=f"t{i}", parent_todo_id=desk.id))
+        await repo.create(
+            make_doc(user_id="u", title="done", parent_todo_id=desk.id, completed=True)
+        )
+        await repo.create(make_doc(user_id="u2", title="theirs", parent_todo_id=desk.id))
+
+        counts = await repo.count_open_sub_todos("u", [desk.id, lone.id])
+
+        assert counts == {desk.id: 3}
+
+    async def test_find_sub_todos_returns_open_and_completed_of_every_given_parent(
+        self, repo, make_doc
+    ):
+        a = await repo.create(make_doc(user_id="u", title="a"))
+        b = await repo.create(make_doc(user_id="u", title="b"))
+        await repo.create(make_doc(user_id="u", title="a1", parent_todo_id=a.id))
+        await repo.create(make_doc(user_id="u", title="b1", parent_todo_id=b.id, completed=True))
+        await repo.create(make_doc(user_id="u", title="loose"))
+        await repo.create(make_doc(user_id="u2", title="theirs", parent_todo_id=a.id))
+
+        found = await repo.find_sub_todos("u", [a.id, b.id])
+
+        assert sorted(t.title for t in found) == ["a1", "b1"]
+
+    async def test_list_page_filters_by_parent_across_projects(self, repo, make_doc):
+        await repo.create(
+            make_doc(user_id="u", title="in inbox", project_id="inbox-1", parent_todo_id="p")
+        )
+        await repo.create(
+            make_doc(user_id="u", title="elsewhere", project_id="p2", parent_todo_id="p")
+        )
+        await repo.create(make_doc(user_id="u", title="unrelated", project_id="inbox-1"))
+
+        page = await repo.list_page(
+            user_id="u", params=_all_params(parent_todo_id="p"), inbox_project_id="inbox-1"
+        )
+
+        assert sorted(t.title for t in page.items) == ["elsewhere", "in inbox"]
+
     async def test_vfs_partitions_by_tracked_label(self, repo, make_doc):
         cutoff = datetime.now(UTC) - timedelta(days=7)
         await repo.create(make_doc(user_id="u", title="tracked", labels=[GAIA_TRACKED_LABEL]))
