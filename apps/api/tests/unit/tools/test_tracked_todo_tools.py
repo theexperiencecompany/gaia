@@ -1189,7 +1189,9 @@ class TestUpdateTrackedTodoSuccess:
             patch(
                 "app.agents.tools.tracked_todo_tools.todo_repository.find_by_ids",
                 new_callable=AsyncMock,
-                return_value=[self._existing_doc(id=ref) for ref in refs],
+                return_value=[
+                    self._existing_doc(id=ref, labels=[GAIA_TRACKED_LABEL]) for ref in refs
+                ],
             ),
             patch(
                 "app.agents.tools.tracked_todo_tools.todo_repository.update",
@@ -1593,8 +1595,13 @@ class TestTrackedTodoReferences:
     _ADD = "app.agents.tools.tracked_todo_tools.todo_repository.add_references"
     DESK = "66f838cc8829054e5f10e401"
 
-    def _owned(self, *ids: str) -> list[TodoDocument]:
-        return [TodoDocument(id=i, user_id="user-1", title="Inbox desk") for i in ids]
+    def _owned(
+        self, *ids: str, labels: tuple[str, ...] = (GAIA_TRACKED_LABEL,)
+    ) -> list[TodoDocument]:
+        return [
+            TodoDocument(id=i, user_id="user-1", title="Inbox desk", labels=list(labels))
+            for i in ids
+        ]
 
     @staticmethod
     def _response() -> TodoResponse:
@@ -1625,7 +1632,7 @@ class TestTrackedTodoReferences:
             )
 
         assert result == (
-            f"Error: no tracked todo of this user has the id {self.DESK}, junk. "
+            f"Error: no other tracked todo of this user has the id {self.DESK}, junk. "
             "Nothing was saved; pass ids from list_tracked_todos or search_todo_context."
         )
         create.assert_not_awaited()
@@ -1658,8 +1665,39 @@ class TestTrackedTodoReferences:
                 config=_config(), todo_id="t1", priority=Priority.HIGH, references=[self.DESK]
             )
 
-        assert result.startswith(f"Error: no tracked todo of this user has the id {self.DESK}.")
+        assert result.startswith(
+            f"Error: no other tracked todo of this user has the id {self.DESK}."
+        )
         update.assert_not_awaited()
+        add.assert_not_awaited()
+
+    async def test_a_plain_todo_of_the_user_is_not_a_reference(self):
+        with (
+            patch(self._FIND, AsyncMock(return_value=self._owned(self.DESK, labels=()))),
+            patch(self._CREATE, AsyncMock(return_value=self._response())) as create,
+        ):
+            result = await create_tracked_todo.coroutine(
+                config=_config(), title="Reply to Sam", references=[self.DESK]
+            )
+
+        assert result.startswith(
+            f"Error: no other tracked todo of this user has the id {self.DESK}."
+        )
+        create.assert_not_awaited()
+
+    async def test_a_todo_cannot_reference_itself(self):
+        with (
+            patch(self._FIND, AsyncMock(return_value=self._owned(self.DESK))),
+            patch(self._GET, AsyncMock(return_value=self._owned(self.DESK)[0])),
+            patch(self._ADD, AsyncMock()) as add,
+        ):
+            result = await update_tracked_todo.coroutine(
+                config=_config(), todo_id=self.DESK, references=[self.DESK]
+            )
+
+        assert result.startswith(
+            f"Error: no other tracked todo of this user has the id {self.DESK}."
+        )
         add.assert_not_awaited()
 
 

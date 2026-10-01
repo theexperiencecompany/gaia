@@ -18,13 +18,25 @@ from __future__ import annotations
 from collections.abc import Callable, Coroutine
 import functools
 import time
-from typing import Any, TypeVar
+from typing import Any, TypedDict, TypeVar
 
 from app.workers.metrics import TASK_DURATION_SECONDS, TASK_TOTAL
 from app.workers.queue import TRACE_ID_KWARG
 from shared.py.wide_events import wide_task
 
 T = TypeVar("T")
+
+# A retrying task defers try n by its base delay times this to the power n-1.
+RETRY_BACKOFF_BASE = 2
+
+
+class ArqJobContext(TypedDict, total=False):
+    """The ARQ job context, narrowed to the key a retrying task reads.
+
+    job_try is absent only when a caller invokes the task with a bare context.
+    """
+
+    job_try: int
 
 
 def arq_task(

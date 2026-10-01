@@ -38,6 +38,7 @@ from app.constants.todos import (
     EXECUTE_TRACKED_TODO_TASK,
     FAILED_LABEL,
     GAIA_TRACKED_LABEL,
+    PAUSED_RUN_RECHECK,
     REFERENCED_TODOS_PROMPT_LIMIT,
     STANDING_RULES_MAX_CHARS,
     SUB_TODO_STATE_EXCERPT_CHARS,
@@ -244,7 +245,9 @@ async def _execute_todo_with_retry(
     if paused := await _paused_reason(doc):
         # Like a lapsed workflow: skip this occurrence, keep the schedule, run again once it clears.
         if origin is None:
-            await _advance_schedule(doc, user_tz.value)
+            await _advance_schedule(
+                doc, user_tz.value, one_time_rerun_at=datetime.now(UTC) + PAUSED_RUN_RECHECK
+            )
         await record_activity(todo_id, user_id, TodoActivityEvent.RUN_SKIPPED, paused)
         log.set(tracked_todo={"paused": paused})
         return f"paused:{todo_id}"
@@ -321,15 +324,18 @@ async def _execute_todo_with_retry(
     return f"success:{todo_id}"
 
 
-async def _advance_schedule(doc: TodoDocument, user_tz: str) -> bool:
+async def _advance_schedule(
+    doc: TodoDocument, user_tz: str, *, one_time_rerun_at: datetime | None = None
+) -> bool:
     """Move scheduled_at to the next run and queue it; False when it was rescheduled mid-run.
 
+    A one-time todo's schedule ends unless one_time_rerun_at names its next try.
     scheduled_at must name the next execution or the safety net re-queues the todo every scan.
     """
     next_run = (
         _compute_next_run(doc.recurrence, user_tz, anchor=doc.scheduled_at)
         if doc.recurrence
-        else None
+        else one_time_rerun_at
     )
     advanced = await todo_repository.update_if_scheduled_at(
         doc.id,
@@ -347,7 +353,7 @@ async def _advance_schedule(doc: TodoDocument, user_tz: str) -> bool:
             doc.id,
             doc.user_id,
             TodoActivityEvent.SCHEDULED,
-            f"next run {next_run.isoformat()} ({doc.recurrence})",
+            f"next run {next_run.isoformat()} ({doc.recurrence or 'once'})",
         )
         log.info("tracked_todo.re_enqueued", todo_id=doc.id, next_run=next_run.isoformat())
     return True

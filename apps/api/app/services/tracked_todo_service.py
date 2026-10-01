@@ -34,7 +34,7 @@ from app.models.todo_models import (
     TodoResponse,
     TodoUpdate,
 )
-from app.services.canvas_markdown import normalize_canvas
+from app.services.canvas_markdown import canvas_problems, normalize_canvas
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from app.services.storage._vfs_common import folder_name
 from app.services.todo_activity import (
@@ -48,7 +48,7 @@ from app.services.todo_canvas_storage import (
     build_vfs_label,
     repair_canvas_and_activity,
 )
-from app.services.todos.errors import SubTodoParentError
+from app.services.todos.errors import CanvasShapeError, SubTodoParentError
 from app.services.todos.external_ref_watch import watch_external_ref
 from app.services.todos.todo_service import TodoService
 from app.services.triggers.subscription_service import teardown_subscriptions
@@ -213,7 +213,8 @@ class TrackedTodoService:
 
         schedule's fields are saved with the insert; external_ref makes it that object's one open,
         watching todo; a sub-todo's runs reach the user only on request. Raises
-        ExternalRefTakenError (ref held) and SubTodoParentError (unusable parent).
+        ExternalRefTakenError (ref held), SubTodoParentError (unusable parent) and
+        CanvasShapeError (initial_canvas breaks a rule normalizing cannot repair).
         """
         if parent_todo_id is not None:
             await require_sub_todo_parent(user_id, parent_todo_id)
@@ -237,16 +238,18 @@ class TrackedTodoService:
             due_date=schedule.due_date,
             expires_at=schedule.expires_at,
         )
+        canvas_content = initial_canvas or CANVAS_TEMPLATE.format(title=title)
+        # Models still compose an "## Activity Log" (or skip a section) inside
+        # initial_canvas; keep canvas.md in the template's shape from the first write.
+        canvas_content, moved_activity = normalize_canvas(canvas_content)
+        if problems := canvas_problems(canvas_content):
+            raise CanvasShapeError(problems)
         result = await TodoService.create_todo(
             todo, user_id, external_ref=external_ref, parent_todo_id=parent_todo_id
         )
         todo_id = result.id
 
         vfs_path = build_vfs_label(todo_id)
-        canvas_content = initial_canvas or CANVAS_TEMPLATE.format(title=title)
-        # Models still compose an "## Activity Log" (or skip a section) inside
-        # initial_canvas; keep canvas.md in the template's shape from the first write.
-        canvas_content, moved_activity = normalize_canvas(canvas_content)
         now = datetime.now(UTC)
         # Moved legacy entries come first (oldest-first, like the migration); the
         # creation entries stay last so an edit-append has a line to anchor on,

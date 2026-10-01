@@ -42,6 +42,7 @@ from app.agents.prompts.todo_prompts import (
     SUB_TODOS_LABEL,
     TRIGGERED_RELEVANCE_GUIDANCE,
 )
+from app.constants import todos as todo_constants
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
@@ -685,6 +686,19 @@ class TestARunWaitsForItsAccount:
         assert (TodoActivityEvent.RUN_SKIPPED, "skipped: the user's plan is not active") in (
             _recorded(activity)
         )
+
+    @pytest.mark.regression
+    async def test_a_lapsed_plan_moves_a_one_time_run_on_instead_of_dropping_it(self, account):
+        """Regression: a paused one-time run cleared scheduled_at and never ran again."""
+        account.paid.return_value = False
+        before = datetime.now(UTC)
+
+        result, repo, _via_agent = await self._run(_doc())
+
+        assert result == "paused:todo-1"
+        rerun_at = repo.update_if_scheduled_at.await_args.kwargs["update"].scheduled_at
+        recheck = todo_constants.PAUSED_RUN_RECHECK
+        assert before + recheck <= rerun_at <= datetime.now(UTC) + recheck
 
     async def test_the_desk_waits_for_gmail(self, account, activity):
         account.connected.return_value = set()
