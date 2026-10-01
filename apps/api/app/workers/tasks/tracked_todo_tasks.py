@@ -23,12 +23,14 @@ from app.agents.core.background.todo_run import TodoRunRequest, run_todo_on_exec
 from app.agents.prompts.todo_prompts import (
     DELIVERED_RESULT_GUIDANCE,
     GMAIL_THREAD_RUN_GUIDANCE,
+    INBOX_DESK_RUN_GUIDANCE,
     PARENT_STANDING_RULES_LABEL,
     SILENT_RUN_GUIDANCE,
     SUB_TODOS_LABEL,
     TODO_ID_LINE,
     TRIGGERED_RELEVANCE_GUIDANCE,
 )
+from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
     CANVAS_CURRENT_STATE_SECTION,
@@ -44,6 +46,7 @@ from app.constants.todos import (
 )
 from app.db.repositories.todos import todo_repository
 from app.decorators import enforce_daily_cost_budget
+from app.decorators.entitlements import is_paid
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
@@ -56,6 +59,7 @@ from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.canvas_markdown import bounded_canvas, section_body
 from app.services.hil.utils import untrusted_fence
+from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.notification_service import notification_service
 from app.services.todo_activity import record_activity
 from app.services.tracked_todo_service import tracked_todo_service
@@ -90,7 +94,10 @@ TRIGGER_TODO_FEATURE_KEY = "trigger_todo_executions"
 
 # How a run works the outside object its todo owns, by kind; each takes the ref id as ref_id.
 _EXTERNAL_REF_RUN_GUIDANCE: Mapping[ExternalRefSource, str] = MappingProxyType(
-    {ExternalRefSource.GMAIL_THREAD: GMAIL_THREAD_RUN_GUIDANCE}
+    {
+        ExternalRefSource.GMAIL_THREAD: GMAIL_THREAD_RUN_GUIDANCE,
+        ExternalRefSource.INBOX_DESK: INBOX_DESK_RUN_GUIDANCE,
+    }
 )
 
 
@@ -231,6 +238,14 @@ async def _execute_todo_with_retry(
     # without an extra DB round-trip.
     user_data, user_tz = await _load_user_with_tz(user_id)
 
+    if paused := await _paused_reason(doc):
+        # Like a lapsed workflow: skip this occurrence, keep the schedule, run again once it clears.
+        if origin is None:
+            await _advance_schedule(doc, user_tz.value)
+        await record_activity(todo_id, user_id, TodoActivityEvent.RUN_SKIPPED, paused)
+        log.set(tracked_todo={"paused": paused})
+        return f"paused:{todo_id}"
+
     # Cost wall before any LLM work: a trigger fire is not a user action. The
     # window opens first, so a walled run still counts as its window's one run.
     if origin is not None:
@@ -323,6 +338,18 @@ async def _advance_schedule(doc: TodoDocument, user_tz: str) -> bool:
         )
         log.info("tracked_todo.re_enqueued", todo_id=doc.id, next_run=next_run.isoformat())
     return True
+
+
+async def _paused_reason(doc: TodoDocument) -> str | None:
+    """Say why the todo cannot run right now (no active plan, or the desk without Gmail)."""
+    if not await is_paid(doc.user_id):
+        return "skipped: the user's plan is not active"
+    owns_desk = (
+        doc.external_ref is not None and doc.external_ref.source is ExternalRefSource.INBOX_DESK
+    )
+    if owns_desk and GMAIL_INTEGRATION_ID not in await get_connected_integration_ids(doc.user_id):
+        return "skipped: Gmail is not connected"
+    return None
 
 
 async def _skip_reason(

@@ -15,7 +15,7 @@ import fakeredis.aioredis
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 
-from app.agents.prompts.todo_prompts import INBOX_DESK_PROMPT
+from app.agents.prompts.todo_prompts import INBOX_DESK_DESCRIPTION
 from app.constants.todos import GAIA_TRACKED_LABEL, INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
 from app.db.mongodb.indexes import TODO_OPEN_EXTERNAL_REF_KEYS, TODO_OPEN_EXTERNAL_REF_OPTIONS
 from app.models.todo_models import TodoDocument
@@ -65,7 +65,7 @@ async def test_connecting_gmail_twice_at_once_makes_one_armed_desk(
 
     (desk,) = await _desks(mongo_db, user_id)
     assert desk.title == INBOX_DESK_TITLE
-    assert desk.description == INBOX_DESK_PROMPT
+    assert desk.description == INBOX_DESK_DESCRIPTION
     assert desk.external_ref == INBOX_DESK_REF
     assert GAIA_TRACKED_LABEL in desk.labels and desk.notify_on_run
     assert desk.recurrence == INBOX_DESK_RECURRENCE

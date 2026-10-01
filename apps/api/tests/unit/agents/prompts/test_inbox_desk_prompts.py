@@ -2,17 +2,21 @@
 
 import pytest
 
-from app.agents.prompts.todo_prompts import GMAIL_THREAD_RUN_GUIDANCE, INBOX_DESK_PROMPT
+from app.agents.prompts.todo_prompts import (
+    GMAIL_THREAD_RUN_GUIDANCE,
+    INBOX_DESK_DESCRIPTION,
+    INBOX_DESK_RUN_GUIDANCE,
+)
 from app.constants.todos import INBOX_DESK_TITLE, NEEDS_REPLY_LABEL, WAITING_FOR_REPLY_LABEL
 from app.models.todo_models import TodoModel
 
-BRIEFING_SECTIONS = ["Needs you", "Waiting on others", "Today", "FYI", "Filtered"]
+BRIEFING_SECTIONS = ["Needs you", "Waiting on others", "Done", "Today", "FYI", "Filtered"]
 THREAD_CLASSES = ["TO_REPLY", "AWAITING_REPLY", "FYI", "ACTIONED"]
 
 
 def _step(number: int) -> list[str]:
     """Return the lines of one numbered step, its heading line first."""
-    body = INBOX_DESK_PROMPT.split(f"\n{number}. ", 1)[1]
+    body = INBOX_DESK_RUN_GUIDANCE.split(f"\n{number}. ", 1)[1]
     return body.split(f"\n{number + 1}. ", 1)[0].splitlines()
 
 
@@ -41,10 +45,10 @@ def test_thread_todos_are_opened_as_the_desks_sub_todos() -> None:
     assert "references" not in step
 
 
-def test_the_prompt_fits_in_a_todo_description() -> None:
-    desk = TodoModel(title=INBOX_DESK_TITLE, description=INBOX_DESK_PROMPT)
+def test_the_description_fits_in_a_todo_description() -> None:
+    desk = TodoModel(title=INBOX_DESK_TITLE, description=INBOX_DESK_DESCRIPTION)
 
-    assert desk.description == INBOX_DESK_PROMPT
+    assert desk.description == INBOX_DESK_DESCRIPTION
 
 
 def test_the_thread_contract_names_its_thread_and_both_states() -> None:

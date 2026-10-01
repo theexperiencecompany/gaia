@@ -126,6 +126,28 @@ async def _queue_workflow_sync(user_id: str, sync: SubscriptionWorkflowSync) -> 
         )
 
 
+async def provision_inbox_desk_safely(user_id: str) -> None:
+    """Open the Inbox desk for a newly paying user who already connected Gmail.
+
+    Never raises, for the same reason as reactivate_workflows_safely; the next
+    Gmail connect provisions it again.
+    """
+    # Deferred import: the same app.decorators cycle as reactivate_workflows_safely.
+    from app.services.todos.inbox_desk import (  # noqa: PLC0415  # real cycle through app.decorators, see reactivate_workflows_safely
+        provision_inbox_desk_for_gmail_user,
+    )
+
+    try:
+        await provision_inbox_desk_for_gmail_user(user_id)
+    except Exception as e:
+        log.error(
+            f"{LogTag.PAYMENT} Failed to provision the Inbox desk for a new subscription",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
+
+
 async def reactivate_workflows_safely(user_id: str) -> None:
     """Turn a user's paused automation back on once they're paid again.
 
@@ -383,6 +405,7 @@ async def _create_row(event: SubscriptionEvent) -> SubscriptionEventResult:
     await invalidate_plan_cache(user_id)
     await send_welcome_email_safely(user_id)
     await reactivate_workflows_safely(user_id)
+    await provision_inbox_desk_safely(user_id)
 
     log.info(f"{LogTag.PAYMENT} Subscription activated", subscription_id=data.subscription_id)
     return SubscriptionEventResult(SubscriptionEventOutcome.CREATED, user_id)
@@ -450,6 +473,7 @@ async def apply_subscription_event(event: SubscriptionEvent) -> SubscriptionEven
     _capture_transition(event, row.user_id, changes)
     if new_status == SubscriptionStatus.ACTIVE.value:
         await reactivate_workflows_safely(row.user_id)
+        await provision_inbox_desk_safely(row.user_id)
     elif new_status in LAPSED_STATUSES:
         await deactivate_workflows_safely(row.user_id)
 

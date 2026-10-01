@@ -429,6 +429,15 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             {"user_id": user_id, **_external_ref_filter(ref), "completed": False}
         )
 
+    async def find_latest_by_external_ref(
+        self, user_id: str, ref: ExternalRef
+    ) -> TodoDocument | None:
+        """Return the user's newest todo about ref, open or completed; uncached."""
+        found = await self._find(
+            {"user_id": user_id, **_external_ref_filter(ref)}, sort=[("created_at", -1)], limit=1
+        )
+        return found[0] if found else None
+
     async def list_active_tracked_all_users(self, *, limit: int) -> list[TodoDocument]:
         """Every user's active tracked todos — the maintenance sweep's scan set."""
         return await self._find({"completed": False, "labels": GAIA_TRACKED_LABEL}, limit=limit)

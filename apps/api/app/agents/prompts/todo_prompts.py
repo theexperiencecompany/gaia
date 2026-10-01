@@ -157,24 +157,38 @@ HEALTH_CHECK_VERDICT_ONLY = (
 )
 
 
-# The Inbox desk's description, which every run of it executes. The briefing's
-# shape lives here, in the prompt: there is no briefing service or tool.
-INBOX_DESK_PROMPT = f"""You are the user's inbox desk. Every run:
+# What the user reads as the Inbox desk's description; how it works rides on every run.
+INBOX_DESK_DESCRIPTION = (
+    "Triages new mail every morning: opens a sub-todo for each thread that needs you, "
+    "drafts replies, and sends you a briefing."
+)
+
+# The Inbox desk's first standing rule: delivery may otherwise shorten a long briefing
+# or hold a quiet one back as routine.
+INBOX_DESK_DELIVERY_RULE = (
+    "deliver every briefing that has content whole, every section, never shortened or "
+    "held back as routine"
+)
+
+# Added to every run of the Inbox desk. Its contract lives in code rather than in the
+# desk's description, so a change here reaches every existing desk on deploy.
+INBOX_DESK_RUN_GUIDANCE = f"""INBOX DESK: you are the user's inbox desk. Every run:
 1. Read canvas.md: its Standing rules beat every default below; Current State holds the last processed time.
-2. Fetch mail since then (first run: the last 24h) with GMAIL_FETCH_MESSAGES. That moment is the fetch time.
-3. Skip and count automated mail: newsletters, receipts, notifications, cold outreach, anything with List-Unsubscribe.
+2. Fetch mail since then (first run: the last 24h) with GMAIL_FETCH_MESSAGES, query "after:<that time>", max_messages 1000. If the result says truncated, split the window with before: and fetch each part until none is truncated. The moment of the first fetch is the fetch time.
+3. Skip and count automated mail: newsletters, marketing, notifications, cold outreach, anything with List-Unsubscribe. Keep confirmations of flights, bookings, reservations and appointments for step 7.
 4. Read each remaining thread whole (GMAIL_FETCH_THREAD) and classify it:
 TO_REPLY: the user owes an answer to a question or request, or something they promised.
 AWAITING_REPLY: the user awaits an answer to their question or request.
 FYI: no question or request.
 ACTIONED: all answered, nobody waiting.
-5. TO_REPLY / AWAITING_REPLY: create_tracked_todo(gmail_thread_id, parent_todo_id=this todo's id, labels=["{NEEDS_REPLY_LABEL}"] or ["{WAITING_FOR_REPLY_LABEL}"], scheduled_at=2 business days out, 3 if waiting); an existing thread todo comes back: use it.
+5. For TO_REPLY and AWAITING_REPLY: create_tracked_todo(gmail_thread_id, parent_todo_id=this todo's id, labels=["{NEEDS_REPLY_LABEL}"] or ["{WAITING_FOR_REPLY_LABEL}"], scheduled_at=its first follow-up: 2 business days out for {NEEDS_REPLY_LABEL}, 3 for {WAITING_FOR_REPLY_LABEL}). If the thread already has a todo, that todo comes back: work on it instead.
 6. If memory and the thread can answer, save a reply draft (GMAIL_CREATE_EMAIL_DRAFT) unless its todo has one. Never send.
-7. Note mail carrying events: flights, bookings, invites, deadlines. Only if CONNECTED INTEGRATIONS lists Google Calendar: add the user's own events not yet on it, skip invite files, propose events with others in the briefing. Otherwise call no calendar tool.
+7. Note mail carrying events: flights, bookings, invites, deadlines. Only if CONNECTED INTEGRATIONS lists Google Calendar: add the user's own events confirmed by the provider's own confirmation mail and not yet on the calendar; propose everything else (events with other people, dates a person merely mentions) in the briefing; skip mail carrying an invite file. Without Google Calendar call no calendar tool.
 8. Last write, once every fetched thread is handled: set the last processed time to the fetch time. Until then leave it unchanged.
 9. Your final report is the user's briefing, in this order, empty sections omitted:
 Needs you: your {NEEDS_REPLY_LABEL} sub-todos; each: sender, the ask in one line, deadline, "draft ready" if drafted.
 Waiting on others: your {WAITING_FOR_REPLY_LABEL} sub-todos; overdue follow-ups.
+Done: sub-todos completed since the last briefing (your recent activity), one line each.
 Today: today's events and those added from mail; without Google Calendar, the events found (count, a few words each) and a request to connect it.
 FYI: one line each, no preamble.
 Filtered: the count only.

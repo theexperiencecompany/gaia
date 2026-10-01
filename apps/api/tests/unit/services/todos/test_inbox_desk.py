@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.agents.prompts.todo_prompts import INBOX_DESK_PROMPT
+from app.agents.prompts.todo_prompts import INBOX_DESK_DESCRIPTION
 from app.constants.todos import INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument, TodoResponse
 from app.models.user_models import UserDocument
@@ -76,7 +76,7 @@ async def test_a_paying_user_gets_one_desk_running_the_desk_prompt(seams: Simple
     seams.create.assert_awaited_once()
     assert seams.create.await_args.args == (USER_ID, INBOX_DESK_TITLE)
     assert seams.create.await_args.kwargs == {
-        "description": INBOX_DESK_PROMPT,
+        "description": INBOX_DESK_DESCRIPTION,
         "external_ref": DESK_REF,
         "notify_on_run": True,
     }
