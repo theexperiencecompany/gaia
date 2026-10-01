@@ -390,13 +390,21 @@ async def test_the_read_after_an_input_waits_for_its_requests_and_a_quiet_dom_af
     tab = _Tab(act={8: {"x": 10, "y": 20}}, settle=[True, True])
     page, _ = _page(tab)
     await page.act(LINK, _state())
-    tab.emit("Network.requestWillBeSent", {"requestId": "r1", "loaderId": "L1", "type": "Fetch"})
+    for request, session in [
+        ({"requestId": "r1", "loaderId": "L1", "type": "Fetch", "frameId": TAB}, SESSION),
+        # Another tab's request, a stream that never ends, and a frame's own document.
+        ({"requestId": "o", "loaderId": "L9", "type": "Fetch"}, "other-tab"),
+        ({"requestId": "s", "loaderId": "L1", "type": "EventSource"}, SESSION),
+        ({"requestId": "f", "loaderId": "F", "type": "Document", "frameId": "ad"}, SESSION),
+    ]:
+        tab.emit("Network.requestWillBeSent", request, session)
+    tab.emit("Network.loadingFinished", {"requestId": "f"})
 
     reading = asyncio.ensure_future(page.observe())
     await asyncio.sleep(0)
     assert not reading.done()
-    tab.emit("Network.loadingFinished", {"requestId": "r1"})
-    await reading
+    tab.emit("Network.loadingFailed", {"requestId": "r1"})
+    await asyncio.wait_for(reading, timeout=1)
 
     # Quiet, then the request finished, then quiet again on what it rendered.
     assert tab.scripts.count("settle") == 2
@@ -441,7 +449,8 @@ async def test_the_read_after_an_input_stops_waiting_at_the_cap(
 
 
 async def test_a_wait_waits_for_the_page_to_change_then_settles_and_sends_no_input() -> None:
-    tab = _Tab()
+    # The change here is a navigation, which ends the wait like any other.
+    tab = _Tab(wait=GONE)
     page, _ = _page(tab)
 
     await page.act(WAIT, _state())
@@ -459,6 +468,10 @@ async def test_a_decision_on_a_page_that_moved_on_sends_no_input() -> None:
     tab = _Tab(guards={"7": ["a different element"]}, act={7: {"x": 1, "y": 1}})
     page, _ = _page(tab)
 
+    with pytest.raises(StalePage, match=page_mod._MOVED_ON):
+        await page.act(FIELD, _state(), text="Ada")
+    # Nor on a document replaced while its decision was checked.
+    tab.guards, tab.page_key = dict(GUARDS), GONE
     with pytest.raises(StalePage, match=page_mod._MOVED_ON):
         await page.act(FIELD, _state(), text="Ada")
 
@@ -537,8 +550,11 @@ async def test_a_date_field_is_set_in_its_own_format_and_read_back_without_keys(
     page, _ = _page(tab)
 
     held = await page.act(DAY, _state(), text="10/01/2026")
+    await page.observe()
 
     assert (held, tab.mouse, tab.keys) == ("", [], [])
+    # The read after it waits for the change it fired.
+    assert tab.scripts[-2:] == ["settle", "snapshot"]
     assert ("set", {"node": 10, "text": "10/01/2026"}) in tab.calls
     tab.set = None
     with pytest.raises(Covered):

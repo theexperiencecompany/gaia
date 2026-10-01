@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import Any, cast
+from typing import Any
 
 from app.constants.browser import JevOperation
 from app.services.browser.jev.decision import Decision
@@ -14,8 +14,6 @@ BUTTON = PageAction(id="e1", node=1, kind="click", label="Next", role="button", 
 FIELD = PageAction(id="e2", node=2, kind="fill", label="Name", role="textbox", value="")
 PASSWORD = PageAction(id="e3", node=3, kind="secret", label="Password", role="password", value="")
 BACK = PageAction(id="go_back", kind="back", label="Go back to Site", entry=1)
-#: What a field holds after typing when nothing else is said: what was typed.
-TYPED = object()
 ENTER = PageAction(id="enter", kind="enter", node=2, label="Press Enter in Name")
 
 
@@ -38,8 +36,8 @@ class FakePage:
 
     act_raises is one error for every input, or one outcome per input (None executes it).
     new_tab is a page the first input opens in a tab of its own; unsettled makes every
-    read after an input fail as a page that never settles; holds is what a field holds
-    after text is put into it (by default, the text); read_fails is the read after which
+    read after an input fail as a page that never settles; holds maps a text to what a field
+    holds once it was typed (by default, the text); read_fails is the read after which
     every read raises an error, and navigate_fails the error every navigation raises.
     """
 
@@ -49,7 +47,7 @@ class FakePage:
         act_raises: Exception | list[Exception | None] | None = None,
         new_tab: PageState | None = None,
         unsettled: bool = False,
-        holds: object = TYPED,
+        holds: dict[str, str | None] | None = None,
         read_fails: tuple[int, Exception] | None = None,
         navigate_fails: Exception | None = None,
     ) -> None:
@@ -62,7 +60,7 @@ class FakePage:
         self._new_tab = new_tab
         self.followed = 0
         self._unsettled = unsettled
-        self._holds = holds
+        self._holds = holds or {}
         self._inputs = 0
         self._reads = 0
         self._read_fails = read_fails
@@ -95,7 +93,7 @@ class FakePage:
         self._moved()
         if text is None:
             return None
-        return text if self._holds is TYPED else cast("str | None", self._holds)
+        return self._holds.get(text, text)
 
     async def navigate(self, url: str) -> None:
         if self._navigate_fails is not None:

@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass, field, replace
 import itertools
+import json
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -30,6 +31,7 @@ from app.services.browser.jev.decision import (
     Decision,
     RecentAction,
     Visited,
+    describe_field,
 )
 from app.services.browser.jev.gateway import (
     JevEvaluation,
@@ -87,7 +89,11 @@ class _Jev:
     """Jev's two questions, scripted: each decision is taken in turn, and what Jev was asked is kept."""
 
     decisions: list[Decision]
-    value: str = NONE_VALUE
+    #: The value chosen for every field, or one per field in turn.
+    value: str | list[str] = NONE_VALUE
+    #: The option a chosen dropdown is set to, by its value, and what each option question saw.
+    option: str = ""
+    optioned: list[tuple[object, str, str, list[RecentAction], str]] = field(default_factory=list)
     value_error: Exception | None = None
     #: Runs as Jev answers each decision, for a page that moves while Jev decides.
     on_decide: Callable[[], None] | None = None
@@ -140,7 +146,24 @@ class _Jev:
         )
         if self.value_error is not None:
             raise self.value_error
-        return self.value, JevEvaluation(answers={}, provider="openrouter")
+        value = self.value.pop(0) if isinstance(self.value, list) else self.value
+        return value, JevEvaluation(answers={}, provider="openrouter")
+
+    async def choose_option(
+        self,
+        client: object,
+        page: PageState,
+        goal: str,
+        dropdown: PageAction,
+        history: list[RecentAction],
+        mask: Callable[[str], str],
+    ) -> tuple[PageAction, JevEvaluation]:
+        self.optioned.append((client, page.url, goal, history, mask(SECRET)))
+        [option] = [o for o in dropdown["options"] if o["value"] == self.option]
+        chosen = dropdown.copy()
+        del chosen["options"]
+        chosen["value"], chosen["current_value"] = option["value"], option["label"]
+        return chosen, JevEvaluation(answers={}, provider="openrouter")
 
 
 class _TextModel:
@@ -148,7 +171,7 @@ class _TextModel:
 
     def __init__(
         self,
-        text: str | None = "Ada Lovelace",
+        text: str | None | list[str | None] = "Ada Lovelace",
         *,
         hangs: bool = False,
         raises: Exception | None = None,
@@ -166,7 +189,8 @@ class _TextModel:
             await asyncio.Event().wait()
         if self._raises is not None:
             raise self._raises
-        return ChatInvokeCompletion(completion=output_format(text=self._text), usage=None)
+        text = self._text.pop(0) if isinstance(self._text, list) else self._text
+        return ChatInvokeCompletion(completion=output_format(text=text), usage=None)
 
 
 @dataclass
@@ -199,7 +223,7 @@ def _run(
     monkeypatch: pytest.MonkeyPatch,
     page: FakePage,
     *decisions: Decision,
-    value: str = NONE_VALUE,
+    value: str | list[str] = NONE_VALUE,
     secrets: RunSecrets | None = None,
     text_model: _TextModel | None = None,
     around: _Around | None = None,
@@ -207,6 +231,7 @@ def _run(
     jev = _Jev(list(decisions), value=value)
     monkeypatch.setattr(loop_mod, "decide", jev.decide)
     monkeypatch.setattr(loop_mod, "choose_value", jev.choose_value)
+    monkeypatch.setattr(loop_mod, "choose_option", jev.choose_option)
     ledger = RunLedger()
     around = around or _Around()
     runner = JevRunner(
@@ -516,6 +541,76 @@ async def test_a_field_that_did_not_take_focus_ends_the_burst_with_the_click_it_
     assert result.detail == str(unfocused)
 
 
+async def test_a_burst_sets_a_dropdown_and_types_what_each_field_takes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    size = PageAction(
+        id="e7",
+        node=7,
+        kind="select",
+        label="Size",
+        role="combobox",
+        value="m",
+        current_value="Medium",
+        options=[{"value": "l", "label": f"Large {SECRET}"}],
+    )
+    pages = [replace(p, actions=[size, FIELD]) for p in _pages("a", "b", "c", "d")]
+    # The second input meets a page that moved; the phone field keeps four digits.
+    page = FakePage(
+        *pages, act_raises=[None, StalePage("moved"), None, None], holds={"5551234": "5551"}
+    )
+    text_model = _TextModel(["Ada Lovelace", "   "])
+    run = _run(
+        monkeypatch,
+        page,
+        decision(JevOperation.SELECT, size),
+        *[decision(JevOperation.TYPE_TEXT, FIELD)] * 4,
+        value=[GENERATE, GENERATE, "5551234", GENERATE],
+        text_model=text_model,
+        secrets=_secrets(),
+    )
+    run.jev.option = "l"
+
+    result = await run.burst("sign up as the first programmer")
+
+    assert [(s.label, s.option, s.text, s.held) for s in result.steps] == [
+        ("Size", f"Large {MASKED}", None, None),
+        # Written once: the value the moved page kept from typing is typed without asking again.
+        ("Name", None, "Ada Lovelace", None),
+        ("Name", None, "5551234", '"5551"'),
+    ]
+    assert page.typed == [None, "Ada Lovelace", "5551234"]
+    # A blank written value is no value.
+    assert result.stop is JevStop.NEEDS_INPUT
+    assert len(text_model.asked) == 2
+    asked = json.loads(str(text_model.asked[0][0][1].content))
+    assert run.jev.optioned == [
+        (run.runner._client, "https://site.test/a", "sign up as the first programmer", [], MASKED)
+    ]
+    assert {call.latency_ms for call in run.ledger.calls} == {1000}
+    assert (asked["goal"], asked["field"]) == (
+        "sign up as the first programmer",
+        describe_field(FIELD),
+    )
+
+
+async def test_a_page_the_burst_outran_resets_only_when_an_input_lands_and_the_start_page_stays_offered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    moved = StalePage("moved")
+    outran = [moved] * (JEV_STALE_LIMIT - 1)
+    page = FakePage(*_pages("start", "b", "c", "d"), act_raises=[*outran, None, *outran, None])
+    clicks = [decision(JevOperation.CLICK, BUTTON)] * (2 * JEV_STALE_LIMIT)
+    run = _run(monkeypatch, page, *clicks, decision(JevOperation.DONE), decision(JevOperation.DONE))
+
+    first = await run.burst(start_url="https://site.test/start")
+    await run.burst(start_url="https://site.test/start")
+
+    assert (first.stop, len(first.steps)) == (JevStop.DONE, 2)
+    assert run.jev.decided[-1]["addresses"][0] == "https://site.test/start"
+    assert run.jev.decided[-1]["addresses"].count("https://site.test/start") == 1
+
+
 async def test_a_step_jev_could_not_decide_ends_the_burst_saying_why(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -530,6 +625,9 @@ async def test_a_step_jev_could_not_decide_ends_the_burst_saying_why(
 
     assert result.stop is JevStop.GATEWAY
     assert "503 from the gateway" in result.detail
+    # An operation that came without its target is no step either.
+    targetless = _run(monkeypatch, FakePage(page_state()), decision(JevOperation.CLICK))
+    assert loop_mod._NO_TARGET in (await targetless.burst()).detail
 
 
 async def test_a_gateway_failure_choosing_a_value_ends_the_burst_with_its_steps(
@@ -560,7 +658,7 @@ async def test_a_page_that_never_settles_after_an_action_ends_the_burst_with_the
 
     result = await run.burst()
 
-    assert result.stop is JevStop.STALE
+    assert (result.stop, result.detail) == (JevStop.STALE, "The page did not settle.")
     assert [(step.label, step.page_changed) for step in result.steps] == [("Next", None)]
 
 
@@ -738,7 +836,7 @@ async def test_a_password_field_holding_something_else_never_shows_what(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # The field cut the secret at its maxlength: its start must not reach anyone.
-    page = FakePage(page_state(), page_state(url="https://site.test/b"), holds=SECRET[:7])
+    page = FakePage(page_state(), page_state(url="https://site.test/b"), holds={SECRET: SECRET[:7]})
     run = _run(
         monkeypatch,
         page,
