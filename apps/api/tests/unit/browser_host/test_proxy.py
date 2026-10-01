@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock
 
 from fastapi import WebSocketDisconnect
 import pytest
+from starlette.websockets import WebSocketState
 
 from app.browser_host import proxy
 from app.browser_host.proxy import (
@@ -374,6 +375,10 @@ class _FakeClient:
     def __init__(self) -> None:
         self._inbound: asyncio.Queue[str | None] = asyncio.Queue()
         self.received: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        self.client_state = WebSocketState.CONNECTED
+        self.application_state = WebSocketState.CONNECTED
+        # Starlette's way of reporting a read after the socket closed, instead of a disconnect.
+        self.closed_under_read = False
 
     def send(self, frame: dict[str, Any]) -> None:
         self._inbound.put_nowait(json.dumps(frame))
@@ -384,6 +389,9 @@ class _FakeClient:
     async def receive_text(self) -> str:
         raw = await self._inbound.get()
         if raw is None:
+            if self.closed_under_read:
+                self.client_state = WebSocketState.DISCONNECTED
+                raise RuntimeError('WebSocket is not connected. Need to call "accept" first.')
             raise WebSocketDisconnect
         return raw
 
@@ -642,9 +650,11 @@ async def test_a_navigation_to_a_private_address_is_refused(
     assert running.mux.forwarded.empty()
 
 
+@pytest.mark.parametrize("closed_under_read", [False, True])
 async def test_the_client_hanging_up_ends_the_proxy_and_releases_the_engine_stream(
-    running: _Proxy,
+    running: _Proxy, closed_under_read: bool
 ) -> None:
+    running.client.closed_under_read = closed_under_read
     assert len(running.mux.sinks) == 1
 
     await running.stop()
