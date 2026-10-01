@@ -21,6 +21,8 @@ from app.constants.browser import (
     BROWSER_JOB_CRASHED_SUMMARY,
     BROWSER_JOB_WORKER_STOPPED_SUMMARY,
     BROWSER_NO_CHROME_HOST,
+    BROWSER_RESULT_REPLACED_REQUEST,
+    BROWSER_RESULT_USER_SAID,
     BROWSER_RUN_CANCELLED_SUMMARY,
     BROWSER_TASK_EVENT,
     BROWSER_TOOL_CATEGORY,
@@ -95,6 +97,7 @@ from app.services.browser.session import (
     keep_session_alive,
 )
 from app.services.browser.tasks import BrowserTaskRecord, record_browser_task
+from app.services.browser.user_notes import what_the_user_said
 from app.services.chat.chunks import normalize_custom_event
 from app.services.feature_flags import is_enabled
 from app.utils.agent_utils import (
@@ -131,35 +134,18 @@ _ONLY_THE_SUMMARY = (
 )
 
 
-def _what_the_user_said(result: BrowserResultSnapshot) -> str:
-    """Lead with what the user said while the run went, a replacement of the request named as one only when they made it one.
-
-    A trailing sentence lost to the model against the original request still in
-    its own context: a run that read the headline closed with "the sign-in
-    didn't finish". First, before anything the run itself reported.
-    """
-    lead = ""
-    if result.redirects:
-        replaced = ", then ".join(f'"{note}"' for note in result.redirects)
-        lead += (
-            f"THE USER REPLACED THE REQUEST MID-RUN with: {replaced}. Answer THAT, not the "
-            "original request. The original request was not carried out and must not be "
-            "reported as attempted-and-failed.\n\n"
-        )
-    said = [note for note in result.user_notes if note not in result.redirects]
-    if said:
-        quoted = ", then ".join(f'"{note}"' for note in said)
-        lead += (
-            f"While it ran, the user said: {quoted}. Judge yourself what that changes "
-            "about the request and the reply.\n\n"
-        )
-    return lead
-
-
 def agent_result_message(result: BrowserResultSnapshot) -> str:
     """Tell the assistant how to reply: confirm a real result, own a stop, or report a failure."""
     summary = result.summary.strip()
-    lead = _what_the_user_said(result)
+    # First, before anything the run itself reported: a trailing sentence lost to the
+    # original request still in the model's context.
+    said = what_the_user_said(
+        result.user_notes,
+        result.redirects,
+        replaced=BROWSER_RESULT_REPLACED_REQUEST,
+        said=BROWSER_RESULT_USER_SAID,
+    )
+    lead = f"{said}\n\n" if said else ""
     if result.status == BrowserSessionStatus.COMPLETED and result.success:
         return (
             f"{lead}{summary or 'The task finished.'}\n\n"
@@ -361,8 +347,9 @@ class ProgressEmitter:
         self.step_goals: dict[int, str] = {}
         # The screenshots that were published, by step; a step with no photo has none.
         self.step_shots: dict[int, str] = {}
-        #: The session the latest session card named; None until the browser opened.
-        self.session_id: str | None = None
+        #: The session the run opened, whose recap a failure still links; None until then.
+        # Equivalent mutant: nothing is shot before a session opens, so "" links no recap either.
+        self.session_id: str | None = None  # pragma: no mutate
         #: The result card the run ended on, once it emitted one.
         self.result: BrowserResultSnapshot | None = None
 
@@ -374,9 +361,7 @@ class ProgressEmitter:
     async def emit(self, snapshot: BrowserCardSnapshot) -> None:
         await self._publish({BROWSER_TASK_EVENT: snapshot.model_dump(mode="json")})
         await self.thread_mirror.mirror(snapshot)
-        if isinstance(snapshot, BrowserSessionSnapshot):
-            self.session_id = snapshot.session_id
-        elif isinstance(snapshot, BrowserResultSnapshot):
+        if isinstance(snapshot, BrowserResultSnapshot):
             self.result = snapshot
         elif isinstance(snapshot, BrowserStepSnapshot):
             if snapshot.goal:

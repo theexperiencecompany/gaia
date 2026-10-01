@@ -32,6 +32,7 @@ from app.constants.browser import (
     BROWSER_RUN_HANDOFF_LIMIT_SUMMARY,
     BROWSER_RUN_HANDOFF_TIMED_OUT,
     BROWSER_RUN_NOT_DONE_SUMMARY,
+    BROWSER_RUN_SESSION_LOST_SUMMARY,
     BROWSER_RUN_STOPPED_SUMMARY,
     BROWSER_RUN_WALL_CLOCK_SUMMARY,
     BROWSER_STALL_NOTE,
@@ -715,6 +716,35 @@ async def test_a_frames_photo_is_uploaded_as_the_image_it_carries(
     assert uploaded == [(b"shot", "s-primary", 3)]
 
 
+async def test_a_step_card_names_its_frame_so_a_page_shown_again_is_known_as_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A bot user is sent a step again only when its page changed; the card's frame identity is how that is told."""
+    monkeypatch.setattr(
+        runner_mod, "publish_step_screenshot", AsyncMock(return_value="https://cdn.test/s.png")
+    )
+
+    async def _steps(run: _ScriptedRun) -> RunOutcome:
+        run.step(1, screenshot="c2hvdA==")
+        run.step(2, screenshot="c2hvdA==")
+        run.step(3, screenshot="b3RoZXI=")
+        run.step(4)
+        return RunOutcome(True, "booked")
+
+    runner, seen = _runner(_steps, stream_screenshots=True)
+    await _run(runner)
+
+    digests = {
+        card.index: card.frame_digest
+        for card in seen["emitted"]
+        if isinstance(card, BrowserStepSnapshot)
+    }
+    assert digests[1] is not None
+    assert digests[1] == digests[2]
+    assert digests[3] not in (None, digests[1])
+    assert digests[4] is None
+
+
 async def test_a_step_card_that_fails_to_send_does_not_lose_the_result() -> None:
     async def _one(run: _ScriptedRun) -> RunOutcome:
         run.step(1)
@@ -998,6 +1028,31 @@ async def test_a_handoff_that_timed_out_fails_the_run() -> None:
     )
 
 
+async def test_a_handoff_whose_browser_was_lost_fails_the_run_as_lost() -> None:
+    """Nobody can finish a step in a browser that is gone: the run says so, not that the user stopped or never came."""
+
+    async def _hands_over(run: _ScriptedRun) -> RunOutcome:
+        with contextlib.suppress(BrowserHandoffCancelled):
+            await run.hooks.takeover("Sign in", "credentials")
+        return RunOutcome(True, "looks done")
+
+    runner, _ = _runner(
+        _hands_over,
+        handoff=HandoffOutcome(status=HandoffStatus.FAILED, cause=EngineFailure.SESSION_GONE),
+    )
+
+    async with captured_wide_event() as event:
+        result = await _run(runner)
+
+    assert (result.status, result.success, result.summary) == (
+        BrowserSessionStatus.FAILED,
+        False,
+        BROWSER_RUN_SESSION_LOST_SUMMARY,
+    )
+    assert runner.failure is BrowserRunFailure.SESSION_LOST
+    assert event["browser"]["handoff_failure"] == EngineFailure.SESSION_GONE
+
+
 async def test_a_cancelled_run_that_finished_anyway_is_reported_cancelled() -> None:
     runner, _ = _runner(_done, is_cancelled=AsyncMock(return_value=True))
 
@@ -1069,6 +1124,42 @@ async def test_a_blocked_run_is_guided_with_what_the_user_said_so_far() -> None:
     [run] = _ScriptedRun.made
     assert (run.allowed, run.instruction) == (True, "Use search")
     assert [request.user_notes for request in asked] == [["not the red one"]]
+
+
+async def test_a_reply_that_changed_the_task_reaches_the_guidance_and_the_result_as_one() -> None:
+    """A note sent with a done is something the user said; only a redirect replaces what the run was asked."""
+    guided = _guided(HandoffOutcome(status=HandoffStatus.COMPLETED, message="read me the total"))
+    asked = guided.pop("asked")
+
+    async def _redirected(run: _ScriptedRun) -> RunOutcome:
+        await run.hooks.takeover("Pay the deposit", "payment")
+        await run.hooks.takeover("Confirm", "payment")
+        assert run.hooks.guidance is not None
+        await run.hooks.guidance(AgentGuidanceRequest(reason="stuck", task="t"))
+        return RunOutcome(True, "booked")
+
+    runner, _ = _runner(_redirected, **guided)
+    answers = iter(
+        [
+            HandoffOutcome(status=HandoffStatus.COMPLETED, message="skip the tip", redirect=False),
+            HandoffOutcome(status=HandoffStatus.COMPLETED, message="just the total", redirect=True),
+        ]
+    )
+
+    async def _answers(request: HandoffRequest, session: BrowserHostSession) -> HandoffOutcome:
+        return next(answers)
+
+    runner._request_handoff = _answers
+
+    result = await _run(runner)
+
+    assert [(r.user_notes, r.redirects) for r in asked] == [
+        (["skip the tip", "just the total"], ["just the total"])
+    ]
+    assert (result.user_notes, result.redirects) == (
+        ["skip the tip", "just the total"],
+        ["just the total"],
+    )
 
 
 @pytest.mark.parametrize(

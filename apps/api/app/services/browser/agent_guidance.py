@@ -17,6 +17,7 @@ from app.constants.browser import (
 from app.db.redis import redis_cache
 from app.schemas.browser import AgentGuidanceRequest, PendingAgentGuidance
 from app.services.browser.job_lifetime import browser_job_ttl_seconds
+from app.services.browser.user_notes import what_the_user_said
 
 
 def _key(job_id: str) -> str:
@@ -43,7 +44,12 @@ def guidance_message(request: AgentGuidanceRequest) -> str:
     sections = [
         BROWSER_GUIDANCE_HEADER,
         f"Why it is stuck: {request.reason}",
-        _what_the_user_said(request),
+        what_the_user_said(
+            request.user_notes,
+            request.redirects,
+            replaced=BROWSER_GUIDANCE_CHANGED_INSTRUCTION,
+            said=BROWSER_GUIDANCE_USER_SAID,
+        ),
         f"Task it is working on: {request.task}",
         f"Page it is on: {request.title or 'untitled'} ({request.url or 'no url'})",
         _recent_actions(request),
@@ -52,19 +58,6 @@ def guidance_message(request: AgentGuidanceRequest) -> str:
         BROWSER_GUIDANCE_ANSWER,
     ]
     return "\n\n".join(section for section in sections if section)
-
-
-def _what_the_user_said(request: AgentGuidanceRequest) -> str:
-    """State what the user said mid-run above the task, naming as a replacement only what they made one."""
-    sections = []
-    if request.redirects:
-        changed = ", then ".join(f'"{note}"' for note in request.redirects)
-        sections.append(BROWSER_GUIDANCE_CHANGED_INSTRUCTION.format(changed=changed))
-    said = [note for note in request.user_notes if note not in request.redirects]
-    if said:
-        quoted = ", then ".join(f'"{note}"' for note in said)
-        sections.append(BROWSER_GUIDANCE_USER_SAID.format(said=quoted))
-    return "\n\n".join(sections)
 
 
 def _recent_actions(request: AgentGuidanceRequest) -> str:

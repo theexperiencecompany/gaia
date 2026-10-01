@@ -276,12 +276,23 @@ BROWSER_GUIDANCE_RECENT_ACTIONS = 6
 # Named here so the render is tested for where each part lands, not for its wording.
 BROWSER_GUIDANCE_HEADER = "THE BROWSER TASK IS STUCK and is waiting for one instruction from you."
 BROWSER_GUIDANCE_CHANGED_INSTRUCTION = (
-    "MID-RUN THE USER CHANGED THE INSTRUCTION to {changed}. That is what your guidance "
+    "MID-RUN THE USER CHANGED THE INSTRUCTION to {notes}. That is what your guidance "
     "must serve. Where the task below conflicts with it, the task is no longer wanted, "
     "and you must never send the run back to a step the user declined."
 )
 BROWSER_GUIDANCE_USER_SAID = (
-    "While it ran, the user said: {said}. Judge yourself what that changes about the task."
+    "While it ran, the user said: {notes}. Judge yourself what that changes about the task."
+)
+# What the user said mid-run, leading what the assistant reads about the run's
+# result: a trailing sentence lost to the original request still in its context.
+BROWSER_RESULT_REPLACED_REQUEST = (
+    "THE USER REPLACED THE REQUEST MID-RUN with: {notes}. Answer THAT, not the original "
+    "request. The original request was not carried out and must not be reported as "
+    "attempted-and-failed."
+)
+BROWSER_RESULT_USER_SAID = (
+    "While it ran, the user said: {notes}. Judge yourself what that changes about the "
+    "request and the reply."
 )
 BROWSER_GUIDANCE_ANSWER = (
     "Answer with exactly one of these, then call wait_for_browser_task() again:\n"

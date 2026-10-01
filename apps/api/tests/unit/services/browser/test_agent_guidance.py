@@ -57,11 +57,11 @@ def test_only_a_replaced_instruction_is_stated_as_one_and_the_rest_as_what_the_u
 
     assert (
         BROWSER_GUIDANCE_CHANGED_INSTRUCTION.format(
-            changed='"skip the upvote", then "just tell me the title"'
+            notes='"skip the upvote", then "just tell me the title"'
         )
         in sections
     )
-    assert BROWSER_GUIDANCE_USER_SAID.format(said='"make it quick"') in sections
+    assert BROWSER_GUIDANCE_USER_SAID.format(notes='"make it quick"') in sections
 
 
 def test_a_run_nobody_redirected_is_told_nothing_about_a_changed_instruction() -> None:

@@ -18,6 +18,8 @@ from app.constants.browser import (
     BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS,
     BROWSER_JOB_WORKER_STOPPED_SUMMARY,
     BROWSER_NO_CHROME_HOST,
+    BROWSER_RESULT_REPLACED_REQUEST,
+    BROWSER_RESULT_USER_SAID,
     BROWSER_RUN_CANCELLED_SUMMARY,
     BROWSER_TASK_EVENT,
     BROWSER_TOOL_CATEGORY,
@@ -210,8 +212,7 @@ def test_the_changed_instruction_leads_the_text_the_assistant_reads(
 
     out = jr.agent_result_message(result)
 
-    assert out.splitlines()[0].startswith("THE USER REPLACED THE REQUEST MID-RUN")
-    assert note in out.splitlines()[0]
+    assert out.startswith(BROWSER_RESULT_REPLACED_REQUEST.format(notes=f'"{note}"'))
 
 
 def test_a_failed_run_never_blames_the_user_for_the_step_they_cancelled() -> None:
@@ -222,8 +223,8 @@ def test_a_failed_run_never_blames_the_user_for_the_step_they_cancelled() -> Non
 
     out = jr.agent_result_message(result)
 
-    assert out.index("THE USER REPLACED THE REQUEST MID-RUN") < out.index("DID NOT COMPLETE")
-    assert "must not be reported as attempted-and-failed" in out
+    replaced = BROWSER_RESULT_REPLACED_REQUEST.format(notes=f'"{result.redirects[0]}"')
+    assert out.index(replaced) < out.index("DID NOT COMPLETE")
 
 
 def test_a_run_nobody_redirected_is_told_nothing_about_a_changed_instruction() -> None:
@@ -239,7 +240,7 @@ def test_what_the_user_said_mid_run_is_passed_on_as_said_not_as_a_replaced_reque
 
     out = jr.agent_result_message(result)
 
-    assert out.startswith('While it ran, the user said: "make it 8pm if you can"')
+    assert out.startswith(BROWSER_RESULT_USER_SAID.format(notes='"make it 8pm if you can"'))
     assert "REPLACED" not in out
 
 
@@ -751,7 +752,10 @@ async def test_a_run_a_stop_aborted_ends_on_a_stopped_card_and_settles_the_job(
 
     h = _install(monkeypatch, run_body=_aborted)
 
+    asked: set[str] = set()
+
     async def _stopped_once_running(job_id: str) -> bool:
+        asked.add(job_id)
         return started
 
     monkeypatch.setattr(jr, "job_cancel_requested", _stopped_once_running)
@@ -765,6 +769,58 @@ async def test_a_run_a_stop_aborted_ends_on_a_stopped_card_and_settles_the_job(
     ]
     assert h.states[-1].result is not None
     assert h.states[-1].result.status is BrowserSessionStatus.CANCELLED
+    # The run's own stop, read for this job and no other.
+    assert asked == {"job-1"}
+
+
+async def test_a_run_that_ended_on_its_own_card_gets_no_second_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A teardown failing after the run's result is out must not put a contradicting card on top."""
+    finished = _result(BrowserSessionStatus.COMPLETED, True, "Booked.")
+
+    async def _finished_then_boom(h: Harness) -> BrowserResultSnapshot:
+        await h.emit(finished)
+        raise RuntimeError("teardown failed")
+
+    h = _install(monkeypatch, run_body=_finished_then_boom)
+
+    result = await jr.execute_browser_job(_request(task="x"))
+
+    assert result == finished
+    assert [c for c in h.cards if c["kind"] == "result"] == [finished.model_dump(mode="json")]
+
+
+async def test_a_run_whose_history_could_not_be_recorded_still_ends_on_its_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    h = _install(monkeypatch)
+    monkeypatch.setattr(jr, "persist_run_outcome", AsyncMock(side_effect=RuntimeError("db down")))
+
+    async with captured_wide_event() as event:
+        result = await jr.execute_browser_job(_request(task="x"))
+
+    assert result.status is BrowserSessionStatus.COMPLETED
+    assert h.states[-1].result == result
+    [error] = event["errors"]
+    assert error["msg"] == f"{LogTag.BROWSER} Browser run finished but its history was not recorded"
+    assert (error["error_type"], error["error"], error["browser"]) == (
+        "RuntimeError",
+        "db down",
+        {"job_id": "job-1"},
+    )
+
+
+async def test_the_run_reads_its_own_jobs_stop(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _checks(h: Harness) -> BrowserResultSnapshot:
+        assert await h.is_cancelled() is False
+        return _result(BrowserSessionStatus.COMPLETED, True, "done")
+
+    h = _install(monkeypatch, run_body=_checks)
+
+    await jr.execute_browser_job(_request(task="x", job_id="job-7"))
+
+    assert set(h.job_cancel_checks) == {"job-7"}
 
 
 async def test_a_crash_after_a_session_opened_carries_the_recap_link(
@@ -1670,6 +1726,7 @@ async def test_a_job_stopped_while_it_queued_ends_stopped_without_opening_a_brow
     assert result.status is BrowserSessionStatus.CANCELLED
     assert h.session_kwargs == {}
     assert [state.status for state in h.states] == [BrowserJobStatus.DONE]
+    assert set(h.job_cancel_checks) == {"job-1"}
 
 
 def test_a_failed_run_forbids_an_answer_from_memory() -> None:
@@ -1703,9 +1760,11 @@ def test_a_stopped_run_the_user_redirected_is_told_both_verbatim() -> None:
     out = jr.agent_result_message(result)
 
     assert out == (
-        'THE USER REPLACED THE REQUEST MID-RUN with: "skip the login", then "just read the '
-        'headline". Answer THAT, not the original request. The original request was not '
-        "carried out and must not be reported as attempted-and-failed.\n\n" + _stopped_message()
+        BROWSER_RESULT_REPLACED_REQUEST.format(
+            notes='"skip the login", then "just read the headline"'
+        )
+        + "\n\n"
+        + _stopped_message()
     )
 
 
