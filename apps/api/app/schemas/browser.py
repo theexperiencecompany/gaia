@@ -50,10 +50,6 @@ class BrowserAction(BaseModel):
     # the bare index), so a caption states what was really touched, not what
     # the model claimed it would touch.
     target: str | None = None
-    # Where on the step's screenshot this action acted, as (x, y) fractions of
-    # the viewport in [0, 1], so the UI can draw a pulse without knowing the
-    # frame's pixel size. None for actions with no on-screen target.
-    point: tuple[float, float] | None = None
 
 
 class BrowserActionOutput(BaseModel):
@@ -96,6 +92,9 @@ class BrowserHandoffSnapshot(BaseModel):
     #: Required, not defaulted: a snapshot that forgot to say it had been
     #: resolved would silently render as still-pending to the user.
     status: HandoffStatus
+    #: A sign-in the user finishes here is kept for the next task. False when
+    #: login persistence is off, so no surface promises a save that never happens.
+    saves_login: bool = False
 
 
 class BrowserResultSnapshot(BaseModel):

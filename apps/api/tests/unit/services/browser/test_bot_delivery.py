@@ -428,6 +428,7 @@ class TestBotProgressDeliveryHandoff:
             session_id="sess-1",
             status=HandoffStatus.PENDING,
             category=SensitiveCategory.CREDENTIALS,
+            saves_login=True,
         )
         with (
             patch(
@@ -451,6 +452,7 @@ class TestBotProgressDeliveryHandoff:
             session_id="sess-1",
             status=HandoffStatus.PENDING,
             category=SensitiveCategory.CREDENTIALS,
+            saves_login=True,
         )
         with (
             patch(
@@ -471,8 +473,8 @@ class TestBotProgressDeliveryHandoff:
                 f"{BROWSER_HANDOFF_REPLY_PROMPT}"
             )
 
-    async def test_non_credentials_handoff_omits_the_saved_note(self, delivery):
-        """A payment handoff must NOT promise to store anything — nothing is saved for a payment, so the note would be a false reassurance."""
+    async def test_a_handoff_that_saves_no_login_promises_none(self, delivery):
+        """Nothing is stored for a payment, or for any sign-in while login persistence is off, so the note would be a false reassurance."""
         from app.constants.browser import BROWSER_CREDENTIALS_SAVED_NOTE, SensitiveCategory
 
         snap = BrowserHandoffSnapshot(

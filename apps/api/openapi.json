@@ -1969,11 +1969,9 @@
         "type": "object"
       },
       "BrowserSessionStatus": {
-        "description": "Lifecycle state of a browser session: created to live/working to ended/failed.",
+        "description": "Lifecycle state of a browser session: working, then how it ended.",
         "enum": [
-          "starting",
           "running",
-          "paused",
           "completed",
           "failed",
           "cancelled"

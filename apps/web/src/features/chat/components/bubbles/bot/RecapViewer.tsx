@@ -17,9 +17,6 @@ export function RecapViewer({ steps }: { steps: BrowserStepSnapshot[] }) {
                 index: s.index,
                 url: s.screenshot,
                 caption: s.goal,
-                // The pulse marks where the agent acted — the first action on
-                // this step that resolved to an on-screen point.
-                point: s.actions?.find((a) => a.point)?.point ?? null,
               },
             ]
           : [],

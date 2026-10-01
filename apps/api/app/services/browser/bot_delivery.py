@@ -11,7 +11,6 @@ from app.constants.browser import (
     BROWSER_CREDENTIALS_SAVED_NOTE,
     BROWSER_HANDOFF_REPLY_PROMPT,
     HandoffStatus,
-    SensitiveCategory,
 )
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
@@ -114,7 +113,7 @@ class BotProgressDelivery:
         # The ask is the model's own words (request_human_takeover's reason),
         # shown verbatim as the first bubble; link and reply instruction follow.
         blocks = [snapshot.reason]
-        if snapshot.category == SensitiveCategory.CREDENTIALS:
+        if snapshot.saves_login:
             blocks[0] += f"\n{BROWSER_CREDENTIALS_SAVED_NOTE}"
         if snapshot.session_id:
             blocks.append(f"Open the live browser: {await self._link(snapshot.session_id)}")

@@ -80,11 +80,9 @@ class BrowserEventKind(str, Enum):
 
 
 class BrowserSessionStatus(str, Enum):
-    """Lifecycle state of a browser session: created to live/working to ended/failed."""
+    """Lifecycle state of a browser session: working, then how it ended."""
 
-    STARTING = "starting"
     RUNNING = "running"
-    PAUSED = "paused"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
