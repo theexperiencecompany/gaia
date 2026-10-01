@@ -9,8 +9,9 @@ Pins the contracts terminal handlers depend on:
 
 import asyncio
 from collections.abc import Coroutine, Generator
+import json
 import re
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, call, patch
 
 import pytest
 
@@ -356,6 +357,25 @@ class TestRedisStreamWriter:
         session = get_session("s1")
         assert session is not None
         assert session.tool_events == [{"tool_data": {"tool_name": "web_search_data", "data": []}}]
+
+    async def test_an_awaited_publish_reaches_the_stream_and_its_collector_alike(self) -> None:
+        """A replayed card must land on the live stream and on the message saved for a reload."""
+        create_session("s1", RunKind.LIVE)
+        card = {"tool_data": {"tool_name": "browser_task_data", "data": {"step": 1}}}
+        with patch.object(rw, "stream_manager") as sm:
+            sm.publish_chunk = AsyncMock()
+            await rw.publish_to_stream("s1", card)
+            await rw.publish_to_stream("unregistered", card)
+
+        sm.publish_chunk.assert_has_awaits(
+            [
+                call("s1", f"data: {json.dumps(card)}\n\n"),
+                call("unregistered", f"data: {json.dumps(card)}\n\n"),
+            ]
+        )
+        session = get_session("s1")
+        assert session is not None
+        assert session.tool_events == [card]
 
     async def test_writer_without_session_does_not_crash(self) -> None:
         with patch.object(rw, "stream_manager") as sm:
