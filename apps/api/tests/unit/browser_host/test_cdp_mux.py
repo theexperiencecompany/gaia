@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 import json
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -158,7 +158,7 @@ async def test_an_id_shared_by_a_control_call_and_a_client_frame_still_routes_to
 
 
 @pytest.mark.unit
-async def test_a_reply_to_nobody_and_every_event_reach_all_subscribers() -> None:
+async def test_every_event_reaches_all_subscribers() -> None:
     ws = _FakeWebSocket()
     mux = await _started_mux(ws)
     first: list[dict[str, Any]] = []
@@ -332,67 +332,132 @@ async def test_a_session_scoped_call_carries_its_session_id_and_a_bare_one_does_
     await mux.close()
 
 
+def _announcement(target_id: str, session_id: str) -> dict[str, Any]:
+    """Build the connection-level event an engine sends just before it answers an attach."""
+    return {
+        "method": "Target.attachedToTarget",
+        "params": {"sessionId": session_id, "targetInfo": {"targetId": target_id}},
+    }
+
+
+async def _attach(
+    mux: CdpMux,
+    ws: _FakeWebSocket,
+    owner: Callable[[dict[str, Any]], None],
+    *,
+    target_id: str = "page-1",
+    session_id: str = "S1",
+    before_reply: tuple[dict[str, Any], ...] = (),
+) -> str:
+    """Drive one attach the way an engine answers it: announcement, anything else, then the reply."""
+    call = asyncio.create_task(mux.attach(target_id, owner))
+    sent = await _next_write(ws)
+    ws.deliver(_announcement(target_id, session_id), *before_reply)
+    ws.deliver({"id": sent["id"], "result": {"sessionId": session_id}})
+    return await asyncio.wait_for(call, timeout=1.0)
+
+
 @pytest.mark.unit
-async def test_a_claimed_sessions_frames_reach_its_owner_and_nobody_else() -> None:
-    """Regression: the live view's own page stream was fanned out to the agent's client."""
+async def test_a_host_attached_session_never_reaches_a_client_sharing_the_connection() -> None:
+    """Regression: the host's attach announcement reached browser-use, which adopted the session."""
     ws = _FakeWebSocket()
     mux = await _started_mux(ws)
-    viewer: list[dict[str, Any]] = []
     agent: list[dict[str, Any]] = []
-    mux.subscribe(viewer.append, owns_session="page-1-session-1")
+    viewer: list[dict[str, Any]] = []
     mux.subscribe(agent.append)
 
-    screenshot = {
-        "method": "Page.screencastFrame",
-        "sessionId": "page-1-session-1",
-        "params": {"data": "<jpeg>"},
-    }
-    loaded = {"method": "Page.loadEventFired", "sessionId": "page-1-session-1", "params": {}}
-    ws.deliver(screenshot, loaded)
+    session_id = await _attach(mux, ws, viewer.append)
+    frame = {"method": "Page.screencastFrame", "sessionId": session_id, "params": {}}
+    ws.deliver(frame)
+    detach = asyncio.create_task(mux.detach(session_id))
+    sent = await _next_write(ws)
+    detached = {"method": "Target.detachedFromTarget", "params": {"sessionId": session_id}}
+    ws.deliver(detached, {"id": sent["id"], "result": {}})
+    await asyncio.wait_for(detach, timeout=1.0)
+
+    assert session_id == "S1"
+    assert agent == []
+    assert viewer == [_announcement("page-1", "S1"), frame, detached]
+    await mux.close()
+
+
+@pytest.mark.unit
+async def test_a_clients_own_attach_to_the_same_page_still_reaches_the_client() -> None:
+    ws = _FakeWebSocket()
+    mux = await _started_mux(ws)
+    agent: list[dict[str, Any]] = []
+    mux.subscribe(agent.append)
+    theirs = _announcement("page-1", "CLIENT")
+    their_frame = {"method": "Page.loadEventFired", "sessionId": "CLIENT", "params": {}}
+
+    await _attach(mux, ws, lambda _frame: None, before_reply=(theirs,))
+    ws.deliver(their_frame)
     await asyncio.sleep(0)
 
-    assert viewer == [screenshot, loaded]
+    assert agent == [theirs, their_frame]
+    await mux.close()
+
+
+@pytest.mark.unit
+async def test_an_attach_whose_caller_gave_up_is_let_go_and_heard_by_nobody() -> None:
+    ws = _FakeWebSocket()
+    mux = await _started_mux(ws)
+    agent: list[dict[str, Any]] = []
+    mux.subscribe(agent.append)
+    call = asyncio.create_task(mux.attach("page-1", agent.append))
+    sent = await _next_write(ws)
+    call.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await call
+
+    ws.deliver(_announcement("page-1", "LATE"), {"id": sent["id"], "result": {"sessionId": "LATE"}})
+    detach = await _next_write(ws)
+    ws.deliver({"method": "Page.loadEventFired", "sessionId": "LATE", "params": {}})
+    await asyncio.sleep(0)
+
+    assert detach["method"] == "Target.detachFromTarget"
+    assert detach["params"] == {"sessionId": "LATE"}
     assert agent == []
     await mux.close()
 
 
 @pytest.mark.unit
-async def test_an_unclaimed_session_reaches_the_open_stream_but_not_a_claiming_sink() -> None:
+async def test_an_attach_that_never_left_holds_back_nothing() -> None:
     ws = _FakeWebSocket()
     mux = await _started_mux(ws)
-    viewer: list[dict[str, Any]] = []
     agent: list[dict[str, Any]] = []
-    mux.subscribe(viewer.append, owns_session="page-1-session-1")
     mux.subscribe(agent.append)
 
-    # The agent attaches its own page sessions through the proxy, and browser-level
-    # events carry no session at all; both belong to whoever claimed nothing.
-    other_page = {"method": "Page.loadEventFired", "sessionId": "page-2-session-1", "params": {}}
-    browser_level = {"method": "Target.targetCreated", "params": {"targetInfo": {}}}
-    ws.deliver(other_page, browser_level)
+    async def _refuse(_raw: str) -> None:
+        raise ConnectionResetError("write failed")
+
+    ws.send_hook = _refuse
+    with pytest.raises(ConnectionResetError):
+        await mux.attach("page-1", lambda _frame: None)
+    theirs = _announcement("page-1", "CLIENT")
+    ws.deliver(theirs)
     await asyncio.sleep(0)
 
-    assert agent == [other_page, browser_level]
-    assert viewer == []
+    assert agent == [theirs]
     await mux.close()
 
 
 @pytest.mark.unit
-async def test_a_session_returns_to_the_open_stream_once_its_owner_unsubscribes() -> None:
+async def test_an_attach_the_engine_refuses_raises_and_holds_back_nothing() -> None:
     ws = _FakeWebSocket()
     mux = await _started_mux(ws)
     agent: list[dict[str, Any]] = []
-    remove = mux.subscribe(lambda _frame: None, owns_session="page-1-session-1")
     mux.subscribe(agent.append)
+    call = asyncio.create_task(mux.attach("page-gone", lambda _frame: None))
+    sent = await _next_write(ws)
+    ws.deliver({"id": sent["id"], "error": {"message": "No target with given id found"}})
 
-    claimed = {"method": "Page.loadEventFired", "sessionId": "page-1-session-1", "params": {}}
-    ws.deliver(claimed)
+    with pytest.raises(cdp_mux.CdpCommandError):
+        await asyncio.wait_for(call, timeout=1.0)
+    theirs = _announcement("page-gone", "CLIENT")
+    ws.deliver(theirs)
     await asyncio.sleep(0)
-    remove()
-    ws.deliver(claimed)
-    await asyncio.sleep(0)
-
-    assert agent == [claimed]
+    assert agent == [theirs]
     await mux.close()
 
 
@@ -424,16 +489,15 @@ async def test_a_forwarded_reply_goes_to_its_sender_even_when_another_sink_owns_
     agent: list[dict[str, Any]] = []
     viewer: list[dict[str, Any]] = []
     mux.subscribe(agent.append)
-    mux.subscribe(viewer.append, owns_session="page-1-session-1")
+    session_id = await _attach(mux, ws, viewer.append)
+    viewer.clear()
 
-    await mux.forward(
-        {"id": 5, "method": "Page.enable", "sessionId": "page-1-session-1"}, agent.append
-    )
+    await mux.forward({"id": 5, "method": "Page.enable", "sessionId": session_id}, agent.append)
     outbound = ws.sent[-1]
-    ws.deliver({"id": outbound["id"], "sessionId": "page-1-session-1", "result": {}})
+    ws.deliver({"id": outbound["id"], "sessionId": session_id, "result": {}})
     await asyncio.sleep(0)
 
-    assert agent == [{"id": 5, "sessionId": "page-1-session-1", "result": {}}]
+    assert agent == [{"id": 5, "sessionId": session_id, "result": {}}]
     assert viewer == []
     await mux.close()
 
@@ -474,8 +538,8 @@ async def test_starting_an_already_open_connection_is_refused_without_dialing_ag
 
 
 @pytest.mark.unit
-async def test_the_connection_is_dialed_with_no_frame_cap_and_no_pings() -> None:
-    """A screencast frame dwarfs the websockets default cap, and this engine answers no ping."""
+async def test_the_connection_is_dialed_with_no_frame_cap_no_pings_and_a_short_close() -> None:
+    """A screencast frame dwarfs the default cap, this engine answers no ping, and a dead one no close."""
     ws = _FakeWebSocket()
     mux = CdpMux(_URL)
     connect = AsyncMock(return_value=ws)
@@ -484,7 +548,11 @@ async def test_the_connection_is_dialed_with_no_frame_cap_and_no_pings() -> None
         await mux.start()
 
     assert connect.await_args is not None
-    assert connect.await_args.kwargs == {"max_size": None, "ping_interval": None}
+    assert connect.await_args.kwargs == {
+        "max_size": None,
+        "ping_interval": None,
+        "close_timeout": 2.0,
+    }
     await mux.close()
 
 
@@ -539,25 +607,23 @@ async def test_a_non_dict_result_fails_the_call_naming_the_method_and_the_payloa
 
 
 @pytest.mark.unit
-async def test_a_failed_send_releases_its_id_so_a_late_reply_still_reaches_subscribers() -> None:
-    """The frame may already be on the wire when the send fails; its reply must not vanish."""
+async def test_a_late_reply_to_a_call_its_caller_gave_up_on_reaches_no_client() -> None:
+    """Its id is the mux's own, so a client handed it could take it for an answer of its own."""
     ws = _FakeWebSocket()
     mux = await _started_mux(ws)
     seen: list[dict[str, Any]] = []
     mux.subscribe(seen.append)
+    call = asyncio.create_task(mux.send_raw("Page.enable"))
+    sent = await _next_write(ws)
+    call.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await call
 
-    async def _refuse(_raw: str) -> None:
-        raise ConnectionResetError("write failed")
-
-    ws.send_hook = _refuse
-    with pytest.raises(ConnectionResetError):
-        await mux.send_raw("Page.enable")
-    ws.send_hook = None
-    late = {"id": 1, "result": {"answered anyway": True}}
-    ws.deliver(late)
+    ws.deliver({"id": sent["id"], "result": {"answered anyway": True}})
+    ws.deliver({"id": 4242, "result": {"targetInfos": []}})
     await asyncio.sleep(0)
 
-    assert seen == [late]
+    assert seen == []
     await mux.close()
 
 
@@ -578,26 +644,6 @@ async def test_a_send_that_fails_as_the_engine_hangs_up_reports_the_write_failur
         await asyncio.wait_for(mux.send_raw("Page.enable"), timeout=1.0)
     assert str(failure.value) == "socket died mid-write"
     assert mux.closed is True
-
-
-@pytest.mark.unit
-async def test_a_reply_nobody_is_waiting_for_reaches_the_subscribers() -> None:
-    """A stale or unsolicited reply is an ordinary frame, not a reason to drop the loop."""
-    ws = _FakeWebSocket()
-    mux = await _started_mux(ws)
-    seen: list[dict[str, Any]] = []
-    mux.subscribe(seen.append)
-
-    orphan = {"id": 4242, "result": {"targetInfos": []}}
-    ws.deliver(orphan)
-    await asyncio.sleep(0)
-
-    assert seen == [orphan]
-    call = asyncio.create_task(mux.send_raw("Page.enable"))
-    sent = await _next_write(ws)
-    ws.deliver({"id": sent["id"], "result": {}})
-    assert await asyncio.wait_for(call, timeout=1.0) == {}
-    await mux.close()
 
 
 @pytest.mark.unit
@@ -668,3 +714,35 @@ async def test_the_socket_failing_under_the_read_loop_fails_callers_with_that_er
         await asyncio.wait_for(call, timeout=1.0)
     assert str(failure.value) == "engine socket reset"
     assert mux.closed is True
+
+
+class _SilentTransport:
+    """A connection whose engine never answers, so only the bound can end a call."""
+
+    async def send_raw(
+        self, method: str, params: dict[str, Any] | None = None, session_id: str | None = None
+    ) -> dict[str, Any]:
+        await asyncio.Event().wait()
+        return {}
+
+    async def attach(self, target_id: str, owner: Callable[[dict[str, Any]], None]) -> str:
+        await asyncio.Event().wait()
+        return ""
+
+    async def detach(self, session_id: str) -> None:
+        await asyncio.Event().wait()
+
+
+@pytest.mark.unit
+async def test_a_call_the_engine_never_answers_fails_naming_its_method() -> None:
+    with pytest.raises(cdp_mux.CDPTimeoutError, match="Target.getTargets"):
+        await cdp_mux.cdp_call(_SilentTransport(), "Target.getTargets", timeout=0.01)
+
+
+@pytest.mark.unit
+async def test_an_attach_or_detach_the_engine_never_answers_fails_like_a_call() -> None:
+    silent = cast(CdpMux, _SilentTransport())
+    with pytest.raises(cdp_mux.CDPTimeoutError, match="Target.attachToTarget"):
+        await cdp_mux.cdp_attach(silent, "page-1", lambda _frame: None, timeout=0.01)
+    with pytest.raises(cdp_mux.CDPTimeoutError, match="Target.detachFromTarget"):
+        await cdp_mux.cdp_detach(silent, "S1", timeout=0.01)

@@ -5,8 +5,8 @@ bookkeeping — the host feeds it samples at the three moments that already
 happen (session create, navigation complete, session dispose) and the CDP proxy
 feeds it navigation/page events, so nothing here polls or busy-loops.
 
-The resource numbers come from the whole Chromium process tree (browser,
-renderers, GPU), shared by every session on this host, so they cost the
+The resource numbers come from the whole engine process tree (browser,
+renderers, GPU), shared by every session on that engine, so they cost the
 browser while this session was open, not this session alone. Attributing them
 per session is only meaningful when comparing runs that each own the host.
 """
@@ -40,7 +40,6 @@ class MetricsSnapshot(TypedDict):
 
     session_lifetime_seconds: float
     navigation_count: int
-    context_count: int
     page_count: int
     rss_mb: AggregateSnapshot | None
     cpu_percent: AggregateSnapshot | None
@@ -91,7 +90,6 @@ class SessionMetrics:
     cpu_percent: Aggregate = field(default_factory=Aggregate)
     navigation_ms: Aggregate = field(default_factory=Aggregate)
     navigation_count: int = 0
-    context_count: int = 0
     page_count: int = 0
     navigation_started_at: float | None = None
 
@@ -125,7 +123,6 @@ class SessionMetrics:
         return {
             "session_lifetime_seconds": round(time.monotonic() - self.created_at, 3),
             "navigation_count": self.navigation_count,
-            "context_count": self.context_count,
             "page_count": self.page_count,
             "rss_mb": self.rss_mb.snapshot(),
             "cpu_percent": self.cpu_percent.snapshot(),
@@ -134,7 +131,7 @@ class SessionMetrics:
 
 
 class ProcessSampler:
-    """Samples the Chromium process tree's RSS and CPU%.
+    """Samples the engine process tree's RSS and CPU%.
 
     cpu_percent() is used in its non-blocking form: the first call on a
     process seeds the counter and reports 0.0, every later call reports the

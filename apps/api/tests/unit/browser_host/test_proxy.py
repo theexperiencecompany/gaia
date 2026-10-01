@@ -17,6 +17,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock
 
+from fastapi import WebSocketDisconnect
 import pytest
 
 from app.browser_host import proxy
@@ -45,6 +46,8 @@ from tests.helpers import captured_wide_event
         ("Page.navigate", "about:blank", None),
         ("Page.navigate", None, None),
         ("Page.enable", "file:///etc/passwd", None),
+        ("Page.navigate", "example.com/login", "example.com/login"),
+        ("Page.navigate", "/relative/path", "/relative/path"),
     ],
     ids=[
         "file-scheme-refused",
@@ -54,6 +57,8 @@ from tests.helpers import captured_wide_event
         "about-blank-allowed",
         "navigate-with-no-url-allowed",
         "non-navigation-method-never-refused",
+        "scheme-less-refused",
+        "relative-refused",
     ],
 )
 def test_refused_navigation_url(method: str, url: str | None, expected_refusal: str | None) -> None:
@@ -76,7 +81,7 @@ def test_setdownloadbehavior_is_refused(method: str) -> None:
         "params": {"behavior": "allow", "downloadPath": "/tmp/browser-use-downloads"},
     }
 
-    reason = _refusal_reason(message)
+    reason = _refusal_reason(message, _OWN)
 
     assert reason is not None
     assert "downloads are denied" in reason
@@ -85,10 +90,10 @@ def test_setdownloadbehavior_is_refused(method: str) -> None:
 @pytest.mark.unit
 def test_ordinary_command_is_forwarded() -> None:
     """The refusal check must not block anything browser-use legitimately sends."""
-    assert _refusal_reason({"id": 8, "method": "Page.enable", "params": {}}) is None
+    assert _refusal_reason({"id": 8, "method": "Page.enable", "params": {}}, _OWN) is None
     assert (
         _refusal_reason(
-            {"id": 9, "method": "Page.navigate", "params": {"url": "https://example.com"}}
+            {"id": 9, "method": "Page.navigate", "params": {"url": "https://example.com"}}, _OWN
         )
         is None
     )
@@ -98,9 +103,48 @@ def test_context_lifecycle_is_refused() -> None:
     """A session must not mint or dispose contexts itself — the host owns the context lifecycle so untracked contexts can't escape capacity/reaper math."""
     for method in ("Target.createBrowserContext", "Target.disposeBrowserContext"):
         msg = {"id": 1, "method": method, "params": {}}
-        reason = _refusal_reason(msg)
+        reason = _refusal_reason(msg, _OWN)
         assert reason is not None
         assert "context lifecycle" in reason
+
+
+@pytest.mark.parametrize(
+    "method",
+    ["Target.getBrowserContexts", "Browser.close", "Browser.crash", "Browser.crashGpuProcess"],
+)
+def test_a_browser_wide_command_is_refused(method: str) -> None:
+    """Listing contexts leaks every tenant's ids; closing or crashing ends every tenant's browser."""
+    assert _refusal_reason({"id": 1, "method": method}, _OWN) == (
+        f"{method} refused: it reaches past this session's browser context"
+    )
+
+
+def test_a_command_naming_another_context_is_refused() -> None:
+    message = {
+        "id": 1,
+        "method": "Browser.getWindowForTarget",
+        "params": {"browserContextId": _FOREIGN},
+    }
+
+    assert _refusal_reason(message, _OWN) == (
+        f"Browser.getWindowForTarget refused: browser context {_FOREIGN} is not this session's"
+    )
+    message["params"]["browserContextId"] = _OWN
+    assert _refusal_reason(message, _OWN) is None
+
+
+@pytest.mark.parametrize(
+    "method",
+    ["Storage.getCookies", "Storage.setCookies", "Storage.clearCookies", "Browser.setPermission"],
+)
+def test_a_context_scoped_command_acts_on_this_context_whatever_it_names(method: str) -> None:
+    """Without a context it reads the browser's default jar, which every tenant shares."""
+    named = {"id": 1, "method": method, "params": {"browserContextId": _FOREIGN}}
+    bare = {"id": 2, "method": method}
+
+    assert _refusal_reason(named, _OWN) is None
+    assert _rewrite_upstream(named, _OWN, set())["params"]["browserContextId"] == _OWN
+    assert _rewrite_upstream(bare, _OWN, set())["params"] == {"browserContextId": _OWN}
 
 
 # ---------------------------------------------------------------------------
@@ -138,16 +182,12 @@ async def test_a_public_target_is_forwarded(monkeypatch) -> None:
     guard.assert_awaited_once_with("https://example.com")
 
 
-async def test_non_navigations_relative_urls_and_foreign_schemes_skip_the_resolver(
-    monkeypatch,
-) -> None:
+async def test_non_navigations_and_the_blank_page_skip_the_resolver(monkeypatch) -> None:
     guard = AsyncMock()
     monkeypatch.setattr(proxy, "assert_public_http_url", guard)
 
     for message in (
         {"id": 1, "method": "Page.enable", "params": {}},
-        {"id": 2, "method": "Page.navigate", "params": {"url": "/relative/path"}},
-        {"id": 3, "method": "Page.navigate", "params": {"url": "file:///etc/passwd"}},
         {"id": 4, "method": "Page.navigate", "params": {"url": "about:blank"}},
     ):
         assert await _refused_private_target(message) is None
@@ -168,9 +208,9 @@ def test_navigation_url_is_the_target_or_none_for_blank_missing_or_non_string() 
 def test_refusal_reason_names_the_foreign_scheme_navigation_it_refuses() -> None:
     assert (
         _refusal_reason(
-            {"id": 1, "method": "Page.navigate", "params": {"url": "file:///etc/passwd"}}
+            {"id": 1, "method": "Page.navigate", "params": {"url": "file:///etc/passwd"}}, _OWN
         )
-        == "navigation to file:///etc/passwd refused: only http and https are allowed"
+        == "navigation to file:///etc/passwd refused: only http and https URLs are allowed"
     )
 
 
@@ -328,10 +368,6 @@ def test_a_refusal_is_a_cdp_error_reply_to_the_callers_id() -> None:
 # ---------------------------------------------------------------------------
 
 
-class WebSocketDisconnect(Exception):
-    """Stands in for Starlette's disconnect: pumps.is_disconnect matches it by name."""
-
-
 class _FakeClient:
     """The browser-use side: frames the test feeds in, frames the proxy sends back."""
 
@@ -391,16 +427,16 @@ class _FakeMux:
 
 
 class _FakeHost:
-    """Records the per-session activity and navigation bookkeeping the proxy reports."""
+    """Records the navigation, page and focus bookkeeping the proxy reports."""
 
     def __init__(self) -> None:
-        self.touched: list[str] = []
         self.navigations_started: list[str] = []
         self.navigations_finished: list[str] = []
         self.pages_created: list[str] = []
+        self.focus: list[tuple[str, str]] = []
 
-    def touch(self, session_id: str) -> None:
-        self.touched.append(session_id)
+    def note_focus(self, session_id: str, target_id: str) -> None:
+        self.focus.append((session_id, target_id))
 
     def note_navigation_started(self, session_id: str) -> None:
         self.navigations_started.append(session_id)
@@ -464,8 +500,34 @@ async def test_a_client_command_reaches_the_engine_pinned_and_the_reply_comes_ba
         "id": 1,
         "result": {"targetInfos": [_target(_OWN, "mine")]},
     }
-    # Traffic both ways is activity: an idle-reaper must never take a session in use.
-    assert running.host.touched.count("s1") >= 2
+
+
+async def test_a_tab_the_agent_brings_forward_becomes_the_sessions_focus(running: _Proxy) -> None:
+    running.client.send({"id": 7, "method": "Target.activateTarget", "params": {"targetId": "t2"}})
+    running.client.send({"id": 8, "method": "Target.activateTarget", "params": {}})
+
+    await running.mux.next_forwarded()
+    await running.mux.next_forwarded()
+
+    assert running.host.focus == [("s1", "t2")]
+
+
+async def test_a_client_too_slow_for_the_engine_is_cut_off_rather_than_fed_partial_state(
+    running: _Proxy, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stuck = asyncio.Event()
+
+    async def _never_delivers(_raw: str) -> None:
+        await stuck.wait()
+
+    monkeypatch.setattr(running.client, "send_text", _never_delivers)
+    for index in range(proxy._DOWNSTREAM_BACKLOG_LIMIT + 2):
+        running.mux.emit({"method": "Page.lifecycleEvent", "params": {"n": index}})
+
+    assert running.task is not None
+    with pytest.raises(proxy._ClientTooSlow):
+        await asyncio.wait_for(running.task, timeout=1.0)
+    assert running.mux.sinks == []
 
 
 async def test_a_createtarget_opens_a_page_in_this_context_and_is_noted(running: _Proxy) -> None:
@@ -532,7 +594,7 @@ async def test_a_refused_command_is_answered_and_never_reaches_the_engine(
     # The next command is the first thing the engine sees: the refused one never went.
     assert await running.mux.next_forwarded() == {"id": 5, "method": "Page.enable"}
 
-    reason = "navigation to file:///etc/passwd refused: only http and https are allowed"
+    reason = "navigation to file:///etc/passwd refused: only http and https URLs are allowed"
     assert reply == {"id": reply_id, "error": {"code": -32000, "message": reason}}
     assert running.host.navigations_started == []
     assert running.event["warnings"] == [

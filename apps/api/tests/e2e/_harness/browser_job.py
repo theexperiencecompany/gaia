@@ -496,7 +496,6 @@ def _host_patches(
             session_id=f"sess-{world.host_sessions}",
             cdp_ws="ws://browser.test/cdp",
             live_ws="ws://browser.test/live",
-            context_id="ctx-1",
         )
 
     def _kill_engine() -> None:
@@ -514,11 +513,10 @@ def _host_patches(
         return HostSessionInfo(
             session_id=session_id,
             live=True,
-            last_activity_at=0.0,
             url=double.url,
         )
 
-    async def _touch_host_session(session_id: str, host_url: str) -> None:
+    async def _renew_host_lease(session_id: str, host_url: str) -> None:
         world.keepalive_touches.append(session_id)
 
     async def _get_storage_state(session_id: str, host_url: str) -> Any:
@@ -537,7 +535,7 @@ def _host_patches(
         ),
         patch("app.services.browser.session.host_client.get_session", _get_host_session),
         patch("app.services.browser.session.host_client.get_storage_state", _get_storage_state),
-        patch("app.services.browser.session.host_client.touch_session", _touch_host_session),
+        patch("app.services.browser.session.host_client.renew_session_lease", _renew_host_lease),
         patch.object(settings, "BROWSER_FALLBACK_HOST_URL", scripted_host.fallback_url),
         patch("app.services.browser.session.load_storage_state", AsyncMock(return_value=None)),
         patch("app.services.browser.session.save_storage_state", AsyncMock()),

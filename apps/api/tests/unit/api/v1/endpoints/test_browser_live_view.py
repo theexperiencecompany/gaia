@@ -15,6 +15,7 @@ from fastapi.responses import HTMLResponse
 from httpx import ASGITransport, AsyncClient
 from jose import JWTError
 import pytest
+from starlette.websockets import WebSocketState
 import websockets
 
 from app.api.v1.endpoints import browser_live_view as blv
@@ -47,6 +48,8 @@ def _make_ws(
     ws = MagicMock(spec=WebSocket)
     ws.cookies = cookies or {}
     ws.headers = headers or {}
+    ws.client_state = WebSocketState.CONNECTED
+    ws.application_state = WebSocketState.CONNECTED
     ws.close = AsyncMock()
     ws.accept = AsyncMock()
     ws.send_bytes = AsyncMock()
@@ -574,17 +577,20 @@ class TestProxyLiveView:
             await blv._proxy_live_view(client_ws, "ws://host/live/1", None)
             mock_connect.assert_called_once_with("ws://host/live/1", max_size=None)
 
-    async def test_client_ws_close_suppressed_on_error(self) -> None:
+    async def test_a_viewer_that_already_left_is_not_closed_again(self) -> None:
         client_ws = _make_ws()
-        client_ws.close = AsyncMock(side_effect=RuntimeError("close boom"))
+        client_ws.application_state = WebSocketState.DISCONNECTED
         mock_host_ws = AsyncMock()
         mock_host_ws.__aenter__ = AsyncMock(return_value=mock_host_ws)
         mock_host_ws.__aexit__ = AsyncMock(return_value=False)
         with (
             patch.object(blv.websockets, "connect", return_value=mock_host_ws),
-            patch.object(blv, "pump_until_first_close", new=AsyncMock()),
+            patch.object(blv, "pump_until_first_close", new=AsyncMock()) as pump,
         ):
             await blv._proxy_live_view(client_ws, "ws://host/live/1", None)
+
+        client_ws.close.assert_not_awaited()
+        assert pump.call_args.kwargs == {"sockets": (client_ws,)}
 
 
 # ---------------------------------------------------------------------------

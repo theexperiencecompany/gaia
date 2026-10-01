@@ -76,7 +76,6 @@ def _session(session_id: str = "s-primary") -> BrowserHostSession:
         session_id=session_id,
         cdp_url=f"ws://{session_id}",
         live_view_url=f"http://{session_id}/live",
-        context_id="ctx",
         host_url=f"http://{session_id}-host",
     )
 

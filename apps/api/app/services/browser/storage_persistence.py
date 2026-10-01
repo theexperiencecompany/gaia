@@ -122,13 +122,24 @@ async def load_storage_state(user_id: str, domain: str | None) -> StorageState |
     return state
 
 
+def _merge_origins(kept: list[OriginState], fresh: list[OriginState]) -> list[OriginState]:
+    """Return fresh's origins plus each kept origin fresh says nothing about.
+
+    A browser reports localStorage only for origins it has a page open on, so an
+    origin missing from fresh is unknown, not cleared; one fresh reports, even
+    empty, replaces the kept copy.
+    """
+    reported = {origin["origin"] for origin in fresh}
+    return [origin for origin in kept if origin["origin"] not in reported] + fresh
+
+
 async def save_storage_state(
     user_id: str,
     domain: str | None,
     state: StorageState,
     provenance: BrowserLoginProvenance | None = None,
 ) -> None:
-    """Encrypt and upsert state for user_id plus domain.
+    """Encrypt and upsert state for user_id plus domain, keeping saved localStorage state does not report.
 
     No-op without a user and domain to key on, or when
     settings.BROWSER_PERSIST_LOGINS is off. Only the import path records a
@@ -139,6 +150,18 @@ async def save_storage_state(
     persist_logins: bool = settings.BROWSER_PERSIST_LOGINS
     if not persist_logins:
         return
+    saved = await browser_profile_repository.get_for_domain(user_id, domain)
+    if saved is not None:
+        try:
+            saved_state: StorageState = _decrypt_state(saved.storage_state_blob)
+            saved_origins = saved_state.get("origins", [])
+        except (InvalidToken, ValueError):
+            # Unreadable under the current key: nothing in it can be kept.
+            saved_origins = []
+        state = StorageState(
+            cookies=state.get("cookies", []),
+            origins=_merge_origins(saved_origins, state.get("origins", [])),
+        )
     blob = _encrypt_state(state)
     await browser_profile_repository.upsert_storage_state_blob(user_id, domain, blob, provenance)
     log.info(
@@ -199,12 +222,11 @@ def _hosts_in(state: StorageState) -> set[str]:
 def overlay_storage_state(
     base: StorageState | None, live: StorageState, held_hosts: set[str]
 ) -> StorageState:
-    """Lay live over base, with live the whole truth for every host it covers.
+    """Lay live over base, with live's cookies the whole truth for every host it covers.
 
-    Covered means a host live has a cookie or origin for, or one of held_hosts, the
-    sites the live browser is known to have had open. A base cookie a browser would
-    send to a covered host, or a covered origin's localStorage, is dropped rather than
-    merged, since its absence from live may be a logout; base fills only the rest.
+    Covered: a host live has a cookie or origin for, or one of held_hosts, the sites
+    the live browser had open. A base cookie for a covered host is dropped, since its
+    absence from live may be a logout; localStorage merges per origin (_merge_origins).
     """
     if base is None:
         return live
@@ -216,10 +238,7 @@ def overlay_storage_state(
             if not any(_cookie_scopes_to(cookie, host) for host in covered)
         ]
         + live.get("cookies", []),
-        origins=[
-            origin for origin in base.get("origins", []) if _origin_host(origin) not in covered
-        ]
-        + live.get("origins", []),
+        origins=_merge_origins(base.get("origins", []), live.get("origins", [])),
     )
 
 

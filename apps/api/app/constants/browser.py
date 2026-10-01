@@ -168,9 +168,11 @@ HANDOFF_POLL_INTERVAL_SECONDS = 1.0
 HANDOFF_KEY_TTL_SECONDS = 3600
 # The last line of a handoff a bot user is sent: only their word ends it.
 BROWSER_HANDOFF_REPLY_PROMPT = "Reply here when you're done, or tell me to stop."
-# How often the paused run touches the host session so the idle reaper (default
-# 300s TTL) never disposes a browser the user was asked to come back to.
-BROWSER_HANDOFF_KEEPALIVE_SECONDS = 60
+# A host session lives on a lease the run renews while its job is alive, paused
+# or not; one it stops renewing (its worker died) is disposed when the lease runs out.
+BROWSER_SESSION_LEASE_SECONDS = 90.0
+# Three renewals per lease, so one slow or lost renewal never costs a live run its browser.
+BROWSER_SESSION_LEASE_RENEW_SECONDS = BROWSER_SESSION_LEASE_SECONDS / 3
 
 # A short capability code for the bot's live-view link (browser.heygaia.io/{code}):
 # the code IS the secret and maps to the session + owner in Redis, so the link
@@ -630,9 +632,12 @@ class HostRequestFailure(StrEnum):
     """Why the browser host refused a request; its request event's reason field."""
 
     INVALID_HOST_KEY = "invalid_host_key"
+    INVALID_SESSION_TOKEN = "invalid_session_token"
     SESSION_NOT_FOUND = "session_not_found"
     AT_CAPACITY = "at_capacity"
     ENGINE_UNRESPONSIVE = "engine_unresponsive"
+    ENGINE_REFUSED = "engine_refused"
+    DEADLINE_EXCEEDED = "deadline_exceeded"
 
 
 class HostAdmissionRefusal(StrEnum):
@@ -640,6 +645,20 @@ class HostAdmissionRefusal(StrEnum):
 
     SESSION_CEILING = "session_ceiling"
     MEMORY = "memory"
+
+
+class HostSessionEnd(StrEnum):
+    """How a session left the browser host; the operation its wide event carries."""
+
+    DISPOSED = "dispose"
+    LEASE_EXPIRED = "lease_expired"
+    CONNECTION_LOST = "connection_lost"
+    ENGINE_LOST = "engine_lost"
+
+
+# The header a host client sends its own deadline in, so the host finishes or gives
+# up inside it instead of working on for a caller that has stopped listening.
+BROWSER_HOST_DEADLINE_HEADER = "X-Host-Deadline"
 
 
 # Browser-Use's own env switches (browser_use/config.py), forced off in every GAIA

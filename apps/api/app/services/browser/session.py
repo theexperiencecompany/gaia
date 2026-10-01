@@ -18,7 +18,7 @@ from playwright.sync_api import StorageState
 
 from app.constants.browser import (
     BROWSER_ENGINE_PROBE_TIMEOUT_SECONDS,
-    BROWSER_HANDOFF_KEEPALIVE_SECONDS,
+    BROWSER_SESSION_LEASE_RENEW_SECONDS,
     EngineFailure,
 )
 from app.constants.log_tags import LogTag
@@ -33,6 +33,7 @@ from app.services.browser.storage_persistence import (
     save_storage_state,
     storage_state_for_host,
 )
+from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
 
@@ -43,7 +44,6 @@ class BrowserHostSession:
     session_id: str
     cdp_url: str
     live_view_url: str
-    context_id: str
     #: The browser host this context lives on: the primary engine's, or the
     #: fallback's after a switch.
     host_url: str
@@ -93,22 +93,21 @@ async def hand_over_state(session: BrowserHostSession) -> LiveSessionState:
 
 
 async def keep_session_alive(session: BrowserHostSession) -> None:
-    """Periodically reset the host's idle clock while a handoff is pending.
+    """Renew the host's lease on session for as long as this runs.
 
-    A paused session has no CDP or live-view traffic and the idle TTL is
-    shorter than the handoff timeout, so without this the reaper disposes the
-    browser. Best-effort: a failed touch is only logged. Run under
-    spawn_background_task and cancel when the handoff resolves.
+    The host disposes a session whose lease runs out, which is how a dead
+    worker's browser is reclaimed; a failed renewal is logged and the next one,
+    well inside the lease, tries again. Run under spawn_background_task, cancel to let go.
     """
     while True:
-        await asyncio.sleep(BROWSER_HANDOFF_KEEPALIVE_SECONDS)
+        await asyncio.sleep(BROWSER_SESSION_LEASE_RENEW_SECONDS)
         try:
-            await host_client.touch_session(session.session_id, session.host_url)
+            await host_client.renew_session_lease(session.session_id, session.host_url)
         except BrowserUnavailableError as exc:
             log.warning(
-                f"{LogTag.BROWSER} Browser handoff keepalive failed",
+                f"{LogTag.BROWSER} Browser session lease renewal failed",
                 error_type=type(exc).__name__,
-                browser={"session_id": session.session_id, "operation": "handoff_keepalive"},
+                browser={"session_id": session.session_id, "operation": "lease_renewal"},
             )
 
 
@@ -160,13 +159,14 @@ async def browser_session(
         session_id=host.session_id,
         cdp_url=host.cdp_ws,
         live_view_url=live_view_url(host.session_id),
-        context_id=host.context_id,
         host_url=host_url,
         start_domain=domain,
         login_domains=login_domains,
     )
     log.set(browser={"session_id": session.session_id, "operation": "create"})
     log.info(f"{LogTag.BROWSER} Browser session created")
+    # The job holds the session's lease for its whole life, paused or not.
+    lease = spawn_background_task(keep_session_alive(session), name="browser_session_lease")
 
     try:
         registered = await register_session(session.session_id, user_id, live_ws=host.live_ws)
@@ -179,6 +179,7 @@ async def browser_session(
             )
         yield session
     finally:
+        lease.cancel()
         try:
             returned_state = await host_client.delete_session(session.session_id, host_url)
             # Saving every run turned the login store into an invisible preference

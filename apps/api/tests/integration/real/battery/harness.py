@@ -96,7 +96,7 @@ def battery_enabled() -> bool:
 def stack_answers() -> bool:
     try:
         return httpx.get(f"{API_URL}/api/v1/todos", timeout=5).status_code == 200 and (
-            httpx.get(f"{HOST_URL}/healthz", timeout=5).json().get("chromium_up") is True
+            httpx.get(f"{HOST_URL}/healthz", timeout=5).json().get("engine_up") is True
         )
     except Exception:
         return False

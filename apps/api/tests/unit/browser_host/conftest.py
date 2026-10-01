@@ -1,15 +1,13 @@
 """Shared setup and fakes for the browser-host unit tests.
 
-Admission is memory-based (ChromiumHost._reserve_slot reads the real cgroup /
-system memory), which would make every create test depend on the machine's live
-memory. Default every test to ample headroom and no backpressure wait so the
-existing behaviour tests stay hermetic and fast; the memory-gate tests override
-chromium.memory_usage_mb themselves to simulate pressure.
+Admission is memory-based (it reads the real cgroup or system memory), which
+would make every create depend on the machine; every test defaults to ample
+headroom and no admission wait, and the admission tests set their own.
 
-FakeMux stands in for a session's one engine connection. make_host deliberately
-leaves the host's root connection unset, so any session work that regressed to
-the shared connection fails loudly instead of silently crossing connections. The
-live view's paced capture is parked by default so it cannot tick mid-test.
+FakeMux stands in for one session's engine connection and FakeEngine for the
+engine behind it: contexts, pages, cookies and localStorage are real state, so a
+test asserts what the engine ends up holding. StubEngine stands in for a
+launched engine process, so the host never spawns one.
 """
 
 from __future__ import annotations
@@ -21,14 +19,21 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.browser_host import chromium, proxy, screencast
-from app.browser_host.cdp_mux import CdpMux, sinks_for
+from app.browser_host import chromium, proxy, screencast, storage
+from app.browser_host.cdp_mux import CdpCommandError, CdpMux, sinks_for
 from app.browser_host.chromium import ChromiumHost, HostSession
+from app.browser_host.engine import Engine, EngineFailure
+from app.constants.browser import BrowserEngine
 
 FAKE_ROOT_WS_URL = "ws://127.0.0.1:9222/devtools/browser/fake"
 # Longer than any test runs: the live view's paced capture must only fire for the
 # tests that drive it, never as a real 0.5s tick landing mid-assertion.
 _NEVER_SECONDS = 3600.0
+# The browser's own context, where CDP puts anything that names no browserContextId.
+DEFAULT_CONTEXT = ""
+_DOWNLOAD_BEHAVIORS = frozenset({"deny", "allow", "allowAndName", "default"})
+
+Sink = Callable[[dict[str, Any]], None]
 
 
 @pytest.fixture(autouse=True)
@@ -52,21 +57,16 @@ def _ample_memory(monkeypatch: pytest.MonkeyPatch) -> None:
 class FakeMux:
     """Stand-in for one session's CdpMux, covering its whole surface.
 
-    Records every (method, params, session_id) it is asked to send and every
-    frame forwarded verbatim, answers from a per-method map (or a per-method
-    queue when the answer must vary call to call), tracks start/close so a
-    leaked connection is visible, and pushes frames at subscribers via emit,
-    which routes them through the mux's own sinks_for so the two cannot drift.
+    Records every (method, params, session_id) sent and every frame forwarded,
+    answers from a per-method map (or queue), and pushes frames at subscribers
+    via emit, routed by the mux's own sinks_for so the two cannot drift.
     """
 
-    # Sensible per-method answers; anything unlisted replies with an empty object,
-    # which is what the real CDP layer treats as a no-payload ack.
     _DEFAULTS: ClassVar[dict[str, dict[str, Any]]] = {
         "Target.createBrowserContext": {"browserContextId": "ctx-low"},
         "Target.createTarget": {"targetId": "t-low"},
         "Target.getTargets": {"targetInfos": []},
         "Storage.getCookies": {"cookies": []},
-        "Target.attachToTarget": {"sessionId": "sess-attach"},
         "Runtime.evaluate": {"result": {"value": None}},
     }
 
@@ -76,67 +76,69 @@ class FakeMux:
         *,
         queues: dict[str, list[dict[str, Any]]] | None = None,
         hang_on: str | None = None,
-        hang_call_count: int = 0,
-        fail_on_first_call: dict[str, Exception] | None = None,
     ) -> None:
         self.responses: dict[str, dict[str, Any]] = {**self._DEFAULTS, **(responses or {})}
         self.queues: dict[str, list[dict[str, Any]]] = {
             method: list(items) for method, items in (queues or {}).items()
         }
         self.hang_on = hang_on
-        # One event per expected call to the hanging method, so a test can await
-        # "the call has started" without a real sleep or a racy poll.
-        self.call_started = [asyncio.Event() for _ in range(hang_call_count)]
-        self.fail_on_first_call = dict(fail_on_first_call or {})
-        # Raised by every call once set, for the consumer that must survive an
-        # engine that has stopped answering rather than one bad command.
+        self.hang_started = asyncio.Event()
+        # Raised by every call once set: an engine that has stopped answering.
         self.send_error: Exception | None = None
         self.calls: list[tuple[str, dict[str, Any] | None, str | None]] = []
         self.forwarded: list[dict[str, Any]] = []
-        # The sink each forwarded frame named as the owner of its reply.
-        self.reply_sinks: list[Callable[[dict[str, Any]], None]] = []
+        self.sinks: list[tuple[Sink, str | None]] = []
+        self.attached: list[str] = []
+        self.detached: list[str] = []
         self.urls: list[str] = []
-        # Each entry is a sink and the CDP session it claims, mirroring the real
-        # mux: a claimed session's frames reach its owner and nobody else.
-        self.sinks: list[tuple[Callable[[dict[str, Any]], None], str | None]] = []
         self.started = 0
-        self.closed = False
         self.close_count = 0
-        # Set by close(), or by a test simulating the engine dropping the socket;
-        # until then wait_closed() never resolves, as on a live connection.
         self.close_signal = asyncio.Event()
-        self.unsubscribed: list[Callable[[dict[str, Any]], None]] = []
-        self._counts: dict[str, int] = {}
+        self._attach_ids = 0
 
     def build(self, url: str) -> FakeMux:
         """Stand in for the CdpMux constructor: one fake, however many times it is built."""
         self.urls.append(url)
         return self
 
+    @property
+    def closed(self) -> bool:
+        return self.close_signal.is_set()
+
     async def start(self) -> None:
         self.started += 1
-        self.closed = False
 
     async def close(self) -> None:
-        self.closed = True
         self.close_count += 1
         self.close_signal.set()
 
     async def wait_closed(self) -> None:
         await self.close_signal.wait()
 
-    def subscribe(
-        self, sink: Callable[[dict[str, Any]], None], *, owns_session: str | None = None
-    ) -> Callable[[], None]:
-        entry = (sink, owns_session)
+    def subscribe(self, sink: Sink) -> Callable[[], None]:
+        entry: tuple[Sink, str | None] = (sink, None)
         self.sinks.append(entry)
 
         def _remove() -> None:
-            if entry in self.sinks:  # the real remover tolerates a second call
+            if entry in self.sinks:
                 self.sinks.remove(entry)
-            self.unsubscribed.append(sink)
 
         return _remove
+
+    async def attach(self, target_id: str, owner: Sink) -> str:
+        await self.send_raw("Target.attachToTarget", {"targetId": target_id, "flatten": True})
+        self._attach_ids += 1
+        session_id = f"attach-{self._attach_ids}"
+        self.sinks.append((owner, session_id))
+        self.attached.append(session_id)
+        return session_id
+
+    async def detach(self, session_id: str) -> None:
+        try:
+            await self.send_raw("Target.detachFromTarget", {"sessionId": session_id})
+        finally:
+            self.sinks = [entry for entry in self.sinks if entry[1] != session_id]
+            self.detached.append(session_id)
 
     def emit(self, *frames: dict[str, Any]) -> None:
         """Push frames at the subscribers entitled to them, routed by the real rule."""
@@ -150,29 +152,16 @@ class FakeMux:
         self.calls.append((method, params, session_id))
         if self.send_error is not None:
             raise self.send_error
-        self._counts[method] = self._counts.get(method, 0) + 1
-        if method in self.fail_on_first_call and self._counts[method] == 1:
-            raise self.fail_on_first_call[method]
         if method == self.hang_on:
-            index = self._counts[method] - 1
-            if index < len(self.call_started):
-                self.call_started[index].set()
-            await asyncio.Event().wait()  # never resolves
+            self.hang_started.set()
+            await asyncio.Event().wait()
         queue = self.queues.get(method)
         if queue:
             return queue.pop(0)
         return self.responses.get(method, {})
 
-    async def forward(
-        self, frame: dict[str, Any], reply_to: Callable[[dict[str, Any]], None]
-    ) -> None:
+    async def forward(self, frame: dict[str, Any], reply_to: Sink) -> None:
         self.forwarded.append(frame)
-        self.reply_sinks.append(reply_to)
-
-    @property
-    def owned_sessions(self) -> list[str | None]:
-        """The CDP session each live subscriber claimed, so a test can assert the claim."""
-        return [owned for _, owned in self.sinks]
 
     @property
     def methods(self) -> list[str]:
@@ -181,72 +170,13 @@ class FakeMux:
     def params_for(self, method: str) -> list[dict[str, Any] | None]:
         return [params for sent, params, _ in self.calls if sent == method]
 
-    def sources_for(self, method: str) -> list[str]:
-        return [p["source"] for sent, p, _ in self.calls if sent == method and p is not None]
-
-
-@pytest.fixture
-def mux(monkeypatch: pytest.MonkeyPatch) -> FakeMux:
-    """Hand back the fake connection every create_context in this test builds."""
-    return install_mux(monkeypatch)
-
-
-def install_mux(monkeypatch: pytest.MonkeyPatch, fake: FakeMux | None = None) -> FakeMux:
-    """Make create_context build this fake instead of dialing a real engine connection."""
-    fake = fake if fake is not None else FakeMux()
-    monkeypatch.setattr(chromium, "CdpMux", fake.build)
-    return fake
-
-
-def make_host() -> ChromiumHost:
-    """Build a started-looking host with NO root connection, so session work must ride its own mux."""
-    host = ChromiumHost()
-    host._proc = MagicMock(returncode=None)  # chromium_up == True
-    host._root_ws_url = FAKE_ROOT_WS_URL
-    return host
-
-
-def make_session(
-    session_id: str = "s1",
-    context_id: str = "ctx1",
-    target_id: str = "t1",
-    *,
-    mux: FakeMux | None = None,
-    last_activity_at: float = 0.0,
-) -> HostSession:
-    """Build a HostSession carrying a FakeMux, since a session is now a connection.
-
-    created_at, viewer_count and dead are not parameters: the handful of tests
-    that vary one say so with dataclasses.replace at the call site.
-    """
-    return HostSession(
-        session_id=session_id,
-        context_id=context_id,
-        target_id=target_id,
-        mux=cast(CdpMux, mux if mux is not None else FakeMux()),
-        created_at=0.0,
-        last_activity_at=last_activity_at,
-    )
-
-
-class CdpProtocolError(RuntimeError):
-    """What the real mux raises when the engine answers a command with an error object."""
-
-
-_DOWNLOAD_BEHAVIORS = frozenset({"deny", "allow", "allowAndName", "default"})
-# The browser's own context, where CDP puts anything that names no browserContextId.
-DEFAULT_CONTEXT = ""
-
 
 class FakeEngine(FakeMux):
-    """One engine connection that answers the CDP the host speaks the way the engine does.
+    """One engine connection that answers the CDP the host speaks the way an engine does.
 
-    Contexts, pages, cookies and localStorage are real state here, so a test
-    asserts what the engine ends up holding rather than which frames were sent.
     Required parameters are enforced, an omitted browserContextId lands in the
     browser's default context, cookies come back in Network.Cookie's full shape,
-    an object result carries a value only when asked returnByValue, and a
-    session-scoped command needs a flat attach.
+    and a session-scoped command needs an attached session.
     """
 
     def __init__(self) -> None:
@@ -255,34 +185,40 @@ class FakeEngine(FakeMux):
             DEFAULT_CONTEXT: {"download": None, "cookies": []}
         }
         self.pages: dict[str, dict[str, Any]] = {}
-        # sessionId -> (targetId, flat)
-        self.attached: dict[str, tuple[str, bool]] = {}
+        self.sessions: dict[str, str] = {}
+        # Page targets that refuse the storage read, as a page mid-crash does.
+        self.unreadable: set[str] = set()
         self._ids = 0
 
     def _next(self, prefix: str) -> str:
         self._ids += 1
         return f"{prefix}-{self._ids}"
 
-    def open_page(
-        self,
-        context_id: str,
-        *,
-        url: str,
-        title: str = "",
-        storage: dict[str, str] | None = None,
-        kind: str = "page",
-    ) -> str:
-        """Put a target the user opened into a context, with its origin's localStorage."""
-        target_id = self._next(kind)
+    def open_page(self, context_id: str, *, url: str, storage: dict[str, str] | None = None) -> str:
+        """Put a page the user opened into a context, with its origin's localStorage."""
+        target_id = self._next("page")
         self.pages[target_id] = {
             "context": context_id,
-            "type": kind,
             "url": url,
-            "title": title,
+            "title": "",
             "storage": dict(storage or {}),
             "scripts": [],
         }
         return target_id
+
+    async def attach(self, target_id: str, owner: Sink) -> str:
+        if target_id not in self.pages:
+            raise CdpCommandError({"message": "No target with given id found"})
+        session_id = self._next("attach")
+        self.sessions[session_id] = target_id
+        self.sinks.append((owner, session_id))
+        self.attached.append(session_id)
+        return session_id
+
+    async def detach(self, session_id: str) -> None:
+        self.sessions.pop(session_id, None)
+        self.sinks = [entry for entry in self.sinks if entry[1] != session_id]
+        self.detached.append(session_id)
 
     async def send_raw(
         self, method: str, params: dict[str, Any] | None = None, session_id: str | None = None
@@ -290,9 +226,12 @@ class FakeEngine(FakeMux):
         self.calls.append((method, params, session_id))
         if self.send_error is not None:
             raise self.send_error
+        if method == self.hang_on:
+            self.hang_started.set()
+            await asyncio.Event().wait()
         handler = getattr(self, "_" + method.replace(".", "_"), None)
         if handler is None:
-            raise CdpProtocolError(f"'{method}' wasn't found")
+            raise CdpCommandError({"message": f"'{method}' wasn't found"})
         result: dict[str, Any] = handler(params or {}, session_id)
         return result
 
@@ -300,22 +239,19 @@ class FakeEngine(FakeMux):
     def _required(params: dict[str, Any], *names: str) -> None:
         missing = [name for name in names if name not in params]
         if missing:
-            raise CdpProtocolError(f"Invalid parameters: missing {missing}")
+            raise CdpCommandError({"message": f"Invalid parameters: missing {missing}"})
 
     def _context(self, params: dict[str, Any]) -> dict[str, Any]:
         context_id = params.get("browserContextId", DEFAULT_CONTEXT)
         if context_id not in self.contexts:
-            raise CdpProtocolError(f"Failed to find browser context for id {context_id}")
+            raise CdpCommandError({"message": f"Failed to find browser context {context_id}"})
         return self.contexts[context_id]
 
     def _page_for(self, session_id: str | None) -> dict[str, Any]:
-        target_id, flat = self.attached.get(session_id or "", ("", False))
-        if not flat:
-            raise CdpProtocolError(f"No session with given id: {session_id}")
+        target_id = self.sessions.get(session_id or "")
+        if target_id is None:
+            raise CdpCommandError({"message": f"No session with given id: {session_id}"})
         return self.pages[target_id]
-
-    def _Browser_getVersion(self, params: dict[str, Any], _: str | None) -> dict[str, Any]:
-        return {"userAgent": "Mozilla/5.0 Chrome/153.0.0.0 Safari/537.36"}
 
     def _Target_createBrowserContext(self, params: dict[str, Any], _: str | None) -> dict[str, Any]:
         context_id = self._next("ctx")
@@ -336,30 +272,23 @@ class FakeEngine(FakeMux):
     def _Browser_setDownloadBehavior(self, params: dict[str, Any], _: str | None) -> dict[str, Any]:
         self._required(params, "behavior")
         if params["behavior"] not in _DOWNLOAD_BEHAVIORS:
-            raise CdpProtocolError(f"Invalid behavior: {params['behavior']}")
+            raise CdpCommandError({"message": f"Invalid behavior: {params['behavior']}"})
         self._context(params)["download"] = params["behavior"]
         return {}
 
     def _Target_createTarget(self, params: dict[str, Any], _: str | None) -> dict[str, Any]:
         self._required(params, "url")
         self._context(params)
-        target_id = self._next("page")
-        url = params["url"]
-        self.pages[target_id] = {
-            "context": params.get("browserContextId", DEFAULT_CONTEXT),
-            "type": "page",
-            "url": url,
-            "title": "",
-            "storage": {},
-            "scripts": [],
-        }
+        target_id = self.open_page(
+            params.get("browserContextId", DEFAULT_CONTEXT), url=params["url"]
+        )
         return {"targetId": target_id}
 
     def _Target_getTargets(self, params: dict[str, Any], _: str | None) -> dict[str, Any]:
         infos = [
             {
                 "targetId": target_id,
-                "type": page["type"],
+                "type": "page",
                 "url": page["url"],
                 "title": page["title"],
                 "browserContextId": page["context"],
@@ -368,32 +297,32 @@ class FakeEngine(FakeMux):
         ]
         return {"targetInfos": infos}
 
-    def _Target_attachToTarget(self, params: dict[str, Any], _: str | None) -> dict[str, Any]:
+    def _Target_getTargetInfo(self, params: dict[str, Any], _: str | None) -> dict[str, Any]:
         self._required(params, "targetId")
-        if params["targetId"] not in self.pages:
-            raise CdpProtocolError("No target with given id found")
-        session_id = self._next("attach")
-        self.attached[session_id] = (params["targetId"], params.get("flatten") is True)
-        return {"sessionId": session_id}
+        page = self.pages.get(params["targetId"])
+        if page is None:
+            raise CdpCommandError({"message": "No target with given id found"})
+        return {"targetInfo": {"url": page["url"], "title": page["title"]}}
 
-    def _Target_detachFromTarget(self, params: dict[str, Any], _: str | None) -> dict[str, Any]:
-        if params.get("sessionId") not in self.attached:
-            raise CdpProtocolError("No session with given id")
-        del self.attached[params["sessionId"]]
+    def _Page_enable(self, params: dict[str, Any], session_id: str | None) -> dict[str, Any]:
+        self._page_for(session_id)
         return {}
 
     def _Runtime_evaluate(self, params: dict[str, Any], session_id: str | None) -> dict[str, Any]:
         self._required(params, "expression")
         page = self._page_for(session_id)
-        if params["expression"] != chromium._LOCAL_STORAGE_DUMP_JS:
+        if self.sessions[session_id or ""] in self.unreadable:
+            raise CdpCommandError({"message": "Execution context was destroyed."})
+        if params["expression"] != storage._LOCAL_STORAGE_DUMP_JS:
             raise AssertionError(f"unexpected script: {params['expression']!r}")
-        origin = "/".join(page["url"].split("/")[:3])
+        url = page["url"]
+        origin = "/".join(url.split("/")[:3]) if "://" in url else "null"
         value = {
             "origin": origin,
             "localStorage": [{"name": k, "value": v} for k, v in page["storage"].items()],
         }
         if params.get("returnByValue") is not True:
-            return {"result": {"type": "object", "className": "Object", "objectId": "obj-1"}}
+            return {"result": {"type": "object", "objectId": "obj-1"}}
         return {"result": {"type": "object", "value": value}}
 
     def _Page_addScriptToEvaluateOnNewDocument(
@@ -415,11 +344,9 @@ class FakeEngine(FakeMux):
                 "domain": cookie.get("domain", ""),
                 "path": cookie.get("path", "/"),
                 "expires": expires if expires is not None else -1,
-                "size": len(cookie["name"]) + len(cookie["value"]),
                 "httpOnly": cookie.get("httpOnly", False),
                 "secure": cookie.get("secure", False),
                 "session": expires is None,
-                "priority": "Medium",
             }
             if "sameSite" in cookie:
                 stored["sameSite"] = cookie["sameSite"]
@@ -428,3 +355,103 @@ class FakeEngine(FakeMux):
 
     def _Storage_getCookies(self, params: dict[str, Any], _: str | None) -> dict[str, Any]:
         return {"cookies": [dict(c) for c in self._context(params)["cookies"]]}
+
+
+class StubEngine:
+    """A launched engine the host can drive without a process: alive until told otherwise."""
+
+    def __init__(self, *, rss_mb: float = 100.0, kind: BrowserEngine = BrowserEngine.OBSCURA):
+        self.kind = kind
+        self.root_ws_url = FAKE_ROOT_WS_URL
+        self.base_rss_mb = 0.0
+        self.sampler = MagicMock(sample=MagicMock(return_value=(512.0, 10.0)))
+        self.current_rss_mb: float | None = rss_mb
+        self.answers = True
+        self.is_alive = True
+        self.shutdowns: list[bool] = []
+        self.failure = asyncio.get_running_loop().create_future()
+
+    @property
+    def alive(self) -> bool:
+        return self.is_alive
+
+    async def responsive(self, timeout: float) -> bool:
+        return self.is_alive and self.answers
+
+    def rss_mb(self) -> float | None:
+        return self.current_rss_mb
+
+    async def wait_failed(self) -> EngineFailure:
+        reason: EngineFailure = await self.failure
+        return reason
+
+    def fail(self, reason: str = "process exited") -> None:
+        """Make the engine fail the way its supervisor watches for."""
+        self.is_alive = False
+        self.failure.set_result(EngineFailure(reason))
+
+    async def shutdown(self, *, graceful: bool = True) -> None:
+        self.is_alive = False
+        self.shutdowns.append(graceful)
+
+
+def as_engine(stub: StubEngine) -> Engine:
+    return cast(Engine, stub)
+
+
+@pytest.fixture
+def mux(monkeypatch: pytest.MonkeyPatch) -> FakeMux:
+    """Hand back the fake connection every create_context in this test builds."""
+    return install_mux(monkeypatch)
+
+
+def install_mux(monkeypatch: pytest.MonkeyPatch, fake: FakeMux | None = None) -> FakeMux:
+    """Make create_context build this fake instead of dialing a real engine connection."""
+    fake = fake if fake is not None else FakeMux()
+    monkeypatch.setattr(chromium, "CdpMux", fake.build)
+    return fake
+
+
+def install_launcher(monkeypatch: pytest.MonkeyPatch, *engines: StubEngine) -> list[StubEngine]:
+    """Make every engine launch hand back the next stub, recording each launch."""
+    queue = list(engines)
+    launched: list[StubEngine] = []
+
+    async def _launch(
+        kind: BrowserEngine, chromium_path: str | None, user_agent: str | None
+    ) -> tuple[Engine, str | None]:
+        stub = queue.pop(0)
+        launched.append(stub)
+        return as_engine(stub), user_agent
+
+    monkeypatch.setattr(chromium, "launch_engine", _launch)
+    return launched
+
+
+def make_host(engine: StubEngine | None = None) -> ChromiumHost:
+    """Build a host already serving on engine (a fresh stub by default), without its supervisor."""
+    host = ChromiumHost(on_fatal=MagicMock())
+    host._engine = as_engine(engine if engine is not None else StubEngine())
+    return host
+
+
+def make_session(
+    session_id: str = "s1",
+    context_id: str = "ctx1",
+    target_id: str = "t1",
+    *,
+    mux: FakeMux | None = None,
+    engine: StubEngine | None = None,
+) -> HostSession:
+    """Build a HostSession carrying a FakeMux, since a session is a connection."""
+    return HostSession(
+        session_id=session_id,
+        context_id=context_id,
+        target_id=target_id,
+        page_session="host-page",
+        mux=cast(CdpMux, mux if mux is not None else FakeMux()),
+        engine=as_engine(engine if engine is not None else StubEngine()),
+        token="tok",
+        created_at=0.0,
+        focused_target_id=target_id,
+    )

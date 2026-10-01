@@ -1,18 +1,17 @@
-"""Per-session CDP filtering proxy: browser-use sees only its own context.
+"""Per-session CDP filtering proxy: browser-use sees and touches only its own context.
 
 browser-use attaches to WS /cdp/{session_id} believing it owns the whole
 browser; one engine actually holds every user's context. This proxy enforces:
 
-  * Target.getTargets responses are trimmed to this session's context,
-  * cross-context attachedToTarget / targetCreated / targetInfoChanged
-    events are dropped,
-  * Target.createTarget requests are pinned to this context,
-  * navigations are allowlisted to http/https (no file:// or chrome://),
-  * setDownloadBehavior is refused, so the per-context deny cannot be undone.
+  * getTargets replies and target events are trimmed to this session's context,
+  * a command naming a browser context names this one: context-scoped commands
+    that omit it are pinned to it, and any other context is refused,
+  * browser-wide commands (close, crash, listing, minting or disposing
+    contexts, download policy) are refused,
+  * navigations go to explicit http(s) URLs only, whose host resolves public.
 
-Everything else passes through, and any traffic bumps the session's activity
-clock. The live view shares this engine connection but claims its own page
-session on the mux, so its frames never reach this client.
+The live view and the host's own page session share this connection but own
+their sessions on the mux, so their frames never reach this client.
 """
 
 from __future__ import annotations
@@ -41,83 +40,116 @@ _CONTEXT_SCOPED_EVENTS = frozenset(
     }
 )
 
-
-# Navigation is allowlisted to the schemes a web task needs. It must happen here:
 # Network.setBlockedURLs filters subresources only and does not stop a top-level
-# navigation, so file:///etc/passwd and chrome:// are refused before Chromium sees them.
+# navigation, so file:///etc/passwd and chrome:// are refused here, before the engine.
 _ALLOWED_NAVIGATION_SCHEMES = frozenset({"http", "https"})
 _NAVIGATION_METHODS = frozenset({"Page.navigate", "Target.createTarget"})
-# Chromium's inert blank page — the one non-web URL the host itself opens.
+# The engine's inert blank page, the one non-web URL the host itself opens.
 _BLANK_URL = "about:blank"
 # The load signal that closes a navigation's timing (see metrics.py).
 _LOAD_EVENT_METHOD = "Page.loadEventFired"
 # CDP's implementation-defined server-error code, used for a refused command.
 _CDP_REFUSED_CODE = -32000
-# The mux sink is sync and cannot block, so a full queue could only drop a frame,
-# and a dropped reply or event desynchronises the client's protocol state forever.
-_DOWNSTREAM_QUEUE_UNBOUNDED = 0
+_CONTEXT_PARAM = "browserContextId"
+# Commands that act on the browser's default context when they name none: pinned
+# to this session's, or they would read and write a jar every tenant shares.
+_CONTEXT_DEFAULTED_METHODS = frozenset(
+    {
+        "Target.createTarget",
+        "Storage.getCookies",
+        "Storage.setCookies",
+        "Storage.clearCookies",
+        "Browser.grantPermissions",
+        "Browser.resetPermissions",
+        "Browser.setPermission",
+    }
+)
+_ACTIVATE_TARGET_METHOD = "Target.activateTarget"
+# Frames the engine may get ahead of a slow client by before the proxy gives up on
+# it: the mux sink cannot block, and a dropped frame desynchronises the client for good.
+_DOWNSTREAM_BACKLOG_LIMIT = 10_000
 
-# Every method this proxy refuses, keyed to the reason the client is told: one
-# table, so a method can never be refused without one. Downloads are denied per
-# context at creation (chromium.py) and browser-use's DownloadsWatchdog would undo it.
+_CONTEXT_LIFECYCLE_REFUSAL = "the host owns context lifecycle (one context per session)"
+_BROWSER_WIDE_REFUSAL = "it reaches past this session's browser context"
+# Every method this proxy refuses outright, keyed to the reason the client is
+# told: one table, so a method can never be refused without one.
 _REFUSAL_REASONS: dict[str, str] = {
+    # Downloads are denied per context at creation; browser-use's DownloadsWatchdog would undo it.
     "Browser.setDownloadBehavior": "downloads are denied for this session",
     "Page.setDownloadBehavior": "downloads are denied for this session",
-    # The host owns the context lifecycle (capacity/reaper/recovery accounting).
-    # A client minting contexts would grow memory un-capped and un-reaped; one
-    # disposing them could kill a sibling session's isolation.
-    "Target.createBrowserContext": "the host owns context lifecycle (one context per session)",
-    "Target.disposeBrowserContext": "the host owns context lifecycle (one context per session)",
+    # A client minting contexts grows memory unreaped; one disposing them could end a sibling's.
+    "Target.createBrowserContext": _CONTEXT_LIFECYCLE_REFUSAL,
+    "Target.disposeBrowserContext": _CONTEXT_LIFECYCLE_REFUSAL,
+    "Target.getBrowserContexts": _BROWSER_WIDE_REFUSAL,
+    "Browser.close": _BROWSER_WIDE_REFUSAL,
+    "Browser.crash": _BROWSER_WIDE_REFUSAL,
+    "Browser.crashGpuProcess": _BROWSER_WIDE_REFUSAL,
 }
 
 
+class _ClientTooSlow(RuntimeError):
+    """Raised when the client falls further behind the engine than the backlog allows."""
+
+
 def _navigation_url(message: dict[str, Any]) -> str | None:
-    """Return the URL a navigation command opens, or None when it is not one or opens nothing."""
+    """Return the URL a navigation command opens, or None when it is not one or opens the blank page."""
     if message.get("method") not in _NAVIGATION_METHODS:
         return None
     params = message.get("params")
     if not isinstance(params, dict):
         return None
     url = params.get("url")
+    # An empty URL opens the blank page too.
     if not isinstance(url, str) or not url or url == _BLANK_URL:
         return None
     return url
 
 
 def _refused_navigation_url(message: dict[str, Any]) -> str | None:
-    """Return the URL to refuse when this command navigates outside http(s), else None."""
+    """Return the URL to refuse when this command navigates anywhere but an explicit http(s) URL."""
     url = _navigation_url(message)
     if url is None:
         return None
-    scheme = urlsplit(url).scheme.lower()
-    # An empty scheme is a relative/implicit URL, which Chromium resolves against
-    # the current http(s) document — only an explicit foreign scheme is a refusal.
-    if scheme and scheme not in _ALLOWED_NAVIGATION_SCHEMES:
+    # CDP navigations take absolute URLs only; a scheme-less string is not resolved
+    # against the current page, so it is refused like any foreign scheme.
+    if urlsplit(url).scheme.lower() not in _ALLOWED_NAVIGATION_SCHEMES:
         return url
     return None
 
 
-def _refusal_reason(message: dict[str, Any]) -> str | None:
-    """Why this client command must not reach Chromium, or None to forward it."""
+def _foreign_context(message: dict[str, Any], context_id: str) -> str | None:
+    """Return the browser context a command names when it is not this session's."""
+    params = message.get("params")
+    if not isinstance(params, dict) or message.get("method") in _CONTEXT_DEFAULTED_METHODS:
+        return None
+    named = params.get(_CONTEXT_PARAM)
+    return str(named) if named is not None and named != context_id else None
+
+
+def _refusal_reason(message: dict[str, Any], context_id: str) -> str | None:
+    """Why this client command must not reach the engine, or None to forward it."""
     method = message.get("method")
     if isinstance(method, str) and method in _REFUSAL_REASONS:
         return f"{method} refused: {_REFUSAL_REASONS[method]}"
+    foreign = _foreign_context(message, context_id)
+    if foreign is not None:
+        return f"{method} refused: browser context {foreign} is not this session's"
     url = _refused_navigation_url(message)
     if url is not None:
-        return f"navigation to {url} refused: only http and https are allowed"
+        return f"navigation to {url} refused: only http and https URLs are allowed"
     return None
 
 
 async def _refused_private_target(message: dict[str, Any]) -> str | None:
-    """Why this navigation must not reach Chromium: its host resolves to a non-public address.
+    """Why this navigation must not reach the engine: its host resolves to a non-public address.
 
-    Resolved right before forwarding, so DNS rebinding cannot slip past an earlier
-    check. Always on; the egress firewall stays the second line, since in-page
-    redirects and subresources never pass through this proxy.
+    The engine resolves the name again itself, so this cannot stop DNS rebinding;
+    Obscura's own resolver guard and the egress firewall are what hold there, and
+    for the in-page redirects and subresources that never pass this proxy.
     """
     url = _navigation_url(message)
-    if url is None or urlsplit(url).scheme.lower() not in _ALLOWED_NAVIGATION_SCHEMES:
-        return None  # relative URLs stay on the current document; foreign schemes are refused above
+    if url is None:
+        return None
     try:
         await assert_public_http_url(url)
     except ValueError as exc:
@@ -133,7 +165,7 @@ def _refusal_reply(message_id: int | None, reason: str) -> str:
 def _event_context_id(params: dict[str, Any]) -> str | None:
     target_info = params.get("targetInfo")
     if isinstance(target_info, dict):
-        ctx = target_info.get("browserContextId")
+        ctx = target_info.get(_CONTEXT_PARAM)
         return ctx if isinstance(ctx, str) else None
     return None
 
@@ -141,19 +173,18 @@ def _event_context_id(params: dict[str, Any]) -> str | None:
 def _rewrite_upstream(
     message: dict[str, Any], context_id: str, gettargets_ids: set[int]
 ) -> dict[str, Any]:
-    """Client -> engine: pin createTarget to this context; track getTargets ids."""
+    """Client -> engine: pin context-scoped commands to this context; track getTargets ids."""
     method = message.get("method")
     if method == "Target.getTargets":
         message_id = message.get("id")
         if isinstance(message_id, int):
             gettargets_ids.add(message_id)
-    elif method == "Target.createTarget":
+    elif method in _CONTEXT_DEFAULTED_METHODS:
         params = message.setdefault("params", {})
-        # Always pin to THIS session's context — even when the client supplied
-        # its own browserContextId (a foreign/leaked id would otherwise create a
-        # page inside another tenant's context).
+        # Pinned even over a client-supplied id: a foreign or leaked one would act
+        # inside another tenant's context.
         if isinstance(params, dict):
-            params["browserContextId"] = context_id
+            params[_CONTEXT_PARAM] = context_id
     return message
 
 
@@ -167,7 +198,7 @@ def _filter_downstream(
         result = message.get("result")
         if isinstance(result, dict) and isinstance(result.get("targetInfos"), list):
             result["targetInfos"] = [
-                ti for ti in result["targetInfos"] if ti.get("browserContextId") == context_id
+                ti for ti in result["targetInfos"] if ti.get(_CONTEXT_PARAM) == context_id
             ]
         return message
 
@@ -179,22 +210,39 @@ def _filter_downstream(
     return message
 
 
+def _note_command(host: ChromiumHost, session: HostSession, message: dict[str, Any]) -> None:
+    """Record what a forwarded command tells the host: navigation timing, a new page, a tab brought forward."""
+    method = message.get("method")
+    if method == "Page.navigate":
+        host.note_navigation_started(session.session_id)
+    elif method == "Target.createTarget":
+        host.note_page_created(session.session_id)
+    elif method == _ACTIVATE_TARGET_METHOD:
+        target_id = (message.get("params") or {}).get("targetId")
+        if isinstance(target_id, str):
+            host.note_focus(session.session_id, target_id)
+
+
 async def run_cdp_proxy(host: ChromiumHost, session: HostSession, client_ws: WebSocket) -> None:
     """Bridge a browser-use client socket to the session's engine connection, filtered to one context."""
     gettargets_ids: set[int] = set()
-    downstream: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=_DOWNSTREAM_QUEUE_UNBOUNDED)
+    downstream: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=_DOWNSTREAM_BACKLOG_LIMIT)
+    overflowed = asyncio.Event()
 
     def enqueue(frame: dict[str, Any]) -> None:
         """Hand a frame to the drain task; runs inside the mux read loop, so it never awaits."""
-        downstream.put_nowait(frame)
+        try:
+            downstream.put_nowait(frame)
+        except asyncio.QueueFull:
+            overflowed.set()
 
     async def client_to_engine() -> None:
         """Forward one upstream-cleaned frame from the client to the engine."""
         while True:
-            raw = await client_ws.receive_text()
-            host.touch(session.session_id)
-            message = json.loads(raw)
-            reason = _refusal_reason(message) or await _refused_private_target(message)
+            message = json.loads(await client_ws.receive_text())
+            reason = _refusal_reason(message, session.context_id) or await _refused_private_target(
+                message
+            )
             if reason is not None:
                 log.warning(
                     f"{LogTag.BROWSER} browser cdp command refused",
@@ -210,10 +258,7 @@ async def run_cdp_proxy(host: ChromiumHost, session: HostSession, client_ws: Web
                     _refusal_reply(refused_id if isinstance(refused_id, int) else None, reason)
                 )
                 continue
-            if message.get("method") == "Page.navigate":
-                host.note_navigation_started(session.session_id)
-            elif message.get("method") == "Target.createTarget":
-                host.note_page_created(session.session_id)
+            _note_command(host, session, message)
             await session.mux.forward(
                 _rewrite_upstream(message, session.context_id, gettargets_ids), enqueue
             )
@@ -222,17 +267,24 @@ async def run_cdp_proxy(host: ChromiumHost, session: HostSession, client_ws: Web
         """Forward one queued frame from the engine back to the client."""
         while True:
             frame = await downstream.get()
-            host.touch(session.session_id)
             if frame.get("method") == _LOAD_EVENT_METHOD:
                 host.note_navigation_finished(session.session_id)
             forward = _filter_downstream(frame, session.context_id, gettargets_ids)
             if forward is not None:
                 await client_ws.send_text(json.dumps(forward))
 
+    async def give_up_on_a_slow_client() -> None:
+        await overflowed.wait()
+        raise _ClientTooSlow(f"client fell {_DOWNSTREAM_BACKLOG_LIMIT} frames behind the engine")
+
     unsubscribe = session.mux.subscribe(enqueue)
     try:
         await pump_until_first_close(
-            client_to_engine(), engine_to_client(), session.mux.wait_closed()
+            client_to_engine(),
+            engine_to_client(),
+            give_up_on_a_slow_client(),
+            session.mux.wait_closed(),
+            sockets=(client_ws,),
         )
     finally:
         unsubscribe()

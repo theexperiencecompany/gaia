@@ -8,10 +8,8 @@ import psutil
 import pytest
 
 from app.browser_host import metrics as metrics_module
-from app.browser_host.chromium import ChromiumHost
 from app.browser_host.metrics import Aggregate, ProcessSampler, SessionMetrics
 from app.constants.log_tags import LogTag
-from tests.unit.browser_host.conftest import FakeMux, install_mux, make_host
 
 _MB = 1024 * 1024
 
@@ -27,12 +25,6 @@ def _sampler_over(root: MagicMock, pid: int = 4321) -> ProcessSampler:
     """Return a real sampler for pid whose process tree resolves to root."""
     with patch.object(metrics_module.psutil, "Process", return_value=root):
         return ProcessSampler(pid)
-
-
-def _started_host(monkeypatch: pytest.MonkeyPatch) -> ChromiumHost:
-    """Build a host whose sessions ride a fake connection, since a session is a connection now."""
-    install_mux(monkeypatch)
-    return make_host()
 
 
 @pytest.mark.unit
@@ -87,12 +79,10 @@ class TestNavigationTiming:
     def test_snapshot_carries_counts_and_lifetime(self) -> None:
         session_metrics = SessionMetrics(created_at=50.0)
         with patch.object(metrics_module.time, "monotonic", return_value=62.5):
-            session_metrics.context_count = 1
             session_metrics.page_count = 3
             session_metrics.add_resource_sample(rss_mb=400.0, cpu_percent=12.0)
             snapshot = session_metrics.snapshot()
         assert snapshot["session_lifetime_seconds"] == pytest.approx(12.5)
-        assert snapshot["context_count"] == 1
         assert snapshot["page_count"] == 3
         assert snapshot["navigation_count"] == 0
         assert snapshot["navigation_ms"] is None
@@ -183,52 +173,3 @@ class TestSamplerFailureIsolation:
             error_type="AccessDenied",
             browser={"pid": 4321},
         )
-
-    async def test_a_failing_sampler_does_not_break_create_or_dispose(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        host = _started_host(monkeypatch)
-        failing = MagicMock()
-        failing.sample.return_value = None
-        host._sampler = failing
-
-        session = await host.create_context(None)
-        state = await host.dispose_context(session.session_id)
-
-        assert state == {"cookies": [], "origins": []}
-        assert failing.sample.called
-        assert session.metrics.rss_mb.snapshot() is None
-        assert session.metrics.context_count == 1
-
-
-@pytest.mark.unit
-class TestHostSessionMetrics:
-    async def test_session_info_exposes_a_live_metrics_block(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        host = _started_host(monkeypatch)
-        host._root_mux = FakeMux()
-        host._sampler = MagicMock()
-        host._sampler.sample.return_value = (512.0, 25.0)
-
-        session = await host.create_context(None)
-        host.note_navigation_started(session.session_id)
-        host.note_navigation_finished(session.session_id)
-        host.note_page_created(session.session_id)
-        info = await host.session_info(session.session_id)
-
-        metrics = info["metrics"]
-        assert metrics["navigation_count"] == 1
-        assert metrics["context_count"] == 1
-        assert metrics["page_count"] == 2
-        assert metrics["rss_mb"]["max"] == 512.0
-        assert metrics["navigation_ms"]["count"] == 1
-
-    async def test_unknown_session_ids_are_ignored_by_the_metric_hooks(self) -> None:
-        host = make_host()
-        host._sampler = MagicMock()
-        host.note_navigation_started("gone")
-        host.note_navigation_finished("gone")
-        host.note_page_created("gone")
-        host.sample_resources("gone")
-        assert not host._sampler.sample.called

@@ -9,6 +9,7 @@ through their own settings, so both sides read one declaration.
 from typing import Literal
 
 from dotenv import load_dotenv
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.constants.browser import BrowserEngine
@@ -33,19 +34,15 @@ class BrowserHostSettings(BaseSettings):
     # in production: the host renders attacker-controlled pages in the SAME
     # container, so a page could otherwise reach the control plane on localhost.
     BROWSER_HOST_KEY: str | None = None
-    # Memory-based admission reading the cgroup's used/limit: admits while a new
-    # session's projected cost stays under HIGH_WATERMARK, sheds idle sessions
-    # between SOFT and HIGH. LIMIT_MB pins the budget when the cgroup is unreadable.
+    # Memory-based admission reading the cgroup's working set and limit: admits while
+    # a new session's projected cost stays under HIGH_WATERMARK. LIMIT_MB pins the budget.
     BROWSER_HOST_MEMORY_LIMIT_MB: int | None = None
     BROWSER_HOST_MEMORY_HIGH_WATERMARK: float = 0.85
-    BROWSER_HOST_MEMORY_SOFT_WATERMARK: float = 0.75
-    # Dispose a context after this many seconds with no activity and no live viewer.
-    BROWSER_HOST_IDLE_TTL_SECONDS: int = 300
     # Run Chromium headed (under Xvfb) instead of --headless=new, for anti-bot.
     BROWSER_HOST_HEADED: bool = False
-    # Which engine the host launches. Obscura (a low-RAM Rust CDP server) is the
-    # default; Chromium (headless-shell) is the flag-selectable break-glass engine
-    # over the same CDP plane. Set BROWSER_ENGINE=chromium to fall back.
+    # Which engine the host at BROWSER_HOST_URL runs: Obscura (a low-RAM Rust CDP
+    # server, opt-in per user) or Chromium (headless-shell). Default users run on
+    # Chromium, at BROWSER_FALLBACK_HOST_URL when this host runs Obscura.
     BROWSER_ENGINE: BrowserEngine = BrowserEngine.OBSCURA
     # Path to the Obscura binary; required when BROWSER_ENGINE=obscura (the gaia
     # image sets it via ENV). Missing it fails the host launch loud, no fallback.
@@ -56,17 +53,20 @@ class BrowserHostSettings(BaseSettings):
     OBSCURA_NAV_TIMEOUT_SECONDS: int = 90
     # How long Obscura gives a page's script phase before it stops running them.
     OBSCURA_SCRIPT_DEADLINE_SECONDS: int = 60
-    # An idle engine tree over this many MB is relaunched; None disables it.
-    # Obscura keeps ~50 MB per disposed context, and an 11-hour process took 57 s
-    # for a document read a fresh one did in 0.8 s (measured 2026-09-22).
+    # An engine tree over this many MB is replaced: a fresh one takes new sessions
+    # while it drains. None disables it. Obscura keeps ~50 MB per disposed context,
+    # and an 11-hour process took 57 s for a read a fresh one did in 0.8 s (2026-09-22).
     BROWSER_ENGINE_RECYCLE_MB: int | None = 1500
     # Path to a Chromium/Chrome binary for BROWSER_ENGINE=chromium. Unset, the
     # host resolves Playwright's headless shell (its download can be
     # unreachable from a dev box); set, that binary is used as is.
     CHROMIUM_BIN: str | None = None
-    # Port Obscura's CDP server binds. Fixed (not ephemeral) because Obscura only
-    # publishes its /json/version — and thus its ws endpoint — at a port we name.
-    OBSCURA_PORT: int = 9222
+
+    @field_validator("BROWSER_HOST_KEY", mode="after")
+    @classmethod
+    def _blank_key_is_unset(cls, v: str | None) -> str | None:
+        # Compose spells an unset key ${BROWSER_HOST_KEY:-}, an empty string: that is no key.
+        return v or None
 
 
 load_dotenv()

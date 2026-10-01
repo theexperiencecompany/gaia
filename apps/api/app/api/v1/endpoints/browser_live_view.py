@@ -16,12 +16,12 @@ and a token connection is bounded to the token's remaining lifetime.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request, WebSocket, status
 from fastapi.responses import FileResponse, HTMLResponse
 from jose import JWTError
+from starlette.websockets import WebSocketState
 import websockets
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_current_user_ws
@@ -226,13 +226,13 @@ async def _proxy_live_view(
             ]
             if ttl_seconds is not None:
                 directions.append(_expire_after(ttl_seconds))
-            await pump_until_first_close(*directions)
+            await pump_until_first_close(*directions, sockets=(client_ws,))
     except (OSError, websockets.exceptions.WebSocketException) as exc:
         log.warning(
             f"{LogTag.BROWSER} browser live view host unreachable", error_type=type(exc).__name__
         )
     finally:
-        with contextlib.suppress(Exception):
+        if client_ws.application_state is not WebSocketState.DISCONNECTED:
             await client_ws.close()
     log.info(f"{LogTag.BROWSER} browser live view proxy closed")
 
