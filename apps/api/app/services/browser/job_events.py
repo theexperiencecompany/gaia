@@ -87,15 +87,6 @@ def _decode(entry_id: str, raw: str | None) -> dict[str, object] | None:
     return payload
 
 
-async def feed_end(job_id: str) -> str:
-    """Return the id of the feed's newest frame, the cursor a reader starts after to see only what comes next."""
-    key = _key(job_id)
-    if not await redis_cache.client.exists(key):
-        return "0-0"
-    info = await redis_cache.client.xinfo_stream(key)
-    return str(info["last-generated-id"])
-
-
 async def read_cards(job_id: str) -> list[dict[str, object]]:
     """Return every card the feed holds now, oldest first, without waiting for more."""
     cards: list[dict[str, object]] = []

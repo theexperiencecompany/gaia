@@ -22,6 +22,8 @@ from playwright.sync_api import StorageState
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.config.settings import settings
 from app.constants.browser import (
+    BROWSER_HANDOFF_GONE_DETAIL,
+    BROWSER_HANDOFF_NOT_OWNED_DETAIL,
     BROWSER_IMPORT_TOKEN_TTL_SECONDS,
 )
 from app.constants.log_tags import LogTag
@@ -69,10 +71,10 @@ async def decide_browser_handoff(
         )
     except BrowserHandoffNotOwned as exc:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to resolve this handoff"
+            status_code=status.HTTP_403_FORBIDDEN, detail=BROWSER_HANDOFF_NOT_OWNED_DETAIL
         ) from exc
     if resolved is None:
-        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Handoff not found or expired")
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail=BROWSER_HANDOFF_GONE_DETAIL)
     log.set(browser={"handoff_status": resolved.value})
     return HandoffDecisionResponse(handoff_id=handoff_id, status=resolved)
 

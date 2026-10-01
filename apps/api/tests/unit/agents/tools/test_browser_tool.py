@@ -266,6 +266,18 @@ async def test_the_claimed_slot_the_queued_state_and_the_job_all_name_one_job(
     assert recorder.latest == [("c1", job_id)]
 
 
+async def test_a_bot_run_is_found_from_the_requesters_bot_chat_too(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Its handoffs are answered, and a /stop reaches it, from the chat the bot talks to the user in."""
+    recorder = _install(monkeypatch)
+
+    await _start({"task": "book a table"}, config=BOT_CONFIG)
+
+    job_id = recorder.request.job_id
+    assert recorder.latest == [("c1", job_id), ("discord:u1", job_id)]
+
+
 async def test_conversation_id_prefers_the_user_facing_conversation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

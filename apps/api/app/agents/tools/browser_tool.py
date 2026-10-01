@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.agents.core.background.redis_writer import publish_to_stream
 from app.constants.browser import (
+    BROWSER_JOB_JOIN_DEFAULT_WAIT_SECONDS,
     BROWSER_JOB_QUEUE,
     BROWSER_JOB_TASK,
     BrowserSessionStatus,
@@ -38,7 +39,7 @@ from app.services.browser.agent_guidance import (
 from app.services.browser.handoff import reply_address, resolve_handoff
 from app.services.browser.jev.decision import named_sites, named_urls
 from app.services.browser.jev.secrets import RunSecrets
-from app.services.browser.job_events import feed_end, read_cards, read_job_events
+from app.services.browser.job_events import read_cards, read_job_events
 from app.services.browser.job_relay import relay_job_events
 from app.services.browser.job_runner import agent_result_message
 from app.services.browser.jobs import (
@@ -296,8 +297,9 @@ async def wait_for_browser_task(
     # schema (the model chooses how long to wait); it is not an internal call
     # timeout that an asyncio.timeout() context manager could replace.
     timeout: Annotated[  # NOSONAR python:S7483
-        int, "Maximum seconds to wait for the browser task. Default 600."
-    ] = 600,
+        int,
+        f"Most seconds to wait for the browser task. Default {BROWSER_JOB_JOIN_DEFAULT_WAIT_SECONDS}.",
+    ] = BROWSER_JOB_JOIN_DEFAULT_WAIT_SECONDS,
 ) -> str:
     """Wait for this conversation's background browser task and return its outcome."""
     params = _run_params(config)
@@ -309,7 +311,7 @@ async def wait_for_browser_task(
     await take_joiner_lease(job_id, stream_id)
     keep_lease = False
     try:
-        outcome = await _join(job_id, params, timeout)
+        outcome = await _join(job_id, params.conversation_id, stream_id, timeout)
         keep_lease = outcome.keep_lease
         return outcome.message
     finally:
@@ -328,16 +330,15 @@ class _JoinOutcome:
     keep_lease: bool = False
 
 
-async def _join(job_id: str, params: _RunParams, timeout: int) -> _JoinOutcome:
+async def _join(job_id: str, conversation_id: str, stream_id: str, timeout: int) -> _JoinOutcome:
     """Wait on the job's feed for its ending or a guidance ask, keeping this turn's claim on the result alive.
 
     Parks on the feed, so it wakes on the frame that ends the run or asks for
     guidance; between frames, a beat re-arms the lease and checks the run still
     has a worker on it.
     """
-    stream_id = params.stream_id or ""
-    # Before the state is read: anything published after this, the feed delivers.
-    cursor = await feed_end(job_id)
+    # From the top, so a frame landing between a state check and the read still wakes it.
+    cursor = "0-0"
     deadline = monotonic() + timeout
     while True:
         state = await get_job_state(job_id)
@@ -350,9 +351,7 @@ async def _join(job_id: str, params: _RunParams, timeout: int) -> _JoinOutcome:
         # lease expiring says nothing about liveness: a worker still busy booting
         # will run it. From RUNNING on, a slot it no longer holds means a dead run.
         running = state is not None and state.status is BrowserJobStatus.RUNNING
-        if state is None or (
-            running and await get_conversation_slot(params.conversation_id) != job_id
-        ):
+        if state is None or (running and await get_conversation_slot(conversation_id) != job_id):
             log.warning(f"{LogTag.BROWSER} Browser job lost its worker", browser={"job_id": job_id})
             return _JoinOutcome(_WORKER_LOST)
         if monotonic() >= deadline:

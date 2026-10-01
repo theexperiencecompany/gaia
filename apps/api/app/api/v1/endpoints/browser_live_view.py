@@ -26,6 +26,10 @@ import websockets
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_current_user_ws
 from app.browser_host.pumps import pump_until_first_close
+from app.constants.browser import (
+    BROWSER_HANDOFF_GONE_DETAIL,
+    BROWSER_LIVE_VIEW_NOT_WAITING_DETAIL,
+)
 from app.constants.log_tags import LogTag
 from app.schemas.browser import HandoffDecisionRequest, HandoffDecisionResponse
 from app.schemas.errors import HTML_ROUTE_ERROR_RESPONSES
@@ -116,14 +120,14 @@ async def decide_live_view_handoff(
     record = await resolve_live_code(code)
     if record is None or record.handoff_id is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="This live view is no longer waiting"
+            status_code=status.HTTP_404_NOT_FOUND, detail=BROWSER_LIVE_VIEW_NOT_WAITING_DETAIL
         )
     log.set(user={"id": record.user_id}, browser={"handoff_id": record.handoff_id})
     resolved = await decide_handoff_by_button(
         record.handoff_id, payload.decision, record.user_id, payload.message
     )
     if resolved is None:
-        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Handoff not found or expired")
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail=BROWSER_HANDOFF_GONE_DETAIL)
     log.set(browser={"handoff_status": resolved.value})
     return HandoffDecisionResponse(handoff_id=record.handoff_id, status=resolved)
 

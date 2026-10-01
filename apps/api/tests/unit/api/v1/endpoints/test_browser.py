@@ -29,6 +29,9 @@ from app.api.v1.endpoints import browser as browser_ep, browser_live_view as liv
 from app.constants.browser import (
     BROWSER_HANDOFF_ACK_CANCEL,
     BROWSER_HANDOFF_ACK_CONTINUE,
+    BROWSER_HANDOFF_GONE_DETAIL,
+    BROWSER_HANDOFF_NOT_OWNED_DETAIL,
+    BROWSER_LIVE_VIEW_NOT_WAITING_DETAIL,
     BrowserSessionStatus,
     HandoffDecision,
     HandoffKind,
@@ -151,9 +154,16 @@ class TestDecideBrowserHandoff:
         """No turn runs for a tap: without the thread entry the agent's reply called the user's own note a mistake."""
         payload = HandoffDecisionRequest(decision=HandoffDecision.CONTINUE, message="skip it")
 
-        resp = await browser_ep.decide_browser_handoff("h1", payload, "u1")
+        async with captured_wide_event() as event:
+            resp = await browser_ep.decide_browser_handoff("h1", payload, "u1")
 
         assert (resp.handoff_id, resp.status) == ("h1", HandoffStatus.COMPLETED)
+        assert event["user"] == {"id": "u1"}
+        assert event["browser"] == {
+            "handoff_id": "h1",
+            "decision": "continue",
+            "handoff_status": "completed",
+        }
         record = await get_handoff("h1")
         assert record is not None
         assert record.message == "skip it"
@@ -187,17 +197,26 @@ class TestDecideBrowserHandoff:
         assert button_world == []
 
     @pytest.mark.parametrize(
-        ("handoff_id", "user_id", "code"), [("h1", "intruder", 403), ("gone", "u1", 410)]
+        ("handoff_id", "user_id", "code", "detail"),
+        [
+            ("h1", "intruder", 403, BROWSER_HANDOFF_NOT_OWNED_DETAIL),
+            ("gone", "u1", 410, BROWSER_HANDOFF_GONE_DETAIL),
+        ],
     )
     async def test_another_users_or_a_gone_handoff_is_refused(
-        self, button_world: list[tuple[str, str, str]], handoff_id: str, user_id: str, code: int
+        self,
+        button_world: list[tuple[str, str, str]],
+        handoff_id: str,
+        user_id: str,
+        code: int,
+        detail: str,
     ) -> None:
         payload = HandoffDecisionRequest(decision=HandoffDecision.CANCEL)
 
         with pytest.raises(HTTPException) as exc:
             await browser_ep.decide_browser_handoff(handoff_id, payload, user_id)
 
-        assert exc.value.status_code == code
+        assert (exc.value.status_code, exc.value.detail) == (code, detail)
         assert button_world == []
 
     async def test_the_live_pages_stop_decides_the_handoff_its_link_was_sent_for(
@@ -205,18 +224,44 @@ class TestDecideBrowserHandoff:
     ) -> None:
         """A bot user has no web session: the code that opened the page is the authority, and only for its own handoff."""
         code = await mint_live_code("sess-1", "u1", "h1")
-        payload = HandoffDecisionRequest(decision=HandoffDecision.CANCEL)
+        payload = HandoffDecisionRequest(decision=HandoffDecision.CANCEL, message="not now")
 
-        resp = await live_view_ep.decide_live_view_handoff(code, payload)
+        async with captured_wide_event() as event:
+            resp = await live_view_ep.decide_live_view_handoff(code, payload)
 
         assert (resp.handoff_id, resp.status) == ("h1", HandoffStatus.CANCELLED)
+        assert event["user"] == {"id": "u1"}
+        assert event["browser"] == {
+            "operation": "live_view_decision",
+            "decision": "cancel",
+            "handoff_id": "h1",
+            "handoff_status": "cancelled",
+        }
+        record = await get_handoff("h1")
+        assert record is not None
+        assert record.message == "not now"
         assert button_world == [
-            ("c1", "[From the browser handoff card] cancel", BROWSER_HANDOFF_ACK_CANCEL)
+            ("c1", "[From the browser handoff card] cancel: not now", BROWSER_HANDOFF_ACK_CANCEL)
         ]
         # Settled, the link no longer opens anything.
         with pytest.raises(HTTPException) as exc:
             await live_view_ep.decide_live_view_handoff(code, payload)
-        assert exc.value.status_code == 404
+        assert (exc.value.status_code, exc.value.detail) == (
+            404,
+            BROWSER_LIVE_VIEW_NOT_WAITING_DETAIL,
+        )
+
+    async def test_a_live_page_whose_handoff_expired_says_it_is_gone(
+        self, button_world: list[tuple[str, str, str]]
+    ) -> None:
+        code = await mint_live_code("sess-1", "u1", "expired")
+
+        with pytest.raises(HTTPException) as exc:
+            await live_view_ep.decide_live_view_handoff(
+                code, HandoffDecisionRequest(decision=HandoffDecision.CONTINUE)
+            )
+
+        assert (exc.value.status_code, exc.value.detail) == (410, BROWSER_HANDOFF_GONE_DETAIL)
 
 
 # ---------------------------------------------------------------------------

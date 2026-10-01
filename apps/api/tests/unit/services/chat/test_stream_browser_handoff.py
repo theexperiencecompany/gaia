@@ -12,7 +12,11 @@ from unittest.mock import AsyncMock, patch
 import fakeredis.aioredis
 import pytest
 
-from app.constants.browser import HandoffStatus
+from app.constants.browser import (
+    BROWSER_HANDOFF_REPLY_NOTE,
+    BROWSER_HANDOFF_REPLY_READINGS,
+    HandoffStatus,
+)
 from app.constants.chat import ConversationSource
 from app.constants.log_tags import LogTag
 from app.models.message_models import MessageRequestWithHistory
@@ -21,6 +25,7 @@ from app.services.browser.handoff import create_pending_handoff, get_handoff, re
 from app.services.browser.jobs import claim_conversation_slot, take_job_messages
 from app.services.chat import stream as chat_stream
 from app.services.chat.stream import _browser_turn_note
+from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
@@ -50,14 +55,18 @@ async def test_a_reply_that_finishes_the_step_resolves_it_and_tells_the_turn_so(
     """The turn's reply is written knowing what the message already did, with no fake exchange put in the thread."""
     await create_pending_handoff("h1", USER_ID, CONVERSATION_ID, REASON, reply_to=CONVERSATION_ID)
 
-    with patch.object(resolution, "ainvoke_structured_gemini", _classifier("continue")):
+    classifier = _classifier("continue")
+    with patch.object(resolution, "ainvoke_structured_gemini", classifier):
         note = await _browser_turn_note(_body("done, signed in"), USER_ID, CONVERSATION_ID, "web")
 
     record = await get_handoff("h1")
     assert record is not None
     assert record.status is HandoffStatus.COMPLETED
-    assert note is not None
-    assert REASON in note
+    _schema, prompt = classifier.await_args.args
+    assert "done, signed in" in prompt
+    assert note == BROWSER_HANDOFF_REPLY_NOTE.format(
+        reason=REASON, reading=BROWSER_HANDOFF_REPLY_READINGS["continue"]
+    )
 
 
 async def test_a_dm_reply_resolves_the_handoff_of_a_run_started_in_a_group() -> None:
@@ -83,10 +92,30 @@ async def test_a_message_that_answers_no_handoff_reaches_the_running_task() -> N
     """What the user says mid-run is something they said, for the run's agent to weigh at its next step."""
     await claim_conversation_slot(CONVERSATION_ID, "job-7")
 
-    note = await _browser_turn_note(_body("use the blue one"), USER_ID, CONVERSATION_ID, "web")
+    async with captured_wide_event() as event:
+        note = await _browser_turn_note(_body("use the blue one"), USER_ID, CONVERSATION_ID, "web")
 
     assert note is None
     assert await take_job_messages("job-7") == ["use the blue one"]
+    assert event["browser"] == {"job_id": "job-7", "message_to_running_job": True}
+
+
+async def test_a_reply_the_model_finds_unrelated_to_the_paused_step_reaches_the_task() -> None:
+    await create_pending_handoff("h1", USER_ID, CONVERSATION_ID, REASON, reply_to=CONVERSATION_ID)
+    await claim_conversation_slot(CONVERSATION_ID, "job-7")
+
+    with patch.object(resolution, "ainvoke_structured_gemini", _classifier("unrelated")):
+        note = await _browser_turn_note(_body("which card?"), USER_ID, CONVERSATION_ID, "web")
+
+    assert note is None
+    assert await take_job_messages("job-7") == ["which card?"]
+
+
+async def test_a_message_with_no_user_behind_it_reaches_no_task() -> None:
+    await claim_conversation_slot(CONVERSATION_ID, "job-7")
+
+    assert await _browser_turn_note(_body("use the blue one"), None, CONVERSATION_ID, "web") is None
+    assert await take_job_messages("job-7") == []
 
 
 async def test_a_failed_lookup_leaves_the_turn_as_it_was() -> None:

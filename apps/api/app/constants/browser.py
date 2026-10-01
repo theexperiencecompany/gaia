@@ -210,6 +210,11 @@ BROWSER_PROFILE_TTL_SECONDS = BROWSER_PROFILE_TTL_DAYS * 24 * 3600
 BROWSER_HANDOFF_ACK_CONTINUE = "Got it, continuing the browser task."
 BROWSER_HANDOFF_ACK_CANCEL = "Okay, I've stopped the browser task."
 
+# Why a button's decision on a handoff was refused: the web card's, or the bot live-view page's.
+BROWSER_HANDOFF_NOT_OWNED_DETAIL = "Not authorized to resolve this handoff"
+BROWSER_HANDOFF_GONE_DETAIL = "Handoff not found or expired"
+BROWSER_LIVE_VIEW_NOT_WAITING_DETAIL = "This live view is no longer waiting"
+
 # Read with a chat message that answered a paused browser task, so the turn's
 # reply knows what the message already did to it.
 BROWSER_HANDOFF_REPLY_NOTE = (
@@ -606,6 +611,8 @@ BROWSER_JOB_LATEST_PREFIX = "browser:job:latest:"
 BROWSER_JOB_JOINER_PREFIX = "browser:job:joiner:"
 BROWSER_JOB_JOINER_LEASE_SECONDS = 15
 BROWSER_JOB_JOINER_REFRESH_SECONDS = 5
+#: How long the executor waits on a browser job when the model names no limit.
+BROWSER_JOB_JOIN_DEFAULT_WAIT_SECONDS = 600
 # The one telling of a job's result: whoever claims it first speaks, the other stays quiet.
 BROWSER_JOB_DELIVERED_PREFIX = "browser:job:delivered:"
 

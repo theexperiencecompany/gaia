@@ -533,6 +533,7 @@ class TestResetSession:
 
         await BotService.reset_session("discord", "user123", "dm-chan", sample_user, is_dm=True)
 
+        mock_bot_repo.get_by_session_key.assert_awaited_once_with("discord:user123:user123")
         assert stopped == ["conv-dm", f"discord:{sample_user.user_id}"]
 
     async def test_reset_with_channel_id(
@@ -541,7 +542,10 @@ class TestResetSession:
         mock_conversations: MagicMock,
         mock_create_conversation: AsyncMock,
         sample_user: AuthenticatedUser,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        stop = AsyncMock()
+        monkeypatch.setattr(bot_service_mod, "stop_browser_job", stop)
         mock_bot_repo.delete_by_session_key = AsyncMock()
         mock_bot_repo.get_by_session_key = AsyncMock(return_value=None)
         mock_bot_repo.claim_session = AsyncMock(side_effect=TestGetOrCreateSession._claim_insert)
@@ -553,6 +557,8 @@ class TestResetSession:
         # The fresh session must be the SAME channel's, not the user's DM.
         claim = mock_bot_repo.claim_session.await_args.kwargs
         assert claim["session_key"] == "slack:user123:channel789"
+        # A group's /stop reaches only that group's own run.
+        stop.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

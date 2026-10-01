@@ -94,11 +94,13 @@ async def test_giving_up_cancels_the_pause_and_carries_the_reason(
     """A cancel with no reason leaves the user a failure card that says nothing about why."""
     g = _install(monkeypatch)
 
-    await guide_browser_task.ainvoke(
-        {"give_up": True, "reason": "the site needs an account"}, config=UI_CONFIG
-    )
+    async with captured_wide_event() as event:
+        await guide_browser_task.ainvoke(
+            {"give_up": True, "reason": "  the site needs an account "}, config=UI_CONFIG
+        )
 
     assert g.resolved == [("h-1", HandoffDecision.CANCEL, "u1", "the site needs an account")]
+    assert event["browser"]["gave_up"] == "the site needs an account"
 
 
 async def test_answering_withdraws_the_request_so_the_next_join_is_not_asked_again(

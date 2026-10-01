@@ -42,9 +42,6 @@ async def test_frames_replay_in_order_and_a_cursor_resumes_after_itself(
     assert [payload for _, payload in events] == [_frame(1), _frame(2), _frame(3)]
     assert [payload for _, payload in resumed] == [_frame(3)]
     assert await redis.ttl(KEY) > 0
-    # The newest frame is where a reader that wants only what comes next starts.
-    assert await job_events_mod.feed_end("job-1") == events[2][0]
-    assert await job_events_mod.feed_end("job-2") == "0-0"
 
 
 async def test_the_whole_feed_reads_back_as_its_cards_alone() -> None:

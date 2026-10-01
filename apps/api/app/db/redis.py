@@ -202,10 +202,6 @@ class AsyncRedisCommands(Protocol):
         """XRANGE over the whole stream — [(entry_id, fields)], oldest first."""
         ...
 
-    async def xinfo_stream(self, name: str) -> dict[str, object]:
-        """XINFO STREAM — the stream's facts, last-generated-id among them; raises for a missing key."""
-        ...
-
     async def eval(self, script: str, numkeys: int, *keys_and_args: str) -> LuaReply:
         """EVAL — runs a Lua script; the caller narrows the dynamic result."""
         ...

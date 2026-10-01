@@ -372,6 +372,7 @@ class TestConsumeAgentStreamCallsTheAgent:
             stream_id="stream-1",
             source="whatsapp",
             usage_callback=usage_callback,
+            note="the reply finished the paused step",
         )
 
         with patch.object(chat_stream, "call_agent", fake_call_agent):
@@ -386,6 +387,7 @@ class TestConsumeAgentStreamCallsTheAgent:
         assert isinstance(options, AgentRunOptions)
         assert options.usage_metadata_callback is usage_callback
         assert options.source == "whatsapp"
+        assert options.turn_note == "the reply finished the paused step"
 
         assert captured["ids"] == StreamMessageIds(
             stream_id="stream-1",
@@ -458,6 +460,8 @@ class TestRunChatStreamTurnDerivations:
 
     async def _run(self, body: MessageRequestWithHistory) -> dict[str, Any]:
         seen: dict[str, Any] = {}
+        browser_note = AsyncMock(return_value="the reply finished the paused step")
+        seen["browser_note"] = browser_note
 
         async def fake_publish_init(
             body_: MessageRequestWithHistory,
@@ -488,6 +492,7 @@ class TestRunChatStreamTurnDerivations:
                 chat_stream, "_resolve_pending_approval_turn", AsyncMock(return_value=False)
             ),
             patch.object(chat_stream, "schedule_last_active_touch"),
+            patch.object(chat_stream, "_browser_turn_note", browser_note),
             patch.object(chat_stream, "forward_artifact_events", AsyncMock()),
             patch.object(chat_stream, "_start_description_task", MagicMock(return_value=None)),
             patch.object(chat_stream, "_consume_agent_stream", fake_consume),
@@ -522,6 +527,14 @@ class TestRunChatStreamTurnDerivations:
         assert turn.stream_id == "stream-1"
         assert turn.source == "whatsapp"
         assert isinstance(turn.usage_callback, UsageMetadataCallbackHandler)
+
+    async def test_what_the_message_did_to_a_paused_browser_task_reaches_the_turn(self) -> None:
+        body = MessageRequestWithHistory(message="done", messages=[], conversation_id="conv-1")
+
+        seen = await self._run(body)
+
+        seen["browser_note"].assert_awaited_once_with(body, "u1", "conv-1", "whatsapp")
+        assert seen["turn"].note == "the reply finished the paused step"
 
     async def test_a_request_without_a_conversation_id_is_a_new_conversation(self) -> None:
         seen = await self._run(
