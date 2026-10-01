@@ -186,11 +186,12 @@ BROWSER_REPLAY_CODE_TTL_SECONDS = 7 * 24 * 3600
 # Bytes of entropy for the code (token_urlsafe → ~1.3 chars/byte, so ~12 chars).
 BROWSER_LIVE_CODE_ENTROPY_BYTES = 9
 
-# Step frames kept on local disk when no object store is configured, served back
+# Step frames kept in Redis when no object store is configured, served back
 # through a code of their own so the frames are not enumerable by session id.
 # One code per run: code -> run, and run -> code so every step reuses it.
 BROWSER_SHOT_CODE_KEY_PREFIX = "browser:shotcode:"
 BROWSER_SHOT_SESSION_KEY_PREFIX = "browser:shotsess:"
+BROWSER_SHOT_FRAME_KEY_PREFIX = "browser:shot:"
 
 # Session-import handoff: a short-lived, single-use code minted for a signed-in
 # web user that the local gaia connect CLI presents to upload the extracted

@@ -322,7 +322,7 @@ async def _deliver_snapshot_to_bot(
 class ProgressEmitter:
     """Publishes each card snapshot into the run's feed and to the bot platform.
 
-    Records the CDN screenshots and captions the history recap reads back once
+    Records the published screenshots and captions the history recap reads back once
     the run finishes.
     """
 
@@ -337,9 +337,7 @@ class ProgressEmitter:
         self._bot_delivery = bot_delivery
         # Captions for the recap ("what's going on" per step), keyed by step index.
         self.step_goals: dict[int, str] = {}
-        # Only the screenshots that actually reached the CDN. A step whose upload
-        # failed falls back to an inline data URL, which must not be stored as a
-        # history frame — it would render as a permanently broken image.
+        # The screenshots that were published, by step; a step with no photo has none.
         self.step_shots: dict[int, str] = {}
 
     async def note(self, text: str) -> None:
@@ -353,7 +351,7 @@ class ProgressEmitter:
         if isinstance(snapshot, BrowserStepSnapshot):
             if snapshot.goal:
                 self.step_goals[snapshot.index] = snapshot.goal
-            if snapshot.screenshot and snapshot.screenshot.startswith("http"):
+            if snapshot.screenshot is not None:
                 self.step_shots[snapshot.index] = snapshot.screenshot
         if self._bot_delivery is not None:
             await _deliver_snapshot_to_bot(self._bot_delivery, snapshot)

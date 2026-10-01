@@ -1,15 +1,15 @@
 """Tests for app.services.browser.screenshots — R2 upload, config, boto3 client.
 
-The publisher prefers the bucket and falls back to the local backend, so the
-local fixtures below run the real shot_store against the test's own directory
-rather than mocking the fallback away.
+The publisher prefers the bucket and falls back to Redis, so the fallback
+fixtures below run the real shot_store against a per-test fakeredis rather
+than mocking the fallback away.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import fakeredis
 import pytest
 
 from app.services.browser import screenshots as shots, shot_store
@@ -31,20 +31,6 @@ def _clear_r2_client_cache():
     shots._r2_client.cache_clear()
 
 
-class _FakeRedisCache:
-    """Enough of redis_cache for the local backend's one-code-per-run mapping."""
-
-    def __init__(self) -> None:
-        self.values: dict[str, object] = {}
-
-    async def set(self, key: str, value: object, ttl: int = 3600, model: object = None) -> bool:
-        self.values[key] = value
-        return True
-
-    async def get(self, key: str, model: object = None) -> object:
-        return self.values.get(key)
-
-
 @pytest.fixture
 def r2(monkeypatch: pytest.MonkeyPatch) -> None:
     """Every R2 setting present, so frames go to the bucket."""
@@ -55,12 +41,12 @@ def r2(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def no_r2(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No object store configured, so frames stay on this host."""
+    """No object store configured, so frames go to Redis."""
     monkeypatch.setattr(shots.settings, "R2_PUBLIC_BASE_URL", None)
 
 
 def _frame_fields(event: dict[str, object]) -> dict[str, object]:
-    """Return the publisher's own fields in the browser namespace; the disk store adds its own beside them."""
+    """Return the publisher's own fields in the browser namespace; the Redis store adds its own beside them."""
     browser = event["browser"]
     assert isinstance(browser, dict)
     return {k: v for k, v in browser.items() if k.startswith("screenshot_")}
@@ -72,15 +58,25 @@ def _fake_clock(monkeypatch: pytest.MonkeyPatch, *readings: float) -> None:
 
 
 @pytest.fixture
-def local_backend(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    """Point the disk backend at this test's directory and give it a code store."""
-    root = tmp_path / "shots"
-    monkeypatch.setattr(shot_store, "SHOT_ROOT", root)
-    monkeypatch.setattr(shot_store, "redis_cache", _FakeRedisCache())
+def redis_backend(
+    monkeypatch: pytest.MonkeyPatch, fake_redis: fakeredis.aioredis.FakeRedis
+) -> fakeredis.aioredis.FakeRedis:
+    """Give the Redis backend a per-test store and a link base."""
     monkeypatch.setattr(
         "app.services.browser.links.settings.BROWSER_LIVE_VIEW_BASE_URL", "https://browser.test"
     )
-    return root
+    return fake_redis
+
+
+@pytest.fixture
+def no_redis(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Redis down: the cache takes no write."""
+    monkeypatch.setattr(shot_store.redis_cache, "redis", None)
+
+
+async def _read_back(url: str, index: int) -> bytes | None:
+    code = url.split("/shots/")[1].split("/")[0]
+    return await shot_store.read_step_screenshot(code, index)
 
 
 # ---------------------------------------------------------------------------
@@ -144,16 +140,16 @@ class TestR2Client:
 
 @pytest.mark.unit
 class TestPut:
-    def test_put_calls_put_object_with_correct_args(self, monkeypatch):
+    def test_put_stores_the_frame_as_a_jpeg(self, monkeypatch):
         monkeypatch.setattr(shots.settings, "R2_BUCKET", "my-bucket")
         fake_client = MagicMock()
         with patch.object(shots, "_r2_client", return_value=fake_client):
-            shots._put(b"pngbytes", "browser_steps/c1/step_1.png")
+            shots._put(b"jpegbytes", "browser_steps/c1/step_1.jpg")
             fake_client.put_object.assert_called_once_with(
                 Bucket="my-bucket",
-                Key="browser_steps/c1/step_1.png",
-                Body=b"pngbytes",
-                ContentType="image/png",
+                Key="browser_steps/c1/step_1.jpg",
+                Body=b"jpegbytes",
+                ContentType="image/jpeg",
             )
 
 
@@ -164,103 +160,52 @@ class TestPut:
 
 @pytest.mark.unit
 class TestPublishStepScreenshot:
-    async def test_falls_back_to_disk_when_not_configured(self, monkeypatch, local_backend):
-        monkeypatch.setattr(shots.settings, "R2_PUBLIC_BASE_URL", None)
-
-        result = await shots.publish_step_screenshot(b"pngbytes", "conv1", 1)
+    async def test_falls_back_to_redis_when_not_configured(self, no_r2, redis_backend):
+        result = await shots.publish_step_screenshot(b"jpegbytes", "conv1", 1)
 
         assert result is not None
         assert result.startswith("https://browser.test/shots/")
-        assert result.endswith("/1.png")
-        assert (local_backend / "conv1" / "step_1.png").read_bytes() == b"pngbytes"
+        assert result.endswith("/1.jpg")
+        assert await _read_back(result, 1) == b"jpegbytes"
 
     async def test_success_returns_public_url(self, monkeypatch):
         for name, value in _R2_SETTINGS.items():
             monkeypatch.setattr(shots.settings, name, value)
         mock_to_thread = AsyncMock(return_value=None)
         with patch.object(shots.asyncio, "to_thread", mock_to_thread):
-            result = await shots.publish_step_screenshot(b"pngdata", "conv-abc", 3)
-        assert result == "https://cdn.example.com/browser_steps/conv-abc/step_3.png"
+            result = await shots.publish_step_screenshot(b"jpegdata", "conv-abc", 3)
+        assert result == "https://cdn.example.com/browser_steps/conv-abc/step_3.jpg"
         mock_to_thread.assert_awaited_once()
         args, _ = mock_to_thread.call_args
-        # First arg is the callable (_put), then png and key
-        assert args[0] is shots._put
-        assert args[1] == b"pngdata"
-        assert args[2] == "browser_steps/conv-abc/step_3.png"
+        assert args == (shots._put, b"jpegdata", "browser_steps/conv-abc/step_3.jpg")
 
-    async def test_upload_failure_falls_back_to_disk_and_logs(self, monkeypatch, local_backend):
-        for name, value in _R2_SETTINGS.items():
-            monkeypatch.setattr(shots.settings, name, value)
+    async def test_upload_failure_falls_back_to_redis_and_logs(self, r2, redis_backend):
         failing = MagicMock()
         failing.put_object.side_effect = RuntimeError("boom")
         with (
             patch.object(shots, "_r2_client", return_value=failing),
             patch.object(shots.log, "warning") as mock_warn,
         ):
-            result = await shots.publish_step_screenshot(b"pngbytes", "c1", 1)
+            result = await shots.publish_step_screenshot(b"jpegbytes", "c1", 1)
 
         assert result is not None
-        assert result.startswith("https://browser.test/shots/")
-        assert (local_backend / "c1" / "step_1.png").read_bytes() == b"pngbytes"
+        assert await _read_back(result, 1) == b"jpegbytes"
         mock_warn.assert_called_once()
-        # Exact message (not a loose substring check — a mutated literal that
-        # merely gets padded would still contain any substring we look for).
-        call_args = mock_warn.call_args
-        assert (
-            call_args[0][0]
-            == f"{shots.LogTag.BROWSER} Browser screenshot upload failed; storing it locally instead"
-        )
-        assert call_args[1].get("error_type") == "RuntimeError"
+        assert mock_warn.call_args[1].get("error_type") == "RuntimeError"
 
-    async def test_a_failed_local_write_returns_none_so_the_caller_can_inline(
-        self, monkeypatch, tmp_path
-    ):
-        # The caller degrades to a data URL on None; failing the run instead
-        # would lose the whole task over a progress thumbnail.
-        blocker = tmp_path / "blocked"
-        blocker.write_bytes(b"not a directory")
-        monkeypatch.setattr(shots.settings, "R2_PUBLIC_BASE_URL", None)
-        monkeypatch.setattr(shot_store, "SHOT_ROOT", blocker)
-        monkeypatch.setattr(shot_store, "redis_cache", _FakeRedisCache())
+    async def test_a_frame_redis_did_not_take_returns_none_and_no_photo(self, no_r2, no_redis):
+        assert await shots.publish_step_screenshot(b"x", "c1", 1) is None
 
-        with patch.object(shots.log, "warning") as mock_warn:
-            result = await shots.publish_step_screenshot(b"x", "c1", 1)
-
-        assert result is None
-        mock_warn.assert_called_once()
-        assert (
-            mock_warn.call_args[0][0]
-            == f"{shots.LogTag.BROWSER} Browser screenshot could not be stored; using inline fallback"
-        )
-        assert mock_warn.call_args[1]["error_type"] == "NotADirectoryError"
-
-    async def test_a_non_storage_failure_is_not_swallowed(self, monkeypatch, local_backend):
-        # Only a failed write degrades to the inline fallback; anything else is a
-        # real fault and must reach the caller rather than look like a full disk.
-        class _BrokenCache(_FakeRedisCache):
-            async def get(self, key: str, model: object = None) -> object:
-                raise RuntimeError("redis is down")
-
-        monkeypatch.setattr(shots.settings, "R2_PUBLIC_BASE_URL", None)
-        monkeypatch.setattr(shot_store, "redis_cache", _BrokenCache())
-
-        with pytest.raises(RuntimeError):
-            await shots.publish_step_screenshot(b"x", "c1", 1)
-
-    async def test_prefers_the_bucket_over_disk_when_configured(self, monkeypatch, local_backend):
-        for name, value in _R2_SETTINGS.items():
-            monkeypatch.setattr(shots.settings, name, value)
+    async def test_prefers_the_bucket_over_redis_when_configured(self, r2, redis_backend):
         client = MagicMock()
         with patch.object(shots, "_r2_client", return_value=client):
-            result = await shots.publish_step_screenshot(b"pngbytes", "c1", 1)
+            result = await shots.publish_step_screenshot(b"jpegbytes", "c1", 1)
 
-        assert result == "https://cdn.example.com/browser_steps/c1/step_1.png"
+        assert result == "https://cdn.example.com/browser_steps/c1/step_1.jpg"
         client.put_object.assert_called_once()
-        # Nothing should have been written locally when the bucket accepted it.
-        assert not (local_backend / "c1").exists()
+        assert await redis_backend.keys() == []
 
-    async def test_not_configured_never_reaches_the_bucket(self, monkeypatch, local_backend):
-        monkeypatch.setattr(shots.settings, "R2_PUBLIC_BASE_URL", None)
+    async def test_not_configured_never_reaches_the_bucket(self, no_r2, redis_backend):
         client = MagicMock()
         with patch.object(shots, "_r2_client", return_value=client):
             await shots.publish_step_screenshot(b"x", "c1", 1)
@@ -278,7 +223,7 @@ class TestPublishedFrameOnTheWideEvent:
         _fake_clock(monkeypatch, 10.0, 10.75)
         with patch.object(shots, "_r2_client", return_value=MagicMock()):
             async with captured_wide_event() as event:
-                await shots.publish_step_screenshot(b"pngbytes", "c1", 4)
+                await shots.publish_step_screenshot(b"jpegbyte", "c1", 4)
 
         assert _frame_fields(event) == {
             "screenshot_step_index": 4,
@@ -288,8 +233,8 @@ class TestPublishedFrameOnTheWideEvent:
             "screenshot_published": True,
         }
 
-    async def test_a_frame_kept_on_disk_records_the_local_backend(
-        self, no_r2, monkeypatch, local_backend
+    async def test_a_frame_kept_in_redis_records_the_redis_backend(
+        self, no_r2, monkeypatch, redis_backend
     ):
         _fake_clock(monkeypatch, 1.0, 1.25)
         async with captured_wide_event() as event:
@@ -297,25 +242,25 @@ class TestPublishedFrameOnTheWideEvent:
 
         assert _frame_fields(event) == {
             "screenshot_step_index": 2,
-            "screenshot_backend": "local",
+            "screenshot_backend": "redis",
             "screenshot_bytes": 3,
             "screenshot_upload_ms": 250,
             "screenshot_published": True,
         }
 
     async def test_a_failed_upload_records_the_fallback_and_the_frame_size(
-        self, r2, monkeypatch, local_backend
+        self, r2, monkeypatch, redis_backend
     ):
         _fake_clock(monkeypatch, 5.0, 5.5)
         failing = MagicMock()
         failing.put_object.side_effect = RuntimeError("boom")
         with patch.object(shots, "_r2_client", return_value=failing):
             async with captured_wide_event() as event:
-                await shots.publish_step_screenshot(b"pngbytes", "c1", 6)
+                await shots.publish_step_screenshot(b"jpegbyte", "c1", 6)
 
         assert _frame_fields(event) == {
             "screenshot_step_index": 6,
-            "screenshot_backend": "local_fallback",
+            "screenshot_backend": "redis_fallback",
             "screenshot_bytes": 8,
             "screenshot_upload_ms": 500,
             "screenshot_published": True,
@@ -323,28 +268,7 @@ class TestPublishedFrameOnTheWideEvent:
         (warning,) = event["warnings"]
         assert warning["size_bytes"] == 8
 
-    async def test_a_frame_no_backend_could_keep_is_recorded_as_unpublished(
-        self, no_r2, monkeypatch, tmp_path
-    ):
-        blocker = tmp_path / "blocked"
-        blocker.write_bytes(b"not a directory")
-        monkeypatch.setattr(shot_store, "SHOT_ROOT", blocker)
-        monkeypatch.setattr(shot_store, "redis_cache", _FakeRedisCache())
-
-        async with captured_wide_event() as event:
-            await shots.publish_step_screenshot(b"abcd", "c1", 1)
-
-        assert event["browser"]["screenshot_published"] is False
-        (warning,) = event["warnings"]
-        assert warning["size_bytes"] == 4
-
-    async def test_a_bucket_that_is_down_and_a_disk_that_is_full_is_unpublished(
-        self, r2, monkeypatch, tmp_path
-    ):
-        blocker = tmp_path / "blocked"
-        blocker.write_bytes(b"not a directory")
-        monkeypatch.setattr(shot_store, "SHOT_ROOT", blocker)
-        monkeypatch.setattr(shot_store, "redis_cache", _FakeRedisCache())
+    async def test_a_bucket_that_is_down_and_redis_that_is_down_is_unpublished(self, r2, no_redis):
         failing = MagicMock()
         failing.put_object.side_effect = RuntimeError("boom")
         with patch.object(shots, "_r2_client", return_value=failing):
@@ -352,5 +276,5 @@ class TestPublishedFrameOnTheWideEvent:
                 result = await shots.publish_step_screenshot(b"x", "c1", 1)
 
         assert result is None
-        assert event["browser"]["screenshot_backend"] == "local_fallback"
+        assert event["browser"]["screenshot_backend"] == "redis_fallback"
         assert event["browser"]["screenshot_published"] is False

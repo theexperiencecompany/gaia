@@ -1116,11 +1116,11 @@ async def test_each_handoff_gets_its_own_id(monkeypatch: pytest.MonkeyPatch) -> 
 async def test_history_records_step_captions_and_uploaded_screenshots_in_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Steps are 1-indexed, gaps stay blank, and a data-URL fallback is never stored — it would render as a permanently broken thumbnail in the recap."""
+    """Steps are 1-indexed, and a step with no photo stays blank."""
 
     async def body(h: Harness) -> BrowserResultSnapshot:
         await h.emit(BrowserStepSnapshot(index=1, goal="open", screenshot="https://cdn/1.png"))
-        await h.emit(BrowserStepSnapshot(index=2, goal="", screenshot="data:image/png;base64,zz"))
+        await h.emit(BrowserStepSnapshot(index=2, goal="", screenshot=None))
         await h.emit(BrowserStepSnapshot(index=3, goal="submit", screenshot=None))
         await h.emit(BrowserStepSnapshot(index=4, goal="done", screenshot="http://cdn/4.png"))
         return _result(BrowserSessionStatus.COMPLETED, True, "done", steps=4)
