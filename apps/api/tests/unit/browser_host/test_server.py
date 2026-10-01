@@ -164,28 +164,25 @@ def test_a_renewed_lease_says_how_long_it_lasts(client: TestClient, host: _HostS
     assert _event(loguru)["browser"] == {"session_id": "abc", "operation": "lease"}
 
 
+_NOT_FOUND = (404, "session_not_found", "session not found")
+_UNRESPONSIVE = (503, "engine_unresponsive", "browser engine unresponsive")
+
+
 @pytest.mark.parametrize(
-    ("raised", "status", "reason", "detail"),
+    ("raised", "answer"),
     [
-        (SessionNotFoundError("abc"), 404, "session_not_found", "session not found"),
-        (CdpConnectionClosed("closed"), 404, "session_not_found", "session not found"),
-        (EngineUnresponsiveError("abc"), 503, "engine_unresponsive", "browser engine unresponsive"),
-        (
-            CDPTimeoutError("Storage.getCookies"),
-            503,
-            "engine_unresponsive",
-            "browser engine unresponsive",
-        ),
+        (SessionNotFoundError("abc"), _NOT_FOUND),
+        (CdpConnectionClosed("closed"), _NOT_FOUND),
+        (EngineUnresponsiveError("abc"), _UNRESPONSIVE),
+        (CDPTimeoutError("Storage.getCookies"), _UNRESPONSIVE),
         (
             CdpCommandError({"message": "x"}),
-            502,
-            "engine_refused",
-            "browser engine refused the request",
+            (502, "engine_refused", "browser engine refused the request"),
         ),
     ],
 )
 @pytest.mark.parametrize(
-    ("call", "stub", "operation"),
+    "route",
     [
         ("DELETE /sessions/abc", "dispose_context", "delete"),
         ("GET /sessions/abc/storage-state", "storage_state", "storage_state"),
@@ -196,13 +193,11 @@ def test_every_route_answers_a_failure_from_one_table(
     client: TestClient,
     host: _HostStub,
     raised: Exception,
-    status: int,
-    reason: str,
-    detail: str,
-    call: str,
-    stub: str,
-    operation: str,
+    answer: tuple[int, str, str],
+    route: tuple[str, str, str],
 ) -> None:
+    status, reason, detail = answer
+    call, stub, operation = route
     getattr(host, stub).side_effect = raised
     method, path = call.split(" ")
     with patch("shared.py.wide_events._loguru") as loguru:

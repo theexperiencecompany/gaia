@@ -496,6 +496,20 @@ def _install(
 
     monkeypatch.setattr(jr, "BotProgressDelivery", _delivery)
 
+    async def _publish_event(job_id: str, payload: dict[str, Any]) -> None:
+        h.feed_jobs.append(job_id)
+        h.feed_signals.append(payload)
+
+    monkeypatch.setattr(jr, "publish_job_event", _publish_event)
+    _install_handoff(monkeypatch, h, handoff_outcome)
+    return h
+
+
+def _install_handoff(
+    monkeypatch: pytest.MonkeyPatch, h: Harness, outcome: HandoffOutcome | None
+) -> None:
+    """Wire the seams a paused run waits on to the recording; the wait ends with outcome."""
+
     async def _create_pending(*args: Any, **kwargs: Any) -> None:
         h.handoffs_created.append(args)
         h.handoff_kwargs.append(kwargs)
@@ -506,19 +520,13 @@ def _install(
         h.handoffs_awaited.append(args)
         # A real wait yields; the keepalive spawned beside it gets to start.
         await asyncio.sleep(0)
-        return handoff_outcome or HandoffOutcome(status=HandoffStatus.COMPLETED)
+        return outcome or HandoffOutcome(status=HandoffStatus.COMPLETED)
 
     monkeypatch.setattr(jr, "await_handoff", _await_handoff)
     # The host a paused session lives on, asked where its page is.
     monkeypatch.setattr(
         jr.host_client, "get_session", AsyncMock(return_value=MagicMock(url="https://x/login"))
     )
-
-    async def _publish_event(job_id: str, payload: dict[str, Any]) -> None:
-        h.feed_jobs.append(job_id)
-        h.feed_signals.append(payload)
-
-    monkeypatch.setattr(jr, "publish_job_event", _publish_event)
 
     async def _no_wait_record(*args: Any) -> None:
         return None
@@ -532,7 +540,6 @@ def _install(
     monkeypatch.setattr(jr, "set_job_wait", _record_wait)
     monkeypatch.setattr(jr, "clear_job_wait", _clear_wait)
     monkeypatch.setattr(jr, "fail_handoff", _no_wait_record)
-    return h
 
 
 # ---------------------------------------------------------------------------

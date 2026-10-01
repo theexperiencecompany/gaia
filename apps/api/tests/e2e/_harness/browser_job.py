@@ -272,29 +272,11 @@ class _ScriptedAgent:
 
     async def _perform(self, step: ScriptedStep, index: int, on_step_end: Any) -> _History | None:
         """Report the step as Browser-Use does, run its takeover or guidance action, and return the history a done action ends the run with."""
-        step_actions = list(step.actions)
-        if step.takeover is not None:
-            step_actions = [
-                (
-                    "request_human_takeover",
-                    {"reason": step.takeover[0], "category": step.takeover[1]},
-                )
-            ]
-        elif step.guidance is not None:
-            step_actions = [("request_agent_guidance", {"reason": step.guidance})]
-        elif step.switch is not None:
-            step_actions = [("continue_in_full_browser", {"category": step.switch.value})]
+        step_actions = _reported_actions(step)
         self._double.url = step.url
         actions = [_Action(name, params) for name, params in step_actions]
         await self._on_step(_PageState(step.url, step.fields), _AgentOutput(actions), index)
-        asked: object = None
-        if step.takeover is not None:
-            asked = await self._hand_over(*step.takeover)
-        elif step.guidance is not None:
-            asked = await self._ask_the_agent(step.guidance)
-        elif step.switch is not None:
-            assert self._double.switch is not None, "the run was not offered the full browser"
-            await self._double.switch(step.switch)
+        asked = await self._act(step)
         if on_step_end is not None:
             self.state.last_result = _agent_state(step.outputs).last_result
             # A handoff's wait runs here, after the step, and its answer joins the step's results.
@@ -311,6 +293,17 @@ class _ScriptedAgent:
                 self._double.guidance_notes.append(asked)
         # A done action ends the run where Browser-Use ends it, with its own text and verdict.
         return _ended_by(step_actions)
+
+    async def _act(self, step: ScriptedStep) -> object:
+        """Run the step's takeover, guidance or switch; return what a takeover or guidance answered."""
+        if step.takeover is not None:
+            return await self._hand_over(*step.takeover)
+        if step.guidance is not None:
+            return await self._ask_the_agent(step.guidance)
+        if step.switch is not None:
+            assert self._double.switch is not None, "the run was not offered the full browser"
+            await self._double.switch(step.switch)
+        return None
 
     async def _hand_over(self, reason: str, category: str) -> object:
         assert self._double.takeover is not None, "the takeover action was never built"
@@ -339,6 +332,18 @@ class _ScriptedAgent:
                 return
             await asyncio.sleep(0.01)
         raise AssertionError("the browser run was never told to stop")
+
+
+def _reported_actions(step: ScriptedStep) -> list[tuple[str, dict[str, Any]]]:
+    """Return the actions the step reports; a takeover, guidance or switch replaces the scripted ones."""
+    if step.takeover is not None:
+        reason, category = step.takeover
+        return [("request_human_takeover", {"reason": reason, "category": category})]
+    if step.guidance is not None:
+        return [("request_agent_guidance", {"reason": step.guidance})]
+    if step.switch is not None:
+        return [("continue_in_full_browser", {"category": step.switch.value})]
+    return list(step.actions)
 
 
 def _ended_by(step_actions: list[tuple[str, dict[str, Any]]]) -> _History | None:
