@@ -128,8 +128,10 @@ class TestOpenTriggerWindow:
         assert await fake_redis.get(WINDOW_KEY) == "1790000001"
 
     async def test_a_zero_window_stays_shut(self, fake_redis) -> None:
-        await open_trigger_window(TriggerWindow(key=WINDOW_KEY, seconds=0, end=1_790_000_000))
+        with patch.object(fake_redis, "set", AsyncMock()) as write:
+            await open_trigger_window(TriggerWindow(key=WINDOW_KEY, seconds=0, end=1_790_000_000))
 
+        write.assert_not_awaited()
         assert await fake_redis.exists(WINDOW_KEY) == 0
 
     async def test_without_redis_the_run_goes_on_and_says_so(self, monkeypatch) -> None:
@@ -198,6 +200,16 @@ class TestHoldingEvents:
         log_mock.info.assert_called_once_with(
             REFILLED, todo_id=TODO_ID, window_seconds=call.kwargs["_defer_by"]
         )
+
+    async def test_an_event_that_cannot_be_held_is_logged_against_its_todo(
+        self, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(redis_cache, "redis", None)
+
+        with patch("app.services.triggers.batching.log") as log_mock:
+            assert not await buffer_todo_trigger_event(TODO_ID, _event())
+
+        assert log_mock.warning.call_args.kwargs == {"todo_id": TODO_ID}
 
     async def test_nothing_held_schedules_no_drain(self, fake_redis, pool) -> None:
         assert not await reschedule_todo_trigger_drain(TODO_ID)
