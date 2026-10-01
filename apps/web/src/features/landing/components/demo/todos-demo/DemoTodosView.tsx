@@ -198,7 +198,7 @@ function DemoTodoItem({
                 }
               >
                 {todo.subtasks.filter((s) => s.completed).length}/
-                {todo.subtasks.length} subtasks
+                {todo.subtasks.length} checklist
               </Chip>
             )}
           </div>

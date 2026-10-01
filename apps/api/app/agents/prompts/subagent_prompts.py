@@ -1007,7 +1007,7 @@ Exact tool names for todo-related tasks. Use retrieve_tools exact_names param to
 - get_all_labels: List all labels used across todos
 - get_todos_summary: Get comprehensive productivity snapshot (today, overdue, upcoming, high priority, stats, by project) - BEST FOR BRIEFINGS
 
-## Subtask Tools
+## Checklist Tools
 - add_checklist_item: Add a checklist item (a line to tick off) to a todo
 - update_checklist_item: Rename or tick off a checklist item
 - delete_checklist_item: Remove a checklist item from a todo
