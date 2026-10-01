@@ -329,6 +329,8 @@ class Harness:
         self.feed_jobs: list[str] = []
         #: The (job, handoff) each wait a stop can settle was recorded under.
         self.waits: list[tuple[str, str]] = []
+        #: Each job whose wait was cleared once the pause ended.
+        self.waits_cleared: list[str] = []
 
     async def publish(self, job_id: str, payload: dict[str, Any]) -> None:
         """Stand in for the job's feed, recording the raw frame the run produced."""
@@ -524,8 +526,11 @@ def _install(
     async def _record_wait(job_id: str, handoff_id: str) -> None:
         h.waits.append((job_id, handoff_id))
 
+    async def _clear_wait(job_id: str) -> None:
+        h.waits_cleared.append(job_id)
+
     monkeypatch.setattr(jr, "set_job_wait", _record_wait)
-    monkeypatch.setattr(jr, "clear_job_wait", _no_wait_record)
+    monkeypatch.setattr(jr, "clear_job_wait", _clear_wait)
     monkeypatch.setattr(jr, "fail_handoff", _no_wait_record)
     return h
 
@@ -829,9 +834,10 @@ async def test_the_run_reads_its_own_jobs_stop(monkeypatch: pytest.MonkeyPatch) 
 
     h = _install(monkeypatch, run_body=_checks)
 
-    await jr.execute_browser_job(_request(task="x", job_id="job-7"))
+    result = await jr.execute_browser_job(_request(task="x", job_id="job-7"))
 
-    assert set(h.job_cancel_checks) == {"job-7"}
+    assert result.status is BrowserSessionStatus.COMPLETED
+    assert h.job_cancel_checks == ["job-7", "job-7"]
 
 
 async def test_a_crash_after_a_session_opened_carries_the_recap_link(
@@ -1788,8 +1794,9 @@ async def test_a_handoff_is_filed_for_this_user_and_conversation_and_waited_on_f
     assert created == (handoff_id, "u1", "conv-9", "log in")
     assert h.handoff_kwargs == [{"reply_to": reply_to}]
     assert h.handoffs_awaited == [(handoff_id, 123)]
-    # Where a stop finds the wait it settles.
+    # Where a stop finds the wait it settles, for as long as it is waited on.
     assert h.waits == [("job-1", handoff_id)]
+    assert h.waits_cleared == ["job-1"]
 
 
 async def test_a_stop_that_landed_before_the_handoff_was_waited_on_still_settles_it(
