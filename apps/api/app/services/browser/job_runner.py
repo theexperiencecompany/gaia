@@ -496,20 +496,16 @@ async def persist_run_outcome(
 
 
 def hosts_for(engine: BrowserEngine) -> tuple[str, str | None]:
-    """Return the host a run on engine opens on, and the Chrome host it falls back to (Obscura only).
+    """Return the host a run that wants engine opens on, and the Chrome host behind it.
 
-    BROWSER_HOST_URL is the host running BROWSER_ENGINE; BROWSER_FALLBACK_HOST_URL
-    is a Chromium host. Chrome is the default engine, Obscura an opt-in one.
+    BROWSER_FALLBACK_HOST_URL, when set, is a Chrome host. BROWSER_HOST_URL is the
+    primary, whichever engine it runs; its sessions report that engine. Chrome is
+    the default engine, Obscura an opt-in one.
     """
-    primary_is_chrome = settings.BROWSER_ENGINE is BrowserEngine.CHROMIUM
-    chrome_host = (
-        settings.BROWSER_HOST_URL if primary_is_chrome else settings.BROWSER_FALLBACK_HOST_URL
-    )
-    if engine is BrowserEngine.OBSCURA and not primary_is_chrome:
+    chrome_host = settings.BROWSER_FALLBACK_HOST_URL
+    if engine is BrowserEngine.OBSCURA:
         return settings.BROWSER_HOST_URL, chrome_host
-    if chrome_host is None:
-        raise BrowserUnavailableError(BROWSER_NO_CHROME_HOST)
-    return chrome_host, None
+    return chrome_host or settings.BROWSER_HOST_URL, None
 
 
 async def _is_cancelled(request: BrowserJobRequest) -> bool:
@@ -572,7 +568,6 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
             else BrowserEngine.CHROMIUM
         )
         host_url, fallback_host = hosts_for(engine)
-        log.set_ns("browser", engine=engine.value)
         secrets = RunSecrets(
             request.secrets,
             sites=[
@@ -591,6 +586,10 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
             )
             session_id = session.session_id
             log.set(browser={"session_id": session.session_id})
+            log.set_ns("browser", engine=session.engine.value)
+            if engine is BrowserEngine.CHROMIUM and session.engine is not BrowserEngine.CHROMIUM:
+                # The host says it is not Chrome: a user who never chose Obscura is not run on it.
+                raise BrowserUnavailableError(BROWSER_NO_CHROME_HOST)
             await put_job_state(
                 BrowserJobState(
                     job_id=request.job_id,
@@ -612,9 +611,10 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
                         user_id=request.user_id,
                         conversation_id=request.conversation_id,
                     ),
+                    # Only a run the host put on Obscura has anywhere to move to.
                     open_fallback_session=(
                         partial(_open_fallback_session, sessions, request.user_id, fallback_host)
-                        if fallback_host
+                        if fallback_host and session.engine is BrowserEngine.OBSCURA
                         else None
                     ),
                     is_cancelled=partial(_is_cancelled, request),

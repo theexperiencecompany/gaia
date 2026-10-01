@@ -176,7 +176,11 @@ def outbound(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[Any]]:
 @pytest.fixture
 def browser(monkeypatch: pytest.MonkeyPatch) -> None:
     """Everything outside the process: the host session, the engine choice, the history write."""
-    session = MagicMock(session_id="sess-7", live_view_url="https://host.test/live/sess-7")
+    session = MagicMock(
+        session_id="sess-7",
+        live_view_url="https://host.test/live/sess-7",
+        engine=BrowserEngine.CHROMIUM,
+    )
 
     @asynccontextmanager
     async def _session(**kwargs: Any) -> AsyncIterator[MagicMock]:
@@ -185,7 +189,6 @@ def browser(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(jr, "browser_session", _session)
     # Chrome, the default engine: the user has not opted into Obscura.
     monkeypatch.setattr(jr, "is_enabled", AsyncMock(return_value=False))
-    monkeypatch.setattr(jr.settings, "BROWSER_ENGINE", BrowserEngine.CHROMIUM)
     monkeypatch.setattr(jr, "BrowserTaskRunner", _ScriptedBrowser)
     monkeypatch.setattr(jr, "record_browser_task", AsyncMock())
     monkeypatch.setattr(jr, "capture_event", MagicMock())

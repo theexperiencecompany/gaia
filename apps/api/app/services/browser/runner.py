@@ -42,7 +42,6 @@ from app.constants.browser import (
     BROWSER_STALL_NOTE,
     BROWSER_STALL_NOTE_AFTER_SECONDS,
     MAX_HANDOFFS_PER_TASK,
-    BrowserEngine,
     BrowserRunFailure,
     BrowserSessionStatus,
     EngineFailure,
@@ -351,7 +350,7 @@ class BrowserTaskRunner:
             capture_event(
                 self._user_id,
                 AnalyticsEvents.BROWSER_ENGINE_SWITCHED,
-                {"reason": reason.value, "host": host or "", "engine": BrowserEngine.OBSCURA.value},
+                {"reason": reason.value, "host": host or "", "engine": self._session.engine.value},
             )
         return BROWSER_ENGINE_SWITCH_ACK
 

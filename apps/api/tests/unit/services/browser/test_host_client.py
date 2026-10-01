@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+from app.constants.browser import BrowserEngine
 from app.services.browser import host_client
 from app.services.browser.exceptions import (
     BrowserConcurrencyLimit,
@@ -135,6 +136,7 @@ class TestCreateSession:
                 "cdp_ws": "ws://cdp",
                 "live_ws": "ws://live",
                 "context_id": "ctx1",
+                "engine": "obscura",
             },
         )
         inner, cm, cls_mock = _patch_async_client(None, resp, verb="post")
@@ -144,6 +146,7 @@ class TestCreateSession:
         assert result.cdp_ws == "ws://cdp"
         assert result.live_ws == "ws://live"
         assert result.context_id == "ctx1"
+        assert result.engine is BrowserEngine.OBSCURA
         # Verify AsyncClient was constructed with expected args
         assert cls_mock.call_args[1]["base_url"] == _HOST
         assert cls_mock.call_args[1]["timeout"] == host_client._CREATE_TIMEOUT_SECONDS
@@ -160,6 +163,7 @@ class TestCreateSession:
                 "cdp_ws": "ws://cdp",
                 "live_ws": "ws://live",
                 "context_id": "ctx1",
+                "engine": "obscura",
             },
         )
         inner, cm, cls_mock = _patch_async_client(None, resp, verb="post")

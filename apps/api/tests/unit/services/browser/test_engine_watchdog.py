@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from app.constants.browser import BROWSER_ENGINE_WATCH_STRIKES, EngineFailure
+from app.constants.browser import BROWSER_ENGINE_WATCH_STRIKES, BrowserEngine, EngineFailure
 from app.services.browser import engine_watchdog
 from app.services.browser.engine_watchdog import run_watched
 from app.services.browser.run_contract import RunOutcome
@@ -29,6 +29,7 @@ _SESSION = BrowserHostSession(
     live_view_url="https://host/live",
     context_id="ctx",
     host_url="http://host",
+    engine=BrowserEngine.OBSCURA,
 )
 _WATCH = {"session_id": "s-1", "operation": "engine_watch"}
 

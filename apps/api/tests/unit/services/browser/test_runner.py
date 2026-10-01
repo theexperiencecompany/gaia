@@ -36,6 +36,7 @@ from app.constants.browser import (
     BROWSER_RUN_WALL_CLOCK_SUMMARY,
     BROWSER_STALL_NOTE,
     MAX_HANDOFFS_PER_TASK,
+    BrowserEngine,
     BrowserRunFailure,
     BrowserSessionStatus,
     EngineFailure,
@@ -75,12 +76,14 @@ Script = Callable[["_ScriptedRun"], Awaitable[RunOutcome]]
 
 
 def _session(session_id: str = "s-primary") -> BrowserHostSession:
+    """Return a host session: the primary on Obscura, with Chrome behind it; any other on Chrome."""
     return BrowserHostSession(
         session_id=session_id,
         cdp_url=f"ws://{session_id}",
         live_view_url=f"http://{session_id}/live",
         context_id="ctx",
         host_url=f"http://{session_id}-host",
+        engine=BrowserEngine.OBSCURA if session_id == "s-primary" else BrowserEngine.CHROMIUM,
     )
 
 

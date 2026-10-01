@@ -475,11 +475,6 @@ async def browser_job_world(
             "app.services.browser.job_runner.is_enabled",
             AsyncMock(return_value=scripted_host.fallback_url is not None),
         ),
-        patch.object(
-            settings,
-            "BROWSER_ENGINE",
-            BrowserEngine.OBSCURA if scripted_host.fallback_url else BrowserEngine.CHROMIUM,
-        ),
         # The models and Jev's gateway are never called: the agent and Jev are scripted.
         patch("app.services.browser.agent_run.build_agent_llm", AsyncMock(return_value=object())),
         patch("app.services.browser.agent_run.build_text_model", lambda ledger: object()),
@@ -518,11 +513,16 @@ def _host_patches(
             raise scripted_host.error
         world.seeded_states.append(storage_state)
         world.host_sessions += 1
+        # A world with a fallback host has Obscura on its primary and Chrome behind it.
+        on_obscura = (
+            scripted_host.fallback_url is not None and host_url != scripted_host.fallback_url
+        )
         return MagicMock(
             session_id=f"sess-{world.host_sessions}",
             cdp_ws="ws://browser.test/cdp",
             live_ws="ws://browser.test/live",
             context_id="ctx-1",
+            engine=BrowserEngine.OBSCURA if on_obscura else BrowserEngine.CHROMIUM,
         )
 
     def _kill_engine() -> None:

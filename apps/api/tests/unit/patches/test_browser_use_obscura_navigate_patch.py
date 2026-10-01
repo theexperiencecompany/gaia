@@ -20,6 +20,7 @@ import pytest
 from app.config.settings import settings
 from app.constants.browser import BrowserEngine
 import app.patches.browser_use_obscura_navigate_patch as patch_module
+from app.patches.obscura_sessions import driving
 from tests.helpers import OBSCURA_TEST_CDP_URL
 
 _URL = "https://example.test/slow"
@@ -48,12 +49,12 @@ class TestObscuraNavigatePatch:
     async def test_another_engine_takes_browser_uses_own_path_with_every_argument(
         self, monkeypatch: pytest.MonkeyPatch, original: AsyncMock
     ) -> None:
-        monkeypatch.setattr(patch_module.settings, "BROWSER_ENGINE", BrowserEngine.CHROMIUM)
         session, get_cdp = _session(AsyncMock())
 
-        await patch_module._navigate_and_wait(
-            session, _URL, "t1", timeout=3.0, wait_until="domcontentloaded"
-        )
+        with driving(BrowserEngine.CHROMIUM):
+            await patch_module._navigate_and_wait(
+                session, _URL, "t1", timeout=3.0, wait_until="domcontentloaded"
+            )
 
         original.assert_awaited_once_with(
             session, _URL, "t1", timeout=3.0, wait_until="domcontentloaded"
@@ -63,10 +64,10 @@ class TestObscuraNavigatePatch:
     async def test_a_caller_that_omits_the_wait_gets_browser_uses_own_defaults(
         self, monkeypatch: pytest.MonkeyPatch, original: AsyncMock
     ) -> None:
-        monkeypatch.setattr(patch_module.settings, "BROWSER_ENGINE", BrowserEngine.CHROMIUM)
         session, _ = _session(AsyncMock())
 
-        await patch_module._navigate_and_wait(session, _URL, "t1")
+        with driving(BrowserEngine.CHROMIUM):
+            await patch_module._navigate_and_wait(session, _URL, "t1")
 
         # browser-use 0.11.13 waits for the full "load" when no wait is named.
         original.assert_awaited_once_with(session, _URL, "t1", timeout=None, wait_until="load")

@@ -25,6 +25,7 @@ from app.constants.browser import (
     BROWSER_GUIDANCE_RECENT_ACTIONS,
     BROWSER_NO_GUIDANCE_AVAILABLE,
     BROWSER_TAKEOVER_DONE_NOTE,
+    BrowserEngine,
     BrowserHandoffAction,
     EngineSwitchReason,
     JevOperation,
@@ -123,7 +124,11 @@ class _Harness:
         self.ledger = RunLedger()
         self._messages = list(messages or [])
         self.run = BrowserAgentRun(
-            session=SimpleNamespace(cdp_url="ws://browser.test/cdp", session_id="sess-1"),  # type: ignore[arg-type]  # a duck-typed host session
+            session=SimpleNamespace(  # type: ignore[arg-type]  # a duck-typed host session
+                cdp_url="ws://browser.test/cdp",
+                session_id="sess-1",
+                engine=BrowserEngine.CHROMIUM,
+            ),
             config=CONFIG,
             hooks=RunHooks(
                 step=self.frames.append,

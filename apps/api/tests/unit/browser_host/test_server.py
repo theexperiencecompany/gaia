@@ -77,6 +77,8 @@ def test_create_session_returns_derived_ws_urls(client) -> None:
     assert body["cdp_ws"] == "ws://browser-host:8930/cdp/s1"
     assert body["live_ws"] == "ws://browser-host:8930/live/s1"
     assert body["context_id"] == "ctx-1"
+    # The client learns the engine from the host itself, never from its own config.
+    assert body["engine"] == server_mod.browser_host_settings.BROWSER_ENGINE.value
 
 
 def _at_capacity(gate: HostAdmissionRefusal) -> AtCapacityError:

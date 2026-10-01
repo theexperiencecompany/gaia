@@ -49,7 +49,7 @@ async def _get_or_create_cdp_session(
 ) -> CDPSession:
     """Wrap Browser-Use's per-target session accessor to install the shim once per target."""
     cdp_session = await _original_get_or_create_cdp_session(self, target_id=target_id, focus=focus)
-    if not on_obscura(self):
+    if not on_obscura():
         return cdp_session
 
     injected: set[str] | None = getattr(self, _INJECTED_ATTR, None)

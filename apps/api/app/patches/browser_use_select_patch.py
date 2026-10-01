@@ -88,7 +88,7 @@ async def on_SelectDropdownOptionEvent(
     node = event.node
     # Browser-Use's own handler also drives role=menu/listbox/combobox widgets,
     # which have no options to assign; only the <select> path is broken here.
-    if not _is_native_select(node) or not on_obscura(self.browser_session):
+    if not _is_native_select(node) or not on_obscura():
         return await _original_on_select(self, event)
 
     cdp_session = await self.browser_session.cdp_client_for_node(node)

@@ -283,7 +283,9 @@ class Harness:
     def __init__(self) -> None:
         self.writes: list[dict[str, Any]] = []
         self.published_to: list[str] = []
-        self.session = MagicMock(session_id="sess-1", live_view_url="https://live/abc")
+        self.session = MagicMock(
+            session_id="sess-1", live_view_url="https://live/abc", engine=BrowserEngine.CHROMIUM
+        )
         self.session_kwargs: dict[str, Any] = {}
         self.runner_kwargs: dict[str, Any] = {}
         #: The runner the job built; a run body can move it onto a fallback session.
@@ -387,7 +389,6 @@ def _install(
 
     # Chrome, the default engine, on the configured host; Obscura is an opt-in flag.
     monkeypatch.setattr(jr, "is_enabled", _obscura_off)
-    monkeypatch.setattr(jr.settings, "BROWSER_ENGINE", BrowserEngine.CHROMIUM)
     monkeypatch.setattr(jr.settings, "BROWSER_HOST_URL", PRIMARY_HOST)
     monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", None)
     monkeypatch.setattr(jr, "publish_frame_to_job", h.publish)
@@ -1850,8 +1851,8 @@ async def test_an_obscura_runs_fallback_session_opens_on_the_chrome_host_for_thi
         return True
 
     monkeypatch.setattr(jr, "is_enabled", _obscura_on)
-    monkeypatch.setattr(jr.settings, "BROWSER_ENGINE", BrowserEngine.OBSCURA)
     monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", "http://fallback:8930")
+    h.session.engine = BrowserEngine.OBSCURA
 
     await _run(h, _request(user_id="u7"))
 
@@ -1997,39 +1998,54 @@ async def test_mirror_closes_the_group_with_how_long_the_run_took(
 
 
 @pytest.mark.parametrize(
-    ("deployed", "engine", "hosts"),
+    ("chrome_host", "engine", "hosts"),
     [
-        (BrowserEngine.OBSCURA, BrowserEngine.OBSCURA, (PRIMARY_HOST, "http://chrome:8930")),
-        (BrowserEngine.OBSCURA, BrowserEngine.CHROMIUM, ("http://chrome:8930", None)),
-        # A user opted into Obscura on a Chrome-only deployment runs on Chrome.
-        (BrowserEngine.CHROMIUM, BrowserEngine.OBSCURA, (PRIMARY_HOST, None)),
-        (BrowserEngine.CHROMIUM, BrowserEngine.CHROMIUM, (PRIMARY_HOST, None)),
+        ("http://chrome:8930", BrowserEngine.OBSCURA, (PRIMARY_HOST, "http://chrome:8930")),
+        ("http://chrome:8930", BrowserEngine.CHROMIUM, ("http://chrome:8930", None)),
+        (None, BrowserEngine.OBSCURA, (PRIMARY_HOST, None)),
+        (None, BrowserEngine.CHROMIUM, (PRIMARY_HOST, None)),
     ],
 )
-def test_a_run_opens_on_its_engines_host_and_only_obscura_has_a_fallback(
+def test_a_run_opens_on_its_engines_host_with_the_chrome_host_behind_obscura(
     monkeypatch: pytest.MonkeyPatch,
-    deployed: BrowserEngine,
+    chrome_host: str | None,
     engine: BrowserEngine,
     hosts: tuple[str, str | None],
 ) -> None:
-    monkeypatch.setattr(jr.settings, "BROWSER_ENGINE", deployed)
     monkeypatch.setattr(jr.settings, "BROWSER_HOST_URL", PRIMARY_HOST)
-    monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", "http://chrome:8930")
+    monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", chrome_host)
 
     assert jr.hosts_for(engine) == hosts
 
 
-async def test_a_chrome_run_with_no_chrome_host_fails_saying_so(
+async def test_a_chrome_run_the_host_put_on_obscura_fails_saying_so(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     h = _install(monkeypatch)
-    monkeypatch.setattr(jr.settings, "BROWSER_ENGINE", BrowserEngine.OBSCURA)
+    h.session.engine = BrowserEngine.OBSCURA
 
     event = await _run_event(h, _request())
 
     assert h.cards == [_failed_card(BROWSER_NO_CHROME_HOST)]
     assert event["reason"] == BrowserRunFailure.HOST_UNAVAILABLE
-    assert h.session_kwargs == {}
+    assert h.runner_kwargs == {}
+
+
+async def test_an_obscura_run_the_host_put_on_chrome_has_nowhere_to_move(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    h = _install(monkeypatch)
+
+    async def _obscura_on(flag: object, user_id: str | None, default: bool | None = None) -> bool:
+        return True
+
+    monkeypatch.setattr(jr, "is_enabled", _obscura_on)
+    monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", "http://chrome:8930")
+
+    event = await _run_event(h, _request())
+
+    assert h.callbacks.open_fallback_session is None
+    assert event["browser"]["engine"] == "chromium"
 
 
 @pytest.mark.parametrize(("opted_in", "engine"), [(True, "obscura"), (False, "chromium")])
@@ -2044,12 +2060,14 @@ async def test_the_engine_is_the_users_own_obscura_choice(
         return opted_in
 
     monkeypatch.setattr(jr, "is_enabled", _is_enabled)
-    monkeypatch.setattr(jr.settings, "BROWSER_ENGINE", BrowserEngine.OBSCURA)
     monkeypatch.setattr(jr.settings, "BROWSER_FALLBACK_HOST_URL", "http://chrome:8930")
+    h.session.engine = BrowserEngine(engine)
 
     event = await _run_event(h, _request(user_id="u7"))
 
     assert asked == [(FeatureFlag.BROWSER_OBSCURA, "u7")]
+    assert h.session_kwargs["host_url"] == (PRIMARY_HOST if opted_in else "http://chrome:8930")
+    # The engine the run is on is what the host reported for its session.
     assert event["browser"]["engine"] == engine
 
 

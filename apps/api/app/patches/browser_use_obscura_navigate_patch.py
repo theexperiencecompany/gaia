@@ -32,7 +32,7 @@ async def _navigate_and_wait(
     wait_until: str = "load",
 ) -> None:
     """Navigate with the engine's own deadline on Obscura; Browser-Use's path elsewhere."""
-    if not on_obscura(self):
+    if not on_obscura():
         await _original_navigate_and_wait(
             self, url, target_id, timeout=timeout, wait_until=wait_until
         )
