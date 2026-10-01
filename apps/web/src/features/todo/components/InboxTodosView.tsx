@@ -131,10 +131,10 @@ const InboxTodosView: React.FC<InboxTodosViewProps> = memo(({ onRefresh }) => {
         key: "break-down",
         icon: <Flowchart01Icon className="size-4 text-zinc-400" />,
         label: "Break down big tasks",
-        description: "Decompose complex todos into ordered subtasks",
+        description: "Decompose complex todos into ordered checklists",
         onPress: () =>
           appendToInput(
-            "Look at my inbox todos and identify any that are too large or vague to action directly. For each one, break it down into clear, ordered subtasks I can actually complete.",
+            "Look at my inbox todos and identify any that are too large or vague to action directly. For each one, break it down into a clear, ordered checklist I can actually complete.",
           ),
       },
       {

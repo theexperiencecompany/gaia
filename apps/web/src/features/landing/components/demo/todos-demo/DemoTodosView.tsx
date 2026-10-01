@@ -417,11 +417,11 @@ function DemoTodoSidebar({
             />
           </div>
 
-          {/* Subtasks section */}
+          {/* Checklist section */}
           <div className="border-y border-zinc-800 py-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-zinc-300">
-                Subtasks
+                Checklist
                 {todo.subtasks.length > 0 &&
                   ` (${todo.subtasks.filter((s) => s.completed).length}/${todo.subtasks.length})`}
               </span>
@@ -441,10 +441,12 @@ function DemoTodoSidebar({
                 </span>
               </div>
             ))}
-            {/* Add subtask input placeholder */}
+            {/* Add checklist item placeholder */}
             <div className="mt-2 flex items-center gap-2 rounded-lg px-2 py-1.5">
               <PlusSignIcon width={14} height={14} className="text-zinc-600" />
-              <span className="text-sm text-zinc-600">Add subtask...</span>
+              <span className="text-sm text-zinc-600">
+                Add checklist item...
+              </span>
             </div>
           </div>
 

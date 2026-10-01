@@ -417,7 +417,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                 "delete_todo",
                 "search_todos",
                 "get_today_todos",
-                "add_subtask",
+                "add_checklist_item",
             ],
             memory_prompt=TODO_MEMORY_PROMPT,
         ),

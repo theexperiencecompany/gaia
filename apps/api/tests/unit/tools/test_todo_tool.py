@@ -1107,12 +1107,12 @@ class TestBulkDeleteTodos:
 
 
 # ---------------------------------------------------------------------------
-# Tests: add_subtask
+# Tests: add_checklist_item
 # ---------------------------------------------------------------------------
 
 
 class TestAddSubtask:
-    """Tests for the add_subtask tool."""
+    """Tests for the add_checklist_item tool."""
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.update_todo_service", new_callable=AsyncMock)
@@ -1133,9 +1133,9 @@ class TestAddSubtask:
         )
         mock_update.return_value = updated
 
-        from app.agents.tools.todo_tool import add_subtask
+        from app.agents.tools.todo_tool import add_checklist_item
 
-        result = await add_subtask.coroutine(
+        result = await add_checklist_item.coroutine(
             config=_make_config(),
             todo_id="todo-1",
             title="Buy milk",
@@ -1151,9 +1151,9 @@ class TestAddSubtask:
         mock_get_user: MagicMock,
         mock_writer_factory: MagicMock,
     ) -> None:
-        from app.agents.tools.todo_tool import add_subtask
+        from app.agents.tools.todo_tool import add_checklist_item
 
-        result = await add_subtask.coroutine(
+        result = await add_checklist_item.coroutine(
             config=_make_config_no_user(),
             todo_id="todo-1",
             title="Sub",
@@ -1164,12 +1164,12 @@ class TestAddSubtask:
 
 
 # ---------------------------------------------------------------------------
-# Tests: update_subtask
+# Tests: update_checklist_item
 # ---------------------------------------------------------------------------
 
 
 class TestUpdateSubtask:
-    """Tests for the update_subtask tool."""
+    """Tests for the update_checklist_item tool."""
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.update_todo_service", new_callable=AsyncMock)
@@ -1191,12 +1191,12 @@ class TestUpdateSubtask:
         mock_get_todo.return_value = parent
         mock_update.return_value = _make_todo_response()
 
-        from app.agents.tools.todo_tool import update_subtask
+        from app.agents.tools.todo_tool import update_checklist_item
 
-        result = await update_subtask.coroutine(
+        result = await update_checklist_item.coroutine(
             config=_make_config(),
             todo_id="todo-1",
-            subtask_id="sub-1",
+            item_id="sub-1",
             completed=True,
         )
 
@@ -1214,12 +1214,12 @@ class TestUpdateSubtask:
         parent = _make_todo_response(subtasks=[])
         mock_get_todo.return_value = parent
 
-        from app.agents.tools.todo_tool import update_subtask
+        from app.agents.tools.todo_tool import update_checklist_item
 
-        result = await update_subtask.coroutine(
+        result = await update_checklist_item.coroutine(
             config=_make_config(),
             todo_id="todo-1",
-            subtask_id="nonexistent",
+            item_id="nonexistent",
         )
 
         assert "not found" in result["error"]
@@ -1227,12 +1227,12 @@ class TestUpdateSubtask:
 
 
 # ---------------------------------------------------------------------------
-# Tests: delete_subtask
+# Tests: delete_checklist_item
 # ---------------------------------------------------------------------------
 
 
 class TestDeleteSubtask:
-    """Tests for the delete_subtask tool."""
+    """Tests for the delete_checklist_item tool."""
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.update_todo_service", new_callable=AsyncMock)
@@ -1252,12 +1252,12 @@ class TestDeleteSubtask:
         mock_get_todo.return_value = parent
         mock_update.return_value = _make_todo_response(subtasks=[])
 
-        from app.agents.tools.todo_tool import delete_subtask
+        from app.agents.tools.todo_tool import delete_checklist_item
 
-        result = await delete_subtask.coroutine(
+        result = await delete_checklist_item.coroutine(
             config=_make_config(),
             todo_id="todo-1",
-            subtask_id="sub-1",
+            item_id="sub-1",
         )
 
         assert result["error"] is None
@@ -1274,12 +1274,12 @@ class TestDeleteSubtask:
         parent = _make_todo_response(subtasks=[])
         mock_get_todo.return_value = parent
 
-        from app.agents.tools.todo_tool import delete_subtask
+        from app.agents.tools.todo_tool import delete_checklist_item
 
-        result = await delete_subtask.coroutine(
+        result = await delete_checklist_item.coroutine(
             config=_make_config(),
             todo_id="todo-1",
-            subtask_id="nonexistent",
+            item_id="nonexistent",
         )
 
         assert "not found" in result["error"]
