@@ -457,6 +457,7 @@ class TestADmKeysOffTheUserWhateverItsChannelId:
         claim = mock_bot_repo.claim_session.await_args.kwargs
         assert claim["session_key"] == "telegram:user123:user123"
 
+    @pytest.mark.usefixtures("fake_redis")
     async def test_resetting_a_flagged_dm_clears_both_keys(
         self,
         mock_bot_repo: MagicMock,
