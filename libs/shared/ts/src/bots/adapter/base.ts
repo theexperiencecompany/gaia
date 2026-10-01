@@ -398,8 +398,9 @@ export abstract class BaseBotAdapter {
    * via {@link deliverOutbound}; platforms that support attachments (e.g.
    * WhatsApp) override this to fetch the artifact bytes and upload them.
    *
-   * `isChannel` addresses it like {@link deliverOutbound}: a browser run asked
-   * for in a group streams its step photos back into that group.
+   * `isChannel` addresses it like {@link deliverOutbound}. A browser run's step
+   * photos always go to the requester's DM, even when the run was asked for in
+   * a group: its live link and screenshots are private.
    */
   protected async deliverOutboundFile(
     destinationId: string,
