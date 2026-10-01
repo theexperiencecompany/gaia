@@ -5,6 +5,7 @@ import { Spinner } from "@heroui/spinner";
 import {
   Alert01Icon,
   CheckmarkCircle02Icon,
+  ComputerRemoveIcon,
   CreditCardIcon,
   CursorInWindowIcon,
   ShieldUserIcon,
@@ -65,6 +66,8 @@ const RESOLVED_META: Record<
   },
   cancelled: { icon: StopCircleIcon, label: "Stopped." },
   timeout: { icon: StopCircleIcon, label: "Timed out, the task was stopped." },
+  // The browser the user was sent to died while it waited on them.
+  failed: { icon: ComputerRemoveIcon, label: "The browser closed." },
 };
 
 /**

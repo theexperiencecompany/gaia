@@ -25,7 +25,7 @@ const browserCall: ToolCallEntry = {
 };
 
 const browserGroup: SubagentGroupData = {
-  subagent_id: "browser:sess1",
+  subagent_id: "browser:call_abc",
   subagent_name: "Browser",
   agent_type: "spawned",
   tool_calls: [
@@ -33,7 +33,7 @@ const browserGroup: SubagentGroupData = {
       tool_name: "done",
       tool_category: "browser",
       message: "Wrapping up",
-      tool_call_id: "browser:sess1:3:0",
+      tool_call_id: "browser:call_abc:3:0",
       inputs: { text: "Example Domain" },
     },
   ],
@@ -94,6 +94,25 @@ describe("buildBackendTimeline — browser task", () => {
       (item) => item.kind === "tool" && item.data.tool_name === "browser_task",
     );
     expect(browserRows).toHaveLength(1);
+  });
+
+  it("gives each call its own group, even when an earlier call opened none", () => {
+    // The first run failed before it opened a group; matching by position
+    // handed it the second run's group and left the second call as a bare row.
+    const failedCall: ToolCallEntry = {
+      ...browserCall,
+      tool_call_id: "call_failed",
+      output: "BROWSER TASK FAILED.",
+    };
+    const timeline = buildBackendTimeline(
+      [failedCall, browserCall],
+      [structuredClone(browserGroup)],
+    );
+
+    expect(timeline.map((i) => i.kind)).toEqual(["tool", "subagent"]);
+    const item = timeline[1];
+    if (item.kind !== "subagent") throw new Error("expected a subagent item");
+    expect(item.data.handoff_output).toBe("BROWSER TASK COMPLETED.");
   });
 
   it("does not consume a second browser call into the same group", () => {

@@ -10,6 +10,9 @@ const CDP_MOUSE_BUTTONS = ["left", "middle", "right"] as const;
 // loses after an edit is exactly what the user typed or erased.
 const KEYBOARD_PLACEHOLDER = " ";
 
+// The text a non-printable key must carry for CDP to perform its action.
+const KEY_ACTION_TEXT: Record<string, string | undefined> = { Enter: "\r" };
+
 type Send = (msg: BrowserLiveInputMessage) => void;
 type CssSize = RefObject<{ w: number; h: number }>;
 
@@ -141,7 +144,7 @@ export function useLiveInput({
       // char sends itself, Enter must send "\r", other keys act on their
       // virtual key code, and a Ctrl/Meta chord is not text.
       const printable = e.key.length === 1 && !e.ctrlKey && !e.metaKey;
-      const text = printable ? e.key : e.key === "Enter" ? "\r" : undefined;
+      const text = printable ? e.key : KEY_ACTION_TEXT[e.key];
       send({
         type: "key",
         event,

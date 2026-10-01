@@ -82,9 +82,10 @@ function useBrowserTaskState(
   );
   const pendingHandoff = handoffs.find((h) => h.status === "pending");
   // The run's terminal frame ends the card; until it lands the run is live.
-  const status: BrowserCardStatus =
-    result?.status ??
-    (pendingHandoff ? "awaiting_user" : (session?.status ?? "running"));
+  const liveStatus: BrowserCardStatus = pendingHandoff
+    ? "awaiting_user"
+    : (session?.status ?? "running");
+  const status = result?.status ?? liveStatus;
   const active = !result;
   const working = active && !pendingHandoff;
   // Only an active session has an owner — minting a live-view token after it

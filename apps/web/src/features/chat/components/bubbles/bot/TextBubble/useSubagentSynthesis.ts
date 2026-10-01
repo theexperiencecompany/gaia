@@ -1,6 +1,5 @@
 import {
   BROWSER_TASK_TOOL_NAME,
-  BROWSER_TOOL_CATEGORY,
   TOOL_CALLS_DATA_TOOL_NAME,
 } from "@shared/chat";
 import React from "react";
@@ -209,14 +208,18 @@ function isBrowserTaskCall(tc: ToolCallEntry): boolean {
   return tc.tool_name === BROWSER_TASK_TOOL_NAME;
 }
 
+// The run opens its group as `browser:<tool_call_id>` of the call that started it.
+const BROWSER_GROUP_PREFIX = "browser:";
+
 function matchBrowserGroup(
+  tc: ToolCallEntry,
   groups: EnrichedSubagentGroup[],
   emittedGroupIds: Set<string>,
 ): EnrichedSubagentGroup | undefined {
+  if (!tc.tool_call_id) return undefined;
+  const groupId = `${BROWSER_GROUP_PREFIX}${tc.tool_call_id}`;
   return groups.find(
-    (g) =>
-      g.tool_category === BROWSER_TOOL_CATEGORY &&
-      !emittedGroupIds.has(g.subagent_id),
+    (g) => g.subagent_id === groupId && !emittedGroupIds.has(g.subagent_id),
   );
 }
 
@@ -365,7 +368,7 @@ export function buildBackendTimeline(
     if (tc.tool_call_id && subagentToolCallIds.has(tc.tool_call_id)) continue;
 
     if (isBrowserTaskCall(tc)) {
-      const browserGroup = matchBrowserGroup(allGroups, emittedGroupIds);
+      const browserGroup = matchBrowserGroup(tc, allGroups, emittedGroupIds);
       if (browserGroup) {
         attachHandoffPayload(
           browserGroup,

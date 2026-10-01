@@ -85,6 +85,10 @@ _VIEWER_TEMPLATE = r"""<!doctype html>
   #kbButton { display: none; font: inherit; font-size: 13px; color: #e4e4e7; background: #27272a;
     border: 0; border-radius: 999px; padding: 6px 12px; }
   @media (pointer: coarse) { #kbButton { display: inline-block; } }
+  #decision { display: none; align-items: center; gap: 8px; font-size: 13px; color: #a1a1aa; }
+  #decision button { font: inherit; border: 0; border-radius: 999px; padding: 6px 14px; }
+  #doneButton { background: #00bbff; color: #09090b; font-weight: 600; }
+  #stopButton { background: #27272a; color: #e4e4e7; }
   /* Off-screen but focusable: focusing it is what raises a phone's keyboard.
      16px keeps iOS from zooming the page when it takes focus. */
   #kb { position: fixed; left: -1000px; top: 0; width: 1px; height: 1px; opacity: 0; font-size: 16px; }
@@ -94,6 +98,10 @@ _VIEWER_TEMPLATE = r"""<!doctype html>
 <header>
   <div class="brand"><img src="__WORDMARK__" alt="GAIA" /></div>
   <div class="right">
+    <div id="decision">
+      <button id="doneButton" type="button">I'm done</button>
+      <button id="stopButton" type="button">Stop task</button>
+    </div>
     <button id="kbButton" type="button">Keyboard</button>
     <div id="status" class="status connecting"><span class="dot"></span><span id="statusLabel">Connecting&hellip;</span></div>
   </div>
@@ -238,6 +246,29 @@ _VIEWER_TEMPLATE = r"""<!doctype html>
     if (e.key === "Enter") { e.preventDefault(); pressKey("Enter", "Enter", 13, "\r"); }
   });
   document.getElementById("kbButton").addEventListener("click", function () { resetKb(); kb.focus(); });
+
+  // Done / Stop answer the handoff this link was sent for; the code in the path
+  // is the authority. A tokened web link (?t=) has the chat card's buttons instead.
+  var decisionEl = document.getElementById("decision");
+  var DECIDED = { completed: "Done, resuming the task.", cancelled: "Stopped." };
+  function decide(decision) {
+    decisionEl.textContent = decision === "continue" ? "Continuing…" : "Stopping…";
+    fetch(location.pathname + "/decision", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision: decision })
+    }).then(function (res) {
+      if (res.status === 404) { decisionEl.style.display = "none"; return; }
+      if (res.status === 410) { decisionEl.textContent = "This request has expired."; return; }
+      if (!res.ok) { decisionEl.textContent = "Couldn't send that. Reload to try again."; return; }
+      return res.json().then(function (body) { decisionEl.textContent = DECIDED[body.status] || "This request has ended."; });
+    }, function () { decisionEl.textContent = "Couldn't send that. Reload to try again."; });
+  }
+  if (!new URLSearchParams(location.search).has("t")) {
+    decisionEl.style.display = "flex";
+    document.getElementById("doneButton").addEventListener("click", function () { decide("continue"); });
+    document.getElementById("stopButton").addEventListener("click", function () { decide("cancel"); });
+  }
 })();
 </script>
 </body>
