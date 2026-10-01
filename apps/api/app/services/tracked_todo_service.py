@@ -211,11 +211,9 @@ class TrackedTodoService:
     ) -> TodoResponse:
         """Create a todo with its canvas, activity and log, indexed in ChromaDB.
 
-        schedule's scheduled_at, recurrence, due_date and expires_at are saved with the insert.
-        With external_ref it is the one open todo for that object, already watching it.
-        A sub-todo reports to its parent, so its runs reach the user only on request.
-        Raises ExternalRefTakenError when another open todo holds the ref, and
-        SubTodoParentError when parent_todo_id is not a usable parent.
+        schedule's fields are saved with the insert; external_ref makes it that object's one open,
+        watching todo; a sub-todo's runs reach the user only on request. Raises
+        ExternalRefTakenError (ref held) and SubTodoParentError (unusable parent).
         """
         if parent_todo_id is not None:
             await require_sub_todo_parent(user_id, parent_todo_id)

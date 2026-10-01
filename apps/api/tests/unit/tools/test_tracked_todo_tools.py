@@ -1527,6 +1527,9 @@ class TestCreateThreadTrackedTodo:
             "source_conversation_id": None,
             "notify_on_run": False,
             "external_ref": ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="abc"),
+            "references": None,
+            "parent_todo_id": None,
+            "schedule": None,
         }
 
     async def test_no_thread_id_means_no_ref(self):
@@ -1719,8 +1722,12 @@ class TestSubTodoTools:
 
         require.assert_awaited_once_with("user-1", self.DESK, child_id="t1")
         written = update.await_args.kwargs["update"]
-        assert written.model_dump(exclude_unset=True) == {"parent_todo_id": self.DESK}
-        assert result == "Updated tracked todo t1: parent_todo_id"
+        # Moved under a parent, it reports there like a new sub-todo.
+        assert written.model_dump(exclude_unset=True) == {
+            "parent_todo_id": self.DESK,
+            "notify_on_run": False,
+        }
+        assert result == "Updated tracked todo t1: notify_on_run, parent_todo_id"
 
     async def test_a_refused_parent_on_update_saves_nothing(self):
         existing = TodoDocument(id="t1", user_id="user-1", title="Reply to Sam")
