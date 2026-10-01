@@ -12,12 +12,8 @@ from app.agents.tools.browser_tool import browser_task
 from app.constants.browser import BROWSER_JOB_QUEUE, BROWSER_JOB_TASK
 from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationSource
-from app.schemas.browser_job import (
-    BrowserJobRequest,
-    BrowserJobState,
-    BrowserJobStatus,
-    BrowserTaskSecret,
-)
+from app.schemas.browser import BrowserTaskSecret
+from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJobStatus
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit

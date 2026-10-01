@@ -47,10 +47,10 @@ from app.schemas.browser import (
     BrowserResultSnapshot,
     BrowserSessionSnapshot,
     BrowserStepSnapshot,
+    BrowserTaskSecret,
     HandoffOutcome,
     HandoffRequest,
 )
-from app.schemas.browser_job import BrowserTaskSecret
 from app.services.analytics_service import AnalyticsEvents
 from app.services.browser import engine_watchdog, runner as runner_mod
 from app.services.browser.agent_run import AgentRunSetup

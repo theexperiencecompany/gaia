@@ -29,13 +29,8 @@ from app.constants.browser import (
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc, with_rate_limiting
 from app.models.chat_models import ConversationSource
-from app.schemas.browser import BrowserResultSnapshot
-from app.schemas.browser_job import (
-    BrowserJobRequest,
-    BrowserJobState,
-    BrowserJobStatus,
-    BrowserTaskSecret,
-)
+from app.schemas.browser import BrowserResultSnapshot, BrowserTaskSecret
+from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJobStatus
 from app.services.browser.agent_guidance import (
     clear_guidance_request,
     get_guidance_request,

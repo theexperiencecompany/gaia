@@ -3,7 +3,7 @@
 import pytest
 
 from app.constants.browser import JEV_SECRET_MASK
-from app.schemas.browser_job import BrowserTaskSecret
+from app.schemas.browser import BrowserTaskSecret
 from app.services.browser.jev.secrets import RunSecrets, SecretWithheld
 
 pytestmark = pytest.mark.unit

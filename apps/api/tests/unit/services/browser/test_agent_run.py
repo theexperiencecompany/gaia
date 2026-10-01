@@ -31,8 +31,12 @@ from app.constants.browser import (
     JevOperation,
     JevStop,
 )
-from app.schemas.browser import AgentGuidanceRequest, BrowserAction, GuidanceElement
-from app.schemas.browser_job import BrowserTaskSecret
+from app.schemas.browser import (
+    AgentGuidanceRequest,
+    BrowserAction,
+    BrowserTaskSecret,
+    GuidanceElement,
+)
 from app.services.browser import agent_run as agent_run_mod
 from app.services.browser.agent_run import STEP_ERROR_CAPTION, AgentRunSetup, BrowserAgentRun
 from app.services.browser.exceptions import BrowserUnavailableError

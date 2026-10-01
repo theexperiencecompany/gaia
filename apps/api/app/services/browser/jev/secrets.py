@@ -12,7 +12,7 @@ import re
 from urllib.parse import quote, quote_plus, urlsplit
 
 from app.constants.browser import JEV_SECRET_MASK
-from app.schemas.browser_job import BrowserTaskSecret
+from app.schemas.browser import BrowserTaskSecret
 from app.services.browser.exceptions import BrowserAutomationError
 
 _PLACEHOLDER = re.compile(r"<secret>([\w.-]+)</secret>")

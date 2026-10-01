@@ -14,7 +14,7 @@ from app.constants.browser import (
     BROWSER_VIEWPORT_HEIGHT,
     BROWSER_VIEWPORT_WIDTH,
 )
-from app.schemas.browser_job import BrowserTaskSecret
+from app.schemas.browser import BrowserTaskSecret
 from app.services.browser.agent_options import agent_options, browser_options
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.jev.tool import JEV_ACTION
