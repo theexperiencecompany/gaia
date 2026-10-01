@@ -934,7 +934,10 @@ class TestGuidance:
             harness.run._hooks, guidance=_guidance, guidance_allowed=_allowed
         )
         harness.run._agent.task = "buy the ticket"
-        scroll = PageAction(id="scroll_down", kind="scroll", label="Scroll down", delta=560)
+        # An inner area to scroll is on the page, but is no control to name.
+        scroll = PageAction(
+            id="scroll_down_99", node=99, kind="scroll", label="Scroll down in List", delta=240
+        )
         links = [
             PageAction(id=f"e{n}", node=n, kind="click", label=f"Link {n}", role="link")
             for n in range(BROWSER_GUIDANCE_MAX_ELEMENTS + 5)
