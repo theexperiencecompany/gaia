@@ -216,9 +216,8 @@ async def publish_outbound_message(
     return OutboundResult.PUBLISHED
 
 
-# Friendly platform names for user-facing copy consumed by other modules
-# (e.g. workflow delivery provenance frames). Single source — import, don't
-# restate. In-module copy prefers ``ConversationSource.display_name``.
+# Friendly platform names for user-facing copy (e.g. the link confirmation,
+# delivery provenance frames). Single source — import, don't restate.
 PLATFORM_DISPLAY_NAMES: dict[ConversationSource, str] = {
     ConversationSource.TELEGRAM: "Telegram",
     ConversationSource.DISCORD: "Discord",
@@ -240,7 +239,7 @@ async def notify_account_linked(platform: str, user_id: str) -> OutboundResult:
     if source is None or source not in OUTBOUND_QUEUES:
         return OutboundResult.SKIPPED
 
-    display_name = source.display_name
+    display_name = PLATFORM_DISPLAY_NAMES.get(source, source.value.capitalize())
     text = (
         "✅ **You're connected!**\n\n"
         f"Your {display_name} account is now linked to GAIA. "
