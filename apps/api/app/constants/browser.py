@@ -14,7 +14,7 @@ proceed autonomously (e.g. a configured agent card), or abort.
 """
 
 from enum import Enum, StrEnum
-from typing import Literal, Self
+from typing import Literal
 
 # ---------------------------------------------------------------------------
 # Tool identity
@@ -222,8 +222,8 @@ BROWSER_RUN_HANDOFF_TIMED_OUT = (
     f"{BROWSER_RUN_STOPPED_LABEL}nobody finished the step in the live browser in time."
 )
 
-# Reaches the user verbatim on the failure card, so it reads like a person. Shared
-# by the Jev BLOCKED action and the run that ends because no guidance arrived.
+# Reaches the user verbatim on the failure card when the executor gives up on a stuck run,
+# so it reads like a person.
 BROWSER_RUN_BLOCKED_SUMMARY = "I couldn't find a way to move forward on this page."
 
 # Fixed copy, no exception text: many exceptions stringify to "", which left
@@ -292,7 +292,7 @@ BROWSER_LOAD_STALLED_NOTE = (
     "stayed on the page it was on. Sites are often briefly slow; the page may load if "
     "opened again."
 )
-# A decision can wait out a layout pass, a part judgement and Jev; Browser-Use's 75s cut it off.
+# Browser-Use's own 75 s cut slow agent calls off.
 BROWSER_AGENT_LLM_TIMEOUT_SECONDS = 180
 
 # Appended to every browser task so the agent uses the takeover action instead
@@ -416,37 +416,23 @@ class JevOperation(StrEnum):
 
 
 class JevStop(StrEnum):
-    """Why a Jev burst handed control back to the agent, and whether Jev's own judgement caused it.
+    """Why a Jev burst handed control back to the agent."""
 
-    A goal Jev made no progress on is refused again only after a stop Jev
-    caused, which the same goal would repeat; the site, the page, the user or
-    the run causing it leaves the goal free to send again.
-    """
-
-    jev_caused: bool
-
-    def __new__(cls, value: str, jev_caused: bool) -> Self:
-        member = str.__new__(cls, value)
-        member._value_ = value
-        member.jev_caused = jev_caused
-        return member
-
-    DONE = "done", True
-    BLOCKED = "blocked", True
-    NEEDS_INPUT = "needs_input", True
-    NO_PROGRESS = "no_progress", True
-    CYCLE = "cycle", True
-    MAX_ACTIONS = "max_actions", True
-    MAX_DECISIONS = "max_decisions", True
-    COVERED = "covered", False
-    STALE = "stale", False
-    CAPTCHA = "captcha", False
-    UNRESPONSIVE = "unresponsive", False
-    USER_MESSAGE = "user_message", False
-    STOPPED = "stopped", False
-    GATEWAY = "gateway", False
-    LOAD_STALLED = "load_stalled", False
-    NAVIGATION_FAILED = "navigation_failed", False
+    DONE = "done"
+    BLOCKED = "blocked"
+    NEEDS_INPUT = "needs_input"
+    NO_PROGRESS = "no_progress"
+    CYCLE = "cycle"
+    MAX_ACTIONS = "max_actions"
+    MAX_DECISIONS = "max_decisions"
+    COVERED = "covered"
+    STALE = "stale"
+    UNRESPONSIVE = "unresponsive"
+    USER_MESSAGE = "user_message"
+    STOPPED = "stopped"
+    GATEWAY = "gateway"
+    LOAD_STALLED = "load_stalled"
+    NAVIGATION_FAILED = "navigation_failed"
 
 
 #: Controls offered to Jev per request, in DOM order within the viewport. Vercel's
@@ -456,11 +442,6 @@ JEV_GATEWAY_TIMEOUT_SECONDS = 8.0
 JEV_GATEWAY_MAX_ATTEMPTS = 3
 #: After a 402 (out of credit) the failover client skips that gateway this long.
 JEV_OUT_OF_CREDIT_SECONDS = 300.0
-#: What the agent reads when it sends Jev a goal Jev already made no progress on.
-JEV_REPEATED_GOAL_REFUSAL = (
-    "Jev already made no progress on exactly this goal. Act yourself with browser actions, "
-    "or give Jev a different, sharper goal."
-)
 #: How much of the final page's visible text a burst report hands the agent, and of each
 #: other page the burst opened (the most recent ones, up to the count).
 JEV_REPORT_PAGE_TEXT_CHARS = 2000
@@ -497,8 +478,6 @@ JEV_TEXT_VALUE_MAX_CHARS = 2000
 JEV_SECRET_MASK = "[hidden]"  # nosec B105 -- the placeholder shown in place of a typed password, not a credential
 # Probability mass across a choice question must sum to ~1; the gateway rounds.
 JEV_PROBABILITY_SUM_TOLERANCE = 0.02
-#: Frames whose source names a CAPTCHA provider; one visible ends the burst for the CAPTCHA handoff.
-JEV_CAPTCHA_FRAME_MARKERS = ("recaptcha", "hcaptcha", "turnstile", "arkoselabs", "funcaptcha")
 
 
 # A step that shows nothing for this long gets one line saying so. The Berlin

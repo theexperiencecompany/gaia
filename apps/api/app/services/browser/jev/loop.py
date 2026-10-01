@@ -22,7 +22,6 @@ from pydantic import BaseModel, Field
 from app.constants.browser import (
     JEV_BURST_MAX_ACTIONS,
     JEV_BURST_MAX_DECISIONS,
-    JEV_CAPTCHA_FRAME_MARKERS,
     JEV_COVERED_LIMIT,
     JEV_PAGE_TEXT_MAX_CHARS,
     JEV_RECENT_ACTIONS,
@@ -90,8 +89,6 @@ _NO_CHANGE: _Ending = (
     f"{JEV_UNCHANGED_LIMIT} actions in a row changed nothing.",
 )
 _CYCLED: _Ending = (JevStop.CYCLE, "Jev went back and forth between the same two actions.")
-#: How much of a CAPTCHA frame's address the stop names.
-_CAPTCHA_SRC_CHARS = 120
 #: What a page-level step records as its label.
 _PAGE_LEVEL_LABELS = {JevOperation.GO_BACK: "Go back", JevOperation.PRESS_ENTER: "Press Enter"}
 
@@ -144,10 +141,6 @@ class BurstResult:
     opened: list[OpenedPage]
     #: Frames on the final page whose content Jev cannot see (cross-origin).
     hidden_frames: list[str]
-
-    @property
-    def progressed(self) -> bool:
-        return any(step.page_changed for step in self.steps)
 
 
 @dataclass(frozen=True)
@@ -251,11 +244,6 @@ class JevRunner:
                 return _ASKED_TO_STOP
             if await self._user_waiting():
                 return _USER_MESSAGE
-            if (captcha := _captcha(state.page.frames)) is not None:
-                return (
-                    JevStop.CAPTCHA,
-                    f"A CAPTCHA is on the page ({captcha[:_CAPTCHA_SRC_CHARS]}).",
-                )
             if (spent := _budget_spent(state)) is not None:
                 return spent
             if not await self._page.fresh(state.page):
@@ -505,19 +493,6 @@ class JevRunner:
                 cost_usd=evaluation.gateway_cost_usd,
             )
         )
-
-
-def _captcha(frames: list[Frame]) -> str | None:
-    """Return the address of a CAPTCHA frame on the page, if one is shown."""
-    return next(
-        (
-            frame["src"]
-            for frame in frames
-            if frame["visible"]
-            and any(marker in frame["src"].lower() for marker in JEV_CAPTCHA_FRAME_MARKERS)
-        ),
-        None,
-    )
 
 
 def _budget_spent(state: _Burst) -> _Ending | None:

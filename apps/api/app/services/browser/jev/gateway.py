@@ -80,9 +80,6 @@ class JevChoiceAnswer(BaseModel):
     type: Literal["choice"]
     choice: str
     probabilities: dict[str, float] = Field(default_factory=dict)
-    # Jev always returns a confidence; absent means the answer is malformed, which
-    # decision.py rejects rather than defaulting away.
-    confidence: float | None = None
 
 
 class JevUsage(BaseModel):

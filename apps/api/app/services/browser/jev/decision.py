@@ -113,17 +113,8 @@ class Decision:
     #: The snapshot action an element or control operation executes (for a dropdown, the chosen option), else None.
     target: PageAction | None
     url: str | None
-    confidence: float
     latency_ms: int
     evaluation: JevEvaluation
-
-
-@dataclass(frozen=True)
-class _Choice:
-    """A validated answer: the option chosen, and how sure Jev was."""
-
-    choice: str
-    confidence: float
 
 
 @dataclass
@@ -294,20 +285,20 @@ async def _ask(
     )
 
 
-def _validate_choice(answer: JevChoiceAnswer | None, ids: set[str]) -> _Choice:
+def _validate_choice(answer: JevChoiceAnswer | None, ids: set[str]) -> str:
+    """Return the option chosen, once the answer is a distribution over exactly ids that ranks it first."""
     if answer is None:
         raise JevDecisionError(_NO_ANSWER)
     probabilities = answer.probabilities
-    confidence = answer.confidence
-    if confidence is None or not (
+    if not (
         answer.choice in ids
         and set(probabilities) == ids
-        and all(math.isfinite(n) and 0 <= n <= 1 for n in [*probabilities.values(), confidence])
+        and all(math.isfinite(n) and 0 <= n <= 1 for n in probabilities.values())
         and abs(sum(probabilities.values()) - 1) < JEV_PROBABILITY_SUM_TOLERANCE
         and probabilities[answer.choice] >= max(probabilities.values()) - _TIE_TOLERANCE
     ):
         raise JevDecisionError(_INVALID_ANSWER)
-    return _Choice(answer.choice, confidence)
+    return answer.choice
 
 
 async def decide(
@@ -367,27 +358,25 @@ async def decide(
         "visited": [{"title": v.title, "url": v.url} for v in visited],
     }
     evaluation = await _ask(client, state, questions, mask)
-    operation_answer = _validate_choice(
-        evaluation.answers.get(_OPERATION_QUESTION), set(operations)
+    operation = JevOperation(
+        _validate_choice(evaluation.answers.get(_OPERATION_QUESTION), set(operations))
     )
-    operation = JevOperation(operation_answer.choice)
     chosen: PageAction | None = None
     url: str | None = None
     if operation in space.targets:
         target = _validate_choice(
             evaluation.answers.get(_target_question(operation)), set(space.targets[operation])
         )
-        chosen = space.targets[operation][target.choice]
+        chosen = space.targets[operation][target]
     elif operation in controls:
         chosen = controls[operation]
     elif operation is JevOperation.NAVIGATE:
         target = _validate_choice(evaluation.answers.get(_NAVIGATE_QUESTION), set(address_ids))
-        url = address_ids[target.choice]
+        url = address_ids[target]
     return Decision(
         operation=operation,
         target=chosen,
         url=url,
-        confidence=operation_answer.confidence,
         latency_ms=evaluation.latency_ms,
         evaluation=evaluation,
     )
@@ -423,6 +412,6 @@ async def choose_value(
     }
     evaluation = await _ask(client, state, {_VALUE_QUESTION: question}, mask)
     answer = _validate_choice(evaluation.answers.get(_VALUE_QUESTION), set(criteria))
-    if answer.choice in (GENERATE, NONE_VALUE):
-        return answer.choice, evaluation
-    return options[int(answer.choice[1:]) - 1], evaluation
+    if answer in (GENERATE, NONE_VALUE):
+        return answer, evaluation
+    return options[int(answer[1:]) - 1], evaluation

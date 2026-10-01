@@ -115,7 +115,6 @@ def _answer(choice: str, keys: list[str]) -> JevChoiceAnswer:
         probabilities={
             key: (0.8 if len(keys) > 1 else 1.0) if key == choice else rest for key in keys
         },
-        confidence=0.8,
     )
 
 
@@ -418,7 +417,7 @@ async def test_the_decision_names_the_chosen_snapshot_action_or_address(
         target,
         url,
     )
-    assert (decision.confidence, decision.latency_ms) == (0.8, 3)
+    assert decision.latency_ms == 3
     assert decision.evaluation.usage == JevUsage(inputTokens=9)
 
 
@@ -431,10 +430,8 @@ async def test_a_target_answer_is_validated_like_the_operation() -> None:
         await decide(jev, _page(BUY), "buy it", [], [], [], _unmasked)
 
 
-def _choice(choice: str, confidence: float | None = 0.8, **probabilities: float) -> JevChoiceAnswer:
-    return JevChoiceAnswer(
-        type="choice", choice=choice, probabilities=probabilities, confidence=confidence
-    )
+def _choice(choice: str, **probabilities: float) -> JevChoiceAnswer:
+    return JevChoiceAnswer(type="choice", choice=choice, probabilities=probabilities)
 
 
 @pytest.mark.parametrize(
@@ -442,13 +439,10 @@ def _choice(choice: str, confidence: float | None = 0.8, **probabilities: float)
     [
         pytest.param(_choice("SUBMIT_ALL", SUBMIT_ALL=1.0), id="not-offered"),
         pytest.param(_choice("DONE", DONE=1.0), id="probabilities-miss-options"),
-        pytest.param(_choice("DONE", None, DONE=0.8, BLOCKED=0.2), id="no-confidence"),
-        pytest.param(_choice("DONE", 1.2, DONE=0.8, BLOCKED=0.2), id="confidence-above-one"),
-        pytest.param(_choice("DONE", -0.1, DONE=0.8, BLOCKED=0.2), id="confidence-below-zero"),
-        pytest.param(_choice("DONE", 0.8, DONE=1.2, BLOCKED=-0.2), id="negative-probability"),
-        pytest.param(_choice("DONE", math.nan, DONE=0.8, BLOCKED=0.2), id="not-a-number"),
-        pytest.param(_choice("DONE", 0.8, DONE=0.5, BLOCKED=0.3), id="probabilities-sum-short"),
-        pytest.param(_choice("BLOCKED", 0.8, DONE=0.8, BLOCKED=0.2), id="not-the-most-likely"),
+        pytest.param(_choice("DONE", DONE=1.2, BLOCKED=-0.2), id="negative-probability"),
+        pytest.param(_choice("DONE", DONE=math.nan, BLOCKED=0.2), id="not-a-number"),
+        pytest.param(_choice("DONE", DONE=0.5, BLOCKED=0.3), id="probabilities-sum-short"),
+        pytest.param(_choice("BLOCKED", DONE=0.8, BLOCKED=0.2), id="not-the-most-likely"),
     ],
 )
 async def test_a_malformed_answer_is_refused_and_nothing_is_executed(
@@ -466,10 +460,10 @@ async def test_no_answer_is_refused() -> None:
 @pytest.mark.parametrize(
     "answer",
     [
-        pytest.param(_choice("DONE", 1.0, DONE=1.0, BLOCKED=0.0), id="certain"),
-        pytest.param(_choice("DONE", 0.0, DONE=0.5, BLOCKED=0.5), id="tied-and-unsure"),
+        pytest.param(_choice("DONE", DONE=1.0, BLOCKED=0.0), id="certain"),
+        pytest.param(_choice("DONE", DONE=0.5, BLOCKED=0.5), id="tied"),
         pytest.param(
-            _choice("DONE", 0.5, DONE=0.5 - decision_mod._TIE_TOLERANCE, BLOCKED=0.5),
+            _choice("DONE", DONE=0.5 - decision_mod._TIE_TOLERANCE, BLOCKED=0.5),
             id="tied-within-noise",
         ),
     ],
@@ -477,7 +471,7 @@ async def test_no_answer_is_refused() -> None:
 async def test_an_answer_at_the_edges_of_valid_is_taken(answer: JevChoiceAnswer) -> None:
     decision = await decide(_Answers(answer), _page(), "buy it", [], [], [], _unmasked)
 
-    assert (decision.operation, decision.confidence) == (JevOperation.DONE, answer.confidence)
+    assert decision.operation is JevOperation.DONE
 
 
 async def test_probabilities_off_by_exactly_the_tolerance_are_refused(
@@ -487,7 +481,7 @@ async def test_probabilities_off_by_exactly_the_tolerance_are_refused(
 
     with pytest.raises(JevDecisionError):
         await decide(
-            _Answers(_choice("DONE", 0.8, DONE=0.75, BLOCKED=0.5)),
+            _Answers(_choice("DONE", DONE=0.75, BLOCKED=0.5)),
             _page(),
             "g",
             [],

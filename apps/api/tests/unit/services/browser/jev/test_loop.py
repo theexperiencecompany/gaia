@@ -249,7 +249,6 @@ async def test_a_burst_ends_when_jev_judges_the_goal_done_and_reports_what_it_di
             decision_ms=5,
         )
     ]
-    assert result.progressed is True
     assert (result.url, result.title, result.text) == ("https://site.test/b", "Site", "done page")
     assert page.acted == ["e1"]
     assert [v.url for v in run.runner.visited] == ["https://site.test/a", "https://site.test/b"]
@@ -322,46 +321,6 @@ async def test_a_user_message_hands_the_run_back_before_another_decision(
     assert run.jev.decided == []
 
 
-async def test_a_visible_captcha_frame_hands_the_run_back_naming_the_frame(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    captcha = "https://www.google.com/recaptcha/api2/anchor?k=" + "x" * 200
-    frames = [
-        {"src": captcha, "same_origin": False, "visible": True},
-        {"src": "https://ads.test/frame", "same_origin": False, "visible": True},
-        {"src": "https://site.test/inner", "same_origin": True, "visible": True},
-        {"src": "https://hidden.test/frame", "same_origin": False, "visible": False},
-        {"src": "", "same_origin": False, "visible": True},
-    ]
-    run = _run(monkeypatch, FakePage(page_state(frames=frames)))
-
-    result = await run.burst()
-
-    assert result.stop is JevStop.CAPTCHA
-    assert captcha[: loop_mod._CAPTCHA_SRC_CHARS] in result.detail
-    assert captcha not in result.detail
-    # What Jev cannot see into: visible, cross-origin frames with an address.
-    assert result.hidden_frames == [captcha, "https://ads.test/frame"]
-
-
-async def test_a_captcha_frame_that_is_not_shown_does_not_stop_jev(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    frames = [
-        {
-            "src": "https://www.google.com/recaptcha/api2/anchor",
-            "same_origin": False,
-            "visible": False,
-        },
-        {"src": "https://ads.test/frame", "same_origin": False, "visible": True},
-    ]
-    run = _run(monkeypatch, FakePage(page_state(frames=frames)), decision(JevOperation.DONE))
-
-    result = await run.burst()
-
-    assert result.stop is JevStop.DONE
-
-
 async def test_a_burst_stops_at_its_action_budget(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(loop_mod, "JEV_BURST_MAX_ACTIONS", 2)
     page = FakePage(*_pages("a", "b", "c"))
@@ -381,7 +340,6 @@ async def test_actions_that_change_nothing_end_the_burst(monkeypatch: pytest.Mon
 
     assert result.stop is JevStop.NO_PROGRESS
     assert len(result.steps) == JEV_UNCHANGED_LIMIT
-    assert result.progressed is False
 
 
 async def test_going_back_and_forth_between_two_moves_ends_the_burst(
@@ -742,7 +700,6 @@ class _RecordingJev:
                 "type": "choice",
                 "choice": choice,
                 "probabilities": {i: float(i == choice) for i in ids},
-                "confidence": 1.0,
             }
         return JevEvaluation.model_validate({"answers": answers, "provider": "openrouter"})
 
@@ -1190,30 +1147,3 @@ async def test_every_jev_call_and_action_lands_in_the_run_ledger_with_secrets_hi
         # Choosing the value was part of typing it.
         ExecutedAction(CallComponent.JEV, "TYPE_TEXT Name", 3000),
     ]
-
-
-def test_a_burst_that_never_changed_the_page_did_not_progress() -> None:
-    step = JevStep(
-        operation=JevOperation.CLICK,
-        label="Next",
-        ident="",
-        href="",
-        text=None,
-        url="https://site.test/a",
-        page_changed=False,
-        decision_ms=5,
-    )
-    result = BurstResult(
-        goal="g",
-        stop=JevStop.NO_PROGRESS,
-        detail="",
-        steps=[step],
-        url="",
-        title="",
-        text="",
-        opened=[],
-        hidden_frames=[],
-    )
-
-    assert result.progressed is False
-    assert replace(result, steps=[replace(step, page_changed=True)]).progressed is True

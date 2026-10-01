@@ -16,7 +16,6 @@ from browser_use.agent.views import ActionResult
 from pydantic import BaseModel, Field
 
 from app.constants.browser import (
-    JEV_REPEATED_GOAL_REFUSAL,
     JEV_REPORT_OPENED_PAGE_CHARS,
     JEV_REPORT_OPENED_PAGES,
     JEV_REPORT_PAGE_TEXT_CHARS,
@@ -72,7 +71,6 @@ _STOP_MEANING = {
     JevStop.MAX_DECISIONS: "Jev used its decision budget for one burst without settling on the page.",
     JevStop.COVERED: "An overlay or hidden control blocks the target; deal with it yourself.",
     JevStop.STALE: "The page kept changing under Jev's decisions.",
-    JevStop.CAPTCHA: "A CAPTCHA is on the page: hand it to the user with solve_captcha_with_help.",
     JevStop.UNRESPONSIVE: "The page stopped answering; an input sent just then may or may not have landed.",
     JevStop.USER_MESSAGE: "The user sent a message; read it (it is in your task) before going on.",
     JevStop.STOPPED: "The run is stopping.",
@@ -89,11 +87,6 @@ class JevParams(BaseModel):
     start_url: str | None = Field(
         default=None, description="Open this page first; omit to start where the browser is."
     )
-
-
-def _normalized(goal: str) -> tuple[str, ...]:
-    """Return the goal as its words, so case and spacing never make it a new goal."""
-    return tuple(goal.casefold().split())
 
 
 def _step_action(step: JevStep) -> BrowserAction:
@@ -151,23 +144,17 @@ def report(result: BurstResult) -> str:
 
 
 class JevDelegate:
-    """The agent's handle on Jev for one run: bursts, and the goals that went nowhere."""
+    """The agent's handle on Jev for one run: one runner, built at the first burst."""
 
     def __init__(self, *, runner_for: RunnerFactory, emit: BurstEmitFn) -> None:
         self._runner_for = runner_for
         self._emit = emit
         self._runner: JevRunner | None = None
-        self._fruitless: set[tuple[str, ...]] = set()
 
     async def run(self, params: JevParams) -> ActionResult:
-        goal = _normalized(params.goal)
-        if goal in self._fruitless:
-            return ActionResult(error=JEV_REPEATED_GOAL_REFUSAL)
         if self._runner is None:
             self._runner = self._runner_for()
         result = await self._runner.burst(params.goal, params.start_url)
-        if not result.progressed and result.stop.jev_caused:
-            self._fruitless.add(goal)
         if result.steps:
             await self._emit(
                 [_step_action(step) for step in result.steps], result.url, result.title

@@ -119,7 +119,6 @@ def decision(
         operation=operation,
         target=target,
         url=url,
-        confidence=0.9,
         latency_ms=5,
         evaluation=JevEvaluation(answers={}, provider="openrouter"),
     )

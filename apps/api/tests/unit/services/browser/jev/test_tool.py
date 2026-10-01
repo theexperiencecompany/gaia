@@ -1,4 +1,4 @@
-"""The agent's jev action: a goal that went nowhere is never re-sent, and the report carries what Jev saw."""
+"""The agent's jev action: one card per burst that acted, and a report of what Jev did and saw."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from app.constants.browser import JEV_REPEATED_GOAL_REFUSAL, JevOperation, JevStop
+from app.constants.browser import JevOperation, JevStop
 from app.services.browser.jev.loop import BurstResult, JevStep, OpenedPage
 from app.services.browser.jev.tool import JevDelegate, JevParams, report
 
@@ -60,68 +60,6 @@ def _delegate(runner: _Runner) -> tuple[JevDelegate, list[Any]]:
         emitted.append((actions, url))
 
     return JevDelegate(runner_for=lambda: runner, emit=_emit), emitted  # type: ignore[arg-type,return-value]  # a scripted runner
-
-
-async def test_a_goal_jev_made_no_progress_on_is_refused_the_second_time() -> None:
-    runner = _Runner(_burst(JevStop.NO_PROGRESS, _step(page_changed=False)))
-    delegate, _ = _delegate(runner)
-
-    await delegate.run(JevParams(goal="Open the Pricing page"))
-    again = await delegate.run(JevParams(goal="  open the pricing   PAGE "))
-
-    assert again.error == JEV_REPEATED_GOAL_REFUSAL
-    assert runner.goals == ["Open the Pricing page"]
-
-
-async def test_a_different_goal_after_a_fruitless_one_is_sent() -> None:
-    runner = _Runner(
-        _burst(JevStop.NO_PROGRESS, _step(page_changed=False)),
-        _burst(JevStop.DONE, _step(page_changed=True)),
-    )
-    delegate, _ = _delegate(runner)
-
-    await delegate.run(JevParams(goal="open the pricing page"))
-    second = await delegate.run(JevParams(goal="open the plans page"))
-
-    assert second.error is None
-    assert runner.goals == ["open the pricing page", "open the plans page"]
-
-
-#: Stops Jev's own judgement caused: sending the same goal again would end the same way.
-_JEV_CAUSED = {
-    JevStop.DONE,
-    JevStop.BLOCKED,
-    JevStop.NEEDS_INPUT,
-    JevStop.NO_PROGRESS,
-    JevStop.CYCLE,
-    JevStop.MAX_ACTIONS,
-    JevStop.MAX_DECISIONS,
-}
-
-
-@pytest.mark.parametrize("stop", sorted(_JEV_CAUSED))
-async def test_every_stop_jev_caused_without_progress_refuses_the_goal_again(
-    stop: JevStop,
-) -> None:
-    runner = _Runner(_burst(stop))
-    delegate, _ = _delegate(runner)
-
-    await delegate.run(JevParams(goal="open the pricing page"))
-    again = await delegate.run(JevParams(goal="open the pricing page"))
-
-    assert again.error == JEV_REPEATED_GOAL_REFUSAL
-
-
-@pytest.mark.parametrize("stop", sorted(set(JevStop) - _JEV_CAUSED))
-async def test_a_goal_a_stop_jev_did_not_cause_ended_may_be_sent_again(stop: JevStop) -> None:
-    runner = _Runner(_burst(stop), _burst(JevStop.DONE, _step(page_changed=True)))
-    delegate, _ = _delegate(runner)
-
-    await delegate.run(JevParams(goal="open the pricing page"))
-    second = await delegate.run(JevParams(goal="open the pricing page"))
-
-    assert second.error is None
-    assert len(runner.goals) == 2
 
 
 async def test_a_burst_that_acted_gets_one_card_with_its_actions() -> None:
