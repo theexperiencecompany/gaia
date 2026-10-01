@@ -245,8 +245,8 @@ class SettingsValidator:
         self.register_group(
             SettingsGroup(
                 name="Browser Host",
-                keys=["BROWSER_HOST_URL", "BROWSER_HOST_KEY"],
-                description="gaia-browser-host (self-hosted Chromium) + Browser-Use agent",
+                keys=["BROWSER_HOST_URL", "BROWSER_HOST_KEY", "BROWSER_FALLBACK_HOST_URL"],
+                description="gaia-browser-host: the BROWSER_ENGINE host + the Chromium host",
                 affected_features="Autonomous browser automation (the browser_task tool)",
                 # Always-on capability: no enable flag exists. A loud CRITICAL for
                 # every box that simply doesn't run the browser is noise.

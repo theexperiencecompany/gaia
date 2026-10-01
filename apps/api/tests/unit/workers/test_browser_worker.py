@@ -16,7 +16,8 @@ from arq.connections import RedisSettings
 from arq.worker import create_worker
 import pytest
 
-from app.constants.browser import BROWSER_JOB_QUEUE, BROWSER_JOB_TASK
+from app.config.settings import settings
+from app.constants.browser import BROWSER_JOB_QUEUE, BROWSER_JOB_TASK, BrowserEngine
 from app.services.browser.job_lifetime import browser_job_deadline_seconds
 from app.workers import browser_worker as browser_worker_mod
 from app.workers.config.worker_settings import (
@@ -206,3 +207,34 @@ async def test_the_browser_workers_task_is_named_for_it(
 
 async def test_shutdown_after_a_startup_that_never_started_it_is_a_no_op() -> None:
     await browser_worker_mod.stop_browser_worker({})
+
+
+@pytest.mark.parametrize(
+    ("engine", "chrome_host", "warned"),
+    [
+        (BrowserEngine.OBSCURA, None, True),
+        (BrowserEngine.OBSCURA, "http://chrome:8931", False),
+        (BrowserEngine.CHROMIUM, None, False),
+    ],
+)
+async def test_a_worker_with_no_chrome_host_says_so_at_boot(
+    monkeypatch: pytest.MonkeyPatch,
+    raised_signals: MagicMock,
+    engine: BrowserEngine,
+    chrome_host: str | None,
+    warned: bool,
+) -> None:
+    """Every default user's run opens on the Chrome host; without one they all fail."""
+    monkeypatch.setattr(settings, "BROWSER_ENGINE", engine)
+    monkeypatch.setattr(settings, "BROWSER_FALLBACK_HOST_URL", chrome_host)
+    monkeypatch.setattr(browser_worker_mod, "build_browser_worker", _FakeWorker)
+    error = MagicMock()
+    monkeypatch.setattr(browser_worker_mod.log, "error", error)
+    ctx: dict[str, Any] = {}
+
+    browser_worker_mod.start_browser_worker(ctx)
+    await browser_worker_mod.stop_browser_worker(ctx)
+
+    assert error.called is warned
+    if warned:
+        assert error.call_args.kwargs == {"error_type": "BrowserUnavailableError"}

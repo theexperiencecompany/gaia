@@ -261,14 +261,10 @@ class CommonSettings(BaseAppSettings):
     # CDP with an authenticated screencast live view. Reached internally by
     # service name; override locally to http://localhost:8930.
 
-    # A second Chromium host: a run about to end blocked retries that page there once.
-    # It needs BROWSER_ENGINE=chromium, few BROWSER_HOST_MAX_SESSIONS, and its OWN
-    # address as BROWSER_HOST_URL, since a host builds its CDP/live URLs from it.
+    # The Chromium host when BROWSER_HOST_URL runs Obscura: every default user's run
+    # opens here and Obscura runs fall back here. It runs BROWSER_ENGINE=chromium with
+    # its OWN address as BROWSER_HOST_URL, since a host builds its CDP/live URLs from it.
     BROWSER_FALLBACK_HOST_URL: str | None = None
-    # Base port for the dedicated Obscura the crawl4ai engine drives, distinct
-    # from OBSCURA_PORT so the two never collide; the manager probes upward from
-    # here if taken. High range on purpose: 9222/9223 collide with local Chrome.
-    OBSCURA_CRAWL_PORT: int = 39222
 
     # Fernet key (32 url-safe base64 bytes) encrypting each user's saved browser
     # login (storage_state) at rest in Mongo. Infisical-provided in production;
