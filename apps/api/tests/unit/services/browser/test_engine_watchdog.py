@@ -245,3 +245,24 @@ async def test_a_run_that_will_not_unwind_is_left_after_its_grace_and_logged(
     assert len(outlived) == 1
     assert outlived[0]["msg"]
     assert outlived[0]["browser"] == _WATCH
+
+
+class _SlowToAbandon(_StuckRun):
+    """A run whose own unwind finishes before the watchdog is done abandoning its session."""
+
+    async def abandon(self) -> None:
+        for _ in range(20):
+            await asyncio.sleep(0)
+        self.abandoned = True
+
+
+@pytest.mark.regression
+async def test_a_run_that_unwinds_before_the_watchdog_is_done_still_ends_on_the_engines_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: the cut run finished first and the watchdog's unfinished result was read, crashing the run with "Result is not set"."""
+    _host(monkeypatch)
+    run = _SlowToAbandon()
+
+    assert await _watched(run) is GONE
+    assert run.abandoned
