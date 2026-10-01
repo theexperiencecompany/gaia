@@ -12,7 +12,7 @@ Usage:
 from collections.abc import Callable
 import json
 import time
-from typing import Any
+from typing import TypedDict, cast
 
 from app.agents.core.background.session import StreamSession, get_session
 from app.constants.log_tags import LogTag
@@ -26,7 +26,29 @@ STREAM_PUBLISH_TASK_NAME = "stream-publish"
 from shared.py.wide_events import log
 
 
-def _collect(session: StreamSession, data: dict[str, Any]) -> None:
+class _ReasoningDelta(TypedDict, total=False):
+    """One reasoning frame's payload; the frames come from many writers, so values are unchecked."""
+
+    subagent_id: object
+    content: object
+
+
+class _ReasoningFrame(TypedDict, total=False):
+    """A stream frame as _collect reads it; every other key passes through untouched."""
+
+    reasoning: object
+
+
+def _reasoning_of(frame: object) -> _ReasoningDelta | None:
+    """Return a frame's reasoning payload, or None when it carries none."""
+    if not isinstance(frame, dict):
+        return None
+    typed: _ReasoningFrame = cast(_ReasoningFrame, frame)
+    reasoning = typed.get("reasoning")
+    return cast(_ReasoningDelta, reasoning) if isinstance(reasoning, dict) else None
+
+
+def _collect(session: StreamSession, data: dict[str, object]) -> None:
     """Append an event to the session collector, coalescing reasoning deltas.
 
     Reasoning arrives one event per token and persists verbatim, which once
@@ -34,12 +56,14 @@ def _collect(session: StreamSession, data: dict[str, Any]) -> None:
     contiguous run of thinking (any other event closes the block); same
     subagent_id only, so concurrent subagents never merge.
     """
-    reasoning = data.get("reasoning")
-    if not isinstance(reasoning, dict):
+    reasoning: _ReasoningDelta | None = _reasoning_of(data)
+    if reasoning is None:
         session.tool_events.append(data)
         return
-    previous = session.tool_events[-1].get("reasoning") if session.tool_events else None
-    if isinstance(previous, dict) and previous.get("subagent_id") == reasoning.get("subagent_id"):
+    previous: _ReasoningDelta | None = (
+        _reasoning_of(session.tool_events[-1]) if session.tool_events else None
+    )
+    if previous is not None and previous.get("subagent_id") == reasoning.get("subagent_id"):
         previous["content"] = f"{previous.get('content', '')}{reasoning.get('content', '')}"
         return
     # A copy: the published dict belongs to the caller, and the merge above
@@ -47,7 +71,7 @@ def _collect(session: StreamSession, data: dict[str, Any]) -> None:
     session.tool_events.append({"reasoning": dict(reasoning)})
 
 
-async def publish_to_stream(stream_id: str, data: dict[str, Any]) -> None:
+async def publish_to_stream(stream_id: str, data: dict[str, object]) -> None:
     """Publish one event to a stream and its collector, awaited, so a caller sending many keeps their order."""
     await stream_manager.publish_chunk(stream_id, f"data: {json.dumps(data)}\n\n")
     session = get_session(stream_id)
@@ -55,7 +79,7 @@ async def publish_to_stream(stream_id: str, data: dict[str, Any]) -> None:
         _collect(session, data)
 
 
-def make_redis_stream_writer(stream_id: str) -> Callable[[dict[str, Any]], None]:
+def make_redis_stream_writer(stream_id: str) -> Callable[[dict[str, object]], None]:
     """Return a sync callable that publishes tool events directly to Redis.
 
     Matches the stream_writer protocol expected by execute_subagent_stream().
@@ -64,7 +88,7 @@ def make_redis_stream_writer(stream_id: str) -> Callable[[dict[str, Any]], None]
     copy is coalesced by _collect.
     """
 
-    def writer(data: dict[str, Any]) -> None:
+    def writer(data: dict[str, object]) -> None:
         chunk = f"data: {json.dumps(data)}\n\n"
         try:
             spawn_background_task(

@@ -91,7 +91,8 @@ async def read_cards(job_id: str) -> list[dict[str, object]]:
     """Return every card the feed holds now, oldest first, without waiting for more."""
     cards: list[dict[str, object]] = []
     for entry_id, fields in await redis_cache.client.xrange(_key(job_id)):
-        payload = _decode(entry_id, _STREAM_FIELDS.validate_python(fields).get("payload"))
+        typed_fields: _StreamFields = _STREAM_FIELDS.validate_python(fields)
+        payload = _decode(entry_id, typed_fields.get("payload"))
         if payload is not None and is_card_frame(payload):
             cards.append(payload)
     return cards
