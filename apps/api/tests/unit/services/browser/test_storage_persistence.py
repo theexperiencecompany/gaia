@@ -300,7 +300,6 @@ async def _saved(profiles: _Profiles, domain: str) -> dict:
 _TOKEN_ORIGIN = {"origin": "https://example.com", "localStorage": [{"name": "t", "value": "1"}]}
 
 
-@pytest.mark.regression
 async def test_a_save_that_reports_nothing_about_an_origin_keeps_its_saved_storage(
     profiles: _Profiles,
 ) -> None:

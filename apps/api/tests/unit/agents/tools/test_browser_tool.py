@@ -503,7 +503,6 @@ async def test_no_stream_means_no_relay_but_the_job_still_runs(
     assert len(recorder.enqueued) == 1
 
 
-@pytest.mark.regression
 async def test_the_job_runs_the_executors_task_never_the_users_raw_message(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -59,7 +59,6 @@ async def test_the_input_action_gets_the_secret_values(executed: list[dict[str, 
     ]
 
 
-@pytest.mark.regression
 async def test_a_typing_action_naming_a_secret_it_cannot_fill_fails_and_types_nothing(
     executed: list[dict[str, Any]],
 ) -> None:

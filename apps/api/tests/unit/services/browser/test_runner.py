@@ -1303,7 +1303,6 @@ async def test_waiting_on_the_agent_pauses_the_watchdog() -> None:
     assert result.summary == "booked"
 
 
-@pytest.mark.regression
 async def test_a_run_that_saw_no_page_resumes_at_the_page_it_was_asked_to_start_on() -> None:
     async def _switches_before_any_page(run: _ScriptedRun) -> RunOutcome:
         run.last_url = None
@@ -1319,7 +1318,6 @@ async def test_a_run_that_saw_no_page_resumes_at_the_page_it_was_asked_to_start_
     assert seen["open_fallback"].await_args.args[0] == PAGE
 
 
-@pytest.mark.regression
 async def test_a_run_the_user_stopped_after_asking_to_move_is_not_moved() -> None:
     async def _switches(run: _ScriptedRun) -> RunOutcome:
         assert run.hooks.switch_engine is not None

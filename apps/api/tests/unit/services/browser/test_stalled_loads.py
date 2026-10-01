@@ -201,7 +201,6 @@ async def test_the_agent_hears_of_a_load_the_browser_stopped_waiting_on_while_it
 
 
 @pytest.mark.unit
-@pytest.mark.regression
 @pytest.mark.parametrize(
     ("reason", "kind"),
     [

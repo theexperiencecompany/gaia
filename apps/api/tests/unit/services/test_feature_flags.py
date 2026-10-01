@@ -621,7 +621,6 @@ class TestKillSwitch:
         )
         assert evaluated.call_args.args[2]["fallback_reason"] == "user_choice"
 
-    @pytest.mark.regression
     async def test_a_kill_switch_never_created_is_off_and_warns_nothing(
         self, stored_user: AsyncMock, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:

@@ -360,7 +360,6 @@ async def _still_pending(handoff_id: str) -> bool:
     return record is not None and record.status is HandoffStatus.PENDING
 
 
-@pytest.mark.regression
 async def test_a_signed_in_page_does_not_end_a_login_handoff_until_the_user_says_so(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -400,7 +399,6 @@ async def test_a_signed_in_page_does_not_end_a_login_handoff_until_the_user_says
     assert [call.args[1:] for call in saves] == [("example.test", LIVE_STORAGE_STATE)]
 
 
-@pytest.mark.regression
 async def test_a_done_that_left_the_user_signed_out_is_asked_again_and_saves_nothing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

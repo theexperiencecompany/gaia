@@ -649,7 +649,6 @@ async def test_a_login_is_saved_from_the_primary_when_the_fallback_cannot_open(
     )
 
 
-@pytest.mark.regression
 async def test_a_sign_in_asked_for_again_after_the_switch_is_saved_by_neither_browser(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

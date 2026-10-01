@@ -256,7 +256,6 @@ class _SlowToAbandon(_StuckRun):
         self.abandoned = True
 
 
-@pytest.mark.regression
 async def test_a_run_that_unwinds_before_the_watchdog_is_done_still_ends_on_the_engines_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
