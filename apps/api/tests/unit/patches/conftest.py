@@ -1,14 +1,15 @@
 """Browser-Use patch fixtures: the patches that work around Obscura gaps apply to Obscura sessions only."""
 
+from collections.abc import Iterator
+
 import pytest
 
-from app.config.settings import settings
 from app.constants.browser import BrowserEngine
-from tests.helpers import OBSCURA_TEST_HOST_URL
+from app.patches.obscura_sessions import driving
 
 
 @pytest.fixture
-def obscura_host(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Configure Obscura as the engine on OBSCURA_TEST_HOST_URL."""
-    monkeypatch.setattr(settings, "BROWSER_ENGINE", BrowserEngine.OBSCURA)
-    monkeypatch.setattr(settings, "BROWSER_HOST_URL", OBSCURA_TEST_HOST_URL)
+def obscura_host() -> Iterator[None]:
+    """Run the test as a run driving an Obscura session."""
+    with driving(BrowserEngine.OBSCURA):
+        yield

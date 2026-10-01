@@ -1,31 +1,29 @@
-"""Step screenshots on local disk, served back through a short capability code.
+"""Step screenshots kept in Redis, served back through a short capability code.
 
 The object store is the normal home for a step frame, but it needs credentials
-this repo does not require to run. Without them a run used to produce no frame
-at all: no photo on a bot, no row in the task history, and no recap link, since
-a recap refuses to promise frames it cannot show.
+this repo does not require to run. Without them the frames are kept in Redis:
+the browser worker that captures a frame and the API that serves it are
+separate processes (separate containers in compose), and Redis is the store
+both already share, so a frame written by one is readable by the other. Each
+frame expires with the code that serves it, so nothing needs sweeping.
 
-So when no object store is configured the frames go to a local directory and a
-short code maps to that run, exactly as the live view and the recap page already
-do. The code is the capability, the same as theirs, and the URL it produces is
-an ordinary one, so nothing downstream has to know which backend served it.
+A short code maps to the run, exactly as the live view and the recap page
+already do. The code is the capability, the same as theirs, and the URL it
+produces is an ordinary one, so nothing downstream has to know which backend
+served it.
 """
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
-from pathlib import Path
+import base64
 import secrets
-import shutil
-import tempfile
-import time
 from time import perf_counter
 
 from app.constants.browser import (
     BROWSER_LIVE_CODE_ENTROPY_BYTES,
     BROWSER_REPLAY_CODE_TTL_SECONDS,
     BROWSER_SHOT_CODE_KEY_PREFIX,
+    BROWSER_SHOT_FRAME_KEY_PREFIX,
     BROWSER_SHOT_SESSION_KEY_PREFIX,
 )
 from app.constants.log_tags import LogTag
@@ -33,16 +31,12 @@ from app.db.redis import redis_cache
 from app.services.browser.links import browser_link_base
 from shared.py.wide_events import log
 
-# Disposable progress artifacts for a local run, so the system temp dir is the
-# honest home: nothing here outlives the machine, and nothing else wants it.
-SHOT_ROOT = Path(tempfile.gettempdir()) / "gaia-browser-shots"
-
-_SHOT_SUFFIX = ".png"
+#: Every step frame is the JPEG the page was captured as.
+SHOT_SUFFIX = ".jpg"
 
 
-def shot_path(session_id: str, index: int) -> Path:
-    """Where one run's step frame lives on disk."""
-    return SHOT_ROOT / session_id / f"step_{index}{_SHOT_SUFFIX}"
+def _frame_key(session_id: str, index: int) -> str:
+    return f"{BROWSER_SHOT_FRAME_KEY_PREFIX}{session_id}:{index}"
 
 
 async def _code_for(session_id: str) -> str:
@@ -71,45 +65,41 @@ async def resolve_shot_code(code: str) -> str | None:
     return session_id if isinstance(session_id, str) else None
 
 
-def _prune_expired() -> None:
-    """Delete every run whose frames outlived the recap code that serves them."""
-    cutoff = time.time() - BROWSER_REPLAY_CODE_TTL_SECONDS
-    for run in SHOT_ROOT.iterdir():
-        # A run starting at the same moment may have pruned this one first.
-        with contextlib.suppress(FileNotFoundError):
-            if run.stat().st_mtime < cutoff:
-                shutil.rmtree(run)
+async def read_step_screenshot(code: str, index: int) -> bytes | None:
+    """Return one stored step frame by its run's code, or None when either is unknown or expired."""
+    session_id = await resolve_shot_code(code)
+    if session_id is None:
+        return None
+    log.set(browser={"session_id": session_id})
+    frame = await redis_cache.get(_frame_key(session_id, index))
+    return base64.b64decode(frame) if isinstance(frame, str) else None
 
 
-def _write(png: bytes, session_id: str, index: int) -> None:
-    path = shot_path(session_id, index)
-    if not path.parent.exists() and SHOT_ROOT.exists():
-        # Once per run, when its first frame lands: the directory never grows past the recap window.
-        _prune_expired()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(png)
-
-
-async def store_step_screenshot(png: bytes, session_id: str, index: int) -> str:
-    """Write one step frame to disk and return the URL that serves it back."""
-    size_bytes = len(png)
+async def store_step_screenshot(jpeg: bytes, session_id: str, index: int) -> str | None:
+    """Keep one step frame and return the URL that serves it back, or None when Redis did not take it."""
+    size_bytes = len(jpeg)
     started = perf_counter()
-    # Disk is blocking, and this runs on the browser loop's own event loop.
-    await asyncio.to_thread(_write, png, session_id, index)
+    stored = await redis_cache.set(
+        _frame_key(session_id, index),
+        base64.b64encode(jpeg).decode(),
+        ttl=BROWSER_REPLAY_CODE_TTL_SECONDS,
+    )
+    if not stored:
+        return None
     code = await _code_for(session_id)
     store_ms = round((perf_counter() - started) * 1000)
     log.set_ns(
         "browser",
         session_id=session_id,
-        shot_backend="local",
+        shot_backend="redis",
         shot_bytes=size_bytes,
         shot_store_ms=store_ms,
     )
     log.info(
         f"{LogTag.BROWSER} Browser step screenshot stored",
         step_index=index,
-        backend="local",
+        backend="redis",
         size_bytes=size_bytes,
         store_ms=store_ms,
     )
-    return f"{browser_link_base()}/shots/{code}/{index}{_SHOT_SUFFIX}"
+    return f"{browser_link_base()}/shots/{code}/{index}{SHOT_SUFFIX}"

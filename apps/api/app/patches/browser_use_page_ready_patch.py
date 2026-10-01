@@ -4,7 +4,8 @@ _navigate_and_wait waits for a CDP lifecycle event with a hardcoded default
 timeout (3s same-domain, 8s cross-domain), paid in full only when the load
 event never arrives. Measured on a real run, this wait was the single biggest
 slice of time-to-first-action (8.5s of 21s). Callers passing an explicit
-timeout are untouched.
+timeout are untouched. The cap is not silent: a run's StalledLoads tells the
+agent when the page it goes on with had not finished loading.
 
 Pinned to browser-use==0.11.13; the import fails loudly if the method moves.
 """

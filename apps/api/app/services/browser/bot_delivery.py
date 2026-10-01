@@ -1,17 +1,16 @@
 """Mirror browser progress to messaging bots (Telegram/WhatsApp/etc).
 
 Bots consume backend-pushed messages over RabbitMQ, not the SSE stream. Step
-screenshots are already uploaded to the CDN as signed URLs (see
-screenshots.py), so a bot step is delivered as a real photo, the same
-artifact the web card renders, through the platform's native image message
-instead of a pasted link.
+screenshots are already published at a URL (the bucket's, or the API's own
+shot route; see screenshots.py), so a bot step is delivered as a real photo,
+the same artifact the web card renders, through the platform's native image
+message instead of a pasted link.
 """
 
 from app.constants.browser import (
     BROWSER_CREDENTIALS_SAVED_NOTE,
     BROWSER_HANDOFF_REPLY_PROMPT,
     HandoffStatus,
-    SensitiveCategory,
 )
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
@@ -25,6 +24,7 @@ from app.schemas.browser import (
 )
 from app.services.browser.captions import caption_from_action_list
 from app.services.browser.live_view import create_live_view_link
+from app.services.browser.shot_store import SHOT_SUFFIX
 from app.services.outbound_delivery import (
     OutboundResult,
     publish_outbound_message,
@@ -48,7 +48,6 @@ class BotProgressDelivery:
         self._stream_screenshots = stream_screenshots
         self._links: dict[str, str] = {}
         self._steps_shown = 0
-        self._last_label = ""  # pragma: no mutate — only compared to a non-empty label
 
     async def session(self, _snapshot: BrowserSessionSnapshot) -> None:
         """Session lifecycle event: deliberately silent.
@@ -76,28 +75,15 @@ class BotProgressDelivery:
                 self._steps_shown += 1
                 await self.note(f"Step {self._steps_shown} · {label}")
             return
-        # A run of identical steps (scrolling a long list) is one update, not a
-        # photo a second; the first of the run already told the user what is going on.
-        label = _step_label(snapshot.goal, snapshot.actions)
-        if label and label == self._last_label:
-            return
-        self._last_label = label
-        # Numbered by what this user was shown: the run's index counts the blank
-        # tab and the repeats skipped above.
+        # Numbered by what this user was shown: the run's index counts the blank tab.
         self._steps_shown += 1
         caption = _step_caption(self._steps_shown, snapshot.goal, snapshot.actions)
-        # Only a real (http) CDN URL is worth sending as a photo; the dev-only
-        # inline data URL fallback is not something to upload to a platform.
-        if (
-            self._stream_screenshots
-            and snapshot.screenshot
-            and snapshot.screenshot.startswith("http")
-        ):
+        if self._stream_screenshots and snapshot.screenshot:
             sent = await publish_outbound_photo(
                 self._platform,
                 self._user_id,
                 snapshot.screenshot,
-                filename=f"browser-step-{self._steps_shown}.png",
+                filename=f"browser-step-{self._steps_shown}{SHOT_SUFFIX}",
                 caption=caption,
             )
             if sent:
@@ -114,7 +100,7 @@ class BotProgressDelivery:
         # The ask is the model's own words (request_human_takeover's reason),
         # shown verbatim as the first bubble; link and reply instruction follow.
         blocks = [snapshot.reason]
-        if snapshot.category == SensitiveCategory.CREDENTIALS:
+        if snapshot.saves_login:
             blocks[0] += f"\n{BROWSER_CREDENTIALS_SAVED_NOTE}"
         if snapshot.session_id:
             blocks.append(f"Open the live browser: {await self._link(snapshot.session_id)}")

@@ -197,8 +197,11 @@ describe("OutboundConsumer message handling", () => {
   it.each([
     ["a server error", platformError(502, "Bad Gateway"), "server_error"],
     [
+      // Still limited after the in-place resend the platform's wait allows.
       "a rate limit",
-      platformError(429, "Too Many Requests: retry after 5"),
+      Object.assign(platformError(429, "Too Many Requests: retry after 0"), {
+        parameters: { retry_after: 0 },
+      }),
       "rate_limited",
     ],
     ["a timeout", new Error("Request timed out"), "timeout"],
@@ -211,9 +214,10 @@ describe("OutboundConsumer message handling", () => {
       );
       const msg = firstAttempt();
 
-      const [event] = await captureBotEvents("outbound_message", () =>
-        deliverMessage(handle, msg),
-      );
+      const [event] = await captureBotEvents("outbound_message", async () => {
+        await deliverMessage(handle, msg);
+        await vi.waitFor(() => expect(channel.nack).toHaveBeenCalled());
+      });
 
       expect(channel.nack).toHaveBeenCalledWith(msg, false, true); // requeue
       expect(channel.ack).not.toHaveBeenCalled();
@@ -502,6 +506,40 @@ describe("OutboundConsumer message handling", () => {
 
     expect(channel.nack).toHaveBeenCalledWith(msg, false, false); // DLQ, no requeue
     expect(channel.ack).not.toHaveBeenCalled();
+  });
+
+  it("sends a rate-limited photo again after the platform's wait instead of dead-lettering it", async () => {
+    // A 429 is the one failure where the platform provably accepted nothing,
+    // so the resend cannot duplicate the photo.
+    const rateLimited = Object.assign(new Error("Too Many Requests"), {
+      error_code: 429,
+      parameters: { retry_after: 0 },
+    });
+    const deliverFile = vi
+      .fn()
+      .mockRejectedValueOnce(rateLimited)
+      .mockResolvedValueOnce(undefined);
+    const handle = await startAndCaptureHandler(
+      "telegram",
+      vi.fn(),
+      deliverFile,
+    );
+    const msg = msgFor({
+      id: "1",
+      platform: "telegram",
+      destination_id: "556677",
+      attachment: {
+        url: "https://cdn.test/browser_steps/s1/step_2.png",
+        filename: "browser-step-2.jpg",
+      },
+      enqueued_at: "t",
+    });
+
+    await deliverMessage(handle, msg);
+
+    await vi.waitFor(() => expect(channel.ack).toHaveBeenCalledWith(msg));
+    expect(deliverFile).toHaveBeenCalledTimes(2);
+    expect(channel.nack).not.toHaveBeenCalled();
   });
 
   it("dead-letters a PARTIALLY-sent multi-chunk message without requeue", async () => {

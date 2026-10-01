@@ -30,7 +30,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
 
 from app.agents.context.assemble import assemble_context
-from app.agents.context.section_context import SectionContext, SectionScope
+from app.agents.context.section_context import SectionContext
 from app.agents.context.tiers import AgentTier
 from app.agents.core.subagents.base_subagent import SubAgentFactory, SubAgentToolConfig
 from app.agents.llm.client import init_llm
@@ -214,7 +214,8 @@ class WorkflowSubagentRunner:
             SectionContext.from_configurable(
                 AgentTier.WORKFLOW_AUTHORING,
                 configurable,
-                SectionScope(query=task, user_id=user_id),
+                query=task,
+                user_id=user_id,
             )
         )
 

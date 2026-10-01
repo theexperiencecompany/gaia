@@ -3,14 +3,13 @@
 Browser-Use replaces every <secret>name</secret> placeholder with its value in
 the parameters of any action it executes. The done text then carries the
 password (and Browser-Use logs it as the "Final Result"), and a jev goal the
-agent wrote would carry it to Jev's decision model. Measured 2026-09-25: the
-agent's done text for the selenium form held the typed password in its URL.
-Only input and send_keys put text into the page, so only they get values;
-every other action keeps the placeholder.
+agent wrote would carry it to Jev's decision model. Only input gets values:
+send_keys types too, but Browser-Use logs its keys at INFO and keeps them in
+the step's memory. Every other action keeps the placeholder.
 
 Off a secret's site Browser-Use leaves its placeholder in the text and types
-that literally, with only a log line. A typing action naming a secret it may
-not fill there fails instead, saying so, and types nothing.
+that literally, with only a log line. An input naming a secret it may not fill
+there, or send_keys naming any, fails instead, saying so, and types nothing.
 
 Pinned to browser-use==0.11.13; the import fails loudly if the method moves.
 """
@@ -26,8 +25,10 @@ from browser_use.browser.session import BrowserSession
 from browser_use.tools.registry.service import Registry
 from browser_use.utils import match_url_with_domain_pattern
 
-#: The actions whose parameters reach the page as typed text.
-_TYPING_ACTIONS = frozenset({"input", "send_keys"})
+#: The one action whose typed text Browser-Use logs only by its placeholder name.
+_SECRET_TYPING_ACTION = "input"
+#: Types text as keys; Browser-Use logs those keys, so it never gets a secret's value.
+_KEYS_ACTION = "send_keys"
 #: Browser-Use's own placeholder pattern (Registry._replace_sensitive_data).
 _PLACEHOLDER = re.compile(r"<secret>(.*?)</secret>")
 
@@ -64,24 +65,29 @@ def _usable(sensitive_data: dict[str, str | dict[str, str]], url: str | None) ->
 async def _execute_action(
     self: Registry[Any], action_name: str, params: dict[str, Any], **kwargs: object
 ) -> object:
-    """Execute the action, with secret values only for a typing action on each secret's own site."""
+    """Execute the action, with secret values only for the input action on each secret's own site."""
     # Browser-Use passes everything by keyword; a positional call fails loudly here.
-    if action_name not in _TYPING_ACTIONS:
-        kwargs["sensitive_data"] = None
-    else:
-        named = set(_PLACEHOLDER.findall(json.dumps(params)))
+    named = sorted(set(_PLACEHOLDER.findall(json.dumps(params))))
+    refused: list[str] = []
+    if action_name == _SECRET_TYPING_ACTION:
         # Browser-Use's own keywords, passed with these types (Registry.execute_action).
         url = _focused_url(cast("BrowserSession | None", kwargs.get("browser_session")))
         secrets = cast("dict[str, str | dict[str, str]] | None", kwargs.get("sensitive_data"))
-        if withheld := sorted(named - _usable(secrets or {}, url)):
-            host = (urlsplit(url).hostname if url else None) or "this page"
-            refused = "; ".join(f"{name} is not used on {host}" for name in withheld)
-            return ActionResult(error=f"{refused}; nothing was typed.")
+        usable = _usable(secrets or {}, url)
+        host = (urlsplit(url).hostname if url else None) or "this page"
+        refused = [f"{name} is not used on {host}" for name in named if name not in usable]
+    else:
+        kwargs["sensitive_data"] = None
+        if action_name == _KEYS_ACTION:
+            # Keys never carry a value, so a placeholder there would be typed as it is.
+            refused = [f"{name} is typed only into its field, never as keys" for name in named]
+    if refused:
+        return ActionResult(error=f"{'; '.join(refused)}; nothing was typed.")
     return await _original_execute_action(self, action_name=action_name, params=params, **kwargs)
 
 
 def apply() -> None:
-    """Scope placeholder substitution to the typing actions and to each secret's site."""
+    """Scope placeholder substitution to the input action and to each secret's site."""
     # type.__setattr__ mirrors the stealth patch: an honest rebind that keeps
     # mypy satisfied without an ignore.
     type.__setattr__(Registry, "execute_action", _execute_action)

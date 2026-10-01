@@ -6,7 +6,6 @@ import pytest
 
 from app.constants.browser import (
     BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
-    BROWSER_AGENT_MAX_FAILURES,
     BROWSER_AGENT_ROLE,
     BROWSER_AGENT_URL_QUERY_MAX_CHARS,
     BROWSER_DEVICE_SCALE_FACTOR,
@@ -36,7 +35,7 @@ TASK = "log in with <secret>password</secret> and open the orders page"
 
 
 def test_jev_acts_first_on_the_whole_task_from_the_start_page() -> None:
-    options = agent_options(TASK, CONFIG, RunSecrets({}))
+    options = agent_options(TASK, CONFIG, RunSecrets({}), resumed=False)
 
     assert options["initial_actions"] == [
         {JEV_ACTION: {"goal": TASK, "start_url": "https://shop.test/"}}
@@ -47,8 +46,8 @@ def test_jev_acts_first_on_the_whole_task_from_the_start_page() -> None:
 
 def test_the_runs_secrets_fill_the_agents_placeholders_and_none_means_none() -> None:
     secret = BrowserTaskSecret(value="hunter2", site="shop.test")
-    given = agent_options(TASK, CONFIG, RunSecrets({"password": secret}))
-    none = agent_options(TASK, CONFIG, RunSecrets({}))
+    given = agent_options(TASK, CONFIG, RunSecrets({"password": secret}), resumed=False)
+    none = agent_options(TASK, CONFIG, RunSecrets({}), resumed=False)
 
     assert given["sensitive_data"] == {
         "https://shop.test": {"password": "hunter2"},
@@ -58,7 +57,7 @@ def test_the_runs_secrets_fill_the_agents_placeholders_and_none_means_none() -> 
 
 
 def test_the_agent_reads_whole_urls_as_text_with_no_judge() -> None:
-    options = agent_options(TASK, CONFIG, RunSecrets({}))
+    options = agent_options(TASK, CONFIG, RunSecrets({}), resumed=False)
 
     # Regression: Browser-Use shortened query strings past 25 characters (bdc1578d4).
     assert options["_url_shortening_limit"] == BROWSER_AGENT_URL_QUERY_MAX_CHARS
@@ -70,12 +69,18 @@ def test_the_agent_reads_whole_urls_as_text_with_no_judge() -> None:
 
 
 def test_each_step_gets_the_runs_step_budget_and_limits() -> None:
-    options = agent_options(TASK, CONFIG, RunSecrets({}))
+    options = agent_options(TASK, CONFIG, RunSecrets({}), resumed=False)
 
-    assert options["step_timeout"] == CONFIG.step_budget_seconds
+    # A handoff waits after its step, so the step budget is the work budget alone.
+    assert options["step_timeout"] == CONFIG.step_timeout_seconds
     assert options["max_actions_per_step"] == 3
-    assert options["max_failures"] == BROWSER_AGENT_MAX_FAILURES
     assert options["llm_timeout"] == BROWSER_AGENT_LLM_TIMEOUT_SECONDS
+
+
+def test_a_run_resumed_on_the_fallback_engine_does_not_start_jev_on_the_whole_task_again() -> None:
+    options = agent_options(TASK, CONFIG, RunSecrets({}), resumed=True)
+
+    assert options["initial_actions"] is None
 
 
 def test_the_browser_renders_the_host_session_at_the_screencast_size() -> None:

@@ -14,7 +14,7 @@ from typing import Annotated
 import uuid
 
 from langchain_core.runnables.config import RunnableConfig
-from langchain_core.tools import tool
+from langchain_core.tools import InjectedToolCallId, tool
 from pydantic import BaseModel, ConfigDict
 
 from app.constants.browser import (
@@ -22,7 +22,6 @@ from app.constants.browser import (
     BROWSER_JOB_POLL_INTERVAL_SECONDS,
     BROWSER_JOB_QUEUE,
     BROWSER_JOB_TASK,
-    BROWSER_USER_WORDS_MAX_CHARS,
     BrowserSessionStatus,
     HandoffDecision,
 )
@@ -77,8 +76,7 @@ _SLOT_HELD = (
 )
 _NOT_QUEUED = "I couldn't start the browser task right now. Try again in a moment."
 _STARTED = (
-    "Browser task started in the background (job {job_id}). Progress and the "
-    "live-view link are streaming into this conversation. Call "
+    "Browser task started in the background (job {job_id}). Call "
     "wait_for_browser_task() when you need the outcome; if you end the turn first, "
     "the result is delivered to the user as a follow-up."
 )
@@ -111,7 +109,6 @@ class _RunParams:
     root_request_id: str | None
     source_category: str | None
     conversation_source: ConversationSource | None
-    user_request: str | None
 
 
 class _RunConfigurable(BaseModel):
@@ -126,7 +123,6 @@ class _RunConfigurable(BaseModel):
     root_request_id: str | None = None
     source_category: str | None = None
     conversation_source: str | None = None
-    user_request: str | None = None
 
 
 def _run_params(config: RunnableConfig) -> _RunParams:
@@ -141,25 +137,14 @@ def _run_params(config: RunnableConfig) -> _RunParams:
         stream_id=configurable.stream_id,
         root_request_id=configurable.root_request_id,
         source_category=configurable.source_category,
-        user_request=configurable.user_request,
         conversation_source=conv_source,
-    )
-
-
-def _with_the_users_words(task: str, user_request: str | None) -> str:
-    """Append the user's own request to the task, so a rewrite that names a control wrongly cannot lose the step."""
-    words = " ".join((user_request or "").split())[:BROWSER_USER_WORDS_MAX_CHARS]
-    if not words:
-        return task
-    return (
-        f"{task}\n\nThe user's own words, which this task serves and which decide where the "
-        f'two differ: "{words}"'
     )
 
 
 def _job_request(
     params: _RunParams,
     job_id: str,
+    tool_call_id: str,
     task: str,
     start_url: str | None,
     secrets: dict[str, BrowserTaskSecret],
@@ -167,6 +152,7 @@ def _job_request(
     return BrowserJobRequest(
         secrets=secrets,
         job_id=job_id,
+        tool_call_id=tool_call_id,
         user_id=params.user_id,
         conversation_id=params.conversation_id,
         task=task,
@@ -183,6 +169,7 @@ def _job_request(
 @with_doc(BROWSER_TASK)
 async def browser_task(
     config: RunnableConfig,
+    tool_call_id: Annotated[str, InjectedToolCallId],
     task: Annotated[str, "Clear, self-contained description of what to do in the browser."],
     start_url: Annotated[
         str | None,
@@ -222,10 +209,9 @@ async def browser_task(
         return _SLOT_HELD.format(holder=holder)
 
     given = {name: secret for name, secret in (secrets or {}).items() if secret.value}
-    # The user's own words carry the values verbatim; only the page may see them.
-    masked = RunSecrets(given)
-    task = masked.mask(_with_the_users_words(masked.mask(task), params.user_request))
-    request = _job_request(params, job_id, task, start_url, given)
+    # The task is the executor's own; a secret value it wrote is put back as its placeholder.
+    task = RunSecrets(given).mask(task)
+    request = _job_request(params, job_id, tool_call_id, task, start_url, given)
     await put_job_state(BrowserJobState(job_id=job_id, status=BrowserJobStatus.QUEUED, task=task))
     if not await _enqueue(request):
         await release_conversation_slot(params.conversation_id, job_id)

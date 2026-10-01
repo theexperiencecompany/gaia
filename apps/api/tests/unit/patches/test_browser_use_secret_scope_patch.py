@@ -38,23 +38,20 @@ def executed(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     return calls
 
 
-@pytest.mark.parametrize("action", ["input", "send_keys"])
-async def test_a_typing_action_gets_the_secret_values(
-    executed: list[dict[str, Any]], action: str
-) -> None:
+async def test_the_input_action_gets_the_secret_values(executed: list[dict[str, Any]]) -> None:
     params = {"index": 3, "text": "<secret>password</secret>"}
     registry: Registry[Any] = Registry()
     session = _on("https://example.test/login")
 
     answer = await patch_module._execute_action(
-        registry, action, params, sensitive_data=SECRETS, browser_session=session
+        registry, "input", params, sensitive_data=SECRETS, browser_session=session
     )
 
     assert answer == "done"
     assert executed == [
         {
             "registry": registry,
-            "action_name": action,
+            "action_name": "input",
             "params": params,
             "sensitive_data": SECRETS,
             "browser_session": session,
@@ -62,7 +59,8 @@ async def test_a_typing_action_gets_the_secret_values(
     ]
 
 
-async def test_a_typing_action_naming_a_secret_off_its_site_fails_and_types_nothing(
+@pytest.mark.regression
+async def test_a_typing_action_naming_a_secret_it_cannot_fill_fails_and_types_nothing(
     executed: list[dict[str, Any]],
 ) -> None:
     text = {"index": 3, "text": "<secret>user</secret> <secret>password</secret>"}
@@ -75,6 +73,14 @@ async def test_a_typing_action_naming_a_secret_off_its_site_fails_and_types_noth
     no_tab = await patch_module._execute_action(
         Registry(), "input", text, sensitive_data=SECRETS, browser_session=unfocused
     )
+    # Browser-Use logs send_keys' keys at INFO and keeps them in the step's memory.
+    as_keys = await patch_module._execute_action(
+        Registry(),
+        "send_keys",
+        {"keys": "<secret>password</secret>"},
+        sensitive_data=SECRETS,
+        browser_session=_on("https://example.test/login"),
+    )
 
     assert executed == []
     assert off_site.error == (
@@ -82,6 +88,9 @@ async def test_a_typing_action_naming_a_secret_off_its_site_fails_and_types_noth
     )
     assert no_tab.error == (
         "password is not used on this page; user is not used on this page; nothing was typed."
+    )
+    assert as_keys.error == (
+        "password is typed only into its field, never as keys; nothing was typed."
     )
 
 

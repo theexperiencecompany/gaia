@@ -158,18 +158,18 @@ async def call_executor(
     # replayed transcript. Empty for interactive chat and for a first run.
     workflow_id = base_configurable.get("workflow_id")
     user_id = base_configurable.get("user_id")
-    if workflow_id and user_id:
-        last_run = await get_last_run_brief(workflow_id, user_id)
-        # Asked here, not at narration time: write_playbook is an executor tool that
-        # comms (which narrates the result) cannot reach. The stopped-replay record
-        # rides along verbatim for the same reason as the request: comms paraphrases.
-        playbook_check = await playbook_check_brief(
+    is_workflow_run = bool(workflow_id and user_id)
+    last_run = await get_last_run_brief(workflow_id, user_id) if is_workflow_run else ""
+    # Asked here, not at narration time: write_playbook is an executor tool that
+    # comms (which narrates the result) cannot reach. The stopped-replay record
+    # rides along verbatim for the same reason as the request: comms paraphrases.
+    playbook_check = (
+        await playbook_check_brief(
             workflow_id, user_id, fallback_note=base_configurable.get("playbook_fallback")
         )
-    else:
-        # compose_executor_brief skips a falsy part, so None and "" are equivalent here.
-        last_run = ""  # pragma: no mutate
-        playbook_check = ""  # pragma: no mutate
+        if is_workflow_run
+        else ""
+    )
 
     composed_task = compose_executor_brief(
         task,

@@ -9,8 +9,10 @@ from unittest.mock import MagicMock
 from browser_use.browser.watchdogs.default_action_watchdog import DefaultActionWatchdog
 import pytest
 
+from app.constants.browser import BrowserEngine
 from app.constants.log_tags import LogTag
 import app.patches.browser_use_scroll_patch as patch_module
+from app.patches.obscura_sessions import driving
 from tests.helpers import OBSCURA_TEST_CDP_URL
 
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("obscura_host")]
@@ -106,7 +108,7 @@ async def test_a_chrome_session_scrolls_the_way_browser_use_does(
 
     monkeypatch.setattr(patch_module, "_original_scroll_with_cdp_gesture", original)
     watchdog = _watchdog(_FakeCdp())
-    watchdog.browser_session.cdp_url = "ws://chrome.test:9222/devtools/browser/run-1"
 
-    assert await patch_module._scroll_with_cdp_gesture(watchdog, 800) is True
+    with driving(BrowserEngine.CHROMIUM):
+        assert await patch_module._scroll_with_cdp_gesture(watchdog, 800) is True
     assert calls == [(watchdog, 800)]

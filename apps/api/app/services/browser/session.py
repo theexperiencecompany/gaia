@@ -19,6 +19,7 @@ from playwright.sync_api import StorageState
 from app.constants.browser import (
     BROWSER_ENGINE_PROBE_TIMEOUT_SECONDS,
     BROWSER_HANDOFF_KEEPALIVE_SECONDS,
+    BrowserEngine,
     EngineFailure,
 )
 from app.constants.log_tags import LogTag
@@ -47,6 +48,8 @@ class BrowserHostSession:
     #: The browser host this context lives on: the primary engine's, or the
     #: fallback's after a switch.
     host_url: str
+    #: The engine the host runs this context on, as the host reported it.
+    engine: BrowserEngine
     #: The site the session opened on, where a sign-in on an unknown page is saved.
     start_domain: str | None = None
     #: The sites its returned state is saved under as a login on release: one it
@@ -162,6 +165,7 @@ async def browser_session(
         live_view_url=live_view_url(host.session_id),
         context_id=host.context_id,
         host_url=host_url,
+        engine=host.engine,
         start_domain=domain,
         login_domains=login_domains,
     )

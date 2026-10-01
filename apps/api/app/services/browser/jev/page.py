@@ -389,7 +389,7 @@ class JevPage:
         self._requests = _Requests(session.session_id, session.target_id)
         # Obscura reports a page's requests only once its navigation is done, never as they
         # finish, so there the read after an input waits on the DOM alone.
-        if not on_obscura(self._browser):
+        if not on_obscura():
             client = session.cdp_client
             client.register.Network.requestWillBeSent(self._requests.started)
             client.register.Network.loadingFinished(self._requests.ended)

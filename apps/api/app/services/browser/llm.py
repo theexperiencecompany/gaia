@@ -14,7 +14,7 @@ from typing import Literal, TypeVar, overload
 from browser_use import ChatOpenAI
 from browser_use.llm.base import BaseChatModel
 from browser_use.llm.messages import BaseMessage
-from browser_use.llm.views import ChatInvokeCompletion
+from browser_use.llm.views import ChatInvokeCompletion, ChatInvokeUsage
 from pydantic import BaseModel
 from pydantic_core import CoreSchema, core_schema
 
@@ -44,9 +44,9 @@ T = TypeVar("T", bound=BaseModel)
 
 # OpenRouter is OpenAI-wire-compatible; Browser-Use talks to it via ChatOpenAI.
 _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-# The cap covers reasoning tokens too: at 1024 a plan answer was cut mid-string.
+# The cap counts reasoning tokens too, so it sits far above any value or page extract it writes.
 _TEXT_MAX_COMPLETION_TOKENS = 4096
-# Minimal effort answered a URL prompt in 1.3-2.1s, every reply valid (measured 2026-09-22).
+# The lightest effort each lane accepts: the text model writes values and extracts, it does not plan.
 _TEXT_REASONING = ReasoningLevel.LIGHT
 # An agent step writes a whole action list plus its memory under flash mode.
 _AGENT_MAX_COMPLETION_TOKENS = 8192
@@ -59,7 +59,8 @@ class MeteredChatModel:
 
     A call not answered within hedge_after seconds gets an identical second
     request, and the first answer wins: a provider's occasional multi-minute
-    stall costs hedge_after plus a normal call instead of a step timeout.
+    stall costs hedge_after plus a normal call instead of a step timeout. The
+    losing request is billed too, so it is recorded once it lands.
     """
 
     _verified_api_keys = True
@@ -108,8 +109,12 @@ class MeteredChatModel:
             lambda: self._inner.ainvoke(messages, output_format, **kwargs),
             hedge_after=self._hedge_after,
             deadline=BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
+            on_late=lambda late: self._record(started, late.usage),
         )
-        usage = result.usage
+        self._record(started, result.usage)
+        return result
+
+    def _record(self, started: float, usage: ChatInvokeUsage | None) -> None:
         self._ledger.add(
             ModelCall(
                 component=self._component,
@@ -118,9 +123,9 @@ class MeteredChatModel:
                 latency_ms=round((perf_counter() - started) * 1000),
                 input_tokens=usage.prompt_tokens if usage else 0,
                 output_tokens=usage.completion_tokens if usage else 0,
+                cached_tokens=(usage.prompt_cached_tokens or 0) if usage else 0,
             )
         )
-        return result
 
 
 def _openai_wire_model(

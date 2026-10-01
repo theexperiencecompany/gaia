@@ -5,39 +5,43 @@ as its jev action. The Agent's initial action is a Jev burst on the whole
 task, so the first model call the agent makes already reads what Jev did. The
 agent then writes the answer, hands Jev a sharper goal, or acts itself; it is
 the only finisher and the only answer writer. Every agent step and every Jev
-burst reaches the runner as one frame through RunHooks.
+burst reaches the runner as one frame through RunHooks. A run resumed on the
+fallback engine carries the primary agent's state instead of a new Jev burst.
 """
 
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from functools import partial
 from itertools import compress
 from time import perf_counter
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from browser_use import Agent, Browser
-from browser_use.agent.views import ActionResult, AgentHistoryList, AgentOutput
-from browser_use.browser.events import BrowserConnectedEvent
+from browser_use.agent.views import ActionResult, AgentHistoryList, AgentOutput, AgentState
+from browser_use.browser.events import BrowserConnectedEvent, NavigationCompleteEvent
 from browser_use.browser.session import BrowserSession
 from browser_use.browser.views import BrowserStateSummary
 from pydantic import BaseModel, TypeAdapter
 
 from app.constants.browser import (
-    BROWSER_AGENT_NO_PROGRESS_STEPS,
+    BROWSER_ANSWER_AFTER_STEP,
     BROWSER_ENGINE_PROBE_TIMEOUT_SECONDS,
+    BROWSER_ENGINE_RESUMED_NOTE,
     BROWSER_GUIDANCE_MAX_ELEMENTS,
     BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS,
     BROWSER_GUIDANCE_RECENT_ACTIONS,
     BROWSER_NO_GUIDANCE_AVAILABLE,
-    BROWSER_RUN_NO_PROGRESS_SUMMARY,
     BROWSER_TAKEOVER_DONE_NOTE,
+    BrowserRunFailure,
     EngineSwitchReason,
     SensitiveCategory,
 )
 from app.constants.log_tags import LogTag
 from app.patches.browser_use_run_lock_patch import isolate_run_events
+from app.patches.obscura_sessions import driving
 from app.schemas.browser import (
     AgentGuidanceRequest,
     BrowserAction,
@@ -46,8 +50,12 @@ from app.schemas.browser import (
     GuidanceElement,
 )
 from app.services.browser.agent_options import agent_options, browser_options
-from app.services.browser.captions import burst_caption, step_caption
-from app.services.browser.exceptions import BrowserUnavailableError
+from app.services.browser.captions import burst_caption, caption_from_action_list, step_caption
+from app.services.browser.exceptions import (
+    BrowserAutomationError,
+    BrowserHandoffCancelled,
+    BrowserUnavailableError,
+)
 from app.services.browser.jev.gateway import open_jev_client
 from app.services.browser.jev.loop import BurstContext, JevRunner
 from app.services.browser.jev.page import JevPage, PageAction
@@ -66,6 +74,7 @@ from app.services.browser.run_contract import (
 from app.services.browser.session import BrowserHostSession
 from app.services.browser.stalled_loads import StalledLoads
 from app.services.browser.tools import build_browser_tools
+from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
 # Attributes worth naming an otherwise-unlabelled control by, in the order a
@@ -76,9 +85,8 @@ _OUTPUT_MAX_CHARS = 1000
 #: Browser-Use's typing action.
 _INPUT_ACTION = "input"
 
-#: Caption for a step that produced no action to describe — one whose actions
-#: errored or whose observation stalled.
-STEP_ERROR_CAPTION = "That didn't respond, trying again"
+#: Caption for a step that failed before it picked an action to describe.
+STEP_ERROR_CAPTION = "That step failed"
 
 
 class _ActionInputs(TypedDict, total=False):
@@ -172,11 +180,9 @@ def _is_control(action: PageAction) -> bool:
     return action["kind"] in _GUIDANCE_KINDS
 
 
-def _guidance_element(number: int, action: PageAction) -> GuidanceElement:
-    """Return one control as a guidance ask lists it: its number on the page, label and role."""
-    return GuidanceElement(
-        index=number, label=action["label"], role=action.get("role", action["kind"])
-    )
+def _guidance_element(action: PageAction) -> GuidanceElement:
+    """Return one control as a guidance ask lists it: its label and role."""
+    return GuidanceElement(label=action["label"], role=action.get("role", action["kind"]))
 
 
 def outcome_from_history(history: AgentHistoryList[BaseModel]) -> tuple[bool, str | None]:
@@ -186,18 +192,30 @@ def outcome_from_history(history: AgentHistoryList[BaseModel]) -> tuple[bool, st
     return success, final
 
 
+def failure_from_history(
+    history: AgentHistoryList[BaseModel], max_steps: int
+) -> BrowserRunFailure | None:
+    """Return why an agent that did not succeed ended, as its history shows; None when nothing there says."""
+    if history.is_done():
+        return BrowserRunFailure.GOAL_NOT_ACHIEVED
+    errors = history.errors()
+    if errors and errors[-1]:
+        return BrowserRunFailure.STEP_FAILED
+    if history.number_of_steps() >= max_steps:
+        return BrowserRunFailure.STEP_LIMIT
+    return None
+
+
 @dataclass(frozen=True)
 class _Step:
     """The agent step in flight: when it started, the actions it picked, and the card of its own."""
 
     started_at: float
     actions: list[str]
+    #: What the step's own actions did, as its card captions them; "" for a step that only hands Jev a goal.
+    caption: str
     #: The card showing every action but jev's, whose rows its results land on; None when there is none.
     frame: int | None
-
-
-#: What makes two agent steps the same: the page and the actions with their arguments.
-_Signature = tuple[str, list[tuple[str, dict[str, Any]]]]
 
 
 @dataclass(frozen=True)
@@ -209,6 +227,8 @@ class AgentRunSetup:
     secrets: RunSecrets
     #: A run resumed on the fallback engine numbers on from the steps the user already saw.
     steps_before: int = 0
+    #: The primary agent's state, for a run resumed on the fallback engine: it goes on from there.
+    resumed_from: AgentState | None = None
 
 
 class BrowserAgentRun:
@@ -228,6 +248,9 @@ class BrowserAgentRun:
         self._secrets = setup.secrets
         self._ledger = setup.ledger
         self._user_id = setup.user_id
+        self._resumed_from = setup.resumed_from
+        #: The task as the runner gave it, without the rules the agent is told alongside.
+        self._task: str
         self._agent: Any = None
         self._page: JevPage | None = None
         self._stalls: StalledLoads | None = None
@@ -235,17 +258,28 @@ class BrowserAgentRun:
         # A run resumed on the fallback engine numbers on from the steps the user already saw.
         self._frames = setup.steps_before
         self._step: _Step | None = None
-        #: Each agent step's page and actions, to see the agent repeat itself on an unchanged page.
-        self._signatures: list[_Signature] = []
-        self.no_progress = False
-        #: Where the run was when it ended, for a resume on the fallback engine.
+        #: What a handoff action asked to wait on; run after its step, so no step budget counts the wait.
+        self._wait: Callable[[], Awaitable[str]] | None = None
+        #: The last page the run was seen on, for a resume on the fallback engine.
         self.last_url: str | None = None
+        #: Whether the agent's browser ever attached to the session over CDP.
+        self.connected = False
 
     @property
     def frames(self) -> int:
         return self._frames
 
+    @property
+    def agent_state(self) -> AgentState | None:
+        """The agent's state as it stands, for a resume on the fallback engine; None before it is built."""
+        return cast(AgentState, self._agent.state) if self._agent is not None else None
+
     async def execute(self, task: str) -> RunOutcome:
+        with driving(self._session.engine):
+            return await self._execute(task)
+
+    async def _execute(self, task: str) -> RunOutcome:
+        self._task = task
         # Before any Browser-Use object exists, so every event bus this run
         # starts takes the run's lock, not the process-wide one.
         isolate_run_events()
@@ -259,7 +293,9 @@ class BrowserAgentRun:
         async with open_jev_client() as client:
             browser = Browser(**browser_options(self._session.cdp_url))
             stalls = self._stalls = StalledLoads(browser)
+            browser.event_bus.on(BrowserConnectedEvent, self._on_connected)
             browser.event_bus.on(BrowserConnectedEvent, stalls.attach)
+            browser.event_bus.on(NavigationCompleteEvent, stalls.on_navigation_complete)
 
             def runner_for() -> JevRunner:
                 return JevRunner(
@@ -288,12 +324,15 @@ class BrowserAgentRun:
             )
             register_jev(tools, delegate)
             self._agent = Agent(
-                **agent_options(task, self._config, self._secrets),
+                **agent_options(
+                    task, self._config, self._secrets, resumed=self._resumed_from is not None
+                ),
+                injected_agent_state=self._resumed_state(),
                 llm=llm,
                 browser=browser,
                 tools=tools,
                 register_new_step_callback=self._on_step,
-                register_should_stop_callback=self._should_stop,
+                register_should_stop_callback=self._hooks.should_stop,
                 page_extraction_llm=text_model,
             )
             try:
@@ -305,11 +344,10 @@ class BrowserAgentRun:
             finally:
                 stalls.close()
         self.last_url = await self._current_url()
-        if self.no_progress:
-            return RunOutcome(False, BROWSER_RUN_NO_PROGRESS_SUMMARY)
         success, final = outcome_from_history(history)
         summary = self._secrets.redact(final) if final else None
-        return RunOutcome(success, summary or "")
+        failure = None if success else failure_from_history(history, self._config.max_steps)
+        return RunOutcome(success, summary or "", failure)
 
     def stop(self) -> None:
         if self._agent is not None:
@@ -334,6 +372,28 @@ class BrowserAgentRun:
         if self._agent is not None:
             await self._agent.browser_session.reset()
 
+    def _on_connected(self, event: BrowserConnectedEvent) -> None:
+        del event
+        self.connected = True
+
+    def _resumed_state(self) -> AgentState | None:
+        """Return the primary agent's state to go on from, told where the run now is, or None for a new run."""
+        if self._resumed_from is None:
+            return None
+        # With no page to reopen, the fallback's session opens on a blank tab.
+        note = BROWSER_ENGINE_RESUMED_NOTE.format(page=self._config.start_url or "about:blank")
+        return self._resumed_from.model_copy(
+            update={
+                "stopped": False,
+                "paused": False,
+                "consecutive_failures": 0,
+                "last_result": [
+                    *(self._resumed_from.last_result or []),
+                    ActionResult(long_term_memory=self._secrets.mask(note)),
+                ],
+            }
+        )
+
     def _page_for(self, browser_session: BrowserSession) -> JevPage:
         if self._page is None:
             self._page = JevPage(browser_session)
@@ -345,17 +405,16 @@ class BrowserAgentRun:
         url = await self._agent.browser_session.get_current_page_url()
         return str(url) if url else None
 
-    async def _should_stop(self) -> bool:
-        return self.no_progress or await self._hooks.should_stop()
-
     async def _on_step_start(self, agent: object) -> None:
-        """Hand the agent what the user said since its last step, and any load the browser stopped."""
+        """Hand the agent what the user said since its last step, and any load the browser stopped or did not finish."""
         del agent
         for message in await self._hooks.take_user_messages():
             self._agent.message_manager.add_new_task(self._secrets.mask(message))
-        if self._stalls is not None and (stalled := self._stalls.take()):
+        if self._stalls is not None and (
+            loads := [*self._stalls.take(), *self._stalls.take_unfinished()]
+        ):
             # How Browser-Use itself reports a wait between steps: a result the next prompt carries.
-            notes = [ActionResult(long_term_memory=self._secrets.mask(note)) for note in stalled]
+            notes = [ActionResult(long_term_memory=self._secrets.mask(note)) for note in loads]
             self._agent.state.last_result = [*(self._agent.state.last_result or []), *notes]
 
     async def _switch_engine(self, switch: SwitchEngineFn, category: EngineSwitchReason) -> str:
@@ -365,12 +424,16 @@ class BrowserAgentRun:
         return answer
 
     async def _takeover(self, reason: str, category: SensitiveCategory) -> str:
-        """Hand the browser to the user, then give the agent the note they left."""
+        """Hand the browser to the user once this step ends; the agent reads their note before its next step."""
+        self._wait = partial(self._user_note, reason, category)
+        return BROWSER_ANSWER_AFTER_STEP
+
+    async def _user_note(self, reason: str, category: SensitiveCategory) -> str:
         note = await self._hooks.takeover(reason, category)
         return note or BROWSER_TAKEOVER_DONE_NOTE
 
     async def _guidance(self, reason: str) -> str:
-        """Ask the agent that started this run how to proceed; the hook raises when none answers."""
+        """Ask the agent that started this run how to proceed, once this step ends; the hook raises when none answers."""
         allowed = self._hooks.guidance_allowed
         if (
             self._hooks.guidance is None
@@ -382,13 +445,13 @@ class BrowserAgentRun:
         page = await self._page.observe()
         request = AgentGuidanceRequest(
             reason=reason,
-            task=self._agent.task,
+            task=self._task,
             url=self._secrets.redact(page.url),
             title=page.title,
             page_text=self._secrets.redact(page.text)[:BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS],
             elements=[
-                _guidance_element(n, action)
-                for n, action in enumerate(page.actions[:BROWSER_GUIDANCE_MAX_ELEMENTS], 1)
+                _guidance_element(action)
+                for action in page.actions[:BROWSER_GUIDANCE_MAX_ELEMENTS]
                 if _is_control(action)
             ],
             recent_actions=[
@@ -396,16 +459,29 @@ class BrowserAgentRun:
                 for a in self._ledger.actions[-BROWSER_GUIDANCE_RECENT_ACTIONS:]
             ],
         )
-        return await self._hooks.guidance(request)
+        self._wait = partial(self._hooks.guidance, request)
+        return BROWSER_ANSWER_AFTER_STEP
 
-    async def _screenshot(self) -> str | None:
-        return await self._page.screenshot() if self._page is not None else None
+    async def _screenshot(self, page: JevPage) -> str | None:
+        """Photograph the page for a card, or None when it does not answer: a card never fails its step."""
+        try:
+            return await page.screenshot()
+        except (BrowserAutomationError, RuntimeError) as exc:
+            log.warning(f"{LogTag.BROWSER} Step photo not taken", error_type=type(exc).__name__)
+            return None
 
     async def _emit_frame(
         self, *, caption: str, actions: list[BrowserAction], url: str | None, title: str | None
     ) -> None:
-        """Emit one card under the next number the user sees, with a photo of the page now."""
+        """Emit one card under the next number the user sees, with a photo of the page taken off the step's path."""
         self._frames += 1
+        if url:
+            self.last_url = url
+        photo = (
+            spawn_background_task(self._screenshot(self._page))
+            if self._page is not None and self._config.stream_screenshots
+            else None
+        )
         self._hooks.step(
             StepFrame(
                 index=self._frames,
@@ -426,7 +502,7 @@ class BrowserAgentRun:
                 ],
                 url=self._secrets.redact(url) if url else url,
                 title=title,
-                raw_screenshot=await self._screenshot(),
+                photo=photo,
                 since_prev_ms=self._clock.tick(),
             )
         )
@@ -448,15 +524,6 @@ class BrowserAgentRun:
         for action in actions:
             if (typed := _password_typed(action, browser_state_summary)) is not None:
                 self._secrets.learn(typed)
-        signature: _Signature = (browser_state_summary.url, [(a.name, a.inputs) for a in actions])
-        self._signatures.append(signature)
-        recent = self._signatures[-BROWSER_AGENT_NO_PROGRESS_STEPS:]
-        if len(recent) == BROWSER_AGENT_NO_PROGRESS_STEPS and all(
-            earlier == signature for earlier in recent
-        ):
-            # The same action list on the same page, step after step: the run is going nowhere.
-            self.no_progress = True
-            log.info(f"{LogTag.BROWSER} Browser agent repeated itself; ending the run")
         own = [a for a in actions if a.name != JEV_ACTION]
         # A step with no card of its own has no own results to place, so "" would read the same.
         frame: int | None = None  # pragma: no mutate
@@ -469,28 +536,49 @@ class BrowserAgentRun:
                 title=browser_state_summary.title,
             )
             frame = self._frames
-        self._step = _Step(started_at=started_at, actions=[a.name for a in actions], frame=frame)
+        self._step = _Step(
+            started_at=started_at,
+            actions=[a.name for a in actions],
+            caption=self._secrets.redact(caption_from_action_list(own)),
+            frame=frame,
+        )
 
     async def _on_step_end(self, agent: Agent[None, BaseModel]) -> None:
-        """Record the step's actions and mirror their results into the thread."""
-        results = agent.state.last_result or []
+        """Record the step's actions and mirror their results, then wait on whoever a handoff action asked."""
+        await self._record_step(agent.state.last_result or [])
+        wait, self._wait = self._wait, None
+        if wait is not None:
+            agent.state.last_result = [*(agent.state.last_result or []), await self._answer(wait)]
+
+    async def _answer(self, wait: Callable[[], Awaitable[str]]) -> ActionResult:
+        """Return what the user or the agent answered, as the result the agent's next prompt carries."""
+        try:
+            answer = await wait()
+        except BrowserHandoffCancelled as exc:
+            # The runner has stopped the run; the agent's next stop check ends it.
+            return ActionResult(error=f"The handoff ended: {exc}")
+        return ActionResult(long_term_memory=self._secrets.mask(answer))
+
+    async def _record_step(self, results: list[ActionResult]) -> None:
         # A step _on_step saw has its card already (or Jev's burst card stands for it).
         step, self._step = self._step, None
-        if step is not None:
+        if step is None:
+            if any(result.error for result in results):
+                await self._emit_frame(caption=STEP_ERROR_CAPTION, actions=[], url=None, title=None)
+            return
+        # One result per action run, in order; a step cut short has fewer. Jev's burst has its own card.
+        own = list(compress(results, (name != JEV_ACTION for name in step.actions)))
+        if step.caption:
             self._ledger.executed(
                 ExecutedAction(
                     component=CallComponent.AGENT,
-                    description=", ".join(step.actions),
+                    description=step.caption,
                     duration_ms=round((perf_counter() - step.started_at) * 1000),
-                    count=sum(name != JEV_ACTION for name in step.actions),
+                    count=len(own),
                 )
             )
-        elif any(result.error for result in results):
-            await self._emit_frame(caption=STEP_ERROR_CAPTION, actions=[], url=None, title=None)
-        if self._hooks.action_results is None or step is None or step.frame is None:
+        if self._hooks.action_results is None or step.frame is None:
             return
-        # One result per action run, in order; a step cut short has fewer. Jev's burst has its own card.
-        own = compress(results, (name != JEV_ACTION for name in step.actions))
         outputs = [
             BrowserActionOutput(position=position, output=self._secrets.redact(text))
             for position, result in enumerate(own)
