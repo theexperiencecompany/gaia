@@ -459,7 +459,7 @@ class JevStop(StrEnum):
     DONE = "done"
     BLOCKED = "blocked"
     NEEDS_INPUT = "needs_input"
-    SECRET_WITHHELD = "secret_withheld"
+    SECRET_WITHHELD = "secret_withheld"  # nosec B105 -- the name of a stop, not a credential
     NO_PROGRESS = "no_progress"
     CYCLE = "cycle"
     MAX_ACTIONS = "max_actions"
@@ -527,6 +527,8 @@ JEV_TEXT_VALUE_MAX_CHARS = 2000
 JEV_SECRET_MASK = "[hidden]"  # nosec B105 -- the placeholder shown in place of a typed password, not a credential
 #: What a step says a password field holds when it is not the secret typed: never its value.
 JEV_SECRET_DIFFERS = "a value other than the secret"  # nosec B105 -- report wording, not a credential
+#: Why a written value is not typed when it names a secret.
+JEV_SECRET_WRITTEN = "The written value names a secret; nothing was typed."  # nosec B105 -- report wording, not a credential
 # Probability mass across a choice question must sum to ~1; the gateway rounds.
 JEV_PROBABILITY_SUM_TOLERANCE = 0.02
 

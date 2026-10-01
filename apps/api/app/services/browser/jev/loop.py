@@ -29,6 +29,7 @@ from app.constants.browser import (
     JEV_RECENT_ACTIONS,
     JEV_REPORT_OPENED_PAGE_CHARS,
     JEV_SECRET_DIFFERS,
+    JEV_SECRET_WRITTEN,
     JEV_STALE_LIMIT,
     JEV_TEXT_TIMEOUT_SECONDS,
     JEV_TEXT_VALUE_MAX_CHARS,
@@ -107,7 +108,6 @@ _CYCLED: _Ending = (
 )
 #: How many steps one back-and-forth spans: there, back, there again, back again.
 _CYCLE_STEPS = 4
-_SECRET_WRITTEN = "The written value names a secret; nothing was typed."
 #: Unreachable by construction: decide offers an operation only with its target.
 _NO_TARGET = "Jev chose an operation with no target on this page; nothing was executed."
 
@@ -604,7 +604,7 @@ class JevRunner:
         value = completion.completion.text
         if value and holds_placeholder(value):
             # A secret is typed only as itself, on its own site, never inside a written value.
-            raise JevDecisionError(_SECRET_WRITTEN)
+            raise JevDecisionError(JEV_SECRET_WRITTEN)
         if not (value and value.strip()):
             return None
         self._pending_text = (masked, value)

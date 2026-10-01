@@ -19,6 +19,7 @@ from app.constants.browser import (
     JEV_BURST_MAX_ACTIONS,
     JEV_SECRET_DIFFERS,
     JEV_SECRET_MASK,
+    JEV_SECRET_WRITTEN,
     JEV_STALE_LIMIT,
     JEV_UNCHANGED_LIMIT,
     JEV_VISITED_PAGES,
@@ -962,7 +963,7 @@ async def test_a_written_value_that_names_a_secret_is_never_typed(
     result = await run.burst("sign in")
 
     assert result.stop is JevStop.GATEWAY
-    assert loop_mod._SECRET_WRITTEN in result.detail
+    assert JEV_SECRET_WRITTEN in result.detail
     assert page.typed == []
 
 
