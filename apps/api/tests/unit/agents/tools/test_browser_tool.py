@@ -465,36 +465,23 @@ async def test_no_stream_means_no_relay_but_the_job_still_runs(
     assert len(recorder.enqueued) == 1
 
 
-async def test_the_users_own_words_ride_along_with_the_executors_task(
+@pytest.mark.regression
+async def test_the_job_runs_the_executors_task_never_the_users_raw_message(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The executor twice rewrote "tick the second checkbox" into an invented label, and the step was skipped."""
+    """A password typed in chat must not ride into the task, the job state and the run's logs."""
     recorder = _install(monkeypatch)
     config: RunnableConfig = {
         "configurable": {
             "user_id": "u1",
             "conversation_id": "conv-9",
-            "user_request": "use the browser:   tick the second checkbox\nand submit",
+            "user_request": "log into my bank, my password is hunter2",
         }
     }
 
-    await _start({"task": "Tick the box labeled Checked, then submit."}, config=config)
+    await _start({"task": "Log into the bank"}, config=config)
 
-    task = recorder.request.task
-    assert task.startswith("Tick the box labeled Checked, then submit.")
-    assert "own words" in task
-    assert "use the browser: tick the second checkbox and submit" in task
-
-
-async def test_a_turn_with_no_user_request_leaves_the_task_alone(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    recorder = _install(monkeypatch)
-    config: RunnableConfig = {"configurable": {"user_id": "u1", "conversation_id": "conv-9"}}
-
-    await _start({"task": "book a table"}, config=config)
-
-    assert recorder.request.task == "book a table"
+    assert recorder.request.task == "Log into the bank"
 
 
 async def test_a_task_that_names_one_page_starts_there_so_its_saved_login_is_used(

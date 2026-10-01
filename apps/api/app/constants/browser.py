@@ -538,11 +538,6 @@ BROWSER_ENGINE_UNRESPONSIVE_SUMMARY = "The browser stopped responding."
 # so the reply it later voices knows the user changed course.
 BROWSER_HANDOFF_CARD_DECISION = "[From the browser handoff card] {decision}"
 
-# The user's own request rides along with the executor's task text, clipped to
-# this many characters; the executor rewrote "tick the second checkbox" into an
-# invented label twice and the browser skipped the step both times.
-BROWSER_USER_WORDS_MAX_CHARS = 1000
-
 # ---------------------------------------------------------------------------
 # Background browser job
 # ---------------------------------------------------------------------------
