@@ -7015,12 +7015,13 @@
         "type": "object"
       },
       "HandoffStatus": {
-        "description": "State of a live-view handoff: pending, completed, cancelled, expired.",
+        "description": "State of a live-view handoff: pending, completed, cancelled, expired, or failed.",
         "enum": [
           "pending",
           "completed",
           "cancelled",
-          "timeout"
+          "timeout",
+          "failed"
         ],
         "title": "HandoffStatus",
         "type": "string"
@@ -21525,69 +21526,6 @@
         "summary": "Unlink Platform Account",
         "tags": [
           "Bot"
-        ]
-      }
-    },
-    "/api/v1/browser/handoffs/{handoff_id}": {
-      "get": {
-        "description": "Current status of a browser handoff \u2014 the card polls this so a reload or a\nresolution made elsewhere (chat, another device) is reflected reliably.",
-        "operationId": "browser_get_browser_handoff",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "handoff_id",
-            "required": true,
-            "schema": {
-              "title": "Handoff Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HandoffDecisionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Get Browser Handoff",
-        "tags": [
-          "Browser"
         ]
       }
     },
@@ -40519,6 +40457,79 @@
           }
         },
         "summary": "Live View Page",
+        "tags": [
+          "Browser"
+        ]
+      }
+    },
+    "/live/{code}/decision": {
+      "post": {
+        "description": "Done or Stop from the bot user's live-view page: the code that opened the page is the authority.\n\nThe same decision a chat reply or the web card's buttons make, for the\nhandoff this link was sent for.",
+        "operationId": "browser_decide_live_view_handoff",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandoffDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandoffDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Decide Live View Handoff",
         "tags": [
           "Browser"
         ]

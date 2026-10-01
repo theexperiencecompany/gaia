@@ -17,6 +17,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from annotated_types import Ge, Le
+import fakeredis.aioredis
 from fastapi import HTTPException
 from httpx import AsyncClient
 import pytest
@@ -24,10 +25,10 @@ from tests.conftest import FAKE_USER
 from tests.helpers import captured_wide_event
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
-from app.api.v1.endpoints import browser as browser_ep
+from app.api.v1.endpoints import browser as browser_ep, browser_live_view as live_view_ep
 from app.constants.browser import (
+    BROWSER_HANDOFF_ACK_CANCEL,
     BROWSER_HANDOFF_ACK_CONTINUE,
-    BROWSER_HANDOFF_CARD_DECISION,
     BrowserSessionStatus,
     HandoffDecision,
     HandoffKind,
@@ -40,7 +41,9 @@ from app.schemas.browser import (
     HandoffDecisionRequest,
     HandoffRecord,
 )
-from app.services.browser.exceptions import BrowserHandoffNotOwned
+from app.services.browser import handoff_buttons
+from app.services.browser.handoff import cancel_handoff, create_pending_handoff
+from app.services.browser.live_code import mint_live_code
 
 pytestmark = pytest.mark.unit
 
@@ -122,152 +125,95 @@ def _record(status: HandoffStatus = HandoffStatus.PENDING, user_id: str = "u1") 
 
 
 # ---------------------------------------------------------------------------
-# GET /browser/handoffs/{handoff_id}
+# A handoff decided by a button: the web card's, or the bot live-view page's
 # ---------------------------------------------------------------------------
 
 
-class TestGetBrowserHandoffContract:
-    async def test_unknown_handoff_says_not_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(browser_ep, "get_handoff", AsyncMock(return_value=None))
-        with pytest.raises(HTTPException) as exc:
-            await browser_ep.get_browser_handoff("h1", "u1")
-        assert exc.value.detail == "Handoff not found"
+@pytest.fixture
+async def button_world(
+    fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> list[tuple[str, str, str]]:
+    """Open a pending login handoff in c1 over fakeredis; return what reaches the agent's thread."""
+    recorded: list[tuple[str, str, str]] = []
 
-    async def test_another_users_handoff_is_indistinguishable_from_missing(
-        self, monkeypatch: pytest.MonkeyPatch
+    async def _record(conversation_id: str, user_message: str, reply: str) -> None:
+        recorded.append((conversation_id, user_message, reply))
+
+    monkeypatch.setattr(handoff_buttons, "record_exchange_in_thread", _record)
+    await create_pending_handoff("h1", "u1", "c1", "Sign in", reply_to="c1")
+    return recorded
+
+
+class TestDecideBrowserHandoff:
+    async def test_the_cards_decision_settles_it_and_reaches_the_agents_thread(
+        self, button_world: list[tuple[str, str, str]]
     ) -> None:
-        monkeypatch.setattr(
-            browser_ep, "get_handoff", AsyncMock(return_value=_record(user_id="owner"))
-        )
-        with pytest.raises(HTTPException) as exc:
-            await browser_ep.get_browser_handoff("h1", "intruder")
-        assert exc.value.detail == "Handoff not found"
+        """No turn runs for a tap: without the thread entry the agent's reply called the user's own note a mistake."""
+        payload = HandoffDecisionRequest(decision=HandoffDecision.CONTINUE, message="skip it")
 
-    async def test_looks_up_the_requested_handoff_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        get_handoff = AsyncMock(return_value=_record())
-        monkeypatch.setattr(browser_ep, "get_handoff", get_handoff)
-        await browser_ep.get_browser_handoff("handoff-42", "u1")
-        assert get_handoff.await_args == call("handoff-42")
-
-    @pytest.mark.parametrize(
-        "handoff_status",
-        [HandoffStatus.PENDING, HandoffStatus.COMPLETED, HandoffStatus.CANCELLED],
-    )
-    async def test_reports_the_stored_status_verbatim(
-        self, monkeypatch: pytest.MonkeyPatch, handoff_status: HandoffStatus
-    ) -> None:
-        monkeypatch.setattr(
-            browser_ep, "get_handoff", AsyncMock(return_value=_record(status=handoff_status))
-        )
-        resp = await browser_ep.get_browser_handoff("h1", "u1")
-        assert (resp.handoff_id, resp.status) == ("h1", handoff_status)
-
-    async def test_wide_event_carries_user_and_handoff(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(browser_ep, "get_handoff", AsyncMock(return_value=_record()))
-        async with _recorded() as (event, _recorder):
-            await browser_ep.get_browser_handoff("h1", "u1")
-            assert event["user"] == {"id": "u1"}
-            assert event["browser"] == {"handoff_id": "h1"}
-
-
-# ---------------------------------------------------------------------------
-# POST /browser/handoffs/{handoff_id}/decision
-# ---------------------------------------------------------------------------
-
-
-class TestDecideBrowserHandoffContract:
-    async def test_foreign_handoff_says_not_authorized(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(
-            browser_ep,
-            "resolve_handoff",
-            AsyncMock(side_effect=BrowserHandoffNotOwned("nope")),
-        )
-        payload = HandoffDecisionRequest(decision=HandoffDecision.CONTINUE)
-        with pytest.raises(HTTPException) as exc:
-            await browser_ep.decide_browser_handoff("h1", payload, "u1")
-        assert exc.value.detail == "Not authorized to resolve this handoff"
-
-    async def test_ownership_failure_keeps_the_cause_attached(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        cause = BrowserHandoffNotOwned("nope")
-        monkeypatch.setattr(browser_ep, "resolve_handoff", AsyncMock(side_effect=cause))
-        payload = HandoffDecisionRequest(decision=HandoffDecision.CONTINUE)
-        with pytest.raises(HTTPException) as exc:
-            await browser_ep.decide_browser_handoff("h1", payload, "u1")
-        assert exc.value.__cause__ is cause
-
-    async def test_expired_handoff_explains_why(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(browser_ep, "resolve_handoff", AsyncMock(return_value=None))
-        payload = HandoffDecisionRequest(decision=HandoffDecision.CONTINUE)
-        with pytest.raises(HTTPException) as exc:
-            await browser_ep.decide_browser_handoff("h1", payload, "u1")
-        assert exc.value.detail == "Handoff not found or expired"
-
-    async def test_omitted_note_reaches_the_service_as_none(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        resolve = AsyncMock(return_value=HandoffStatus.COMPLETED)
-        monkeypatch.setattr(browser_ep, "resolve_handoff", resolve)
-        payload = HandoffDecisionRequest(decision=HandoffDecision.CANCEL)
-        await browser_ep.decide_browser_handoff("h-9", payload, "u7")
-        assert resolve.await_args == call("h-9", HandoffDecision.CANCEL, "u7", None)
-
-    async def test_service_outcome_wins_over_the_requested_decision(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(
-            browser_ep, "resolve_handoff", AsyncMock(return_value=HandoffStatus.CANCELLED)
-        )
-        payload = HandoffDecisionRequest(decision=HandoffDecision.CONTINUE)
         resp = await browser_ep.decide_browser_handoff("h1", payload, "u1")
-        assert (resp.handoff_id, resp.status) == ("h1", HandoffStatus.CANCELLED)
+
+        assert (resp.handoff_id, resp.status) == ("h1", HandoffStatus.COMPLETED)
+        assert button_world == [
+            (
+                "c1",
+                "[From the browser handoff card] continue: skip it",
+                BROWSER_HANDOFF_ACK_CONTINUE,
+            )
+        ]
+
+    async def test_a_tap_after_it_was_settled_another_way_decided_nothing(
+        self, button_world: list[tuple[str, str, str]]
+    ) -> None:
+        await cancel_handoff("h1")
+        payload = HandoffDecisionRequest(decision=HandoffDecision.CONTINUE)
+
+        resp = await browser_ep.decide_browser_handoff("h1", payload, "u1")
+
+        assert resp.status is HandoffStatus.CANCELLED
+        assert button_world == []
+
+    async def test_a_pause_for_the_agent_is_never_written_as_the_users_words(
+        self, button_world: list[tuple[str, str, str]]
+    ) -> None:
+        await create_pending_handoff("h-agent", "u1", "c1", "stuck", kind=HandoffKind.AGENT)
+        payload = HandoffDecisionRequest(decision=HandoffDecision.CONTINUE, message="go")
+
+        await browser_ep.decide_browser_handoff("h-agent", payload, "u1")
+
+        assert button_world == []
 
     @pytest.mark.parametrize(
-        ("decision", "expected"),
-        [(HandoffDecision.CONTINUE, "continue"), (HandoffDecision.CANCEL, "cancel")],
+        ("handoff_id", "user_id", "code"), [("h1", "intruder", 403), ("gone", "u1", 410)]
     )
-    async def test_wide_event_carries_user_handoff_and_decision(
-        self, monkeypatch: pytest.MonkeyPatch, decision: HandoffDecision, expected: str
+    async def test_another_users_or_a_gone_handoff_is_refused(
+        self, button_world: list[tuple[str, str, str]], handoff_id: str, user_id: str, code: int
     ) -> None:
-        monkeypatch.setattr(
-            browser_ep, "resolve_handoff", AsyncMock(return_value=HandoffStatus.COMPLETED)
-        )
-        payload = HandoffDecisionRequest(decision=decision)
-        async with _recorded() as (event, _recorder):
-            await browser_ep.decide_browser_handoff("h1", payload, "u1")
-            assert event["user"] == {"id": "u1"}
-            assert event["browser"] == {"handoff_id": "h1", "decision": expected}
-
-    async def test_resolution_is_announced_with_the_final_status(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(
-            browser_ep, "resolve_handoff", AsyncMock(return_value=HandoffStatus.CANCELLED)
-        )
         payload = HandoffDecisionRequest(decision=HandoffDecision.CANCEL)
-        async with _recorded() as (_event, recorder):
-            await browser_ep.decide_browser_handoff("h1", payload, "u1")
-            assert recorder.at("INFO") == [
-                (
-                    f"{LogTag.BROWSER} Browser handoff decided",
-                    {"handoff_id": "h1", "status": "cancelled"},
-                )
-            ]
 
-    async def test_expired_handoff_is_not_announced_as_decided(
-        self, monkeypatch: pytest.MonkeyPatch
+        with pytest.raises(HTTPException) as exc:
+            await browser_ep.decide_browser_handoff(handoff_id, payload, user_id)
+
+        assert exc.value.status_code == code
+        assert button_world == []
+
+    async def test_the_live_pages_stop_decides_the_handoff_its_link_was_sent_for(
+        self, button_world: list[tuple[str, str, str]]
     ) -> None:
-        monkeypatch.setattr(browser_ep, "resolve_handoff", AsyncMock(return_value=None))
-        payload = HandoffDecisionRequest(decision=HandoffDecision.CONTINUE)
-        async with _recorded() as (_event, recorder):
-            with pytest.raises(HTTPException):
-                await browser_ep.decide_browser_handoff("h1", payload, "u1")
-            assert recorder.at("INFO") == []
+        """A bot user has no web session: the code that opened the page is the authority, and only for its own handoff."""
+        code = await mint_live_code("sess-1", "u1", "h1")
+        payload = HandoffDecisionRequest(decision=HandoffDecision.CANCEL)
+
+        resp = await live_view_ep.decide_live_view_handoff(code, payload)
+
+        assert (resp.handoff_id, resp.status) == ("h1", HandoffStatus.CANCELLED)
+        assert button_world == [
+            ("c1", "[From the browser handoff card] cancel", BROWSER_HANDOFF_ACK_CANCEL)
+        ]
+        # Settled, the link no longer opens anything.
+        with pytest.raises(HTTPException) as exc:
+            await live_view_ep.decide_live_view_handoff(code, payload)
+        assert exc.value.status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -591,7 +537,6 @@ class TestRouteMetadata:
         assert self._route(path, method).status_code == 204
 
     def test_reads_and_writes_use_the_expected_methods(self) -> None:
-        assert self._route("/browser/handoffs/{handoff_id}", "GET") is not None
         assert self._route("/browser/handoffs/{handoff_id}/decision", "POST") is not None
         assert self._route("/browser/sessions/{session_id}/live-view-token", "GET") is not None
         assert self._route("/browser/tasks", "GET") is not None
@@ -622,7 +567,7 @@ class TestAuthenticatedUserThroughTheApp:
         self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         resolve = AsyncMock(return_value=HandoffStatus.COMPLETED)
-        monkeypatch.setattr(browser_ep, "resolve_handoff", resolve)
+        monkeypatch.setattr(browser_ep, "decide_handoff_by_button", resolve)
 
         resp = await client.post(
             "/api/v1/browser/handoffs/h-1/decision",
@@ -635,24 +580,9 @@ class TestAuthenticatedUserThroughTheApp:
             "h-1", HandoffDecision.CONTINUE, FAKE_USER.user_id, "skip the login"
         )
 
-    async def test_pending_handoff_get_returns_200(
-        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(
-            browser_ep,
-            "get_handoff",
-            AsyncMock(return_value=_record(user_id=FAKE_USER.user_id)),
-        )
-
-        resp = await client.get("/api/v1/browser/handoffs/h-1")
-
-        assert resp.status_code == 200
-        assert resp.json() == {"handoff_id": "h-1", "status": "pending"}
-
     @pytest.mark.parametrize(
         ("path", "method"),
         [
-            ("/browser/handoffs/{handoff_id}", "GET"),
             ("/browser/handoffs/{handoff_id}/decision", "POST"),
             ("/browser/sessions/{session_id}/live-view-token", "GET"),
             ("/browser/import/token", "POST"),
@@ -662,58 +592,3 @@ class TestAuthenticatedUserThroughTheApp:
         """A route resolving its own id from request.state is how the 500s got in."""
         route = next(r for r in browser_ep.router.routes if r.path == path and method in r.methods)
         assert [d.call for d in route.dependant.dependencies] == [get_user_id]
-
-
-class TestACardDecisionReachesTheAgentsThread:
-    """The reply the agent later voiced called the user's own "skip the upvote" a mistake."""
-
-    async def _decide(
-        self, monkeypatch: pytest.MonkeyPatch, kind: HandoffKind, message: str | None
-    ):
-        from app.schemas.browser import HandoffRecord
-
-        record = HandoffRecord(
-            status=HandoffStatus.PENDING, user_id="u1", conversation_id="conv-1", kind=kind
-        )
-        # Only the decided handoff resolves to its record: a lookup under any other id
-        # finds nothing, so the thread would never hear of the decision.
-        monkeypatch.setattr(
-            browser_ep,
-            "get_handoff",
-            AsyncMock(side_effect=lambda hid: record if hid == "h1" else None),
-        )
-        monkeypatch.setattr(
-            browser_ep, "resolve_handoff", AsyncMock(return_value=HandoffStatus.COMPLETED)
-        )
-        recorded = AsyncMock()
-        monkeypatch.setattr(browser_ep, "record_exchange_in_thread", recorded)
-        payload = HandoffDecisionRequest(decision=HandoffDecision.CONTINUE, message=message)
-        await browser_ep.decide_browser_handoff("h1", payload, "u1")
-        return recorded
-
-    async def test_the_users_note_and_the_ack_are_written_to_the_thread(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        recorded = await self._decide(monkeypatch, HandoffKind.USER, "skip the upvote")
-
-        conversation_id, words, reply = recorded.await_args.args
-        assert conversation_id == "conv-1"
-        assert "skip the upvote" in words
-        assert reply == BROWSER_HANDOFF_ACK_CONTINUE
-
-    async def test_a_decision_without_a_note_is_written_as_the_bare_decision(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        recorded = await self._decide(monkeypatch, HandoffKind.USER, None)
-
-        _, words, _ = recorded.await_args.args
-        assert words == BROWSER_HANDOFF_CARD_DECISION.format(
-            decision=HandoffDecision.CONTINUE.value
-        )
-
-    async def test_an_agents_own_handoff_is_not_written_as_the_users_words(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        recorded = await self._decide(monkeypatch, HandoffKind.AGENT, "navigate to r/python")
-
-        recorded.assert_not_awaited()

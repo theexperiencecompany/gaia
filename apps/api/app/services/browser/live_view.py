@@ -31,13 +31,13 @@ def live_view_url(session_id: str) -> str:
     return f"{browser_link_base()}{_LIVE_VIEW_PATH_TEMPLATE.format(session_id=session_id)}"
 
 
-async def create_live_view_link(session_id: str, user_id: str) -> str:
-    """Mint a short capability link a bot delivers so user_id can take over without a web login.
+async def create_live_view_link(session_id: str, user_id: str, handoff_id: str) -> str:
+    """Mint a short capability link a bot delivers so user_id can take over this handoff without a web login.
 
     Always {base}/live/{code}: a bare /{code} route at the API root would answer
     every unknown one-segment path. The code maps to the session + owner in
     Redis — no session id or token in the URL."""
-    code = await mint_live_code(session_id, user_id)
+    code = await mint_live_code(session_id, user_id, handoff_id)
     return f"{browser_link_base()}/live/{code}"
 
 

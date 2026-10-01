@@ -7,6 +7,7 @@ and shows the run from step 1.
 """
 
 import json
+from time import monotonic
 from typing import TypedDict
 
 from pydantic import TypeAdapter
@@ -23,6 +24,14 @@ from shared.py.wide_events import log
 #: Closes a job's feed. Not a card: the relay stops on it without having to
 #: re-read the job state on every frame, and the worker is the only publisher.
 JOB_TERMINAL_FRAME: dict[str, object] = {"browser_job_done": True}
+#: Says the run has just asked its joined agent for guidance. Not a card either:
+#: it wakes a join, which then reads the request itself (agent_guidance).
+JOB_GUIDANCE_FRAME: dict[str, object] = {"browser_job_guidance": True}
+
+
+def is_card_frame(payload: dict[str, object]) -> bool:
+    """Whether a feed frame is something the user sees, rather than a signal to whoever reads the feed."""
+    return payload not in (JOB_TERMINAL_FRAME, JOB_GUIDANCE_FRAME)
 
 
 class _StreamFields(TypedDict, total=False):
@@ -83,3 +92,23 @@ def _decode(entry_id: str, raw: str | None) -> dict[str, object] | None:
         log.error(f"{LogTag.BROWSER} Dropping non-object browser job frame", entry_id=entry_id)
         return None
     return payload
+
+
+async def feed_end(job_id: str) -> str:
+    """Return the id of the feed's newest frame, the cursor a reader starts after to see only what comes next."""
+    newest = await redis_cache.client.xrevrange(_key(job_id), count=1)
+    return str(newest[0][0]) if newest else "0-0"
+
+
+async def wait_for_job_end(job_id: str, within_seconds: int) -> bool:
+    """Block until the job's feed carries its terminal frame; False when within_seconds pass first."""
+    deadline = monotonic() + within_seconds
+    cursor = "0-0"
+    while (remaining := deadline - monotonic()) > 0:
+        for entry_id, payload in await read_job_events(
+            job_id, cursor, max(1, int(remaining * 1000))
+        ):
+            cursor = entry_id
+            if payload == JOB_TERMINAL_FRAME:
+                return True
+    return False

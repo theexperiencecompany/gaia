@@ -27,7 +27,6 @@ _SESSION = BrowserHostSession(
     session_id="s-1",
     cdp_url="ws://host/cdp",
     live_view_url="https://host/live",
-    context_id="ctx",
     host_url="http://host",
 )
 _WATCH = {"session_id": "s-1", "operation": "engine_watch"}

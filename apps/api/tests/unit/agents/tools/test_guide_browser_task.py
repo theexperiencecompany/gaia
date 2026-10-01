@@ -67,7 +67,7 @@ def _install(
     async def _refresh(job_id: str, stream_id: str) -> None:
         g.refreshed.append((job_id, stream_id))
 
-    monkeypatch.setattr(tool_mod, "get_conversation_slot", _slot)
+    monkeypatch.setattr(tool_mod, "get_latest_job", _slot)
     monkeypatch.setattr(tool_mod, "get_guidance_request", _pending)
     monkeypatch.setattr(tool_mod, "resolve_handoff", _resolve)
     monkeypatch.setattr(tool_mod, "clear_guidance_request", _clear)

@@ -316,7 +316,7 @@ def test_a_login_is_handed_to_the_user_then_reused_without_a_second_handoff(
     def watch(job_id: str, state: dict, b: Battery) -> list[dict]:
         deadline = time.monotonic() + 240
         while time.monotonic() < deadline and b.job_state(job_id).get("status") != "done":
-            found = b.pending_handoff(b.conversation_id())
+            found = b.pending_handoff()
             if found:
                 seen_handoff["raised"] = True
                 b.decide_handoff(found[0], "cancel")

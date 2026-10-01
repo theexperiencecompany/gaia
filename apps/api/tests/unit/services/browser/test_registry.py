@@ -12,6 +12,7 @@ import fakeredis
 import pytest
 
 from app.services.browser import registry as reg
+from app.services.browser.job_lifetime import browser_job_ttl_seconds
 from app.services.browser.registry import SessionRegistryEntry
 from tests.helpers import captured_wide_event
 
@@ -111,7 +112,8 @@ async def test_register_calls_redis_set_with_exact_key_ttl_and_model(
     assert len(fake_redis.set_calls) == 1
     call = fake_redis.set_calls[0]
     assert call["key"] == "browser:sess:s5"
-    assert call["ttl"] == 7200
+    # As long as any job can live: a paused run is never locked out of its own live view.
+    assert call["ttl"] == browser_job_ttl_seconds()
     assert call["model"] is SessionRegistryEntry
     entry = call["value"]
     assert isinstance(entry, SessionRegistryEntry)

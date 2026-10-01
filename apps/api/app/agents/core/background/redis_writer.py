@@ -47,6 +47,14 @@ def _collect(session: StreamSession, data: dict[str, Any]) -> None:
     session.tool_events.append({"reasoning": dict(reasoning)})
 
 
+async def publish_to_stream(stream_id: str, data: dict[str, Any]) -> None:
+    """Publish one event to a stream and its collector, awaited, so a caller sending many keeps their order."""
+    await stream_manager.publish_chunk(stream_id, f"data: {json.dumps(data)}\n\n")
+    session = get_session(stream_id)
+    if session is not None:
+        _collect(session, data)
+
+
 def make_redis_stream_writer(stream_id: str) -> Callable[[dict[str, Any]], None]:
     """Return a sync callable that publishes tool events directly to Redis.
 

@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from app.constants.browser import (
     BrowserEventKind,
     BrowserSessionStatus,
+    EngineFailure,
     HandoffDecision,
     HandoffKind,
     HandoffStatus,
@@ -108,9 +109,11 @@ class BrowserResultSnapshot(BaseModel):
     steps: int = 0
     # A recap slideshow of every step's screenshot — surfaced on success or failure.
     replay_url: str | None = None
-    # Instructions the user sent mid-run when they took over. The closing reply is
-    # written against the original request otherwise, and confirms what it asked for.
+    # What the user said while the run went: messages, and notes left with a
+    # handoff. The closing reply is written against the original request otherwise.
     user_notes: list[str] = Field(default_factory=list)
+    # The notes among them that replaced the request, as the reply classifier read them.
+    redirects: list[str] = Field(default_factory=list)
 
 
 BrowserCardSnapshot = (
@@ -130,6 +133,8 @@ class HandoffRecord(BaseModel):
     # Optional free-text note the user sends back when continuing ("just grab the
     # photo, skip the login"). Delivered to the agent as guidance on resume.
     message: str | None = None
+    #: Where a chat reply resolves it (handoff.reply_address); empty for an AGENT pause.
+    reply_address: str = ""
 
 
 class HandoffOutcome(BaseModel):
@@ -137,13 +142,18 @@ class HandoffOutcome(BaseModel):
 
     status: HandoffStatus
     message: str | None = None
+    #: The note replaces the task: only the reply classifier says so, never a plain note.
+    redirect: bool = False
+    #: Why a FAILED handoff failed.
+    cause: EngineFailure | None = None
 
 
 class LiveCodeRecord(BaseModel):
-    """What a short live-view code resolves to: the session it opens and its owner."""
+    """What a short live-view code resolves to: the session it opens, its owner, and the handoff it was sent for."""
 
     session_id: str
     user_id: str
+    handoff_id: str | None = None
 
 
 class ReplayRecord(BaseModel):
@@ -202,9 +212,11 @@ class AgentGuidanceRequest(BaseModel):
     page_text: str = ""
     elements: list[GuidanceElement] = Field(default_factory=list)
     recent_actions: list[GuidanceAction] = Field(default_factory=list)
-    # Instructions the user sent mid-run. Without them the executor guides
-    # toward the original task and sends the run back to a step they declined.
+    # What the user said mid-run. Without it the executor guides toward the
+    # original task and sends the run back to a step they declined.
     user_notes: list[str] = Field(default_factory=list)
+    # The notes among them the reply classifier read as replacing the task.
+    redirects: list[str] = Field(default_factory=list)
 
 
 class PendingAgentGuidance(BaseModel):

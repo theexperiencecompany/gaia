@@ -44,6 +44,10 @@ class Recorder:
         self.queues: list[str | None] = []
         self.pools: list[object] = []
         self.pool = MagicMock(name="pool")
+        #: The ARQ job id each enqueue asked for: the one a stop aborts.
+        self.job_ids: list[str | None] = []
+        #: The conversation's latest job, as the join and a stop find it.
+        self.latest: list[tuple[str, str]] = []
 
     @property
     def request(self) -> BrowserJobRequest:
@@ -73,9 +77,15 @@ def _install(
         recorder.released.append((conversation_id, job_id))
 
     async def _enqueue(
-        pool: object, function: str, payload: dict[str, Any], *, _queue_name: str | None = None
+        pool: object,
+        function: str,
+        payload: dict[str, Any],
+        *,
+        _queue_name: str | None = None,
+        _job_id: str | None = None,
     ) -> object | None:
         recorder.enqueued.append((function, payload))
+        recorder.job_ids.append(_job_id)
         recorder.pools.append(pool)
         recorder.queues.append(_queue_name)
         if enqueue_error is not None:
@@ -99,6 +109,11 @@ def _install(
     monkeypatch.setattr(tool_mod, "claim_conversation_slot", _claim)
     monkeypatch.setattr(tool_mod, "put_job_state", _put_state)
     monkeypatch.setattr(tool_mod, "release_conversation_slot", _release)
+
+    async def _latest(conversation_id: str, job_id: str) -> None:
+        recorder.latest.append((conversation_id, job_id))
+
+    monkeypatch.setattr(tool_mod, "set_latest_job", _latest)
     monkeypatch.setattr(tool_mod, "enqueue_worker_job", _enqueue)
     monkeypatch.setattr(tool_mod, "relay_job_events", _relay)
     monkeypatch.setattr(tool_mod, "spawn_logged_task", _spawn)
@@ -231,8 +246,13 @@ async def test_the_claimed_slot_the_queued_state_and_the_job_all_name_one_job(
     job_id = recorder.request.job_id
     assert recorder.claims == [("c1", job_id)]
     assert recorder.states == [
-        BrowserJobState(job_id=job_id, status=BrowserJobStatus.QUEUED, task="book a table")
+        BrowserJobState(
+            job_id=job_id, status=BrowserJobStatus.QUEUED, task="book a table", relay_stream_id="s1"
+        )
     ]
+    # The ARQ job a stop aborts, and the job a join or a stop finds once the slot lapses.
+    assert recorder.job_ids == [job_id]
+    assert recorder.latest == [("c1", job_id)]
 
 
 async def test_conversation_id_prefers_the_user_facing_conversation(

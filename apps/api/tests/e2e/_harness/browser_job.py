@@ -19,15 +19,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import fakeredis.aioredis
 
-from app.agents.core.background.session import RunKind, create_session
+from app.agents.core.background.session import RunKind, create_session, signal_executor_done
 from app.agents.tools import browser_tool
 from app.config.settings import settings
 from app.constants.browser import BrowserEngine, EngineSwitchReason, SensitiveCategory
+from app.core.stream_manager import StreamManager
 from app.models.hil_models import HILPreferences
 from app.schemas.browser_job import BrowserJobRequest
 from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserSessionGone
 from app.services.browser.host_client import HostSessionInfo
 from app.workers.tasks import browser_tasks
+from shared.py import wide_events
 
 #: What the fake CDN hands back for a step screenshot, per step index.
 SHOT_URL_TEMPLATE = "https://cdn.test/shot-{index}.png"
@@ -319,10 +321,13 @@ def _ended_by(step_actions: list[tuple[str, dict[str, Any]]]) -> _History | None
 class JobWorld:
     """Everything the run touched outside its own process, recorded."""
 
-    def __init__(self, double: BrowserDouble) -> None:
+    def __init__(self, double: BrowserDouble, stream_id: str) -> None:
         self.browser = double
+        self.stream_id = stream_id
         self.enqueued: list[BrowserJobRequest] = []
         self.chunks: list[str] = []
+        #: What reached any other turn's stream, by stream id.
+        self.other_streams: dict[str, list[str]] = {}
         self.bot_messages: list[str] = []
         self.bot_photos: list[str] = []
         self.deliveries: list[dict[str, Any]] = []
@@ -336,16 +341,19 @@ class JobWorld:
         self.storage_reads: list[str] = []
         #: Each session a paused run's keepalive reset the host's idle clock for.
         self.keepalive_touches: list[str] = []
+        #: Each job a stop asked ARQ to abort.
+        self.aborted: list[str] = []
 
-    def frames(self) -> list[dict[str, Any]]:
-        """Return each SSE chunk the turn's stream carried, decoded."""
-        return [json.loads(chunk.removeprefix("data: ").strip()) for chunk in self.chunks]
+    def frames(self, stream_id: str | None = None) -> list[dict[str, Any]]:
+        """Return each SSE chunk the turn's stream (or another one) carried, decoded."""
+        chunks = self.chunks if stream_id is None else self.other_streams.get(stream_id, [])
+        return [json.loads(chunk.removeprefix("data: ").strip()) for chunk in chunks]
 
-    def cards(self) -> list[dict[str, Any]]:
-        """Return the browser card payloads, in publish order."""
+    def cards(self, stream_id: str | None = None) -> list[dict[str, Any]]:
+        """Return the browser card payloads a stream carried, in publish order."""
         return [
             frame["tool_data"]["data"]
-            for frame in self.frames()
+            for frame in self.frames(stream_id)
             if "tool_data" in frame and frame["tool_data"].get("tool_name") == "browser_task_data"
         ]
 
@@ -361,9 +369,14 @@ class JobWorld:
         return len(self.keepalive_touches)
 
     async def settle(self) -> None:
-        """Wait out the worker task and the fire-and-forget publishes it left behind."""
+        """End the turn's executor run, then wait out the worker task and the publishes it left behind."""
+        # What executor_runner does when the run ends: the relay stops holding the result for it.
+        signal_executor_done(self.stream_id)
         if self.jobs:
             await asyncio.gather(*self.jobs, return_exceptions=True)
+        # The relays, which end on the job's terminal frame and the run's end.
+        relays = [task for task in wide_events._spawned_tasks if not task.done()]
+        await asyncio.gather(*relays, return_exceptions=True)
         from app.utils import background_tasks
 
         for _ in range(50):
@@ -407,30 +420,34 @@ async def browser_job_world(
         summary,
         successful,
     )
-    world = JobWorld(double)
+    world = JobWorld(double, stream_id)
     scripted_host = host if host is not None else ScriptedHost()
     browser = MagicMock()
     redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
     create_session(stream_id, RunKind.LIVE)
 
     async def _enqueue(
-        pool: Any, name: str, payload: dict[str, Any], *, _queue_name: str
+        pool: Any, name: str, payload: dict[str, Any], *, _queue_name: str, _job_id: str
     ) -> object:
         world.enqueued.append(BrowserJobRequest.model_validate(payload))
         double.job_id = world.enqueued[-1].job_id
         world.jobs.append(asyncio.create_task(browser_tasks.run_browser_job({}, payload)))
         return object()
 
+    async def _abort(job_id: str) -> bool:
+        """Cancel the job's task, as ARQ's abort cancels the task of a job a worker is running."""
+        running = [task for task in world.jobs if not task.done()]
+        for task in running:
+            task.cancel()
+        world.aborted.append(job_id)
+        return bool(running)
+
     patches = [
         patch("app.db.redis.redis_cache.redis", redis),
-        # The real waits are tens of seconds of polling. Shrunk, not removed: the
-        # poll loops are what the join and the delivery hand-off are made of.
-        patch.object(browser_tasks, "BROWSER_JOB_JOINER_LEASE_SECONDS", 0.2),
-        patch.object(browser_tasks, "BROWSER_JOB_JOINER_REFRESH_SECONDS", 0.1),
-        patch.object(browser_tasks, "BROWSER_JOB_POLL_INTERVAL_SECONDS", 0.02),
-        patch.object(browser_tool, "BROWSER_JOB_POLL_INTERVAL_SECONDS", 0.02),
+        # The join's beat (lease refresh, worker liveness) is seconds long; shrunk so
+        # a journey that ends on it does not sit it out. Its waits are on events.
         patch.object(browser_tool, "BROWSER_JOB_JOINER_REFRESH_SECONDS", 0.1),
-        patch("app.services.browser.handoff.HANDOFF_POLL_INTERVAL_SECONDS", 0.02),
+        patch("app.services.browser.job_stop._abort_if_started", _abort),
         # A guidance request nobody answers must fail the journey in seconds, not
         # sit out the real two-minute budget.
         patch("app.services.browser.job_runner.BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS", 2),
@@ -473,11 +490,14 @@ async def browser_job_world(
     with ExitStack() as stack:
         for entered in patches:
             stack.enter_context(entered)
+        # The turn's stream is live for the whole journey, as a chat turn's is while it streams.
+        await StreamManager.start_stream(stream_id, "conv-of-the-turn", "user-of-the-turn")
         try:
             yield world
         finally:
-            for task in world.jobs:
+            for task in [*world.jobs, *wide_events._spawned_tasks]:
                 task.cancel()
+            await asyncio.gather(*world.jobs, *wide_events._spawned_tasks, return_exceptions=True)
             await redis.aclose()
 
 
@@ -519,6 +539,10 @@ def _host_patches(
         )
 
     async def _touch_host_session(session_id: str, host_url: str) -> None:
+        if session_id in world.dead_sessions:
+            raise BrowserSessionGone(
+                f"Browser host returned 404 for {host_url}/sessions/{session_id}"
+            )
         world.keepalive_touches.append(session_id)
 
     async def _get_storage_state(session_id: str, host_url: str) -> Any:
@@ -566,6 +590,8 @@ def _delivery_patches(world: JobWorld, stream_id: str) -> list[AbstractContextMa
     async def _publish_chunk(chunk_stream_id: str, chunk: str) -> None:
         if chunk_stream_id == stream_id:
             world.chunks.append(chunk)
+        else:
+            world.other_streams.setdefault(chunk_stream_id, []).append(chunk)
 
     async def _outbound_message(platform: Any, user_id: str, blocks: list[str]) -> bool:
         world.bot_messages.extend(blocks)

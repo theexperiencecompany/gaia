@@ -19,16 +19,10 @@ from typing import Annotated, cast
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from playwright.sync_api import StorageState
 
-from app.agents.core.background.comms_narrator import record_exchange_in_thread
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.config.settings import settings
 from app.constants.browser import (
-    BROWSER_HANDOFF_ACK_CANCEL,
-    BROWSER_HANDOFF_ACK_CONTINUE,
-    BROWSER_HANDOFF_CARD_DECISION,
     BROWSER_IMPORT_TOKEN_TTL_SECONDS,
-    HandoffDecision,
-    HandoffKind,
 )
 from app.constants.log_tags import LogTag
 from app.schemas.browser import (
@@ -44,7 +38,7 @@ from app.schemas.browser import (
 from app.services.analytics_service import AnalyticsEvents, capture_context_event, capture_event
 from app.services.browser import registry
 from app.services.browser.exceptions import BrowserHandoffNotOwned
-from app.services.browser.handoff import get_handoff, resolve_handoff
+from app.services.browser.handoff_buttons import decide_handoff_by_button
 from app.services.browser.import_token import consume_import_token, mint_import_token
 from app.services.browser.profiles import forget_saved_login, list_saved_logins
 from app.services.browser.storage_persistence import import_browser_profile
@@ -59,20 +53,6 @@ from shared.py.wide_events import log
 router = APIRouter(prefix="/browser", tags=["Browser"])
 
 
-@router.get("/handoffs/{handoff_id}")
-async def get_browser_handoff(
-    handoff_id: str,
-    user_id: Annotated[str, Depends(get_user_id)],
-) -> HandoffDecisionResponse:
-    """Current status of a browser handoff — the card polls this so a reload or a
-    resolution made elsewhere (chat, another device) is reflected reliably."""
-    log.set(user={"id": user_id}, browser={"handoff_id": handoff_id})
-    record = await get_handoff(handoff_id)
-    if record is None or record.user_id != user_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Handoff not found")
-    return HandoffDecisionResponse(handoff_id=handoff_id, status=record.status)
-
-
 @router.post("/handoffs/{handoff_id}/decision")
 async def decide_browser_handoff(
     handoff_id: str,
@@ -83,41 +63,18 @@ async def decide_browser_handoff(
     log.set(
         user={"id": user_id}, browser={"handoff_id": handoff_id, "decision": payload.decision.value}
     )
-
-    pending = await get_handoff(handoff_id)
     try:
-        resolved = await resolve_handoff(handoff_id, payload.decision, user_id, payload.message)
+        resolved = await decide_handoff_by_button(
+            handoff_id, payload.decision, user_id, payload.message
+        )
     except BrowserHandoffNotOwned as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to resolve this handoff"
         ) from exc
-
     if resolved is None:
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="Handoff not found or expired")
-
-    log.info(
-        f"{LogTag.BROWSER} Browser handoff decided", handoff_id=handoff_id, status=resolved.value
-    )
-    if pending is not None and pending.kind is HandoffKind.USER and pending.conversation_id:
-        # The agent's thread never saw this decision, so the reply it later voiced
-        # called the user's own "skip the upvote" a mistake.
-        await record_exchange_in_thread(
-            pending.conversation_id,
-            BROWSER_HANDOFF_CARD_DECISION.format(decision=_card_words(payload)),
-            _BROWSER_HANDOFF_ACKS[payload.decision],
-        )
+    log.set(browser={"handoff_status": resolved.value})
     return HandoffDecisionResponse(handoff_id=handoff_id, status=resolved)
-
-
-def _card_words(payload: HandoffDecisionRequest) -> str:
-    note = (payload.message or "").strip()
-    return f"{payload.decision.value}: {note}" if note else payload.decision.value
-
-
-_BROWSER_HANDOFF_ACKS = {
-    HandoffDecision.CONTINUE: BROWSER_HANDOFF_ACK_CONTINUE,
-    HandoffDecision.CANCEL: BROWSER_HANDOFF_ACK_CANCEL,
-}
 
 
 @router.get("/sessions/{session_id}/live-view-token", response_model=LiveViewTokenResponse)

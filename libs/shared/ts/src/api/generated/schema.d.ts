@@ -380,27 +380,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/browser/handoffs/{handoff_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Browser Handoff
-         * @description Current status of a browser handoff — the card polls this so a reload or a
-         *     resolution made elsewhere (chat, another device) is reflected reliably.
-         */
-        get: operations["browser_get_browser_handoff"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/browser/handoffs/{handoff_id}/decision": {
         parameters: {
             query?: never;
@@ -5642,6 +5621,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/live/{code}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Live View Handoff
+         * @description Done or Stop from the bot user's live-view page: the code that opened the page is the authority.
+         *
+         *     The same decision a chat reply or the web card's buttons make, for the
+         *     handoff this link was sent for.
+         */
+        post: operations["browser_decide_live_view_handoff"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/replays/{code}": {
         parameters: {
             query?: never;
@@ -8914,10 +8916,10 @@ export interface components {
         };
         /**
          * HandoffStatus
-         * @description State of a live-view handoff: pending, completed, cancelled, expired.
+         * @description State of a live-view handoff: pending, completed, cancelled, expired, or failed.
          * @enum {string}
          */
-        HandoffStatus: "pending" | "completed" | "cancelled" | "timeout";
+        HandoffStatus: "pending" | "completed" | "cancelled" | "timeout" | "failed";
         /**
          * HealthResponse
          * @description ``GET /health`` (and its ping/root aliases) when the API is serving normally.
@@ -16894,55 +16896,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UnlinkAccountResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    browser_get_browser_handoff: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                handoff_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HandoffDecisionResponse"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -31053,6 +31006,59 @@ export interface operations {
                 };
                 content: {
                     "text/html": string;
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    browser_decide_live_view_handoff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HandoffDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HandoffDecisionResponse"];
                 };
             };
             /** @description Unprocessable Entity */

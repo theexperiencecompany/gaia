@@ -27,8 +27,10 @@ import websockets
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_current_user_ws
 from app.browser_host.pumps import pump_until_first_close
 from app.constants.log_tags import LogTag
+from app.schemas.browser import HandoffDecisionRequest, HandoffDecisionResponse
 from app.schemas.errors import HTML_ROUTE_ERROR_RESPONSES
 from app.services.browser import registry
+from app.services.browser.handoff_buttons import decide_handoff_by_button
 from app.services.browser.live_code import live_code_remaining_seconds, resolve_live_code
 from app.services.browser.live_view import render_live_view_page
 from app.services.browser.replay import render_replay_page, resolve_replay_code
@@ -104,6 +106,31 @@ async def live_view_page(
     log.set(browser={"session_id": session_id})
     log.info(f"{LogTag.BROWSER} browser live view page served")
     return HTMLResponse(content=render_live_view_page(session_id))
+
+
+@router.post("/live/{code}/decision")
+async def decide_live_view_handoff(
+    code: str, payload: HandoffDecisionRequest
+) -> HandoffDecisionResponse:
+    """Done or Stop from the bot user's live-view page: the code that opened the page is the authority.
+
+    The same decision a chat reply or the web card's buttons make, for the
+    handoff this link was sent for.
+    """
+    log.set(browser={"operation": "live_view_decision", "decision": payload.decision.value})
+    record = await resolve_live_code(code)
+    if record is None or record.handoff_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="This live view is no longer waiting"
+        )
+    log.set(user={"id": record.user_id}, browser={"handoff_id": record.handoff_id})
+    resolved = await decide_handoff_by_button(
+        record.handoff_id, payload.decision, record.user_id, payload.message
+    )
+    if resolved is None:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Handoff not found or expired")
+    log.set(browser={"handoff_status": resolved.value})
+    return HandoffDecisionResponse(handoff_id=record.handoff_id, status=resolved)
 
 
 @router.websocket("/live/{code}")

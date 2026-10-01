@@ -43,8 +43,8 @@ class BrowserJobState(BaseModel):
     job_id: str
     status: BrowserJobStatus
     task: str
-    session_id: str | None = None
-    live_view_url: str | None = None
+    #: The stream the turn that started the job relays its cards to.
+    relay_stream_id: str | None = None
     #: The executor-facing guidance string (agent_result_message), set at terminal.
-    agent_message: str | None = None
+    agent_message: str = ""
     result: BrowserResultSnapshot | None = None

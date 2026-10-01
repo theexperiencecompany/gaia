@@ -9,6 +9,7 @@ import pytest
 from app.models.bot_models import BotSessionDocument
 from app.models.conversation_models import ConversationDocument
 from app.models.user_models import AuthenticatedUser
+from app.services import bot_service as bot_service_mod
 from app.services.bot_service import BOT_RATE_LIMIT, BOT_RATE_WINDOW, BotService
 
 
@@ -498,6 +499,7 @@ class TestResetSession:
         sample_user: AuthenticatedUser,
     ) -> None:
         mock_bot_repo.delete_by_session_key = AsyncMock()
+        mock_bot_repo.get_by_session_key = AsyncMock(return_value=None)
         mock_bot_repo.claim_session = AsyncMock(side_effect=TestGetOrCreateSession._claim_insert)
         mock_conversations.exists = AsyncMock(return_value=False)
 
@@ -505,6 +507,33 @@ class TestResetSession:
 
         assert result is not None
         mock_bot_repo.delete_by_session_key.assert_awaited_once_with("discord:user123:user123")
+
+    async def test_stop_stops_the_sessions_browser_run_and_the_users_from_any_group(
+        self,
+        mock_bot_repo: MagicMock,
+        mock_conversations: MagicMock,
+        mock_create_conversation: AsyncMock,
+        sample_user: AuthenticatedUser,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """/stop resets the session, and a browser run outlives the turn that started it; a group's run talks to the user in this DM."""
+        stopped: list[str] = []
+
+        async def _stop(key: str) -> str | None:
+            stopped.append(key)
+            return None
+
+        monkeypatch.setattr(bot_service_mod, "stop_browser_job", _stop)
+        mock_bot_repo.delete_by_session_key = AsyncMock()
+        mock_bot_repo.get_by_session_key = AsyncMock(
+            return_value=MagicMock(conversation_id="conv-dm")
+        )
+        mock_bot_repo.claim_session = AsyncMock(side_effect=TestGetOrCreateSession._claim_insert)
+        mock_conversations.exists = AsyncMock(return_value=False)
+
+        await BotService.reset_session("discord", "user123", "dm-chan", sample_user, is_dm=True)
+
+        assert stopped == ["conv-dm", f"discord:{sample_user.user_id}"]
 
     async def test_reset_with_channel_id(
         self,
@@ -514,6 +543,7 @@ class TestResetSession:
         sample_user: AuthenticatedUser,
     ) -> None:
         mock_bot_repo.delete_by_session_key = AsyncMock()
+        mock_bot_repo.get_by_session_key = AsyncMock(return_value=None)
         mock_bot_repo.claim_session = AsyncMock(side_effect=TestGetOrCreateSession._claim_insert)
         mock_conversations.exists = AsyncMock(return_value=False)
 

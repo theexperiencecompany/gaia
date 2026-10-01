@@ -5,7 +5,7 @@ Redis is unavailable.
 """
 
 from collections.abc import Mapping, Set as AbstractSet
-from typing import Any, Protocol, TypeVar, cast, overload
+from typing import Any, Literal, Protocol, TypeVar, cast, overload
 
 from pydantic import JsonValue, TypeAdapter
 from pydantic.type_adapter import TypeAdapter as TypeAdapterType
@@ -69,10 +69,24 @@ class AsyncRedisCommands(Protocol):
         """GET — None when the key is absent."""
         ...
 
+    @overload
     async def set(
-        self, name: str, value: str, *, ex: int | None = None, nx: bool = False
+        self,
+        name: str,
+        value: str,
+        *,
+        ex: int | None = None,
+        nx: bool = False,
+        get: Literal[False] = False,
     ) -> bool | None:
         """SET — with nx returns None when the key already existed."""
+        ...
+
+    @overload
+    async def set(
+        self, name: str, value: str, *, ex: int | None = None, nx: bool = False, get: Literal[True]
+    ) -> str | None:
+        """SET ... GET — returns the value the key held before, None when it was absent."""
         ...
 
     async def setex(self, name: str, time: int, value: str) -> bool:
@@ -103,6 +117,10 @@ class AsyncRedisCommands(Protocol):
         """Seconds left on a key — -1 when it has no TTL, -2 when it is gone."""
         ...
 
+    async def pttl(self, name: str) -> int:
+        """Milliseconds left on a key — -1 when it has no TTL, -2 when it is gone."""
+        ...
+
     async def keys(self, pattern: str = "*") -> list[str]:
         """KEYS — full scan; only for small, bounded keyspaces."""
         ...
@@ -129,6 +147,10 @@ class AsyncRedisCommands(Protocol):
 
     async def rpush(self, name: str, *values: str) -> int:
         """RPUSH — returns the list length after the push."""
+        ...
+
+    async def blpop(self, keys: list[str], timeout: float = 0) -> tuple[str, str] | None:
+        """BLPOP — (key, value) from the first non-empty list, None when timeout seconds pass; 0 blocks forever."""
         ...
 
     async def hset(self, name: str, *, mapping: Mapping[str, str]) -> int:
@@ -174,6 +196,12 @@ class AsyncRedisCommands(Protocol):
         block: int | None = None,
     ) -> list[tuple[str, list[tuple[str, dict[str, str]]]]]:
         """XREAD — [(stream, [(entry_id, fields)])] for streams with new entries."""
+        ...
+
+    async def xrevrange(
+        self, name: str, *, count: int | None = None
+    ) -> list[tuple[str, dict[str, str]]]:
+        """XREVRANGE — [(entry_id, fields)], newest first."""
         ...
 
     async def eval(self, script: str, numkeys: int, *keys_and_args: str) -> LuaReply:

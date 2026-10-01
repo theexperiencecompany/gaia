@@ -17,6 +17,7 @@ import pytest
 from app.constants.browser import (
     BROWSER_NO_GUIDANCE_AVAILABLE,
     BROWSER_RUN_BLOCKED_SUMMARY,
+    BROWSER_RUN_SESSION_LOST_SUMMARY,
     BROWSER_TAKEOVER_DONE_NOTE,
     BrowserSessionStatus,
     EngineSwitchReason,
@@ -195,14 +196,17 @@ async def test_a_stop_reaches_the_browser_and_releases_the_conversation() -> Non
             )
             assert world.enqueued, "the job never reached the worker"
 
-            await cancel_executor.ainvoke(
+            reply = await cancel_executor.ainvoke(
                 {"task_ids": []}, config={"configurable": {"thread_id": CONVERSATION}}
             )
             await world.settle()
         assert await get_conversation_slot(CONVERSATION) is None
 
-    assert world.browser.stop_observed
+    assert world.aborted == [world.enqueued[0].job_id]
+    assert reply == "Stopped the browser task."
     assert world.cards()[-1]["status"] == BrowserSessionStatus.CANCELLED.value
+    # The stop already told the user; the worker does not narrate it a second time.
+    assert world.deliveries == []
 
 
 async def test_a_worker_crash_still_reports_a_failure_and_frees_the_conversation() -> None:
@@ -252,9 +256,10 @@ async def test_a_handoff_note_reaches_the_run_and_the_agent_deciding_it() -> Non
     assert [card["status"] for card in handoffs] == ["pending", "completed"]
     joined = run.result_for("wait_for_browser_task") or ""
     # The closing reply is written against the original booking otherwise, and
-    # confirms a table nobody booked, so the changed instruction leads.
-    assert joined.startswith("THE USER CHANGED THE REQUEST MID-RUN")
-    assert note in joined
+    # confirms a table nobody booked, so what the user said leads; a note is what
+    # they said, not a replaced request, until the reply classifier calls it one.
+    assert joined.startswith(f'While it ran, the user said: "{note}"')
+    assert "REPLACED THE REQUEST" not in joined
     assert "The table is booked for 7pm on Friday." in joined
 
 
@@ -287,15 +292,15 @@ async def test_a_chat_redirect_makes_the_changed_instruction_lead_the_executors_
                 )
             )
             await _wait_for_pending_handoff(world)
-            assert (
-                await resolution.resolve_handoff_from_message(CONVERSATION, USER, note)
-            ) == "redirect"
+            reply = await resolution.resolve_handoff_from_message(CONVERSATION, USER, note)
+            assert reply is not None
+            assert reply.action == "redirect"
             run = await run_task
             await world.settle()
 
     assert world.browser.takeover_notes == [note]
     joined = run.result_for("wait_for_browser_task") or ""
-    assert joined.startswith("THE USER CHANGED THE REQUEST MID-RUN")
+    assert joined.startswith("THE USER REPLACED THE REQUEST MID-RUN")
     assert note in joined.splitlines()[0]
     assert joined.index(note) < joined.index("The table is booked for 7pm on Friday.")
 
@@ -369,13 +374,12 @@ async def test_a_signed_in_page_does_not_end_a_login_handoff_until_the_user_says
                 assert await _still_pending(handoff_id)
                 assert world.browser.takeover_notes == []
 
-                action = await resolution.resolve_handoff_from_message(
-                    CONVERSATION, USER, LOGGED_IN
-                )
+                reply = await resolution.resolve_handoff_from_message(CONVERSATION, USER, LOGGED_IN)
                 await run_task
         saves = session_mod.save_storage_state.await_args_list
 
-    assert action == "continue"
+    assert reply is not None
+    assert reply.action == "continue"
     handoffs = [card for card in world.cards() if card["kind"] == "handoff"]
     assert [card["status"] for card in handoffs] == ["pending", "completed"]
     assert world.browser.takeover_notes == [BROWSER_TAKEOVER_DONE_NOTE]
@@ -414,7 +418,9 @@ async def test_a_done_that_left_the_user_signed_out_is_asked_again_and_saves_not
             await run_task
         saves = session_mod.save_storage_state.await_args_list
 
-    assert (first, second) == ("continue", "cancel")
+    assert first is not None
+    assert second is not None
+    assert (first.action, second.action) == ("continue", "cancel")
     handoffs = [card for card in world.cards() if card["kind"] == "handoff"]
     assert [card["status"] for card in handoffs] == ["pending", "completed", "pending", "cancelled"]
     assert world.browser.next_step == 2
@@ -495,14 +501,14 @@ async def test_guidance_after_a_note_never_asks_the_user_for_the_step_they_decli
 
 async def test_the_user_is_never_shown_a_handoff_for_a_question_asked_of_the_executor() -> None:
     """A handoff card and the conversation's pending key would ask the user to answer something they were never told about, and swallow their next chat message."""
-    from app.services.browser.handoff import get_conversation_pending_handoff
+    from app.services.browser.handoff import get_pending_handoff_for_reply
 
     async with browser_job_world(STREAM, steps=BLOCK_THEN_ACT) as world:
         async with executor_graph([RETRIEVE, START, JOIN, GUIDE, JOIN_AGAIN, "Done."]) as graph:
             await _drive(graph, world)
 
         assert [card["kind"] for card in world.cards() if card["kind"] == "handoff"] == []
-        assert await get_conversation_pending_handoff(CONVERSATION) is None
+        assert await get_pending_handoff_for_reply(CONVERSATION) is None
 
 
 async def test_the_join_keeps_its_claim_on_the_result_while_the_executor_answers() -> None:
@@ -748,7 +754,6 @@ async def _executor_thread_remembering_the_last_login(brief: str) -> list[Any]:
                 )
             ],
             total_count=1,
-            has_confident_match=True,
         )
     )
     memory.get_core_context = AsyncMock(
@@ -842,3 +847,89 @@ async def test_a_password_the_run_typed_never_reaches_a_card_or_the_answer() -> 
 
     assert _SECRET not in json.dumps(world.cards())
     assert _SECRET not in (run.result_for("wait_for_browser_task") or "")
+
+
+# ---------------------------------------------------------------------------
+# A stop, a lost browser and a later join end the run where they should
+# ---------------------------------------------------------------------------
+
+
+async def test_a_stop_while_the_user_is_asked_to_sign_in_ends_the_run_stopped_at_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: a stop during a handoff waited out the handoff window, and the run then read as timed out, not stopped."""
+    from app.agents.tools.executor_tool import cancel_executor
+    from app.config.settings import settings
+
+    # Short, so a stop the wait never hears ends as the timeout it once was, not a hang.
+    monkeypatch.setattr(settings, "BROWSER_USE_HANDOFF_TIMEOUT_SECONDS", 5)
+    async with browser_job_world(STREAM, steps=[SIGN_IN, BOOK_SIGNED_IN]) as world:
+        async with executor_graph([RETRIEVE, START, "Started."]) as graph:
+            await run_graph(
+                graph, "book me a table", thread_id=CONVERSATION, user_id=USER, **_configurable()
+            )
+            handoff_id = await _wait_for_pending_handoff(world)
+            reply = await cancel_executor.ainvoke(
+                {"task_ids": []}, config={"configurable": {"thread_id": CONVERSATION}}
+            )
+            await world.settle()
+        record = await get_handoff(handoff_id)
+
+    assert reply == "Stopped the browser task."
+    assert record is not None
+    assert record.status is HandoffStatus.CANCELLED
+    handoffs = [card["status"] for card in world.cards() if card["kind"] == "handoff"]
+    assert handoffs == ["pending", "cancelled"]
+    results = [card["status"] for card in world.cards() if card["kind"] == "result"]
+    assert results == [BrowserSessionStatus.CANCELLED.value]
+    assert world.browser.next_step == 1
+    assert await get_conversation_slot(CONVERSATION) is None
+
+
+async def test_a_browser_lost_while_the_user_signs_in_ends_the_handoff_and_the_run() -> None:
+    """The host reaped the paused browser: nobody can finish the step there, so the run ends failed instead of asking until its window runs out."""
+    async with browser_job_world(STREAM, steps=[SIGN_IN, BOOK_SIGNED_IN]) as world:
+        with long_waits_pass_quickly():
+            async with executor_graph([RETRIEVE, START, JOIN, "Sorry."]) as graph:
+                run_task = asyncio.create_task(_drive(graph, world))
+                await _wait_for_pending_handoff(world)
+                world.dead_sessions.add("sess-1")
+                await run_task
+
+    handoffs = [card["status"] for card in world.cards() if card["kind"] == "handoff"]
+    assert handoffs == ["pending", HandoffStatus.FAILED.value]
+    results = [
+        (card["status"], card["summary"]) for card in world.cards() if card["kind"] == "result"
+    ]
+    assert results == [(BrowserSessionStatus.FAILED.value, BROWSER_RUN_SESSION_LOST_SUMMARY)]
+    assert world.browser.next_step == 1
+
+
+async def test_a_later_turn_that_joins_speaks_the_result_with_the_runs_cards() -> None:
+    """The turn that started the run ended without its result: the turn that collects it carries the run's cards, and the worker does not tell it a second time."""
+    from app.agents.core.background.session import signal_executor_done
+
+    later = "stream-later-turn"
+    steps = [ScriptedStep(actions=[], await_joiner=True), *TWO_STEPS]
+    async with browser_job_world(STREAM, steps=steps) as world:
+        async with executor_graph([RETRIEVE, START, "I've started on it."]) as graph:
+            await run_graph(
+                graph, "book me a table", thread_id=CONVERSATION, user_id=USER, **_configurable()
+            )
+        signal_executor_done(STREAM)
+        async with executor_graph([JOIN, "Booked."]) as graph:
+            run = await run_graph(
+                graph,
+                "is it booked?",
+                thread_id=CONVERSATION,
+                user_id=USER,
+                conversation_id=CONVERSATION,
+                stream_id=later,
+            )
+        await world.settle()
+
+    assert (run.result_for("wait_for_browser_task") or "").startswith(
+        "The table is booked for 7pm on Friday."
+    )
+    assert world.deliveries == []
+    assert [card["kind"] for card in world.cards(later)][-1] == "result"

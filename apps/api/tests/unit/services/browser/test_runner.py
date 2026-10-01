@@ -26,7 +26,6 @@ from app.constants.browser import (
     BROWSER_RUN_BLOCKED_SUMMARY,
     BROWSER_RUN_CANCELLED_SUMMARY,
     BROWSER_RUN_DONE_SUMMARY,
-    BROWSER_RUN_HANDOFF_ENDED_SUMMARY,
     BROWSER_RUN_HANDOFF_TIMED_OUT,
     BROWSER_RUN_NOT_DONE_SUMMARY,
     BROWSER_RUN_STOPPED_SUMMARY,
@@ -76,7 +75,6 @@ def _session(session_id: str = "s-primary") -> BrowserHostSession:
         session_id=session_id,
         cdp_url=f"ws://{session_id}",
         live_view_url=f"http://{session_id}/live",
-        context_id="ctx",
         host_url=f"http://{session_id}-host",
     )
 
@@ -770,6 +768,8 @@ async def test_a_run_past_the_wall_clock_is_stopped_and_fails(
         await asyncio.Event().wait()
         raise AssertionError("unreachable")
 
+    # The longest a run may take, cut to a blink; the summary names that clock.
+    monkeypatch.setattr(runner_mod, "run_wall_clock_seconds", lambda task, handoff: 0.01)
     runner, _ = _runner(_never, task_timeout=0, handoff_timeout=0.01)
 
     async with captured_wide_event() as event:
@@ -779,7 +779,7 @@ async def test_a_run_past_the_wall_clock_is_stopped_and_fails(
     assert (result.status, result.success, result.summary) == (
         BrowserSessionStatus.FAILED,
         False,
-        BROWSER_RUN_WALL_CLOCK_SUMMARY.format(seconds=0),
+        BROWSER_RUN_WALL_CLOCK_SUMMARY.format(seconds=0.01),
     )
     assert event["reason"] == BrowserRunFailure.TASK_TIMEOUT
 
@@ -969,9 +969,12 @@ async def test_a_run_a_cancelled_handoff_ended_is_cancelled_whatever_the_user_di
     first: HandoffStatus,
 ) -> None:
     async def _two_handoffs(run: _ScriptedRun) -> RunOutcome:
-        await run.hooks.takeover("Sign in", "credentials")
-        await run.hooks.takeover("Pay", "payment")
-        raise AssertionError("the last handoff ends the run")
+        # Browser-Use turns each raise into an action error and carries on.
+        with contextlib.suppress(BrowserHandoffCancelled):
+            await run.hooks.takeover("Sign in", "credentials")
+        with contextlib.suppress(BrowserHandoffCancelled):
+            await run.hooks.takeover("Pay", "payment")
+        return RunOutcome(True, "paid")
 
     runner, _ = _runner(_two_handoffs)
     outcomes = iter([first, HandoffStatus.CANCELLED])
@@ -986,14 +989,16 @@ async def test_a_run_a_cancelled_handoff_ended_is_cancelled_whatever_the_user_di
     assert (result.status, result.success, result.summary) == (
         BrowserSessionStatus.CANCELLED,
         False,
-        BROWSER_RUN_HANDOFF_ENDED_SUMMARY,
+        BROWSER_RUN_STOPPED_SUMMARY,
     )
 
 
 async def test_a_handoff_that_timed_out_fails_the_run() -> None:
     async def _hands_over(run: _ScriptedRun) -> RunOutcome:
-        await run.hooks.takeover("Sign in", "credentials")
-        raise AssertionError("the timeout ends the run")
+        # Browser-Use turns the raise into an action error and carries on.
+        with contextlib.suppress(BrowserHandoffCancelled):
+            await run.hooks.takeover("Sign in", "credentials")
+        return RunOutcome(True, "signed in")
 
     runner, _ = _runner(_hands_over, handoff=HandoffOutcome(status=HandoffStatus.TIMEOUT))
 
@@ -1079,7 +1084,6 @@ async def test_a_blocked_run_is_guided_with_what_the_user_said_so_far() -> None:
     assert [request.user_notes for request in asked] == [["not the red one"]]
 
 
-@pytest.mark.parametrize("carries_on", [True, False])
 @pytest.mark.parametrize(
     "reply",
     [
@@ -1089,7 +1093,7 @@ async def test_a_blocked_run_is_guided_with_what_the_user_said_so_far() -> None:
     ],
 )
 async def test_a_blocked_run_with_no_instruction_ends_blocked_even_if_the_agent_carries_on(
-    reply: HandoffOutcome, carries_on: bool
+    reply: HandoffOutcome,
 ) -> None:
     guided = _guided(reply)
     guided.pop("asked")
@@ -1099,8 +1103,7 @@ async def test_a_blocked_run_with_no_instruction_ends_blocked_even_if_the_agent_
         try:
             await run.hooks.guidance(AgentGuidanceRequest(reason="stuck", task="t"))
         except BrowserHandoffCancelled as exc:
-            if not carries_on:
-                raise
+            # Browser-Use turns the raise into an action error and carries on.
             run.why = str(exc)
         # The agent's next check stops it.
         run.stops = await run.hooks.should_stop()
@@ -1117,9 +1120,8 @@ async def test_a_blocked_run_with_no_instruction_ends_blocked_even_if_the_agent_
         BROWSER_RUN_BLOCKED_SUMMARY,
     )
     assert event["browser"]["blocked"] == BrowserRunFailure.BLOCKED.value
-    if carries_on:
-        [run] = _ScriptedRun.made
-        assert (run.why, run.stops) == (reply.status.value, True)
+    [run] = _ScriptedRun.made
+    assert (run.why, run.stops) == (reply.status.value, True)
 
 
 async def test_a_run_may_ask_for_guidance_only_so_often_and_only_while_an_agent_is_joined() -> None:
@@ -1158,22 +1160,6 @@ async def test_with_no_agent_to_ask_guidance_is_not_offered(missing: str) -> Non
     await _run(_runner(_asks, **guided)[0])
 
     assert _ScriptedRun.made[0].allowed is False
-
-
-async def test_guidance_asked_with_no_channel_ends_the_run() -> None:
-    async def _asks(run: _ScriptedRun) -> RunOutcome:
-        assert run.hooks.guidance is not None
-        try:
-            await run.hooks.guidance(AgentGuidanceRequest(reason="stuck", task="t"))
-        except BrowserHandoffCancelled as exc:
-            run.why = str(exc)
-            raise
-        raise AssertionError("no channel ends the run")
-
-    result = await _run(_runner(_asks)[0])
-
-    assert _ScriptedRun.made[0].why == "no-guidance-channel"
-    assert result.status == BrowserSessionStatus.CANCELLED
 
 
 async def test_waiting_on_the_agent_twice_is_not_counted_as_work(

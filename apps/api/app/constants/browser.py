@@ -110,12 +110,13 @@ BROWSER_CREDENTIALS_SAVED_NOTE = (
 
 
 class HandoffStatus(str, Enum):
-    """State of a live-view handoff: pending, completed, cancelled, expired."""
+    """State of a live-view handoff: pending, completed, cancelled, expired, or failed."""
 
     PENDING = "pending"
     COMPLETED = "completed"  # user finished the step in live-view → resume
-    CANCELLED = "cancelled"  # user cancelled → abort
+    CANCELLED = "cancelled"  # user cancelled, or the run was stopped → abort
     TIMEOUT = "timeout"  # nobody acted → abort
+    FAILED = "failed"  # the browser the user was sent to is gone → abort
 
 
 class HandoffDecision(str, Enum):
@@ -123,6 +124,13 @@ class HandoffDecision(str, Enum):
 
     CONTINUE = "continue"
     CANCEL = "cancel"
+
+
+#: The status a handoff settles with on each decision.
+HANDOFF_DECISION_STATUS: dict[HandoffDecision, HandoffStatus] = {
+    HandoffDecision.CONTINUE: HandoffStatus.COMPLETED,
+    HandoffDecision.CANCEL: HandoffStatus.CANCELLED,
+}
 
 
 class HandoffKind(StrEnum):
@@ -160,12 +168,10 @@ class BrowserHandoffAction(StrEnum):
 # Browser-session continue/cancel signal only, not tool-call approval
 # (the shared HIL system owns that).
 BROWSER_HANDOFF_KEY_PREFIX = "browser:handoff:"
-# Maps a conversation to its one in-flight handoff id, so a plain chat reply
-# ("yeah I paid, continue") can resolve it — the text-channel equivalent of the
-# card's Continue/Cancel buttons. Both surfaces converge on ``resolve_handoff``.
-BROWSER_HANDOFF_CONV_KEY_PREFIX = "browser:handoff:conv:"
-HANDOFF_POLL_INTERVAL_SECONDS = 1.0
-HANDOFF_KEY_TTL_SECONDS = 3600
+# Maps where the user's chat reply arrives (handoff.reply_address) to the one
+# in-flight handoff, so a plain reply ("yeah I paid, continue") can resolve it,
+# the text-channel equivalent of the card's buttons. Both converge on resolve_handoff.
+BROWSER_HANDOFF_REPLY_KEY_PREFIX = "browser:handoff:reply:"
 # The last line of a handoff a bot user is sent: only their word ends it.
 BROWSER_HANDOFF_REPLY_PROMPT = "Reply here when you're done, or tell me to stop."
 # How often the paused run touches the host session so the idle reaper (default
@@ -174,9 +180,9 @@ BROWSER_HANDOFF_KEEPALIVE_SECONDS = 60
 
 # A short capability code for the bot's live-view link (browser.heygaia.io/{code}):
 # the code IS the secret and maps to the session + owner in Redis, so the link
-# carries no 32-char session id and no long ?t= token. TTL bounds the link's life.
+# carries no 32-char session id and no long ?t= token. One per handoff, revoked on settle.
 BROWSER_LIVE_CODE_KEY_PREFIX = "browser:livecode:"
-BROWSER_LIVE_CODE_TTL_SECONDS = 3600
+BROWSER_LIVE_CODE_HANDOFF_PREFIX = "browser:livecode:handoff:"
 
 # Replay: a short code maps to a finished session's screenshot set, so the recap
 # link (browser.heygaia.io/replays/{code}) plays every step back as a slideshow.
@@ -208,10 +214,21 @@ BROWSER_PROFILE_TTL_SECONDS = BROWSER_PROFILE_TTL_DAYS * 24 * 3600
 # it; bot delivery strips it back off to show the user the reason alone.
 BROWSER_TASK_FAILED_PREFIX = "Browser task failed: "
 
-# Chat acks when a handoff is resolved by a natural-language reply.
+# Recorded in the thread when the handoff card's buttons decide a handoff: no turn runs for a tap.
 BROWSER_HANDOFF_ACK_CONTINUE = "Got it, continuing the browser task."
 BROWSER_HANDOFF_ACK_CANCEL = "Okay, I've stopped the browser task."
-BROWSER_HANDOFF_ACK_REDIRECT = "Got it, continuing with that instead."
+
+# Read with a chat message that answered a paused browser task, so the turn's
+# reply knows what the message already did to it.
+BROWSER_HANDOFF_REPLY_NOTE = (
+    "[This message answered the browser task that was paused for the user ({reason}). "
+    "It was read as {reading}.]"
+)
+BROWSER_HANDOFF_REPLY_READINGS: dict[str, str] = {
+    "continue": "the user finishing that step, so the task carries on",
+    "cancel": "the user stopping the task, so it was stopped",
+    "redirect": "a new instruction instead of that step, which the task now follows",
+}
 
 # A run summary that was stopped on purpose leads with this label; the bot strips
 # it so "Couldn't finish that:" never stacks a second stop-word on top.
@@ -230,6 +247,14 @@ BROWSER_RUN_BLOCKED_SUMMARY = "I couldn't find a way to move forward on this pag
 # "...stopped unexpectedly:" dangling in front of the user.
 BROWSER_JOB_CRASHED_SUMMARY = (
     "the browser task stopped unexpectedly, and nothing else changed; you can ask me to try again"
+)
+# A run cut off because its worker shut down, not because anyone stopped it.
+BROWSER_JOB_WORKER_STOPPED_SUMMARY = (
+    "the browser task was cut off because its worker shut down; you can ask me to try again"
+)
+# A queued run whose conversation slot another run took while it waited.
+BROWSER_JOB_SLOT_TAKEN_SUMMARY = (
+    "another browser task started in this conversation while this one waited, so it never ran"
 )
 
 # Upper bound on how many times one task may hand off to the human, so a
@@ -258,6 +283,9 @@ BROWSER_GUIDANCE_CHANGED_INSTRUCTION = (
     "MID-RUN THE USER CHANGED THE INSTRUCTION to {changed}. That is what your guidance "
     "must serve. Where the task below conflicts with it, the task is no longer wanted, "
     "and you must never send the run back to a step the user declined."
+)
+BROWSER_GUIDANCE_USER_SAID = (
+    "While it ran, the user said: {said}. Judge yourself what that changes about the task."
 )
 BROWSER_GUIDANCE_ANSWER = (
     "Answer with exactly one of these, then call wait_for_browser_task() again:\n"
@@ -354,7 +382,7 @@ BROWSER_AGENT_ROLE = (
     "only after you tried it and it could not be done.\n"
     "Logins without given credentials, payments, OTPs and CAPTCHAs go to the user through "
     "the handoff actions. Messages the user sends mid-task arrive as follow-up requests: "
-    "they change the task from then on."
+    "weigh what each says against the task; it changes the task only where it says so."
 )
 
 # Said to the agent when it asks for guidance with no assistant joined to answer.
@@ -368,7 +396,9 @@ BROWSER_RUN_WALL_CLOCK_SUMMARY = "Browser task timed out after {seconds}s."
 BROWSER_RUN_WORK_BUDGET_SUMMARY = "Browser task timed out after {seconds}s of work."
 BROWSER_RUN_STOPPED_SUMMARY = "Browser task stopped."
 BROWSER_RUN_CANCELLED_SUMMARY = "Browser task was cancelled."
-BROWSER_RUN_HANDOFF_ENDED_SUMMARY = "Browser task was stopped."
+BROWSER_RUN_SESSION_LOST_SUMMARY = (
+    "The browser closed while it waited for you to finish a step in it, so the task stopped there."
+)
 BROWSER_RUN_DONE_SUMMARY = "Completed the browser task."
 BROWSER_RUN_NOT_DONE_SUMMARY = "Could not complete the browser task."
 #: Why the agent could not attach to a session the host created: nearly always the CDP proxy.
@@ -574,24 +604,51 @@ BROWSER_JOB_RETENTION_SECONDS = 3600
 BROWSER_JOB_EVENTS_PREFIX = "browser:job:events:"
 BROWSER_JOB_EVENTS_MAXLEN = 2000
 
+# A conversation's latest browser job, finished or not: how a join and a stop
+# find it once the slot lease is gone (a queued job's lease is never heartbeated).
+BROWSER_JOB_LATEST_PREFIX = "browser:job:latest:"
+
 # A live executor holding this lease owns speaking the result; the worker skips
 # its own delivery while it is held. Refreshed by the joiner, so an API crash
 # releases it within one TTL and the worker delivers instead.
 BROWSER_JOB_JOINER_PREFIX = "browser:job:joiner:"
 BROWSER_JOB_JOINER_LEASE_SECONDS = 15
 BROWSER_JOB_JOINER_REFRESH_SECONDS = 5
+# The one telling of a job's result: whoever claims it first speaks, the other stays quiet.
+BROWSER_JOB_DELIVERED_PREFIX = "browser:job:delivered:"
 
-# Set by cancel_executor for a job whose turn has already ended, when the
-# stream's cancel signal is gone. OR-ed with stream_manager.is_cancelled.
+
+class ResultSpeaker(StrEnum):
+    """Who told the user a browser job's result: the executor joined on it, or the worker's follow-up."""
+
+    JOINER = "joiner"
+    WORKER = "worker"
+
+
+# The stop flag every stop sets (stop_browser_job); the run reads it at its
+# start, between steps and before every wait.
 BROWSER_JOB_CANCEL_PREFIX = "browser:job:cancel:"
+# The handoff a paused run is waiting on, so a stop can settle it.
+BROWSER_JOB_WAIT_PREFIX = "browser:job:wait:"
 # What the user said while a job runs, oldest first: the run reads it between steps.
 BROWSER_JOB_INBOX_PREFIX = "browser:job:inbox:"
+# How long a stop the agent asked for waits on the job's own ending before it
+# says the stop is not confirmed yet. The aborted run ends within a worker poll.
+BROWSER_JOB_STOP_CONFIRM_SECONDS = 15
 
-BROWSER_JOB_POLL_INTERVAL_SECONDS = 0.5
 
-# How long the relay's read parks on an empty feed before looking at the turn
-# again. Long enough that an idle run costs one read a second, short enough that
-# a cancelled turn stops relaying about as fast as the user expects.
+class BrowserStopOutcome(StrEnum):
+    """What a stop found once the job ended, or did not end, after it."""
+
+    STOPPED = "stopped"
+    #: The run had already finished another way before the stop reached it.
+    ALREADY_ENDED = "already_ended"
+    #: The job had not ended when the wait for it gave out.
+    UNCONFIRMED = "unconfirmed"
+
+
+# How long the relay's and the join's reads park on a quiet feed: the beat a
+# join re-arms its lease and checks the run still has a worker on.
 BROWSER_JOB_RELAY_BLOCK_MS = 1000
 
 # The ARQ function name, shared by the enqueue site and the worker registration.

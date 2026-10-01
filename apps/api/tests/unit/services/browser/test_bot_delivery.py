@@ -382,7 +382,7 @@ class TestBotProgressDeliveryHandoff:
             ) as mock_pub,
         ):
             await delivery.handoff(snap)
-            mock_link.assert_awaited_once_with("sess-1", "user-1")
+            mock_link.assert_awaited_once_with("sess-1", "user-1", "h1")
             msg = mock_pub.call_args[0][2][0]
             assert msg == (
                 "Payment needed"

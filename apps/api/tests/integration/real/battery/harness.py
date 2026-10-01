@@ -34,16 +34,18 @@ from pymongo.database import Database
 import redis
 
 from app.constants.browser import (
-    BROWSER_HANDOFF_CONV_KEY_PREFIX,
     BROWSER_HANDOFF_KEY_PREFIX,
+    BROWSER_HANDOFF_REPLY_KEY_PREFIX,
     BROWSER_JOB_LOCK_PREFIX,
     BROWSER_JOB_STATE_PREFIX,
 )
 from app.constants.cache import EXECUTOR_BUSY_PREFIX, RATE_LIMIT_KEY_PREFIX
+from app.constants.chat import ConversationSource
 from app.core.provider_registration import register_lazy_providers
 from app.db.repositories.browser_profiles import BrowserProfilesRepository
 from app.memory.management import delete_all as forget_all_memories
 from app.services.browser.exceptions import BrowserUnavailableError
+from app.services.browser.handoff import bot_chat_address
 from app.services.browser.host_client import get_session
 
 T = TypeVar("T")
@@ -478,9 +480,12 @@ class Battery:
         assert conversation, f"no bot session for channel {self.last_channel}"
         return conversation
 
-    def pending_handoff(self, conversation_id: str) -> tuple[str, dict[str, Any]] | None:
-        # The app's cache stores the id JSON-encoded, quotes included.
-        handoff_id = self.stored(f"{BROWSER_HANDOFF_CONV_KEY_PREFIX}{conversation_id}")
+    def pending_handoff(self) -> tuple[str, dict[str, Any]] | None:
+        # A bot run's handoff is answered from the requester's Telegram chat, wherever it started.
+        address = bot_chat_address(ConversationSource.TELEGRAM, self.battery_user_id())
+        handoff_id = cast(
+            str | None, self.redis.get(f"{BROWSER_HANDOFF_REPLY_KEY_PREFIX}{address}")
+        )
         if not handoff_id:
             return None
         record = self.stored(f"{BROWSER_HANDOFF_KEY_PREFIX}{handoff_id}") or {}
@@ -493,7 +498,7 @@ class Battery:
         conversation_id = self.conversation_id()
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            found = self.pending_handoff(conversation_id)
+            found = self.pending_handoff()
             if found:
                 return found
             state = self.job_state(job_id)

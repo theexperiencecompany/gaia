@@ -12,13 +12,10 @@ from pydantic import BaseModel
 
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
+from app.services.browser.job_lifetime import browser_job_ttl_seconds
 from shared.py.wide_events import log
 
 _KEY_PREFIX = "browser:sess:"
-# Only bounds a leaked entry; must stay well above the longest possible run
-# (task timeout 600s + 5 handoffs x 600s = 3600s) so a mid-run handoff is never
-# locked out of its own live view by an expiring ownership entry.
-_REGISTRY_TTL_SECONDS = 7200
 
 
 class SessionRegistryEntry(BaseModel):
@@ -40,8 +37,10 @@ async def register_session(session_id: str, user_id: str, live_ws: str | None = 
     """
     log.set(browser={"session_id": session_id, "operation": "registry_register"})
     entry = SessionRegistryEntry(owner=user_id, live_ws=live_ws)
+    # Only bounds a leaked entry: as long as any job can live, so a paused run is
+    # never locked out of its own live view.
     stored = await redis_cache.set(
-        _key(session_id), entry, ttl=_REGISTRY_TTL_SECONDS, model=SessionRegistryEntry
+        _key(session_id), entry, ttl=browser_job_ttl_seconds(), model=SessionRegistryEntry
     )
     if not stored:
         log.warning(

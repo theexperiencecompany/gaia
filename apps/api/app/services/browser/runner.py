@@ -14,6 +14,7 @@ import asyncio
 import base64
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
+from functools import partial
 from time import perf_counter
 from typing import Any
 from urllib.parse import urlsplit
@@ -28,9 +29,9 @@ from app.constants.browser import (
     BROWSER_RUN_BLOCKED_SUMMARY,
     BROWSER_RUN_CANCELLED_SUMMARY,
     BROWSER_RUN_DONE_SUMMARY,
-    BROWSER_RUN_HANDOFF_ENDED_SUMMARY,
     BROWSER_RUN_HANDOFF_TIMED_OUT,
     BROWSER_RUN_NOT_DONE_SUMMARY,
+    BROWSER_RUN_SESSION_LOST_SUMMARY,
     BROWSER_RUN_STOPPED_SUMMARY,
     BROWSER_RUN_WALL_CLOCK_SUMMARY,
     BROWSER_RUN_WORK_BUDGET_SUMMARY,
@@ -62,6 +63,7 @@ from app.services.browser.agent_run import AgentRunSetup, BrowserAgentRun
 from app.services.browser.engine_watchdog import run_watched
 from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserUnavailableError
 from app.services.browser.jev.secrets import RunSecrets
+from app.services.browser.job_lifetime import run_wall_clock_seconds
 from app.services.browser.ledger import ModelCall, RunLedger
 from app.services.browser.replay import create_replay_link
 from app.services.browser.run_contract import (
@@ -163,10 +165,10 @@ class BrowserTaskRunner:
         self._engine_switch: EngineSwitchReason | None = None
         self._config = config
         self._task_timeout = config.task_timeout_seconds
-        # The wall clock allows every permitted handoff on top of the active-work
-        # budget, so takeovers are never starved by a timeout.
-        self._wall_clock_timeout = (
-            config.task_timeout_seconds + MAX_HANDOFFS_PER_TASK * config.handoff_timeout_seconds
+        # Every permitted handoff and guidance wait on top of the active-work
+        # budget, so waiting on someone is never starved by a timeout.
+        self._wall_clock_timeout = run_wall_clock_seconds(
+            config.task_timeout_seconds, config.handoff_timeout_seconds
         )
         self._user_id = user_id
         self._root_request_id = root_request_id
@@ -180,10 +182,14 @@ class BrowserTaskRunner:
         self._budget_summary: str | None = None  # pragma: no mutate
         # None reads as falsy exactly like False.
         self._stopped = False  # pragma: no mutate
-        #: What the user told the run to do instead when they took over.
+        #: What the user said while the run went: messages and handoff notes, in order.
         self._user_notes: list[str] = []
+        #: The notes among them the reply classifier read as replacing the request.
+        self._redirects: list[str] = []
         # None reads as falsy exactly like False.
         self._handoff_timed_out = False  # pragma: no mutate
+        #: How the browser a handoff sent the user to was lost while they were in it.
+        self._handoff_failure: EngineFailure | None = None
         self._handoffs = 0
         self._guidances = 0
         #: Set when a blocked run asked for guidance and got none; the summary the
@@ -218,7 +224,11 @@ class BrowserTaskRunner:
             take_user_messages=self._take_user_messages,
             action_results=self._action_results,
             guidance_allowed=self._guidance_allowed,
-            guidance=self._handle_guidance,
+            guidance=(
+                partial(self._handle_guidance, self._request_guidance)
+                if self._request_guidance is not None
+                else None
+            ),
             # Only on the fast engine: a run already on the fallback has nowhere to move.
             switch_engine=(
                 self._handle_engine_switch
@@ -255,15 +265,13 @@ class BrowserTaskRunner:
                 outcome = await asyncio.wait_for(
                     self._execute(task), timeout=self._wall_clock_timeout
                 )
-            except (BrowserHandoffCancelled, InterruptedError):
-                return await self._finish_from_handoff()
             except TimeoutError:
                 self._agent_run.stop()
                 log.fail(BrowserRunFailure.TASK_TIMEOUT)
                 return await self._finish(
                     BrowserSessionStatus.FAILED,
                     False,
-                    BROWSER_RUN_WALL_CLOCK_SUMMARY.format(seconds=self._task_timeout),
+                    BROWSER_RUN_WALL_CLOCK_SUMMARY.format(seconds=self._wall_clock_timeout),
                 )
             except (ConnectionError, OSError) as exc:
                 # The host created the session but the agent couldn't attach over CDP —
@@ -306,8 +314,6 @@ class BrowserTaskRunner:
             ended = await run_watched(
                 self._agent_run, task, self._session, paused=lambda: self._waiting_on_someone
             )
-        except (BrowserHandoffCancelled, InterruptedError):
-            raise
         except Exception as exc:
             # Browser-Use raises only when it cannot attach at all; the host says
             # whether that was the engine or something the fallback would not fix.
@@ -319,13 +325,12 @@ class BrowserTaskRunner:
                 browser={"session_id": self._session.session_id},
             )
             return await self._resume_on_fallback(task, self._open_fallback_session)
-        if self._engine_switch is not None:
-            return await self._resume_on_fallback(task, self._open_fallback_session)
-        if isinstance(ended, EngineFailure):
+        if self._engine_switch is not None or isinstance(ended, EngineFailure):
             if await self._should_stop():
                 # Never read: _finish_after_execute judges the stop before the outcome.
                 return RunOutcome(False, BROWSER_ENGINE_UNRESPONSIVE_SUMMARY)  # pragma: no mutate
-            self._fall_back_after_engine_failure(ended)
+            if isinstance(ended, EngineFailure):
+                self._fall_back_after_engine_failure(ended)
             return await self._resume_on_fallback(task, self._open_fallback_session)
         if not ended.success and await self._engine_failed_under_run():
             return await self._resume_on_fallback(task, self._open_fallback_session)
@@ -424,25 +429,22 @@ class BrowserTaskRunner:
         log.set_ns("browser", state_carry=carry.value)
         return state
 
-    async def _finish_from_handoff(self) -> BrowserResultSnapshot:
-        """Judge a run the handoff ended: blocked with no guidance, expired, or stopped."""
-        if self._blocked_summary:
-            return await self._finish(BrowserSessionStatus.FAILED, False, self._blocked_summary)
-        if self._handoff_timed_out:
-            return await self._finish(
-                BrowserSessionStatus.FAILED, False, BROWSER_RUN_HANDOFF_TIMED_OUT
-            )
-        return await self._finish(
-            BrowserSessionStatus.CANCELLED, False, BROWSER_RUN_HANDOFF_ENDED_SUMMARY
-        )
-
     async def _finish_after_execute(self, outcome: RunOutcome) -> BrowserResultSnapshot:
-        """Judge a run whose agent loop returned, cancellation and handoff first.
+        """Judge a run whose agent loop returned: a stop first, then why a handoff or budget ended it.
 
         Browser-Use catches BrowserHandoffCancelled inside the registered action
-        and turns it into an action error, so on a timeout the loop returns
-        normally and only the flag the takeover hook set still knows.
+        and turns it into an action error, so the loop returns normally and only
+        the flags the hooks set still know. A stop wins over all of them: the
+        wait it cut short would otherwise read as blocked or timed out.
         """
+        if await self._is_cancelled():
+            return await self._finish(
+                BrowserSessionStatus.CANCELLED, False, BROWSER_RUN_CANCELLED_SUMMARY
+            )
+        if self._handoff_failure is not None:
+            return await self._finish(
+                BrowserSessionStatus.FAILED, False, BROWSER_RUN_SESSION_LOST_SUMMARY
+            )
         if self._blocked_summary:
             return await self._finish(BrowserSessionStatus.FAILED, False, self._blocked_summary)
         if self._handoff_timed_out:
@@ -454,10 +456,6 @@ class BrowserTaskRunner:
         if self._stopped:
             return await self._finish(
                 BrowserSessionStatus.CANCELLED, False, BROWSER_RUN_STOPPED_SUMMARY
-            )
-        if await self._is_cancelled():
-            return await self._finish(
-                BrowserSessionStatus.CANCELLED, False, BROWSER_RUN_CANCELLED_SUMMARY
             )
         return await self._finish_from_outcome(outcome)
 
@@ -479,7 +477,7 @@ class BrowserTaskRunner:
         return False
 
     async def _take_user_messages(self) -> list[str]:
-        """Take the user's mid-task messages, kept for the result too: the reply must answer what they asked last."""
+        """Take what the user said mid-task, kept for the result too: the reply weighs what they said last."""
         messages = await self._callbacks.take_user_messages()
         self._user_notes.extend(messages)
         return messages
@@ -530,9 +528,14 @@ class BrowserTaskRunner:
             note = (outcome.message or "").strip() or None
             if note:
                 self._user_notes.append(note)
+                if outcome.redirect:
+                    self._redirects.append(note)
             return note
         self._stopped = True
         self._handoff_timed_out = outcome.status == HandoffStatus.TIMEOUT
+        if outcome.status == HandoffStatus.FAILED:
+            self._handoff_failure = outcome.cause
+            log.set_ns("browser", handoff_failure=outcome.cause)
         log.info(f"{LogTag.BROWSER} Browser takeover ended", status=outcome.status.value)
         raise BrowserHandoffCancelled(outcome.status.value)
 
@@ -544,18 +547,23 @@ class BrowserTaskRunner:
             return False
         return await self._agent_joined()
 
-    async def _handle_guidance(self, request: AgentGuidanceRequest) -> str:
+    async def _handle_guidance(
+        self, request_guidance: RequestGuidanceFn, request: AgentGuidanceRequest
+    ) -> str:
         """Ask the joined agent for one instruction; raise to end the run blocked when none comes back."""
-        if self._request_guidance is None:
-            raise BrowserHandoffCancelled("no-guidance-channel")
         self._guidances += 1
         self._waiting_on_someone = True
         waiting_since = perf_counter()
         try:
             # What the user told the run since it started: without it the agent is
             # guided back to a step the user already declined.
-            outcome = await self._request_guidance(
-                request.model_copy(update={"user_notes": list(self._user_notes)})
+            outcome = await request_guidance(
+                request.model_copy(
+                    update={
+                        "user_notes": list(self._user_notes),
+                        "redirects": list(self._redirects),
+                    }
+                )
             )
         finally:
             # None reads as falsy exactly like False.
@@ -676,6 +684,7 @@ class BrowserTaskRunner:
             steps=self._last_step,
             replay_url=replay_url,
             user_notes=list(self._user_notes),
+            redirects=list(self._redirects),
         )
         await self._emit(result)
         return result

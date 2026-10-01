@@ -24,7 +24,6 @@ from langgraph.errors import GraphRecursionError
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.core.agent import AgentRunOptions, StreamMessageIds, call_agent
-from app.agents.core.background.comms_narrator import record_exchange_in_thread
 from app.agents.core.background.executor_capture import (
     await_executor_done,
     drain_executor_tool_data,
@@ -34,11 +33,13 @@ from app.agents.core.background.executor_capture import (
 from app.agents.core.background.session import get_session
 from app.agents.core.comms_directive import interpret_comms_output
 from app.constants.artifacts import ARTIFACT_FORWARDER_SUBSCRIBE_TIMEOUT
+from app.constants.browser import BROWSER_HANDOFF_REPLY_NOTE, BROWSER_HANDOFF_REPLY_READINGS
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT, VOICE_EXECUTOR_RESULT_TIMEOUT_S
 from app.constants.chat import (
     EMPTY_RESPONSE_FALLBACK,
     GENERIC_TURN_ERROR,
     RECURSION_LIMIT_MESSAGE,
+    ConversationSource,
 )
 from app.constants.comms import CommsDirectiveKind
 from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED, HIL_CLASSIFIER_HISTORY_TURNS
@@ -61,6 +62,7 @@ from app.services.analytics_service import (
     AnalyticsProperties,
     capture_event,
 )
+from app.services.browser.handoff import reply_address
 from app.services.browser.jobs import post_conversation_message
 from app.services.browser.resolution import resolve_handoff_from_message
 from app.services.chat.artifact_forwarder import forward_artifact_events
@@ -181,6 +183,8 @@ class _TurnContext:
     stream_id: str
     source: str | None
     usage_callback: UsageMetadataCallbackHandler
+    #: What the model reads with the user's message about what it already did.
+    note: str | None = None
 
 
 class _StreamState:
@@ -330,9 +334,9 @@ async def _run_chat_stream(
             await _wait_for_artifact_forwarder(forwarder_subscribed, stream_id)
             await FileService.seed_uploads(body.fileData, user_id, conversation_id)
         # A chat reply ("I paid, continue" / "stop") resolves a paused browser task's
-        # handoff like the card's Continue/Cancel, on web and bots alike. Always
-        # falls through to the normal turn: comms voices the ack itself.
-        await _resolve_pending_browser_handoff_turn(body, user, conversation_id, stream_id, state)
+        # handoff like the card's buttons, on web and bots alike. Always falls
+        # through to the normal turn, which reads what the reply did with it.
+        browser_note = await _browser_turn_note(body, user.user_id, conversation_id, source)
 
         # Starts only after the conversation row exists (_publish_init_chunk);
         # starting earlier races the insert and the $set description update can
@@ -348,6 +352,7 @@ async def _run_chat_stream(
                 stream_id=stream_id,
                 source=source,
                 usage_callback=usage_callback,
+                note=browser_note,
             ),
             description_task,
             state,
@@ -541,46 +546,40 @@ async def _resolve_pending_approval_turn(
     return True
 
 
-async def _resolve_pending_browser_handoff_turn(
+async def _browser_turn_note(
     body: MessageRequestWithHistory,
-    user: AuthenticatedUser,
+    user_id: str | None,
     conversation_id: str,
-    _stream_id: str,
-    _state: _StreamState,
-) -> bool:
-    """Resolve a paused browser task's handoff from the user's chat reply, or pass the reply to the running task.
+    source: str | None,
+) -> str | None:
+    """Read the user's message against a paused browser task: resolve its handoff, or pass the message on to the running task.
 
-    Always returns False, so the normal turn voices the ack; the paused task
-    resumes on its own stream. A reply that resolves no handoff while a browser
-    task runs goes to that task's inbox, where its agent reads it next step.
+    Returns what the turn's model must read with the message when it answered a
+    handoff, None otherwise. A message that answers none reaches the running
+    task as something the user said, which its agent weighs at its next step.
     """
-    user_id = user.user_id
     message = user_message_content_from(body)
     if not user_id or not message:
-        return False
+        return None
 
+    address = reply_address(conversation_id, user_id, ConversationSource.coerce(source))
     try:
-        action = await resolve_handoff_from_message(conversation_id, user_id, message)
+        reply = await resolve_handoff_from_message(address, user_id, message)
     except Exception as e:  # chat must survive an optional-feature lookup
         log.error(
             f"{LogTag.CHAT} Pending browser-handoff check failed; normal turn",
             error_type=type(e).__name__,
         )
-        return False
+        return None
 
-    if action not in ("continue", "redirect", "cancel"):
+    if reply is None or reply.action == "unrelated":
         job_id = await post_conversation_message(conversation_id, message)
         if job_id is not None:
             log.set_ns("browser", job_id=job_id, message_to_running_job=True)
-        return False
-
-    # The thread still holds the original request; without this the turn would
-    # answer blind to the handoff that just resolved. Recorded as fact, voiced
-    # by comms — never a canned ack bubble.
-    await record_exchange_in_thread(
-        conversation_id, message, f"[Browser handoff resolved: {action}]"
+        return None
+    return BROWSER_HANDOFF_REPLY_NOTE.format(
+        reason=reply.reason, reading=BROWSER_HANDOFF_REPLY_READINGS[reply.action]
     )
-    return False
 
 
 def _set_stream_log_context(
@@ -726,7 +725,9 @@ async def _consume_agent_stream(
         request=body,
         user=user,
         conversation_id=turn.conversation_id,
-        options=AgentRunOptions(usage_metadata_callback=turn.usage_callback, source=turn.source),
+        options=AgentRunOptions(
+            usage_metadata_callback=turn.usage_callback, source=turn.source, turn_note=turn.note
+        ),
         ids=StreamMessageIds(
             stream_id=stream_id,
             user_message_id=state.user_message_id,

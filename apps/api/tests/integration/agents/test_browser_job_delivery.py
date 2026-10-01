@@ -8,19 +8,23 @@ So this proves the wiring from one card snapshot to every surface that renders
 it; it does not prove Browser-Use produces those snapshots.
 """
 
-import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import fakeredis.aioredis
 import pytest
 
 from app.agents.core.background import redis_writer as rw
 from app.agents.core.background.executor_capture import drain_executor_tool_data
-from app.agents.core.background.redis_writer import STREAM_PUBLISH_TASK_NAME
-from app.agents.core.background.session import RunKind, create_session
+from app.agents.core.background.session import (
+    RunKind,
+    create_session,
+    signal_executor_done,
+    teardown_session,
+)
 from app.constants.browser import (
     BROWSER_TASK_EVENT,
     BrowserEngine,
@@ -43,17 +47,11 @@ from app.schemas.browser_job import BrowserJobRequest
 from app.services import outbound_delivery as outbound_mod, platform_message_service
 from app.services.browser import (
     bot_delivery as bot_mod,
-    job_events as job_events_mod,
-    job_relay as relay_mod,
     job_runner as jr,
-    jobs as jobs_mod,
 )
-from app.services.browser.job_events import JOB_TERMINAL_FRAME, publish_job_event
 from app.services.browser.job_relay import relay_job_events
 from app.services.browser.job_runner import execute_browser_job
 from app.services.browser.ledger import RunLedger
-from app.utils import background_tasks
-from tests._harness.redis_fakes import FakeRedisCache
 
 pytestmark = pytest.mark.integration
 
@@ -125,15 +123,13 @@ class _ScriptedBrowser:
 
 
 @pytest.fixture
-def redis(monkeypatch: pytest.MonkeyPatch) -> FakeRedisCache:
+async def redis(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
     """One Redis behind the job's state and its card feed, as in production."""
-    cache = FakeRedisCache()
-    monkeypatch.setattr(jobs_mod, "redis_cache", cache)
-    monkeypatch.setattr(job_events_mod, "redis_cache", cache)
-    # The relay's deadline on the feed's fake clock: a relay that misses its stop
-    # frame ends at the deadline in fake time instead of spinning the test.
-    monkeypatch.setattr(relay_mod, "monotonic", lambda: cache.client.clock)
-    return cache
+    client = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    monkeypatch.setattr("app.db.redis.redis_cache.redis", client)
+    yield client
+    teardown_session(STREAM_ID)
+    await client.aclose()
 
 
 @pytest.fixture
@@ -147,10 +143,7 @@ def chunks(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         published.append(chunk)
 
     manager.publish_chunk = _publish_chunk
-    manager.is_cancelled = AsyncMock(return_value=False)
     monkeypatch.setattr(rw, "stream_manager", manager)
-    monkeypatch.setattr(relay_mod, "stream_manager", manager)
-    monkeypatch.setattr(jr, "stream_manager", manager)
     return published
 
 
@@ -203,16 +196,10 @@ def _request(**overrides: Any) -> BrowserJobRequest:
 
 
 async def _run_and_relay(request: BrowserJobRequest) -> None:
-    """Run the job, close its feed the way the worker does, then replay it onto the turn."""
+    """Run the job, which closes its own feed, then replay it onto a turn whose executor run has ended."""
     await execute_browser_job(request)
-    await publish_job_event(request.job_id, JOB_TERMINAL_FRAME)
+    signal_executor_done(STREAM_ID)
     await relay_job_events(request.job_id, STREAM_ID)
-    while pending := [
-        task
-        for task in background_tasks._background_tasks
-        if task.get_name() == STREAM_PUBLISH_TASK_NAME
-    ]:
-        await asyncio.gather(*pending, return_exceptions=True)
 
 
 def _frames(chunks: list[str]) -> list[dict[str, Any]]:
@@ -229,7 +216,7 @@ def _shape(frame: dict[str, Any]) -> str:
 
 
 async def test_a_web_turn_receives_the_whole_run_as_cards_and_a_browser_thread(
-    redis: FakeRedisCache, chunks: list[str], browser: None
+    redis: fakeredis.aioredis.FakeRedis, chunks: list[str], browser: None
 ) -> None:
     """The run happens in a worker with no stream of its own; what the card renderer and the tool thread receive has to be indistinguishable from a run that never left the turn."""
     create_session(STREAM_ID, RunKind.LIVE)
@@ -253,7 +240,7 @@ async def test_a_web_turn_receives_the_whole_run_as_cards_and_a_browser_thread(
 
 
 async def test_the_runs_cards_are_collected_onto_the_turns_message_under_one_group(
-    redis: FakeRedisCache, chunks: list[str], browser: None
+    redis: fakeredis.aioredis.FakeRedis, chunks: list[str], browser: None
 ) -> None:
     """Live SSE is only half of it: without the in-process collector the cards are gone on reload, and an action row orphaned from its group renders outside the browser thread."""
     create_session(STREAM_ID, RunKind.LIVE)
@@ -272,7 +259,10 @@ async def test_the_runs_cards_are_collected_onto_the_turns_message_under_one_gro
 
 
 async def test_a_bot_conversation_is_served_the_same_run_over_its_own_transport(
-    redis: FakeRedisCache, chunks: list[str], outbound: dict[str, list[Any]], browser: None
+    redis: fakeredis.aioredis.FakeRedis,
+    chunks: list[str],
+    outbound: dict[str, list[Any]],
+    browser: None,
 ) -> None:
     """Bots read RabbitMQ, not SSE, so a run delivered only to the stream is invisible on Discord; both surfaces get the run exactly once."""
     create_session(STREAM_ID, RunKind.LIVE)
@@ -289,7 +279,10 @@ async def test_a_bot_conversation_is_served_the_same_run_over_its_own_transport(
 
 
 async def test_a_web_conversation_is_never_pushed_to_a_bot_platform(
-    redis: FakeRedisCache, chunks: list[str], outbound: dict[str, list[Any]], browser: None
+    redis: fakeredis.aioredis.FakeRedis,
+    chunks: list[str],
+    outbound: dict[str, list[Any]],
+    browser: None,
 ) -> None:
     """The bot mirror is chosen from the run's own provenance; a web turn pushed to a platform would arrive as a message the user never asked for."""
     create_session(STREAM_ID, RunKind.LIVE)
@@ -354,7 +347,7 @@ class _ScriptedBrowserWithHandoff(_ScriptedBrowser):
 
 
 async def test_a_run_asked_for_in_a_group_keeps_its_live_link_and_photos_in_the_requesters_dm(
-    redis: FakeRedisCache,
+    redis: fakeredis.aioredis.FakeRedis,
     chunks: list[str],
     queue: list[dict[str, Any]],
     browser: None,

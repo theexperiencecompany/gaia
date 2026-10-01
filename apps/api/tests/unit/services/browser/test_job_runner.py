@@ -16,7 +16,9 @@ import pytest
 from app.config.feature_flags import FeatureFlag
 from app.constants.browser import (
     BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS,
+    BROWSER_JOB_WORKER_STOPPED_SUMMARY,
     BROWSER_NO_CHROME_HOST,
+    BROWSER_RUN_CANCELLED_SUMMARY,
     BROWSER_TASK_EVENT,
     BROWSER_TOOL_CATEGORY,
     BrowserEngine,
@@ -45,6 +47,7 @@ from app.services.browser import job_runner as jr
 from app.services.browser.exceptions import BrowserConcurrencyLimit, BrowserUnavailableError
 from app.services.browser.fingerprint import current_fingerprint_seed, seed_for_user
 from app.services.browser.jev.secrets import RunSecrets
+from app.services.browser.job_events import JOB_TERMINAL_FRAME
 from app.services.browser.ledger import CallComponent, ExecutedAction, RunLedger
 from app.services.browser.runner import BrowserRunConfig, BrowserRunnerCallbacks
 from app.services.browser.session import BrowserHostSession
@@ -95,6 +98,7 @@ def _failed_card(summary: str) -> dict[str, Any]:
         "steps": 0,
         "replay_url": None,
         "user_notes": [],
+        "redirects": [],
     }
 
 
@@ -180,6 +184,7 @@ def test_a_mid_run_instruction_change_is_what_the_assistant_is_told_to_answer() 
     note = "skip the upvote, just tell me the title of the top post"
     result = _result(BrowserSessionStatus.COMPLETED, True, "The top post is 'Saturday Daily'.")
     result.user_notes = [note]
+    result.redirects = [note]
 
     out = jr.agent_result_message(result)
 
@@ -200,10 +205,11 @@ def test_the_changed_instruction_leads_the_text_the_assistant_reads(
         status, success, "The headline says 'The future of building happens together'."
     )
     result.user_notes = [note]
+    result.redirects = [note]
 
     out = jr.agent_result_message(result)
 
-    assert out.splitlines()[0].startswith("THE USER CHANGED THE REQUEST MID-RUN")
+    assert out.splitlines()[0].startswith("THE USER REPLACED THE REQUEST MID-RUN")
     assert note in out.splitlines()[0]
 
 
@@ -211,10 +217,11 @@ def test_a_failed_run_never_blames_the_user_for_the_step_they_cancelled() -> Non
     """Regression: the timeout copy said "you never finished signing in" after the note had said to skip the login."""
     result = _result(BrowserSessionStatus.FAILED, False, "Nobody finished the step in time.")
     result.user_notes = ["skip the login, just tell me the title"]
+    result.redirects = list(result.user_notes)
 
     out = jr.agent_result_message(result)
 
-    assert out.index("THE USER CHANGED THE REQUEST MID-RUN") < out.index("DID NOT COMPLETE")
+    assert out.index("THE USER REPLACED THE REQUEST MID-RUN") < out.index("DID NOT COMPLETE")
     assert "must not be reported as attempted-and-failed" in out
 
 
@@ -222,6 +229,17 @@ def test_a_run_nobody_redirected_is_told_nothing_about_a_changed_instruction() -
     out = jr.agent_result_message(_result(BrowserSessionStatus.COMPLETED, True, "Done"))
 
     assert "NOT carried out" not in out
+
+
+def test_what_the_user_said_mid_run_is_passed_on_as_said_not_as_a_replaced_request() -> None:
+    """Only the reply classifier calls a message a redirect; anything else the user said is theirs to weigh, and leads."""
+    result = _result(BrowserSessionStatus.COMPLETED, True, "Booked.")
+    result.user_notes = ["make it 8pm if you can"]
+
+    out = jr.agent_result_message(result)
+
+    assert out.startswith('While it ran, the user said: "make it 8pm if you can"')
+    assert "REPLACED" not in out
 
 
 def test_every_mid_run_instruction_reaches_the_closing_reply() -> None:
@@ -298,6 +316,8 @@ class Harness:
         self.cancel_checks: list[str] = []
         self.job_cancel_checks: list[str] = []
         self.states: list[BrowserJobState] = []
+        #: The feed's signal frames (its end, a guidance ask), as the run published them.
+        self.feed_signals: list[dict[str, Any]] = []
 
     async def publish(self, job_id: str, payload: dict[str, Any]) -> None:
         """Stand in for the job's feed, recording the raw frame the run produced."""
@@ -470,6 +490,8 @@ def _install(
 
     async def _await_handoff(*args: Any) -> HandoffOutcome:
         h.handoffs_awaited.append(args)
+        # A real wait yields; the keepalive spawned beside it gets to start.
+        await asyncio.sleep(0)
         return handoff_outcome or HandoffOutcome(status=HandoffStatus.COMPLETED)
 
     monkeypatch.setattr(jr, "await_handoff", _await_handoff)
@@ -478,11 +500,17 @@ def _install(
         jr.host_client, "get_session", AsyncMock(return_value=MagicMock(url="https://x/login"))
     )
 
-    async def _is_cancelled(stream_id: str) -> bool:
-        h.cancel_checks.append(stream_id)
-        return True
+    async def _publish_event(job_id: str, payload: dict[str, Any]) -> None:
+        h.feed_signals.append(payload)
 
-    monkeypatch.setattr(type(jr.stream_manager), "is_cancelled", staticmethod(_is_cancelled))
+    monkeypatch.setattr(jr, "publish_job_event", _publish_event)
+
+    async def _no_wait_record(*args: Any) -> None:
+        return None
+
+    monkeypatch.setattr(jr, "set_job_wait", _no_wait_record)
+    monkeypatch.setattr(jr, "clear_job_wait", _no_wait_record)
+    monkeypatch.setattr(jr, "fail_handoff", _no_wait_record)
     return h
 
 
@@ -698,9 +726,41 @@ async def test_a_cancelled_run_emits_the_failed_card_and_still_propagates(
     with pytest.raises(asyncio.CancelledError):
         await jr.execute_browser_job(_request(task="x"))
 
+    # Nobody stopped it: the worker shut down under it.
     assert [c for c in h.cards if c["kind"] == "result"] == [
-        _failed_card("the browser task was stopped before it finished")
+        _failed_card(BROWSER_JOB_WORKER_STOPPED_SUMMARY)
     ]
+    assert h.states[-1].status is BrowserJobStatus.DONE
+    assert h.feed_signals == [JOB_TERMINAL_FRAME]
+
+
+async def test_a_run_a_stop_aborted_ends_on_a_stopped_card_and_settles_the_job(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stop aborts the ARQ task: the run still ends on its card and the DONE state a join reads."""
+    started = False
+
+    async def _aborted(h: Harness) -> BrowserResultSnapshot:
+        nonlocal started
+        started = True
+        raise asyncio.CancelledError
+
+    h = _install(monkeypatch, run_body=_aborted)
+
+    async def _stopped_once_running(job_id: str) -> bool:
+        return started
+
+    monkeypatch.setattr(jr, "job_cancel_requested", _stopped_once_running)
+
+    with pytest.raises(asyncio.CancelledError):
+        await jr.execute_browser_job(_request(task="x"))
+
+    results = [c for c in h.cards if c["kind"] == "result"]
+    assert [(c["status"], c["summary"]) for c in results] == [
+        (BrowserSessionStatus.CANCELLED.value, BROWSER_RUN_CANCELLED_SUMMARY)
+    ]
+    assert h.states[-1].result is not None
+    assert h.states[-1].result.status is BrowserSessionStatus.CANCELLED
 
 
 async def test_a_crash_after_a_session_opened_carries_the_recap_link(
@@ -839,32 +899,6 @@ async def test_missing_identifiers_degrade_to_blank_and_none(
 # ---------------------------------------------------------------------------
 # execute_browser_job — cancellation seam
 # ---------------------------------------------------------------------------
-
-
-async def test_is_cancelled_consults_the_stream_manager_for_this_stream(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def body(h: Harness) -> BrowserResultSnapshot:
-        assert await h.is_cancelled() is True
-        return _result(BrowserSessionStatus.CANCELLED, False, "stopped")
-
-    h = _install(monkeypatch, run_body=body)
-    await _run(h, _request(task="x"))
-    assert h.cancel_checks == ["s1"]
-
-
-async def test_is_cancelled_is_false_without_a_stream_and_never_queries(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """No stream id means no cancel flag to read — the runner must not be told it was cancelled just because the lookup would have said so."""
-
-    async def body(h: Harness) -> BrowserResultSnapshot:
-        assert await h.is_cancelled() is False
-        return _result(BrowserSessionStatus.COMPLETED, True, "done")
-
-    h = _install(monkeypatch, run_body=body)
-    await _run(h, _request(stream_id=None))
-    assert h.cancel_checks == []
 
 
 # ---------------------------------------------------------------------------
@@ -1618,42 +1652,32 @@ async def test_an_already_normalized_mirror_frame_is_published_unchanged(
 # ---------------------------------------------------------------------------
 
 
-async def test_the_open_session_is_written_into_the_job_state(
+async def test_the_job_ends_on_a_done_state_carrying_its_result_then_closes_its_feed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A joiner and a restarted API read the run's live-view link off this state, not off the turn that started it."""
+    """A join reads the DONE state and the relay stops on the feed's end, so the state is written first."""
     h = _install(monkeypatch)
 
-    await _run(h, _request(task="book a table"))
+    result = await jr.execute_browser_job(_request(task="book a table"))
 
-    (state,) = h.states
-    assert state == BrowserJobState(
-        job_id="job-1",
-        status=BrowserJobStatus.RUNNING,
-        task="book a table",
-        session_id="sess-1",
-        live_view_url="https://live/abc",
-    )
+    running, done = h.states
+    assert (running.status, done.status) == (BrowserJobStatus.RUNNING, BrowserJobStatus.DONE)
+    assert (done.result, done.agent_message) == (result, jr.agent_result_message(result))
+    assert done.relay_stream_id == running.relay_stream_id == "s1"
+    assert h.feed_signals == [JOB_TERMINAL_FRAME]
 
 
-async def test_a_run_whose_turn_has_ended_still_stops_on_its_own_cancel_flag(
+async def test_a_job_stopped_while_it_queued_ends_stopped_without_opening_a_browser(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A stop after the turn is over has no stream signal left to set, so the job's own flag is the only thing the run can hear."""
+    """A stop never asks ARQ to drop a queued job, which would end it with no card at all: the job reads its flag first."""
+    h = _install(monkeypatch, job_cancelled=True)
 
-    heard: list[bool] = []
+    result = await jr.execute_browser_job(_request(task="x"))
 
-    async def body(h: Harness) -> BrowserResultSnapshot:
-        heard.append(await h.is_cancelled())
-        return _result(BrowserSessionStatus.CANCELLED, False, "stopped")
-
-    h = _install(monkeypatch, run_body=body, job_cancelled=True)
-
-    await _run(h, _request(stream_id=None))
-
-    assert heard == [True]
-    assert h.job_cancel_checks == ["job-1"]
-    assert h.cancel_checks == []
+    assert result.status is BrowserSessionStatus.CANCELLED
+    assert h.session_kwargs == {}
+    assert [state.status for state in h.states] == [BrowserJobStatus.DONE]
 
 
 def test_a_failed_run_forbids_an_answer_from_memory() -> None:
@@ -1682,11 +1706,12 @@ def _stopped_message() -> str:
 def test_a_stopped_run_the_user_redirected_is_told_both_verbatim() -> None:
     result = _result(BrowserSessionStatus.CANCELLED, False, "half done")
     result.user_notes = ["skip the login", "just read the headline"]
+    result.redirects = list(result.user_notes)
 
     out = jr.agent_result_message(result)
 
     assert out == (
-        'THE USER CHANGED THE REQUEST MID-RUN to: "skip the login", then "just read the '
+        'THE USER REPLACED THE REQUEST MID-RUN with: "skip the login", then "just read the '
         'headline". Answer THAT, not the original request. The original request was not '
         "carried out and must not be reported as attempted-and-failed.\n\n" + _stopped_message()
     )

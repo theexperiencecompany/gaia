@@ -46,7 +46,6 @@ class BotProgressDelivery:
         self._platform = platform
         self._user_id = user_id
         self._stream_screenshots = stream_screenshots
-        self._links: dict[str, str] = {}
         self._steps_shown = 0
         self._last_label = ""  # pragma: no mutate — only compared to a non-empty label
 
@@ -58,12 +57,6 @@ class BotProgressDelivery:
         the handoff instead — the one moment the user actually needs it.
         """
         return
-
-    async def _link(self, session_id: str) -> str:
-        """One live-view link per session: every mint is a different code for the same browser, and a second link reads as a second browser."""
-        if session_id not in self._links:
-            self._links[session_id] = await create_live_view_link(session_id, self._user_id)
-        return self._links[session_id]
 
     async def step(self, snapshot: BrowserStepSnapshot) -> None:
         """Emit a per-step progress event to the conversation."""
@@ -117,7 +110,11 @@ class BotProgressDelivery:
         if snapshot.category == SensitiveCategory.CREDENTIALS:
             blocks[0] += f"\n{BROWSER_CREDENTIALS_SAVED_NOTE}"
         if snapshot.session_id:
-            blocks.append(f"Open the live browser: {await self._link(snapshot.session_id)}")
+            # One link per handoff, revoked when it is settled: only one is ever open.
+            link = await create_live_view_link(
+                snapshot.session_id, self._user_id, snapshot.handoff_id
+            )
+            blocks.append(f"Open the live browser: {link}")
         blocks.append(BROWSER_HANDOFF_REPLY_PROMPT)
         await self.note(NEW_MESSAGE_BREAKER.join(blocks))
 

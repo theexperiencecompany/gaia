@@ -23,7 +23,6 @@ def _handle(session_id: str = "sess-1") -> BrowserHostSession:
         session_id=session_id,
         cdp_url="ws://cdp",  # NOSONAR
         live_view_url="https://live",
-        context_id="ctx-1",
         host_url=_HOST,
     )
 
@@ -64,7 +63,6 @@ def _login_on(host: str, value: str) -> dict[str, Any]:
 def _make_session_fakes(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     host = MagicMock(
         session_id="s1",
-        context_id="ctx-1",
         cdp_ws="ws://x",  # NOSONAR
         live_ws="ws://live",  # NOSONAR
     )
@@ -158,7 +156,6 @@ async def test_session_fields_are_mapped_from_the_host_response(
     _make_session_fakes(monkeypatch)
     host = MagicMock(
         session_id="sid-x",
-        context_id="ctx-y",
         cdp_ws="ws://cdp-endpoint",  # NOSONAR
         live_ws="ws://live-endpoint",  # NOSONAR
     )
@@ -175,7 +172,6 @@ async def test_session_fields_are_mapped_from_the_host_response(
     ) as s:
         assert s.session_id == "sid-x"
         assert s.cdp_url == "ws://cdp-endpoint"
-        assert s.context_id == "ctx-y"
         assert s.live_view_url == "LV:sid-x"
         assert s.host_url == _HOST
         # A later handover protects this site's login by it.

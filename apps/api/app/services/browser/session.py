@@ -43,7 +43,6 @@ class BrowserHostSession:
     session_id: str
     cdp_url: str
     live_view_url: str
-    context_id: str
     #: The browser host this context lives on: the primary engine's, or the
     #: fallback's after a switch.
     host_url: str
@@ -169,7 +168,6 @@ async def browser_session(
         session_id=host.session_id,
         cdp_url=host.cdp_ws,
         live_view_url=live_view_url(host.session_id),
-        context_id=host.context_id,
         host_url=host_url,
         start_domain=domain,
         login_domains=login_domains,
