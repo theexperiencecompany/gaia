@@ -27,7 +27,7 @@ from app.models.todo_models import (
 )
 from app.models.trigger_subscription_models import ConditionOperator, SubscriptionAction
 from app.models.workflow_models import TriggerConfig
-from app.services.todos.errors import ExternalRefTakenError
+from app.services.todos.errors import ExternalRefReopenedTwiceError, ExternalRefTakenError
 from app.services.todos.todo_service import TodoService
 from app.services.tracked_todo_service import TrackedTodoService
 from app.services.triggers.subscription_service import SubscriptionError
@@ -43,6 +43,7 @@ _THREAD = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e61
 def _offline_seams() -> Iterator[None]:
     with (
         patch("app.services.todos.todo_service.store_todo_embedding", new_callable=AsyncMock),
+        patch("app.services.todos.todo_service.update_todo_embedding", new_callable=AsyncMock),
         patch("app.services.todos.todo_service.delete_todo_embedding", new_callable=AsyncMock),
         patch("app.services.todos.todo_service.delete_canvas_embedding", new_callable=AsyncMock),
         patch("app.services.todos.todo_service.schedule_user_todos_sync"),
@@ -184,3 +185,39 @@ async def test_a_bulk_reopen_with_one_taken_thread_reopens_nothing(
     assert current_id in taken.value.message
     by_id = {t.id: t for t in await _stored(mongo_db, user_id)}
     assert by_id[plain.id].completed and by_id[done_id].completed
+
+
+async def test_reopening_a_thread_todo_on_a_free_thread_watches_it_both_ways_again(
+    mongo_db: AsyncIOMotorDatabase, user_id: str
+) -> None:
+    first = await _create(user_id)
+    await TrackedTodoService.complete_tracked_todo(first.id, user_id, summary="Sam replied")
+
+    await TodoService.update_todo(first.id, TodoUpdateRequest(completed=False), user_id)
+
+    (todo,) = await _stored(mongo_db, user_id)
+    assert not todo.completed
+    assert sorted(s.trigger_name for s in todo.trigger_subscriptions) == sorted(
+        [GMAIL_NEW_MESSAGE_TRIGGER_NAME, GMAIL_EMAIL_SENT_TRIGGER_NAME]
+    )
+    holder = await todo_repository.find_open_by_external_ref(user_id, _THREAD)
+    assert holder is not None and holder.id == first.id
+
+
+async def test_a_bulk_reopen_of_two_todos_for_one_thread_reopens_neither(
+    mongo_db: AsyncIOMotorDatabase, user_id: str
+) -> None:
+    done_id, current_id = await _completed_and_reopened_thread_todos(user_id)
+    await TrackedTodoService.complete_tracked_todo(current_id, user_id, summary="Sam replied again")
+
+    with pytest.raises(ExternalRefReopenedTwiceError) as refused:
+        await TodoService.bulk_update_todos(
+            BulkUpdateRequest(
+                todo_ids=[done_id, current_id], updates=TodoUpdateRequest(completed=False)
+            ),
+            user_id,
+        )
+
+    assert refused.value.status_code == 409
+    stored = await _stored(mongo_db, user_id)
+    assert all(t.completed and t.trigger_subscriptions == [] for t in stored)
