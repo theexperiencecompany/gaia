@@ -9,3 +9,8 @@ GMAIL_EMAIL_SENT_TRIGGER_NAME: Final = "gmail_email_sent"
 
 # The GAIA trigger name for inbound Gmail mail (Composio's GMAIL_NEW_GMAIL_MESSAGE).
 GMAIL_NEW_MESSAGE_TRIGGER_NAME: Final = "gmail_new_message"
+
+# Account-level Gmail triggers that fire once per message, inbound or sent.
+PER_EMAIL_TRIGGER_NAMES: Final = frozenset(
+    {GMAIL_NEW_MESSAGE_TRIGGER_NAME, GMAIL_EMAIL_SENT_TRIGGER_NAME}
+)

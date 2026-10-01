@@ -48,3 +48,15 @@ class SubTodoParentError(AppError):
             status_code=HTTPStatus.BAD_REQUEST,
             code="sub_todo_parent_invalid",
         )
+
+
+class ExternalRefReopenedTwiceError(AppError):
+    """Raised (409) when one reopen names two completed todos about the same outside object."""
+
+    def __init__(self, todo_ids: list[str]) -> None:
+        super().__init__(
+            message="Two of the selected todos track the same thing; only one can be reopened",
+            status_code=HTTPStatus.CONFLICT,
+            code="external_ref_reopened_twice",
+            public={"todo_ids": todo_ids},
+        )

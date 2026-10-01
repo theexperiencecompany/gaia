@@ -10,9 +10,10 @@ To add a new trigger:
 3. Add the class to the TriggerConfigData union
 """
 
+from collections.abc import Mapping
 from typing import Annotated, Literal, Union
 
-from pydantic import AliasChoices, BaseModel, Discriminator, Field
+from pydantic import BaseModel, Discriminator, Field, model_validator
 
 # Upper bound for the Gmail polling interval. Allows day-scale intervals (e.g.
 # a weekly digest) while staying within a sane range Composio will accept.
@@ -324,21 +325,40 @@ class TodoistNewTaskCreatedConfig(BaseTriggerConfigData):
 # =============================================================================
 
 
+class _AsanaProjectKeys(BaseModel):
+    """The project keys a stored asana_task_trigger config may carry, the retired one included."""
+
+    project_gid: str | None = None
+    project_id: str | None = None
+
+
 class AsanaTaskTriggerConfig(BaseTriggerConfigData):
     """Config for asana_task_trigger (Composio ASANA_TASK_CREATED)."""
 
     trigger_name: Literal["asana_task_trigger"] = "asana_task_trigger"
-    # Stored workflows from the retired unscoped trigger carry `project_id`; reading
-    # it here keeps their project scope instead of failing registration.
     project_gid: str = Field(
         default="",
-        validation_alias=AliasChoices("project_gid", "project_id"),
         description="Asana GID of the project to monitor",
     )
     workspace_id: str = Field(
         default="",
         description="Legacy field; ignored by the current Composio trigger config",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _adopt_legacy_project_id(cls, data: object) -> object:
+        """Scope a stored config from the retired unscoped trigger by its project_id.
+
+        An empty project_gid is no scope, so the legacy id fills it rather than
+        registration failing on it.
+        """
+        if not isinstance(data, Mapping):
+            return data
+        keys = _AsanaProjectKeys.model_validate(data)
+        if keys.project_gid or not keys.project_id:
+            return data
+        return {**data, "project_gid": keys.project_id}
 
 
 # =============================================================================

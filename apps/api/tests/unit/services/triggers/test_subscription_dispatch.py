@@ -342,6 +342,8 @@ class TestGating:
             TODO_ID, TriggerOrigin(subscription_id=sub.id, trigger_name=GMAIL, payload=payload)
         )
         deps.enqueue.assert_not_awaited()
+        detail = deps.activity.await_args.args[3]
+        assert detail == f"{GMAIL} matched; action: execute; held for the todo's next run"
 
     async def test_a_repeat_that_cannot_be_held_runs_now_rather_than_vanish(self, deps) -> None:
         deps.redis.redis.set = AsyncMock(return_value=None)
@@ -405,12 +407,15 @@ class TestGating:
         await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
         assert deps.redis.redis.set.await_args.kwargs["ex"] == 1
 
-    async def test_redis_down_fires_and_records_the_warning(self, deps) -> None:
+    @pytest.mark.parametrize("action", [SubscriptionAction.EXECUTE, SubscriptionAction.NOTIFY])
+    async def test_redis_down_fires_and_records_the_warning(
+        self, deps, action: SubscriptionAction
+    ) -> None:
         # A duplicate action is recoverable; a missed reply-watch is the failure
         # this whole feature exists to prevent — but the degradation must be
         # visible on the wide event, not silent.
         deps.redis.redis = None
-        sub = _subscription()
+        sub = _subscription(action=action)
         deps.repo.find_active_by_user_and_trigger.return_value = [
             _todo(trigger_subscriptions=[sub])
         ]
@@ -423,11 +428,14 @@ class TestGating:
         assert warning["msg"] == "todo_subscription.cooldown_unavailable"
         assert warning["subscription_id"] == sub.id
 
-    async def test_a_redis_error_fires_and_records_the_error(self, deps) -> None:
+    @pytest.mark.parametrize("action", [SubscriptionAction.EXECUTE, SubscriptionAction.NOTIFY])
+    async def test_a_redis_error_fires_and_records_the_error(
+        self, deps, action: SubscriptionAction
+    ) -> None:
         # The set can raise mid-flight (connection dropped); the same fire-rather-
         # than-suppress rule holds, and the error surfaces on the wide event.
         deps.redis.redis.set = AsyncMock(side_effect=RedisError("connection reset"))
-        sub = _subscription()
+        sub = _subscription(action=action)
         deps.repo.find_active_by_user_and_trigger.return_value = [
             _todo(trigger_subscriptions=[sub])
         ]
@@ -620,6 +628,15 @@ class TestAnalytics:
         await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
 
         deps.capture.assert_not_called()
+
+    async def test_a_notify_fire_is_never_counted_as_coalesced(self, deps) -> None:
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[_subscription(action=SubscriptionAction.NOTIFY)])
+        ]
+
+        await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
+
+        assert deps.capture.call_args.args[2]["coalesced"] is False
 
     async def test_a_held_execute_fire_is_counted_as_coalesced(self, deps) -> None:
         # It will run, with the todo's next run, so it is a fire, marked as held.

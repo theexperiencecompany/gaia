@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
+from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 import pytest
 
@@ -266,6 +267,23 @@ class TestTodosRepository(UserScopedRepositoryContract):
         await repo.create(make_doc(user_id="u", title="plain"))
         active = await repo.list_active_tracked("u", limit=10)
         assert [t.title for t in active] == ["open"]
+
+    async def test_list_active_tracked_returns_the_freshest_up_to_the_limit(
+        self, repo, make_doc, raw_collection
+    ):
+        now = datetime.now(UTC)
+        # Inserted out of freshness order so an unsorted read would fail here.
+        for title, age in (("stale", 3), ("fresh", 0), ("middle", 1)):
+            todo = await repo.create(
+                make_doc(user_id="u", title=title, labels=[GAIA_TRACKED_LABEL])
+            )
+            await raw_collection.update_one(
+                {"_id": ObjectId(todo.id)}, {"$set": {"updated_at": now - timedelta(hours=age)}}
+            )
+
+        found = await repo.list_active_tracked("u", limit=2)
+
+        assert [t.title for t in found] == ["fresh", "middle"]
 
     async def test_list_active_tracked_is_generation_cached(self, repo, make_doc, raw_collection):
         """The active-tracked list is served from Redis until a write bumps the generation."""
