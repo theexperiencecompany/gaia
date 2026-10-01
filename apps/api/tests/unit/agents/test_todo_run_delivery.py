@@ -44,6 +44,7 @@ class _Seams:
     send: AsyncMock
     activity: AsyncMock
     capture: MagicMock
+    in_app: AsyncMock
 
     def entry(self) -> str:
         return self.activity.await_args.args[3]
@@ -61,6 +62,7 @@ def _seams(
         send=AsyncMock(return_value=sent_on),
         activity=AsyncMock(return_value=True),
         capture=MagicMock(),
+        in_app=AsyncMock(),
     )
     repo = MagicMock()
     repo.get_by_id = AsyncMock(return_value=todo)
@@ -70,6 +72,7 @@ def _seams(
         patch.object(trd, "todo_repository", repo),
         patch.object(trd, "record_activity", seams.activity),
         patch.object(trd, "capture_event", seams.capture),
+        patch.object(trd.notification_service, "create_notification", seams.in_app),
     ):
         yield seams
 
@@ -89,16 +92,28 @@ class TestResultsThatReachNobody:
         assert "result not sent: it could not be written up" in seams.entry()
         assert seams.props()["outcome"] == "narration_failed"
 
-    async def test_no_linked_chat_app_is_recorded_as_undelivered(self) -> None:
-        """Counting an unlinked user's skipped delivery as sent hides the failure."""
+    async def test_with_no_linked_chat_app_the_result_arrives_in_the_app(self) -> None:
+        """A web-only user never received a tracked todo's result before."""
         with _seams(todo=_todo(), sent_on=None) as seams:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
-        seams.send.assert_awaited_once()
-        assert "no linked chat app accepted it" in seams.entry()
+        request = seams.in_app.await_args.args[0]
+        assert request.user_id == "user-1"
+        assert request.content.title == "Watch the deploy"
+        assert request.content.body == "Deploy failed."
+        assert request.metadata == {"todo_id": "todo-1"}
+        assert "result sent as an in-app notification" in seams.entry()
+        assert seams.props()["outcome"] == "delivered"
+        assert seams.props()["platform"] is None
+
+    async def test_a_result_neither_a_chat_app_nor_the_app_took_is_undelivered(self) -> None:
+        """Counting a delivery that reached nobody as sent hides the failure."""
+        with _seams(todo=_todo(), sent_on=None) as seams:
+            seams.in_app.side_effect = ConnectionError("mongo down")
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
         assert seams.props()["outcome"] == "undelivered"
         assert seams.props()["delivered"] is False
-        assert seams.props()["platform"] is None
 
     async def test_a_todo_deleted_mid_run_gets_nothing(self) -> None:
         with _seams(todo=None) as seams:

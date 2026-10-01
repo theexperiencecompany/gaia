@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import json
 import re
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
@@ -41,6 +42,7 @@ from app.agents.prompts.todo_prompts import (
     SUB_TODOS_LABEL,
     TRIGGERED_RELEVANCE_GUIDANCE,
 )
+from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
     CANVAS_PROMPT_MAX_CHARS,
@@ -140,6 +142,19 @@ def activity() -> Iterator[AsyncMock]:
     """Capture every activity.md entry the worker records, as (todo_id, user_id, event, detail)."""
     with patch(f"{MODULE}.record_activity", AsyncMock(return_value=True)) as recorded:
         yield recorded
+
+
+@pytest.fixture(autouse=True)
+def account() -> Iterator[SimpleNamespace]:
+    """Make the user paying with Gmail connected, so no run pauses unless a test says so."""
+    with (
+        patch(f"{MODULE}.is_paid", AsyncMock(return_value=True)) as paid,
+        patch(
+            f"{MODULE}.get_connected_integration_ids",
+            AsyncMock(return_value={GMAIL_INTEGRATION_ID}),
+        ) as connected,
+    ):
+        yield SimpleNamespace(paid=paid, connected=connected)
 
 
 @pytest.fixture(autouse=True)
@@ -498,9 +513,7 @@ class TestTriggeredExecutionPrompt:
         )
         later = TriggerOrigin(subscription_id="sub-2", trigger_name="gmail_email_sent")
 
-        prompt = _build_execution_prompt(
-            _doc(), canvas_content=None, reference_context="", origin=origin, coalesced=[later]
-        )
+        prompt = _build_execution_prompt(_doc(), origin=origin, coalesced=[later])
 
         assert '\n      "received_at": "2026-08-23 00:00:00+00:00"\n' in prompt
         assert '\n    "trigger_name": "gmail_email_sent",\n' in prompt
@@ -634,6 +647,64 @@ class TestTriggeredExecutionGating:
 # ---------------------------------------------------------------------------
 # _execute_todo_with_retry — early exits
 # ---------------------------------------------------------------------------
+
+
+class TestARunWaitsForItsAccount:
+    """No plan, or a desk without Gmail: the run is skipped and its schedule moves on."""
+
+    @pytest.fixture(autouse=True)
+    def _route_enqueue(self, route_enqueue_via_pool):
+        return
+
+    async def _run(self, doc):
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=doc)
+        repo.update = AsyncMock()
+        repo.update_if_scheduled_at = AsyncMock(return_value=doc)
+        via_agent = AsyncMock()
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}._execute_on_executor", via_agent),
+            patch(
+                f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
+            ),
+            _serving(_pool()),
+        ):
+            result = await _execute_todo_with_retry("todo-1")
+        return result, repo, via_agent
+
+    async def test_a_lapsed_plan_skips_the_run_and_keeps_the_schedule(self, account, activity):
+        account.paid.return_value = False
+
+        result, repo, via_agent = await self._run(_doc(recurrence="every_1h"))
+
+        assert result == "paused:todo-1"
+        via_agent.assert_not_awaited()
+        account.paid.assert_awaited_once_with("user-1")
+        assert repo.update_if_scheduled_at.await_count == 1
+        assert (TodoActivityEvent.RUN_SKIPPED, "skipped: the user's plan is not active") in (
+            _recorded(activity)
+        )
+
+    async def test_the_desk_waits_for_gmail(self, account, activity):
+        account.connected.return_value = set()
+        desk = _doc(external_ref=ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail"))
+
+        result, _repo, via_agent = await self._run(desk)
+
+        assert result == "paused:todo-1"
+        via_agent.assert_not_awaited()
+        assert (TodoActivityEvent.RUN_SKIPPED, "skipped: Gmail is not connected") in (
+            _recorded(activity)
+        )
+
+    async def test_a_todo_that_is_not_the_desk_runs_without_gmail(self, account):
+        account.connected.return_value = set()
+
+        result, _repo, via_agent = await self._run(_doc())
+
+        assert result == "success:todo-1"
+        via_agent.assert_awaited_once()
 
 
 class TestExecuteTodoWithRetryEarlyExits:
