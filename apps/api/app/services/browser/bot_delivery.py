@@ -47,6 +47,8 @@ class BotProgressDelivery:
         self._user_id = user_id
         self._stream_screenshots = stream_screenshots
         self._steps_shown = 0
+        #: The page and frame of the last step sent; a step showing the same again sends none.
+        self._last_frame: tuple[str | None, str] | None = None
 
     async def session(self, _snapshot: BrowserSessionSnapshot) -> None:
         """Session lifecycle event: deliberately silent.
@@ -68,7 +70,13 @@ class BotProgressDelivery:
                 self._steps_shown += 1
                 await self.note(f"Step {self._steps_shown} · {label}")
             return
-        # Numbered by what this user was shown: the run's index counts the blank tab.
+        # The page did not change (scrolling past the end of a list): the photo
+        # already sent shows it. Only the same address showing an identical frame is skipped.
+        frame = (snapshot.url, snapshot.frame_digest) if snapshot.frame_digest else None
+        if frame is not None and frame == self._last_frame:
+            return
+        self._last_frame = frame
+        # Numbered by what this user was shown: the run's index counts the blank tab and repeats.
         self._steps_shown += 1
         caption = _step_caption(self._steps_shown, snapshot.goal, snapshot.actions)
         if self._stream_screenshots and snapshot.screenshot:
@@ -89,6 +97,8 @@ class BotProgressDelivery:
         # in-chat and the final result line closes the task.
         if snapshot.status != HandoffStatus.PENDING:
             return
+        # The user may change the page in the live view: the next step is shown whatever it looks like.
+        self._last_frame = None
 
         # The ask is the model's own words (request_human_takeover's reason),
         # shown verbatim as the first bubble; link and reply instruction follow.

@@ -79,6 +79,8 @@ class BrowserStepSnapshot(BaseModel):
     # Wall-clock the agent spent reaching this step (previous step's LLM think +
     # action execution). Surfaced in the card so speed is visible per step.
     elapsed_ms: int | None = None
+    #: A hash of the step's frame, equal exactly when two frames are the same image.
+    frame_digest: str | None = None
 
 
 class BrowserHandoffSnapshot(BaseModel):

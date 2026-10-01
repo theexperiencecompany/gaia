@@ -670,3 +670,47 @@ async def test_a_delivered_message_raises_no_warning(delivery, monkeypatch) -> N
         await delivery.note("Step 1 · Searching")
 
     assert "warnings" not in event
+
+
+class TestRepeatedFrames:
+    """A list scrolled past its end shows the same page again and again; the user is sent it once."""
+
+    @staticmethod
+    def _step(
+        index: int, digest: str, url: str = "https://example.com/list"
+    ) -> BrowserStepSnapshot:
+        return BrowserStepSnapshot(
+            index=index,
+            goal="Scrolling",
+            url=url,
+            screenshot=f"https://cdn/{index}.jpg",
+            frame_digest=digest,
+        )
+
+    async def test_only_a_frame_identical_to_the_last_one_sent_is_skipped(self, delivery):
+        handoff = BrowserHandoffSnapshot(
+            handoff_id="h1", reason="Sign in", session_id=None, status=HandoffStatus.PENDING
+        )
+        photos = AsyncMock(return_value=True)
+        with (
+            patch("app.services.browser.bot_delivery.publish_outbound_photo", new=photos),
+            patch("app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()),
+        ):
+            await delivery.step(self._step(1, "a"))
+            await delivery.step(self._step(2, "a"))
+            await delivery.step(self._step(3, "b"))
+            await delivery.step(self._step(4, "a"))
+            # The same picture at another address is another page.
+            await delivery.step(self._step(5, "a", url="https://example.com/list?page=2"))
+            await delivery.handoff(handoff)
+            # The user may have changed the page in the live view: shown again.
+            await delivery.step(self._step(6, "a", url="https://example.com/list?page=2"))
+
+        sent = [(call.args[2], call.kwargs["caption"]) for call in photos.await_args_list]
+        assert sent == [
+            ("https://cdn/1.jpg", "Step 1 · Scrolling"),
+            ("https://cdn/3.jpg", "Step 2 · Scrolling"),
+            ("https://cdn/4.jpg", "Step 3 · Scrolling"),
+            ("https://cdn/5.jpg", "Step 4 · Scrolling"),
+            ("https://cdn/6.jpg", "Step 5 · Scrolling"),
+        ]

@@ -15,6 +15,7 @@ import base64
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from functools import partial
+from hashlib import sha256
 from time import perf_counter
 from typing import Any
 from urllib.parse import urlsplit
@@ -646,7 +647,8 @@ class BrowserTaskRunner:
     async def _emit_step(self, frame: StepFrame) -> None:
         async with self._emit_lock:
             shot_t0 = perf_counter()
-            screenshot = await self._render_screenshot(frame)
+            photo = await frame.photo if frame.photo is not None else None
+            screenshot = await self._render_screenshot(frame, photo)
             if screenshot is not None:
                 self._shots.append(screenshot)
             # Feeds only the info-level step timing line.
@@ -662,6 +664,7 @@ class BrowserTaskRunner:
                     title=frame.title,
                     screenshot=screenshot,
                     elapsed_ms=frame.since_prev_ms or None,
+                    frame_digest=sha256(photo.encode()).hexdigest() if photo else None,
                 )
             )
             # Feeds only the info-level step timing line.
@@ -674,9 +677,8 @@ class BrowserTaskRunner:
                 emit_ms=emit_ms,
             )
 
-    async def _render_screenshot(self, frame: StepFrame) -> str | None:
+    async def _render_screenshot(self, frame: StepFrame, photo: str | None) -> str | None:
         """Return the URL that serves a step frame's photo, or None when it has none to show."""
-        photo = await frame.photo if frame.photo is not None else None
         if photo is None:
             return None
         # Keyed by session id (not conversation) so each run is its own replay folder.
