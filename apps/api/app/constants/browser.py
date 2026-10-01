@@ -634,3 +634,16 @@ BROWSER_USE_PHONE_HOME_OFF: dict[str, str] = {
     "ANONYMIZED_TELEMETRY": "false",
     "BROWSER_USE_VERSION_CHECK": "false",
 }
+
+# Browser-Use's own per-event budgets (its TIMEOUT_<Event> overrides), as defaults
+# an operator's environment still overrides. They are process-wide: Browser-Use
+# creates these events itself, so no budget can be set per session.
+BROWSER_USE_EVENT_TIMEOUTS: dict[str, str] = {
+    # A first capture of a very long page took 24 to 35 s on Obscura (2026-09-19).
+    "TIMEOUT_ScreenshotEvent": "60",
+    # The state read carries the screenshot, so its budget sits above it.
+    "TIMEOUT_BrowserStateRequestEvent": "120",
+    # Obscura answers Page.navigate only once the page has loaded or its own
+    # 90 s deadline (OBSCURA_NAV_TIMEOUT_SECONDS) passed; a shorter budget cut the load.
+    "TIMEOUT_NavigateToUrlEvent": "100",
+}

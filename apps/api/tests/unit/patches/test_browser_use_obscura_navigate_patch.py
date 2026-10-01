@@ -13,9 +13,11 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+from browser_use.browser.events import NavigateToUrlEvent
 from browser_use.browser.session import BrowserSession
 import pytest
 
+from app.config.settings import settings
 from app.constants.browser import BrowserEngine
 import app.patches.browser_use_obscura_navigate_patch as patch_module
 from tests.helpers import OBSCURA_TEST_CDP_URL
@@ -114,3 +116,11 @@ class TestObscuraNavigatePatch:
             assert BrowserSession._navigate_and_wait is patch_module._navigate_and_wait
         finally:
             type.__setattr__(BrowserSession, "_navigate_and_wait", installed)
+
+
+def test_browser_uses_navigate_budget_outlasts_the_engines_own_load_deadline() -> None:
+    """Obscura answers Page.navigate only once its own deadline passed; a shorter event budget cut the load short."""
+    event = NavigateToUrlEvent(url=_URL)
+
+    assert event.event_timeout is not None
+    assert event.event_timeout > settings.OBSCURA_NAV_TIMEOUT_SECONDS
