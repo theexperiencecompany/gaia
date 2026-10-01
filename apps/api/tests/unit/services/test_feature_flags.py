@@ -142,8 +142,26 @@ class TestBooleansOnly:
     ) -> None:
         mock_client.get_feature_flag.return_value = variant
 
-        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1", default=False) is False
+        with patch("app.services.feature_flags.log") as mock_log:
+            assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1", default=False) is False
         assert evaluated.call_args.args[2]["fallback_reason"] == "flag_unevaluated"
+        mock_log.warning.assert_called_once_with(
+            "Feature flag answered a variant, not a boolean; ignoring it",
+            flag="HIL_LEDGER",
+            answer_type=type(variant).__name__,
+        )
+
+    async def test_a_kill_switch_answering_a_variant_is_ignored_and_named(
+        self, mock_client: MagicMock, evaluated: MagicMock
+    ) -> None:
+        mock_client.get_feature_flag.return_value = "on"
+
+        with (
+            patch("app.services.feature_flags.log") as mock_log,
+            patch("app.services.feature_flags._stored_choice", AsyncMock(return_value=True)),
+        ):
+            assert await is_enabled(FeatureFlag.BROWSER_OBSCURA, "u1") is True
+        assert mock_log.warning.call_args.kwargs["flag"] == "BROWSER_OBSCURA_KILL"
 
 
 class TestFlags:
