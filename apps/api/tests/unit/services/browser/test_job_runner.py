@@ -49,7 +49,7 @@ from app.services.browser import job_runner as jr
 from app.services.browser.exceptions import BrowserConcurrencyLimit, BrowserUnavailableError
 from app.services.browser.fingerprint import current_fingerprint_seed, seed_for_user
 from app.services.browser.jev.secrets import RunSecrets
-from app.services.browser.job_events import JOB_TERMINAL_FRAME
+from app.services.browser.job_events import JOB_GUIDANCE_FRAME, JOB_TERMINAL_FRAME
 from app.services.browser.ledger import CallComponent, ExecutedAction, RunLedger
 from app.services.browser.runner import BrowserRunConfig, BrowserRunnerCallbacks
 from app.services.browser.session import BrowserHostSession
@@ -322,6 +322,10 @@ class Harness:
         self.states: list[BrowserJobState] = []
         #: The feed's signal frames (its end, a guidance ask), as the run published them.
         self.feed_signals: list[dict[str, Any]] = []
+        #: The job each signal frame was published on.
+        self.feed_jobs: list[str] = []
+        #: The (job, handoff) each wait a stop can settle was recorded under.
+        self.waits: list[tuple[str, str]] = []
 
     async def publish(self, job_id: str, payload: dict[str, Any]) -> None:
         """Stand in for the job's feed, recording the raw frame the run produced."""
@@ -506,6 +510,7 @@ def _install(
     )
 
     async def _publish_event(job_id: str, payload: dict[str, Any]) -> None:
+        h.feed_jobs.append(job_id)
         h.feed_signals.append(payload)
 
     monkeypatch.setattr(jr, "publish_job_event", _publish_event)
@@ -513,7 +518,10 @@ def _install(
     async def _no_wait_record(*args: Any) -> None:
         return None
 
-    monkeypatch.setattr(jr, "set_job_wait", _no_wait_record)
+    async def _record_wait(job_id: str, handoff_id: str) -> None:
+        h.waits.append((job_id, handoff_id))
+
+    monkeypatch.setattr(jr, "set_job_wait", _record_wait)
     monkeypatch.setattr(jr, "clear_job_wait", _no_wait_record)
     monkeypatch.setattr(jr, "fail_handoff", _no_wait_record)
     return h
@@ -1773,9 +1781,14 @@ def test_a_stopped_run_the_user_redirected_is_told_both_verbatim() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize(
+    ("source", "reply_to"), [(None, "conv-9"), (ConversationSource.TELEGRAM, "telegram:u1")]
+)
 async def test_a_handoff_is_filed_for_this_user_and_conversation_and_waited_on_for_its_budget(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, source: ConversationSource | None, reply_to: str
 ) -> None:
+    """A bot sends the ask to the requester's own chat whichever chat started the run, so the answer is read from there."""
+
     async def body(h: Harness) -> BrowserResultSnapshot:
         await h.request_handoff(
             HandoffRequest(category=SensitiveCategory.CREDENTIALS, reason="log in")
@@ -1785,12 +1798,83 @@ async def test_a_handoff_is_filed_for_this_user_and_conversation_and_waited_on_f
     h = _install(monkeypatch, run_body=body)
     monkeypatch.setattr(jr.settings, "BROWSER_USE_HANDOFF_TIMEOUT_SECONDS", 123)
 
-    await _run(h, _request(conversation_id="conv-9"))
+    await _run(h, _request(conversation_id="conv-9", conversation_source=source))
 
     (created,) = h.handoffs_created
     handoff_id = created[0]
     assert created == (handoff_id, "u1", "conv-9", "log in")
+    assert h.handoff_kwargs == [{"reply_to": reply_to}]
     assert h.handoffs_awaited == [(handoff_id, 123)]
+    # Where a stop finds the wait it settles.
+    assert h.waits == [("job-1", handoff_id)]
+
+
+async def test_a_stop_that_landed_before_the_handoff_was_waited_on_still_settles_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The stop found no wait to settle yet: the run must not go on asking the user to finish the step."""
+    stopped = False
+    asked: set[str] = set()
+    cancelled: list[str] = []
+
+    async def _stop_requested(job_id: str) -> bool:
+        asked.add(job_id)
+        return stopped
+
+    async def _cancel(handoff_id: str) -> HandoffStatus:
+        cancelled.append(handoff_id)
+        return HandoffStatus.CANCELLED
+
+    async def body(h: Harness) -> BrowserResultSnapshot:
+        nonlocal stopped
+        stopped = True
+        await h.request_handoff(HandoffRequest(reason="log in"))
+        return _result(BrowserSessionStatus.CANCELLED, False, "stopped")
+
+    h = _install(monkeypatch, run_body=body)
+    monkeypatch.setattr(jr, "job_cancel_requested", _stop_requested)
+    monkeypatch.setattr(jr, "cancel_handoff", _cancel)
+
+    await _run(h, _request())
+
+    assert cancelled == [h.handoffs_created[0][0]]
+    assert asked == {"job-1"}
+
+
+async def test_a_run_cut_off_while_the_user_was_asked_withdraws_the_ask(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The card and the record must not go on asking the user to finish a step nobody waits for."""
+    cancelled: list[str] = []
+
+    async def _cut_off(*args: Any) -> HandoffOutcome:
+        raise asyncio.CancelledError
+
+    async def _cancel(handoff_id: str) -> HandoffStatus:
+        cancelled.append(handoff_id)
+        return HandoffStatus.CANCELLED
+
+    async def body(h: Harness) -> BrowserResultSnapshot:
+        await h.request_handoff(HandoffRequest(category=SensitiveCategory.PAYMENT, reason="pay"))
+        return _result(BrowserSessionStatus.COMPLETED, True, "unreachable")
+
+    h = _install(monkeypatch, run_body=body)
+    monkeypatch.setattr(jr, "await_handoff", _cut_off)
+    monkeypatch.setattr(jr, "cancel_handoff", _cancel)
+
+    with pytest.raises(asyncio.CancelledError):
+        await jr.execute_browser_job(_request())
+
+    handoff_id = h.handoffs_created[0][0]
+    assert cancelled == [handoff_id]
+    assert [
+        (c["handoff_id"], c["status"], c["category"], c["reason"], c["session_id"])
+        for c in h.cards
+        if c["kind"] == "handoff"
+    ] == [
+        (handoff_id, "pending", "payment", "pay", "sess-1"),
+        (handoff_id, "cancelled", "payment", "pay", "sess-1"),
+    ]
 
 
 async def test_a_handoff_card_points_the_user_at_the_paused_session(
@@ -1946,6 +2030,9 @@ async def test_a_guidance_ask_is_filed_as_an_agent_handoff_and_withdrawn_once_an
     assert cleared == ["job-7"]
     assert [o.message for o in outcomes] == ["use search"]
     assert event["browser"]["guidance_result"] == "completed"
+    # The ask wakes a join parked on this job's feed, and a stop finds the wait it settles.
+    assert (h.feed_jobs[0], h.feed_signals[0]) == ("job-7", JOB_GUIDANCE_FRAME)
+    assert h.waits == [("job-7", handoff_id)]
 
 
 async def test_an_obscura_runs_fallback_session_opens_on_the_chrome_host_for_this_user(
