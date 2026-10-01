@@ -1,26 +1,34 @@
-// After an input, wait up to two animation frames (50 ms), or for a typed
-// combobox's options to show (200 ms), before the next observation.
-// Ported from browser-use/jev-ultrafast (MIT) jev_ultrafast/browser.py.
-function gaiaJevSettle(action) {
+// After an input: resolve once a whole animation frame passed with no DOM change
+// anywhere Jev reads (every document and open shadow root of the snapshot), or at
+// the cap. True when the page went quiet, false when the cap ended the wait.
+function gaiaJevSettle(capMs) {
   return new Promise(resolve => {
-    const field=window.__jevFast?.nodes.get(action.node);
-    const autocomplete=action.kind==='fill' && field?.getAttribute('role')==='combobox';
-    let frames=0, stopped=false;
-    const finish=()=>{stopped=true;resolve()};
-    setTimeout(finish,autocomplete ? 200 : 50);
-    const ready=()=>{
-      if (stopped) return;
-      const ids=(field?.getAttribute('aria-controls')||field?.getAttribute('aria-owns')||'')
-        .split(/\s+/).filter(Boolean);
-      const roots=ids.length ? ids.map(id=>document.getElementById(id)).filter(Boolean) : [document];
-      const options=roots.flatMap(root=>[...root.querySelectorAll('[role="option"]')]);
-      if (++frames>=2 && (!autocomplete || options.some(e=>{
-        const r=e.getBoundingClientRect();
-        return r.width && r.height && r.bottom>0 && r.top<innerHeight &&
-          e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true});
-      }))) finish();
-      else requestAnimationFrame(ready);
+    const roots=window.__jevFast?.roots?.filter(r=>r.isConnected!==false) || [document];
+    let changed=false, frames=0, done=false;
+    const observer=new MutationObserver(()=>{ changed=true; });
+    for (const root of roots)
+      observer.observe(root,{subtree:true,childList:true,attributes:true,characterData:true});
+    const finish=quiet=>{ if (done) return; done=true; observer.disconnect(); resolve(quiet); };
+    setTimeout(()=>finish(false),capMs);
+    const frame=()=>{
+      if (done) return;
+      // The first frame takes in what the input already changed; quiet is a frame after it with none.
+      if (++frames>=2 && !changed) return finish(true);
+      changed=false;
+      requestAnimationFrame(frame);
     };
-    requestAnimationFrame(ready);
+    requestAnimationFrame(frame);
+  });
+}
+// An explicit WAIT: resolve at the first DOM change anywhere Jev reads, or at the cap.
+function gaiaJevWait(capMs) {
+  return new Promise(resolve => {
+    const roots=window.__jevFast?.roots?.filter(r=>r.isConnected!==false) || [document];
+    let done=false;
+    const finish=changed=>{ if (done) return; done=true; observer.disconnect(); resolve(changed); };
+    const observer=new MutationObserver(()=>finish(true));
+    for (const root of roots)
+      observer.observe(root,{subtree:true,childList:true,attributes:true,characterData:true});
+    setTimeout(()=>finish(false),capMs);
   });
 }

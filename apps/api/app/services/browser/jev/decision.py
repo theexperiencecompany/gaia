@@ -3,8 +3,8 @@
 Ported from browser-use/jev-ultrafast (MIT) jev_ultrafast/model.py: one
 decisions request carries an operation head and one target head per
 operation that has targets, and only the head the chosen operation names is
-read. A typed value is a second, small decision over the literals the goal
-spells out.
+read. What to type, and which option a chosen dropdown takes, are each a
+second, small decision.
 """
 
 from __future__ import annotations
@@ -13,6 +13,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 import math
 import re
+
+from pydantic import ValidationError
 
 from app.constants.browser import (
     JEV_MAX_ELEMENTS,
@@ -28,11 +30,12 @@ from app.services.browser.jev.gateway import (
     JevQuestion,
     JsonInput,
 )
-from app.services.browser.jev.page import PageAction, PageState, SelectOption
+from app.services.browser.jev.page import PageAction, PageState
 from app.services.browser.jev.questions import (
     NAVIGATE_TARGET,
     NEXT_ACTION,
     OPERATIONS,
+    OPTION,
     TARGET,
     VALUE,
     VALUE_GENERATE,
@@ -45,26 +48,37 @@ _KIND_OPERATION = {
     "secret": JevOperation.TYPE_TEXT,
     "select": JevOperation.SELECT,
 }
+#: Operations on the page as a whole, offered only while the page offers them.
 _CONTROL_OPERATION = {
-    "scroll_down": JevOperation.SCROLL_DOWN,
-    "scroll_up": JevOperation.SCROLL_UP,
     "wait": JevOperation.WAIT,
+    "enter": JevOperation.PRESS_ENTER,
+    "back": JevOperation.GO_BACK,
 }
+#: The scroll target that is the page itself, beside any inner container's element index.
+PAGE_TARGET = "page"
 NONE_VALUE = "NONE"
 GENERATE = "GENERATE"
-#: Between a dropdown's label and the option chosen in it, in a select step's label.
-OPTION_SEPARATOR = " → "
-_ELEMENT_FIELDS = ("role", "ident", "value", "checked", "selected", "expanded", "filled")
+_ELEMENT_FIELDS = (
+    "role",
+    "ident",
+    "input_type",
+    "value",
+    "checked",
+    "selected",
+    "expanded",
+    "filled",
+)
 #: What a target question shows of each candidate besides its label and current value.
-_TARGET_FIELDS = ("role", "ident", "checked", "selected", "expanded", "filled")
+_TARGET_FIELDS = ("role", "ident", "input_type", "checked", "selected", "expanded", "filled")
 #: What the value question and the text model see of the field being typed into.
-_FIELD_KEYS = ("label", "role", "ident", "value")
+_FIELD_KEYS = ("label", "role", "ident", "input_type", "value")
 #: A choice this close to the most likely option is a tie, not a lower-ranked pick.
 _TIE_TOLERANCE = 1e-6
 _TRAILING_PUNCTUATION = ".,;:!?"
 _OPERATION_QUESTION = "operation"
 _NAVIGATE_QUESTION = "navigate_target"
 _VALUE_QUESTION = "value"
+_OPTION_QUESTION = "option"
 _NO_ANSWER = "Jev returned no answer for a question; no action executed."
 _INVALID_ANSWER = "Invalid Jev response; no action executed."
 
@@ -104,7 +118,7 @@ class Decision:
     """What to execute, with what the call cost."""
 
     operation: JevOperation
-    #: The snapshot action an element or control operation executes (for a dropdown, the chosen option), else None.
+    #: The snapshot action the operation executes (for SELECT, the dropdown), else None.
     target: PageAction | None
     url: str | None
     latency_ms: int
@@ -113,26 +127,22 @@ class Decision:
 
 @dataclass
 class _Element:
-    """One observed element as Jev's state lists it; a dropdown's options are its targets."""
+    """One observed element as Jev's state lists it."""
 
     index: str
     label: str
     #: The descriptor fields it carries (role, id or name, value, states), none of them empty.
     fields: dict[str, object]
     operations: list[JevOperation] = field(default_factory=list)
-    options: list[dict[str, str]] | None = None
 
     def described(self) -> dict[str, object]:
         """Return the element as Jev reads it."""
-        described = {
+        return {
             **self.fields,
             "index": self.index,
             "label": self.label,
             "operations": self.operations,
         }
-        if self.options is not None:
-            described["options"] = self.options
-        return described
 
 
 @dataclass
@@ -141,57 +151,50 @@ class _ActionSpace:
     #: Per target operation: target index -> snapshot action.
     targets: dict[JevOperation, dict[str, PageAction]] = field(default_factory=dict)
     controls: dict[JevOperation, PageAction] = field(default_factory=dict)
+    #: Elements the page offered beyond what one request may carry.
+    left_out: int = 0
 
 
 def action_space(actions: list[PageAction]) -> _ActionSpace:
     """One index per observed element; each operation has its own valid targets."""
     space = _ActionSpace()
     by_node: dict[int, _Element] = {}
+    left_out: set[int] = set()
     for action in actions:
         kind = action["kind"]
-        if kind not in _KIND_OPERATION:
-            operation = _CONTROL_OPERATION.get(action["id"])
-            if operation is not None:
-                space.controls[operation] = action
+        if kind in _CONTROL_OPERATION:
+            space.controls[_CONTROL_OPERATION[kind]] = action
+            continue
+        operation = (
+            _KIND_OPERATION[kind]
+            if kind != "scroll"
+            else JevOperation.SCROLL_DOWN
+            if action["delta"] > 0
+            else JevOperation.SCROLL_UP
+        )
+        if kind == "scroll" and "node" not in action:
+            space.targets.setdefault(operation, {})[PAGE_TARGET] = action
             continue
         node = action["node"]
         element = by_node.get(node)
         if element is None:
             if len(by_node) >= JEV_MAX_ELEMENTS:
+                left_out.add(node)
                 continue
             fields = {k: v for k, v in _fields(action, _ELEMENT_FIELDS).items() if v != ""}
+            if kind == "select":
+                # A dropdown shows its current choice; its options are asked once it is chosen.
+                fields["value"] = action["current_value"]
             element = _Element(
                 index=str(len(space.elements) + 1), label=action["label"], fields=fields
             )
             by_node[node] = element
             space.elements.append(element)
-        operation = _KIND_OPERATION[kind]
         if operation not in element.operations:
             element.operations.append(operation)
-        targets = space.targets.setdefault(operation, {})
-        if kind != "select":
-            targets[element.index] = action
-            continue
-        # A dropdown shows its current choice; each option it offers is a target.
-        element.fields["value"] = action["current_value"]
-        element.options = []
-        for n, option in enumerate(action["options"], 1):
-            target = f"{element.index}:{n}"
-            chosen: PageAction = _option_action(action, option)
-            element.options.append(
-                {"index": target, "label": chosen["label"], "value": chosen["value"]}
-            )
-            targets[target] = chosen
+        space.targets.setdefault(operation, {})[element.index] = action
+    space.left_out = len(left_out)
     return space
-
-
-def _option_action(select: PageAction, option: SelectOption) -> PageAction:
-    """Return the action that sets select to option, named "field → option" as the step records it."""
-    chosen = select.copy()
-    del chosen["options"]
-    chosen["value"] = option["value"]
-    chosen["label"] = f"{select['label']}{OPTION_SEPARATOR}{option['label']}"
-    return chosen
 
 
 def _fields(action: PageAction, keys: tuple[str, ...]) -> dict[str, object]:
@@ -226,7 +229,7 @@ def _target_criteria(candidates: dict[str, PageAction]) -> dict[str, JsonInput]:
     return {
         index: {
             "element": f"[{index}] {action['label']}",
-            "current_value": action.get("current_value", action["value"]),
+            "current_value": action.get("current_value", action.get("value", "")),
             **_fields(action, _TARGET_FIELDS),
         }
         for index, action in candidates.items()
@@ -261,10 +264,18 @@ async def _ask(
     )
 
 
-def _validate_choice(answer: JevChoiceAnswer | None, ids: set[str]) -> str:
-    """Return the option chosen, once the answer is a distribution over exactly ids that ranks it first."""
-    if answer is None:
+def _validate_choice(evaluation: JevEvaluation, question: str, ids: set[str]) -> str:
+    """Return the option one question chose, once its answer is a distribution over exactly ids that ranks it first.
+
+    Only the head a decision reads is validated: a malformed head nothing reads costs nothing.
+    """
+    raw = evaluation.answers.get(question)
+    if raw is None:
         raise JevDecisionError(_NO_ANSWER)
+    try:
+        answer = JevChoiceAnswer.model_validate(raw)
+    except ValidationError as exc:
+        raise JevDecisionError(_INVALID_ANSWER) from exc
     probabilities = answer.probabilities
     if not (
         answer.choice in ids
@@ -291,12 +302,8 @@ async def decide(
     controls: dict[JevOperation, PageAction] = space.controls
     operations: dict[str, JsonInput] = {op.value: OPERATIONS[op] for op in space.targets}
     operations.update({op.value: control["label"] for op, control in controls.items()})
-    if JevOperation.TYPE_TEXT in space.targets:
-        operations[JevOperation.PRESS_ENTER.value] = OPERATIONS[JevOperation.PRESS_ENTER]
     if addresses:
         operations[JevOperation.NAVIGATE.value] = OPERATIONS[JevOperation.NAVIGATE]
-    if len(visited) > 1:
-        operations[JevOperation.GO_BACK.value] = OPERATIONS[JevOperation.GO_BACK]
     operations[JevOperation.DONE.value] = OPERATIONS[JevOperation.DONE]
     operations[JevOperation.BLOCKED.value] = OPERATIONS[JevOperation.BLOCKED]
 
@@ -333,22 +340,20 @@ async def decide(
         ],
         "visited": [{"title": v.title, "url": v.url} for v in visited],
     }
+    left_out = page.omitted_actions + space.left_out
+    if left_out:
+        state["elements_left_out"] = left_out
     evaluation = await _ask(client, state, questions, mask)
-    operation = JevOperation(
-        _validate_choice(evaluation.answers.get(_OPERATION_QUESTION), set(operations))
-    )
+    operation = JevOperation(_validate_choice(evaluation, _OPERATION_QUESTION, set(operations)))
     chosen: PageAction | None = None
     url: str | None = None
     if operation in space.targets:
-        target = _validate_choice(
-            evaluation.answers.get(_target_question(operation)), set(space.targets[operation])
-        )
-        chosen = space.targets[operation][target]
+        targets = space.targets[operation]
+        chosen = targets[_validate_choice(evaluation, _target_question(operation), set(targets))]
     elif operation in controls:
         chosen = controls[operation]
     elif operation is JevOperation.NAVIGATE:
-        target = _validate_choice(evaluation.answers.get(_NAVIGATE_QUESTION), set(address_ids))
-        url = address_ids[target]
+        url = address_ids[_validate_choice(evaluation, _NAVIGATE_QUESTION, set(address_ids))]
     return Decision(
         operation=operation,
         target=chosen,
@@ -356,6 +361,40 @@ async def decide(
         latency_ms=evaluation.latency_ms,
         evaluation=evaluation,
     )
+
+
+async def choose_option(
+    client: JevDecisionsClient,
+    page: PageState,
+    goal: str,
+    dropdown: PageAction,
+    history: list[RecentAction],
+    mask: Mask,
+) -> tuple[PageAction, JevEvaluation]:
+    """Pick which of a chosen dropdown's options to set: asked apart, so a long list never swells the step."""
+    options = dropdown["options"]
+    criteria: dict[str, JsonInput] = {
+        f"O{n}": option["label"] for n, option in enumerate(options, 1)
+    }
+    question = JevQuestion(
+        criteria=criteria,
+        instructions={
+            "goal": goal,
+            "field": {"label": dropdown["label"], "current_value": dropdown["current_value"]},
+            "rules": OPTION,
+        },
+    )
+    state: dict[str, object] = {
+        "page": _page(page),
+        "recent_actions": [{"action": h.action, "text": h.text} for h in history],
+    }
+    evaluation = await _ask(client, state, {_OPTION_QUESTION: question}, mask)
+    option = options[int(_validate_choice(evaluation, _OPTION_QUESTION, set(criteria))[1:]) - 1]
+    chosen = dropdown.copy()
+    del chosen["options"]
+    chosen["value"] = option["value"]
+    chosen["current_value"] = option["label"]
+    return chosen, evaluation
 
 
 async def choose_value(
@@ -389,7 +428,7 @@ async def choose_value(
         "recent_actions": [{"action": h.action, "text": h.text} for h in history],
     }
     evaluation = await _ask(client, state, {_VALUE_QUESTION: question}, mask)
-    answer = _validate_choice(evaluation.answers.get(_VALUE_QUESTION), set(criteria))
+    answer = _validate_choice(evaluation, _VALUE_QUESTION, set(criteria))
     if answer in (GENERATE, NONE_VALUE):
         return answer, evaluation
     return options[int(answer[1:]) - 1], evaluation

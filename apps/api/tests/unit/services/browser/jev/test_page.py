@@ -1,4 +1,4 @@
-"""Jev's hands on the tab: every CDP call bounded, no input on a stale or covered target, typing as a person types."""
+"""Jev's hands on the tab: no input on a moved or unreachable target, reads that wait on the page's own facts, and every CDP call bounded."""
 
 from __future__ import annotations
 
@@ -12,50 +12,57 @@ from typing import Any
 
 import pytest
 
-from app.constants.browser import (
-    BROWSER_VIEWPORT_HEIGHT,
-    BROWSER_VIEWPORT_WIDTH,
-    JEV_SCREENSHOT_QUALITY,
-)
+from app.constants.browser import JEV_SCREENSHOT_QUALITY
 from app.constants.log_tags import LogTag
 from app.services.browser.jev import page as page_mod
 from app.services.browser.jev.page import (
     Covered,
+    DocumentReplaced,
+    FieldUnfocused,
     JevPage,
     NavigationFailed,
     PageAction,
+    PageScriptError,
     PageState,
     PageUnresponsive,
     StalePage,
-    UncertainSelect,
+    TabUnavailable,
 )
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
 SESSION = "page-1"
+TAB = "tab-1"
 FIELD = PageAction(id="e1", node=7, kind="fill", label="Name", role="textbox", value="")
+DAY = PageAction(id="e4", node=10, kind="fill", label="Day", input_type="date", value="")
 LINK = PageAction(id="e2", node=8, kind="click", label="Docs", role="link", value="")
-SIZE_L = PageAction(id="e3", node=9, kind="select", label="Size → Large", value="l")
-SCROLL = PageAction(id="scroll_down", kind="scroll", label="Scroll down", delta=560)
+SIZE_L = PageAction(id="e3", node=9, kind="select", label="Size", value="l")
+SCROLL = PageAction(id="scroll_down", kind="scroll", label="Scroll down the page", delta=560)
+LIST = PageAction(
+    id="scroll_down_11", node=11, kind="scroll", label="Scroll down in List", delta=240
+)
 WAIT = PageAction(id="wait", kind="wait", label="Wait for the page to update")
+ENTER = PageAction(id="enter", node=7, kind="enter", label="Press Enter in Name")
+BACK = PageAction(id="go_back", kind="back", label="Go back to Home", entry=41)
 PAGE_KEY = ["key"]
-GUARDS = {"7": ["guard-of-7"], "8": ["guard-of-8"], "9": ["guard-of-9"]}
-#: What Runtime.evaluate reports when the script threw (the document was replaced under it).
+GUARDS = {str(n): [f"guard-of-{n}"] for n in (7, 8, 9, 10, 11)}
+#: What Runtime.evaluate answers for a script that threw in the page.
 THROWS = object()
+#: What it answers when the document went away under the call.
+GONE = object()
+#: A call the browser refuses outright (cdp_use raises it with the error object).
+REFUSED = object()
 
 SNAPSHOT: dict[str, Any] = {
     "url": "https://site.test/",
     "title": "Site",
-    "w": BROWSER_VIEWPORT_WIDTH,
-    "h": BROWSER_VIEWPORT_HEIGHT,
     "text": "Welcome",
     "text_cut": False,
-    "scroll": {"y": 0, "height": 2400},
     "actions": [FIELD, LINK, SIZE_L, SCROLL, WAIT],
     "page_key": PAGE_KEY,
     "guards": GUARDS,
-    "omitted_actions": 0,
+    "omitted_actions": 3,
     "frames": [{"src": "https://pay.test/frame", "same_origin": False, "visible": True}],
 }
 
@@ -88,33 +95,60 @@ def _called(expression: str, script: Any) -> tuple[bool, Any]:
 class _Tab:
     """One page's CDP session as Chrome answers it: only commands addressed to the page's session.
 
-    Each field is what one of Jev's scripts reads back; hangs names a call that never answers.
+    Each field is what one of Jev's scripts reads back; a list is answered one item per call.
     """
 
     snapshots: list[object] = field(default_factory=lambda: [SNAPSHOT])
     page_key: object = field(default_factory=lambda: PAGE_KEY)
-    guards: dict[str, object] = field(default_factory=lambda: GUARDS)
-    points: dict[int, object] = field(default_factory=dict)
-    settle: object = None
+    guards: dict[str, object] = field(default_factory=lambda: dict(GUARDS))
+    act: dict[int | None, object] = field(default_factory=dict)
+    focused: object = True
+    value: object = "Ada"
+    set: object = "2026-10-01"
+    settle: list[object] = field(default_factory=lambda: [True])
+    history: dict[str, Any] = field(default_factory=lambda: {"currentIndex": 0, "entries": []})
     body: str = ""
     hangs: str | None = None
+    #: Whether the tab still answers a call after refusing one.
+    alive: bool = True
     focus: list[bool] = field(default_factory=list, init=False)
-    settled: list[dict[str, Any]] = field(default_factory=list, init=False)
-    acted: list[dict[str, Any]] = field(default_factory=list, init=False)
-    went_back: int = field(default=0, init=False)
+    scripts: list[str] = field(default_factory=list, init=False)
     mouse: list[dict[str, Any]] = field(default_factory=list, init=False)
     keys: list[dict[str, Any]] = field(default_factory=list, init=False)
+    entries: list[int] = field(default_factory=list, init=False)
     shots: list[dict[str, Any]] = field(default_factory=list, init=False)
+    handlers: dict[str, Callable[..., None]] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
-        # The tab reads its own copy: a test's list of snapshots is never consumed under it.
         self.snapshots = list(self.snapshots)
+        self.settle = list(self.settle)
         self.send = SimpleNamespace(
             Emulation=SimpleNamespace(setFocusEmulationEnabled=self._focus),
             Runtime=SimpleNamespace(evaluate=self._evaluate),
             Input=SimpleNamespace(dispatchMouseEvent=self._mouse, dispatchKeyEvent=self._key),
-            Page=SimpleNamespace(captureScreenshot=self._screenshot),
+            Page=SimpleNamespace(
+                captureScreenshot=self._screenshot,
+                getNavigationHistory=self._history,
+                navigateToHistoryEntry=self._go_to_entry,
+            ),
         )
+        self.register = SimpleNamespace(
+            Target=SimpleNamespace(targetCreated=self._on("Target.targetCreated")),
+            Network=SimpleNamespace(
+                requestWillBeSent=self._on("Network.requestWillBeSent"),
+                loadingFinished=self._on("Network.loadingFinished"),
+                loadingFailed=self._on("Network.loadingFailed"),
+            ),
+        )
+
+    def _on(self, method: str) -> Callable[[Callable[..., None]], None]:
+        def register(handler: Callable[..., None]) -> None:
+            self.handlers[method] = handler
+
+        return register
+
+    def emit(self, method: str, event: dict[str, Any], session_id: str | None = SESSION) -> None:
+        self.handlers[method](event, session_id)
 
     async def _command(self, method: str, session_id: str | None) -> None:
         if self.hangs == method:
@@ -129,33 +163,52 @@ class _Tab:
 
     async def _evaluate(self, params: dict[str, Any], session_id: str | None) -> dict[str, Any]:
         await self._command("Runtime.evaluate", session_id)
-        value = self._run(params["expression"], awaited=params["awaitPromise"])
+        value = self._run(params["expression"])
+        if value is REFUSED or (params["expression"] == "0" and not self.alive):
+            raise RuntimeError({"code": -32000, "message": "Inspected target navigated or closed"})
         if value is THROWS:
-            return {"result": {"type": "object"}, "exceptionDetails": {"text": "Uncaught"}}
-        if isinstance(value, dict | list) and not params["returnByValue"]:
-            return {"result": {"type": "object", "objectId": "remote-1"}}
-        return {"result": {"type": "undefined"} if value is None else {"value": value}}
+            return {
+                "result": {"type": "object"},
+                "exceptionDetails": {"text": "Uncaught", "exception": {"description": "Error: x"}},
+            }
+        if value is GONE:
+            return {"result": {"type": "undefined"}}
+        return {"result": {"type": "object", "value": value}}
 
-    def _run(self, expression: str, *, awaited: bool) -> object:
+    @staticmethod
+    def _next(answers: list[object]) -> object:
+        return answers.pop(0) if len(answers) > 1 else answers[0]
+
+    def _run(self, expression: str) -> object:
         if expression == page_mod._SNAPSHOT_JS:
-            return self.snapshots.pop(0) if len(self.snapshots) > 1 else self.snapshots[0]
-        called, node = _called(expression, page_mod._GUARD)
-        if called:
-            if self.page_key is THROWS:
-                return THROWS
-            return [self.page_key, self.guards.get(str(node))]
-        called, action = _called(expression, page_mod._ACT)
-        if called:
-            self.acted.append(action)
-            return self.points.get(action.get("node"))
-        called, action = _called(expression, page_mod._SETTLE)
-        if called:
-            if awaited:
-                self.settled.append(action)
-            return self.settle
-        if expression == "history.back()":
-            self.went_back += 1
-            return None
+            self.scripts.append("snapshot")
+            return self._next(self.snapshots)
+        if expression == "0":
+            return 0
+        for name, script in [
+            ("guard", page_mod._GUARD),
+            ("act", page_mod._ACT),
+            ("focused", page_mod._FOCUSED),
+            ("value", page_mod._VALUE),
+            ("set", page_mod._SET),
+            ("settle", page_mod._SETTLE),
+            ("wait", page_mod._WAIT),
+        ]:
+            called, argument = _called(expression, script)
+            if called:
+                self.scripts.append(name)
+                if name == "guard":
+                    return [
+                        self.page_key,
+                        None if argument is None else self.guards.get(str(argument)),
+                    ]
+                if name == "act":
+                    return self.act.get(argument.get("node"))
+                if name == "settle":
+                    return self._next(self.settle)
+                if name == "wait":
+                    return True
+                return getattr(self, name)
         body = re.fullmatch(
             r"\(document\.body \? document\.body\.innerText : ''\)\.slice\(0, (\d+)\)", expression
         )
@@ -172,6 +225,15 @@ class _Tab:
         self.keys.append(params)
         return {}
 
+    async def _history(self, session_id: str | None) -> dict[str, Any]:
+        await self._command("Page.getNavigationHistory", session_id)
+        return self.history
+
+    async def _go_to_entry(self, params: dict[str, Any], session_id: str | None) -> dict[str, Any]:
+        await self._command("Page.navigateToHistoryEntry", session_id)
+        self.entries.append(params["entryId"])
+        return {}
+
     async def _screenshot(self, params: dict[str, Any], session_id: str | None) -> dict[str, Any]:
         await self._command("Page.captureScreenshot", session_id)
         self.shots.append(params)
@@ -179,34 +241,27 @@ class _Tab:
 
 
 class _Browser:
-    """The Browser-Use session JevPage drives: its page session, navigation and tabs."""
+    """The Browser-Use session JevPage drives: its page session, navigation and tab switching."""
 
-    def __init__(
-        self,
-        tab: _Tab,
-        *,
-        navigate_error: Exception | None = None,
-        tabs: list[str] | None = None,
-    ) -> None:
+    def __init__(self, tab: _Tab, *, navigate_error: Exception | None = None) -> None:
         self._tab = tab
         self._navigate_error = navigate_error
-        self.tabs = tabs or ["tab-1"]
-        self.navigated: list[str | None] = []
+        self.cdp_url = ""
+        self.navigated: list[str] = []
         self.switched: list[str] = []
         self.event_bus = SimpleNamespace(dispatch=self._dispatch)
 
     async def get_or_create_cdp_session(self) -> Any:
         if self._tab.hangs == "session":
             await asyncio.Event().wait()
-        return SimpleNamespace(session_id=SESSION, cdp_client=self._tab)
+        if self._tab.hangs == "gone":
+            raise ValueError("No valid agent focus available")
+        return SimpleNamespace(session_id=SESSION, target_id=TAB, cdp_client=self._tab)
 
-    async def navigate_to(self, url: str | None) -> None:
+    async def navigate_to(self, url: str) -> None:
         self.navigated.append(url)
         if self._navigate_error is not None:
             raise self._navigate_error
-
-    async def get_tabs(self) -> list[Any]:
-        return [SimpleNamespace(target_id=target) for target in self.tabs]
 
     def _dispatch(self, event: Any) -> Awaitable[None]:
         self.switched.append(event.target_id)
@@ -218,45 +273,52 @@ def _page(tab: _Tab, **browser: Any) -> tuple[JevPage, _Browser]:
     return JevPage(session), session  # type: ignore[arg-type]  # the calls JevPage makes of a session
 
 
-@pytest.fixture(autouse=True)
-def _no_waiting(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(page_mod, "JEV_OBSERVE_RETRY_SECONDS", 0)
-    monkeypatch.setattr(page_mod, "JEV_WAIT_SECONDS", 0)
+# --- reading the page --------------------------------------------------------------------
 
 
-async def test_a_snapshot_is_read_into_the_page_state() -> None:
-    tab = _Tab()
+async def test_a_snapshot_is_read_into_the_page_state_with_going_back_when_the_tab_has_history() -> (
+    None
+):
+    tab = _Tab(
+        history={
+            "currentIndex": 1,
+            "entries": [{"id": 41, "url": "https://h.test/", "title": "Home"}, {}],
+        }
+    )
     page, _ = _page(tab)
 
     state = await page.observe()
 
-    assert state == _state(fingerprint=state.fingerprint)
-    # No input preceded this read, so there was nothing to wait for.
-    assert tab.settled == []
+    assert state.actions == [*SNAPSHOT["actions"], BACK]
+    assert (state.url, state.text, state.omitted_actions) == ("https://site.test/", "Welcome", 3)
+    tab.history = {"currentIndex": 0, "entries": [{}]}
+    assert BACK not in (await page.observe()).actions
 
 
-def _moved(field: str) -> dict[str, Any]:
-    changed = {
-        "url": "https://site.test/next",
-        "text": "Welcome back",
-        "actions": [FIELD],
-        "scroll": {"y": 560, "height": 2400},
-    }
-    return SNAPSHOT | {field: changed[field]}
+@pytest.mark.parametrize(
+    "moved",
+    [
+        {"url": "https://site.test/next", "page_key": ["next"]},
+        {"text": "Welcome back"},
+        {"actions": [FIELD]},
+    ],
+)
+async def test_the_fingerprint_changes_with_what_a_person_sees_never_with_where_a_control_sits(
+    moved: dict[str, Any],
+) -> None:
+    shifted = [
+        {**action, "rect": {"x": 1, "y": 2, "w": 3, "h": 4}} for action in SNAPSHOT["actions"]
+    ]
+    page, _ = _page(_Tab(snapshots=[SNAPSHOT, SNAPSHOT | {"actions": shifted}, SNAPSHOT | moved]))
+
+    first, shifted_state, changed = [await page.observe() for _ in range(3)]
+
+    assert first.fingerprint == shifted_state.fingerprint
+    assert changed.fingerprint != first.fingerprint
 
 
-@pytest.mark.parametrize("field", ["url", "text", "actions", "scroll"])
-async def test_the_fingerprint_changes_with_what_a_person_sees(field: str) -> None:
-    page, _ = _page(_Tab(snapshots=[SNAPSHOT, SNAPSHOT, _moved(field)]))
-
-    first, again, moved = [await page.observe() for _ in range(3)]
-
-    assert first.fingerprint == again.fingerprint
-    assert moved.fingerprint != first.fingerprint
-
-
-async def test_a_page_being_replaced_is_read_again_until_it_settles() -> None:
-    page, _ = _page(_Tab(snapshots=[None, THROWS, SNAPSHOT]))
+async def test_a_document_being_replaced_or_still_parsing_is_read_again() -> None:
+    page, _ = _page(_Tab(snapshots=[GONE, None, REFUSED, SNAPSHOT]))
 
     state = await page.observe()
 
@@ -265,331 +327,321 @@ async def test_a_page_being_replaced_is_read_again_until_it_settles() -> None:
 
 async def test_a_page_that_never_settles_is_stale(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(page_mod, "JEV_OBSERVE_ATTEMPTS", 3)
-    page, _ = _page(_Tab(snapshots=[None]))
+    page, _ = _page(_Tab(snapshots=[GONE]))
 
     with pytest.raises(StalePage, match=page_mod._NOT_SETTLED):
         await page.observe()
 
 
-async def test_the_read_after_an_input_waits_for_that_input_to_settle_once() -> None:
-    tab = _Tab(points={8: {"x": 10, "y": 20}})
+async def test_a_script_that_throws_in_the_page_is_reported_not_read_again() -> None:
+    tab = _Tab(snapshots=[THROWS, SNAPSHOT])
     page, _ = _page(tab)
 
-    await page.act(LINK, _state())
-    await page.observe()
-    await page.observe()
+    with pytest.raises(PageScriptError, match="Error: x"):
+        await page.observe()
 
-    assert tab.settled == [LINK]
+    assert tab.scripts == ["snapshot"]
 
 
-async def test_a_navigation_that_cuts_the_settle_wait_short_still_reads_the_new_page() -> None:
-    tab = _Tab(points={8: {"x": 10, "y": 20}}, settle=THROWS)
+async def test_a_refused_call_on_a_tab_that_no_longer_answers_is_a_tab_gone_not_a_navigation() -> (
+    None
+):
+    page, _ = _page(_Tab(snapshots=[REFUSED], alive=False))
+
+    with pytest.raises(TabUnavailable, match="navigated or closed"):
+        await page.observe()
+
+
+async def test_a_tab_whose_focus_is_gone_is_unavailable() -> None:
+    page, _ = _page(_Tab(hangs="gone"))
+
+    with pytest.raises(TabUnavailable, match="No valid agent focus"):
+        await page.observe()
+
+
+# --- the read after an input -------------------------------------------------------------
+
+
+async def test_the_read_after_an_input_waits_for_its_requests_and_a_quiet_dom_after_them() -> None:
+    tab = _Tab(act={8: {"x": 10, "y": 20}}, settle=[True, True])
     page, _ = _page(tab)
-
     await page.act(LINK, _state())
-    state = await page.observe()
+    tab.emit("Network.requestWillBeSent", {"requestId": "r1", "loaderId": "L1", "type": "Fetch"})
+
+    reading = asyncio.ensure_future(page.observe())
+    await asyncio.sleep(0)
+    assert not reading.done()
+    tab.emit("Network.loadingFinished", {"requestId": "r1"})
+    await reading
+
+    # Quiet, then the request finished, then quiet again on what it rendered.
+    assert tab.scripts.count("settle") == 2
+
+
+async def test_a_new_top_document_ends_the_wait_on_loads_of_the_one_before() -> None:
+    tab = _Tab(act={8: {"x": 10, "y": 20}}, settle=[GONE, True])
+    page, _ = _page(tab)
+    await page.act(LINK, _state())
+    tab.emit("Network.requestWillBeSent", {"requestId": "old", "loaderId": "L1", "type": "Fetch"})
+    tab.emit(
+        "Network.requestWillBeSent",
+        {"requestId": "L2", "loaderId": "L2", "type": "Document", "frameId": TAB},
+    )
+    tab.emit("Network.loadingFinished", {"requestId": "L2"})
+
+    await asyncio.wait_for(page.observe(), timeout=1)
+
+
+async def test_requests_of_another_tab_or_streams_never_hold_the_read() -> None:
+    tab = _Tab(act={8: {"x": 10, "y": 20}})
+    page, _ = _page(tab)
+    await page.act(LINK, _state())
+    tab.emit(
+        "Network.requestWillBeSent", {"requestId": "a", "loaderId": "L", "type": "Fetch"}, "other"
+    )
+    tab.emit(
+        "Network.requestWillBeSent", {"requestId": "b", "loaderId": "L", "type": "EventSource"}
+    )
+
+    await asyncio.wait_for(page.observe(), timeout=1)
+
+
+async def test_the_read_after_an_input_stops_waiting_at_the_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(page_mod, "JEV_SETTLE_MAX_SECONDS", 0.05)
+    tab = _Tab(act={8: {"x": 10, "y": 20}})
+    page, _ = _page(tab)
+    await page.act(LINK, _state())
+    tab.emit("Network.requestWillBeSent", {"requestId": "poll", "loaderId": "L", "type": "XHR"})
+
+    state = await asyncio.wait_for(page.observe(), timeout=1)
 
     assert state.url == SNAPSHOT["url"]
 
 
-async def test_an_element_decision_holds_while_its_page_and_target_do() -> None:
-    page, _ = _page(_Tab())
-
-    assert await page.fresh(_state(), FIELD) is True
-
-
-@pytest.mark.parametrize(
-    "tab",
-    [
-        _Tab(page_key=["another page"]),
-        _Tab(guards={"7": ["the element moved"]}),
-    ],
-)
-async def test_an_element_decision_is_stale_once_its_page_or_target_changed(tab: _Tab) -> None:
+async def test_a_wait_waits_for_the_page_to_change_then_settles_and_sends_no_input() -> None:
+    tab = _Tab()
     page, _ = _page(tab)
 
-    assert await page.fresh(_state(), FIELD) is False
+    await page.act(WAIT, _state())
+    await page.observe()
+
+    assert tab.scripts[-3:] == ["wait", "settle", "snapshot"]
+    assert (tab.mouse, tab.keys) == ([], [])
 
 
-@pytest.mark.parametrize(("page_key", "fresh"), [(PAGE_KEY, True), (["scrolled"], False)])
-async def test_a_page_level_decision_holds_only_while_the_page_key_does(
-    page_key: object, fresh: bool
-) -> None:
-    page, _ = _page(_Tab(page_key=page_key))
-
-    assert await page.fresh(_state()) is fresh
-    assert await page.fresh(_state(), SCROLL) is fresh
-
-
-async def test_a_page_whose_text_keeps_ticking_holds_page_level_decisions() -> None:
-    ticks = [SNAPSHOT | {"text": f"Sale ends in 0:{59 - n}"} for n in range(3)]
-    tab = _Tab(snapshots=ticks)
-    page, _ = _page(tab)
-    state = await page.observe()
-
-    assert await page.fresh(state) is True
-    await page.act(WAIT, state)
-    await page.act(SCROLL, state)
-    assert [event["type"] for event in tab.mouse] == ["mouseWheel"]
+# --- inputs ------------------------------------------------------------------------------
 
 
 async def test_a_decision_on_a_page_that_moved_on_sends_no_input() -> None:
-    tab = _Tab(guards={"7": ["a different element"]}, points={7: {"x": 1, "y": 1}})
+    tab = _Tab(guards={"7": ["a different element"]}, act={7: {"x": 1, "y": 1}})
     page, _ = _page(tab)
 
     with pytest.raises(StalePage, match=page_mod._MOVED_ON):
         await page.act(FIELD, _state(), text="Ada")
 
-    assert (tab.acted, tab.mouse, tab.keys) == ([], [], [])
-
-
-async def test_a_covered_target_sends_no_input() -> None:
-    tab = _Tab()
-    page, _ = _page(tab)
-
-    with pytest.raises(Covered, match=page_mod._COVERED):
-        await page.act(FIELD, _state(), text="Ada")
-
     assert (tab.mouse, tab.keys) == ([], [])
 
 
-async def test_a_click_presses_and_releases_the_left_button_once_at_the_targets_centre() -> None:
-    tab = _Tab(points={8: {"x": 40, "y": 60}})
+async def test_a_target_no_press_reaches_sends_no_input() -> None:
+    tab = _Tab(act={8: None})
+    page, _ = _page(tab)
+
+    with pytest.raises(Covered):
+        await page.act(LINK, _state())
+
+    assert tab.mouse == []
+
+
+async def test_a_click_presses_where_the_page_says_a_press_reaches_the_target() -> None:
+    tab = _Tab(act={8: {"x": 31.5, "y": 44}})
     page, _ = _page(tab)
 
     await page.act(LINK, _state())
 
-    assert tab.acted == [LINK]
-    assert tab.mouse == [
-        {"type": "mousePressed", "x": 40, "y": 60, "button": "left", "clickCount": 1},
-        {"type": "mouseReleased", "x": 40, "y": 60, "button": "left", "clickCount": 1},
+    assert [(e["type"], e["x"], e["y"], e["button"]) for e in tab.mouse] == [
+        ("mousePressed", 31.5, 44, "left"),
+        ("mouseReleased", 31.5, 44, "left"),
     ]
+
+
+async def test_typing_replaces_the_focused_fields_text_with_real_keys_and_reads_it_back() -> None:
+    tab = _Tab(act={7: {"x": 1, "y": 1}}, value="Ad")
+    page, _ = _page(tab)
+
+    held = await page.act(FIELD, _state(), text="aB1")
+
+    assert held == "Ad"
+    downs = [k for k in tab.keys if k["type"] == "keyDown"]
+    assert downs[0]["commands"] == ["selectAll"]
+    assert [(k["key"], k.get("code"), k.get("windowsVirtualKeyCode")) for k in downs[1:]] == [
+        ("a", "KeyA", 65),
+        ("B", "KeyB", 66),
+        ("1", "Digit1", 49),
+    ]
+
+
+async def test_a_field_that_did_not_take_focus_gets_no_keys() -> None:
+    tab = _Tab(act={7: {"x": 1, "y": 1}}, focused=False)
+    page, _ = _page(tab)
+
+    with pytest.raises(FieldUnfocused):
+        await page.act(FIELD, _state(), text="Ada")
+
     assert tab.keys == []
 
 
-async def test_typing_clicks_the_field_selects_its_text_and_sends_one_key_per_character() -> None:
-    tab = _Tab(points={7: {"x": 40, "y": 60}})
+async def test_a_date_field_is_set_in_its_own_format_and_read_back_without_keys() -> None:
+    tab = _Tab(set="")
     page, _ = _page(tab)
 
-    await page.act(FIELD, _state(), text="Ab")
+    held = await page.act(DAY, _state(), text="10/01/2026")
 
-    assert [event["type"] for event in tab.mouse] == ["mousePressed", "mouseReleased"]
-    select_all, typed = tab.keys[:2], tab.keys[2:]
-    # Ctrl+A with the selectAll command: what is typed replaces the field's text.
-    assert [(event["type"], event["key"]) for event in select_all] == [
-        ("keyDown", "a"),
-        ("keyUp", "a"),
-    ]
-    assert select_all[0]["commands"] == ["selectAll"]
-    # A date or time field that parses keystrokes drops a value inserted any other way.
-    assert typed == [
-        {"type": "keyDown", "key": "A", "text": "A"},
-        {"type": "keyUp", "key": "A"},
-        {"type": "keyDown", "key": "b", "text": "b"},
-        {"type": "keyUp", "key": "b"},
-    ]
+    assert (held, tab.mouse, tab.keys) == ("", [], [])
 
 
-async def test_a_typed_line_break_presses_enter_as_press_enter_does() -> None:
-    typing, pressing = _Tab(points={7: {"x": 1, "y": 1}}), _Tab()
-    typed, _ = _page(typing)
-    pressed, _ = _page(pressing)
-
-    await typed.act(FIELD, _state(), text="a\nb")
-    await pressed.press_enter()
-
-    assert typing.keys[4:6] == pressing.keys
-    assert [event["key"] for event in typing.keys[6:]] == ["b", "b"]
-    assert [(event["type"], event["key"], event["text"]) for event in pressing.keys] == [
-        ("keyDown", "Enter", "\r"),
-        ("keyUp", "Enter", "\r"),
-    ]
-
-
-async def test_a_wait_sends_no_input() -> None:
-    tab = _Tab(points={7: {"x": 1, "y": 1}})
-    page, _ = _page(tab)
-
-    await page.act(WAIT, _state())
-
-    assert (tab.acted, tab.mouse, tab.keys) == ([], [], [])
-
-
-async def test_a_scroll_turns_the_wheel_inside_the_viewport_and_settles_before_the_next_read() -> (
-    None
-):
-    tab = _Tab()
-    page, _ = _page(tab)
-
-    await page.act(SCROLL, _state())
-    await page.observe()
-
-    [wheel] = tab.mouse
-    assert (wheel["type"], wheel["deltaX"], wheel["deltaY"]) == ("mouseWheel", 0, 560)
-    assert 0 < wheel["x"] < BROWSER_VIEWPORT_WIDTH
-    assert 0 < wheel["y"] < BROWSER_VIEWPORT_HEIGHT
-    assert tab.settled == [SCROLL]
-
-
-async def test_a_scroll_on_a_page_that_moved_turns_nothing() -> None:
-    tab = _Tab(page_key=["scrolled"])
-    page, _ = _page(tab)
-
-    with pytest.raises(StalePage):
-        await page.act(SCROLL, _state())
-
-    assert tab.mouse == []
-
-
-async def test_a_dropdown_is_set_in_the_page_without_a_click_and_settles_before_the_next_read() -> (
-    None
-):
-    tab = _Tab(points={9: {"x": 5, "y": 5}})
+async def test_a_dropdown_is_set_in_the_page_without_a_press() -> None:
+    tab = _Tab(act={9: {"set": True}})
     page, _ = _page(tab)
 
     await page.act(SIZE_L, _state())
-    await page.observe()
 
-    assert tab.acted == [SIZE_L]
-    assert tab.mouse == []
-    assert tab.settled == [SIZE_L]
+    assert (tab.mouse, tab.keys) == ([], [])
 
 
-@pytest.mark.parametrize(
-    ("answer", "why"),
-    [(THROWS, page_mod._SELECT_INTERRUPTED), (None, page_mod._SELECT_UNCONFIRMED)],
-)
-async def test_a_dropdown_change_that_may_have_fired_is_uncertain_not_stale(
-    answer: object, why: str
-) -> None:
-    page, _ = _page(_Tab(points={9: answer}))
-
-    with pytest.raises(UncertainSelect, match=why):
-        await page.act(SIZE_L, _state())
-
-
-async def test_a_click_interrupted_by_a_navigation_is_stale_and_sends_no_input() -> None:
-    tab = _Tab(points={8: THROWS})
+async def test_enter_is_pressed_only_in_the_field_that_still_holds_focus() -> None:
+    tab = _Tab(act={7: {"focused": True}})
     page, _ = _page(tab)
 
-    with pytest.raises(StalePage, match=page_mod._CHANGED_DURING_EVALUATION) as raised:
-        await page.act(LINK, _state())
+    await page.act(ENTER, _state())
 
-    assert type(raised.value) is StalePage
-    assert tab.mouse == []
+    assert [k["key"] for k in tab.keys] == ["Enter", "Enter"]
+    tab.act = {7: None}
+    with pytest.raises(Covered):
+        await page.act(ENTER, _state())
 
 
-def _hanging_calls() -> list[tuple[str, str, Callable[[JevPage], Awaitable[object]]]]:
-    return [
-        ("session", page_mod._SESSION_CALL, lambda page: page.body_text(10)),
-        (
-            "Emulation.setFocusEmulationEnabled",
-            "Emulation.setFocusEmulationEnabled",
-            lambda page: page.body_text(10),
-        ),
-        ("Runtime.evaluate", "Runtime.evaluate", lambda page: page.body_text(10)),
-        (
-            "Input.dispatchMouseEvent",
-            "Input.dispatchMouseEvent",
-            lambda page: page.act(LINK, _state()),
-        ),
-        ("Input.dispatchKeyEvent", "Input.dispatchKeyEvent", lambda page: page.press_enter()),
-        ("Page.captureScreenshot", "Page.captureScreenshot", lambda page: page.screenshot()),
+async def test_going_back_returns_to_the_history_entry_observed() -> None:
+    tab = _Tab()
+    page, _ = _page(tab)
+
+    await page.act(BACK, _state())
+
+    assert tab.entries == [41]
+
+
+async def test_the_page_scrolls_over_its_column_and_an_inner_area_where_the_page_says_it_is() -> (
+    None
+):
+    tab = _Tab(act={11: {"x": 70, "y": 90}})
+    page, _ = _page(tab)
+
+    await page.act(SCROLL, _state())
+    await page.act(LIST, _state())
+
+    assert [(e["x"], e["y"], e["deltaY"]) for e in tab.mouse] == [
+        (page_mod._WHEEL_X, page_mod._WHEEL_Y, 560),
+        (70, 90, 240),
     ]
 
 
-@pytest.mark.parametrize(("hangs", "named", "call"), _hanging_calls())
-async def test_a_call_the_tab_never_answers_raises_and_names_the_call(
-    monkeypatch: pytest.MonkeyPatch,
-    hangs: str,
-    named: str,
-    call: Callable[[JevPage], Awaitable[object]],
-) -> None:
-    monkeypatch.setattr(page_mod, "JEV_CDP_TIMEOUT_SECONDS", 0.05)
-    page, _ = _page(_Tab(hangs=hangs, points={8: {"x": 1, "y": 1}}))
-
-    async with captured_wide_event() as event:
-        with pytest.raises(PageUnresponsive, match=named):
-            await call(page)
-
-    [warning] = event["warnings"]
-    assert warning["msg"].startswith(LogTag.BROWSER)
-    assert warning["call"] == named
+# --- tabs, navigation, bounds ------------------------------------------------------------
 
 
-async def test_the_tab_is_told_to_render_as_focused_once_not_on_every_call() -> None:
-    tab = _Tab(body="text")
-    page, _ = _page(tab)
+async def test_a_tab_the_clicked_tab_opened_is_followed_and_one_another_tab_opened_is_not() -> None:
+    tab = _Tab(act={8: {"x": 1, "y": 1}})
+    page, browser = _page(tab)
+    await page.act(LINK, _state())
+    tab.emit(
+        "Target.targetCreated",
+        {"targetInfo": {"targetId": "elsewhere", "type": "page", "openerId": "tab-9"}},
+    )
 
-    await page.body_text(10)
-    await page.body_text(10)
+    assert await page.follow_new_tab() is False
 
-    assert tab.focus == [True]
+    await page.act(LINK, _state())
+    tab.emit(
+        "Target.targetCreated",
+        {"targetInfo": {"targetId": "popup", "type": "page", "openerId": TAB}},
+    )
 
-
-async def test_the_page_text_is_read_from_the_whole_body_up_to_the_limit() -> None:
-    page, _ = _page(_Tab(body="Headline and the article below it"))
-
-    assert await page.body_text(8) == "Headline"
+    assert await page.follow_new_tab() is True
+    assert browser.switched == ["popup"]
 
 
 async def test_opening_an_address_navigates_the_tab_there() -> None:
     page, browser = _page(_Tab())
 
-    await page.navigate("https://docs.test/")
+    await page.navigate("https://site.test/b")
 
-    assert browser.navigated == ["https://docs.test/"]
-
-
-async def test_an_address_that_cannot_be_opened_is_a_navigation_failure() -> None:
-    page, _ = _page(
-        _Tab(), navigate_error=RuntimeError("Navigation failed: net::ERR_NAME_NOT_RESOLVED")
-    )
-
-    with pytest.raises(NavigationFailed, match="ERR_NAME_NOT_RESOLVED"):
-        await page.navigate("https://gone.test/")
+    assert browser.navigated == ["https://site.test/b"]
 
 
-async def test_going_back_goes_back_in_the_tabs_history() -> None:
+@pytest.mark.parametrize(
+    ("error", "raised"),
+    [
+        (RuntimeError("Navigation failed: net::ERR_NAME_NOT_RESOLVED"), NavigationFailed),
+        (RuntimeError({"code": -32000, "message": "navigation refused"}), TabUnavailable),
+    ],
+    ids=["the-site-failed", "the-browser-refused"],
+)
+async def test_a_failed_navigation_says_whether_the_site_or_the_browser_failed(
+    error: Exception, raised: type[Exception]
+) -> None:
+    page, _ = _page(_Tab(), navigate_error=error)
+
+    with pytest.raises(raised):
+        await page.navigate("https://site.test/b")
+
+
+@pytest.mark.parametrize("hangs", ["session", "Runtime.evaluate", "Input.dispatchMouseEvent"])
+async def test_a_call_the_tab_never_answers_raises_and_names_the_call(
+    monkeypatch: pytest.MonkeyPatch, hangs: str
+) -> None:
+    monkeypatch.setattr(page_mod, "JEV_CDP_TIMEOUT_SECONDS", 0.01)
+    page, _ = _page(_Tab(hangs=hangs, act={8: {"x": 1, "y": 1}}))
+
+    async with captured_wide_event() as event:
+        with pytest.raises(PageUnresponsive):
+            await page.act(LINK, _state())
+
+    [warning] = event["warnings"]
+    assert warning["msg"].startswith(LogTag.BROWSER)
+    assert warning["call"] == ("the page's CDP session" if hangs == "session" else hangs)
+
+
+async def test_the_tab_is_told_to_render_as_focused_once_not_on_every_call() -> None:
     tab = _Tab()
     page, _ = _page(tab)
 
-    await page.go_back()
+    await page.observe()
+    await page.observe()
 
-    assert tab.went_back == 1
-
-
-async def test_a_tab_the_last_input_opened_is_followed_and_the_newest_one_wins() -> None:
-    page, browser = _page(_Tab(), tabs=["tab-1", "tab-2", "tab-3", "tab-4"])
-
-    followed = await page.follow_new_tab({"tab-1"})
-
-    assert followed is True
-    assert browser.switched == ["tab-4"]
+    assert tab.focus == [True]
 
 
-async def test_no_tab_is_followed_when_the_input_opened_none() -> None:
-    page, browser = _page(_Tab(), tabs=["tab-1", "tab-2"])
+async def test_the_page_text_is_read_from_the_whole_body_up_to_the_limit() -> None:
+    page, _ = _page(_Tab(body="abcdef"))
 
-    assert await page.tab_ids() == {"tab-1", "tab-2"}
-    assert await page.follow_new_tab({"tab-1", "tab-2"}) is False
-    assert browser.switched == []
+    assert await page.body_text(4) == "abcd"
+
+
+async def test_a_document_replaced_under_a_read_raises_as_replaced() -> None:
+    page, _ = _page(_Tab(body="x"))
+    page._evaluate = _gone  # type: ignore[method-assign]  # the body read lands on a replaced document
+
+    with pytest.raises(DocumentReplaced):
+        await page.body_text(4)
+
+
+async def _gone(expression: str) -> object:
+    raise DocumentReplaced(expression)
 
 
 async def test_the_card_photo_is_a_jpeg_of_the_tab() -> None:
     tab = _Tab()
     page, _ = _page(tab)
 
-    shot = await page.screenshot()
-
-    assert shot == "c2hvdA=="
+    assert await page.screenshot() == "c2hvdA=="
     assert tab.shots == [{"format": "jpeg", "quality": JEV_SCREENSHOT_QUALITY}]
-
-
-@pytest.mark.parametrize("action", [FIELD, None])
-async def test_a_decision_on_a_document_being_replaced_no_longer_holds(
-    action: PageAction | None,
-) -> None:
-    page, _ = _page(_Tab(page_key=THROWS))
-
-    assert await page.fresh(_state(), action) is False

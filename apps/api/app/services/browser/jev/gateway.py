@@ -16,7 +16,7 @@ from time import monotonic, perf_counter
 from typing import Literal
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
 from app.config.settings import settings
 from app.constants.browser import (
@@ -112,7 +112,8 @@ class JevEvaluation(BaseModel):
 
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
-    answers: dict[str, JevChoiceAnswer]
+    #: Each question's answer as sent: only the one a decision reads is validated, as a JevChoiceAnswer.
+    answers: dict[str, JsonValue]
     usage: JevUsage | None = None
     latency_ms: int = 0
     #: Which gateway served this answer; set by the client, so a failed-over

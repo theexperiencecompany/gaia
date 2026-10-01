@@ -1,4 +1,4 @@
-"""What Jev is asked and what it may answer: offered operations, targets, values, and malformed answers refused."""
+"""What Jev is asked and what it may answer: offered operations, targets, options, values, and malformed answers refused."""
 
 from __future__ import annotations
 
@@ -11,10 +11,12 @@ from app.services.browser.jev import decision as decision_mod
 from app.services.browser.jev.decision import (
     GENERATE,
     NONE_VALUE,
+    PAGE_TARGET,
     JevDecisionError,
     RecentAction,
     Visited,
     action_space,
+    choose_option,
     choose_value,
     decide,
     literals,
@@ -27,10 +29,9 @@ from app.services.browser.jev.gateway import (
 )
 from app.services.browser.jev.page import PageAction, PageState
 from app.services.browser.jev.questions import (
-    NAVIGATE_TARGET,
     NEXT_ACTION,
     OPERATIONS,
-    TARGET,
+    OPTION,
     VALUE,
     VALUE_GENERATE,
     VALUE_NONE,
@@ -43,7 +44,7 @@ def _action(action_id: str, node: int, kind: str, label: str, **extra: object) -
     return PageAction(id=action_id, node=node, kind=kind, label=label, **extra)  # type: ignore[typeddict-item]  # a test's own snapshot row
 
 
-def _page(*actions: PageAction) -> PageState:
+def _page(*actions: PageAction, omitted: int = 0) -> PageState:
     return PageState(
         url="https://shop.test/",
         title="Shop",
@@ -54,6 +55,7 @@ def _page(*actions: PageAction) -> PageState:
         guards={},
         frames=[],
         fingerprint="f",
+        omitted_actions=omitted,
     )
 
 
@@ -71,50 +73,26 @@ SIZE = _action(
     current_value="Medium",
     options=[{"value": "s", "label": "Small"}, {"value": "l", "label": "Large"}],
 )
-# What choosing each option executes: the dropdown set to it, named as the step records it.
-SIZE_S = _action(
-    "e3",
-    13,
-    "select",
-    "Shirt size → Small",
-    role="combobox",
-    ident="size",
-    value="s",
-    current_value="Medium",
-)
-SIZE_L = _action(
-    "e3",
-    13,
-    "select",
-    "Shirt size → Large",
-    role="combobox",
-    ident="size",
-    value="l",
-    current_value="Medium",
-)
 PASSWORD = _action(
     "e5", 14, "secret", "Password", role="textbox", ident="pw", value="", filled=False
 )
-NAME = _action("e6", 15, "fill", "Name", role="textbox", ident="name", value="Ada")
-REMEMBER = _action(
-    "e7", 16, "click", "Remember me", role="checkbox", ident="", value="on", checked="true"
-)
-REVIEWS = _action(
-    "e8", 17, "click", "Reviews", role="tab", ident="", value="", selected="false", expanded="true"
-)
-SCROLL = PageAction(id="scroll_down", kind="scroll", label="Scroll down", delta=560)
+DAY = _action("e6", 15, "fill", "Day", role="textbox", ident="d", input_type="date", value="")
+LIST = _action("scroll_down_16", 16, "scroll", "Scroll down in Results", delta=240)
+SCROLL = PageAction(id="scroll_down", kind="scroll", label="Scroll down the page", delta=560)
 WAIT = PageAction(id="wait", kind="wait", label="Wait for the page to update")
+ENTER = PageAction(id="enter", kind="enter", node=11, label="Press Enter in Search")
+BACK = PageAction(id="go_back", kind="back", label="Go back to Home", entry=3)
 
 
-def _answer(choice: str, keys: list[str]) -> JevChoiceAnswer:
+def _answer(choice: str, keys: list[str]) -> dict[str, object]:
     rest = 0.2 / (len(keys) - 1) if len(keys) > 1 else 0.0
-    return JevChoiceAnswer(
-        type="choice",
-        choice=choice,
-        probabilities={
+    return {
+        "type": "choice",
+        "choice": choice,
+        "probabilities": {
             key: (0.8 if len(keys) > 1 else 1.0) if key == choice else rest for key in keys
         },
-    )
+    }
 
 
 class _Jev:
@@ -137,15 +115,14 @@ class _Jev:
 
 
 class _Answers(_Jev):
-    """Answers the operation question with a given answer, however malformed."""
+    """Answers with the given heads, however malformed."""
 
-    def __init__(self, answer: JevChoiceAnswer | None) -> None:
+    def __init__(self, **answers: object) -> None:
         super().__init__()
-        self._answer = answer
+        self._answers = answers
 
     async def evaluate(self, request: JevEvaluationRequest) -> JevEvaluation:
-        answers = {} if self._answer is None else {"operation": self._answer}
-        return JevEvaluation(answers=answers)
+        return JevEvaluation.model_validate({"answers": self._answers})
 
 
 def _unmasked(text: str) -> str:
@@ -157,146 +134,94 @@ def _asked(jev: _Jev) -> JevEvaluationRequest:
     return jev.request
 
 
-def test_each_element_gets_one_index_and_a_dropdowns_options_are_its_targets() -> None:
-    space = action_space([SEARCH, BUY, SIZE, SCROLL])
+def test_each_element_gets_one_index_and_each_operation_its_own_targets() -> None:
+    space = action_space([SEARCH, OPEN_SEARCH, BUY, SIZE, LIST, SCROLL, WAIT, ENTER, BACK])
 
-    assert [element.index for element in space.elements] == ["1", "2", "3"]
-    assert space.targets[JevOperation.SELECT] == {"3:1": SIZE_S, "3:2": SIZE_L}
-    assert space.targets[JevOperation.CLICK] == {"2": BUY}
-    assert space.controls == {JevOperation.SCROLL_DOWN: SCROLL}
-
-
-def test_a_dropdown_of_many_options_is_one_element_and_crowds_out_no_control() -> None:
-    countries = [{"value": f"c{n}", "label": f"Country {n}"} for n in range(300)]
-    country = _action(
-        "e3",
-        13,
-        "select",
-        "Country",
-        role="combobox",
-        value="c0",
-        current_value="—",
-        options=countries,
-    )
-    submit = _action("e4", 14, "click", "Submit order", role="button")
-
-    space = action_space([SEARCH, country, submit])
-
-    assert [element.label for element in space.elements] == ["Search", "Country", "Submit order"]
-    assert space.targets[JevOperation.CLICK] == {"3": submit}
-    options = space.targets[JevOperation.SELECT]
-    assert len(options) == 300
-    assert (options["2:300"]["value"], options["2:300"]["label"]) == (
-        "c299",
-        "Country → Country 299",
-    )
+    assert [(e.index, e.label) for e in space.elements] == [
+        ("1", "Search"),
+        ("2", "Buy now"),
+        ("3", "Shirt size"),
+        ("4", "Scroll down in Results"),
+    ]
+    assert space.targets[JevOperation.TYPE_TEXT] == {"1": SEARCH}
+    assert space.targets[JevOperation.CLICK] == {"1": OPEN_SEARCH, "2": BUY}
+    # A dropdown is one target; which option it takes is asked once it is chosen.
+    assert space.targets[JevOperation.SELECT] == {"3": SIZE}
+    # The page scrolls as one target, beside each inner area that scrolls.
+    assert space.targets[JevOperation.SCROLL_DOWN] == {PAGE_TARGET: SCROLL, "4": LIST}
+    assert space.controls == {
+        JevOperation.WAIT: WAIT,
+        JevOperation.PRESS_ENTER: ENTER,
+        JevOperation.GO_BACK: BACK,
+    }
 
 
-def test_controls_ahead_of_the_elements_do_not_hide_them() -> None:
-    space = action_space([SCROLL, WAIT, BUY])
-
-    assert space.controls == {JevOperation.SCROLL_DOWN: SCROLL, JevOperation.WAIT: WAIT}
-    assert space.targets[JevOperation.CLICK] == {"1": BUY}
-
-
-def test_a_page_with_more_controls_than_jev_is_offered_is_cut_at_the_limit_and_keeps_its_controls() -> (
-    None
-):
+def test_a_page_with_more_elements_than_one_request_carries_counts_the_ones_left_out() -> None:
     many = [_action(f"e{n}", n, "click", f"Link {n}") for n in range(JEV_MAX_ELEMENTS + 5)]
 
-    space = action_space([*many, SCROLL])
+    space = action_space([*many, WAIT])
 
     assert len(space.elements) == JEV_MAX_ELEMENTS
-    assert space.controls == {JevOperation.SCROLL_DOWN: SCROLL}
+    assert space.left_out == 5
+    assert space.controls == {JevOperation.WAIT: WAIT}
 
 
 async def test_jev_is_asked_about_the_page_its_elements_what_it_did_and_where_it_has_been() -> None:
     jev = _Jev(operation="DONE")
     history = [RecentAction(action="Search", kind="TYPE_TEXT", text="shoes", page_changed=True)]
-    visited = [Visited("Home", "https://shop.test/"), Visited("Results", "https://shop.test/r")]
-    page = _page(SEARCH, OPEN_SEARCH, BUY, SIZE, PASSWORD, NAME, REMEMBER, REVIEWS, SCROLL)
+    visited = [Visited("Home", "https://shop.test/")]
 
-    await decide(jev, page, "buy shoes", history, visited, [], _unmasked)
+    await decide(jev, _page(SEARCH, SIZE, DAY, omitted=7), "buy", history, visited, [], _unmasked)
 
-    assert _asked(jev).state == {
-        "page": {"url": "https://shop.test/", "title": "Shop", "text": "Search the shop"},
-        "elements": [
-            # An empty value says nothing, so it is left out; a field typed into keeps its value.
-            {
-                "role": "searchbox",
-                "ident": "q",
-                "index": "1",
-                "label": "Search",
-                "operations": ["TYPE_TEXT", "CLICK"],
-            },
-            {"role": "button", "index": "2", "label": "Buy now", "operations": ["CLICK"]},
-            {
-                "role": "combobox",
-                "ident": "size",
-                "value": "Medium",
-                "index": "3",
-                "label": "Shirt size",
-                "operations": ["SELECT"],
-                "options": [
-                    {"index": "3:1", "label": "Shirt size → Small", "value": "s"},
-                    {"index": "3:2", "label": "Shirt size → Large", "value": "l"},
-                ],
-            },
-            {
-                "role": "textbox",
-                "ident": "pw",
-                "filled": False,
-                "index": "4",
-                "label": "Password",
-                "operations": ["TYPE_TEXT"],
-            },
-            {
-                "role": "textbox",
-                "ident": "name",
-                "value": "Ada",
-                "index": "5",
-                "label": "Name",
-                "operations": ["TYPE_TEXT"],
-            },
-            {
-                "role": "checkbox",
-                "value": "on",
-                "checked": "true",
-                "index": "6",
-                "label": "Remember me",
-                "operations": ["CLICK"],
-            },
-            {
-                "role": "tab",
-                "selected": "false",
-                "expanded": "true",
-                "index": "7",
-                "label": "Reviews",
-                "operations": ["CLICK"],
-            },
-        ],
-        "recent_actions": [
-            {"action": "Search", "kind": "TYPE_TEXT", "text": "shoes", "page_changed": True}
-        ],
-        "visited": [
-            {"title": "Home", "url": "https://shop.test/"},
-            {"title": "Results", "url": "https://shop.test/r"},
-        ],
+    state = _asked(jev).state
+    assert state["page"] == {
+        "url": "https://shop.test/",
+        "title": "Shop",
+        "text": "Search the shop",
     }
+    assert state["elements"] == [
+        # An empty value says nothing, so it is left out.
+        {
+            "role": "searchbox",
+            "ident": "q",
+            "index": "1",
+            "label": "Search",
+            "operations": ["TYPE_TEXT"],
+        },
+        # A dropdown shows its current choice, never its options.
+        {
+            "role": "combobox",
+            "ident": "size",
+            "value": "Medium",
+            "index": "2",
+            "label": "Shirt size",
+            "operations": ["SELECT"],
+        },
+        {
+            "role": "textbox",
+            "ident": "d",
+            "input_type": "date",
+            "index": "3",
+            "label": "Day",
+            "operations": ["TYPE_TEXT"],
+        },
+    ]
+    assert state["recent_actions"] == [
+        {"action": "Search", "kind": "TYPE_TEXT", "text": "shoes", "page_changed": True}
+    ]
+    assert state["visited"] == [{"title": "Home", "url": "https://shop.test/"}]
+    assert state["elements_left_out"] == 7
 
 
-async def test_the_operation_question_offers_what_the_page_and_the_run_allow_under_the_goal() -> (
-    None
-):
+async def test_the_operation_question_offers_only_what_this_page_and_the_run_allow() -> None:
     jev = _Jev(operation="DONE")
-    visited = [Visited("A", "https://a.test/"), Visited("B", "https://b.test/")]
 
     await decide(
         jev,
-        _page(SEARCH, BUY, SIZE, SCROLL, WAIT),
+        _page(SEARCH, BUY, SCROLL, WAIT, ENTER, BACK),
         "go",
         [],
-        visited,
+        [],
         ["https://c.test/"],
         _unmasked,
     )
@@ -306,92 +231,32 @@ async def test_the_operation_question_offers_what_the_page_and_the_run_allow_und
     assert question.criteria == {
         "TYPE_TEXT": OPERATIONS[JevOperation.TYPE_TEXT],
         "CLICK": OPERATIONS[JevOperation.CLICK],
-        "SELECT": OPERATIONS[JevOperation.SELECT],
-        # A control is offered under its own label.
-        "SCROLL_DOWN": "Scroll down",
+        "SCROLL_DOWN": OPERATIONS[JevOperation.SCROLL_DOWN],
+        # A page-level control is offered under its own label.
         "WAIT": "Wait for the page to update",
-        "PRESS_ENTER": OPERATIONS[JevOperation.PRESS_ENTER],
+        "PRESS_ENTER": "Press Enter in Search",
+        "GO_BACK": "Go back to Home",
         "NAVIGATE": OPERATIONS[JevOperation.NAVIGATE],
-        "GO_BACK": OPERATIONS[JevOperation.GO_BACK],
         "DONE": OPERATIONS[JevOperation.DONE],
         "BLOCKED": OPERATIONS[JevOperation.BLOCKED],
     }
-
-
-async def test_only_operations_the_page_and_the_run_allow_are_offered() -> None:
-    jev = _Jev(operation="DONE")
 
     await decide(
         jev, _page(BUY), "buy it", [], [Visited("Shop", "https://shop.test/")], [], _unmasked
     )
 
-    # No field to type into, no address named, and nowhere to go back to.
+    # No focused field, no history to go back through, no address to open.
     assert set(_asked(jev).questions["operation"].criteria) == {"CLICK", "DONE", "BLOCKED"}
-
-
-async def test_each_target_question_offers_that_operations_own_targets_as_they_stand_now() -> None:
-    jev = _Jev(operation="DONE")
-    page = _page(NAME, REMEMBER, REVIEWS, SIZE, PASSWORD)
-
-    await decide(jev, page, "check out", [], [], ["https://a.test/", "https://b.test/"], _unmasked)
-
-    questions = _asked(jev).questions
-    assert questions["type_text_target"].criteria == {
-        "1": {"element": "[1] Name", "current_value": "Ada", "role": "textbox", "ident": "name"},
-        "5": {
-            "element": "[5] Password",
-            "current_value": "",
-            "role": "textbox",
-            "ident": "pw",
-            "filled": False,
-        },
-    }
-    assert questions["click_target"].criteria == {
-        "2": {
-            "element": "[2] Remember me",
-            "current_value": "on",
-            "role": "checkbox",
-            "ident": "",
-            "checked": "true",
-        },
-        "3": {
-            "element": "[3] Reviews",
-            "current_value": "",
-            "role": "tab",
-            "ident": "",
-            "selected": "false",
-            "expanded": "true",
-        },
-    }
-    # A dropdown option shows the dropdown's current choice, not its own value.
-    assert questions["select_target"].criteria["4:2"] == {
-        "element": "[4:2] Shirt size → Large",
-        "current_value": "Medium",
-        "role": "combobox",
-        "ident": "size",
-    }
-    assert questions["select_target"].instructions == {
-        "goal": "check out",
-        "operation": "SELECT",
-        "rules": [NEXT_ACTION, TARGET],
-    }
-    assert questions["navigate_target"].criteria == {
-        "U1": "https://a.test/",
-        "U2": "https://b.test/",
-    }
-    assert questions["navigate_target"].instructions == {
-        "goal": "check out",
-        "operation": "NAVIGATE",
-        "rules": NAVIGATE_TARGET,
-    }
 
 
 @pytest.mark.parametrize(
     ("choices", "target", "url"),
     [
         ({"operation": "CLICK", "click_target": "2"}, BUY, None),
-        ({"operation": "SELECT", "select_target": "3:2"}, SIZE_L, None),
-        ({"operation": "SCROLL_DOWN"}, SCROLL, None),
+        ({"operation": "SELECT", "select_target": "3"}, SIZE, None),
+        ({"operation": "SCROLL_DOWN", "scroll_down_target": "4"}, LIST, None),
+        ({"operation": "SCROLL_DOWN", "scroll_down_target": PAGE_TARGET}, SCROLL, None),
+        ({"operation": "GO_BACK"}, BACK, None),
         ({"operation": "NAVIGATE", "navigate_target": "U2"}, None, "https://b.test/"),
         ({"operation": "DONE"}, None, None),
     ],
@@ -399,11 +264,9 @@ async def test_each_target_question_offers_that_operations_own_targets_as_they_s
 async def test_the_decision_names_the_chosen_snapshot_action_or_address(
     choices: dict[str, str], target: PageAction | None, url: str | None
 ) -> None:
-    jev = _Jev(**choices)
-
     decision = await decide(
-        jev,
-        _page(SEARCH, BUY, SIZE, SCROLL),
+        _Jev(**choices),
+        _page(SEARCH, BUY, SIZE, LIST, SCROLL, BACK),
         "buy",
         [],
         [],
@@ -416,17 +279,26 @@ async def test_the_decision_names_the_chosen_snapshot_action_or_address(
         target,
         url,
     )
-    assert decision.latency_ms == 3
-    assert decision.evaluation.usage == JevUsage(inputTokens=9)
+    assert (decision.latency_ms, decision.evaluation.usage) == (3, JevUsage(inputTokens=9))
 
 
-async def test_a_target_answer_is_validated_like_the_operation() -> None:
-    jev = _Jev(operation="CLICK", click_target="7")
+async def test_a_chosen_dropdown_is_asked_which_of_its_options_to_set() -> None:
+    jev = _Jev(option="O2")
+    history = [RecentAction(action="Buy now", kind="CLICK", text=None, page_changed=True)]
 
-    with pytest.raises(JevDecisionError, match=decision_mod._NO_ANSWER):
-        await decide(_Jev(operation="CLICK"), _page(BUY), "buy it", [], [], [], _unmasked)
-    with pytest.raises(JevDecisionError, match=decision_mod._INVALID_ANSWER):
-        await decide(jev, _page(BUY), "buy it", [], [], [], _unmasked)
+    chosen, evaluation = await choose_option(
+        jev, _page(SIZE), "a large one", SIZE, history, _unmasked
+    )
+
+    assert (chosen["value"], chosen["current_value"], "options" in chosen) == ("l", "Large", False)
+    assert evaluation.latency_ms == 3
+    question = _asked(jev).questions["option"]
+    assert question.criteria == {"O1": "Small", "O2": "Large"}
+    assert question.instructions == {
+        "goal": "a large one",
+        "field": {"label": "Shirt size", "current_value": "Medium"},
+        "rules": OPTION,
+    }
 
 
 def _choice(choice: str, **probabilities: float) -> JevChoiceAnswer:
@@ -436,24 +308,54 @@ def _choice(choice: str, **probabilities: float) -> JevChoiceAnswer:
 @pytest.mark.parametrize(
     "answer",
     [
-        pytest.param(_choice("SUBMIT_ALL", SUBMIT_ALL=1.0), id="not-offered"),
-        pytest.param(_choice("DONE", DONE=1.0), id="probabilities-miss-options"),
-        pytest.param(_choice("DONE", DONE=1.2, BLOCKED=-0.2), id="negative-probability"),
-        pytest.param(_choice("DONE", DONE=math.nan, BLOCKED=0.2), id="not-a-number"),
-        pytest.param(_choice("DONE", DONE=0.5, BLOCKED=0.3), id="probabilities-sum-short"),
-        pytest.param(_choice("BLOCKED", DONE=0.8, BLOCKED=0.2), id="not-the-most-likely"),
+        pytest.param(_choice("SUBMIT_ALL", SUBMIT_ALL=1.0).model_dump(), id="not-offered"),
+        pytest.param(_choice("DONE", DONE=1.0).model_dump(), id="probabilities-miss-options"),
+        pytest.param(
+            _choice("DONE", DONE=1.2, BLOCKED=-0.2).model_dump(), id="negative-probability"
+        ),
+        pytest.param(_choice("DONE", DONE=math.nan, BLOCKED=0.2).model_dump(), id="not-a-number"),
+        pytest.param(
+            _choice("DONE", DONE=0.5, BLOCKED=0.3).model_dump(), id="probabilities-sum-short"
+        ),
+        pytest.param(
+            _choice("BLOCKED", DONE=0.8, BLOCKED=0.2).model_dump(), id="not-the-most-likely"
+        ),
+        pytest.param({"type": "choice"}, id="no-choice"),
     ],
 )
-async def test_a_malformed_answer_is_refused_and_nothing_is_executed(
-    answer: JevChoiceAnswer,
-) -> None:
+async def test_a_malformed_answer_is_refused_and_nothing_is_executed(answer: object) -> None:
     with pytest.raises(JevDecisionError, match=decision_mod._INVALID_ANSWER):
-        await decide(_Answers(answer), _page(), "buy it", [], [], [], _unmasked)
+        await decide(_Answers(operation=answer), _page(), "buy it", [], [], [], _unmasked)
 
 
 async def test_no_answer_is_refused() -> None:
     with pytest.raises(JevDecisionError, match=decision_mod._NO_ANSWER):
-        await decide(_Answers(None), _page(), "buy it", [], [], [], _unmasked)
+        await decide(_Answers(), _page(), "buy it", [], [], [], _unmasked)
+
+
+async def test_a_target_answer_is_validated_like_the_operation() -> None:
+    with pytest.raises(JevDecisionError, match=decision_mod._NO_ANSWER):
+        await decide(_Jev(operation="CLICK"), _page(BUY), "buy it", [], [], [], _unmasked)
+    with pytest.raises(JevDecisionError, match=decision_mod._INVALID_ANSWER):
+        await decide(
+            _Jev(operation="CLICK", click_target="7"), _page(BUY), "buy it", [], [], [], _unmasked
+        )
+
+
+async def test_a_malformed_head_the_decision_does_not_read_costs_nothing() -> None:
+    operation = _answer("DONE", ["CLICK", "DONE", "BLOCKED"])
+
+    decision = await decide(
+        _Answers(operation=operation, click_target={"type": "choice", "choice": 7}),
+        _page(BUY),
+        "buy it",
+        [],
+        [],
+        [],
+        _unmasked,
+    )
+
+    assert decision.operation is JevOperation.DONE
 
 
 @pytest.mark.parametrize(
@@ -468,7 +370,9 @@ async def test_no_answer_is_refused() -> None:
     ],
 )
 async def test_an_answer_at_the_edges_of_valid_is_taken(answer: JevChoiceAnswer) -> None:
-    decision = await decide(_Answers(answer), _page(), "buy it", [], [], [], _unmasked)
+    decision = await decide(
+        _Answers(operation=answer.model_dump()), _page(), "buy it", [], [], [], _unmasked
+    )
 
     assert decision.operation is JevOperation.DONE
 
@@ -480,7 +384,7 @@ async def test_probabilities_off_by_exactly_the_tolerance_are_refused(
 
     with pytest.raises(JevDecisionError):
         await decide(
-            _Answers(_choice("DONE", DONE=0.75, BLOCKED=0.5)),
+            _Answers(operation=_choice("DONE", DONE=0.75, BLOCKED=0.5).model_dump()),
             _page(),
             "g",
             [],
@@ -494,13 +398,7 @@ async def test_a_password_field_is_offered_the_runs_secrets_and_nothing_else() -
     jev = _Jev(value="V1")
 
     value, _ = await choose_value(
-        jev,
-        _page(PASSWORD),
-        'log in as "ada" with "hunter2"',
-        PASSWORD,
-        [],
-        ["password"],
-        _unmasked,
+        jev, _page(PASSWORD), 'log in as "ada"', PASSWORD, [], ["password"], _unmasked
     )
 
     assert value == "<secret>password</secret>"
@@ -518,11 +416,11 @@ async def test_any_other_field_is_offered_the_goals_literals_the_secrets_or_a_wr
 
     value, evaluation = await choose_value(
         jev,
-        _page(SEARCH),
-        'search "red shoes" then email ada@example.com',
-        SEARCH,
+        _page(DAY),
+        'book "red shoes" for ada@example.com',
+        DAY,
         history,
-        ["pw"],
+        ["user"],
         _unmasked,
     )
 
@@ -533,13 +431,19 @@ async def test_any_other_field_is_offered_the_goals_literals_the_secrets_or_a_wr
     assert question.criteria == {
         "V1": "red shoes",
         "V2": "ada@example.com",
-        "V3": "<secret>pw</secret>",
+        "V3": "<secret>user</secret>",
         GENERATE: VALUE_GENERATE,
         NONE_VALUE: VALUE_NONE,
     }
     assert question.instructions == {
-        "goal": 'search "red shoes" then email ada@example.com',
-        "field": {"label": "Search", "role": "searchbox", "ident": "q", "value": ""},
+        "goal": 'book "red shoes" for ada@example.com',
+        "field": {
+            "label": "Day",
+            "role": "textbox",
+            "ident": "d",
+            "input_type": "date",
+            "value": "",
+        },
         "rules": VALUE,
     }
     assert request.state == {

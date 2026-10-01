@@ -434,6 +434,9 @@ class JevStop(StrEnum):
     GATEWAY = "gateway"
     LOAD_STALLED = "load_stalled"
     NAVIGATION_FAILED = "navigation_failed"
+    FIELD_UNFOCUSED = "field_unfocused"
+    TAB_UNAVAILABLE = "tab_unavailable"
+    PAGE_SCRIPT_ERROR = "page_script_error"
 
 
 #: Controls offered to Jev per request, in DOM order within the viewport. Vercel's
@@ -458,14 +461,16 @@ JEV_BURST_MAX_DECISIONS = 2 * JEV_BURST_MAX_ACTIONS
 JEV_UNCHANGED_LIMIT = 3
 JEV_STALE_LIMIT = 3
 JEV_COVERED_LIMIT = 2
-#: Snapshot retries while a navigation replaces the document.
+#: Snapshot reads while a navigation replaces the document; Chrome holds each until the new one commits.
 JEV_OBSERVE_ATTEMPTS = 50
-JEV_OBSERVE_RETRY_SECONDS = 0.1
 #: Longest any one of Jev's CDP calls may take; a page or session that does not answer
 #: ends the burst instead of holding it until the task's budget runs out.
 JEV_CDP_TIMEOUT_SECONDS = 20.0
-#: An explicit WAIT; the next observation also waits a frame or two after any input.
+#: The longest an explicit WAIT waits for the page to change at all.
 JEV_WAIT_SECONDS = 1.0
+#: The longest the read after an input waits for its requests to finish and the DOM to go quiet:
+#: a page that animates or polls never does.
+JEV_SETTLE_MAX_SECONDS = 2.0
 JEV_SCREENSHOT_QUALITY = 70
 #: The tiny model writes a value only when no literal from the goal fits; it reads this much page text.
 JEV_TEXT_TIMEOUT_SECONDS = 30.0
@@ -477,6 +482,8 @@ JEV_PAGE_TEXT_MAX_CHARS = 6000
 JEV_TEXT_VALUE_MAX_CHARS = 2000
 # Stands in for a value typed into a password field wherever the run's text reaches a person.
 JEV_SECRET_MASK = "[hidden]"  # nosec B105 -- the placeholder shown in place of a typed password, not a credential
+#: What a step says a password field holds when it is not the secret typed: never its value.
+JEV_SECRET_DIFFERS = "a value other than the secret"  # nosec B105 -- report wording, not a credential
 # Probability mass across a choice question must sum to ~1; the gateway rounds.
 JEV_PROBABILITY_SUM_TOLERANCE = 0.02
 

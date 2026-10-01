@@ -23,7 +23,6 @@ from app.constants.browser import (
     JevStop,
 )
 from app.schemas.browser import BrowserAction
-from app.services.browser.jev.decision import OPTION_SEPARATOR
 from app.services.browser.jev.loop import BurstResult, JevRunner, JevStep
 
 #: Emits one card for a finished burst: its caption source, and the page it ended on.
@@ -81,6 +80,9 @@ _STOP_MEANING = {
     JevStop.GATEWAY: "Jev could not decide; continue yourself.",
     JevStop.LOAD_STALLED: "The site did not answer in time; the tab stayed on the page before it.",
     JevStop.NAVIGATION_FAILED: "The page could not be opened; the tab stayed where it was.",
+    JevStop.FIELD_UNFOCUSED: "Clicking the field did not focus it, so nothing was typed.",
+    JevStop.TAB_UNAVAILABLE: "The tab Jev was driving is gone or refused it; check which tab is open.",
+    JevStop.PAGE_SCRIPT_ERROR: "Jev could not read this page (its script failed here); continue yourself.",
 }
 
 
@@ -98,11 +100,10 @@ def _step_action(step: JevStep) -> BrowserAction:
     inputs: dict[str, object] = {}
     if step.operation is JevOperation.TYPE_TEXT and step.text is not None:
         inputs["text"] = step.text
-    elif step.operation is JevOperation.SELECT:
-        # A select step is named "field → option"; an option may hold an arrow itself.
-        inputs["text"] = step.label.partition(OPTION_SEPARATOR)[2]
-    elif step.operation is JevOperation.NAVIGATE:
-        inputs["url"] = step.label.removeprefix("Open ")
+    elif step.operation is JevOperation.SELECT and step.option is not None:
+        inputs["text"] = step.option
+    elif step.operation is JevOperation.NAVIGATE and step.opened is not None:
+        inputs["url"] = step.opened
     elif step.operation is JevOperation.PRESS_ENTER:
         inputs["keys"] = "Enter"
     target = step.label if step.operation in (JevOperation.CLICK, JevOperation.TYPE_TEXT) else None
@@ -119,6 +120,8 @@ def report(result: BurstResult) -> str:
         lines.append(f"Actions ({len(result.steps)}):")
         for n, step in enumerate(result.steps, 1):
             typed = f' = "{step.text}"' if step.text is not None else ""
+            chosen = f' -> "{step.option}"' if step.option is not None else ""
+            held = f" (the field holds {step.held})" if step.held is not None else ""
             changed = (
                 ""
                 if step.page_changed is None
@@ -126,7 +129,9 @@ def report(result: BurstResult) -> str:
             )
             ident = f" [#{step.ident}]" if step.ident else ""
             link = f" -> {step.href}" if step.href else ""
-            lines.append(f"  {n}. {step.operation.value} {step.label}{ident}{link}{typed}{changed}")
+            lines.append(
+                f"  {n}. {step.operation.value} {step.label}{ident}{link}{chosen}{typed}{held}{changed}"
+            )
     else:
         lines.append("Actions: none.")
     earlier = result.opened[-JEV_REPORT_OPENED_PAGES:]
@@ -140,6 +145,11 @@ def report(result: BurstResult) -> str:
     if result.text:
         visible = result.text[:JEV_REPORT_PAGE_TEXT_CHARS]
         lines.append(f"Visible text of this page, verbatim:\n{visible}")
+    if result.omitted_controls:
+        lines.append(
+            f"This page has {result.omitted_controls} more controls than Jev reads; it saw "
+            "only the first ones in the page's order."
+        )
     if result.hidden_frames:
         lines.append(
             "Frames on this page Jev cannot see into: " + ", ".join(result.hidden_frames[:5])

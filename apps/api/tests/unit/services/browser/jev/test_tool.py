@@ -23,7 +23,6 @@ def _step(page_changed: bool) -> JevStep:
         text=None,
         url="https://site.test/a",
         page_changed=page_changed,
-        decision_ms=5,
     )
 
 
@@ -95,28 +94,37 @@ async def test_the_agent_reads_the_report_now_and_keeps_it_for_later_steps() -> 
 @pytest.mark.parametrize(
     ("step", "name", "inputs", "target"),
     [
-        (JevStep(JevOperation.CLICK, "Next", "", "", None, "u", True, 5), "click", {}, "Next"),
+        (JevStep(JevOperation.CLICK, "Next", "", "", None, "u", True), "click", {}, "Next"),
         (
-            JevStep(JevOperation.TYPE_TEXT, "Name", "", "", "Ada", "u", True, 5),
+            JevStep(JevOperation.TYPE_TEXT, "Name", "", "", "Ada", "u", True),
             "input",
             {"text": "Ada"},
             "Name",
         ),
-        (JevStep(JevOperation.TYPE_TEXT, "Name", "", "", None, "u", True, 5), "input", {}, "Name"),
+        (JevStep(JevOperation.TYPE_TEXT, "Name", "", "", None, "u", True), "input", {}, "Name"),
         (
-            JevStep(JevOperation.SELECT, "Route → LHR → JFK", "", "", None, "u", True, 5),
+            JevStep(JevOperation.SELECT, "Route", "", "", None, "u", True, option="LHR → JFK"),
             "select_dropdown",
             {"text": "LHR → JFK"},
             None,
         ),
         (
-            JevStep(JevOperation.NAVIGATE, "Open https://b.test/", "", "", None, "u", True, 5),
+            JevStep(
+                JevOperation.NAVIGATE,
+                "Open https://b.test/",
+                "",
+                "",
+                None,
+                "u",
+                True,
+                opened="https://b.test/",
+            ),
             "navigate",
             {"url": "https://b.test/"},
             None,
         ),
         (
-            JevStep(JevOperation.PRESS_ENTER, "Press Enter", "", "", None, "u", True, 5),
+            JevStep(JevOperation.PRESS_ENTER, "Press Enter", "", "", None, "u", True),
             "send_keys",
             {"keys": "Enter"},
             None,
@@ -151,20 +159,23 @@ def test_a_burst_with_no_actions_reports_so_and_what_it_could_not_see() -> None:
     )
 
 
-def test_each_action_line_says_what_it_targeted_and_whether_the_page_changed() -> None:
+def test_each_action_line_says_what_it_targeted_set_typed_and_whether_the_page_changed() -> None:
     steps = [
-        JevStep(JevOperation.CLICK, "Next", "next-btn", "https://site.test/b", None, "u", True, 5),
-        JevStep(JevOperation.TYPE_TEXT, "Name", "", "", "Ada", "u", False, 5),
-        JevStep(JevOperation.SCROLL_DOWN, "Scroll down", "", "", None, "u", None, 5),
+        JevStep(JevOperation.CLICK, "Next", "next-btn", "https://site.test/b", None, "u", True),
+        JevStep(JevOperation.TYPE_TEXT, "Phone", "", "", "5551234", "u", False, held='"5551"'),
+        JevStep(JevOperation.SELECT, "Size", "", "", None, "u", True, option="Large"),
+        JevStep(JevOperation.SCROLL_DOWN, "Scroll down", "", "", None, "u", None),
     ]
-    result = replace(_burst(JevStop.DONE, *steps), opened=[], text="")
+    result = replace(_burst(JevStop.DONE, *steps), opened=[], text="", omitted_controls=12)
 
     lines = report(result).split("\n")
 
-    assert lines[2:6] == [
-        "Actions (3):",
+    assert lines[2:7] == [
+        "Actions (4):",
         "  1. CLICK Next [#next-btn] -> https://site.test/b (page changed)",
-        '  2. TYPE_TEXT Name = "Ada" (no change)',
-        "  3. SCROLL_DOWN Scroll down",
+        '  2. TYPE_TEXT Phone = "5551234" (the field holds "5551") (no change)',
+        '  3. SELECT Size -> "Large" (page changed)',
+        "  4. SCROLL_DOWN Scroll down",
     ]
-    assert lines[6:] == ["Now on: B (https://site.test/b)"]
+    assert lines[7] == "Now on: B (https://site.test/b)"
+    assert "12 more controls" in lines[8]

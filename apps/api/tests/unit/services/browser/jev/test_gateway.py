@@ -90,8 +90,8 @@ async def test_the_request_names_the_model_in_the_body_the_endpoint_expects() ->
         "instructions": {"goal": "g", "rules": ["r"]},
         "criteria": {"DONE": "done", "WAIT": "wait"},
     }
-    assert evaluation.answers["operation"].choice == "DONE"
-    assert evaluation.answers["operation"].probabilities == {"DONE": 0.9, "WAIT": 0.1}
+    assert evaluation.answers["operation"]["choice"] == "DONE"
+    assert evaluation.answers["operation"]["probabilities"] == {"DONE": 0.9, "WAIT": 0.1}
     assert evaluation.usage is not None
     assert (evaluation.usage.input_tokens, evaluation.usage.output_tokens) == (120, 4)
     assert evaluation.latency_ms >= 0
@@ -114,7 +114,7 @@ async def test_a_transient_429_is_retried_then_succeeds(monkeypatch) -> None:
 
     evaluation = await _client(handler).evaluate(REQUEST)
 
-    assert evaluation.answers["operation"].choice == "DONE"
+    assert evaluation.answers["operation"]["choice"] == "DONE"
     assert sleeps == [0.5, 1.0]
 
 
@@ -160,10 +160,10 @@ async def test_a_connection_failure_is_a_gateway_error() -> None:
 @pytest.mark.parametrize(
     "body",
     [
-        json.dumps({"answers": {"operation": {"type": "boolean", "probability": 1}}}),
+        json.dumps({"answers": "operation: DONE"}),
         "<html>502 Bad Gateway</html>",
     ],
-    ids=["wrong-shape", "not-json"],
+    ids=["no-answer-set", "not-json"],
 )
 async def test_a_malformed_answer_is_a_gateway_error(body: str) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
@@ -269,7 +269,7 @@ async def test_a_primary_that_exhausts_its_retries_hands_the_same_request_to_the
 
     evaluation = await client.evaluate(REQUEST)
 
-    assert evaluation.answers["operation"].choice == "DONE"
+    assert evaluation.answers["operation"]["choice"] == "DONE"
     assert evaluation.provider == "openrouter"
     assert len(primary_bodies) == 3, "the primary gets every retry before the fallback is asked"
     assert len(fallback_bodies) == 1
