@@ -737,6 +737,24 @@ async def test_the_lease_is_renewed_every_interval_and_a_failed_renewal_is_retri
     assert kwargs["browser"] == {"session_id": "sess-1", "operation": "lease_renewal"}
 
 
+async def test_a_session_its_host_lost_is_marked_gone_and_renewed_no_more(
+    monkeypatch: pytest.MonkeyPatch, fake_log: _FakeLog
+) -> None:
+    """A paused run's handoff ends on the mark; renewing a session the host no longer has would only fail again."""
+    monkeypatch.setattr(session_mod.asyncio, "sleep", AsyncMock())
+    renew = AsyncMock(side_effect=BrowserSessionGone("Browser host returned 404"))
+    monkeypatch.setattr(session_mod.host_client, "renew_session_lease", renew)
+    handle = _handle("sess-1")
+
+    await asyncio.wait_for(session_mod.keep_session_alive(handle), timeout=1)
+
+    assert handle.gone.is_set()
+    renew.assert_awaited_once_with("sess-1", _HOST)
+    [(message, kwargs)] = fake_log.warning_calls
+    assert message == "[BROWSER] Browser session gone from its host"
+    assert kwargs["browser"] == {"session_id": "sess-1", "operation": "lease_renewal"}
+
+
 async def test_a_session_holds_its_lease_for_exactly_its_life(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

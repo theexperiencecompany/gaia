@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from app.agents.core.background.session import signal_executor_done
 from app.constants.browser import (
     BROWSER_NO_GUIDANCE_AVAILABLE,
     BROWSER_RUN_BLOCKED_SUMMARY,
@@ -375,10 +376,10 @@ async def test_a_signed_in_page_does_not_end_a_login_handoff_until_the_user_says
             async with executor_graph([RETRIEVE, START, JOIN, "Booked."]) as graph:
                 run_task = asyncio.create_task(_drive(graph, world))
                 handoff_id = await _wait_for_pending_handoff(world)
-                await world.sit_through_keepalives(1)
+                await world.sit_through_lease_renewals(1)
                 world.browser.url = SIGNED_IN_URL
-                # Twenty minutes on the signed-in page, and the user has said nothing.
-                await world.sit_through_keepalives(20)
+                # Ten minutes on the signed-in page, and the user has said nothing.
+                await world.sit_through_lease_renewals(20)
                 assert await _still_pending(handoff_id)
                 assert world.browser.takeover_notes == []
 
@@ -915,8 +916,6 @@ async def test_a_browser_lost_while_the_user_signs_in_ends_the_handoff_and_the_r
 
 async def test_a_later_turn_that_joins_speaks_the_result_with_the_runs_cards() -> None:
     """The turn that started the run ended without its result: the turn that collects it carries the run's cards, and the worker does not tell it a second time."""
-    from app.agents.core.background.session import signal_executor_done
-
     later = "stream-later-turn"
     steps = [ScriptedStep(actions=[], await_joiner=True), *TWO_STEPS]
     async with browser_job_world(STREAM, steps=steps) as world:

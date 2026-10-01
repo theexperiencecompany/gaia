@@ -370,8 +370,8 @@ class JobWorld:
         self.seeded_states: list[Any] = []
         #: Each session whose live storage_state was read.
         self.storage_reads: list[str] = []
-        #: Each session a paused run's keepalive reset the host's idle clock for.
-        self.keepalive_touches: list[str] = []
+        #: Each session whose host lease the job renewed.
+        self.lease_renewals: list[str] = []
         #: Each job a stop asked ARQ to abort.
         self.aborted: list[str] = []
 
@@ -388,16 +388,16 @@ class JobWorld:
             if "tool_data" in frame and frame["tool_data"].get("tool_name") == "browser_task_data"
         ]
 
-    async def sit_through_keepalives(self, count: int) -> int:
-        """Wait while a paused run keeps its browser alive count times, a minute of the user's time each; return how many it did.
+    async def sit_through_lease_renewals(self, count: int) -> int:
+        """Wait until the job has renewed its browser's lease count times in all, half a minute of the user's time each; return how many it did.
 
-        Fewer than count means the pause ended first.
+        Fewer than count means the session ended first.
         """
         for _ in range(500):
-            if len(self.keepalive_touches) >= count:
+            if len(self.lease_renewals) >= count:
                 break
             await asyncio.sleep(0.01)
-        return len(self.keepalive_touches)
+        return len(self.lease_renewals)
 
     async def settle(self) -> None:
         """End the turn's executor run, then wait out the worker task and the publishes it left behind."""
@@ -565,7 +565,11 @@ def _host_patches(
         )
 
     async def _renew_host_lease(session_id: str, host_url: str) -> None:
-        world.keepalive_touches.append(session_id)
+        if session_id in world.dead_sessions:
+            raise BrowserSessionGone(
+                f"Browser host returned 404 for {host_url}/sessions/{session_id}/lease"
+            )
+        world.lease_renewals.append(session_id)
 
     async def _get_storage_state(session_id: str, host_url: str) -> Any:
         world.storage_reads.append(session_id)

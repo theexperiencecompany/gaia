@@ -26,6 +26,7 @@ from app.constants.browser import (
     BrowserEngine,
     BrowserRunFailure,
     BrowserSessionStatus,
+    EngineFailure,
     HandoffKind,
     HandoffStatus,
     SensitiveCategory,
@@ -52,7 +53,6 @@ from app.services.browser.jev.secrets import RunSecrets, SecretWithheld
 from app.services.browser.job_events import JOB_GUIDANCE_FRAME, JOB_TERMINAL_FRAME
 from app.services.browser.ledger import CallComponent, ExecutedAction, RunLedger
 from app.services.browser.runner import BrowserRunConfig, BrowserRunnerCallbacks
-from app.services.browser.session import BrowserHostSession
 from app.services.browser.tasks import BrowserTaskRecord
 from shared.py.wide_events import log, wide_task
 from tests.helpers import captured_wide_event
@@ -303,7 +303,10 @@ class Harness:
         self.writes: list[dict[str, Any]] = []
         self.published_to: list[str] = []
         self.session = MagicMock(
-            session_id="sess-1", live_view_url="https://live/abc", engine=BrowserEngine.CHROMIUM
+            session_id="sess-1",
+            live_view_url="https://live/abc",
+            engine=BrowserEngine.CHROMIUM,
+            gone=asyncio.Event(),
         )
         self.session_kwargs: dict[str, Any] = {}
         self.runner_kwargs: dict[str, Any] = {}
@@ -1135,19 +1138,47 @@ async def test_action_output_for_an_unknown_row_is_dropped(
 # ---------------------------------------------------------------------------
 
 
-async def test_handoff_keepalive_is_cancelled_after_the_handoff_resolves(
+async def test_a_handoff_whose_browser_the_host_lost_ends_failed_with_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """request_handoff spawns a keepalive to hold the host's idle clock open; cancel it once the handoff resolves so it stops touching an abandoned session."""
-    tasks: list[asyncio.Task[None]] = []
+    """Nobody can finish a step in a browser that is gone: the ask ends at once instead of running out its window."""
+    failed: list[tuple[str, EngineFailure]] = []
+    settled = asyncio.Event()
 
-    async def _fake_keep_alive(session: BrowserHostSession) -> None:
-        await asyncio.Event().wait()  # runs until cancelled
+    async def _fail(handoff_id: str, cause: EngineFailure) -> None:
+        failed.append((handoff_id, cause))
+        settled.set()
+
+    async def _lost_while_waiting(*args: Any) -> HandoffOutcome:
+        h.session.gone.set()
+        await settled.wait()
+        return HandoffOutcome(status=HandoffStatus.FAILED, cause=EngineFailure.SESSION_GONE)
+
+    async def body(h: Harness) -> BrowserResultSnapshot:
+        await h.request_handoff(HandoffRequest(reason="sign in"))
+        return _result(BrowserSessionStatus.FAILED, False, "lost")
+
+    h = _install(monkeypatch, run_body=body)
+    monkeypatch.setattr(jr, "fail_handoff", _fail)
+    monkeypatch.setattr(jr, "await_handoff", _lost_while_waiting)
+
+    await asyncio.wait_for(_run(h, _request(task="x")), timeout=2)
+
+    assert failed == [(h.handoffs_created[0][0], EngineFailure.SESSION_GONE)]
+
+
+@pytest.mark.parametrize("await_error", [None, RuntimeError("redis down")])
+async def test_the_watch_on_a_paused_browser_ends_with_the_handoff(
+    monkeypatch: pytest.MonkeyPatch, await_error: Exception | None
+) -> None:
+    """A watch left running would fail a later handoff's record, or the next run's, when the browser finally goes."""
+    watches: list[asyncio.Task[None]] = []
+    real_spawn = jr.spawn_background_task
 
     def _spawn(coro: Any, **kwargs: Any) -> asyncio.Task[None]:
-        task = asyncio.create_task(coro)
-        if kwargs.get("name") == "browser_handoff_keepalive":
-            tasks.append(task)
+        task: asyncio.Task[None] = real_spawn(coro, **kwargs)
+        if kwargs.get("name") == "browser_handoff_session_watch":
+            watches.append(task)
         return task
 
     async def body(h: Harness) -> BrowserResultSnapshot:
@@ -1155,49 +1186,15 @@ async def test_handoff_keepalive_is_cancelled_after_the_handoff_resolves(
         return _result(BrowserSessionStatus.COMPLETED, True, "done")
 
     h = _install(monkeypatch, run_body=body)
-    monkeypatch.setattr(jr, "keep_session_alive", _fake_keep_alive)
     monkeypatch.setattr(jr, "spawn_background_task", _spawn)
+    if await_error is not None:
+        monkeypatch.setattr(jr, "await_handoff", AsyncMock(side_effect=await_error))
 
     await _run(h, _request(task="x"))
     await asyncio.sleep(0)
 
-    assert len(tasks) == 1
-    assert tasks[0].cancelled()
-
-
-async def test_handoff_keepalive_is_cancelled_when_await_handoff_raises(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Cancel the keepalive on the failure path too; a raised await_handoff must not leak the keepalive task running forever, and the run still owes a terminal card."""
-    tasks: list[asyncio.Task[None]] = []
-
-    async def _fake_keep_alive(session: BrowserHostSession) -> None:
-        await asyncio.Event().wait()
-
-    def _spawn(coro: Any, **kwargs: Any) -> asyncio.Task[None]:
-        task = asyncio.create_task(coro)
-        if kwargs.get("name") == "browser_handoff_keepalive":
-            tasks.append(task)
-        return task
-
-    async def _boom_await_handoff(*args: Any) -> HandoffOutcome:
-        raise RuntimeError("redis down")
-
-    async def body(h: Harness) -> BrowserResultSnapshot:
-        await h.request_handoff(HandoffRequest(reason="verify"))
-        return _result(BrowserSessionStatus.COMPLETED, True, "unreachable")
-
-    h = _install(monkeypatch, run_body=body)
-    monkeypatch.setattr(jr, "keep_session_alive", _fake_keep_alive)
-    monkeypatch.setattr(jr, "spawn_background_task", _spawn)
-    monkeypatch.setattr(jr, "await_handoff", _boom_await_handoff)
-
-    out = await _run(h, _request())
-    await asyncio.sleep(0)
-
-    assert out == _failed_message(jr.BROWSER_JOB_CRASHED_SUMMARY)
-    assert len(tasks) == 1
-    assert tasks[0].cancelled()
+    assert len(watches) == 1
+    assert watches[0].cancelled()
 
 
 async def test_each_handoff_gets_its_own_id(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1380,20 +1377,6 @@ async def test_the_session_the_run_opened_is_logged_onto_the_wide_event(
 
     logged = [call.kwargs["browser"] for call in fake_log.set.call_args_list]
     assert {"session_id": "sess-1"} in logged
-
-
-async def test_a_paused_run_keeps_its_own_browser_alive(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def body(h: Harness) -> BrowserResultSnapshot:
-        await h.request_handoff(HandoffRequest(category=SensitiveCategory.PAYMENT, reason="pay"))
-        return _result(BrowserSessionStatus.COMPLETED, True, "done")
-
-    keep_alive = AsyncMock()
-    monkeypatch.setattr(jr, "keep_session_alive", keep_alive)
-    h = _install(monkeypatch, run_body=body)
-
-    await _run(h, _request(task="x"))
-
-    keep_alive.assert_called_once_with(h.session)
 
 
 async def test_a_completed_login_takeover_marks_the_session_worth_saving(

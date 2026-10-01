@@ -55,6 +55,8 @@ class BrowserHostSession:
     #: The sites its returned state is saved under as a login on release: one it
     #: was seeded with a saved login for, or one the user said a sign-in finished on.
     login_domains: set[str] = field(default_factory=set)
+    #: Set once the host no longer holds the session: nothing can be done in it after.
+    gone: asyncio.Event = field(default_factory=asyncio.Event, repr=False, compare=False)
 
     def mark_authenticated(self, url: str | None) -> None:
         """Record that the user said a sign-in finished here, on url's site, so the returned state is saved under it on release.
@@ -96,16 +98,24 @@ async def hand_over_state(session: BrowserHostSession) -> LiveSessionState:
 
 
 async def keep_session_alive(session: BrowserHostSession) -> None:
-    """Renew the host's lease on session for as long as this runs.
+    """Renew the host's lease on session for as long as this runs, or until the host has lost it.
 
     The host disposes a session whose lease runs out, which is how a dead
     worker's browser is reclaimed; a failed renewal is logged and the next one,
-    well inside the lease, tries again. Run under spawn_background_task, cancel to let go.
+    well inside the lease, tries again. A session the host no longer holds is
+    marked gone. Run under spawn_background_task, cancel to let go.
     """
     while True:
         await asyncio.sleep(BROWSER_SESSION_LEASE_RENEW_SECONDS)
         try:
             await host_client.renew_session_lease(session.session_id, session.host_url)
+        except BrowserSessionGone:
+            log.warning(
+                f"{LogTag.BROWSER} Browser session gone from its host",
+                browser={"session_id": session.session_id, "operation": "lease_renewal"},
+            )
+            session.gone.set()
+            return
         except BrowserUnavailableError as exc:
             log.warning(
                 f"{LogTag.BROWSER} Browser session lease renewal failed",

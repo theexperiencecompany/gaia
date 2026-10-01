@@ -92,7 +92,6 @@ from app.services.browser.session import (
     BrowserHostSession,
     LiveSessionState,
     browser_session,
-    keep_session_alive,
 )
 from app.services.browser.tasks import BrowserTaskRecord, record_browser_task
 from app.services.browser.user_notes import what_the_user_said
@@ -403,8 +402,8 @@ async def _await_unless_stopped(
 
 
 async def _fail_when_session_gone(session: BrowserHostSession, handoff_id: str) -> None:
-    """Keep the paused browser alive; once the host has lost it, end the handoff, since nobody can finish a step there."""
-    await keep_session_alive(session)
+    """End the handoff once the host has lost the paused browser: nobody can finish a step there."""
+    await session.gone.wait()
     await fail_handoff(handoff_id, EngineFailure.SESSION_GONE)
 
 
@@ -436,11 +435,10 @@ async def _run_handoff(
         ),
     )
     await emit(_handoff_snapshot(handoff_id, req, session, HandoffStatus.PENDING))
-    # The paused session produces no CDP/live-view traffic, so keep its idle
-    # clock fresh until the user decides, or the host reaps the browser
-    # they were asked to come back to.
-    keepalive = spawn_background_task(
-        _fail_when_session_gone(session, handoff_id), name="browser_handoff_keepalive"
+    # The job holds the session's lease for its whole life; a browser the host
+    # lost meanwhile leaves the user nothing to come back to.
+    watch = spawn_background_task(
+        _fail_when_session_gone(session, handoff_id), name="browser_handoff_session_watch"
     )
     try:
         outcome = await _await_unless_stopped(
@@ -452,7 +450,7 @@ async def _run_handoff(
         await asyncio.shield(_abandon_handoff(handoff_id, req, session, emit))
         raise
     finally:
-        keepalive.cancel()
+        watch.cancel()
     log.set_ns(
         "browser",
         handoff_kind=HandoffKind.USER.value,
