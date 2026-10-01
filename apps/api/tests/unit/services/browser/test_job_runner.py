@@ -8,8 +8,8 @@ bot mirroring, driven the way the ARQ worker drives it.
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from typing import Any, NamedTuple
-from unittest.mock import AsyncMock, MagicMock
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 
@@ -473,6 +473,10 @@ def _install(
         return handoff_outcome or HandoffOutcome(status=HandoffStatus.COMPLETED)
 
     monkeypatch.setattr(jr, "await_handoff", _await_handoff)
+    # The host a paused session lives on, asked where its page is.
+    monkeypatch.setattr(
+        jr.host_client, "get_session", AsyncMock(return_value=MagicMock(url="https://x/login"))
+    )
 
     async def _is_cancelled(stream_id: str) -> bool:
         h.cancel_checks.append(stream_id)
@@ -1275,102 +1279,6 @@ async def test_the_session_the_run_opened_is_logged_onto_the_wide_event(
     assert {"session_id": "sess-1"} in logged
 
 
-# ---------------------------------------------------------------------------
-# _spawn_handoff_watchers -- which background watchers a paused session gets
-# ---------------------------------------------------------------------------
-
-
-class _Watchers(NamedTuple):
-    spawned: list[tuple[Any, str | None]]
-    keep_alive: MagicMock
-    auto_resolve: MagicMock
-
-
-def _record_watchers(monkeypatch: pytest.MonkeyPatch) -> _Watchers:
-    """Capture (coroutine, name) for each spawned watcher without running it."""
-    spawned: list[tuple[Any, str | None]] = []
-
-    def _spawn(coro: Any, *, name: str | None = None) -> MagicMock:
-        spawned.append((coro, name))
-        return MagicMock()
-
-    keep_alive = MagicMock(name="keep_session_alive")
-    auto_resolve = MagicMock(name="auto_resolve_handoff_on_navigation")
-    monkeypatch.setattr(jr, "spawn_background_task", _spawn)
-    monkeypatch.setattr(jr, "keep_session_alive", keep_alive)
-    monkeypatch.setattr(jr, "auto_resolve_handoff_on_navigation", auto_resolve)
-    return _Watchers(spawned, keep_alive, auto_resolve)
-
-
-async def test_credentials_handoff_also_watches_for_the_navigation_that_ends_it(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A login handoff resolves itself when the page navigates off the sign-in URL, so it gets the auto-resolve watcher on top of the keepalive -- and both must be aimed at the session/handoff actually being waited on."""
-    w = _record_watchers(monkeypatch)
-    session = MagicMock(session_id="s-9")
-
-    watchers = jr._spawn_handoff_watchers(
-        "handoff-7",
-        HandoffRequest(category=SensitiveCategory.CREDENTIALS, reason="log in"),
-        session,
-        "u1",
-    )
-
-    assert len(watchers) == 2
-    assert [name for _, name in w.spawned] == [
-        "browser_handoff_keepalive",
-        "browser_handoff_autoresolve",
-    ]
-    w.keep_alive.assert_called_once_with(session)
-    w.auto_resolve.assert_called_once_with("handoff-7", session, "u1")
-    assert [coro for coro, _ in w.spawned] == [
-        w.keep_alive.return_value,
-        w.auto_resolve.return_value,
-    ]
-
-
-@pytest.mark.parametrize(
-    "category", [SensitiveCategory.PAYMENT, SensitiveCategory.IRREVERSIBLE, SensitiveCategory.NONE]
-)
-async def test_non_credentials_handoff_gets_only_the_keepalive(
-    monkeypatch: pytest.MonkeyPatch, category: SensitiveCategory
-) -> None:
-    """Only a credentials handoff has a navigation that means "done" -- auto- resolving a payment or confirmation would close one the user never answered."""
-    w = _record_watchers(monkeypatch)
-
-    watchers = jr._spawn_handoff_watchers(
-        "handoff-7",
-        HandoffRequest(category=category, reason="confirm"),
-        MagicMock(session_id="s-9"),
-        "u1",
-    )
-
-    assert len(watchers) == 1
-    assert [name for _, name in w.spawned] == ["browser_handoff_keepalive"]
-    w.auto_resolve.assert_not_called()
-
-
-async def test_handoff_watchers_are_aimed_at_this_run_handoff_session_and_user(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The watchers are only useful if they name the run that paused: the wrong (or a missing) session id keeps the wrong browser alive, and the wrong handoff/user id resolves a handoff nobody is waiting on."""
-
-    async def body(h: Harness) -> BrowserResultSnapshot:
-        await h.request_handoff(
-            HandoffRequest(category=SensitiveCategory.CREDENTIALS, reason="log in")
-        )
-        return _result(BrowserSessionStatus.COMPLETED, True, "done")
-
-    h = _install(monkeypatch, run_body=body)
-    w = _record_watchers(monkeypatch)
-
-    await _run(h, _request(task="x"))
-
-    handoff_id = h.handoffs_created[0][0]
-    w.keep_alive.assert_called_once_with(h.session)
-    w.auto_resolve.assert_called_once_with(handoff_id, h.session, "u1")
-
-
 async def test_a_completed_login_takeover_marks_the_session_worth_saving(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1384,13 +1292,18 @@ async def test_a_completed_login_takeover_marks_the_session_worth_saving(
 
     h = _install(monkeypatch, run_body=body)
     h.session.host_url = PRIMARY_HOST
-    get_session = AsyncMock(return_value=MagicMock(url="https://site.example/account"))
+    get_session = AsyncMock(
+        side_effect=[
+            MagicMock(url="https://site.example/login"),
+            MagicMock(url="https://site.example/account"),
+        ]
+    )
     monkeypatch.setattr(jr.host_client, "get_session", get_session)
 
     await _run(h, _request(task="x"))
 
-    get_session.assert_awaited_once_with("sess-1", PRIMARY_HOST)
-
+    assert get_session.await_args_list == [call("sess-1", PRIMARY_HOST)] * 2
+    h.session.forget_login.assert_called_once_with("https://site.example/login")
     # Saved under the site signed in to, which a run with no start URL has no other way to know.
     h.session.mark_authenticated.assert_called_once_with("https://site.example/account")
 

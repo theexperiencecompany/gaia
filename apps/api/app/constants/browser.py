@@ -165,16 +165,9 @@ BROWSER_HANDOFF_KEY_PREFIX = "browser:handoff:"
 # card's Continue/Cancel buttons. Both surfaces converge on ``resolve_handoff``.
 BROWSER_HANDOFF_CONV_KEY_PREFIX = "browser:handoff:conv:"
 HANDOFF_POLL_INTERVAL_SECONDS = 1.0
-
-# Auto-resolve a login handoff when the page navigates off the sign-in URL, so
-# a visible sign-in success spares the user the "I'm done" tap. Best-effort,
-# the manual resolution always races it; debounced so a transient redirect doesn't fire it early.
-HANDOFF_AUTORESOLVE_POLL_SECONDS = 2.0
-HANDOFF_AUTORESOLVE_STABLE_POLLS = 2
-# Why the run woke up when nobody tapped "done". The run tells it apart from a
-# note the user typed, which redirects the task and the closing reply with it.
-HANDOFF_AUTORESOLVED_NOTE = "Looks like you're done here, resuming."
 HANDOFF_KEY_TTL_SECONDS = 3600
+# The last line of a handoff a bot user is sent: only their word ends it.
+BROWSER_HANDOFF_REPLY_PROMPT = "Reply here when you're done, or tell me to stop."
 # How often the paused run touches the host session so the idle reaper (default
 # 300s TTL) never disposes a browser the user was asked to come back to.
 BROWSER_HANDOFF_KEEPALIVE_SECONDS = 60
@@ -366,7 +359,10 @@ BROWSER_AGENT_ROLE = (
 
 # Said to the agent when it asks for guidance with no assistant joined to answer.
 #: What the agent reads after a handoff step when the user left no note.
-BROWSER_TAKEOVER_DONE_NOTE = "The user finished that step in the live browser."
+BROWSER_TAKEOVER_DONE_NOTE = (
+    "The user says they finished that step in the live browser. If the page still asks "
+    "for it, hand it to them again."
+)
 #: How a run's result reads when the runner, not the agent, ended it.
 BROWSER_RUN_WALL_CLOCK_SUMMARY = "Browser task timed out after {seconds}s."
 BROWSER_RUN_WORK_BUDGET_SUMMARY = "Browser task timed out after {seconds}s of work."

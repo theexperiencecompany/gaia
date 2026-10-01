@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.constants.browser import HandoffStatus, SensitiveCategory
+from app.constants.browser import BROWSER_HANDOFF_REPLY_PROMPT, HandoffStatus, SensitiveCategory
 from app.models.chat_models import ConversationSource
 from app.schemas.browser import (
     BrowserAction,
@@ -365,25 +365,6 @@ class TestBotProgressDeliveryStep:
 
 
 class TestBotProgressDeliveryHandoff:
-    async def test_reply_hint_uses_plain_quotes_not_markdown_emphasis(self, delivery):
-        """*done*/*stop* rendered as literal <i>done</i> text on Telegram (no markdown parse mode on this send) -- plain quotes read correctly on every platform."""
-        snap = BrowserHandoffSnapshot(
-            handoff_id="h1", reason="Need creds", session_id=None, status=HandoffStatus.PENDING
-        )
-        with (
-            patch("app.services.browser.bot_delivery.create_live_view_link", new=AsyncMock()),
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
-            ) as mp,
-        ):
-            await delivery.handoff(snap)
-            msg = mp.call_args[0][2][0]
-            assert "*done*" not in msg
-            assert "*stop*" not in msg
-            assert "<i>" not in msg
-            assert '"done"' in msg
-            assert '"stop"' in msg
-
     async def test_pending_with_session_includes_link(self, delivery):
         snap = BrowserHandoffSnapshot(
             handoff_id="h1",
@@ -408,7 +389,7 @@ class TestBotProgressDeliveryHandoff:
                 "<NEW_MESSAGE_BREAK>"
                 "Open the live browser: https://live.example.com/link"
                 "<NEW_MESSAGE_BREAK>"
-                'Reply "done" when you\'ve finished, or "stop" to cancel.'
+                f"{BROWSER_HANDOFF_REPLY_PROMPT}"
             )
 
     async def test_handoff_is_one_delivery_call_with_token_bubbles(self, delivery):
@@ -487,7 +468,7 @@ class TestBotProgressDeliveryHandoff:
                 "<NEW_MESSAGE_BREAK>"
                 "Open the live browser: https://live/x"
                 "<NEW_MESSAGE_BREAK>"
-                'Reply "done" when you\'ve finished, or "stop" to cancel.'
+                f"{BROWSER_HANDOFF_REPLY_PROMPT}"
             )
 
     async def test_non_credentials_handoff_omits_the_saved_note(self, delivery):
@@ -526,11 +507,7 @@ class TestBotProgressDeliveryHandoff:
             await delivery.handoff(snap)
             ml.assert_not_awaited()
             msg = mp.call_args[0][2][0]
-            assert msg == (
-                "Need creds"
-                "<NEW_MESSAGE_BREAK>"
-                'Reply "done" when you\'ve finished, or "stop" to cancel.'
-            )
+            assert msg == (f"Need creds<NEW_MESSAGE_BREAK>{BROWSER_HANDOFF_REPLY_PROMPT}")
 
     async def test_non_pending_does_nothing(self, delivery):
         for status in (HandoffStatus.COMPLETED, HandoffStatus.CANCELLED, HandoffStatus.TIMEOUT):

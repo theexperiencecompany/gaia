@@ -34,6 +34,7 @@ from app.constants.browser import (
     BROWSER_RUN_NO_PROGRESS_SUMMARY,
     BROWSER_TAKEOVER_DONE_NOTE,
     EngineSwitchReason,
+    SensitiveCategory,
 )
 from app.constants.log_tags import LogTag
 from app.patches.browser_use_run_lock_patch import isolate_run_events
@@ -355,7 +356,7 @@ class BrowserAgentRun:
         self.stop()
         return answer
 
-    async def _takeover(self, reason: str, category: str) -> str:
+    async def _takeover(self, reason: str, category: SensitiveCategory) -> str:
         """Hand the browser to the user, then give the agent the note they left."""
         note = await self._hooks.takeover(reason, category)
         return note or BROWSER_TAKEOVER_DONE_NOTE

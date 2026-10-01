@@ -13,7 +13,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from time import perf_counter
 
-from app.constants.browser import EngineSwitchReason
+from app.constants.browser import EngineSwitchReason, SensitiveCategory
 from app.schemas.browser import (
     AgentGuidanceRequest,
     BrowserAction,
@@ -105,7 +105,7 @@ class RunHooks:
     """
 
     step: Callable[[StepFrame], None]
-    takeover: Callable[[str, str], Awaitable[str | None]]
+    takeover: Callable[[str, SensitiveCategory], Awaitable[str | None]]
     should_stop: FlagFn
     user_waiting: FlagFn
     take_user_messages: TakeMessagesFn

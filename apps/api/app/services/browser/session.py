@@ -13,23 +13,17 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from urllib.parse import urlsplit
 
 from playwright.sync_api import StorageState
 
 from app.constants.browser import (
     BROWSER_ENGINE_PROBE_TIMEOUT_SECONDS,
     BROWSER_HANDOFF_KEEPALIVE_SECONDS,
-    HANDOFF_AUTORESOLVE_POLL_SECONDS,
-    HANDOFF_AUTORESOLVE_STABLE_POLLS,
-    HANDOFF_AUTORESOLVED_NOTE,
     EngineFailure,
-    HandoffDecision,
 )
 from app.constants.log_tags import LogTag
 from app.services.browser import host_client
 from app.services.browser.exceptions import BrowserSessionGone, BrowserUnavailableError
-from app.services.browser.handoff import resolve_handoff
 from app.services.browser.live_view import live_view_url
 from app.services.browser.registry import register_session, unregister_session
 from app.services.browser.storage_persistence import (
@@ -56,18 +50,27 @@ class BrowserHostSession:
     #: The site the session opened on, where a sign-in on an unknown page is saved.
     start_domain: str | None = None
     #: The sites its returned state is saved under as a login on release: one it
-    #: was seeded with a saved login for, or one a sign-in completed on.
+    #: was seeded with a saved login for, or one the user said a sign-in finished on.
     login_domains: set[str] = field(default_factory=set)
 
     def mark_authenticated(self, url: str | None) -> None:
-        """Record that a sign-in completed here, on url's site, so the returned state is saved under it on release.
+        """Record that the user said a sign-in finished here, on url's site, so the returned state is saved under it on release.
 
         The site signed in to, not the one the run started on: a run given no
         start URL once completed a login and saved nothing.
         """
-        domain = domain_of(url) or self.start_domain
+        domain = self._site_of(url)
         if domain is not None:
             self.login_domains.add(domain)
+
+    def forget_login(self, url: str | None) -> None:
+        """Stop saving a login for url's site: the run is asking the user to sign in there, so none is held."""
+        domain = self._site_of(url)
+        if domain is not None:
+            self.login_domains.discard(domain)
+
+    def _site_of(self, url: str | None) -> str | None:
+        return domain_of(url) or self.start_domain
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,98 +127,6 @@ async def engine_failure(session: BrowserHostSession) -> EngineFailure | None:
     except BrowserUnavailableError:
         return EngineFailure.UNRESPONSIVE
     return None if info.live else EngineFailure.SESSION_GONE
-
-
-# Path fragments that mean "still inside the auth flow": a login walks
-# /login -> /two-factor -> /verify, each a real navigation, so navigation alone
-# must not end the handoff or the agent wakes mid-2FA and hands off again.
-_AUTH_PATH_MARKERS = (
-    "login",
-    "signin",
-    "sign-in",
-    "auth",
-    "session",
-    "two-factor",
-    "two_factor",
-    "2fa",
-    "mfa",
-    "otp",
-    "verify",
-    "verification",
-    "challenge",
-    "password",
-    "consent",
-    "oauth",
-    "sso",
-    "register",
-    "signup",
-    "sign-up",
-    "forgot",
-    "reset",
-    "recover",
-)
-
-
-def _is_auth_url(url: str | None) -> bool:
-    """Whether the URL still looks like part of a sign-in flow."""
-    if not url:
-        return False
-    path = urlsplit(url).path.lower()
-    return any(marker in path for marker in _AUTH_PATH_MARKERS)
-
-
-def _navigated_away(start: str | None, current: str | None) -> bool:
-    """Return whether the page moved to a different page that is no longer part of the auth flow.
-
-    Compare scheme, host and path only, so a login adding a return_to query is
-    not a navigation. Staying inside auth (2FA, OTP, verification) is not done.
-    """
-    # A missing URL has no host, so the host check below already says False.
-    if not start or not current:  # pragma: no mutate
-        return False
-    a, b = urlsplit(start), urlsplit(current)
-    if (a.scheme, a.netloc, a.path) == (b.scheme, b.netloc, b.path):
-        return False
-    # An identity provider on another host is the middle of the flow, not its end;
-    # the flow is done when the page is back on the site that asked, off its auth paths.
-    if b.netloc != a.netloc:
-        return False
-    return not _is_auth_url(current)
-
-
-async def auto_resolve_handoff_on_navigation(
-    handoff_id: str, session: BrowserHostSession, user_id: str
-) -> None:
-    """Auto-complete a login handoff once the page navigates off the sign-in URL.
-
-    Best-effort: the manual "I'm done" races this through the same
-    resolve_handoff (first write wins), so a missed detection only means the
-    user taps the button. Debounced so a transient redirect does not resolve
-    early. Run under spawn_background_task and cancel when the handoff resolves.
-    """
-    try:
-        start = (await host_client.get_session(session.session_id, session.host_url)).url
-    except BrowserUnavailableError:
-        return
-    stable = 0
-    while True:
-        await asyncio.sleep(HANDOFF_AUTORESOLVE_POLL_SECONDS)
-        try:
-            current = (await host_client.get_session(session.session_id, session.host_url)).url
-        except BrowserUnavailableError:
-            return
-        if not _navigated_away(start, current):
-            stable = 0
-            continue
-        stable += 1
-        if stable >= HANDOFF_AUTORESOLVE_STABLE_POLLS:
-            await resolve_handoff(
-                handoff_id,
-                HandoffDecision.CONTINUE,
-                user_id,
-                HANDOFF_AUTORESOLVED_NOTE,
-            )
-            return
 
 
 @asynccontextmanager

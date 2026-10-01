@@ -9,8 +9,8 @@ between them is the production code path.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Callable
-from contextlib import AbstractContextManager, ExitStack, asynccontextmanager
+from collections.abc import AsyncIterator, Callable, Iterator
+from contextlib import AbstractContextManager, ExitStack, asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 import json
 from types import SimpleNamespace
@@ -22,7 +22,7 @@ import fakeredis.aioredis
 from app.agents.core.background.session import RunKind, create_session
 from app.agents.tools import browser_tool
 from app.config.settings import settings
-from app.constants.browser import BrowserEngine, EngineSwitchReason
+from app.constants.browser import BrowserEngine, EngineSwitchReason, SensitiveCategory
 from app.models.hil_models import HILPreferences
 from app.schemas.browser_job import BrowserJobRequest
 from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserSessionGone
@@ -37,6 +37,9 @@ LIVE_VIEW_LINK = "https://gaia.test/live/take-a-look"
 
 #: The recap slideshow link every run closes with.
 REPLAY_URL = "https://gaia.test/replay/the-run"
+
+#: How long a wait of a second or more takes inside long_waits_pass_quickly.
+_LONG_WAIT_TICK_SECONDS = 0.005
 
 #: What a live browser session holds when its state is read: the cookie a
 #: sign-in on it left behind.
@@ -150,7 +153,7 @@ class BrowserDouble:
         self.stop_observed = False
         #: What each takeover handed back to the agent — the user's note.
         self.takeover_notes: list[str | None] = []
-        self.takeover: Callable[[str, str], Any] | None = None
+        self.takeover: Callable[[str, SensitiveCategory], Any] | None = None
         #: The reason each blocked step gave when it asked the agent for guidance.
         self.guidance_reasons: list[str] = []
         #: What each of those asks handed back — the executor's instruction.
@@ -276,7 +279,10 @@ class _ScriptedAgent:
 
     async def _hand_over(self, reason: str, category: str) -> None:
         assert self._double.takeover is not None, "the takeover action was never built"
-        self._double.takeover_notes.append(await self._double.takeover(reason, category))
+        # Browser-Use validates the action's arguments into its param model first.
+        self._double.takeover_notes.append(
+            await self._double.takeover(reason, SensitiveCategory(category))
+        )
 
     async def _wait_for_joiner(self) -> None:
         from app.services.browser.jobs import joiner_lease_held
@@ -328,6 +334,8 @@ class JobWorld:
         self.seeded_states: list[Any] = []
         #: Each session whose live storage_state was read.
         self.storage_reads: list[str] = []
+        #: Each session a paused run's keepalive reset the host's idle clock for.
+        self.keepalive_touches: list[str] = []
 
     def frames(self) -> list[dict[str, Any]]:
         """Return each SSE chunk the turn's stream carried, decoded."""
@@ -340,6 +348,17 @@ class JobWorld:
             for frame in self.frames()
             if "tool_data" in frame and frame["tool_data"].get("tool_name") == "browser_task_data"
         ]
+
+    async def sit_through_keepalives(self, count: int) -> int:
+        """Wait while a paused run keeps its browser alive count times, a minute of the user's time each; return how many it did.
+
+        Fewer than count means the pause ended first.
+        """
+        for _ in range(500):
+            if len(self.keepalive_touches) >= count:
+                break
+            await asyncio.sleep(0.01)
+        return len(self.keepalive_touches)
 
     async def settle(self) -> None:
         """Wait out the worker task and the fire-and-forget publishes it left behind."""
@@ -499,6 +518,9 @@ def _host_patches(
             url=double.url,
         )
 
+    async def _touch_host_session(session_id: str, host_url: str) -> None:
+        world.keepalive_touches.append(session_id)
+
     async def _get_storage_state(session_id: str, host_url: str) -> Any:
         world.storage_reads.append(session_id)
         if session_id in world.dead_sessions:
@@ -515,10 +537,27 @@ def _host_patches(
         ),
         patch("app.services.browser.session.host_client.get_session", _get_host_session),
         patch("app.services.browser.session.host_client.get_storage_state", _get_storage_state),
+        patch("app.services.browser.session.host_client.touch_session", _touch_host_session),
         patch.object(settings, "BROWSER_FALLBACK_HOST_URL", scripted_host.fallback_url),
         patch("app.services.browser.session.load_storage_state", AsyncMock(return_value=None)),
         patch("app.services.browser.session.save_storage_state", AsyncMock()),
     ]
+
+
+@contextmanager
+def long_waits_pass_quickly() -> Iterator[None]:
+    """Make every wait of a second or more take a few milliseconds, so a journey can sit through minutes of a paused run.
+
+    Every such timer then ticks at the same rate; the sub-second polls the
+    journeys themselves wait on keep their real length.
+    """
+    real_sleep = asyncio.sleep
+
+    async def _sleep(delay: float, result: Any = None) -> Any:
+        return await real_sleep(_LONG_WAIT_TICK_SECONDS if delay >= 1 else delay, result)
+
+    with patch("asyncio.sleep", _sleep):
+        yield
 
 
 def _delivery_patches(world: JobWorld, stream_id: str) -> list[AbstractContextManager[object]]:
@@ -564,7 +603,7 @@ def _tools_of(double: BrowserDouble) -> Callable[..., object]:
     def _build(
         *,
         solve_captcha: bool,
-        handle_takeover: Callable[[str, str], Any],
+        handle_takeover: Callable[[str, SensitiveCategory], Any],
         handle_guidance: Callable[[str], Any],
         handle_engine_switch: Callable[[EngineSwitchReason], Any] | None = None,
     ) -> object:

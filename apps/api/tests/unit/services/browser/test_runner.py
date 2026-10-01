@@ -32,7 +32,6 @@ from app.constants.browser import (
     BROWSER_RUN_STOPPED_SUMMARY,
     BROWSER_RUN_WALL_CLOCK_SUMMARY,
     BROWSER_STALL_NOTE,
-    HANDOFF_AUTORESOLVED_NOTE,
     MAX_HANDOFFS_PER_TASK,
     BrowserRunFailure,
     BrowserSessionStatus,
@@ -310,33 +309,6 @@ async def test_a_timed_out_handoff_fails_the_run_even_when_browser_use_swallows_
         False,
         BROWSER_RUN_HANDOFF_TIMED_OUT,
     )
-
-
-async def test_the_auto_resolvers_resume_note_is_never_taken_for_a_users_instruction() -> None:
-    async def _hands_over(run: _ScriptedRun) -> RunOutcome:
-        run.note = await run.hooks.takeover("Sign in", "credentials")
-        return RunOutcome(success=True, summary="booked")
-
-    runner, _ = _runner(
-        _hands_over,
-        handoff=HandoffOutcome(status=HandoffStatus.COMPLETED, message=HANDOFF_AUTORESOLVED_NOTE),
-    )
-
-    result = await _run(runner)
-
-    assert result.user_notes == []
-
-
-async def test_an_unknown_takeover_category_is_treated_as_irreversible() -> None:
-    async def _hands_over(run: _ScriptedRun) -> RunOutcome:
-        await run.hooks.takeover("Confirm the order", "shipping")
-        return RunOutcome(success=True, summary="ordered")
-
-    runner, seen = _runner(_hands_over)
-
-    await _run(runner)
-
-    assert [request.category for request, _ in seen["handoffs"]] == [SensitiveCategory.IRREVERSIBLE]
 
 
 # ---------------------------------------------------------------------------
