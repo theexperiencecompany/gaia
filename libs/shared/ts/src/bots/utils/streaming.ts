@@ -242,18 +242,19 @@ async function _handleStream(
    * harmless — the next preview or the finished-bubble delivery supersedes it.
    */
   const previewBubble = async (text: string): Promise<void> => {
-    if (!text) return;
-    if (bubbleSealed) {
-      currentEditor = await wrappedSendNewMessage(text);
-      shownText = text;
-      bubbleSealed = false;
-      return;
-    }
-    if (text === shownText) return;
+    if (!text || (!bubbleSealed && text === shownText)) return;
+    // A preview is best effort and is queued without being awaited, so it must never reject:
+    // a failed preview would otherwise surface as an unhandled rejection, or fail the final
+    // delivery that awaits the queue.
     try {
-      await currentEditor(text);
+      if (bubbleSealed) {
+        currentEditor = await wrappedSendNewMessage(text);
+        bubbleSealed = false;
+      } else {
+        await currentEditor(text);
+        bubbleProvisional = false;
+      }
       shownText = text;
-      bubbleProvisional = false;
     } catch (err) {
       // Transient: the live bubble may have been deleted or the interaction expired — the next
       // edit or final delivery recovers. But a persistent edit problem is exactly how a bot

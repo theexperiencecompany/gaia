@@ -50,7 +50,8 @@ class LaunchedEngine:
     @property
     def http_url(self) -> str:
         """The DevTools HTTP endpoint, for clients that discover the websocket themselves."""
-        return f"http://{_LOOPBACK}:{self.port}"
+        # The engine's DevTools endpoint on loopback speaks plain HTTP only.
+        return f"http://{_LOOPBACK}:{self.port}"  # NOSONAR python:S5332
 
 
 class _DevToolsVersion(BaseModel):
@@ -140,7 +141,9 @@ def _json_version_reader(
 
     async def read() -> str | None:
         try:
-            resp = await client.get(f"http://{_LOOPBACK}:{port}/json/version")
+            # Loopback DevTools endpoint: plain HTTP only.
+            url = f"http://{_LOOPBACK}:{port}/json/version"  # NOSONAR python:S5332
+            resp = await client.get(url)
             resp.raise_for_status()
             return _DevToolsVersion.model_validate(resp.json()).web_socket_debugger_url
         except (httpx.HTTPError, ValidationError):
