@@ -1,9 +1,8 @@
 """Turn a Browser-Use action into a human-readable caption.
 
 Used by both the SSE step card (runner.py) and the bot's photo caption
-(bot_delivery.py). The model's own next_goal is used only for a step that
-finishes the run: everywhere else Jev fills that field with its raw decision
-label ("CLICK [6] Log In"), not a caption.
+(bot_delivery.py). Captions are built from the actions and the elements they
+target; the agent's own next_goal names only a step that finishes the run.
 """
 
 from __future__ import annotations
@@ -18,10 +17,6 @@ from app.constants.browser import (
     BrowserHandoffAction,
 )
 from app.schemas.browser import BrowserAction
-
-# Actions whose whole meaning is the element they hit — a bare verb reads as
-# noise ("Clicking"), the element's text reads as intent ("Clicking Add to cart").
-_TARGETED_ACTIONS = {"click", "select_dropdown", "upload_file"}
 
 
 def _shorten(text: str) -> str:
@@ -69,8 +64,7 @@ def _select_dropdown_caption(params: _ActionParams, target: str | None) -> str:
 
 
 def _done_caption(params: _ActionParams, _target: str | None) -> str:
-    # DoneAction.success defaults to True; Jev ends a run it cannot advance
-    # with success=False, and "BLOCKED" is not something to show a reader.
+    # DoneAction.success defaults to True; the agent sets it False on a run it could not finish.
     if not params.success:
         return "Could not find a way forward on this page"
     # The result message that follows this photo carries the run's answer in
@@ -102,20 +96,24 @@ _DYNAMIC_CAPTIONS: dict[str, Callable[[_ActionParams, str | None], str]] = {
     "done": _done_caption,
 }
 
+_SCROLLING = "Scrolling"
+_READING = "Reading the page"
+_HANDING_OVER = "Handing this step to you"
+
 # Actions whose caption is the same verb every time, regardless of params.
 _STATIC_CAPTIONS: dict[str, str] = {
-    "scroll": "Scrolling",
-    "scroll_to_text": "Scrolling",
-    "extract": "Reading the page",
-    "read_file": "Reading the page",
-    "read_long_content": "Reading the page",
-    "find_text": "Reading the page",
-    "find_elements": "Reading the page",
+    "scroll": _SCROLLING,
+    "scroll_to_text": _SCROLLING,
+    "extract": _READING,
+    "read_file": _READING,
+    "read_long_content": _READING,
+    "find_text": _READING,
+    "find_elements": _READING,
     "upload_file": "Uploading a file",
     "go_back": "Going back",
     "wait": "Waiting for the page",
-    BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER: "Handing this step to you",
-    BrowserHandoffAction.SOLVE_CAPTCHA_WITH_HELP: "Handing this step to you",
+    BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER: _HANDING_OVER,
+    BrowserHandoffAction.SOLVE_CAPTCHA_WITH_HELP: _HANDING_OVER,
     # The agent round trip is not the user's business; they see only that the
     # run is looking for another route.
     BrowserHandoffAction.REQUEST_AGENT_GUIDANCE: BROWSER_AGENT_GUIDANCE_CAPTION,

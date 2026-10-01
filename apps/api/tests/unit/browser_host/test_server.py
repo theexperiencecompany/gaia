@@ -38,7 +38,12 @@ class _HostStub:
     """A ChromiumHost-shaped object whose I/O seams are mocks."""
 
     def __init__(self) -> None:
-        self.create_context = AsyncMock(return_value=MagicMock(session_id="s1", token=_TOKEN))
+        # The engine the session really runs on, which the client learns from the host.
+        self.create_context = AsyncMock(
+            return_value=MagicMock(
+                session_id="s1", token=_TOKEN, engine=MagicMock(kind=BrowserEngine.CHROMIUM)
+            )
+        )
         self.dispose_context = AsyncMock(return_value={"cookies": [], "origins": []})
         self.storage_state = AsyncMock(return_value={"cookies": [], "origins": []})
         self.session_info = AsyncMock(return_value=_INFO)
@@ -86,6 +91,7 @@ def test_a_created_session_comes_back_as_websocket_urls_carrying_its_own_token(
         "session_id": "s1",
         "cdp_ws": f"ws://bh:8930/cdp/s1?token={_TOKEN}",
         "live_ws": f"ws://bh:8930/live/s1?token={_TOKEN}",
+        "engine": "chromium",
     }
     assert host.create_context.await_args.args == ({"cookies": [], "origins": []},)
 

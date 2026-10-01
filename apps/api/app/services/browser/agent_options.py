@@ -1,7 +1,9 @@
 """What a run's Browser-Use Browser and Agent are built with, apart from the live objects they run on.
 
-The run's contract with Browser-Use: Jev acts first on the whole task, the agent
-reads pages as text with whole URLs, and each step gets the run's step budget.
+The run's contract with Browser-Use: Jev acts first on the whole task (a run
+resumed on the fallback engine goes on instead), the agent reads pages as text
+with whole URLs, and each step gets the run's step budget, which a handoff's
+wait is outside of.
 """
 
 from __future__ import annotations
@@ -10,7 +12,6 @@ from typing import Any, TypedDict
 
 from app.constants.browser import (
     BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
-    BROWSER_AGENT_MAX_FAILURES,
     BROWSER_AGENT_ROLE,
     BROWSER_AGENT_URL_QUERY_MAX_CHARS,
     BROWSER_DEVICE_SCALE_FACTOR,
@@ -37,13 +38,12 @@ class AgentOptions(TypedDict):
     """Browser-Use Agent keyword arguments that carry a decision, not a live object."""
 
     task: str
-    initial_actions: list[dict[str, dict[str, Any]]]
+    initial_actions: list[dict[str, dict[str, Any]]] | None
     sensitive_data: dict[str, str | dict[str, str]] | None
     extend_system_message: str
     use_vision: bool
     use_judge: bool
     flash_mode: bool
-    max_failures: int
     llm_timeout: int
     max_actions_per_step: int
     step_timeout: int
@@ -60,11 +60,15 @@ def browser_options(cdp_url: str) -> BrowserOptions:
     )
 
 
-def agent_options(task: str, config: BrowserRunConfig, secrets: RunSecrets) -> AgentOptions:
+def agent_options(
+    task: str, config: BrowserRunConfig, secrets: RunSecrets, *, resumed: bool
+) -> AgentOptions:
     """Return the Agent for task: Jev's burst on the whole task first, the agent steering after."""
     return AgentOptions(
         task=task + BROWSER_TAKEOVER_PREAMBLE,
-        initial_actions=[{JEV_ACTION: {"goal": task, "start_url": config.start_url}}],
+        initial_actions=(
+            None if resumed else [{JEV_ACTION: {"goal": task, "start_url": config.start_url}}]
+        ),
         sensitive_data=secrets.sensitive_data() or None,
         extend_system_message=BROWSER_AGENT_ROLE,
         # The agent reads the page as text; screenshots go to the user's cards, not the model.
@@ -72,9 +76,8 @@ def agent_options(task: str, config: BrowserRunConfig, secrets: RunSecrets) -> A
         # Browser-Use's post-run judge bills a whole extra call and nothing reads its verdict.
         use_judge=False,
         flash_mode=True,
-        max_failures=BROWSER_AGENT_MAX_FAILURES,
         llm_timeout=BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
         max_actions_per_step=config.max_actions_per_step,
-        step_timeout=config.step_budget_seconds,
+        step_timeout=config.step_timeout_seconds,
         _url_shortening_limit=BROWSER_AGENT_URL_QUERY_MAX_CHARS,
     )

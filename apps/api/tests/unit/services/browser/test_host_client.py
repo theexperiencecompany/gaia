@@ -14,7 +14,7 @@ import httpx
 import pytest
 
 from app.browser_host import server
-from app.constants.browser import BROWSER_HOST_KEY_HEADER
+from app.constants.browser import BROWSER_HOST_KEY_HEADER, BrowserEngine
 from app.services.browser import host_client
 from app.services.browser.exceptions import (
     BrowserConcurrencyLimit,
@@ -64,14 +64,22 @@ async def test_a_session_is_created_with_its_seed_the_key_and_a_deadline(host: A
     fake = host(
         {
             "POST /sessions": httpx.Response(
-                200, json={"session_id": "s1", "cdp_ws": "ws://c", "live_ws": "ws://l"}
+                200,
+                json={
+                    "session_id": "s1",
+                    "cdp_ws": "ws://c",
+                    "live_ws": "ws://l",
+                    "engine": "obscura",
+                },
             )
         }
     )
 
     created = await host_client.create_session(_STATE, _HOST)
 
-    assert created == host_client.HostSession(session_id="s1", cdp_ws="ws://c", live_ws="ws://l")
+    assert created == host_client.HostSession(
+        session_id="s1", cdp_ws="ws://c", live_ws="ws://l", engine=BrowserEngine.OBSCURA
+    )
     sent = fake.requests[0]
     assert json.loads(sent.content) == {"storage_state": _STATE}
     assert server._key_valid(sent.headers.get(BROWSER_HOST_KEY_HEADER)) is True

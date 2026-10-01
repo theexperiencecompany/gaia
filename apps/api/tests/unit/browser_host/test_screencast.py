@@ -221,6 +221,7 @@ async def test_the_viewers_input_drives_the_page_it_sees() -> None:
         type="mouse", event="mousePressed", x=10, y=20, button="left", clickCount=1, junk=1
     )
     run.viewer.say(type="key", event="keyDown", key="a", text="a", modifiers=0)
+    run.viewer.say(type="text", text="hello wörld")
     run.viewer.say(type="resize", width=640, height=480)
     run.viewer.say(type="unknown")
     run.viewer.leave()
@@ -237,6 +238,8 @@ async def test_the_viewers_input_drives_the_page_it_sees() -> None:
         {"type": "keyDown", "key": "a", "text": "a", "modifiers": 0},
         session,
     ) in run.mux.calls
+    # A phone's soft keyboard commits text, inserted as one edit on the same page.
+    assert ("Input.insertText", {"text": "hello wörld"}, session) in run.mux.calls
     assert run.mux.params_for("Page.startScreencast")[-1] == {
         "format": "jpeg",
         "quality": 72,

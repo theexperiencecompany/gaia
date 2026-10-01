@@ -1,20 +1,31 @@
-"""Which Browser-Use sessions run on the Obscura host.
+"""Which Browser-Use sessions run on Obscura: the run that drives one says so.
 
-The engine is chosen per job (Chrome by default, Obscura opt-in), so a patch
-that works around an Obscura gap applies to that session only; a Chrome
-session keeps Browser-Use's own behaviour.
+The engine is a fact the browser host reports when it creates a session, and
+the run on that session marks its own context with it. Browser-Use runs every
+handler of a run in tasks started from that run, so a patch that works around an
+Obscura gap reads the engine of the run it is serving, and a Chrome run keeps
+Browser-Use's own behaviour. Nothing outside a run is on Obscura.
 """
 
-from urllib.parse import urlsplit
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 
-from browser_use.browser.session import BrowserSession
-
-from app.config.settings import settings
 from app.constants.browser import BrowserEngine
 
+_engine: ContextVar[BrowserEngine | None] = ContextVar("browser_run_engine", default=None)
 
-def on_obscura(session: BrowserSession) -> bool:
-    """Whether session is a context on the Obscura host."""
-    if settings.BROWSER_ENGINE is not BrowserEngine.OBSCURA or not session.cdp_url:
-        return False
-    return urlsplit(session.cdp_url).netloc == urlsplit(settings.BROWSER_HOST_URL).netloc
+
+@contextmanager
+def driving(engine: BrowserEngine) -> Iterator[None]:
+    """Mark everything run inside as driving a session on engine."""
+    token = _engine.set(engine)
+    try:
+        yield
+    finally:
+        _engine.reset(token)
+
+
+def on_obscura() -> bool:
+    """Whether the run this code serves drives an Obscura session."""
+    return _engine.get() is BrowserEngine.OBSCURA

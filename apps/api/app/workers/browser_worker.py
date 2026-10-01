@@ -17,10 +17,9 @@ from typing import TypedDict
 
 from arq.worker import Worker
 
-from app.constants.browser import BROWSER_JOB_QUEUE, BROWSER_JOB_TASK, BrowserEngine
+from app.constants.browser import BROWSER_JOB_QUEUE, BROWSER_JOB_TASK
 from app.constants.log_tags import LogTag
 from app.services.browser.job_lifetime import browser_job_deadline_seconds
-from app.services.browser.job_runner import hosts_for
 from app.utils.background_tasks import spawn_background_task
 from app.workers.config.worker_settings import WorkerSettings
 from app.workers.task_envelope import arq_function
@@ -75,11 +74,7 @@ def build_browser_worker() -> Worker:
 
 
 def start_browser_worker(ctx: MutableMapping[str, object]) -> None:
-    """Start serving the browser queue beside the main worker, once the process is ready.
-
-    Refuses to boot without a Chrome host (BrowserUnavailableError): every default user's run opens there.
-    """
-    hosts_for(BrowserEngine.CHROMIUM)
+    """Start serving the browser queue beside the main worker, once the process is ready."""
     worker = build_browser_worker()
     task = spawn_background_task(
         worker.async_run(), name="browser_worker", on_done=_stop_process_if_it_ended

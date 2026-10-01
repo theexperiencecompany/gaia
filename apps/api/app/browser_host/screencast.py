@@ -3,16 +3,15 @@
 WS /live/{session_id} is the backend of the live view the user watches (and,
 during a handoff, drives). It attaches to the page the agent last brought to the
 front, streams JPEG frames out as {"type":"frame", data, url, title}, and turns
-inbound {"type":"mouse"|"key"|"resize"} messages into CDP input. When the agent
-moves to another tab, or the streamed one closes, it follows; when no page is
-left it ends. Obscura screencasts only the session that caused the repaint, so
-on Obscura a paced capture fills the gaps while the stream is quiet.
+inbound {"type":"mouse"|"key"|"text"|"resize"} messages into CDP input (text is
+a phone keyboard's committed text, inserted as one edit). When the agent moves
+to another tab, or the streamed one closes, it follows; when no page is left it
+ends. Obscura screencasts only the session that caused the repaint, so on
+Obscura a paced capture fills the gaps while the stream is quiet.
 
-The session's one engine connection is the host's CdpMux, shared with the
-control path and the proxy: this viewer borrows it, owns the page session it
-attaches so its frames reach nobody else, and must never close it. Acks and
-input dispatch are scheduled as tasks, not awaited inline: an event arrives in
-the mux's one read loop, so awaiting a round trip there deadlocks it.
+The session's CdpMux is shared: this viewer borrows it, owns the page session
+it attaches so its frames reach nobody else, and never closes it. Acks are
+scheduled as tasks, since awaiting a round trip in the mux's read loop deadlocks it.
 """
 
 from __future__ import annotations
@@ -406,6 +405,14 @@ async def _apply_input(mux: CdpMux, client_ws: WebSocket, page_session: str) -> 
                 mux,
                 "Input.dispatchKeyEvent",
                 _key_params(message),
+                session_id=page_session,
+            )
+        elif kind == "text":
+            # A phone's soft keyboard yields committed text, not key presses.
+            await cdp_call(
+                mux,
+                "Input.insertText",
+                {"text": message["text"]},
                 session_id=page_session,
             )
         elif kind == "resize":

@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 import contextlib
+from dataclasses import replace
 from typing import Any, ClassVar
 from unittest.mock import AsyncMock
 
@@ -19,20 +20,23 @@ import pytest
 
 from app.constants.browser import (
     BROWSER_AGENT_GUIDANCE_MAX,
+    BROWSER_CDP_ATTACH_FAILED,
     BROWSER_CDP_ATTACH_HINT,
     BROWSER_ENGINE_FALLBACK_NOTE,
     BROWSER_ENGINE_FALLBACK_WITHOUT_STATE_NOTE,
     BROWSER_ENGINE_SWITCH_ACK,
     BROWSER_RUN_BLOCKED_SUMMARY,
     BROWSER_RUN_CANCELLED_SUMMARY,
+    BROWSER_RUN_CRASHED_SUMMARY,
     BROWSER_RUN_DONE_SUMMARY,
-    BROWSER_RUN_HANDOFF_ENDED_SUMMARY,
+    BROWSER_RUN_HANDOFF_LIMIT_SUMMARY,
     BROWSER_RUN_HANDOFF_TIMED_OUT,
     BROWSER_RUN_NOT_DONE_SUMMARY,
     BROWSER_RUN_STOPPED_SUMMARY,
     BROWSER_RUN_WALL_CLOCK_SUMMARY,
     BROWSER_STALL_NOTE,
     MAX_HANDOFFS_PER_TASK,
+    BrowserEngine,
     BrowserRunFailure,
     BrowserSessionStatus,
     EngineFailure,
@@ -72,11 +76,13 @@ Script = Callable[["_ScriptedRun"], Awaitable[RunOutcome]]
 
 
 def _session(session_id: str = "s-primary") -> BrowserHostSession:
+    """Return a host session: the primary on Obscura, with Chrome behind it; any other on Chrome."""
     return BrowserHostSession(
         session_id=session_id,
         cdp_url=f"ws://{session_id}",
         live_view_url=f"http://{session_id}/live",
         host_url=f"http://{session_id}-host",
+        engine=BrowserEngine.OBSCURA if session_id == "s-primary" else BrowserEngine.CHROMIUM,
     )
 
 
@@ -104,6 +110,8 @@ class _ScriptedRun:
         self.abandoned = False
         self.stopped = False
         self.answers = True
+        self.connected = True
+        self.agent_state: object = f"state of run {len(type(self).made)}"
         type(self).made.append(self)
 
     async def execute(self, task: str) -> RunOutcome:
@@ -119,7 +127,7 @@ class _ScriptedRun:
                 actions=[BrowserAction(name="click", inputs={"index": index}, target="Next")],
                 url=PAGE,
                 title="Book a table",
-                raw_screenshot=screenshot,
+                photo=asyncio.ensure_future(_photo(screenshot)) if screenshot else None,
                 since_prev_ms=since_prev_ms,
             )
         )
@@ -132,6 +140,10 @@ class _ScriptedRun:
 
     def stop(self) -> None:
         self.stopped = True
+
+
+async def _photo(data: str) -> str:
+    return data
 
 
 async def _done(run: _ScriptedRun) -> RunOutcome:
@@ -315,7 +327,7 @@ async def test_a_timed_out_handoff_fails_the_run_even_when_browser_use_swallows_
 # ---------------------------------------------------------------------------
 
 
-async def test_each_silence_gets_one_note_and_a_repeat_names_the_step(
+async def test_each_silence_gets_one_note(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(runner_mod, "_STALL_POLL_SECONDS", 0.01)
@@ -332,9 +344,7 @@ async def test_each_silence_gets_one_note_and_a_repeat_names_the_step(
     await _run(_runner(_slow, note=note)[0])
 
     said = [call.args[0] for call in note.await_args_list]
-    assert said[0] == BROWSER_STALL_NOTE
-    assert len(said) == 2
-    assert said[1].startswith("Still on step 2")
+    assert said == [BROWSER_STALL_NOTE.format(seconds=0)] * 2
 
 
 async def test_waiting_on_the_user_is_not_a_stall(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -383,8 +393,8 @@ async def test_only_uploaded_frames_become_recap_frames(monkeypatch: pytest.Monk
     result = await _run(runner)
 
     steps = [card for card in seen["emitted"] if isinstance(card, BrowserStepSnapshot)]
-    # The step whose upload failed still shows its photo inline, but a recap never promises it.
-    assert steps[1].screenshot.startswith("data:image/png;base64,")
+    # A step whose photo was not stored shows none, and a recap never promises it.
+    assert [step.screenshot for step in steps] == ["https://cdn.test/1.png", None]
     recap.assert_awaited_once_with("s-primary", ["https://cdn.test/1.png"])
     assert result.replay_url == "https://gaia.test/replay/r"
 
@@ -426,22 +436,18 @@ async def test_each_model_call_is_charged_to_the_user_with_the_cost_the_gateway_
 # ---------------------------------------------------------------------------
 
 
-async def test_a_run_that_cannot_attach_over_cdp_says_the_browser_is_unreachable() -> None:
-    async def _refused(run: _ScriptedRun) -> RunOutcome:
-        raise ConnectionRefusedError("cdp refused")
-
-    with pytest.raises(BrowserUnavailableError, match="Could not attach to the browser over CDP"):
-        await _run(_runner(_refused)[0])
-
-
-async def test_an_unexpected_failure_ends_failed_with_its_reason() -> None:
+async def test_an_unexpected_failure_ends_failed_with_a_fixed_line_and_logs_the_error() -> None:
     async def _crashes(run: _ScriptedRun) -> RunOutcome:
         raise RuntimeError("history unreadable")
 
-    result = await _run(_runner(_crashes)[0])
+    async with captured_wide_event() as event:
+        result = await _run(_runner(_crashes)[0])
 
-    assert result.status == BrowserSessionStatus.FAILED
-    assert "history unreadable" in result.summary
+    assert (result.status, result.summary) == (
+        BrowserSessionStatus.FAILED,
+        BROWSER_RUN_CRASHED_SUMMARY,
+    )
+    assert [error["error"] for error in event["errors"]] == ["history unreadable"]
 
 
 # ---------------------------------------------------------------------------
@@ -709,24 +715,6 @@ async def test_a_frames_photo_is_uploaded_as_the_image_it_carries(
     assert uploaded == [(b"shot", "s-primary", 3)]
 
 
-async def test_with_screenshots_off_no_photo_is_uploaded_or_shown(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    publish = AsyncMock(return_value="https://cdn.test/1.png")
-    monkeypatch.setattr(runner_mod, "publish_step_screenshot", publish)
-
-    async def _one(run: _ScriptedRun) -> RunOutcome:
-        run.step(1, screenshot="c2hvdA==")
-        return RunOutcome(True, "booked")
-
-    runner, seen = _runner(_one, stream_screenshots=False)
-    await _run(runner)
-
-    [card] = [c for c in seen["emitted"] if isinstance(c, BrowserStepSnapshot)]
-    assert card.screenshot is None
-    publish.assert_not_awaited()
-
-
 async def test_a_step_card_that_fails_to_send_does_not_lose_the_result() -> None:
     async def _one(run: _ScriptedRun) -> RunOutcome:
         run.step(1)
@@ -771,8 +759,7 @@ async def test_a_run_past_the_wall_clock_is_stopped_and_fails(
 
     runner, _ = _runner(_never, task_timeout=0, handoff_timeout=0.01)
 
-    async with captured_wide_event() as event:
-        result = await _run(runner)
+    result = await _run(runner)
 
     assert _ScriptedRun.made[0].stopped is True
     assert (result.status, result.success, result.summary) == (
@@ -780,7 +767,7 @@ async def test_a_run_past_the_wall_clock_is_stopped_and_fails(
         False,
         BROWSER_RUN_WALL_CLOCK_SUMMARY.format(seconds=0),
     )
-    assert event["reason"] == BrowserRunFailure.TASK_TIMEOUT
+    assert runner.failure == BrowserRunFailure.TASK_TIMEOUT
 
 
 @pytest.mark.parametrize(("work", "stops"), [(20.0, False), (20.5, True)])
@@ -796,11 +783,10 @@ async def test_the_work_budget_ends_a_run_only_once_passed(
         return RunOutcome(True, "booked")
 
     runner, _ = _runner(_works, task_timeout=20)
-    async with captured_wide_event() as event:
-        await _run(runner)
+    await _run(runner)
 
     assert _ScriptedRun.made[0].stops is stops
-    assert (event.get("reason") == BrowserRunFailure.TASK_TIMEOUT) is stops
+    assert (runner.failure == BrowserRunFailure.TASK_TIMEOUT) is stops
 
 
 async def test_waiting_on_the_user_twice_is_not_counted_twice_as_work(
@@ -865,7 +851,7 @@ async def test_a_run_silent_from_its_start_gets_the_stall_note(
     note = AsyncMock()
     await _run(_runner(_silent, note=note)[0])
 
-    note.assert_awaited_once_with(BROWSER_STALL_NOTE)
+    note.assert_awaited_once_with(BROWSER_STALL_NOTE.format(seconds=5))
 
 
 async def test_steps_arriving_in_time_are_never_a_stall(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -928,16 +914,18 @@ async def test_the_handoff_past_the_limit_stops_the_run() -> None:
             await run.hooks.takeover("Enter the code again", "credentials")
         except BrowserHandoffCancelled as exc:
             run.refusal = str(exc)
+        run.stops = await run.hooks.should_stop()
         return RunOutcome(False, "")
 
     result = await _run(_runner(_asks_too_often)[0])
 
-    assert _ScriptedRun.made[0].refusal == "max-handoffs"
-    # The earlier handoffs the user completed do not make a refused one a success.
+    assert (_ScriptedRun.made[0].refusal, _ScriptedRun.made[0].stops) == ("max-handoffs", True)
+    # The earlier handoffs the user completed do not make a refused one a success,
+    # and the user did not stop it: the run says it hit the limit.
     assert (result.status, result.success, result.summary) == (
-        BrowserSessionStatus.CANCELLED,
+        BrowserSessionStatus.FAILED,
         False,
-        BROWSER_RUN_STOPPED_SUMMARY,
+        BROWSER_RUN_HANDOFF_LIMIT_SUMMARY.format(limit=MAX_HANDOFFS_PER_TASK),
     )
 
 
@@ -968,9 +956,11 @@ async def test_a_run_a_cancelled_handoff_ended_is_cancelled_whatever_the_user_di
     first: HandoffStatus,
 ) -> None:
     async def _two_handoffs(run: _ScriptedRun) -> RunOutcome:
-        await run.hooks.takeover("Sign in", "credentials")
-        await run.hooks.takeover("Pay", "payment")
-        raise AssertionError("the last handoff ends the run")
+        # The agent reads an ended handoff as an error result; its next stop check ends it.
+        with contextlib.suppress(BrowserHandoffCancelled):
+            await run.hooks.takeover("Sign in", "credentials")
+            await run.hooks.takeover("Pay", "payment")
+        return RunOutcome(True, "looks done")
 
     runner, _ = _runner(_two_handoffs)
     outcomes = iter([first, HandoffStatus.CANCELLED])
@@ -985,14 +975,15 @@ async def test_a_run_a_cancelled_handoff_ended_is_cancelled_whatever_the_user_di
     assert (result.status, result.success, result.summary) == (
         BrowserSessionStatus.CANCELLED,
         False,
-        BROWSER_RUN_HANDOFF_ENDED_SUMMARY,
+        BROWSER_RUN_STOPPED_SUMMARY,
     )
 
 
 async def test_a_handoff_that_timed_out_fails_the_run() -> None:
     async def _hands_over(run: _ScriptedRun) -> RunOutcome:
-        await run.hooks.takeover("Sign in", "credentials")
-        raise AssertionError("the timeout ends the run")
+        with contextlib.suppress(BrowserHandoffCancelled):
+            await run.hooks.takeover("Sign in", "credentials")
+        return RunOutcome(True, "looks done")
 
     runner, _ = _runner(_hands_over, handoff=HandoffOutcome(status=HandoffStatus.TIMEOUT))
 
@@ -1078,7 +1069,6 @@ async def test_a_blocked_run_is_guided_with_what_the_user_said_so_far() -> None:
     assert [request.user_notes for request in asked] == [["not the red one"]]
 
 
-@pytest.mark.parametrize("carries_on", [True, False])
 @pytest.mark.parametrize(
     "reply",
     [
@@ -1088,7 +1078,7 @@ async def test_a_blocked_run_is_guided_with_what_the_user_said_so_far() -> None:
     ],
 )
 async def test_a_blocked_run_with_no_instruction_ends_blocked_even_if_the_agent_carries_on(
-    reply: HandoffOutcome, carries_on: bool
+    reply: HandoffOutcome,
 ) -> None:
     guided = _guided(reply)
     guided.pop("asked")
@@ -1098,8 +1088,6 @@ async def test_a_blocked_run_with_no_instruction_ends_blocked_even_if_the_agent_
         try:
             await run.hooks.guidance(AgentGuidanceRequest(reason="stuck", task="t"))
         except BrowserHandoffCancelled as exc:
-            if not carries_on:
-                raise
             run.why = str(exc)
         # The agent's next check stops it.
         run.stops = await run.hooks.should_stop()
@@ -1116,9 +1104,8 @@ async def test_a_blocked_run_with_no_instruction_ends_blocked_even_if_the_agent_
         BROWSER_RUN_BLOCKED_SUMMARY,
     )
     assert event["browser"]["blocked"] == BrowserRunFailure.BLOCKED.value
-    if carries_on:
-        [run] = _ScriptedRun.made
-        assert (run.why, run.stops) == (reply.status.value, True)
+    [run] = _ScriptedRun.made
+    assert (run.why, run.stops) == (reply.status.value, True)
 
 
 async def test_a_run_may_ask_for_guidance_only_so_often_and_only_while_an_agent_is_joined() -> None:
@@ -1150,8 +1137,8 @@ async def test_with_no_agent_to_ask_guidance_is_not_offered(missing: str) -> Non
         guided.pop(missing)
 
     async def _asks(run: _ScriptedRun) -> RunOutcome:
-        assert run.hooks.guidance_allowed is not None
-        run.allowed = await run.hooks.guidance_allowed()
+        allowed = run.hooks.guidance_allowed
+        run.allowed = await allowed() if allowed is not None else False
         return RunOutcome(True, "booked")
 
     await _run(_runner(_asks, **guided)[0])
@@ -1159,20 +1146,11 @@ async def test_with_no_agent_to_ask_guidance_is_not_offered(missing: str) -> Non
     assert _ScriptedRun.made[0].allowed is False
 
 
-async def test_guidance_asked_with_no_channel_ends_the_run() -> None:
-    async def _asks(run: _ScriptedRun) -> RunOutcome:
-        assert run.hooks.guidance is not None
-        try:
-            await run.hooks.guidance(AgentGuidanceRequest(reason="stuck", task="t"))
-        except BrowserHandoffCancelled as exc:
-            run.why = str(exc)
-            raise
-        raise AssertionError("no channel ends the run")
+async def test_a_run_with_no_guidance_channel_is_given_no_guidance_hooks() -> None:
+    await _run(_runner(_done)[0])
 
-    result = await _run(_runner(_asks)[0])
-
-    assert _ScriptedRun.made[0].why == "no-guidance-channel"
-    assert result.status == BrowserSessionStatus.CANCELLED
+    hooks = _ScriptedRun.made[0].hooks
+    assert (hooks.guidance_allowed, hooks.guidance) == (None, None)
 
 
 async def test_waiting_on_the_agent_twice_is_not_counted_as_work(
@@ -1231,6 +1209,39 @@ async def test_waiting_on_the_agent_pauses_the_watchdog() -> None:
     assert result.summary == "booked"
 
 
+@pytest.mark.regression
+async def test_a_run_that_saw_no_page_resumes_at_the_page_it_was_asked_to_start_on() -> None:
+    async def _switches_before_any_page(run: _ScriptedRun) -> RunOutcome:
+        run.last_url = None
+        assert run.hooks.switch_engine is not None
+        await run.hooks.switch_engine(EngineSwitchReason.STAYS_EMPTY, None)
+        return RunOutcome(False, "")
+
+    runner, seen = _runner(_switches_before_any_page, _done, fallback=True)
+    runner._config = replace(runner._config, start_url=PAGE)
+
+    await _run(runner)
+
+    assert seen["open_fallback"].await_args.args[0] == PAGE
+
+
+@pytest.mark.regression
+async def test_a_run_the_user_stopped_after_asking_to_move_is_not_moved() -> None:
+    async def _switches(run: _ScriptedRun) -> RunOutcome:
+        assert run.hooks.switch_engine is not None
+        await run.hooks.switch_engine(EngineSwitchReason.STAYS_EMPTY, PAGE)
+        return RunOutcome(False, "")
+
+    runner, seen = _runner(
+        _switches, _done, fallback=True, is_cancelled=AsyncMock(return_value=True)
+    )
+
+    result = await _run(runner)
+
+    seen["open_fallback"].assert_not_awaited()
+    assert result.status == BrowserSessionStatus.CANCELLED
+
+
 async def test_a_run_the_user_stopped_is_not_moved_after_it_ends(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1265,14 +1276,23 @@ async def test_a_model_call_is_metered_as_browser_spend_against_the_request(
     runner, _ = _runner(_done)
 
     runner.ledger.add(
-        ModelCall(CallComponent.AGENT, "openrouter", "luna", 1, input_tokens=10, output_tokens=2)
+        ModelCall(
+            CallComponent.AGENT,
+            "openrouter",
+            "luna",
+            1,
+            input_tokens=10,
+            output_tokens=2,
+            cached_tokens=8,
+        )
     )
     await asyncio.sleep(0)
     await asyncio.sleep(0)
 
     [call] = record.await_args_list
+    # Cached prompt tokens are billed at their own rate, not as fresh input.
     assert call.kwargs["usage"] == TokenUsage(
-        input_tokens=10, output_tokens=2, cached_tokens=0, reasoning_tokens=0
+        input_tokens=10, output_tokens=2, cached_tokens=8, reasoning_tokens=0
     )
     assert call.kwargs["root_request_id"] == "req-1"
     assert call.kwargs["context"] == LLMCallContext(
@@ -1280,28 +1300,48 @@ async def test_a_model_call_is_metered_as_browser_spend_against_the_request(
     )
 
 
-async def test_a_run_that_cannot_attach_names_the_url_and_what_to_check() -> None:
+async def test_a_run_that_never_attached_tells_the_user_plainly_and_logs_what_to_check() -> None:
     async def _refused(run: _ScriptedRun) -> RunOutcome:
+        run.connected = False
         raise ConnectionRefusedError("cdp refused")
 
-    with pytest.raises(BrowserUnavailableError) as raised:
-        await _run(_runner(_refused)[0])
+    async with captured_wide_event() as event:
+        with pytest.raises(BrowserUnavailableError) as raised:
+            await _run(_runner(_refused)[0])
 
-    message = str(raised.value)
-    assert "ws://s-primary" in message
-    assert "cdp refused" in message
-    assert message.endswith(BROWSER_CDP_ATTACH_HINT)
+    assert str(raised.value) == BROWSER_CDP_ATTACH_FAILED
+    [error] = event["errors"]
+    assert "could not attach" in error["msg"]
+    assert (error["error_type"], error["error"], error["hint"], error["browser"]) == (
+        "ConnectionRefusedError",
+        "cdp refused",
+        BROWSER_CDP_ATTACH_HINT,
+        {"session_id": "s-primary"},
+    )
+
+
+async def test_a_connection_lost_mid_run_is_a_failed_run_not_an_attach_failure() -> None:
+    async def _drops(run: _ScriptedRun) -> RunOutcome:
+        raise ConnectionResetError("socket closed: hunter2")
+
+    result = await _run(_runner(_drops)[0])
+
+    assert (result.status, result.summary) == (
+        BrowserSessionStatus.FAILED,
+        BROWSER_RUN_CRASHED_SUMMARY,
+    )
 
 
 async def test_an_unexpected_failure_is_logged_with_its_type_and_session() -> None:
     async def _crashes(run: _ScriptedRun) -> RunOutcome:
         raise RuntimeError("history unreadable")
 
+    runner, _ = _runner(_crashes)
     async with captured_wide_event() as event:
-        result = await _run(_runner(_crashes)[0])
+        result = await _run(runner)
 
     assert result.success is False
-    assert event["reason"] == BrowserRunFailure.RUN_CRASHED
+    assert runner.failure == BrowserRunFailure.RUN_CRASHED
     [error] = event["errors"]
     assert "failed unexpectedly" in error["msg"]
     assert (error["error_type"], error["error"], error["browser"]) == (
@@ -1335,6 +1375,8 @@ async def test_a_run_moved_to_the_fallback_resumes_at_the_page_it_was_on(
 
     primary, on_fallback = _ScriptedRun.made
     assert (on_fallback.config.start_url, on_fallback.task) == (PAGE, "book a table")
+    # It goes on from where the primary's agent was, not from the whole task again.
+    assert on_fallback.setup.resumed_from == primary.agent_state
     assert on_fallback.session.session_id == "s-fallback"
     assert (
         BrowserSessionSnapshot(
@@ -1450,6 +1492,7 @@ async def test_a_run_that_could_not_attach_moves_only_when_its_engine_failed(
     monkeypatch.setattr(runner_mod, "engine_failure", _host)
 
     async def _cannot_attach(run: _ScriptedRun) -> RunOutcome:
+        run.connected = False
         raise ConnectionRefusedError("cdp refused")
 
     runner, seen = _runner(_cannot_attach, _done, fallback=True)

@@ -31,6 +31,7 @@ _real_sleep = asyncio.sleep
 
 PAYLOAD: dict[str, Any] = {
     "job_id": "job-1",
+    "tool_call_id": "call-1",
     "user_id": "u1",
     "conversation_id": "conv-9",
     "task": "book a table",

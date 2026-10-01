@@ -1,18 +1,19 @@
 /**
  * Browser-automation card payloads streamed as `browser_task_data` tool_data.
- * Mirrors apps/api/app/schemas/browser.py — the frontend folds the accumulated
- * array of snapshots into one live card.
+ * Mirrors the BrowserCardSnapshot models in apps/api/app/schemas/browser.py
+ * field for field: they ride the SSE stream, not a route, so the OpenAPI
+ * export (and the generated types) never sees them. A field the model
+ * defaults is optional here, as the generator would make it.
  */
 
-import type { BrowserSessionStatus } from "@shared/api/generated";
+import type {
+  BrowserSessionStatus,
+  HandoffStatus,
+} from "@shared/api/generated";
 
 export type { BrowserSessionStatus } from "@shared/api/generated";
 
-export type BrowserHandoffStatus =
-  | "pending"
-  | "completed"
-  | "cancelled"
-  | "timeout";
+export type BrowserHandoffStatus = HandoffStatus;
 
 export type BrowserSensitiveCategory =
   | "none"
@@ -32,11 +33,9 @@ export interface BrowserSessionSnapshot {
 /** One action the browser agent invoked — its own tool call. */
 export interface BrowserAction {
   name: string;
-  inputs: Record<string, unknown>;
+  inputs?: Record<string, unknown>;
   /** On-page text of the element this action targeted, resolved from the DOM. */
   target?: string | null;
-  /** Where this action acted, as [x, y] fractions of the viewport in [0, 1]. */
-  point?: [number, number] | null;
 }
 
 export interface BrowserStepSnapshot {
@@ -55,11 +54,13 @@ export interface BrowserStepSnapshot {
 export interface BrowserHandoffSnapshot {
   kind: "handoff";
   handoff_id: string;
-  category: BrowserSensitiveCategory;
+  category?: BrowserSensitiveCategory;
   reason: string;
   session_id?: string | null;
   live_view_url?: string | null;
   status: BrowserHandoffStatus;
+  /** A sign-in finished here is kept for the next task (false when persistence is off). */
+  saves_login?: boolean;
 }
 
 export interface BrowserResultSnapshot {
@@ -67,7 +68,9 @@ export interface BrowserResultSnapshot {
   status: BrowserSessionStatus;
   success: boolean;
   summary: string;
-  steps: number;
+  steps?: number;
+  replay_url?: string | null;
+  user_notes?: string[];
 }
 
 export type BrowserTaskSnapshot =
@@ -76,12 +79,13 @@ export type BrowserTaskSnapshot =
   | BrowserHandoffSnapshot
   | BrowserResultSnapshot;
 
-export type BrowserHandoffDecision = "continue" | "cancel";
+export type { HandoffDecision as BrowserHandoffDecision } from "@shared/api/generated";
 
 /**
  * Live-view WebSocket wire protocol. The API proxies these between the viewer
  * and the browser host: the host streams `frame` messages out; the viewer sends
- * CDP-shaped `mouse` / `key` messages back (only when interactive).
+ * CDP-shaped `mouse` / `key` messages and keyboard `text` back (only when
+ * interactive).
  */
 
 export interface BrowserFrameMessage {
@@ -129,4 +133,13 @@ export interface BrowserKeyMessage {
   modifiers?: number;
 }
 
-export type BrowserLiveInputMessage = BrowserMouseMessage | BrowserKeyMessage;
+/** A phone keyboard's committed text, inserted into the page as one edit. */
+export interface BrowserTextMessage {
+  type: "text";
+  text: string;
+}
+
+export type BrowserLiveInputMessage =
+  | BrowserMouseMessage
+  | BrowserKeyMessage
+  | BrowserTextMessage;

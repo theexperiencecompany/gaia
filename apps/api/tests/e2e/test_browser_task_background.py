@@ -89,6 +89,14 @@ async def test_the_run_answers_the_question_and_the_executor_reports_that_answer
     joined = run.result_for("wait_for_browser_task") or ""
     assert joined.startswith("The table is booked for 7pm on Friday.")
     assert len(world.enqueued) == 1
+    # The run's thread group is keyed by the call that started it, injected by the tool node.
+    assert world.enqueued[0].tool_call_id == "b1"
+    groups = {
+        frame["subagent_start"]["subagent_id"]
+        for frame in world.frames()
+        if "subagent_start" in frame
+    }
+    assert groups == {"browser:b1"}
 
 
 async def test_the_join_is_bound_from_the_first_model_call() -> None:

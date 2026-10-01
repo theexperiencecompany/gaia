@@ -12,20 +12,28 @@ import asyncio
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import AbstractContextManager, ExitStack, asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
+import inspect
 import json
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from browser_use.agent.views import ActionResult, AgentState
+from browser_use.browser.events import BrowserConnectedEvent
 import fakeredis.aioredis
 
 from app.agents.core.background.session import RunKind, create_session
 from app.agents.tools import browser_tool
 from app.config.settings import settings
-from app.constants.browser import BrowserEngine, EngineSwitchReason, SensitiveCategory
+from app.constants.browser import (
+    BROWSER_ANSWER_AFTER_STEP,
+    BrowserEngine,
+    EngineSwitchReason,
+    SensitiveCategory,
+)
 from app.models.hil_models import HILPreferences
 from app.schemas.browser_job import BrowserJobRequest
-from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserSessionGone
+from app.services.browser.exceptions import BrowserSessionGone
 from app.services.browser.host_client import HostSessionInfo
 from app.workers.tasks import browser_tasks
 
@@ -113,16 +121,9 @@ class _PageState:
         )
 
 
-class _ActionResult:
-    def __init__(self, output: str) -> None:
-        self.extracted_content = output
-        self.error = None
-        self.long_term_memory = None
-
-
-class _AgentState:
-    def __init__(self, outputs: list[str]) -> None:
-        self.last_result = [_ActionResult(text) for text in outputs]
+def _agent_state(outputs: list[str]) -> AgentState:
+    """Browser-Use's own agent state after a step, carrying each action's output."""
+    return AgentState(last_result=[ActionResult(extracted_content=text) for text in outputs])
 
 
 class _History:
@@ -140,6 +141,12 @@ class _History:
 
     def is_successful(self) -> bool:
         return self._successful
+
+    def errors(self) -> list[str | None]:
+        return [None]
+
+    def number_of_steps(self) -> int:
+        return 1
 
 
 class BrowserDouble:
@@ -187,6 +194,24 @@ class _BrowserSession:
         return self._double.url
 
 
+class _Browser:
+    """Browser-Use's Browser, as the run wires it: its event bus fires the connect the real one does."""
+
+    def __init__(self) -> None:
+        self._handlers: dict[object, list[Callable[[object], object]]] = {}
+        self.event_bus = SimpleNamespace(on=self._on)
+        self.cdp_client = MagicMock()
+
+    def _on(self, event: object, handler: Callable[[object], object]) -> None:
+        self._handlers.setdefault(event, []).append(handler)
+
+    async def connect(self) -> None:
+        for handler in self._handlers.get(BrowserConnectedEvent, []):
+            fired = handler(SimpleNamespace())
+            if inspect.isawaitable(fired):
+                await fired
+
+
 class _ScriptedAgent:
     """Stands in for browser_use.Agent, calling back exactly where the real one does.
 
@@ -199,8 +224,9 @@ class _ScriptedAgent:
         self._on_step = kwargs["register_new_step_callback"]
         self._should_stop = kwargs["register_should_stop_callback"]
         self.task = kwargs["task"]
+        self._browser: _Browser = kwargs["browser"]
         self._stopped = False
-        self.state = _AgentState([])
+        self.state = kwargs.get("injected_agent_state") or _agent_state([])
         self.browser_session = _BrowserSession(double)
         self.new_tasks: list[str] = []
         self.message_manager = SimpleNamespace(add_new_task=self.new_tasks.append)
@@ -212,6 +238,7 @@ class _ScriptedAgent:
         self, max_steps: int, on_step_start: Any = None, on_step_end: Any = None
     ) -> _History:
         double = self._double
+        await self._browser.connect()
         while double.next_step < len(double.steps):
             step = double.steps[double.next_step]
             double.next_step += 1
@@ -259,30 +286,35 @@ class _ScriptedAgent:
         self._double.url = step.url
         actions = [_Action(name, params) for name, params in step_actions]
         await self._on_step(_PageState(step.url, step.fields), _AgentOutput(actions), index)
-        try:
-            if step.takeover is not None:
-                await self._hand_over(*step.takeover)
-            elif step.guidance is not None:
-                await self._ask_the_agent(step.guidance)
-            elif step.switch is not None:
-                assert self._double.switch is not None, "the run was not offered the full browser"
-                await self._double.switch(step.switch)
-        except BrowserHandoffCancelled:
-            # Browser-Use turns this into an action error and the run's own flags
-            # decide the outcome; the loop has nothing left to do.
-            raise _RunHalted from None
+        asked: object = None
+        if step.takeover is not None:
+            asked = await self._hand_over(*step.takeover)
+        elif step.guidance is not None:
+            asked = await self._ask_the_agent(step.guidance)
+        elif step.switch is not None:
+            assert self._double.switch is not None, "the run was not offered the full browser"
+            await self._double.switch(step.switch)
         if on_step_end is not None:
-            self.state = _AgentState(step.outputs)
+            self.state.last_result = _agent_state(step.outputs).last_result
+            # A handoff's wait runs here, after the step, and its answer joins the step's results.
             await on_step_end(self)
+            if asked == BROWSER_ANSWER_AFTER_STEP:
+                answer = self.state.last_result[-1]
+                if answer.error is not None:
+                    # The run's own flags decide the outcome; the loop has nothing left to do.
+                    raise _RunHalted
+                asked = answer.long_term_memory
+            if step.takeover is not None:
+                self._double.takeover_notes.append(asked)
+            elif step.guidance is not None:
+                self._double.guidance_notes.append(asked)
         # A done action ends the run where Browser-Use ends it, with its own text and verdict.
         return _ended_by(step_actions)
 
-    async def _hand_over(self, reason: str, category: str) -> None:
+    async def _hand_over(self, reason: str, category: str) -> object:
         assert self._double.takeover is not None, "the takeover action was never built"
         # Browser-Use validates the action's arguments into its param model first.
-        self._double.takeover_notes.append(
-            await self._double.takeover(reason, SensitiveCategory(category))
-        )
+        return await self._double.takeover(reason, SensitiveCategory(category))
 
     async def _wait_for_joiner(self) -> None:
         from app.services.browser.jobs import joiner_lease_held
@@ -293,10 +325,10 @@ class _ScriptedAgent:
             await asyncio.sleep(0.01)
         raise AssertionError("no executor ever joined the job")
 
-    async def _ask_the_agent(self, reason: str) -> None:
+    async def _ask_the_agent(self, reason: str) -> object:
         assert self._double.guidance is not None, "the guidance action was never built"
         self._double.guidance_reasons.append(reason)
-        self._double.guidance_notes.append(await self._double.guidance(reason))
+        return await self._double.guidance(reason)
 
     async def _wait_for_stop(self) -> None:
         """Sit on the page until the user's stop reaches the agent, as a real run would."""
@@ -409,7 +441,7 @@ async def browser_job_world(
     )
     world = JobWorld(double)
     scripted_host = host if host is not None else ScriptedHost()
-    browser = MagicMock()
+    browser = _Browser()
     redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
     create_session(stream_id, RunKind.LIVE)
 
@@ -449,11 +481,6 @@ async def browser_job_world(
             "app.services.browser.job_runner.is_enabled",
             AsyncMock(return_value=scripted_host.fallback_url is not None),
         ),
-        patch.object(
-            settings,
-            "BROWSER_ENGINE",
-            BrowserEngine.OBSCURA if scripted_host.fallback_url else BrowserEngine.CHROMIUM,
-        ),
         # The models and Jev's gateway are never called: the agent and Jev are scripted.
         patch("app.services.browser.agent_run.build_agent_llm", AsyncMock(return_value=object())),
         patch("app.services.browser.agent_run.build_text_model", lambda ledger: object()),
@@ -492,10 +519,15 @@ def _host_patches(
             raise scripted_host.error
         world.seeded_states.append(storage_state)
         world.host_sessions += 1
+        # A world with a fallback host has Obscura on its primary and Chrome behind it.
+        on_obscura = (
+            scripted_host.fallback_url is not None and host_url != scripted_host.fallback_url
+        )
         return MagicMock(
             session_id=f"sess-{world.host_sessions}",
             cdp_ws="ws://browser.test/cdp",
             live_ws="ws://browser.test/live",
+            engine=BrowserEngine.OBSCURA if on_obscura else BrowserEngine.CHROMIUM,
         )
 
     def _kill_engine() -> None:

@@ -19,7 +19,7 @@ import asyncio
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request, WebSocket, status
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from jose import JWTError
 from starlette.websockets import WebSocketState
 import websockets
@@ -32,7 +32,7 @@ from app.services.browser import registry
 from app.services.browser.live_code import live_code_remaining_seconds, resolve_live_code
 from app.services.browser.live_view import render_live_view_page
 from app.services.browser.replay import render_replay_page, resolve_replay_code
-from app.services.browser.shot_store import resolve_shot_code, shot_path
+from app.services.browser.shot_store import SHOT_SUFFIX, read_step_screenshot
 from app.services.browser.takeover_token import (
     TakeoverTokenClaims,
     takeover_token_ttl_seconds,
@@ -46,26 +46,21 @@ router = APIRouter(tags=["Browser"])
 _WS_SESSION_GONE = 4404
 
 
-@router.get("/shots/{code}/{index}.png", response_class=FileResponse)
-async def step_screenshot(code: str, index: int) -> FileResponse:
-    """One step frame of a finished run, for deployments with no object store.
+@router.get(f"/shots/{{code}}/{{index}}{SHOT_SUFFIX}", response_class=Response)
+async def step_screenshot(code: str, index: int) -> Response:
+    """One step frame of a run, for deployments with no object store.
 
     Same capability model as the recap page it feeds: the code is the secret, so
     a frame cannot be reached by guessing a session id, and it expires with the
-    code. The index is an int, so it cannot walk out of the run's directory.
+    code.
     """
     log.set(browser={"operation": "step_screenshot"})
-    session_id = await resolve_shot_code(code)
-    if session_id is None:
+    frame = await read_step_screenshot(code, index)
+    if frame is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Screenshot not found or expired"
         )
-    path = shot_path(session_id, index)
-    if not path.is_file():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Screenshot not found")
-    log.set(browser={"session_id": session_id})
-    # Starlette reads the type off the .png suffix shot_path always writes.
-    return FileResponse(path)
+    return Response(content=frame, media_type="image/jpeg")
 
 
 @router.get("/replays/{code}", response_class=HTMLResponse, responses=HTML_ROUTE_ERROR_RESPONSES)

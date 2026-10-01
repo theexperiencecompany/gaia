@@ -83,6 +83,8 @@ class _ScriptedBrowser:
         self.session = kwargs["session"]
         self.used_fallback = False
         self.ledger = RunLedger()
+        #: The run below succeeds, so it gives no reason it failed.
+        self.failure = None
 
     async def run(self, task: str) -> BrowserResultSnapshot:
         emit: EmitFn = self._callbacks.emit
@@ -176,7 +178,11 @@ def outbound(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[Any]]:
 @pytest.fixture
 def browser(monkeypatch: pytest.MonkeyPatch) -> None:
     """Everything outside the process: the host session, the engine choice, the history write."""
-    session = MagicMock(session_id="sess-7", live_view_url="https://host.test/live/sess-7")
+    session = MagicMock(
+        session_id="sess-7",
+        live_view_url="https://host.test/live/sess-7",
+        engine=BrowserEngine.CHROMIUM,
+    )
 
     @asynccontextmanager
     async def _session(**kwargs: Any) -> AsyncIterator[MagicMock]:
@@ -185,7 +191,6 @@ def browser(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(jr, "browser_session", _session)
     # Chrome, the default engine: the user has not opted into Obscura.
     monkeypatch.setattr(jr, "is_enabled", AsyncMock(return_value=False))
-    monkeypatch.setattr(jr.settings, "BROWSER_ENGINE", BrowserEngine.CHROMIUM)
     monkeypatch.setattr(jr, "BrowserTaskRunner", _ScriptedBrowser)
     monkeypatch.setattr(jr, "record_browser_task", AsyncMock())
     monkeypatch.setattr(jr, "capture_event", MagicMock())
@@ -194,6 +199,7 @@ def browser(monkeypatch: pytest.MonkeyPatch) -> None:
 def _request(**overrides: Any) -> BrowserJobRequest:
     return BrowserJobRequest(
         job_id=JOB_ID,
+        tool_call_id="call-7",
         user_id="user-7",
         conversation_id="conv-7",
         task="book a table for two at 7pm",
@@ -265,7 +271,7 @@ async def test_the_runs_cards_are_collected_onto_the_turns_message_under_one_gro
     assert [card["data"]["kind"] for card in cards] == ["session", "step", "result"]
     groups = [e for e in entries if e["tool_name"] == "subagent_group"]
     assert len(groups) == 1
-    assert groups[0]["data"]["subagent_id"] == "browser:sess-7"
+    assert groups[0]["data"]["subagent_id"] == "browser:call-7"
     group_calls = groups[0]["data"]["tool_calls"]
     assert [call["tool_name"] for call in group_calls] == ["go_to_url"]
     assert group_calls[0]["output"] == "opened example.test/book"

@@ -1,74 +1,55 @@
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
-import type { AgentCursorTarget } from "@/features/chat/components/bubbles/bot/AgentCursor";
-import type {
-  BrowserHandoffSnapshot,
-  BrowserSessionStatus,
-} from "@/types/features/browserTaskTypes";
+import type { BrowserCardStatus } from "@/features/browser/utils";
+import type { BrowserHandoffSnapshot } from "@/types/features/browserTaskTypes";
+
+/** What the panel shows of its card, mirrored from the card's snapshots. */
+interface BrowserPanelView {
+  /** The session the run is on now: it changes when the run falls back to another engine. */
+  sessionId: string | null;
+  liveViewUrl: string | null;
+  status: BrowserCardStatus | null;
+  currentTask: string | null;
+  pendingHandoff: BrowserHandoffSnapshot | null;
+}
 
 /**
  * Live state for the browser side panel.
  *
- * The chat's browser card is the SSE-driven source of truth: while its task is
- * active it mirrors the fields the panel needs into this store, and the panel
- * (mounted in the right sidebar) renders purely from here. `sessionId` doubles
- * as the "panel is showing this session" flag the card uses to hand the single
- * live-view socket over to the panel instead of streaming twice.
+ * The chat's browser card is the SSE-driven source of truth: while it owns the
+ * panel it mirrors the fields the panel needs into this store, and the panel
+ * (mounted in the right sidebar) renders purely from here. The owner is the
+ * card, by `cardId`, not a session: a run that falls back to a new session is
+ * still the same card, and its panel must follow it there.
  */
-interface BrowserPanelState {
-  sessionId: string | null;
-  socketUrl: string | null;
-  pageUrl: string | null;
-  status: BrowserSessionStatus | null;
-  currentTask: string | null;
-  pendingHandoff: BrowserHandoffSnapshot | null;
-  agentCursor: AgentCursorTarget | null;
-  open: (sessionId: string) => void;
+interface BrowserPanelState extends BrowserPanelView {
+  cardId: string | null;
+  open: (cardId: string) => void;
   close: () => void;
-  sync: (update: {
-    sessionId: string;
-    socketUrl: string | null;
-    pageUrl: string | null;
-    status: BrowserSessionStatus;
-    currentTask: string | null;
-    pendingHandoff: BrowserHandoffSnapshot | null;
-    agentCursor: AgentCursorTarget | null;
-  }) => void;
+  sync: (cardId: string, view: BrowserPanelView) => void;
 }
+
+const EMPTY_VIEW: BrowserPanelView = {
+  sessionId: null,
+  liveViewUrl: null,
+  status: null,
+  currentTask: null,
+  pendingHandoff: null,
+};
 
 export const useBrowserPanel = create<BrowserPanelState>()(
   devtools(
     (set) => ({
-      sessionId: null,
-      socketUrl: null,
-      pageUrl: null,
-      status: null,
-      currentTask: null,
-      pendingHandoff: null,
-      agentCursor: null,
-      open: (sessionId) => set({ sessionId }, false, "browserPanel/open"),
+      cardId: null,
+      ...EMPTY_VIEW,
+      open: (cardId) => set({ cardId }, false, "browserPanel/open"),
       close: () =>
+        set({ cardId: null, ...EMPTY_VIEW }, false, "browserPanel/close"),
+      sync: (cardId, view) =>
         set(
-          {
-            sessionId: null,
-            socketUrl: null,
-            pageUrl: null,
-            status: null,
-            currentTask: null,
-            pendingHandoff: null,
-            agentCursor: null,
-          },
-          false,
-          "browserPanel/close",
-        ),
-      sync: (update) =>
-        set(
-          (state) => {
-            // Only the session shown in the panel may write — a second
-            // concurrent browser card must not hijack the open panel.
-            if (state.sessionId !== update.sessionId) return state;
-            return { ...update };
-          },
+          // Only the card shown in the panel may write: a second concurrent
+          // browser card must not hijack the open panel.
+          (state) => (state.cardId === cardId ? view : state),
           false,
           "browserPanel/sync",
         ),

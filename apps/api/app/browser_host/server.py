@@ -46,6 +46,7 @@ from app.constants.browser import (
     BROWSER_HOST_DEADLINE_HEADER,
     BROWSER_HOST_KEY_HEADER,
     BROWSER_SESSION_LEASE_SECONDS,
+    BrowserEngine,
     HostRequestFailure,
 )
 from app.constants.log_tags import LogTag
@@ -69,11 +70,12 @@ class CreateSessionRequest(BaseModel):
 
 
 class CreateSessionResponse(BaseModel):
-    """Handle for a created session: its CDP and live-view websocket URLs."""
+    """Handle for a created session: its CDP and live-view websocket URLs and the engine it runs on."""
 
     session_id: str
     cdp_ws: str
     live_ws: str
+    engine: BrowserEngine
 
 
 class DeleteSessionResponse(BaseModel):
@@ -296,6 +298,7 @@ async def create_session(request: Request, payload: CreateSessionRequest) -> Cre
         session_id=session.session_id,
         cdp_ws=_ws_url(f"/cdp/{session.session_id}", session.token),
         live_ws=_ws_url(f"/live/{session.session_id}", session.token),
+        engine=session.engine.kind,
     )
 
 
