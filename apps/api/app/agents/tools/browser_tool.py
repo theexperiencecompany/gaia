@@ -19,7 +19,6 @@ from pydantic import BaseModel, ConfigDict
 
 from app.agents.core.background.redis_writer import publish_to_stream
 from app.constants.browser import (
-    BROWSER_JOB_JOINER_REFRESH_SECONDS,
     BROWSER_JOB_QUEUE,
     BROWSER_JOB_TASK,
     BROWSER_USER_WORDS_MAX_CHARS,
@@ -40,7 +39,7 @@ from app.services.browser.agent_guidance import (
 from app.services.browser.handoff import reply_address, resolve_handoff
 from app.services.browser.jev.decision import named_sites, named_urls
 from app.services.browser.jev.secrets import RunSecrets
-from app.services.browser.job_events import feed_end, is_card_frame, read_job_events
+from app.services.browser.job_events import feed_end, read_cards, read_job_events
 from app.services.browser.job_relay import relay_job_events
 from app.services.browser.job_runner import agent_result_message
 from app.services.browser.jobs import (
@@ -369,9 +368,7 @@ async def _join(job_id: str, params: _RunParams, timeout: int) -> _JoinOutcome:
         if monotonic() >= deadline:
             log.set_ns("browser", job_id=job_id, join="timed_out_still_running")
             return _JoinOutcome(_STILL_RUNNING)
-        for entry_id, _payload in await read_job_events(
-            job_id, cursor, int(BROWSER_JOB_JOINER_REFRESH_SECONDS * 1000)
-        ):
+        for entry_id, _payload in await read_job_events(job_id, cursor):
             cursor = entry_id
         await refresh_joiner_lease(job_id, stream_id)
 
@@ -385,9 +382,8 @@ async def _collect(job_id: str, state: BrowserJobState, stream_id: str) -> _Join
     if await claim_result_delivery(job_id, ResultSpeaker.JOINER) is not ResultSpeaker.JOINER:
         return _JoinOutcome(_ALREADY_TOLD.format(outcome=state.agent_message))
     if stream_id and state.relay_stream_id != stream_id:
-        for _entry_id, payload in await read_job_events(job_id, "0-0", 0):
-            if is_card_frame(payload):
-                await publish_to_stream(stream_id, payload)
+        for card in await read_cards(job_id):
+            await publish_to_stream(stream_id, card)
     return _JoinOutcome(state.agent_message)
 
 

@@ -20,7 +20,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import fakeredis.aioredis
 
 from app.agents.core.background.session import RunKind, create_session, signal_executor_done
-from app.agents.tools import browser_tool
 from app.config.settings import settings
 from app.constants.browser import BrowserEngine, EngineSwitchReason, SensitiveCategory
 from app.core.stream_manager import StreamManager
@@ -444,9 +443,6 @@ async def browser_job_world(
 
     patches = [
         patch("app.db.redis.redis_cache.redis", redis),
-        # The join's beat (lease refresh, worker liveness) is seconds long; shrunk so
-        # a journey that ends on it does not sit it out. Its waits are on events.
-        patch.object(browser_tool, "BROWSER_JOB_JOINER_REFRESH_SECONDS", 0.1),
         patch("app.services.browser.job_stop._abort_if_started", _abort),
         # A guidance request nobody answers must fail the journey in seconds, not
         # sit out the real two-minute budget.

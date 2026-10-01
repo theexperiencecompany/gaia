@@ -12,11 +12,9 @@ from arq.jobs import Job, JobStatus
 from arq.utils import timestamp_ms
 
 from app.constants.browser import (
-    BROWSER_JOB_QUEUE,
     BrowserSessionStatus,
     BrowserStopOutcome,
 )
-from app.constants.log_tags import LogTag
 from app.schemas.browser_job import BrowserJobStatus
 from app.services.browser.handoff import cancel_handoff
 from app.services.browser.job_events import wait_for_job_end
@@ -43,24 +41,22 @@ async def stop_browser_job(key: str) -> str | None:
     if paused_on is not None:
         await cancel_handoff(paused_on)
     aborted = await _abort_if_started(job_id)
-    log.info(
-        f"{LogTag.BROWSER} Browser job stopped",
-        browser={"job_id": job_id, "paused_on": paused_on, "aborted": aborted},
-    )
+    log.set_ns("browser", stopped_job=job_id, stop_settled=paused_on, stop_aborted=aborted)
     return job_id
 
 
 async def _abort_if_started(job_id: str) -> bool:
     """Cancel the job's ARQ task when a worker is running it; whether the abort was asked for."""
     pool = await RedisPoolManager.get_pool()
-    if await Job(job_id, pool, _queue_name=BROWSER_JOB_QUEUE).status() is not JobStatus.in_progress:
+    # The in-progress key a worker holds while running a job, whichever queue it came from.
+    if await Job(job_id, pool).status() is not JobStatus.in_progress:
         return False
     # What Job.abort does, without its wait on a result: this queue keeps none.
     await pool.zadd(abort_jobs_ss, {job_id: timestamp_ms()})
     return True
 
 
-async def confirm_stopped(job_id: str, within_seconds: int) -> BrowserStopOutcome:
+async def confirm_stopped(job_id: str, within_seconds: float) -> BrowserStopOutcome:
     """Wait for the stopped job's own ending; say whether it ended stopped, ended otherwise, or not yet."""
     if not await wait_for_job_end(job_id, within_seconds):
         return BrowserStopOutcome.UNCONFIRMED

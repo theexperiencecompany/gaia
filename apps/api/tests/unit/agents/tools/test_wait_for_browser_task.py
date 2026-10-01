@@ -36,8 +36,6 @@ RESULT = BrowserResultSnapshot(
 @pytest.fixture(autouse=True)
 async def job(fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch) -> None:
     """Start a running job in conversation c1, from stream s1."""
-    # The beat a join re-arms its lease on, shortened so a timeout case is quick.
-    monkeypatch.setattr(tool_mod, "BROWSER_JOB_JOINER_REFRESH_SECONDS", 0.05)
     await set_latest_job("c1", "job-1")
     await claim_conversation_slot("c1", "job-1")
     await put_job_state(_state(BrowserJobStatus.RUNNING))

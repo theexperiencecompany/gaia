@@ -42,7 +42,7 @@ from app.schemas.browser import (
     HandoffRecord,
 )
 from app.services.browser import handoff_buttons
-from app.services.browser.handoff import cancel_handoff, create_pending_handoff
+from app.services.browser.handoff import cancel_handoff, create_pending_handoff, get_handoff
 from app.services.browser.live_code import mint_live_code
 
 pytestmark = pytest.mark.unit
@@ -154,6 +154,9 @@ class TestDecideBrowserHandoff:
         resp = await browser_ep.decide_browser_handoff("h1", payload, "u1")
 
         assert (resp.handoff_id, resp.status) == ("h1", HandoffStatus.COMPLETED)
+        record = await get_handoff("h1")
+        assert record is not None
+        assert record.message == "skip it"
         assert button_world == [
             (
                 "c1",

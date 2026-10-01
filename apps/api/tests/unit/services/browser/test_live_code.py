@@ -30,6 +30,9 @@ async def test_a_code_opens_its_session_for_the_handoffs_window_until_revoked(
         <= (settings.BROWSER_USE_HANDOFF_TIMEOUT_SECONDS)
     )
 
+    # The handoff's own pointer to its code lapses with it too.
+    assert await fake_redis.ttl("browser:livecode:handoff:h1") > 0
+
     await live_code.revoke_handoff_live_code("h1")
 
     assert await live_code.resolve_live_code(code) is None

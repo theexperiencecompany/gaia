@@ -198,10 +198,12 @@ class AsyncRedisCommands(Protocol):
         """XREAD — [(stream, [(entry_id, fields)])] for streams with new entries."""
         ...
 
-    async def xrevrange(
-        self, name: str, *, count: int | None = None
-    ) -> list[tuple[str, dict[str, str]]]:
-        """XREVRANGE — [(entry_id, fields)], newest first."""
+    async def xrange(self, name: str) -> list[tuple[str, dict[str, str]]]:
+        """XRANGE over the whole stream — [(entry_id, fields)], oldest first."""
+        ...
+
+    async def xinfo_stream(self, name: str) -> dict[str, object]:
+        """XINFO STREAM — the stream's facts, last-generated-id among them; raises for a missing key."""
         ...
 
     async def eval(self, script: str, numkeys: int, *keys_and_args: str) -> LuaReply:

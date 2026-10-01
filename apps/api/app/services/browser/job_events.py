@@ -6,8 +6,8 @@ pub/sub channel so a relay that starts late, or restarts, still reads from 0-0
 and shows the run from step 1.
 """
 
+import asyncio
 import json
-from time import monotonic
 from typing import TypedDict
 
 from pydantic import TypeAdapter
@@ -15,6 +15,7 @@ from pydantic import TypeAdapter
 from app.constants.browser import (
     BROWSER_JOB_EVENTS_MAXLEN,
     BROWSER_JOB_EVENTS_PREFIX,
+    BROWSER_JOB_FEED_WAIT_MS,
 )
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
@@ -58,17 +59,9 @@ async def publish_job_event(job_id: str, payload: dict[str, object]) -> None:
     await redis_cache.client.expire(key, browser_job_ttl_seconds())
 
 
-async def read_job_events(
-    job_id: str, cursor: str, block_ms: int
-) -> list[tuple[str, dict[str, object]]]:
-    """Read frames after cursor; returns (entry_id, payload) pairs.
-
-    block_ms of 0 reads whatever is already there instead of blocking forever,
-    so draining a finished job's whole feed can never hang on an empty stream.
-    """
-    results = await redis_cache.client.xread(
-        {_key(job_id): cursor}, block=block_ms if block_ms > 0 else None
-    )
+async def read_job_events(job_id: str, cursor: str) -> list[tuple[str, dict[str, object]]]:
+    """Read the frames after cursor, waiting up to a beat for one to land; returns (entry_id, payload) pairs."""
+    results = await redis_cache.client.xread({_key(job_id): cursor}, block=BROWSER_JOB_FEED_WAIT_MS)
     events: list[tuple[str, dict[str, object]]] = []
     for _stream, entries in results:
         for entry_id, fields in entries:
@@ -96,19 +89,32 @@ def _decode(entry_id: str, raw: str | None) -> dict[str, object] | None:
 
 async def feed_end(job_id: str) -> str:
     """Return the id of the feed's newest frame, the cursor a reader starts after to see only what comes next."""
-    newest = await redis_cache.client.xrevrange(_key(job_id), count=1)
-    return str(newest[0][0]) if newest else "0-0"
+    key = _key(job_id)
+    if not await redis_cache.client.exists(key):
+        return "0-0"
+    info = await redis_cache.client.xinfo_stream(key)
+    return str(info["last-generated-id"])
 
 
-async def wait_for_job_end(job_id: str, within_seconds: int) -> bool:
+async def read_cards(job_id: str) -> list[dict[str, object]]:
+    """Return every card the feed holds now, oldest first, without waiting for more."""
+    cards: list[dict[str, object]] = []
+    for entry_id, fields in await redis_cache.client.xrange(_key(job_id)):
+        payload = _decode(entry_id, _STREAM_FIELDS.validate_python(fields).get("payload"))
+        if payload is not None and is_card_frame(payload):
+            cards.append(payload)
+    return cards
+
+
+async def wait_for_job_end(job_id: str, within_seconds: float) -> bool:
     """Block until the job's feed carries its terminal frame; False when within_seconds pass first."""
-    deadline = monotonic() + within_seconds
     cursor = "0-0"
-    while (remaining := deadline - monotonic()) > 0:
-        for entry_id, payload in await read_job_events(
-            job_id, cursor, max(1, int(remaining * 1000))
-        ):
-            cursor = entry_id
-            if payload == JOB_TERMINAL_FRAME:
-                return True
-    return False
+    try:
+        async with asyncio.timeout(within_seconds):
+            while True:
+                for entry_id, payload in await read_job_events(job_id, cursor):
+                    if payload == JOB_TERMINAL_FRAME:
+                        return True
+                    cursor = entry_id
+    except TimeoutError:
+        return False

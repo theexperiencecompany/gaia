@@ -21,7 +21,7 @@ from app.constants.browser import (
 from app.constants.comms import CommsDirectiveKind
 from app.constants.log_tags import LogTag
 from app.schemas.browser_job import BrowserJobRequest
-from app.services.browser.job_events import is_card_frame, read_job_events
+from app.services.browser.job_events import read_cards
 from app.services.browser.job_runner import (
     agent_result_message,
     execute_browser_job,
@@ -157,12 +157,6 @@ async def _deliver(request: BrowserJobRequest, agent_message: str) -> None:
         text=directive.payload,
         # The message that speaks the result carries the run's cards: the job's
         # own feed is their one full copy.
-        tool_data=tool_data_from_events(
-            [
-                payload
-                for _, payload in await read_job_events(request.job_id, "0-0", 0)
-                if is_card_frame(payload)
-            ]
-        ),
+        tool_data=tool_data_from_events(await read_cards(request.job_id)),
         origin=f"browser task (job {request.job_id})",
     )

@@ -6,6 +6,7 @@ import fakeredis.aioredis
 import pytest
 
 from app.constants.browser import BROWSER_JOB_LOCK_TTL_SECONDS, ResultSpeaker
+from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
 from app.services.browser import jobs as jobs_mod
 
 pytestmark = pytest.mark.unit
@@ -33,17 +34,19 @@ async def test_only_the_holder_heartbeats_or_releases_the_slot() -> None:
     assert await jobs_mod.get_conversation_slot("conv-1") == "job-1"
 
     assert await jobs_mod.heartbeat_conversation_slot("conv-1", "job-1") is True
+    assert await jobs_mod.get_conversation_slot("conv-1") == "job-1"
     await jobs_mod.release_conversation_slot("conv-1", "job-1")
     assert await jobs_mod.get_conversation_slot("conv-1") is None
 
 
 async def test_the_result_is_told_once_by_whoever_claims_it_first() -> None:
-    assert (
-        await jobs_mod.claim_result_delivery("job-1", ResultSpeaker.JOINER) is ResultSpeaker.JOINER
-    )
-    assert (
-        await jobs_mod.claim_result_delivery("job-1", ResultSpeaker.WORKER) is ResultSpeaker.JOINER
-    )
+    joiner, worker = ResultSpeaker.JOINER, ResultSpeaker.WORKER
+    assert await jobs_mod.claim_result_delivery("job-1", joiner) is joiner
+    assert await jobs_mod.claim_result_delivery("job-1", worker) is joiner
+    # The losing claim changed nothing: the first claimer still holds it.
+    assert await jobs_mod.claim_result_delivery("job-1", worker) is joiner
+    # Another job's result is its own to tell.
+    assert await jobs_mod.claim_result_delivery("job-2", worker) is worker
 
 
 async def test_a_turn_drops_only_its_own_join() -> None:
@@ -79,6 +82,93 @@ async def test_a_message_reaches_only_the_running_job_and_is_taken_once() -> Non
     await jobs_mod.claim_conversation_slot("conv-1", "job-1")
 
     assert await jobs_mod.post_conversation_message("conv-1", "use the blue one") == "job-1"
+    await jobs_mod.post_job_message("job-1", "then the big one")
+    await jobs_mod.post_job_message("job-1", "no, the small one")
     assert await jobs_mod.job_messages_waiting("job-1") is True
-    assert await jobs_mod.take_job_messages("job-1") == ["use the blue one"]
+    assert await jobs_mod.take_job_messages("job-1") == [
+        "use the blue one",
+        "then the big one",
+        "no, the small one",
+    ]
+    assert await jobs_mod.job_messages_waiting("job-1") is False
     assert await jobs_mod.take_job_messages("job-1") == []
+
+
+async def test_a_lease_another_run_took_between_the_read_and_the_write_is_left_to_it(
+    redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The check and the write are one transaction: a heartbeat must never re-arm, nor a release free, a newer run's lease."""
+    await jobs_mod.claim_conversation_slot("conv-1", "job-1")
+    real_pipeline = redis.pipeline
+
+    def _raced(*args: object, **kwargs: object) -> object:
+        pipe = real_pipeline(*args, **kwargs)
+        read = pipe.get
+
+        async def _read_then_lose_it(key: str) -> object:
+            value = await read(key)
+            await redis.set(key, "job-2")
+            return value
+
+        pipe.get = _read_then_lose_it
+        return pipe
+
+    monkeypatch.setattr(redis, "pipeline", _raced)
+
+    assert await jobs_mod.heartbeat_conversation_slot("conv-1", "job-1") is False
+    await jobs_mod.release_conversation_slot("conv-1", "job-1")
+    assert await redis.get("browser:job:lock:conv-1") == "job-2"
+
+
+async def test_a_turns_join_is_re_armed_only_by_that_turn(
+    redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    await jobs_mod.take_joiner_lease("job-1", "stream-a")
+    await redis.expire("browser:job:joiner:job-1", 1)
+
+    await jobs_mod.refresh_joiner_lease("job-1", "stream-b")
+    assert await redis.ttl("browser:job:joiner:job-1") == 1
+
+    await jobs_mod.refresh_joiner_lease("job-1", "stream-a")
+    assert await redis.ttl("browser:job:joiner:job-1") > 1
+
+
+async def test_a_claim_whose_process_died_lapses_and_frees_the_result(
+    redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Nobody drops a dead API's lease: the worker waits only until it expires."""
+    monkeypatch.setattr(jobs_mod, "BROWSER_JOB_JOINER_LEASE_SECONDS", 1)
+    await jobs_mod.take_joiner_lease("job-1", "stream-a")
+    await redis.pexpire("browser:job:joiner:job-1", 50)
+
+    await asyncio.wait_for(jobs_mod.await_result_unclaimed("job-1"), timeout=3)
+
+
+async def test_everything_the_job_store_writes_lapses_with_the_job(
+    redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    await jobs_mod.claim_conversation_slot("conv-1", "job-1")
+    await jobs_mod.set_latest_job("conv-1", "job-1")
+    await jobs_mod.put_job_state(
+        BrowserJobState(job_id="job-1", status=BrowserJobStatus.RUNNING, task="t")
+    )
+    await jobs_mod.take_joiner_lease("job-1", "stream-a")
+    await jobs_mod.hold_result_for_run("job-1", "stream-b")
+    await jobs_mod.claim_result_delivery("job-1", ResultSpeaker.WORKER)
+    await jobs_mod.request_job_cancel("job-1")
+    await jobs_mod.set_job_wait("job-1", "h1")
+    await jobs_mod.post_job_message("job-1", "hi")
+    await jobs_mod.drop_joiner_lease("job-1", "stream-a")
+
+    keys = await redis.keys("browser:job:*")
+    # The join's lease is gone, dropped; its release signal stays behind for a waiting worker.
+    assert len(keys) == 9
+    assert all([await redis.ttl(key) > 0 for key in keys])
+    # The job's own record lives as long as the job can, not the cache's default hour.
+    assert await redis.ttl("browser:job:job-1") > 3600
+    state = await jobs_mod.get_job_state("job-1")
+    assert state is not None
+    assert state.status is BrowserJobStatus.RUNNING
+    assert await jobs_mod.get_job_wait("job-1") == "h1"
+    await jobs_mod.clear_job_wait("job-1")
+    assert await jobs_mod.get_job_wait("job-1") is None

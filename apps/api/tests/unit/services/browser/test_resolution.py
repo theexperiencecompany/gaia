@@ -13,6 +13,7 @@ from app.constants.browser import HandoffStatus
 from app.services.browser import resolution as res_mod
 from app.services.browser.handoff import await_handoff, create_pending_handoff, get_handoff
 from app.services.browser.resolution import HandoffReplyDecision, resolve_handoff_from_message
+from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
@@ -37,14 +38,19 @@ async def test_a_reply_the_model_reads_as_done_or_stop_settles_the_handoff(
 ) -> None:
     classify = _reads(monkeypatch, action)
 
-    reply = await resolve_handoff_from_message("c1", "u1", "ok")
+    reply = await resolve_handoff_from_message("c1", "u1", "ok, paid")
 
     assert reply == res_mod.HandoffReply(action=action, reason="Pay the deposit")
     record = await get_handoff("h1")
     assert record is not None
-    assert record.status is status
-    # Read against the step it paused on, not in the abstract.
-    assert "Pay the deposit" in classify.await_args.args[1]
+    # A reply that only says done or stop carries no note on to the run.
+    assert (record.status, record.message) == (status, None)
+    # The user's words, read against the step it paused on, into the reply's own schema.
+    schema, prompt = classify.await_args.args
+    assert schema is HandoffReplyDecision
+    assert "Pay the deposit" in prompt
+    assert "ok, paid" in prompt
+    assert classify.await_args.kwargs == {"label": "browser_handoff_conversational_resolve"}
 
 
 async def test_only_a_reply_the_model_calls_a_redirect_reaches_the_run_as_one(
@@ -80,8 +86,7 @@ async def test_an_unrelated_reply_leaves_the_handoff_waiting(
 
     reply = await resolve_handoff_from_message("c1", "u1", "which password?")
 
-    assert reply is not None
-    assert reply.action == "unrelated"
+    assert reply == res_mod.HandoffReply(action="unrelated", reason="Pay the deposit")
     record = await get_handoff("h1")
     assert record is not None
     assert record.status is HandoffStatus.PENDING
@@ -93,7 +98,11 @@ async def test_a_reply_where_nothing_waits_or_from_another_user_resolves_nothing
     classify = _reads(monkeypatch, "continue")
 
     assert await resolve_handoff_from_message("elsewhere", "u1", "done") is None
-    assert await resolve_handoff_from_message("c1", "intruder", "done") is None
+    async with captured_wide_event() as event:
+        assert await resolve_handoff_from_message("c1", "intruder", "done") is None
+    [warning] = event["warnings"]
+    assert "belongs to another user" in warning["msg"]
+    assert (warning["browser"], warning["user_id"]) == ({"handoff_id": "h1"}, "intruder")
     record = await get_handoff("h1")
     assert record is not None
     assert record.status is HandoffStatus.PENDING
@@ -113,3 +122,13 @@ async def test_a_classifier_failure_reaches_the_turn_and_leaves_the_handoff_pend
     record = await get_handoff("h1")
     assert record is not None
     assert record.status is HandoffStatus.PENDING
+
+
+async def test_a_reply_to_a_handoff_whose_record_expired_resolves_nothing(
+    fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    classify = _reads(monkeypatch, "continue")
+    await fake_redis.delete("browser:handoff:h1")
+
+    assert await resolve_handoff_from_message("c1", "u1", "done") is None
+    classify.assert_not_awaited()

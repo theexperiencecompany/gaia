@@ -82,9 +82,7 @@ async def create_pending_handoff(
         reason=reason,
         reply_address=address,
     )
-    stored = await redis_cache.set(
-        _key(handoff_id), record, ttl=browser_job_ttl_seconds(), model=HandoffRecord
-    )
+    stored = await redis_cache.set(_key(handoff_id), record, ttl=browser_job_ttl_seconds())
     if not stored:
         raise _storage_unavailable(handoff_id)
     if address:
@@ -192,9 +190,7 @@ async def _settle(handoff_id: str, outcome: HandoffOutcome) -> HandoffOutcome:
     sees a decision without the note it was sent with.
     """
     ttl = browser_job_ttl_seconds()
-    if not await redis_cache.set_if_absent(
-        _settled_key(handoff_id), outcome, ttl=ttl, model=HandoffOutcome
-    ):
+    if not await redis_cache.set_if_absent(_settled_key(handoff_id), outcome, ttl=ttl):
         decided = await _decision(handoff_id)
         if decided is None:
             raise _storage_unavailable(handoff_id)
@@ -211,15 +207,11 @@ async def _settle(handoff_id: str, outcome: HandoffOutcome) -> HandoffOutcome:
 async def await_handoff(handoff_id: str, timeout_seconds: float) -> HandoffOutcome:
     """Block until the handoff is settled or timeout_seconds pass, returning its decision.
 
-    Wakes on the settle itself. A lapse settles it TIMEOUT, so a decision that
-    arrives after the run gave up is reported as late instead of accepted.
+    Wakes on the settle itself, whose token stays queued for a wait that starts
+    after it. Settling TIMEOUT then hands back the decision of record, a lapse
+    when none came, so a decision that arrives later is reported as late.
     """
-    decided = await _decision(handoff_id)
-    if decided is None:
-        await redis_cache.client.blpop([_wake_key(handoff_id)], timeout=timeout_seconds)
-        decided = await _decision(handoff_id)
-    if decided is not None:
-        return decided
+    await redis_cache.client.blpop([_wake_key(handoff_id)], timeout=timeout_seconds)
     outcome = await _settle(handoff_id, HandoffOutcome(status=HandoffStatus.TIMEOUT))
     if outcome.status is HandoffStatus.TIMEOUT:
         log.warning(

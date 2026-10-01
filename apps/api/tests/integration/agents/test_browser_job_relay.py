@@ -25,12 +25,18 @@ from app.agents.core.background.session import (
 )
 from app.constants.browser import BROWSER_TASK_EVENT, BrowserSessionStatus
 from app.constants.log_tags import LogTag
+from app.core.stream_manager import stream_manager
 from app.schemas.browser import BrowserResultSnapshot, BrowserSessionSnapshot, BrowserStepSnapshot
 from app.services.browser import job_relay as relay_mod
-from app.services.browser.job_events import JOB_TERMINAL_FRAME, publish_job_event
+from app.services.browser.job_events import (
+    JOB_GUIDANCE_FRAME,
+    JOB_TERMINAL_FRAME,
+    publish_job_event,
+)
 from app.services.browser.job_relay import relay_job_events
 from app.services.browser.job_runner import publish_frame_to_job
 from app.services.browser.jobs import await_result_unclaimed, request_job_cancel
+from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.integration
 
@@ -76,6 +82,8 @@ async def _publish_cards(*, end: bool) -> None:
         ),
     )
     await publish_frame_to_job(JOB_ID, _card(BrowserStepSnapshot(index=1, goal="open the menu")))
+    # A signal to a join, which the turn's stream must never show.
+    await publish_job_event(JOB_ID, JOB_GUIDANCE_FRAME)
     if end:
         await publish_frame_to_job(
             JOB_ID,
@@ -107,7 +115,11 @@ async def test_every_card_reaches_the_turn_in_order_and_lands_on_its_message(
     signal_executor_done(STREAM_ID)
     await _publish_cards(end=True)
 
-    await relay_job_events(JOB_ID, STREAM_ID)
+    async with captured_wide_event() as event:
+        await relay_job_events(JOB_ID, STREAM_ID)
+
+    assert event["browser"] == {"job_id": JOB_ID, "relay_end": "job_finished"}
+    assert "errors" not in event
 
     assert _kinds(chunks) == ["session", "step", "result"]
     assert all("browser_job_done" not in chunk for chunk in chunks)
@@ -140,16 +152,18 @@ async def test_a_turn_that_ended_stops_the_relay_but_a_stopped_job_is_followed_t
 ) -> None:
     """Nobody reads a finished turn's stream; a stop ends the turn too, yet the stopped card is what tells the user it stopped."""
     await _publish_cards(end=False)
-    await relay_job_events(JOB_ID, STREAM_ID)
+    async with captured_wide_event() as event:
+        await relay_job_events(JOB_ID, STREAM_ID)
     assert _kinds(chunks) == ["session", "step"]
+    assert event["browser"] == {"job_id": JOB_ID, "relay_end": "turn_ended"}
 
     chunks.clear()
     await request_job_cancel(JOB_ID)
     first_read = asyncio.Event()
     read_feed = relay_mod.read_job_events
 
-    async def _read_then_mark(job_id: str, cursor: str, block_ms: int) -> Any:
-        events = await read_feed(job_id, cursor, block_ms)
+    async def _read_then_mark(job_id: str, cursor: str) -> Any:
+        events = await read_feed(job_id, cursor)
         first_read.set()
         return events
 
@@ -190,3 +204,74 @@ async def test_a_feed_that_cannot_be_read_never_takes_the_turn_down_with_it(
         browser={"job_id": JOB_ID},
     )
     assert chunks == []
+
+
+async def test_a_turn_still_streaming_is_relayed_to_even_with_no_executor_run_on_it(
+    chunks: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await stream_manager.start_stream(STREAM_ID, "conv-1", "user-1")
+    await _publish_cards(end=False)
+    first_read = asyncio.Event()
+    read_feed = relay_mod.read_job_events
+
+    async def _read_then_mark(job_id: str, cursor: str) -> Any:
+        events = await read_feed(job_id, cursor)
+        first_read.set()
+        return events
+
+    monkeypatch.setattr(relay_mod, "read_job_events", _read_then_mark)
+    relay = asyncio.create_task(relay_job_events(JOB_ID, STREAM_ID))
+    await first_read.wait()
+    await publish_frame_to_job(
+        JOB_ID,
+        _card(
+            BrowserResultSnapshot(status=BrowserSessionStatus.COMPLETED, success=True, summary="ok")
+        ),
+    )
+    await publish_job_event(JOB_ID, JOB_TERMINAL_FRAME)
+    await asyncio.wait_for(relay, timeout=5)
+
+    assert _kinds(chunks) == ["session", "step", "result"]
+
+
+async def test_the_hold_is_re_armed_while_the_run_lives(
+    chunks: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The hold lapses by itself if the API dies, so a live run re-arms it on a beat."""
+    create_session(STREAM_ID, RunKind.LIVE)
+    await _publish_cards(end=True)
+    monkeypatch.setattr(relay_mod, "BROWSER_JOB_JOINER_REFRESH_SECONDS", 0.01)
+    holds: list[tuple[str, str]] = []
+    re_armed = asyncio.Event()
+    hold = relay_mod.hold_result_for_run
+
+    async def _counted(job_id: str, stream_id: str) -> None:
+        holds.append((job_id, stream_id))
+        await hold(job_id, stream_id)
+        if len(holds) == 3:
+            re_armed.set()
+
+    monkeypatch.setattr(relay_mod, "hold_result_for_run", _counted)
+    relay = asyncio.create_task(relay_job_events(JOB_ID, STREAM_ID))
+
+    await asyncio.wait_for(re_armed.wait(), timeout=5)
+    signal_executor_done(STREAM_ID)
+    await asyncio.wait_for(relay, timeout=5)
+
+    assert set(holds) == {(JOB_ID, STREAM_ID)}
+    await asyncio.wait_for(await_result_unclaimed(JOB_ID), timeout=2)
+
+
+async def test_a_relay_past_the_feeds_life_gives_up_and_says_so(
+    chunks: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    create_session(STREAM_ID, RunKind.LIVE)
+    await _publish_cards(end=False)
+    monkeypatch.setattr(relay_mod, "browser_job_ttl_seconds", lambda: 0.05)
+
+    async with captured_wide_event() as event:
+        await relay_job_events(JOB_ID, STREAM_ID)
+
+    [warning] = event["warnings"]
+    assert "gave up before the job finished" in warning["msg"]
+    assert warning["browser"] == {"job_id": JOB_ID}

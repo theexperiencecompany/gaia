@@ -92,7 +92,7 @@ async def get_conversation_slot(conversation_id: str) -> str | None:
 
 async def _if_held(key: str, holder: str, *, refresh: int | None) -> bool:
     """Re-arm key for refresh seconds, or delete it when refresh is None, only while holder holds it."""
-    async with redis_cache.client.pipeline(transaction=True) as pipe:
+    async with redis_cache.client.pipeline() as pipe:
         await pipe.watch(key)
         if await pipe.get(key) != holder:
             await pipe.unwatch()
@@ -122,9 +122,7 @@ async def get_latest_job(key: str) -> str | None:
 
 async def put_job_state(state: BrowserJobState) -> None:
     """Write the job's durable state, replacing whatever the last transition left."""
-    await redis_cache.set(
-        _state_key(state.job_id), state, ttl=browser_job_ttl_seconds(), model=BrowserJobState
-    )
+    await redis_cache.set(_state_key(state.job_id), state, ttl=browser_job_ttl_seconds())
 
 
 async def get_job_state(job_id: str) -> BrowserJobState | None:
@@ -175,16 +173,12 @@ async def _drop(job_id: str, key: str, holder: str) -> None:
 async def await_result_unclaimed(job_id: str) -> None:
     """Return once no turn may still speak the result: neither a join nor the starting run holds it.
 
-    Wakes when one is dropped; one whose API died lapses with its TTL.
+    Wakes when one is dropped; one whose API died has lapsed within a lease window.
     """
-    while True:
-        remaining_ms = max(
-            await redis_cache.client.pttl(_joiner_key(job_id)),
-            await redis_cache.client.pttl(_hold_key(job_id)),
+    while await redis_cache.client.exists(_joiner_key(job_id), _hold_key(job_id)):
+        await redis_cache.client.blpop(
+            [_released_key(job_id)], timeout=BROWSER_JOB_JOINER_LEASE_SECONDS
         )
-        if remaining_ms <= 0:
-            return
-        await redis_cache.client.blpop([_released_key(job_id)], timeout=remaining_ms / 1000)
 
 
 async def claim_result_delivery(job_id: str, speaker: ResultSpeaker) -> ResultSpeaker:
@@ -237,7 +231,7 @@ async def job_messages_waiting(job_id: str) -> bool:
 async def take_job_messages(job_id: str) -> list[str]:
     """Return and clear the messages waiting for this job, oldest first."""
     key = _inbox_key(job_id)
-    async with redis_cache.client.pipeline(transaction=True) as pipe:
+    async with redis_cache.client.pipeline() as pipe:
         pipe.lrange(key, 0, -1)
         pipe.delete(key)
         messages, _deleted = await pipe.execute()

@@ -647,9 +647,9 @@ class BrowserStopOutcome(StrEnum):
     UNCONFIRMED = "unconfirmed"
 
 
-# How long the relay's and the join's reads park on a quiet feed: the beat a
-# join re-arms its lease and checks the run still has a worker on.
-BROWSER_JOB_RELAY_BLOCK_MS = 1000
+# How long a read of a job's feed parks on it for the next frame: the beat the
+# relay re-checks its turn, and a join re-arms its lease and checks the worker.
+BROWSER_JOB_FEED_WAIT_MS = 1000
 
 # The ARQ function name, shared by the enqueue site and the worker registration.
 BROWSER_JOB_TASK = "run_browser_job"
