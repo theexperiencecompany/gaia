@@ -168,6 +168,10 @@ def _summarize_action_result(result: ActionResult) -> str | None:
 _GUIDANCE_KINDS = frozenset({"click", "fill", "secret", "select"})
 
 
+def _is_control(action: PageAction) -> bool:
+    return action["kind"] in _GUIDANCE_KINDS
+
+
 def _guidance_element(number: int, action: PageAction) -> GuidanceElement:
     """Return one control as a guidance ask lists it: its number on the page, label and role."""
     return GuidanceElement(
@@ -385,7 +389,7 @@ class BrowserAgentRun:
             elements=[
                 _guidance_element(n, action)
                 for n, action in enumerate(page.actions[:BROWSER_GUIDANCE_MAX_ELEMENTS], 1)
-                if action["kind"] in _GUIDANCE_KINDS
+                if _is_control(action)
             ],
             recent_actions=[
                 GuidanceAction(action=a.description)
