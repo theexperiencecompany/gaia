@@ -1681,6 +1681,41 @@ class TestRunChatStreamBackground:
             }
         ]
 
+    async def test_comms_thinking_streamed_in_deltas_is_saved_as_one_step(self, test_user) -> None:
+        save = AsyncMock()
+
+        await self._drive(
+            [
+                f"data: {json.dumps({'reasoning': {'content': 'weighing '}})}\n\n",
+                f"data: {json.dumps({'reasoning': {'content': 'it up'}})}\n\n",
+                f"data: {json.dumps({'response': 'Done.'})}\n\n",
+                "data: [DONE]\n\n",
+            ],
+            _make_stream_manager_mock(),
+            save,
+        )
+
+        [step] = save.call_args.kwargs["tool_data"]["tool_data"]
+        assert step["data"]["reasoning"] == "weighing it up"
+
+    async def test_a_turn_that_only_thought_still_answers(self, test_user) -> None:
+        """Thinking is not a reply: without the fallback the user saw a thinking block and nothing else."""
+        sm = _make_stream_manager_mock()
+        save = AsyncMock()
+
+        await self._drive(
+            [
+                f"data: {json.dumps({'reasoning': {'content': 'hmm'}})}\n\n",
+                "data: [DONE]\n\n",
+            ],
+            sm,
+            save,
+        )
+
+        assert save.call_args.kwargs["complete_message"] == EMPTY_RESPONSE_FALLBACK
+        [step] = save.call_args.kwargs["tool_data"]["tool_data"]
+        assert step["tool_category"] == "reasoning"
+
     async def test_a_frame_with_no_reasoning_adds_no_thinking_entry(self, test_user) -> None:
         save = AsyncMock()
 

@@ -87,7 +87,12 @@ from app.services.storage import flush_fs_metrics
 from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
 from app.utils.message_breaks import strip_partial_message_break
-from app.utils.stream_utils import ReasoningEvent, absorb_reasoning, reconstruct_subagent_groups
+from app.utils.stream_utils import (
+    REASONING_STEP,
+    ReasoningEvent,
+    absorb_reasoning_delta,
+    reconstruct_subagent_groups,
+)
 from shared.py.wide_events import ChatContext, get_trace_id, log, wide_task
 
 
@@ -151,11 +156,12 @@ class _WideEventModel(BaseModel):
 
 
 class _ToolEntryName(BaseModel):
-    """A persisted tool_data entry, read only for its tool name."""
+    """A persisted tool_data entry, read only for its tool name and card category."""
 
     model_config = ConfigDict(extra="ignore")
 
     tool_name: str | None = None
+    tool_category: str | None = None
 
 
 class _PersistedToolData(BaseModel):
@@ -727,7 +733,7 @@ async def _dispatch_stream_chunk(
         # the tool-event collector). Same helper for both so a reloaded turn keeps
         # one identical thinking-block shape.
         if frames is not None and frames.reasoning is not None:
-            absorb_reasoning(frames.reasoning, state.tool_entries)
+            absorb_reasoning_delta(frames.reasoning, state.tool_entries)
 
     if state.ttft_perf is None and extract_response_text(chunk):
         # Init/description/keepalive/tool frames carry no "response"
@@ -948,7 +954,9 @@ async def _substitute_empty_completion(stream_id: str, state: _StreamState) -> N
     """
     if state.complete_message.strip() or state.error or state.is_cancelled:
         return
-    if _PersistedToolData.model_validate(state.tool_data).tool_data:
+    # Thinking alone is not an answer: only a real tool card stands in for the reply.
+    entries = _PersistedToolData.model_validate(state.tool_data).tool_data
+    if any(entry.tool_category != REASONING_STEP for entry in entries):
         return
 
     _, output_tokens, _ = aggregate_usage_metadata(state.usage_metadata)
