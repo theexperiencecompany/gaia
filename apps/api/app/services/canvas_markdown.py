@@ -48,7 +48,7 @@ def bounded_canvas(canvas: str) -> str:
     limit = CANVAS_PROMPT_MAX_CHARS - len(head)
     if len(rest) <= limit:
         return head + rest
-    half = max(limit, 0) // 2
+    half = max(limit // 2, 0)
     trimmed = len(rest) - 2 * half
     tail = rest[len(rest) - half :]
     return f"{head}{rest[:half]}\n[middle of canvas trimmed: {trimmed} characters]\n{tail}"
@@ -66,8 +66,10 @@ def _section_span(text: str, heading: str) -> tuple[int, int, int] | None:
     return match.start(), body_start, section_end
 
 
-def section_body(text: str, heading: str) -> str | None:
+def section_body(text: str | None, heading: str) -> str | None:
     """Body of "## {heading}" without its HTML comments, stripped; None when the section is absent."""
+    if text is None:
+        return None
     span = _section_span(text, heading)
     if span is None:
         return None
@@ -227,7 +229,6 @@ def with_missing_sections(canvas: str) -> str:
             text += f"\n\n## {section}"
         else:
             text = f"{text[: span[0]]}## {section}\n\n{text[span[0] :]}"
-        present.add(section)
     return text + "\n"
 
 
@@ -242,8 +243,8 @@ def canvas_problems(canvas: str) -> list[str]:
             problems.append(f'merge the {count} "## {heading}" sections into one')
     if _ANY_DATED_BLOCK_RE.search(canvas):
         problems.append('move the dated "### YYYY-MM-DD" entries into activity.md')
-    rules = section_body(canvas, CANVAS_STANDING_RULES_SECTION) or ""
-    if len(rules) > STANDING_RULES_MAX_CHARS:
+    rules = section_body(canvas, CANVAS_STANDING_RULES_SECTION)
+    if rules and len(rules) > STANDING_RULES_MAX_CHARS:
         problems.append(
             f'shorten "## {CANVAS_STANDING_RULES_SECTION}" to {STANDING_RULES_MAX_CHARS} '
             "characters: one line per rule, merged where they overlap"

@@ -166,7 +166,7 @@ def _format_due_string(due_date: datetime | None, now: datetime) -> str:
 
 
 def _format_tracked_todo_line(
-    doc: TodoDocument, now: datetime, active_todo_id: str | None, open_sub_todos: int
+    doc: TodoDocument, now: datetime, active_todo_id: str | None, sub_todo_counts: dict[str, int]
 ) -> str:
     """Format one tracked-todo doc as a context-injection summary line."""
     age_days = (now - (doc.created_at or now)).days
@@ -177,7 +177,7 @@ def _format_tracked_todo_line(
     family = ""
     if doc.parent_todo_id:
         family = f" | sub-todo of {doc.parent_todo_id}"
-    elif open_sub_todos:
+    elif open_sub_todos := sub_todo_counts.get(doc.id):
         family = f" | {open_sub_todos} open sub-todos"
     return (
         f'  {prefix}"{doc.title}"{labels_str}{_format_due_string(doc.due_date, now)}'
@@ -382,10 +382,7 @@ class TrackedTodoService:
         counts = await todo_repository.count_open_sub_todos(user_id, [doc.id for doc in docs])
         now = datetime.now(UTC)
         lines = ["ACTIVE TRACKED TODOS:"]
-        lines.extend(
-            _format_tracked_todo_line(doc, now, active_todo_id, counts.get(doc.id, 0))
-            for doc in docs
-        )
+        lines.extend(_format_tracked_todo_line(doc, now, active_todo_id, counts) for doc in docs)
         return "\n".join(lines)
 
     @staticmethod

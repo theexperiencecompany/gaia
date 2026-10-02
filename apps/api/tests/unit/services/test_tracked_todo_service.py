@@ -5,14 +5,20 @@ completion/archival, and the context-summary renderers the agent sees.
 """
 
 from datetime import UTC, datetime, timedelta
+from http import HTTPStatus
 import re
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
 from app.constants import todos as todo_constants
-from app.constants.todos import CANVAS_SECTIONS, GAIA_TRACKED_LABEL, TodoActivityEvent
+from app.constants.todos import (
+    ACTIVE_TRACKED_SUMMARY_LIMIT,
+    CANVAS_SECTIONS,
+    GAIA_TRACKED_LABEL,
+    TodoActivityEvent,
+)
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.models.todo_models import (
     ExternalRef,
@@ -443,6 +449,15 @@ class TestCreateTrackedTodo:
         mock_deps.create.assert_not_awaited()
         mock_repo.update.assert_not_awaited()
 
+    def test_a_canvas_refusal_is_a_bad_request_naming_every_problem(self) -> None:
+        refused = todo_errors.CanvasShapeError(["shorten the rules", "merge the sections"])
+
+        assert (refused.status_code, refused.code, refused.message) == (
+            400,
+            "canvas_shape_invalid",
+            "initial_canvas breaks the canvas shape: shorten the rules; merge the sections.",
+        )
+
 
 _PARENT_ID = "66f838cc8829054e5f10e401"
 _CHILD_ID = "66f838cc8829054e5f10e402"
@@ -498,8 +513,12 @@ class TestSubTodoParent:
     async def test_a_todo_cannot_be_its_own_parent(self, mock_repo):
         mock_repo.get.return_value = _parent()
 
-        with pytest.raises(SubTodoParentError, match="its own parent"):
+        with pytest.raises(SubTodoParentError) as refused:
             await require_sub_todo_parent(USER_ID, _PARENT_ID, child_id=_PARENT_ID)
+
+        assert refused.value.message == "A todo cannot be its own parent."
+        assert refused.value.status_code == HTTPStatus.BAD_REQUEST
+        assert refused.value.code == "sub_todo_parent_invalid"
 
     async def test_a_todo_with_sub_todos_cannot_become_one(self, mock_repo):
         mock_repo.get.return_value = _parent()
@@ -521,6 +540,7 @@ class TestCreateSubTodo:
         )
 
         assert mock_deps.create.await_args.kwargs["parent_todo_id"] == _PARENT_ID
+        mock_repo.get.assert_awaited_once_with(_PARENT_ID, user_id=USER_ID)
 
     async def test_a_sub_todo_reports_to_its_parent_instead_of_the_user_by_default(
         self, mock_repo, mock_deps
@@ -574,9 +594,13 @@ class TestCompletingAParentCompletesItsSubTodos:
         assert completed == [_CHILD_ID, _PARENT_ID]
         assert [c.args[0] for c in mock_deps.teardown.await_args_list] == [_CHILD_ID, _PARENT_ID]
         child_entry = mock_deps.record.await_args_list[0].args
-        assert child_entry[0] == _CHILD_ID
-        assert child_entry[2] is TodoActivityEvent.COMPLETED
-        assert "Inbox desk" in child_entry[3]
+        assert child_entry == (
+            _CHILD_ID,
+            USER_ID,
+            TodoActivityEvent.COMPLETED,
+            'Parent "Inbox desk" completed: Desk retired',
+        )
+        assert mock_repo.find_sub_todos.await_args_list[0] == call(USER_ID, [_PARENT_ID])
 
     async def test_a_sub_todo_already_completed_is_left_alone(self, mock_repo, mock_deps):
         docs = {_PARENT_ID: _parent(), _CHILD_ID: _child(completed=True)}
@@ -586,6 +610,49 @@ class TestCompletingAParentCompletesItsSubTodos:
         await TrackedTodoService.complete_tracked_todo(_PARENT_ID, USER_ID, "Desk retired")
 
         assert [c.args[0] for c in mock_repo.update.await_args_list] == [_PARENT_ID]
+
+    async def test_a_sub_todo_created_while_the_parent_closes_is_completed_too(
+        self, mock_repo, mock_deps
+    ):
+        docs = {_PARENT_ID: _parent(), _CHILD_ID: _child()}
+        mock_repo.get.side_effect = lambda todo_id, user_id: docs.get(todo_id)
+        mock_repo.find_sub_todos.side_effect = [[], [docs[_CHILD_ID]], [], []]
+
+        await TrackedTodoService.complete_tracked_todo(_PARENT_ID, USER_ID, "Desk retired")
+
+        assert [c.args[0] for c in mock_repo.update.await_args_list] == [_PARENT_ID, _CHILD_ID]
+        assert mock_deps.record.await_args_list[1] == call(
+            _CHILD_ID,
+            USER_ID,
+            TodoActivityEvent.COMPLETED,
+            'Parent "Inbox desk" completed: Desk retired',
+        )
+
+
+class TestACompletedSubTodoReportsToItsParent:
+    async def test_the_parents_timeline_gets_the_sub_todos_outcome(self, mock_repo, mock_deps):
+        mock_repo.get.return_value = _child()
+
+        await TrackedTodoService.complete_tracked_todo(_CHILD_ID, USER_ID, "Sam confirmed Friday")
+
+        assert mock_deps.record.await_args_list == [
+            call(_CHILD_ID, USER_ID, TodoActivityEvent.COMPLETED, "Sam confirmed Friday"),
+            call(
+                _PARENT_ID,
+                USER_ID,
+                TodoActivityEvent.SUB_TODO_COMPLETED,
+                f'"Reply to Sam" ({_CHILD_ID}): Sam confirmed Friday',
+            ),
+        ]
+
+    async def test_a_top_level_todo_reports_nowhere(self, mock_repo, mock_deps):
+        mock_repo.get.return_value = _parent()
+
+        await TrackedTodoService.complete_tracked_todo(_PARENT_ID, USER_ID, "Desk retired")
+
+        assert mock_deps.record.await_args_list == [
+            call(_PARENT_ID, USER_ID, TodoActivityEvent.COMPLETED, "Desk retired")
+        ]
 
 
 class TestTheSummaryCollapsesSubTodos:
@@ -599,7 +666,9 @@ class TestTheSummaryCollapsesSubTodos:
 
         summary = await TrackedTodoService.get_active_tracked_summary(USER_ID)
 
-        assert mock_repo.list_active_tracked.await_args.kwargs["top_level"] is True
+        mock_repo.list_active_tracked.assert_awaited_once_with(
+            USER_ID, limit=ACTIVE_TRACKED_SUMMARY_LIMIT, top_level=True
+        )
         mock_repo.count_open_sub_todos.assert_awaited_once_with(USER_ID, [_PARENT_ID])
         assert f"ID: {_PARENT_ID}" in summary
         assert "12 open sub-todos" in summary
@@ -624,6 +693,20 @@ class TestTheSummaryCollapsesSubTodos:
         summary = await TrackedTodoService.get_active_tracked_summary(USER_ID)
 
         assert "sub-todo" not in summary
+        assert summary.split("\n")[1] == (
+            '  "Prepare Q3 report" [work] — 2d old, updated 0d ago'
+            " | ID: todo-1 | files: /workspace/gaia-tasks/prepare-q3-report-todo-1/"
+        )
+
+    async def test_a_completed_running_todo_is_not_pinned(self, mock_repo):
+        mock_repo.list_active_tracked.return_value = [_parent()]
+        mock_repo.get.return_value = _child(completed=True)
+
+        summary = await TrackedTodoService.get_active_tracked_summary(
+            USER_ID, active_todo_id=_CHILD_ID
+        )
+
+        assert [line.split('"')[1] for line in summary.split("\n")[1:]] == ["Inbox desk"]
 
 
 def test_the_template_opens_on_standing_rules_and_is_already_in_shape() -> None:

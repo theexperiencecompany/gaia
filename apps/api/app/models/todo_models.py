@@ -269,9 +269,9 @@ class PaginationMeta(ResponseModel):
 
 
 class SubTodoCount(BaseModel):
-    """One parent with the number of its open sub-todos."""
+    """One $group row: a parent (its _id) with the number of its open sub-todos."""
 
-    parent_todo_id: str
+    parent_todo_id: str = Field(validation_alias="_id")
     count: int
 
 
