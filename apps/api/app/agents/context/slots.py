@@ -1,18 +1,17 @@
 """Where each message sits in the request the model receives.
 
-The order below is the whole cache contract in one place, replacing an
-emergent hand-rolled scan nothing else could see. Two constraints fix it:
+The order below is the whole cache contract in one place. Three constraints fix it:
 
 * langchain-google-genai promotes a SystemMessage to system_instruction only
-  while the system block is leading and CONTIGUOUS — the first non-system
-  message ends it and every later SystemMessage is silently dropped.
-* Implicit prompt caching matches on longest common prefix, so byte-stable
-  slots sort ahead of per-turn churn, with the clock last so it never moves
-  the boundary.
+  while the system block is leading and CONTIGUOUS; later ones are dropped.
+* Gemini and OpenRouter cache the longest common prefix, so byte-stable slots
+  sort ahead of per-turn churn, with the clock last so it never moves the boundary.
+* OpenAI reuses an earlier request only whole, so each call must begin with the
+  previous one byte for byte: nothing may trail the conversation there.
 
-The first constraint is Gemini's alone; OpenAI-wire providers accept a
-system message anywhere, so request_slot_order moves their per-turn slots
-BEHIND the conversation for a strictly better cache layout.
+request_slot_order picks the layout per provider: OpenRouter-wire providers move
+their per-turn slots BEHIND the conversation, OpenAI puts every singleton slot
+ahead of it.
 """
 
 from enum import IntEnum
@@ -76,22 +75,27 @@ TAIL_VOLATILE_SLOTS: frozenset[PromptSlot] = frozenset(
     }
 )
 
-#: Providers on the OpenAI wire format, which apply a system message wherever
-#: it appears. Gemini stays off this list for caching, not content loss:
-#: moving volatile slots back would fold per-turn bytes INTO its cached block.
+#: OpenAI-wire providers whose cache matches the longest common prefix. Gemini
+#: stays off this list for caching, not content loss: moving volatile slots
+#: back would fold per-turn bytes INTO its cached block.
 TAIL_VOLATILE_PROVIDERS: frozenset[LLMProviderName] = frozenset(
-    {LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM, LLMProviderName.OPENAI}
+    {LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM}
 )
+
+#: Providers whose cache reuses an earlier request only whole: with anything trailing the
+#: conversation OpenAI cached 23,814 of 37,708 tokens per call, with nothing 37,641.
+WHOLE_REQUEST_CACHE_PROVIDERS: frozenset[LLMProviderName] = frozenset({LLMProviderName.OPENAI})
 
 
 def request_slot_order(provider: str | None) -> tuple[PromptSlot, ...]:
     """Return the slot order a request bound for provider is emitted in.
 
-    Gemini gets the declaration order (cache covers only [static,
-    dynamic_stable]); OpenAI-wire providers move per-turn slots after the
-    conversation so it joins the cached prefix (measured: 35.2% -> 94.9%
-    isolated, ~45% -> 80-85% steady-state; see docs/llm-cache-measurements.md).
+    Gemini gets the declaration order; OpenRouter-wire providers move per-turn slots
+    behind the conversation (35.2% -> 94.9% cached, docs/llm-cache-measurements.md);
+    OpenAI leads with every singleton slot, so each call extends the previous request.
     """
+    if provider in WHOLE_REQUEST_CACHE_PROVIDERS:
+        return (*(slot for slot in PromptSlot if slot in SINGLETON_SLOTS), PromptSlot.CONVERSATION)
     if provider not in TAIL_VOLATILE_PROVIDERS:
         return tuple(PromptSlot)
     return (

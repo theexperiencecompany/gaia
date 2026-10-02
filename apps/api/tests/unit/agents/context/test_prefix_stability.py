@@ -12,6 +12,7 @@ says exactly what the design requires: no byte at or before the end of the
 stable block may move between turns.
 """
 
+from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
 import pytest
 from tests._harness.context_chain import (
     FIXED_NOW,
@@ -26,6 +27,7 @@ from tests._harness.context_sources import ContextSources, memory
 
 from app.agents.context.slots import PromptSlot, slot_of
 from app.agents.context.tiers import AgentTier
+from app.constants.llm import LLMProviderName
 
 SOURCES = ContextSources(
     core_memory="- Prefers short answers.",
@@ -167,4 +169,42 @@ class TestTheFloorCanFail:
         assert shared < stable_block_end(first), (
             "the floor did not notice volatile content sitting in the cacheable "
             "prefix — it cannot fail, so it is not guarding anything"
+        )
+
+
+#: One tool turn of a run: what the checkpoint holds after the first model call acted.
+TOOL_TURN: list[AnyMessage] = [
+    AIMessage(content="", tool_calls=[{"name": "list_tracked_todos", "args": {}, "id": "call-1"}]),
+    ToolMessage(content="No tracked todos.", tool_call_id="call-1"),
+]
+
+
+@pytest.mark.unit
+class TestAModelCallExtendsThePreviousOneOnOpenAI:
+    """OpenAI reuses an earlier request only whole.
+
+    Measured on gpt-5.6-luna: a call that began with the entire previous request
+    read it all from cache (36,062 of 36,065 tokens), while one where anything
+    trailed the conversation fell back to the tools and first system message
+    (23,814 tokens) on every step of a run.
+    """
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("tier", list(AgentTier))
+    async def test_the_next_call_begins_with_the_whole_previous_request(
+        self, tier: AgentTier
+    ) -> None:
+        on_openai = {"provider": LLMProviderName.OPENAI}
+        first = await effective_context(
+            tier, ContextSeed(sources=SOURCES, configurable_overrides=on_openai)
+        )
+        next_call = await effective_context(
+            tier,
+            ContextSeed(sources=SOURCES, configurable_overrides=on_openai, run_messages=TOOL_TURN),
+        )
+
+        assert request_bytes(next_call).startswith(request_bytes(first)), (
+            f"{tier.value}: the next call diverges at byte "
+            f"{common_prefix_len(request_bytes(first), request_bytes(next_call))} of "
+            f"{len(request_bytes(first))}, so OpenAI caches none of the run's own history"
         )

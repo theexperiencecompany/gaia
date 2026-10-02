@@ -151,10 +151,11 @@ def _manage_system_prompts(state: State, config: RunnableConfig) -> State:
                 "dropped_system_prompts": kept.dropped_system,
                 "dropped_time_context": kept.dropped_time,
                 **{field: bool(by_slot.get(slot)) for slot, field in _KEPT_FIELDS.items()},
-                # Which of the two layouts the request got. The tail layout is
-                # what lets the conversation join the cached prefix, so a
-                # sudden drop in cache hit rate is answered by this field.
-                "tail_layout": slot_order != tuple(PromptSlot),
+                # Whether the per-turn slots trail the conversation, the layout that
+                # decides what joins the cached prefix, so a sudden drop in cache
+                # hit rate is answered by this field.
+                "tail_layout": slot_order.index(PromptSlot.CONVERSATION)
+                < slot_order.index(PromptSlot.MEMORY_RECALL),
             }
         )
 

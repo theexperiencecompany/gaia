@@ -317,15 +317,16 @@ class ContextSeed:
     configurable_overrides: AgentConfigurable | None = None
     now: datetime = FIXED_NOW
     prior_messages: list[AnyMessage] | None = None
+    run_messages: list[AnyMessage] | None = None
     onboarding_prompt: str | None = None
 
 
 async def effective_context(tier: AgentTier, seed: ContextSeed | None = None) -> list[AnyMessage]:
     """Seed tier and run it through that tier's real pre-model hooks.
 
-    ContextSeed.prior_messages are prepended to the seed to model a
-    checkpointed thread — the multi-turn shape, where stale copies of each slot
-    accumulate and the hook chain has to collapse them.
+    ContextSeed.prior_messages are prepended to the seed to model a checkpointed
+    thread, where stale slot copies accumulate; run_messages are appended to it
+    to model a later model call of the same run, after its own tool turns.
     """
     spec = seed or ContextSeed()
     resolved_user = spec.user or HarnessUser()
@@ -343,7 +344,15 @@ async def effective_context(tier: AgentTier, seed: ContextSeed | None = None) ->
             tier, user=resolved_user, query=spec.query, configurable=configurable
         )
         state = cast(
-            State, {"messages": [*(spec.prior_messages or []), *seed_messages], "todos": []}
+            State,
+            {
+                "messages": [
+                    *(spec.prior_messages or []),
+                    *seed_messages,
+                    *(spec.run_messages or []),
+                ],
+                "todos": [],
+            },
         )
         result = await execute_hooks(hooks_for(tier), state, config, InMemoryStore())
     return list(result["messages"])

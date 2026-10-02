@@ -151,6 +151,31 @@ class TestManageSystemPrompts:
             ("human", "time"),
         ]
 
+    def test_nothing_trails_the_conversation_for_openai(self) -> None:
+        """OpenAI reuses only a whole earlier request, so the clock and per-turn slots lead the conversation."""
+        msgs = [
+            _static("prompt"),
+            _dynamic("ctx"),
+            SystemMessage(content="todo", additional_kwargs={"todo_context": True}),
+            SystemMessage(content="mem", additional_kwargs={"memory_recall": True}),
+            HumanMessage(content="hello"),
+            AIMessage(content="reply"),
+            HumanMessage(content="time", additional_kwargs={"time_context": True}),
+        ]
+        result = manage_system_prompts_node(
+            cast(State, {"messages": msgs}), _config("openai"), _store()
+        )
+        actual = [(m.type, m.content) for m in result["messages"]]
+        assert actual == [
+            ("system", "prompt"),
+            ("system", "ctx"),
+            ("system", "todo"),
+            ("system", "mem"),
+            ("human", "time"),
+            ("human", "hello"),
+            ("ai", "reply"),
+        ]
+
     def test_leading_layout_preserved_for_gemini(self) -> None:
         """Gemini only promotes a leading contiguous run of SystemMessages, so volatile slots must stay in that leading block."""
         msgs = [
@@ -264,6 +289,9 @@ class TestPromptPruningWideEvent:
 
     def test_gemini_request_is_reported_as_the_leading_layout(self) -> None:
         assert self._prompt_pruning("gemini")["tail_layout"] is False
+
+    def test_openai_request_is_not_reported_as_the_tail_layout(self) -> None:
+        assert self._prompt_pruning("openai")["tail_layout"] is False
 
     def test_slot_sizes_report_each_slot_s_real_length(self) -> None:
         """slot_chars ranks slots by how many bytes they cost on every call, so it must be the slot's real length."""
