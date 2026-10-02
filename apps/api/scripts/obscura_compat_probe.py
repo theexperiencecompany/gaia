@@ -44,7 +44,6 @@ COMMON_SITES = [
     "https://www.reddit.com/r/programming/",
     "https://stackoverflow.com/questions",
     "https://www.selenium.dev/selenium/web/web-form.html",
-    "https://the-internet.herokuapp.com/dynamic_loading/2",
     "https://www.amazon.com/",
     "https://www.ebay.com/",
     "https://www.booking.com/",
