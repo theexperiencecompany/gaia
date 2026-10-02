@@ -161,6 +161,19 @@ class TestStalledLoads:
         assert client.stopped == ["S1"]
         assert len(guard.take()) == 1
 
+    async def test_a_page_whose_loading_was_stopped_holds_no_later_stall(
+        self, watched: tuple[StalledLoads, _FakeClient]
+    ) -> None:
+        """A page stopped before its load event never fires one: a stall must not wait on it."""
+        guard, client = watched
+        client.handlers["committed"]({"frame": {"id": TAB}, "type": "Navigation"}, "S1")
+        client.handlers["stopped"]({"frameId": TAB}, "S1")
+        _start(client, "S1")
+        await _settle()
+
+        assert client.stopped == ["S1"]
+        assert len(guard.take()) == 1
+
     async def test_two_sessions_on_one_tab_stop_it_once(
         self, watched: tuple[StalledLoads, _FakeClient]
     ) -> None:

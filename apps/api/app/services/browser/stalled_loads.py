@@ -132,10 +132,9 @@ class StalledLoads:
     def _on_committed(self, event: FrameNavigatedEvent, session_id: str | None) -> None:
         del session_id
         frame: Frame = event["frame"]
-        if frame.get("parentId") is None:
-            # The tab shows a new document, which loads from here.
-            self._showing_loaded[frame["id"]] = asyncio.Event()
-        # A child frame's id is never a tab's, so only a tab's own commit answers its load.
+        # The frame shows a new document, which loads from here. A child frame's id
+        # is never a tab's, so only a tab's own commit answers its load or holds its stop.
+        self._showing_loaded[frame["id"]] = asyncio.Event()
         self._answered(frame["id"])
 
     def _on_loaded(self, event: LoadEventFiredEvent, session_id: str | None) -> None:
