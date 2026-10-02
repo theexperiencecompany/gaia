@@ -14,8 +14,7 @@ from urllib.parse import quote, quote_plus, urlsplit
 from app.constants.browser import JEV_SECRET_MASK
 from app.schemas.browser import BrowserTaskSecret
 from app.services.browser.exceptions import BrowserAutomationError
-
-_PLACEHOLDER = re.compile(r"<secret>([\w.-]+)</secret>")
+from app.utils.sites import PLACEHOLDER, on_site
 
 
 def _encodings(value: str) -> set[str]:
@@ -34,7 +33,7 @@ class _Replacer:
         self._stand_ins = stand_ins
         # Alternatives compete only where one starts another; reverse order puts the longer first.
         forms = sorted(stand_ins, reverse=True)
-        alternatives = [_PLACEHOLDER.pattern, *map(re.escape, forms)]
+        alternatives = [PLACEHOLDER.pattern, *map(re.escape, forms)]
         self._pattern = re.compile("|".join(alternatives)) if forms else None
 
     def __call__(self, text: str) -> str:
@@ -65,12 +64,12 @@ class SecretWithheld(BrowserAutomationError):
 
 def is_placeholder(text: str) -> bool:
     """Whether text is one <secret>name</secret> placeholder and nothing else."""
-    return _PLACEHOLDER.fullmatch(text) is not None
+    return PLACEHOLDER.fullmatch(text) is not None
 
 
 def holds_placeholder(text: str) -> bool:
     """Whether text has a <secret>name</secret> placeholder anywhere in it."""
-    return _PLACEHOLDER.search(text) is not None
+    return PLACEHOLDER.search(text) is not None
 
 
 class RunSecrets:
@@ -91,13 +90,17 @@ class RunSecrets:
 
     def value_for(self, placeholder: str, url: str) -> str:
         """Return the value placeholder stands for on url's page; raise SecretWithheld off its site."""
-        match = _PLACEHOLDER.fullmatch(placeholder)
+        match = PLACEHOLDER.fullmatch(placeholder)
         secret = self._secrets.get(match.group(1)) if match else None
         if secret is None:
             raise SecretWithheld(f"{placeholder} names no secret this task was given.")
-        # hostname is lowercased by urlsplit; a page with no host is on no site.
-        host = urlsplit(url).hostname
-        if host is None or not (host == secret.site or host.endswith("." + secret.site)):
+        # https only, as the sensitive_data Browser-Use fills from; a page with no host is on no site.
+        page = urlsplit(url)
+        if (
+            page.scheme != "https"
+            or page.hostname is None
+            or not on_site(page.hostname, secret.site)
+        ):
             raise SecretWithheld(
                 f"{placeholder} is typed only on {secret.site}; this page is not on it."
             )
@@ -124,14 +127,14 @@ class RunSecrets:
         A task can spell a password out instead of naming a secret; once it is in
         a password field, it is one, and the page may echo it (a GET form puts it in the URL).
         """
-        if not typed or _PLACEHOLDER.fullmatch(typed):
+        if not typed or PLACEHOLDER.fullmatch(typed):
             return
         self._typed.add(typed)
         self._redact = _masked([*self._values.values(), *self._typed])
 
     def redact(self, text: str) -> str:
         """Replace every secret value and placeholder with the mask, for text a person reads."""
-        return _PLACEHOLDER.sub(JEV_SECRET_MASK, self._redact(text))
+        return PLACEHOLDER.sub(JEV_SECRET_MASK, self._redact(text))
 
     def sensitive_data(self) -> dict[str, str | dict[str, str]]:
         """Return the map Browser-Use's agent fills <secret>name</secret> from, each secret under its own site."""

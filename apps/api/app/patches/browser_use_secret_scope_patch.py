@@ -17,7 +17,6 @@ Pinned to browser-use==0.11.13; the import fails loudly if the method moves.
 
 from collections.abc import Awaitable, Callable
 import json
-import re
 from typing import Any, cast
 from urllib.parse import urlsplit
 
@@ -26,12 +25,12 @@ from browser_use.browser.session import BrowserSession
 from browser_use.tools.registry.service import Registry
 from browser_use.utils import match_url_with_domain_pattern
 
+from app.utils.sites import PLACEHOLDER
+
 #: The one action whose typed text Browser-Use logs only by its placeholder name.
 _SECRET_TYPING_ACTION = "input"  # nosec B105 -- a Browser-Use action name, not a credential
 #: Types text as keys; Browser-Use logs those keys, so it never gets a secret's value.
 _KEYS_ACTION = "send_keys"
-#: Browser-Use's own placeholder pattern (Registry._replace_sensitive_data).
-_PLACEHOLDER = re.compile(r"<secret>(.*?)</secret>")
 
 _original_execute_action: Callable[..., Awaitable[object]] = Registry.execute_action
 
@@ -100,7 +99,7 @@ async def _execute_action(
             error=f"{name} is the name of a secret, not its value: type <secret>{name}</secret>; "
             "nothing was typed."
         )
-    named = sorted(set(_PLACEHOLDER.findall(json.dumps(params))))
+    named = sorted(set(PLACEHOLDER.findall(json.dumps(params))))
     if refused := _refusals(action_name, named, kwargs):
         return ActionResult(error=f"{'; '.join(refused)}; nothing was typed.")
     if action_name != _SECRET_TYPING_ACTION:

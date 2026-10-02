@@ -14,7 +14,6 @@ import pytest
 
 from app.services.browser import storage_persistence as sp
 from app.services.browser.storage_persistence import (
-    domain_of,
     load_storage_state,
     save_storage_state,
 )
@@ -61,14 +60,6 @@ def _storage_state() -> dict:
         "cookies": [{"name": "sid", "value": "abc", "domain": "example.com", "path": "/"}],
         "origins": [],
     }
-
-
-def test_domain_of():
-    assert domain_of("https://sub.Example.com/path") == "sub.example.com"
-    assert domain_of("example.com") == "example.com"
-    assert domain_of("") is None
-    assert domain_of(None) is None
-    assert domain_of("https://[::1") is None  # unparseable (unbalanced IPv6 bracket)
 
 
 async def test_save_then_load_round_trips_encrypted(profiles: _Profiles) -> None:

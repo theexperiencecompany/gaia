@@ -8,7 +8,6 @@
 
 from datetime import datetime
 from typing import Any, Literal
-from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -21,6 +20,7 @@ from app.constants.browser import (
     HandoffStatus,
     SensitiveCategory,
 )
+from app.utils.sites import host_of
 
 # ---------------------------------------------------------------------------
 # SSE card snapshots (data of a `browser_task_data` tool_data entry)
@@ -373,7 +373,7 @@ class BrowserTaskSecret(BaseModel):
     @classmethod
     def _host(cls, site: str) -> str:
         """Keep the site's host alone, without www.; a site naming no host is refused."""
-        host = urlsplit(site if "://" in site else f"https://{site}").hostname
-        if not host:
+        host = host_of(site)
+        if host is None:
             raise ValueError(f"{site!r} names no site")
         return host.removeprefix("www.")

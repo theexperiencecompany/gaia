@@ -115,7 +115,7 @@ async def test_registry_write_success_yields_and_releases(
 async def test_domain_derived_from_start_url_feeds_storage_lookup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Look up with domain_of(start_url), not start_url itself."""
+    """Look up with host_of(start_url), not start_url itself."""
     _make_session_fakes(monkeypatch)
 
     async with session_mod.browser_session(
