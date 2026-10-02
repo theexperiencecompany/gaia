@@ -28,6 +28,7 @@ from typing import Any, TypeVar, cast
 from urllib.parse import urlsplit
 import uuid
 
+from browser_use import Browser
 import httpx
 import pymongo
 from pymongo.database import Database
@@ -48,6 +49,7 @@ from app.memory.management import delete_all as forget_all_memories
 from app.services.browser.exceptions import BrowserUnavailableError
 from app.services.browser.handoff import bot_chat_address
 from app.services.browser.host_client import get_session
+from app.services.browser.registry import get_session_entry
 
 T = TypeVar("T")
 
@@ -171,6 +173,11 @@ class Sender(subprocess.Popen[str]):
         return failed[-1] if failed else None
 
 
+def plain_quotes(text: str) -> str:
+    """Return text with typographic apostrophes as plain ones: the model writes "couldn’t" as often as "couldn't"."""
+    return text.replace("\u2019", "'").replace("\u2018", "'")
+
+
 def as_read(markup: str) -> str:
     """Return HTML as a reader sees it: no tags, entities decoded ("&amp;" is "&")."""
     return html.unescape(re.sub(r"<[^>]+>", "", markup))
@@ -200,7 +207,7 @@ class Transcript:
         return [e for e in self.events if e.get("type") in ("rich", "outbound-attachment")]
 
     def texts_matching(self, pattern: str) -> list[str]:
-        return [t for t in self.texts if re.search(pattern, t, re.I | re.S)]
+        return [t for t in self.texts if re.search(pattern, plain_quotes(t), re.I | re.S)]
 
 
 @dataclass
@@ -609,11 +616,15 @@ class Battery:
         raise AssertionError(f"no browser host holds session {session_id}")
 
     async def type_into_live_session(self, session_id: str, script: str) -> Any:
-        """Run JS in the run's own page, the way a person acts in live view during a handoff."""
-        from browser_use import Browser
+        """Run JS in the run's own page, the way a person acts in live view during a handoff.
 
-        ws = (await self.host_of(session_id)).replace("http", "ws", 1) + f"/cdp/{session_id}"
-        browser = Browser(cdp_url=ws)
+        Dialled with the session's own token, as the live view is: the host refuses a bare /cdp/<id>.
+        """
+        entry = await get_session_entry(session_id)
+        assert entry is not None and entry.live_ws, f"session {session_id} has no live view"
+        live = urlsplit(entry.live_ws)
+        cdp_path = live.path.replace(f"/live/{session_id}", f"/cdp/{session_id}")
+        browser = Browser(cdp_url=live._replace(path=cdp_path).geturl())
         await browser.start()
         try:
             cdp = await browser.get_or_create_cdp_session(focus=False)

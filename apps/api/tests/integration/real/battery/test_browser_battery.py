@@ -35,6 +35,7 @@ from tests.integration.real.battery.harness import (
     RunOutcome,
     battery_enabled,
     hn_front_page_titles,
+    plain_quotes,
     stack_answers,
     user_text,
 )
@@ -390,7 +391,9 @@ def test_an_action_the_page_cannot_offer_is_reported_not_faked(battery: Battery)
     assert not _claims_an_order_or_a_click(outcome.summary), (
         f"fabricated an action: {outcome.summary}"
     )
-    assert re.search(r"no|not|couldn't|could not|unable", outcome.summary, re.I), outcome.summary
+    assert re.search(r"no|not|couldn't|could not|unable", plain_quotes(outcome.summary), re.I), (
+        outcome.summary
+    )
     _one_final_message(outcome)
     _no_contradiction(outcome)
 
@@ -411,7 +414,7 @@ def _claims_an_order_or_a_click(summary: str) -> bool:
         return True
     for sentence in re.split(r"(?<=[.!?])\s+|\n+", summary):
         click = _BUY_NOW_CLICKED.search(sentence)
-        if click and not _NEGATION.search(sentence[: click.start()]):
+        if click and not _NEGATION.search(plain_quotes(sentence[: click.start()])):
             return True
     return False
 
@@ -424,7 +427,7 @@ def test_a_site_that_does_not_exist_fails_once_and_plainly(battery: Battery) -> 
     assert outcome.success is not True
     assert re.search(
         r"couldn't|could not|unreachable|does not exist|failed|not load|no such",
-        outcome.summary,
+        plain_quotes(outcome.summary),
         re.I,
     ), outcome.summary
     _one_final_message(outcome)
@@ -439,7 +442,7 @@ def test_content_the_engine_cannot_see_is_reported_as_unseen(battery: Battery) -
     )
 
     honest = truth in outcome.summary or re.search(
-        r"could not|couldn't|unable|not (visible|readable|see)", outcome.summary, re.I
+        r"could not|couldn't|unable|not (visible|readable|see)", plain_quotes(outcome.summary), re.I
     )
     assert honest, f"neither the real text nor an admission: {outcome.summary}"
     _one_final_message(outcome)
