@@ -36,6 +36,10 @@ _NOT_SENT_NOTES: dict[TodoRunDeliveryOutcome, str] = {
 }
 
 
+class TodoRunNotRecordedError(RuntimeError):
+    """A finished tracked-todo run's result could not be written to its activity."""
+
+
 class _Resolution(NamedTuple):
     """What became of one run's result: the outcome, its activity note, and the platform."""
 
@@ -54,7 +58,8 @@ async def deliver_todo_run_result(
     """Decide, deliver and record what a finished tracked-todo run tells the user.
 
     An error result delivers nothing: the worker that awaits the run retries it
-    and records the failure itself.
+    and records the failure itself. Raises TodoRunNotRecordedError when the
+    finish entry cannot be written, since that entry is the run's outcome.
     """
     log.set_ns("todo_delivery", todo_id=todo_run.todo_id, result_type=result_type)
     if result_type == "error":
@@ -75,7 +80,7 @@ async def deliver_todo_run_result(
 
     log.set_ns("todo_delivery", outcome=resolution.outcome.value)
     summary = result_text.strip().replace("\n", " ")[:RUN_SUMMARY_ACTIVITY_CHARS]
-    await record_activity(
+    recorded = await record_activity(
         todo.id,
         todo.user_id,
         TodoActivityEvent.RUN_FINISHED,
@@ -94,6 +99,8 @@ async def deliver_todo_run_result(
             "recurring": bool(todo.recurrence),
         },
     )
+    if not recorded:
+        raise TodoRunNotRecordedError(f"todo {todo.id}: the finished run's entry was not written")
 
 
 def _standing_requests(todo: TodoDocument) -> str | None:

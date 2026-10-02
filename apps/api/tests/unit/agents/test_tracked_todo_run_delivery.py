@@ -17,6 +17,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from pymongo.errors import PyMongoError
 import pytest
 
 from app.agents.core.background import (
@@ -43,7 +44,9 @@ from app.models.chat_models import ConversationSource
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
+from app.services import todo_activity
 from app.services.analytics_service import AnalyticsEvents
+from app.services.todo_activity import record_activity
 from app.utils.background_tasks import spawn_background_task
 from tests.helpers import captured_wide_event
 
@@ -295,3 +298,20 @@ class TestNothingIsSentWhenNothingShouldBe:
         seams.narrate.assert_not_awaited()
         seams.send.assert_not_awaited()
         seams.activity.assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_a_result_that_cannot_be_recorded_fails_the_run_for_the_retry_ladder(
+        self,
+    ) -> None:
+        """Regression: the failed activity write was swallowed, so the worker advanced an unrecorded run."""
+        with (
+            _seams(todo=_todo()),
+            patch.object(trd, "record_activity", record_activity),
+            patch.object(
+                todo_activity,
+                "append_activity",
+                AsyncMock(side_effect=PyMongoError("primary stepped down")),
+            ),
+            pytest.raises(TodoRunFailedError, match=TODO_ID),
+        ):
+            await run_todo_on_executor(_request())
