@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from app.constants.browser import (
@@ -82,6 +84,15 @@ def test_each_step_gets_the_runs_step_budget_and_limits() -> None:
 
 def test_a_run_resumed_on_the_fallback_engine_does_not_start_jev_on_the_whole_task_again() -> None:
     options = agent_options(TASK, CONFIG, RunSecrets({}), resumed=True, fast_engine=True)
+
+    assert options["initial_actions"] is None
+
+
+def test_a_run_with_no_page_to_start_on_starts_with_the_agent_not_jev() -> None:
+    """A burst on the blank tab could only end there, costing the run a step (research, two sites)."""
+    blank = replace(CONFIG, start_url=None)
+
+    options = agent_options(TASK, blank, RunSecrets({}), resumed=False, fast_engine=False)
 
     assert options["initial_actions"] is None
 

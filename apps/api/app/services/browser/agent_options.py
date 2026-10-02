@@ -64,15 +64,18 @@ def browser_options(cdp_url: str) -> BrowserOptions:
 def agent_options(
     task: str, config: BrowserRunConfig, secrets: RunSecrets, *, resumed: bool, fast_engine: bool
 ) -> AgentOptions:
-    """Return the Agent for task: Jev's burst on the whole task first, the agent steering after.
+    """Return the Agent for task: Jev's burst on the whole task first when there is a page to start on, the agent steering after.
 
     An agent on the fast engine is told so: one that was not believed the page
     it read there was already the full browser, and never moved when the task said to.
     """
     return AgentOptions(
         task=task + BROWSER_TAKEOVER_PREAMBLE,
+        # With no page to start on, a first burst could only end on the blank tab: the first move is the agent's.
         initial_actions=(
-            None if resumed else [{JEV_ACTION: {"goal": task, "start_url": config.start_url}}]
+            [{JEV_ACTION: {"goal": task, "start_url": config.start_url}}]
+            if config.start_url and not resumed
+            else None
         ),
         sensitive_data=secrets.sensitive_data() or None,
         extend_system_message=(
