@@ -315,9 +315,8 @@ async def _narrate_and_deliver(
         user_msg_content=user_msg_content,
     )
 
-    # Follow-ups are a second LLM call. The web/mobile and bot paths deliver the
-    # answer first and generate them in the background (a bot user waited 5 to 8s
-    # for suggestions the platform never shows); a workflow run attaches them inline.
+    # Follow-ups are a second LLM call: web/mobile get them after the answer, a
+    # workflow run attaches them inline, and a bot reply gets none (no bot renders them).
     conversation_source = await _get_conversation_source(run.conversation_id, user_id)
 
     if run.workflow_id and not is_react:
@@ -355,14 +354,6 @@ async def _narrate_and_deliver(
         delivered, transport = await _deliver_to_platform(
             run, conversation_source, notification_text, is_react=is_react
         )
-        # A reaction gets no follow-ups: there is no rendered message to attach chips to.
-        if delivered and not is_react:
-            _spawn_deferred_follow_ups(
-                bot_message=bot_message,
-                result_type=result_type,
-                tool_data=tool_data,
-                target=target,
-            )
     else:
         await _broadcast_and_defer_follow_ups(
             target=target,

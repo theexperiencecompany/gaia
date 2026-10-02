@@ -118,8 +118,8 @@ async def _deliver(
     return save, platform, ws
 
 
-class TestBotFollowUpsNeverGateTheAnswer:
-    """A bot user waited 5 to 8 s for follow-up suggestions the platform never shows."""
+class TestABotReplyGeneratesNoFollowUps:
+    """No bot renders follow-up chips, so a bot reply never pays for the second LLM call."""
 
     async def _deliver_to_telegram(self, *, delivered: bool):
         with (
@@ -129,7 +129,7 @@ class TestBotFollowUpsNeverGateTheAnswer:
             patch.object(
                 rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]
             ) as inline,
-            patch.object(rd, "update_messages", new_callable=AsyncMock),
+            patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
             patch.object(
                 rd,
                 "_get_conversation_source",
@@ -142,64 +142,17 @@ class TestBotFollowUpsNeverGateTheAnswer:
             patch.object(rd, "_spawn_deferred_follow_ups") as deferred,
         ):
             await rd.deliver_result(_run(), result_text="raw", result_type="final", tool_data=None)
-        return inline, platform, deferred
+        return inline, platform, deferred, save
 
-    async def test_the_answer_is_sent_before_any_follow_up_is_generated(self) -> None:
-        inline, platform, deferred = await self._deliver_to_telegram(delivered=True)
+    @pytest.mark.regression
+    @pytest.mark.parametrize("delivered", [True, False])
+    async def test_neither_inline_nor_deferred_follow_ups_run(self, delivered: bool) -> None:
+        inline, platform, deferred, save = await self._deliver_to_telegram(delivered=delivered)
 
-        inline.assert_not_awaited()
         platform.assert_awaited_once()
-        deferred.assert_called_once()
-
-    async def test_an_undelivered_answer_spawns_no_follow_ups(self) -> None:
-        _, _, deferred = await self._deliver_to_telegram(delivered=False)
-
+        inline.assert_not_awaited()
         deferred.assert_not_called()
-
-
-class TestTheBotAnswersFollowUpsBelongToIt:
-    """The follow-ups generated after a bot delivery attach to the message the user got."""
-
-    async def _deliver_quoting_run_to_telegram(self):
-        with (
-            patch.object(
-                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="voiced"
-            ),
-            patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
-            patch.object(
-                rd,
-                "_get_conversation_source",
-                new_callable=AsyncMock,
-                return_value=ConversationSource.TELEGRAM,
-            ),
-            patch.object(
-                rd,
-                "_lookup_user_message_content",
-                new_callable=AsyncMock,
-                return_value="what I asked",
-            ),
-            patch.object(
-                rd, "deliver_message_to_platform", new_callable=AsyncMock, return_value=True
-            ),
-            patch.object(rd, "_spawn_deferred_follow_ups") as deferred,
-        ):
-            await rd.deliver_result(
-                _quoting_run(), result_text="raw", result_type="final", tool_data=CARDS
-            )
-        return save.await_args.args[0].messages[0], deferred.call_args.kwargs
-
-    async def test_they_are_generated_for_the_saved_message_and_its_cards(self) -> None:
-        saved, follow_ups = await self._deliver_quoting_run_to_telegram()
-
-        assert follow_ups["bot_message"].message_id == saved.message_id
-        assert follow_ups["bot_message"].response == "voiced"
-        assert follow_ups["tool_data"] == CARDS
-        assert follow_ups["result_type"] == "final"
-
-    async def test_they_go_to_the_same_owner_and_quote(self) -> None:
-        _saved, follow_ups = await self._deliver_quoting_run_to_telegram()
-
-        assert follow_ups["target"] == _target()
+        assert save.await_args.args[0].messages[0].follow_up_actions is None
 
 
 class TestAWorkflowAnswerCarriesItsFollowUpsInline:
