@@ -251,6 +251,26 @@ class TestDecideBrowserHandoff:
             BROWSER_LIVE_VIEW_NOT_WAITING_DETAIL,
         )
 
+    async def test_the_live_pages_note_reaches_the_handoff_and_the_thread(
+        self, button_world: list[tuple[str, str, str]]
+    ) -> None:
+        """What the user types on the live page travels with the decision, as a chat reply's note does."""
+        code = await mint_live_code("sess-1", "u1", "h1")
+        payload = HandoffDecisionRequest(decision=HandoffDecision.CANCEL, message="wrong account")
+
+        await live_view_ep.decide_live_view_handoff(code, payload)
+
+        record = await get_handoff("h1")
+        assert record is not None
+        assert record.message == "wrong account"
+        assert button_world == [
+            (
+                "c1",
+                "[From the browser handoff card] cancel: wrong account",
+                BROWSER_HANDOFF_ACK_CANCEL,
+            )
+        ]
+
     async def test_a_live_page_whose_handoff_expired_says_it_is_gone(
         self, button_world: list[tuple[str, str, str]]
     ) -> None:
