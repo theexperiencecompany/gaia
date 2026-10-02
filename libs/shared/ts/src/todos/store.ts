@@ -117,8 +117,25 @@ export function createTodoStore(
   const { notify, onTodoCreated, devtoolsName = "todo-store" } = options;
 
   return create<TodoStore>()(
-    devtools(
-      (set, get) => ({
+    devtools((set, get) => {
+      // Monotonic id so a stale list response (slow first load, fast filter
+      // change) never overwrites the newer one — last writer wins.
+      let loadTodosSeq = 0;
+      // One in-flight promise per key so components mounting together
+      // (list page + sidebar) share a single network request.
+      const inFlight = new Map<string, Promise<unknown>>();
+
+      function dedupe<T>(key: string, fn: () => Promise<T>): Promise<T> {
+        const existing = inFlight.get(key);
+        if (existing) return existing as Promise<T>;
+        const p = fn().finally(() => {
+          if (inFlight.get(key) === p) inFlight.delete(key);
+        });
+        inFlight.set(key, p);
+        return p;
+      }
+
+      return {
         ...INITIAL_STATE,
 
         setTodos: (todos) => set({ todos }, false, "setTodos"),
@@ -161,15 +178,19 @@ export function createTodoStore(
           ),
 
         loadTodos: async (filters) => {
+          const seq = ++loadTodosSeq;
           set({ loading: true, error: null }, false, "loadTodos/start");
           try {
-            const todos = await api.getAllTodos(filters);
+            const key = `todos:${JSON.stringify(filters ?? null)}`;
+            const todos = await dedupe(key, () => api.getAllTodos(filters));
+            if (seq !== loadTodosSeq) return;
             set(
               { todos, loading: false, initialLoading: false },
               false,
               "loadTodos/success",
             );
           } catch (err) {
+            if (seq !== loadTodosSeq) return;
             const error =
               err instanceof Error ? err.message : "Failed to load todos";
             set(
@@ -286,7 +307,9 @@ export function createTodoStore(
 
         loadProjects: async () => {
           try {
-            const projects = await api.getAllProjects();
+            const projects = await dedupe("projects", () =>
+              api.getAllProjects(),
+            );
             set({ projects }, false, "loadProjects");
           } catch {
             // surface via list error UI; project load failures are non-fatal
@@ -330,7 +353,7 @@ export function createTodoStore(
 
         loadLabels: async () => {
           try {
-            const labels = await api.getAllLabels();
+            const labels = await dedupe("labels", () => api.getAllLabels());
             set({ labels }, false, "loadLabels");
           } catch {
             // non-fatal
@@ -339,7 +362,7 @@ export function createTodoStore(
 
         loadCounts: async () => {
           try {
-            const counts = await api.getTodoCounts();
+            const counts = await dedupe("counts", () => api.getTodoCounts());
             set({ counts }, false, "loadCounts");
           } catch {
             // non-fatal
@@ -450,7 +473,8 @@ export function createTodoStore(
             .loadCounts()
             .catch(() => undefined);
         },
-      }),
+      };
+      },
       { name: devtoolsName },
     ),
   );
