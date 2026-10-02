@@ -93,28 +93,3 @@ async def test_a_read_waits_for_the_next_frame_and_the_feed_is_capped(
     for step in (2, 3, 4):
         await job_events_mod.publish_job_event("job-1", _frame(step))
     assert await redis.xlen(KEY) == 2
-
-
-async def test_the_end_is_found_after_the_cards_before_it(monkeypatch: pytest.MonkeyPatch) -> None:
-    await job_events_mod.publish_job_event("job-1", _frame(1))
-    first_read = asyncio.Event()
-    read = job_events_mod.read_job_events
-
-    async def _read_then_mark(job_id: str, cursor: str) -> Any:
-        events = await read(job_id, cursor)
-        first_read.set()
-        return events
-
-    monkeypatch.setattr(job_events_mod, "read_job_events", _read_then_mark)
-    waiting = asyncio.create_task(job_events_mod.wait_for_job_end("job-1", within_seconds=5))
-    await first_read.wait()
-
-    await job_events_mod.publish_job_event("job-1", JOB_TERMINAL_FRAME)
-
-    assert await waiting is True
-
-
-async def test_a_feed_that_never_ends_is_waited_on_only_as_long_as_asked() -> None:
-    await job_events_mod.publish_job_event("job-1", _frame(1))
-
-    assert await job_events_mod.wait_for_job_end("job-1", within_seconds=0.05) is False

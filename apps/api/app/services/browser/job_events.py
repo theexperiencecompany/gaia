@@ -6,7 +6,6 @@ pub/sub channel so a relay that starts late, or restarts, still reads from 0-0
 and shows the run from step 1.
 """
 
-import asyncio
 import json
 from typing import TypedDict
 
@@ -96,17 +95,3 @@ async def read_cards(job_id: str) -> list[dict[str, object]]:
         if payload is not None and is_card_frame(payload):
             cards.append(payload)
     return cards
-
-
-async def wait_for_job_end(job_id: str, within_seconds: float) -> bool:
-    """Block until the job's feed carries its terminal frame; False when within_seconds pass first."""
-    cursor = "0-0"
-    try:
-        async with asyncio.timeout(within_seconds):
-            while True:
-                for entry_id, payload in await read_job_events(job_id, cursor):
-                    if payload == JOB_TERMINAL_FRAME:
-                        return True
-                    cursor = entry_id
-    except TimeoutError:
-        return False
