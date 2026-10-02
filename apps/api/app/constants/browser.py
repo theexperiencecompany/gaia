@@ -340,6 +340,12 @@ BROWSER_LOAD_STALLED_NOTE = (
     "{url} did not respond within {seconds:.0f} s, so its loading was stopped and the tab "
     "stayed on the page it was on."
 )
+#: The same, when the page the tab stayed on had stalled loading too and the stop cut it short.
+BROWSER_LOAD_STALLED_CUT_SHORT_NOTE = (
+    "{url} did not respond within {seconds:.0f} s, so its loading was stopped. The page the "
+    "tab stayed on, {page}, had not finished loading either and was stopped with it, so its "
+    "scripts may not have run: open it again before using it."
+)
 #: What the agent reads about a page Browser-Use read before its load had finished.
 BROWSER_LOAD_UNFINISHED_NOTE = (
     "{url} had not finished loading (its load event had not fired) when the browser stopped "

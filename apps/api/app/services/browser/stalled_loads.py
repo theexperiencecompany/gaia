@@ -3,8 +3,8 @@
 While a top-level navigation waits for the server's first byte, Chrome answers
 no Runtime.evaluate on the tab; Page.stopLoading still answers (2026-09-25).
 But it stops every load in the tab: stopped mid head script, the shown page
-never ran a script (2026-10-02). So a stall waits for the shown page to load
-first; after that, the stop takes the navigation alone.
+never ran a script (2026-10-02). So a stall waits, as long again, for the shown
+page to load, then stops; a shown page still loading is cut short, and said so.
 
 A form submission is never stopped: the server may already be acting on it.
 Chrome names one in Page.frameRequestedNavigation before it starts (2026-10-02).
@@ -16,10 +16,12 @@ It also tells the agent when Browser-Use's capped readiness wait
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from app.constants.browser import (
     BROWSER_LOAD_STALL_SECONDS,
+    BROWSER_LOAD_STALLED_CUT_SHORT_NOTE,
     BROWSER_LOAD_STALLED_NOTE,
     BROWSER_LOAD_STOP_TIMEOUT_SECONDS,
     BROWSER_LOAD_UNFINISHED_NOTE,
@@ -47,6 +49,14 @@ _FORM_SUBMISSIONS = frozenset({"formSubmissionGet", "formSubmissionPost"})
 _RESTORE_WITH_POST = "restoreWithPost"
 
 
+@dataclass(frozen=True)
+class _ShownPage:
+    """The document a tab shows, set once it has loaded."""
+
+    url: str
+    loaded: asyncio.Event = field(default_factory=asyncio.Event)
+
+
 class StalledLoads:
     """Watches one Browser-Use session's tabs and stops any top-level load left unanswered, once the page shown has loaded."""
 
@@ -61,8 +71,8 @@ class StalledLoads:
         self._loading: dict[str, str] = {}
         #: Tab -> a load Browser-Use stopped waiting on before it finished.
         self._unfinished: dict[str, str] = {}
-        #: Tab -> set once the document it shows has loaded; absent when that already happened.
-        self._showing_loaded: dict[str, asyncio.Event] = {}
+        #: Tab -> the document it shows while that document is still loading.
+        self._showing: dict[str, _ShownPage] = {}
         self._stalled: list[str] = []
 
     async def attach(self, event: BrowserConnectedEvent) -> None:
@@ -126,7 +136,7 @@ class StalledLoads:
         frame: Frame = event["frame"]
         # The frame shows a new document, which loads from here. A child frame's id
         # is never a tab's, so only a tab's own commit answers its load or holds its stop.
-        self._showing_loaded[frame["id"]] = asyncio.Event()
+        self._showing[frame["id"]] = _ShownPage(frame["url"])
         self._answered(frame["id"])
 
     def _on_loaded(self, event: LoadEventFiredEvent, session_id: str | None) -> None:
@@ -145,9 +155,9 @@ class StalledLoads:
         self._shown_page_loaded(tab)
 
     def _shown_page_loaded(self, tab: str | None) -> None:
-        loaded = self._showing_loaded.pop(tab, None) if tab is not None else None
-        if loaded is not None:
-            loaded.set()
+        shown = self._showing.pop(tab, None) if tab is not None else None
+        if shown is not None:
+            shown.loaded.set()
 
     def _answered(self, tab: str) -> None:
         self._form_submissions.pop(tab, None)
@@ -158,12 +168,24 @@ class StalledLoads:
         if timer is not None:
             timer.cancel()
 
+    async def _shown_page_settles(self, tab: str) -> str | None:
+        """Wait for the page the tab shows to load, as long as a server gets; return its URL when it never did.
+
+        A commit meanwhile cancels this wait. A page whose own server went silent that
+        long is stalled too: the stop that frees the tab cuts it short, and says so.
+        """
+        shown = self._showing.get(tab)
+        if shown is None:
+            return None
+        try:
+            await asyncio.wait_for(shown.loaded.wait(), BROWSER_LOAD_STALL_SECONDS)
+        except TimeoutError:
+            return shown.url
+        return None
+
     async def _stop_after(self, tab: str, session_id: str, url: str) -> None:
         await asyncio.sleep(BROWSER_LOAD_STALL_SECONDS)
-        showing = self._showing_loaded.get(tab)
-        if showing is not None:
-            # Stopping now would cut that page short too; a commit meanwhile cancels this wait.
-            await showing.wait()
+        cut_short = await self._shown_page_settles(tab)
         # Its own entry, until now: only a cancel removes it sooner, and a cancel ends this wait.
         del self._timers[tab]
         log.warning(
@@ -173,6 +195,10 @@ class StalledLoads:
         )
         self._stalled.append(
             BROWSER_LOAD_STALLED_NOTE.format(url=url, seconds=BROWSER_LOAD_STALL_SECONDS)
+            if cut_short is None
+            else BROWSER_LOAD_STALLED_CUT_SHORT_NOTE.format(
+                url=url, seconds=BROWSER_LOAD_STALL_SECONDS, page=cut_short
+            )
         )
         try:
             await asyncio.wait_for(

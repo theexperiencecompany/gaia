@@ -14,6 +14,8 @@ from app.services.browser.stalled_loads import StalledLoads
 from tests.helpers import captured_wide_event
 
 TAB = "TAB-1"
+#: The page the tab shows while a navigation away from it waits on its server.
+SHOWN = "https://shown.test/"
 Handler = Callable[[Any, str | None], None]
 
 
@@ -54,7 +56,7 @@ def _browser(client: _FakeClient) -> Any:
 
 
 async def _settle() -> None:
-    for _ in range(5):
+    for _ in range(10):
         await asyncio.sleep(0)
 
 
@@ -139,19 +141,25 @@ class TestStalledLoads:
     ) -> None:
         guard, client = watched
         _start(client, "S1")
-        client.handlers["committed"]({"frame": {"id": TAB}, "type": "Navigation"}, "S1")
+        client.handlers["committed"](
+            {"frame": {"id": TAB, "url": SHOWN}, "type": "Navigation"}, "S1"
+        )
         await _settle()
         assert client.stopped == []
         assert guard.take() == []
 
     async def test_a_stall_waits_for_the_page_the_tab_shows_to_load_before_stopping(
-        self, watched: tuple[StalledLoads, _FakeClient]
+        self, watched: tuple[StalledLoads, _FakeClient], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A stop cuts every load in the tab short: the herokuapp page it stayed on lost its scripts."""
         guard, client = watched
         # The tab shows a page still loading its head script when the next navigation stalls.
-        client.handlers["committed"]({"frame": {"id": TAB}, "type": "Navigation"}, "S1")
+        client.handlers["committed"](
+            {"frame": {"id": TAB, "url": SHOWN}, "type": "Navigation"}, "S1"
+        )
         _start(client, "S1")
+        await asyncio.sleep(0)  # the stall's window has passed; the shown page's begins
+        monkeypatch.setattr(stalled_loads, "BROWSER_LOAD_STALL_SECONDS", 3600)
         await _settle()
         assert client.stopped == []
 
@@ -159,14 +167,32 @@ class TestStalledLoads:
         await _settle()
 
         assert client.stopped == ["S1"]
-        assert len(guard.take()) == 1
+        [note] = guard.take()
+        assert SHOWN not in note
+
+    async def test_a_shown_page_that_never_loads_is_stopped_with_the_stall_and_named(
+        self, watched: tuple[StalledLoads, _FakeClient]
+    ) -> None:
+        """Its own server gone silent, the shown page held the stop forever and the tab answered nothing."""
+        guard, client = watched
+        client.handlers["committed"](
+            {"frame": {"id": TAB, "url": SHOWN}, "type": "Navigation"}, "S1"
+        )
+        _start(client, "S1")
+        await _settle()
+
+        assert client.stopped == ["S1"]
+        [note] = guard.take()
+        assert SHOWN in note
 
     async def test_a_page_whose_loading_was_stopped_holds_no_later_stall(
         self, watched: tuple[StalledLoads, _FakeClient]
     ) -> None:
         """A page stopped before its load event never fires one: a stall must not wait on it."""
         guard, client = watched
-        client.handlers["committed"]({"frame": {"id": TAB}, "type": "Navigation"}, "S1")
+        client.handlers["committed"](
+            {"frame": {"id": TAB, "url": SHOWN}, "type": "Navigation"}, "S1"
+        )
         client.handlers["stopped"]({"frameId": TAB}, "S1")
         _start(client, "S1")
         await _settle()
@@ -219,7 +245,7 @@ async def test_the_agent_hears_of_a_load_the_browser_stopped_waiting_on_while_it
 ) -> None:
     guard, client = watched
     _start(client, "S1")
-    client.handlers["committed"]({"frame": {"id": TAB}, "type": "Navigation"}, "S1")
+    client.handlers["committed"]({"frame": {"id": TAB, "url": SHOWN}, "type": "Navigation"}, "S1")
     guard.on_navigation_complete(SimpleNamespace(target_id=TAB, error_message=error))
     if finished:
         client.handlers["stopped"]({"frameId": TAB}, "S1")
@@ -268,7 +294,9 @@ async def test_a_form_submission_mark_ends_with_its_navigation(
     if ended_by == "a_link_request":
         client.handlers["requested"]({**request, "reason": "anchorClick"}, "S1")
     else:
-        client.handlers["committed"]({"frame": {"id": TAB}, "type": "Navigation"}, "S1")
+        client.handlers["committed"](
+            {"frame": {"id": TAB, "url": SHOWN}, "type": "Navigation"}, "S1"
+        )
         client.handlers["loaded"]({"timestamp": 1.0}, "S1")
 
     _start(client, "S1")
@@ -283,7 +311,7 @@ async def test_a_load_that_finished_before_browser_use_called_it_done_is_not_rep
 ) -> None:
     guard, client = watched
     _start(client, "S1")
-    client.handlers["committed"]({"frame": {"id": TAB}, "type": "Navigation"}, "S1")
+    client.handlers["committed"]({"frame": {"id": TAB, "url": SHOWN}, "type": "Navigation"}, "S1")
     client.handlers["stopped"]({"frameId": TAB}, "S1")
     # A child frame that stops loading was never a tab's load.
     client.handlers["stopped"]({"frameId": "IFRAME-1"}, "S1")
