@@ -656,6 +656,7 @@ class TestUpdateTodo:
         )
         mock_todo_repo.update.assert_not_awaited()
         assert result.workflow_id == "wf1"
+        assert mock_todo_repo.get.await_args == call(FAKE_TODO_ID, user_id=FAKE_USER_ID)
 
     async def test_a_tracked_todo_refuses_a_workflow_link(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
