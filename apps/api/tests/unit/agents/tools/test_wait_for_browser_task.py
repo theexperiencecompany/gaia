@@ -25,6 +25,7 @@ from app.constants.browser import (
     ResultSpeaker,
 )
 from app.constants.log_tags import LogTag
+from app.core.stream_manager import StreamManager
 from app.db.redis import redis_cache
 from app.schemas.browser import AgentGuidanceRequest, BrowserResultSnapshot, PendingAgentGuidance
 from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
@@ -37,6 +38,7 @@ from app.services.browser.jobs import (
     claim_result_delivery,
     joiner_lease_held,
     put_job_state,
+    request_job_cancel,
     set_latest_job,
 )
 from tests.helpers import captured_wide_event
@@ -213,6 +215,19 @@ async def test_a_result_the_worker_already_told_is_not_told_again() -> None:
 
     assert joined.startswith("The browser task already finished, and the user was told")
     assert ANSWER in joined
+
+
+async def test_a_joined_run_whose_job_was_stopped_ends_stopped_and_tells_nothing() -> None:
+    """The stop answered the user; a joined run that voiced the stopped job was a second reply."""
+    await request_job_cancel("job-1")
+    await _finish()
+
+    joined = await _join()
+
+    assert joined == tool_mod._STOPPED_BY_USER
+    # Its run ends as a stopped one, which delivers nothing.
+    assert await StreamManager.is_cancelled("s1") is True
+    assert await joiner_lease_held("job-1") is False
 
 
 async def test_a_run_asking_for_guidance_comes_back_at_once_and_keeps_the_claim() -> None:

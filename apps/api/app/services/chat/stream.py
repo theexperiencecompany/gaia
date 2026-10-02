@@ -33,7 +33,11 @@ from app.agents.core.background.executor_capture import (
 from app.agents.core.background.session import get_session
 from app.agents.core.comms_directive import interpret_comms_output
 from app.constants.artifacts import ARTIFACT_FORWARDER_SUBSCRIBE_TIMEOUT
-from app.constants.browser import BROWSER_HANDOFF_REPLY_NOTE, BROWSER_HANDOFF_REPLY_READINGS
+from app.constants.browser import (
+    BROWSER_HANDOFF_REPLY_NOTE,
+    BROWSER_HANDOFF_REPLY_READINGS,
+    BROWSER_RUN_STOPPED_BY_MESSAGE_NOTE,
+)
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT, VOICE_EXECUTOR_RESULT_TIMEOUT_S
 from app.constants.chat import (
     EMPTY_RESPONSE_FALLBACK,
@@ -64,7 +68,10 @@ from app.services.analytics_service import (
 )
 from app.services.browser.handoff import reply_address
 from app.services.browser.jobs import post_conversation_message
-from app.services.browser.resolution import resolve_handoff_from_message
+from app.services.browser.resolution import (
+    resolve_handoff_from_message,
+    stop_running_job_from_message,
+)
 from app.services.chat.artifact_forwarder import forward_artifact_events
 from app.services.chat.chunks import ChunkAccumulators, extract_response_text, process_data_chunk
 from app.services.chat.persistence import (
@@ -559,11 +566,11 @@ async def _browser_turn_note(
     conversation_id: str,
     source: str | None,
 ) -> str | None:
-    """Read the user's message against a paused browser task: resolve its handoff, or pass the message on to the running task.
+    """Read the user's message against their browser task: resolve its handoff, stop it, or pass the message on to it.
 
     Returns what the turn's model must read with the message when it answered a
-    handoff, None otherwise. A message that answers none reaches the running
-    task as something the user said, which its agent weighs at its next step.
+    handoff or stopped the task, None otherwise. Any other message reaches the
+    running task as something the user said, which its agent weighs at its next step.
     """
     message = user_message_content_from(body)
     if not user_id or not message:
@@ -572,6 +579,7 @@ async def _browser_turn_note(
     address = reply_address(conversation_id, user_id, ConversationSource.coerce(source))
     try:
         reply = await resolve_handoff_from_message(address, user_id, message)
+        stopped = reply is None and await stop_running_job_from_message(conversation_id, message)
     except Exception as e:  # chat must survive an optional-feature lookup
         log.error(
             f"{LogTag.CHAT} Pending browser-handoff check failed; normal turn",
@@ -579,6 +587,8 @@ async def _browser_turn_note(
         )
         return None
 
+    if stopped:
+        return BROWSER_RUN_STOPPED_BY_MESSAGE_NOTE
     if reply is None or reply.action == "unrelated":
         job_id = await post_conversation_message(conversation_id, message)
         if job_id is not None:

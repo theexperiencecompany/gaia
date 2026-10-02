@@ -455,7 +455,8 @@ def test_a_stop_from_the_user_ends_the_run_with_one_message(battery: Battery) ->
     )
 
     assert outcome.success is not True
-    assert outcome.status in ("stopped", "cancelled", "failed"), outcome.state
+    # Stopped, not a failure its own agent declared: only a stop ends unnarrated.
+    assert outcome.status == "cancelled", outcome.state
     _one_final_message(outcome)
     _no_contradiction(outcome)
 

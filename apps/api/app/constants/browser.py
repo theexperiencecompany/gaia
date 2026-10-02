@@ -231,6 +231,11 @@ BROWSER_HANDOFF_REPLY_READINGS: dict[str, str] = {
     "redirect": "a new instruction instead of that step, which the task now follows",
 }
 
+#: What the turn reads with a message that stopped the running browser task: its
+#: reply is the one thing the user hears of the stop.
+BROWSER_RUN_STOPPED_BY_MESSAGE_NOTE = (
+    "[This message stopped the browser task that was running, so it was stopped.]"
+)
 
 # An expired handoff is a failed run, not the completed one a takeover made it look like.
 BROWSER_RUN_HANDOFF_TIMED_OUT = "Stopped: nobody finished the step in the live browser in time."

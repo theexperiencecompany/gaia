@@ -18,6 +18,7 @@ from langchain_core.tools import InjectedToolCallId, tool
 from pydantic import BaseModel, ConfigDict
 
 from app.agents.core.background.redis_writer import publish_to_stream
+from app.agents.core.background.running_registry import stop_stream
 from app.constants.browser import (
     BROWSER_JOB_JOIN_DEFAULT_WAIT_SECONDS,
     BROWSER_JOB_QUEUE,
@@ -48,6 +49,7 @@ from app.services.browser.jobs import (
     get_conversation_slot,
     get_job_state,
     get_latest_job,
+    job_cancel_requested,
     put_job_state,
     refresh_joiner_lease,
     release_conversation_slot,
@@ -92,6 +94,10 @@ _NOTHING_RUNNING = "No browser task is running."
 _ALREADY_TOLD = (
     "The browser task already finished, and the user was told its outcome in a follow-up "
     "message. Do not tell them again. What the run reported:\n\n{outcome}"
+)
+_STOPPED_BY_USER = (
+    "The user stopped the browser task, and the stop already answered them. "
+    "Say nothing more about it."
 )
 _STILL_RUNNING = (
     "The browser task is still running; it will be delivered to the user when it finishes."
@@ -345,7 +351,7 @@ async def _join(job_id: str, conversation_id: str, stream_id: str, timeout: int)
     while True:
         state = await get_job_state(job_id)
         if state is not None and state.status is BrowserJobStatus.DONE:
-            return await _collect(job_id, state, stream_id)
+            return await _collect(job_id, state, conversation_id, stream_id)
         pending = await get_guidance_request(job_id)
         if pending is not None:
             return _JoinOutcome(guidance_message(pending.request), keep_lease=True)
@@ -364,12 +370,21 @@ async def _join(job_id: str, conversation_id: str, stream_id: str, timeout: int)
         await refresh_joiner_lease(job_id, stream_id)
 
 
-async def _collect(job_id: str, state: BrowserJobState, stream_id: str) -> _JoinOutcome:
-    """Take the finished job's result to speak, unless the worker's follow-up already told the user.
+async def _collect(
+    job_id: str, state: BrowserJobState, conversation_id: str, stream_id: str
+) -> _JoinOutcome:
+    """Take the finished job's result to speak, unless the worker's follow-up or a stop already told the user.
 
-    The message that speaks the result carries the run's cards: a join on a turn
-    other than the one that relayed them puts them on this turn's stream.
+    A stopped job is told by its stop, as the worker also reads it, so the run
+    that joined it ends there as stopped and narrates nothing. The message that
+    speaks the result carries the run's cards: a join on a turn other than the
+    one that relayed them puts them on this turn's stream.
     """
+    if await job_cancel_requested(job_id):
+        log.set_ns("browser", join="stopped")
+        if stream_id:
+            await stop_stream(conversation_id, stream_id)
+        return _JoinOutcome(_STOPPED_BY_USER)
     if await claim_result_delivery(job_id, ResultSpeaker.JOINER) is not ResultSpeaker.JOINER:
         return _JoinOutcome(_ALREADY_TOLD.format(outcome=state.agent_message))
     if stream_id and state.relay_stream_id != stream_id:

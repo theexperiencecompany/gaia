@@ -15,14 +15,23 @@ import pytest
 from app.constants.browser import (
     BROWSER_HANDOFF_REPLY_NOTE,
     BROWSER_HANDOFF_REPLY_READINGS,
+    BROWSER_RUN_STOPPED_BY_MESSAGE_NOTE,
     HandoffStatus,
 )
 from app.constants.chat import ConversationSource
 from app.constants.log_tags import LogTag
 from app.models.message_models import MessageRequestWithHistory
-from app.services.browser import resolution
+from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
+from app.services.browser import job_stop, resolution
 from app.services.browser.handoff import create_pending_handoff, get_handoff, reply_address
-from app.services.browser.jobs import claim_conversation_slot, take_job_messages
+from app.services.browser.jobs import (
+    claim_conversation_slot,
+    job_cancel_requested,
+    put_job_state,
+    set_job_wait,
+    set_latest_job,
+    take_job_messages,
+)
 from app.services.chat import stream as chat_stream
 from app.services.chat.stream import _browser_turn_note
 from tests.helpers import captured_wide_event
@@ -46,9 +55,25 @@ def _classifier(action: resolution.HandoffReplyAction, note: str | None = None) 
     return AsyncMock(return_value=resolution.HandoffReplyDecision(action=action, note=note))
 
 
+def _reads_running(action: str) -> AsyncMock:
+    return AsyncMock(return_value=resolution.RunningTaskMessageDecision(action=action))
+
+
 @pytest.fixture(autouse=True)
-def redis(fake_redis: fakeredis.aioredis.FakeRedis) -> fakeredis.aioredis.FakeRedis:
+def redis(
+    fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> fakeredis.aioredis.FakeRedis:
+    """Back the app's cache and ARQ's pool with the same fake Redis."""
+    monkeypatch.setattr(job_stop.RedisPoolManager, "get_pool", AsyncMock(return_value=fake_redis))
     return fake_redis
+
+
+async def _running(job_id: str, *addresses: str) -> None:
+    """Start a job in the conversation, findable by a stop at each address."""
+    await claim_conversation_slot(CONVERSATION_ID, job_id)
+    for address in addresses:
+        await set_latest_job(address, job_id)
+    await put_job_state(BrowserJobState(job_id=job_id, status=BrowserJobStatus.RUNNING, task="t"))
 
 
 async def test_a_reply_that_finishes_the_step_resolves_it_and_tells_the_turn_so() -> None:
@@ -71,13 +96,10 @@ async def test_a_reply_that_finishes_the_step_resolves_it_and_tells_the_turn_so(
 
 async def test_a_dm_reply_resolves_the_handoff_of_a_run_started_in_a_group() -> None:
     """A bot sends the prompt to the requester's DM whichever chat started the run, so that is where the answer comes from."""
-    await create_pending_handoff(
-        "h2",
-        USER_ID,
-        "conv-group",
-        REASON,
-        reply_to=reply_address("conv-group", USER_ID, ConversationSource.TELEGRAM),
-    )
+    dm = reply_address("conv-group", USER_ID, ConversationSource.TELEGRAM)
+    await _running("job-2", "conv-group", dm)
+    await create_pending_handoff("h2", USER_ID, "conv-group", REASON, reply_to=dm)
+    await set_job_wait("job-2", "h2")
 
     with patch.object(resolution, "ainvoke_structured_gemini", _classifier("cancel")):
         note = await _browser_turn_note(_body("stop it"), USER_ID, "conv-dm", "telegram")
@@ -85,24 +107,44 @@ async def test_a_dm_reply_resolves_the_handoff_of_a_run_started_in_a_group() -> 
     record = await get_handoff("h2")
     assert record is not None
     assert record.status is HandoffStatus.CANCELLED
+    assert await job_cancel_requested("job-2") is True
     assert note is not None
 
 
 async def test_a_message_that_answers_no_handoff_reaches_the_running_task() -> None:
     """What the user says mid-run is something they said, for the run's agent to weigh at its next step."""
-    await claim_conversation_slot(CONVERSATION_ID, "job-7")
+    await _running("job-7", CONVERSATION_ID)
 
-    async with captured_wide_event() as event:
-        note = await _browser_turn_note(_body("use the blue one"), USER_ID, CONVERSATION_ID, "web")
+    classifier = _reads_running("other")
+    with patch.object(resolution, "ainvoke_structured_gemini", classifier):
+        async with captured_wide_event() as event:
+            note = await _browser_turn_note(
+                _body("use the blue one"), USER_ID, CONVERSATION_ID, "web"
+            )
 
     assert note is None
     assert await take_job_messages("job-7") == ["use the blue one"]
     assert event["browser"] == {"job_id": "job-7", "message_to_running_job": True}
+    _schema, prompt = classifier.await_args.args
+    assert "use the blue one" in prompt
+    assert await job_cancel_requested("job-7") is False
+
+
+async def test_a_stop_said_while_the_task_runs_stops_it_and_the_turn_says_so() -> None:
+    """Read as a note, a "stop" let the run's own agent end it as a failure its executor then narrated."""
+    await _running("job-7", CONVERSATION_ID)
+
+    with patch.object(resolution, "ainvoke_structured_gemini", _reads_running("stop")):
+        note = await _browser_turn_note(_body("stop"), USER_ID, CONVERSATION_ID, "telegram")
+
+    assert note == BROWSER_RUN_STOPPED_BY_MESSAGE_NOTE
+    assert await job_cancel_requested("job-7") is True
+    assert await take_job_messages("job-7") == []
 
 
 async def test_a_reply_the_model_finds_unrelated_to_the_paused_step_reaches_the_task() -> None:
     await create_pending_handoff("h1", USER_ID, CONVERSATION_ID, REASON, reply_to=CONVERSATION_ID)
-    await claim_conversation_slot(CONVERSATION_ID, "job-7")
+    await _running("job-7", CONVERSATION_ID)
 
     with patch.object(resolution, "ainvoke_structured_gemini", _classifier("unrelated")):
         note = await _browser_turn_note(_body("which card?"), USER_ID, CONVERSATION_ID, "web")
