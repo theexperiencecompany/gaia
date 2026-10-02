@@ -18,7 +18,7 @@ from typing import Any, cast
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ToolCallRequest
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, ToolCall, ToolMessage
 from langgraph.types import Command
 
 from app.agents.middleware.completion import current_delegation
@@ -32,8 +32,9 @@ from app.constants.llm import (
     LOOP_GUARD_WARN_SAME_TOOL,
 )
 from app.constants.log_tags import LogTag
-from app.models.agent_models import runtime_configurable
+from app.models.agent_models import AgentConfigurable, runtime_configurable
 from app.override.langgraph_bigtool.utils import State
+from app.services.hil.utils import raw_tool_call
 from shared.py.wide_events import log
 
 _UNKNOWN_RUN = "unknown"
@@ -76,13 +77,11 @@ class LoopGuardMiddleware(AgentMiddleware):
     async def awrap_tool_call(
         self,
         request: ToolCallRequest,
-        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]],
-    ) -> ToolMessage | Command[Any]:
-        tool_call = request.tool_call
-        tool_name = tool_call.get("name", "") if isinstance(tool_call, dict) else tool_call.name
-        tool_call_id = tool_call.get("id", "") if isinstance(tool_call, dict) else tool_call.id
-        args = tool_call.get("args", {}) if isinstance(tool_call, dict) else tool_call.args
-        failure_key = (tool_name, self._args_key(args))
+        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[str]]],
+    ) -> ToolMessage | Command[str]:
+        call = raw_tool_call(request)
+        tool_name, tool_call_id = call.name, call.id
+        failure_key = (tool_name, self._args_key(call.args))
 
         repeat = self._repeat_streak(request, failure_key)
         if repeat >= LOOP_GUARD_STOP_REPEAT:
@@ -187,10 +186,8 @@ class LoopGuardMiddleware(AgentMiddleware):
         for message in reversed(current_delegation(cast(State, state))):
             if not isinstance(message, AIMessage):
                 continue
-            if all(
-                (call["name"], cls._args_key(call["args"])) != call_key
-                for call in message.tool_calls
-            ):
+            issued: list[ToolCall] = message.tool_calls
+            if call_key not in {(call["name"], cls._args_key(call["args"])) for call in issued}:
                 break
             streak += 1
         return streak
@@ -246,7 +243,8 @@ class LoopGuardMiddleware(AgentMiddleware):
 
     @staticmethod
     def _thread_id(request: ToolCallRequest) -> str:
-        return runtime_configurable(request).get("thread_id") or _UNKNOWN_RUN
+        configurable: AgentConfigurable = runtime_configurable(request)
+        return configurable.get("thread_id") or _UNKNOWN_RUN
 
     @staticmethod
     def _args_key(args: object) -> str:
