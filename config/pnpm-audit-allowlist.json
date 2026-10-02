@@ -1,5 +1,5 @@
 {
-  "_comment": "Advisories scripts/ci/audit.sh pnpm may ignore. Every entry needs id (CVE or GHSA), reason and expires (YYYY-MM-DD); an expired entry fails the lane. Since 2026-10-02 it holds only advisories with no fixed release on the registry: maplibre-gl's GHSA-jrc7-96c5-q579 no longer matches any advisory, and image-size's two advisories cleared once metro moved to 0.83.8 (through @expo/metro 55.1.2), which vendors its own image-size reader instead of depending on the package. Fixed versions are pinned through pnpm.overrides in the root package.json (CLAUDE.md \u00a79).",
+  "_comment": "Advisories scripts/ci/audit.sh pnpm may ignore. Every entry needs id (CVE or GHSA), reason and expires (YYYY-MM-DD); an expired entry fails the lane. Only an advisory with no fixed release reachable from our consumers belongs here — anything with a fix is pinned through pnpm.overrides in the root package.json instead (CLAUDE.md §9).",
   "allow": [
     {
       "id": "GHSA-86w9-cpqp-85rv",
