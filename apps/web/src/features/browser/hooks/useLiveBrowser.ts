@@ -7,6 +7,8 @@ import { useLiveInput } from "./useLiveInput";
 
 export type LiveStatus = "connecting" | "live" | "closed";
 
+export type LiveBrowser = ReturnType<typeof useLiveBrowser>;
+
 const RECONNECT_ATTEMPTS = 3;
 const RECONNECT_DELAY_MS = 1500;
 
@@ -56,15 +58,16 @@ export function useLiveBrowser(
   useEffect(() => {
     const url = dial.url;
     if (!url) return undefined;
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return undefined;
 
+    // The canvas is looked up per frame: a surface may move it (inline to a
+    // full-screen modal) while the socket stays up.
     const img = new window.Image();
     img.onload = () => {
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d");
       const w = img.naturalWidth;
       const h = img.naturalHeight;
-      if (!w || !h) return;
+      if (!canvas || !ctx || !w || !h) return;
       if (canvas.width !== w || canvas.height !== h) {
         canvas.width = w;
         canvas.height = h;

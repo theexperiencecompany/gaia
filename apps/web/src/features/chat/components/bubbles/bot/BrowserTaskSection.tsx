@@ -3,17 +3,14 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Chip } from "@heroui/chip";
 import { Divider } from "@heroui/divider";
-import { Spinner } from "@heroui/spinner";
 import { AiWebBrowsingIcon, Alert01Icon, CheckmarkCircle02Icon } from "@icons";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
+import { BrowserStatusChip } from "@/features/browser/components/BrowserStatusChip";
 import { useLiveView } from "@/features/browser/hooks/useLiveView";
 import { useBrowserPanel } from "@/features/browser/stores/browserPanelStore";
-import {
-  BROWSER_STATUS_META,
-  type BrowserCardStatus,
-  foldBrowserTask,
-} from "@/features/browser/utils";
+import type { LiveSurface } from "@/features/browser/types";
+import { browserCardPhase, foldBrowserTask } from "@/features/browser/utils";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useLayoutSidebar } from "@/stores/layoutStore";
 import type {
@@ -40,21 +37,13 @@ function useBrowserTaskState(
     () => (Array.isArray(data) ? data : [data]),
     [data],
   );
-  const { cardId, session, steps, pendingHandoff, result } = useMemo(
-    () => foldBrowserTask(snapshots),
-    [snapshots],
-  );
-  // The run's terminal frame ends the card; until it lands the run is live.
-  const liveStatus: BrowserCardStatus = pendingHandoff
-    ? "awaiting_user"
-    : (session?.status ?? "running");
-  const status = result?.status ?? liveStatus;
-  const active = !result;
-  const working = active && !pendingHandoff;
-  // Only an active session has an owner — minting a live-view token after it
-  // ends 403s. The done state renders the recap instead.
+  const folded = useMemo(() => foldBrowserTask(snapshots), [snapshots]);
+  const { cardId, session, steps, pendingHandoff, result } = folded;
+  const phase = browserCardPhase(folded);
+  // Only a live session has an owner — minting a live-view token after it
+  // ends 403s. The ended state renders the recap instead.
   const live = useLiveView(
-    active ? session?.session_id : null,
+    phase.ended ? null : session?.session_id,
     session?.live_view_url,
   );
   return {
@@ -63,35 +52,25 @@ function useBrowserTaskState(
     steps,
     pendingHandoff,
     result,
-    status,
-    working,
+    phase,
     live,
     // The latest step's goal, surfaced live on the collapsed steps header.
-    currentTask: working ? steps[steps.length - 1]?.goal : undefined,
+    currentTask: phase.working ? steps[steps.length - 1]?.goal : undefined,
   };
 }
 
-/** The side-panel seam: open it on demand or on a handoff, and mirror this card
- * (the SSE-driven source of truth) into the panel store while it owns the panel. */
+/** The side-panel seam: which surface shows this card's live browser, opening
+ * the panel on demand or on a handoff. */
 function useBrowserSidePanel({
   cardId,
-  session,
-  status,
-  currentTask,
   pendingHandoff,
-}: Pick<
-  ReturnType<typeof useBrowserTaskState>,
-  "cardId" | "session" | "status" | "currentTask" | "pendingHandoff"
->) {
+}: Pick<ReturnType<typeof useBrowserTaskState>, "cardId" | "pendingHandoff">) {
   const isMobile = useIsMobile();
   const { setOpen: setLeftSidebarOpen } = useLayoutSidebar();
   const panelCardId = useBrowserPanel((state) => state.cardId);
   const openPanelStore = useBrowserPanel((state) => state.open);
   const closePanel = useBrowserPanel((state) => state.close);
-  const syncPanel = useBrowserPanel((state) => state.sync);
   const inPanel = !!cardId && panelCardId === cardId;
-  const sessionId = session?.session_id ?? null;
-  const liveViewUrl = session?.live_view_url ?? null;
 
   const openPanel = useCallback(() => {
     if (!cardId) return;
@@ -100,26 +79,6 @@ function useBrowserSidePanel({
     // sidebar so the conversation keeps a readable width beside the browser.
     setLeftSidebarOpen(false);
   }, [cardId, openPanelStore, setLeftSidebarOpen]);
-
-  useEffect(() => {
-    if (!inPanel || !cardId) return;
-    syncPanel(cardId, {
-      sessionId,
-      liveViewUrl,
-      status,
-      currentTask: currentTask ?? null,
-      pendingHandoff: pendingHandoff ?? null,
-    });
-  }, [
-    inPanel,
-    cardId,
-    sessionId,
-    liveViewUrl,
-    status,
-    currentTask,
-    pendingHandoff,
-    syncPanel,
-  ]);
 
   // A handoff is the moment the user must act in the live browser — surface the
   // panel once per handoff (desktop only; mobile keeps the in-card flow).
@@ -131,7 +90,12 @@ function useBrowserSidePanel({
     openPanel();
   }, [pendingHandoff, isMobile, openPanel]);
 
-  return { inPanel, closePanel, openPanel: isMobile ? undefined : openPanel };
+  const surface: LiveSurface = inPanel
+    ? { kind: "panel" }
+    : isMobile
+      ? { kind: "mobile" }
+      : { kind: "card", openPanel };
+  return { surface, closePanel };
 }
 
 function StepsAccordion({
@@ -200,40 +164,30 @@ function ResultFooter({ result }: { result: BrowserResultSnapshot }) {
 
 export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
   const task = useBrowserTaskState(data);
-  const { session, steps, pendingHandoff, result, status, working, live } =
-    task;
-  const { inPanel, closePanel, openPanel } = useBrowserSidePanel(task);
-  const statusMeta = BROWSER_STATUS_META[status];
+  const { session, steps, pendingHandoff, result, phase, live } = task;
+  const { surface, closePanel } = useBrowserSidePanel(task);
 
   return (
     <div className="w-full max-w-lg rounded-2xl bg-zinc-800 p-4">
       {/* While this card owns the side panel, mount the live browser into the
           layout's right-sidebar slot; closing the chrome releases the session. */}
-      {inPanel && (
+      {surface.kind === "panel" && (
         <RightSidebarPanel mode="artifact" onClose={closePanel}>
-          <BrowserLivePanel />
+          <BrowserLivePanel
+            sessionId={session?.session_id ?? null}
+            liveViewUrl={session?.live_view_url ?? null}
+            phase={phase}
+            currentTask={task.currentTask ?? null}
+            pendingHandoff={pendingHandoff ?? null}
+            onClose={closePanel}
+          />
         </RightSidebarPanel>
       )}
       <div className="flex items-center gap-2">
         <AiWebBrowsingIcon className="size-4 text-zinc-400" />
         <span className="text-sm font-semibold text-zinc-100">Browser</span>
-        <div className="ml-auto flex items-center gap-1.5">
-          {working && (
-            <Spinner size="sm" color="current" className="text-[#00bbff]" />
-          )}
-          <Chip
-            size="sm"
-            variant="flat"
-            color={statusMeta.color}
-            // Browser accent is #00bbff — apply it to the live "Working" state.
-            classNames={
-              working
-                ? { base: "!bg-[#00bbff]/15", content: "!text-[#00bbff]" }
-                : undefined
-            }
-          >
-            {statusMeta.label}
-          </Chip>
+        <div className="ml-auto">
+          <BrowserStatusChip phase={phase} />
         </div>
       </div>
 
@@ -244,14 +198,13 @@ export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
       )}
 
       <div className="mt-3 space-y-3">
-        {working && live.socketUrl && live.pageUrl && (
+        {phase.working && live.socketUrl && live.pageUrl && (
           <LivePreview
             socketUrl={live.socketUrl}
             pageUrl={live.pageUrl}
             currentTask={task.currentTask}
             onDropped={live.renew}
-            inPanel={inPanel}
-            onOpenPanel={openPanel}
+            surface={surface}
           />
         )}
 
@@ -265,8 +218,7 @@ export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
           <HandoffPrompt
             key={pendingHandoff.handoff_id}
             handoff={pendingHandoff}
-            inPanel={inPanel}
-            onOpenPanel={openPanel}
+            surface={surface}
           />
         )}
       </div>

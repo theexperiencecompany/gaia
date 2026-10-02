@@ -18,19 +18,9 @@ import { useState } from "react";
 import { RecapSlideshow } from "@/components/browser/RecapSlideshow";
 import { BOT_PLATFORM_LABELS, isBotPlatform } from "@/config/botPlatforms";
 import { useBrowserTasks } from "../hooks/useBrowserTasks";
-import type { BrowserTask, BrowserTaskStatus } from "../types";
-import { formatRelativeDate } from "../utils";
+import type { BrowserTask } from "../types";
+import { BROWSER_STATUS_META, formatRelativeDate } from "../utils";
 import { PlatformGlyph } from "./PlatformGlyph";
-
-const STATUS_META: Record<
-  BrowserTaskStatus,
-  { label: string; dot: string; text: string }
-> = {
-  completed: { label: "Done", dot: "bg-emerald-500", text: "text-emerald-400" },
-  cancelled: { label: "Stopped", dot: "bg-zinc-500", text: "text-zinc-400" },
-  failed: { label: "Failed", dot: "bg-red-500", text: "text-red-400" },
-  running: { label: "Working", dot: "bg-[#00bbff]", text: "text-[#00bbff]" },
-};
 
 // Sources whose conversation lives in this app, so we can deep-link to it.
 const IN_APP_SOURCES = new Set(["web", "mobile", "desktop"]);
@@ -78,7 +68,7 @@ function TaskThumb({
 }
 
 function TaskMeta({ task }: { task: BrowserTask }) {
-  const meta = STATUS_META[task.status];
+  const meta = BROWSER_STATUS_META[task.status];
   const platform = isBotPlatform(task.source) ? task.source : null;
   return (
     <div className="mt-1 flex items-center gap-1.5 text-xs text-zinc-500">
