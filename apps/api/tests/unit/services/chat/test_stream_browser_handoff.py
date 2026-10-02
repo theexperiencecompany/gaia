@@ -78,7 +78,9 @@ async def _running(job_id: str, *addresses: str) -> None:
 
 async def test_a_reply_that_finishes_the_step_resolves_it_and_tells_the_turn_so() -> None:
     """The turn's reply is written knowing what the message already did, with no fake exchange put in the thread."""
-    await create_pending_handoff("h1", USER_ID, CONVERSATION_ID, REASON, reply_to=CONVERSATION_ID)
+    await create_pending_handoff(
+        "h1", USER_ID, CONVERSATION_ID, REASON, reply_to=CONVERSATION_ID, job_id="job-7"
+    )
 
     classifier = _classifier("continue")
     with patch.object(resolution, "ainvoke_structured_gemini", classifier):
@@ -98,7 +100,7 @@ async def test_a_dm_reply_resolves_the_handoff_of_a_run_started_in_a_group() -> 
     """A bot sends the prompt to the requester's DM whichever chat started the run, so that is where the answer comes from."""
     dm = reply_address("conv-group", USER_ID, ConversationSource.TELEGRAM)
     await _running("job-2", "conv-group", dm)
-    await create_pending_handoff("h2", USER_ID, "conv-group", REASON, reply_to=dm)
+    await create_pending_handoff("h2", USER_ID, "conv-group", REASON, reply_to=dm, job_id="job-2")
     await set_job_wait("job-2", "h2")
 
     with patch.object(resolution, "ainvoke_structured_gemini", _classifier("cancel")):
@@ -143,7 +145,9 @@ async def test_a_stop_said_while_the_task_runs_stops_it_and_the_turn_says_so() -
 
 
 async def test_a_reply_the_model_finds_unrelated_to_the_paused_step_reaches_the_task() -> None:
-    await create_pending_handoff("h1", USER_ID, CONVERSATION_ID, REASON, reply_to=CONVERSATION_ID)
+    await create_pending_handoff(
+        "h1", USER_ID, CONVERSATION_ID, REASON, reply_to=CONVERSATION_ID, job_id="job-7"
+    )
     await _running("job-7", CONVERSATION_ID)
 
     with patch.object(resolution, "ainvoke_structured_gemini", _classifier("unrelated")):

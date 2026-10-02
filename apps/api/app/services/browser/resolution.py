@@ -29,7 +29,7 @@ from app.services.browser.handoff import (
     get_pending_handoff_for_reply,
     resolve_handoff,
 )
-from app.services.browser.job_stop import stop_browser_job
+from app.services.browser.job_stop import stop_job
 from app.services.browser.jobs import get_conversation_slot, get_job_state
 from shared.py.wide_events import log
 
@@ -132,8 +132,8 @@ async def resolve_handoff_from_message(
     if decision.action == "unrelated":
         return HandoffReply(action="unrelated", reason=record.reason)
     if decision.action == "cancel":
-        # Settles the handoff it is paused on as cancelled, after flagging the job.
-        await stop_browser_job(address)
+        # This handoff's own job: another of the user's runs may share the address.
+        await stop_job(record.job_id)
         capture_event(
             user_id,
             AnalyticsEvents.BROWSER_HANDOFF_RESOLVED,
@@ -169,5 +169,4 @@ async def stop_running_job_from_message(conversation_id: str, message: str) -> b
     )
     if decision.action != "stop":
         return False
-    await stop_browser_job(conversation_id)
-    return True
+    return await stop_job(state.job_id)

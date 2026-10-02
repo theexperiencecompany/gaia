@@ -67,6 +67,8 @@ async def create_pending_handoff(
     reason: str = "",
     kind: HandoffKind = HandoffKind.USER,
     reply_to: str = "",
+    *,
+    job_id: str,
 ) -> None:
     """Persist a new pending handoff of this kind.
 
@@ -79,6 +81,7 @@ async def create_pending_handoff(
         status=HandoffStatus.PENDING,
         user_id=user_id,
         conversation_id=conversation_id,
+        job_id=job_id,
         kind=kind,
         reason=reason,
         reply_address=address,
