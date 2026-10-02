@@ -397,7 +397,10 @@ class TestUpdateTrackedTodoValidation:
             result = await update_tracked_todo.coroutine(
                 config=_config(), todo_id="t1", scheduled_at=""
             )
-        assert "cannot have recurrence without scheduled_at" in result
+        assert result == (
+            "Error: cannot have recurrence without scheduled_at. "
+            "Either clear recurrence or provide a scheduled_at value."
+        )
 
     @pytest.mark.parametrize("value", [True, False])
     async def test_toggling_delivery_writes_that_field(self, value):
@@ -1641,8 +1644,9 @@ class TestTrackedTodoReferences:
     @pytest.mark.regression
     async def test_references_alone_are_an_update(self):
         """Regression: an update carrying only references was refused as "No fields to update"."""
+        find = AsyncMock(return_value=self._owned(self.DESK))
         with (
-            patch(self._FIND, AsyncMock(return_value=self._owned(self.DESK))),
+            patch(self._FIND, find),
             patch(self._GET, AsyncMock(return_value=self._owned("t1")[0])),
             patch(self._UPDATE, AsyncMock()) as update,
             patch(self._ADD, AsyncMock()) as add,
@@ -1652,6 +1656,7 @@ class TestTrackedTodoReferences:
             )
 
         assert result == "Updated tracked todo t1: references"
+        find.assert_awaited_once_with("user-1", [self.DESK])
         add.assert_awaited_once_with("t1", user_id="user-1", references=[self.DESK])
         update.assert_not_awaited()
 

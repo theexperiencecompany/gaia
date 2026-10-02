@@ -26,6 +26,7 @@ from app.agents.prompts.todo_prompts import (
 )
 from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
+    CANVAS_LEARNINGS_SECTION,
     CANVAS_STANDING_RULES_SECTION,
     EXECUTE_TRACKED_TODO_TASK,
     FAILED_LABEL,
@@ -427,11 +428,15 @@ async def _collect_reference_context(ref_ids: list[str], user_id: str) -> _Refer
     rules: list[str] = []
     learnings: list[str] = []
     for doc in (owned[ref] for ref in wanted if ref in owned):
-        canvas = doc.canvas_content or ""
+        canvas = doc.canvas_content
+        if not canvas:
+            continue
         if ref_rules := section_body(canvas, CANVAS_STANDING_RULES_SECTION):
             rules.append(f'From "{doc.title}":\n{ref_rules[:STANDING_RULES_MAX_CHARS]}')
-        if ref_learnings := section_body(canvas, "Learnings"):
-            learnings.append(f'From past todo "{doc.title}":\n## Learnings\n{ref_learnings}')
+        if ref_learnings := section_body(canvas, CANVAS_LEARNINGS_SECTION):
+            learnings.append(
+                f'From past todo "{doc.title}":\n## {CANVAS_LEARNINGS_SECTION}\n{ref_learnings}'
+            )
     return _ReferenceContext(
         standing_rules=_labelled(REFERENCED_STANDING_RULES_LABEL, rules),
         learnings=_labelled("Past experience (from similar completed todos):", learnings),

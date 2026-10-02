@@ -426,6 +426,15 @@ class TestCreateTrackedTodo:
         mock_deps.create.assert_not_awaited()
         mock_repo.update.assert_not_awaited()
 
+    def test_a_canvas_refusal_is_a_bad_request_naming_every_problem(self) -> None:
+        refused = todo_errors.CanvasShapeError(["shorten the rules", "merge the sections"])
+
+        assert (refused.status_code, refused.code, refused.message) == (
+            400,
+            "canvas_shape_invalid",
+            "initial_canvas breaks the canvas shape: shorten the rules; merge the sections.",
+        )
+
 
 def test_the_template_opens_on_standing_rules_and_is_already_in_shape() -> None:
     canvas = CANVAS_TEMPLATE.format(title="Inbox desk")

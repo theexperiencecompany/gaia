@@ -104,12 +104,13 @@ class TodoActivityEvent(StrEnum):
 CANVAS_STANDING_RULES_SECTION: Final[str] = "Standing rules"
 CANVAS_KEY_DETAILS_SECTION: Final[str] = "Key Details"
 CANVAS_CURRENT_STATE_SECTION: Final[str] = "Current State"
+CANVAS_LEARNINGS_SECTION: Final[str] = "Learnings"
 CANVAS_SECTIONS: Final[tuple[str, ...]] = (
     CANVAS_STANDING_RULES_SECTION,
     CANVAS_KEY_DETAILS_SECTION,
     CANVAS_CURRENT_STATE_SECTION,
     "Context",
-    "Learnings",
+    CANVAS_LEARNINGS_SECTION,
 )
 
 # Most a Standing rules section may hold. Every prompt carries it whole, never
