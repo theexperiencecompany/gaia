@@ -51,6 +51,7 @@ from app.services.analytics_service import AnalyticsEvents
 from app.services.todos.errors import (
     ExternalRefReopenedTwiceError,
     ExternalRefTakenError,
+    SubTodoParentError,
     TrackedLabelChangeError,
     TrackedTodoWorkflowError,
 )
@@ -720,20 +721,24 @@ class TestListTodos:
             completed=True, priority="high", project_id=FAKE_PROJECT_ID
         )
 
-    async def test_a_search_within_one_parent_keeps_only_its_sub_todos(
-        self, mock_todo_repo, mock_project_repo, mock_vector_utils
+    @pytest.mark.parametrize("mode", [SearchMode.SEMANTIC, SearchMode.HYBRID])
+    async def test_a_search_within_one_parent_matches_its_sub_todos_by_text(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_workflow_repo, mode
     ):
-        child = TodoResponse.from_document(_make_todo_doc(parent_todo_id=_PARENT))
-        stray = TodoResponse.from_document(_make_todo_doc())
-        mock_vector_utils["vector_search"].return_value = [stray, child]
-        params = TodoSearchParams(
-            q="reply", mode=SearchMode.SEMANTIC, page=1, per_page=50, parent_todo_id=_PARENT
+        """The vector top-k cut must not come first: a parent's later-ranked children would be lost."""
+        mock_todo_repo.list_page = AsyncMock(return_value=TodoPage(items=[], total=0))
+        params = TodoSearchParams(q="reply", mode=mode, page=1, per_page=50, parent_todo_id=_PARENT)
+
+        await TodoService.list_todos(FAKE_USER_ID, params)
+
+        mock_vector_utils["vector_search"].assert_not_awaited()
+        mock_vector_utils["hybrid_search"].assert_not_awaited()
+        searched = mock_todo_repo.list_page.await_args.kwargs["params"]
+        assert (searched.q, searched.mode, searched.parent_todo_id) == (
+            "reply",
+            SearchMode.TEXT,
+            _PARENT,
         )
-
-        result = await TodoService.list_todos(FAKE_USER_ID, params)
-
-        assert [todo.id for todo in result.data] == [child.id]
-        assert result.meta.total == 1
 
 
 class TestUpdateTodo:
@@ -1482,7 +1487,27 @@ class TestBulkServiceComplete:
         )
         todo_repo.bulk_update = AsyncMock(return_value=2)
         result = await bulk_complete_todos(ids, FAKE_USER_ID)
-        assert len(result) == 2
+        assert [todo.id for todo in result.todos] == ["a", "b"]
+        assert result.failed == []
+
+    async def test_a_tracked_todo_that_fails_is_named_and_not_returned_as_done(
+        self, mock_bulk_repos
+    ):
+        todo_repo, _ = mock_bulk_repos
+        docs = [
+            _make_todo_doc(todo_id="a", vfs_path="file:///a"),
+            _make_todo_doc(todo_id="b", vfs_path="file:///b"),
+        ]
+        todo_repo.find_by_ids = AsyncMock(
+            side_effect=lambda _user, ids: [doc for doc in docs if doc.id in ids]
+        )
+        with patch(
+            _COMPLETE_TRACKED, new_callable=AsyncMock, side_effect=[RuntimeError("down"), True]
+        ):
+            result = await bulk_complete_todos(["a", "b"], FAKE_USER_ID)
+
+        assert [todo.id for todo in result.todos] == ["b"]
+        assert result.failed == ["a"]
 
     async def test_captures_completed_count(self, mock_bulk_repos):
         todo_repo, _ = mock_bulk_repos
@@ -1599,6 +1624,60 @@ class TestTodoUpdateCannotLinkAWorkflow:
             TodoUpdate(workflow_id="wf1")
 
 
+class TestReopenUnderItsParent:
+    """A sub-todo reopened under a completed parent would run outside the parent's cascade."""
+
+    @staticmethod
+    def _family(parent_completed: bool) -> list[TodoDocument]:
+        parent = _make_todo_doc(todo_id=_PARENT, completed=parent_completed)
+        child = _make_todo_doc(todo_id=FAKE_TODO_ID, completed=True, parent_todo_id=_PARENT)
+        return [child, parent]
+
+    def _repo_answering(self, repo: MagicMock, family: list[TodoDocument]) -> None:
+        repo.find_by_ids = AsyncMock(
+            side_effect=lambda _user, ids: [doc for doc in family if doc.id in ids]
+        )
+
+    async def test_a_single_reopen_is_refused_and_writes_nothing(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        self._repo_answering(mock_todo_repo, self._family(parent_completed=True))
+
+        with pytest.raises(SubTodoParentError, match="reopen the parent first"):
+            await TodoService.update_todo(
+                FAKE_TODO_ID, TodoUpdateRequest(completed=False), FAKE_USER_ID
+            )
+
+        mock_todo_repo.update.assert_not_awaited()
+
+    async def test_a_bulk_reopen_is_refused_and_writes_nothing(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        self._repo_answering(mock_todo_repo, self._family(parent_completed=True))
+
+        with pytest.raises(SubTodoParentError, match=FAKE_TODO_ID):
+            await TodoService.bulk_update_todos(
+                BulkUpdateRequest(
+                    todo_ids=[FAKE_TODO_ID], updates=TodoUpdateRequest(completed=False)
+                ),
+                FAKE_USER_ID,
+            )
+
+        mock_todo_repo.bulk_update.assert_not_awaited()
+
+    async def test_under_an_open_parent_the_reopen_goes_through(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        self._repo_answering(mock_todo_repo, self._family(parent_completed=False))
+        mock_todo_repo.update = AsyncMock(return_value=self._family(False)[0])
+
+        await TodoService.update_todo(
+            FAKE_TODO_ID, TodoUpdateRequest(completed=False), FAKE_USER_ID
+        )
+
+        mock_todo_repo.update.assert_awaited_once()
+
+
 class TestReopenOfATakenRef:
     """Reopening a todo whose outside object already has an open todo is a named conflict."""
 
@@ -1661,7 +1740,8 @@ class TestReopenOfATakenRef:
 
         assert raised.value.existing is holder
         mock_todo_repo.bulk_update.assert_not_awaited()
-        mock_todo_repo.find_by_ids.assert_awaited_once_with(FAKE_USER_ID, ["a", "b"])
+        # One read checks the parents, one checks the refs; neither writes.
+        assert mock_todo_repo.find_by_ids.await_args_list == [call(FAKE_USER_ID, ["a", "b"])] * 2
         mock_todo_repo.find_open_by_external_ref.assert_awaited_once_with(FAKE_USER_ID, _THREAD)
 
     async def test_bulk_reopen_of_free_refs_writes(
@@ -1731,7 +1811,7 @@ class TestReopenOfATakenRef:
             )
 
         assert raised.value.existing is holder
-        assert mock_todo_repo.find_by_ids.await_args_list == [call(FAKE_USER_ID, ["b"])] * 3
+        assert mock_todo_repo.find_by_ids.await_args_list == [call(FAKE_USER_ID, ["b"])] * 4
         assert len(created) == 2
         assert unregister.await_args_list == [call("b", FAKE_USER_ID, sub.id) for sub in created]
         assert mock_todo_repo.find_open_by_external_ref.await_args_list == [
@@ -1777,7 +1857,9 @@ class TestReopenWatchesTheRefAgain:
             assert c.kwargs["user_id"] == FAKE_USER_ID
             assert c.kwargs["conditions"] == [_ON_THREAD]
             assert c.kwargs["action"] is SubscriptionAction.EXECUTE
-        mock_todo_repo.find_by_ids.assert_awaited_once_with(FAKE_USER_ID, [FAKE_TODO_ID])
+        assert (
+            mock_todo_repo.find_by_ids.await_args_list == [call(FAKE_USER_ID, [FAKE_TODO_ID])] * 2
+        )
         mock_todo_repo.find_open_by_external_ref.assert_awaited_once_with(FAKE_USER_ID, _THREAD)
 
     async def test_a_reopen_adds_only_the_watch_the_todo_lost(
