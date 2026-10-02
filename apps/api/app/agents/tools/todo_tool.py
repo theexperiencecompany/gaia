@@ -914,7 +914,8 @@ async def bulk_complete_todos(
         if not user_id:
             return {"error": "User authentication required", "todos": []}
 
-        results = await bulk_complete_service(todo_ids, user_id)
+        completion = await bulk_complete_service(todo_ids, user_id)
+        results = completion.todos
         todos_data = [todo.model_dump(mode="json") for todo in results]
 
         # Stream the bulk completed todos to frontend
@@ -932,7 +933,11 @@ async def bulk_complete_todos(
         return {
             "todos": todos_data,
             "count": len(results),
-            "error": None,
+            "error": (
+                f"Not completed, still open: {', '.join(completion.failed)}"
+                if completion.failed
+                else None
+            ),
         }
 
     except Exception as e:

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { todoApi } from "@/features/todo/api/todoApi";
 import { SubTodosSection } from "@/features/todo/components/SubTodosSection";
@@ -80,7 +80,39 @@ describe("sub-todos", () => {
     expect(screen.getByText("Completed")).toBeTruthy();
     expect(todoApi.getAllTodos).toHaveBeenCalledWith({
       parent_todo_id: "desk",
+      skip: 0,
       limit: SUB_TODOS_PAGE_SIZE,
     });
+    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+  });
+
+  it("a full page offers the next one, and loading it lists those too", async () => {
+    const firstPage = Array.from({ length: SUB_TODOS_PAGE_SIZE }, (_, i) =>
+      makeTodo(`thread-${i}`, { title: `Thread ${i}`, parent_todo_id: "desk" }),
+    );
+    vi.mocked(todoApi.getAllTodos)
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce([
+        makeTodo("thread-last", {
+          title: "Last thread",
+          parent_todo_id: "desk",
+        }),
+      ]);
+
+    render(
+      withQueryClient(<SubTodosSection parentTodoId="desk" openCount={101} />),
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
+
+    expect(
+      await screen.findByRole("link", { name: "Last thread" }),
+    ).toBeTruthy();
+    expect(todoApi.getAllTodos).toHaveBeenLastCalledWith({
+      parent_todo_id: "desk",
+      skip: SUB_TODOS_PAGE_SIZE,
+      limit: SUB_TODOS_PAGE_SIZE,
+    });
+    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
   });
 });

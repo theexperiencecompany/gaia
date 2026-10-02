@@ -1,5 +1,7 @@
 """Optimized bulk operations for todos."""
 
+from typing import NamedTuple
+
 from fastapi import HTTPException, status
 
 from app.constants.log_tags import LogTag
@@ -16,7 +18,14 @@ from app.services.todos.todo_service import TodoService
 from shared.py.wide_events import log
 
 
-async def bulk_complete_todos(todo_ids: list[str], user_id: str) -> list[TodoResponse]:
+class BulkCompletion(NamedTuple):
+    """The todos a bulk completion closed, and the ids it could not close."""
+
+    todos: list[TodoResponse]
+    failed: list[str]
+
+
+async def bulk_complete_todos(todo_ids: list[str], user_id: str) -> BulkCompletion:
     """Mark multiple todos as completed; tracked ones run their completion lifecycle."""
     log.set(
         component="todo_bulk_service",
@@ -29,18 +38,21 @@ async def bulk_complete_todos(todo_ids: list[str], user_id: str) -> list[TodoRes
             BulkUpdateRequest(todo_ids=todo_ids, updates=TodoUpdateRequest(completed=True)),
             user_id,
         )
-        if not result.success:
+        if not result.success and not result.failed:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="No todos found or already completed",
             )
 
-        updated = await todo_repository.find_by_ids(user_id, todo_ids)
+        updated = await todo_repository.find_by_ids(user_id, result.success)
         log.info(
             f"{LogTag.TODO} Bulk completed todos", todo_count=len(result.success), user_id=user_id
         )
-        capture_event(user_id, AnalyticsEvents.TODO_TOGGLED, {"count": len(result.success)})
-        return [TodoResponse.from_document(todo) for todo in updated]
+        if result.success:
+            capture_event(user_id, AnalyticsEvents.TODO_TOGGLED, {"count": len(result.success)})
+        return BulkCompletion(
+            todos=[TodoResponse.from_document(todo) for todo in updated], failed=result.failed
+        )
 
     except HTTPException:
         raise

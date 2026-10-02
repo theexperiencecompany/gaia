@@ -19,6 +19,7 @@ from app.models.todo_models import (
     TodoStats,
     TodoUpdateRequest,
 )
+from app.services.todos.todo_bulk_service import BulkCompletion
 from tests.helpers import captured_wide_event
 
 # Module-level patch: check_and_increment must return a plain dict, not an AsyncMock, so
@@ -1022,7 +1023,7 @@ class TestBulkCompleteTodos:
     ) -> None:
         mock_writer_factory.return_value = _writer_mock()
         todos = [_make_todo_response(completed=True) for _ in range(3)]
-        mock_service.return_value = todos
+        mock_service.return_value = BulkCompletion(todos=todos, failed=[])
 
         from app.agents.tools.todo_tool import bulk_complete_todos
 
@@ -1033,6 +1034,29 @@ class TestBulkCompleteTodos:
 
         assert result["error"] is None
         assert result["count"] == 3
+
+    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.bulk_complete_service", new_callable=AsyncMock)
+    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
+    async def test_todos_that_could_not_close_are_named_as_still_open(
+        self,
+        mock_get_user: MagicMock,
+        mock_service: AsyncMock,
+        mock_writer_factory: MagicMock,
+    ) -> None:
+        mock_writer_factory.return_value = _writer_mock()
+        mock_service.return_value = BulkCompletion(
+            todos=[_make_todo_response(completed=True)], failed=["t2", "t3"]
+        )
+
+        from app.agents.tools.todo_tool import bulk_complete_todos
+
+        result = await bulk_complete_todos.coroutine(
+            config=_make_config(), todo_ids=["t1", "t2", "t3"]
+        )
+
+        assert result["count"] == 1
+        assert result["error"] == "Not completed, still open: t2, t3"
 
 
 # ---------------------------------------------------------------------------

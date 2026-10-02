@@ -45,6 +45,7 @@ from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.todos.errors import (
     ExternalRefReopenedTwiceError,
     ExternalRefTakenError,
+    SubTodoParentError,
     TrackedLabelChangeError,
     TrackedTodoWorkflowError,
 )
@@ -214,6 +215,27 @@ async def _refuse_a_reopen_of_a_taken_ref(
         if holder is not None:
             raise ExternalRefTakenError(holder)
     return reopened
+
+
+async def _refuse_a_reopen_under_a_closed_parent(user_id: str, todo_ids: list[str]) -> None:
+    """Refuse reopening a sub-todo whose parent is completed: it would run outside its cascade."""
+    children = [
+        doc for doc in await todo_repository.find_by_ids(user_id, todo_ids) if doc.parent_todo_id
+    ]
+    if not children:
+        return
+    parent_ids = list({child.parent_todo_id for child in children if child.parent_todo_id})
+    open_parents = {
+        parent.id
+        for parent in await todo_repository.find_by_ids(user_id, parent_ids)
+        if not parent.completed
+    }
+    closed = [child.id for child in children if child.parent_todo_id not in open_parents]
+    if closed:
+        raise SubTodoParentError(
+            f"Sub-todo {', '.join(closed)} cannot reopen while its parent is completed; "
+            "reopen the parent first."
+        )
 
 
 @asynccontextmanager
@@ -486,7 +508,10 @@ class TodoService:
         """List todos with filtering, pagination, and optional stats."""
         # Semantic / hybrid search is a vector concern handled separately.
         if params.q and params.mode in [SearchMode.SEMANTIC, SearchMode.HYBRID]:
-            return await cls._search_todos(user_id, params)
+            if not params.parent_todo_id:
+                return await cls._search_todos(user_id, params)
+            # Embeddings carry no parent id, so one parent's sub-todos are searched by text.
+            params = params.model_copy(update={"mode": SearchMode.TEXT})
 
         inbox_project_id = (
             await cls._get_inbox_id(user_id) if cls._needs_inbox_default(params) else None
@@ -555,6 +580,8 @@ class TodoService:
                     log.warning("tracked_todo.ui_complete_failed", todo_id=todo_id, error=str(e))
                 update = _drop_completion_fields(update)
 
+        if update.completed is False:
+            await _refuse_a_reopen_under_a_closed_parent(user_id, [todo_id])
         async with _watching_refs_to_reopen(
             user_id, [todo_id], reopening=update.completed is False
         ):
@@ -650,6 +677,8 @@ class TodoService:
                 user_id, request.todo_ids, request.updates.labels
             )
         reopening = request.updates.completed is False
+        if reopening:
+            await _refuse_a_reopen_under_a_closed_parent(user_id, request.todo_ids)
         update = _to_todo_update(request.updates)
         if not update.model_fields_set:
             return BulkOperationResponse(
@@ -792,9 +821,6 @@ class TodoService:
                 filters=filters,
             )
 
-        # Embeddings carry no parent id, so the filter applies to the hydrated results.
-        if params.parent_todo_id:
-            results = [todo for todo in results if todo.parent_todo_id == params.parent_todo_id]
         total = len(results)
         start = (params.page - 1) * params.per_page
         paginated_results = results[start : start + params.per_page]

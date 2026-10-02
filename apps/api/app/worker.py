@@ -42,7 +42,10 @@ from app.workers.tasks import (
 )
 from app.workers.tasks.device_tasks import warm_device_servers
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
-from app.workers.tasks.inbox_desk_tasks import provision_inbox_desk_task
+from app.workers.tasks.inbox_desk_tasks import (
+    provision_inbox_desk_task,
+    reconcile_inbox_desks_task,
+)
 from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
 from app.workers.tasks.scheduler_recovery_tasks import rescan_pending_scheduled_tasks
 from app.workers.tasks.subscription_workflow_tasks import sync_workflows_for_subscription_state
@@ -88,6 +91,7 @@ _prune_checkpoint_versions = arq_task(prune_checkpoint_versions)
 # Named from the constant its per-occurrence job ids are built from.
 _execute_tracked_todo = func(arq_task(execute_tracked_todo), name=EXECUTE_TRACKED_TODO_TASK)
 _provision_inbox_desk = func(arq_task(provision_inbox_desk_task), name=PROVISION_INBOX_DESK_TASK)
+_reconcile_inbox_desks = arq_task(reconcile_inbox_desks_task)
 _resume_tracked_todo = arq_task(resume_tracked_todo)
 _dispatch_todo_subscriptions = arq_task(dispatch_todo_subscriptions)
 _safety_net_check_orphaned_todos = arq_task(safety_net_check_orphaned_todos)
@@ -144,6 +148,7 @@ WorkerSettings.functions = [
     _warm_device_servers,
     _sync_workflows_for_subscription_state,
     _provision_inbox_desk,
+    _reconcile_inbox_desks,
 ]
 
 WorkerSettings.cron_jobs = [
@@ -226,6 +231,14 @@ WorkerSettings.cron_jobs = [
         cast(WorkerCoroutine, _promote_usage_badges),
         hour=5,  # Daily at 05:00 UTC
         minute=0,
+        second=0,
+    ),
+    # Give every paying Gmail user their Inbox desk: catches a provisioning job that
+    # never reached the queue, and users whose plan and Gmail predate the desk.
+    cron(
+        cast(WorkerCoroutine, _reconcile_inbox_desks),
+        hour=4,  # Daily at 04:15 UTC
+        minute=15,
         second=0,
     ),
     # Pause workflows owned by users who stopped using GAIA — they otherwise fire
