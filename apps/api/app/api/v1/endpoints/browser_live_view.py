@@ -253,7 +253,7 @@ async def _proxy_live_view(
     """Bridge the viewer's WebSocket to the host's live-view WebSocket both ways, until either closes or ends returns."""
     try:
         async with websockets.connect(host_ws_url, max_size=None) as host_ws:
-            directions = [
+            directions: list[Awaitable[None]] = [
                 _pump_host_to_client(host_ws, client_ws),
                 _pump_client_to_host(client_ws, host_ws),
             ]

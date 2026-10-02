@@ -10,6 +10,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import secrets
+from typing import TypedDict
+
+from pydantic import TypeAdapter
 
 from app.config.settings import settings
 from app.constants.browser import (
@@ -20,6 +23,15 @@ from app.constants.browser import (
 )
 from app.db.redis import redis_cache
 from app.schemas.browser import LiveCodeRecord
+
+
+class _PubSubMessage(TypedDict):
+    """What a subscription yields: a published message, or the confirmation of a (un)subscribe."""
+
+    type: str
+
+
+_PUBSUB_MESSAGE: TypeAdapter[_PubSubMessage] = TypeAdapter(_PubSubMessage)
 
 
 def _key(code: str) -> str:
@@ -73,7 +85,8 @@ async def live_code_ended(code: str) -> None:
             return
         with contextlib.suppress(TimeoutError):
             async with asyncio.timeout(remaining):
-                async for message in pubsub.listen():
+                async for raw in pubsub.listen():
+                    message: _PubSubMessage = _PUBSUB_MESSAGE.validate_python(raw)
                     if message["type"] == "message":
                         return
     finally:
