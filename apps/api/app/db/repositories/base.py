@@ -335,8 +335,10 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         """
         return get_async_collection(self.collection_name)
 
-    async def _find_one(self, filter_: Mapping[str, object]) -> TDoc | None:
-        raw = await get_async_collection(self.collection_name).find_one(dict(filter_))
+    async def _find_one(
+        self, filter_: Mapping[str, object], *, sort: Sequence[tuple[str, int]] | None = None
+    ) -> TDoc | None:
+        raw = await get_async_collection(self.collection_name).find_one(dict(filter_), sort=sort)
         return None if raw is None else self._to_model(raw)
 
     async def _find(

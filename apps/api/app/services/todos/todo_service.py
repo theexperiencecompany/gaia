@@ -109,7 +109,6 @@ async def _get_pending_approvals_for_todos(
     return refs
 
 
-
 async def todo_responses(user_id: str, todos: list[TodoDocument]) -> list[TodoResponse]:
     """Project todos onto TodoResponse with their workflow categories, approvals and open sub-todos."""
     workflow_categories = await _get_workflow_categories_for_todos(todos, user_id)
@@ -126,6 +125,8 @@ async def todo_responses(user_id: str, todos: list[TodoDocument]) -> list[TodoRe
         )
         for todo in todos
     ]
+
+
 def _ensure_subtask_ids(subtasks: list[SubTask]) -> list[SubTask]:
     """Give every subtask a stable id, generating one where it is missing."""
     result: list[SubTask] = []
