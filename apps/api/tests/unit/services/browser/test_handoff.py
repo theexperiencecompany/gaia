@@ -131,6 +131,16 @@ async def test_a_stop_and_a_lost_browser_settle_it_and_close_its_live_link() -> 
     assert await handoff_mod.cancel_handoff("h6") is HandoffStatus.FAILED
 
 
+async def test_settling_an_older_handoff_leaves_a_newer_ones_reply_address() -> None:
+    """A bot address is shared by the user's runs: the older run ending must not deafen the newer one's prompt."""
+    await handoff_mod.create_pending_handoff("old", "user-1", "conv-a", reply_to="telegram:user-1")
+    await handoff_mod.create_pending_handoff("new", "user-1", "conv-b", reply_to="telegram:user-1")
+
+    await handoff_mod.cancel_handoff("old")
+
+    assert await handoff_mod.get_pending_handoff_for_reply("telegram:user-1") == "new"
+
+
 async def test_a_stop_on_a_handoff_whose_record_already_expired_still_settles() -> None:
     assert await handoff_mod.cancel_handoff("expired") is HandoffStatus.CANCELLED
 

@@ -77,12 +77,12 @@ async def claim_conversation_slot(conversation_id: str, job_id: str) -> str | No
 
 async def heartbeat_conversation_slot(conversation_id: str, job_id: str) -> bool:
     """Refresh the slot lease while this job holds it; False once another job does."""
-    return await _if_held(_lock_key(conversation_id), job_id, refresh=BROWSER_JOB_LOCK_TTL_SECONDS)
+    return await if_held(_lock_key(conversation_id), job_id, refresh=BROWSER_JOB_LOCK_TTL_SECONDS)
 
 
 async def release_conversation_slot(conversation_id: str, job_id: str) -> None:
     """Free the slot only while this job still holds it, so a late release never frees a newer run's lease."""
-    await _if_held(_lock_key(conversation_id), job_id, refresh=None)
+    await if_held(_lock_key(conversation_id), job_id, refresh=None)
 
 
 async def get_conversation_slot(conversation_id: str) -> str | None:
@@ -90,7 +90,7 @@ async def get_conversation_slot(conversation_id: str) -> str | None:
     return await redis_cache.client.get(_lock_key(conversation_id)) or None
 
 
-async def _if_held(key: str, holder: str, *, refresh: int | None) -> bool:
+async def if_held(key: str, holder: str, *, refresh: int | None) -> bool:
     """Re-arm key for refresh seconds, or delete it when refresh is None, only while holder holds it."""
     async with redis_cache.client.pipeline() as pipe:
         await pipe.watch(key)
@@ -139,7 +139,7 @@ async def take_joiner_lease(job_id: str, stream_id: str) -> None:
 
 async def refresh_joiner_lease(job_id: str, stream_id: str) -> None:
     """Re-arm this turn's lease; a no-op for a stream that does not hold it."""
-    await _if_held(_joiner_key(job_id), stream_id, refresh=BROWSER_JOB_JOINER_LEASE_SECONDS)
+    await if_held(_joiner_key(job_id), stream_id, refresh=BROWSER_JOB_JOINER_LEASE_SECONDS)
 
 
 async def drop_joiner_lease(job_id: str, stream_id: str) -> None:
@@ -164,7 +164,7 @@ async def release_result_hold(job_id: str, stream_id: str) -> None:
 
 async def _drop(job_id: str, key: str, holder: str) -> None:
     """Delete a claim on the result while holder holds it, and wake a worker waiting for it to go."""
-    if await _if_held(key, holder, refresh=None):
+    if await if_held(key, holder, refresh=None):
         released = _released_key(job_id)
         await redis_cache.client.rpush(released, holder)
         await redis_cache.client.expire(released, BROWSER_JOB_JOINER_LEASE_SECONDS)
