@@ -586,6 +586,15 @@ class TestDailyCostBudget:
 
         mock_upsell.assert_not_called()
 
+    async def test_the_dev_unlimited_flag_lifts_an_exhausted_budget(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(rl.settings, "DEV_UNLIMITED_RATE_LIMITS", True)
+        with _budget_of(FREE_DAILY_COST_BUDGET_USD, PlanType.FREE) as mock_upsell:
+            await rl.enforce_daily_cost_budget("user-1", "chat_messages")
+
+        mock_upsell.assert_not_called()
+
     async def test_an_exhausted_budget_blocks_with_an_upgrade_429(self) -> None:
         with (
             _budget_of(FREE_DAILY_COST_BUDGET_USD, PlanType.FREE),

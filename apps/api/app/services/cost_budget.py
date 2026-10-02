@@ -237,7 +237,7 @@ async def get_budget_stop_reason(
     plan_type: PlanType | None,
     root_request_id: str | None,
 ) -> BudgetCheck:
-    """Return the user-facing stop text when a budget wall binds, else None.
+    """Return the budget read: stop_reason is the user-facing stop text when a wall binds, else None.
 
     Self-sufficient: derives plan_type from the Redis-cached tier when never
     stamped onto the configurable. Checks a daily cost budget and a
@@ -248,7 +248,7 @@ async def get_budget_stop_reason(
     # the cost wall, so an eval harness / local dev user on the free plan isn't
     # blocked mid-run. get_settings() refuses production boot when it is set.
     if settings.DEV_UNLIMITED_RATE_LIMITS:
-        return None
+        return BudgetCheck(None, None, None)
 
     if user_id is None:
         log.warning(
