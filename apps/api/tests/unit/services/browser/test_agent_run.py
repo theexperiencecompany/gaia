@@ -921,9 +921,10 @@ class TestExecute:
         resumed = options["injected_agent_state"]
         assert (resumed.n_steps, resumed.stopped, resumed.paused) == (7, False, False)
         assert (resumed.consecutive_failures, options["initial_actions"]) == (0, None)
-        assert resumed.last_result[-1].long_term_memory == BROWSER_ENGINE_RESUMED_NOTE.format(
-            page=page
-        )
+        # The request it reads each step says the move is done (h_switch_told asked again),
+        # and the page the fallback opened is not replaced by the task's first URL.
+        assert BROWSER_ENGINE_RESUMED_NOTE.format(page=page) in options["task"]
+        assert options["directly_open_url"] is False
 
     @pytest.mark.parametrize(
         ("engine", "on_obscura"), [(BrowserEngine.OBSCURA, True), (BrowserEngine.CHROMIUM, False)]

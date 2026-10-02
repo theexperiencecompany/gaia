@@ -594,8 +594,9 @@ BROWSER_ENGINE_SWITCH_ACK = (
 )
 #: What the agent reads first on the fallback engine, its earlier steps still in its history.
 BROWSER_ENGINE_RESUMED_NOTE = (
-    "This run moved to the full browser (Chrome), which opened {page}. Continue the task "
-    "from there."
+    "\n\nThis run has moved to the full browser (Chrome) and you are in it now: an "
+    "instruction to continue in the full browser is done. It opened {page}. Your earlier "
+    "steps, in the fast browser, are in your history; continue the task from there."
 )
 #: What a handoff action answers: the wait runs once the step ends, outside its step budget.
 BROWSER_ANSWER_AFTER_STEP = "Asked. The answer arrives before your next step."

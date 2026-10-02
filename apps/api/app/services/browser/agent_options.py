@@ -16,6 +16,7 @@ from app.constants.browser import (
     BROWSER_AGENT_ROLE,
     BROWSER_AGENT_URL_QUERY_MAX_CHARS,
     BROWSER_DEVICE_SCALE_FACTOR,
+    BROWSER_ENGINE_RESUMED_NOTE,
     BROWSER_TAKEOVER_PREAMBLE,
     BROWSER_VIEWPORT_HEIGHT,
     BROWSER_VIEWPORT_WIDTH,
@@ -39,6 +40,7 @@ class AgentOptions(TypedDict):
     """Browser-Use Agent keyword arguments that carry a decision, not a live object."""
 
     task: str
+    directly_open_url: bool
     initial_actions: list[dict[str, dict[str, Any]]] | None
     sensitive_data: dict[str, str | dict[str, str]] | None
     extend_system_message: str
@@ -69,8 +71,15 @@ def agent_options(
     An agent on the fast engine is told so: one that was not believed the page
     it read there was already the full browser, and never moved when the task said to.
     """
+    # With no page to reopen, the fallback's session opens on a blank tab.
+    moved = BROWSER_ENGINE_RESUMED_NOTE.format(page=config.start_url or "about:blank")
     return AgentOptions(
-        task=task + BROWSER_TAKEOVER_PREAMBLE,
+        # A resumed agent read its own "switch to the full browser" in its history,
+        # and asked again: the request it reads every step says the move is done.
+        task=task + (secrets.mask(moved) if resumed else "") + BROWSER_TAKEOVER_PREAMBLE,
+        # A resumed run's session already opened its last page; reopening the task's
+        # first URL lost that page and the agent's place.
+        directly_open_url=not resumed,
         # With no page to start on, a first burst could only end on the blank tab: the first move is the agent's.
         initial_actions=(
             [{JEV_ACTION: {"goal": task, "start_url": config.start_url}}]

@@ -12,6 +12,7 @@ from app.constants.browser import (
     BROWSER_AGENT_ROLE,
     BROWSER_AGENT_URL_QUERY_MAX_CHARS,
     BROWSER_DEVICE_SCALE_FACTOR,
+    BROWSER_ENGINE_RESUMED_NOTE,
     BROWSER_TAKEOVER_PREAMBLE,
     BROWSER_VIEWPORT_HEIGHT,
     BROWSER_VIEWPORT_WIDTH,
@@ -45,6 +46,7 @@ def test_jev_acts_first_on_the_whole_task_from_the_start_page() -> None:
     ]
     assert options["task"] == TASK + BROWSER_TAKEOVER_PREAMBLE
     assert options["extend_system_message"] == BROWSER_AGENT_ROLE
+    assert options["directly_open_url"] is True
 
 
 def test_the_runs_secrets_fill_the_agents_placeholders_and_none_means_none() -> None:
@@ -82,10 +84,21 @@ def test_each_step_gets_the_runs_step_budget_and_limits() -> None:
     assert options["llm_timeout"] == BROWSER_AGENT_LLM_TIMEOUT_SECONDS
 
 
-def test_a_run_resumed_on_the_fallback_engine_does_not_start_jev_on_the_whole_task_again() -> None:
-    options = agent_options(TASK, CONFIG, RunSecrets({}), resumed=True, fast_engine=True)
+@pytest.mark.parametrize(
+    ("start_url", "page"), [("https://shop.test/", "https://shop.test/"), (None, "about:blank")]
+)
+def test_a_run_resumed_on_the_fallback_engine_is_told_where_it_is_and_stays_there(
+    start_url: str | None, page: str
+) -> None:
+    """h_switch_told: the agent asked to switch again, never told in its task it had moved."""
+    config = replace(CONFIG, start_url=start_url)
 
-    assert options["initial_actions"] is None
+    options = agent_options(TASK, config, RunSecrets({}), resumed=True, fast_engine=True)
+
+    moved = BROWSER_ENGINE_RESUMED_NOTE.format(page=page)
+    assert options["task"] == TASK + moved + BROWSER_TAKEOVER_PREAMBLE
+    # Neither Jev on the whole task again, nor a reopen of its first page.
+    assert (options["initial_actions"], options["directly_open_url"]) == (None, False)
 
 
 def test_a_run_with_no_page_to_start_on_starts_with_the_agent_not_jev() -> None:

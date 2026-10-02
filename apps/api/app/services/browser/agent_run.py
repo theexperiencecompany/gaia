@@ -32,7 +32,6 @@ from pydantic import BaseModel, TypeAdapter
 from app.constants.browser import (
     BROWSER_ANSWER_AFTER_STEP,
     BROWSER_ENGINE_PROBE_TIMEOUT_SECONDS,
-    BROWSER_ENGINE_RESUMED_NOTE,
     BROWSER_GUIDANCE_MAX_ELEMENTS,
     BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS,
     BROWSER_GUIDANCE_RECENT_ACTIONS,
@@ -409,21 +408,11 @@ class BrowserAgentRun:
         self.connected = True
 
     def _resumed_state(self) -> AgentState | None:
-        """Return the primary agent's state to go on from, told where the run now is, or None for a new run."""
+        """Return the primary agent's state to go on from, or None for a new run; its task says where it now is."""
         if self._resumed_from is None:
             return None
-        # With no page to reopen, the fallback's session opens on a blank tab.
-        note = BROWSER_ENGINE_RESUMED_NOTE.format(page=self._config.start_url or "about:blank")
         return self._resumed_from.model_copy(
-            update={
-                "stopped": False,
-                "paused": False,
-                "consecutive_failures": 0,
-                "last_result": [
-                    *(self._resumed_from.last_result or []),
-                    ActionResult(long_term_memory=self._secrets.mask(note)),
-                ],
-            }
+            update={"stopped": False, "paused": False, "consecutive_failures": 0}
         )
 
     def _page_for(self, browser_session: BrowserSession) -> JevPage:
