@@ -1,4 +1,4 @@
-From 7177aa125e6c253f31701aaa39df6ea49602f395 Mon Sep 17 00:00:00 2001
+From 97d41ac5f9ff0f62ce0f6dbd4abf837270fc7797 Mon Sep 17 00:00:00 2001
 From: gaia <build@heygaia.io>
 Date: Fri, 2 Oct 2026 16:52:53 +0530
 Subject: [PATCH] fix(js): a page's timer wakes reach whichever task polls it
@@ -27,7 +27,7 @@ Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
  1 file changed, 181 insertions(+), 17 deletions(-)
 
 diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
-index 6bd3a73..054a0bd 100644
+index 55c3645..17f0e6e 100644
 --- a/crates/obscura-js/src/runtime.rs
 +++ b/crates/obscura-js/src/runtime.rs
 @@ -211,6 +211,9 @@ pub struct ObscuraJsRuntime {
@@ -213,7 +213,7 @@ index 6bd3a73..054a0bd 100644
              let _ = tokio::time::timeout(
                  tokio::time::Duration::from_millis(tick_ms),
                  event_loop,
-@@ -21515,6 +21587,98 @@ mod tests {
+@@ -21540,6 +21612,98 @@ mod tests {
          );
      }
  
