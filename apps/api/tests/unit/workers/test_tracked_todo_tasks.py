@@ -74,8 +74,10 @@ from app.models.workflow_models import TriggerType
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.batching import MAX_TRIGGER_BATCH_EVENTS
 from app.services.triggers.subscription_dispatch import dispatch_to_subscribed_todos
+from app.utils.cron_utils import get_next_run_time
 from app.utils.occurrence import occurrence_stamp
 from app.utils.redis_utils import RedisPoolManager
+from app.utils.timezone import Timezone
 from app.workers.task_envelope import arq_task
 from app.workers.tasks.tracked_todo_tasks import (
     LOCK_DEFER_BACKOFF,
@@ -1079,6 +1081,110 @@ class TestExecuteTodoWithRetryFailure:
         assert result == "failed:todo-1 (max retries reached)"
         pool.enqueue_job.assert_not_awaited()
         mark_failed.assert_awaited_once()
+
+
+class TestARecurringTodoOutlivesAFailedOccurrence:
+    """Regression: a provider outage failed the daily desk 3 times; it was labelled failed and never ran again."""
+
+    @pytest.fixture(autouse=True)
+    def _route_enqueue(self, route_enqueue_via_pool):
+        return
+
+    async def _run(self, doc: TodoDocument, origin: TriggerOrigin | None = None):
+        pool = _pool()
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=doc)
+        repo.update = AsyncMock()
+        repo.update_if_scheduled_at = AsyncMock(return_value=doc)
+        repo.add_labels = AsyncMock()
+        notify = AsyncMock()
+        teardown = AsyncMock(return_value=2)
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}._execute_on_executor", AsyncMock(side_effect=RuntimeError("402"))),
+            patch(
+                f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
+            ),
+            patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.teardown_subscriptions", teardown),
+            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            _serving(pool),
+        ):
+            result = await _execute_todo_with_retry("todo-1", origin)
+        return result, SimpleNamespace(repo=repo, pool=pool, notify=notify, teardown=teardown)
+
+    def _last_attempt(self, **fields: object) -> TodoDocument:
+        return _doc(
+            recurrence="0 8 * * *",
+            gaia_retry_count=MAX_RETRY_ATTEMPTS - 1,
+            title="Inbox desk",
+            **fields,
+        )
+
+    @pytest.mark.regression
+    async def test_the_last_failed_attempt_moves_it_to_its_next_occurrence(self):
+        doc = self._last_attempt()
+
+        result, seams = await self._run(doc)
+
+        next_run = get_next_run_time("0 8 * * *", datetime.now(UTC), Timezone.utc())
+        assert result == "gave_up:todo-1 (max retries reached; the next occurrence is armed)"
+        seams.repo.update_if_scheduled_at.assert_awaited_once_with(
+            "todo-1",
+            "user-1",
+            expected=doc.scheduled_at,
+            update=TodoUpdate(gaia_retry_count=0, scheduled_at=next_run),
+        )
+        args, kwargs = seams.pool.enqueue_job.await_args
+        assert args == ("execute_tracked_todo", "todo-1")
+        assert kwargs.items() >= _scheduled(next_run).items()
+
+    @pytest.mark.regression
+    async def test_it_is_neither_labelled_failed_nor_unwatched(self):
+        _result, seams = await self._run(self._last_attempt())
+
+        seams.repo.add_labels.assert_not_awaited()
+        seams.teardown.assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_the_failure_is_on_the_timeline_and_told_once(self, activity):
+        _result, seams = await self._run(self._last_attempt())
+
+        assert _recorded(activity)[0] == (
+            TodoActivityEvent.OCCURRENCE_GIVEN_UP,
+            f"gave up after {MAX_RETRY_ATTEMPTS} failed attempts; the next occurrence runs "
+            "as scheduled",
+        )
+        (request,) = (c.args[0] for c in seams.notify.await_args_list)
+        assert (request.user_id, request.type) == ("user-1", NotificationType.ERROR)
+        assert request.content.title == "Scheduled Task Failed: Inbox desk"
+        assert request.content.body == (
+            f"This run of 'Inbox desk' failed after {MAX_RETRY_ATTEMPTS} attempts. "
+            "It runs again at its next scheduled time."
+        )
+        assert request.metadata == {"todo_id": "todo-1", "retry_count": MAX_RETRY_ATTEMPTS}
+
+    @pytest.mark.regression
+    async def test_a_watch_run_that_gives_up_leaves_the_schedule_and_clears_the_count(self):
+        pending = datetime.now(UTC) + timedelta(hours=5)
+        origin = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
+
+        result, seams = await self._run(self._last_attempt(scheduled_at=pending), origin)
+
+        assert result.startswith("gave_up:todo-1")
+        seams.repo.update_if_scheduled_at.assert_not_awaited()
+        assert _updates(seams.repo) == [{"gaia_retry_count": 0}]
+        seams.repo.add_labels.assert_not_awaited()
+
+    async def test_a_one_shot_todo_still_stops_as_failed(self):
+        result, seams = await self._run(_doc(recurrence=None, gaia_retry_count=2))
+
+        assert result == "failed:todo-1 (max retries reached)"
+        seams.repo.add_labels.assert_awaited_once_with(
+            "todo-1", user_id="user-1", labels=[FAILED_LABEL]
+        )
+        seams.teardown.assert_awaited_once_with("todo-1", "user-1", reason="failed")
+        seams.repo.update_if_scheduled_at.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

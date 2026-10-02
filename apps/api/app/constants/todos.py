@@ -100,6 +100,7 @@ class TodoActivityEvent(StrEnum):
     RUN_SKIPPED = "run_skipped"
     RETRY_SCHEDULED = "retry_scheduled"
     MARKED_FAILED = "marked_failed"
+    OCCURRENCE_GIVEN_UP = "occurrence_given_up"
     APPROVAL_GRANTED = "approval_granted"
     APPROVAL_DENIED = "approval_denied"
     MAINTENANCE = "maintenance"

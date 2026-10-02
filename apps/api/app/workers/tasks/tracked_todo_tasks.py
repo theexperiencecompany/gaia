@@ -267,55 +267,16 @@ async def _execute_todo_with_retry(
     except Exception as exc:
         log.exception("tracked_todo.execution_failed", todo_id=todo_id, error=str(exc))
         new_retry_count = retry_count + 1
-
-        if new_retry_count >= MAX_RETRY_ATTEMPTS:
-            await todo_repository.update(
-                todo_id, user_id=user_id, update=TodoUpdate(gaia_retry_count=new_retry_count)
-            )
-            await _mark_todo_failed(todo_id, user_id, doc)
-            return f"failed:{todo_id} (max retries reached)"
-
-        # Compute backoff delay
-        backoff_index = min(new_retry_count - 1, len(RETRY_BACKOFF) - 1)
-        backoff = RETRY_BACKOFF[backoff_index]
-        next_attempt = datetime.now(UTC) + backoff
-        if origin is None:
-            # Parked on the backoff target: left in the past, scheduled_at matches
-            # the safety net's due-query, which fires it on the next 30-minute scan.
-            await todo_repository.update(
-                todo_id,
-                user_id=user_id,
-                update=TodoUpdate(gaia_retry_count=new_retry_count, scheduled_at=next_attempt),
-            )
-            await tracked_todo_service.schedule_execution(todo_id, next_attempt)
-        else:
-            await todo_repository.update(
-                todo_id, user_id=user_id, update=TodoUpdate(gaia_retry_count=new_retry_count)
-            )
-            # Carries origin and every event it coalesced, or the retry loses the payloads
-            # it was woken for; no occurrence job id, which would fold it into a scheduled run.
-            await enqueue_worker_job(
-                await RedisPoolManager.get_pool(),
-                EXECUTE_TRACKED_TODO_TASK,
-                todo_id,
-                origin,
-                coalesced=list(coalesced),
-                _defer_until=next_attempt,
-            )
-        await record_activity(
-            todo_id,
-            user_id,
-            TodoActivityEvent.RETRY_SCHEDULED,
-            f"attempt {new_retry_count + 1} of {MAX_RETRY_ATTEMPTS} at {next_attempt.isoformat()}",
+        if new_retry_count < MAX_RETRY_ATTEMPTS:
+            return await _schedule_retry(doc, new_retry_count, origin, coalesced)
+        if doc.recurrence:
+            await _give_up_occurrence(doc, user_tz.value, origin)
+            return f"gave_up:{todo_id} (max retries reached; the next occurrence is armed)"
+        await todo_repository.update(
+            todo_id, user_id=user_id, update=TodoUpdate(gaia_retry_count=new_retry_count)
         )
-        log.info(
-            "tracked_todo.retry_enqueued",
-            todo_id=todo_id,
-            next_attempt=next_attempt.isoformat(),
-            attempt=new_retry_count,
-            max_attempts=MAX_RETRY_ATTEMPTS,
-        )
-        return f"retry:{todo_id} (attempt {new_retry_count})"
+        await _mark_todo_failed(todo_id, user_id, doc)
+        return f"failed:{todo_id} (max retries reached)"
 
     # The run is delivered: a failure queueing what follows must not run it again.
     # A watch firing is not the todo's schedule, so only a scheduled run moves it on.
@@ -325,6 +286,83 @@ async def _execute_todo_with_retry(
             todo_id, user_id=user_id, update=TodoUpdate(gaia_retry_count=0)
         )
     return f"success:{todo_id}"
+
+
+async def _schedule_retry(
+    doc: TodoDocument,
+    attempt: int,
+    origin: TriggerOrigin | None,
+    coalesced: Sequence[TriggerOrigin],
+) -> str:
+    """Queue the next attempt of a failed run on the backoff ladder."""
+    backoff = RETRY_BACKOFF[min(attempt - 1, len(RETRY_BACKOFF) - 1)]
+    next_attempt = datetime.now(UTC) + backoff
+    if origin is None:
+        # Parked on the backoff target: left in the past, scheduled_at matches
+        # the safety net's due-query, which fires it on the next 30-minute scan.
+        await todo_repository.update(
+            doc.id,
+            user_id=doc.user_id,
+            update=TodoUpdate(gaia_retry_count=attempt, scheduled_at=next_attempt),
+        )
+        await tracked_todo_service.schedule_execution(doc.id, next_attempt)
+    else:
+        await todo_repository.update(
+            doc.id, user_id=doc.user_id, update=TodoUpdate(gaia_retry_count=attempt)
+        )
+        # Carries origin and every event it coalesced, or the retry loses the payloads
+        # it was woken for; no occurrence job id, which would fold it into a scheduled run.
+        await enqueue_worker_job(
+            await RedisPoolManager.get_pool(),
+            EXECUTE_TRACKED_TODO_TASK,
+            doc.id,
+            origin,
+            coalesced=list(coalesced),
+            _defer_until=next_attempt,
+        )
+    await record_activity(
+        doc.id,
+        doc.user_id,
+        TodoActivityEvent.RETRY_SCHEDULED,
+        f"attempt {attempt + 1} of {MAX_RETRY_ATTEMPTS} at {next_attempt.isoformat()}",
+    )
+    log.info(
+        "tracked_todo.retry_enqueued",
+        todo_id=doc.id,
+        next_attempt=next_attempt.isoformat(),
+        attempt=attempt,
+        max_attempts=MAX_RETRY_ATTEMPTS,
+    )
+    return f"retry:{doc.id} (attempt {attempt})"
+
+
+async def _give_up_occurrence(
+    doc: TodoDocument, user_tz: str, origin: TriggerOrigin | None
+) -> None:
+    """Record and report a recurring todo's failed occurrence, then arm its next one.
+
+    Labelling it failed would stop every later run until a human noticed, for an
+    outage that is usually gone by the next occurrence.
+    """
+    await record_activity(
+        doc.id,
+        doc.user_id,
+        TodoActivityEvent.OCCURRENCE_GIVEN_UP,
+        f"gave up after {MAX_RETRY_ATTEMPTS} failed attempts; the next occurrence runs as "
+        "scheduled",
+    )
+    await _notify_run_failed(
+        doc,
+        f"This run of '{doc.title}' failed after {MAX_RETRY_ATTEMPTS} attempts. "
+        "It runs again at its next scheduled time.",
+    )
+    # A watch's run is not the schedule's occurrence: only the retry count is its to clear.
+    advanced = origin is None and await _advance_schedule(doc, user_tz)
+    if not advanced:
+        await todo_repository.update(
+            doc.id, user_id=doc.user_id, update=TodoUpdate(gaia_retry_count=0)
+        )
+    log.info("tracked_todo.occurrence_given_up", todo_id=doc.id)
 
 
 async def _advance_schedule(
@@ -772,31 +810,29 @@ async def _mark_todo_failed(todo_id: str, user_id: str, doc: TodoDocument) -> No
         "label is removed",
     )
     log.info("tracked_todo.marked_failed", todo_id=todo_id)
+    await _notify_run_failed(
+        doc,
+        f"Your scheduled task '{doc.title}' could not be completed after "
+        f"{MAX_RETRY_ATTEMPTS} attempts. Please check the task and try again.",
+    )
 
-    title: str = doc.title
+
+async def _notify_run_failed(doc: TodoDocument, body: str) -> None:
+    """Tell the user in-app that a run used up its attempts; a failed send is only logged."""
     try:
         await notification_service.create_notification(
             NotificationRequest(
-                user_id=user_id,
+                user_id=doc.user_id,
                 source=NotificationSourceEnum.BACKGROUND_JOB,
                 type=NotificationType.ERROR,
-                content=NotificationContent(
-                    title=f"Scheduled Task Failed: {title}",
-                    body=(
-                        f"Your scheduled task '{title}' could not be completed after "
-                        f"{MAX_RETRY_ATTEMPTS} attempts. Please check the task and try again."
-                    ),
-                ),
-                metadata={
-                    "todo_id": todo_id,
-                    "retry_count": MAX_RETRY_ATTEMPTS,
-                },
+                content=NotificationContent(title=f"Scheduled Task Failed: {doc.title}", body=body),
+                metadata={"todo_id": doc.id, "retry_count": MAX_RETRY_ATTEMPTS},
             )
         )
     except Exception as notify_exc:
         log.warning(
             "tracked_todo.failure_notification_failed",
-            todo_id=todo_id,
+            todo_id=doc.id,
             error=str(notify_exc),
         )
 
