@@ -21,6 +21,7 @@ from browser_use.agent.views import AgentState
 import pytest
 
 from app.constants.browser import (
+    BROWSER_AGENT_FAST_ENGINE_NOTE,
     BROWSER_ENGINE_RESUMED_NOTE,
     BROWSER_GUIDANCE_MAX_ELEMENTS,
     BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS,
@@ -48,7 +49,7 @@ from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserUnav
 from app.services.browser.jev import loop as loop_mod
 from app.services.browser.jev.decision import GENERATE
 from app.services.browser.jev.gateway import JevEvaluation
-from app.services.browser.jev.page import PageAction, PageUnresponsive
+from app.services.browser.jev.page import EngineScriptError, PageAction, PageUnresponsive
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.jev.tool import JEV_ACTION
 from app.services.browser.ledger import CallComponent, ExecutedAction, RunLedger
@@ -1038,6 +1039,9 @@ class TestTools:
         assert {JEV_ACTION, "request_human_takeover", "request_agent_guidance"} <= offered
         assert "continue_in_full_browser" not in offered
         assert BrowserHandoffAction.SOLVE_CAPTCHA_WITH_HELP not in offered
+        assert (
+            BROWSER_AGENT_FAST_ENGINE_NOTE not in _Agent.built[-1].options["extend_system_message"]
+        )
 
     async def test_the_agent_on_the_fast_engine_can_move_the_run_to_chrome(
         self, harness: _Harness
@@ -1060,6 +1064,7 @@ class TestTools:
         assert agent.stopped is True
         offered = set(agent.options["tools"].registry.registry.actions)
         assert BrowserHandoffAction.SOLVE_CAPTCHA_WITH_HELP in offered
+        assert agent.options["extend_system_message"].endswith(BROWSER_AGENT_FAST_ENGINE_NOTE)
 
 
 @pytest.mark.usefixtures("built_with")
@@ -1096,6 +1101,27 @@ class TestJevInTheRun:
         await harness.run.execute("fill the form")
         result = await _Agent.built[-1].act(JEV_ACTION, {"goal": "fill the form"})
         return str(result.extracted_content)
+
+    async def test_a_script_the_fast_engine_cannot_run_moves_the_run_to_chrome(
+        self, harness: _Harness, monkeypatch: pytest.MonkeyPatch, decisions: list[object]
+    ) -> None:
+        """Obscura lacked createTreeWalker; the run asked the user about Bing instead of moving."""
+        gap = EngineScriptError("Jev's page script failed: TypeError: createTreeWalker")
+        page = FakePage(page_state(), read_fails=(0, gap))
+        monkeypatch.setattr(agent_run_mod, "JevPage", _JevPages(harness.run, page))
+        switched: list[EngineSwitchReason] = []
+
+        async def _switch(reason: EngineSwitchReason, url: str | None) -> str:
+            switched.append(reason)
+            return "moving"
+
+        harness.run._hooks = replace(harness.run._hooks, switch_engine=_switch)
+
+        report = await self._burst(harness)
+
+        assert switched == [EngineSwitchReason.SCRIPT_UNSUPPORTED]
+        assert "moving" in report
+        assert _Agent.built[-1].stopped is True
 
     async def test_a_burst_types_clicks_and_reports_through_the_run(
         self, harness: _Harness, page: FakePage, decisions: list[object]

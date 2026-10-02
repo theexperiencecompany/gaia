@@ -452,14 +452,15 @@ class Battery:
 
         The job state never carries it; a run moved to the fallback engine names its new session last.
         """
-        sessions = [
-            data["session_id"]
-            for _entry, fields in self.redis.xrange(f"{BROWSER_JOB_EVENTS_PREFIX}{job_id}")
-            if (
-                data := (json.loads(fields["payload"]).get("tool_data") or {}).get("data") or {}
-            ).get("kind")
-            == "session"
-        ]
+        feed = cast(
+            list[tuple[str, dict[str, str]]],
+            self.redis.xrange(f"{BROWSER_JOB_EVENTS_PREFIX}{job_id}"),
+        )
+        sessions: list[str] = []
+        for _entry, fields in feed:
+            card = (json.loads(fields["payload"]).get("tool_data") or {}).get("data") or {}
+            if card.get("kind") == "session":
+                sessions.append(card["session_id"])
         return sessions[-1] if sessions else None
 
     def task_record(self, session_id: str | None) -> dict[str, Any] | None:

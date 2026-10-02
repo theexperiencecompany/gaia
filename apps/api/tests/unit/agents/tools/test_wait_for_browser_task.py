@@ -217,17 +217,30 @@ async def test_a_result_the_worker_already_told_is_not_told_again() -> None:
     assert ANSWER in joined
 
 
-async def test_a_joined_run_whose_job_was_stopped_ends_stopped_and_tells_nothing() -> None:
+async def test_a_joined_run_whose_job_was_stopped_ends_stopped_and_tells_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The stop answered the user; a joined run that voiced the stopped job was a second reply."""
+    stopped: list[tuple[str, str]] = []
+    stop_stream = tool_mod.stop_stream
+
+    async def _stop_stream(conversation_id: str, stream_id: str) -> object:
+        stopped.append((conversation_id, stream_id))
+        return await stop_stream(conversation_id, stream_id)
+
+    monkeypatch.setattr(tool_mod, "stop_stream", _stop_stream)
     await request_job_cancel("job-1")
     await _finish()
 
-    joined = await _join()
+    async with captured_wide_event() as event:
+        joined = await _join()
 
     assert joined == tool_mod._STOPPED_BY_USER
-    # Its run ends as a stopped one, which delivers nothing.
+    # Its run ends as a stopped one, which delivers nothing, and so does what it dispatched.
+    assert stopped == [("c1", "s1")]
     assert await StreamManager.is_cancelled("s1") is True
     assert await joiner_lease_held("job-1") is False
+    assert event["browser"] == {"join": "stopped"}
 
 
 async def test_a_run_asking_for_guidance_comes_back_at_once_and_keeps_the_claim() -> None:
