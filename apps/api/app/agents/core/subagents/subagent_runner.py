@@ -21,7 +21,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command, StateSnapshot, interrupt
 
 from app.agents.context.assemble import assemble_context
-from app.agents.context.section_context import SectionContext
+from app.agents.context.section_context import SectionContext, SectionScope
 from app.agents.context.tiers import AgentTier
 from app.agents.core.background.session import claim_tool_output, note_tool_output_owner
 from app.agents.core.background.subagent_channel import SubagentCancel
@@ -186,6 +186,8 @@ class ThreadSeed:
     subagent_id: str | None = None
     retrieval_query: str | None = None
     integration_id: str | None = None
+    #: The comms turn's request this thread serves; see SectionContext.request_query.
+    request_query: str | None = None
 
 
 async def build_initial_messages(
@@ -216,10 +218,13 @@ async def build_initial_messages(
         SectionContext.from_configurable(
             tier,
             configurable,
-            query=retrieval_query if retrieval_query is not None else task,
-            user_id=user_id,
-            subagent_id=subagent_id,
-            integration_id=integration_id,
+            SectionScope(
+                query=retrieval_query if retrieval_query is not None else task,
+                request_query=seed.request_query,
+                user_id=user_id,
+                subagent_id=subagent_id,
+                integration_id=integration_id,
+            ),
         )
     )
 
@@ -893,9 +898,8 @@ async def prepare_executor_execution(
         ):
             enhanced_task = f"{enhanced_task}\n\n{files_block}"
 
-    # Build messages using shared helper.
-    # Pass original task as retrieval_query so memory/context semantic search
-    # is not polluted by the DIRECT EXECUTION HINT injected into enhanced_task.
+    # The unenhanced task keeps the DIRECT EXECUTION HINT out of semantic search;
+    # request_query lets the executor reuse the recall comms made on the same message.
     messages = await build_initial_messages(
         system_message=system_message,
         agent_name="executor_agent",
@@ -905,6 +909,7 @@ async def prepare_executor_execution(
             configurable=new_configurable,
             user_id=user_id,
             retrieval_query=task,
+            request_query=configurable.get("user_request"),
         ),
     )
 
