@@ -64,7 +64,8 @@ from app.services.browser.tasks import BrowserTaskRecord
 from shared.py.wide_events import log, wide_task
 from tests.helpers import captured_wide_event
 
-pytestmark = pytest.mark.unit
+# Every run writes its ending to Redis (jobs.record_ending), so each test gets its own fakeredis.
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("fake_redis")]
 
 
 def _request(**overrides: Any) -> BrowserJobRequest:

@@ -19,7 +19,8 @@ from app.services.browser import jobs
 from app.services.browser.job_stop import stop_browser_job
 from tests.helpers import captured_wide_event
 
-pytestmark = pytest.mark.unit
+# A job that never runs records its ending in Redis (jobs.record_ending), so each test gets its own fakeredis.
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("fake_redis")]
 
 TOOL_CALL_ID = "call-browser-1"
 
