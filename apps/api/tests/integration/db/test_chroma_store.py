@@ -25,6 +25,13 @@ from app.db.chroma.chroma_tools_store import (
     _get_existing_tools_from_chroma,
     delete_tools_by_namespace,
 )
+from app.db.chroma.chroma_triggers_store import (
+    TRIGGERS_NAMESPACE,
+    IndexedTriggerEntry,
+    _build_put_operations as _build_trigger_put_operations,
+    _compute_trigger_diff,
+    _get_existing_triggers_from_chroma,
+)
 from app.db.chroma.noop_embedding import NoOpEmbeddingFunction
 
 _USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "0") == "1"
@@ -776,6 +783,32 @@ class TestGetExistingToolsFromChroma:
             collection_with_tools, namespaces={"general"}
         )
         assert result["general::web_search"]["hash"] == "hash_ws"
+
+
+@pytest.mark.integration
+class TestTriggerHashesSurviveTheRoundTrip:
+    """A trigger written through ChromaStore must read back with its hash, or every boot re-embeds it."""
+
+    async def test_an_unchanged_trigger_is_not_upserted_again(self, chroma_store):
+        entry = IndexedTriggerEntry(
+            hash="hash_new_email",
+            slug="GMAIL_NEW_EMAIL",
+            name="New email",
+            description="Fires on a new email",
+            integration_id="gmail",
+            integration_name="Gmail",
+            category="communication",
+            rich_description="New email. Fires on a new email.",
+        )
+        await chroma_store.abatch(_build_trigger_put_operations([("GMAIL_NEW_EMAIL", entry)], []))
+
+        existing = await _get_existing_triggers_from_chroma(await chroma_store._get_collection())
+        to_upsert, to_delete = _compute_trigger_diff({"GMAIL_NEW_EMAIL": entry}, existing)
+
+        assert existing == {
+            "GMAIL_NEW_EMAIL": {"hash": "hash_new_email", "namespace": TRIGGERS_NAMESPACE}
+        }
+        assert (to_upsert, to_delete) == ([], [])
 
 
 # ---------------------------------------------------------------------------

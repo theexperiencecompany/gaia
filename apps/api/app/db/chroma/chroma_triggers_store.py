@@ -6,9 +6,10 @@ and only updated when their configuration changes.
 """
 
 import hashlib
-from typing import cast
+from typing import NotRequired, TypedDict, cast
 
 from chromadb.api.models.AsyncCollection import AsyncCollection
+from chromadb.api.types import GetResult
 from langgraph.store.base import PutOp
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
@@ -25,6 +26,32 @@ from .index_warmup import run_index_warmup
 
 # Namespace for workflow triggers in the store
 TRIGGERS_NAMESPACE = "workflow_triggers"
+
+
+class IndexedTriggerEntry(TypedDict):
+    """One trigger as the diff sees it: its config hash plus what the put value persists."""
+
+    hash: str
+    slug: str
+    name: str
+    description: str | None
+    integration_id: str
+    integration_name: str
+    category: NotRequired[str | None]
+    rich_description: str
+
+
+class ExistingTriggerEntry(TypedDict):
+    """A trigger row read back from Chroma; only its hash matters to the diff."""
+
+    hash: str
+    namespace: str
+
+
+class IndexedTriggerMetadata(TypedDict, total=False):
+    """The Chroma metadata key the diff reads back; ChromaStore._upsert_item writes it."""
+
+    trigger_hash: str
 
 
 def _compute_trigger_hash(integration_id: str, trigger: TriggerConfig) -> str:
@@ -56,13 +83,9 @@ def _build_trigger_description(integration: OAuthIntegration, trigger: TriggerCo
     )
 
 
-def _get_current_triggers_with_hashes() -> dict[str, dict]:
-    """Get all current triggers with their hashes.
-
-    Returns:
-        Dictionary mapping trigger slugs to their hash and metadata
-    """
-    current_triggers = {}
+def _get_current_triggers_with_hashes() -> dict[str, IndexedTriggerEntry]:
+    """Map every registered trigger's slug to its hash and persisted fields."""
+    current_triggers: dict[str, IndexedTriggerEntry] = {}
 
     for integration in OAUTH_INTEGRATIONS:
         if not integration.associated_triggers:
@@ -72,29 +95,34 @@ def _get_current_triggers_with_hashes() -> dict[str, dict]:
             trigger_hash = _compute_trigger_hash(integration.id, trigger)
             rich_description = _build_trigger_description(integration, trigger)
 
-            current_triggers[trigger.slug] = {
-                "hash": trigger_hash,
-                "slug": trigger.slug,
-                "name": trigger.name,
-                "description": trigger.description,
-                "integration_id": integration.id,
-                "integration_name": integration.name,
-                "category": integration.category,
-                "rich_description": rich_description,
-            }
+            current_triggers[trigger.slug] = IndexedTriggerEntry(
+                hash=trigger_hash,
+                slug=trigger.slug,
+                name=trigger.name,
+                description=trigger.description,
+                integration_id=integration.id,
+                integration_name=integration.name,
+                category=integration.category,
+                rich_description=rich_description,
+            )
 
     return current_triggers
 
 
-async def _get_existing_triggers_from_chroma(collection: AsyncCollection) -> dict[str, dict]:
+async def _get_existing_triggers_from_chroma(
+    collection: AsyncCollection,
+) -> dict[str, ExistingTriggerEntry]:
     """Fetch existing triggers (slug -> hash/metadata) from the ChromaDB collection."""
-    existing_triggers = {}
+    existing_triggers: dict[str, ExistingTriggerEntry] = {}
 
     try:
-        existing_data = await collection.get(include=["metadatas"])
+        existing_data: GetResult = await collection.get(include=["metadatas"])
         if existing_data and existing_data.get("ids") and existing_data.get("metadatas"):
             for doc_id, metadata in zip(existing_data["ids"], existing_data["metadatas"] or []):
                 if metadata and "::" in doc_id:
+                    trigger_metadata: IndexedTriggerMetadata = cast(
+                        IndexedTriggerMetadata, metadata
+                    )
                     parts = doc_id.split("::")
                     namespace = parts[0] if len(parts) > 1 else "default"
                     trigger_slug = parts[-1]
@@ -103,10 +131,10 @@ async def _get_existing_triggers_from_chroma(collection: AsyncCollection) -> dic
                     if namespace != TRIGGERS_NAMESPACE:
                         continue
 
-                    existing_triggers[trigger_slug] = {
-                        "hash": metadata.get("trigger_hash", ""),
-                        "namespace": namespace,
-                    }
+                    existing_triggers[trigger_slug] = ExistingTriggerEntry(
+                        hash=trigger_metadata.get("trigger_hash", ""),
+                        namespace=namespace,
+                    )
     except Exception as e:
         log.warning(
             f"{LogTag.CHROMA} Error fetching existing triggers, will register all triggers",
@@ -118,15 +146,16 @@ async def _get_existing_triggers_from_chroma(collection: AsyncCollection) -> dic
 
 
 def _compute_trigger_diff(
-    current_triggers: dict[str, dict], existing_triggers: dict[str, dict]
-) -> tuple[list[tuple[str, dict]], list[str]]:
+    current_triggers: dict[str, IndexedTriggerEntry],
+    existing_triggers: dict[str, ExistingTriggerEntry],
+) -> tuple[list[tuple[str, IndexedTriggerEntry]], list[str]]:
     """Diff current vs. existing triggers by hash into (to_upsert, to_delete)."""
-    triggers_to_upsert = []
-    triggers_to_delete = []
+    triggers_to_upsert: list[tuple[str, IndexedTriggerEntry]] = []
+    triggers_to_delete: list[str] = []
 
     # Find new or modified triggers
     for trigger_slug, trigger_data in current_triggers.items():
-        existing = existing_triggers.get(trigger_slug)
+        existing: ExistingTriggerEntry | None = existing_triggers.get(trigger_slug)
         existing_hash = existing["hash"] if existing else None
         if existing_hash != trigger_data["hash"]:
             triggers_to_upsert.append((trigger_slug, trigger_data))
@@ -139,8 +168,22 @@ def _compute_trigger_diff(
     return triggers_to_upsert, triggers_to_delete
 
 
+def _put_value(trigger: IndexedTriggerEntry) -> dict[str, str | None]:
+    """Build the persisted value for one trigger: its fields plus the hash the diff reads back."""
+    return {
+        "slug": trigger["slug"],
+        "name": trigger["name"],
+        "description": trigger["description"],
+        "integration_id": trigger["integration_id"],
+        "integration_name": trigger["integration_name"],
+        "category": trigger.get("category", ""),
+        "rich_description": trigger["rich_description"],
+        "trigger_hash": trigger["hash"],
+    }
+
+
 def _build_put_operations(
-    triggers_to_upsert: list[tuple[str, dict]],
+    triggers_to_upsert: list[tuple[str, IndexedTriggerEntry]],
     triggers_to_delete: list[str],
 ) -> list[PutOp]:
     """Build PutOp operations for upserting and deleting triggers."""
@@ -152,16 +195,7 @@ def _build_put_operations(
             PutOp(
                 namespace=(TRIGGERS_NAMESPACE,),
                 key=trigger_slug,
-                value={
-                    "slug": trigger_data["slug"],
-                    "name": trigger_data["name"],
-                    "description": trigger_data["description"],
-                    "integration_id": trigger_data["integration_id"],
-                    "integration_name": trigger_data["integration_name"],
-                    "category": trigger_data.get("category", ""),
-                    "rich_description": trigger_data["rich_description"],
-                    "trigger_hash": trigger_data["hash"],
-                },
+                value=_put_value(trigger_data),
                 index=["rich_description"],
             )
         )
