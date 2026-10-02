@@ -526,6 +526,17 @@ class TestAppendTextField:
         assert updated is not None
         assert updated.activity_content == "- a\n- b"
 
+    async def test_a_keyed_append_retried_after_a_lost_ack_lands_once(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1", activity_content="- a"))
+
+        for _ in range(2):
+            updated = await repo.append_text_field(
+                created.id, "u1", field="activity_content", suffix="\n- b run r1:", once="run r1:"
+            )
+
+        assert updated is not None
+        assert updated.activity_content == "- a\n- b run r1:"
+
     async def test_append_missing_todo_returns_none(self, repo):
         assert (
             await repo.append_text_field("0" * 24, "u1", field="log_content", suffix="\n- x")
