@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.constants.browser import JevOperation, JevStop
+from app.constants.browser import JEV_GOAL_QUOTES_A_NAME, JevOperation, JevStop
 from app.services.browser.jev.loop import BurstResult, JevStep, OpenedPage
 from app.services.browser.jev.tool import JevDelegate, JevParams, report
 
@@ -88,12 +88,14 @@ async def test_a_script_the_engine_cannot_run_moves_the_run_where_it_can_move(
 async def test_a_goal_quoting_a_secrets_name_is_refused_before_jev_types_it() -> None:
     """The agent re-goaled Jev with password "password": Jev would have typed the word itself."""
     runner = _Runner(_burst(JevStop.DONE))
-    delegate = JevDelegate(runner_for=lambda: runner, emit=AsyncMock(), secret_names=["password"])
+    delegate = JevDelegate(
+        runner_for=lambda: runner, emit=AsyncMock(), secret_names=["password", "username"]
+    )
 
-    refused = await delegate.run(JevParams(goal='log in as "tomsmith" with password "password"'))
+    refused = await delegate.run(JevParams(goal='log in as "username" with password "password"'))
     tagged = await delegate.run(JevParams(goal="log in with <secret>password</secret>"))
 
-    assert refused.error is not None and "<secret>name</secret>" in refused.error
+    assert refused.error == JEV_GOAL_QUOTES_A_NAME.format(names="password, username")
     assert runner.goals == ["log in with <secret>password</secret>"]
     assert tagged.error is None
 

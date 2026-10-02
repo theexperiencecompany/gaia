@@ -228,12 +228,16 @@ async def test_a_stop_and_the_jobs_end_never_both_win(
     assert await jobs_mod.job_cancel_requested("job-1") is False
 
 
-async def test_a_latest_job_pointer_goes_back_only_while_the_job_that_never_ran_holds_it() -> None:
-    await jobs_mod.set_latest_job("discord:u1", "job-new")
+async def test_a_latest_job_pointer_goes_back_only_while_the_job_that_never_ran_holds_it(
+    redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    assert await jobs_mod.set_latest_job("discord:u1", "job-new") is None
     await jobs_mod.restore_latest_job("discord:u1", "job-new", "job-old")
     assert await jobs_mod.get_latest_job("discord:u1") == "job-old"
+    # Put back for as long as a job lives, like any pointer.
+    assert await redis.ttl("browser:job:latest:discord:u1") > 3600
 
-    await jobs_mod.set_latest_job("discord:u1", "job-newer")
+    assert await jobs_mod.set_latest_job("discord:u1", "job-newer") == "job-old"
     await jobs_mod.restore_latest_job("discord:u1", "job-new", "job-old")
     assert await jobs_mod.get_latest_job("discord:u1") == "job-newer"
 

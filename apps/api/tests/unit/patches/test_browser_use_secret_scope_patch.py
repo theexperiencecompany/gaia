@@ -127,4 +127,7 @@ async def test_an_input_typing_a_secrets_name_bare_types_nothing(
     )
 
     assert executed == []
-    assert "type <secret>password</secret>" in str(answer.error)
+    assert answer.error == (
+        "password is the name of a secret, not its value: type <secret>password</secret>; "
+        "nothing was typed."
+    )

@@ -1123,6 +1123,17 @@ class TestJevInTheRun:
         assert "moving" in report
         assert _Agent.built[-1].stopped is True
 
+    async def test_a_goal_quoting_a_secrets_name_reaches_no_burst(
+        self, harness: _Harness, page: FakePage, decisions: list[object]
+    ) -> None:
+        """The run's secrets are the delegate's: the agent's untagged "password" is refused."""
+        await harness.run.execute("log in")
+
+        result = await _Agent.built[-1].act(JEV_ACTION, {"goal": 'type "password" and sign in'})
+
+        assert "the name of a secret" in str(result.error)
+        assert decisions == []
+
     async def test_a_burst_types_clicks_and_reports_through_the_run(
         self, harness: _Harness, page: FakePage, decisions: list[object]
     ) -> None:

@@ -668,33 +668,52 @@ async def test_jev_decides_seeing_the_start_of_each_other_page_this_burst_read(
 LINK_TO_B = PageAction(
     id="e9", node=9, kind="click", label="B", role="link", href="https://site.test/b"
 )
+LINK_TO_C = PageAction(
+    id="e10", node=10, kind="click", label="C", role="link", href="https://site.test/c"
+)
 
 
 async def test_a_page_read_since_the_burst_last_changed_anything_is_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Back on the list, the article just read is closed to clicks and NAVIGATE; typing reopens it."""
-    a, b = page_state(text="list"), page_state(url="https://site.test/b", text="article b")
-    page = FakePage(a, b, a, a)
+    """Following links and going back closes what was read; a press on a control reopens it."""
+    a, b, c = (
+        page_state(text="list"),
+        page_state(url="https://site.test/b", text="article b"),
+        page_state(url="https://site.test/c", text="article c"),
+    )
+    page = FakePage(a, b, a, c, a, a, c, a, a)
     run = _run(
         monkeypatch,
         page,
         decision(JevOperation.CLICK, LINK_TO_B),
         decision(JevOperation.GO_BACK, BACK),
+        decision(JevOperation.CLICK, LINK_TO_C),
+        decision(JevOperation.GO_BACK, BACK),
+        decision(JevOperation.CLICK, BUTTON),
+        decision(JevOperation.CLICK, LINK_TO_C),
+        decision(JevOperation.GO_BACK, BACK),
         decision(JevOperation.TYPE_TEXT, FIELD),
         decision(JevOperation.DONE),
-        value="x",
+        value="Ada",
     )
 
     await run.burst()
 
+    b_url, c_url = "https://site.test/b", "https://site.test/c"
     assert [d["closed"] for d in run.jev.decided] == [
         frozenset(),
         frozenset(),
-        frozenset({"https://site.test/b"}),
+        frozenset({b_url}),
+        frozenset({a.url, b_url}),
+        frozenset({b_url, c_url}),
+        frozenset(),
+        frozenset({a.url}),
+        frozenset({c_url}),
+        # Typing changes what a page shows, as a press on a control does.
         frozenset(),
     ]
-    assert "https://site.test/b" not in run.jev.decided[2]["addresses"]
+    assert b_url not in run.jev.decided[2]["addresses"]
 
 
 async def test_a_page_is_one_address_however_it_was_written_and_never_the_page_jev_is_on(

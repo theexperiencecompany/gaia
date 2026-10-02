@@ -20,6 +20,8 @@ from browser_use.agent.views import ActionResult
 from browser_use.browser.session import BrowserSession
 from browser_use.tools.registry.views import ActionModel
 from browser_use.tools.service import Tools
+from cdp_use.cdp.runtime.commands import EvaluateReturns
+from cdp_use.cdp.runtime.types import RemoteObject
 
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
@@ -53,7 +55,7 @@ async def _document_title(session: BrowserSession) -> str | None:
     """Return the focused page's document.title, or None when the page does not answer the read."""
     try:
         cdp = await session.get_or_create_cdp_session(focus=False)
-        reply = await cdp.cdp_client.send.Runtime.evaluate(
+        reply: EvaluateReturns = await cdp.cdp_client.send.Runtime.evaluate(
             params={"expression": "document.title", "returnByValue": True},
             session_id=cdp.session_id,
         )
@@ -63,8 +65,8 @@ async def _document_title(session: BrowserSession) -> str | None:
             f"{LogTag.BROWSER} Page title not read for extract", error_type=type(exc).__name__
         )
         return None
-    value = reply.get("result", {}).get("value")
-    return value.strip() if isinstance(value, str) and value.strip() else None
+    result: RemoteObject = reply["result"]
+    return str(result.get("value") or "").strip() or None
 
 
 def apply() -> None:
