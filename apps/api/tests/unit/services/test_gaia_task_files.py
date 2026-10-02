@@ -30,6 +30,9 @@ SHORT = TODO_ID[-8:]
 FOLDER = f"fix-the-thing-{SHORT}"
 
 
+RUN_STARTED = "- 2026-10-01T08:00:03+00:00 [run_started] scheduled run (conversation ab12cd34)"
+RUN_FINISHED = "- 2026-10-01T08:04:10+00:00 [run_finished] result sent on telegram"
+
 VALID_CANVAS = (
     "# Fix the thing\n\n## Standing rules\n\n## Key Details\nk\n\n## Current State\nopen\n\n"
     "## Context\n\n## Learnings\n"
@@ -316,6 +319,56 @@ class TestWriteFile:
         activity.assert_awaited_once_with(
             TODO_ID, USER_ID, first, expected_updated_at=doc.updated_at
         )
+
+    @pytest.mark.regression
+    async def test_an_entry_already_in_the_log_is_not_appended_again(self, writers):
+        """Regression: desk runs copied GAIA's own run lines back into their appends, 2-4 times each."""
+        _canvas, activity, _syslog = writers
+        doc = _doc(activity_content=f"{RUN_STARTED}\n{RUN_FINISHED}")
+        mine = "- 2026-10-01T08:04:12+00:00 [run] triaged 10 threads"
+
+        await write_file(
+            TaskFile(doc, GaiaTaskFile.ACTIVITY),
+            USER_ID,
+            f"{RUN_STARTED}\n{RUN_FINISHED}\n{RUN_STARTED}\n{RUN_FINISHED}\n{mine}",
+        )
+
+        assert activity.await_args.args[2] == f"{RUN_STARTED}\n{RUN_FINISHED}\n{mine}"
+
+    @pytest.mark.regression
+    async def test_an_append_of_nothing_but_repeats_writes_nothing(self, writers):
+        _canvas, activity, syslog = writers
+        doc = _doc(activity_content=f"{RUN_STARTED}\n{RUN_FINISHED}")
+
+        result = await write_file(
+            TaskFile(doc, GaiaTaskFile.ACTIVITY), USER_ID, f"{doc.activity_content}\n{RUN_FINISHED}"
+        )
+
+        assert result is None
+        activity.assert_not_awaited()
+        syslog.assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_a_new_entry_repeated_within_one_append_is_written_once(self, writers):
+        _canvas, activity, _syslog = writers
+        doc = _doc(activity_content=RUN_STARTED)
+        mine = "- 2026-10-01T08:04:12+00:00 [run] triaged 10 threads"
+
+        await write_file(
+            TaskFile(doc, GaiaTaskFile.ACTIVITY), USER_ID, f"{RUN_STARTED}\n{mine}\n{mine}"
+        )
+
+        assert activity.await_args.args[2] == f"{RUN_STARTED}\n{mine}"
+
+    async def test_an_undated_line_may_repeat(self, writers):
+        """Only a timestamped entry is one record; "- nothing new" on two days is two entries."""
+        _canvas, activity, _syslog = writers
+        doc = _doc(activity_content="### 2026-09-30\n- nothing new")
+        appended = f"{doc.activity_content}\n### 2026-10-01\n- nothing new"
+
+        await write_file(TaskFile(doc, GaiaTaskFile.ACTIVITY), USER_ID, appended)
+
+        assert activity.await_args.args[2] == appended
 
     @pytest.mark.parametrize(
         "rewrite",

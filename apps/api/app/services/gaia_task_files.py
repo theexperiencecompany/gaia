@@ -24,6 +24,7 @@ from app.services.storage.gaia_tasks_vfs import (
     GaiaTaskProjection,
     render_index,
 )
+from app.services.todo_activity import TIMESTAMPED_ENTRY
 from app.services.todo_canvas_storage import write_activity, write_canvas
 from app.services.tracked_todo_service import tracked_todo_service
 from shared.py.wide_events import log
@@ -172,6 +173,21 @@ def _content_refusal(ref: TaskFile, content: str) -> str | None:
     return None
 
 
+def _unwritten_activity(stored: str, content: str) -> str | None:
+    """Drop appended timestamped entries the log already holds; None when nothing new is left."""
+    current = stored.rstrip()
+    seen = set(current.splitlines())
+    kept: list[str] = []
+    for line in content[len(current) :].split("\n"):
+        if TIMESTAMPED_ENTRY.match(line):
+            if line in seen:
+                continue
+            seen.add(line)
+        kept.append(line)
+    appended = "\n".join(kept)
+    return current + appended if appended.strip() else None
+
+
 async def write_file(ref: GaiaTaskPath, user_id: str, content: str) -> str | None:
     """Persist a write to canvas.md/activity.md; return a refusal message on failure, None otherwise."""
     refusal = write_refusal(ref)
@@ -181,6 +197,11 @@ async def write_file(ref: GaiaTaskPath, user_id: str, content: str) -> str | Non
         return refusal
     if ref.filename is GaiaTaskFile.CANVAS:
         content = with_missing_sections(content)
+    else:
+        unwritten = _unwritten_activity(ref.todo.activity_content or "", content)
+        if unwritten is None:
+            return None
+        content = unwritten
     writer = write_canvas if ref.filename is GaiaTaskFile.CANVAS else write_activity
     if not await writer(ref.todo.id, user_id, content, expected_updated_at=ref.todo.updated_at):
         # The guarded write matched nothing: either the todo is gone or a

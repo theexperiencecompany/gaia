@@ -7,11 +7,16 @@ worker layers it imports can record without a cycle.
 """
 
 from datetime import UTC, datetime
+import re
 from typing import Protocol
 
 from app.constants.todos import TodoActivityEvent
 from app.services.todo_canvas_storage import append_activity
 from shared.py.wide_events import log
+
+#: An activity.md line that opens with its own date and time is one record: the same line
+#: twice is the same entry twice, whoever wrote it.
+TIMESTAMPED_ENTRY = re.compile(r"^- \d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}")
 
 
 def activity_line(event: TodoActivityEvent, detail: str, at: datetime | None = None) -> str:
