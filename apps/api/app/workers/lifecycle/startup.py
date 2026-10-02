@@ -16,6 +16,7 @@ os.environ.setdefault("GAIA_SERVICE_NAME", "arq_worker")
 configure_file_logging("./logs/worker")
 
 from app.constants.log_tags import LogTag
+from app.constants.startup import WORKER_STARTUP_TIME_CTX_KEY
 from app.core.provider_registration import (
     setup_warnings,
     unified_startup,
@@ -41,7 +42,7 @@ async def startup(ctx: MutableMapping[str, object]) -> None:
     async with log_context("worker_startup", component="arq_lifecycle"):
         log.info(f"{LogTag.WORKER} ARQ worker starting up...")
         # Store startup time for monitoring/debugging
-        ctx["startup_time"] = asyncio.get_event_loop().time()
+        ctx[WORKER_STARTUP_TIME_CTX_KEY] = asyncio.get_event_loop().time()
 
         # Expose Prometheus metrics for task duration histograms. Prometheus scrapes
         # this endpoint via the `arq_worker` job.

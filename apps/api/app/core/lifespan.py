@@ -2,8 +2,10 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from posthog import Posthog
 
 from app.config.settings import settings
+from app.constants.analytics import POSTHOG_PROVIDER_KEY
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from app.core.provider_registration import (
@@ -29,7 +31,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     event; the boundary covers startup only, not the yield, or the pod would
     emit a single event at exit.
     """
-    posthog_client = None
+    posthog_client: Posthog | None = None
     try:
         async with log_context("api_startup", component="lifespan"):
             if not settings.POSTHOG_PROJECT_TOKEN or not settings.POSTHOG_HOST:
@@ -47,7 +49,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
                 )
             await unified_startup("main_app")
             if settings.POSTHOG_PROJECT_TOKEN and settings.POSTHOG_HOST:
-                posthog_client = providers.get("posthog")
+                posthog_client = providers.get(POSTHOG_PROVIDER_KEY)
             start_browser_reaper()
             start_revoke_listener()
             start_up_listener()
