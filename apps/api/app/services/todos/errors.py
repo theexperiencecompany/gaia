@@ -74,7 +74,7 @@ class CanvasShapeError(AppError):
 
 
 class UnwatchedTodoKeptError(AppError):
-    """Raised (500) when a new todo's watch failed and removing the todo failed too; carries its id."""
+    """Raised (a 500) when a new todo's watch failed and removing the todo failed too; carries its id."""
 
     def __init__(self, todo_id: str, watch_error: Exception) -> None:
         super().__init__(
@@ -82,7 +82,6 @@ class UnwatchedTodoKeptError(AppError):
                 f"Todo {todo_id} could not watch its thread ({watch_error}) and could not be "
                 "removed, so it is kept without its watch."
             ),
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             code="unwatched_todo_kept",
             public={"todo_id": todo_id},
         )

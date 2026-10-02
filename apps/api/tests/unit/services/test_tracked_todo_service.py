@@ -246,6 +246,11 @@ class TestCreateThreadTodo:
             await TrackedTodoService.create_tracked_todo(USER_ID, "Reply", external_ref=_THREAD)
 
         assert raised.value.todo_id == TODO_ID
+        assert (raised.value.status_code, raised.value.code, raised.value.public) == (
+            HTTPStatus.INTERNAL_SERVER_ERROR,
+            "unwatched_todo_kept",
+            {"todo_id": TODO_ID},
+        )
         assert raised.value.message == (
             f"Todo {TODO_ID} could not watch its thread (could not register) and could not be "
             "removed, so it is kept without its watch."
@@ -320,7 +325,6 @@ class TestCreateTrackedTodo:
             "- 2026-09-13T12:00:00+00:00 [created] from conversation 0123abcd"
         )
 
-    @pytest.mark.regression
     async def test_the_schedule_is_saved_with_the_insert(self, mock_repo, mock_deps):
         """A schedule written after the insert could fail and leave the todo half-made for a retry to duplicate."""
         mock_deps.create.return_value = _todo_response()

@@ -506,6 +506,25 @@ class TestTriggeredExecutionPrompt:
             prompt
         )
 
+    @pytest.mark.parametrize(("extra", "cut"), [(0, None), (1, 1)])
+    def test_event_data_up_to_its_budget_is_kept_whole(self, extra, cut):
+        cap = todo_constants.TRIGGER_EVENTS_PROMPT_MAX_CHARS
+        payload = {"body": ""}
+        body = "x" * (cap - len(json.dumps(payload, indent=2)) + extra)
+        origin = TriggerOrigin(
+            subscription_id="sub-1", trigger_name="gmail_new_message", payload={"body": body}
+        )
+
+        prompt = _build_execution_prompt(
+            _doc(title="Chase Acme"),
+            origin=origin,
+            coalesced=[],
+        )
+
+        note = f"[{cut} more characters of event data omitted; fetch the source for the rest]"
+        assert (note in prompt) is (cut is not None)
+        assert ("omitted; fetch the source" in prompt) is (cut is not None)
+
     def test_event_data_past_its_budget_is_cut_and_says_how_much(self):
         cap = todo_constants.TRIGGER_EVENTS_PROMPT_MAX_CHARS
         origin = TriggerOrigin(

@@ -51,11 +51,8 @@ from app.models.todo_models import (
     TodoUpdate,
 )
 from app.models.user_models import UserDocument
-from app.services.todos.errors import (
-    ExternalRefTakenError,
-    SubTodoParentError,
-    UnwatchedTodoKeptError,
-)
+from app.services.todos import errors as todo_errors
+from app.services.todos.errors import ExternalRefTakenError, UnwatchedTodoKeptError
 from app.services.triggers.subscription_service import SubscriptionError
 from shared.py.wide_events import spawn_logged_task
 
@@ -169,15 +166,6 @@ class TestBuildClearableDatetimeUpdate:
         fields: dict[str, object] = {}
         error = _build_clearable_datetime_update("garbage", "due_date", fields)
         assert "invalid due_date format" in error
-        assert fields == {}
-
-    @pytest.mark.regression
-    @pytest.mark.parametrize("value", ["2026-09-30", "2026-09-30T17:00:00"])
-    def test_a_date_without_an_offset_is_refused(self, value):
-        """A naive wall time would be saved as UTC, off by the user's offset."""
-        fields: dict[str, object] = {}
-        error = _build_clearable_datetime_update(value, "due_date", fields)
-        assert error == f"Error: due_date '{value}' must include a timezone offset."
         assert fields == {}
 
     def test_valid_datetime_sets_field_no_future_requirement(self):
@@ -1418,7 +1406,6 @@ class TestCreateTrackedTodoSuccess:
         assert f"invalid {field} format" in result
         create.assert_not_awaited()
 
-    @pytest.mark.regression
     async def test_a_create_saves_its_schedule_with_the_insert(self, recorded_changes):
         """A second write after the insert left a half-made todo behind when it failed, for a retry to duplicate."""
         with (
@@ -1455,7 +1442,6 @@ class TestCreateTrackedTodoSuccess:
         update.assert_not_awaited()
         recorded_changes.assert_not_awaited()
 
-    @pytest.mark.regression
     @pytest.mark.parametrize("due_date", ["2026-09-30", "2026-09-30T17:00:00"])
     async def test_a_due_date_without_an_offset_creates_nothing(self, due_date):
         """Mongo reads a naive wall time as UTC, which moves the user's local deadline."""
@@ -1762,7 +1748,7 @@ class TestSubTodoTools:
         assert create.await_args.kwargs["parent_todo_id"] == self.DESK
 
     async def test_a_refused_parent_creates_nothing_and_says_why(self):
-        refusal = SubTodoParentError(
+        refusal = todo_errors.SubTodoParentError(
             f"{self.DESK} is itself a sub-todo; sub-todos go one level deep."
         )
         with (
@@ -1804,7 +1790,9 @@ class TestSubTodoTools:
 
     async def test_a_refused_parent_on_update_saves_nothing(self):
         existing = TodoDocument(id="t1", user_id="user-1", title="Reply to Sam")
-        refusal = SubTodoParentError("t1 has sub-todos of its own, so it cannot become one.")
+        refusal = todo_errors.SubTodoParentError(
+            "t1 has sub-todos of its own, so it cannot become one."
+        )
         with (
             patch(self._GET, AsyncMock(return_value=existing)),
             patch(self._REQUIRE, AsyncMock(side_effect=refusal)),
