@@ -19,16 +19,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.browser_host import chromium, proxy, screencast, storage
+from app.browser_host import chromium, proxy, storage
 from app.browser_host.cdp_mux import CdpCommandError, CdpMux, sinks_for
 from app.browser_host.chromium import ChromiumHost, HostSession
 from app.browser_host.engine import Engine, EngineFailure
 from app.constants.browser import BrowserEngine
 
 FAKE_ROOT_WS_URL = "ws://127.0.0.1:9222/devtools/browser/fake"
-# Longer than any test runs: the live view's paced capture must only fire for the
-# tests that drive it, never as a real 0.5s tick landing mid-assertion.
-_NEVER_SECONDS = 3600.0
 # The browser's own context, where CDP puts anything that names no browserContextId.
 DEFAULT_CONTEXT = ""
 _DOWNLOAD_BEHAVIORS = frozenset({"deny", "allow", "allowAndName", "default"})
@@ -40,12 +37,6 @@ Sink = Callable[[dict[str, Any]], None]
 def _no_dns(monkeypatch: pytest.MonkeyPatch) -> None:
     """Stub the proxy's DNS-resolving guard so no unit test touches real DNS."""
     monkeypatch.setattr(proxy, "assert_public_http_url", AsyncMock())
-
-
-@pytest.fixture(autouse=True)
-def _park_the_live_view_pull(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Hold the screencast fallback capture still; the pull tests set their own interval."""
-    monkeypatch.setattr(screencast, "_PULL_INTERVAL_SECONDS", _NEVER_SECONDS)
 
 
 @pytest.fixture(autouse=True)
