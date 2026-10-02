@@ -400,11 +400,11 @@
     AudioPlayer(src: string, title?: string, description?: string) - Audio player with title and description.
     CopyableContent(content: string, mode?: "inline" | "block", languageHint?: string) - Copyable non-code text content, supports inline chips and long form blocks.
     FileTree(items: {path: string, type?: "file" | "dir" | "item", size?: string, description?: string}[], title?: string, variant?: "file" | "generic") - File/directory tree (variant='file') or generic collapsible tree (variant='generic').
-    KbdRow(keys: string[], description?: string) - A single keyboard shortcut row - keys + description. Compose inside a Card for a shortcut table.
+    KbdRow(keys: string[], description?: string) - A single keyboard shortcut row: keys + description. Compose inside a Card for a shortcut table.
     Progress(value: number, max?: number, color?: "default" | "primary" | "success" | "warning" | "danger", label?: string, showValue?: boolean, width?: "sm" | "md" | "lg" | "full") - Progress bar with optional label and value display.
     Avatar(name: string, initials?: string, image?: string, color?: "primary" | "success" | "warning" | "danger" | "default", showName?: boolean) - User avatar with name label.
     Timeline(items: {time: string, title: string, description?: string, status?: "success" | "error" | "warning" | "neutral", actor?: string, links?: {label: string, url: string, type?: "primary" | "secondary"}[], actions?: {label: string, value: string}[]}[], title?: string) - Chronological event feed with timestamps, status dots, optional actor, links, and actions.
-    TextDocument(title: string, body: string, fields?: {label: string, value: string}[]) - Editable rich text document card with optional metadata fields. Use for email drafts, document brainstorming, reports, and letters - never when sending a final email directly.
+    TextDocument(title: string, body: string, fields?: {label: string, value: string}[]) - Editable rich text document card with optional metadata fields. Use for email drafts, document brainstorming, reports, and letters. Never when sending a final email directly.
     
     ## Action - Button Behavior
     
