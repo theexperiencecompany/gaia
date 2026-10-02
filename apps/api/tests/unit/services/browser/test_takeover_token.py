@@ -22,9 +22,8 @@ def _takeover_secret(monkeypatch):
 async def test_round_trip_returns_session_and_user():
     token = tt.create_takeover_token("sess-1", "user-1")
     claims = tt.verify_takeover_token(token)
-    assert claims["session_id"] == "sess-1"
-    assert claims["user_id"] == "user-1"
-    assert "exp" in claims
+    assert claims.session_id == "sess-1"
+    assert claims.user_id == "user-1"
 
 
 async def test_ttl_is_positive_for_fresh_token():
@@ -87,7 +86,7 @@ def test_secret_exactly_at_minimum_length_is_accepted(monkeypatch):
     monkeypatch.setattr(settings, "BROWSER_TAKEOVER_TOKEN_SECRET", "z" * 32, raising=False)
     # Must not raise: 32 is the inclusive minimum, not an exclusive boundary.
     token = tt.create_takeover_token("sess-1", "user-1")
-    assert tt.verify_takeover_token(token)["session_id"] == "sess-1"
+    assert tt.verify_takeover_token(token).session_id == "sess-1"
 
 
 def test_secret_one_below_minimum_length_raises(monkeypatch):
@@ -186,20 +185,15 @@ def test_verify_missing_role_key_is_rejected():
 def test_verify_returns_exact_claims_values():
     token = tt.create_takeover_token("sess-42", "user-99")
     claims = tt.verify_takeover_token(token)
-    assert claims == {
-        "session_id": "sess-42",
-        "user_id": "user-99",
-        "exp": claims["exp"],
-    }
-    assert set(claims.keys()) == {"session_id", "user_id", "exp"}
+    assert claims == tt.TakeoverTokenClaims(session_id="sess-42", user_id="user-99", exp=claims.exp)
 
 
 def test_ttl_seconds_negative_once_past_expiry():
-    past_claims: tt.TakeoverTokenClaims = {
-        "session_id": "sess-1",
-        "user_id": "user-1",
-        "exp": (datetime.now(UTC) - timedelta(seconds=1000)).timestamp(),
-    }
+    past_claims = tt.TakeoverTokenClaims(
+        session_id="sess-1",
+        user_id="user-1",
+        exp=(datetime.now(UTC) - timedelta(seconds=1000)).timestamp(),
+    )
     ttl = tt.takeover_token_ttl_seconds(past_claims)
     assert ttl == pytest.approx(-1000, abs=2)
 
@@ -210,7 +204,7 @@ def test_a_token_is_signed_with_the_configured_algorithm_not_the_library_default
     token = tt.create_takeover_token("sess-1", "user-1")
 
     assert jwt.get_unverified_header(token)["alg"] == "HS512"
-    assert tt.verify_takeover_token(token)["session_id"] == "sess-1"
+    assert tt.verify_takeover_token(token).session_id == "sess-1"
 
 
 def test_a_token_signed_with_the_right_secret_under_another_algorithm_is_rejected():

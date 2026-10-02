@@ -311,7 +311,7 @@ async def test_a_web_socket_ends_when_its_token_lapses(
 ) -> None:
     await register_session("sess-1", "u1", live_ws=_HOST_STREAM)
     token = create_takeover_token("sess-1", "u1")
-    expiry = takeover_token.verify_takeover_token(token)["exp"]
+    expiry = takeover_token.verify_takeover_token(token).exp
     # The token is read as a few milliseconds from lapsing.
     monkeypatch.setattr(takeover_token, "time", SimpleNamespace(time=lambda: expiry - 0.01))
     viewer = _Viewer()

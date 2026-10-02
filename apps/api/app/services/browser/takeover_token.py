@@ -9,9 +9,9 @@ secret never overlaps with the bot-session secret so a leak is contained.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import time
-from typing import TypedDict
 
 from jose import JWTError, jwt
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -25,7 +25,8 @@ TAKEOVER_TOKEN_TTL_SECONDS = 15 * 60
 _MIN_SECRET_LENGTH = 32
 
 
-class TakeoverTokenClaims(TypedDict):
+@dataclass(frozen=True, slots=True)
+class TakeoverTokenClaims:
     """The verified claims of a takeover token — always signature-checked."""
 
     session_id: str
@@ -90,7 +91,7 @@ def verify_takeover_token(token: str) -> TakeoverTokenClaims:
     if claims.session_id is None or claims.sub is None or claims.exp is None:
         raise JWTError(_MISSING_CLAIMS_MESSAGE)
 
-    return {"session_id": claims.session_id, "user_id": claims.sub, "exp": claims.exp}
+    return TakeoverTokenClaims(session_id=claims.session_id, user_id=claims.sub, exp=claims.exp)
 
 
 def takeover_token_ttl_seconds(claims: TakeoverTokenClaims) -> float:
@@ -99,7 +100,7 @@ def takeover_token_ttl_seconds(claims: TakeoverTokenClaims) -> float:
     Bounds the live-view WebSocket to the token's lifetime. claims must come
     from verify_takeover_token; no unverified claim is ever trusted here.
     """
-    return claims["exp"] - time.time()
+    return claims.exp - time.time()
 
 
 def _get_takeover_secret() -> str:

@@ -89,9 +89,9 @@ async def _authorize(code: str, token: str | None) -> _Target | _Denied:
             claims = verify_takeover_token(token)
         except JWTError:
             return _Denied(status.HTTP_401_UNAUTHORIZED, "Invalid or expired link")
-        if claims["session_id"] != code:
+        if claims.session_id != code:
             return _Denied(status.HTTP_403_FORBIDDEN, "Link does not match this session")
-        session_id, user_id = code, claims["user_id"]
+        session_id, user_id = code, claims.user_id
         ends = partial(asyncio.sleep, max(takeover_token_ttl_seconds(claims), 0.0))
     entry = await registry.get_session_entry(session_id)
     if entry is None or entry.owner != user_id:
