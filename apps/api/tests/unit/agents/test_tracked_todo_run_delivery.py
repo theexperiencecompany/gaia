@@ -40,6 +40,7 @@ from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
 from app.constants import todos as todo_constants
 from app.constants.agents import AgentTag
 from app.constants.general import NEW_MESSAGE_BREAKER
+from app.constants.log_tags import LogTag
 from app.constants.todos import TodoActivityEvent
 from app.models.chat_models import ConversationSource
 from app.models.todo_models import TodoDocument
@@ -348,5 +349,10 @@ class TestAFinishedRunIsNeverRunAgainForItsRecord:
             todo_constants.RUN_RESULT_NOT_RECORDED,
         )
         [error] = event["errors"]
-        assert (error["todo_id"], error["stream_id"]) == (TODO_ID, event["stream_id"])
-        assert "primary stepped down" in error["error"]
+        assert error["msg"].startswith(LogTag.AGENT)
+        assert (error["todo_id"], error["stream_id"], error["task_id"]) == (
+            TODO_ID,
+            event["stream_id"],
+            event["task_id"],
+        )
+        assert (error["error"], error["error_type"]) == ("primary stepped down", "PyMongoError")
