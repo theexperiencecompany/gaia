@@ -59,9 +59,6 @@ class MessageAttachments:
     # Open by construction: schedulers spread arbitrary provider trigger data
     # through this alongside the agent's own keys, so there is no fixed shape.
     trigger_context: Mapping[str, object] | None = None
-    # What the message did besides reaching the model (it answered a paused
-    # browser task), so the reply is written knowing it.
-    turn_note: str | None = None
 
 
 def _latest_user_content(messages: list[MessageDict]) -> str:
@@ -176,8 +173,6 @@ async def _human_content(
     # Add reply-to-message context if present
     if attachments.reply_to_message:
         content = format_reply_context(attachments.reply_to_message, content)
-    if attachments.turn_note:
-        content = f"{content}\n\n{attachments.turn_note}"
 
     # File summaries are read server-side from MongoDB (authoritative, never
     # trusted from the request) in one batched query, surfaced inline so

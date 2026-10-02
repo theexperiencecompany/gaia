@@ -398,6 +398,9 @@ class TestBuildCommsGraph:
             assert kwargs["tools_config"].initial_tool_ids == [
                 "call_executor",
                 "cancel_executor",
+                "browser_step_done",
+                "stop_browser_task",
+                "tell_browser_task",
                 "find_integration",
                 "search_public_workflows",
                 web_search_tool.name,
@@ -456,8 +459,8 @@ class TestBuildCommsGraph:
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
             pre_model_hooks = kwargs["hooks_config"].pre_model_hooks
             # comms agent: filter_messages_node, executor_status_hook,
-            # manage_system_prompts_node
-            assert len(pre_model_hooks) == 3
+            # browser_task_status_hook, manage_system_prompts_node
+            assert len(pre_model_hooks) == 4
 
     async def test_comms_middleware_passed_to_create_agent(self):
         mock_mw = [MagicMock(name="mw1")]

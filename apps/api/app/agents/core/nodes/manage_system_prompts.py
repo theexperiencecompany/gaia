@@ -46,6 +46,7 @@ _KEPT_FIELDS = {
     PromptSlot.TODO_CONTEXT: "kept_todo",
     PromptSlot.BACKGROUND_EXECUTOR: "kept_bg_exec",
     PromptSlot.EXECUTOR_STATUS: "kept_exec_status",
+    PromptSlot.BROWSER_TASK: "kept_browser_task",
     PromptSlot.MEMORY_RECALL: "kept_memory_recall",
     PromptSlot.TIME: "kept_time",
 }
