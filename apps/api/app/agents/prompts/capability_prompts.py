@@ -152,6 +152,7 @@ def _inbox_desk_line() -> str:
 
 
 def build_capability_block() -> str:
+    """Return the prompt section describing what GAIA can do, ending with the built-in workflows."""
     trigger_kinds = "; ".join(_TRIGGER_TEXT[kind] for kind in TriggerType)
     triggers = f"TRIGGERS: a run starts one of these ways: {trigger_kinds}."
     workflows = "\n".join(
