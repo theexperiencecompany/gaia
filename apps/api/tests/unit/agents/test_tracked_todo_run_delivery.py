@@ -7,13 +7,13 @@ happened; the worker delivered the acknowledgement, while the executor's real,
 narrated result (comms had SILENCED it) was saved into a conversation that does
 not exist and dropped. Unit tests mocked call_agent_silent and never saw it.
 
-Real here: run_todo_on_executor, run_executor_background, finalize, deliver_result
-and todo delivery. Faked: the two model calls (executor, comms narration), Redis,
-and the outbound transport.
+Real here: run_todo_on_executor, run_executor_background, finalize, deliver_result,
+todo delivery and the activity entry. Faked: the two model calls (executor, comms
+narration), Redis, the activity store and the outbound transport.
 """
 
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -37,6 +37,7 @@ from app.agents.core.background.todo_run import (
     run_todo_on_executor,
 )
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
+from app.constants import todos as todo_constants
 from app.constants.agents import AgentTag
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.todos import TodoActivityEvent
@@ -46,9 +47,8 @@ from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services import todo_activity
 from app.services.analytics_service import AnalyticsEvents
-from app.services.todo_activity import record_activity
 from app.utils.background_tasks import spawn_background_task
-from tests.helpers import captured_wide_event
+from tests.helpers import WideEventRecorder, captured_wide_event
 
 pytestmark = pytest.mark.unit
 
@@ -116,11 +116,16 @@ def _seams(
         patch.object(trd, "narrate_executor_result", seams.narrate),
         patch.object(trd, "deliver_result_to_platforms", seams.send),
         patch.object(trd, "todo_repository", seams.repo),
-        patch.object(trd, "record_activity", seams.activity),
+        patch.object(todo_activity, "append_activity", seams.activity),
         patch.object(trd, "capture_event", seams.capture),
     ):
         yield seams
     sess._sessions.clear()
+
+
+def _no_backoff() -> AbstractContextManager[AsyncMock]:
+    """Skip the durable write's backoff sleeps; the attempts themselves still run."""
+    return patch.object(todo_activity._DURABLE_WRITE_RETRY, "sleep", AsyncMock())
 
 
 def _request() -> TodoRunRequest:
@@ -135,9 +140,11 @@ def _request() -> TodoRunRequest:
 
 def _activity(seams: _Seams) -> str:
     """Return the run's finish entry on the todo's timeline."""
-    todo_id, user_id, event, detail = seams.activity.await_args.args
-    assert (todo_id, user_id, event) == (TODO_ID, USER.user_id, TodoActivityEvent.RUN_FINISHED)
-    return detail
+    todo_id, user_id, entry = seams.activity.await_args.args
+    assert (todo_id, user_id) == (TODO_ID, USER.user_id)
+    marker = f"[{TodoActivityEvent.RUN_FINISHED.value}] "
+    assert marker in entry
+    return entry.split(marker, 1)[1]
 
 
 class TestTheExecutorsResultIsWhatReachesTheUser:
@@ -299,19 +306,47 @@ class TestNothingIsSentWhenNothingShouldBe:
         seams.send.assert_not_awaited()
         seams.activity.assert_not_awaited()
 
+
+class TestAFinishedRunIsNeverRunAgainForItsRecord:
+    """The work is done and any message is out, so running the todo again repeats both."""
+
     @pytest.mark.regression
-    async def test_a_result_that_cannot_be_recorded_fails_the_run_for_the_retry_ladder(
-        self,
-    ) -> None:
-        """Regression: the failed activity write was swallowed, so the worker advanced an unrecorded run."""
-        with (
-            _seams(todo=_todo()),
-            patch.object(trd, "record_activity", record_activity),
-            patch.object(
-                todo_activity,
-                "append_activity",
-                AsyncMock(side_effect=PyMongoError("primary stepped down")),
-            ),
-            pytest.raises(TodoRunFailedError, match=TODO_ID),
-        ):
+    async def test_a_record_write_that_fails_once_is_retried_and_the_run_stands(self) -> None:
+        """Regression: an unwritten finish entry failed the run, so the worker ran the todo again."""
+        written: list[str] = []
+        outage = [PyMongoError("primary stepped down")]
+
+        async def store(todo_id: str, user_id: str, entry: str) -> bool:
+            if outage:
+                raise outage.pop()
+            written.append(entry)
+            return True
+
+        with _seams(todo=_todo()) as seams, _no_backoff():
+            seams.activity.side_effect = store
             await run_todo_on_executor(_request())
+
+        [entry] = written
+        assert "result sent on telegram (summary=" in entry
+        seams.send.assert_awaited_once()
+
+    @pytest.mark.regression
+    async def test_a_record_that_never_writes_fails_loudly_and_the_run_stands(self) -> None:
+        recorder = WideEventRecorder()
+        with (
+            _seams(todo=_todo()) as seams,
+            _no_backoff(),
+            patch("shared.py.wide_events._loguru", recorder),
+        ):
+            seams.activity.side_effect = PyMongoError("primary stepped down")
+            await run_todo_on_executor(_request())
+
+        seams.send.assert_awaited_once()
+        event = recorder.event("executor_run")
+        assert (event["outcome"], event["reason"]) == (
+            "failed",
+            todo_constants.RUN_RESULT_NOT_RECORDED,
+        )
+        [error] = event["errors"]
+        assert (error["todo_id"], error["stream_id"]) == (TODO_ID, event["stream_id"])
+        assert "primary stepped down" in error["error"]

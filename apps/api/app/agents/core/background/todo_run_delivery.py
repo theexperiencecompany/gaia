@@ -7,6 +7,8 @@ app gets it only if so, and activity.md records what happened either way.
 
 from typing import NamedTuple
 
+from pymongo.errors import PyMongoError
+
 from app.agents.core.background.comms_narrator import narrate_executor_result
 from app.agents.core.background.session import ExecutorRun, TodoRun
 from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
@@ -16,6 +18,7 @@ from app.constants.comms import CommsDirectiveKind
 from app.constants.log_tags import LogTag
 from app.constants.todos import (
     DELIVERY_KEY_DETAILS_MAX_CHARS,
+    RUN_RESULT_NOT_RECORDED,
     RUN_SUMMARY_ACTIVITY_CHARS,
     TodoActivityEvent,
     TodoRunDeliveryOutcome,
@@ -25,7 +28,7 @@ from app.models.chat_models import ConversationSource
 from app.models.todo_models import TodoDocument
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.canvas_markdown import section_body
-from app.services.todo_activity import record_activity
+from app.services.todo_activity import record_activity_durably
 from shared.py.wide_events import log
 
 _NOT_SENT_NOTES: dict[TodoRunDeliveryOutcome, str] = {
@@ -34,10 +37,6 @@ _NOT_SENT_NOTES: dict[TodoRunDeliveryOutcome, str] = {
     TodoRunDeliveryOutcome.NARRATION_FAILED: "result not sent: it could not be written up",
     TodoRunDeliveryOutcome.INVALID_DIRECTIVE: "result not sent: the write-up was a reaction",
 }
-
-
-class TodoRunNotRecordedError(RuntimeError):
-    """A finished tracked-todo run's result could not be written to its activity."""
 
 
 class _Resolution(NamedTuple):
@@ -58,8 +57,8 @@ async def deliver_todo_run_result(
     """Decide, deliver and record what a finished tracked-todo run tells the user.
 
     An error result delivers nothing: the worker that awaits the run retries it
-    and records the failure itself. Raises TodoRunNotRecordedError when the
-    finish entry cannot be written, since that entry is the run's outcome.
+    and records the failure itself. The message goes first because the finish
+    entry records what became of it, and the next run reads that entry.
     """
     log.set_ns("todo_delivery", todo_id=todo_run.todo_id, result_type=result_type)
     if result_type == "error":
@@ -80,12 +79,25 @@ async def deliver_todo_run_result(
 
     log.set_ns("todo_delivery", outcome=resolution.outcome.value)
     summary = result_text.strip().replace("\n", " ")[:RUN_SUMMARY_ACTIVITY_CHARS]
-    recorded = await record_activity(
-        todo.id,
-        todo.user_id,
-        TodoActivityEvent.RUN_FINISHED,
-        f"{resolution.note} (summary={summary!r})",
-    )
+    try:
+        await record_activity_durably(
+            todo.id,
+            todo.user_id,
+            TodoActivityEvent.RUN_FINISHED,
+            f"{resolution.note} (summary={summary!r})",
+        )
+    except PyMongoError as e:
+        # Not a run failure: the work is done and any message is out, so the
+        # worker's retry would repeat both.
+        log.error(
+            f"{LogTag.AGENT} todo run finished but its result was not recorded",
+            todo_id=todo.id,
+            stream_id=run.stream_id,
+            task_id=run.task_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        log.fail(RUN_RESULT_NOT_RECORDED)
     # A worker has no request context: the explicit user id keeps the event off
     # an anonymous profile.
     capture_event(
@@ -99,8 +111,6 @@ async def deliver_todo_run_result(
             "recurring": bool(todo.recurrence),
         },
     )
-    if not recorded:
-        raise TodoRunNotRecordedError(f"todo {todo.id}: the finished run's entry was not written")
 
 
 def _standing_requests(todo: TodoDocument) -> str | None:

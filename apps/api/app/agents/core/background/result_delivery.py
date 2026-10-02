@@ -28,7 +28,7 @@ from app.agents.core.background.comms_narrator import (
     narrate_executor_result,
     record_platform_delivery,
 )
-from app.agents.core.background.session import ExecutorRun, signal_executor_done
+from app.agents.core.background.session import ExecutorRun
 from app.agents.core.background.todo_run_delivery import deliver_todo_run_result
 from app.agents.core.background.workflow_platform_delivery import (
     deliver_result_to_platforms,
@@ -117,13 +117,10 @@ async def deliver_result(
     gives (None, message_id). The message routes over EXACTLY ONE transport
     chosen by the conversation's source (workflow notification, bot API, or WS).
     """
-    if run.todo_run is not None:
-        try:
-            await deliver_todo_run_result(run, run.todo_run, result_text, result_type)
-        except Exception as e:  # an unrecorded result fails the run, which its worker retries
-            signal_executor_done(run.stream_id, failed=True, reason=f"result not recorded: {e}")
-        return None, None
     try:
+        if run.todo_run is not None:
+            await deliver_todo_run_result(run, run.todo_run, result_text, result_type)
+            return None, None
         return await _narrate_and_deliver(run, result_text, result_type, tool_data, returned_note)
     except Exception as e:  # delivery is best-effort, never propagates
         log.error(f"{LogTag.AGENT} Background notification delivery failed", error=str(e))

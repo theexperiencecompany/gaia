@@ -67,7 +67,7 @@ def _seams(
         patch.object(trd, "narrate_executor_result", seams.narrate),
         patch.object(trd, "deliver_result_to_platforms", seams.send),
         patch.object(trd, "todo_repository", repo),
-        patch.object(trd, "record_activity", seams.activity),
+        patch.object(trd, "record_activity_durably", seams.activity),
         patch.object(trd, "capture_event", seams.capture),
     ):
         yield seams
