@@ -143,6 +143,13 @@ class FetchMessagesInput(BaseModel):
         ),
     )
     per_page: int = Field(default=100, ge=1, le=500, description="Gmail page size (max 500).")
+    offload: bool = Field(
+        default=False,
+        description=(
+            "true: write every message to a JSONL file and return only its digest, "
+            "however few match. For a scan you aggregate with query_json and never read."
+        ),
+    )
 
 
 class FetchThreadInput(BaseModel):

@@ -331,9 +331,8 @@ def _aggregate_pages(
                     first_page = False
                     estimate = data.result_size_estimate
                     expected = min(estimate, effective_max) if estimate is not None else 0
-                    force_body = (
-                        expected > OFFLOAD_MIN_MESSAGES and request.body_processing != "none"
-                    )
+                    headed_for_file = request.offload or expected > OFFLOAD_MIN_MESSAGES
+                    force_body = headed_for_file and request.body_processing != "none"
                 page_ids = [ref.id for ref in data.messages if ref.id]
                 if not page_ids:
                     break
@@ -593,11 +592,18 @@ def _fetch_and_shape(user_id: str, request: FetchMessagesInput) -> dict[str, Any
     serialized = json.dumps({"messages": messages}, default=str)
     over_char_limit = len(serialized) > INLINE_LIMIT_CHARS
     over_message_limit = len(messages) > OFFLOAD_MIN_MESSAGES
-    if not over_char_limit and not over_message_limit:
+    if not request.offload and not over_char_limit and not over_message_limit:
         _emit_email_card(full_views)
         return _format_inline_result(messages, truncated=truncated)
 
     conversation_id = _conversation_id(config)
+    if conversation_id is None and request.offload:
+        raise AppError(
+            message="GMAIL_FETCH_MESSAGES has no session to write the requested file into",
+            why="offload was requested outside a conversation, so there is no workspace for it.",
+            fix="Call it without offload, or from a run that has a conversation.",
+            status_code=400,
+        )
     if conversation_id is None:
         return _no_session_inline_fallback(full_views, messages, truncated=truncated)
 

@@ -8,6 +8,7 @@ import base64
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 import json
+from pathlib import Path
 import re
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -17,7 +18,7 @@ import time_machine
 
 from app.agents.prompts import todo_prompts
 from app.models.common_models import GatherContextInput
-from app.models.composio_schemas.gmail import FetchMessagesInput
+from app.models.composio_schemas.gmail import BodyProcessingLiteral, FetchMessagesInput
 from app.services.composio.custom_tools.gmail_constants import OFFLOAD_MIN_MESSAGES
 from app.services.composio.custom_tools.gmail_tools import (
     ArchiveEmailInput,
@@ -32,6 +33,7 @@ from app.services.composio.custom_tools.gmail_tools import (
     register_gmail_custom_tools,
 )
 from app.services.composio.proxy_client import ProxyRequest
+from app.utils.errors import AppError
 from app.utils.timezone import Timezone
 
 AUTH_CREDS: dict[str, Any] = {"user_id": "user_test_123"}
@@ -796,13 +798,16 @@ class TestFetchedAt:
 
 
 class TestTheDesksSweep:
-    """The Inbox desk's whole-window sweep: a big window offloads headers only, never a body."""
+    """The Inbox desk's whole-window sweep: headers only, always to a file, counted per address."""
 
-    def test_a_window_past_the_offload_size_is_fetched_as_metadata_and_written_bodiless(
-        self, mock_proxy, tmp_path
-    ) -> None:
-        size = OFFLOAD_MIN_MESSAGES + 10
-        senders = ["Ann <notifications@github.com>", "Bob <notifications@github.com>"]
+    @staticmethod
+    def _sweep(
+        mock_proxy: MagicMock,
+        tmp_path: Path,
+        senders: list[str],
+        size: int,
+        body_processing: BodyProcessingLiteral = "none",
+    ) -> tuple[dict[str, Any], list[dict[str, Any]], list[str]]:
         formats: list[str] = []
 
         def gmail(request: ProxyRequest) -> dict[str, Any]:
@@ -812,7 +817,7 @@ class TestTheDesksSweep:
             formats.append(request.query["format"])
             n = int(request.endpoint.rsplit("/m", 1)[1])
             headers = [
-                {"name": "From", "value": senders[n % 2]},
+                {"name": "From", "value": senders[n % len(senders)]},
                 {"name": "Subject", "value": f"[repo] PR #{n}"},
             ]
             body = {"data": base64.urlsafe_b64encode(b"never read").decode()}
@@ -838,15 +843,60 @@ class TestTheDesksSweep:
                     query="after:1790000000",
                     max_messages=1000,
                     fields=list(todo_prompts.INBOX_DESK_SWEEP_FIELDS),
-                    body_processing="none",
+                    body_processing=body_processing,
+                    offload=True,
                 ),
                 execute_request=MagicMock(),
                 auth_credentials=AUTH_CREDS,
             )
-
         records = [json.loads(line) for line in write.call_args.kwargs["content"].splitlines()]
+        return result, records, formats
+
+    def test_a_window_past_the_offload_size_is_fetched_as_metadata_and_written_bodiless(
+        self, mock_proxy, tmp_path
+    ) -> None:
+        size = OFFLOAD_MIN_MESSAGES + 10
+        senders = ["Ann <notifications@github.com>", "Bob <notifications@github.com>"]
+
+        result, records, formats = self._sweep(mock_proxy, tmp_path, senders, size)
+
         assert result["offloaded_to"] == "/workspace/sessions/run/f.jsonl"
         assert result["total_messages"] == size
         assert formats == ["metadata"] * size
         assert [r["from"] for r in records] == [senders[n % 2] for n in range(size)]
         assert all("body" not in r for r in records)
+
+    @pytest.mark.regression
+    def test_a_window_under_the_offload_size_still_never_reaches_the_conversation(
+        self, mock_proxy, tmp_path
+    ) -> None:
+        result, records, _ = self._sweep(mock_proxy, tmp_path, ["a@example.com"], 3)
+
+        assert result["offloaded_to"] == "/workspace/sessions/run/f.jsonl"
+        assert "messages" not in result
+        assert len(records) == result["total_messages"] == 3
+
+    def test_a_requested_file_carries_the_bodies_unless_none_were_asked_for(
+        self, mock_proxy, tmp_path
+    ) -> None:
+        _, records, formats = self._sweep(
+            mock_proxy, tmp_path, ["a@example.com"], 3, body_processing="normalize"
+        )
+
+        assert formats == ["full"] * 3
+        assert [r["body"] for r in records] == ["never read"] * 3
+
+    def test_a_requested_file_with_no_session_to_hold_it_fails_the_call(self, mock_proxy) -> None:
+        mock_proxy.return_value = {"messages": [], "resultSizeEstimate": 0}
+        with (
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.current_run_config",
+                return_value={"configurable": {}},
+            ),
+            pytest.raises(AppError, match="no session"),
+        ):
+            _register_and_get_tools()["FETCH_MESSAGES"](
+                request=FetchMessagesInput(query="after:1790000000", offload=True),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
