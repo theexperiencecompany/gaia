@@ -676,7 +676,7 @@ LINK_TO_C = PageAction(
 async def test_a_page_read_since_the_burst_last_changed_anything_is_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Following links and going back closes what was read; a press on a control reopens it."""
+    """Following links and going back closes what was read to clicks; a press on a control reopens it."""
     a, b, c = (
         page_state(text="list"),
         page_state(url="https://site.test/b", text="article b"),
@@ -713,7 +713,8 @@ async def test_a_page_read_since_the_burst_last_changed_anything_is_closed(
         # Typing changes what a page shows, as a press on a control does.
         frozenset(),
     ]
-    assert b_url not in run.jev.decided[2]["addresses"]
+    # Going back to a read page stays open: a run may return to act there.
+    assert b_url in run.jev.decided[2]["addresses"]
 
 
 async def test_a_page_is_one_address_however_it_was_written_and_never_the_page_jev_is_on(

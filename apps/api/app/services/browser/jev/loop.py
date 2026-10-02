@@ -337,7 +337,7 @@ class JevRunner:
                 return spent
             # Each decision is on the page as it is now, results that arrived since included.
             state.page = await self._page.observe()
-            addresses = self._addresses(state.page, state.closed)
+            addresses = self._addresses(state.page)
             if not addresses and _blank(state.page):
                 return _NO_PAGE
             try:
@@ -348,8 +348,8 @@ class JevRunner:
             if ended is not None:
                 return ended
 
-    def _addresses(self, page: PageState, closed: set[str]) -> list[str]:
-        """Return the pages NAVIGATE may open from page: the starts given and pages visited, on the web, but this one or a closed one.
+    def _addresses(self, page: PageState) -> list[str]:
+        """Return the pages NAVIGATE may open from page: the starts given and pages visited, on the web, but this one.
 
         One address per page: a start written without its trailing slash once sat beside
         the same page as visited, and Jev opened the page it was already on six times.
@@ -358,11 +358,7 @@ class JevRunner:
         known: dict[str, str] = {}
         for url in [*self._starts, *(v.url for v in self.visited)]:
             known.setdefault(page_address(url), url)
-        return [
-            url
-            for key, url in known.items()
-            if key != here and key not in closed and _on_the_web(url)
-        ]
+        return [url for key, url in known.items() if key != here and _on_the_web(url)]
 
     async def _decide(self, state: _Burst, addresses: list[str]) -> Decision:
         state.decisions += 1
