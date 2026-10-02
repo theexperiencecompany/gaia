@@ -7,7 +7,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from pydantic import ValidationError
 import pytest
 
-from app.models.todo_models import Priority, TodoLabelCount, TodoStats
+from app.agents.tools.todo_tool import (
+    add_checklist_item,
+    delete_checklist_item,
+    update_checklist_item,
+)
+from app.models.todo_models import (
+    Priority,
+    SubTask,
+    TodoLabelCount,
+    TodoStats,
+    TodoUpdateRequest,
+)
+from tests.helpers import captured_wide_event
 
 # Module-level patch: check_and_increment must return a plain dict, not an AsyncMock, so
 # @with_rate_limiting doesn't crash iterating usage_info.items().
@@ -1107,42 +1119,59 @@ class TestBulkDeleteTodos:
 
 
 # ---------------------------------------------------------------------------
-# Tests: add_checklist_item
+# Tests: checklist items
 # ---------------------------------------------------------------------------
 
+_ITEM_CREATED_AT = datetime(2026, 6, 15, tzinfo=UTC)
 
-class TestAddSubtask:
-    """Tests for the add_checklist_item tool."""
 
+def _checklist_item(item_id: str, title: str, completed: bool = False) -> SubTask:
+    return SubTask(id=item_id, title=title, completed=completed, created_at=_ITEM_CREATED_AT)
+
+
+class TestAddChecklistItem:
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.update_todo_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
-    async def test_happy_path(
+    async def test_appends_item_streams_the_todo_and_stamps_the_wide_event(
         self,
         mock_get_user: MagicMock,
         mock_get_todo: AsyncMock,
         mock_update: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
-        mock_writer_factory.return_value = _writer_mock()
-        parent = _make_todo_response(subtasks=[])
-        mock_get_todo.return_value = parent
-        updated = _make_todo_response(
-            subtasks=[{"id": "sub-1", "title": "Buy milk", "completed": False}]
+        writer = _writer_mock()
+        mock_writer_factory.return_value = writer
+        mock_get_todo.return_value = _make_todo_response(
+            subtasks=[_checklist_item("sub-0", "Existing", completed=True)]
         )
+        updated = _make_todo_response(title="Groceries")
         mock_update.return_value = updated
 
-        from app.agents.tools.todo_tool import add_checklist_item
+        async with captured_wide_event() as event:
+            result = await add_checklist_item.coroutine(
+                config=_make_config(), todo_id="todo-1", title="Buy milk"
+            )
 
-        result = await add_checklist_item.coroutine(
-            config=_make_config(),
-            todo_id="todo-1",
-            title="Buy milk",
+        todo_dict = updated.model_dump.return_value
+        assert result == {"todo": todo_dict, "error": None}
+        assert event["tool"] == {"name": "add_checklist_item", "action": "create"}
+        writer.assert_called_once_with(
+            {
+                "todo_data": {
+                    "todos": [todo_dict],
+                    "action": "update",
+                    "message": "Added checklist item 'Buy milk' to Groceries",
+                }
+            }
         )
-
-        assert result["error"] is None
-        mock_update.assert_awaited_once()
+        todo_id, update_data, user_id = mock_update.await_args.args
+        assert (todo_id, user_id) == ("todo-1", FAKE_USER_ID)
+        assert [(s.title, s.completed) for s in update_data.subtasks] == [
+            ("Existing", True),
+            ("Buy milk", False),
+        ]
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_user_id_from_config", return_value="")
@@ -1151,139 +1180,196 @@ class TestAddSubtask:
         mock_get_user: MagicMock,
         mock_writer_factory: MagicMock,
     ) -> None:
-        from app.agents.tools.todo_tool import add_checklist_item
+        result = await add_checklist_item.coroutine(
+            config=_make_config_no_user(), todo_id="todo-1", title="Sub"
+        )
+
+        assert result == {"error": "User authentication required", "todo": None}
+
+    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
+    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
+    async def test_service_failure_returns_the_error(
+        self,
+        mock_get_user: MagicMock,
+        mock_get_todo: AsyncMock,
+        mock_writer_factory: MagicMock,
+    ) -> None:
+        mock_get_todo.side_effect = RuntimeError("db down")
 
         result = await add_checklist_item.coroutine(
-            config=_make_config_no_user(),
-            todo_id="todo-1",
-            title="Sub",
+            config=_make_config(), todo_id="todo-1", title="Buy milk"
         )
 
-        assert result["error"] == "User authentication required"
-        assert result["todo"] is None
+        assert result == {"error": "Error adding checklist item: db down", "todo": None}
+        mock_writer_factory.return_value.assert_not_called()
 
 
-# ---------------------------------------------------------------------------
-# Tests: update_checklist_item
-# ---------------------------------------------------------------------------
-
-
-class TestUpdateSubtask:
-    """Tests for the update_checklist_item tool."""
-
+class TestUpdateChecklistItem:
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.update_todo_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
-    async def test_happy_path(
+    async def test_edits_only_the_target_item_streams_the_todo_and_stamps_the_wide_event(
         self,
         mock_get_user: MagicMock,
         mock_get_todo: AsyncMock,
         mock_update: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
-        mock_writer_factory.return_value = _writer_mock()
-        subtask = MagicMock()
-        subtask.id = "sub-1"
-        subtask.title = "Original"
-        subtask.completed = False
-        parent = _make_todo_response(subtasks=[subtask])
-        mock_get_todo.return_value = parent
-        mock_update.return_value = _make_todo_response()
-
-        from app.agents.tools.todo_tool import update_checklist_item
-
-        result = await update_checklist_item.coroutine(
-            config=_make_config(),
-            todo_id="todo-1",
-            item_id="sub-1",
-            completed=True,
+        writer = _writer_mock()
+        mock_writer_factory.return_value = writer
+        mock_get_todo.return_value = _make_todo_response(
+            subtasks=[_checklist_item("sub-1", "Original"), _checklist_item("sub-2", "Other")]
         )
+        updated = _make_todo_response(title="Groceries")
+        mock_update.return_value = updated
 
-        assert result["error"] is None
+        async with captured_wide_event() as event:
+            result = await update_checklist_item.coroutine(
+                config=_make_config(),
+                todo_id="todo-1",
+                item_id="sub-1",
+                title="Renamed",
+                completed=True,
+            )
+
+        todo_dict = updated.model_dump.return_value
+        assert result == {"todo": todo_dict, "error": None}
+        assert event["tool"] == {"name": "update_checklist_item", "action": "update"}
+        writer.assert_called_once_with(
+            {
+                "todo_data": {
+                    "todos": [todo_dict],
+                    "action": "update",
+                    "message": "Updated checklist item in Groceries",
+                }
+            }
+        )
+        mock_update.assert_awaited_once_with(
+            "todo-1",
+            TodoUpdateRequest(
+                subtasks=[
+                    _checklist_item("sub-1", "Renamed", completed=True),
+                    _checklist_item("sub-2", "Other"),
+                ]
+            ),
+            FAKE_USER_ID,
+        )
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
-    async def test_subtask_not_found(
+    async def test_item_not_found(
         self,
         mock_get_user: MagicMock,
         mock_get_todo: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
-        parent = _make_todo_response(subtasks=[])
-        mock_get_todo.return_value = parent
-
-        from app.agents.tools.todo_tool import update_checklist_item
+        mock_get_todo.return_value = _make_todo_response(subtasks=[])
 
         result = await update_checklist_item.coroutine(
-            config=_make_config(),
-            todo_id="todo-1",
-            item_id="nonexistent",
+            config=_make_config(), todo_id="todo-1", item_id="nonexistent"
         )
 
-        assert "not found" in result["error"]
-        assert result["todo"] is None
+        assert result == {"error": "Checklist item nonexistent not found", "todo": None}
+
+    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
+    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
+    async def test_service_failure_returns_the_error(
+        self,
+        mock_get_user: MagicMock,
+        mock_get_todo: AsyncMock,
+        mock_writer_factory: MagicMock,
+    ) -> None:
+        mock_get_todo.side_effect = RuntimeError("db down")
+
+        result = await update_checklist_item.coroutine(
+            config=_make_config(), todo_id="todo-1", item_id="sub-1", completed=True
+        )
+
+        assert result == {"error": "Error updating checklist item: db down", "todo": None}
+        mock_writer_factory.return_value.assert_not_called()
 
 
-# ---------------------------------------------------------------------------
-# Tests: delete_checklist_item
-# ---------------------------------------------------------------------------
-
-
-class TestDeleteSubtask:
-    """Tests for the delete_checklist_item tool."""
-
+class TestDeleteChecklistItem:
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.update_todo_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
-    async def test_happy_path(
+    async def test_removes_only_the_target_item_streams_the_todo_and_stamps_the_wide_event(
         self,
         mock_get_user: MagicMock,
         mock_get_todo: AsyncMock,
         mock_update: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
-        mock_writer_factory.return_value = _writer_mock()
-        subtask = MagicMock()
-        subtask.id = "sub-1"
-        parent = _make_todo_response(subtasks=[subtask])
-        mock_get_todo.return_value = parent
-        mock_update.return_value = _make_todo_response(subtasks=[])
-
-        from app.agents.tools.todo_tool import delete_checklist_item
-
-        result = await delete_checklist_item.coroutine(
-            config=_make_config(),
-            todo_id="todo-1",
-            item_id="sub-1",
+        writer = _writer_mock()
+        mock_writer_factory.return_value = writer
+        mock_get_todo.return_value = _make_todo_response(
+            subtasks=[_checklist_item("sub-1", "Drop me"), _checklist_item("sub-2", "Keep me")]
         )
+        updated = _make_todo_response(title="Groceries")
+        mock_update.return_value = updated
 
-        assert result["error"] is None
+        async with captured_wide_event() as event:
+            result = await delete_checklist_item.coroutine(
+                config=_make_config(), todo_id="todo-1", item_id="sub-1"
+            )
+
+        todo_dict = updated.model_dump.return_value
+        assert result == {"todo": todo_dict, "error": None}
+        assert event["tool"] == {"name": "delete_checklist_item", "action": "delete"}
+        writer.assert_called_once_with(
+            {
+                "todo_data": {
+                    "todos": [todo_dict],
+                    "action": "update",
+                    "message": "Removed checklist item from Groceries",
+                }
+            }
+        )
+        mock_update.assert_awaited_once_with(
+            "todo-1",
+            TodoUpdateRequest(subtasks=[_checklist_item("sub-2", "Keep me")]),
+            FAKE_USER_ID,
+        )
 
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
     @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
-    async def test_subtask_not_found(
+    async def test_item_not_found(
         self,
         mock_get_user: MagicMock,
         mock_get_todo: AsyncMock,
         mock_writer_factory: MagicMock,
     ) -> None:
-        parent = _make_todo_response(subtasks=[])
-        mock_get_todo.return_value = parent
-
-        from app.agents.tools.todo_tool import delete_checklist_item
+        mock_get_todo.return_value = _make_todo_response(subtasks=[])
 
         result = await delete_checklist_item.coroutine(
-            config=_make_config(),
-            todo_id="todo-1",
-            item_id="nonexistent",
+            config=_make_config(), todo_id="todo-1", item_id="nonexistent"
         )
 
-        assert "not found" in result["error"]
-        assert result["todo"] is None
+        assert result == {"error": "Checklist item nonexistent not found", "todo": None}
+
+    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.get_todo_service", new_callable=AsyncMock)
+    @patch(f"{MODULE}.get_user_id_from_config", return_value=FAKE_USER_ID)
+    async def test_service_failure_returns_the_error(
+        self,
+        mock_get_user: MagicMock,
+        mock_get_todo: AsyncMock,
+        mock_writer_factory: MagicMock,
+    ) -> None:
+        mock_get_todo.side_effect = RuntimeError("db down")
+
+        result = await delete_checklist_item.coroutine(
+            config=_make_config(), todo_id="todo-1", item_id="sub-1"
+        )
+
+        assert result == {"error": "Error deleting checklist item: db down", "todo": None}
+        mock_writer_factory.return_value.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
