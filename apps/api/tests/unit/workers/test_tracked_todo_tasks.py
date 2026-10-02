@@ -657,7 +657,7 @@ class TestARunWaitsForItsAccount:
     def _route_enqueue(self, route_enqueue_via_pool):
         return
 
-    async def _run(self, doc):
+    async def _run(self, doc, tz="UTC"):
         repo = MagicMock()
         repo.get_by_id = AsyncMock(return_value=doc)
         repo.update = AsyncMock()
@@ -666,9 +666,7 @@ class TestARunWaitsForItsAccount:
         with (
             patch(f"{MODULE}.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", via_agent),
-            patch(
-                f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
-            ),
+            patch(f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone=tz))),
             _serving(_pool()),
         ):
             result = await _execute_todo_with_retry("todo-1")
@@ -677,19 +675,24 @@ class TestARunWaitsForItsAccount:
     async def test_a_lapsed_plan_skips_the_run_and_keeps_the_schedule(self, account, activity):
         account.paid.return_value = False
 
-        result, repo, via_agent = await self._run(_doc(recurrence="every_1h"))
+        async with captured_wide_event() as event:
+            result, repo, via_agent = await self._run(
+                _doc(recurrence="0 9 * * *"), tz="Asia/Kolkata"
+            )
 
         assert result == "paused:todo-1"
         via_agent.assert_not_awaited()
         account.paid.assert_awaited_once_with("user-1")
-        assert repo.update_if_scheduled_at.await_count == 1
+        [(_expected, written)] = _schedule_writes(repo)
+        assert written["scheduled_at"].astimezone(KOLKATA).hour == 9
         assert (TodoActivityEvent.RUN_SKIPPED, "skipped: the user's plan is not active") in (
             _recorded(activity)
         )
+        assert event["tracked_todo"] == {"paused": "skipped: the user's plan is not active"}
 
-    @pytest.mark.regression
-    async def test_a_lapsed_plan_moves_a_one_time_run_on_instead_of_dropping_it(self, account):
-        """Regression: a paused one-time run cleared scheduled_at and never ran again."""
+    async def test_a_lapsed_plan_moves_a_one_time_run_on_instead_of_dropping_it(
+        self, account, activity
+    ):
         account.paid.return_value = False
         before = datetime.now(UTC)
 
@@ -699,6 +702,9 @@ class TestARunWaitsForItsAccount:
         rerun_at = repo.update_if_scheduled_at.await_args.kwargs["update"].scheduled_at
         recheck = todo_constants.PAUSED_RUN_RECHECK
         assert before + recheck <= rerun_at <= datetime.now(UTC) + recheck
+        assert (TodoActivityEvent.SCHEDULED, f"next run {rerun_at.isoformat()} (once)") in (
+            _recorded(activity)
+        )
 
     async def test_the_desk_waits_for_gmail(self, account, activity):
         account.connected.return_value = set()
@@ -708,6 +714,7 @@ class TestARunWaitsForItsAccount:
 
         assert result == "paused:todo-1"
         via_agent.assert_not_awaited()
+        account.connected.assert_awaited_once_with("user-1")
         assert (TodoActivityEvent.RUN_SKIPPED, "skipped: Gmail is not connected") in (
             _recorded(activity)
         )

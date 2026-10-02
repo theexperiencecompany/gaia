@@ -341,6 +341,33 @@ class TestTodosRepository(UserScopedRepositoryContract):
 
         assert [t.title for t in found] == ["owner"]
 
+    async def test_find_latest_by_external_ref_is_the_users_newest_open_or_completed(
+        self, repo, make_doc, raw_collection
+    ):
+        desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
+        thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="gmail")
+        now = datetime.now(UTC)
+        # Inserted out of age order so an unsorted read would fail here.
+        for title, owner, ref, age, completed in (
+            ("stopped", "u", desk, 1, True),
+            ("first", "u", desk, 3, True),
+            ("theirs", "u2", desk, 0, False),
+            ("thread", "u", thread, 0, False),
+        ):
+            todo = await repo.create(
+                make_doc(user_id=owner, title=title, external_ref=ref, completed=completed)
+            )
+            await raw_collection.update_one(
+                {"_id": ObjectId(todo.id)}, {"$set": {"created_at": now - timedelta(hours=age)}}
+            )
+
+        latest = await repo.find_latest_by_external_ref("u", desk)
+        nothing = await repo.find_latest_by_external_ref("u3", desk)
+
+        assert latest is not None
+        assert (latest.title, latest.completed) == ("stopped", True)
+        assert nothing is None
+
     # ---- sub-todos ----------------------------------------------------------
 
     async def test_top_level_listing_leaves_out_every_sub_todo(self, repo, make_doc):

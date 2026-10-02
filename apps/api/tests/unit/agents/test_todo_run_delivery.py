@@ -19,6 +19,7 @@ from app.constants import todos as todo_constants
 from app.constants.log_tags import LogTag
 from app.constants.todos import TodoActivityEvent
 from app.models.chat_models import ConversationSource
+from app.models.notification.notification_models import NotificationType
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
@@ -100,10 +101,11 @@ class TestResultsThatReachNobody:
 
         request = seams.in_app.await_args.args[0]
         assert request.user_id == "user-1"
+        assert request.type is NotificationType.INFO
         assert request.content.title == "Watch the deploy"
         assert request.content.body == "Deploy failed."
         assert request.metadata == {"todo_id": "todo-1"}
-        assert "result sent as an in-app notification" in seams.entry()
+        assert seams.entry() == "result sent as an in-app notification (summary='report')"
         assert seams.props()["outcome"] == "delivered"
         assert seams.props()["platform"] is None
 
@@ -111,10 +113,19 @@ class TestResultsThatReachNobody:
         """Counting a delivery that reached nobody as sent hides the failure."""
         with _seams(todo=_todo(), sent_on=None) as seams:
             seams.in_app.side_effect = ConnectionError("mongo down")
-            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+            async with captured_wide_event() as event:
+                await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.props()["outcome"] == "undelivered"
         assert seams.props()["delivered"] is False
+        assert event["errors"] == [
+            {
+                "msg": f"{LogTag.AGENT} todo run result could not be sent in the app",
+                "todo_id": "todo-1",
+                "error": "mongo down",
+                "error_type": "ConnectionError",
+            }
+        ]
 
     async def test_a_todo_deleted_mid_run_gets_nothing(self) -> None:
         with _seams(todo=None) as seams:

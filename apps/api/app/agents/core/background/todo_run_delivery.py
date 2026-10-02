@@ -29,7 +29,6 @@ from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
-    NotificationType,
 )
 from app.models.todo_models import TodoDocument
 from app.services.analytics_service import AnalyticsEvents, capture_event
@@ -119,7 +118,6 @@ async def _send_in_app(todo: TodoDocument, text: str) -> _Resolution:
             NotificationRequest(
                 user_id=todo.user_id,
                 source=NotificationSourceEnum.BACKGROUND_JOB,
-                type=NotificationType.INFO,
                 content=NotificationContent(title=todo.title, body=text),
                 metadata={"todo_id": todo.id},
             )
