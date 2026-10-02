@@ -1,7 +1,7 @@
 ---
 name: create-pptx
 title: Create Presentation
-description: Generate a PowerPoint (.pptx) slide deck: pitch decks, reviews, summaries. Use when the user wants slides. Built with pptxgenjs (Node) for native, editable slides and charts.
+description: "Generate a PowerPoint (.pptx) slide deck: pitch decks, reviews, summaries. Use when the user wants slides. Built with pptxgenjs (Node) for native, editable slides and charts."
 # When NOT to use: a PDF (use create-pdf), a Word doc (use create-docx), or a spreadsheet (use create-spreadsheet).
 target: docgen_agent
 ---

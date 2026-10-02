@@ -1,6 +1,6 @@
 ---
 name: plan-my-day
-description: Cross-provider daily planner: gather context from calendar, todos, linear, GitHub, and more. Synthesize into a prioritized action plan.
+description: "Cross-provider daily planner: gather context from calendar, todos, linear, GitHub, and more. Synthesize into a prioritized action plan."
 target: executor
 ---
 

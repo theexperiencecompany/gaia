@@ -1,6 +1,6 @@
 ---
 name: posthog-find-metrics
-description: Find, query, and analyze PostHog metrics: trends, funnels, retention, feature flags, experiments, errors, and custom HogQL/SQL queries. Uses parallel subagents for multi-metric investigations.
+description: "Find, query, and analyze PostHog metrics: trends, funnels, retention, feature flags, experiments, errors, and custom HogQL/SQL queries. Uses parallel subagents for multi-metric investigations."
 target: posthog_agent
 ---
 

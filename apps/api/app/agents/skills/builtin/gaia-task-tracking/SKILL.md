@@ -1,6 +1,6 @@
 ---
 name: tracked-todo-working-memory
-description: Complete guide for GAIA tracked todos: philosophy, two modes (immediate/long-running), the canvas.md / activity.md files, scheduling/recurrence, and institutional memory.
+description: "Complete guide for GAIA tracked todos: philosophy, two modes (immediate/long-running), the canvas.md / activity.md files, scheduling/recurrence, and institutional memory."
 target: executor
 ---
 

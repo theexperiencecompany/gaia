@@ -1,6 +1,6 @@
 ---
 name: reddit-research-post
-description: Research subreddits and create posts: find the right subreddit, analyze trends, check rules and flairs, craft content, draft for review
+description: "Research subreddits and create posts: find the right subreddit, analyze trends, check rules and flairs, craft content, draft for review"
 target: reddit_agent
 ---
 

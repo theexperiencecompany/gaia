@@ -1,6 +1,6 @@
 ---
 name: notion-create-page
-description: Intelligently create Notion pages: search for duplicates, find parent, structure content with blocks, offer sharing
+description: "Intelligently create Notion pages: search for duplicates, find parent, structure content with blocks, offer sharing"
 target: notion_agent
 ---
 

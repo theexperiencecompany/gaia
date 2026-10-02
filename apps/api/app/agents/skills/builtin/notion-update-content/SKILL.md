@@ -1,6 +1,6 @@
 ---
 name: notion-manage-content
-description: Manage Notion page content: insert, append, update blocks, delete blocks, override/replace content, and create new linked pages. Supports full markdown including tables.
+description: "Manage Notion page content: insert, append, update blocks, delete blocks, override/replace content, and create new linked pages. Supports full markdown including tables."
 target: notion_agent
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: slack-gather-context
-description: Gather comprehensive Slack context: search messages, identify what needs attention (mentions, DMs, urgent), read channel pulse, synthesize findings
+description: "Gather comprehensive Slack context: search messages, identify what needs attention (mentions, DMs, urgent), read channel pulse, synthesize findings"
 target: slack_agent
 ---
 

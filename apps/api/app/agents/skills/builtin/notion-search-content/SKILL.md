@@ -1,6 +1,6 @@
 ---
 name: notion-search-content
-description: Smart Notion search: query pages and databases, apply filters, traverse content, synthesize findings
+description: "Smart Notion search: query pages and databases, apply filters, traverse content, synthesize findings"
 target: notion_agent
 ---
 

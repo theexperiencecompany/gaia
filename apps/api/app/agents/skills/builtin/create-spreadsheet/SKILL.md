@@ -1,7 +1,7 @@
 ---
 name: create-spreadsheet
 title: Create Spreadsheet
-description: Generate an Excel (.xlsx) workbook or a CSV file: tables, financial models, data exports, formatted reports with charts. Use when the user wants a spreadsheet or CSV. Built with openpyxl + pandas (Python).
+description: "Generate an Excel (.xlsx) workbook or a CSV file: tables, financial models, data exports, formatted reports with charts. Use when the user wants a spreadsheet or CSV. Built with openpyxl + pandas (Python)."
 # When NOT to use: a Google Sheet (use the googlesheets skill), a PDF table (use create-pdf), or a Word doc (use create-docx).
 target: docgen_agent
 ---

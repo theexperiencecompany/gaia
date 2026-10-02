@@ -1,7 +1,7 @@
 ---
 name: create-docx
 title: Create Word Document
-description: Generate an editable Microsoft Word (.docx) document: reports, letters, memos, structured docs. Use when the user wants a Word file. Built with docx-js (Node) for high fidelity.
+description: "Generate an editable Microsoft Word (.docx) document: reports, letters, memos, structured docs. Use when the user wants a Word file. Built with docx-js (Node) for high fidelity."
 # When NOT to use: a PDF (use create-pdf), a Google Doc (use the googledocs skill), or a spreadsheet (use create-spreadsheet).
 target: docgen_agent
 ---

@@ -1,6 +1,6 @@
 ---
 name: linear-gather-context
-description: Gather comprehensive Linear context: my tasks, sprint progress, blockers, team workload, prioritized status report
+description: "Gather comprehensive Linear context: my tasks, sprint progress, blockers, team workload, prioritized status report"
 target: linear_agent
 ---
 

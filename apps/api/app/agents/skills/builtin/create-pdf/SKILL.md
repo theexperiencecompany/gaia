@@ -1,7 +1,7 @@
 ---
 name: create-pdf
 title: Create PDF
-description: Generate a polished, printable PDF: reports, letters, invoices, resumes, one-pagers. Use when the user wants a PDF document. Typst is the primary engine; LaTeX (tectonic) is the fallback for niche packages or specific academic/journal templates.
+description: "Generate a polished, printable PDF: reports, letters, invoices, resumes, one-pagers. Use when the user wants a PDF document. Typst is the primary engine; LaTeX (tectonic) is the fallback for niche packages or specific academic/journal templates."
 # When NOT to use: editing a Google Doc (use the googledocs skill), or producing an editable Word file (use create-docx).
 target: docgen_agent
 ---

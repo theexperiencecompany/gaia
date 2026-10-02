@@ -1,6 +1,6 @@
 ---
 name: gmail-search-context
-description: Read, search, and summarize Gmail: precise queries, large-inbox fan-out reads, synthesized findings, and the opinionated inbox triage report
+description: "Read, search, and summarize Gmail: precise queries, large-inbox fan-out reads, synthesized findings, and the opinionated inbox triage report"
 target: gmail_agent
 ---
 
