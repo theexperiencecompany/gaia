@@ -647,6 +647,7 @@ class _Browser:
                 "frameStartedNavigating",
                 "frameNavigated",
                 "frameStoppedLoading",
+                "loadEventFired",
             )
         }
         self.cdp_client = SimpleNamespace(
@@ -861,6 +862,7 @@ class TestExecute:
             "frameStartedNavigating",
             "frameNavigated",
             "frameStoppedLoading",
+            "loadEventFired",
         ]
 
     @pytest.mark.parametrize("ending", [RuntimeError("engine gone"), asyncio.CancelledError()])

@@ -30,6 +30,7 @@ class _FakeClient:
                 frameStartedNavigating=lambda h: self.handlers.__setitem__("started", h),
                 frameNavigated=lambda h: self.handlers.__setitem__("committed", h),
                 frameStoppedLoading=lambda h: self.handlers.__setitem__("stopped", h),
+                loadEventFired=lambda h: self.handlers.__setitem__("loaded", h),
             )
         )
         self.send = SimpleNamespace(Page=SimpleNamespace(stopLoading=self._stop_loading))
@@ -143,6 +144,23 @@ class TestStalledLoads:
         assert client.stopped == []
         assert guard.take() == []
 
+    async def test_a_stall_waits_for_the_page_the_tab_shows_to_load_before_stopping(
+        self, watched: tuple[StalledLoads, _FakeClient]
+    ) -> None:
+        """A stop cuts every load in the tab short: the herokuapp page it stayed on lost its scripts."""
+        guard, client = watched
+        # The tab shows a page still loading its head script when the next navigation stalls.
+        client.handlers["committed"]({"frame": {"id": TAB}, "type": "Navigation"}, "S1")
+        _start(client, "S1")
+        await _settle()
+        assert client.stopped == []
+
+        client.handlers["loaded"]({"timestamp": 1.0}, "S1")
+        await _settle()
+
+        assert client.stopped == ["S1"]
+        assert len(guard.take()) == 1
+
     async def test_two_sessions_on_one_tab_stop_it_once(
         self, watched: tuple[StalledLoads, _FakeClient]
     ) -> None:
@@ -238,6 +256,7 @@ async def test_a_form_submission_mark_ends_with_its_navigation(
         client.handlers["requested"]({**request, "reason": "anchorClick"}, "S1")
     else:
         client.handlers["committed"]({"frame": {"id": TAB}, "type": "Navigation"}, "S1")
+        client.handlers["loaded"]({"timestamp": 1.0}, "S1")
 
     _start(client, "S1")
     await _settle()

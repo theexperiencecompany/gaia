@@ -5,6 +5,14 @@ answers no Runtime.evaluate on that tab; Page.stopLoading is still answered and
 leaves the tab on its page (measured 2026-09-25 for typed, clicked and
 cross-site navigations alike).
 
+Page.stopLoading stops every load in the tab, the page it shows included, and
+there is no command that stops a navigation alone: stopped while that page's
+head script was still coming, the page kept its parsed part and lost the rest
+and its scripts (measured 2026-10-02: no script ran, ever), the dead Start
+button of the herokuapp wait task. So a stall waits for the page the tab shows
+to finish loading before it stops anything: Chrome loads that page on while the
+navigation waits, and once it has loaded, the stop takes the navigation alone.
+
 A form submission is never stopped: the server may already be acting on it.
 Chrome names one in Page.frameRequestedNavigation, before the navigation starts
 with the same URL (measured 2026-10-02 for POST and GET forms).
@@ -35,6 +43,7 @@ if TYPE_CHECKING:
         FrameRequestedNavigationEvent,
         FrameStartedNavigatingEvent,
         FrameStoppedLoadingEvent,
+        LoadEventFiredEvent,
     )
     from cdp_use.cdp.page.types import Frame
 
@@ -47,7 +56,7 @@ _RESTORE_WITH_POST = "restoreWithPost"
 
 
 class StalledLoads:
-    """Watches one Browser-Use session's tabs and stops any top-level load left unanswered."""
+    """Watches one Browser-Use session's tabs and stops any top-level load left unanswered, once the page shown has loaded."""
 
     def __init__(self, browser: BrowserSession) -> None:
         self._browser = browser
@@ -60,6 +69,8 @@ class StalledLoads:
         self._loading: dict[str, str] = {}
         #: Tab -> a load Browser-Use stopped waiting on before it finished.
         self._unfinished: dict[str, str] = {}
+        #: Tab -> set once the document it shows has loaded; absent when that already happened.
+        self._showing_loaded: dict[str, asyncio.Event] = {}
         self._stalled: list[str] = []
 
     async def attach(self, event: BrowserConnectedEvent) -> None:
@@ -70,6 +81,7 @@ class StalledLoads:
         client.register.Page.frameStartedNavigating(self._on_started)
         client.register.Page.frameNavigated(self._on_committed)
         client.register.Page.frameStoppedLoading(self._on_stopped)
+        client.register.Page.loadEventFired(self._on_loaded)
 
     def take(self) -> list[str]:
         """Return what stalled since the last call, as notes a model reads."""
@@ -120,8 +132,18 @@ class StalledLoads:
     def _on_committed(self, event: FrameNavigatedEvent, session_id: str | None) -> None:
         del session_id
         frame: Frame = event["frame"]
+        if frame.get("parentId") is None:
+            # The tab shows a new document, which loads from here.
+            self._showing_loaded[frame["id"]] = asyncio.Event()
         # A child frame's id is never a tab's, so only a tab's own commit answers its load.
         self._answered(frame["id"])
+
+    def _on_loaded(self, event: LoadEventFiredEvent, session_id: str | None) -> None:
+        del event
+        if session_id is not None:
+            self._shown_page_loaded(
+                self._browser.session_manager.get_target_id_from_session_id(session_id)
+            )
 
     def _on_stopped(self, event: FrameStoppedLoadingEvent, session_id: str | None) -> None:
         del session_id
@@ -129,6 +151,12 @@ class StalledLoads:
         self._answered(tab)
         self._loading.pop(tab, None)
         self._unfinished.pop(tab, None)
+        self._shown_page_loaded(tab)
+
+    def _shown_page_loaded(self, tab: str | None) -> None:
+        loaded = self._showing_loaded.pop(tab, None) if tab is not None else None
+        if loaded is not None:
+            loaded.set()
 
     def _answered(self, tab: str) -> None:
         self._form_submissions.pop(tab, None)
@@ -141,6 +169,10 @@ class StalledLoads:
 
     async def _stop_after(self, tab: str, session_id: str, url: str) -> None:
         await asyncio.sleep(BROWSER_LOAD_STALL_SECONDS)
+        showing = self._showing_loaded.get(tab)
+        if showing is not None:
+            # Stopping now would cut that page short too; a commit meanwhile cancels this wait.
+            await showing.wait()
         # Its own entry, until now: only a cancel removes it sooner, and a cancel ends this wait.
         del self._timers[tab]
         log.warning(
