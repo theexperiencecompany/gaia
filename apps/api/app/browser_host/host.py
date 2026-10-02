@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 import secrets
 from typing import Any
@@ -112,12 +112,32 @@ class EngineUnresponsiveError(RuntimeError):
     """Raised when no engine serves, or it does not answer on its root connection in time."""
 
 
+#: Starts an engine of a kind on a binary with a User-Agent, returning it and the UA it learned.
+LaunchEngine = Callable[
+    [BrowserEngine, str | None, str | None], Awaitable[tuple[Engine, str | None]]
+]
+#: Opens a connection to an engine's root websocket URL.
+ConnectEngine = Callable[[str], CdpMux]
+#: Reads (used_mb, limit_mb), what admission measures a new session against.
+MemoryProbe = Callable[[], tuple[float, float]]
+
+
 class BrowserHost:
     """Owns the engines and every live session on them, Obscura or Chromium alike (BROWSER_ENGINE)."""
 
-    def __init__(self, on_fatal: Callable[[], None]) -> None:
+    def __init__(
+        self,
+        on_fatal: Callable[[], None],
+        *,
+        launch: LaunchEngine = launch_engine,
+        connect: ConnectEngine = CdpMux,
+        memory: MemoryProbe = memory_usage_mb,
+    ) -> None:
         # Called once when no engine can be brought back, so the process exits and is restarted.
         self._on_fatal = on_fatal
+        self._launch_engine = launch
+        self._connect = connect
+        self._memory = memory
         self.failed = False
         self._chromium_path: str | None = None
         # Chromium's own User-Agent without the headless marker, learned on its first launch.
@@ -182,7 +202,7 @@ class BrowserHost:
                 raise EngineUnresponsiveError("no browser engine is serving")
             self._creating[engine] += 1
             try:
-                mux = CdpMux(engine.root_ws_url)
+                mux = self._connect(engine.root_ws_url)
                 await mux.start()
                 session = await self._open_session(mux, engine, storage_state)
                 async with self._lock:
@@ -476,7 +496,7 @@ class BrowserHost:
                 self._retiring.add(engine)
 
     async def _launch(self) -> Engine:
-        engine, self._user_agent = await launch_engine(
+        engine, self._user_agent = await self._launch_engine(
             browser_host_settings.BROWSER_ENGINE, self._chromium_path, self._user_agent
         )
         self._supervisors[engine] = asyncio.create_task(self._supervise(engine))
@@ -566,7 +586,7 @@ class BrowserHost:
 
     def _admission_refusal(self) -> AtCapacityError | None:
         """Why one more session cannot be admitted right now, or None when it can."""
-        used, limit = memory_usage_mb()
+        used, limit = self._memory()
         ceiling = browser_host_settings.BROWSER_HOST_MAX_SESSIONS
         sessions, pending = len(self._sessions), self._pending_slots
         over_ceiling = ceiling > 0 and sessions + pending >= ceiling
