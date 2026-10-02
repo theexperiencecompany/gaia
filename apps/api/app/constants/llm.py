@@ -391,15 +391,13 @@ MONTHLY_BUDGET_TTL_SECONDS = 32 * 24 * 60 * 60
 REQUEST_TOKEN_COUNTER_TTL_SECONDS = 30 * 60
 
 # --- Tool-loop guardrails (LoopGuardMiddleware) ---------------------------------
-# "Identical" = same tool+args; "same_tool" = any failure of that tool. WARN appends an
-# in-band nudge to the error ToolMessage; STOP skips the call, returning a synthetic error.
+# "Identical" = same tool+args; "same_tool" = any failure of that tool in the current
+# delegation. WARN appends an in-band nudge to the error ToolMessage.
 LOOP_GUARD_WARN_IDENTICAL = 2
 LOOP_GUARD_WARN_SAME_TOOL = 3
-LOOP_GUARD_STOP_SAME_TOOL = 8
 # "Repeat" = consecutive model turns of the current delegation issuing the same
 # tool+args, whatever the outcome: the second is warned, the third is not run.
 LOOP_GUARD_WARN_REPEAT = 2
 LOOP_GUARD_STOP_REPEAT = 3
-# The middleware is a per-process singleton, so failure counters are keyed by the
-# run's thread_id and bounded to the most recent N runs (LRU) to keep memory flat.
-LOOP_GUARD_MAX_TRACKED_RUNS = 512
+# additional_kwargs flag on the synthetic error a refused repeat returns instead of running.
+LOOP_GUARD_STOPPED_KEY = "loop_guard_stopped"
