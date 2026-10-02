@@ -1,6 +1,6 @@
 ---
 name: reddit-research-post
-description: Research subreddits and create posts — find the right subreddit, analyze trends, check rules and flairs, craft content, draft for review
+description: Research subreddits and create posts: find the right subreddit, analyze trends, check rules and flairs, craft content, draft for review
 target: reddit_agent
 ---
 
@@ -21,7 +21,7 @@ REDDIT_GET_SUBREDDITS_SEARCH(q="artificial intelligence", limit=10)
 REDDIT_GET_SUBREDDIT_RULES(subreddit="MachineLearning")
 ```
 
-**Analyze what works — read top posts:**
+**Analyze what works. Read top posts:**
 ```
 REDDIT_GET_R_TOP(subreddit="MachineLearning", t="month", limit=10)
 REDDIT_RETRIEVE_REDDIT_POST(subreddit="startup", sort="hot", max_results=10)
@@ -91,7 +91,7 @@ Reddit Post Draft:
 
 Subreddit: r/startup
 Flair: "Discussion"
-Title: "We cut our customer onboarding time by 60% — here's exactly how"
+Title: "We cut our customer onboarding time by 60%, here's exactly how"
 
 ---
 [Body preview]
@@ -108,7 +108,7 @@ Should I post this?
 ```
 REDDIT_CREATE_REDDIT_POST(
   subreddit="startup",
-  title="We cut our customer onboarding time by 60% — here's exactly how",
+  title="We cut our customer onboarding time by 60%, here's exactly how",
   text="Full markdown body...",
   kind="self",
   flair_id="uuid-from-flair-list"  # Must be valid UUID from REDDIT_GET_R_SUBREDDIT_LINK_FLAIR_V2

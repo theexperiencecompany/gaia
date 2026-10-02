@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "iMessage-native proactive AI assistant",
   description:
     "Poke is a proactive AI assistant that monitors your email and calendar and nudges you through iMessage with one-tap actions. GAIA adds a full web and desktop app, deeper integrations, automated todos, and open-source self-hosting.",
-  metaTitle: "Poke Alternative with App & Open Source — GAIA vs Poke",
+  metaTitle: "Poke Alternative with App & Open Source: GAIA vs Poke",
   metaDescription:
     "Both GAIA and Poke are proactive AI assistants. GAIA adds a full web app, 50+ integrations, automated todo management, and open-source self-hosting that Poke doesn't offer.",
   keywords: [
@@ -19,7 +19,7 @@ export const entry: ComparisonData = {
     "Poke AI comparison 2026",
   ],
   intro:
-    "Poke is a proactive AI assistant built around iMessage. It monitors your email and calendar, sends you timely nudges with one-tap action buttons, and lets users publish and subscribe to automation recipes. There is no app to download — you interact entirely through iMessage, SMS, or Telegram. GAIA shares the proactive philosophy but wraps it in a full web and desktop app, deeper integrations with 50+ services, an automated todo system, and an open-source codebase you can self-host.",
+    "Poke is a proactive AI assistant built around iMessage. It monitors your email and calendar, sends you timely nudges with one-tap action buttons, and lets users publish and subscribe to automation recipes. There is no app to download: you interact entirely through iMessage, SMS, or Telegram. GAIA shares the proactive philosophy but wraps it in a full web and desktop app, deeper integrations with 50+ services, an automated todo system, and an open-source codebase you can self-host.",
   rows: [
     {
       feature: "Proactive behavior",
@@ -31,13 +31,13 @@ export const entry: ComparisonData = {
       feature: "Messaging channels",
       gaia: "WhatsApp, Slack, Telegram, Discord, and a dedicated mobile + desktop app",
       competitor:
-        "iMessage (primary), SMS, and Telegram; WhatsApp in select markets — no web app",
+        "iMessage (primary), SMS, and Telegram; WhatsApp in select markets; no web app",
     },
     {
       feature: "Apps",
       gaia: "Full web app, desktop app (macOS, Windows, Linux), and mobile app",
       competitor:
-        "No app to download — interaction is entirely through messaging threads",
+        "No app to download: interaction is entirely through messaging threads",
     },
     {
       feature: "Workflow automation",
@@ -55,36 +55,36 @@ export const entry: ComparisonData = {
       feature: "Community marketplace",
       gaia: "Community-built integration marketplace where users share and install workflows",
       competitor:
-        "Creator economy for recipes — users can publish, share, and subscribe to automation recipes",
+        "Creator economy for recipes: users can publish, share, and subscribe to automation recipes",
     },
     {
       feature: "Automated todo list",
-      gaia: "AI-powered todo management — creates tasks from emails, assigns priorities, and tracks completion automatically",
+      gaia: "AI-powered todo management: creates tasks from emails, assigns priorities, and tracks completion automatically",
       competitor: "No dedicated task or todo management system",
     },
     {
       feature: "Open source",
-      gaia: "Fully open source — self-host with Docker, own your data entirely",
-      competitor: "Closed source, cloud-only — no self-hosting option",
+      gaia: "Fully open source: self-host with Docker, own your data entirely",
+      competitor: "Closed source, cloud-only: no self-hosting option",
     },
     {
       feature: "Setup",
-      gaia: "Sign up and connect integrations in minutes — no app download or account required beyond GAIA",
+      gaia: "Sign up and connect integrations in minutes: no app download or account required beyond GAIA",
       competitor:
-        "Zero friction — no app download, works via your existing iMessage; connect services through conversation",
+        "Zero friction: no app download, works via your existing iMessage; connect services through conversation",
     },
   ],
   gaiaAdvantages: [
-    "Full web, desktop, and mobile apps — not limited to a messaging thread",
+    "Full web, desktop, and mobile apps: not limited to a messaging thread",
     "50+ integrations with deep bi-directional actions vs Poke's ~20 services",
     "Automated todo list that creates and tracks tasks from email and conversation",
     "Multi-step workflow automation with cross-tool orchestration",
-    "Open source and self-hostable — full data ownership with no cloud dependency",
+    "Open source and self-hostable: full data ownership with no cloud dependency",
   ],
   competitorAdvantages: [
-    "Zero-friction onboarding — no app or account needed, works through your existing iMessage",
+    "Zero-friction onboarding: no app or account needed, works through your existing iMessage",
     "Creator economy for recipes allows users to discover, publish, and subscribe to community-built automations",
-    "Privacy-first by design — minimal data retention and no persistent user profile by default",
+    "Privacy-first by design: minimal data retention and no persistent user profile by default",
     "Ideal for iPhone users who prefer to stay in their messaging layer rather than switching to a new app",
   ],
   verdict:
@@ -98,7 +98,7 @@ export const entry: ComparisonData = {
     {
       question: "Does Poke have an app like GAIA?",
       answer:
-        "No. Poke operates entirely through iMessage, SMS, and Telegram — there is no app to download. GAIA provides a web app, desktop app (macOS, Windows, Linux), and mobile app alongside its messaging integrations.",
+        "No. Poke operates entirely through iMessage, SMS, and Telegram, and there is no app to download. GAIA provides a web app, desktop app (macOS, Windows, Linux), and mobile app alongside its messaging integrations.",
     },
     {
       question: "Is GAIA open source like Poke?",

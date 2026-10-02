@@ -6,8 +6,8 @@ export const entry: ComparisonData = {
   domain: "grok.com",
   tagline: "xAI's real-time AI assistant integrated with X/Twitter",
   description:
-    "Grok is xAI's AI assistant with real-time access to X/Twitter data and the latest world events. GAIA is a proactive productivity AI that manages your email, calendar, tasks, and workflows — turning AI into a system that works for you, not just answers questions.",
-  metaTitle: "Grok Alternative for Productivity Automation — GAIA vs Grok",
+    "Grok is xAI's AI assistant with real-time access to X/Twitter data and the latest world events. GAIA is a proactive productivity AI that manages your email, calendar, tasks, and workflows, turning AI into a system that works for you, not just answers questions.",
+  metaTitle: "Grok Alternative for Productivity Automation: GAIA vs Grok",
   metaDescription:
     "Grok answers questions in real time but won't manage your inbox or automate tasks. GAIA is an open-source alternative that proactively manages your workflow across Gmail, calendar, and 50+ integrations.",
   keywords: [
@@ -22,13 +22,13 @@ export const entry: ComparisonData = {
     "ai assistant alternative to grok",
     "open source grok alternative",
   ],
-  intro: `Grok launched with a memorable differentiator: real-time access to X/Twitter data. While other AI assistants had knowledge cutoffs, Grok could pull from the live stream of posts on X, making it uniquely suited for questions about current events, trending discussions, and the latest news. Developed by xAI, it has since grown into a competitive general-purpose AI assistant with strong capabilities in reasoning, coding, and conversation — available on X and as a standalone product.
+  intro: `Grok launched with a memorable differentiator: real-time access to X/Twitter data. While other AI assistants had knowledge cutoffs, Grok could pull from the live stream of posts on X, making it uniquely suited for questions about current events, trending discussions, and the latest news. Developed by xAI, it has since grown into a competitive general-purpose AI assistant with strong capabilities in reasoning, coding, and conversation, available on X and as a standalone product.
 
-For professionals who live on X and want an AI that understands what is happening right now in their industry, Grok has genuine utility. But for the productivity challenges that most knowledge workers face — managing an overflowing inbox, keeping track of tasks across multiple tools, coordinating calendars, and ensuring that important work actually gets done — Grok operates in the same reactive paradigm as other chat-based AI assistants. It waits for you to ask a question and provides an answer.
+For professionals who live on X and want an AI that understands what is happening right now in their industry, Grok has genuine utility. But for the productivity challenges that most knowledge workers face (managing an overflowing inbox, keeping track of tasks across multiple tools, coordinating calendars, and ensuring that important work actually gets done), Grok operates in the same reactive paradigm as other chat-based AI assistants. It waits for you to ask a question and provides an answer.
 
-GAIA approaches productivity differently. Rather than being a tool you query when you have a question, GAIA is an assistant that operates continuously on your behalf. It monitors your Gmail inbox and triages messages by urgency before you open your email client. It prepares briefing documents for calendar meetings before you need them. It creates tasks in Todoist or Linear from emails and conversations without you having to manually transfer that information. These are not capabilities you get by asking Grok a question — they require a system that is persistently connected to your tools and working proactively.
+GAIA approaches productivity differently. Rather than being a tool you query when you have a question, GAIA is an assistant that operates continuously on your behalf. It monitors your Gmail inbox and triages messages by urgency before you open your email client. It prepares briefing documents for calendar meetings before you need them. It creates tasks in Todoist or Linear from emails and conversations without you having to manually transfer that information. These are not capabilities you get by asking Grok a question: they require a system that is persistently connected to your tools and working proactively.
 
-The integration footprint tells the story clearly. Grok connects to X and provides real-time web access. GAIA connects to Gmail, Google Calendar, Slack, GitHub, Linear, Notion, Todoist, Jira, and 40+ more tools via MCP, with bidirectional read and write access — meaning it can take action in those tools, not just read from them. For professionals evaluating AI tools on the basis of how much time they save on daily productivity work, GAIA's automation depth is a different proposition from Grok's conversational depth.`,
+The integration footprint tells the story clearly. Grok connects to X and provides real-time web access. GAIA connects to Gmail, Google Calendar, Slack, GitHub, Linear, Notion, Todoist, Jira, and 40+ more tools via MCP, with bidirectional read and write access, meaning it can take action in those tools, not just read from them. For professionals evaluating AI tools on the basis of how much time they save on daily productivity work, GAIA's automation depth is a different proposition from Grok's conversational depth.`,
   rows: [
     {
       feature: "Core approach",
@@ -40,7 +40,7 @@ The integration footprint tells the story clearly. Grok connects to X and provid
       feature: "Proactive behavior",
       gaia: "Continuously monitors inbox, calendar, and connected tools; executes tasks and surfaces insights before you ask",
       competitor:
-        "Reactive conversational AI — provides responses and analysis when you initiate a conversation",
+        "Reactive conversational AI: provides responses and analysis when you initiate a conversation",
     },
     {
       feature: "Real-time information",
@@ -84,7 +84,7 @@ The integration footprint tells the story clearly. Grok connects to X and provid
     },
     {
       feature: "Open source / self-hosting",
-      gaia: "Fully open source and self-hostable — complete data ownership",
+      gaia: "Fully open source and self-hostable: complete data ownership",
       competitor: "Proprietary closed-source; data processed by xAI",
     },
     {
@@ -96,24 +96,24 @@ The integration footprint tells the story clearly. Grok connects to X and provid
   ],
   gaiaAdvantages: [
     "Proactively manages your email, calendar, and tasks without requiring you to start a chat",
-    "50+ bidirectional tool integrations — reads and writes to your actual work tools",
+    "50+ bidirectional tool integrations: reads and writes to your actual work tools",
     "Workflow automation converts AI insights into real actions across your tool stack",
     "Graph-based memory connecting tasks, emails, meetings, and people in context",
-    "Open source and self-hostable — no data processed by a third-party AI company",
+    "Open source and self-hostable: no data processed by a third-party AI company",
     "Manages the daily operational overhead that reactive AI assistants leave for you to handle",
   ],
   competitorAdvantages: [
-    "Real-time X/Twitter data access — uniquely suited for social listening, trend monitoring, and current events",
+    "Real-time X/Twitter data access: uniquely suited for social listening, trend monitoring, and current events",
     "Strong general reasoning and coding capabilities with access to xAI's most capable models",
-    "Bundled with X Premium — provides AI value at a low incremental cost for existing X users",
+    "Bundled with X Premium: provides AI value at a low incremental cost for existing X users",
   ],
   verdict:
-    "Grok is a capable conversational AI with a unique advantage in real-time social and news intelligence. GAIA is the right choice for professionals who want AI that actively manages their productivity — proactively triaging email, managing calendars, creating tasks, and automating workflows across 50+ tools without being prompted each time.",
+    "Grok is a capable conversational AI with a unique advantage in real-time social and news intelligence. GAIA is the right choice for professionals who want AI that actively manages their productivity: proactively triaging email, managing calendars, creating tasks, and automating workflows across 50+ tools without being prompted each time.",
   faqs: [
     {
       question: "Can GAIA replace Grok for everyday AI assistance?",
       answer:
-        "They serve different primary purposes. Grok excels at real-time X/Twitter intelligence, current events, and general conversation. GAIA is purpose-built for productivity automation: managing your inbox, calendar, todos, and multi-step workflows proactively. Many users find value in both — Grok for information, GAIA for execution.",
+        "They serve different primary purposes. Grok excels at real-time X/Twitter intelligence, current events, and general conversation. GAIA is purpose-built for productivity automation: managing your inbox, calendar, todos, and multi-step workflows proactively. Many users find value in both: Grok for information, GAIA for execution.",
     },
     {
       question: "How does GAIA's integration depth compare to Grok?",
@@ -123,7 +123,7 @@ The integration footprint tells the story clearly. Grok connects to X and provid
     {
       question: "Does GAIA have access to real-time information like Grok?",
       answer:
-        "GAIA has real-time access to your connected tools — live email, calendar events, GitHub status, Linear issues, and Notion pages. It does not have the same real-time X/Twitter social data that Grok specializes in. If you need live social intelligence, Grok is the better choice for that specific use case.",
+        "GAIA has real-time access to your connected tools: live email, calendar events, GitHub status, Linear issues, and Notion pages. It does not have the same real-time X/Twitter social data that Grok specializes in. If you need live social intelligence, Grok is the better choice for that specific use case.",
     },
     {
       question: "Is GAIA more expensive than Grok?",

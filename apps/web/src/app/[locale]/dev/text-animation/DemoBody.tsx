@@ -50,7 +50,7 @@ const SAMPLE_BOT = [
   "",
   "## Quote & rule",
   "",
-  "> Proactive, not reactive — that's the whole idea.",
+  "> Proactive, not reactive: that's the whole idea.",
   "",
   "---",
   "",

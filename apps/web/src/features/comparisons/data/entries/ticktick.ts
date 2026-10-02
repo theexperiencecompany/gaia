@@ -7,9 +7,9 @@ export const entry: ComparisonData = {
   tagline: "Capture anything, accomplish everything",
   description:
     "TickTick is a polished to-do and habit tracking app with natural language input, a built-in Pomodoro timer, and calendar views. GAIA goes beyond task capture to proactively manage your email, calendar, and entire digital workflow.",
-  metaTitle: "TickTick Alternative with Proactive AI — GAIA vs TickTick",
+  metaTitle: "TickTick Alternative with Proactive AI: GAIA vs TickTick",
   metaDescription:
-    "TickTick is a solid to-do app but requires manual task entry and lacks email automation. GAIA is an open-source TickTick alternative with proactive AI that creates tasks from email, manages your calendar, and automates workflows — with a free tier.",
+    "TickTick is a solid to-do app but requires manual task entry and lacks email automation. GAIA is an open-source TickTick alternative with proactive AI that creates tasks from email, manages your calendar, and automates workflows, with a free tier.",
   keywords: [
     "GAIA vs TickTick",
     "TickTick alternative",
@@ -20,7 +20,7 @@ export const entry: ComparisonData = {
     "task management AI",
   ],
   intro:
-    "TickTick has built a loyal following as one of the most well-rounded to-do apps available. With natural language task entry, a built-in Pomodoro timer, habit tracking, and multi-platform sync, it covers the core bases of personal task management beautifully. But TickTick is still fundamentally a place to store and review tasks — it does not read your email, watch your calendar, or take action on your behalf. GAIA is built around a different premise: rather than waiting for you to log a task, it monitors your digital environment, creates tasks from emails automatically, schedules work on your calendar, and executes multi-step workflows across 50+ connected tools.",
+    "TickTick has built a loyal following as one of the most well-rounded to-do apps available. With natural language task entry, a built-in Pomodoro timer, habit tracking, and multi-platform sync, it covers the core bases of personal task management beautifully. But TickTick is still fundamentally a place to store and review tasks: it does not read your email, watch your calendar, or take action on your behalf. GAIA is built around a different premise: rather than waiting for you to log a task, it monitors your digital environment, creates tasks from emails automatically, schedules work on your calendar, and executes multi-step workflows across 50+ connected tools.",
   rows: [
     {
       feature: "Core approach",
@@ -30,7 +30,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Task management",
-      gaia: "AI-powered todos with semantic search, labels, priorities, projects, and deadlines — created automatically from emails and calendar events",
+      gaia: "AI-powered todos with semantic search, labels, priorities, projects, and deadlines, created automatically from emails and calendar events",
       competitor:
         "Robust manual task management with subtasks, tags, priorities, due dates, and up to 299 lists on Premium",
     },
@@ -42,7 +42,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Email integration",
-      gaia: "Full Gmail management — triages inbox, drafts replies, and automatically creates tasks from emails without manual input",
+      gaia: "Full Gmail management: triages inbox, drafts replies, and automatically creates tasks from emails without manual input",
       competitor: "No email integration or inbox management",
     },
     {
@@ -81,7 +81,7 @@ export const entry: ComparisonData = {
     },
   ],
   gaiaAdvantages: [
-    "Proactively reads email and creates tasks automatically — no manual logging required",
+    "Proactively reads email and creates tasks automatically, with no manual logging required",
     "Full workflow automation with natural language triggers and cross-tool actions",
     "50+ deep integrations versus limited third-party connectivity in TickTick",
     "Graph-based persistent memory that learns your patterns and preferences over time",
@@ -94,7 +94,7 @@ export const entry: ComparisonData = {
     "Excellent natural language task entry with smart date and time recognition",
   ],
   verdict:
-    "Choose TickTick if you want a clean, affordable to-do app with habit tracking and a built-in Pomodoro timer for managing tasks you enter manually. Choose GAIA if you want an AI assistant that proactively manages your email, calendar, and task list across your entire digital workflow — acting on your behalf before you even open the app.",
+    "Choose TickTick if you want a clean, affordable to-do app with habit tracking and a built-in Pomodoro timer for managing tasks you enter manually. Choose GAIA if you want an AI assistant that proactively manages your email, calendar, and task list across your entire digital workflow, acting on your behalf before you even open the app.",
   faqs: [
     {
       question: "Can GAIA replace TickTick for task management?",

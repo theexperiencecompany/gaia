@@ -8,9 +8,9 @@ export const entry: ComparisonData = {
   description:
     "RescueTime runs in the background to track how you spend your time on apps and websites, then surfaces productivity reports. GAIA goes further by acting on those insights to proactively manage your schedule and reduce distractions.",
   metaTitle:
-    "RescueTime Alternative with Proactive AI Assistance — GAIA vs RescueTime",
+    "RescueTime Alternative with Proactive AI Assistance: GAIA vs RescueTime",
   metaDescription:
-    "RescueTime tracks time passively but can't act on what it finds. GAIA is an open-source alternative that monitors your workflow and proactively manages tasks, calendar, and focus — free tier available.",
+    "RescueTime tracks time passively but can't act on what it finds. GAIA is an open-source alternative that monitors your workflow and proactively manages tasks, calendar, and focus, with a free tier available.",
   keywords: [
     "rescuetime alternative",
     "gaia vs rescuetime",
@@ -27,7 +27,7 @@ export const entry: ComparisonData = {
 
 But awareness alone rarely changes behavior. RescueTime shows you that you spent three hours on social media, yet it cannot block those distractions in context, reschedule the tasks you missed, or coordinate with the rest of your workflow to prevent the same pattern tomorrow. The data stays inside RescueTime's dashboard while your actual work happens across Slack, Gmail, Notion, GitHub, and a dozen other tools.
 
-GAIA takes the next step. Rather than reporting on what already happened, GAIA proactively manages your digital environment — scheduling focused work blocks on your calendar, surfacing urgent tasks from your inbox, and automating the routine actions that eat into productive time. It connects to 50+ tools so the intelligence it gathers can actually move things forward, not just chart them. For knowledge workers who want to reclaim their time rather than just measure it, GAIA offers a fundamentally more active approach to productivity.`,
+GAIA takes the next step. Rather than reporting on what already happened, GAIA proactively manages your digital environment: scheduling focused work blocks on your calendar, surfacing urgent tasks from your inbox, and automating the routine actions that eat into productive time. It connects to 50+ tools so the intelligence it gathers can actually move things forward, not just chart them. For knowledge workers who want to reclaim their time rather than just measure it, GAIA offers a fundamentally more active approach to productivity.`,
   rows: [
     {
       feature: "Core approach",
@@ -48,7 +48,7 @@ GAIA takes the next step. Rather than reporting on what already happened, GAIA p
     },
     {
       feature: "Calendar integration",
-      gaia: "Full Google Calendar integration — schedules tasks, creates events, preps briefings",
+      gaia: "Full Google Calendar integration: schedules tasks, creates events, preps briefings",
       competitor:
         "Tracks time spent in calendar apps; no scheduling capability",
     },
@@ -86,7 +86,7 @@ GAIA takes the next step. Rather than reporting on what already happened, GAIA p
   ],
   gaiaAdvantages: [
     "Acts on productivity insights instead of just reporting them",
-    "Manages email, calendar, and tasks — not just tracks time",
+    "Manages email, calendar, and tasks, not just tracks time",
     "50+ integrations for cross-tool workflow orchestration",
     "Proactive focus scheduling and task prioritization",
     "Open source with self-hosting for full data ownership",
@@ -103,7 +103,7 @@ GAIA takes the next step. Rather than reporting on what already happened, GAIA p
     {
       question: "Can GAIA replace RescueTime for time tracking?",
       answer:
-        "GAIA focuses on proactive task and workflow management rather than passive time tracking. If automatic background time logging is your primary need, RescueTime excels at that. GAIA is the better fit if you want AI that acts on your time — scheduling focused blocks, routing tasks, and automating follow-through.",
+        "GAIA focuses on proactive task and workflow management rather than passive time tracking. If automatic background time logging is your primary need, RescueTime excels at that. GAIA is the better fit if you want AI that acts on your time: scheduling focused blocks, routing tasks, and automating follow-through.",
     },
     {
       question:
@@ -122,7 +122,7 @@ GAIA takes the next step. Rather than reporting on what already happened, GAIA p
         "GAIA's 50+ integrations cover the tools that feed into your workflow. While a direct RescueTime integration is not currently listed, GAIA connects to Gmail, Slack, Google Calendar, and the project management tools where your actual work happens.",
     },
     {
-      question: "Which is better for remote workers — GAIA or RescueTime?",
+      question: "Which is better for remote workers: GAIA or RescueTime?",
       answer:
         "Both serve remote workers well but in different ways. RescueTime gives you accountability data on how you actually spend your day. GAIA proactively manages your schedule and workflow across tools, making it a stronger choice if you want AI-driven assistance rather than analytics alone.",
     },

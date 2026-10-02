@@ -7,9 +7,9 @@ export const entry: ComparisonData = {
   tagline: "Simple to-do list for you and your team",
   description:
     "Any.do is a polished task and list manager with calendar syncing, WhatsApp reminders, and a ChatGPT-powered assistant. GAIA goes far beyond list management to proactively orchestrate your entire digital workflow with a deeply contextual AI agent.",
-  metaTitle: "Any.do Alternative with AI Email & Workflows — GAIA vs Any.do",
+  metaTitle: "Any.do Alternative with AI Email & Workflows: GAIA vs Any.do",
   metaDescription:
-    "Any.do is a polished task manager but requires manual entry and lacks email automation. GAIA is an open-source Any.do alternative with AI email integration, multi-step workflow automation, and 50+ tool integrations — with a free tier.",
+    "Any.do is a polished task manager but requires manual entry and lacks email automation. GAIA is an open-source Any.do alternative with AI email integration, multi-step workflow automation, and 50+ tool integrations, all with a free tier.",
   keywords: [
     "GAIA vs Any.do",
     "Any.do alternative",
@@ -21,7 +21,7 @@ export const entry: ComparisonData = {
     "proactive AI assistant",
   ],
   intro:
-    "Any.do has carved out a loyal following by delivering a clean, intuitive task management experience across mobile and desktop. Its calendar integration, WhatsApp reminders, and AI assistant make it one of the more capable personal to-do apps on the market. But even with ChatGPT powering its suggestions, Any.do remains fundamentally a list app — you still capture tasks manually, manage your inbox separately, and stitch together integrations yourself. GAIA takes a different path entirely. Instead of giving you a better list, it acts as a proactive AI agent that reads your emails and turns them into tasks, schedules work against your calendar, automates repetitive multi-step workflows, and retains deep contextual memory across every tool you use. Where Any.do helps you stay organised, GAIA helps you stay ahead.",
+    "Any.do has carved out a loyal following by delivering a clean, intuitive task management experience across mobile and desktop. Its calendar integration, WhatsApp reminders, and AI assistant make it one of the more capable personal to-do apps on the market. But even with ChatGPT powering its suggestions, Any.do remains fundamentally a list app: you still capture tasks manually, manage your inbox separately, and stitch together integrations yourself. GAIA takes a different path entirely. Instead of giving you a better list, it acts as a proactive AI agent that reads your emails and turns them into tasks, schedules work against your calendar, automates repetitive multi-step workflows, and retains deep contextual memory across every tool you use. Where Any.do helps you stay organised, GAIA helps you stay ahead.",
   rows: [
     {
       feature: "Core approach",
@@ -98,7 +98,7 @@ export const entry: ComparisonData = {
     "Family and team sharing features built directly into the core product",
   ],
   verdict:
-    "Choose Any.do if you need a well-designed personal task manager with calendar sync, WhatsApp reminders, and a clean mobile experience at an affordable price. Choose GAIA if you want an AI assistant that actively manages your email, calendar, and tasks — capturing work automatically from your inbox, automating repetitive workflows, and acting on your behalf across the tools you already use rather than waiting for you to maintain a list.",
+    "Choose Any.do if you need a well-designed personal task manager with calendar sync, WhatsApp reminders, and a clean mobile experience at an affordable price. Choose GAIA if you want an AI assistant that actively manages your email, calendar, and tasks, capturing work automatically from your inbox, automating repetitive workflows, and acting on your behalf across the tools you already use rather than waiting for you to maintain a list.",
   faqs: [
     {
       question: "Can GAIA replace Any.do for task management?",
@@ -108,12 +108,12 @@ export const entry: ComparisonData = {
     {
       question: "Does GAIA have AI features like Any.do's ChatGPT integration?",
       answer:
-        "GAIA's AI goes significantly further. Any.do's ChatGPT integration offers suggestions and natural language task creation, but still requires user initiation. GAIA runs a LangGraph agent that autonomously monitors your email and calendar, decides what actions to take, executes multi-step workflows, and retains long-term memory of your preferences and project context — acting proactively rather than reactively.",
+        "GAIA's AI goes significantly further. Any.do's ChatGPT integration offers suggestions and natural language task creation, but still requires user initiation. GAIA runs a LangGraph agent that autonomously monitors your email and calendar, decides what actions to take, executes multi-step workflows, and retains long-term memory of your preferences and project context, acting proactively rather than reactively.",
     },
     {
       question: "Is GAIA more expensive than Any.do?",
       answer:
-        "Any.do's Premium plan starts at $4.99/month (billed annually), making it cheaper than GAIA's Pro tier on a headline price basis. However, GAIA replaces multiple tools simultaneously — email management, calendar assistant, workflow automation platform, and task manager. Users who currently pay for several productivity tools often find GAIA more cost-effective overall. GAIA can also be self-hosted entirely for free.",
+        "Any.do's Premium plan starts at $4.99/month (billed annually), making it cheaper than GAIA's Pro tier on a headline price basis. However, GAIA replaces multiple tools simultaneously: email management, calendar assistant, workflow automation platform, and task manager. Users who currently pay for several productivity tools often find GAIA more cost-effective overall. GAIA can also be self-hosted entirely for free.",
     },
   ],
 };

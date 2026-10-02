@@ -1,6 +1,6 @@
 ---
 name: plan-my-day
-description: Cross-provider daily planner — gather context from calendar, todos, linear, GitHub, and more. Synthesize into a prioritized action plan.
+description: Cross-provider daily planner: gather context from calendar, todos, linear, GitHub, and more. Synthesize into a prioritized action plan.
 target: executor
 ---
 
@@ -80,15 +80,15 @@ Score each item by urgency × importance:
 Structure by time blocks:
 
 ```
-Your Day — Monday, Feb 24
+Your Day: Monday, Feb 24
 
 Schedule:
   09:00-09:30  Morning routine + review this plan
-  09:30-10:00  Fix auth bug (GEN-142) — overdue, blocking team
+  09:30-10:00  Fix auth bug (GEN-142), overdue, blocking team
   10:00-11:00  Sprint Planning (meeting)
-  11:00-12:30  API redesign (GEN-201) — deep work block
+  11:00-12:30  API redesign (GEN-201), deep work block
   12:30-13:30  Lunch
-  13:30-14:00  Review Sarah's PR (#345) — requested 2 days ago
+  13:30-14:00  Review Sarah's PR (#345), requested 2 days ago
   14:00-15:00  1:1 with Alex (meeting)
   15:00-16:30  Todoist: Prepare Q1 report (due today)
   16:30-17:00  Process inbox + respond to messages
@@ -111,7 +111,7 @@ Tip: Your 11:00-12:30 block is your longest uninterrupted time.
 ## Step 5: Handle Gaps
 
 If a provider isn't connected:
-- Skip gracefully: "I couldn't access your GitHub — connect it for PR review tracking"
+- Skip gracefully: "I couldn't access your GitHub, so connect it for PR review tracking"
 - Still provide value from available providers
 
 If calendar is empty:

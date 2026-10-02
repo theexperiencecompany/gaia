@@ -127,7 +127,7 @@ async def _post_workflow_message(
             delivered_text = "\n\n".join(b.strip() for b in bubbles if b.strip())
             await record_platform_delivery(
                 conversation_id,
-                f"[Delivered to the user on {source.display_name} — result of {origin}]: {delivered_text}",
+                f"[Delivered to the user on {source.display_name} (result of {origin})]: {delivered_text}",
             )
         log.info(
             f"{LogTag.AGENT} workflow result delivered to platform",

@@ -318,7 +318,7 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
       {
         step: "Set up team mappings and sync preferences",
         description:
-          "Map Linear teams to Todoist projects, define which issue states trigger sync, and set your preferred priority translation between Linear's 0–4 scale and Todoist's priority levels.",
+          "Map Linear teams to Todoist projects, define which issue states trigger sync, and set your preferred priority translation between Linear's 0 to 4 scale and Todoist's priority levels.",
       },
       {
         step: "GAIA maintains real-time sync between both tools",

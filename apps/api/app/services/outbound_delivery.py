@@ -230,9 +230,9 @@ async def notify_account_linked(platform: str, user_id: str) -> OutboundResult:
 
     display_name = source.display_name
     text = (
-        "✅ **You're connected!**\n\n"
-        f"Your {display_name} account is now linked to GAIA. "
-        "Send me a message or use `/help` to see everything I can do."
+        "✅ **You're connected**\n\n"
+        f"Your {display_name} account is linked. "
+        "Message me anytime, or send `/help` to see what I can do."
     )
     return await publish_outbound_message(
         source, user_id, [text], ttl_seconds=OUTBOUND_TTL_SECONDS_GREETING

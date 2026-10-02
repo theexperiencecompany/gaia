@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "coda.io",
   tagline: "The doc that thinks like an app",
   description:
-    "Coda.io is a powerful all-in-one platform that blends documents, spreadsheets, and app builder functionality into a single workspace. GAIA is a proactive AI assistant that connects your entire digital workflow — email, calendar, tasks, and 50+ integrations — with autonomous action.",
+    "Coda.io is a powerful all-in-one platform that blends documents, spreadsheets, and app builder functionality into a single workspace. GAIA is a proactive AI assistant that connects your entire digital workflow (email, calendar, tasks, and 50+ integrations) with autonomous action.",
   metaTitle:
-    "Coda.io Alternative with Proactive AI & Workflow Automation — GAIA vs Coda",
+    "Coda.io Alternative with Proactive AI & Workflow Automation: GAIA vs Coda",
   metaDescription:
-    "Coda is powerful but complex. GAIA is a free, open-source Coda alternative with proactive AI email management, calendar automation, and cross-tool workflows across 50+ integrations — no formula expertise required.",
+    "Coda is powerful but complex. GAIA is a free, open-source Coda alternative with proactive AI email management, calendar automation, and cross-tool workflows across 50+ integrations, no formula expertise required.",
   keywords: [
     "coda alternative",
     "gaia vs coda",
@@ -23,13 +23,13 @@ export const entry: ComparisonData = {
     "coda replacement",
     "coda doc alternative",
   ],
-  intro: `Coda occupies a unique position in the productivity tool landscape. It is simultaneously a document editor, a spreadsheet, and a lightweight application builder — a "doc that thinks like an app," as the company puts it. Teams use Coda to build internal tools, product roadmaps, OKR trackers, meeting templates, and interconnected databases without writing code. Its Packs ecosystem connects Coda docs to external services like Jira, Slack, GitHub, and Google Calendar, allowing builders to create surprisingly sophisticated workflows within a single document.
+  intro: `Coda occupies a unique position in the productivity tool landscape. It is simultaneously a document editor, a spreadsheet, and a lightweight application builder, a "doc that thinks like an app," as the company puts it. Teams use Coda to build internal tools, product roadmaps, OKR trackers, meeting templates, and interconnected databases without writing code. Its Packs ecosystem connects Coda docs to external services like Jira, Slack, GitHub, and Google Calendar, allowing builders to create surprisingly sophisticated workflows within a single document.
 
 But Coda's power comes with a real complexity tax. Getting the most out of Coda requires learning its formula language, understanding how tables and views relate to one another, and investing significant time in building the templates and automations that make it valuable. For teams willing to invest that effort, Coda can replace multiple tools. For teams who don't have a dedicated "Coda champion" to maintain the setup, those powerful docs often become unmaintained relics.
 
-GAIA takes a different approach to complexity: instead of giving you a flexible building system that you configure yourself, GAIA applies AI directly to your existing workflow. It reads your Gmail inbox and creates tasks and calendar events automatically. It monitors your GitHub repositories and Jira boards. It prepares briefings before your meetings, drafts email replies, and orchestrates multi-step workflows across 50+ connected tools — all through natural language rather than formulas and configuration. The sophistication is in the AI, not in the setup.
+GAIA takes a different approach to complexity: instead of giving you a flexible building system that you configure yourself, GAIA applies AI directly to your existing workflow. It reads your Gmail inbox and creates tasks and calendar events automatically. It monitors your GitHub repositories and Jira boards. It prepares briefings before your meetings, drafts email replies, and orchestrates multi-step workflows across 50+ connected tools, all through natural language rather than formulas and configuration. The sophistication is in the AI, not in the setup.
 
-Where Coda shines as a flexible building platform for teams who love configuring powerful internal tools, GAIA is better suited for professionals who want their AI assistant to do the heavy lifting automatically — connecting the dots across email, calendar, tasks, and tools without requiring them to become workflow architects. GAIA is also open source and self-hostable, which means teams with privacy or compliance requirements can run it entirely within their own infrastructure.`,
+Where Coda shines as a flexible building platform for teams who love configuring powerful internal tools, GAIA is better suited for professionals who want their AI assistant to do the heavy lifting automatically: connecting the dots across email, calendar, tasks, and tools without requiring them to become workflow architects. GAIA is also open source and self-hostable, which means teams with privacy or compliance requirements can run it entirely within their own infrastructure.`,
   rows: [
     {
       feature: "Core approach",
@@ -45,13 +45,13 @@ Where Coda shines as a flexible building platform for teams who love configuring
     },
     {
       feature: "Email integration",
-      gaia: "Full Gmail management — reads, triages, drafts replies, and creates tasks or doc content from emails automatically",
+      gaia: "Full Gmail management: reads, triages, drafts replies, and creates tasks or doc content from emails automatically",
       competitor:
         "Gmail Pack available to pull email data into Coda tables; no inbox management or automated triaging",
     },
     {
       feature: "Automation",
-      gaia: "Natural language multi-step workflows with triggers and conditions spanning any connected tool — described in plain English",
+      gaia: "Natural language multi-step workflows with triggers and conditions spanning any connected tool: described in plain English",
       competitor:
         "Rule-based automations within docs (e.g., send Slack message on row change); requires formula knowledge for complex flows",
     },
@@ -63,7 +63,7 @@ Where Coda shines as a flexible building platform for teams who love configuring
     },
     {
       feature: "Calendar integration",
-      gaia: "Full Google Calendar integration — reads, creates, and updates events; generates pre-meeting briefings automatically",
+      gaia: "Full Google Calendar integration: reads, creates, and updates events; generates pre-meeting briefings automatically",
       competitor:
         "Google Calendar Pack syncs events into Coda tables; no proactive calendar management or meeting preparation",
     },
@@ -77,17 +77,17 @@ Where Coda shines as a flexible building platform for teams who love configuring
       feature: "Proactive behavior",
       gaia: "Continuously monitors email, calendar, and tools to surface insights and act before you ask",
       competitor:
-        "Passive doc platform — automations run on explicit triggers you set up; no ambient monitoring of external context",
+        "Passive doc platform: automations run on explicit triggers you set up; no ambient monitoring of external context",
     },
     {
       feature: "Learning curve",
-      gaia: "Natural language interface — describe what you want; no formula or configuration expertise required",
+      gaia: "Natural language interface: describe what you want; no formula or configuration expertise required",
       competitor:
         "Significant learning curve; full power requires mastery of Coda's formula language, tables, views, and Packs system",
     },
     {
       feature: "Open source",
-      gaia: "Fully open source and self-hostable via Docker — data stays in your own infrastructure",
+      gaia: "Fully open source and self-hostable via Docker: data stays in your own infrastructure",
       competitor:
         "Proprietary closed-source SaaS platform; no self-hosting option",
     },
@@ -105,12 +105,12 @@ Where Coda shines as a flexible building platform for teams who love configuring
     },
   ],
   gaiaAdvantages: [
-    "No configuration expertise needed — describe workflows in natural language and GAIA executes them",
+    "No configuration expertise needed: describe workflows in natural language and GAIA executes them",
     "Proactively reads email and calendar to create tasks and surface information without manual input",
     "50+ integrations orchestrated by AI rather than requiring per-integration Pack configuration",
-    "Open source and self-hostable — complete data ownership with no per-seat pricing when self-hosted",
+    "Open source and self-hostable: complete data ownership with no per-seat pricing when self-hosted",
     "Graph-based memory connects context across email, meetings, and tools automatically",
-    "Lower barrier to sophisticated automation — no formula language or workflow builder required",
+    "Lower barrier to sophisticated automation: no formula language or workflow builder required",
   ],
   competitorAdvantages: [
     "Extremely flexible doc-as-app platform that replaces multiple specialized tools for teams who invest in learning it",
@@ -118,7 +118,7 @@ Where Coda shines as a flexible building platform for teams who love configuring
     "Rich Packs ecosystem with 600+ integrations that pull live data into documents for custom dashboards and workflows",
   ],
   verdict:
-    "Choose Coda if your team has the appetite to invest in building a powerful, custom internal tool environment using Coda's flexible doc-as-app platform. Choose GAIA if you want sophisticated AI automation without the setup complexity — an assistant that proactively manages your email, calendar, and connected tools through natural language rather than formulas and configuration.",
+    "Choose Coda if your team has the appetite to invest in building a powerful, custom internal tool environment using Coda's flexible doc-as-app platform. Choose GAIA if you want sophisticated AI automation without the setup complexity: an assistant that proactively manages your email, calendar, and connected tools through natural language rather than formulas and configuration.",
   faqs: [
     {
       question: "Can GAIA replace Coda for internal tool building?",
@@ -128,7 +128,7 @@ Where Coda shines as a flexible building platform for teams who love configuring
     {
       question: "How does GAIA handle data compared to Coda's tables?",
       answer:
-        "Coda's relational tables are purpose-built for organizing structured data with custom properties, views, and formula-driven calculations. GAIA focuses on connecting and acting on data across external tools — creating tasks in Todoist, updating Jira issues, reading Gmail — rather than providing a spreadsheet-like interface for custom data structures.",
+        "Coda's relational tables are purpose-built for organizing structured data with custom properties, views, and formula-driven calculations. GAIA focuses on connecting and acting on data across external tools (creating tasks in Todoist, updating Jira issues, reading Gmail) rather than providing a spreadsheet-like interface for custom data structures.",
     },
     {
       question: "Is GAIA easier to use than Coda?",

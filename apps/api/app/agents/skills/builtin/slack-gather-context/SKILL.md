@@ -1,6 +1,6 @@
 ---
 name: slack-gather-context
-description: Gather comprehensive Slack context — search messages, identify what needs attention (mentions, DMs, urgent), read channel pulse, synthesize findings
+description: Gather comprehensive Slack context: search messages, identify what needs attention (mentions, DMs, urgent), read channel pulse, synthesize findings
 target: slack_agent
 ---
 
@@ -29,12 +29,12 @@ Gather everything that needs the user's attention:
 SLACK_SEARCH_MESSAGES(query="to:me", sort="timestamp", sort_dir="desc", count=20)
 ```
 
-**Urgent/important signals — search for keywords:**
+**Urgent/important signals, search for keywords:**
 ```
 SLACK_SEARCH_MESSAGES(query="urgent OR ASAP OR blocked OR critical OR help after:today", sort="timestamp", sort_dir="desc", count=20)
 ```
 
-**Channels with activity — check key channels:**
+**Channels with activity, check key channels:**
 ```
 SLACK_FIND_CHANNELS(query="general") → channel_id
 SLACK_FETCH_CONVERSATION_HISTORY(channel=channel_id, limit=10)
@@ -60,13 +60,13 @@ FYI (can wait):
 Construct precise queries using Slack search modifiers:
 
 **Query modifiers:**
-- `in:#channel` — search within specific channel
-- `from:@user` — search by sender
-- `to:me` or `to:@user` — messages directed to someone
-- `before:YYYY-MM-DD` / `after:YYYY-MM-DD` — time range
-- `on:YYYY-MM-DD` — specific date
-- `has:link` / `has:file` / `has:reaction` — content filters
-- `is:thread` — only threaded messages
+- `in:#channel`: search within specific channel
+- `from:@user`: search by sender
+- `to:me` or `to:@user`: messages directed to someone
+- `before:YYYY-MM-DD` / `after:YYYY-MM-DD`: time range
+- `on:YYYY-MM-DD`: specific date
+- `has:link` / `has:file` / `has:reaction`: content filters
+- `is:thread`: only threaded messages
 
 **Example queries:**
 ```
@@ -111,11 +111,11 @@ This allows parallel context gathering from multiple channels.
 
 **Summarize by topic, not chronology:**
 ```
-#product channel — last 24h:
+#product channel, last 24h
   Topics discussed:
-  1. Q2 Roadmap (3 threads, 15 messages) — Decision: Focus on mobile
-  2. Bug triage (1 thread) — 4 Critical bugs assigned to eng
-  3. Customer feedback (2 threads) — NPS survey results shared
+  1. Q2 Roadmap (3 threads, 15 messages): Decision: Focus on mobile
+  2. Bug triage (1 thread): 4 Critical bugs assigned to eng
+  3. Customer feedback (2 threads): NPS survey results shared
   
   Pinned: Product roadmap doc (updated yesterday)
 ```

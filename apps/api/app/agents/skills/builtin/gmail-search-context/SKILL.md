@@ -1,6 +1,6 @@
 ---
 name: gmail-search-context
-description: Read, search, and summarize Gmail — precise queries, large-inbox fan-out reads, synthesized findings, and the opinionated inbox triage report
+description: Read, search, and summarize Gmail: precise queries, large-inbox fan-out reads, synthesized findings, and the opinionated inbox triage report
 target: gmail_agent
 ---
 
@@ -46,7 +46,7 @@ GMAIL_FETCH_MESSAGES(
 Include `body` in `fields` when you need to triage or read content, not just subjects.
 
 To reconstruct full conversations, take the `threadId`s from the results and call
-`GMAIL_FETCH_THREAD(thread_ids=[...])` — it returns each thread's messages in order,
+`GMAIL_FETCH_THREAD(thread_ids=[...])`. It returns each thread's messages in order,
 shaped exactly like `GMAIL_FETCH_MESSAGES` (normalized body, attachment metadata,
 same `fields`/`body_processing`), inline for small sets or offloaded for large ones.
 Contact lookup is lightweight, call directly: `GMAIL_SEARCH_PEOPLE(query="Sarah", pageSize=10)`.
@@ -78,43 +78,43 @@ For ad-hoc filtering, prefer the `query_json` tool, e.g.
 ## Step 3: Progressive Search (when a query comes back empty)
 1. Start specific: `"quarterly report from:finance@company.com after:2025/01/01 has:attachment"`
 2. Broaden: drop the date, then the sender, then the attachment, down to `"quarterly report"`.
-Each retry must change the query meaningfully — never re-fire a near-identical one.
+Each retry must change the query meaningfully. Never re-fire a near-identical one.
 
 ## Persistence & Disambiguation
 - Don't stop after the first 5-10 results; broaden and raise `max_results` when needed.
 - Multiple strong candidates: present the best 2-3 (sender + date + subject), ask ONE focused question.
 - No results: briefly list what you tried, ask ONE clarifying question (sender? timeframe? attachment type?).
 
-## Output contract A — Search findings
+## Output contract A: Search findings
 Collect the subagent digests and present organized results, e.g.:
 ```
 Found 8 emails about "Q1 budget proposal":
 
-Thread: "Q1 Budget Review" (5 messages) — Sarah → Finance Team, Jan 15-22
+Thread: "Q1 Budget Review" (5 messages), Sarah → Finance Team, Jan 15-22
   Initial proposal → revision → final approval. Attachment: Q1_Budget_Final.xlsx.
   Status: Approved.
 
-Thread: "Budget Follow-up" (3 messages) — Alex → Sarah, You, Jan 25
+Thread: "Budget Follow-up" (3 messages), Alex → Sarah, You, Jan 25
   Questions about marketing allocation. Status: Awaiting your response.
 ```
 
-## Output contract B — Inbox summary / triage (OPINIONATED, FIXED)
+## Output contract B: Inbox summary / triage (OPINIONATED, FIXED)
 For summary/triage/brief requests, the output is NOT free-form. Sort every message into
 exactly ONE section and emit the sections in this order. **Skip a section entirely when
 it is empty** (never print a heading with "None" under it). One short, scannable line
 per item: who it is from, the point, any date.
 
-- **Section 1 — What matters today (main summary):** important inbox mail, actionable
+- **Section 1: What matters today (main summary):** important inbox mail, actionable
   updates/promotions, anything needing a reply, anything with a deadline/date, finance /
   payment / verification / security, calendar-related mail, mail from important people
   or domains, follow-ups due today.
-- **Section 2 — Action queue (most important):** a numbered to-do list of what the user
+- **Section 2: Action queue (most important):** a numbered to-do list of what the user
   must DO ("Reply to ...", "Confirm ...", "Review the attachment from ...", "Pay /
   submit / upload / sign / register ...", "Follow up with X if no reply by ..."). Each
   item points to a specific email. If there is nothing to do, say so in one line.
-- **Section 3 — Low-priority digest:** promotions, social, newsletters, automated
+- **Section 3: Low-priority digest:** promotions, social, newsletters, automated
   notifications, no-action circulars. Counts grouped by source/type, never one by one.
-- **Section 4 — Worth a closer look:** OTP / login / security alerts, bank or payment
+- **Section 4: Worth a closer look:** OTP / login / security alerts, bank or payment
   alerts, a new recruiter or interview mail, a deadline that shifted, a large invoice /
   refund / cancellation, likely spam or phishing still worth a glance. Flag plainly.
 

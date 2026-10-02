@@ -62,7 +62,7 @@ export const entry: AlternativeData = {
     {
       question: "How does GAIA's pricing compare to Monday.com?",
       answer:
-        "Monday.com charges per seat starting at around $9–$16/seat/month, plus annual commitments. GAIA's Pro plan is $20/month for an individual regardless of integrations, and self-hosting is always free.",
+        "Monday.com charges per seat starting at around $9 to $16/seat/month, plus annual commitments. GAIA's Pro plan is $20/month for an individual regardless of integrations, and self-hosting is always free.",
     },
     {
       question: "Can GAIA integrate with Monday.com boards?",

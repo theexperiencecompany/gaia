@@ -7,7 +7,7 @@ export const entry: AlternativeData = {
   category: "calendar",
   tagline: "AI-powered auto-scheduling that fits tasks into your calendar",
   painPoints: [
-    "Expensive at $19–$34/month for what is essentially a smart calendar",
+    "Expensive at $19 to $34/month for what is essentially a smart calendar",
     "Can feel rigid: auto-scheduling overrides personal scheduling preferences",
     "No email integration; tasks must still be manually entered",
     "Limited to calendar and tasks; does not manage the rest of your workflow",
@@ -32,7 +32,7 @@ export const entry: AlternativeData = {
     "smart scheduling AI",
   ],
   whyPeopleLook:
-    "Motion's AI auto-scheduling is genuinely impressive: it slots your tasks into available calendar blocks and reschedules them when meetings pop up. But at $19–$34/month, it is expensive for a single-purpose tool, and it has a fundamental blind spot: it cannot read your email. Tasks still need to be manually entered, which means the cognitive load of inbox triage remains entirely on you. GAIA addresses the full picture by connecting email, calendar, and tasks into one proactive system where tasks are created from emails automatically and scheduled with calendar awareness.",
+    "Motion's AI auto-scheduling is genuinely impressive: it slots your tasks into available calendar blocks and reschedules them when meetings pop up. But at $19 to $34/month, it is expensive for a single-purpose tool, and it has a fundamental blind spot: it cannot read your email. Tasks still need to be manually entered, which means the cognitive load of inbox triage remains entirely on you. GAIA addresses the full picture by connecting email, calendar, and tasks into one proactive system where tasks are created from emails automatically and scheduled with calendar awareness.",
   gaiaFitScore: 4,
   gaiaReplaces: [
     "Automatic task creation from email so no manual entry is needed",
@@ -62,7 +62,7 @@ export const entry: AlternativeData = {
     {
       question: "Is GAIA cheaper than Motion?",
       answer:
-        "Yes. Motion costs $19–$34/month. GAIA Pro is $20/month with much broader functionality including email management, 50+ integrations, and workflow automation. Self-hosted GAIA is free.",
+        "Yes. Motion costs $19 to $34/month. GAIA Pro is $20/month with much broader functionality including email management, 50+ integrations, and workflow automation. Self-hosted GAIA is free.",
     },
     {
       question: "Can GAIA create tasks from email like Motion cannot?",

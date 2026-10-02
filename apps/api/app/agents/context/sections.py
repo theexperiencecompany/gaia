@@ -169,7 +169,7 @@ async def _custom_instructions(ctx: SectionContext) -> str:
         return ""
     integration = get_integration_by_id(target)
     label = (integration.name if integration else target).upper()
-    return f"CUSTOM INSTRUCTIONS FOR {label} (set by the user — honor these):\n{content.strip()}"
+    return f"CUSTOM INSTRUCTIONS FOR {label} (set by the user, honor these):\n{content.strip()}"
 
 
 async def _skills(ctx: SectionContext) -> str:

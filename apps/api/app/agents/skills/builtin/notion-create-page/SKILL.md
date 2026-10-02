@@ -1,6 +1,6 @@
 ---
 name: notion-create-page
-description: Intelligently create Notion pages — search for duplicates, find parent, structure content with blocks, offer sharing
+description: Intelligently create Notion pages: search for duplicates, find parent, structure content with blocks, offer sharing
 target: notion_agent
 ---
 
@@ -33,13 +33,13 @@ NOTION_FETCH_DATA(fetch_type="all", query="<parent name>", page_size=20)
 NOTION_FETCH_DATA(fetch_type="all", page_size=20)
 ```
 
-**Always use UUID format for parent_id** — never pass a plain title string.
+**Always use UUID format for parent_id**. Never pass a plain title string.
 
 ## Step 3: Create the Page
 
 ```
 NOTION_CREATE_NOTION_PAGE(
-  title="Meeting Notes — Feb 23",
+  title="Meeting Notes: Feb 23",
   parent_id="59833787-2cf9-4fdf-8782-e53db20768a5",  # UUID from search
   icon="note",
   cover="https://example.com/header.jpg"  # optional
@@ -76,7 +76,7 @@ NOTION_INSERT_MARKDOWN(
 
 Present what was created:
 ```
-Created: "Meeting Notes — Feb 23"
+Created: "Meeting Notes: Feb 23"
   Parent: Team Docs
   Sections: Attendees, Agenda, Notes, Action Items
   Link: [Open in Notion](url)

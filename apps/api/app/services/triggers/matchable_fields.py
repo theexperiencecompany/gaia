@@ -67,7 +67,7 @@ _GMAIL_NEW_MESSAGE = MatchableTrigger(
         _f("sender", _STRING, "Sender email address", "alice@acme.com"),
         _f("to", _STRING, "Recipient email address", "you@example.com"),
         _f("subject", _STRING, "Email subject line", "Re: Invoice 4021"),
-        _f("message_text", _STRING, "Plain-text body of the message", "Thanks — approved."),
+        _f("message_text", _STRING, "Plain-text body of the message", "Thanks, approved."),
         _f("label_ids", _STRING_LIST, "Gmail labels applied to the message", "INBOX"),
     ),
     excluded={

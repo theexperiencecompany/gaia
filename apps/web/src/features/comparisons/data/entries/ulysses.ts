@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Ulysses is a premium writing app for macOS and iOS built for long-form writers, offering a distraction-free editor, manuscript management, and direct publishing to WordPress and Medium. GAIA is a proactive AI assistant that connects writing tasks to email, calendar, and 50+ integrations.",
   metaTitle:
-    "Ulysses Alternative with AI Workflow Automation & Cross-Platform Support — GAIA vs Ulysses",
+    "Ulysses Alternative with AI Workflow Automation & Cross-Platform Support: GAIA vs Ulysses",
   metaDescription:
     "Ulysses is a premium writing app but Apple-only and focused on writing alone. GAIA is a free, open-source Ulysses alternative with AI automation, email management, and cross-platform support across 50+ integrations.",
   keywords: [
@@ -23,13 +23,13 @@ export const entry: ComparisonData = {
     "open source ulysses alternative",
     "ulysses replacement",
   ],
-  intro: `Ulysses has built a devoted following among writers who take their craft seriously. Designed specifically for long-form writing on macOS and iOS, it offers a clean, distraction-free environment that helps writers stay focused on prose rather than interface chrome. Its library-based organization — grouping sheets, notes, and manuscripts into a unified library rather than exposing you to file systems — keeps the focus on content. Writers use Ulysses for novels, articles, screenplays, blog posts, and technical writing, drawn by its polished typography, its Markdown-based editing, and its ability to export to PDF, Word, ePub, and HTML or publish directly to WordPress and Medium.
+  intro: `Ulysses has built a devoted following among writers who take their craft seriously. Designed specifically for long-form writing on macOS and iOS, it offers a clean, distraction-free environment that helps writers stay focused on prose rather than interface chrome. Its library-based organization (grouping sheets, notes, and manuscripts into a unified library rather than exposing you to file systems) keeps the focus on content. Writers use Ulysses for novels, articles, screenplays, blog posts, and technical writing, drawn by its polished typography, its Markdown-based editing, and its ability to export to PDF, Word, ePub, and HTML or publish directly to WordPress and Medium.
 
-Ulysses earns its premium positioning through the quality of its writing experience. But it is an app built for one purpose — writing — on one platform ecosystem — Apple. There is no Windows version, no Android app, and no web interface. If you work on a Windows machine, pick up a PC at a coffee shop, or collaborate with someone outside the Apple world, Ulysses is simply not available.
+Ulysses earns its premium positioning through the quality of its writing experience. But it is an app built for one purpose, writing, on one platform ecosystem, Apple. There is no Windows version, no Android app, and no web interface. If you work on a Windows machine, pick up a PC at a coffee shop, or collaborate with someone outside the Apple world, Ulysses is simply not available.
 
 GAIA occupies a different part of the productivity space. Rather than providing a refined environment for long-form prose, GAIA acts as an AI layer across your entire digital workflow. It connects to your Gmail inbox, monitors your calendar, integrates with Slack, GitHub, Notion, Todoist, and 45+ other tools, and orchestrates actions across all of them automatically. For writers who also manage client communications, content calendars, project deadlines, and publishing workflows, GAIA handles the surrounding work infrastructure so more time can be spent writing.
 
-The two tools serve fundamentally different needs. Where Ulysses is the best possible environment for the act of writing, GAIA manages everything else that surrounds the writing process — the emails requesting drafts, the calendar deadlines, the project tracking, the research tasks — proactively and automatically. For professionals whose workflow extends beyond manuscript creation, GAIA fills gaps that Ulysses was never designed to address.`,
+The two tools serve fundamentally different needs. Where Ulysses is the best possible environment for the act of writing, GAIA manages everything else that surrounds the writing process (the emails requesting drafts, the calendar deadlines, the project tracking, the research tasks) proactively and automatically. For professionals whose workflow extends beyond manuscript creation, GAIA fills gaps that Ulysses was never designed to address.`,
   rows: [
     {
       feature: "Core approach",
@@ -39,9 +39,9 @@ The two tools serve fundamentally different needs. Where Ulysses is the best pos
     },
     {
       feature: "Platform availability",
-      gaia: "Web, desktop (Electron), and mobile — works on Windows, macOS, Linux, iOS, and Android",
+      gaia: "Web, desktop (Electron), and mobile: works on Windows, macOS, Linux, iOS, and Android",
       competitor:
-        "macOS and iOS only — no Windows, Android, or web version available",
+        "macOS and iOS only: no Windows, Android, or web version available",
     },
     {
       feature: "AI capabilities",
@@ -51,7 +51,7 @@ The two tools serve fundamentally different needs. Where Ulysses is the best pos
     },
     {
       feature: "Email integration",
-      gaia: "Full Gmail management — reads, triages, drafts replies, and creates tasks or notes from emails automatically",
+      gaia: "Full Gmail management: reads, triages, drafts replies, and creates tasks or notes from emails automatically",
       competitor:
         "No email integration; writing workflow is entirely self-contained",
     },
@@ -69,7 +69,7 @@ The two tools serve fundamentally different needs. Where Ulysses is the best pos
     },
     {
       feature: "Calendar integration",
-      gaia: "Full Google Calendar integration — reads, creates, and updates events; generates pre-meeting briefings automatically",
+      gaia: "Full Google Calendar integration: reads, creates, and updates events; generates pre-meeting briefings automatically",
       competitor: "No calendar integration",
     },
     {
@@ -92,7 +92,7 @@ The two tools serve fundamentally different needs. Where Ulysses is the best pos
     },
     {
       feature: "Open source",
-      gaia: "Fully open source and self-hostable via Docker — data in your own infrastructure",
+      gaia: "Fully open source and self-hostable via Docker: data in your own infrastructure",
       competitor:
         "Proprietary closed-source app; texts stored in iCloud or locally",
     },
@@ -104,20 +104,20 @@ The two tools serve fundamentally different needs. Where Ulysses is the best pos
     },
   ],
   gaiaAdvantages: [
-    "Works on every platform — no Apple hardware dependency",
+    "Works on every platform: no Apple hardware dependency",
     "Manages email, calendar, and tasks surrounding the writing process automatically",
     "Proactively creates tasks and reminders from emails about writing projects without manual input",
     "50+ integrations connect writing workflows to the broader tool ecosystem",
-    "Open source and self-hostable — complete data ownership",
-    "Free tier available — no subscription required to start",
+    "Open source and self-hostable: complete data ownership",
+    "Free tier available: no subscription required to start",
   ],
   competitorAdvantages: [
     "Exceptional long-form writing environment with one of the best distraction-free editors available on any platform",
-    "Direct WordPress and Medium publishing with strong formatting preservation — ideal for content creators",
+    "Direct WordPress and Medium publishing with strong formatting preservation, ideal for content creators",
     "Polished manuscript management library makes organizing novels, articles, and research genuinely intuitive",
   ],
   verdict:
-    "Choose Ulysses if you are an Apple-based writer focused on long-form manuscripts and want the best-in-class distraction-free writing environment with direct publishing support. Choose GAIA if you need your writing workflow to connect with email, calendar, and project management tools — or if you need cross-platform access that Apple's ecosystem cannot provide.",
+    "Choose Ulysses if you are an Apple-based writer focused on long-form manuscripts and want the best-in-class distraction-free writing environment with direct publishing support. Choose GAIA if you need your writing workflow to connect with email, calendar, and project management tools, or if you need cross-platform access that Apple's ecosystem cannot provide.",
   faqs: [
     {
       question: "Can GAIA replace Ulysses for long-form writing?",

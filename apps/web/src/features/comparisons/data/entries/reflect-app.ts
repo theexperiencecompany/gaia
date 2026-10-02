@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "AI-powered networked note-taking with backlinks and daily notes",
   description:
     "Reflect is a networked note-taking app that mirrors the way your brain works, with backlinks, daily notes, calendar integration, and AI writing assistance. GAIA is a proactive AI productivity OS that connects your email, calendar, tasks, and 50+ tools into a single intelligent assistant that acts before you ask.",
-  metaTitle: "Reflect Alternative with AI Email & Workflows — GAIA vs Reflect",
+  metaTitle: "Reflect Alternative with AI Email & Workflows: GAIA vs Reflect",
   metaDescription:
     "Reflect helps you think through networked notes but won't manage your inbox or automate workflows. GAIA is an open-source Reflect alternative with AI email management, workflow automation, and graph-based memory spanning your entire work context.",
   keywords: [
@@ -23,7 +23,7 @@ export const entry: ComparisonData = {
     "AI task automation",
   ],
   intro:
-    "Reflect has built a polished product for thinkers who want their notes to mirror the way their brain works. Its backlink system automatically surfaces connections between ideas, daily notes keep a running journal of your work life, and calendar integration pulls meeting context directly into your notes. The AI layer — powered by GPT-4o or Claude — helps you write, summarize, and chat with your stored knowledge. For writers, researchers, and knowledge workers who live in their notes, Reflect delivers a genuinely elegant experience. But notes are rarely where work begins or ends. GAIA is built for the fuller picture — it monitors your inbox, manages your calendar, creates tasks from your emails, and executes multi-step automations across 50+ tools. Where Reflect stores and organizes what you think, GAIA acts on what needs to happen.",
+    "Reflect has built a polished product for thinkers who want their notes to mirror the way their brain works. Its backlink system automatically surfaces connections between ideas, daily notes keep a running journal of your work life, and calendar integration pulls meeting context directly into your notes. The AI layer, powered by GPT-4o or Claude, helps you write, summarize, and chat with your stored knowledge. For writers, researchers, and knowledge workers who live in their notes, Reflect delivers a genuinely elegant experience. But notes are rarely where work begins or ends. GAIA is built for the fuller picture: it monitors your inbox, manages your calendar, creates tasks from your emails, and executes multi-step automations across 50+ tools. Where Reflect stores and organizes what you think, GAIA acts on what needs to happen.",
   rows: [
     {
       feature: "Core approach",
@@ -35,11 +35,11 @@ export const entry: ComparisonData = {
       feature: "Note-taking",
       gaia: "Captures notes, meeting summaries, and action items from email and calendar context automatically; not positioned as a dedicated note editor",
       competitor:
-        "Core strength — daily notes, rich backlink system, voice transcription with Whisper, Kindle highlight import, web clipping, and AI-assisted writing with GPT-4o or Claude",
+        "Core strength: daily notes, rich backlink system, voice transcription with Whisper, Kindle highlight import, web clipping, and AI-assisted writing with GPT-4o or Claude",
     },
     {
       feature: "Email management",
-      gaia: "Full Gmail automation — triages inbox by urgency, drafts context-aware replies, auto-labels threads, and converts emails into tracked tasks without manual input",
+      gaia: "Full Gmail automation: triages inbox by urgency, drafts context-aware replies, auto-labels threads, and converts emails into tracked tasks without manual input",
       competitor:
         "No native email management; supports basic Zapier automations to append starred emails to daily notes as a workaround; cannot triage, draft replies, or act on your inbox",
     },
@@ -59,7 +59,7 @@ export const entry: ComparisonData = {
       feature: "Calendar integration",
       gaia: "Creates and edits Google Calendar events, finds available slots, schedules meetings, and auto-generates pre-meeting briefings from email and task context",
       competitor:
-        "Google Calendar and Outlook sync imports events into daily notes with attendees and agenda; one-click meeting notes creation; read-only — cannot create or modify calendar events",
+        "Google Calendar and Outlook sync imports events into daily notes with attendees and agenda; one-click meeting notes creation; read-only and cannot create or modify calendar events",
     },
     {
       feature: "Workflow automation",
@@ -69,7 +69,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Open source",
-      gaia: "Fully open source — self-host with Docker, own your data entirely, and never have your data used for model training",
+      gaia: "Fully open source: self-host with Docker, own your data entirely, and never have your data used for model training",
       competitor:
         "Closed-source proprietary SaaS; data is end-to-end encrypted on Reflect's servers; no self-hosting option available",
     },
@@ -77,23 +77,23 @@ export const entry: ComparisonData = {
       feature: "Pricing",
       gaia: "Free tier available; Pro from $20/month; self-hosting entirely free with no usage caps",
       competitor:
-        "Single paid plan at $10–$15/month (billed annually) with a two-week free trial; no permanent free tier; all features included in the single plan",
+        "Single paid plan at $10 to $15/month (billed annually) with a two-week free trial; no permanent free tier; all features included in the single plan",
     },
   ],
   gaiaAdvantages: [
-    "Proactively manages your inbox, calendar, and tasks — triages email, prepares meeting briefings, and runs workflows without you needing to ask",
+    "Proactively manages your inbox, calendar, and tasks: triages email, prepares meeting briefings, and runs workflows without you needing to ask",
     "Full Gmail automation including urgency triage, reply drafting, auto-labeling, and inbox-zero workflows that Reflect cannot perform",
-    "Graph-based memory connects your entire work context: tasks, projects, emails, meetings, and people — not just the notes you explicitly wrote",
+    "Graph-based memory connects your entire work context: tasks, projects, emails, meetings, and people, not just the notes you explicitly wrote",
     "Natural-language multi-step workflow automation spanning 50+ tools with triggers, conditions, and cross-platform actions",
-    "Open source and self-hostable — complete data ownership with no usage caps and no per-seat cost when running on your own infrastructure",
+    "Open source and self-hostable: complete data ownership with no usage caps and no per-seat cost when running on your own infrastructure",
   ],
   competitorAdvantages: [
-    "Best-in-class networked note-taking — automatic backlinks, daily notes, and a knowledge graph that genuinely mirrors the associative way your brain works",
+    "Best-in-class networked note-taking: automatic backlinks, daily notes, and a knowledge graph that genuinely mirrors the associative way your brain works",
     "Voice transcription with Whisper, Kindle highlight import, and web clipping make Reflect an all-in-one knowledge capture tool with no friction",
     "End-to-end encryption on all notes provides a strong privacy guarantee for sensitive personal and professional knowledge",
   ],
   verdict:
-    "Reflect is the right choice if networked note-taking is your primary workflow and you want a beautiful, secure tool for capturing thoughts, building a knowledge graph, and chatting with your own ideas. GAIA is the right choice if you want an assistant that actively runs your digital life — reading your email, managing your calendar, building tasks from context, automating cross-tool workflows, and maintaining a memory graph that spans everything you do, not just what you write down. If your productivity bottleneck is thinking and writing, Reflect excels. If your bottleneck is execution across email, tasks, and integrations, GAIA is the tool built for that job.",
+    "Reflect is the right choice if networked note-taking is your primary workflow and you want a beautiful, secure tool for capturing thoughts, building a knowledge graph, and chatting with your own ideas. GAIA is the right choice if you want an assistant that actively runs your digital life: reading your email, managing your calendar, building tasks from context, automating cross-tool workflows, and maintaining a memory graph that spans everything you do, not just what you write down. If your productivity bottleneck is thinking and writing, Reflect excels. If your bottleneck is execution across email, tasks, and integrations, GAIA is the tool built for that job.",
   faqs: [
     {
       question: "Can GAIA replace Reflect for note-taking?",
@@ -103,12 +103,12 @@ export const entry: ComparisonData = {
     {
       question: "Does Reflect handle email or task management?",
       answer:
-        "Reflect is focused on note-taking and does not offer native email management. It can receive emails via Zapier workarounds, but cannot triage your inbox, draft replies, or act on your email autonomously. For task management, Reflect includes basic checklists but explicitly recommends pairing with a dedicated task manager for anything beyond simple to-dos. GAIA handles both natively — monitoring your Gmail inbox, drafting replies, and creating prioritized tasks from email and meeting context automatically.",
+        "Reflect is focused on note-taking and does not offer native email management. It can receive emails via Zapier workarounds, but cannot triage your inbox, draft replies, or act on your email autonomously. For task management, Reflect includes basic checklists but explicitly recommends pairing with a dedicated task manager for anything beyond simple to-dos. GAIA handles both natively: monitoring your Gmail inbox, drafting replies, and creating prioritized tasks from email and meeting context automatically.",
     },
     {
       question: "Is GAIA more expensive than Reflect?",
       answer:
-        "Reflect's single plan costs around $10–$15/month billed annually with a two-week free trial. GAIA's hosted Pro plan starts at $20/month but includes a free tier and can be self-hosted for free with full data ownership and no usage caps — an option Reflect does not offer. For users comfortable with self-hosting, GAIA costs nothing beyond infrastructure, while Reflect has no self-hosting path.",
+        "Reflect's single plan costs around $10 to $15/month billed annually with a two-week free trial. GAIA's hosted Pro plan starts at $20/month but includes a free tier and can be self-hosted for free with full data ownership and no usage caps, an option Reflect does not offer. For users comfortable with self-hosting, GAIA costs nothing beyond infrastructure, while Reflect has no self-hosting path.",
     },
   ],
 };

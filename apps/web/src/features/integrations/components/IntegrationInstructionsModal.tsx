@@ -215,7 +215,7 @@ export const IntegrationInstructionsModal = ({
                   />
                 ) : (
                   <p className="py-12 text-center text-sm text-zinc-500">
-                    Nothing to preview yet — switch to Write and add some
+                    Nothing to preview yet. Switch to Write and add some
                     guidance.
                   </p>
                 )}

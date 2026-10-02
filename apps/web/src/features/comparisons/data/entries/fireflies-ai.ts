@@ -6,9 +6,9 @@ export const entry: ComparisonData = {
   domain: "fireflies.ai",
   tagline: "AI meeting recorder with search and CRM sync",
   description:
-    "Fireflies.ai automatically records, transcribes, and indexes meetings with AI-powered search and CRM integrations. GAIA is a proactive AI assistant that manages your full productivity workflow — not just what happened in calls.",
+    "Fireflies.ai automatically records, transcribes, and indexes meetings with AI-powered search and CRM integrations. GAIA is a proactive AI assistant that manages your full productivity workflow, not just what happened in calls.",
   metaTitle:
-    "Fireflies.ai Alternative for Full Workflow Automation — GAIA vs Fireflies",
+    "Fireflies.ai Alternative for Full Workflow Automation: GAIA vs Fireflies",
   metaDescription:
     "Fireflies records and searches meetings but stops at the transcript. GAIA is an open-source alternative that automates task creation, follow-up emails, and workflows across 50+ tools after every meeting.",
   keywords: [
@@ -25,13 +25,13 @@ export const entry: ComparisonData = {
   ],
   intro: `Fireflies.ai built a loyal following by solving a specific and real problem: making meeting content searchable and shareable. Its Notetaker bot joins video calls automatically, records and transcribes everything, and then makes the full transcript searchable with AI-powered queries. Teams can search across all their meetings to find when a specific decision was made or what a customer said in a discovery call. For sales teams and managers who rely on call intelligence, this is genuinely valuable.
 
-Fireflies also added CRM sync capabilities, pushing meeting notes to Salesforce and HubSpot automatically — a meaningful step toward connecting meeting content to the broader workflow. But the integration is primarily one-directional and narrow: notes flow into CRM fields, but meeting content does not trigger broader task creation, email follow-ups, or document updates in the full tool ecosystem that most teams use.
+Fireflies also added CRM sync capabilities, pushing meeting notes to Salesforce and HubSpot automatically, a meaningful step toward connecting meeting content to the broader workflow. But the integration is primarily one-directional and narrow: notes flow into CRM fields, but meeting content does not trigger broader task creation, email follow-ups, or document updates in the full tool ecosystem that most teams use.
 
-GAIA approaches meeting productivity from a different angle. Rather than positioning as a recorder and archive tool, GAIA treats meetings as workflow triggers. When a meeting ends, GAIA can create tasks in Todoist, Linear, Asana, or Jira — properly formatted with deadlines, priorities, and assignees. It can draft and send follow-up emails. It can update Notion pages with decisions made. These are the actual follow-through steps that most professionals skip or execute slowly because they require manually switching between applications.
+GAIA approaches meeting productivity from a different angle. Rather than positioning as a recorder and archive tool, GAIA treats meetings as workflow triggers. When a meeting ends, GAIA can create tasks in Todoist, Linear, Asana, or Jira, properly formatted with deadlines, priorities, and assignees. It can draft and send follow-up emails. It can update Notion pages with decisions made. These are the actual follow-through steps that most professionals skip or execute slowly because they require manually switching between applications.
 
-GAIA also adds a dimension that Fireflies lacks entirely: pre-meeting intelligence. Before each calendar event, GAIA proactively surfaces relevant email threads, prior meeting context, outstanding action items, and related documents — everything you need to walk into a meeting prepared. This preparation layer is where significant time is typically wasted by knowledge workers.
+GAIA also adds a dimension that Fireflies lacks entirely: pre-meeting intelligence. Before each calendar event, GAIA proactively surfaces relevant email threads, prior meeting context, outstanding action items, and related documents: everything you need to walk into a meeting prepared. This preparation layer is where significant time is typically wasted by knowledge workers.
 
-For teams that specifically need a searchable archive of all meeting recordings with call analytics, Fireflies is a specialized and capable choice. For professionals who want AI that manages the full meeting workflow — preparation, action items, follow-ups, and cross-tool automation — GAIA provides a more complete system.`,
+For teams that specifically need a searchable archive of all meeting recordings with call analytics, Fireflies is a specialized and capable choice. For professionals who want AI that manages the full meeting workflow (preparation, action items, follow-ups, and cross-tool automation), GAIA provides a more complete system.`,
   rows: [
     {
       feature: "Core approach",
@@ -49,7 +49,7 @@ For teams that specifically need a searchable archive of all meeting recordings 
       feature: "Searchable meeting archive",
       gaia: "Semantic search across tasks, emails, and connected tool content; not a dedicated meeting archive",
       competitor:
-        "AI-powered search across all meetings — find decisions, keywords, or speaker moments across call history",
+        "AI-powered search across all meetings: find decisions, keywords, or speaker moments across call history",
     },
     {
       feature: "Pre-meeting briefings",
@@ -86,7 +86,7 @@ For teams that specifically need a searchable archive of all meeting recordings 
     },
     {
       feature: "Open source / self-hosting",
-      gaia: "Fully open source and self-hostable — meeting data stays on your infrastructure",
+      gaia: "Fully open source and self-hostable: meeting data stays on your infrastructure",
       competitor:
         "Proprietary SaaS; recordings and transcripts stored on Fireflies servers",
     },
@@ -98,7 +98,7 @@ For teams that specifically need a searchable archive of all meeting recordings 
     },
   ],
   gaiaAdvantages: [
-    "Creates real tasks in Todoist, Linear, Jira, and Asana from meetings — no manual transfer",
+    "Creates real tasks in Todoist, Linear, Jira, and Asana from meetings, no manual transfer",
     "Pre-meeting briefing generation saves manual research before every call",
     "Full email management and follow-up automation beyond meeting boundaries",
     "50+ cross-tool integrations for complete workflow orchestration",
@@ -116,7 +116,7 @@ For teams that specifically need a searchable archive of all meeting recordings 
     {
       question: "Can GAIA replace Fireflies.ai for meeting transcription?",
       answer:
-        "GAIA and Fireflies serve different primary functions. Fireflies excels at building a searchable archive of all your meetings with speaker analytics. GAIA excels at managing the workflow before and after meetings — prep briefings, task creation, follow-up emails, and cross-tool automation. Many teams benefit from using both.",
+        "GAIA and Fireflies serve different primary functions. Fireflies excels at building a searchable archive of all your meetings with speaker analytics. GAIA excels at managing the workflow before and after meetings: prep briefings, task creation, follow-up emails, and cross-tool automation. Many teams benefit from using both.",
     },
     {
       question: "Does GAIA integrate with CRM tools like Fireflies does?",
@@ -126,7 +126,7 @@ For teams that specifically need a searchable archive of all meeting recordings 
     {
       question: "How does GAIA handle action items compared to Fireflies.ai?",
       answer:
-        "Fireflies identifies action items and stores them within the Fireflies platform. GAIA creates actual tasks directly in your task management tools — Todoist, Linear, Asana, Jira — with proper priorities, deadlines, and assignees, so action items immediately become part of your existing workflow.",
+        "Fireflies identifies action items and stores them within the Fireflies platform. GAIA creates actual tasks directly in your task management tools (Todoist, Linear, Asana, Jira) with proper priorities, deadlines, and assignees, so action items immediately become part of your existing workflow.",
     },
     {
       question: "Is GAIA's meeting data more private than Fireflies?",
@@ -137,7 +137,7 @@ For teams that specifically need a searchable archive of all meeting recordings 
       question:
         "What makes GAIA different from meeting AI tools like Fireflies?",
       answer:
-        "GAIA is a full-stack productivity AI — it manages your email, calendar, tasks, and workflows in addition to meeting context. Fireflies is a specialized meeting intelligence tool. The key difference: GAIA treats meetings as one part of your work; Fireflies treats meetings as the entire product.",
+        "GAIA is a full-stack productivity AI: it manages your email, calendar, tasks, and workflows in addition to meeting context. Fireflies is a specialized meeting intelligence tool. The key difference: GAIA treats meetings as one part of your work; Fireflies treats meetings as the entire product.",
     },
   ],
   relatedPersonas: ["startup-founders", "agency-owners"],

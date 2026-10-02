@@ -1,6 +1,6 @@
 ---
 name: googlesheets-charts-graphs
-description: Create charts and visualizations in Google Sheets — detect data structure, select chart type, format for clarity, present insights
+description: Create charts and visualizations in Google Sheets: detect data structure, select chart type, format for clarity, present insights
 target: google_sheets_agent
 ---
 
@@ -74,7 +74,7 @@ GOOGLESHEETS_CREATE_CHART(
 
 ## Step 5: Present Insights
 
-Don't just create the chart — tell the user what it shows:
+Don't just create the chart, tell the user what it shows:
 ```
 Created: "Sales by Region" (Bar Chart)
   Key insights:

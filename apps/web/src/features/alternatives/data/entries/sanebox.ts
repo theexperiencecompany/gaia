@@ -8,7 +8,7 @@ export const entry: AlternativeData = {
   tagline: "AI email filtering that prioritizes your inbox automatically",
   painPoints: [
     "Only filters and organizes email, cannot draft, reply, or take action",
-    "Expensive for what is essentially a smart email filter ($7–$36/month)",
+    "Expensive for what is essentially a smart email filter ($7 to $36/month)",
     "No calendar, task, or workflow integration",
     "Works on top of your email client rather than replacing it",
     "AI filtering requires training over days or weeks to be accurate",

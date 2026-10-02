@@ -349,7 +349,7 @@ async def send_limit_reached_email(
             EmailMessage(
                 sender=FOUNDER_SENDER,
                 to=[user.email],
-                subject="You hit your GAIA limit today — here's what Pro unlocks",
+                subject="You hit your GAIA limit today, here's what Pro unlocks",
                 html=html_content,
                 reply_to=CONTACT_EMAIL,
             )

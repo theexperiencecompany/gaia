@@ -103,7 +103,7 @@ const InboxTodosView: React.FC<InboxTodosViewProps> = memo(({ onRefresh }) => {
           "Get a time-blocked schedule using todos, due dates, and calendar",
         onPress: () =>
           appendToInput(
-            "Look at my inbox todos, their due dates, and today's calendar events. Give me a time-blocked plan for today — tell me what to work on, in what order, and when.",
+            "Look at my inbox todos, their due dates, and today's calendar events. Give me a time-blocked plan for today: tell me what to work on, in what order, and when.",
           ),
       },
       {
