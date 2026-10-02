@@ -27,6 +27,7 @@ from app.constants.browser import BROWSER_TASK_EVENT, BrowserSessionStatus
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.schemas.browser import BrowserResultSnapshot, BrowserSessionSnapshot, BrowserStepSnapshot
+from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
 from app.services.browser import job_relay as relay_mod
 from app.services.browser.job_events import (
     JOB_GUIDANCE_FRAME,
@@ -35,7 +36,7 @@ from app.services.browser.job_events import (
 )
 from app.services.browser.job_relay import relay_job_events
 from app.services.browser.job_runner import publish_frame_to_job
-from app.services.browser.jobs import await_result_unclaimed, request_job_cancel
+from app.services.browser.jobs import await_result_unclaimed, put_job_state, request_job_cancel
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.integration
@@ -158,7 +159,10 @@ async def test_a_turn_that_ended_stops_the_relay_but_a_stopped_job_is_followed_t
     assert event["browser"] == {"job_id": JOB_ID, "relay_end": "turn_ended"}
 
     chunks.clear()
-    await request_job_cancel(JOB_ID)
+    await put_job_state(
+        BrowserJobState(job_id=JOB_ID, status=BrowserJobStatus.RUNNING, task="book")
+    )
+    assert await request_job_cancel(JOB_ID) is True
     first_read = asyncio.Event()
     read_feed = relay_mod.read_job_events
 

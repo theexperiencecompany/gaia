@@ -9,7 +9,8 @@ the step's memory. Every other action keeps the placeholder.
 
 Off a secret's site Browser-Use leaves its placeholder in the text and types
 that literally, with only a log line. An input naming a secret it may not fill
-there, or send_keys naming any, fails instead, saying so, and types nothing.
+there, or send_keys naming any, fails instead, saying so, and types nothing; so
+does an input of a secret's bare name, its placeholder's tags dropped.
 
 Pinned to browser-use==0.11.13; the import fails loudly if the method moves.
 """
@@ -77,11 +78,28 @@ def _refusals(action_name: str, named: list[str], kwargs: dict[str, object]) -> 
     return [f"{name} is not used on {host}" for name in named if name not in usable]
 
 
+def _typed_name(action_name: str, params: dict[str, Any], kwargs: dict[str, object]) -> str | None:
+    """Return the secret name an input would type as plain text: the placeholder's tags were dropped."""
+    if action_name != _SECRET_TYPING_ACTION:
+        return None
+    secrets = cast("dict[str, str | dict[str, str]] | None", kwargs.get("sensitive_data"))
+    names = {
+        name for values in (secrets or {}).values() if isinstance(values, dict) for name in values
+    }
+    text = params.get("text")
+    return text if isinstance(text, str) and text in names else None
+
+
 async def _execute_action(
     self: Registry[Any], action_name: str, params: dict[str, Any], **kwargs: object
 ) -> object:
     """Execute the action, with secret values only for the input action on each secret's own site."""
     # Browser-Use passes everything by keyword; a positional call fails loudly here.
+    if (name := _typed_name(action_name, params, kwargs)) is not None:
+        return ActionResult(
+            error=f"{name} is the name of a secret, not its value: type <secret>{name}</secret>; "
+            "nothing was typed."
+        )
     named = sorted(set(_PLACEHOLDER.findall(json.dumps(params))))
     if refused := _refusals(action_name, named, kwargs):
         return ActionResult(error=f"{'; '.join(refused)}; nothing was typed.")

@@ -43,6 +43,7 @@ from app.schemas.browser import (
     BrowserTaskResponse,
     HandoffDecisionRequest,
     HandoffRecord,
+    NewHandoff,
 )
 from app.services.browser import handoff_buttons
 from app.services.browser.handoff import cancel_handoff, create_pending_handoff, get_handoff
@@ -143,7 +144,12 @@ async def button_world(
         recorded.append((conversation_id, user_message, reply))
 
     monkeypatch.setattr(handoff_buttons, "record_exchange_in_thread", _record)
-    await create_pending_handoff("h1", "u1", "c1", "Sign in", reply_to="c1", job_id="job-1")
+    await create_pending_handoff(
+        "h1",
+        NewHandoff(
+            job_id="job-1", user_id="u1", conversation_id="c1", reason="Sign in", reply_to="c1"
+        ),
+    )
     return recorded
 
 
@@ -190,7 +196,14 @@ class TestDecideBrowserHandoff:
         self, button_world: list[tuple[str, str, str]]
     ) -> None:
         await create_pending_handoff(
-            "h-agent", "u1", "c1", "stuck", kind=HandoffKind.AGENT, job_id="job-1"
+            "h-agent",
+            NewHandoff(
+                job_id="job-1",
+                user_id="u1",
+                conversation_id="c1",
+                reason="stuck",
+                kind=HandoffKind.AGENT,
+            ),
         )
         payload = HandoffDecisionRequest(decision=HandoffDecision.CONTINUE, message="go")
 

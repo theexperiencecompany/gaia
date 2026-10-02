@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.constants.browser import (
     BrowserEventKind,
@@ -139,6 +139,20 @@ class HandoffRecord(BaseModel):
     message: str | None = None
     #: Where a chat reply resolves it (handoff.reply_address); empty for an AGENT pause.
     reply_address: str = ""
+
+
+class NewHandoff(BaseModel):
+    """A handoff a run is about to pause on: its job and owner, why, and where a chat reply answers it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    job_id: str
+    user_id: str
+    conversation_id: str
+    reason: str = ""
+    kind: HandoffKind = HandoffKind.USER
+    #: The reply address (handoff.reply_address); only a USER handoff takes one.
+    reply_to: str = ""
 
 
 class HandoffOutcome(BaseModel):

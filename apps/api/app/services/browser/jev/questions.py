@@ -15,9 +15,11 @@ WAIT only when the needed control is absent/disabled, or submitted results are s
 If Search/Submit is visible and the required fields are ready, CLICK it immediately.
 Recent WAIT actions are not evidence of loading. Prefer a useful visible control over WAIT.
 Pages already visited are listed, and recent actions say where each led. Pages this burst read are
-listed with the start of their text: it already reached whoever gave the goal, however little it holds,
-and opening the page again reads nothing new. An element marked opened links to a page this run already
-opened; never open it again. Open the next item a list goal asks for; once each was opened, choose DONE.
+listed with the start of their text: it already reached whoever gave the goal, however little it holds.
+An element marked opened links to a page this run already opened and read; do not open it again just
+to read it. Open it again when the run changed it since (added to a cart, sent a message, submitted a
+form) or the goal needs it to act on. Open the next item a list goal asks for; once each was opened,
+choose DONE.
 DONE requires visible evidence that ALL requirements are satisfied, or, for a goal that asks to
 find or report something, that the answer is visible now or was read on a page this burst opened. If asked to open a result, a matching
 link is not enough. BLOCKED means no supported operation can make progress: the goal needs a

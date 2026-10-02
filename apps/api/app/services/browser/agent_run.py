@@ -339,6 +339,7 @@ class BrowserAgentRun:
                     if switch_engine is not None
                     else None
                 ),
+                secret_names=self._secrets.names,
             )
             tools = build_browser_tools(
                 solve_captcha=self._config.solve_captcha,

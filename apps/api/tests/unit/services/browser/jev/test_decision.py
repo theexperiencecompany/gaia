@@ -290,6 +290,42 @@ async def test_jev_sees_which_links_lead_to_pages_this_run_opened_and_where_each
     ]
 
 
+@pytest.mark.parametrize("href", ["http://[object Object]/", "https://[2001:db8::1/x"])
+async def test_a_link_whose_href_is_no_address_is_offered_as_a_link_never_opened(href: str) -> None:
+    """Parsing it raised, which escaped the burst and lost every step the burst had taken."""
+    broken = _action("e5", 15, "click", "Broken", role="link", href=href)
+    jev = _Jev(operation="DONE")
+
+    await decide(
+        jev, Situation(_page(broken), "go", [], _unmasked), [Visited("Shop", "https://x.test/")], []
+    )
+
+    [element] = _asked(jev).state["elements"]
+    assert "opened" not in element
+
+
+async def test_a_link_to_a_page_this_burst_read_is_not_offered_to_click() -> None:
+    """Labelled "(already opened and read)", it was still clicked and gone back from, to the action cap."""
+    story = _action("e5", 15, "click", "Clef", role="link", href="https://blog.test/clef")
+    other = _action("e6", 16, "click", "Frog", role="link", href="https://blog.test/frog")
+    jev = _Jev(operation="DONE")
+
+    await decide(
+        jev,
+        Situation(
+            _page(story, other),
+            "open each",
+            [],
+            _unmasked,
+            closed=frozenset({"https://blog.test/clef"}),
+        ),
+        [],
+        [],
+    )
+
+    assert [e["label"] for e in _asked(jev).state["elements"]] == ["Frog"]
+
+
 async def test_the_operation_question_offers_only_what_this_page_and_the_run_allow() -> None:
     jev = _Jev(operation="DONE")
 

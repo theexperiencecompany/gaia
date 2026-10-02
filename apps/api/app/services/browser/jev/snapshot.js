@@ -65,7 +65,7 @@
 
   function frameOf(e, ox, oy, frames, collect) {
     const r=e.getBoundingClientRect(), doc=frameDocument(e);
-    frames.push({src:e.src || '', same_origin:!!doc,
+    frames.push({src:e.src || '', same_origin:!!doc, loaded:!!doc && doc.readyState==='complete',
       visible:r.width>0 && r.height>0 && r.bottom+oy>0 && r.top+oy<innerHeight && isVisible(e)});
     if (doc && doc.body) { const [fx,fy]=contentOrigin(e); collect(doc, ox+fx, oy+fy); }
   }

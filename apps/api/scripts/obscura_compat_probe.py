@@ -95,7 +95,7 @@ _FINGERPRINT_JS = """(() => {
 
 @dataclass
 class Document:
-    """The server's answer to the main frame's last navigation, at the URL it landed on."""
+    """The server's answer to the navigation the probe asked for, at the URL its redirects landed on."""
 
     status: int
     url: str
@@ -208,7 +208,7 @@ class CdpBrowser:
         return report
 
     async def _main_document(self, events: list[dict[str, Any]], session: str) -> Document | None:
-        """The main frame's last committed document, sized from its body as the engine decoded it.
+        """The main frame's document for the probe's navigation, sized from its body as the engine decoded it.
 
         Not loadingFinished's encodedDataLength: Chrome counts compressed bytes
         plus headers there and Obscura the decoded body, so they never compare.
@@ -231,23 +231,20 @@ class CdpBrowser:
 
 
 def _main_response(events: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any] | None]:
-    """The main frame as it last committed, and the Network.responseReceived behind it.
+    """The main frame's first commit, the probe's own navigation, and the Network.responseReceived behind it.
 
+    The first, not the last: a later commit is the page's own script navigating
+    (a client-side redirect), which an engine that fails the script never makes,
+    and the server chose nothing there. HTTP redirects land before that commit.
     The URL to compare is the frame's: Obscura's responseReceived carries the
     URL before redirects (airbnb's 302 handoff), the frame the one it landed on.
-    Only a loader's first frameNavigated is its commit; Obscura re-sends one for
-    a same-document URL change (wikipedia's replaceState), where Chrome sends
-    navigatedWithinDocument.
     """
     frame: dict[str, Any] = {}
     for event in events:
         committed = (event.get("params") or {}).get("frame") or {}
-        if (
-            event.get("method") == "Page.frameNavigated"
-            and not committed.get("parentId")
-            and committed.get("loaderId") != frame.get("loaderId")
-        ):
+        if event.get("method") == "Page.frameNavigated" and not committed.get("parentId"):
             frame = committed
+            break
     found = None
     for event in events:
         params = event.get("params") or {}
@@ -367,6 +364,53 @@ class ProbeResult:
     served_different_document: dict[str, str] = field(default_factory=dict)
 
 
+async def _running_obscura(
+    obscura: asyncio.subprocess.Process, obscura_bin: str
+) -> asyncio.subprocess.Process:
+    """Return the engine to probe the next site in, restarted when the last site crashed it.
+
+    A crash is itself a gap on the site that caused it; the next site still gets an engine.
+    """
+    if obscura.returncode is None:
+        return obscura
+    restarted = await _start_obscura(obscura_bin)
+    await _await_endpoint(OBSCURA_PORT)
+    return restarted
+
+
+async def _stop_wedged(obscura: asyncio.subprocess.Process) -> None:
+    """Kill an engine that failed a site while still running: wedged, it would fail every later site too."""
+    if obscura.returncode is None:
+        obscura.kill()
+        await obscura.wait()
+
+
+def _report_site(result: ProbeResult, url: str, o: PageReport, c: PageReport) -> None:
+    """Sort one site's gap by its owner into result, and print what differs."""
+    gaps = _gaps(o, c)
+    different = _different_document(o.document, c.document) if gaps else None
+    if different:
+        result.served_different_document[url] = different
+        status = "DOC "
+    elif gaps:
+        result.rendered_differently.add(url)
+        status = "GAP "
+    else:
+        status = "ok  "
+    print(
+        f"{status}{url}  obscura inputs={o.fingerprint.get('inputs')} "
+        f"buttons={o.fingerprint.get('buttons')} links={o.fingerprint.get('links')} | "
+        f"chrome inputs={c.fingerprint.get('inputs')} "
+        f"buttons={c.fingerprint.get('buttons')} links={c.fingerprint.get('links')}",
+        flush=True,
+    )
+    print(f"      document: obscura {o.document} | chrome {c.document}", flush=True)
+    if different:
+        print(f"      served a different document: {different}", flush=True)
+    for gap in gaps:
+        print(f"      {gap}", flush=True)
+
+
 async def probe(urls: list[str], obscura_bin: str, chrome_bin: str) -> ProbeResult:
     """Probe each site in both engines, print what differs, and sort each gap by its owner."""
     profile = tempfile.mkdtemp(prefix="compat-chrome-")
@@ -385,38 +429,11 @@ async def probe(urls: list[str], obscura_bin: str, chrome_bin: str) -> ProbeResu
     try:
         await asyncio.gather(_await_endpoint(OBSCURA_PORT), _await_endpoint(CHROME_PORT))
         for url in urls:
-            if obscura.returncode is not None:
-                # A crash is itself a gap on the site that caused it; the next
-                # site still gets an engine to run in.
-                obscura = await _start_obscura(obscura_bin)
-                await _await_endpoint(OBSCURA_PORT)
+            obscura = await _running_obscura(obscura, obscura_bin)
             o, c = await asyncio.gather(_load(OBSCURA_PORT, url), _load(CHROME_PORT, url))
-            if o.failure and obscura.returncode is None:
-                # A wedged engine would fail every later site too.
-                obscura.kill()
-                await obscura.wait()
-            gaps = _gaps(o, c)
-            different = _different_document(o.document, c.document) if gaps else None
-            if different:
-                result.served_different_document[url] = different
-                status = "DOC "
-            elif gaps:
-                result.rendered_differently.add(url)
-                status = "GAP "
-            else:
-                status = "ok  "
-            print(
-                f"{status}{url}  obscura inputs={o.fingerprint.get('inputs')} "
-                f"buttons={o.fingerprint.get('buttons')} links={o.fingerprint.get('links')} | "
-                f"chrome inputs={c.fingerprint.get('inputs')} "
-                f"buttons={c.fingerprint.get('buttons')} links={c.fingerprint.get('links')}",
-                flush=True,
-            )
-            print(f"      document: obscura {o.document} | chrome {c.document}", flush=True)
-            if different:
-                print(f"      served a different document: {different}", flush=True)
-            for gap in gaps:
-                print(f"      {gap}", flush=True)
+            if o.failure:
+                await _stop_wedged(obscura)
+            _report_site(result, url, o, c)
     finally:
         for process in (obscura, chrome):
             if process.returncode is None:

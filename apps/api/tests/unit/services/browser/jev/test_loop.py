@@ -119,6 +119,7 @@ class _Jev:
                 "visited": list(visited),
                 "addresses": addresses,
                 "read": situation.read,
+                "closed": situation.closed,
             }
         )
         if self.on_decide is not None:
@@ -664,6 +665,57 @@ async def test_jev_decides_seeing_the_start_of_each_other_page_this_burst_read(
     assert run.jev.decided[-1]["read"] == [ReadPage("Site", "https://site.test/b", "arti")]
 
 
+LINK_TO_B = PageAction(
+    id="e9", node=9, kind="click", label="B", role="link", href="https://site.test/b"
+)
+LINK_TO_C = PageAction(
+    id="e10", node=10, kind="click", label="C", role="link", href="https://site.test/c"
+)
+
+
+async def test_a_page_read_since_the_burst_last_changed_anything_is_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Following links and going back closes what was read; a press on a control reopens it."""
+    a, b, c = (
+        page_state(text="list"),
+        page_state(url="https://site.test/b", text="article b"),
+        page_state(url="https://site.test/c", text="article c"),
+    )
+    page = FakePage(a, b, a, c, a, a, c, a, a)
+    run = _run(
+        monkeypatch,
+        page,
+        decision(JevOperation.CLICK, LINK_TO_B),
+        decision(JevOperation.GO_BACK, BACK),
+        decision(JevOperation.CLICK, LINK_TO_C),
+        decision(JevOperation.GO_BACK, BACK),
+        decision(JevOperation.CLICK, BUTTON),
+        decision(JevOperation.CLICK, LINK_TO_C),
+        decision(JevOperation.GO_BACK, BACK),
+        decision(JevOperation.TYPE_TEXT, FIELD),
+        decision(JevOperation.DONE),
+        value="Ada",
+    )
+
+    await run.burst()
+
+    b_url, c_url = "https://site.test/b", "https://site.test/c"
+    assert [d["closed"] for d in run.jev.decided] == [
+        frozenset(),
+        frozenset(),
+        frozenset({b_url}),
+        frozenset({a.url, b_url}),
+        frozenset({b_url, c_url}),
+        frozenset(),
+        frozenset({a.url}),
+        frozenset({c_url}),
+        # Typing changes what a page shows, as a press on a control does.
+        frozenset(),
+    ]
+    assert b_url not in run.jev.decided[2]["addresses"]
+
+
 async def test_a_page_is_one_address_however_it_was_written_and_never_the_page_jev_is_on(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -837,11 +889,28 @@ async def test_no_secret_reaches_jev_or_the_text_model_and_a_masked_address_stil
     final = replace(
         final,
         frames=[
-            {"src": f"https://pay.test/?u={SECRET}", "same_origin": False, "visible": True},
-            # Jev reads a same-origin frame, and an unseen or unnamed one is nothing to report.
-            {"src": "https://site.test/inner", "same_origin": True, "visible": True},
-            {"src": "https://ads.test/", "same_origin": False, "visible": False},
-            {"src": "", "same_origin": False, "visible": True},
+            {
+                "src": f"https://pay.test/?u={SECRET}",
+                "same_origin": False,
+                "loaded": False,
+                "visible": True,
+            },
+            # Jev reads a loaded same-origin frame; an unseen or unnamed one is nothing to report.
+            {
+                "src": "https://site.test/inner",
+                "same_origin": True,
+                "loaded": True,
+                "visible": True,
+            },
+            # One still loading when read was not read: its text is missing, and that is said.
+            {
+                "src": "https://site.test/slow",
+                "same_origin": True,
+                "loaded": False,
+                "visible": True,
+            },
+            {"src": "https://ads.test/", "same_origin": False, "loaded": False, "visible": False},
+            {"src": "", "same_origin": False, "loaded": False, "visible": True},
         ],
     )
     page = FakePage(first, page_state(url="https://site.test/b"), final)
@@ -866,7 +935,10 @@ async def test_no_secret_reaches_jev_or_the_text_model_and_a_masked_address_stil
     )
 
     result = await runner.burst(f"rename {SECRET} to Ada", None)
-    assert (result.text, result.hidden_frames) == ("bye ", [f"https://pay.test/?u={MASKED}"])
+    assert (result.text, result.hidden_frames) == (
+        "bye ",
+        [f"https://pay.test/?u={MASKED}", "https://site.test/slow"],
+    )
 
     sent = [*jev.sent, *(message.content for message in text_model.asked[0][0])]
     assert len(jev.sent) == 4

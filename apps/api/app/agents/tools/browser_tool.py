@@ -53,6 +53,7 @@ from app.services.browser.jobs import (
     put_job_state,
     refresh_joiner_lease,
     release_conversation_slot,
+    restore_latest_job,
     set_latest_job,
     settle_result_claim,
     take_joiner_lease,
@@ -239,12 +240,17 @@ async def browser_task(
         )
     )
     # Findable before a worker can take it, so a stop from the moment it is queued reaches it.
-    await set_latest_job(params.conversation_id, job_id)
+    # A bot run is also reached from the requester's bot chat: its handoffs are answered,
+    # and a /stop lands, there.
     bot_chat = reply_address(params.conversation_id, params.user_id, params.conversation_source)
-    if bot_chat != params.conversation_id:
-        # Its handoffs are answered, and a /stop reaches it, from the requester's bot chat.
-        await set_latest_job(bot_chat, job_id)
+    replaced = {
+        key: await set_latest_job(key, job_id)
+        for key in dict.fromkeys([params.conversation_id, bot_chat])
+    }
     if not await _enqueue(request):
+        # A job that never ran must not hide the one before it from a /stop at the same chat.
+        for key, previous in replaced.items():
+            await restore_latest_job(key, job_id, previous)
         # Ended without running, so neither a join nor a stop waits on it.
         await put_job_state(
             BrowserJobState(

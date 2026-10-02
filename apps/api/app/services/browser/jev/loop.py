@@ -200,7 +200,7 @@ class BurstResult:
     text: str
     #: Every other page the burst opened, in order, as Jev read it there.
     opened: list[OpenedPage]
-    #: Frames on the final page whose content Jev cannot see (cross-origin).
+    #: Frames on the final page whose text Jev did not read: cross-origin, or still loading.
     hidden_frames: list[str]
     #: Controls on the final page beyond what the snapshot reads.
     omitted_controls: int = 0
@@ -236,6 +236,8 @@ class _Burst:
     decisions: int = 0
     stale: int = 0
     covered: int = 0
+    #: The addresses of pages read since the burst last changed anything: nothing new to read there.
+    closed: set[str] = field(default_factory=set)
 
     @property
     def current(self) -> PageState:
@@ -335,7 +337,7 @@ class JevRunner:
                 return spent
             # Each decision is on the page as it is now, results that arrived since included.
             state.page = await self._page.observe()
-            addresses = self._addresses(state.page)
+            addresses = self._addresses(state.page, state.closed)
             if not addresses and _blank(state.page):
                 return _NO_PAGE
             try:
@@ -346,8 +348,8 @@ class JevRunner:
             if ended is not None:
                 return ended
 
-    def _addresses(self, page: PageState) -> list[str]:
-        """Return the pages NAVIGATE may open from page: the starts given and pages visited, on the web, but this one.
+    def _addresses(self, page: PageState, closed: set[str]) -> list[str]:
+        """Return the pages NAVIGATE may open from page: the starts given and pages visited, on the web, but this one or a closed one.
 
         One address per page: a start written without its trailing slash once sat beside
         the same page as visited, and Jev opened the page it was already on six times.
@@ -356,7 +358,11 @@ class JevRunner:
         known: dict[str, str] = {}
         for url in [*self._starts, *(v.url for v in self.visited)]:
             known.setdefault(page_address(url), url)
-        return [url for key, url in known.items() if key != here and _on_the_web(url)]
+        return [
+            url
+            for key, url in known.items()
+            if key != here and key not in closed and _on_the_web(url)
+        ]
 
     async def _decide(self, state: _Burst, addresses: list[str]) -> Decision:
         state.decisions += 1
@@ -387,6 +393,9 @@ class JevRunner:
         if not isinstance(performed, _Performed):
             return performed
         state.stale = state.covered = 0
+        if _changes_something(decision):
+            # A page read before this may read differently now (a cart, an inbox).
+            state.closed.clear()
         before = state.current
         step = self._record(state, decision, performed, started)
         # Recorded before observing: a navigation interrupting the read must not erase the action.
@@ -498,9 +507,10 @@ class JevRunner:
         return step
 
     async def _read(self, state: _Burst) -> None:
-        """Note the page the action led to: visited, and its text read once for the report."""
+        """Note the page the action led to: visited, read, and its text read once for the report."""
         page = state.current
         self._visit(page)
+        state.closed.add(page_address(page.url))
         mask = self._secrets.mask
         url = mask(page.url)
         if url not in state.opened:
@@ -622,6 +632,7 @@ class JevRunner:
                 for p in state.opened.values()
                 if page_address(p.url) != here
             ],
+            closed=frozenset(state.closed - {page_address(page.url)}),
         )
 
     def _visit(self, page: PageState) -> None:
@@ -652,6 +663,18 @@ def _standing(page: PageState) -> tuple[str, list[str]]:
     )
 
 
+#: Steps that change what a page holds; following a link or going back only moves the tab.
+_CHANGING = frozenset({JevOperation.TYPE_TEXT, JevOperation.SELECT, JevOperation.PRESS_ENTER})
+
+
+def _changes_something(decision: Decision) -> bool:
+    """Whether a step may change what a page already read now shows: an input, or a click on a control that is not a link."""
+    if decision.operation in _CHANGING:
+        return True
+    target = decision.target
+    return decision.operation is JevOperation.CLICK and target is not None and "href" not in target
+
+
 def _budget_spent(state: _Burst) -> _Ending | None:
     """Return which of the burst's own budgets is spent, if one is: actions, decisions, stale or covered targets."""
     spent = (
@@ -674,11 +697,11 @@ def _on_the_web(url: str) -> bool:
 
 
 def _hidden_frames(frames: list[Frame]) -> list[str]:
-    """Return the shown frames Jev cannot see into: cross-origin ones with an address."""
+    """Return the shown frames whose text Jev did not read: another site's, or one still loading."""
     return [
         frame["src"]
         for frame in frames
-        if frame["visible"] and not frame["same_origin"] and frame["src"]
+        if frame["visible"] and frame["src"] and not (frame["same_origin"] and frame["loaded"])
     ]
 
 

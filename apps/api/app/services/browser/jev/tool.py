@@ -9,7 +9,7 @@ page's text.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Protocol
 
 from browser_use import Tools
@@ -17,6 +17,7 @@ from browser_use.agent.views import ActionResult
 from pydantic import BaseModel, Field
 
 from app.constants.browser import (
+    JEV_GOAL_QUOTES_A_NAME,
     JEV_REPORT_OPENED_PAGE_CHARS,
     JEV_REPORT_OPENED_PAGES,
     JEV_REPORT_PAGE_TEXT_CHARS,
@@ -24,6 +25,7 @@ from app.constants.browser import (
     JevStop,
 )
 from app.schemas.browser import BrowserAction
+from app.services.browser.jev.decision import literals
 from app.services.browser.jev.loop import BurstResult, JevStep
 
 #: Emits one card for a finished burst: its caption source, and the page it ended on.
@@ -150,6 +152,9 @@ def _page_lines(result: BurstResult) -> list[str]:
         lines.append(
             f"Visible text of this page, verbatim:\n{result.text[:JEV_REPORT_PAGE_TEXT_CHARS]}"
         )
+    else:
+        # Said, not left out: an agent once filled the silence with a frame's tag name.
+        lines.append("Jev read no visible text on this page.")
     if result.omitted_controls:
         lines.append(
             f"This page has {result.omitted_controls} more controls than Jev reads; it saw "
@@ -157,7 +162,8 @@ def _page_lines(result: BurstResult) -> list[str]:
         )
     if result.hidden_frames:
         lines.append(
-            "Frames on this page Jev cannot see into: " + ", ".join(result.hidden_frames[:5])
+            "Frames on this page Jev could not read (another site's, or still loading; their "
+            "text is not above): " + ", ".join(result.hidden_frames[:5])
         )
     return lines
 
@@ -197,13 +203,18 @@ class JevDelegate:
         runner_for: RunnerFactory,
         emit: BurstEmitFn,
         on_engine_gap: EngineGapFn | None = None,
+        secret_names: Sequence[str] = (),
     ) -> None:
         self._runner_for = runner_for
         self._emit = emit
         self._on_engine_gap = on_engine_gap
+        self._secret_names = frozenset(secret_names)
         self._runner: Bursts | None = None
 
     async def run(self, params: JevParams) -> ActionResult:
+        if untagged := sorted(self._secret_names.intersection(literals(params.goal))):
+            # Jev would type the name itself: a goal names a secret only by its placeholder.
+            return ActionResult(error=JEV_GOAL_QUOTES_A_NAME.format(names=", ".join(untagged)))
         if self._runner is None:
             self._runner = self._runner_for()
         result = await self._runner.burst(params.goal, params.start_url)

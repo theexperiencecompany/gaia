@@ -22,8 +22,8 @@ from app.constants.browser import (
     BROWSER_JOB_WAIT_PREFIX,
     ResultSpeaker,
 )
-from app.db.redis import redis_cache
-from app.schemas.browser_job import BrowserJobState
+from app.db.redis import deserialize_any, redis_cache
+from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
 from app.services.browser.job_lifetime import browser_job_ttl_seconds
 
 
@@ -110,9 +110,32 @@ async def if_held(key: str, holder: str, *, refresh: int | None) -> bool:
     return True
 
 
-async def set_latest_job(key: str, job_id: str) -> None:
-    """Record the latest browser job started at key: its conversation, and for a bot run the requester's bot chat too."""
-    await redis_cache.client.set(_latest_key(key), job_id, ex=browser_job_ttl_seconds())
+async def set_latest_job(key: str, job_id: str) -> str | None:
+    """Record the latest browser job started at key (its conversation, or a bot run's requester chat); return the one it replaced."""
+    previous: str | None = await redis_cache.client.set(
+        _latest_key(key), job_id, ex=browser_job_ttl_seconds(), get=True
+    )
+    return previous
+
+
+async def restore_latest_job(key: str, job_id: str, previous: str | None) -> None:
+    """Point key back at the job before job_id, which never ran, unless a newer job took key since."""
+    latest = _latest_key(key)
+    async with redis_cache.client.pipeline() as pipe:
+        await pipe.watch(latest)
+        if await pipe.get(latest) != job_id:
+            await pipe.unwatch()
+            return
+        pipe.multi()
+        if previous is None:
+            pipe.delete(latest)
+        else:
+            pipe.set(latest, previous, ex=browser_job_ttl_seconds())
+        try:
+            await pipe.execute()
+        except WatchError:
+            # A newer job took the key between the read and the write: it is the latest now.
+            return
 
 
 async def get_latest_job(key: str) -> str | None:
@@ -216,13 +239,34 @@ async def settle_result_claim(job_id: str, *, told: bool) -> None:
     )
 
 
-async def request_job_cancel(job_id: str) -> None:
-    """Flag a job as stopped; the run reads it at its start, between steps and before every wait."""
-    await redis_cache.client.set(
-        _cancel_key(job_id),
-        "1",  # pragma: no mutate — read by EXISTS alone, the value carries nothing
-        ex=browser_job_ttl_seconds(),
-    )
+async def request_job_cancel(job_id: str) -> bool:
+    """Flag a job as stopped unless it has ended; whether it was flagged.
+
+    Atomic against the job's DONE write, which the worker makes before it reads
+    this flag: a stop lands before DONE and the worker stays silent, or finds the
+    job ended and its result is told, never both.
+    """
+    key = _state_key(job_id)
+    while True:
+        async with redis_cache.client.pipeline() as pipe:
+            await pipe.watch(key)
+            raw = await pipe.get(key)
+            state = deserialize_any(raw, BrowserJobState) if raw else None
+            if state is None or state.status is BrowserJobStatus.DONE:
+                await pipe.unwatch()
+                return False
+            pipe.multi()
+            pipe.set(
+                _cancel_key(job_id),
+                "1",  # pragma: no mutate — read by EXISTS alone, the value carries nothing
+                ex=browser_job_ttl_seconds(),
+            )
+            try:
+                await pipe.execute()
+            except WatchError:
+                # The state moved between the read and the flag: read it again.
+                continue
+            return True
 
 
 async def job_cancel_requested(job_id: str) -> bool:

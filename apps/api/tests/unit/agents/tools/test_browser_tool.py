@@ -64,6 +64,8 @@ class Recorder:
         self.job_ids: list[str | None] = []
         #: The conversation's latest job, as the join and a stop find it.
         self.latest: list[tuple[str, str]] = []
+        #: Latest-job pointers put back after a job that never ran.
+        self.restored: list[tuple[str, str, str | None]] = []
 
     @property
     def request(self) -> BrowserJobRequest:
@@ -78,9 +80,11 @@ def _install(
     holder: str | None = None,
     enqueued_job: object | None = object(),
     enqueue_error: Exception | None = None,
+    latest_before: dict[str, str] | None = None,
 ) -> Recorder:
     """Wire every seam the enqueue touches; holder is the job already owning the slot."""
     recorder = Recorder()
+    latest_before = latest_before or {}
 
     async def _claim(conversation_id: str, job_id: str) -> str | None:
         recorder.claims.append((conversation_id, job_id))
@@ -126,8 +130,14 @@ def _install(
     monkeypatch.setattr(tool_mod, "put_job_state", _put_state)
     monkeypatch.setattr(tool_mod, "release_conversation_slot", _release)
 
-    async def _latest(conversation_id: str, job_id: str) -> None:
-        recorder.latest.append((conversation_id, job_id))
+    async def _latest(key: str, job_id: str) -> str | None:
+        recorder.latest.append((key, job_id))
+        return latest_before.get(key)
+
+    async def _restore(key: str, job_id: str, previous: str | None) -> None:
+        recorder.restored.append((key, job_id, previous))
+
+    monkeypatch.setattr(tool_mod, "restore_latest_job", _restore)
 
     monkeypatch.setattr(tool_mod, "set_latest_job", _latest)
     monkeypatch.setattr(tool_mod, "enqueue_worker_job", _enqueue)
@@ -448,6 +458,18 @@ async def test_a_dropped_enqueue_frees_the_slot_and_says_so(
         relay_stream_id="s1",
         agent_message=out,
     )
+
+
+async def test_a_job_the_queue_did_not_take_leaves_the_chats_latest_job_where_it_was(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A /stop in the requester's bot chat found the job that never ran, not the one still running."""
+    recorder = _install(monkeypatch, enqueued_job=None, latest_before={"discord:u1": "job-running"})
+
+    await _start({"task": "x"}, config=BOT_CONFIG)
+
+    job_id = recorder.request.job_id
+    assert recorder.restored == [("c1", job_id, None), ("discord:u1", job_id, "job-running")]
 
 
 async def test_a_job_the_queue_did_not_take_is_an_error_on_the_wide_event(

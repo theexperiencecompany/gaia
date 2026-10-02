@@ -21,7 +21,7 @@ from app.constants.browser import (
 from app.constants.comms import SILENCE_TAG
 from app.constants.log_tags import LogTag
 from app.schemas.browser import BrowserResultSnapshot, BrowserStepSnapshot
-from app.schemas.browser_job import BrowserJobRequest
+from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJobStatus
 from app.services.browser.job_events import publish_job_event
 from app.services.browser.jobs import (
     claim_conversation_slot,
@@ -29,6 +29,7 @@ from app.services.browser.jobs import (
     get_conversation_slot,
     get_job_state,
     hold_result_for_run,
+    put_job_state,
     release_result_hold,
     request_job_cancel,
 )
@@ -164,11 +165,17 @@ async def test_the_worker_waits_for_the_run_that_started_it_and_stays_quiet_if_i
     assert world.delivered == []
 
 
+async def _stopped_while_queued(job_id: str) -> None:
+    """Flag a job stopped as a stop does: only one that has not ended can be."""
+    await put_job_state(BrowserJobState(job_id=job_id, status=BrowserJobStatus.QUEUED, task="t"))
+    assert await request_job_cancel(job_id) is True
+
+
 async def test_who_told_the_result_is_on_the_jobs_event(world: World) -> None:
     await claim_result_delivery("job-1", ResultSpeaker.JOINER)
     async with captured_wide_event() as told_by_joiner:
         await tasks_mod.run_browser_job({}, PAYLOAD)
-    await request_job_cancel("job-2")
+    await _stopped_while_queued("job-2")
     async with captured_wide_event() as stopped:
         await tasks_mod.run_browser_job({}, PAYLOAD | {"job_id": "job-2"})
 
@@ -178,7 +185,7 @@ async def test_who_told_the_result_is_on_the_jobs_event(world: World) -> None:
 
 async def test_a_stopped_job_is_not_narrated_a_second_time(world: World) -> None:
     """The stop already told the user."""
-    await request_job_cancel("job-1")
+    await _stopped_while_queued("job-1")
 
     await tasks_mod.run_browser_job({}, PAYLOAD)
 

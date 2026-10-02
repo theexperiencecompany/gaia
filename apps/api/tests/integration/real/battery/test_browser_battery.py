@@ -72,12 +72,13 @@ _PROGRESS_LINE = re.compile(
 _ONE_REPLY_SECONDS = 2.0
 
 
-def _one_final_message(outcome: RunOutcome) -> str:
+def _one_final_message(outcome: RunOutcome, *, answered_a_handoff: bool = False) -> str:
     """Assert the run's outcome reached the user exactly once and return it.
 
     Joined, comms voices it; unjoined, the worker sends the result line. The ack,
     step captions, stall notes and handoff prompt are not outcomes, and a reply
-    delivered as two messages within a breath counts once.
+    delivered as two messages within a breath counts once. A "done" that answered
+    a handoff is acknowledged by its own turn; the outcome is the run's, after it.
     """
     events = outcome.transcript.events
     said = [i for i, e in enumerate(events) if e.get("type") == "inbound"]
@@ -95,11 +96,8 @@ def _one_final_message(outcome: RunOutcome) -> str:
             len(events),
         )
     )
-    texts = [
-        e
-        for e in events[started:]
-        if e.get("type") in ("send", "outbound-delivery", "edit") and e.get("text")
-    ]
+    kinds = ("outbound-delivery",) if answered_a_handoff else ("send", "outbound-delivery", "edit")
+    texts = [e for e in events[started:] if e.get("type") in kinds and e.get("text")]
     handoff_prompt = {
         i - 1 for i, e in enumerate(texts) if user_text(e).startswith("Open the live browser:")
     }
@@ -186,7 +184,12 @@ def test_a_two_site_research_task_reports_every_part(battery: Battery) -> None:
     scores = re.findall(r"\b\d+\s+points\b|\bpoints\W{0,3}\d+", outcome.summary, re.I)
     assert len(scores) >= 3, outcome.summary
     titles = hn_front_page_titles()
-    named = [t for t in titles if len(t) > 12 and t.lower() in outcome.summary.lower()]
+    # Whole titles, however short ("Pi 1.0"): a title is named where it stands on its own.
+    named = [
+        t
+        for t in titles
+        if re.search(rf"(?<!\w){re.escape(t)}(?!\w)", plain_quotes(outcome.summary), re.I)
+    ]
     assert len(named) >= 3, f"fewer than three real front-page stories named: {named}"
     # Did real, visible work across both sites, without running away.
     assert outcome.action_count >= 8, outcome.action_count
@@ -313,7 +316,7 @@ def test_a_login_is_handed_to_the_user_then_reused_without_a_second_handoff(
     assert any(d.endswith("the-internet.herokuapp.com") for d in battery.saved_login_domains()), (
         battery.saved_login_domains()
     )
-    _one_final_message(outcome)
+    _one_final_message(outcome, answered_a_handoff=True)
 
     seen_handoff = {"raised": False}
 

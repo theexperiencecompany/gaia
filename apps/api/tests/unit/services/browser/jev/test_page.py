@@ -71,7 +71,9 @@ SNAPSHOT: dict[str, Any] = {
     "page_key": PAGE_KEY,
     "guards": GUARDS,
     "omitted_actions": 3,
-    "frames": [{"src": "https://pay.test/frame", "same_origin": False, "visible": True}],
+    "frames": [
+        {"src": "https://pay.test/frame", "same_origin": False, "loaded": False, "visible": True}
+    ],
 }
 
 

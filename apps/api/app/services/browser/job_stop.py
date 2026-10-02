@@ -15,7 +15,6 @@ from app.constants.browser import (
     BrowserSessionStatus,
     BrowserStopOutcome,
 )
-from app.schemas.browser_job import BrowserJobStatus
 from app.services.browser.handoff import cancel_handoff
 from app.services.browser.job_events import wait_for_job_end
 from app.services.browser.jobs import (
@@ -38,10 +37,8 @@ async def stop_browser_job(key: str) -> str | None:
 
 async def stop_job(job_id: str) -> bool:
     """Stop this one job, queued or running: flag it, settle the handoff it is paused on, abort its task; False when it had ended."""
-    state = await get_job_state(job_id)
-    if state is None or state.status is BrowserJobStatus.DONE:
+    if not await request_job_cancel(job_id):
         return False
-    await request_job_cancel(job_id)
     paused_on = await get_job_wait(job_id)
     if paused_on is not None:
         await cancel_handoff(paused_on)
