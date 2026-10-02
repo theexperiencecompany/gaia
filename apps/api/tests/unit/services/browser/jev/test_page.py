@@ -729,3 +729,17 @@ async def test_a_step_photo_is_a_jpeg_of_the_one_step_photo_quality() -> None:
 
     assert await page.screenshot() == "c2hvdA=="
     assert tab.shots == [{"format": "jpeg", "quality": BROWSER_STEP_PHOTO_QUALITY}]
+
+
+async def test_a_step_photo_the_tab_never_takes_names_the_screenshot_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(page_mod, "JEV_CDP_TIMEOUT_SECONDS", 0.01)
+    page, _ = _page(_Tab(hangs="Page.captureScreenshot"))
+
+    async with captured_wide_event() as event:
+        with pytest.raises(PageUnresponsive, match="^Page.captureScreenshot got no answer"):
+            await page.screenshot()
+
+    [warning] = event["warnings"]
+    assert warning["call"] == "Page.captureScreenshot"
