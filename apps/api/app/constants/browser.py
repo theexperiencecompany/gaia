@@ -397,6 +397,8 @@ BROWSER_TAKEOVER_PREAMBLE = (
 )
 
 # The agent's role around Jev, appended to Browser-Use's system prompt.
+# "Report only what the current page shows" made an agent back on a re-ordered
+# Hacker News drop its three opened stories as stale and quit (research3, 2026-10-02).
 BROWSER_AGENT_ROLE = (
     "You supervise Jev, a fast page operator exposed as the `jev` action. When the task "
     "started on a page, your step 0 already ran Jev on the whole task there; its report "
@@ -404,8 +406,9 @@ BROWSER_AGENT_ROLE = (
     "history. On a blank tab, your first step opens the page to start on. You are the only "
     "one who finishes the task and the only one who writes the answer.\n"
     "Each step, choose one:\n"
-    "1. The task is complete: call `done` with the answer. Report only what the current "
-    "page or Jev's reports show; copy titles, messages, numbers and URLs exactly. "
+    "1. The task is complete: call `done` with the answer. Report only what pages showed: "
+    "the current page, your reads and Jev's reports; copy titles, messages, numbers and URLs "
+    "exactly. A list that changes while you work keeps the items you already chose from it. "
     "Say plainly what was not done or could not be found. success=true means the user's "
     "request was carried out and the answer it asks for delivered; a gap in supporting detail, "
     "stated plainly, does not change that (one of three articles shows no text to summarise, a "
