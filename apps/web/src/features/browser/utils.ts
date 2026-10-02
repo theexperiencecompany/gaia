@@ -2,7 +2,6 @@ import type {
   BrowserHandoffSnapshot,
   BrowserResultSnapshot,
   BrowserSessionSnapshot,
-  BrowserSessionStatus,
   BrowserStepSnapshot,
   BrowserTaskSnapshot,
 } from "@/types/features/browserTaskTypes";
@@ -12,10 +11,7 @@ import {
   GAIA_CONNECT_DEFAULT_API_ORIGIN,
   GAIA_CONNECT_INSTALL_URL,
 } from "./constants";
-
-/** What a browser card shows: the run's own status, or that it is waiting on
- * the user (a pending handoff), which the run reports as a handoff, not a status. */
-export type BrowserCardStatus = BrowserSessionStatus | "awaiting_user";
+import type { BrowserCardPhase, BrowserCardStatus } from "./types";
 
 /** Machine states → plain language the user understands at a glance: one
  * table for the chat card, the side panel and the task history. `color` is the
@@ -66,15 +62,6 @@ const ENDED_STATUSES: ReadonlySet<BrowserCardStatus> = new Set([
   "failed",
   "cancelled",
 ]);
-
-/** What every surface asks of a card's status. */
-export interface BrowserCardPhase {
-  status: BrowserCardStatus;
-  /** The run is over: nothing left to watch or act on. */
-  ended: boolean;
-  /** The agent is driving (not ended, not waiting on the user). */
-  working: boolean;
-}
 
 /** The card's status, derived once from its folded snapshots: the result's
  * when the run ended, else waiting on the user, else the session's own. */

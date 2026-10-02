@@ -7,8 +7,7 @@ import { browserApi, livePagePath, liveViewSocketUrl } from "../api/browserApi";
 const TOKEN_RENEW_LEAD_SECONDS = 60;
 
 /**
- * The tokened socket URL for a session's live view, and the web page that
- * shows it full screen.
+ * The tokened socket and full-page URLs for a session's live view.
  *
  * The live view's vhost never sees the session cookie, so every connection
  * carries a takeover token. One token per session is shared by every surface

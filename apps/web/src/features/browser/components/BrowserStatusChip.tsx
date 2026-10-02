@@ -2,7 +2,8 @@
 
 import { Chip } from "@heroui/chip";
 import { Spinner } from "@heroui/spinner";
-import { BROWSER_STATUS_META, type BrowserCardPhase } from "../utils";
+import type { BrowserCardPhase } from "../types";
+import { BROWSER_STATUS_META } from "../utils";
 
 /** A browser card's status as the chat card and the side panel both show it. */
 export function BrowserStatusChip({

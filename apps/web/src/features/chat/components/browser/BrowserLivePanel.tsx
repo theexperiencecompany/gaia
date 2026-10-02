@@ -13,7 +13,7 @@ import { useEffect, useState } from "react";
 import { BrowserStatusChip } from "@/features/browser/components/BrowserStatusChip";
 import { useLiveBrowser } from "@/features/browser/hooks/useLiveBrowser";
 import { useLiveView } from "@/features/browser/hooks/useLiveView";
-import type { BrowserCardPhase } from "@/features/browser/utils";
+import type { BrowserCardPhase } from "@/features/browser/types";
 import type { BrowserHandoffSnapshot } from "@/types/features/browserTaskTypes";
 import { HandoffPrompt } from "../bubbles/bot/HandoffPrompt";
 import { LiveScreen } from "../bubbles/bot/LiveScreen";
