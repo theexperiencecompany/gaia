@@ -574,6 +574,7 @@ class TestSubTodoParent:
             f"{TODO_ID} is completed; only an open todo can become a sub-todo."
         )
         mock_repo.find_sub_todos.assert_not_awaited()
+        assert mock_repo.get.await_args_list[1] == call(TODO_ID, user_id=USER_ID)
 
 
 class TestCreateSubTodo:

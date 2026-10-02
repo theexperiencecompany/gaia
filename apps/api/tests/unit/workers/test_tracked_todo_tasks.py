@@ -1345,6 +1345,8 @@ async def _run_task(
     find = AsyncMock(return_value=[desk])
 
     async def sub_todos(user_id: str, *, limit: int, parent_todo_id: str) -> list[TodoDocument]:
+        # One past the prompt's limit is how the run tells a full list from a cut one.
+        assert limit == SUB_TODOS_PROMPT_LIMIT + 1
         owned = user_id == doc.user_id and parent_todo_id == doc.id
         return list(children)[:limit] if owned else []
 

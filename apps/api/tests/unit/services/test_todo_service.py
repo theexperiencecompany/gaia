@@ -1258,6 +1258,36 @@ class TestBulkOps:
             call("b", doc_b, FAKE_USER_ID),
         ]
 
+    async def test_a_bulk_move_to_a_project_the_user_lacks_writes_nothing(
+        self, mock_todo_repo, mock_project_repo
+    ):
+        req = BulkUpdateRequest(
+            todo_ids=["a"], updates=TodoUpdateRequest(project_id=FAKE_PROJECT_ID)
+        )
+
+        with pytest.raises(ValueError) as raised:
+            await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+
+        assert str(raised.value) == f"Project {FAKE_PROJECT_ID} not found"
+        mock_project_repo.get.assert_awaited_once_with(FAKE_PROJECT_ID, user_id=FAKE_USER_ID)
+        mock_todo_repo.bulk_update.assert_not_called()
+
+    async def test_a_bulk_move_to_the_users_project_goes_through(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_project_repo.get = AsyncMock(
+            return_value=_make_project_doc(project_id=FAKE_PROJECT_ID)
+        )
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[_make_todo_doc(todo_id="a")])
+        mock_todo_repo.bulk_update = AsyncMock(return_value=1)
+        req = BulkUpdateRequest(
+            todo_ids=["a"], updates=TodoUpdateRequest(project_id=FAKE_PROJECT_ID)
+        )
+
+        result = await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+
+        assert result.success == ["a"]
+
     async def test_bulk_update_refuses_to_link_a_workflow(self, mock_todo_repo, mock_project_repo):
         """A bulk $set of workflow_id would bypass link_workflow's tracked-todo guard."""
         req = BulkUpdateRequest(todo_ids=["a", "b"], updates=TodoUpdateRequest(workflow_id="wf1"))
