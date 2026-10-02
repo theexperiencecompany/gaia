@@ -57,14 +57,17 @@ class TestTrackedTodoDeliveryNote:
         assert "a question they already have" in _note()
         assert "never promise to follow up later" in _note()
 
-    def test_the_todos_standing_rules_sit_before_the_defaults(self) -> None:
-        """Regression: "tell me every time" lived only in the canvas, and a real model silenced every run."""
+    def test_the_todos_standing_rules_close_the_note_and_bind_it(self) -> None:
+        """Regression: an Inbox desk briefing with content was silenced as routine under a rule to deliver every one."""
         note = tracked_todo_delivery_note("Word count", "- Tell me the result every time.", None)
 
         assert (
-            "kept in the todo. Its Standing rules, the user's own instructions for this todo, "
-            "which win over the defaults below:\n"
-            "- Tell me the result every time.\nMessage the user when"
+            "only when there is more than one beat.\n"
+            "Its Standing rules, the user's own instructions for this todo. They bind this "
+            "decision above every default here and in your instructions, the SILENCE rule "
+            "included: when one asks to hear this todo's results, a report with content is "
+            "sent, whole, and SILENCE is only for a report with nothing in it.\n"
+            "- Tell me the result every time.\n"
         ) in note
 
     def test_key_details_follow_the_rules_as_details_of_their_own(self) -> None:
@@ -72,5 +75,6 @@ class TestTrackedTodoDeliveryNote:
 
         assert (
             "- Be brief.\nIts Key Details, which can also hold a request of theirs:\n"
-            "- tell me every time\nMessage the user when"
+            "- tell me every time\n"
         ) in note
+        assert note.index("Message the user when") < note.index("- Be brief.")

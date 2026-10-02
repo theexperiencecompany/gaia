@@ -485,22 +485,25 @@ def tracked_todo_delivery_note(
     """Build the delivery instructions for a tracked todo's own background run.
 
     Nobody asked for this result, so comms decides only whether it is worth a message.
-    A request like "tell me every time" lives in Standing rules, or in Key Details on a
-    todo written before that section existed; the run's report is too lossy a relay.
+    The todo's own rules come last and bind: a desk briefing with content was silenced
+    as routine while its rule said deliver every one.
     """
-    standing = (
-        "Its Standing rules, the user's own instructions for this todo, which win over "
-        f"the defaults below:\n{standing_rules}\n"
+    rules = (
+        "Its Standing rules, the user's own instructions for this todo. They bind this "
+        "decision above every default here and in your instructions, the SILENCE rule "
+        "included: when one asks to hear this todo's results, a report with content is "
+        "sent, whole, and SILENCE is only for a report with nothing in it.\n"
+        f"{standing_rules}\n"
         if standing_rules
         else ""
     )
     if key_details:
-        standing += f"Its Key Details, which can also hold a request of theirs:\n{key_details}\n"
+        rules += f"Its Key Details, which can also hold a request of theirs:\n{key_details}\n"
     return wrap_agent_payload(
         AgentTag.DELIVERY_INSTRUCTIONS,
         f'This is the result of a background run of the user\'s tracked todo "{todo_title}". '
         "Nobody asked for it just now: it ran on its schedule or on an event it watches, "
-        f"and its full record is already kept in the todo. {standing}"
+        "and its full record is already kept in the todo. "
         "Message the user when the report shows something new they need to know or act on, "
         "a decision or blocker only they can settle that they have not already been asked "
         "about, or a result they asked to hear every time (always send that one). Anything "
@@ -511,7 +514,8 @@ def tracked_todo_delivery_note(
         "write, it reaches their chat app as plain text with no cards: lead with what "
         "changed or what they must decide, give the concrete details they need, keep it "
         "short, never mention runs, schedules or internal ids, and never promise to follow "
-        f"up later. Split with {NEW_MESSAGE_BREAKER} only when there is more than one beat.",
+        f"up later. Split with {NEW_MESSAGE_BREAKER} only when there is more than one beat.\n"
+        f"{rules}",
     )
 
 

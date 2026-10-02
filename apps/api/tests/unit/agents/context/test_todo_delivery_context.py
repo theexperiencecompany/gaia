@@ -1,0 +1,100 @@
+"""What the comms model sees when it decides whether an Inbox desk briefing reaches the user.
+
+Regression for the live desk run whose briefing (FYI and Today sections) was answered
+with SILENCE, "nothing new needs your attention", although the desk's Standing rule
+says every briefing with content is delivered whole. The rule reached the decision;
+it read as one more input that the routine-check default outweighed. No model runs
+here: what is pinned is the request the real delivery path builds, after comms'
+pre-model hooks.
+"""
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from langchain_core.messages import AnyMessage, HumanMessage
+import pytest
+from tests._harness.context_chain import ContextSeed, effective_context, text_of
+
+from app.agents.context.tiers import AgentTier
+from app.agents.core.background import comms_narrator, todo_run_delivery
+from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
+from app.agents.prompts.todo_prompts import INBOX_DESK_DELIVERY_RULE
+from app.constants.todos import INBOX_DESK_TITLE
+from app.models.todo_models import TodoDocument
+from app.models.user_models import AuthenticatedUser
+from app.models.workflow_models import TriggerType
+from app.services.tracked_todo_service import starting_canvas
+
+pytestmark = pytest.mark.unit
+
+USER = AuthenticatedUser(user_id="user-alpha")
+DESK = TodoDocument(
+    id="66f838cc8829054e5f10e401",
+    user_id=USER.user_id,
+    title=INBOX_DESK_TITLE,
+    notify_on_run=True,
+    canvas_content=starting_canvas(INBOX_DESK_TITLE, [INBOX_DESK_DELIVERY_RULE]),
+)
+BRIEFING = "FYI: HDFC statement for September.\nToday: dentist at 16:00."
+DEFAULTS = "Anything else is not worth a message"
+BINDING = (
+    "They bind this decision above every default here and in your instructions, the "
+    "SILENCE rule included: when one asks to hear this todo's results, a report with "
+    "content is sent, whole, and SILENCE is only for a report with nothing in it."
+)
+
+
+async def _delivered_request() -> HumanMessage:
+    """Run the desk's real delivery up to the comms call and return the message it hands comms."""
+    graph_run = AsyncMock(return_value=("<SILENCE>nothing new</SILENCE>", []))
+    repo = MagicMock(get_by_id=AsyncMock(return_value=DESK))
+    with (
+        patch.object(todo_run_delivery, "todo_repository", repo),
+        patch.object(todo_run_delivery, "record_activity", AsyncMock(return_value=True)),
+        patch.object(todo_run_delivery, "capture_event", MagicMock()),
+        patch.object(comms_narrator.GraphManager, "get_graph", AsyncMock()),
+        patch.object(comms_narrator, "build_agent_config", AsyncMock(return_value={})),
+        patch.object(comms_narrator, "execute_graph_silent", graph_run),
+    ):
+        await todo_run_delivery.deliver_todo_run_result(
+            ExecutorRun(
+                stream_id="s1",
+                conversation_id="run-conv",
+                user=USER,
+                kind=RunKind.LIVE,
+                task_id="t1",
+                user_message_id=None,
+            ),
+            TodoRun(todo_id=DESK.id, trigger_type=TriggerType.SCHEDULED_TODO),
+            BRIEFING,
+            "final",
+        )
+    (message,) = graph_run.await_args.args[1]["messages"]
+    return message
+
+
+async def _comms_context() -> str:
+    request = await _delivered_request()
+    messages: list[AnyMessage] = await effective_context(
+        AgentTier.COMMS, ContextSeed(query=text_of(request))
+    )
+    return "\n".join(text_of(message) for message in messages)
+
+
+class TestTheDesksDeliveryRuleBindsTheDecision:
+    async def test_the_rule_reaches_comms_with_the_briefing(self) -> None:
+        context = await _comms_context()
+
+        assert f"- {INBOX_DESK_DELIVERY_RULE}" in context
+        assert BRIEFING in context
+
+    @pytest.mark.regression
+    async def test_the_rules_are_binding_and_overrule_the_silence_default(self) -> None:
+        context = await _comms_context()
+
+        assert BINDING in context
+
+    @pytest.mark.regression
+    async def test_the_rules_are_the_last_word_after_the_defaults(self) -> None:
+        context = await _comms_context()
+
+        assert context.index(DEFAULTS) < context.index(f"- {INBOX_DESK_DELIVERY_RULE}")
