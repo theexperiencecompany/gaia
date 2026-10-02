@@ -124,7 +124,7 @@ def _make_task(task_id: str = "t1") -> BrowserTaskResponse:
 
 
 def _record(status: HandoffStatus = HandoffStatus.PENDING, user_id: str = "u1") -> HandoffRecord:
-    return HandoffRecord(status=status, user_id=user_id, conversation_id="c1")
+    return HandoffRecord(status=status, user_id=user_id, conversation_id="c1", job_id="job-1")
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +143,7 @@ async def button_world(
         recorded.append((conversation_id, user_message, reply))
 
     monkeypatch.setattr(handoff_buttons, "record_exchange_in_thread", _record)
-    await create_pending_handoff("h1", "u1", "c1", "Sign in", reply_to="c1")
+    await create_pending_handoff("h1", "u1", "c1", "Sign in", reply_to="c1", job_id="job-1")
     return recorded
 
 
@@ -189,7 +189,9 @@ class TestDecideBrowserHandoff:
     async def test_a_pause_for_the_agent_is_never_written_as_the_users_words(
         self, button_world: list[tuple[str, str, str]]
     ) -> None:
-        await create_pending_handoff("h-agent", "u1", "c1", "stuck", kind=HandoffKind.AGENT)
+        await create_pending_handoff(
+            "h-agent", "u1", "c1", "stuck", kind=HandoffKind.AGENT, job_id="job-1"
+        )
         payload = HandoffDecisionRequest(decision=HandoffDecision.CONTINUE, message="go")
 
         await browser_ep.decide_browser_handoff("h-agent", payload, "u1")

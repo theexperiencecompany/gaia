@@ -129,6 +129,8 @@ class HandoffRecord(BaseModel):
     status: HandoffStatus
     user_id: str
     conversation_id: str
+    #: The browser job paused on it: a stop said in reply stops this job, never another at the address.
+    job_id: str
     #: Defaulted so records written before agent guidance existed still parse.
     kind: HandoffKind = HandoffKind.USER
     reason: str = ""

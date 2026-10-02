@@ -439,6 +439,7 @@ async def _run_handoff(
         reply_to=reply_address(
             request.conversation_id, request.user_id, request.conversation_source
         ),
+        job_id=request.job_id,
     )
     await emit(_handoff_snapshot(handoff_id, req, session, HandoffStatus.PENDING))
     # The job holds the session's lease for its whole life; a browser the host
@@ -537,7 +538,12 @@ async def _run_guidance(
     """
     handoff_id = uuid.uuid4().hex
     await create_pending_handoff(
-        handoff_id, job.user_id, job.conversation_id, request.reason, kind=HandoffKind.AGENT
+        handoff_id,
+        job.user_id,
+        job.conversation_id,
+        request.reason,
+        kind=HandoffKind.AGENT,
+        job_id=job.job_id,
     )
     await put_guidance_request(
         job.job_id, PendingAgentGuidance(handoff_id=handoff_id, request=request)

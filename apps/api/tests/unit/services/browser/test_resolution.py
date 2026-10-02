@@ -40,7 +40,7 @@ async def pending(
     monkeypatch.setattr(job_stop.RedisPoolManager, "get_pool", AsyncMock(return_value=fake_redis))
     await set_latest_job("c1", "job-1")
     await put_job_state(BrowserJobState(job_id="job-1", status=BrowserJobStatus.RUNNING, task="t"))
-    await create_pending_handoff("h1", "u1", "c1", "Pay the deposit", reply_to="c1")
+    await create_pending_handoff("h1", "u1", "c1", "Pay the deposit", reply_to="c1", job_id="job-1")
     await set_job_wait("job-1", "h1")
 
 
@@ -188,3 +188,20 @@ async def test_a_message_is_read_for_a_stop_only_while_a_task_runs(
     assert "'t'" in prompt  # the task it would stop
     assert classify.await_args.kwargs == {"label": "browser_running_task_message"}
     assert await job_cancel_requested("job-1") is True
+
+
+async def test_a_stop_said_to_one_handoff_stops_its_own_job_not_the_newest_at_the_address(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two of the user's runs answer at one bot chat: "stop" to job-1's prompt once stopped job-2."""
+    _reads(monkeypatch, "cancel")
+    await put_job_state(BrowserJobState(job_id="job-2", status=BrowserJobStatus.RUNNING, task="t"))
+    await set_latest_job("c1", "job-2")
+
+    await resolve_handoff_from_message("c1", "u1", "stop")
+
+    assert await job_cancel_requested("job-1") is True
+    assert await job_cancel_requested("job-2") is False
+    record = await get_handoff("h1")
+    assert record is not None
+    assert record.status is HandoffStatus.CANCELLED

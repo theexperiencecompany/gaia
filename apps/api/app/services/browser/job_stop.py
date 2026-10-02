@@ -33,16 +33,21 @@ async def stop_browser_job(key: str) -> str | None:
     job_id = await get_latest_job(key)
     if job_id is None:
         return None
+    return job_id if await stop_job(job_id) else None
+
+
+async def stop_job(job_id: str) -> bool:
+    """Stop this one job, queued or running: flag it, settle the handoff it is paused on, abort its task; False when it had ended."""
     state = await get_job_state(job_id)
     if state is None or state.status is BrowserJobStatus.DONE:
-        return None
+        return False
     await request_job_cancel(job_id)
     paused_on = await get_job_wait(job_id)
     if paused_on is not None:
         await cancel_handoff(paused_on)
     aborted = await _abort_if_started(job_id)
     log.set_ns("browser", stopped_job=job_id, stop_settled=paused_on, stop_aborted=aborted)
-    return job_id
+    return True
 
 
 async def _abort_if_started(job_id: str) -> bool:
