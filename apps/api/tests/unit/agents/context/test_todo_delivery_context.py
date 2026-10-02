@@ -39,8 +39,13 @@ DEFAULTS = "Anything else is not worth a message"
 BINDING = (
     "They bind this decision above every default here and in your instructions, the "
     "SILENCE rule included: when one asks to hear this todo's results, a report with "
-    "content is sent, whole, and SILENCE is only for a report with nothing in it."
+    "content is sent whole"
 )
+PASS_THROUGH = (
+    "a long-form deliverable: its headings and line items as written, in its order, with "
+    "at most one line of your own before it, never retold as prose and never shortened."
+)
+SHORT_DEFAULT = "keep it short"
 
 
 async def _delivered_request() -> HumanMessage:
@@ -98,3 +103,19 @@ class TestTheDesksDeliveryRuleBindsTheDecision:
         context = await _comms_context()
 
         assert context.index(DEFAULTS) < context.index(f"- {INBOX_DESK_DELIVERY_RULE}")
+
+
+class TestTheDesksBriefingKeepsItsSections:
+    """Regression: comms retold a sectioned desk briefing as one prose paragraph under its "whole" rule."""
+
+    @pytest.mark.regression
+    async def test_a_whole_report_passes_through_with_its_headings_and_items(self) -> None:
+        context = await _comms_context()
+
+        assert PASS_THROUGH in context
+
+    @pytest.mark.regression
+    async def test_the_pass_through_comes_after_the_keep_it_short_default(self) -> None:
+        context = await _comms_context()
+
+        assert context.index(SHORT_DEFAULT) < context.index(PASS_THROUGH)

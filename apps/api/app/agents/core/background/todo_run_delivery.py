@@ -35,6 +35,7 @@ from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.canvas_markdown import section_body
 from app.services.notification_service import notification_service
 from app.services.todo_activity import record_activity
+from app.utils.message_breaks import split_message_bubbles
 from shared.py.wide_events import log
 
 _NOT_SENT_NOTES: dict[TodoRunDeliveryOutcome, str] = {
@@ -118,7 +119,9 @@ async def _send_in_app(todo: TodoDocument, text: str) -> _Resolution:
             NotificationRequest(
                 user_id=todo.user_id,
                 source=NotificationSourceEnum.BACKGROUND_JOB,
-                content=NotificationContent(title=todo.title, body=text),
+                content=NotificationContent(
+                    title=todo.title, body="\n\n".join(split_message_bubbles(text))
+                ),
                 metadata={"todo_id": todo.id},
             )
         )

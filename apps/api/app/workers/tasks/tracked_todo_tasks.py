@@ -24,6 +24,7 @@ from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import TodoRunRequest, run_todo_on_executor
 from app.agents.prompts.todo_prompts import (
     DELIVERED_RESULT_GUIDANCE,
+    DELIVERED_RESULT_RULES,
     GMAIL_THREAD_RUN_GUIDANCE,
     INBOX_DESK_RUN_GUIDANCE,
     PARENT_STANDING_RULES_LABEL,
@@ -109,6 +110,9 @@ _EXTERNAL_REF_RUN_GUIDANCE: Mapping[ExternalRefSource, str] = MappingProxyType(
         ExternalRefSource.INBOX_DESK: INBOX_DESK_RUN_GUIDANCE,
     }
 )
+
+# Kinds whose run guidance sets the final report's form, so the default form is left out.
+_REPORT_FORM_OWNERS = frozenset({ExternalRefSource.INBOX_DESK})
 
 
 async def _load_user_with_tz(user_id: str) -> tuple[AuthenticatedUser, Timezone]:
@@ -599,6 +603,15 @@ def _external_ref_guidance(doc: TodoDocument) -> str | None:
     return guidance.format(ref_id=doc.external_ref.id) if guidance else None
 
 
+def _delivery_guidance(doc: TodoDocument) -> str:
+    """State where the run's final report goes; a kind that sets its own report form gets no second one."""
+    if not doc.notify_on_run:
+        return SILENT_RUN_GUIDANCE
+    if doc.external_ref is not None and doc.external_ref.source in _REPORT_FORM_OWNERS:
+        return DELIVERED_RESULT_RULES
+    return DELIVERED_RESULT_GUIDANCE
+
+
 def _opening_parts(
     title: str, origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
 ) -> list[str]:
@@ -670,7 +683,7 @@ def _build_execution_prompt(
         prompt_parts.append(f"{label}:\n{tail}")
     if context.learnings:
         prompt_parts.append(context.learnings)
-    prompt_parts.append(DELIVERED_RESULT_GUIDANCE if doc.notify_on_run else SILENT_RUN_GUIDANCE)
+    prompt_parts.append(_delivery_guidance(doc))
     return "\n\n".join(prompt_parts)
 
 

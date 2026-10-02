@@ -66,7 +66,9 @@ class TestTrackedTodoDeliveryNote:
             "Its Standing rules, the user's own instructions for this todo. They bind this "
             "decision above every default here and in your instructions, the SILENCE rule "
             "included: when one asks to hear this todo's results, a report with content is "
-            "sent, whole, and SILENCE is only for a report with nothing in it.\n"
+            "sent whole, as a long-form deliverable: its headings and line items as written, "
+            "in its order, with at most one line of your own before it, never retold as prose "
+            "and never shortened. SILENCE is only for a report with nothing in it.\n"
             "- Tell me the result every time.\n"
         ) in note
 

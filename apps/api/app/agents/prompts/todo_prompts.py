@@ -144,17 +144,24 @@ SUB_TODOS_CUT_NOTE = (
 # Appended to a scheduled/triggered run whose todo has notify_on_run set. GAIA
 # reads the run's final report and messages the user only when it matters, so
 # the run must neither notify on its own nor decide delivery for the user.
-DELIVERED_RESULT_GUIDANCE = (
-    "REPORTING: end with a factual report of this run: what you checked or did, what "
-    "is new since the last run (or that nothing is), and anything the user must decide. "
-    "Say when the todo's notes show the user already knows about an open question, and "
-    "when they asked to hear every result. GAIA reads that report and messages the user "
-    "only if it matters, so write it for GAIA, not as a message to them. Do "
+DELIVERED_RESULT_RULES = (
+    "REPORTING: GAIA reads your final report and messages the user only if it matters. Do "
     "NOT call send_notification to announce this run's outcome, because that sends it "
     "a second time. Notify only for something separate and urgent that cannot wait. "
     "Leave this todo's delivery settings alone: whether its runs reach the user is "
     "the user's choice."
 )
+
+# The report's form for a todo whose own guidance sets none. Placed last, it beat the
+# Inbox desk's briefing form, so the desk gets the rules alone.
+DELIVERED_REPORT_FORM = (
+    "End with a factual report of this run: what you checked or did, what "
+    "is new since the last run (or that nothing is), and anything the user must decide. "
+    "Say when the todo's notes show the user already knows about an open question, and "
+    "when they asked to hear every result. Write it for GAIA, not as a message to them."
+)
+
+DELIVERED_RESULT_GUIDANCE = f"{DELIVERED_RESULT_RULES} {DELIVERED_REPORT_FORM}"
 
 # The counterpart for a silent todo: nothing is delivered, so a result the user
 # needs has to be sent deliberately or it is lost in the canvas.
@@ -215,7 +222,7 @@ ACTIONED: all answered, nobody waiting.
 8. Note mail carrying events: flights, bookings, invites, deadlines. Only if CONNECTED INTEGRATIONS lists Google Calendar: add the user's own events confirmed by the provider's own confirmation mail and not yet on the calendar; propose everything else (events with other people, dates a person merely mentions) in the briefing; skip mail carrying an invite file. Without Google Calendar call no calendar tool.
 9. Keep ## {CANVAS_OBSERVATIONS_SECTION}, the section after Standing rules: record a pattern under Senders, Recurring or People only once it repeats (3 or more messages, in this run or across runs), never a one-off; Senders and Recurring from step 3's counts, People from the threads you read; one line per pattern in its sub-heading's format, updated in place (volume, last seen); drop a line not seen for 30 days; keep the section under {OBSERVATIONS_MAX_CHARS} characters.
 10. Last write, once every fetched thread is handled: set the last processed time to the {TOOL_RESULT_FETCHED_AT_KEY} of your first fetch in step 2, the Unix seconds it returned. Until then leave it unchanged.
-11. Your final report is the user's briefing, in this order, empty sections omitted:
+11. Your final report is the user's briefing and nothing else, never an account of the run ("I checked 9 messages"): each section with items is its name alone on one line, then one "- " line per item, a blank line between sections, in this order:
 Needs you: your {NEEDS_REPLY_LABEL} sub-todos; each: sender, the ask in one line, deadline, "draft ready" if drafted.
 Waiting on others: your {WAITING_FOR_REPLY_LABEL} sub-todos; overdue follow-ups.
 Done: sub-todos completed since the last briefing (your recent activity), one line each.

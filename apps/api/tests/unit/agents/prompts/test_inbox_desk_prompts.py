@@ -160,6 +160,17 @@ def test_a_discarded_nudge_is_not_drafted_again_for_the_same_follow_up() -> None
     assert "unless Current State says the user discarded the nudge for it" in guidance
 
 
+@pytest.mark.regression
+def test_the_briefing_is_section_headings_and_items_never_a_log_of_the_run() -> None:
+    """Regression: a desk wrote "Inbox desk run completed. I checked 9 messages" instead of its sections."""
+    heading = _step(BRIEFING_STEP)[0]
+
+    assert "never an account of the run" in heading
+    assert (
+        'its name alone on one line, then one "- " line per item, a blank line between sections'
+    ) in heading
+
+
 def test_standing_rules_beat_observations_and_both_beat_the_defaults() -> None:
     assert (
         "its Standing rules (the user's instructions) beat its Observations (patterns you "

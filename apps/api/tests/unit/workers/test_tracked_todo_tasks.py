@@ -36,7 +36,9 @@ from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import TodoRunRequest
 from app.agents.prompts import todo_prompts
 from app.agents.prompts.todo_prompts import (
+    DELIVERED_REPORT_FORM,
     DELIVERED_RESULT_GUIDANCE,
+    DELIVERED_RESULT_RULES,
     GMAIL_THREAD_RUN_GUIDANCE,
     PARENT_STANDING_RULES_LABEL,
     SILENT_RUN_GUIDANCE,
@@ -589,6 +591,23 @@ class TestDeliveryContractInThePrompt:
 
         assert SILENT_RUN_GUIDANCE in prompt
         assert DELIVERED_RESULT_GUIDANCE not in prompt
+
+    @pytest.mark.regression
+    def test_the_inbox_desks_briefing_is_its_only_report_form(self):
+        """Regression: the default "what you checked" report came last and the desk wrote a run log, not its briefing."""
+        desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
+
+        prompt = _build_execution_prompt(_doc(notify_on_run=True, external_ref=desk))
+
+        assert prompt.endswith(f"\n\n{DELIVERED_RESULT_RULES}")
+        assert DELIVERED_REPORT_FORM not in prompt
+
+    def test_a_thread_todo_keeps_the_default_report_form(self):
+        thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611")
+
+        prompt = _build_execution_prompt(_doc(notify_on_run=True, external_ref=thread))
+
+        assert prompt.endswith(f"\n\n{DELIVERED_RESULT_RULES} {DELIVERED_REPORT_FORM}")
 
 
 class TestTriggeredExecutionGating:

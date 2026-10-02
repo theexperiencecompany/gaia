@@ -16,6 +16,7 @@ from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
 from app.agents.core.background.todo_run_delivery import deliver_todo_run_result
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
 from app.constants import todos as todo_constants
+from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.constants.todos import TodoActivityEvent
 from app.models.chat_models import ConversationSource
@@ -108,6 +109,21 @@ class TestResultsThatReachNobody:
         assert seams.entry() == "result sent as an in-app notification (summary='report')"
         assert seams.props()["outcome"] == "delivered"
         assert seams.props()["platform"] is None
+
+    @pytest.mark.regression
+    async def test_an_in_app_result_keeps_its_lines_and_turns_bubble_breaks_into_paragraphs(
+        self,
+    ) -> None:
+        """Regression: the raw break token reached the in-app body, which no client splits on."""
+        narrated = (
+            f"Here's today's briefing.{NEW_MESSAGE_BREAKER}Needs you\n- Sam: the lease, by Friday"
+        )
+        with _seams(todo=_todo(), narrated=narrated, sent_on=None) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        assert seams.in_app.await_args.args[0].content.body == (
+            "Here's today's briefing.\n\nNeeds you\n- Sam: the lease, by Friday"
+        )
 
     async def test_a_result_neither_a_chat_app_nor_the_app_took_is_undelivered(self) -> None:
         """Counting a delivery that reached nobody as sent hides the failure."""
