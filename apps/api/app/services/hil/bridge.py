@@ -384,7 +384,7 @@ def build_summary(tool_name: str, args: Mapping[str, object], integration_name: 
     if integration_name:
         label = f"{label} ({integration_name})"
     parts = _summary_arg_parts(args)
-    return f"{label}: {', '.join(parts)}" if parts else label
+    return f"{label}; {', '.join(parts)}" if parts else label
 
 
 def build_action_detail(summary: str, args: Mapping[str, object]) -> str:

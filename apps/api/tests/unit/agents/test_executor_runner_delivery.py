@@ -2714,7 +2714,7 @@ class TestResolutionAnalyticsIsOnePerUpdate:
 
 
 class TestInlineFollowUpsOnlyWhereNothingWaits:
-    """Only a workflow attaches follow-ups inline; web and bot paths defer them; a reaction gets none."""
+    """Only a workflow attaches follow-ups inline; web defers them; bots and reactions get none."""
 
     async def test_a_bot_reaction_generates_no_follow_ups(self) -> None:
         delivered = await _deliver_run(

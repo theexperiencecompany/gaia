@@ -73,8 +73,8 @@ class ExtractedFact(BaseModel):
     shelf_life: MemoryShelfLife = Field(
         description=(
             "How long this assertion stays true. 'durable': identity, "
-            "relationships, preferences, style, health, values, long-run goals "
-            ". Never expires. 'state': a value that was only true as of a "
+            "relationships, preferences, style, health, values, long-run goals. "
+            "Never expires. 'state': a value that was only true as of a "
             "moment (counts, balances, metrics, connection status, deployment "
             "state, open bugs, in-flight applications, anything you would write "
             "'as of <date>'). Expires. 'task': a commitment, deadline or "

@@ -251,7 +251,7 @@ DENIED_TEMPLATE = (
     "not a question: state plainly that the action did not happen, include anything you did "
     "complete or prepare, and if they said what they wanted changed, note it as the open "
     "item for next time. Do not ask the user for more input or pose a follow-up question. "
-    "this run cannot receive a reply, so a question would just hang unanswered."
+    "This run cannot receive a reply, so a question would just hang unanswered."
 )
 
 # An expiry is not a dead end, so this nudges toward surfacing real work already done —

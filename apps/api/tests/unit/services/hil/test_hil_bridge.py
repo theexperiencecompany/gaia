@@ -51,7 +51,8 @@ MODULE = "app.services.hil.bridge"
 
 TOOL_CALL = GatedCall(id="call-1", name="send_email", args={"to": "bob@example.com"})
 
-SEPARATOR = ": "  # the colon + space between a summary's label/lead-in and its content
+SEPARATOR = ": "  # the colon + space between the browser-task lead-in and its task
+ARG_SEPARATOR = "; "  # between a tool label and its arguments, which carry their own colons
 
 # The stream the request was raised on, which closed when the run paused — deliberately
 # NOT the stream the settled card must be published to.
@@ -501,20 +502,22 @@ class TestSummary:
     def test_with_no_integration_the_label_carries_no_parentheses(self) -> None:
         assert build_summary("send_email", {}, None) == "Send email"
 
-    def test_the_label_and_arguments_are_joined_by_a_colon(self) -> None:
-        assert build_summary("send_email", {"to": "bob"}, None) == f"Send email{SEPARATOR}to: bob"
+    def test_the_label_and_arguments_are_joined_by_a_semicolon(self) -> None:
+        assert (
+            build_summary("send_email", {"to": "bob"}, None) == f"Send email{ARG_SEPARATOR}to: bob"
+        )
 
     def test_multiple_arguments_are_comma_separated_in_order(self) -> None:
         summary = build_summary("send_email", {"to": "bob", "cc": "al"}, None)
 
-        assert summary == f"Send email{SEPARATOR}to: bob, cc: al"
+        assert summary == f"Send email{ARG_SEPARATOR}to: bob, cc: al"
 
     def test_an_argument_value_at_the_clip_boundary_is_shown_in_full(self) -> None:
         value = "a" * HIL_SUMMARY_MAX_ARG_CHARS
 
         summary = build_summary("send_email", {"note": value}, None)
 
-        assert summary == f"Send email{SEPARATOR}note: {value}"
+        assert summary == f"Send email{ARG_SEPARATOR}note: {value}"
         assert ELLIPSIS not in summary
 
     def test_an_argument_value_one_over_the_boundary_is_clipped_with_an_ellipsis(self) -> None:
@@ -522,12 +525,14 @@ class TestSummary:
 
         summary = build_summary("send_email", {"note": value}, None)
 
-        assert summary == f"Send email{SEPARATOR}note: {'a' * HIL_SUMMARY_MAX_ARG_CHARS}{ELLIPSIS}"
+        assert (
+            summary == f"Send email{ARG_SEPARATOR}note: {'a' * HIL_SUMMARY_MAX_ARG_CHARS}{ELLIPSIS}"
+        )
 
     def test_boolean_and_numeric_arguments_are_shown_as_scalars(self) -> None:
         summary = build_summary("set_reminder", {"urgent": True, "count": 3}, None)
 
-        assert summary == f"Set reminder{SEPARATOR}urgent: True, count: 3"
+        assert summary == f"Set reminder{ARG_SEPARATOR}urgent: True, count: 3"
 
 
 class TestBrowserTaskSummary:
