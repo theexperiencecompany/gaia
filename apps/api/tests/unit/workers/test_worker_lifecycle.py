@@ -208,17 +208,25 @@ class TestWorkerShutdown:
 
         mock_stop.assert_awaited_once_with()
 
-    async def test_shutdown_logs_runtime_when_startup_time_present(self):
-        """When ctx has startup_time, shutdown computes and logs the runtime."""
-        loop = asyncio.get_event_loop()
-        ctx: dict = {"startup_time": loop.time() - 5.0}
+    async def test_shutdown_records_the_runtime_since_startup(self):
+        """Startup's loop-clock reading reaches shutdown through ARQ's ctx and becomes the runtime."""
+        ctx: dict = {}
+        with patch("app.workers.lifecycle.startup.unified_startup", new_callable=AsyncMock):
+            from app.workers.lifecycle.startup import startup
 
-        with patch(
-            "app.workers.lifecycle.shutdown.unified_shutdown",
-            new_callable=AsyncMock,
+            await startup(ctx)
+
+        with (
+            patch("app.workers.lifecycle.shutdown.unified_shutdown", new_callable=AsyncMock),
+            patch("app.workers.lifecycle.shutdown.log") as log,
         ):
-            # Should not raise — runtime logging is best-effort
             await shutdown(ctx)
+
+        runtimes = [
+            c.kwargs["runtime_s"] for c in log.set.call_args_list if "runtime_s" in c.kwargs
+        ]
+        assert runtimes
+        assert runtimes[0] >= 0
 
     async def test_shutdown_handles_missing_startup_time(self):
         """When startup_time is not in ctx, shutdown skips runtime logging."""
@@ -231,7 +239,7 @@ class TestWorkerShutdown:
             await shutdown(ctx)
 
     async def test_shutdown_handles_zero_startup_time(self):
-        """startup_time=0 is falsy — runtime logging is skipped."""
+        """An int 0 is not a loop-clock reading — runtime logging is skipped."""
         ctx: dict = {"startup_time": 0}
         with patch(
             "app.workers.lifecycle.shutdown.unified_shutdown",

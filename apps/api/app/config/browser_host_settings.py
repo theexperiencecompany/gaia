@@ -49,11 +49,9 @@ class BrowserHostSettings(BaseSettings):
     OBSCURA_BIN: str | None = None
     # How long Obscura gives a page's script phase before it stops running them.
     OBSCURA_SCRIPT_DEADLINE_SECONDS: int = 60
-    # An engine tree over this many MB is replaced: a fresh one takes new sessions
-    # while it drains. None disables it. Obscura used to keep each closed session's
-    # peak heap (~50 MB per session; engine patch 0033 holds 60 churned sessions
-    # at ~170 MB), and an 11-hour process took 57 s for a read a fresh one did in
-    # 0.8 s (2026-09-22). This bounds whatever growth remains.
+    # An engine over this many MB is replaced; the fresh one takes new sessions
+    # while the old one drains. A safety bound on growth (patch 0033 keeps 60
+    # churned sessions at ~170 MB); None disables it.
     BROWSER_ENGINE_RECYCLE_MB: int | None = 1500
     # Path to a Chromium/Chrome binary for BROWSER_ENGINE=chromium. Unset, the
     # host resolves Playwright's headless shell (its download can be

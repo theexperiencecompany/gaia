@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.agents.llm.exceptions import LLMNotConfiguredError
+from app.models.mail_models import GmailMessageSummary
 from app.models.onboarding_models import SocialProfile, SocialProfileFilterOutput
 from app.services.onboarding import social_profile_service as svc
 from app.services.onboarding.social_profile_service import (
@@ -68,9 +69,10 @@ def no_llm(monkeypatch):
 
 
 def _email(body: str, **overrides) -> dict:
-    email = {"body": body, "sender": "friend@example.com", "subject": "hello"}
-    email.update(overrides)
-    return email
+    """One message dump as the onboarding scan produces it (GmailMessagesResponse.raw_messages)."""
+    fields = {"id": "m1", "body": body, "sender": "friend@example.com", "subject": "hello"}
+    fields.update(overrides)
+    return GmailMessageSummary(**fields).model_dump(by_alias=True)
 
 
 class TestIsTrackingUrl:
@@ -255,7 +257,7 @@ class TestExtractSocialProfilesFromEmails:
         assert llm.called is False
 
     async def test_blank_email_is_skipped(self, llm):
-        emails = [{"body": "", "sender": "", "subject": ""}]
+        emails = [_email("", sender="", subject="")]
         assert await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com") == []
         assert llm.called is False
 
@@ -346,42 +348,25 @@ class TestExtractSocialProfilesFromEmails:
         assert llm.called is False
 
     async def test_sent_label_is_reported_to_the_llm(self, llm):
-        emails = [_email("https://twitter.com/bob", labelIds=["SENT", "INBOX"])]
+        emails = [_email("https://twitter.com/bob", label_ids=["SENT", "INBOX"])]
         await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
         assert "Sent email: yes" in llm.prompt
 
     async def test_received_email_is_not_marked_sent(self, llm):
-        emails = [_email("https://twitter.com/bob", labelIds=["INBOX"])]
+        emails = [_email("https://twitter.com/bob", label_ids=["INBOX"])]
         await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
         assert "Sent email: no" in llm.prompt
 
-    async def test_snake_case_label_key_is_understood(self, llm):
-        emails = [_email("https://twitter.com/bob", label_ids=["SENT"])]
-        await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
-        assert "Sent email: yes" in llm.prompt
-
-    async def test_null_labels_do_not_crash_extraction(self, llm):
-        llm.owned_profiles = [{"platform": "twitter", "handle": "bob"}]
-        emails = [_email("https://twitter.com/bob", labelIds=None)]
-
-        result = await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
-
-        assert result == [SocialProfile(platform="twitter", url="https://twitter.com/bob")]
-
-    async def test_body_falls_back_to_snippet_then_message_text(self, llm):
-        emails = [
-            {"body": "", "snippet": "https://twitter.com/fromsnippet"},
-            {"body": "", "snippet": "", "messageText": "https://github.com/fromtext"},
-        ]
+    async def test_body_falls_back_to_snippet(self, llm):
+        emails = [_email("", snippet="https://twitter.com/fromsnippet")]
         await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
 
         assert "Handle: fromsnippet" in llm.prompt
-        assert "Handle: fromtext" in llm.prompt
 
     async def test_sender_and_subject_are_searched_for_links(self, llm):
         emails = [
-            {"body": "no links here", "sender": "https://twitter.com/insender", "subject": ""},
-            {"body": "no links here", "sender": "", "subject": "https://github.com/insubject"},
+            _email("no links here", sender="https://twitter.com/insender", subject=""),
+            _email("no links here", sender="", subject="https://github.com/insubject"),
         ]
         await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
 
@@ -397,7 +382,7 @@ class TestExtractSocialProfilesFromEmails:
 
     async def test_sent_candidates_win_the_per_platform_cap(self, llm):
         emails = [_email(f"https://github.com/user{i}") for i in range(8) for _ in range(3)]
-        emails.append(_email("https://github.com/mine", labelIds=["SENT"]))
+        emails.append(_email("https://github.com/mine", label_ids=["SENT"]))
 
         await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
 
@@ -453,8 +438,8 @@ class TestExtractSocialProfilesFromEmails:
     async def test_llm_failure_falls_back_to_sent_email_profiles(self, llm):
         llm.error = RuntimeError("llm exploded")
         emails = [
-            _email("https://twitter.com/bob", labelIds=["SENT"]),
-            _email("https://github.com/stranger", labelIds=["INBOX"]),
+            _email("https://twitter.com/bob", label_ids=["SENT"]),
+            _email("https://github.com/stranger", label_ids=["INBOX"]),
         ]
 
         result = await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
@@ -463,12 +448,12 @@ class TestExtractSocialProfilesFromEmails:
 
     async def test_llm_failure_without_sent_emails_yields_nothing(self, llm):
         llm.error = RuntimeError("llm exploded")
-        emails = [_email("https://twitter.com/bob", labelIds=["INBOX"])]
+        emails = [_email("https://twitter.com/bob", label_ids=["INBOX"])]
 
         assert await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com") == []
 
     async def test_unconfigured_llm_falls_back_to_sent_email_profiles(self, no_llm):
-        emails = [_email("https://twitter.com/bob", labelIds=["SENT"])]
+        emails = [_email("https://twitter.com/bob", label_ids=["SENT"])]
 
         result = await extract_social_profiles_from_emails(emails, "Bob", "bob@x.com")
 

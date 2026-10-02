@@ -1,4 +1,10 @@
 {
-  "_comment": "Advisories scripts/ci/audit.sh pnpm may ignore. Every entry needs id (CVE or GHSA), reason and expires (YYYY-MM-DD); an expired entry fails the lane. Empty since 2026-10-02: maplibre-gl's GHSA-jrc7-96c5-q579 no longer matches any advisory, and image-size's two advisories cleared once metro moved to 0.83.8 (through @expo/metro 55.1.2), which vendors its own image-size reader instead of depending on the package. Fixed versions are pinned through pnpm.overrides in the root package.json (CLAUDE.md §9).",
-  "allow": []
+  "_comment": "Advisories scripts/ci/audit.sh pnpm may ignore. Every entry needs id (CVE or GHSA), reason and expires (YYYY-MM-DD); an expired entry fails the lane. Since 2026-10-02 it holds only advisories with no fixed release on the registry: maplibre-gl's GHSA-jrc7-96c5-q579 no longer matches any advisory, and image-size's two advisories cleared once metro moved to 0.83.8 (through @expo/metro 55.1.2), which vendors its own image-size reader instead of depending on the package. Fixed versions are pinned through pnpm.overrides in the root package.json (CLAUDE.md \u00a79).",
+  "allow": [
+    {
+      "id": "GHSA-86w9-cpqp-85rv",
+      "reason": "node-forge (CVE-2026-85393, RSA PKCS#1 v1.5 signature verification accepts extra nested DigestAlgorithm elements, high): NO upstream fix exists - the advisory's vulnerable range is <=1.4.0 with no first_patched_version, and 1.4.0 is the latest release on the registry (the root override already pins it there). Transitive through apps/mobile only (expo, @expo/vector-icons, @react-native-community/datetimepicker -> Expo CLI tooling); not a dependency of the API, web app or bots, and not on any request path. Re-check when node-forge ships a fixed release.",
+      "expires": "2026-10-31"
+    }
+  ]
 }

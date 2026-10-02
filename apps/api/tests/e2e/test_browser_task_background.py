@@ -888,6 +888,9 @@ async def test_a_stop_while_the_user_is_asked_to_sign_in_ends_the_run_stopped_at
             )
             await world.settle()
         record = await get_handoff(handoff_id)
+        # Read inside the world: outside it the fake Redis is gone and this would reach
+        # the process-wide client, bound to an earlier test's closed loop.
+        slot = await get_conversation_slot(CONVERSATION)
 
     assert reply == "Stopped the browser task."
     assert record is not None
@@ -897,7 +900,7 @@ async def test_a_stop_while_the_user_is_asked_to_sign_in_ends_the_run_stopped_at
     results = [card["status"] for card in world.cards() if card["kind"] == "result"]
     assert results == [BrowserSessionStatus.CANCELLED.value]
     assert world.browser.next_step == 1
-    assert await get_conversation_slot(CONVERSATION) is None
+    assert slot is None
 
 
 async def test_a_browser_lost_while_the_user_signs_in_ends_the_handoff_and_the_run() -> None:
