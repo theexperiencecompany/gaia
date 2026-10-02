@@ -74,13 +74,20 @@ NAVIGATE_TIMEOUT_SECONDS = 90.0
 SITE_TIMEOUT_SECONDS = 180.0
 #: Obscura showing under this share of Chrome's inputs, buttons or links is a gap.
 MIN_SHARE_OF_CHROME = 0.5
+#: The viewport Obscura lays every page out in; Chrome is given the same one.
+VIEWPORT_WIDTH, VIEWPORT_HEIGHT = 1280, 720
 #: Main-document bodies further apart than this are different documents. Measured
 #: 2026-10-02: one site's page across loads and engines, up to 3.4x (bing, reddit);
 #: a bot wall vs the real page, 14x (16 KB challenge vs 226 KB) to 150x (amazon).
 MAX_SAME_DOCUMENT_SIZE_RATIO = 10.0
 
+# Shown means visible, not only boxed: Chrome sizes what a closed <details> holds
+# (content-visibility: hidden), and MDN's sidebar then counted 387 links nobody sees.
 _FINGERPRINT_JS = """(() => {
-  const shown = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  const shown = (el) => {
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && el.checkVisibility({checkVisibilityCSS: true});
+  };
   const count = (sel) => [...document.querySelectorAll(sel)].filter(shown).length;
   return {
     title: document.title,
@@ -186,15 +193,19 @@ class CdpBrowser:
             await self._call("Page.enable", events, session)
             await self._call("Runtime.enable", events, session)
             await self._call("Network.enable", events, session)
-            await asyncio.wait_for(
+            navigation = await asyncio.wait_for(
                 self._call("Page.navigate", events, session, url=url), NAVIGATE_TIMEOUT_SECONDS
             )
+            if navigation.get("errorText"):
+                raise RuntimeError(f"navigation failed: {navigation['errorText']}")
             await self._drain(SETTLE_SECONDS, events)
             result = await self._call(
                 "Runtime.evaluate", events, session, expression=_FINGERPRINT_JS, returnByValue=True
             )
             report.fingerprint = dict((result.get("result") or {}).get("value") or {})
-            report.document = await self._main_document(events, session)
+            report.document = await self._main_document(
+                events, session, str(navigation.get("loaderId") or "")
+            )
         except Exception as exc:
             report.failure = f"{type(exc).__name__}: {exc}"[:200]
         finally:
@@ -207,13 +218,15 @@ class CdpBrowser:
         report.errors = _errors(events)
         return report
 
-    async def _main_document(self, events: list[dict[str, Any]], session: str) -> Document | None:
+    async def _main_document(
+        self, events: list[dict[str, Any]], session: str, loader: str
+    ) -> Document | None:
         """The main frame's document for the probe's navigation, sized from its body as the engine decoded it.
 
         Not loadingFinished's encodedDataLength: Chrome counts compressed bytes
         plus headers there and Obscura the decoded body, so they never compare.
         """
-        frame, response = _main_response(events)
+        frame, response = _main_response(events, loader)
         if response is None:
             return None
         try:
@@ -230,19 +243,25 @@ class CdpBrowser:
         return Document(status, str(frame.get("url") or ""), size)
 
 
-def _main_response(events: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any] | None]:
-    """The main frame's first commit, the probe's own navigation, and the Network.responseReceived behind it.
+def _main_response(
+    events: list[dict[str, Any]], loader: str
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """The main frame's commit of the probe's own navigation, and the Network.responseReceived behind it.
 
-    The first, not the last: a later commit is the page's own script navigating
-    (a client-side redirect), which an engine that fails the script never makes,
-    and the server chose nothing there. HTTP redirects land before that commit.
-    The URL to compare is the frame's: Obscura's responseReceived carries the
-    URL before redirects (airbnb's 302 handoff), the frame the one it landed on.
+    Found by the loaderId Page.navigate answered with. Neither the first commit
+    (Obscura re-commits the blank tab it opened on) nor the last (a page script's
+    redirect, which an engine that fails the script never makes) is the server's
+    answer. The URL is the frame's: Obscura's responseReceived carries the URL
+    before redirects (airbnb's 302 handoff), the frame the one it landed on.
     """
     frame: dict[str, Any] = {}
     for event in events:
         committed = (event.get("params") or {}).get("frame") or {}
-        if event.get("method") == "Page.frameNavigated" and not committed.get("parentId"):
+        if (
+            event.get("method") == "Page.frameNavigated"
+            and not committed.get("parentId")
+            and committed.get("loaderId") == loader
+        ):
             frame = committed
             break
     found = None
@@ -362,6 +381,8 @@ class ProbeResult:
     rendered_differently: set[str] = field(default_factory=set)
     #: URL -> how the two main documents differ.
     served_different_document: dict[str, str] = field(default_factory=dict)
+    #: Sites a browser loaded that the probe could not read the main document of: its own fault.
+    probe_errors: list[str] = field(default_factory=list)
 
 
 async def _running_obscura(
@@ -386,10 +407,22 @@ async def _stop_wedged(obscura: asyncio.subprocess.Process) -> None:
 
 
 def _report_site(result: ProbeResult, url: str, o: PageReport, c: PageReport) -> None:
-    """Sort one site's gap by its owner into result, and print what differs."""
+    """Sort one site's gap by its owner into result, and print what differs.
+
+    A browser that loaded the site with no main document read is the probe's own
+    failure: the site is not sorted at all, since no owner can be told.
+    """
+    unread = [
+        f"{url}: {engine} loaded it, but the probe read no main document"
+        for engine, report in (("obscura", o), ("chrome", c))
+        if report.failure is None and report.document is None
+    ]
+    result.probe_errors.extend(unread)
     gaps = _gaps(o, c)
     different = _different_document(o.document, c.document) if gaps else None
-    if different:
+    if unread:
+        status = "ERR "
+    elif different:
         result.served_different_document[url] = different
         status = "DOC "
     elif gaps:
@@ -423,6 +456,9 @@ async def probe(urls: list[str], obscura_bin: str, chrome_bin: str) -> ProbeResu
             f"--user-data-dir={profile}",
             "--no-first-run",
             "--no-default-browser-check",
+            # Obscura's viewport: headless Chrome's own 800x600 lays a responsive page
+            # out for a smaller screen, and its counts then differ for that alone.
+            f"--window-size={VIEWPORT_WIDTH},{VIEWPORT_HEIGHT}",
         ]
     )
     result = ProbeResult()
@@ -462,11 +498,14 @@ def _list(heading: str, urls: list[str]) -> None:
 
 
 def _verdict(urls: list[str], result: ProbeResult, baseline: set[str] | None) -> int:
-    """Print the summary and return the exit code; only rendering gaps can fail the run.
+    """Print the summary and return the exit code; rendering gaps, or the probe's own errors, fail the run.
 
     A baseline excuses only its own sites. A baseline site served a different
     document was not compared this run, so it is neither a gap nor removable.
     """
+    if result.probe_errors:
+        _list(f"\nPROBE ERROR: {len(result.probe_errors)} sites unread", result.probe_errors)
+        return 2
     gapped, served = result.rendered_differently, result.served_different_document
     print(f"\n{len(gapped)} of {len(urls)} sites render differently in Obscura")
     _list(
