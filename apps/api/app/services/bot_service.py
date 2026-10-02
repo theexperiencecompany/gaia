@@ -16,7 +16,7 @@ from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.bot_session_merge import apply_merge, plan_merge
 from app.services.browser.handoff import bot_chat_address
-from app.services.browser.job_stop import stop_browser_job
+from app.services.browser.job_stop import requester_chat, stop_chat_jobs
 from app.services.conversation_service import create_conversation_service
 from shared.py.wide_events import log
 
@@ -188,13 +188,14 @@ class BotService:
         session_key = BotService.build_session_key(platform, platform_user_id, channel_id)
         current = await bot_session_repository.get_by_session_key(session_key)
         # /stop resets the session; a browser run outlives the turn that started it,
-        # so without this it keeps going in a conversation the user has left.
-        if current is not None:
-            await stop_browser_job(current.conversation_id)
+        # so without this it keeps going in a conversation the user has left. A DM's /stop
+        # also reaches a run started in a group, which answers to this DM; a group's, its own.
         source = ConversationSource.coerce(platform)
-        if is_dm and source is not None:
-            # A run the user started in a group talks to them here: this /stop is theirs to reach it with.
-            await stop_browser_job(bot_chat_address(source, user.user_id))
+        requester = requester_chat(user.user_id, source) if is_dm else None
+        if current is not None:
+            await stop_chat_jobs(current.conversation_id, requester)
+        elif requester is not None:
+            await stop_chat_jobs(bot_chat_address(requester.source, user.user_id), requester)
         await bot_session_repository.delete_by_session_key(session_key)
 
         return await BotService.get_or_create_session(platform, platform_user_id, channel_id, user)

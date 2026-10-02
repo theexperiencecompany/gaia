@@ -445,11 +445,13 @@ async def _finalize_executor_run(
         return
 
     was_cancelled = bool(run.stream_id) and await StreamManager.is_cancelled(run.stream_id)
+    # Read before the done signal tears the session down, like everything below.
+    told = was_cancelled or _outcome_told(run.stream_id)
 
     # Snapshot returned-cards BEFORE signalling done: live streams tear down the
     # session in parallel once done_event fires, so reading after would race it.
     # Only meaningful where cards render — a bot/workflow delivery has no card to fall back on.
-    build_note = not was_cancelled and run.renders_native_cards
+    build_note = not told and run.renders_native_cards
     returned_note = build_returned_to_frontend_note(run.stream_id) if build_note else ""
 
     # Snapshot cards delivery will persist, same reason: every comms consumer
@@ -504,7 +506,7 @@ async def _finalize_executor_run(
                 TerminalOutcome(
                     result_text=result_text,
                     result_type=result_type,
-                    was_cancelled=was_cancelled,
+                    was_cancelled=told,
                     returned_note=returned_note,
                     tool_data=tool_data,
                 ),
@@ -556,6 +558,12 @@ async def _finalize_executor_run(
     await _carry_pending_into_new_run(run, ctx)
 
 
+def _outcome_told(stream_id: str) -> bool:
+    """Whether the run's outcome already reached the user: it joined a browser job a stop ended, and the stop said so."""
+    session = get_session(stream_id)
+    return session is not None and session.outcome_told
+
+
 async def _finalize_paused_run(run: ExecutorRun) -> None:
     """Close out a run parked on a HIL approval without ending its turn.
 
@@ -595,6 +603,7 @@ class TerminalOutcome:
 
     result_text: str
     result_type: str
+    #: Stopped, or its outcome already told by a stop: recorded as cancelled, never narrated.
     was_cancelled: bool
     returned_note: str
     tool_data: list[ToolDataEntry] | None

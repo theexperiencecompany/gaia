@@ -16,6 +16,7 @@ from app.constants.browser import (
     BROWSER_JOB_SLOT_TAKEN_SUMMARY,
     BROWSER_TASK_EVENT,
     BrowserSessionStatus,
+    JobEnding,
     ResultSpeaker,
 )
 from app.constants.comms import SILENCE_TAG
@@ -30,8 +31,8 @@ from app.services.browser.jobs import (
     get_job_state,
     hold_result_for_run,
     put_job_state,
+    record_ending,
     release_result_hold,
-    request_job_cancel,
 )
 from app.workers.tasks import browser_tasks as tasks_mod
 from tests.helpers import captured_wide_event
@@ -168,7 +169,7 @@ async def test_the_worker_waits_for_the_run_that_started_it_and_stays_quiet_if_i
 async def _stopped_while_queued(job_id: str) -> None:
     """Flag a job stopped as a stop does: only one that has not ended can be."""
     await put_job_state(BrowserJobState(job_id=job_id, status=BrowserJobStatus.QUEUED, task="t"))
-    assert await request_job_cancel(job_id) is True
+    assert await record_ending(job_id, JobEnding.STOPPED) is JobEnding.STOPPED
 
 
 async def test_who_told_the_result_is_on_the_jobs_event(world: World) -> None:

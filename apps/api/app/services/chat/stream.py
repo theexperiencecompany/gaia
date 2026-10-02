@@ -67,6 +67,7 @@ from app.services.analytics_service import (
     capture_event,
 )
 from app.services.browser.handoff import reply_address
+from app.services.browser.job_stop import RequesterChat, requester_chat
 from app.services.browser.jobs import post_conversation_message
 from app.services.browser.resolution import (
     resolve_handoff_from_message,
@@ -590,7 +591,8 @@ async def _browser_turn_note(
         return BROWSER_HANDOFF_REPLY_NOTE.format(
             reason=reply.reason, reading=BROWSER_HANDOFF_REPLY_READINGS[reply.action]
         )
-    if reply is None and await _stops_the_running_task(conversation_id, message):
+    requester = requester_chat(user_id, ConversationSource.coerce(source))
+    if reply is None and await _stops_the_running_task(conversation_id, requester, message):
         return BROWSER_RUN_STOPPED_BY_MESSAGE_NOTE
     job_id = await post_conversation_message(conversation_id, message)
     if job_id is not None:
@@ -598,14 +600,16 @@ async def _browser_turn_note(
     return None
 
 
-async def _stops_the_running_task(conversation_id: str, message: str) -> bool:
+async def _stops_the_running_task(
+    conversation_id: str, requester: RequesterChat | None, message: str
+) -> bool:
     """Whether the message stopped the conversation's running browser task.
 
     A read that fails stops nothing: the message still reaches the task as
     something the user said, which its own agent weighs.
     """
     try:
-        return await stop_running_job_from_message(conversation_id, message)
+        return await stop_running_job_from_message(conversation_id, requester, message)
     except Exception as e:  # the user's words must still reach the run
         log.error(
             f"{LogTag.CHAT} Reading a mid-run message for a stop failed; it goes to the task",

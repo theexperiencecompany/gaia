@@ -10,7 +10,7 @@ import pytest
 
 from app.agents.tools import browser_tool as tool_mod
 from app.agents.tools.browser_tool import browser_task
-from app.constants.browser import BROWSER_JOB_QUEUE, BROWSER_JOB_TASK
+from app.constants.browser import BROWSER_JOB_QUEUE, BROWSER_JOB_TASK, JobEnding
 from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationSource
 from app.schemas.browser import BrowserTaskSecret
@@ -440,12 +440,15 @@ async def test_a_stop_while_the_job_is_being_queued_reaches_it_before_it_runs(
 
 
 async def test_a_dropped_enqueue_frees_the_slot_and_says_so(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, fake_redis: fakeredis.aioredis.FakeRedis
 ) -> None:
     """A wedged slot would refuse every later browser task in this conversation for a run that never started."""
     recorder = _install(monkeypatch, enqueued_job=None)
 
     out = await _start({"task": "x"}, config=UI_CONFIG)
+
+    # Its ending is recorded as its own: a stop that comes for it later finds it over.
+    assert await jobs.job_ending(recorder.request.job_id) is JobEnding.FINISHED
 
     assert out == "I couldn't start the browser task right now. Try again in a moment."
     assert recorder.released == [("c1", recorder.request.job_id)]

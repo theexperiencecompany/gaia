@@ -31,7 +31,7 @@ from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.stream_events import ErrorFrame
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
-from app.services.browser.job_stop import stop_browser_job
+from app.services.browser.job_stop import stop_chat_jobs
 from app.services.chat.stream import run_chat_stream_background
 from app.services.latency_metrics import observe_sse_delivery
 from app.utils.agent_utils import format_sse_data
@@ -272,12 +272,13 @@ async def cancel_stream_endpoint(
     stopped = await stop_stream(progress.conversation_id, stream_id)
     # A browser run outlives the turn that started it: Stop reaches the job itself,
     # whichever of the conversation's turns the button was pressed on.
-    browser_job = await stop_browser_job(progress.conversation_id)
+    # The web's Stop: its conversation's run; a bot user's own chat is not this surface.
+    browser_jobs = await stop_chat_jobs(progress.conversation_id, None)
     log.info(
         f"{LogTag.CHAT} Cancel stream request",
         stream_id=stream_id,
         stopped_subagents=len(stopped),
-        browser={"job_id": browser_job},
+        browser={"stopped": {job: outcome.value for job, outcome in browser_jobs.items()}},
     )
 
     return CancelStreamResponse(success=True, stream_id=stream_id)

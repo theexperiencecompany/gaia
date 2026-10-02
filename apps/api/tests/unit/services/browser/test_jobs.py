@@ -8,6 +8,7 @@ import pytest
 from app.constants.browser import (
     BROWSER_JOB_JOINER_LEASE_SECONDS,
     BROWSER_JOB_LOCK_TTL_SECONDS,
+    JobEnding,
     ResultSpeaker,
 )
 from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
@@ -180,7 +181,7 @@ async def test_everything_the_job_store_writes_lapses_with_the_job(
     await jobs_mod.take_joiner_lease("job-1", "stream-a")
     await jobs_mod.hold_result_for_run("job-1", "stream-b")
     await jobs_mod.claim_result_delivery("job-1", ResultSpeaker.WORKER)
-    await jobs_mod.request_job_cancel("job-1")
+    await jobs_mod.record_ending("job-1", JobEnding.STOPPED)
     await jobs_mod.set_job_wait("job-1", "h1")
     await jobs_mod.post_job_message("job-1", "hi")
     await jobs_mod.drop_joiner_lease("job-1", "stream-a")
@@ -199,33 +200,19 @@ async def test_everything_the_job_store_writes_lapses_with_the_job(
     assert await jobs_mod.get_job_wait("job-1") is None
 
 
-async def test_a_stop_and_the_jobs_end_never_both_win(
-    redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A stop read RUNNING, the worker wrote DONE and told its result, then the flag landed: two replies."""
-    running = BrowserJobState(job_id="job-1", status=BrowserJobStatus.RUNNING, task="t")
-    await jobs_mod.put_job_state(running)
-    open_pipeline = redis.pipeline
+@pytest.mark.parametrize(
+    ("first", "then"),
+    [(JobEnding.FINISHED, JobEnding.STOPPED), (JobEnding.STOPPED, JobEnding.FINISHED)],
+)
+async def test_a_job_ends_once_whoever_records_first(first: JobEnding, then: JobEnding) -> None:
+    """A stop and the run's end raced in every round: each read one record and acted on another."""
+    assert await jobs_mod.job_ending("job-1") is None
 
-    def _pipeline_that_ends_the_job(*args: object, **kwargs: object) -> object:
-        pipe = open_pipeline(*args, **kwargs)
-        read = pipe.get
+    assert await jobs_mod.record_ending("job-1", first) is first
+    assert await jobs_mod.record_ending("job-1", then) is first
 
-        async def _read_then_end(key: str) -> object:
-            value = await read(key)
-            # The worker settles the job between the stop's read and its write.
-            await jobs_mod.put_job_state(
-                running.model_copy(update={"status": BrowserJobStatus.DONE})
-            )
-            return value
-
-        pipe.get = _read_then_end
-        return pipe
-
-    monkeypatch.setattr(redis, "pipeline", _pipeline_that_ends_the_job)
-
-    assert await jobs_mod.request_job_cancel("job-1") is False
-    assert await jobs_mod.job_cancel_requested("job-1") is False
+    assert await jobs_mod.job_ending("job-1") is first
+    assert await jobs_mod.job_cancel_requested("job-1") is (first is JobEnding.STOPPED)
 
 
 async def test_a_latest_job_pointer_goes_back_only_while_the_job_that_never_ran_holds_it(

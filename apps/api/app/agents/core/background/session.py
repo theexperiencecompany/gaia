@@ -65,6 +65,9 @@ class StreamSession:
     # tool_call_id -> the subagent_id of the run that ANNOUNCED it (None for
     # the executor's own calls) — the one fact that survives the echo above.
     tool_output_owners: dict[str, str | None] = field(default_factory=dict)
+    #: Set when the run's outcome already reached the user another way: it joined a
+    #: browser job a stop ended, and the stop's reply was the telling.
+    outcome_told: bool = False
 
 
 @dataclass(frozen=True)

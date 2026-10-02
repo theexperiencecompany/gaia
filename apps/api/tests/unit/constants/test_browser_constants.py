@@ -32,7 +32,7 @@ def test_background_job_keys_live_in_the_browser_namespace() -> None:
         browser_constants.BROWSER_JOB_STATE_PREFIX,
         browser_constants.BROWSER_JOB_EVENTS_PREFIX,
         browser_constants.BROWSER_JOB_JOINER_PREFIX,
-        browser_constants.BROWSER_JOB_CANCEL_PREFIX,
+        browser_constants.BROWSER_JOB_ENDING_PREFIX,
     ]
     assert all(prefix.startswith("browser:") for prefix in prefixes)
     assert all(prefix.endswith(":") for prefix in prefixes)

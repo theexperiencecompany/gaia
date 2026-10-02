@@ -681,26 +681,30 @@ class ResultSpeaker(StrEnum):
     WORKER = "worker"
 
 
-# The stop flag every stop sets (stop_browser_job); the run reads it at its
-# start, between steps and before every wait.
-BROWSER_JOB_CANCEL_PREFIX = "browser:job:cancel:"
+# How a job ended (JobEnding), recorded once by the stop or the run, whichever comes
+# first; the run reads it at its start, between steps and before every wait.
+BROWSER_JOB_ENDING_PREFIX = "browser:job:ending:"
 # The handoff a paused run is waiting on, so a stop can settle it.
 BROWSER_JOB_WAIT_PREFIX = "browser:job:wait:"
 # What the user said while a job runs, oldest first: the run reads it between steps.
 BROWSER_JOB_INBOX_PREFIX = "browser:job:inbox:"
-# How long a stop the agent asked for waits on the job's own ending before it
-# says the stop is not confirmed yet. The aborted run ends within a worker poll.
-BROWSER_JOB_STOP_CONFIRM_SECONDS = 15
+
+
+class JobEnding(StrEnum):
+    """How a browser job ended, as recorded once: the first of a stop and the run's own end wins."""
+
+    #: A stop was recorded first: the stop told the user, and the run's result is dropped.
+    STOPPED = "stopped"
+    #: The run ended first, on its own result card: that result is the one the user hears.
+    FINISHED = "finished"
 
 
 class BrowserStopOutcome(StrEnum):
-    """What a stop found once the job ended, or did not end, after it."""
+    """What a stop came to, as the job's ending of record says."""
 
     STOPPED = "stopped"
-    #: The run had already finished another way before the stop reached it.
+    #: The run had already ended on its own result, which the user is told.
     ALREADY_ENDED = "already_ended"
-    #: The job had not ended when the wait for it gave out.
-    UNCONFIRMED = "unconfirmed"
 
 
 # How long a read of a job's feed parks on it for the next frame: the beat the

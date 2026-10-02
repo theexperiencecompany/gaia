@@ -31,6 +31,7 @@ from app.constants.browser import (
     EngineFailure,
     HandoffKind,
     HandoffStatus,
+    JobEnding,
     SensitiveCategory,
 )
 from app.constants.log_tags import LogTag
@@ -82,6 +83,7 @@ from app.services.browser.jobs import (
     job_messages_waiting,
     joiner_lease_held,
     put_job_state,
+    record_ending,
     set_job_wait,
     take_job_messages,
 )
@@ -113,6 +115,8 @@ from shared.py.wide_events import log
 
 #: Where one already-shaped stream frame goes: the job's own replayable feed.
 FramePublisher = Callable[[dict[str, object]], Awaitable[None]]
+#: Records how the job ends unless it is recorded already; answers the ending of record.
+RecordEndingFn = Callable[[JobEnding], Awaitable[JobEnding]]
 
 # Screenshots stream into the chat live, so the reply must never narrate them.
 _NO_META = (
@@ -341,8 +345,10 @@ class ProgressEmitter:
         publish: FramePublisher,
         thread_mirror: BrowserThreadMirror,
         bot_delivery: BotProgressDelivery | None,
+        record_ending: RecordEndingFn,
     ) -> None:
         self._publish = publish
+        self._record_ending = record_ending
         self.thread_mirror = thread_mirror
         self._bot_delivery = bot_delivery
         # Captions for the recap ("what's going on" per step), keyed by step index.
@@ -361,6 +367,8 @@ class ProgressEmitter:
             await self._bot_delivery.note(text)
 
     async def emit(self, snapshot: BrowserCardSnapshot) -> None:
+        if isinstance(snapshot, BrowserResultSnapshot):
+            snapshot = await self._as_ended(snapshot)
         await self._publish({BROWSER_TASK_EVENT: snapshot.model_dump(mode="json")})
         await self.thread_mirror.mirror(snapshot)
         if isinstance(snapshot, BrowserResultSnapshot):
@@ -372,6 +380,35 @@ class ProgressEmitter:
                 self.step_shots[snapshot.index] = snapshot.screenshot
         if self._bot_delivery is not None:
             await _deliver_snapshot_to_bot(self._bot_delivery, snapshot)
+
+    async def _as_ended(self, result: BrowserResultSnapshot) -> BrowserResultSnapshot:
+        return await _ended_as_record_says(self._record_ending, result)
+
+
+async def _ended_as_record_says(
+    record_ending: RecordEndingFn, result: BrowserResultSnapshot
+) -> BrowserResultSnapshot:
+    """Return the result card the job ends on: the run's own when it records the ending first, else the stop's.
+
+    The run's end and a stop race to record the one ending (jobs.record_ending);
+    a run that lost is shown as stopped, since the stop already told the user.
+    """
+    if await record_ending(JobEnding.FINISHED) is JobEnding.FINISHED:
+        return result
+    if result.status is BrowserSessionStatus.CANCELLED:
+        return result
+    return result.model_copy(
+        update={
+            "status": BrowserSessionStatus.CANCELLED,
+            "success": False,
+            "summary": BROWSER_RUN_CANCELLED_SUMMARY,
+        }
+    )
+
+
+def _ended_on(emitter: ProgressEmitter, result: BrowserResultSnapshot) -> BrowserResultSnapshot:
+    """Return the card the emitter ended the run on, which is the run's result as its ending of record left it."""
+    return emitter.result if emitter.result is not None else result
 
 
 def _handoff_snapshot(
@@ -681,6 +718,7 @@ def _emitter_for(request: BrowserJobRequest) -> ProgressEmitter:
         emit_frame,
         BrowserThreadMirror(emit_frame, request.tool_call_id),
         _build_bot_delivery(request),
+        partial(record_ending, request.job_id),
     )
 
 
@@ -702,7 +740,7 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
     # always presents the same device rather than a new one per task.
     seed_token = set_fingerprint_seed(request.user_id)
     try:
-        result = await _run_job(request, emitter)
+        result = _ended_on(emitter, await _run_job(request, emitter))
     except asyncio.CancelledError:
         log.fail(BrowserRunFailure.CANCELLED)
         # Nobody holds a tool call to hear this; without it the card stays RUNNING forever.
@@ -812,7 +850,8 @@ async def _run_job(request: BrowserJobRequest, emitter: ProgressEmitter) -> Brow
                 root_request_id=request.root_request_id,
             )
             run_t0 = perf_counter()
-            result = await runner.run(full_task)
+            # The card the run ended on, as its ending of record left it: a stop that won makes it the stopped card.
+            result = _ended_on(emitter, await runner.run(full_task))
             finished = FinishedRun(
                 result=result,
                 session_id=runner.session.session_id,

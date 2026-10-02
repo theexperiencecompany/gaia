@@ -32,8 +32,9 @@ from app.agents.core.background.session import (
     mark_executor_spawned,
 )
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
-from app.constants.browser import BROWSER_JOB_STOP_CONFIRM_SECONDS, BrowserStopOutcome
+from app.constants.browser import BrowserStopOutcome
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
+from app.constants.chat import ConversationSource
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
 from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
@@ -41,7 +42,7 @@ from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, agent_configurable
-from app.services.browser.job_stop import confirm_stopped, stop_browser_job
+from app.services.browser.job_stop import requester_chat, stop_chat_jobs
 from app.services.hil.ledger_decide import cancel_ledger_approvals
 from app.services.hil.resolution import cancel_conversation_approvals
 from app.services.workflow.execution_service import get_last_run_brief
@@ -373,7 +374,7 @@ async def cancel_executor(
 
     # A browser run outlives the turn that started it, so a stop-everything stops
     # the job itself. A targeted cancel names one executor task and leaves it running.
-    browser = await _stop_the_browser(conversation_id) if not task_ids else None
+    browser = await _stop_the_browser(configurable, conversation_id) if not task_ids else None
     executor = await _cancel_executor_work(configurable, conversation_id, task_ids, message)
     if browser is None:
         return executor
@@ -386,12 +387,19 @@ _NOTHING_TO_CANCEL = "No executor tasks are running or pending for this conversa
 _NOTHING_MATCHED = "None of the specified task_ids matched any running or pending tasks."
 
 
-async def _stop_the_browser(conversation_id: str) -> str | None:
-    """Stop the conversation's browser job and say what that came to; None when none runs."""
-    job_id = await stop_browser_job(conversation_id)
-    if job_id is None:
+async def _stop_the_browser(configurable: AgentConfigurable, conversation_id: str) -> str | None:
+    """Stop the browser jobs this chat controls and say what that came to; None when none runs."""
+    requester = requester_chat(
+        configurable.get("user_id"),
+        ConversationSource.coerce(configurable.get("conversation_source")),
+    )
+    outcomes = await stop_chat_jobs(conversation_id, requester)
+    if not outcomes:
         return None
-    return _BROWSER_STOP_REPORTS[await confirm_stopped(job_id, BROWSER_JOB_STOP_CONFIRM_SECONDS)]
+    stopped = BrowserStopOutcome.STOPPED in outcomes.values()
+    return _BROWSER_STOP_REPORTS[
+        BrowserStopOutcome.STOPPED if stopped else BrowserStopOutcome.ALREADY_ENDED
+    ]
 
 
 async def _cancel_executor_work(
@@ -473,14 +481,11 @@ async def _cancel_executor_work(
         return f"Cancellation attempted but hit an error: {e}"
 
 
-#: What the agent is told a browser stop came to, once the job ended (or did not).
+#: What the agent is told a browser stop came to, as the job's ending of record says.
 _BROWSER_STOP_REPORTS = {
     BrowserStopOutcome.STOPPED: "Stopped the browser task.",
     BrowserStopOutcome.ALREADY_ENDED: (
         "The browser task had already finished before the stop reached it; its result stands."
-    ),
-    BrowserStopOutcome.UNCONFIRMED: (
-        "Asked the browser task to stop, but it has not confirmed stopping yet."
     ),
 }
 

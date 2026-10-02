@@ -6,9 +6,9 @@ scoped LLM call classifies the reply. This is the text-channel equivalent of
 the Continue/Cancel buttons, so it works identically on web and bots. While a
 task runs unpaused, one scoped call reads whether the message stops it.
 
-A stop said in chat takes the one stop path (stop_browser_job), so the job is
-flagged stopped before anything else reads the message: the turn answering it
-is then the only one that speaks of the stop. Read as a note instead, it once
+A stop said in chat records the job's ending as stopped (job_stop.stop_job)
+before anything else reads the message: the turn answering it is then the only
+one that speaks of the stop. Read as a note instead, it once
 ended the run on its own agent's say-so as a failure, which the run's executor
 narrated on top of the turn's own "Stopped." Mirrors the HIL conversational
 pattern: a classifier that fails acts on nothing.
@@ -20,17 +20,15 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.agents.llm.client import ainvoke_structured_gemini
-from app.constants.browser import HandoffDecision, HandoffStatus
+from app.constants.browser import BrowserStopOutcome, HandoffDecision, HandoffStatus
 from app.constants.log_tags import LogTag
-from app.schemas.browser_job import BrowserJobStatus
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.browser.handoff import (
     get_handoff,
     get_pending_handoff_for_reply,
     resolve_handoff,
 )
-from app.services.browser.job_stop import stop_job
-from app.services.browser.jobs import get_conversation_slot, get_job_state
+from app.services.browser.job_stop import RequesterChat, running_chat_jobs, stop_job
 from shared.py.wide_events import log
 
 HandoffReplyAction = Literal["continue", "cancel", "redirect", "unrelated"]
@@ -152,21 +150,25 @@ async def resolve_handoff_from_message(
     return HandoffReply(action=decision.action, reason=record.reason)
 
 
-async def stop_running_job_from_message(conversation_id: str, message: str) -> bool:
-    """Stop the conversation's running browser task when the user's message asks for that; whether it did.
+async def stop_running_job_from_message(
+    conversation_id: str, requester: RequesterChat | None, message: str
+) -> bool:
+    """Stop the browser tasks this chat controls when the user's message asks for that; whether one was stopped.
 
-    Read only while a task runs: anything else the user says reaches the task as
-    something they said. A classifier failure raises to the chat turn.
+    Read only while one runs: anything else the user says reaches the task as
+    something they said. A plain "stop" in the requester's DM reaches the task
+    they started in a group, whose updates and handoffs come to that DM. A
+    classifier failure raises to the chat turn.
     """
-    job_id = await get_conversation_slot(conversation_id)
-    state = await get_job_state(job_id) if job_id is not None else None
-    if state is None or state.status is BrowserJobStatus.DONE:
+    running = await running_chat_jobs(conversation_id, requester)
+    if not running:
         return False
     decision = await ainvoke_structured_gemini(
         RunningTaskMessageDecision,
-        _RUNNING_PROMPT.format(task=state.task, message=message),
+        _RUNNING_PROMPT.format(task="; ".join(job.task for job in running), message=message),
         label="browser_running_task_message",
     )
     if decision.action != "stop":
         return False
-    return await stop_job(state.job_id)
+    outcomes = [await stop_job(job.job_id) for job in running]
+    return BrowserStopOutcome.STOPPED in outcomes

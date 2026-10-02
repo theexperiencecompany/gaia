@@ -193,6 +193,22 @@ class TestCancelledRouting:
         boundaries.note.assert_not_called()
 
 
+class TestToldRouting:
+    async def test_a_run_whose_browser_outcome_a_stop_told_delivers_nothing(
+        self, boundaries
+    ) -> None:
+        """Job bb92ce38: the run joined a job the user stopped and narrated it on top of "Stopped."."""
+        run = _run(RunKind.QUEUED)
+        create_session("s1", RunKind.QUEUED).outcome_told = True
+
+        await er._finalize_executor_run(run, TASK, "The browser run stopped before ...", "final")
+
+        boundaries.deliver.assert_not_awaited()
+        boundaries.record_cancel.assert_awaited_once_with(run.conversation_id, run.task_id, TASK)
+        # Told is not cancelled: the turn's stream closes as a finished one.
+        boundaries.stream_manager.publish_chunk.assert_awaited_once_with("s1", "data: [DONE]\n\n")
+
+
 class TestCompletedRouting:
     async def test_completed_queued_run_delivers_and_closes_stream(self, boundaries) -> None:
         run = _run(RunKind.QUEUED)

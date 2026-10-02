@@ -10,13 +10,14 @@ import fakeredis.aioredis
 import pytest
 
 from app.constants.browser import HandoffStatus
+from app.constants.chat import ConversationSource
 from app.schemas.browser import NewHandoff
 from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
 from app.services.analytics_service import AnalyticsEvents
 from app.services.browser import job_stop, resolution as res_mod
 from app.services.browser.handoff import await_handoff, create_pending_handoff, get_handoff
+from app.services.browser.job_stop import RequesterChat
 from app.services.browser.jobs import (
-    claim_conversation_slot,
     job_cancel_requested,
     put_job_state,
     set_job_wait,
@@ -182,15 +183,14 @@ async def test_a_message_is_read_for_a_stop_only_while_a_task_runs(
     classify = AsyncMock(return_value=RunningTaskMessageDecision(action="stop"))
     monkeypatch.setattr(res_mod, "ainvoke_structured_gemini", classify)
 
-    # No job in the conversation, then one that has ended: nothing to stop, nothing read.
-    assert await stop_running_job_from_message("c2", "stop") is False
-    await claim_conversation_slot("c2", "job-2")
+    # No job in the chat, then one that has ended: nothing to stop, nothing read.
+    assert await stop_running_job_from_message("c2", None, "stop") is False
+    await set_latest_job("c2", "job-2")
     await put_job_state(BrowserJobState(job_id="job-2", status=BrowserJobStatus.DONE, task="t"))
-    assert await stop_running_job_from_message("c2", "stop") is False
+    assert await stop_running_job_from_message("c2", None, "stop") is False
     classify.assert_not_awaited()
 
-    await claim_conversation_slot("c1", "job-1")
-    assert await stop_running_job_from_message("c1", "stop it please") is True
+    assert await stop_running_job_from_message("c1", None, "stop it please") is True
 
     schema, prompt = classify.await_args.args
     assert schema is RunningTaskMessageDecision
@@ -198,6 +198,37 @@ async def test_a_message_is_read_for_a_stop_only_while_a_task_runs(
     assert "'t'" in prompt  # the task it would stop
     assert classify.await_args.kwargs == {"label": "browser_running_task_message"}
     assert await job_cancel_requested("job-1") is True
+
+
+async def test_a_plain_stop_in_the_dm_stops_the_task_the_user_started_in_a_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A bot run started in a group answers to the requester's DM: "stop" there checked only the DM's slot (Greptile)."""
+    monkeypatch.setattr(
+        res_mod,
+        "ainvoke_structured_gemini",
+        AsyncMock(return_value=RunningTaskMessageDecision(action="stop")),
+    )
+    classify = res_mod.ainvoke_structured_gemini
+    await put_job_state(
+        BrowserJobState(job_id="job-g", status=BrowserJobStatus.RUNNING, task="book")
+    )
+    await set_latest_job("conv-group", "job-g")
+    await set_latest_job("telegram:u1", "job-g")
+    await put_job_state(
+        BrowserJobState(job_id="job-d", status=BrowserJobStatus.RUNNING, task="read")
+    )
+    await set_latest_job("conv-dm", "job-d")
+
+    stopped = await stop_running_job_from_message(
+        "conv-dm", RequesterChat("u1", ConversationSource.TELEGRAM), "stop"
+    )
+
+    assert stopped is True
+    assert await job_cancel_requested("job-g") is True
+    assert await job_cancel_requested("job-d") is True
+    # Read against every task it would stop.
+    assert "'read; book'" in classify.await_args.args[1]
 
 
 async def test_a_stop_said_to_one_handoff_stops_its_own_job_not_the_newest_at_the_address(

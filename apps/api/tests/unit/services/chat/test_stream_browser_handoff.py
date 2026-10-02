@@ -223,3 +223,15 @@ async def test_a_failed_read_for_a_stop_still_delivers_the_message_to_the_task()
         f"{LogTag.CHAT} Reading a mid-run message for a stop failed; it goes to the task",
         error_type="RuntimeError",
     )
+
+
+async def test_a_stop_said_in_the_dm_stops_the_task_the_user_started_in_a_group() -> None:
+    """Its updates and handoffs come to the requester's DM, so a plain "stop" there reaches it."""
+    await set_latest_job(f"telegram:{USER_ID}", "job-g")
+    await put_job_state(BrowserJobState(job_id="job-g", status=BrowserJobStatus.RUNNING, task="t"))
+
+    with patch.object(resolution, "ainvoke_structured_gemini", _reads_running("stop")):
+        note = await _browser_turn_note(_body("stop"), USER_ID, "conv-dm", "telegram")
+
+    assert note == BROWSER_RUN_STOPPED_BY_MESSAGE_NOTE
+    assert await job_cancel_requested("job-g") is True

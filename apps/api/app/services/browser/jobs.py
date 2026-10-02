@@ -10,8 +10,8 @@ the run is waiting on, and the inbox of what the user said while it runs.
 from redis.exceptions import WatchError
 
 from app.constants.browser import (
-    BROWSER_JOB_CANCEL_PREFIX,
     BROWSER_JOB_DELIVERED_PREFIX,
+    BROWSER_JOB_ENDING_PREFIX,
     BROWSER_JOB_INBOX_PREFIX,
     BROWSER_JOB_JOINER_LEASE_SECONDS,
     BROWSER_JOB_JOINER_PREFIX,
@@ -20,10 +20,11 @@ from app.constants.browser import (
     BROWSER_JOB_LOCK_TTL_SECONDS,
     BROWSER_JOB_STATE_PREFIX,
     BROWSER_JOB_WAIT_PREFIX,
+    JobEnding,
     ResultSpeaker,
 )
-from app.db.redis import deserialize_any, redis_cache
-from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
+from app.db.redis import redis_cache
+from app.schemas.browser_job import BrowserJobState
 from app.services.browser.job_lifetime import browser_job_ttl_seconds
 
 
@@ -55,8 +56,8 @@ def _delivered_key(job_id: str) -> str:
     return f"{BROWSER_JOB_DELIVERED_PREFIX}{job_id}"
 
 
-def _cancel_key(job_id: str) -> str:
-    return f"{BROWSER_JOB_CANCEL_PREFIX}{job_id}"
+def _ending_key(job_id: str) -> str:
+    return f"{BROWSER_JOB_ENDING_PREFIX}{job_id}"
 
 
 def _wait_key(job_id: str) -> str:
@@ -239,39 +240,27 @@ async def settle_result_claim(job_id: str, *, told: bool) -> None:
     )
 
 
-async def request_job_cancel(job_id: str) -> bool:
-    """Flag a job as stopped unless it has ended; whether it was flagged.
+async def record_ending(job_id: str, ending: JobEnding) -> JobEnding:
+    """Record how the job ends unless an ending is recorded already; return the ending of record.
 
-    Atomic against the job's DONE write, which the worker makes before it reads
-    this flag: a stop lands before DONE and the worker stays silent, or finds the
-    job ended and its result is told, never both.
+    The one decision point between a stop and the run's own end: SET NX, so
+    whoever records first wins, and every reader follows the record.
     """
-    key = _state_key(job_id)
-    while True:
-        async with redis_cache.client.pipeline() as pipe:
-            await pipe.watch(key)
-            raw = await pipe.get(key)
-            state = deserialize_any(raw, BrowserJobState) if raw else None
-            if state is None or state.status is BrowserJobStatus.DONE:
-                await pipe.unwatch()
-                return False
-            pipe.multi()
-            pipe.set(
-                _cancel_key(job_id),
-                "1",  # pragma: no mutate — read by EXISTS alone, the value carries nothing
-                ex=browser_job_ttl_seconds(),
-            )
-            try:
-                await pipe.execute()
-            except WatchError:
-                # The state moved between the read and the flag: read it again.
-                continue
-            return True
+    key = _ending_key(job_id)
+    if await redis_cache.client.set(key, ending.value, nx=True, ex=browser_job_ttl_seconds()):
+        return ending
+    return JobEnding(await redis_cache.client.get(key))
+
+
+async def job_ending(job_id: str) -> JobEnding | None:
+    """Return how the job ended, or None while no ending is recorded."""
+    recorded = await redis_cache.client.get(_ending_key(job_id))
+    return JobEnding(recorded) if recorded else None
 
 
 async def job_cancel_requested(job_id: str) -> bool:
-    """Whether a stop was requested against this job."""
-    return bool(await redis_cache.client.exists(_cancel_key(job_id)))
+    """Whether a stop won the job's ending: the run is to stop, and nothing tells its result."""
+    return await job_ending(job_id) is JobEnding.STOPPED
 
 
 async def set_job_wait(job_id: str, handoff_id: str) -> None:

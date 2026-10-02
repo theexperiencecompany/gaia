@@ -25,7 +25,7 @@ from app.agents.core.background.session import get_session, teardown_session
 from app.agents.tools import executor_tool
 from app.agents.tools.executor_tool import call_executor, cancel_executor, tools
 from app.constants.agents import DONE_EVIDENCE_RULE, AgentTag
-from app.constants.browser import BrowserSessionStatus
+from app.constants.browser import BrowserSessionStatus, JobEnding
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_BUSY_TTL,
@@ -47,6 +47,7 @@ from app.services.browser.jobs import (
     claim_conversation_slot,
     job_cancel_requested,
     put_job_state,
+    record_ending,
     set_latest_job,
 )
 from app.utils import background_tasks
@@ -603,17 +604,36 @@ class TestCancelExecutorStopsTheBrowser:
 
         assert response == "Stopped the browser task."
 
-    async def test_a_stop_the_job_never_confirms_is_reported_as_unconfirmed(
+    async def test_a_stop_from_the_dm_reaches_the_users_run_from_a_group(
         self, fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The agent is told what the stop came to, not that it worked because it was asked."""
-        monkeypatch.setattr(executor_tool, "BROWSER_JOB_STOP_CONFIRM_SECONDS", 0.05)
+        monkeypatch.setattr(job_stop, "_abort_if_started", AsyncMock(return_value=False))
+        await set_latest_job("telegram:user-1", "job-g")
+        await put_job_state(
+            BrowserJobState(job_id="job-g", status=BrowserJobStatus.RUNNING, task="t")
+        )
+
+        response = await run_cancel_executor(
+            config=config_for(conversation_source="telegram"), task_ids=[]
+        )
+
+        assert response == "Stopped the browser task."
+        assert await job_cancel_requested("job-g") is True
+
+    async def test_a_stop_after_the_runs_own_end_says_its_result_stands(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The run recorded its ending first: the stop lost, and the agent is told its answer is told."""
         monkeypatch.setattr(job_stop, "_abort_if_started", AsyncMock(return_value=False))
         await _a_running_browser_job()
+        await record_ending("job-1", JobEnding.FINISHED)
 
         response = await run_cancel_executor(config=config_for(), task_ids=[])
 
-        assert response == "Asked the browser task to stop, but it has not confirmed stopping yet."
+        assert response == (
+            "The browser task had already finished before the stop reached it; its result stands."
+        )
+        assert await job_cancel_requested("job-1") is False
 
     async def test_a_targeted_cancel_leaves_the_browser_run_alone(
         self,
