@@ -308,13 +308,8 @@ function DemoWorkflowSteps({ steps }: { steps: DemoWorkflowStep[] }) {
   );
 }
 
-function DemoTodoSidebar({
-  todo,
-  onClose,
-}: {
-  todo: DemoTodo;
-  onClose: () => void;
-}) {
+/** Field chips row, dropdown style like the real TodoFieldsRow. */
+function DemoTodoFieldChips({ todo }: { todo: DemoTodo }) {
   const project = DEMO_PROJECTS.find((p) => p.id === todo.project_id);
 
   const priorityColor = {
@@ -324,6 +319,67 @@ function DemoTodoSidebar({
     none: undefined,
   }[todo.priority];
 
+  return (
+    <div className="flex flex-wrap gap-1.5 py-2">
+      <DemoFieldChip
+        icon={
+          <Folder02Icon
+            width={16}
+            height={16}
+            style={{ color: project?.color || "#71717a" }}
+          />
+        }
+        label={project?.name}
+        color={project ? "#3b82f6" : undefined}
+      />
+      <DemoFieldChip
+        icon={
+          <Flag02Icon
+            width={16}
+            height={16}
+            style={{ color: priorityColor || "#71717a" }}
+          />
+        }
+        label={
+          todo.priority !== "none"
+            ? todo.priority.charAt(0).toUpperCase() + todo.priority.slice(1)
+            : undefined
+        }
+        color={priorityColor}
+      />
+      <DemoFieldChip
+        icon={<CalendarCheckOut01Icon width={16} height={16} />}
+        label={todo.due_date ? formatDueDate(todo.due_date) : undefined}
+        color={
+          todo.due_date
+            ? isDueToday(todo.due_date)
+              ? "#22c55e"
+              : isOverdue(todo.due_date)
+                ? "#ef4444"
+                : undefined
+            : undefined
+        }
+      />
+      <DemoFieldChip
+        icon={<Tag01Icon width={16} height={16} />}
+        label={
+          todo.labels.length > 0
+            ? `${todo.labels.length} label${todo.labels.length > 1 ? "s" : ""}`
+            : undefined
+        }
+        color={todo.labels.length > 0 ? "#3b82f6" : undefined}
+      />
+    </div>
+  );
+}
+
+function DemoTodoSidebar({
+  todo,
+  onClose,
+}: {
+  todo: DemoTodo;
+  onClose: () => void;
+}) {
   return (
     <div
       className="flex h-full w-[300px] shrink-0 flex-col border-l border-zinc-800"
@@ -364,58 +420,7 @@ function DemoTodoSidebar({
             {todo.description || "Add a description..."}
           </p>
 
-          {/* Field chips row - dropdown style like real TodoFieldsRow */}
-          <div className="flex flex-wrap gap-1.5 py-2">
-            <DemoFieldChip
-              icon={
-                <Folder02Icon
-                  width={16}
-                  height={16}
-                  style={{ color: project?.color || "#71717a" }}
-                />
-              }
-              label={project?.name}
-              color={project ? "#3b82f6" : undefined}
-            />
-            <DemoFieldChip
-              icon={
-                <Flag02Icon
-                  width={16}
-                  height={16}
-                  style={{ color: priorityColor || "#71717a" }}
-                />
-              }
-              label={
-                todo.priority !== "none"
-                  ? todo.priority.charAt(0).toUpperCase() +
-                    todo.priority.slice(1)
-                  : undefined
-              }
-              color={priorityColor}
-            />
-            <DemoFieldChip
-              icon={<CalendarCheckOut01Icon width={16} height={16} />}
-              label={todo.due_date ? formatDueDate(todo.due_date) : undefined}
-              color={
-                todo.due_date
-                  ? isDueToday(todo.due_date)
-                    ? "#22c55e"
-                    : isOverdue(todo.due_date)
-                      ? "#ef4444"
-                      : undefined
-                  : undefined
-              }
-            />
-            <DemoFieldChip
-              icon={<Tag01Icon width={16} height={16} />}
-              label={
-                todo.labels.length > 0
-                  ? `${todo.labels.length} label${todo.labels.length > 1 ? "s" : ""}`
-                  : undefined
-              }
-              color={todo.labels.length > 0 ? "#3b82f6" : undefined}
-            />
-          </div>
+          <DemoTodoFieldChips todo={todo} />
 
           {/* Checklist section */}
           <div className="border-y border-zinc-800 py-4">
