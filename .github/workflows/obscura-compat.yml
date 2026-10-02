@@ -7,8 +7,10 @@ name: Obscura Compat
 # scripts/ci/baselines/obscura-compat.txt; only a gap elsewhere fails the run,
 # and a baseline site that now matches Chrome is printed as removable.
 #
-# Informational, never a required check: it loads live third-party sites, so a
-# red run means "look at the summary", not "the PR is broken".
+# The probe is informational, never a required check: it loads live third-party
+# sites, so a red probe means "look at the summary", not "the PR is broken". The
+# engine-tests job runs Obscura's own tests on the patched tree, so a red one is
+# a broken patch, not a flaky site.
 on:
   schedule:
     - cron: "17 3 * * *"
@@ -82,3 +84,26 @@ jobs:
         run: |
           [ -s "$RUNNER_TEMP/probe.txt" ] || exit 0
           { echo '```'; cat "$RUNNER_TEMP/probe.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  engine-tests:
+    name: Obscura's own tests with our patch series
+    runs-on: ubuntu-latest
+    # A cold release build plus every test binary of the workspace.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      # cargo test runs inside the obscura-test stage, so a failing test fails
+      # this build. Nothing is exported or cached: the test binaries are GBs.
+      - name: Run cargo test in the obscura-test stage of apps/api/Dockerfile
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          target: obscura-test
+          outputs: type=cacheonly

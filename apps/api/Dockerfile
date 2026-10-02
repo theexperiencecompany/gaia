@@ -102,11 +102,27 @@ ARG OBSCURA_COMMIT=8f9c630b17d655920e13907afd8b498bbb9a2291
 # update is a pin bump: git am fails the build loudly when a patch no longer
 # applies, and one upstream has merged is deleted from the series.
 COPY apps/api/obscura-patches /obscura-patches
-RUN git clone https://github.com/h4ckf0r0day/obscura /obscura \
-    && git -C /obscura checkout ${OBSCURA_COMMIT} \
-    && git -C /obscura -c user.name=gaia -c user.email=build@heygaia.io am /obscura-patches/*.patch
+WORKDIR /obscura
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    cd /obscura && cargo build --locked --release -p obscura-cli --bins --features render,stealth
+    git clone https://github.com/h4ckf0r0day/obscura . \
+    && git checkout ${OBSCURA_COMMIT} \
+    && git -c user.name=gaia -c user.email=build@heygaia.io am /obscura-patches/*.patch \
+    && cargo build --locked --release -p obscura-cli --bins --features render,stealth
+
+# The engine's own tests, patches included, on the features the image ships.
+# Not on the runtime image's path: .github/workflows/obscura-compat.yml builds
+# this target whenever the series changes. nextest runs each test in its own
+# process, as upstream's CI does: some tests set process-wide env. The gzip
+# fixture binds loopback, so only it runs with private networks allowed.
+FROM obscura-builder AS obscura-test
+ARG NEXTEST_VERSION=0.9.146
+ARG OBSCURA_TEST_FEATURES=obscura-cli/render,obscura-cli/stealth,obscura/render,obscura/stealth
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    cargo install --locked cargo-nextest --version ${NEXTEST_VERSION} \
+    && cargo nextest run --locked --release --workspace --no-fail-fast \
+       --features ${OBSCURA_TEST_FEATURES} -E 'not test(stealth_client_decodes_gzip_response)' \
+    && OBSCURA_ALLOW_PRIVATE_NETWORK=1 cargo nextest run --locked --release --workspace \
+       --features ${OBSCURA_TEST_FEATURES} -E 'test(stealth_client_decodes_gzip_response)'
 
 # Just the two binaries, for `--target obscura-bin --output type=local`: the
 # nightly compat probe (.github/workflows/obscura-compat.yml) runs this exact build.
