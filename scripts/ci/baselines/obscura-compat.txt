@@ -23,3 +23,7 @@ https://www.youtube.com/
 # 2026-10-02: same 1.56 MB document as Chrome, Obscura shows 10 buttons vs 24, with
 # ad-script fetch errors and "Couldn't find a style target" (local probe, PR engine).
 https://www.nytimes.com/
+# 2026-10-02: same document; MediaWiki's collapsed sidebar lists get `hidden` on the
+# container itself in Obscura (their 13 "show" toggles vanish) and table parts compute
+# display:block. 16 buttons vs 29-39 in Chrome, by Chrome's layout of the responsive header.
+https://en.wikipedia.org/wiki/Transformer_(deep_learning_architecture)
