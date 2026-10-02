@@ -7,7 +7,11 @@ memory, and the briefing is its run's final report. Nothing here runs mail.
 from datetime import datetime
 from typing import NamedTuple
 
-from app.agents.prompts.todo_prompts import INBOX_DESK_DELIVERY_RULE, INBOX_DESK_DESCRIPTION
+from app.agents.prompts.todo_prompts import (
+    INBOX_DESK_DELIVERY_RULE,
+    INBOX_DESK_DESCRIPTION,
+    INBOX_DESK_OBSERVATIONS_SECTION,
+)
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.todos import (
     INBOX_DESK_RECURRENCE,
@@ -117,7 +121,11 @@ async def _open_desk(user_id: str, first_run: datetime) -> TodoDocument:
             user_id,
             INBOX_DESK_TITLE,
             description=INBOX_DESK_DESCRIPTION,
-            initial_canvas=starting_canvas(INBOX_DESK_TITLE, [INBOX_DESK_DELIVERY_RULE]),
+            initial_canvas=starting_canvas(
+                INBOX_DESK_TITLE,
+                [INBOX_DESK_DELIVERY_RULE],
+                sections=[INBOX_DESK_OBSERVATIONS_SECTION],
+            ),
             external_ref=INBOX_DESK_REF,
             notify_on_run=True,
             schedule=TodoUpdate(recurrence=INBOX_DESK_RECURRENCE, scheduled_at=first_run),

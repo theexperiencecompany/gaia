@@ -778,6 +778,20 @@ class TestStartingCanvas:
         )
         assert normalize_canvas(canvas) == (canvas, None)
 
+    def test_its_own_sections_follow_the_standing_rules_ahead_of_key_details(self) -> None:
+        template = CANVAS_TEMPLATE.format(title="Inbox desk")
+
+        canvas = starting_canvas(
+            "Inbox desk", ["Brief me by 9"], sections=["## Notes\n<!-- one line each -->"]
+        )
+
+        assert canvas == template.replace(
+            "-->\n\n## Key Details",
+            "-->\n- Brief me by 9\n\n## Notes\n<!-- one line each -->\n\n## Key Details",
+            1,
+        )
+        assert normalize_canvas(canvas) == (canvas, None)
+
     def test_a_title_that_reads_like_the_heading_leaves_the_rules_in_their_section(self) -> None:
         template = CANVAS_TEMPLATE.format(title="## Standing rules")
 

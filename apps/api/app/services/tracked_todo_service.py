@@ -81,16 +81,20 @@ CANVAS_TEMPLATE = """# {title}
 """
 
 
-def starting_canvas(title: str, standing_rules: Sequence[str] = ()) -> str:
-    """Render the template canvas with standing rules the todo starts out obeying."""
+def starting_canvas(
+    title: str, standing_rules: Sequence[str] = (), *, sections: Sequence[str] = ()
+) -> str:
+    """Render the template canvas with the rules it starts out obeying and its own sections.
+
+    Each of sections is a whole "## " section, placed after the Standing rules.
+    """
     canvas = CANVAS_TEMPLATE.format(title=title)
-    if not standing_rules:
-        return canvas
     heading = f"## {CANVAS_STANDING_RULES_SECTION}\n"
     # Rules go under the section's comment line; it is the last such heading, as a title can read like it.
     after_comment = canvas.index("\n", canvas.rindex(heading) + len(heading)) + 1
     rules = "".join(f"- {rule}\n" for rule in standing_rules)
-    return canvas[:after_comment] + rules + canvas[after_comment:]
+    own = "".join(f"\n{section}\n" for section in sections)
+    return canvas[:after_comment] + rules + own + canvas[after_comment:]
 
 
 async def _discard_unwatched_todo(todo_id: str, user_id: str, watch_error: Exception) -> None:

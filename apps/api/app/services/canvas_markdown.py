@@ -8,11 +8,14 @@ activity inside the canvas) into the canvas.md / activity.md pair.
 
 from datetime import UTC, datetime
 import re
+from typing import NamedTuple
 
 from app.constants.todos import (
+    CANVAS_OBSERVATIONS_SECTION,
     CANVAS_PROMPT_MAX_CHARS,
     CANVAS_SECTIONS,
     CANVAS_STANDING_RULES_SECTION,
+    OBSERVATIONS_MAX_CHARS,
     STANDING_RULES_MAX_CHARS,
 )
 
@@ -32,6 +35,28 @@ _ANY_DATED_BLOCK_RE = re.compile(r"^### \d{4}-\d{2}-\d{2}", re.MULTILINE)
 # The template's "<!-- ... -->" guidance for whoever writes the section.
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 _TEMPLATE_HEADINGS = {section.casefold(): section for section in CANVAS_SECTIONS}
+
+
+class _SectionCap(NamedTuple):
+    """A section every run reads whole, so a write that grows it past max_chars is refused."""
+
+    heading: str
+    max_chars: int
+    how: str
+
+
+_SECTION_CAPS = (
+    _SectionCap(
+        CANVAS_STANDING_RULES_SECTION,
+        STANDING_RULES_MAX_CHARS,
+        "one line per rule, merged where they overlap",
+    ),
+    _SectionCap(
+        CANVAS_OBSERVATIONS_SECTION,
+        OBSERVATIONS_MAX_CHARS,
+        "one line per pattern, the stalest dropped first",
+    ),
+)
 
 
 def bounded_canvas(canvas: str) -> str:
@@ -243,12 +268,10 @@ def canvas_problems(canvas: str) -> list[str]:
             problems.append(f'merge the {count} "## {heading}" sections into one')
     if _ANY_DATED_BLOCK_RE.search(canvas):
         problems.append('move the dated "### YYYY-MM-DD" entries into activity.md')
-    rules = section_body(canvas, CANVAS_STANDING_RULES_SECTION)
-    if rules and len(rules) > STANDING_RULES_MAX_CHARS:
-        problems.append(
-            f'shorten "## {CANVAS_STANDING_RULES_SECTION}" to {STANDING_RULES_MAX_CHARS} '
-            "characters: one line per rule, merged where they overlap"
-        )
+    for cap in _SECTION_CAPS:
+        body = section_body(canvas, cap.heading)
+        if body and len(body) > cap.max_chars:
+            problems.append(f'shorten "## {cap.heading}" to {cap.max_chars} characters: {cap.how}')
     return problems
 
 

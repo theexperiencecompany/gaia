@@ -1476,6 +1476,20 @@ class TestStandingRulesReachTheRun:
             "- 2026-09-28: stop showing me newsletters"
         ) in task
 
+    async def test_a_sub_todo_gets_its_parents_rules_but_not_its_observations(self):
+        """A thread todo's context stays small: the desk's learned patterns are the desk's own."""
+        desk = _desk().model_copy(
+            update={
+                "canvas_content": "## Standing rules\n- 2026-09-28: skip newsletters\n\n"
+                "## Observations\n### Senders\n- notifications@github.com: ~140/day, count only\n"
+            }
+        )
+
+        task, _ = await _run_task(_doc(parent_todo_id=_DESK_ID), desk)
+
+        assert "- 2026-09-28: skip newsletters" in task
+        assert "notifications@github.com" not in task
+
     async def test_a_referenced_todo_lends_its_learnings_but_not_its_rules(self):
         task, find = await _run_task(_doc(references=[_DESK_ID]), _desk())
 

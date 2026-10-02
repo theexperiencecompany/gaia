@@ -120,10 +120,14 @@ CANVAS_SECTIONS: Final[tuple[str, ...]] = (
     "Context",
     CANVAS_LEARNINGS_SECTION,
 )
+# The Inbox desk's own section: the patterns it learned from the user's mail.
+CANVAS_OBSERVATIONS_SECTION: Final[str] = "Observations"
 
 # Most a Standing rules section may hold. Every prompt carries it whole, never
 # trimmed, so a canvas write that grows it past this is refused instead.
 STANDING_RULES_MAX_CHARS: Final[int] = 2_000
+# Most the desk's Observations may hold, refused past it the same way: patterns, not a log.
+OBSERVATIONS_MAX_CHARS: Final[int] = 1_500
 # Most of a todo's Key Details its delivery decision reads.
 DELIVERY_KEY_DETAILS_MAX_CHARS: Final[int] = 1500
 

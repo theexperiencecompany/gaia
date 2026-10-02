@@ -1,7 +1,10 @@
 """The Inbox desk's operating prompt and the thread contract: their structure, never model output."""
 
+import re
+
 import pytest
 
+from app.agents.prompts import todo_prompts
 from app.agents.prompts.todo_prompts import (
     GMAIL_THREAD_RUN_GUIDANCE,
     INBOX_DESK_DESCRIPTION,
@@ -25,8 +28,13 @@ def _heads(lines: list[str]) -> list[str]:
     return [line.split(":", 1)[0] for line in lines if ":" in line]
 
 
+BRIEFING_STEP = 10
+CURSOR_STEP = 9
+OBSERVATIONS_STEP = 8
+
+
 def test_the_briefing_is_the_five_sections_in_order() -> None:
-    assert _heads(_step(9)[1:])[: len(BRIEFING_SECTIONS)] == BRIEFING_SECTIONS
+    assert _heads(_step(BRIEFING_STEP)[1:])[: len(BRIEFING_SECTIONS)] == BRIEFING_SECTIONS
 
 
 def test_each_thread_class_is_defined_where_threads_are_classified() -> None:
@@ -36,7 +44,7 @@ def test_each_thread_class_is_defined_where_threads_are_classified() -> None:
 @pytest.mark.parametrize("label", [NEEDS_REPLY_LABEL, WAITING_FOR_REPLY_LABEL])
 def test_thread_todos_are_filed_and_briefed_under_the_label_constants(label: str) -> None:
     assert f'["{label}"]' in "\n".join(_step(5))
-    assert f"your {label} sub-todos" in "\n".join(_step(9))
+    assert f"your {label} sub-todos" in "\n".join(_step(BRIEFING_STEP))
 
 
 def test_thread_todos_are_opened_as_the_desks_sub_todos() -> None:
@@ -83,7 +91,7 @@ def test_the_query_filters_automated_senders_and_rules_may_change_the_filter() -
 
 @pytest.mark.regression
 def test_the_cursor_is_the_first_fetchs_own_stamp() -> None:
-    assert agent_constants.TOOL_RESULT_FETCHED_AT_KEY in "\n".join(_step(8))
+    assert agent_constants.TOOL_RESULT_FETCHED_AT_KEY in "\n".join(_step(CURSOR_STEP))
 
 
 @pytest.mark.regression
@@ -106,3 +114,34 @@ def test_the_thread_state_is_this_todos_label_never_a_gmail_label() -> None:
     assert "Never create, apply or remove Gmail labels" in guidance
     assert "update_tracked_todo labels" in guidance
     assert "set the label to match" not in guidance
+
+
+def test_standing_rules_beat_observations_and_both_beat_the_defaults() -> None:
+    assert (
+        "its Standing rules (the user's instructions) beat its Observations (patterns you "
+        "learned), and both beat every default below"
+    ) in "\n".join(_step(1))
+
+
+def test_the_observations_section_has_a_line_format_per_kind() -> None:
+    section = todo_prompts.INBOX_DESK_OBSERVATIONS_SECTION
+
+    assert section.startswith(f"## {todo_constants.CANVAS_OBSERVATIONS_SECTION}\n")
+    assert re.findall(r"^### (.+)$", section, re.MULTILINE) == ["Senders", "Recurring", "People"]
+    assert len(re.findall(r"^<!-- .+ -->$", section, re.MULTILINE)) == 4
+
+
+def test_observations_are_kept_repeated_bounded_and_announced() -> None:
+    step = "\n".join(_step(OBSERVATIONS_STEP))
+
+    assert "add it, with its three sub-headings, when canvas.md lacks it" in step
+    assert "only once it repeats" in step
+    assert f"under {todo_constants.OBSERVATIONS_MAX_CHARS} characters" in step
+    assert "Noticed: treating GitHub notifications as low priority" in "\n".join(
+        _step(BRIEFING_STEP)
+    )
+
+
+def test_observations_steer_the_query_and_the_classification() -> None:
+    assert "-from:<sender>" in "\n".join(_step(2))
+    assert "Observations name as recurring is FYI" in "\n".join(_step(4))

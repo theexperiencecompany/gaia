@@ -2,12 +2,14 @@
 
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
 
+from app.agents.prompts import todo_prompts
 from app.agents.prompts.todo_prompts import INBOX_DESK_DELIVERY_RULE, INBOX_DESK_DESCRIPTION
 from app.constants.todos import (
     INBOX_DESK_RECURRENCE,
@@ -23,6 +25,7 @@ from app.models.todo_models import (
 )
 from app.models.user_models import UserDocument
 from app.services.analytics_service import AnalyticsEvents
+from app.services.canvas_markdown import canvas_problems, normalize_canvas
 from app.services.todos.errors import ExternalRefTakenError
 from app.services.todos.inbox_desk import (
     provision_inbox_desk,
@@ -126,6 +129,25 @@ def seams() -> Iterator[SimpleNamespace]:
         )
 
 
+async def test_the_desk_starts_with_its_observations_after_its_rules(
+    seams: SimpleNamespace,
+) -> None:
+    await _provision()
+
+    canvas = seams.create.await_args.kwargs["initial_canvas"]
+    assert re.findall(r"^## (.+)$", canvas, re.MULTILINE) == [
+        "Standing rules",
+        "Observations",
+        "Key Details",
+        "Current State",
+        "Context",
+        "Learnings",
+    ]
+    assert re.findall(r"^### (.+)$", canvas, re.MULTILINE) == ["Senders", "Recurring", "People"]
+    assert canvas_problems(canvas) == []
+    assert normalize_canvas(canvas) == (canvas, None)
+
+
 async def test_a_paying_user_gets_a_desk_scheduled_with_its_insert(seams: SimpleNamespace) -> None:
     before = datetime.now(UTC)
 
@@ -137,7 +159,11 @@ async def test_a_paying_user_gets_a_desk_scheduled_with_its_insert(seams: Simple
     assert kwargs["description"] == INBOX_DESK_DESCRIPTION
     assert kwargs["external_ref"] == DESK_REF
     assert kwargs["notify_on_run"] is True
-    assert kwargs["initial_canvas"] == starting_canvas(INBOX_DESK_TITLE, [INBOX_DESK_DELIVERY_RULE])
+    assert kwargs["initial_canvas"] == starting_canvas(
+        INBOX_DESK_TITLE,
+        [INBOX_DESK_DELIVERY_RULE],
+        sections=[todo_prompts.INBOX_DESK_OBSERVATIONS_SECTION],
+    )
     first = kwargs["schedule"].scheduled_at
     assert kwargs["schedule"].recurrence == INBOX_DESK_RECURRENCE
     assert _at_8_in_kolkata(first)

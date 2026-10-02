@@ -545,6 +545,21 @@ class TestStandingRules:
 
         assert canvas_problems(canvas) == []
 
+    def test_observations_longer_than_their_cap_are_refused_at_write(self) -> None:
+        cap = todo_constants.OBSERVATIONS_MAX_CHARS
+        canvas = f"## Observations\n### Senders\n{'o' * cap}\n\n## Key Details\n"
+
+        assert canvas_problems(canvas) == [
+            f'shorten "## Observations" to {cap} characters: one line per pattern, the stalest '
+            "dropped first"
+        ]
+
+    def test_observations_at_their_cap_are_accepted(self) -> None:
+        body = "o" * todo_constants.OBSERVATIONS_MAX_CHARS
+        canvas = f"## Observations\n<!-- patterns the desk learned -->\n{body}\n\n## Key Details\n"
+
+        assert canvas_problems(canvas) == []
+
 
 class TestSectionHeadingCase:
     """One Standing rules section whatever its casing: "## Standing Rules" is the same section."""
