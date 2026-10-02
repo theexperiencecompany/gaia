@@ -1,9 +1,11 @@
 import asyncio
 from collections import Counter
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from http import HTTPStatus
 import math
-from typing import NoReturn
+from typing import NamedTuple, NoReturn
 import uuid
 
 from pymongo.errors import BulkWriteError, DuplicateKeyError
@@ -38,6 +40,7 @@ from app.models.todo_models import (
     TodoUpdateRequest,
     UpdateProjectRequest,
 )
+from app.models.trigger_subscription_models import TriggerSubscription
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.todos.errors import (
     ExternalRefReopenedTwiceError,
@@ -45,7 +48,7 @@ from app.services.todos.errors import (
     TrackedLabelChangeError,
     TrackedTodoWorkflowError,
 )
-from app.services.todos.external_ref_watch import watch_external_ref
+from app.services.todos.external_ref_watch import release_watches, watch_external_ref
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.user_todos_fs import schedule_user_todos_sync
 from app.utils.canvas_vector_utils import delete_canvas_embedding
@@ -213,10 +216,50 @@ async def _refuse_a_reopen_of_a_taken_ref(
     return reopened
 
 
-async def _claim_refs_to_reopen(user_id: str, todo_ids: list[str]) -> None:
-    """Watch each reopened todo's ref again before the reopen; a completed todo's watch never fires."""
-    for todo, ref in await _refuse_a_reopen_of_a_taken_ref(user_id, todo_ids):
-        await watch_external_ref(todo.id, user_id, ref, todo.trigger_subscriptions)
+@asynccontextmanager
+async def _watching_refs_to_reopen(
+    user_id: str, todo_ids: list[str], *, reopening: bool
+) -> AsyncIterator[None]:
+    """Watch each reopened todo's ref again for the reopen; a completed todo's watch never fires.
+
+    When the reopen does not land, the watches added here leave every todo still completed.
+    """
+    added: dict[str, list[TriggerSubscription]] = {}
+    try:
+        if reopening:
+            for todo, ref in await _refuse_a_reopen_of_a_taken_ref(user_id, todo_ids):
+                added[todo.id] = await watch_external_ref(
+                    todo.id, user_id, ref, todo.trigger_subscriptions
+                )
+        yield
+    except Exception:
+        if added:
+            docs = await todo_repository.find_by_ids(user_id, list(added))
+            still_completed = {doc.id for doc in docs if doc.completed}
+            for todo_id, watches in added.items():
+                if todo_id in still_completed:
+                    await release_watches(todo_id, user_id, watches)
+        raise
+
+
+async def _persist_update(
+    todo_id: str, user_id: str, workflow_id: str | None, update: TodoUpdate
+) -> TodoDocument | None:
+    """Write the update and any workflow link; reopening onto a held ref raises ExternalRefTakenError."""
+    if workflow_id is not None and not await todo_repository.link_workflow(
+        todo_id, user_id=user_id, workflow_id=workflow_id
+    ):
+        # The check above passed, so the todo became tracked (or went away) mid-update.
+        raise TrackedTodoWorkflowError()
+    if not update.model_fields_set:
+        # A tracked completion or a workflow link already persisted + invalidated.
+        return await todo_repository.get(todo_id, user_id=user_id)
+    try:
+        return await todo_repository.update(todo_id, user_id=user_id, update=update)
+    except DuplicateKeyError as e:
+        # Reopening a todo whose outside object another open todo now holds.
+        reopened = await todo_repository.get(todo_id, user_id=user_id)
+        await _raise_ref_taken(user_id, reopened.external_ref if reopened else None, e)
 
 
 async def with_sub_todos(user_id: str, todo_ids: list[str]) -> list[str]:
@@ -225,8 +268,16 @@ async def with_sub_todos(user_id: str, todo_ids: list[str]) -> list[str]:
     return list(dict.fromkeys([*todo_ids, *(child.id for child in children)]))
 
 
-async def _complete_tracked_among(user_id: str, todo_ids: list[str]) -> tuple[list[str], list[str]]:
-    """Complete the tracked todos among todo_ids one by one; return (those ids, the plain ids).
+class _TrackedCompletion(NamedTuple):
+    """How a bulk completion went for the tracked todos among its ids, and which ids were plain."""
+
+    completed: list[str]
+    failed: list[str]
+    plain: list[str]
+
+
+async def _complete_tracked_among(user_id: str, todo_ids: list[str]) -> _TrackedCompletion:
+    """Complete the tracked todos among todo_ids one by one; one failing does not stop the rest.
 
     A tracked todo's completion tears down its watches and completes its sub-todos,
     which a bulk $set cannot do.
@@ -238,12 +289,26 @@ async def _complete_tracked_among(user_id: str, todo_ids: list[str]) -> tuple[li
     tracked = {
         doc.id for doc in await todo_repository.find_by_ids(user_id, todo_ids) if doc.vfs_path
     }
-    completed = [todo_id for todo_id in todo_ids if todo_id in tracked]
-    for todo_id in completed:
-        await tracked_todo_service.complete_tracked_todo(
-            todo_id, user_id, summary="Completed via bulk operation"
-        )
-    return completed, [todo_id for todo_id in todo_ids if todo_id not in tracked]
+    completion = _TrackedCompletion(
+        completed=[], failed=[], plain=[todo_id for todo_id in todo_ids if todo_id not in tracked]
+    )
+    for todo_id in (todo_id for todo_id in todo_ids if todo_id in tracked):
+        try:
+            await tracked_todo_service.complete_tracked_todo(
+                todo_id, user_id, summary="Completed via bulk operation"
+            )
+        except Exception as e:
+            # Reported per todo in the response; the todos already completed keep their completion.
+            log.error(
+                "todo.bulk_tracked_complete_failed",
+                todo_id=todo_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            completion.failed.append(todo_id)
+        else:
+            completion.completed.append(todo_id)
+    return completion
 
 
 def _drop_completion_fields(update: TodoUpdate) -> TodoUpdate:
@@ -490,25 +555,10 @@ class TodoService:
                     log.warning("tracked_todo.ui_complete_failed", todo_id=todo_id, error=str(e))
                 update = _drop_completion_fields(update)
 
-        if update.completed is False:
-            await _claim_refs_to_reopen(user_id, [todo_id])
-
-        if updates.workflow_id is not None and not await todo_repository.link_workflow(
-            todo_id, user_id=user_id, workflow_id=updates.workflow_id
+        async with _watching_refs_to_reopen(
+            user_id, [todo_id], reopening=update.completed is False
         ):
-            # The check above passed, so the todo became tracked (or went away) mid-update.
-            raise TrackedTodoWorkflowError()
-
-        if update.model_fields_set:
-            try:
-                updated = await todo_repository.update(todo_id, user_id=user_id, update=update)
-            except DuplicateKeyError as e:
-                # Reopening a todo whose outside object another open todo now holds.
-                reopened = await todo_repository.get(todo_id, user_id=user_id)
-                await _raise_ref_taken(user_id, reopened.external_ref if reopened else None, e)
-        else:
-            # A tracked completion or a workflow link already persisted + invalidated.
-            updated = await todo_repository.get(todo_id, user_id=user_id)
+            updated = await _persist_update(todo_id, user_id, updates.workflow_id, update)
 
         if not updated:
             raise ValueError(f"Todo {todo_id} not found")
@@ -600,8 +650,6 @@ class TodoService:
                 user_id, request.todo_ids, request.updates.labels
             )
         reopening = request.updates.completed is False
-        if reopening:
-            await _claim_refs_to_reopen(user_id, request.todo_ids)
         update = _to_todo_update(request.updates)
         if not update.model_fields_set:
             return BulkOperationResponse(
@@ -613,23 +661,24 @@ class TodoService:
             if not project:
                 raise ValueError(f"Project {update.project_id} not found")
 
-        completed_tracked: list[str] = []
-        plain_ids = request.todo_ids
+        completion = _TrackedCompletion(completed=[], failed=[], plain=request.todo_ids)
         if update.completed is True:
-            completed_tracked, plain_ids = await _complete_tracked_among(user_id, request.todo_ids)
+            completion = await _complete_tracked_among(user_id, request.todo_ids)
             other_fields = _drop_completion_fields(update)
-            if completed_tracked and other_fields.model_fields_set:
-                await todo_repository.bulk_update(user_id, completed_tracked, other_fields)
+            if completion.completed and other_fields.model_fields_set:
+                await todo_repository.bulk_update(user_id, completion.completed, other_fields)
+        completed_tracked, plain_ids = completion.completed, completion.plain
 
         succeeded = list(completed_tracked)
         if plain_ids:
-            try:
-                modified = await todo_repository.bulk_update(user_id, plain_ids, update)
-            except BulkWriteError:
-                # A create or reopen took a ref after the check above; the writes before it landed.
-                if reopening:
-                    await _refuse_a_reopen_of_a_taken_ref(user_id, request.todo_ids)
-                raise
+            async with _watching_refs_to_reopen(user_id, plain_ids, reopening=reopening):
+                try:
+                    modified = await todo_repository.bulk_update(user_id, plain_ids, update)
+                except BulkWriteError:
+                    # A create or reopen took a ref after the check above; the writes before it landed.
+                    if reopening:
+                        await _refuse_a_reopen_of_a_taken_ref(user_id, request.todo_ids)
+                    raise
             succeeded.extend(plain_ids[:modified])
 
         if succeeded:
@@ -645,7 +694,7 @@ class TodoService:
 
         return BulkOperationResponse(
             success=succeeded,
-            failed=[],
+            failed=completion.failed,
             total=len(request.todo_ids),
             message=f"Updated {len(succeeded)} todos",
         )
