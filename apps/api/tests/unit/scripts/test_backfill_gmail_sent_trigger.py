@@ -5,10 +5,10 @@ creation is the live connect path (handle_subscribe_trigger) on a stand-in servi
 """
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from scripts.backfill_gmail_sent_trigger import run_backfill
+from scripts.backfill_gmail_sent_trigger import BackfillResult, main, run_backfill
 
 pytestmark = pytest.mark.unit
 
@@ -120,3 +120,27 @@ class TestRunBackfill:
 
         assert result.failed_user_ids == ["u1"]
         assert result.armed_user_ids == ["u2"]
+
+
+async def _main_with(monkeypatch: pytest.MonkeyPatch, failed_user_ids: list[str]) -> None:
+    result = BackfillResult(
+        dry_run=False, pending_user_ids=["u1"], already_armed=0, failed_user_ids=failed_user_ids
+    )
+    monkeypatch.setattr("sys.argv", ["backfill_gmail_sent_trigger.py", "--execute"])
+    with (
+        patch("scripts.backfill_gmail_sent_trigger.init_composio_service"),
+        patch("scripts.backfill_gmail_sent_trigger.get_composio_service"),
+        patch("scripts.backfill_gmail_sent_trigger.run_backfill", AsyncMock(return_value=result)),
+    ):
+        await main()
+
+
+async def test_a_user_left_unarmed_fails_the_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(SystemExit) as exited:
+        await _main_with(monkeypatch, ["u1"])
+
+    assert exited.value.code == 1
+
+
+async def test_a_run_that_armed_everyone_exits_cleanly(monkeypatch: pytest.MonkeyPatch) -> None:
+    await _main_with(monkeypatch, [])

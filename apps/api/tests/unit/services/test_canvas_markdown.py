@@ -312,6 +312,21 @@ class TestBoundedCanvas:
             "h" * half + "\n[middle of canvas trimmed: 100 characters]\n" + "t" * half
         )
 
+    def test_the_rest_that_fits_beside_the_rules_comes_back_whole(self) -> None:
+        head = "## Standing rules\n- r\n\n"
+        rest = "## Key Details\n" + "k" * (CANVAS_PROMPT_MAX_CHARS - len(head) - 15)
+        canvas = f"{rest}\n\n## Standing rules\n- r\n"
+
+        assert bounded_canvas(canvas) == head + rest
+
+    def test_rules_past_the_whole_budget_leave_only_the_rules(self) -> None:
+        rules = "r" * (CANVAS_PROMPT_MAX_CHARS + 1)
+        rest = "## Key Details\nk"
+
+        assert bounded_canvas(f"{rest}\n\n## Standing rules\n{rules}\n") == (
+            f"## Standing rules\n{rules}\n\n\n[middle of canvas trimmed: {len(rest)} characters]\n"
+        )
+
 
 # The shape of the pitch-prep canvas from 2026-09-26: the removed append-mode tool
 # left a "## Activity Log (append)" section, a dated block and a doubled Learnings.

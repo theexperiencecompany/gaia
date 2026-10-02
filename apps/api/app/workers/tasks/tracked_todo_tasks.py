@@ -479,7 +479,7 @@ async def _collect_reference_learnings(ref_ids: list[str], user_id: str) -> str:
         return ""
     owned = {doc.id: doc for doc in await todo_repository.find_by_ids(user_id, wanted)}
     learnings = [
-        f'From past todo "{doc.title}":\n## Learnings\n{ref_learnings}'
+        f'From past todo "{doc.title}":\n## {CANVAS_LEARNINGS_SECTION}\n{ref_learnings}'
         for doc in (owned[ref] for ref in wanted if ref in owned)
         if (ref_learnings := section_body(doc.canvas_content, CANVAS_LEARNINGS_SECTION))
     ]
