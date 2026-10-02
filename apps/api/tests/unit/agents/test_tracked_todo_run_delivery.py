@@ -356,17 +356,35 @@ class TestAFinishedRunIsNeverRunAgainForItsRecord:
             await run_todo_on_executor(_request())
 
         seams.send.assert_awaited_once()
-        event = recorder.event("executor_run")
-        assert (event["outcome"], event["reason"]) == (
-            "failed",
-            todo_constants.TodoRunFinishFailure.NOT_RECORDED,
-        )
-        [error] = event["errors"]
-        assert error["msg"].startswith(LogTag.AGENT)
-        assert error["failure"] == todo_constants.TodoRunFinishFailure.NOT_RECORDED
-        assert (error["todo_id"], error["stream_id"], error["task_id"]) == (
-            TODO_ID,
-            event["stream_id"],
-            event["task_id"],
-        )
-        assert (error["error"], error["error_type"]) == ("primary stepped down", "PyMongoError")
+        _assert_failed_loudly(recorder, todo_constants.TodoRunFinishFailure.NOT_RECORDED)
+
+    async def test_a_todo_read_that_never_succeeds_fails_loudly_and_the_run_stands(
+        self,
+    ) -> None:
+        recorder = WideEventRecorder()
+        with (
+            _seams(todo=_todo()) as seams,
+            _no_backoff(),
+            patch("shared.py.wide_events._loguru", recorder),
+        ):
+            seams.repo.get_by_id.side_effect = PyMongoError("primary stepped down")
+            await run_todo_on_executor(_request())
+
+        seams.send.assert_not_awaited()
+        seams.activity.assert_not_awaited()
+        _assert_failed_loudly(recorder, todo_constants.TodoRunFinishFailure.NOT_DELIVERED)
+
+
+def _assert_failed_loudly(recorder: WideEventRecorder, failure: str) -> None:
+    """Assert the run's event failed for this reason, with one error naming the run and todo."""
+    event = recorder.event("executor_run")
+    assert (event["outcome"], event["reason"]) == ("failed", failure)
+    [error] = event["errors"]
+    assert error["msg"].startswith(LogTag.AGENT)
+    assert (error["failure"], error["todo_id"], error["stream_id"], error["task_id"]) == (
+        failure,
+        TODO_ID,
+        event["stream_id"],
+        event["task_id"],
+    )
+    assert (error["error"], error["error_type"]) == ("primary stepped down", "PyMongoError")
