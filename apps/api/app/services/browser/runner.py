@@ -501,7 +501,7 @@ class BrowserTaskRunner:
             )
             return True
         check = await get_budget_stop_reason(self._user_id, None, self._root_request_id)
-        if check is not None and check.stop_reason is not None:
+        if check.stop_reason is not None:
             self._budget_stop = _BudgetStop(check.stop_reason, BrowserRunFailure.COST_BUDGET)
             return True
         return False
