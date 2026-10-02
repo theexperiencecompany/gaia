@@ -12,22 +12,32 @@ import asyncio
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import AbstractContextManager, ExitStack, asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
+import inspect
 import json
+import tempfile
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from browser_use.agent.views import ActionResult, AgentState
+from browser_use.browser.events import BrowserConnectedEvent
 import fakeredis.aioredis
 
-from app.agents.core.background.session import RunKind, create_session
-from app.agents.tools import browser_tool
+from app.agents.core.background.session import RunKind, create_session, signal_executor_done
 from app.config.settings import settings
-from app.constants.browser import BrowserEngine, EngineSwitchReason, SensitiveCategory
+from app.constants.browser import (
+    BROWSER_ANSWER_AFTER_STEP,
+    BrowserEngine,
+    EngineSwitchReason,
+    SensitiveCategory,
+)
+from app.core.stream_manager import StreamManager
 from app.models.hil_models import HILPreferences
 from app.schemas.browser_job import BrowserJobRequest
-from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserSessionGone
+from app.services.browser.exceptions import BrowserSessionGone
 from app.services.browser.host_client import HostSessionInfo
 from app.workers.tasks import browser_tasks
+from shared.py import wide_events
 
 #: What the fake CDN hands back for a step screenshot, per step index.
 SHOT_URL_TEMPLATE = "https://cdn.test/shot-{index}.png"
@@ -113,16 +123,9 @@ class _PageState:
         )
 
 
-class _ActionResult:
-    def __init__(self, output: str) -> None:
-        self.extracted_content = output
-        self.error = None
-        self.long_term_memory = None
-
-
-class _AgentState:
-    def __init__(self, outputs: list[str]) -> None:
-        self.last_result = [_ActionResult(text) for text in outputs]
+def _agent_state(outputs: list[str]) -> AgentState:
+    """Browser-Use's own agent state after a step, carrying each action's output."""
+    return AgentState(last_result=[ActionResult(extracted_content=text) for text in outputs])
 
 
 class _History:
@@ -140,6 +143,12 @@ class _History:
 
     def is_successful(self) -> bool:
         return self._successful
+
+    def errors(self) -> list[str | None]:
+        return [None]
+
+    def number_of_steps(self) -> int:
+        return 1
 
 
 class BrowserDouble:
@@ -187,6 +196,24 @@ class _BrowserSession:
         return self._double.url
 
 
+class _Browser:
+    """Browser-Use's Browser, as the run wires it: its event bus fires the connect the real one does."""
+
+    def __init__(self) -> None:
+        self._handlers: dict[object, list[Callable[[object], object]]] = {}
+        self.event_bus = SimpleNamespace(on=self._on)
+        self.cdp_client = MagicMock()
+
+    def _on(self, event: object, handler: Callable[[object], object]) -> None:
+        self._handlers.setdefault(event, []).append(handler)
+
+    async def connect(self) -> None:
+        for handler in self._handlers.get(BrowserConnectedEvent, []):
+            fired = handler(SimpleNamespace())
+            if inspect.isawaitable(fired):
+                await fired
+
+
 class _ScriptedAgent:
     """Stands in for browser_use.Agent, calling back exactly where the real one does.
 
@@ -199,11 +226,15 @@ class _ScriptedAgent:
         self._on_step = kwargs["register_new_step_callback"]
         self._should_stop = kwargs["register_should_stop_callback"]
         self.task = kwargs["task"]
+        self._browser: _Browser = kwargs["browser"]
         self._stopped = False
-        self.state = _AgentState([])
+        self.state = kwargs.get("injected_agent_state") or _agent_state([])
         self.browser_session = _BrowserSession(double)
         self.new_tasks: list[str] = []
         self.message_manager = SimpleNamespace(add_new_task=self.new_tasks.append)
+        # Where the real agent writes its file system and step screenshots; the run removes it.
+        self.agent_directory = tempfile.mkdtemp(prefix="browser_use_agent_")
+        self.file_system_path = self.agent_directory
 
     def stop(self) -> None:
         self._stopped = True
@@ -212,6 +243,7 @@ class _ScriptedAgent:
         self, max_steps: int, on_step_start: Any = None, on_step_end: Any = None
     ) -> _History:
         double = self._double
+        await self._browser.connect()
         while double.next_step < len(double.steps):
             step = double.steps[double.next_step]
             double.next_step += 1
@@ -244,45 +276,43 @@ class _ScriptedAgent:
 
     async def _perform(self, step: ScriptedStep, index: int, on_step_end: Any) -> _History | None:
         """Report the step as Browser-Use does, run its takeover or guidance action, and return the history a done action ends the run with."""
-        step_actions = list(step.actions)
-        if step.takeover is not None:
-            step_actions = [
-                (
-                    "request_human_takeover",
-                    {"reason": step.takeover[0], "category": step.takeover[1]},
-                )
-            ]
-        elif step.guidance is not None:
-            step_actions = [("request_agent_guidance", {"reason": step.guidance})]
-        elif step.switch is not None:
-            step_actions = [("continue_in_full_browser", {"category": step.switch.value})]
+        step_actions = _reported_actions(step)
         self._double.url = step.url
         actions = [_Action(name, params) for name, params in step_actions]
         await self._on_step(_PageState(step.url, step.fields), _AgentOutput(actions), index)
-        try:
-            if step.takeover is not None:
-                await self._hand_over(*step.takeover)
-            elif step.guidance is not None:
-                await self._ask_the_agent(step.guidance)
-            elif step.switch is not None:
-                assert self._double.switch is not None, "the run was not offered the full browser"
-                await self._double.switch(step.switch)
-        except BrowserHandoffCancelled:
-            # Browser-Use turns this into an action error and the run's own flags
-            # decide the outcome; the loop has nothing left to do.
-            raise _RunHalted from None
+        asked = await self._act(step)
         if on_step_end is not None:
-            self.state = _AgentState(step.outputs)
+            self.state.last_result = _agent_state(step.outputs).last_result
+            # A handoff's wait runs here, after the step, and its answer joins the step's results.
             await on_step_end(self)
+            if asked == BROWSER_ANSWER_AFTER_STEP:
+                answer = self.state.last_result[-1]
+                if answer.error is not None:
+                    # The run's own flags decide the outcome; the loop has nothing left to do.
+                    raise _RunHalted
+                asked = answer.long_term_memory
+            if step.takeover is not None:
+                self._double.takeover_notes.append(asked)
+            elif step.guidance is not None:
+                self._double.guidance_notes.append(asked)
         # A done action ends the run where Browser-Use ends it, with its own text and verdict.
         return _ended_by(step_actions)
 
-    async def _hand_over(self, reason: str, category: str) -> None:
+    async def _act(self, step: ScriptedStep) -> object:
+        """Run the step's takeover, guidance or switch; return what a takeover or guidance answered."""
+        if step.takeover is not None:
+            return await self._hand_over(*step.takeover)
+        if step.guidance is not None:
+            return await self._ask_the_agent(step.guidance)
+        if step.switch is not None:
+            assert self._double.switch is not None, "the run was not offered the full browser"
+            await self._double.switch(step.switch)
+        return None
+
+    async def _hand_over(self, reason: str, category: str) -> object:
         assert self._double.takeover is not None, "the takeover action was never built"
         # Browser-Use validates the action's arguments into its param model first.
-        self._double.takeover_notes.append(
-            await self._double.takeover(reason, SensitiveCategory(category))
-        )
+        return await self._double.takeover(reason, SensitiveCategory(category))
 
     async def _wait_for_joiner(self) -> None:
         from app.services.browser.jobs import joiner_lease_held
@@ -293,10 +323,10 @@ class _ScriptedAgent:
             await asyncio.sleep(0.01)
         raise AssertionError("no executor ever joined the job")
 
-    async def _ask_the_agent(self, reason: str) -> None:
+    async def _ask_the_agent(self, reason: str) -> object:
         assert self._double.guidance is not None, "the guidance action was never built"
         self._double.guidance_reasons.append(reason)
-        self._double.guidance_notes.append(await self._double.guidance(reason))
+        return await self._double.guidance(reason)
 
     async def _wait_for_stop(self) -> None:
         """Sit on the page until the user's stop reaches the agent, as a real run would."""
@@ -306,6 +336,18 @@ class _ScriptedAgent:
                 return
             await asyncio.sleep(0.01)
         raise AssertionError("the browser run was never told to stop")
+
+
+def _reported_actions(step: ScriptedStep) -> list[tuple[str, dict[str, Any]]]:
+    """Return the actions the step reports; a takeover, guidance or switch replaces the scripted ones."""
+    if step.takeover is not None:
+        reason, category = step.takeover
+        return [("request_human_takeover", {"reason": reason, "category": category})]
+    if step.guidance is not None:
+        return [("request_agent_guidance", {"reason": step.guidance})]
+    if step.switch is not None:
+        return [("continue_in_full_browser", {"category": step.switch.value})]
+    return list(step.actions)
 
 
 def _ended_by(step_actions: list[tuple[str, dict[str, Any]]]) -> _History | None:
@@ -319,10 +361,13 @@ def _ended_by(step_actions: list[tuple[str, dict[str, Any]]]) -> _History | None
 class JobWorld:
     """Everything the run touched outside its own process, recorded."""
 
-    def __init__(self, double: BrowserDouble) -> None:
+    def __init__(self, double: BrowserDouble, stream_id: str) -> None:
         self.browser = double
+        self.stream_id = stream_id
         self.enqueued: list[BrowserJobRequest] = []
         self.chunks: list[str] = []
+        #: What reached any other turn's stream, by stream id.
+        self.other_streams: dict[str, list[str]] = {}
         self.bot_messages: list[str] = []
         self.bot_photos: list[str] = []
         self.deliveries: list[dict[str, Any]] = []
@@ -334,36 +379,44 @@ class JobWorld:
         self.seeded_states: list[Any] = []
         #: Each session whose live storage_state was read.
         self.storage_reads: list[str] = []
-        #: Each session a paused run's keepalive reset the host's idle clock for.
-        self.keepalive_touches: list[str] = []
+        #: Each session whose host lease the job renewed.
+        self.lease_renewals: list[str] = []
+        #: Each job a stop asked ARQ to abort.
+        self.aborted: list[str] = []
 
-    def frames(self) -> list[dict[str, Any]]:
-        """Return each SSE chunk the turn's stream carried, decoded."""
-        return [json.loads(chunk.removeprefix("data: ").strip()) for chunk in self.chunks]
+    def frames(self, stream_id: str | None = None) -> list[dict[str, Any]]:
+        """Return each SSE chunk the turn's stream (or another one) carried, decoded."""
+        chunks = self.chunks if stream_id is None else self.other_streams.get(stream_id, [])
+        return [json.loads(chunk.removeprefix("data: ").strip()) for chunk in chunks]
 
-    def cards(self) -> list[dict[str, Any]]:
-        """Return the browser card payloads, in publish order."""
+    def cards(self, stream_id: str | None = None) -> list[dict[str, Any]]:
+        """Return the browser card payloads a stream carried, in publish order."""
         return [
             frame["tool_data"]["data"]
-            for frame in self.frames()
+            for frame in self.frames(stream_id)
             if "tool_data" in frame and frame["tool_data"].get("tool_name") == "browser_task_data"
         ]
 
-    async def sit_through_keepalives(self, count: int) -> int:
-        """Wait while a paused run keeps its browser alive count times, a minute of the user's time each; return how many it did.
+    async def sit_through_lease_renewals(self, count: int) -> int:
+        """Wait until the job has renewed its browser's lease count times in all, half a minute of the user's time each; return how many it did.
 
-        Fewer than count means the pause ended first.
+        Fewer than count means the session ended first.
         """
         for _ in range(500):
-            if len(self.keepalive_touches) >= count:
+            if len(self.lease_renewals) >= count:
                 break
             await asyncio.sleep(0.01)
-        return len(self.keepalive_touches)
+        return len(self.lease_renewals)
 
     async def settle(self) -> None:
-        """Wait out the worker task and the fire-and-forget publishes it left behind."""
+        """End the turn's executor run, then wait out the worker task and the publishes it left behind."""
+        # What executor_runner does when the run ends: the relay stops holding the result for it.
+        signal_executor_done(self.stream_id)
         if self.jobs:
             await asyncio.gather(*self.jobs, return_exceptions=True)
+        # The relays, which end on the job's terminal frame and the run's end.
+        relays = [task for task in wide_events._spawned_tasks if not task.done()]
+        await asyncio.gather(*relays, return_exceptions=True)
         from app.utils import background_tasks
 
         for _ in range(50):
@@ -407,30 +460,31 @@ async def browser_job_world(
         summary,
         successful,
     )
-    world = JobWorld(double)
+    world = JobWorld(double, stream_id)
     scripted_host = host if host is not None else ScriptedHost()
-    browser = MagicMock()
+    browser = _Browser()
     redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
     create_session(stream_id, RunKind.LIVE)
 
     async def _enqueue(
-        pool: Any, name: str, payload: dict[str, Any], *, _queue_name: str
+        pool: Any, name: str, payload: dict[str, Any], *, _queue_name: str, _job_id: str
     ) -> object:
         world.enqueued.append(BrowserJobRequest.model_validate(payload))
         double.job_id = world.enqueued[-1].job_id
         world.jobs.append(asyncio.create_task(browser_tasks.run_browser_job({}, payload)))
         return object()
 
+    async def _abort(job_id: str) -> bool:
+        """Cancel the job's task, as ARQ's abort cancels the task of a job a worker is running."""
+        running = [task for task in world.jobs if not task.done()]
+        for task in running:
+            task.cancel()
+        world.aborted.append(job_id)
+        return bool(running)
+
     patches = [
         patch("app.db.redis.redis_cache.redis", redis),
-        # The real waits are tens of seconds of polling. Shrunk, not removed: the
-        # poll loops are what the join and the delivery hand-off are made of.
-        patch.object(browser_tasks, "BROWSER_JOB_JOINER_LEASE_SECONDS", 0.2),
-        patch.object(browser_tasks, "BROWSER_JOB_JOINER_REFRESH_SECONDS", 0.1),
-        patch.object(browser_tasks, "BROWSER_JOB_POLL_INTERVAL_SECONDS", 0.02),
-        patch.object(browser_tool, "BROWSER_JOB_POLL_INTERVAL_SECONDS", 0.02),
-        patch.object(browser_tool, "BROWSER_JOB_JOINER_REFRESH_SECONDS", 0.1),
-        patch("app.services.browser.handoff.HANDOFF_POLL_INTERVAL_SECONDS", 0.02),
+        patch("app.services.browser.job_stop._abort_if_started", _abort),
         # A guidance request nobody answers must fail the journey in seconds, not
         # sit out the real two-minute budget.
         patch("app.services.browser.job_runner.BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS", 2),
@@ -448,11 +502,6 @@ async def browser_job_world(
         patch(
             "app.services.browser.job_runner.is_enabled",
             AsyncMock(return_value=scripted_host.fallback_url is not None),
-        ),
-        patch.object(
-            settings,
-            "BROWSER_ENGINE",
-            BrowserEngine.OBSCURA if scripted_host.fallback_url else BrowserEngine.CHROMIUM,
         ),
         # The models and Jev's gateway are never called: the agent and Jev are scripted.
         patch("app.services.browser.agent_run.build_agent_llm", AsyncMock(return_value=object())),
@@ -473,11 +522,14 @@ async def browser_job_world(
     with ExitStack() as stack:
         for entered in patches:
             stack.enter_context(entered)
+        # The turn's stream is live for the whole journey, as a chat turn's is while it streams.
+        await StreamManager.start_stream(stream_id, "conv-of-the-turn", "user-of-the-turn")
         try:
             yield world
         finally:
-            for task in world.jobs:
+            for task in [*world.jobs, *wide_events._spawned_tasks]:
                 task.cancel()
+            await asyncio.gather(*world.jobs, *wide_events._spawned_tasks, return_exceptions=True)
             await redis.aclose()
 
 
@@ -492,11 +544,15 @@ def _host_patches(
             raise scripted_host.error
         world.seeded_states.append(storage_state)
         world.host_sessions += 1
+        # A world with a fallback host has Obscura on its primary and Chrome behind it.
+        on_obscura = (
+            scripted_host.fallback_url is not None and host_url != scripted_host.fallback_url
+        )
         return MagicMock(
             session_id=f"sess-{world.host_sessions}",
             cdp_ws="ws://browser.test/cdp",
             live_ws="ws://browser.test/live",
-            context_id="ctx-1",
+            engine=BrowserEngine.OBSCURA if on_obscura else BrowserEngine.CHROMIUM,
         )
 
     def _kill_engine() -> None:
@@ -514,12 +570,15 @@ def _host_patches(
         return HostSessionInfo(
             session_id=session_id,
             live=True,
-            last_activity_at=0.0,
             url=double.url,
         )
 
-    async def _touch_host_session(session_id: str, host_url: str) -> None:
-        world.keepalive_touches.append(session_id)
+    async def _renew_host_lease(session_id: str, host_url: str) -> None:
+        if session_id in world.dead_sessions:
+            raise BrowserSessionGone(
+                f"Browser host returned 404 for {host_url}/sessions/{session_id}/lease"
+            )
+        world.lease_renewals.append(session_id)
 
     async def _get_storage_state(session_id: str, host_url: str) -> Any:
         world.storage_reads.append(session_id)
@@ -537,7 +596,7 @@ def _host_patches(
         ),
         patch("app.services.browser.session.host_client.get_session", _get_host_session),
         patch("app.services.browser.session.host_client.get_storage_state", _get_storage_state),
-        patch("app.services.browser.session.host_client.touch_session", _touch_host_session),
+        patch("app.services.browser.session.host_client.renew_session_lease", _renew_host_lease),
         patch.object(settings, "BROWSER_FALLBACK_HOST_URL", scripted_host.fallback_url),
         patch("app.services.browser.session.load_storage_state", AsyncMock(return_value=None)),
         patch("app.services.browser.session.save_storage_state", AsyncMock()),
@@ -566,6 +625,8 @@ def _delivery_patches(world: JobWorld, stream_id: str) -> list[AbstractContextMa
     async def _publish_chunk(chunk_stream_id: str, chunk: str) -> None:
         if chunk_stream_id == stream_id:
             world.chunks.append(chunk)
+        else:
+            world.other_streams.setdefault(chunk_stream_id, []).append(chunk)
 
     async def _outbound_message(platform: Any, user_id: str, blocks: list[str]) -> bool:
         world.bot_messages.extend(blocks)

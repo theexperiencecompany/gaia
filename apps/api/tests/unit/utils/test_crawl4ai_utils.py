@@ -1,8 +1,8 @@
 """Unit tests for app.utils.crawl4ai_utils."""
 
 import asyncio
-from collections.abc import Awaitable
-from contextlib import suppress
+from collections.abc import AsyncIterator, Awaitable
+from contextlib import asynccontextmanager, suppress
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,6 +12,7 @@ import pytest
 from app.config.settings import settings
 from app.constants.browser import BrowserEngine
 from app.constants.log_tags import LogTag
+from app.utils import crawl4ai_utils
 
 
 def _pin_engine(monkeypatch: pytest.MonkeyPatch, engine: BrowserEngine) -> None:
@@ -94,6 +95,12 @@ def _stub_crawler(mock_crawler_cls: MagicMock) -> AsyncMock:
     crawler_inst.__aexit__ = AsyncMock(return_value=False)
     mock_crawler_cls.return_value = crawler_inst
     return crawler_inst
+
+
+@asynccontextmanager
+async def _held_engine() -> AsyncIterator[str]:
+    """Stand in for holding the crawl Obscura: its endpoint, for the crawler's life."""
+    yield "http://127.0.0.1:9223"
 
 
 class TestBatchFetchWithCrawl4ai:
@@ -189,16 +196,12 @@ class TestBatchFetchWithCrawl4ai:
 class TestBatchFetchObscura:
     """The Obscura path: one crawler+context per URL (arun), never arun_many."""
 
-    @patch(
-        "app.utils.crawl4ai_utils.ensure_crawl_obscura",
-        new_callable=AsyncMock,
-        return_value="http://127.0.0.1:9223",
-    )
+    @patch("app.utils.crawl4ai_utils.crawl_obscura", side_effect=_held_engine)
     @patch("app.utils.crawl4ai_utils.AsyncWebCrawler")
     async def test_obscura_fans_out_per_url(
         self,
         mock_crawler_cls: MagicMock,
-        mock_ensure: AsyncMock,
+        mock_ensure: MagicMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         _pin_engine(monkeypatch, BrowserEngine.OBSCURA)
@@ -232,19 +235,15 @@ class TestBatchFetchObscura:
         assert errors == {}
         assert contents == {u: f"content-{u}" for u in urls}
         # Obscura engine resolved (per-URL fanout), and arun_many was never used.
-        mock_ensure.assert_awaited()
+        mock_ensure.assert_called()
         crawler_inst.arun_many.assert_not_called()
 
-    @patch(
-        "app.utils.crawl4ai_utils.ensure_crawl_obscura",
-        new_callable=AsyncMock,
-        return_value="http://127.0.0.1:9223",
-    )
+    @patch("app.utils.crawl4ai_utils.crawl_obscura", side_effect=_held_engine)
     @patch("app.utils.crawl4ai_utils.AsyncWebCrawler")
     async def test_obscura_one_url_failure_does_not_sink_the_batch(
         self,
         mock_crawler_cls: MagicMock,
-        mock_ensure: AsyncMock,
+        mock_ensure: MagicMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         _pin_engine(monkeypatch, BrowserEngine.OBSCURA)
@@ -284,21 +283,13 @@ class TestBatchFetchObscura:
         assert "https://good.example" not in errors
 
 
-class TestBuildBrowserConfig:
+class TestBrowserConfig:
     """The engine decides the whole browser config, field by field."""
 
-    @patch(
-        "app.utils.crawl4ai_utils.ensure_crawl_obscura",
-        new_callable=AsyncMock,
-        return_value="http://127.0.0.1:9223",
-    )
-    async def test_obscura_connects_over_cdp_without_closing_the_shared_engine(
-        self, mock_ensure: AsyncMock, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _pin_engine(monkeypatch, BrowserEngine.OBSCURA)
-        from app.utils.crawl4ai_utils import _build_browser_config
+    def test_obscura_connects_over_cdp_without_closing_the_shared_engine(self) -> None:
+        from app.utils.crawl4ai_utils import _browser_config
 
-        config = await _build_browser_config()
+        config = _browser_config("http://127.0.0.1:9223")
 
         assert config.browser_mode == "cdp"
         assert config.cdp_url == "http://127.0.0.1:9223"
@@ -308,13 +299,10 @@ class TestBuildBrowserConfig:
         # from under a concurrent crawl.
         assert config.cdp_cleanup_on_close is False
 
-    async def test_chromium_launches_its_own_dedicated_browser(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _pin_engine(monkeypatch, BrowserEngine.CHROMIUM)
-        from app.utils.crawl4ai_utils import _build_browser_config
+    def test_chromium_launches_its_own_dedicated_browser(self) -> None:
+        from app.utils.crawl4ai_utils import _browser_config
 
-        config = await _build_browser_config()
+        config = _browser_config(None)
 
         assert config.browser_mode == "dedicated"
         assert config.headless is True
@@ -366,6 +354,61 @@ class TestManagedCrawler:
         config = mock_crawler_cls.call_args.kwargs["config"]
         assert isinstance(config, BrowserConfig)
         assert config.browser_mode == "dedicated"
+
+    @patch("app.utils.crawl4ai_utils.crawl_obscura", side_effect=_held_engine)
+    @patch("app.utils.crawl4ai_utils.AsyncWebCrawler")
+    async def test_an_obscura_crawler_drives_the_engine_it_holds(
+        self, mock_crawler_cls: MagicMock, mock_ensure: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _pin_engine(monkeypatch, BrowserEngine.OBSCURA)
+        _stub_crawler(mock_crawler_cls)
+        from app.utils.crawl4ai_utils import managed_crawler
+
+        async with managed_crawler(context_name="test"):
+            pass
+
+        assert mock_crawler_cls.call_args.kwargs["config"].cdp_url == "http://127.0.0.1:9223"
+
+    @patch("app.utils.crawl4ai_utils.log")
+    @patch("app.utils.crawl4ai_utils.AsyncWebCrawler")
+    async def test_a_crawler_that_fails_to_start_is_still_closed(
+        self, mock_crawler_cls: MagicMock, mock_log: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _pin_engine(monkeypatch, BrowserEngine.CHROMIUM)
+        crawler_inst = _stub_crawler(mock_crawler_cls)
+        crawler_inst.start = AsyncMock(side_effect=RuntimeError("no driver"))
+        crawler_inst.close = AsyncMock(side_effect=RuntimeError("driver gone"))
+        from app.utils.crawl4ai_utils import managed_crawler
+
+        with pytest.raises(RuntimeError, match="no driver"):
+            async with managed_crawler(context_name="profile crawl"):
+                pass
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+        crawler_inst.close.assert_awaited_once_with()
+        assert _warning_kwargs(mock_log, "browser close failed")["context_name"] == "profile crawl"
+
+    @patch("app.utils.crawl4ai_utils.log")
+    @patch("app.utils.crawl4ai_utils.AsyncWebCrawler")
+    async def test_a_wedged_close_is_left_to_finish_and_said_so(
+        self, mock_crawler_cls: MagicMock, mock_log: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _pin_engine(monkeypatch, BrowserEngine.CHROMIUM)
+        monkeypatch.setattr(crawl4ai_utils, "CRAWL4AI_CLOSE_TIMEOUT_SECONDS", 0.01)
+        crawler_inst = _stub_crawler(mock_crawler_cls)
+        released = asyncio.Event()
+        crawler_inst.close = AsyncMock(side_effect=released.wait)
+        from app.utils.crawl4ai_utils import managed_crawler
+
+        async with managed_crawler(context_name="deep_research"):
+            pass
+
+        assert _warning_kwargs(mock_log, "browser close still running") == {
+            "context_name": "deep_research",
+            "crawl4ai_close_timeout_seconds": 0.01,
+        }
+        released.set()
 
 
 class TestRecoveryAfterBatchTimeout:
@@ -510,16 +553,12 @@ class TestPerUrlTimeout:
             (600_000, 100.0, "test timed out after 100s"),
         ],
     )
-    @patch(
-        "app.utils.crawl4ai_utils.ensure_crawl_obscura",
-        new_callable=AsyncMock,
-        return_value="http://127.0.0.1:9223",
-    )
+    @patch("app.utils.crawl4ai_utils.crawl_obscura", side_effect=_held_engine)
     @patch("app.utils.crawl4ai_utils.AsyncWebCrawler")
     async def test_per_url_timeout_is_reported_in_the_error(
         self,
         mock_crawler_cls: MagicMock,
-        mock_ensure: AsyncMock,
+        mock_ensure: MagicMock,
         page_timeout_ms: int,
         total_timeout_seconds: float,
         expected_message: str,
@@ -544,11 +583,7 @@ class TestPerUrlTimeout:
         assert errors == {"https://slow.example": expected_message}
 
 
-_patch_obscura_engine = patch(
-    "app.utils.crawl4ai_utils.ensure_crawl_obscura",
-    new_callable=AsyncMock,
-    return_value="http://127.0.0.1:9223",
-)
+_patch_obscura_engine = patch("app.utils.crawl4ai_utils.crawl_obscura", side_effect=_held_engine)
 
 
 def _obscura_params(**overrides: Any) -> Any:
@@ -569,7 +604,7 @@ class TestObscuraPerUrlFanout:
     @_patch_obscura_engine
     @patch("app.utils.crawl4ai_utils.AsyncWebCrawler")
     async def test_every_url_is_crawled_on_the_batch_run_config(
-        self, mock_crawler_cls: MagicMock, mock_ensure: AsyncMock, monkeypatch: pytest.MonkeyPatch
+        self, mock_crawler_cls: MagicMock, mock_ensure: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _pin_engine(monkeypatch, BrowserEngine.OBSCURA)
         crawler_inst = _stub_crawler(mock_crawler_cls)
@@ -595,7 +630,7 @@ class TestObscuraPerUrlFanout:
         self,
         mock_crawler_cls: MagicMock,
         mock_log: MagicMock,
-        mock_ensure: AsyncMock,
+        mock_ensure: MagicMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         _pin_engine(monkeypatch, BrowserEngine.OBSCURA)
@@ -617,7 +652,7 @@ class TestObscuraPerUrlFanout:
     @_patch_obscura_engine
     @patch("app.utils.crawl4ai_utils.AsyncWebCrawler")
     async def test_content_is_truncated_to_the_callers_limit(
-        self, mock_crawler_cls: MagicMock, mock_ensure: AsyncMock, monkeypatch: pytest.MonkeyPatch
+        self, mock_crawler_cls: MagicMock, mock_ensure: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _pin_engine(monkeypatch, BrowserEngine.OBSCURA)
         crawler_inst = _stub_crawler(mock_crawler_cls)
@@ -633,7 +668,7 @@ class TestObscuraPerUrlFanout:
     @_patch_obscura_engine
     @patch("app.utils.crawl4ai_utils.AsyncWebCrawler")
     async def test_an_empty_page_is_reported_against_the_calling_context(
-        self, mock_crawler_cls: MagicMock, mock_ensure: AsyncMock, monkeypatch: pytest.MonkeyPatch
+        self, mock_crawler_cls: MagicMock, mock_ensure: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _pin_engine(monkeypatch, BrowserEngine.OBSCURA)
         crawler_inst = _stub_crawler(mock_crawler_cls)
@@ -649,7 +684,7 @@ class TestObscuraPerUrlFanout:
     @_patch_obscura_engine
     @patch("app.utils.crawl4ai_utils.AsyncWebCrawler")
     async def test_semaphore_count_bounds_the_crawls_in_flight(
-        self, mock_crawler_cls: MagicMock, mock_ensure: AsyncMock, monkeypatch: pytest.MonkeyPatch
+        self, mock_crawler_cls: MagicMock, mock_ensure: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _pin_engine(monkeypatch, BrowserEngine.OBSCURA)
         in_flight = 0
@@ -677,7 +712,7 @@ class TestObscuraPerUrlFanout:
     @_patch_obscura_engine
     @patch("app.utils.crawl4ai_utils.AsyncWebCrawler")
     async def test_each_crawl_gets_its_own_page_derived_deadline(
-        self, mock_crawler_cls: MagicMock, mock_ensure: AsyncMock, monkeypatch: pytest.MonkeyPatch
+        self, mock_crawler_cls: MagicMock, mock_ensure: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _pin_engine(monkeypatch, BrowserEngine.OBSCURA)
         crawler_inst = _stub_crawler(mock_crawler_cls)
@@ -698,7 +733,7 @@ class TestObscuraPerUrlFanout:
     @_patch_obscura_engine
     @patch("app.utils.crawl4ai_utils.AsyncWebCrawler")
     async def test_the_batch_deadline_marks_unfinished_urls_and_keeps_finished_ones(
-        self, mock_crawler_cls: MagicMock, mock_ensure: AsyncMock, monkeypatch: pytest.MonkeyPatch
+        self, mock_crawler_cls: MagicMock, mock_ensure: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _pin_engine(monkeypatch, BrowserEngine.OBSCURA)
         never = asyncio.Event()
@@ -729,7 +764,7 @@ class TestObscuraPerUrlFanout:
         self,
         mock_crawler_cls: MagicMock,
         mock_log: MagicMock,
-        mock_ensure: AsyncMock,
+        mock_ensure: MagicMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         _pin_engine(monkeypatch, BrowserEngine.OBSCURA)

@@ -220,8 +220,8 @@ EXPECTED_GROUPS: list[_ExpectedGroup] = [
     ),
     _ExpectedGroup(
         "Browser Host",
-        ["BROWSER_HOST_URL", "BROWSER_HOST_KEY"],
-        "gaia-browser-host (self-hosted Chromium) + Browser-Use agent",
+        ["BROWSER_HOST_URL", "BROWSER_HOST_KEY", "BROWSER_FALLBACK_HOST_URL"],
+        "gaia-browser-host: the BROWSER_ENGINE host + the Chromium host",
         "Autonomous browser automation (the browser_task tool)",
         False,
         True,

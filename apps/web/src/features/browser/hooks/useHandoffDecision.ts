@@ -1,69 +1,33 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { browserApi } from "@/features/browser/api/browserApi";
-import type { BrowserHandoffStatus } from "@/types/features/browserTaskTypes";
+import type {
+  BrowserHandoffDecision,
+  BrowserHandoffStatus,
+} from "@/types/features/browserTaskTypes";
 
 export type SettledHandoffStatus = Exclude<BrowserHandoffStatus, "pending">;
 
 /**
- * Decision state for one pending handoff, shared by the chat card's prompt and
- * the browser side panel. Polls until the handoff reaches a terminal status —
- * including after our own decision, so an in-flight "Stopping…" can never spin
- * forever — and settles immediately from the decision response when possible.
+ * The user's answer to one pending handoff.
+ *
+ * The run itself reports how a handoff resolved (a resolved handoff snapshot on
+ * the card's stream), so nothing here polls: the server's answer to our own
+ * decision is shown until that snapshot replaces the prompt. A failed decision
+ * is toasted by the API client and leaves the choice open to try again.
  */
-export function useHandoffDecision(
-  handoffId: string,
-  onSettled?: (status: SettledHandoffStatus) => void,
-) {
-  const [decided, setDecided] = useState<"continue" | "cancel" | null>(null);
-  const [pending, setPending] = useState(false);
-  const [serverStatus, setServerStatus] = useState<BrowserHandoffStatus | null>(
-    null,
-  );
+export function useHandoffDecision(handoffId: string) {
+  const [decided, setDecided] = useState<BrowserHandoffDecision | null>(null);
+  const [settled, setSettled] = useState<SettledHandoffStatus | null>(null);
 
-  const settled =
-    serverStatus && serverStatus !== "pending" ? serverStatus : null;
-
-  // Read through a ref so a parent passing a new closure never restarts polling.
-  const onSettledRef = useRef(onSettled);
-  useEffect(() => {
-    onSettledRef.current = onSettled;
-  }, [onSettled]);
-  const settle = useCallback((status: BrowserHandoffStatus) => {
-    if (status === "pending") return;
-    setServerStatus(status);
-    onSettledRef.current?.(status);
-  }, []);
-
-  useEffect(() => {
-    if (settled) return undefined;
-    let active = true;
-    const poll = async () => {
-      const res = await browserApi.getHandoffStatus(handoffId);
-      if (active && res) settle(res.status);
-    };
-    const id = setInterval(poll, 3000);
-    return () => {
-      active = false;
-      clearInterval(id);
-    };
-  }, [settled, handoffId, settle]);
-
-  const decide = async (decision: "continue" | "cancel", message?: string) => {
-    setPending(true);
+  const decide = async (decision: BrowserHandoffDecision) => {
     setDecided(decision);
     try {
-      const res = await browserApi.postHandoffDecision(
-        handoffId,
-        decision,
-        message,
-      );
-      if (res) settle(res.status);
+      const res = await browserApi.postHandoffDecision(handoffId, decision);
+      if (res.status !== "pending") setSettled(res.status);
     } catch {
       setDecided(null);
-    } finally {
-      setPending(false);
     }
   };
 
-  return { decide, decided, pending, settled };
+  return { decide, decided, settled };
 }

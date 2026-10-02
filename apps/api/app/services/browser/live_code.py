@@ -1,17 +1,19 @@
 """Short capability codes for the bot's live-view link.
 
 The code itself is the secret: anyone holding it can watch and drive the
-session until the TTL lapses, same as the takeover token it replaces.
+session, so one is minted per handoff, lives only as long as that handoff may
+wait, and is revoked the moment the handoff is settled.
 """
 
 from __future__ import annotations
 
 import secrets
 
+from app.config.settings import settings
 from app.constants.browser import (
     BROWSER_LIVE_CODE_ENTROPY_BYTES,
+    BROWSER_LIVE_CODE_HANDOFF_PREFIX,
     BROWSER_LIVE_CODE_KEY_PREFIX,
-    BROWSER_LIVE_CODE_TTL_SECONDS,
 )
 from app.db.redis import redis_cache
 from app.schemas.browser import LiveCodeRecord
@@ -21,20 +23,33 @@ def _key(code: str) -> str:
     return f"{BROWSER_LIVE_CODE_KEY_PREFIX}{code}"
 
 
-async def mint_live_code(session_id: str, user_id: str) -> str:
-    """Create a short code that resolves to the session id and user id for the TTL window."""
+def _handoff_key(handoff_id: str) -> str:
+    return f"{BROWSER_LIVE_CODE_HANDOFF_PREFIX}{handoff_id}"
+
+
+async def mint_live_code(session_id: str, user_id: str, handoff_id: str) -> str:
+    """Create a short code that opens the session for its owner while this handoff waits."""
     code = secrets.token_urlsafe(BROWSER_LIVE_CODE_ENTROPY_BYTES)
+    ttl: int = settings.BROWSER_USE_HANDOFF_TIMEOUT_SECONDS
     await redis_cache.set(
         _key(code),
-        LiveCodeRecord(session_id=session_id, user_id=user_id),
-        ttl=BROWSER_LIVE_CODE_TTL_SECONDS,
+        LiveCodeRecord(session_id=session_id, user_id=user_id, handoff_id=handoff_id),
+        ttl=ttl,
         model=LiveCodeRecord,
     )
+    await redis_cache.client.set(_handoff_key(handoff_id), code, ex=ttl)
     return code
 
 
+async def revoke_handoff_live_code(handoff_id: str) -> None:
+    """Close the link minted for this handoff, if one was: it is settled, so nobody is to act in that browser now."""
+    code = await redis_cache.client.getdel(_handoff_key(handoff_id))
+    if code is not None:
+        await redis_cache.delete(_key(code))
+
+
 async def resolve_live_code(code: str) -> LiveCodeRecord | None:
-    """Return the session and owner a code opens, or None if unknown or expired."""
+    """Return the session and owner a code opens, or None if unknown, expired or revoked."""
     return await redis_cache.get(_key(code), model=LiveCodeRecord)
 
 

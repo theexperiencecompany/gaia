@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import fakeredis.aioredis
 from langgraph.errors import GraphRecursionError
 import pytest
 
@@ -18,8 +19,8 @@ from app.agents.core.background import executor_runner as er
 from app.agents.core.background.session import ExecutorRun, RunKind
 from app.constants.executor import EXECUTOR_STEP_LIMIT_MESSAGE
 from app.models.user_models import AuthenticatedUser
-from app.services.browser import jobs as jobs_mod
-from tests._harness.redis_fakes import FakeRedisCache
+from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
+from app.services.browser import job_stop, jobs as jobs_mod
 
 
 async def _run_with(
@@ -45,10 +46,19 @@ async def _run_with(
 
 
 @pytest.fixture
-def fake_cache(monkeypatch: pytest.MonkeyPatch) -> FakeRedisCache:
-    fake = FakeRedisCache()
-    monkeypatch.setattr(jobs_mod, "redis_cache", fake)
-    return fake
+async def fake_cache(
+    fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> fakeredis.aioredis.FakeRedis:
+    """Back the job store with fakeredis; no worker runs here for the stop to abort."""
+    monkeypatch.setattr(job_stop, "_abort_if_started", AsyncMock(return_value=False))
+    return fake_redis
+
+
+async def _running_job(conversation_id: str, job_id: str) -> None:
+    await jobs_mod.set_latest_job(conversation_id, job_id)
+    await jobs_mod.put_job_state(
+        BrowserJobState(job_id=job_id, status=BrowserJobStatus.RUNNING, task="t")
+    )
 
 
 @pytest.mark.unit
@@ -97,17 +107,19 @@ class TestOrphanedBrowserJob:
     """
 
     async def test_a_step_limit_cancels_the_job_left_in_flight(
-        self, fake_cache: FakeRedisCache
+        self, fake_cache: fakeredis.aioredis.FakeRedis
     ) -> None:
-        await jobs_mod.claim_conversation_slot("conv-1", "job-1")
+        await _running_job("conv-1", "job-1")
 
         result = await _run_with(GraphRecursionError("limit"))
 
         assert result.text == EXECUTOR_STEP_LIMIT_MESSAGE
         assert await jobs_mod.job_cancel_requested("job-1") is True
 
-    async def test_a_crash_cancels_the_job_left_in_flight(self, fake_cache: FakeRedisCache) -> None:
-        await jobs_mod.claim_conversation_slot("conv-1", "job-1")
+    async def test_a_crash_cancels_the_job_left_in_flight(
+        self, fake_cache: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        await _running_job("conv-1", "job-1")
 
         result = await _run_with(RuntimeError("boom"))
 
@@ -115,20 +127,18 @@ class TestOrphanedBrowserJob:
         assert await jobs_mod.job_cancel_requested("job-1") is True
 
     async def test_another_conversations_job_is_left_alone(
-        self, fake_cache: FakeRedisCache
+        self, fake_cache: fakeredis.aioredis.FakeRedis
     ) -> None:
-        await jobs_mod.claim_conversation_slot("conv-2", "job-2")
+        await _running_job("conv-2", "job-2")
 
         await _run_with(GraphRecursionError("limit"))
 
         assert await jobs_mod.job_cancel_requested("job-2") is False
 
     async def test_a_redis_failure_still_hands_comms_the_runs_own_ending(
-        self, fake_cache: FakeRedisCache, monkeypatch: pytest.MonkeyPatch
+        self, fake_cache: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            er, "cancel_conversation_browser_job", AsyncMock(side_effect=ConnectionError("down"))
-        )
+        monkeypatch.setattr(er, "stop_browser_job", AsyncMock(side_effect=ConnectionError("down")))
 
         result = await _run_with(GraphRecursionError("limit"))
 
@@ -145,9 +155,9 @@ class TestTheOrphanCancelIsOnTheRunsRecord:
         return [c for c in getattr(log, level).call_args_list if phrase in (c.args[0] or "")]
 
     async def test_a_cancelled_job_is_named_with_its_conversation_and_stream(
-        self, fake_cache: FakeRedisCache
+        self, fake_cache: fakeredis.aioredis.FakeRedis
     ) -> None:
-        await jobs_mod.claim_conversation_slot("conv-1", "job-1")
+        await _running_job("conv-1", "job-1")
 
         with patch.object(er, "log") as log:
             await _run_with(GraphRecursionError("limit"))
@@ -160,7 +170,7 @@ class TestTheOrphanCancelIsOnTheRunsRecord:
         }
 
     async def test_a_run_that_left_no_job_records_no_cancel(
-        self, fake_cache: FakeRedisCache
+        self, fake_cache: fakeredis.aioredis.FakeRedis
     ) -> None:
         with patch.object(er, "log") as log:
             await _run_with(RuntimeError("boom"))
@@ -170,9 +180,7 @@ class TestTheOrphanCancelIsOnTheRunsRecord:
     async def test_a_cancel_that_could_not_reach_redis_is_recorded_with_its_cause(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            er, "cancel_conversation_browser_job", AsyncMock(side_effect=ConnectionError("down"))
-        )
+        monkeypatch.setattr(er, "stop_browser_job", AsyncMock(side_effect=ConnectionError("down")))
 
         with patch.object(er, "log") as log:
             await _run_with(RuntimeError("boom"))

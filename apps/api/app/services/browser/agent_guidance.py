@@ -11,11 +11,13 @@ from app.constants.browser import (
     BROWSER_GUIDANCE_ANSWER,
     BROWSER_GUIDANCE_CHANGED_INSTRUCTION,
     BROWSER_GUIDANCE_HEADER,
+    BROWSER_GUIDANCE_USER_SAID,
     BROWSER_JOB_GUIDANCE_PREFIX,
 )
 from app.db.redis import redis_cache
 from app.schemas.browser import AgentGuidanceRequest, PendingAgentGuidance
 from app.services.browser.job_lifetime import browser_job_ttl_seconds
+from app.services.browser.user_notes import what_the_user_said
 
 
 def _key(job_id: str) -> str:
@@ -42,7 +44,12 @@ def guidance_message(request: AgentGuidanceRequest) -> str:
     sections = [
         BROWSER_GUIDANCE_HEADER,
         f"Why it is stuck: {request.reason}",
-        _changed_instruction(request),
+        what_the_user_said(
+            request.user_notes,
+            request.redirects,
+            replaced=BROWSER_GUIDANCE_CHANGED_INSTRUCTION,
+            said=BROWSER_GUIDANCE_USER_SAID,
+        ),
         f"Task it is working on: {request.task}",
         f"Page it is on: {request.title or 'untitled'} ({request.url or 'no url'})",
         _recent_actions(request),
@@ -53,35 +60,17 @@ def guidance_message(request: AgentGuidanceRequest) -> str:
     return "\n\n".join(section for section in sections if section)
 
 
-def _changed_instruction(request: AgentGuidanceRequest) -> str:
-    """State the instruction the user replaced the task with, above the task it overrides."""
-    if not request.user_notes:
-        return ""
-    changed = ", then ".join(f'"{note}"' for note in request.user_notes)
-    return BROWSER_GUIDANCE_CHANGED_INSTRUCTION.format(changed=changed)
-
-
 def _recent_actions(request: AgentGuidanceRequest) -> str:
     if not request.recent_actions:
         return ""
-    lines = "\n".join(
-        f"  - {action.action}{_changed(action.page_changed)}" for action in request.recent_actions
-    )
+    lines = "\n".join(f"  - {action.action}" for action in request.recent_actions)
     return f"What it already tried, oldest first:\n{lines}"
-
-
-def _changed(page_changed: bool | None) -> str:
-    if page_changed is None:
-        return ""
-    return " (the page changed)" if page_changed else " (the page did not change)"
 
 
 def _elements(request: AgentGuidanceRequest) -> str:
     if not request.elements:
         return ""
-    lines = "\n".join(
-        f"  [{element.index}] {element.label} ({element.role})" for element in request.elements
-    )
+    lines = "\n".join(f"  - {element.label} ({element.role})" for element in request.elements)
     return f"Controls it can see on this screen:\n{lines}"
 
 

@@ -216,9 +216,8 @@ async def publish_outbound_message(
     return OutboundResult.PUBLISHED
 
 
-# Friendly platform names for user-facing copy consumed by other modules
-# (e.g. workflow delivery provenance frames). Single source — import, don't
-# restate. In-module copy prefers ``ConversationSource.display_name``.
+# Friendly platform names for user-facing copy (e.g. the link confirmation,
+# delivery provenance frames). Single source — import, don't restate.
 PLATFORM_DISPLAY_NAMES: dict[ConversationSource, str] = {
     ConversationSource.TELEGRAM: "Telegram",
     ConversationSource.DISCORD: "Discord",
@@ -240,11 +239,11 @@ async def notify_account_linked(platform: str, user_id: str) -> OutboundResult:
     if source is None or source not in OUTBOUND_QUEUES:
         return OutboundResult.SKIPPED
 
-    display_name = source.display_name
+    display_name = PLATFORM_DISPLAY_NAMES.get(source, source.value.capitalize())
     text = (
-        "✅ **You're connected**\n\n"
-        f"Your {display_name} account is linked. "
-        "Message me anytime, or send `/help` to see what I can do."
+        "✅ **You're connected!**\n\n"
+        f"Your {display_name} account is now linked to GAIA. "
+        "Send me a message or use `/help` to see everything I can do."
     )
     return await publish_outbound_message(
         source, user_id, [text], ttl_seconds=OUTBOUND_TTL_SECONDS_GREETING
@@ -338,7 +337,9 @@ async def publish_outbound_photo(
         )
         return False
     try:
-        await publisher.publish_outbound(queue_name, envelope.model_dump_json().encode())
+        await publisher.publish_outbound(
+            queue_name, envelope.model_dump_json().encode(), expiration=OUTBOUND_TTL_SECONDS_DEFAULT
+        )
     except Exception as e:
         log.error(
             "publish_outbound_photo: publish failed",

@@ -243,11 +243,6 @@ function words(text: string): number {
   return text.split(/\s+/).filter(Boolean).length;
 }
 
-// Each is a message on its own: a segment under 40 characters is glued to its neighbour.
-const GREETING = "Hey there, I just looked into this for you.";
-const CHECKED = "I checked your calendar for the whole of next week.";
-const ANSWER = "You are free at 3pm on Tuesday and all of Thursday.";
-
 describe("handleStreamingChat delivery", () => {
   describe("a trailing break token must not swallow the reply", () => {
     // The model routinely ends a reply with a break token. The live-edit path
@@ -305,17 +300,17 @@ describe("handleStreamingChat delivery", () => {
       "%s emits one bubble per segment",
       async (platform) => {
         const { bubbles } = await deliver(platform, [
-          GREETING,
+          "Hey there.",
           BREAK,
-          CHECKED,
+          "I checked your calendar.",
           BREAK,
-          ANSWER,
+          "You are free at 3pm.",
         ]);
 
         expect(bubbles).toEqual([
-          renderForPlatform(GREETING, platform),
-          renderForPlatform(CHECKED, platform),
-          renderForPlatform(ANSWER, platform),
+          renderForPlatform("Hey there.", platform),
+          renderForPlatform("I checked your calendar.", platform),
+          renderForPlatform("You are free at 3pm.", platform),
         ]);
       },
     );
@@ -390,14 +385,14 @@ describe("handleStreamingChat delivery", () => {
     // <NEW_MESSAGE_BREAK>. Only the exact token was split on, so the variant
     // shipped to Telegram as literal text.
     const { bubbles } = await deliver("telegram", [
-      GREETING,
+      "Hey there.",
       "<NEW_LINE_BREAK>",
-      CHECKED,
+      "I checked your calendar.",
     ]);
 
     expect(bubbles).toEqual([
-      renderForPlatform(GREETING, "telegram"),
-      renderForPlatform(CHECKED, "telegram"),
+      renderForPlatform("Hey there.", "telegram"),
+      renderForPlatform("I checked your calendar.", "telegram"),
     ]);
   });
 
@@ -605,32 +600,36 @@ describe("handleStreamingChat delivery", () => {
       "First paragraph, long enough to stand on its own as a bubble.\n\n" +
       "Second paragraph, also long enough to stand on its own here.\n\n" +
       "Third paragraph, which is likewise long enough to be a bubble.";
-    const PARAGRAPH_BUBBLES = [renderForPlatform(PARAGRAPHS, "telegram")];
+    const PARAGRAPH_BUBBLES = [
+      "First paragraph, long enough to stand on its own as a bubble.",
+      "Second paragraph, also long enough to stand on its own here.",
+      "Third paragraph, which is likewise long enough to be a bubble.",
+    ].map((bubble) => renderForPlatform(bubble, "telegram"));
 
-    it("delivers a multi-paragraph reply with no sentinel as one bubble at the boundary", async () => {
+    it("segments a multi-paragraph reply at the boundary", async () => {
       const { bubbles } = await deliver("telegram", [PARAGRAPHS, KEPT]);
       expect(bubbles).toEqual(PARAGRAPH_BUBBLES);
     });
 
-    it("delivers the same one bubble when no boundary ever arrives", async () => {
+    it("segments the same reply when no boundary ever arrives", async () => {
       const { bubbles } = await deliver("telegram", [PARAGRAPHS]);
       expect(bubbles).toEqual(PARAGRAPH_BUBBLES);
     });
 
     it("splits a sentinel reply into the same bubbles at the boundary", async () => {
       const { bubbles } = await deliver("telegram", [
-        GREETING,
+        "Hey there.",
         BREAK,
-        CHECKED,
+        "I checked your calendar.",
         BREAK,
-        ANSWER,
+        "You are free at 3pm.",
         KEPT,
       ]);
 
       expect(bubbles).toEqual([
-        renderForPlatform(GREETING, "telegram"),
-        renderForPlatform(CHECKED, "telegram"),
-        renderForPlatform(ANSWER, "telegram"),
+        renderForPlatform("Hey there.", "telegram"),
+        renderForPlatform("I checked your calendar.", "telegram"),
+        renderForPlatform("You are free at 3pm.", "telegram"),
       ]);
     });
   });

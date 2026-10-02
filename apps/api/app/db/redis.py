@@ -5,7 +5,7 @@ Redis is unavailable.
 """
 
 from collections.abc import Mapping, Set as AbstractSet
-from typing import Any, Protocol, TypeVar, cast, overload
+from typing import Any, Literal, Protocol, TypeVar, cast, overload
 
 from pydantic import JsonValue, TypeAdapter
 from pydantic.type_adapter import TypeAdapter as TypeAdapterType
@@ -69,10 +69,24 @@ class AsyncRedisCommands(Protocol):
         """GET — None when the key is absent."""
         ...
 
+    @overload
     async def set(
-        self, name: str, value: str, *, ex: int | None = None, nx: bool = False
+        self,
+        name: str,
+        value: str,
+        *,
+        ex: int | None = None,
+        nx: bool = False,
+        get: Literal[False] = False,
     ) -> bool | None:
         """SET — with nx returns None when the key already existed."""
+        ...
+
+    @overload
+    async def set(
+        self, name: str, value: str, *, ex: int | None = None, nx: bool = False, get: Literal[True]
+    ) -> str | None:
+        """SET ... GET — returns the value the key held before, None when it was absent."""
         ...
 
     async def setex(self, name: str, time: int, value: str) -> bool:
@@ -131,6 +145,10 @@ class AsyncRedisCommands(Protocol):
         """RPUSH — returns the list length after the push."""
         ...
 
+    async def blpop(self, keys: list[str], timeout: float = 0) -> tuple[str, str] | None:
+        """BLPOP — (key, value) from the first non-empty list, None when timeout seconds pass; 0 blocks forever."""
+        ...
+
     async def hset(self, name: str, *, mapping: Mapping[str, str]) -> int:
         """HSET from a mapping — returns how many fields were newly added."""
         ...
@@ -174,6 +192,10 @@ class AsyncRedisCommands(Protocol):
         block: int | None = None,
     ) -> list[tuple[str, list[tuple[str, dict[str, str]]]]]:
         """XREAD — [(stream, [(entry_id, fields)])] for streams with new entries."""
+        ...
+
+    async def xrange(self, name: str) -> list[tuple[str, dict[str, str]]]:
+        """XRANGE over the whole stream — [(entry_id, fields)], oldest first."""
         ...
 
     async def eval(self, script: str, numkeys: int, *keys_and_args: str) -> LuaReply:

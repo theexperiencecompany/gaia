@@ -1,8 +1,6 @@
 """Apply patches to third-party components for compatibility and bug fixes."""
 
 from . import (
-    browser_use_event_budget_patch,
-    browser_use_input_timing_patch,
     browser_use_page_ready_patch,
     browser_use_read_result_patch,
     browser_use_run_lock_patch,

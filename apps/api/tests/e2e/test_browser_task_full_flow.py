@@ -143,9 +143,9 @@ async def test_a_full_run_screenshots_hands_off_and_reports() -> None:
     assert [card["status"] for card in handoffs] == ["pending", "completed"]
     assert world.browser.takeover_notes == [NOTE]
 
-    # The closing result leads with the changed instruction and keeps the whole summary.
+    # The closing result leads with what the user said and keeps the whole summary.
     joined = run.result_for("wait_for_browser_task") or ""
-    assert joined.startswith("THE USER CHANGED THE REQUEST MID-RUN")
+    assert joined.startswith(f'While it ran, the user said: "{NOTE}"')
     assert NOTE in joined
     assert SUMMARY in joined
 

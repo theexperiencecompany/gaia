@@ -1,44 +1,40 @@
-"""Shared bidirectional websocket pump for the CDP proxy and the screencast.
+"""Shared bidirectional websocket pump for the CDP proxy, the screencast and the live-view relay.
 
-Both bridges run two directions concurrently and must tear down cleanly the
-moment either side closes — a normal client disconnect or Chromium closing its
-socket is an expected end, not an error to propagate.
+Every bridge runs its directions concurrently and must tear down cleanly the
+moment one side closes: a client leaving or the engine closing its socket is an
+expected end, not an error to propagate.
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Sequence
 
+from fastapi import WebSocketDisconnect
+from starlette.websockets import WebSocket, WebSocketState
 from websockets.exceptions import ConnectionClosed
 
-# Starlette raises a bare RuntimeError (not a typed disconnect) when a websocket is
-# read after it closed or before accept, which is normal during proxy teardown.
-# Matched by exact message and plain RuntimeError only, so others still propagate.
-_STARLETTE_NOT_CONNECTED_MESSAGES = frozenset(
-    {
-        'WebSocket is not connected. Need to call "accept" first.',
-        'Cannot call "receive" once a disconnect message has been received.',
-    }
-)
 
+def is_disconnect(exc: BaseException, sockets: Sequence[WebSocket] = ()) -> bool:
+    """Whether exc is an ordinary peer close: the client gone or the engine's socket closed.
 
-def is_disconnect(exc: BaseException) -> bool:
-    """Whether exc is an ordinary peer close (client gone or Chromium closed)."""
-    if isinstance(exc, ConnectionClosed):
+    Starlette raises a bare RuntimeError when a socket is used after it closed,
+    so one counts as a disconnect only when one of sockets really has closed.
+    """
+    if isinstance(exc, ConnectionClosed | WebSocketDisconnect):
         return True
-    # FastAPI's WebSocketDisconnect is checked by name so this module need not
-    # import fastapi (the host may run without the web stack loaded).
-    if type(exc).__name__ == "WebSocketDisconnect":
-        return True
-    return type(exc) is RuntimeError and str(exc) in _STARLETTE_NOT_CONNECTED_MESSAGES
+    return type(exc) is RuntimeError and any(
+        WebSocketState.DISCONNECTED in (ws.client_state, ws.application_state) for ws in sockets
+    )
 
 
-async def pump_until_first_close(*coros: Awaitable[None]) -> None:
-    """Run both pump directions; when either ends, cancel the other and finish.
+async def pump_until_first_close(
+    *coros: Awaitable[None], sockets: Sequence[WebSocket] = ()
+) -> None:
+    """Run every direction; when one ends, cancel the rest and finish.
 
-    A real error (anything that is not a peer disconnect) from either direction
-    is re-raised so the caller's logging/teardown sees it.
+    A real error (anything but a peer disconnect on one of sockets) from any
+    direction is re-raised so the caller's logging and teardown see it.
     """
     tasks = [asyncio.ensure_future(c) for c in coros]
     try:
@@ -47,7 +43,7 @@ async def pump_until_first_close(*coros: Awaitable[None]) -> None:
             task.cancel()
         for task in done:
             exc = task.exception()
-            if exc is not None and not is_disconnect(exc):
+            if exc is not None and not is_disconnect(exc, sockets):
                 raise exc
     finally:
         for task in tasks:

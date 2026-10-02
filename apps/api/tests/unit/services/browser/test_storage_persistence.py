@@ -6,6 +6,7 @@ These pin the happy paths plus the fail-loud behavior on a missing/invalid key
 (never a silent fallback).
 """
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 from cryptography.fernet import Fernet
@@ -18,6 +19,32 @@ from app.services.browser.storage_persistence import (
     save_storage_state,
 )
 from tests.helpers import captured_wide_event
+
+
+class _Profiles:
+    """The saved-login repository, in memory: one encrypted blob per (user, domain)."""
+
+    def __init__(self) -> None:
+        self.blobs: dict[tuple[str, str], str] = {}
+
+    async def get_for_domain(self, user_id: str, domain: str) -> MagicMock | None:
+        blob = self.blobs.get((user_id, domain))
+        return None if blob is None else MagicMock(storage_state_blob=blob, domain=domain)
+
+    async def upsert_storage_state_blob(
+        self, user_id: str, domain: str, blob: str, provenance: object = None
+    ) -> None:
+        self.blobs[(user_id, domain)] = blob
+
+
+@pytest.fixture(autouse=True)
+def profiles(monkeypatch: pytest.MonkeyPatch) -> _Profiles:
+    store = _Profiles()
+    monkeypatch.setattr(sp.browser_profile_repository, "get_for_domain", store.get_for_domain)
+    monkeypatch.setattr(
+        sp.browser_profile_repository, "upsert_storage_state_blob", store.upsert_storage_state_blob
+    )
+    return store
 
 
 @pytest.fixture(autouse=True)
@@ -44,21 +71,9 @@ def test_domain_of():
     assert domain_of("https://[::1") is None  # unparseable (unbalanced IPv6 bracket)
 
 
-async def test_save_then_load_round_trips_encrypted(monkeypatch: pytest.MonkeyPatch) -> None:
-    store: dict = {}
-    monkeypatch.setattr(
-        sp.browser_profile_repository,
-        "upsert_storage_state_blob",
-        AsyncMock(side_effect=lambda u, d, b, prov=None: store.__setitem__((u, d), b)),
-    )
-    monkeypatch.setattr(
-        sp.browser_profile_repository,
-        "get_for_domain",
-        AsyncMock(side_effect=lambda u, d: MagicMock(storage_state_blob=store.get((u, d)))),
-    )
-
+async def test_save_then_load_round_trips_encrypted(profiles: _Profiles) -> None:
     await save_storage_state("u1", "example.com", _storage_state())
-    blob = store[("u1", "example.com")]
+    blob = profiles.blobs[("u1", "example.com")]
     # At rest it's the encrypted blob, not the raw cookies.
     assert "sid" not in blob
 
@@ -76,21 +91,13 @@ def test_domain_candidates_walk_up_to_the_registrable_pair() -> None:
     assert sp._domain_candidates("localhost") == ["localhost"]
 
 
-async def test_load_falls_back_to_the_parent_domains_login(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_load_falls_back_to_the_parent_domains_login(
+    monkeypatch: pytest.MonkeyPatch, profiles: _Profiles
+) -> None:
     """An imported .example.com cookie is saved under example.com; a task at www still gets it."""
-    store: dict = {}
-    monkeypatch.setattr(
-        sp.browser_profile_repository,
-        "upsert_storage_state_blob",
-        AsyncMock(side_effect=lambda u, d, b, prov=None: store.__setitem__((u, d), b)),
-    )
-    get_for_domain = AsyncMock(
-        side_effect=lambda u, d: (
-            MagicMock(storage_state_blob=store[(u, d)]) if (u, d) in store else None
-        )
-    )
-    monkeypatch.setattr(sp.browser_profile_repository, "get_for_domain", get_for_domain)
     await save_storage_state("u1", "example.com", _storage_state())
+    get_for_domain = AsyncMock(side_effect=profiles.get_for_domain)
+    monkeypatch.setattr(sp.browser_profile_repository, "get_for_domain", get_for_domain)
 
     loaded = await load_storage_state("u1", "www.example.com")
 
@@ -284,6 +291,47 @@ class TestSplitStorageStateByHost:
 
 
 @pytest.mark.unit
+async def _saved(profiles: _Profiles, domain: str) -> dict:
+    record = await profiles.get_for_domain("u1", domain)
+    assert record is not None
+    return sp._decrypt_state(record.storage_state_blob)
+
+
+_TOKEN_ORIGIN = {"origin": "https://example.com", "localStorage": [{"name": "t", "value": "1"}]}
+
+
+async def test_a_save_that_reports_nothing_about_an_origin_keeps_its_saved_storage(
+    profiles: _Profiles,
+) -> None:
+    """Regression: a run ending on another site saved origins=[] over the user's saved token."""
+    await save_storage_state("u1", "example.com", {"cookies": [], "origins": [_TOKEN_ORIGIN]})
+
+    await save_storage_state("u1", "example.com", _storage_state())
+
+    saved = await _saved(profiles, "example.com")
+    assert saved["cookies"] == _storage_state()["cookies"]
+    assert saved["origins"] == [_TOKEN_ORIGIN]
+
+
+async def test_a_save_that_reports_an_origin_replaces_it_even_with_nothing(
+    profiles: _Profiles,
+) -> None:
+    await save_storage_state("u1", "example.com", {"cookies": [], "origins": [_TOKEN_ORIGIN]})
+    cleared = {"origin": "https://example.com", "localStorage": []}
+
+    await save_storage_state("u1", "example.com", {"cookies": [], "origins": [cleared]})
+
+    assert (await _saved(profiles, "example.com"))["origins"] == [cleared]
+
+
+async def test_a_save_over_an_unreadable_record_keeps_nothing_of_it(profiles: _Profiles) -> None:
+    profiles.blobs[("u1", "example.com")] = "not-a-fernet-token"
+
+    await save_storage_state("u1", "example.com", _storage_state())
+
+    assert await _saved(profiles, "example.com") == _storage_state()
+
+
 class TestImportBrowserProfile:
     async def test_saves_one_login_per_host(self, monkeypatch: pytest.MonkeyPatch) -> None:
         saved: dict[tuple[str, str], object] = {}
@@ -343,3 +391,14 @@ def test_a_malformed_key_fails_loud_naming_the_setting_and_the_expected_shape(
     )
     assert exc_info.value.__cause__ is not None
     assert sp._cipher is None
+
+
+async def test_states_that_leave_out_cookies_or_origins_still_merge(profiles: _Profiles) -> None:
+    without_origins: Any = {"cookies": []}
+    without_cookies: Any = {"origins": [_TOKEN_ORIGIN]}
+    profiles.blobs[("u1", "example.com")] = sp._encrypt_state(without_origins)
+    await save_storage_state("u1", "example.com", without_cookies)
+    assert await _saved(profiles, "example.com") == {"cookies": [], "origins": [_TOKEN_ORIGIN]}
+
+    await save_storage_state("u1", "example.com", without_origins)
+    assert await _saved(profiles, "example.com") == {"cookies": [], "origins": [_TOKEN_ORIGIN]}

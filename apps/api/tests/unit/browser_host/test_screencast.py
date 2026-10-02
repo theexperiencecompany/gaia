@@ -1,1028 +1,648 @@
-"""Live-view screencast setup must never strand a viewer slot.
+"""The live view: it streams the page the agent is on, follows it, and lets go cleanly.
 
-Regression: add_viewer sat outside the try/finally, so a failure during
-live-view setup (e.g. the CDP client cannot connect) left viewer_count > 0
-forever. The idle reaper skips sessions with viewers, so that session was never
-reclaimed, a permanent capacity leak that only a host restart cleared.
+A real run_live_view drives a FakeMux and a fake viewer socket; the host is
+reduced to the one thing the view asks of it, which page to stream.
 """
 
-import asyncio
-import contextlib
-import json
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from __future__ import annotations
 
+import asyncio
+import json
+from typing import Any, cast
+from unittest.mock import MagicMock
+
+from fastapi import WebSocketDisconnect
 import pytest
+from starlette.websockets import WebSocketState
 
 from app.browser_host import screencast
-from app.constants.browser import BROWSER_VIEWPORT_HEIGHT, BROWSER_VIEWPORT_WIDTH
+from app.browser_host.cdp_mux import CdpCommandError
+from app.browser_host.chromium import HostSession
+from app.config.browser_host_settings import browser_host_settings
+from app.constants.browser import BROWSER_VIEWPORT_HEIGHT, BROWSER_VIEWPORT_WIDTH, BrowserEngine
 from tests.unit.browser_host.conftest import FakeMux, make_session
 
-_SESSION_ID = "sess-1"
-_PAGE_SESSION = "page-sess"
+pytestmark = pytest.mark.unit
 
-_DEFAULT_REPLIES: dict[str, dict[str, Any]] = {
-    "Target.attachToTarget": {"sessionId": _PAGE_SESSION},
-    "Target.getTargetInfo": {"targetInfo": {"url": "https://example.com", "title": "Example"}},
-    "Runtime.evaluate": {"result": {"value": None}},
-}
+_FAVICON = "https://example.com/icon.png"
 
 
-def make_mux(overrides: dict[str, dict[str, Any]] | None = None) -> FakeMux:
-    """Build the shared fake answering the CDP calls a live view makes during setup."""
-    return FakeMux({**_DEFAULT_REPLIES, **(overrides or {})})
+class _Viewer:
+    """The viewer's socket: what it sends in, and every frame the view sent out."""
+
+    def __init__(self) -> None:
+        self.inbound: asyncio.Queue[str | None] = asyncio.Queue()
+        self.sent: list[dict[str, Any]] = []
+        self.got_frame = asyncio.Event()
+        self.client_state = WebSocketState.CONNECTED
+        self.application_state = WebSocketState.CONNECTED
+        # Starlette's way of reporting a read after the socket closed, instead of a disconnect.
+        self.closed_under_read = False
+
+    async def receive_text(self) -> str:
+        raw = await self.inbound.get()
+        if raw is None:
+            if self.closed_under_read:
+                self.client_state = WebSocketState.DISCONNECTED
+                raise RuntimeError('WebSocket is not connected. Need to call "accept" first.')
+            raise WebSocketDisconnect
+        return raw
+
+    async def send_text(self, raw: str) -> None:
+        self.sent.append(json.loads(raw))
+        self.got_frame.set()
+
+    def say(self, **message: Any) -> None:
+        self.inbound.put_nowait(json.dumps(message))
+
+    def leave(self) -> None:
+        self.inbound.put_nowait(None)
 
 
-@pytest.mark.unit
-async def test_run_live_view_removes_viewer_when_setup_fails() -> None:
-    host = MagicMock()
-    host.focused_target_id = AsyncMock(return_value="target-1")
+class _Host:
+    """Answers which page to stream: whatever the test says is open, the focus first."""
 
-    mux = make_mux()
-    mux.send_error = RuntimeError("cannot reach chromium")
-    session = make_session(_SESSION_ID, mux=mux)
+    def __init__(self, session: HostSession, pages: list[str]) -> None:
+        self.session = session
+        self.pages = pages
 
-    with pytest.raises(RuntimeError):
-        await screencast.run_live_view(host, session, MagicMock())
+    async def focused_target_id(self, session: HostSession) -> str | None:
+        if session.focused_target_id in self.pages:
+            return session.focused_target_id
+        return self.pages[-1] if self.pages else None
 
-    # The viewer registration must be balanced even though setup blew up, or the
-    # session can never be reaped.
-    host.add_viewer.assert_called_once_with(_SESSION_ID)
-    host.remove_viewer.assert_called_once_with(_SESSION_ID)
-
-
-# _register_frame_handler: per-frame CSS size. Regression: viewers mapped click
-# coords in frame-bitmap space into a larger CSS viewport, so takeover clicks
-# landed short; every queued frame must carry the page's CSS size.
+    def move_focus(self, target_id: str) -> None:
+        self.session.focused_target_id = target_id
+        moved, self.session.focus_moved = self.session.focus_moved, asyncio.Event()
+        moved.set()
 
 
-def _make_handler_and_queue(
-    mux: FakeMux,
-) -> tuple[asyncio.Queue[Any], set[asyncio.Task[Any]], Any]:
-    frames: asyncio.Queue[Any] = asyncio.Queue(maxsize=2)
-    background: set[asyncio.Task[Any]] = set()
-    on_frame = screencast._make_frame_handler(
-        mux, "page-session", frames, background, screencast._StreamState()
+def _mux() -> FakeMux:
+    return FakeMux(
+        {
+            "Target.getTargetInfo": {"targetInfo": {"url": "https://example.com/", "title": "Ex"}},
+            "Runtime.evaluate": {"result": {"value": _FAVICON}},
+            "Page.captureScreenshot": {"data": "<pulled>"},
+        }
     )
-    return frames, background, on_frame
 
 
-@pytest.mark.unit
-async def test_frame_handler_queues_frame_with_css_size_from_metadata() -> None:
-    mux = make_mux()
-    with patch.object(screencast, "cdp_call", AsyncMock()):
-        frames, _background, on_frame = _make_handler_and_queue(mux)
-        on_frame(
+class _Run:
+    def __init__(self, pages: list[str] | None = None) -> None:
+        self.mux = _mux()
+        self.session = make_session(mux=self.mux, target_id="t1")
+        self.host = _Host(self.session, pages if pages is not None else ["t1"])
+        self.viewer = _Viewer()
+        self.task: asyncio.Task[None] | None = None
+
+    async def start(self) -> None:
+        self.task = asyncio.create_task(
+            screencast.run_live_view(cast(Any, self.host), self.session, cast(Any, self.viewer))
+        )
+        await self.attached(1)
+
+    async def attached(self, count: int) -> None:
+        for _ in range(200):
+            if len(self.mux.attached) >= count and "Page.startScreencast" in self.mux.methods:
+                return
+            await asyncio.sleep(0)
+        raise AssertionError(f"never attached {count} times: {self.mux.methods}")
+
+    @property
+    def page_session(self) -> str:
+        return self.mux.attached[-1]
+
+    def frame(self, data: str, session: str | None = None) -> None:
+        self.mux.emit(
             {
-                "data": "base64data",
-                "sessionId": "frame-session",
-                "metadata": {"deviceWidth": 1440, "deviceHeight": 900},
+                "method": "Page.screencastFrame",
+                "sessionId": session or self.page_session,
+                "params": {
+                    "data": data,
+                    "sessionId": 7,
+                    "metadata": {"deviceWidth": 800, "deviceHeight": 600},
+                },
             }
         )
-        await asyncio.sleep(0)  # let the scheduled ack task settle
 
-    frame = frames.get_nowait()
-    assert frame.data == "base64data"
-    assert frame.css_width == 1440
-    assert frame.css_height == 900
-
-
-@pytest.mark.unit
-async def test_frame_handler_queues_none_css_size_when_metadata_missing() -> None:
-    mux = make_mux()
-    with patch.object(screencast, "cdp_call", AsyncMock()):
-        frames, _background, on_frame = _make_handler_and_queue(mux)
-        on_frame({"data": "no-meta", "sessionId": "frame-session"})
-        await asyncio.sleep(0)
-
-    frame = frames.get_nowait()
-    assert frame.data == "no-meta"
-    assert frame.css_width is None
-    assert frame.css_height is None
-
-
-# --- _send_frames: cssWidth/cssHeight on the wire --------------------------
-
-
-@pytest.mark.unit
-async def test_send_frames_serializes_css_width_and_height() -> None:
-    frames: asyncio.Queue[Any] = asyncio.Queue()
-    await frames.put(screencast._Frame("b64data", 1024, 768))
-    meta = screencast._PageMeta()
-    meta.url = "https://example.com"
-    meta.title = "Example"
-    sent: list[str] = []
-    client_ws = MagicMock()
-    client_ws.send_text = AsyncMock(side_effect=lambda text: sent.append(text))
-
-    task = asyncio.ensure_future(screencast._send_frames(client_ws, frames, meta))
-    await asyncio.sleep(0)
-    task.cancel()
-    with contextlib.suppress(asyncio.CancelledError):
-        await task
-
-    (payload,) = sent
-    assert json.loads(payload) == {
-        "type": "frame",
-        "data": "b64data",
-        "format": screencast._SCREENCAST_FORMAT,
-        "url": "https://example.com",
-        "title": "Example",
-        "favicon": None,
-        "cssWidth": 1024,
-        "cssHeight": 768,
-    }
-
-
-# --- _mouse_params: modifiers ----------------------------------------------
-
-
-@pytest.mark.unit
-def test_mouse_params_passes_modifiers_through() -> None:
-    params = screencast._mouse_params({"event": "mousePressed", "x": 1, "y": 2, "modifiers": 8})
-    assert params["modifiers"] == 8
-
-
-# --- run_live_view over the shared mux -------------------------------------
-# Regression: the viewer used to own its own engine connection. It now borrows
-# the session's one connection, so closing it or leaking its sink breaks the session.
-
-
-async def _run_with_pump(
-    mux: FakeMux, during_pump: Any
-) -> tuple[asyncio.Queue[Any], screencast._PageMeta]:
-    host = MagicMock()
-    host.focused_target_id = AsyncMock(return_value="target-1")
-    captured: dict[str, Any] = {}
-
-    async def fake_send_frames(
-        _client_ws: Any, frames: asyncio.Queue[Any], meta: screencast._PageMeta
-    ) -> None:
-        captured["frames"] = frames
-        captured["meta"] = meta
-        await during_pump()
-
-    with patch.object(screencast, "_send_frames", new=fake_send_frames):
-        with patch.object(screencast, "_apply_input", new=AsyncMock()):
-            await screencast.run_live_view(host, make_session(_SESSION_ID, mux=mux), MagicMock())
-    return captured["frames"], captured["meta"]
-
-
-async def _run_to_client(mux: FakeMux, during_pump: Any) -> list[dict[str, Any]]:
-    """Run a live view with the real frame sender and return what reached the client."""
-    host = MagicMock()
-    host.focused_target_id = AsyncMock(return_value="target-1")
-    sent: list[dict[str, Any]] = []
-    client_ws = MagicMock()
-    client_ws.send_text = AsyncMock(side_effect=lambda text: sent.append(json.loads(text)))
-
-    async def fake_apply_input(*_args: Any, **_kwargs: Any) -> None:
-        await during_pump()
-
-    with patch.object(screencast, "_apply_input", new=fake_apply_input):
-        await screencast.run_live_view(host, make_session(_SESSION_ID, mux=mux), client_ws)
-    return sent
-
-
-def _screencast_frame(session_id: str, data: str) -> dict[str, Any]:
-    return {
-        "method": "Page.screencastFrame",
-        "sessionId": session_id,
-        "params": {
-            "data": data,
-            "sessionId": "cast-1",
-            "metadata": {"deviceWidth": 800, "deviceHeight": 600},
-        },
-    }
-
-
-@pytest.mark.unit
-async def test_run_live_view_does_not_close_the_shared_mux() -> None:
-    """The mux is the session's, shared with the host and the proxy: closing it kills them."""
-    mux = make_mux()
-    host = MagicMock()
-    host.focused_target_id = AsyncMock(return_value="target-1")
-
-    with patch.object(screencast, "pump_until_first_close", new=AsyncMock()):
-        await screencast.run_live_view(host, make_session(_SESSION_ID, mux=mux), MagicMock())
-
-    assert mux.closed is False
-
-
-@pytest.mark.unit
-async def test_run_live_view_returns_when_the_engine_drops_the_connection() -> None:
-    """An idle viewer has nothing to fail on, so the mux closing is what ends the view."""
-    mux = make_mux()
-    host = MagicMock()
-    host.focused_target_id = AsyncMock(return_value="target-1")
-    client_ws = MagicMock()
-    client_ws.send_text = AsyncMock()
-
-    async def never_speaks() -> str:
-        await asyncio.Event().wait()
-        raise AssertionError("an idle viewer never sends")
-
-    client_ws.receive_text = never_speaks
-
-    viewing = asyncio.create_task(
-        screencast.run_live_view(host, make_session(_SESSION_ID, mux=mux), client_ws)
-    )
-    mux.close_signal.set()  # the engine hung up
-
-    await asyncio.wait_for(viewing, timeout=1.0)
-    host.remove_viewer.assert_called_once_with(_SESSION_ID)
-
-
-@pytest.mark.unit
-async def test_run_live_view_unsubscribes_its_sink_on_exit() -> None:
-    mux = make_mux()
-    host = MagicMock()
-    host.focused_target_id = AsyncMock(return_value="target-1")
-
-    with patch.object(screencast, "pump_until_first_close", new=AsyncMock()):
-        await screencast.run_live_view(host, make_session(_SESSION_ID, mux=mux), MagicMock())
-
-    assert mux.sinks == []
-    assert len(mux.unsubscribed) == 1
-
-
-@pytest.mark.unit
-async def test_run_live_view_claims_the_page_session_it_attached() -> None:
-    """Claiming its own page session is what keeps this viewer's frames off every other consumer."""
-    mux = make_mux()
-    claimed: list[list[str | None]] = []
-
-    async def record_claim() -> None:
-        claimed.append(list(mux.owned_sessions))
-
-    await _run_with_pump(mux, record_claim)
-
-    assert claimed == [[_PAGE_SESSION]]
-
-
-@pytest.mark.unit
-async def test_run_live_view_sends_a_frame_for_its_claimed_session_to_the_client() -> None:
-    mux = make_mux()
-
-    async def emit_owned_frame() -> None:
-        mux.emit(_screencast_frame(_PAGE_SESSION, "mine"))
-        for _ in range(5):
-            await asyncio.sleep(0)
-
-    sent = await _run_to_client(mux, emit_owned_frame)
-
-    assert [payload["data"] for payload in sent] == ["mine"]
-    assert sent[0]["cssWidth"] == 800
-    assert sent[0]["cssHeight"] == 600
-
-
-@pytest.mark.unit
-async def test_run_live_view_never_sends_another_pages_frame_to_the_client() -> None:
-    """An unowned frame goes to sinks that claimed nothing, so a claiming viewer never sees it."""
-    mux = make_mux()
-
-    async def emit_both_frames() -> None:
-        mux.emit(_screencast_frame("other-page-sess", "not-mine"))
-        mux.emit(_screencast_frame(_PAGE_SESSION, "mine"))
-        for _ in range(5):
-            await asyncio.sleep(0)
-
-    sent = await _run_to_client(mux, emit_both_frames)
-
-    assert [payload["data"] for payload in sent] == ["mine"]
-
-
-@pytest.mark.unit
-async def test_run_live_view_renders_frames_for_its_own_page_session() -> None:
-    mux = make_mux()
-
-    async def emit_frame() -> None:
-        mux.emit(_screencast_frame(_PAGE_SESSION, "mine"))
-
-    frames, _meta = await _run_with_pump(mux, emit_frame)
-
-    frame = frames.get_nowait()
-    assert frame.data == "mine"
-    assert (frame.css_width, frame.css_height) == (800, 600)
-
-
-@pytest.mark.unit
-async def test_run_live_view_ignores_frames_from_another_page_session() -> None:
-    """One socket carries every page now, so an unfiltered sink would show the wrong page."""
-    mux = make_mux()
-
-    async def emit_other_page_frame() -> None:
-        mux.emit(_screencast_frame("other-page-sess", "not-mine"))
-
-    frames, _meta = await _run_with_pump(mux, emit_other_page_frame)
-
-    assert frames.empty()
-
-
-@pytest.mark.unit
-async def test_run_live_view_refreshes_meta_on_frame_navigated() -> None:
-    mux = make_mux(
-        {"Target.getTargetInfo": {"targetInfo": {"url": "https://first", "title": "First"}}}
-    )
-
-    async def navigate() -> None:
-        mux.responses["Target.getTargetInfo"] = {
-            "targetInfo": {"url": "https://second", "title": "Second"}
-        }
-        mux.emit(
-            {
-                "method": "Page.frameNavigated",
-                "sessionId": _PAGE_SESSION,
-                "params": {"frame": {"parentId": None}},
-            }
-        )
-        for _ in range(5):
-            await asyncio.sleep(0)
-
-    _frames, meta = await _run_with_pump(mux, navigate)
-
-    assert meta.url == "https://second"
-    assert meta.title == "Second"
-
-
-@pytest.mark.unit
-async def test_run_live_view_ignores_navigation_on_another_page_session() -> None:
-    mux = make_mux()
-
-    async def navigate_elsewhere() -> None:
-        mux.responses["Target.getTargetInfo"] = {
-            "targetInfo": {"url": "https://other", "title": "Other"}
-        }
-        mux.emit(
-            {
-                "method": "Page.frameNavigated",
-                "sessionId": "other-page-sess",
-                "params": {"frame": {"parentId": None}},
-            }
-        )
-        for _ in range(5):
-            await asyncio.sleep(0)
-
-    _frames, meta = await _run_with_pump(mux, navigate_elsewhere)
-
-    assert meta.url == "https://example.com"
-
-
-# --- the paced pull that keeps the view live when the screencast goes quiet ---
-# Obscura emits Page.screencastFrame only to the session whose own commands
-# repainted, so an agent-driven page freezes the viewer on its first frame.
-
-
-def _fail_capture(monkeypatch: pytest.MonkeyPatch, mux: FakeMux, exc: Exception) -> None:
-    """Make every Page.captureScreenshot on this mux raise, leaving other calls alone."""
-    send_raw = mux.send_raw
-
-    async def send(
-        method: str, params: dict[str, Any] | None = None, session_id: str | None = None
-    ) -> dict[str, Any]:
-        result = await send_raw(method, params, session_id)
-        if method == "Page.captureScreenshot":
-            raise exc
-        return result
-
-    monkeypatch.setattr(mux, "send_raw", send)
-
-
-@pytest.mark.unit
-async def test_live_view_pulls_a_capture_when_the_screencast_goes_quiet(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(screencast, "_PULL_INTERVAL_SECONDS", 0)
-    mux = make_mux({"Page.captureScreenshot": {"data": "pulled"}})
-
-    async def go_quiet_after_one_frame() -> None:
-        mux.emit(_screencast_frame(_PAGE_SESSION, "first"))
-        for _ in range(8):
-            await asyncio.sleep(0)
-
-    sent = await _run_to_client(mux, go_quiet_after_one_frame)
-
-    pulled = [payload for payload in sent if payload["data"] == "pulled"]
-    assert pulled, [payload["data"] for payload in sent]
-    # A pulled frame is the same page at the same viewport, so it carries the CSS
-    # size the screencast last reported — what the viewer maps its clicks through.
-    assert (pulled[0]["cssWidth"], pulled[0]["cssHeight"]) == (800, 600)
-
-
-@pytest.mark.unit
-async def test_live_view_pull_refreshes_url_and_title_so_the_tab_is_not_stale(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(screencast, "_PULL_INTERVAL_SECONDS", 0)
-    mux = make_mux({"Page.captureScreenshot": {"data": "pulled"}})
-
-    async def navigate_on_another_session() -> None:
-        mux.responses["Target.getTargetInfo"] = {
-            "targetInfo": {"url": "https://driven", "title": "Driven"}
-        }
-        for _ in range(8):
-            await asyncio.sleep(0)
-
-    sent = await _run_to_client(mux, navigate_on_another_session)
-
-    assert sent, "the pull never produced a frame"
-    assert (sent[-1]["url"], sent[-1]["title"]) == ("https://driven", "Driven")
-
-
-@pytest.mark.unit
-async def test_live_view_does_not_pull_while_screencast_frames_keep_arriving(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(screencast, "_PULL_INTERVAL_SECONDS", 0)
-    mux = make_mux({"Page.captureScreenshot": {"data": "pulled"}})
-
-    captures_while_streaming: list[int] = []
-
-    async def keep_streaming() -> None:
-        for index in range(8):
-            mux.emit(_screencast_frame(_PAGE_SESSION, f"live-{index}"))
-            await asyncio.sleep(0)
-            captures_while_streaming.append(mux.methods.count("Page.captureScreenshot"))
-
-    sent = await _run_to_client(mux, keep_streaming)
-
-    assert captures_while_streaming == [0] * 8
-    # The pull only wakes once the stream really has stopped, so every frame the
-    # client saw while it was flowing is a screencast frame.
-    streamed = [payload["data"] for payload in sent[:8]]
-    assert streamed == [f"live-{i}" for i in range(8)]
-
-
-@pytest.mark.unit
-async def test_live_view_survives_a_failing_capture_and_logs_it(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(screencast, "_PULL_INTERVAL_SECONDS", 0)
-    mux = make_mux()
-    _fail_capture(monkeypatch, mux, RuntimeError("capture refused"))
-
-    async def wait_out_several_ticks() -> None:
-        for _ in range(8):
-            await asyncio.sleep(0)
-
-    with patch.object(screencast.log, "warning") as mock_warning:
-        sent = await _run_to_client(mux, wait_out_several_ticks)
-
-    assert sent == []
-    # The viewer keeps ticking rather than dying with the first refused capture,
-    # and one line per failure streak makes a persistent failure visible at 2/s.
-    assert mux.methods.count("Page.captureScreenshot") > 1
-    mock_warning.assert_called_once()
-    assert mock_warning.call_args.kwargs["error_type"] == "RuntimeError"
-
-
-@pytest.mark.unit
-async def test_live_view_pull_addresses_the_attached_target_and_page_session(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The pull rides the same shared connection: misaddressed, it captures another page."""
-    monkeypatch.setattr(screencast, "_PULL_INTERVAL_SECONDS", 0)
-    mux = make_mux({"Page.captureScreenshot": {"data": "pulled"}})
-
-    async def go_quiet() -> None:
-        for _ in range(8):
-            await asyncio.sleep(0)
-
-    await _run_to_client(mux, go_quiet)
-
-    captures = [
-        (params, sid) for method, params, sid in mux.calls if method == "Page.captureScreenshot"
-    ]
-    assert captures
-    assert all(sid == _PAGE_SESSION for _, sid in captures)
-
-    infos = [params for method, params, _ in mux.calls if method == "Target.getTargetInfo"]
-    # one from setup plus one per pull, every one naming the focused target
-    assert len(infos) > 1
-    assert all(params == {"targetId": "target-1"} for params in infos)
-
-
-# --- the CDP conversation a live view holds with the engine -----------------
-# A misnamed method, a missing param or a call on the wrong session is a view
-# that never paints (or paints another page): pin what goes over the connection.
-
-
-def _wire(mux: FakeMux, method: str) -> list[tuple[dict[str, Any], str | None]]:
-    """Return what reached the engine for one method, framed as the real mux does (no params is {})."""
-    return [(params or {}, sid) for sent, params, sid in mux.calls if sent == method]
-
-
-async def _view_with_client_input(
-    mux: FakeMux, messages: list[dict[str, Any]]
-) -> tuple[MagicMock, list[dict[str, Any]]]:
-    """Run a live view whose client sends messages, and close it once every one was applied."""
-    host = MagicMock()
-    # Only this session's focused page is target-1; any other lookup is a bug.
-    host.focused_target_id = AsyncMock(side_effect=lambda sid: {_SESSION_ID: "target-1"}[sid])
-    inbox: asyncio.Queue[str] = asyncio.Queue()
-    for message in messages:
-        inbox.put_nowait(json.dumps(message))
-    drained = asyncio.Event()
-    sent: list[dict[str, Any]] = []
-    client_ws = MagicMock()
-    client_ws.send_text = AsyncMock(side_effect=lambda text: sent.append(json.loads(text)))
-
-    async def receive_text() -> str:
-        # Asked for the next message only after the previous one was dispatched.
-        if inbox.empty():
-            drained.set()
-        return await inbox.get()
-
-    client_ws.receive_text = receive_text
-    viewing = asyncio.create_task(
-        screencast.run_live_view(host, make_session(_SESSION_ID, mux=mux), client_ws)
-    )
-    await asyncio.wait_for(drained.wait(), timeout=1.0)
-    mux.close_signal.set()
-    await asyncio.wait_for(viewing, timeout=1.0)
-    return host, sent
+    async def finish(self) -> None:
+        assert self.task is not None
+        await asyncio.wait_for(self.task, 1.0)
 
 
 async def _settle() -> None:
-    for _ in range(8):
+    for _ in range(10):
         await asyncio.sleep(0)
 
 
-@pytest.mark.unit
-async def test_live_view_attaches_the_focused_page_as_a_flat_session_and_enables_its_events() -> (
-    None
-):
-    mux = make_mux()
+async def test_its_own_pages_frames_reach_the_viewer_with_the_tab_and_its_css_size() -> None:
+    run = _Run()
+    await run.start()
 
-    await _view_with_client_input(mux, [])
+    run.frame("<jpeg>")
+    await asyncio.wait_for(run.viewer.got_frame.wait(), 1.0)
+    run.viewer.leave()
+    await run.finish()
 
-    # flatten is what gives back a sessionId usable on this same connection.
-    assert _wire(mux, "Target.attachToTarget") == [
-        ({"targetId": "target-1", "flatten": True}, None)
+    assert run.viewer.sent == [
+        {
+            "type": "frame",
+            "data": "<jpeg>",
+            "format": "jpeg",
+            "url": "https://example.com/",
+            "title": "Ex",
+            "favicon": _FAVICON,
+            "cssWidth": 800,
+            "cssHeight": 600,
+        }
     ]
-    # Without Page.enable on the attached session no navigation event ever arrives.
-    assert _wire(mux, "Page.enable") == [({}, _PAGE_SESSION)]
+    assert run.mux.params_for("Page.startScreencast")[0] == {
+        "format": "jpeg",
+        "quality": 72,
+        "maxWidth": BROWSER_VIEWPORT_WIDTH,
+        "maxHeight": BROWSER_VIEWPORT_HEIGHT,
+    }
 
 
-@pytest.mark.unit
-async def test_live_view_starts_a_jpeg_screencast_capped_at_the_agent_viewport() -> None:
-    mux = make_mux()
-
-    await _view_with_client_input(mux, [])
-
-    assert _wire(mux, "Page.startScreencast") == [
-        (
-            {
-                "format": "jpeg",
-                "quality": screencast._SCREENCAST_QUALITY,
-                "maxWidth": BROWSER_VIEWPORT_WIDTH,
-                "maxHeight": BROWSER_VIEWPORT_HEIGHT,
-            },
-            _PAGE_SESSION,
-        )
-    ]
-
-
-@pytest.mark.unit
-async def test_live_view_frames_carry_the_favicon_the_page_declares() -> None:
-    mux = make_mux({"Runtime.evaluate": {"result": {"value": "https://example.com/icon.png"}}})
-
-    async def emit_frame() -> None:
-        mux.emit(_screencast_frame(_PAGE_SESSION, "mine"))
-        await _settle()
-
-    sent = await _run_to_client(mux, emit_frame)
-
-    assert [payload["favicon"] for payload in sent] == ["https://example.com/icon.png"]
-    # Read in the page itself, by value, so the icon is the one this tab declares.
-    assert _wire(mux, "Runtime.evaluate") == [
-        ({"expression": screencast._FAVICON_JS, "returnByValue": True}, _PAGE_SESSION)
-    ]
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize(
-    "evaluation",
-    [{"result": {"value": 42}}, {"result": {}}, {}],
-    ids=["non-string", "no-value", "no-result"],
-)
-async def test_live_view_shows_no_favicon_when_the_page_yields_no_icon_url(
-    evaluation: dict[str, Any],
+async def test_every_frame_is_acked_even_when_the_viewer_is_behind(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    mux = make_mux({"Runtime.evaluate": evaluation})
+    run = _Run()
+    stuck = asyncio.Event()
 
-    async def emit_frame() -> None:
-        mux.emit(_screencast_frame(_PAGE_SESSION, "mine"))
-        await _settle()
+    async def _behind(_raw: str) -> None:
+        await stuck.wait()
 
-    sent = await _run_to_client(mux, emit_frame)
+    monkeypatch.setattr(run.viewer, "send_text", _behind)
+    await run.start()
 
-    assert [(payload["data"], payload["favicon"]) for payload in sent] == [("mine", None)]
-
-
-@pytest.mark.unit
-async def test_live_view_streams_without_a_favicon_when_the_page_refuses_evaluation() -> None:
-    mux = FakeMux(
-        dict(_DEFAULT_REPLIES),
-        fail_on_first_call={"Runtime.evaluate": RuntimeError("evaluation blocked")},
-    )
-
-    async def emit_frame() -> None:
-        mux.emit(_screencast_frame(_PAGE_SESSION, "mine"))
-        await _settle()
-
-    with patch.object(screencast.log, "warning") as mock_warning:
-        sent = await _run_to_client(mux, emit_frame)
-
-    assert [(payload["data"], payload["favicon"]) for payload in sent] == [("mine", None)]
-    mock_warning.assert_called_once()
-    assert "favicon" in mock_warning.call_args.args[0]
-    assert mock_warning.call_args.kwargs == {"error_type": "RuntimeError"}
-
-
-@pytest.mark.unit
-async def test_live_view_close_is_recorded_on_the_wide_event_with_its_session() -> None:
-    mux = make_mux()
-
-    with patch.object(screencast, "log") as mock_log:
-        await _view_with_client_input(mux, [])
-
-    mock_log.set.assert_called_once_with(
-        browser={"session_id": _SESSION_ID, "operation": "live_view_closed"}
-    )
-
-
-@pytest.mark.unit
-async def test_every_frame_is_acked_on_the_page_session_even_when_the_viewer_is_behind() -> None:
-    """Chromium stops casting until a frame is acked, so a dropped frame must still be acked."""
-    mux = make_mux()
-    frames, background, on_frame = _make_handler_and_queue(mux)
-
-    for index in range(3):  # one more than the queue holds
-        on_frame({"data": f"f{index}", "sessionId": index})
+    for index in range(5):
+        run.frame(f"f{index}")
     await _settle()
 
-    assert _wire(mux, "Page.screencastFrameAck") == [
-        ({"sessionId": index}, "page-session") for index in range(3)
-    ]
-    # The stale-frame rule drops the newest when behind; the viewer is not stalled.
-    assert [frames.get_nowait().data for _ in range(frames.qsize())] == ["f0", "f1"]
-    # Finished acks leave the set run_live_view cancels on exit, so a long view does not grow it.
-    assert background == set()
-
-
-@pytest.mark.unit
-async def test_live_view_ignores_a_subframe_navigation() -> None:
-    """An iframe navigating is not the tab changing page, so the tab keeps its url and title."""
-    mux = make_mux()
-
-    async def navigate_iframe() -> None:
-        mux.responses["Target.getTargetInfo"] = {
-            "targetInfo": {"url": "https://ads.example", "title": "Ad"}
-        }
-        mux.emit(
-            {
-                "method": "Page.frameNavigated",
-                "sessionId": _PAGE_SESSION,
-                "params": {"frame": {"id": "child", "parentId": "main"}},
-            }
-        )
-        await _settle()
-
-    _frames, meta = await _run_with_pump(mux, navigate_iframe)
-
-    assert (meta.url, meta.title) == ("https://example.com", "Example")
-    assert len(_wire(mux, "Target.getTargetInfo")) == 1  # setup only
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize(
-    "event_params",
-    [{"frame": {"id": "main"}}, {}, None],
-    ids=["main-frame", "no-frame", "no-params"],
-)
-async def test_live_view_navigation_refreshes_the_tab_url_title_and_favicon(
-    event_params: dict[str, Any] | None,
-) -> None:
-    """A top-level navigation (or one too sparse to tell) re-reads the whole tab from the target."""
-    mux = make_mux({"Runtime.evaluate": {"result": {"value": "https://first/icon.png"}}})
-
-    async def navigate() -> None:
-        mux.responses["Target.getTargetInfo"] = {
-            "targetInfo": {"url": "https://second", "title": "Second"}
-        }
-        mux.responses["Runtime.evaluate"] = {"result": {"value": "https://second/icon.png"}}
-        event: dict[str, Any] = {"method": "Page.frameNavigated", "sessionId": _PAGE_SESSION}
-        if event_params is not None:
-            event["params"] = event_params
-        mux.emit(event)
-        await _settle()
-
-    _frames, meta = await _run_with_pump(mux, navigate)
-
-    assert (meta.url, meta.title, meta.favicon) == (
-        "https://second",
-        "Second",
-        "https://second/icon.png",
+    acks = [c for c in run.mux.calls if c[0] == "Page.screencastFrameAck"]
+    assert len(acks) == 5
+    assert all(
+        session == run.page_session and params == {"sessionId": 7} for _, params, session in acks
     )
-    assert {params["targetId"] for params, _ in _wire(mux, "Target.getTargetInfo")} == {"target-1"}
-    assert {sid for _, sid in _wire(mux, "Runtime.evaluate")} == {_PAGE_SESSION}
+    run.viewer.leave()
+    await run.finish()
 
 
-@pytest.mark.unit
-async def test_navigation_refresh_does_not_accumulate_finished_tasks() -> None:
-    mux = make_mux()
+async def test_a_main_frame_navigation_refreshes_the_tab_and_a_subframe_does_not() -> None:
+    run = _Run()
+    await run.start()
+    reads = run.mux.methods.count("Target.getTargetInfo")
+
+    run.mux.emit(
+        {
+            "method": "Page.frameNavigated",
+            "sessionId": run.page_session,
+            "params": {"frame": {"parentId": "p"}},
+        }
+    )
+    await _settle()
+    assert run.mux.methods.count("Target.getTargetInfo") == reads
+    run.mux.emit(
+        {"method": "Page.frameNavigated", "sessionId": run.page_session, "params": {"frame": {}}}
+    )
+    await _settle()
+
+    assert run.mux.methods.count("Target.getTargetInfo") == reads + 1
+    run.viewer.leave()
+    await run.finish()
+
+
+async def test_the_viewers_input_drives_the_page_it_sees() -> None:
+    run = _Run()
+    await run.start()
+
+    run.viewer.say(
+        type="mouse", event="mousePressed", x=10, y=20, button="left", clickCount=1, junk=1
+    )
+    run.viewer.say(type="key", event="keyDown", key="a", text="a", modifiers=0)
+    run.viewer.say(type="text", text="hello wörld")
+    run.viewer.say(type="resize", width=640, height=480)
+    run.viewer.say(type="unknown")
+    run.viewer.leave()
+    await run.finish()
+
+    session = run.page_session
+    assert (
+        "Input.dispatchMouseEvent",
+        {"type": "mousePressed", "x": 10, "y": 20, "button": "left", "clickCount": 1},
+        session,
+    ) in run.mux.calls
+    assert (
+        "Input.dispatchKeyEvent",
+        {"type": "keyDown", "key": "a", "text": "a", "modifiers": 0},
+        session,
+    ) in run.mux.calls
+    # A phone's soft keyboard commits text, inserted as one edit on the same page.
+    assert ("Input.insertText", {"text": "hello wörld"}, session) in run.mux.calls
+    assert run.mux.params_for("Page.startScreencast")[-1] == {
+        "format": "jpeg",
+        "quality": 72,
+        "maxWidth": 640,
+        "maxHeight": 480,
+    }
+
+
+async def test_the_view_follows_the_agent_to_another_tab() -> None:
+    run = _Run(pages=["t1", "t2"])
+    await run.start()
+    first = run.page_session
+
+    run.host.move_focus("t2")
+    await run.attached(2)
+    run.frame("<second>")
+    await asyncio.wait_for(run.viewer.got_frame.wait(), 1.0)
+    run.viewer.leave()
+    await run.finish()
+
+    assert first in run.mux.detached
+    assert ("Page.stopScreencast", None, first) in run.mux.calls
+    assert run.mux.params_for("Target.attachToTarget")[-1] == {"targetId": "t2", "flatten": True}
+    assert run.viewer.sent[0]["data"] == "<second>"
+
+
+async def test_when_its_page_closes_the_view_moves_to_what_is_left_then_ends() -> None:
+    run = _Run(pages=["t1", "t2"])
+    await run.start()
+    first = run.page_session
+
+    run.host.pages.remove("t1")
+    run.mux.emit({"method": "Target.detachedFromTarget", "params": {"sessionId": first}})
+    await run.attached(2)
+    run.host.pages.clear()
+    run.mux.emit({"method": "Target.detachedFromTarget", "params": {"sessionId": run.page_session}})
+    await run.finish()
+
+    assert run.mux.params_for("Target.attachToTarget")[-1] == {"targetId": "t2", "flatten": True}
+    assert ("Page.stopScreencast", None, first) not in run.mux.calls
+    assert run.mux.closed is False
+
+
+async def test_a_viewer_leaving_stops_the_screencast_and_lets_go_of_the_page() -> None:
+    run = _Run()
+    await run.start()
+    page = run.page_session
+
+    run.viewer.leave()
+    await run.finish()
+
+    assert ("Page.stopScreencast", None, page) in run.mux.calls
+    assert run.mux.detached == [page]
+    assert run.mux.sinks == []
+    assert run.mux.closed is False
+
+
+async def test_the_connection_closing_ends_the_view_without_another_word_to_the_engine() -> None:
+    run = _Run()
+    await run.start()
+    sent = len(run.mux.calls)
+
+    await run.mux.close()
+    await run.finish()
+
+    assert len(run.mux.calls) == sent
+
+
+async def test_a_page_that_will_not_let_go_is_left_to_the_sessions_teardown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = _Run()
+    await run.start()
+    warning = MagicMock()
+    monkeypatch.setattr(screencast.log, "warning", warning)
+    run.mux.send_error = CdpCommandError({"message": "Target closed"})
+
+    run.viewer.leave()
+    await run.finish()
+
+    assert warning.call_args.kwargs == {"error_type": "CdpCommandError"}
+
+
+async def test_a_session_with_no_page_open_shows_nothing() -> None:
+    run = _Run(pages=[])
+
+    await screencast.run_live_view(cast(Any, run.host), run.session, cast(Any, run.viewer))
+
+    assert run.mux.attached == []
+    assert run.viewer.sent == []
+
+
+async def test_a_page_that_refuses_evaluation_streams_without_a_favicon() -> None:
+    run = _Run()
+    run.mux.responses["Runtime.evaluate"] = {"result": {"value": 5}}
+    await run.start()
+
+    run.frame("<jpeg>")
+    await asyncio.wait_for(run.viewer.got_frame.wait(), 1.0)
+    run.viewer.leave()
+    await run.finish()
+
+    assert run.viewer.sent[0]["favicon"] is None
+
+
+async def test_a_favicon_read_that_fails_is_warned_about_and_left_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mux = _mux()
+    warning = MagicMock()
+    monkeypatch.setattr(screencast.log, "warning", warning)
+
+    async def _refuse(method: str, params: Any = None, session_id: Any = None) -> dict[str, Any]:
+        raise CdpCommandError({"message": "no context"})
+
+    monkeypatch.setattr(mux, "send_raw", _refuse)
+
+    assert await screencast._read_favicon(cast(Any, mux), "S") is None
+    assert warning.call_args.kwargs == {"error_type": "CdpCommandError"}
+    assert "Could not read page favicon" in warning.call_args.args[0]
+
+
+@pytest.mark.parametrize(
+    ("engine", "pulls"), [(BrowserEngine.OBSCURA, True), (BrowserEngine.CHROMIUM, False)]
+)
+async def test_only_obscura_pulls_a_capture_while_the_screencast_is_quiet(
+    monkeypatch: pytest.MonkeyPatch, engine: BrowserEngine, pulls: bool
+) -> None:
+    """Obscura screencasts only the session that repainted; Chromium screencasts every one."""
+    monkeypatch.setattr(browser_host_settings, "BROWSER_ENGINE", engine)
+    monkeypatch.setattr(screencast, "_PULL_INTERVAL_SECONDS", 0.0)
+    run = _Run()
+    await run.start()
+
+    await _settle()
+    run.viewer.leave()
+    await run.finish()
+
+    assert ("Page.captureScreenshot" in run.mux.methods) is pulls
+    if pulls:
+        assert run.viewer.sent[0]["data"] == "<pulled>"
+        assert run.viewer.sent[0]["cssWidth"] is None
+
+
+async def test_a_pull_waits_while_frames_keep_arriving_and_carries_their_css_size(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = _Run()
+    stream = screencast._Stream(target_id="t1", page_session="S")
+    frames: asyncio.Queue[screencast._Frame] = asyncio.Queue(maxsize=2)
+    ticks = 0
+
+    async def _tick(_seconds: float) -> None:
+        nonlocal ticks
+        ticks += 1
+        if ticks == 1:
+            stream.latest = screencast._Frame("<fresh>", 800, 600)
+        if ticks == 4:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(screencast.asyncio, "sleep", _tick)
+    with pytest.raises(asyncio.CancelledError):
+        await screencast._pull_frames(cast(Any, run.mux), stream, frames)
+
+    assert run.mux.methods.count("Page.captureScreenshot") == 2
+    pulled = frames.get_nowait()
+    assert (pulled.data, pulled.css_width, pulled.css_height) == ("<pulled>", 800, 600)
+
+
+async def test_a_failing_pull_is_warned_once_per_streak(monkeypatch: pytest.MonkeyPatch) -> None:
+    run = _Run()
+    stream = screencast._Stream(target_id="t1", page_session="S")
+    warned_at: list[int] = []
+    warning = MagicMock(side_effect=lambda *a, **k: warned_at.append(ticks))
+    monkeypatch.setattr(screencast.log, "warning", warning)
+    failing = CdpCommandError({"message": "navigating"})
+    # tick: 1-3 fail, 4 a screencast frame arrives, 5-7 fail, 8 succeeds, 9-11 fail
+    plan = {1: failing, 4: "frame", 5: failing, 8: None, 9: failing, 12: "stop"}
+    ticks = 0
+
+    async def _tick(_seconds: float) -> None:
+        nonlocal ticks
+        ticks += 1
+        step = plan.get(ticks)
+        if step == "stop":
+            raise asyncio.CancelledError
+        if step == "frame":
+            stream.latest = screencast._Frame("<cast>", 1, 1)
+        elif ticks in plan:
+            run.mux.send_error = cast(Any, step)
+
+    monkeypatch.setattr(screencast.asyncio, "sleep", _tick)
+    with pytest.raises(asyncio.CancelledError):
+        await screencast._pull_frames(cast(Any, run.mux), stream, asyncio.Queue(maxsize=2))
+
+    assert warned_at == [1, 5, 9]
+    assert "Could not pull a live-view frame" in warning.call_args.args[0]
+    assert warning.call_args.kwargs == {"error_type": "CdpCommandError"}
+
+
+_ON_ITS_PAGE = {
+    "Page.enable",
+    "Page.startScreencast",
+    "Page.stopScreencast",
+    "Page.screencastFrameAck",
+    "Page.captureScreenshot",
+    "Runtime.evaluate",
+    "Input.dispatchMouseEvent",
+    "Input.dispatchKeyEvent",
+}
+
+
+async def test_everything_the_view_does_to_its_page_rides_its_own_page_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(browser_host_settings, "BROWSER_ENGINE", BrowserEngine.OBSCURA)
+    monkeypatch.setattr(screencast, "_PULL_INTERVAL_SECONDS", 0.0)
+    run = _Run()
+    await run.start()
+    run.frame("<jpeg>")
+    run.viewer.say(type="mouse", event="mouseMoved", x=1, y=2)
+    run.viewer.say(type="key", event="keyUp", key="a")
+    run.viewer.say(type="resize")
+    await _settle()
+    page = run.page_session
+    run.viewer.leave()
+    await run.finish()
+
+    on_page = [c for c in run.mux.calls if c[0] in _ON_ITS_PAGE]
+    assert {c[0] for c in on_page} == _ON_ITS_PAGE
+    assert all(session == page for _, _, session in on_page)
+    assert (
+        "Runtime.evaluate",
+        {"expression": screencast._FAVICON_JS, "returnByValue": True},
+        page,
+    ) in run.mux.calls
+    assert all(
+        params == {"targetId": "t1"}
+        for m, params, _ in run.mux.calls
+        if m == "Target.getTargetInfo"
+    )
+    assert run.mux.params_for("Page.captureScreenshot")[0] == {"format": "jpeg", "quality": 72}
+    assert run.mux.params_for("Page.startScreencast")[-1] == {
+        "format": "jpeg",
+        "quality": 72,
+        "maxWidth": BROWSER_VIEWPORT_WIDTH,
+        "maxHeight": BROWSER_VIEWPORT_HEIGHT,
+    }
+
+
+async def test_a_view_that_closes_logs_which_session_it_watched(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded = MagicMock()
+    monkeypatch.setattr(screencast.log, "set", recorded)
+    for pages, ends in ((["t1"], "leave"), ([], "nothing to show")):
+        recorded.reset_mock()
+        run = _Run(pages=pages)
+        if ends == "leave":
+            await run.start()
+            run.viewer.leave()
+            await run.finish()
+        else:
+            await screencast.run_live_view(cast(Any, run.host), run.session, cast(Any, run.viewer))
+
+        recorded.assert_called_with(
+            browser={"session_id": run.session.session_id, "operation": "live_view_closed"}
+        )
+
+
+async def test_a_viewer_whose_socket_closed_under_a_read_ends_the_view_cleanly() -> None:
+    run = _Run()
+    run.viewer.closed_under_read = True
+    await run.start()
+
+    run.viewer.leave()
+
+    await run.finish()
+
+
+async def test_a_page_that_never_answers_its_attach_fails_the_view_inside_the_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(screencast, "BROWSER_HOST_LIVENESS_TIMEOUT_SECONDS", 0.01)
+    run = _Run()
+    run.mux.hang_on = "Target.attachToTarget"
+
+    with pytest.raises(screencast.CDPTimeoutError):
+        await screencast.run_live_view(cast(Any, run.host), run.session, cast(Any, run.viewer))
+
+
+@pytest.mark.parametrize("hangs", ["Page.stopScreencast", "Target.detachFromTarget"])
+async def test_a_page_that_never_lets_go_is_left_inside_the_budget(
+    monkeypatch: pytest.MonkeyPatch, hangs: str
+) -> None:
+    warning = MagicMock()
+    monkeypatch.setattr(screencast.log, "warning", warning)
+    run = _Run()
+    await run.start()
+    monkeypatch.setattr(screencast, "BROWSER_HOST_LIVENESS_TIMEOUT_SECONDS", 0.01)
+    run.mux.hang_on = hangs
+
+    run.viewer.leave()
+    await run.finish()
+
+    assert "left its page attached" in warning.call_args.args[0]
+    assert warning.call_args.kwargs == {"error_type": "CDPTimeoutError"}
+
+
+async def test_a_navigation_without_a_frame_and_a_tab_without_info_are_still_read() -> None:
+    run = _Run()
+    run.mux.responses["Target.getTargetInfo"] = {}
+    run.mux.responses["Runtime.evaluate"] = {}
+    await run.start()
+    reads = run.mux.methods.count("Target.getTargetInfo")
+
+    run.mux.emit({"method": "Page.frameNavigated", "sessionId": run.page_session, "params": {}})
+    await _settle()
+    run.frame("<jpeg>")
+    await asyncio.wait_for(run.viewer.got_frame.wait(), 1.0)
+    run.viewer.leave()
+    await run.finish()
+
+    assert run.mux.methods.count("Target.getTargetInfo") == reads + 1
+    assert (
+        run.viewer.sent[0]["url"],
+        run.viewer.sent[0]["title"],
+        run.viewer.sent[0]["favicon"],
+    ) == (
+        None,
+        None,
+        None,
+    )
+
+
+async def test_a_pull_on_obscura_carries_the_css_size_the_screencast_last_reported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(browser_host_settings, "BROWSER_ENGINE", BrowserEngine.OBSCURA)
+    monkeypatch.setattr(screencast, "_PULL_INTERVAL_SECONDS", 0.0)
+    run = _Run()
+    await run.start()
+
+    run.frame("<cast>")
+    for _ in range(200):
+        if any(f["data"] == "<pulled>" and f["cssWidth"] == 800 for f in run.viewer.sent):
+            break
+        await asyncio.sleep(0)
+    run.viewer.leave()
+    await run.finish()
+
+    assert any(f["data"] == "<pulled>" and f["cssWidth"] == 800 for f in run.viewer.sent)
+
+
+async def test_the_first_pull_captures_a_page_that_never_repainted() -> None:
+    run = _Run()
+    stream = screencast._Stream(target_id="t1", page_session="S")
+    frames: asyncio.Queue[screencast._Frame] = asyncio.Queue(maxsize=2)
+    ticks = 0
+
+    async def _tick(_seconds: float) -> None:
+        nonlocal ticks
+        ticks += 1
+        if ticks == 2:
+            raise asyncio.CancelledError
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(screencast.asyncio, "sleep", _tick)
+        with pytest.raises(asyncio.CancelledError):
+            await screencast._pull_frames(cast(Any, run.mux), stream, frames)
+
+    assert frames.get_nowait().data == "<pulled>"
+
+
+async def test_a_pull_into_a_full_queue_is_dropped_and_the_pull_goes_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = _Run()
+    stream = screencast._Stream(target_id="t1", page_session="S")
+    frames: asyncio.Queue[screencast._Frame] = asyncio.Queue(maxsize=1)
+    ticks = 0
+
+    async def _tick(_seconds: float) -> None:
+        nonlocal ticks
+        ticks += 1
+        if ticks == 4:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(screencast.asyncio, "sleep", _tick)
+    with pytest.raises(asyncio.CancelledError):
+        await screencast._pull_frames(cast(Any, run.mux), stream, frames)
+
+    assert run.mux.methods.count("Page.captureScreenshot") == 3
+
+
+async def test_a_finished_side_task_leaves_the_views_set() -> None:
     background: set[asyncio.Task[Any]] = set()
-    on_nav = screencast._make_nav_handler(
-        mux, "target-1", screencast._PageMeta(), background, _PAGE_SESSION
-    )
 
-    on_nav({"frame": {"id": "main"}})
-    assert len(background) == 1  # held while in flight, so exit can cancel it
+    async def _done() -> None:
+        return None
+
+    screencast._spawn(background, _done())
+    assert len(background) == 1
     await _settle()
 
     assert background == set()
-
-
-@pytest.mark.unit
-async def test_live_view_pull_captures_as_jpeg_and_keeps_the_favicon_while_the_url_holds(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(screencast, "_PULL_INTERVAL_SECONDS", 0)
-    mux = make_mux(
-        {
-            "Page.captureScreenshot": {"data": "pulled"},
-            "Runtime.evaluate": {"result": {"value": "https://example.com/icon.png"}},
-        }
-    )
-
-    sent = await _run_to_client(mux, _settle)
-
-    assert sent
-    assert {payload["favicon"] for payload in sent} == {"https://example.com/icon.png"}
-    # The icon is read once at setup; an unchanged url is no reason to evaluate again.
-    assert len(_wire(mux, "Runtime.evaluate")) == 1
-    assert {
-        (json.dumps(params, sort_keys=True), sid)
-        for params, sid in _wire(mux, "Page.captureScreenshot")
-    } == {
-        (
-            json.dumps({"format": "jpeg", "quality": screencast._SCREENCAST_QUALITY}),
-            _PAGE_SESSION,
-        )
-    }
-
-
-@pytest.mark.unit
-async def test_live_view_pull_rereads_the_favicon_when_the_url_changed(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Engines that isolate sessions never tell the viewer about the agent's navigation."""
-    monkeypatch.setattr(screencast, "_PULL_INTERVAL_SECONDS", 0)
-    mux = make_mux(
-        {
-            "Page.captureScreenshot": {"data": "pulled"},
-            "Runtime.evaluate": {"result": {"value": "https://example.com/icon.png"}},
-        }
-    )
-
-    async def navigate_on_another_session() -> None:
-        mux.responses["Target.getTargetInfo"] = {
-            "targetInfo": {"url": "https://driven", "title": "Driven"}
-        }
-        mux.responses["Runtime.evaluate"] = {"result": {"value": "https://driven/icon.png"}}
-        await _settle()
-
-    sent = await _run_to_client(mux, navigate_on_another_session)
-
-    assert sent[-1]["favicon"] == "https://driven/icon.png"
-    assert {sid for _, sid in _wire(mux, "Runtime.evaluate")} == {_PAGE_SESSION}
-
-
-def _script_capture(monkeypatch: pytest.MonkeyPatch, mux: FakeMux, script: list[Any]) -> None:
-    """Answer each Page.captureScreenshot from the script, then fail every later one.
-
-    A script entry is a reply dict, an exception to raise, or a callable run
-    first (to emit a screencast frame mid-pull) before raising.
-    """
-    send_raw = mux.send_raw
-    steps = iter(script)
-
-    async def send(
-        method: str, params: dict[str, Any] | None = None, session_id: str | None = None
-    ) -> dict[str, Any]:
-        result = await send_raw(method, params, session_id)
-        if method != "Page.captureScreenshot":
-            return result
-        step = next(steps, RuntimeError("capture refused"))
-        if callable(step) and not isinstance(step, Exception):
-            step()
-            raise RuntimeError("capture refused")
-        if isinstance(step, Exception):
-            raise step
-        return step
-
-    monkeypatch.setattr(mux, "send_raw", send)
-
-
-@pytest.mark.unit
-async def test_live_view_logs_a_new_failure_streak_after_the_screencast_recovers(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(screencast, "_PULL_INTERVAL_SECONDS", 0)
-    mux = make_mux()
-    # The first failing pull races a real screencast frame: the stream recovered,
-    # so the next failure is a new outage and must be visible on its own.
-    _script_capture(monkeypatch, mux, [lambda: mux.emit(_screencast_frame(_PAGE_SESSION, "live"))])
-
-    with patch.object(screencast.log, "warning") as mock_warning:
-        await _run_to_client(mux, _settle)
-
-    assert mock_warning.call_count == 2
-    assert all("frame" in call.args[0] for call in mock_warning.call_args_list)
-
-
-@pytest.mark.unit
-async def test_live_view_logs_a_new_failure_streak_after_a_successful_pull(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(screencast, "_PULL_INTERVAL_SECONDS", 0)
-    mux = make_mux()
-    _script_capture(monkeypatch, mux, [RuntimeError("first outage"), {"data": "pulled"}])
-
-    with patch.object(screencast.log, "warning") as mock_warning:
-        sent = await _run_to_client(mux, _settle)
-
-    assert [payload["data"] for payload in sent] == ["pulled"]
-    assert mock_warning.call_count == 2
-
-
-# --- takeover input: what the user's pointer and keys become in the page -----
-
-
-@pytest.mark.unit
-async def test_live_view_dispatches_the_users_mouse_on_the_page_session() -> None:
-    mux = make_mux()
-    click = {
-        "type": "mouse",
-        "event": "mousePressed",
-        "x": 10,
-        "y": 20,
-        "button": "left",
-        "clickCount": 1,
-        "unrelated": "dropped",
-    }
-
-    host, _sent = await _view_with_client_input(mux, [click])
-
-    assert _wire(mux, "Input.dispatchMouseEvent") == [
-        (
-            {"type": "mousePressed", "x": 10, "y": 20, "button": "left", "clickCount": 1},
-            _PAGE_SESSION,
-        )
-    ]
-    # Input is activity: a user driving the page keeps the session from being reaped.
-    host.touch.assert_called_once_with(_SESSION_ID)
-
-
-@pytest.mark.unit
-async def test_live_view_dispatches_the_users_keys_on_the_page_session() -> None:
-    mux = make_mux()
-    press = {"type": "key", "event": "keyDown", "key": "a", "code": "KeyA", "text": "a", "x": 5}
-
-    await _view_with_client_input(mux, [press])
-
-    assert _wire(mux, "Input.dispatchKeyEvent") == [
-        ({"type": "keyDown", "key": "a", "code": "KeyA", "text": "a"}, _PAGE_SESSION)
-    ]
-    assert _wire(mux, "Input.dispatchMouseEvent") == []
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize(
-    ("resize", "expected"),
-    [
-        ({"type": "resize", "width": "800", "height": "600"}, (800, 600)),
-        ({"type": "resize"}, (BROWSER_VIEWPORT_WIDTH, BROWSER_VIEWPORT_HEIGHT)),
-    ],
-    ids=["sized", "defaults-to-agent-viewport"],
-)
-async def test_live_view_resize_restarts_the_screencast_at_the_viewers_size(
-    resize: dict[str, Any], expected: tuple[int, int]
-) -> None:
-    mux = make_mux()
-
-    await _view_with_client_input(mux, [resize])
-
-    restart_params, restart_session = _wire(mux, "Page.startScreencast")[-1]
-    assert (restart_params["maxWidth"], restart_params["maxHeight"]) == expected
-    assert restart_params["format"] == "jpeg"
-    assert restart_session == _PAGE_SESSION
-    assert len(_wire(mux, "Page.startScreencast")) == 2
-
-
-@pytest.mark.unit
-async def test_live_view_ignores_a_message_of_unknown_type_but_counts_it_as_activity() -> None:
-    mux = make_mux()
-
-    host, _sent = await _view_with_client_input(mux, [{"type": "wheel?", "event": "x"}, {}])
-
-    driven = [m for m in mux.methods if m.startswith("Input.") or m == "Page.startScreencast"]
-    assert driven == ["Page.startScreencast"]  # the setup one only
-    assert host.touch.call_count == 2
-
-
-@pytest.mark.unit
-async def test_live_view_acks_each_streamed_frame_on_its_own_page_session() -> None:
-    mux = make_mux()
-
-    async def emit_frame() -> None:
-        mux.emit(_screencast_frame(_PAGE_SESSION, "mine"))
-        await _settle()
-
-    await _run_to_client(mux, emit_frame)
-
-    assert _wire(mux, "Page.screencastFrameAck") == [({"sessionId": "cast-1"}, _PAGE_SESSION)]
-
-
-@pytest.mark.unit
-async def test_live_view_streams_with_an_unknown_tab_when_the_engine_omits_target_info() -> None:
-    """A partial CDP engine may answer getTargetInfo bare; the pixels still matter more."""
-    mux = make_mux({"Target.getTargetInfo": {}})
-
-    async def emit_frame() -> None:
-        mux.emit(_screencast_frame(_PAGE_SESSION, "mine"))
-        await _settle()
-
-    sent = await _run_to_client(mux, emit_frame)
-
-    assert [(p["data"], p["url"], p["title"]) for p in sent] == [("mine", None, None)]
-
-
-@pytest.mark.unit
-async def test_live_view_pull_before_any_screencast_frame_reports_no_css_size(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """With no screencast metadata yet the viewer must fall back to the bitmap, not a bogus size."""
-    monkeypatch.setattr(screencast, "_PULL_INTERVAL_SECONDS", 0)
-    mux = make_mux({"Page.captureScreenshot": {"data": "pulled"}})
-
-    sent = await _run_to_client(mux, _settle)
-
-    assert sent
-    assert {(p["cssWidth"], p["cssHeight"]) for p in sent} == {(None, None)}
-
-
-class _StopPulling(Exception):
-    """Ends a directly driven pull loop after the ticks a test asked for."""
-
-
-def _tick(monkeypatch: pytest.MonkeyPatch, ticks: int) -> None:
-    """Let the pull loop wake exactly that many times, then stop it at its next sleep."""
-    real_sleep = asyncio.sleep
-    remaining = [ticks]
-
-    async def sleep(_delay: float) -> None:
-        if remaining[0] == 0:
-            raise _StopPulling
-        remaining[0] -= 1
-        await real_sleep(0)
-
-    monkeypatch.setattr(screencast.asyncio, "sleep", sleep)
-
-
-async def _pull(mux: FakeMux, frames: asyncio.Queue[Any], stream: Any) -> None:
-    with pytest.raises(_StopPulling):
-        await screencast._pull_frames(
-            mux, _PAGE_SESSION, "target-1", screencast._PageMeta(), frames, stream
-        )
-
-
-@pytest.mark.unit
-async def test_pull_captures_on_its_first_tick_when_the_page_never_repainted(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A view opened on a still page must paint after one interval, not two."""
-    mux = make_mux({"Page.captureScreenshot": {"data": "pulled"}})
-    frames: asyncio.Queue[Any] = asyncio.Queue(maxsize=2)
-    _tick(monkeypatch, 1)
-
-    await _pull(mux, frames, screencast._StreamState())
-
-    assert [frames.get_nowait().data for _ in range(frames.qsize())] == ["pulled"]
-
-
-@pytest.mark.unit
-async def test_pull_keeps_capturing_when_the_viewer_is_behind(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    mux = make_mux({"Page.captureScreenshot": {"data": "pulled"}})
-    frames: asyncio.Queue[Any] = asyncio.Queue(maxsize=1)
-    frames.put_nowait(screencast._Frame("unsent", None, None))
-    _tick(monkeypatch, 2)
-
-    await _pull(mux, frames, screencast._StreamState())
-
-    # The capture that finds the queue full is dropped, and the loop lives on.
-    assert mux.methods.count("Page.captureScreenshot") == 2
-    assert frames.get_nowait().data == "unsent"

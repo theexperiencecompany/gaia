@@ -25,6 +25,7 @@ from app.agents.core.background.session import get_session, teardown_session
 from app.agents.tools import executor_tool
 from app.agents.tools.executor_tool import call_executor, cancel_executor, tools
 from app.constants.agents import DONE_EVIDENCE_RULE, AgentTag
+from app.constants.browser import BrowserSessionStatus
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_BUSY_TTL,
@@ -38,7 +39,16 @@ from app.db.redis import redis_cache
 from app.db.repositories.playbooks import playbook_repository
 from app.models.agent_models import InboxEntry, RunningSubagent
 from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus, ToolStep
-from app.services.browser.jobs import claim_conversation_slot, job_cancel_requested
+from app.schemas.browser import BrowserResultSnapshot
+from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
+from app.services.browser import job_stop
+from app.services.browser.job_events import JOB_TERMINAL_FRAME, publish_job_event
+from app.services.browser.jobs import (
+    claim_conversation_slot,
+    job_cancel_requested,
+    put_job_state,
+    set_latest_job,
+)
 from app.utils import background_tasks
 
 
@@ -540,6 +550,30 @@ class TestCallExecutorFailures:
 # ── cancel_executor reaches a detached browser job ───────────────────
 
 
+async def _a_running_browser_job(job_id: str = "job-1") -> None:
+    await set_latest_job(CONVERSATION_ID, job_id)
+    await claim_conversation_slot(CONVERSATION_ID, job_id)
+    await put_job_state(BrowserJobState(job_id=job_id, status=BrowserJobStatus.RUNNING, task="t"))
+
+
+async def _abort_ends_the_job(job_id: str) -> bool:
+    """Stand in for ARQ's abort: the run's task is cancelled and ends on its stopped card."""
+    stopped = BrowserResultSnapshot(
+        status=BrowserSessionStatus.CANCELLED, success=False, summary="x"
+    )
+    await put_job_state(
+        BrowserJobState(job_id=job_id, status=BrowserJobStatus.DONE, task="t", result=stopped)
+    )
+    await publish_job_event(job_id, JOB_TERMINAL_FRAME)
+    return True
+
+
+@pytest.fixture
+def no_arq(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(job_stop, "_abort_if_started", _abort_ends_the_job)
+
+
+@pytest.mark.usefixtures("no_arq")
 class TestCancelExecutorStopsTheBrowser:
     """A browser run outlives the turn that started it, so /stop has to reach the job itself."""
 
@@ -550,24 +584,36 @@ class TestCancelExecutorStopsTheBrowser:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
-        await claim_conversation_slot(CONVERSATION_ID, "job-1")
+        await _a_running_browser_job()
         await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
 
-        await run_cancel_executor(config=config_for(), task_ids=[])
+        response = await run_cancel_executor(config=config_for(), task_ids=[])
 
         assert await job_cancel_requested("job-1") is True
+        assert response.endswith("Stopped the browser task.")
 
     async def test_a_stop_reaches_a_browser_job_whose_turn_already_ended(
         self, fake_redis: fakeredis.aioredis.FakeRedis
     ) -> None:
         # The executor is long gone, so there is no busy lock and no live stream
-        # to cancel — the job flag is the only thing that still stops the browser.
-        await claim_conversation_slot(CONVERSATION_ID, "job-1")
+        # to cancel — the job itself is the only thing that still stops the browser.
+        await _a_running_browser_job()
 
         response = await run_cancel_executor(config=config_for(), task_ids=[])
 
-        assert await job_cancel_requested("job-1") is True
         assert response == "Stopped the browser task."
+
+    async def test_a_stop_the_job_never_confirms_is_reported_as_unconfirmed(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The agent is told what the stop came to, not that it worked because it was asked."""
+        monkeypatch.setattr(executor_tool, "BROWSER_JOB_STOP_CONFIRM_SECONDS", 0.05)
+        monkeypatch.setattr(job_stop, "_abort_if_started", AsyncMock(return_value=False))
+        await _a_running_browser_job()
+
+        response = await run_cancel_executor(config=config_for(), task_ids=[])
+
+        assert response == "Asked the browser task to stop, but it has not confirmed stopping yet."
 
     async def test_a_targeted_cancel_leaves_the_browser_run_alone(
         self,
@@ -577,7 +623,7 @@ class TestCancelExecutorStopsTheBrowser:
     ) -> None:
         """Cancelling one named executor task is not "stop everything"; the browser keeps going."""
         monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
-        await claim_conversation_slot(CONVERSATION_ID, "job-1")
+        await _a_running_browser_job()
         await inbox().append("q1", "queued work")
 
         await run_cancel_executor(config=config_for(), task_ids=["q1"])
@@ -987,16 +1033,19 @@ class TestCancelStopsSubagents:
         assert not await StreamManager.is_cancelled(stream_id)
 
     async def test_stop_everything_stops_both_a_browser_job_and_a_subagent(
-        self, fake_redis: fakeredis.aioredis.FakeRedis, broadcast: AsyncMock
+        self,
+        fake_redis: fakeredis.aioredis.FakeRedis,
+        broadcast: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        monkeypatch.setattr(job_stop, "_abort_if_started", _abort_ends_the_job)
         stream_id = await self._running("s1", dispatched_by="finished-turn")
-        await claim_conversation_slot(CONVERSATION_ID, "job-1")
+        await _a_running_browser_job()
 
         response = await run_cancel_executor(config=config_for(), task_ids=[])
 
-        assert response == "Cancelled: 1 running subagent(s)."
+        assert response == "Cancelled: 1 running subagent(s). Stopped the browser task."
         assert await StreamManager.is_cancelled(stream_id)
-        assert await job_cancel_requested("job-1") is True
 
 
 # ── malformed inbox entries ──────────────────────────────────────────

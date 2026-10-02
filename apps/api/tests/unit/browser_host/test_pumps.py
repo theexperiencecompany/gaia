@@ -12,8 +12,12 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from types import SimpleNamespace
+from typing import cast
 
+from fastapi import WebSocketDisconnect
 import pytest
+from starlette.websockets import WebSocket, WebSocketState
 from websockets.exceptions import ConnectionClosed
 
 from app.browser_host import pumps
@@ -37,14 +41,21 @@ async def _blocks_forever() -> None:
     await asyncio.Event().wait()
 
 
-class WebSocketDisconnect(Exception):
-    """Stand-in for FastAPI's exception, checked by is_disconnect by name only."""
+def _socket(
+    client: WebSocketState = WebSocketState.CONNECTED,
+    application: WebSocketState = WebSocketState.CONNECTED,
+) -> WebSocket:
+    return cast(WebSocket, SimpleNamespace(client_state=client, application_state=application))
+
+
+_NOT_CONNECTED = RuntimeError('WebSocket is not connected. Need to call "accept" first.')
 
 
 @pytest.mark.unit
 class TestIsDisconnect:
-    def test_connection_closed_is_a_disconnect(self) -> None:
+    def test_a_peer_close_on_either_side_is_a_disconnect(self) -> None:
         assert is_disconnect(ConnectionClosed(None, None)) is True
+        assert is_disconnect(WebSocketDisconnect()) is True
 
     def test_classifies_in_an_interpreter_that_never_imported_the_submodule(
         self, tmp_path: Path
@@ -69,39 +80,29 @@ class TestIsDisconnect:
         assert result.returncode == 0, result.stderr
         assert result.stdout.strip() == "False"
 
-    def test_websocket_disconnect_by_name_is_a_disconnect(self) -> None:
-        assert is_disconnect(WebSocketDisconnect()) is True
-
-    def test_unrelated_exception_type_is_not_a_disconnect(self) -> None:
-        assert is_disconnect(ValueError("boom")) is False
-
-    def test_starlette_not_connected_runtimeerror_is_a_disconnect(self) -> None:
-        # Starlette raises this bare RuntimeError when a socket is read after it
-        # closed / before accept — normal during teardown, not a real error.
-        assert (
-            is_disconnect(RuntimeError('WebSocket is not connected. Need to call "accept" first.'))
-            is True
+    @pytest.mark.parametrize("closed_side", ["client", "application"])
+    def test_a_use_after_close_error_is_a_disconnect_only_once_a_socket_has_closed(
+        self, closed_side: str
+    ) -> None:
+        closed = (
+            _socket(client=WebSocketState.DISCONNECTED)
+            if closed_side == "client"
+            else _socket(application=WebSocketState.DISCONNECTED)
         )
 
-    def test_receive_after_disconnect_runtimeerror_is_a_disconnect(self) -> None:
-        assert (
-            is_disconnect(
-                RuntimeError('Cannot call "receive" once a disconnect message has been received.')
-            )
-            is True
-        )
+        assert is_disconnect(_NOT_CONNECTED, [_socket(), closed]) is True
+        assert is_disconnect(_NOT_CONNECTED, [_socket()]) is False
+        assert is_disconnect(_NOT_CONNECTED) is False
 
-    def test_an_unrelated_runtimeerror_still_propagates(self) -> None:
-        # The match is by exact message, so real RuntimeErrors are not swallowed.
-        assert is_disconnect(RuntimeError("second failed")) is False
+    def test_another_error_is_never_a_disconnect(self) -> None:
+        closed = [_socket(client=WebSocketState.DISCONNECTED)]
 
-    def test_similarly_named_exception_is_not_a_disconnect(self) -> None:
-        """Pins the exact class-name string, not a prefix/substring match."""
+        assert is_disconnect(ValueError("boom"), closed) is False
 
-        class WebSocketDisconnected(Exception):
+        class _OddRuntimeError(RuntimeError):
             pass
 
-        assert is_disconnect(WebSocketDisconnected()) is False
+        assert is_disconnect(_OddRuntimeError("x"), closed) is False
 
 
 @pytest.mark.unit
@@ -120,11 +121,12 @@ class TestPumpUntilFirstClose:
                 timeout=_TIMEOUT,
             )
 
-    async def test_not_connected_runtimeerror_exits_cleanly_not_raised(self) -> None:
-        # A viewer socket read during teardown must not blow up the pump.
-        err = RuntimeError('WebSocket is not connected. Need to call "accept" first.')
-        # Returns without raising — the whole point of the fix.
-        await pump_until_first_close(_instant_raise(err), _blocks_forever())
+    async def test_a_closed_viewers_use_after_close_error_exits_cleanly(self) -> None:
+        closed = _socket(client=WebSocketState.DISCONNECTED)
+
+        await pump_until_first_close(
+            _instant_raise(_NOT_CONNECTED), _blocks_forever(), sockets=[closed]
+        )
 
     async def test_ordinary_disconnect_is_swallowed_not_raised(self) -> None:
         disconnect = ConnectionClosed(None, None)

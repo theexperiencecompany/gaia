@@ -1,25 +1,22 @@
 """Constants for the Browser-Use browser-automation capability.
 
-Single source of truth for the tool name, the SSE card-event keys, the Redis
-handoff namespace, and the heuristics that decide when the browser agent must
-hand control to the human. Values a deployment may tune live in settings;
-values that are part of the wire/UI contract live here so backend and frontend
-cannot drift.
+Single source of truth for the SSE card-event keys, the Redis key namespaces,
+the run's bounds and the copy the agent, the executor and the user read.
+Values a deployment may tune live in settings; values that are part of the
+wire/UI contract live here so backend and frontend cannot drift.
 
 The startup gate ("do you want me to use a browser?") is handled by the shared
-HIL system (browser_task is registered destructive). This module governs the
-mid-run gate: when the agent reaches a payment, credential, or irreversible
-step, a per-task policy decides whether to hand off to the user (live-view),
-proceed autonomously (e.g. a configured agent card), or abort.
+HIL system (browser_task is registered destructive). Mid-run, the agent itself
+decides when a payment, credential, CAPTCHA or irreversible step goes to the
+user, through its handoff actions.
 """
 
 from enum import Enum, StrEnum
-from typing import Literal, Self
+from typing import Literal
 
 # ---------------------------------------------------------------------------
 # Tool identity
 # ---------------------------------------------------------------------------
-BROWSER_TOOL_NAME = "browser_task"
 BROWSER_TOOL_CATEGORY = "browser"
 
 
@@ -80,11 +77,9 @@ class BrowserEventKind(str, Enum):
 
 
 class BrowserSessionStatus(str, Enum):
-    """Lifecycle state of a browser session: created to live/working to ended/failed."""
+    """Lifecycle state of a browser session: working, then how it ended."""
 
-    STARTING = "starting"
     RUNNING = "running"
-    PAUSED = "paused"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -99,9 +94,9 @@ class SensitiveCategory(str, Enum):
     IRREVERSIBLE = "irreversible"
 
 
-# Shown on a CREDENTIALS handoff: the session is saved (Fernet-encrypted per
-# user+site) and reused so the next task skips the login. Kept truthful to
-# storage_persistence.py; the Browser settings page can list/remove saved sites.
+# Shown on a CREDENTIALS handoff where BROWSER_PERSIST_LOGINS keeps logins: the
+# session is saved (Fernet-encrypted per user+site) and reused so the next task
+# skips the login. The Browser settings page can list/remove saved sites.
 BROWSER_CREDENTIALS_SAVED_NOTE = (
     "Once you're signed in, I'll save this site's session, encrypted, so I can "
     "skip the login next time. You can remove saved sites anytime in "
@@ -110,12 +105,13 @@ BROWSER_CREDENTIALS_SAVED_NOTE = (
 
 
 class HandoffStatus(str, Enum):
-    """State of a live-view handoff: pending, completed, cancelled, expired."""
+    """State of a live-view handoff: pending, completed, cancelled, expired, or failed."""
 
     PENDING = "pending"
     COMPLETED = "completed"  # user finished the step in live-view → resume
-    CANCELLED = "cancelled"  # user cancelled → abort
+    CANCELLED = "cancelled"  # user cancelled, or the run was stopped → abort
     TIMEOUT = "timeout"  # nobody acted → abort
+    FAILED = "failed"  # the browser the user was sent to is gone → abort
 
 
 class HandoffDecision(str, Enum):
@@ -123,6 +119,13 @@ class HandoffDecision(str, Enum):
 
     CONTINUE = "continue"
     CANCEL = "cancel"
+
+
+#: The status a handoff settles with on each decision.
+HANDOFF_DECISION_STATUS: dict[HandoffDecision, HandoffStatus] = {
+    HandoffDecision.CONTINUE: HandoffStatus.COMPLETED,
+    HandoffDecision.CANCEL: HandoffStatus.CANCELLED,
+}
 
 
 class HandoffKind(StrEnum):
@@ -160,23 +163,23 @@ class BrowserHandoffAction(StrEnum):
 # Browser-session continue/cancel signal only, not tool-call approval
 # (the shared HIL system owns that).
 BROWSER_HANDOFF_KEY_PREFIX = "browser:handoff:"
-# Maps a conversation to its one in-flight handoff id, so a plain chat reply
-# ("yeah I paid, continue") can resolve it — the text-channel equivalent of the
-# card's Continue/Cancel buttons. Both surfaces converge on ``resolve_handoff``.
-BROWSER_HANDOFF_CONV_KEY_PREFIX = "browser:handoff:conv:"
-HANDOFF_POLL_INTERVAL_SECONDS = 1.0
-HANDOFF_KEY_TTL_SECONDS = 3600
+# Maps where the user's chat reply arrives (handoff.reply_address) to the one
+# in-flight handoff, so a plain reply ("yeah I paid, continue") can resolve it,
+# the text-channel equivalent of the card's buttons. Both converge on resolve_handoff.
+BROWSER_HANDOFF_REPLY_KEY_PREFIX = "browser:handoff:reply:"
 # The last line of a handoff a bot user is sent: only their word ends it.
 BROWSER_HANDOFF_REPLY_PROMPT = "Reply here when you're done, or tell me to stop."
-# How often the paused run touches the host session so the idle reaper (default
-# 300s TTL) never disposes a browser the user was asked to come back to.
-BROWSER_HANDOFF_KEEPALIVE_SECONDS = 60
+# A host session lives on a lease the run renews while its job is alive, paused
+# or not; one it stops renewing (its worker died) is disposed when the lease runs out.
+BROWSER_SESSION_LEASE_SECONDS = 90.0
+# Three renewals per lease, so one slow or lost renewal never costs a live run its browser.
+BROWSER_SESSION_LEASE_RENEW_SECONDS = BROWSER_SESSION_LEASE_SECONDS / 3
 
 # A short capability code for the bot's live-view link (browser.heygaia.io/{code}):
 # the code IS the secret and maps to the session + owner in Redis, so the link
-# carries no 32-char session id and no long ?t= token. TTL bounds the link's life.
+# carries no 32-char session id and no long ?t= token. One per handoff, revoked on settle.
 BROWSER_LIVE_CODE_KEY_PREFIX = "browser:livecode:"
-BROWSER_LIVE_CODE_TTL_SECONDS = 3600
+BROWSER_LIVE_CODE_HANDOFF_PREFIX = "browser:livecode:handoff:"
 
 # Replay: a short code maps to a finished session's screenshot set, so the recap
 # link (browser.heygaia.io/replays/{code}) plays every step back as a slideshow.
@@ -186,11 +189,12 @@ BROWSER_REPLAY_CODE_TTL_SECONDS = 7 * 24 * 3600
 # Bytes of entropy for the code (token_urlsafe → ~1.3 chars/byte, so ~12 chars).
 BROWSER_LIVE_CODE_ENTROPY_BYTES = 9
 
-# Step frames kept on local disk when no object store is configured, served back
+# Step frames kept in Redis when no object store is configured, served back
 # through a code of their own so the frames are not enumerable by session id.
 # One code per run: code -> run, and run -> code so every step reuses it.
 BROWSER_SHOT_CODE_KEY_PREFIX = "browser:shotcode:"
 BROWSER_SHOT_SESSION_KEY_PREFIX = "browser:shotsess:"
+BROWSER_SHOT_FRAME_KEY_PREFIX = "browser:shot:"
 
 # Session-import handoff: a short-lived, single-use code minted for a signed-in
 # web user that the local gaia connect CLI presents to upload the extracted
@@ -204,32 +208,51 @@ BROWSER_IMPORT_TOKEN_ENTROPY_BYTES = 32
 BROWSER_PROFILE_TTL_DAYS = 90
 BROWSER_PROFILE_TTL_SECONDS = BROWSER_PROFILE_TTL_DAYS * 24 * 3600
 
-# Prefixes the summary of a run that died on an unexpected error. The runner writes
-# it; bot delivery strips it back off to show the user the reason alone.
-BROWSER_TASK_FAILED_PREFIX = "Browser task failed: "
-
-# Chat acks when a handoff is resolved by a natural-language reply.
+# Recorded in the thread when the handoff card's buttons decide a handoff: no turn runs for a tap.
 BROWSER_HANDOFF_ACK_CONTINUE = "Got it, continuing the browser task."
 BROWSER_HANDOFF_ACK_CANCEL = "Okay, I've stopped the browser task."
-BROWSER_HANDOFF_ACK_REDIRECT = "Got it, continuing with that instead."
 
-# A run summary that was stopped on purpose leads with this label; the bot strips
-# it so "Couldn't finish that:" never stacks a second stop-word on top.
-BROWSER_RUN_STOPPED_LABEL = "Stopped: "
+# Why a button's decision on a handoff was refused: the web card's, or the bot live-view page's.
+BROWSER_HANDOFF_NOT_OWNED_DETAIL = "Not authorized to resolve this handoff"
+BROWSER_HANDOFF_GONE_DETAIL = "Handoff not found or expired"
+BROWSER_LIVE_VIEW_NOT_WAITING_DETAIL = "This live view is no longer waiting"
+
+# Read with a chat message that answered a paused browser task, so the turn's
+# reply knows what the message already did to it.
+BROWSER_HANDOFF_REPLY_NOTE = (
+    "[This message answered the browser task that was paused for the user ({reason}). "
+    "It was read as {reading}.]"
+)
+BROWSER_HANDOFF_REPLY_READINGS: dict[str, str] = {
+    "continue": "the user finishing that step, so the task carries on",
+    "cancel": "the user stopping the task, so it was stopped",
+    "redirect": "a new instruction instead of that step, which the task now follows",
+}
+
 
 # An expired handoff is a failed run, not the completed one a takeover made it look like.
-BROWSER_RUN_HANDOFF_TIMED_OUT = (
-    f"{BROWSER_RUN_STOPPED_LABEL}nobody finished the step in the live browser in time."
+BROWSER_RUN_HANDOFF_TIMED_OUT = "Stopped: nobody finished the step in the live browser in time."
+# The run asked the user to take over more often than one task may.
+BROWSER_RUN_HANDOFF_LIMIT_SUMMARY = (
+    "Stopped: the task needed you to take over more than {limit} times, the most one task may."
 )
 
-# Reaches the user verbatim on the failure card, so it reads like a person. Shared
-# by the Jev BLOCKED action and the run that ends because no guidance arrived.
+# Reaches the user verbatim on the failure card of a run that ended because no
+# guidance arrived, so it reads like a person.
 BROWSER_RUN_BLOCKED_SUMMARY = "I couldn't find a way to move forward on this page."
 
 # Fixed copy, no exception text: many exceptions stringify to "", which left
 # "...stopped unexpectedly:" dangling in front of the user.
 BROWSER_JOB_CRASHED_SUMMARY = (
     "the browser task stopped unexpectedly, and nothing else changed; you can ask me to try again"
+)
+# A run cut off because its worker shut down, not because anyone stopped it.
+BROWSER_JOB_WORKER_STOPPED_SUMMARY = (
+    "the browser task was cut off because its worker shut down; you can ask me to try again"
+)
+# A queued run whose conversation slot another run took while it waited.
+BROWSER_JOB_SLOT_TAKEN_SUMMARY = (
+    "another browser task started in this conversation while this one waited, so it never ran"
 )
 
 # Upper bound on how many times one task may hand off to the human, so a
@@ -255,9 +278,23 @@ BROWSER_GUIDANCE_RECENT_ACTIONS = 6
 # Named here so the render is tested for where each part lands, not for its wording.
 BROWSER_GUIDANCE_HEADER = "THE BROWSER TASK IS STUCK and is waiting for one instruction from you."
 BROWSER_GUIDANCE_CHANGED_INSTRUCTION = (
-    "MID-RUN THE USER CHANGED THE INSTRUCTION to {changed}. That is what your guidance "
+    "MID-RUN THE USER CHANGED THE INSTRUCTION to {notes}. That is what your guidance "
     "must serve. Where the task below conflicts with it, the task is no longer wanted, "
     "and you must never send the run back to a step the user declined."
+)
+BROWSER_GUIDANCE_USER_SAID = (
+    "While it ran, the user said: {notes}. Judge yourself what that changes about the task."
+)
+# What the user said mid-run, leading what the assistant reads about the run's
+# result: a trailing sentence lost to the original request still in its context.
+BROWSER_RESULT_REPLACED_REQUEST = (
+    "THE USER REPLACED THE REQUEST MID-RUN with: {notes}. Answer THAT, not the original "
+    "request. The original request was not carried out and must not be reported as "
+    "attempted-and-failed."
+)
+BROWSER_RESULT_USER_SAID = (
+    "While it ran, the user said: {notes}. Judge yourself what that changes about the "
+    "request and the reply."
 )
 BROWSER_GUIDANCE_ANSWER = (
     "Answer with exactly one of these, then call wait_for_browser_task() again:\n"
@@ -270,8 +307,6 @@ BROWSER_GUIDANCE_ANSWER = (
     "when no route is left, never because a step the user already declined is blocked."
 )
 
-# Two failed steps running end the run with its reason, not Browser-Use's narrowing to done.
-BROWSER_AGENT_MAX_FAILURES = 2
 # The browser agent's reasoning effort on any lane: it steers and signs off, Jev does the stepping.
 BROWSER_AGENT_REASONING_EFFORT: Literal["low"] = "low"
 BROWSER_AGENT_OPENROUTER_KEY_MISSING = "OPENROUTER_API_KEY is not set; the browser agent needs it."
@@ -289,10 +324,14 @@ BROWSER_LOAD_STOP_TIMEOUT_SECONDS = 5.0
 #: What the agent reads about a load the browser stopped: the plain fact, no retry rule.
 BROWSER_LOAD_STALLED_NOTE = (
     "{url} did not respond within {seconds:.0f} s, so its loading was stopped and the tab "
-    "stayed on the page it was on. Sites are often briefly slow; the page may load if "
-    "opened again."
+    "stayed on the page it was on."
 )
-# A decision can wait out a layout pass, a part judgement and Jev; Browser-Use's 75s cut it off.
+#: What the agent reads about a page Browser-Use read before its load had finished.
+BROWSER_LOAD_UNFINISHED_NOTE = (
+    "{url} had not finished loading (its load event had not fired) when the browser stopped "
+    "waiting for it, so the step went on with the page as it was then."
+)
+# The longest one model call may take; Browser-Use's 75 s default cut off decisions on slow pages.
 BROWSER_AGENT_LLM_TIMEOUT_SECONDS = 180
 
 # Appended to every browser task so the agent uses the takeover action instead
@@ -354,10 +393,9 @@ BROWSER_AGENT_ROLE = (
     "only after you tried it and it could not be done.\n"
     "Logins without given credentials, payments, OTPs and CAPTCHAs go to the user through "
     "the handoff actions. Messages the user sends mid-task arrive as follow-up requests: "
-    "they change the task from then on."
+    "weigh what each says against the task; it changes the task only where it says so."
 )
 
-# Said to the agent when it asks for guidance with no assistant joined to answer.
 #: What the agent reads after a handoff step when the user left no note.
 BROWSER_TAKEOVER_DONE_NOTE = (
     "The user says they finished that step in the live browser. If the page still asks "
@@ -368,25 +406,25 @@ BROWSER_RUN_WALL_CLOCK_SUMMARY = "Browser task timed out after {seconds}s."
 BROWSER_RUN_WORK_BUDGET_SUMMARY = "Browser task timed out after {seconds}s of work."
 BROWSER_RUN_STOPPED_SUMMARY = "Browser task stopped."
 BROWSER_RUN_CANCELLED_SUMMARY = "Browser task was cancelled."
-BROWSER_RUN_HANDOFF_ENDED_SUMMARY = "Browser task was stopped."
+BROWSER_RUN_SESSION_LOST_SUMMARY = (
+    "The browser closed while it waited for you to finish a step in it, so the task stopped there."
+)
 BROWSER_RUN_DONE_SUMMARY = "Completed the browser task."
 BROWSER_RUN_NOT_DONE_SUMMARY = "Could not complete the browser task."
-#: Why the agent could not attach to a session the host created: nearly always the CDP proxy.
+#: Logged when the agent could not attach to a session the host created: nearly always the CDP proxy.
 BROWSER_CDP_ATTACH_HINT = (
     "Check that the browser host is reachable from the API at BROWSER_HOST_URL."
 )
+#: What the user reads when the agent never attached to the browser.
+BROWSER_CDP_ATTACH_FAILED = "Could not connect to the browser."
+#: What the user reads when the run failed on an unexpected error; the error itself is logged.
+BROWSER_RUN_CRASHED_SUMMARY = "The browser task stopped on an unexpected error."
 #: Why a run cannot start when no Chromium host is configured for it.
 BROWSER_NO_CHROME_HOST = "No Chrome browser host is configured (BROWSER_FALLBACK_HOST_URL)."
+#: Said to the agent when it asks for guidance and none can be asked: no assistant joined, or none left.
 BROWSER_NO_GUIDANCE_AVAILABLE = (
-    "No assistant is available to answer. Decide yourself: act, re-delegate to jev, or finish "
+    "No guidance is available. Decide yourself: act, re-delegate to jev, or finish "
     "with an honest account of what could not be done."
-)
-
-# The same action list on the same page for this many agent steps in a row ends the run.
-BROWSER_AGENT_NO_PROGRESS_STEPS = 3
-BROWSER_RUN_NO_PROGRESS_SUMMARY = (
-    "The browser kept repeating the same step on the same page without getting anywhere, "
-    "so it stopped. Nothing after that point was done."
 )
 
 # Desktop viewport (the ~800x600 CDP default collapses sites to mobile layout). The live
@@ -416,37 +454,29 @@ class JevOperation(StrEnum):
 
 
 class JevStop(StrEnum):
-    """Why a Jev burst handed control back to the agent, and whether Jev's own judgement caused it.
+    """Why a Jev burst handed control back to the agent."""
 
-    A goal Jev made no progress on is refused again only after a stop Jev
-    caused, which the same goal would repeat; the site, the page, the user or
-    the run causing it leaves the goal free to send again.
-    """
-
-    jev_caused: bool
-
-    def __new__(cls, value: str, jev_caused: bool) -> Self:
-        member = str.__new__(cls, value)
-        member._value_ = value
-        member.jev_caused = jev_caused
-        return member
-
-    DONE = "done", True
-    BLOCKED = "blocked", True
-    NEEDS_INPUT = "needs_input", True
-    NO_PROGRESS = "no_progress", True
-    CYCLE = "cycle", True
-    MAX_ACTIONS = "max_actions", True
-    MAX_DECISIONS = "max_decisions", True
-    COVERED = "covered", False
-    STALE = "stale", False
-    CAPTCHA = "captcha", False
-    UNRESPONSIVE = "unresponsive", False
-    USER_MESSAGE = "user_message", False
-    STOPPED = "stopped", False
-    GATEWAY = "gateway", False
-    LOAD_STALLED = "load_stalled", False
-    NAVIGATION_FAILED = "navigation_failed", False
+    DONE = "done"
+    BLOCKED = "blocked"
+    NEEDS_INPUT = "needs_input"
+    SECRET_WITHHELD = "secret_withheld"  # nosec B105 -- a stop reason, not a credential
+    NO_PROGRESS = "no_progress"
+    CYCLE = "cycle"
+    MAX_ACTIONS = "max_actions"
+    MAX_DECISIONS = "max_decisions"
+    COVERED = "covered"
+    STALE = "stale"
+    UNRESPONSIVE = "unresponsive"
+    LOADING = "loading"
+    NO_PAGE = "no_page"
+    USER_MESSAGE = "user_message"
+    STOPPED = "stopped"
+    GATEWAY = "gateway"
+    LOAD_STALLED = "load_stalled"
+    NAVIGATION_FAILED = "navigation_failed"
+    FIELD_UNFOCUSED = "field_unfocused"
+    TAB_UNAVAILABLE = "tab_unavailable"
+    PAGE_SCRIPT_ERROR = "page_script_error"
 
 
 #: Controls offered to Jev per request, in DOM order within the viewport. Vercel's
@@ -456,11 +486,6 @@ JEV_GATEWAY_TIMEOUT_SECONDS = 8.0
 JEV_GATEWAY_MAX_ATTEMPTS = 3
 #: After a 402 (out of credit) the failover client skips that gateway this long.
 JEV_OUT_OF_CREDIT_SECONDS = 300.0
-#: What the agent reads when it sends Jev a goal Jev already made no progress on.
-JEV_REPEATED_GOAL_REFUSAL = (
-    "Jev already made no progress on exactly this goal. Act yourself with browser actions, "
-    "or give Jev a different, sharper goal."
-)
 #: How much of the final page's visible text a burst report hands the agent, and of each
 #: other page the burst opened (the most recent ones, up to the count).
 JEV_REPORT_PAGE_TEXT_CHARS = 2000
@@ -476,14 +501,19 @@ JEV_BURST_MAX_DECISIONS = 2 * JEV_BURST_MAX_ACTIONS
 JEV_UNCHANGED_LIMIT = 3
 JEV_STALE_LIMIT = 3
 JEV_COVERED_LIMIT = 2
-#: Snapshot retries while a navigation replaces the document.
+#: Snapshot reads while a navigation replaces the document; Chrome holds each until the new one commits.
 JEV_OBSERVE_ATTEMPTS = 50
-JEV_OBSERVE_RETRY_SECONDS = 0.1
 #: Longest any one of Jev's CDP calls may take; a page or session that does not answer
 #: ends the burst instead of holding it until the task's budget runs out.
 JEV_CDP_TIMEOUT_SECONDS = 20.0
-#: An explicit WAIT; the next observation also waits a frame or two after any input.
+#: The longest an explicit WAIT waits for the page to change at all.
 JEV_WAIT_SECONDS = 1.0
+#: The longest the read after an input waits for its requests to finish and the DOM to go quiet:
+#: a page that animates or polls never does.
+JEV_SETTLE_MAX_SECONDS = 2.0
+#: The longest a read waits for a document still parsing (a script in its head not yet
+#: arrived) to fire DOMContentLoaded: the time a site gets to answer before a load is stopped.
+JEV_PARSE_WAIT_SECONDS = BROWSER_LOAD_STALL_SECONDS
 JEV_SCREENSHOT_QUALITY = 70
 #: The tiny model writes a value only when no literal from the goal fits; it reads this much page text.
 JEV_TEXT_TIMEOUT_SECONDS = 30.0
@@ -495,21 +525,30 @@ JEV_PAGE_TEXT_MAX_CHARS = 6000
 JEV_TEXT_VALUE_MAX_CHARS = 2000
 # Stands in for a value typed into a password field wherever the run's text reaches a person.
 JEV_SECRET_MASK = "[hidden]"  # nosec B105 -- the placeholder shown in place of a typed password, not a credential
+#: What a step says a password field holds when it is not the secret typed: never its value.
+JEV_SECRET_DIFFERS = "a value other than the secret"  # nosec B105 -- report wording, not a credential
+#: Why a written value is not typed when it names a secret.
+JEV_SECRET_WRITTEN = "The written value names a secret; nothing was typed."  # nosec B105 -- report wording, not a credential
 # Probability mass across a choice question must sum to ~1; the gateway rounds.
 JEV_PROBABILITY_SUM_TOLERANCE = 0.02
-#: Frames whose source names a CAPTCHA provider; one visible ends the burst for the CAPTCHA handoff.
-JEV_CAPTCHA_FRAME_MARKERS = ("recaptcha", "hcaptcha", "turnstile", "arkoselabs", "funcaptcha")
 
 
 # A step that shows nothing for this long gets one line saying so. The Berlin
 # article measured 40 to 71 s of clean render with no error left to caption.
 BROWSER_STALL_NOTE_AFTER_SECONDS = 25.0
-BROWSER_STALL_NOTE = "Still waiting on the page, it's a slow one."
+BROWSER_STALL_NOTE = "No update from the browser for {seconds} s."
 
 # What the agent's continue_in_full_browser call answers: the run ends here and resumes there.
 BROWSER_ENGINE_SWITCH_ACK = (
-    "Moving this task to the full browser. It continues there from this page, still signed in."
+    "Moving this task to the full browser. It continues there from this page."
 )
+#: What the agent reads first on the fallback engine, its earlier steps still in its history.
+BROWSER_ENGINE_RESUMED_NOTE = (
+    "This run moved to the full browser (Chrome), which opened {page}. Continue the task "
+    "from there."
+)
+#: What a handoff action answers: the wait runs once the step ends, outside its step budget.
+BROWSER_ANSWER_AFTER_STEP = "Asked. The answer arrives before your next step."
 # Said once when a run moves to the fallback engine, so the steps that follow
 # on another browser do not read as the run starting over.
 BROWSER_ENGINE_FALLBACK_NOTE = (
@@ -518,7 +557,7 @@ BROWSER_ENGINE_FALLBACK_NOTE = (
 # The same, when the fast browser's state could not come along.
 BROWSER_ENGINE_FALLBACK_WITHOUT_STATE_NOTE = (
     "That page didn't work in the fast browser, continuing in a full one. "
-    "It starts from your saved logins only, so you may need to sign in again."
+    "Sign-ins from this run could not come along, so a site may ask you to sign in again."
 )
 
 # Engine watchdog: the primary engine's liveness is read this often, and this
@@ -541,11 +580,6 @@ BROWSER_ENGINE_UNRESPONSIVE_SUMMARY = "The browser stopped responding."
 # How a decision taken on the handoff card is written into the agent's thread,
 # so the reply it later voices knows the user changed course.
 BROWSER_HANDOFF_CARD_DECISION = "[From the browser handoff card] {decision}"
-
-# The user's own request rides along with the executor's task text, clipped to
-# this many characters; the executor rewrote "tick the second checkbox" into an
-# invented label twice and the browser skipped the step both times.
-BROWSER_USER_WORDS_MAX_CHARS = 1000
 
 # ---------------------------------------------------------------------------
 # Background browser job
@@ -574,25 +608,54 @@ BROWSER_JOB_RETENTION_SECONDS = 3600
 BROWSER_JOB_EVENTS_PREFIX = "browser:job:events:"
 BROWSER_JOB_EVENTS_MAXLEN = 2000
 
+# A conversation's latest browser job, finished or not: how a join and a stop
+# find it once the slot lease is gone (a queued job's lease is never heartbeated).
+BROWSER_JOB_LATEST_PREFIX = "browser:job:latest:"
+
 # A live executor holding this lease owns speaking the result; the worker skips
 # its own delivery while it is held. Refreshed by the joiner, so an API crash
 # releases it within one TTL and the worker delivers instead.
 BROWSER_JOB_JOINER_PREFIX = "browser:job:joiner:"
 BROWSER_JOB_JOINER_LEASE_SECONDS = 15
 BROWSER_JOB_JOINER_REFRESH_SECONDS = 5
+#: How long the executor waits on a browser job when the model names no limit.
+BROWSER_JOB_JOIN_DEFAULT_WAIT_SECONDS = 600
+# The one telling of a job's result: whoever claims it first speaks, the other stays quiet.
+BROWSER_JOB_DELIVERED_PREFIX = "browser:job:delivered:"
 
-# Set by cancel_executor for a job whose turn has already ended, when the
-# stream's cancel signal is gone. OR-ed with stream_manager.is_cancelled.
+
+class ResultSpeaker(StrEnum):
+    """Who told the user a browser job's result: the executor joined on it, or the worker's follow-up."""
+
+    JOINER = "joiner"
+    WORKER = "worker"
+
+
+# The stop flag every stop sets (stop_browser_job); the run reads it at its
+# start, between steps and before every wait.
 BROWSER_JOB_CANCEL_PREFIX = "browser:job:cancel:"
+# The handoff a paused run is waiting on, so a stop can settle it.
+BROWSER_JOB_WAIT_PREFIX = "browser:job:wait:"
 # What the user said while a job runs, oldest first: the run reads it between steps.
 BROWSER_JOB_INBOX_PREFIX = "browser:job:inbox:"
+# How long a stop the agent asked for waits on the job's own ending before it
+# says the stop is not confirmed yet. The aborted run ends within a worker poll.
+BROWSER_JOB_STOP_CONFIRM_SECONDS = 15
 
-BROWSER_JOB_POLL_INTERVAL_SECONDS = 0.5
 
-# How long the relay's read parks on an empty feed before looking at the turn
-# again. Long enough that an idle run costs one read a second, short enough that
-# a cancelled turn stops relaying about as fast as the user expects.
-BROWSER_JOB_RELAY_BLOCK_MS = 1000
+class BrowserStopOutcome(StrEnum):
+    """What a stop found once the job ended, or did not end, after it."""
+
+    STOPPED = "stopped"
+    #: The run had already finished another way before the stop reached it.
+    ALREADY_ENDED = "already_ended"
+    #: The job had not ended when the wait for it gave out.
+    UNCONFIRMED = "unconfirmed"
+
+
+# How long a read of a job's feed parks on it for the next frame: the beat the
+# relay re-checks its turn, and a join re-arms its lease and checks the worker.
+BROWSER_JOB_FEED_WAIT_MS = 1000
 
 # The ARQ function name, shared by the enqueue site and the worker registration.
 BROWSER_JOB_TASK = "run_browser_job"
@@ -609,30 +672,34 @@ class BrowserRunFailure(StrEnum):
     """Why a browser run did not succeed; the worker event's reason field."""
 
     BLOCKED = "blocked"
-    NEVER_OPENED = "never_opened"
+    #: The agent finished and said the task was not achieved.
     GOAL_NOT_ACHIEVED = "goal_not_achieved"
+    #: The agent never finished: its last step ended in an error.
+    STEP_FAILED = "step_failed"
+    #: The agent never finished: it used every step Browser-Use allows.
+    STEP_LIMIT = "step_limit"
     HANDOFF_TIMEOUT = "handoff_timeout"
+    HANDOFF_LIMIT = "handoff_limit"
+    #: The browser a handoff sent the user to was lost while they were in it.
+    SESSION_LOST = "session_lost"
     CANCELLED = "cancelled"
     TASK_TIMEOUT = "task_timeout"
-    ENGINE_CRASH = "engine_crash"
-    LLM_ERROR = "llm_error"
+    COST_BUDGET = "cost_budget"
     HOST_UNAVAILABLE = "host_unavailable"
     HOST_AT_CAPACITY = "host_at_capacity"
     RUN_CRASHED = "run_crashed"
-
-
-# Why a run moved to the fallback engine when its engine did not fail: a page it
-# could not pass. The engine-failure reasons are EngineFailure's values.
-BROWSER_FALLBACK_PAGE_BLOCKED = "page_blocked"
 
 
 class HostRequestFailure(StrEnum):
     """Why the browser host refused a request; its request event's reason field."""
 
     INVALID_HOST_KEY = "invalid_host_key"
+    INVALID_SESSION_TOKEN = "invalid_session_token"  # nosec B105 -- a refusal reason, not a credential
     SESSION_NOT_FOUND = "session_not_found"
     AT_CAPACITY = "at_capacity"
     ENGINE_UNRESPONSIVE = "engine_unresponsive"
+    ENGINE_REFUSED = "engine_refused"
+    DEADLINE_EXCEEDED = "deadline_exceeded"
 
 
 class HostAdmissionRefusal(StrEnum):
@@ -642,10 +709,38 @@ class HostAdmissionRefusal(StrEnum):
     MEMORY = "memory"
 
 
+class HostSessionEnd(StrEnum):
+    """How a session left the browser host; the operation its wide event carries."""
+
+    DISPOSED = "dispose"
+    LEASE_EXPIRED = "lease_expired"
+    CONNECTION_LOST = "connection_lost"
+    ENGINE_LOST = "engine_lost"
+
+
+# The header every browser-host REST call carries the shared host key in.
+BROWSER_HOST_KEY_HEADER = "X-Host-Key"
+# The header a host client sends its own deadline in, so the host finishes or gives
+# up inside it instead of working on for a caller that has stopped listening.
+BROWSER_HOST_DEADLINE_HEADER = "X-Host-Deadline"
+
+
 # Browser-Use's own env switches (browser_use/config.py), forced off in every GAIA
 # process: the telemetry sends usage to its PostHog, the version check costs a
 # PyPI request (up to 3 s) on every run. Cloud sync follows telemetry's value.
 BROWSER_USE_PHONE_HOME_OFF: dict[str, str] = {
     "ANONYMIZED_TELEMETRY": "false",
     "BROWSER_USE_VERSION_CHECK": "false",
+}
+
+# Browser-Use's own per-event budgets (its TIMEOUT_<Event> overrides), as defaults
+# an operator's environment still overrides. They are process-wide: Browser-Use
+# creates these events itself, so no budget can be set per session.
+BROWSER_USE_EVENT_TIMEOUTS: dict[str, str] = {
+    # A first capture of a very long page took 24 to 35 s on Obscura (2026-09-19),
+    # past Browser-Use's 15 s.
+    "TIMEOUT_ScreenshotEvent": "60",
+    # Every step's state read carries that screenshot: its budget plus Browser-Use's
+    # own 30 s for the rest of the read.
+    "TIMEOUT_BrowserStateRequestEvent": "90",
 }

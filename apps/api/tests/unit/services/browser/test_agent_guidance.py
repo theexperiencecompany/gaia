@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from app.constants.browser import BROWSER_GUIDANCE_ANSWER, BROWSER_GUIDANCE_HEADER
+from app.constants.browser import (
+    BROWSER_GUIDANCE_ANSWER,
+    BROWSER_GUIDANCE_CHANGED_INSTRUCTION,
+    BROWSER_GUIDANCE_HEADER,
+    BROWSER_GUIDANCE_USER_SAID,
+)
 from app.schemas.browser import (
     AgentGuidanceRequest,
     GuidanceAction,
@@ -42,10 +47,21 @@ def test_the_changed_instruction_is_stated_before_the_task_it_overrides() -> Non
     assert message.index(note) < message.index("Upvote the top post on r/python")
 
 
-def test_the_guidance_is_told_never_to_send_the_run_back_to_a_declined_step() -> None:
-    message = guidance_message(_request(user_notes=["skip the upvote, just tell me the title"]))
+def test_only_a_replaced_instruction_is_stated_as_one_and_the_rest_as_what_the_user_said() -> None:
+    """The reply classifier alone calls a message a new instruction; anything else the user said is theirs for the executor to weigh."""
+    said, replaced = "make it quick", ["skip the upvote", "just tell me the title"]
 
-    assert "declined" in message.lower()
+    sections = _sections(
+        guidance_message(_request(user_notes=[said, *replaced], redirects=replaced))
+    )
+
+    assert (
+        BROWSER_GUIDANCE_CHANGED_INSTRUCTION.format(
+            notes='"skip the upvote", then "just tell me the title"'
+        )
+        in sections
+    )
+    assert BROWSER_GUIDANCE_USER_SAID.format(notes='"make it quick"') in sections
 
 
 def test_a_run_nobody_redirected_is_told_nothing_about_a_changed_instruction() -> None:
@@ -93,37 +109,19 @@ def test_the_user_notes_reach_the_guidance_in_the_order_they_were_sent() -> None
     assert '"skip the upvote", then "just read the title"' in message
 
 
-def test_each_recent_action_says_whether_it_moved_the_page() -> None:
-    actions = [
-        GuidanceAction(action="click Upvote", page_changed=True),
-        GuidanceAction(action="type hello", page_changed=False),
-        GuidanceAction(action="scroll down"),
-    ]
-
-    (section,) = [
-        s
-        for s in _sections(guidance_message(_request(recent_actions=actions)))
-        if "click Upvote" in s
-    ]
-
-    assert section.splitlines()[1:] == [
-        "  - click Upvote (the page changed)",
-        "  - type hello (the page did not change)",
-        "  - scroll down",
-    ]
-
-
-def test_each_visible_control_is_listed_by_the_index_the_run_acts_on() -> None:
+def test_each_recent_action_and_visible_control_is_listed_in_order() -> None:
+    actions = [GuidanceAction(action='Clicking "Upvote"'), GuidanceAction(action="Scrolling")]
     elements = [
-        GuidanceElement(index=3, label="Upvote", role="button"),
-        GuidanceElement(index=7, label="Search", role="textbox"),
+        GuidanceElement(label="Upvote", role="button"),
+        GuidanceElement(label="Search", role="textbox"),
     ]
 
-    (section,) = [
-        s for s in _sections(guidance_message(_request(elements=elements))) if "[3] Upvote" in s
-    ]
+    sections = _sections(guidance_message(_request(recent_actions=actions, elements=elements)))
 
-    assert section.splitlines()[1:] == ["  [3] Upvote (button)", "  [7] Search (textbox)"]
+    (tried,) = [s for s in sections if "Scrolling" in s]
+    (controls,) = [s for s in sections if "(textbox)" in s]
+    assert tried.splitlines()[1:] == ['  - Clicking "Upvote"', "  - Scrolling"]
+    assert controls.splitlines()[1:] == ["  - Upvote (button)", "  - Search (textbox)"]
 
 
 def test_the_screen_text_is_passed_on_when_the_run_has_it() -> None:

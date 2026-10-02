@@ -206,10 +206,6 @@ class CommonSettings(BaseAppSettings):
     # --- Browser-Use (autonomous browser automation) ---
     # Always on in every environment; an unreachable host fails loudly at task time.
 
-    # Dev-only: suffixes every ChromaDB collection name so parallel worktrees,
-    # which share one local Chroma, stop deleting each other's indexed tools.
-    # Empty in production (dedicated Chroma); set per worktree by `mise run wt:env`.
-    CHROMA_COLLECTION_NAMESPACE: str = ""
     # Cloudflare R2, the fast edge store for browser step screenshots; Cloudinary
     # stays the durable store for arbitrary user files. Optional: any unset field
     # falls back to inline data URLs. Use a custom domain in prod, r2.dev is rate-limited.
@@ -236,17 +232,16 @@ class CommonSettings(BaseAppSettings):
 
     # Hard limits — everything is bounded so no browser task can run away. The
     # agent's step count is only Browser-Use's required backstop: a run ends on
-    # the agent's finish, no progress, or its time and cost budgets.
+    # the agent's finish or its time and cost budgets.
     BROWSER_USE_MAX_STEPS: int = 100
     BROWSER_USE_MAX_ACTIONS_PER_STEP: int = 5
     BROWSER_USE_TASK_TIMEOUT_SECONDS: int = 600
     # How long a paused run waits for the user's handoff step (a login, a CAPTCHA).
-    # The one source: the job deadline, its TTLs, the relay's wait and the per-step
-    # budget all derive from it (job_lifetime.py); resolving sooner resumes at once.
+    # The one source: the job deadline, its TTLs and the relay's wait all derive
+    # from it (job_lifetime.py); resolving sooner resumes at once.
     BROWSER_USE_HANDOFF_TIMEOUT_SECONDS: int = 600
-    # Active work budget for a single step. The effective per-step timeout adds the
-    # handoff timeout on top, so a step that pauses for a human live-view takeover
-    # is never killed as "stuck" while the user is completing it.
+    # Active work budget for a single step. A handoff waits after its step ends,
+    # outside this budget, so a step is never killed while the user completes one.
     BROWSER_USE_STEP_TIMEOUT_SECONDS: int = 180
     # Stream per-step screenshots into the chat card / bot messages.
     BROWSER_USE_STREAM_SCREENSHOTS: bool = True
@@ -261,14 +256,10 @@ class CommonSettings(BaseAppSettings):
     # CDP with an authenticated screencast live view. Reached internally by
     # service name; override locally to http://localhost:8930.
 
-    # A second Chromium host: a run about to end blocked retries that page there once.
-    # It needs BROWSER_ENGINE=chromium, few BROWSER_HOST_MAX_SESSIONS, and its OWN
-    # address as BROWSER_HOST_URL, since a host builds its CDP/live URLs from it.
+    # The Chromium host when BROWSER_HOST_URL runs Obscura: every default user's run
+    # opens here and Obscura runs fall back here. It runs BROWSER_ENGINE=chromium with
+    # its OWN address as BROWSER_HOST_URL, since a host builds its CDP/live URLs from it.
     BROWSER_FALLBACK_HOST_URL: str | None = None
-    # Base port for the dedicated Obscura the crawl4ai engine drives, distinct
-    # from OBSCURA_PORT so the two never collide; the manager probes upward from
-    # here if taken. High range on purpose: 9222/9223 collide with local Chrome.
-    OBSCURA_CRAWL_PORT: int = 39222
 
     # Fernet key (32 url-safe base64 bytes) encrypting each user's saved browser
     # login (storage_state) at rest in Mongo. Infisical-provided in production;

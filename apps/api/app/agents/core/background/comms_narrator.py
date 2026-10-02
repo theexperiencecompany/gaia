@@ -108,7 +108,7 @@ async def record_executor_cancellation(
             AgentTag.EXECUTOR_CANCELLED,
             f"The background task {task_id or '(unknown id)'} ({task[:200]!r}) was "
             "cancelled by the user before it completed. It did NOT finish and will "
-            "not deliver results. Do not claim otherwise.",
+            "not deliver results — do not claim otherwise.",
         ),
         name=BACKGROUND_EXECUTOR_NAME,
     )
@@ -147,7 +147,7 @@ async def record_platform_delivery(conversation_id: str, text: str) -> None:
 async def record_exchange_in_thread(conversation_id: str, user_message: str, reply: str) -> None:
     """Append an exchange answered without running the agent to that conversation's checkpoint.
 
-    A reply that resolves a paused browser task never enters the graph, so the
+    A button that decides a paused browser task never enters the graph, so the
     thread that later voices the run's result still held the original request
     and reported the step the user had cancelled as unfinished.
     """

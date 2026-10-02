@@ -1,479 +1,290 @@
-"""The ARQ task behind a browser job: the terminal state it writes, the slot it holds, and who speaks the result."""
+"""The ARQ task behind a browser job: the slot it holds, and who tells the user the result.
+
+Real code over fakeredis: the task body, the job store and the feed. The run itself
+(execute_browser_job) and the narration (an LLM call) are stood in for.
+"""
 
 import asyncio
 from typing import Any
 from unittest.mock import MagicMock
 
+import fakeredis.aioredis
 import pytest
 
 from app.agents.prompts.comms_prompts import INTERACTIVE_DELIVERY_NOTE
 from app.constants.browser import (
-    BROWSER_JOB_HEARTBEAT_SECONDS,
-    BROWSER_JOB_JOINER_LEASE_SECONDS,
-    BROWSER_JOB_JOINER_REFRESH_SECONDS,
+    BROWSER_JOB_SLOT_TAKEN_SUMMARY,
     BROWSER_TASK_EVENT,
     BrowserSessionStatus,
+    ResultSpeaker,
 )
-from app.constants.comms import EMOJI_TAG, SILENCE_TAG
-from app.constants.general import NEW_MESSAGE_BREAKER
-from app.schemas.browser import BrowserResultSnapshot
-from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJobStatus
-from app.services.browser.job_events import JOB_TERMINAL_FRAME
-from app.services.browser.job_runner import agent_result_message
+from app.constants.comms import SILENCE_TAG
+from app.constants.log_tags import LogTag
+from app.schemas.browser import BrowserResultSnapshot, BrowserStepSnapshot
+from app.schemas.browser_job import BrowserJobRequest
+from app.services.browser.job_events import publish_job_event
+from app.services.browser.jobs import (
+    claim_conversation_slot,
+    claim_result_delivery,
+    get_conversation_slot,
+    get_job_state,
+    hold_result_for_run,
+    release_result_hold,
+    request_job_cancel,
+)
 from app.workers.tasks import browser_tasks as tasks_mod
-from shared.py.wide_events import log, log_context
+from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
-#: Captured before the task module's sleep is faked out, so a test can still
-#: hand the event loop back to a task it wants to see run.
-_real_sleep = asyncio.sleep
-
 PAYLOAD: dict[str, Any] = {
     "job_id": "job-1",
+    "tool_call_id": "call-1",
     "user_id": "u1",
     "conversation_id": "conv-9",
     "task": "book a table",
     "stream_id": "s1",
 }
-
 DONE = BrowserResultSnapshot(
     status=BrowserSessionStatus.COMPLETED, success=True, summary="Booked the table."
 )
+STEP = {BROWSER_TASK_EVENT: BrowserStepSnapshot(index=1, goal="open").model_dump(mode="json")}
 
 
-class Worker:
-    """Everything the task did to the world, captured for assertion."""
-
+class World:
     def __init__(self) -> None:
-        self.states: list[BrowserJobState] = []
-        self.frames: list[tuple[str, dict[str, Any]]] = []
-        self.heartbeats: list[tuple[str, str]] = []
-        self.released: list[tuple[str, str]] = []
-        self.narrated: list[tuple[str, str, str, object]] = []
-        self.preambles: list[str] = []
-        self.claims: list[tuple[str, str]] = []
-        self.loaded_users: list[str] = []
-        self.delivered: list[dict[str, Any]] = []
         self.ran: list[BrowserJobRequest] = []
-        self.reads: list[tuple[str, str, int]] = []
-        #: The job's card feed, as a test sets it up before the run.
-        self.feed: list[dict[str, Any]] = []
-        self.slept: float = 0.0
+        self.narrated: list[str] = []
+        self.delivered: list[dict[str, Any]] = []
+        self.narration = "Booked it for you."
+        #: The arguments each narration was asked with, after the run's own message.
+        self.narrate_args: list[tuple[str, str, object, str]] = []
+        self.users: dict[str, object] = {}
+        #: Whether the heartbeat that holds the slot was alive while the run ran.
+        self.heartbeat_alive: list[bool] = []
 
 
-def _install(
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    result: BrowserResultSnapshot | None = None,
-    lease: list[bool] | None = None,
-    narration: str = "Booked it for you.",
-    missing_user: bool = False,
-    slot_holder: str | None = None,
-) -> Worker:
-    """Wire every seam of the task to a recorder; the lease answers one entry per poll."""
-    w = Worker()
-    lease_answers = iter(lease or [])
+@pytest.fixture
+def world(fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch) -> World:
+    w = World()
+    w.users["u1"] = MagicMock(user_id="u1")
 
     async def _execute(request: BrowserJobRequest) -> BrowserResultSnapshot:
         w.ran.append(request)
-        return result or DONE
-
-    async def _put_state(state: BrowserJobState) -> None:
-        w.states.append(state)
-
-    async def _publish(job_id: str, payload: dict[str, Any]) -> None:
-        w.frames.append((job_id, payload))
-
-    async def _heartbeat(conversation_id: str, job_id: str) -> None:
-        w.heartbeats.append((conversation_id, job_id))
-
-    async def _release(conversation_id: str, job_id: str) -> None:
-        w.released.append((conversation_id, job_id))
-
-    async def _claim(conversation_id: str, job_id: str) -> str | None:
-        w.claims.append((conversation_id, job_id))
-        return slot_holder
-
-    async def _lease_held(job_id: str) -> bool:
-        # The lease is this job's; nobody ever joins on another id.
-        return next(lease_answers, False) if job_id == PAYLOAD["job_id"] else False
-
-    async def _load_user(user_id: str) -> object | None:
-        w.loaded_users.append(user_id)
-        return None if missing_user else MagicMock(user_id=user_id)
+        w.heartbeat_alive.append(
+            any(task.get_name() == "browser_job_heartbeat" for task in asyncio.all_tasks())
+        )
+        await publish_job_event(request.job_id, STEP)
+        return DONE
 
     async def _narrate(
         text: str, msg_type: str, conversation_id: str, user: object, *, preamble: str
     ) -> str:
-        w.narrated.append((text, msg_type, conversation_id, user))
-        w.preambles.append(preamble)
-        return narration
+        w.narrated.append(text)
+        w.narrate_args.append((msg_type, conversation_id, user, preamble))
+        return w.narration
 
     async def _deliver(**kwargs: Any) -> None:
         w.delivered.append(kwargs)
 
-    async def _read_events(job_id: str, cursor: str, block_ms: int) -> list[tuple[str, Any]]:
-        w.reads.append((job_id, cursor, block_ms))
-        return [(f"1-{i}", frame) for i, frame in enumerate(w.feed)]
-
-    async def _sleep(seconds: float) -> None:
-        if seconds == BROWSER_JOB_HEARTBEAT_SECONDS:
-            # The heartbeat parks here for the whole test and is cancelled with
-            # the run; only the delivery wait's sleeps are virtual.
-            await _real_sleep(BROWSER_JOB_HEARTBEAT_SECONDS)
-        w.slept += seconds
+    async def _user(user_id: str) -> object | None:
+        return w.users.get(user_id)
 
     monkeypatch.setattr(tasks_mod, "execute_browser_job", _execute)
-    monkeypatch.setattr(tasks_mod, "put_job_state", _put_state)
-    monkeypatch.setattr(tasks_mod, "publish_job_event", _publish)
-    monkeypatch.setattr(tasks_mod, "heartbeat_conversation_slot", _heartbeat)
-    monkeypatch.setattr(tasks_mod, "release_conversation_slot", _release)
-    monkeypatch.setattr(tasks_mod, "claim_conversation_slot", _claim)
-    monkeypatch.setattr(tasks_mod, "joiner_lease_held", _lease_held)
-    monkeypatch.setattr(tasks_mod, "load_user_context", _load_user)
     monkeypatch.setattr(tasks_mod, "narrate_executor_result", _narrate)
     monkeypatch.setattr(tasks_mod, "deliver_message_to_conversation", _deliver)
-    monkeypatch.setattr(tasks_mod, "read_job_events", _read_events)
-    monkeypatch.setattr(tasks_mod.asyncio, "sleep", _sleep)
+    monkeypatch.setattr(tasks_mod, "load_user_context", _user)
     return w
 
 
-async def _run_logged(payload: dict[str, Any] = PAYLOAD) -> dict[str, Any]:
-    """Run the job inside the worker_task boundary arq_task opens, and return its wide event."""
-    async with log_context("run_browser_job"):
-        await tasks_mod.run_browser_job({}, payload)
-        return dict(log.get())
+async def test_an_unjoined_result_is_told_at_once_with_the_runs_cards(world: World) -> None:
+    """Nobody holds the result, so the worker tells it now, not after a guessed grace, from the run's own message."""
+    async with captured_wide_event() as event:
+        status = await asyncio.wait_for(
+            tasks_mod.run_browser_job({}, PAYLOAD | {"conversation_source": "telegram"}), timeout=2
+        )
 
-
-# ---------------------------------------------------------------------------
-# what the job leaves behind
-# ---------------------------------------------------------------------------
-
-
-async def test_the_jobs_event_names_its_user_platform_conversation_and_source(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The one queryable record of a background browser run; without these it cannot be tied to anyone."""
-    _install(monkeypatch)
-    payload = {**PAYLOAD, "conversation_source": "telegram", "source_category": "chat"}
-
-    event = await _run_logged(payload)
-
+    assert status == BrowserSessionStatus.COMPLETED.value
+    (delivery,) = world.delivered
+    user = world.users["u1"]
+    assert (delivery["conversation_id"], delivery["user"]) == ("conv-9", user)
+    assert delivery["text"] == "Booked it for you."
+    assert delivery["origin"] == "browser task (job job-1)"
+    assert [entry["data"]["kind"] for entry in delivery["tool_data"]] == ["step"]
+    assert world.narrated[0].startswith("Booked the table.")
+    assert world.narrate_args == [("result", "conv-9", user, INTERACTIVE_DELIVERY_NOTE)]
+    assert await get_conversation_slot("conv-9") is None
+    assert world.heartbeat_alive == [True]
     assert event["user"] == {"id": "u1"}
     assert event["platform"] == "telegram"
-    assert {
-        key: event["browser"][key] for key in ("job_id", "conversation_id", "source_category")
-    } == {
+    assert event["browser"] == {
         "job_id": "job-1",
         "conversation_id": "conv-9",
-        "source_category": "chat",
+        "source_category": None,
+        "delivered_by": "worker",
     }
 
 
-async def test_the_run_retakes_its_conversations_slot_before_running(
-    monkeypatch: pytest.MonkeyPatch,
+async def test_the_running_job_beats_on_its_own_slot(
+    world: World, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The enqueuer's lease went unrefreshed through the queue wait and may have expired."""
-    w = _install(monkeypatch)
+    beat = asyncio.Event()
+    beats: list[tuple[str, str]] = []
+
+    async def _beat(conversation_id: str, job_id: str) -> bool:
+        beats.append((conversation_id, job_id))
+        beat.set()
+        return True
+
+    monkeypatch.setattr(tasks_mod, "heartbeat_conversation_slot", _beat)
+    monkeypatch.setattr(tasks_mod, "BROWSER_JOB_HEARTBEAT_SECONDS", 0)
+    await hold_result_for_run("job-1", "s1")
+    running = asyncio.create_task(tasks_mod.run_browser_job({}, PAYLOAD))
+
+    await asyncio.wait_for(beat.wait(), timeout=2)
+    await release_result_hold("job-1", "s1")
+    await asyncio.wait_for(running, timeout=2)
+
+    assert set(beats) == {("conv-9", "job-1")}
+
+
+async def test_the_worker_waits_for_the_run_that_started_it_and_stays_quiet_if_it_spoke(
+    world: World,
+) -> None:
+    await hold_result_for_run("job-1", "s1")
+    running = asyncio.create_task(tasks_mod.run_browser_job({}, PAYLOAD))
+    for _ in range(50):
+        await asyncio.sleep(0)
+    assert not running.done(), "the worker spoke over the run that may still join"
+
+    assert await claim_result_delivery("job-1", ResultSpeaker.JOINER) is ResultSpeaker.JOINER
+    await release_result_hold("job-1", "s1")
+    await asyncio.wait_for(running, timeout=2)
+
+    assert world.delivered == []
+
+
+async def test_who_told_the_result_is_on_the_jobs_event(world: World) -> None:
+    await claim_result_delivery("job-1", ResultSpeaker.JOINER)
+    async with captured_wide_event() as told_by_joiner:
+        await tasks_mod.run_browser_job({}, PAYLOAD)
+    await request_job_cancel("job-2")
+    async with captured_wide_event() as stopped:
+        await tasks_mod.run_browser_job({}, PAYLOAD | {"job_id": "job-2"})
+
+    assert told_by_joiner["browser"]["delivered_by"] == "joiner"
+    assert stopped["browser"]["delivered_by"] == "stop"
+
+
+async def test_a_stopped_job_is_not_narrated_a_second_time(world: World) -> None:
+    """The stop already told the user."""
+    await request_job_cancel("job-1")
 
     await tasks_mod.run_browser_job({}, PAYLOAD)
 
-    assert w.claims == [("conv-9", "job-1")]
+    assert world.delivered == []
 
 
-async def test_a_run_whose_slot_another_job_took_says_so_on_its_event(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _install(monkeypatch, slot_holder="job-other")
+async def test_a_job_whose_conversation_another_run_took_never_runs(world: World) -> None:
+    """One browser per conversation: a job that queued past its lease while another started ends on its own card."""
+    await claim_conversation_slot("conv-9", "job-other")
 
-    event = await _run_logged()
+    async with captured_wide_event() as event:
+        status = await tasks_mod.run_browser_job({}, PAYLOAD)
 
     [warning] = event["warnings"]
-    assert "without its conversation slot" in warning["msg"]
+    assert "slot was taken" in warning["msg"]
     assert warning["browser"] == {"job_id": "job-1", "slot_holder": "job-other"}
 
+    assert status == BrowserSessionStatus.FAILED.value
+    assert world.ran == []
+    state = await get_job_state("job-1")
+    assert state is not None
+    assert state.result is not None
+    assert state.result.summary == BROWSER_JOB_SLOT_TAKEN_SUMMARY
+    assert await get_conversation_slot("conv-9") == "job-other"
 
-async def test_a_run_that_still_holds_its_own_slot_warns_nothing(
-    monkeypatch: pytest.MonkeyPatch,
+
+@pytest.mark.parametrize(
+    ("narration", "why", "fields"),
+    [
+        ("", "the narration was empty", {"job_id": "job-1"}),
+        (
+            f"<{SILENCE_TAG}>nothing new</{SILENCE_TAG}>",
+            "the narration was a directive",
+            {"job_id": "job-1", "directive": "silence"},
+        ),
+    ],
+)
+async def test_a_narration_that_is_no_reply_is_not_delivered(
+    world: World, narration: str, why: str, fields: dict[str, str]
 ) -> None:
-    _install(monkeypatch, slot_holder="job-1")
+    world.narration = narration
 
-    event = await _run_logged()
+    async with captured_wide_event() as event:
+        await tasks_mod.run_browser_job({}, PAYLOAD)
 
-    assert "warnings" not in event
-
-
-async def test_a_long_run_keeps_refreshing_its_own_conversations_slot(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Without the heartbeat the slot lease lapses mid-run and a joiner reads the live job as dead."""
-    w = _install(monkeypatch)
-    sleeps: list[float] = []
-
-    async def _no_wait(seconds: float) -> None:
-        sleeps.append(seconds)
-        await _real_sleep(0)
-
-    async def _runs_until_heartbeat(request: BrowserJobRequest) -> BrowserResultSnapshot:
-        for _ in range(50):
-            if w.heartbeats:
-                break
-            await _real_sleep(0)
-        return DONE
-
-    monkeypatch.setattr(tasks_mod.asyncio, "sleep", _no_wait)
-    monkeypatch.setattr(tasks_mod, "execute_browser_job", _runs_until_heartbeat)
-
-    await tasks_mod.run_browser_job({}, PAYLOAD)
-
-    assert w.heartbeats[0] == ("conv-9", "job-1")
-    # The first wait is the heartbeat's, before its first refresh: one interval, not a spin.
-    assert sleeps[0] == BROWSER_JOB_HEARTBEAT_SECONDS
-
-
-async def test_the_finished_run_is_written_where_a_joiner_reads_it(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The join tool and a restarted API have only this state to answer "is it done, and what did it say?"."""
-    w = _install(monkeypatch)
-
-    await tasks_mod.run_browser_job({}, PAYLOAD)
-
-    assert w.states[-1] == BrowserJobState(
-        job_id="job-1",
-        status=BrowserJobStatus.DONE,
-        task="book a table",
-        agent_message=agent_result_message(DONE),
-        result=DONE,
-    )
-
-
-async def test_the_payload_crossing_the_queue_is_validated_into_the_run(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    w = _install(monkeypatch)
-
-    await tasks_mod.run_browser_job({}, PAYLOAD)
-
-    assert w.ran == [BrowserJobRequest.model_validate(PAYLOAD)]
-
-
-async def test_the_feed_is_closed_so_a_relay_stops_without_re_reading_the_state(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    w = _install(monkeypatch)
-
-    await tasks_mod.run_browser_job({}, PAYLOAD)
-
-    assert w.frames == [("job-1", JOB_TERMINAL_FRAME)]
-
-
-async def test_the_conversations_slot_is_released_when_the_run_ends(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    w = _install(monkeypatch)
-
-    await tasks_mod.run_browser_job({}, PAYLOAD)
-
-    assert w.released == [("conv-9", "job-1")]
-
-
-async def test_the_heartbeat_stops_with_the_run(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A heartbeat outliving its run would hold the conversation's slot against a job that is already finished."""
-    spawned: list[Any] = []
-    _install(monkeypatch)
-    real_spawn = tasks_mod.spawn_background_task
-
-    def _spawn(coro: Any, **kwargs: Any) -> Any:
-        task = real_spawn(coro, **kwargs)
-        spawned.append((task, kwargs.get("name")))
-        return task
-
-    monkeypatch.setattr(tasks_mod, "spawn_background_task", _spawn)
-
-    await tasks_mod.run_browser_job({}, PAYLOAD)
-    await _real_sleep(0)
-
-    assert [name for _, name in spawned] == ["browser_job_heartbeat"]
-    assert spawned[0][0].cancelled()
-
-
-# ---------------------------------------------------------------------------
-# exactly one party speaks the result
-# ---------------------------------------------------------------------------
-
-
-async def test_a_joiner_that_collects_the_result_keeps_the_worker_quiet(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The executor took the lease and dropped it as it collected; delivering here too would say the same thing twice."""
-    w = _install(monkeypatch, lease=[True, True, False])
-
-    await tasks_mod.run_browser_job({}, PAYLOAD)
-
-    assert w.delivered == []
-    assert w.narrated == []
-
-
-async def test_a_result_the_joiner_collected_is_recorded_as_delivered_by_it(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _install(monkeypatch, lease=[True, False])
-
-    event = await _run_logged()
-
-    assert event["browser"]["delivered_by"] == "joiner"
-
-
-async def test_an_unjoined_result_is_narrated_from_the_runs_own_message_for_its_user(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The comms voice rewrites exactly what the run said, as a result, in the job's conversation, for the job's user."""
-    w = _install(monkeypatch, lease=[])
-
-    event = await _run_logged()
-
-    [(text, msg_type, conversation_id, user)] = w.narrated
-    assert (text, msg_type, conversation_id) == (agent_result_message(DONE), "result", "conv-9")
-    assert user.user_id == "u1"
-    assert w.loaded_users == ["u1"]
-    assert event["browser"]["delivered_by"] == "worker"
-
-
-async def test_an_unjoined_result_lands_in_the_jobs_conversation_labelled_with_the_job(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    w = _install(monkeypatch, lease=[])
-
-    await tasks_mod.run_browser_job({}, PAYLOAD)
-
-    [delivery] = w.delivered
-    assert delivery["conversation_id"] == "conv-9"
-    assert delivery["user"].user_id == "u1"
-    assert "job-1" in delivery["origin"]
-
-
-async def test_the_wait_for_a_joiner_is_bounded_by_its_lease(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """An unjoined result must not sit unspoken: the wait ends one refresh after the lease could last."""
-    w = _install(monkeypatch, lease=[])
-
-    await tasks_mod.run_browser_job({}, PAYLOAD)
-
-    assert w.slept == BROWSER_JOB_JOINER_LEASE_SECONDS + BROWSER_JOB_JOINER_REFRESH_SECONDS
-
-
-async def test_a_joiner_that_never_collects_does_not_cost_the_user_the_result(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A stuck executor holds the lease forever; dropping the result then would leave the user with a run nobody ever reported."""
-    w = _install(monkeypatch, lease=[True] * 500)
-
-    await tasks_mod.run_browser_job({}, PAYLOAD)
-
-    assert len(w.delivered) == 1
-
-
-async def test_nothing_is_delivered_when_the_narration_comes_back_empty(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """narrate_executor_result degrades to "" when comms is unavailable; an empty bot message is worse than none."""
-    w = _install(monkeypatch, lease=[], narration="")
-
-    event = await _run_logged()
-
-    assert w.delivered == []
+    assert world.delivered == []
     [warning] = event["warnings"]
-    assert "narration was empty" in warning["msg"]
-    assert warning["browser"] == {"job_id": "job-1"}
+    assert why in warning["msg"]
+    assert warning["browser"] == fields
 
 
-async def test_an_unjoined_result_is_narrated_as_a_reply_never_a_silence(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The run's result is the first result of something the user asked for, which the silence note itself rules out."""
-    w = _install(monkeypatch, lease=[])
+async def test_a_job_whose_user_is_gone_is_not_delivered(world: World) -> None:
+    world.users.clear()
 
-    await tasks_mod.run_browser_job({}, PAYLOAD)
+    async with captured_wide_event() as event:
+        await tasks_mod.run_browser_job({}, PAYLOAD)
 
-    assert w.preambles == [INTERACTIVE_DELIVERY_NOTE]
-
-
-async def test_a_directive_written_beside_the_reply_never_reaches_the_user(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    w = _install(
-        monkeypatch,
-        lease=[],
-        narration=f"Booked it for you.{NEW_MESSAGE_BREAKER}<{EMOJI_TAG}>👍</{EMOJI_TAG}>",
-    )
-
-    await tasks_mod.run_browser_job({}, PAYLOAD)
-
-    [delivery] = w.delivered
-    assert delivery["text"] == "Booked it for you."
-
-
-async def test_a_narration_that_is_only_a_directive_is_not_delivered(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A raw tag sent as the run's answer would reach the chat app as the literal text."""
-    w = _install(monkeypatch, lease=[], narration=f"<{SILENCE_TAG}>nothing new</{SILENCE_TAG}>")
-
-    event = await _run_logged()
-
-    assert w.delivered == []
-    [warning] = event["warnings"]
-    assert "narration was a directive" in warning["msg"]
-    assert warning["browser"] == {"job_id": "job-1", "directive": "silence"}
-
-
-async def test_a_job_whose_user_is_gone_is_not_delivered_anywhere(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    w = _install(monkeypatch, lease=[], missing_user=True)
-
-    event = await _run_logged()
-
-    assert w.delivered == []
+    assert world.delivered == []
+    assert world.narrated == []
     [warning] = event["warnings"]
     assert "user not found" in warning["msg"]
     assert warning["browser"] == {"job_id": "job-1"}
 
 
-# ---------------------------------------------------------------------------
-# the cards a follow-up carries
-# ---------------------------------------------------------------------------
-
-CARD_FRAME: dict[str, Any] = {
-    "tool_data": {
-        "tool_name": BROWSER_TASK_EVENT,
-        "data": {"kind": "result", "summary": "Booked the table."},
-        "timestamp": "2026-09-19T00:00:00+00:00",
-    }
-}
-
-
-async def test_the_whole_feed_is_drained_without_blocking_on_it(
+async def test_one_failed_heartbeat_does_not_end_the_runs_hold_on_its_slot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """From 0-0 so the first card is included, and without a BLOCK: the run is over, so waiting for a frame that will never come would hang the job."""
-    w = _install(monkeypatch, lease=[])
-    w.feed = [CARD_FRAME]
+    """A heartbeat that died on one Redis error would let the slot lapse under a live run."""
+    beats: list[str] = []
+    third_beat = asyncio.Event()
 
-    await tasks_mod.run_browser_job({}, PAYLOAD)
+    async def _beat(conversation_id: str, job_id: str) -> bool:
+        beats.append(f"{conversation_id}/{job_id}")
+        if len(beats) == 1:
+            raise ConnectionError("redis blinked")
+        if len(beats) == 4:
+            third_beat.set()
+            await asyncio.Event().wait()
+        # The second and third beats find another run holds the slot now.
+        return False
 
-    assert w.reads == [("job-1", "0-0", 0)]
+    monkeypatch.setattr(tasks_mod, "heartbeat_conversation_slot", _beat)
+    monkeypatch.setattr(tasks_mod, "BROWSER_JOB_HEARTBEAT_SECONDS", 0)
+    async with captured_wide_event() as event:
+        heartbeat = asyncio.create_task(
+            tasks_mod._heartbeat(BrowserJobRequest.model_validate(PAYLOAD))
+        )
+        await asyncio.wait_for(third_beat.wait(), timeout=2)
+        heartbeat.cancel()
 
-
-async def test_a_run_with_no_cards_still_delivers_its_answer(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    w = _install(monkeypatch, lease=[])
-
-    await tasks_mod.run_browser_job({}, PAYLOAD)
-
-    assert w.delivered[0]["tool_data"] == []
-    assert w.delivered[0]["text"] == "Booked it for you."
+    assert beats == ["conv-9/job-1"] * 4
+    [error] = event["errors"]
+    assert "heartbeat failed" in error["msg"]
+    assert (error["error_type"], error["error"], error["browser"]) == (
+        "ConnectionError",
+        "redis blinked",
+        {"job_id": "job-1"},
+    )
+    warnings = [(warning["msg"], warning["browser"]) for warning in event["warnings"]]
+    assert (
+        warnings
+        == [
+            (
+                f"{LogTag.BROWSER} Browser job lost its conversation slot while running",
+                {"job_id": "job-1"},
+            )
+        ]
+        * 2
+    )

@@ -1,251 +1,182 @@
-"""Cgroup/psutil memory probe: _read_int, _cgroup_used_and_limit_bytes, memory_usage_mb."""
+"""The memory admission gates on: a container's working set, or the host's own tree off one.
+
+The cgroup files are laid out in a temp directory exactly as the kernel writes
+them, so the parsing is real.
+"""
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from app.browser_host import memory
+from app.config.browser_host_settings import browser_host_settings
+
+pytestmark = pytest.mark.unit
 
 _MB = 1024 * 1024
 
 
-def _patch_cgroup_paths(
-    monkeypatch: pytest.MonkeyPatch,
+def _cgroup(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     *,
-    v2_current: str | None = None,
-    v2_max: str | None = None,
-    v1_usage: str | None = None,
-    v1_limit: str | None = None,
+    v2: dict[str, str] | None = None,
+    v1: dict[str, str] | None = None,
 ) -> None:
-    def _make(name: str, content: str | None) -> Path:
-        path = tmp_path / name
-        if content is not None:
-            path.write_text(content)
-        return path
+    def _layout(
+        prefix: str, files: dict[str, str] | None, names: tuple[str, str, str], key: str
+    ) -> tuple[Path, Path, Path, str]:
+        base = tmp_path / prefix
+        base.mkdir(parents=True, exist_ok=True)
+        for name, text in (files or {}).items():
+            (base / name).write_text(text)
+        return (base / names[0], base / names[1], base / names[2], key)
 
-    monkeypatch.setattr(memory, "_V2_CURRENT", _make("v2_current", v2_current))
-    monkeypatch.setattr(memory, "_V2_MAX", _make("v2_max", v2_max))
-    monkeypatch.setattr(memory, "_V1_USAGE", _make("v1_usage", v1_usage))
-    monkeypatch.setattr(memory, "_V1_LIMIT", _make("v1_limit", v1_limit))
-
-
-@pytest.mark.unit
-def test_read_int_returns_none_for_missing_file(tmp_path):
-    assert memory._read_int(tmp_path / "does-not-exist") is None
-
-
-@pytest.mark.unit
-def test_read_int_returns_none_for_non_numeric_content(tmp_path):
-    path = tmp_path / "junk"
-    path.write_text("not-a-number")
-
-    assert memory._read_int(path) is None
-
-
-@pytest.mark.unit
-def test_read_int_strips_whitespace_and_parses(tmp_path):
-    path = tmp_path / "value"
-    path.write_text("  123\n")
-
-    assert memory._read_int(path) == 123
-
-
-@pytest.mark.unit
-def test_cgroup_v2_numeric_limit(monkeypatch, tmp_path):
-    _patch_cgroup_paths(monkeypatch, tmp_path, v2_current="268435456", v2_max="1073741824")
-
-    assert memory._cgroup_used_and_limit_bytes() == (268435456, 1073741824)
-
-
-@pytest.mark.unit
-def test_cgroup_v2_max_literal_is_unlimited(monkeypatch, tmp_path):
-    _patch_cgroup_paths(monkeypatch, tmp_path, v2_current="600000000", v2_max="max")
-
-    assert memory._cgroup_used_and_limit_bytes() == (600000000, None)
-
-
-@pytest.mark.unit
-def test_cgroup_v2_non_numeric_non_max_content_is_treated_unlimited(monkeypatch, tmp_path):
-    _patch_cgroup_paths(monkeypatch, tmp_path, v2_current="150000000", v2_max="bogus")
-
-    assert memory._cgroup_used_and_limit_bytes() == (150000000, None)
-
-
-@pytest.mark.unit
-def test_cgroup_v2_missing_max_file_defaults_to_unlimited(monkeypatch, tmp_path):
-    _patch_cgroup_paths(monkeypatch, tmp_path, v2_current="700000000")
-
-    assert memory._cgroup_used_and_limit_bytes() == (700000000, None)
-
-
-@pytest.mark.unit
-def test_cgroup_v2_limit_at_unlimited_sentinel_is_treated_unlimited(monkeypatch, tmp_path):
-    _patch_cgroup_paths(
-        monkeypatch,
-        tmp_path,
-        v2_current="800000000",
-        v2_max=str(memory._UNLIMITED_BYTES),
-    )
-
-    assert memory._cgroup_used_and_limit_bytes() == (800000000, None)
-
-
-@pytest.mark.unit
-def test_cgroup_v2_limit_just_under_sentinel_is_kept(monkeypatch, tmp_path):
-    _patch_cgroup_paths(
-        monkeypatch,
-        tmp_path,
-        v2_current="900000000",
-        v2_max=str(memory._UNLIMITED_BYTES - 1),
-    )
-
-    assert memory._cgroup_used_and_limit_bytes() == (900000000, memory._UNLIMITED_BYTES - 1)
-
-
-@pytest.mark.unit
-def test_cgroup_v1_fallback_with_limit(monkeypatch, tmp_path):
-    _patch_cgroup_paths(monkeypatch, tmp_path, v1_usage="500000000", v1_limit="2500000000")
-
-    assert memory._cgroup_used_and_limit_bytes() == (500000000, 2500000000)
-
-
-@pytest.mark.unit
-def test_cgroup_v1_fallback_without_limit_file(monkeypatch, tmp_path):
-    _patch_cgroup_paths(monkeypatch, tmp_path, v1_usage="400000000")
-
-    assert memory._cgroup_used_and_limit_bytes() == (400000000, None)
-
-
-@pytest.mark.unit
-def test_cgroup_v1_limit_at_unlimited_sentinel_is_treated_unlimited(monkeypatch, tmp_path):
-    _patch_cgroup_paths(
-        monkeypatch,
-        tmp_path,
-        v1_usage="300000000",
-        v1_limit=str(memory._UNLIMITED_BYTES),
-    )
-
-    assert memory._cgroup_used_and_limit_bytes() == (300000000, None)
-
-
-@pytest.mark.unit
-def test_cgroup_absent_entirely_returns_none(monkeypatch, tmp_path):
-    _patch_cgroup_paths(monkeypatch, tmp_path)
-
-    assert memory._cgroup_used_and_limit_bytes() is None
-
-
-@pytest.mark.unit
-def test_memory_usage_mb_uses_cgroup_limit_without_override(monkeypatch, tmp_path):
-    _patch_cgroup_paths(
-        monkeypatch,
-        tmp_path,
-        v2_current=str(256 * _MB),
-        v2_max=str(1024 * _MB),
-    )
-    monkeypatch.setattr(memory.browser_host_settings, "BROWSER_HOST_MEMORY_LIMIT_MB", None)
-
-    used, limit = memory.memory_usage_mb()
-
-    assert used == 256.0
-    assert limit == 1024.0
-
-
-@pytest.mark.unit
-def test_memory_usage_mb_override_caps_cgroup_limit(monkeypatch, tmp_path):
-    _patch_cgroup_paths(
-        monkeypatch,
-        tmp_path,
-        v2_current=str(256 * _MB),
-        v2_max=str(1024 * _MB),
-    )
-    monkeypatch.setattr(memory.browser_host_settings, "BROWSER_HOST_MEMORY_LIMIT_MB", 300)
-
-    used, limit = memory.memory_usage_mb()
-
-    assert used == 256.0
-    assert limit == 300.0
-
-
-@pytest.mark.unit
-def test_memory_usage_mb_override_above_cgroup_limit_keeps_cgroup_limit(monkeypatch, tmp_path):
-    _patch_cgroup_paths(
-        monkeypatch,
-        tmp_path,
-        v2_current=str(256 * _MB),
-        v2_max=str(1024 * _MB),
-    )
-    monkeypatch.setattr(memory.browser_host_settings, "BROWSER_HOST_MEMORY_LIMIT_MB", 2000)
-
-    used, limit = memory.memory_usage_mb()
-
-    assert used == 256.0
-    assert limit == 1024.0
-
-
-@pytest.mark.unit
-def test_memory_usage_mb_no_cgroup_limit_uses_psutil_total_without_override(monkeypatch, tmp_path):
-    _patch_cgroup_paths(monkeypatch, tmp_path, v2_current=str(123 * _MB), v2_max="max")
-    monkeypatch.setattr(memory.browser_host_settings, "BROWSER_HOST_MEMORY_LIMIT_MB", None)
     monkeypatch.setattr(
-        memory.psutil,
-        "virtual_memory",
-        lambda: SimpleNamespace(total=4096 * _MB, available=1024 * _MB),
+        memory,
+        "_V2",
+        _layout("v2", v2, ("memory.current", "memory.max", "memory.stat"), "inactive_file"),
     )
-
-    used, limit = memory.memory_usage_mb()
-
-    assert used == 123.0
-    assert limit == 4096.0
-
-
-@pytest.mark.unit
-def test_memory_usage_mb_no_cgroup_limit_override_supplies_limit(monkeypatch, tmp_path):
-    _patch_cgroup_paths(monkeypatch, tmp_path, v2_current=str(123 * _MB), v2_max="max")
-    monkeypatch.setattr(memory.browser_host_settings, "BROWSER_HOST_MEMORY_LIMIT_MB", 500)
     monkeypatch.setattr(
-        memory.psutil,
-        "virtual_memory",
-        lambda: SimpleNamespace(total=4096 * _MB, available=1024 * _MB),
+        memory,
+        "_V1",
+        _layout(
+            "v1",
+            v1,
+            ("memory.usage_in_bytes", "memory.limit_in_bytes", "memory.stat"),
+            "total_inactive_file",
+        ),
+    )
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_MEMORY_LIMIT_MB", None)
+
+
+def test_a_container_is_charged_its_working_set_not_its_page_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _cgroup(
+        tmp_path,
+        monkeypatch,
+        v2={
+            "memory.current": str(900 * _MB),
+            "memory.max": str(2048 * _MB),
+            "memory.stat": f"anon {500 * _MB}\ninactive_file {300 * _MB}\nactive_file 7\n",
+        },
     )
 
-    used, limit = memory.memory_usage_mb()
-
-    assert used == 123.0
-    assert limit == 500.0
+    assert memory.memory_usage_mb() == (600.0, 2048.0)
 
 
-@pytest.mark.unit
-def test_memory_usage_mb_off_cgroup_uses_psutil_used_and_total(monkeypatch, tmp_path):
-    _patch_cgroup_paths(monkeypatch, tmp_path)
-    monkeypatch.setattr(memory.browser_host_settings, "BROWSER_HOST_MEMORY_LIMIT_MB", None)
+def test_a_cgroup_v1_container_reads_its_own_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _cgroup(
+        tmp_path,
+        monkeypatch,
+        v1={
+            "memory.usage_in_bytes": str(400 * _MB),
+            "memory.limit_in_bytes": str(1024 * _MB),
+            "memory.stat": f"total_inactive_file {100 * _MB}\n",
+        },
+    )
+
+    assert memory.memory_usage_mb() == (300.0, 1024.0)
+
+
+def test_a_configured_limit_caps_the_container_but_never_raises_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _cgroup(
+        tmp_path,
+        monkeypatch,
+        v2={"memory.current": str(100 * _MB), "memory.max": str(1024 * _MB)},
+    )
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_MEMORY_LIMIT_MB", 512)
+    assert memory.memory_usage_mb() == (100.0, 512.0)
+
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_MEMORY_LIMIT_MB", 4096)
+    assert memory.memory_usage_mb() == (100.0, 1024.0)
+
+
+def test_a_working_set_never_reads_below_zero(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _cgroup(
+        tmp_path,
+        monkeypatch,
+        v2={
+            "memory.current": str(10 * _MB),
+            "memory.max": str(100 * _MB),
+            "memory.stat": f"inactive_file {20 * _MB}\n",
+        },
+    )
+
+    assert memory.memory_usage_mb()[0] == 0.0
+
+
+def _off_container(monkeypatch: pytest.MonkeyPatch, *, own: int, available: int) -> list[int]:
+    asked: list[int] = []
+
+    def _tree(pid: int) -> float:
+        asked.append(pid)
+        return own / _MB
+
+    monkeypatch.setattr(memory, "process_tree_rss_mb", _tree)
     monkeypatch.setattr(
-        memory.psutil,
-        "virtual_memory",
-        lambda: SimpleNamespace(total=8192 * _MB, available=2048 * _MB),
+        memory.psutil, "virtual_memory", lambda: SimpleNamespace(available=available)
     )
-
-    used, limit = memory.memory_usage_mb()
-
-    assert used == 6144.0
-    assert limit == 8192.0
+    return asked
 
 
-@pytest.mark.unit
-def test_memory_usage_mb_off_cgroup_with_override_limit(monkeypatch, tmp_path):
-    _patch_cgroup_paths(monkeypatch, tmp_path)
-    monkeypatch.setattr(memory.browser_host_settings, "BROWSER_HOST_MEMORY_LIMIT_MB", 700)
-    monkeypatch.setattr(
-        memory.psutil,
-        "virtual_memory",
-        lambda: SimpleNamespace(total=8192 * _MB, available=2048 * _MB),
-    )
+@pytest.mark.parametrize(
+    "v2",
+    [
+        None,
+        {"memory.current": str(100 * _MB), "memory.max": "max"},
+        {"memory.current": str(100 * _MB), "memory.max": str(1 << 62)},
+    ],
+)
+def test_off_a_limited_container_the_host_is_charged_its_own_tree_against_what_is_free(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, v2: dict[str, str] | None
+) -> None:
+    _cgroup(tmp_path, monkeypatch, v2=v2)
+    asked = _off_container(monkeypatch, own=300 * _MB, available=1000 * _MB)
 
-    used, limit = memory.memory_usage_mb()
+    assert memory.memory_usage_mb() == (300.0, 1300.0)
+    assert asked == [os.getpid()]
 
-    assert used == 6144.0
-    assert limit == 700.0
+
+def test_a_host_that_cannot_read_its_own_memory_says_so(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _cgroup(tmp_path, monkeypatch)
+    monkeypatch.setattr(memory, "process_tree_rss_mb", lambda pid: None)
+
+    with pytest.raises(RuntimeError) as unread:
+        memory.memory_usage_mb()
+    assert unread.value.args == ("the browser host cannot read its own memory",)
+
+
+def test_off_a_container_a_configured_limit_is_the_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _cgroup(tmp_path, monkeypatch)
+    _off_container(monkeypatch, own=300 * _MB, available=1000 * _MB)
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_MEMORY_LIMIT_MB", 800)
+
+    assert memory.memory_usage_mb() == (300.0, 800.0)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["", "inactive_file\n", "inactive_file lots\n", "other 5\n", "inactive_file 5 extra\n"],
+)
+def test_an_unreadable_stat_counts_no_cache(tmp_path: Path, text: str) -> None:
+    stat = tmp_path / "memory.stat"
+    stat.write_text(text)
+
+    assert memory._stat_value(stat, "inactive_file") == 0
+    assert memory._stat_value(tmp_path / "missing", "inactive_file") == 0

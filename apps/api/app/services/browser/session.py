@@ -18,7 +18,8 @@ from playwright.sync_api import StorageState
 
 from app.constants.browser import (
     BROWSER_ENGINE_PROBE_TIMEOUT_SECONDS,
-    BROWSER_HANDOFF_KEEPALIVE_SECONDS,
+    BROWSER_SESSION_LEASE_RENEW_SECONDS,
+    BrowserEngine,
     EngineFailure,
 )
 from app.constants.log_tags import LogTag
@@ -33,6 +34,7 @@ from app.services.browser.storage_persistence import (
     save_storage_state,
     storage_state_for_host,
 )
+from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
 
@@ -43,15 +45,18 @@ class BrowserHostSession:
     session_id: str
     cdp_url: str
     live_view_url: str
-    context_id: str
     #: The browser host this context lives on: the primary engine's, or the
     #: fallback's after a switch.
     host_url: str
+    #: The engine the host runs this context on, as the host reported it.
+    engine: BrowserEngine
     #: The site the session opened on, where a sign-in on an unknown page is saved.
     start_domain: str | None = None
     #: The sites its returned state is saved under as a login on release: one it
     #: was seeded with a saved login for, or one the user said a sign-in finished on.
     login_domains: set[str] = field(default_factory=set)
+    #: Set once the host no longer holds the session: nothing can be done in it after.
+    gone: asyncio.Event = field(default_factory=asyncio.Event, repr=False, compare=False)
 
     def mark_authenticated(self, url: str | None) -> None:
         """Record that the user said a sign-in finished here, on url's site, so the returned state is saved under it on release.
@@ -78,8 +83,8 @@ class LiveSessionState:
     """A live session's cookies and localStorage, and the session they were read from.
 
     What a run takes with it to another engine, so it opens there as the same
-    signed-in browser. The source keeps its right to save its logins until the
-    session opened with this state has saved them itself.
+    signed-in browser. The session opened with it takes over the source's
+    logins, so the source, released after the handover, never saves one.
     """
 
     storage_state: StorageState
@@ -93,22 +98,29 @@ async def hand_over_state(session: BrowserHostSession) -> LiveSessionState:
 
 
 async def keep_session_alive(session: BrowserHostSession) -> None:
-    """Periodically reset the host's idle clock while a handoff is pending.
+    """Renew the host's lease on session for as long as this runs, or until the host has lost it.
 
-    A paused session has no CDP or live-view traffic and the idle TTL is
-    shorter than the handoff timeout, so without this the reaper disposes the
-    browser. Best-effort: a failed touch is only logged. Run under
-    spawn_background_task and cancel when the handoff resolves.
+    The host disposes a session whose lease runs out, which is how a dead
+    worker's browser is reclaimed; a failed renewal is logged and the next one,
+    well inside the lease, tries again. A session the host no longer holds is
+    marked gone. Run under spawn_background_task, cancel to let go.
     """
     while True:
-        await asyncio.sleep(BROWSER_HANDOFF_KEEPALIVE_SECONDS)
+        await asyncio.sleep(BROWSER_SESSION_LEASE_RENEW_SECONDS)
         try:
-            await host_client.touch_session(session.session_id, session.host_url)
+            await host_client.renew_session_lease(session.session_id, session.host_url)
+        except BrowserSessionGone:
+            log.warning(
+                f"{LogTag.BROWSER} Browser session gone from its host",
+                browser={"session_id": session.session_id, "operation": "lease_renewal"},
+            )
+            session.gone.set()
+            return
         except BrowserUnavailableError as exc:
             log.warning(
-                f"{LogTag.BROWSER} Browser handoff keepalive failed",
+                f"{LogTag.BROWSER} Browser session lease renewal failed",
                 error_type=type(exc).__name__,
-                browser={"session_id": session.session_id, "operation": "handoff_keepalive"},
+                browser={"session_id": session.session_id, "operation": "lease_renewal"},
             )
 
 
@@ -153,20 +165,26 @@ async def browser_session(
         # The sites the source opened on or held a login for: a logout there can leave no cookie behind to show it.
         held = {site for site in (source.start_domain, *source.login_domains) if site}
         storage_state = overlay_storage_state(saved_login, carried.storage_state, held)
-        login_domains |= source.login_domains
 
     host = await host_client.create_session(storage_state, host_url)
+    if carried is not None:
+        # This session holds the source's logins from here on: a sign-in the run is
+        # asked to repeat is forgotten here, and the source saves none on release.
+        login_domains |= carried.source.login_domains
+        carried.source.login_domains.clear()
     session = BrowserHostSession(
         session_id=host.session_id,
         cdp_url=host.cdp_ws,
         live_view_url=live_view_url(host.session_id),
-        context_id=host.context_id,
         host_url=host_url,
+        engine=host.engine,
         start_domain=domain,
         login_domains=login_domains,
     )
     log.set(browser={"session_id": session.session_id, "operation": "create"})
     log.info(f"{LogTag.BROWSER} Browser session created")
+    # The job holds the session's lease for its whole life, paused or not.
+    lease = spawn_background_task(keep_session_alive(session))
 
     try:
         registered = await register_session(session.session_id, user_id, live_ws=host.live_ws)
@@ -179,6 +197,7 @@ async def browser_session(
             )
         yield session
     finally:
+        lease.cancel()
         try:
             returned_state = await host_client.delete_session(session.session_id, host_url)
             # Saving every run turned the login store into an invisible preference
@@ -187,9 +206,6 @@ async def browser_session(
                 await save_storage_state(
                     user_id, login_domain, storage_state_for_host(returned_state, login_domain)
                 )
-                if carried is not None:
-                    # Saved newer than the source holds; its later release must not write over it.
-                    carried.source.login_domains.discard(login_domain)
             log.info(f"{LogTag.BROWSER} Browser session released")
         except Exception as exc:
             log.warning(

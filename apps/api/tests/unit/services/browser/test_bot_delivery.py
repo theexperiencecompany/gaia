@@ -213,7 +213,7 @@ class TestBotProgressDeliveryStep:
                 ConversationSource.TELEGRAM,
                 "user-1",
                 "https://cdn.example.com/shot.png",
-                filename="browser-step-1.png",
+                filename="browser-step-1.jpg",
                 caption="Step 1 · Clicking",
             )
             mock_text.assert_not_awaited()
@@ -236,23 +236,6 @@ class TestBotProgressDeliveryStep:
             mock_text.assert_awaited_once()
             text_msg = mock_text.call_args[0][2][0]
             assert text_msg == "Step 1 · Clicking"
-
-    async def test_inline_data_url_falls_back_to_text(self, delivery):
-        snap = BrowserStepSnapshot(
-            index=1, goal="Open", url="https://example.com", screenshot="data:image/png;base64,abc"
-        )
-        with (
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_photo", new=AsyncMock()
-            ) as mp,
-            patch(
-                "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
-            ) as mm,
-        ):
-            await delivery.step(snap)
-            mp.assert_not_awaited()
-            mm.assert_awaited_once()
-            assert mm.call_args[0][2][0] == "Step 1 · Open"
 
     async def test_long_goal_photo_caption_is_whole(self, delivery):
         goal = 'Typing "hi sent using gaia browser use from telegram" into the post composer box on the x.com homepage timeline view area near the very top of the main feed column on the left hand side'
@@ -382,7 +365,7 @@ class TestBotProgressDeliveryHandoff:
             ) as mock_pub,
         ):
             await delivery.handoff(snap)
-            mock_link.assert_awaited_once_with("sess-1", "user-1")
+            mock_link.assert_awaited_once_with("sess-1", "user-1", "h1")
             msg = mock_pub.call_args[0][2][0]
             assert msg == (
                 "Payment needed"
@@ -428,6 +411,7 @@ class TestBotProgressDeliveryHandoff:
             session_id="sess-1",
             status=HandoffStatus.PENDING,
             category=SensitiveCategory.CREDENTIALS,
+            saves_login=True,
         )
         with (
             patch(
@@ -451,6 +435,7 @@ class TestBotProgressDeliveryHandoff:
             session_id="sess-1",
             status=HandoffStatus.PENDING,
             category=SensitiveCategory.CREDENTIALS,
+            saves_login=True,
         )
         with (
             patch(
@@ -471,8 +456,8 @@ class TestBotProgressDeliveryHandoff:
                 f"{BROWSER_HANDOFF_REPLY_PROMPT}"
             )
 
-    async def test_non_credentials_handoff_omits_the_saved_note(self, delivery):
-        """A payment handoff must NOT promise to store anything — nothing is saved for a payment, so the note would be a false reassurance."""
+    async def test_a_handoff_that_saves_no_login_promises_none(self, delivery):
+        """Nothing is stored for a payment, or for any sign-in while login persistence is off, so the note would be a false reassurance."""
         from app.constants.browser import BROWSER_CREDENTIALS_SAVED_NOTE, SensitiveCategory
 
         snap = BrowserHandoffSnapshot(
@@ -619,32 +604,6 @@ async def test_the_first_step_the_user_sees_is_step_one(delivery, monkeypatch) -
     assert [line.split(" · ")[0] for line in sent] == ["Step 1", "Step 2", "Step 3"]
 
 
-async def test_a_run_of_identical_steps_reaches_the_user_once(delivery, monkeypatch) -> None:
-    """Reading a long list sent 24 photos in a row captioned "Scrolling", one a second."""
-    sent: list[str] = []
-
-    async def _message(platform, user_id, blocks) -> bool:
-        sent.extend(blocks)
-        return True
-
-    monkeypatch.setattr(bot_delivery_mod, "publish_outbound_message", _message)
-    monkeypatch.setattr(bot_delivery_mod, "publish_outbound_photo", AsyncMock(return_value=False))
-    url = "https://example.com/list"
-
-    await delivery.step(BrowserStepSnapshot(index=1, goal="Opening the list", url=url))
-    for index in range(2, 6):
-        await delivery.step(BrowserStepSnapshot(index=index, goal="Scrolling", url=url))
-    await delivery.step(BrowserStepSnapshot(index=6, goal="Reading the last row", url=url))
-    await delivery.step(BrowserStepSnapshot(index=7, goal="Scrolling", url=url))
-
-    assert sent == [
-        "Step 1 · Opening the list",
-        "Step 2 · Scrolling",
-        "Step 3 · Reading the last row",
-        "Step 4 · Scrolling",
-    ]
-
-
 async def test_a_blank_tab_with_no_goal_is_named_by_its_action(delivery, monkeypatch) -> None:
     sent: list[str] = []
 
@@ -711,3 +670,47 @@ async def test_a_delivered_message_raises_no_warning(delivery, monkeypatch) -> N
         await delivery.note("Step 1 · Searching")
 
     assert "warnings" not in event
+
+
+class TestRepeatedFrames:
+    """A list scrolled past its end shows the same page again and again; the user is sent it once."""
+
+    @staticmethod
+    def _step(
+        index: int, digest: str, url: str = "https://example.com/list"
+    ) -> BrowserStepSnapshot:
+        return BrowserStepSnapshot(
+            index=index,
+            goal="Scrolling",
+            url=url,
+            screenshot=f"https://cdn/{index}.jpg",
+            frame_digest=digest,
+        )
+
+    async def test_only_a_frame_identical_to_the_last_one_sent_is_skipped(self, delivery):
+        handoff = BrowserHandoffSnapshot(
+            handoff_id="h1", reason="Sign in", session_id=None, status=HandoffStatus.PENDING
+        )
+        photos = AsyncMock(return_value=True)
+        with (
+            patch("app.services.browser.bot_delivery.publish_outbound_photo", new=photos),
+            patch("app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()),
+        ):
+            await delivery.step(self._step(1, "a"))
+            await delivery.step(self._step(2, "a"))
+            await delivery.step(self._step(3, "b"))
+            await delivery.step(self._step(4, "a"))
+            # The same picture at another address is another page.
+            await delivery.step(self._step(5, "a", url="https://example.com/list?page=2"))
+            await delivery.handoff(handoff)
+            # The user may have changed the page in the live view: shown again.
+            await delivery.step(self._step(6, "a", url="https://example.com/list?page=2"))
+
+        sent = [(call.args[2], call.kwargs["caption"]) for call in photos.await_args_list]
+        assert sent == [
+            ("https://cdn/1.jpg", "Step 1 · Scrolling"),
+            ("https://cdn/3.jpg", "Step 2 · Scrolling"),
+            ("https://cdn/4.jpg", "Step 3 · Scrolling"),
+            ("https://cdn/5.jpg", "Step 4 · Scrolling"),
+            ("https://cdn/6.jpg", "Step 5 · Scrolling"),
+        ]

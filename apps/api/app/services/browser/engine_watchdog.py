@@ -46,7 +46,9 @@ async def run_watched(
         await asyncio.wait({run, watch}, return_when=asyncio.FIRST_COMPLETED)
         if run.done() and not run.cancelled():
             return run.result()
-        return watch.result()
+        # The run ended because the watchdog cut it, which may still be abandoning
+        # the session: its judgement is the outcome, once it has returned it.
+        return await watch
     finally:
         watch.cancel()
         if not run.done():

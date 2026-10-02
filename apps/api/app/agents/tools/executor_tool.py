@@ -32,6 +32,7 @@ from app.agents.core.background.session import (
     mark_executor_spawned,
 )
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
+from app.constants.browser import BROWSER_JOB_STOP_CONFIRM_SECONDS, BrowserStopOutcome
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
@@ -40,7 +41,7 @@ from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, agent_configurable
-from app.services.browser.jobs import cancel_conversation_browser_job
+from app.services.browser.job_stop import confirm_stopped, stop_browser_job
 from app.services.hil.ledger_decide import cancel_ledger_approvals
 from app.services.hil.resolution import cancel_conversation_approvals
 from app.services.workflow.execution_service import get_last_run_brief
@@ -158,18 +159,18 @@ async def call_executor(
     # replayed transcript. Empty for interactive chat and for a first run.
     workflow_id = base_configurable.get("workflow_id")
     user_id = base_configurable.get("user_id")
-    if workflow_id and user_id:
-        last_run = await get_last_run_brief(workflow_id, user_id)
-        # Asked here, not at narration time: write_playbook is an executor tool that
-        # comms (which narrates the result) cannot reach. The stopped-replay record
-        # rides along verbatim for the same reason as the request: comms paraphrases.
-        playbook_check = await playbook_check_brief(
+    is_workflow_run = bool(workflow_id and user_id)
+    last_run = await get_last_run_brief(workflow_id, user_id) if is_workflow_run else ""
+    # Asked here, not at narration time: write_playbook is an executor tool that
+    # comms (which narrates the result) cannot reach. The stopped-replay record
+    # rides along verbatim for the same reason as the request: comms paraphrases.
+    playbook_check = (
+        await playbook_check_brief(
             workflow_id, user_id, fallback_note=base_configurable.get("playbook_fallback")
         )
-    else:
-        # compose_executor_brief skips a falsy part, so None and "" are equivalent here.
-        last_run = ""  # pragma: no mutate
-        playbook_check = ""  # pragma: no mutate
+        if is_workflow_run
+        else ""
+    )
 
     composed_task = compose_executor_brief(
         task,
@@ -370,6 +371,33 @@ async def cancel_executor(
     if not conversation_id:
         return "No conversation context available."
 
+    # A browser run outlives the turn that started it, so a stop-everything stops
+    # the job itself. A targeted cancel names one executor task and leaves it running.
+    browser = await _stop_the_browser(conversation_id) if not task_ids else None
+    executor = await _cancel_executor_work(configurable, conversation_id, task_ids, message)
+    if browser is None:
+        return executor
+    if executor in (_NOTHING_TO_CANCEL, _NOTHING_MATCHED):
+        return browser
+    return f"{executor} {browser}"
+
+
+_NOTHING_TO_CANCEL = "No executor tasks are running or pending for this conversation."
+_NOTHING_MATCHED = "None of the specified task_ids matched any running or pending tasks."
+
+
+async def _stop_the_browser(conversation_id: str) -> str | None:
+    """Stop the conversation's browser job and say what that came to; None when none runs."""
+    job_id = await stop_browser_job(conversation_id)
+    if job_id is None:
+        return None
+    return _BROWSER_STOP_REPORTS[await confirm_stopped(job_id, BROWSER_JOB_STOP_CONFIRM_SECONDS)]
+
+
+async def _cancel_executor_work(
+    configurable: AgentConfigurable, conversation_id: str, task_ids: list[str], message: str | None
+) -> str:
+    """Cancel the running executor task, its pending work and its subagents, as task_ids names them."""
     lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
     inbox = ExecutorInbox(conversation_id)
     subagents = RunningSubagents(conversation_id)
@@ -382,15 +410,8 @@ async def cancel_executor(
     has_pending = await inbox.count() > 0
     has_subagents = bool(await subagents.live())
 
-    # A browser run outlives the turn that started it, so the stream's cancel
-    # flag reaches it only while that turn is alive; a stop-everything also flags
-    # the job. A targeted cancel names one executor task and leaves it running.
-    browser_job = await cancel_conversation_browser_job(conversation_id) if cancel_all else None
-
     if not lock_value and not has_pending and not has_subagents:
-        if browser_job:
-            return "Stopped the browser task."
-        return "No executor tasks are running or pending for this conversation."
+        return _NOTHING_TO_CANCEL
 
     try:
         cancelled = await _cancel_running_task(
@@ -423,7 +444,7 @@ async def cancel_executor(
             cancelled.append(f"{len(stopped_subagents)} running subagent(s)")
 
         if not cancelled:
-            return "None of the specified task_ids matched any running or pending tasks."
+            return _NOTHING_MATCHED
 
         # Record the stop into the per-conversation thread, or the next run
         # resumes exactly what the user stopped — but only when the RUNNING
@@ -450,6 +471,18 @@ async def cancel_executor(
         # let two executors run concurrently on one conversation. TTL recovers it.
         log.error(f"{LogTag.TOOL} cancel_executor failed", error=str(e))
         return f"Cancellation attempted but hit an error: {e}"
+
+
+#: What the agent is told a browser stop came to, once the job ended (or did not).
+_BROWSER_STOP_REPORTS = {
+    BrowserStopOutcome.STOPPED: "Stopped the browser task.",
+    BrowserStopOutcome.ALREADY_ENDED: (
+        "The browser task had already finished before the stop reached it; its result stands."
+    ),
+    BrowserStopOutcome.UNCONFIRMED: (
+        "Asked the browser task to stop, but it has not confirmed stopping yet."
+    ),
+}
 
 
 async def _broadcast_executor_cancelled(

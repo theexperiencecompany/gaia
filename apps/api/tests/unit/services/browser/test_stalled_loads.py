@@ -1,4 +1,4 @@
-"""A top-level load the site never answers is stopped once per tab, and nothing else is."""
+"""A top-level load the site never answers is stopped once per tab, and nothing else is: never a form submission."""
 
 from __future__ import annotations
 
@@ -26,6 +26,7 @@ class _FakeClient:
         self.stop_hangs = False
         self.register = SimpleNamespace(
             Page=SimpleNamespace(
+                frameRequestedNavigation=lambda h: self.handlers.__setitem__("requested", h),
                 frameStartedNavigating=lambda h: self.handlers.__setitem__("started", h),
                 frameNavigated=lambda h: self.handlers.__setitem__("committed", h),
                 frameStoppedLoading=lambda h: self.handlers.__setitem__("stopped", h),
@@ -175,6 +176,89 @@ class TestStalledLoads:
         assert client.stopped == ["S1"]
         assert guard.take() == []
         guard.close()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("finished", "error", "told"),
+    [(False, None, True), (True, None, False), (False, "net::ERR_ABORTED", False)],
+)
+async def test_the_agent_hears_of_a_load_the_browser_stopped_waiting_on_while_it_still_runs(
+    watched: tuple[StalledLoads, _FakeClient], finished: bool, error: str | None, told: bool
+) -> None:
+    guard, client = watched
+    _start(client, "S1")
+    client.handlers["committed"]({"frame": {"id": TAB}, "type": "Navigation"}, "S1")
+    guard.on_navigation_complete(SimpleNamespace(target_id=TAB, error_message=error))
+    if finished:
+        client.handlers["stopped"]({"frameId": TAB}, "S1")
+
+    notes = guard.take_unfinished()
+
+    assert [("http://example.com:81/" in note) for note in notes] == ([True] if told else [])
+    assert guard.take_unfinished() == []
+    assert guard.take() == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("reason", "kind"),
+    [
+        ("formSubmissionPost", "differentDocument"),
+        ("formSubmissionGet", "differentDocument"),
+        ("anchorClick", "restoreWithPost"),
+    ],
+)
+async def test_a_form_submission_is_never_stopped(
+    watched: tuple[StalledLoads, _FakeClient], reason: str, kind: str
+) -> None:
+    guard, client = watched
+    client.handlers["requested"](
+        {"frameId": TAB, "reason": reason, "url": "http://example.com:81/", "disposition": "x"},
+        "S1",
+    )
+
+    _start(client, "S1", kind=kind)
+    _start(client, "S2", kind=kind)
+    await _settle()
+
+    assert client.stopped == []
+    assert guard.take() == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("ended_by", ["a_link_request", "its_commit"])
+async def test_a_form_submission_mark_ends_with_its_navigation(
+    watched: tuple[StalledLoads, _FakeClient], ended_by: str
+) -> None:
+    guard, client = watched
+    request = {"frameId": TAB, "url": "http://example.com:81/", "disposition": "currentTab"}
+    client.handlers["requested"]({**request, "reason": "formSubmissionPost"}, "S1")
+    if ended_by == "a_link_request":
+        client.handlers["requested"]({**request, "reason": "anchorClick"}, "S1")
+    else:
+        client.handlers["committed"]({"frame": {"id": TAB}, "type": "Navigation"}, "S1")
+
+    _start(client, "S1")
+    await _settle()
+
+    assert client.stopped == ["S1"]
+
+
+@pytest.mark.unit
+async def test_a_load_that_finished_before_browser_use_called_it_done_is_not_reported(
+    watched: tuple[StalledLoads, _FakeClient],
+) -> None:
+    guard, client = watched
+    _start(client, "S1")
+    client.handlers["committed"]({"frame": {"id": TAB}, "type": "Navigation"}, "S1")
+    client.handlers["stopped"]({"frameId": TAB}, "S1")
+    # A child frame that stops loading was never a tab's load.
+    client.handlers["stopped"]({"frameId": "IFRAME-1"}, "S1")
+
+    guard.on_navigation_complete(SimpleNamespace(target_id=TAB, error_message=None))
+
+    assert guard.take_unfinished() == []
 
 
 @pytest.mark.unit

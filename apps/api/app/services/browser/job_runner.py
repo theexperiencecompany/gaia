@@ -11,7 +11,6 @@ from collections.abc import Awaitable, Callable
 import contextlib
 from functools import partial
 from time import perf_counter
-from urllib.parse import urlsplit
 import uuid
 
 from app.config.feature_flags import FeatureFlag
@@ -19,18 +18,22 @@ from app.config.settings import settings
 from app.constants.browser import (
     BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS,
     BROWSER_JOB_CRASHED_SUMMARY,
+    BROWSER_JOB_WORKER_STOPPED_SUMMARY,
     BROWSER_NO_CHROME_HOST,
+    BROWSER_RESULT_REPLACED_REQUEST,
+    BROWSER_RESULT_USER_SAID,
+    BROWSER_RUN_CANCELLED_SUMMARY,
     BROWSER_TASK_EVENT,
     BROWSER_TOOL_CATEGORY,
     BrowserEngine,
     BrowserRunFailure,
     BrowserSessionStatus,
+    EngineFailure,
     HandoffKind,
     HandoffStatus,
     SensitiveCategory,
 )
 from app.constants.log_tags import LogTag
-from app.core.stream_manager import stream_manager
 from app.models.chat_models import SourceCategory
 from app.models.stream_events import ToolOutputPayload
 from app.schemas.browser import (
@@ -55,15 +58,26 @@ from app.services.browser.agent_guidance import (
 from app.services.browser.bot_delivery import BotProgressDelivery
 from app.services.browser.exceptions import BrowserConcurrencyLimit, BrowserUnavailableError
 from app.services.browser.fingerprint import reset_fingerprint_seed, set_fingerprint_seed
-from app.services.browser.handoff import await_handoff, create_pending_handoff
-from app.services.browser.jev.decision import goal_addresses
+from app.services.browser.handoff import (
+    await_handoff,
+    cancel_handoff,
+    create_pending_handoff,
+    fail_handoff,
+    reply_address,
+)
 from app.services.browser.jev.secrets import RunSecrets
-from app.services.browser.job_events import publish_job_event
+from app.services.browser.job_events import (
+    JOB_GUIDANCE_FRAME,
+    JOB_TERMINAL_FRAME,
+    publish_job_event,
+)
 from app.services.browser.jobs import (
+    clear_job_wait,
     job_cancel_requested,
     job_messages_waiting,
     joiner_lease_held,
     put_job_state,
+    set_job_wait,
     take_job_messages,
 )
 from app.services.browser.replay import create_replay_link
@@ -78,9 +92,9 @@ from app.services.browser.session import (
     BrowserHostSession,
     LiveSessionState,
     browser_session,
-    keep_session_alive,
 )
 from app.services.browser.tasks import BrowserTaskRecord, record_browser_task
+from app.services.browser.user_notes import what_the_user_said
 from app.services.chat.chunks import normalize_custom_event
 from app.services.feature_flags import is_enabled
 from app.utils.agent_utils import (
@@ -117,37 +131,27 @@ _ONLY_THE_SUMMARY = (
 )
 
 
-def _redirect(notes: list[str]) -> str:
-    """Lead with the instruction the user changed the request to, when they changed it mid-run.
-
-    A trailing sentence lost to the model against the original request still in
-    its own context: a run that read the headline closed with "the sign-in
-    didn't finish", and a timed-out run blamed the user for a step they had
-    cancelled. First line, before anything the run itself reported.
-    """
-    if not notes:
-        return ""
-    changed = ", then ".join(f'"{note}"' for note in notes)
-    return (
-        f"THE USER CHANGED THE REQUEST MID-RUN to: {changed}. Answer THAT, not the original "
-        "request. The original request was not carried out and must not be reported as "
-        "attempted-and-failed.\n\n"
-    )
-
-
 def agent_result_message(result: BrowserResultSnapshot) -> str:
     """Tell the assistant how to reply: confirm a real result, own a stop, or report a failure."""
     summary = result.summary.strip()
-    redirect = _redirect(result.user_notes)
+    # First, before anything the run itself reported: a trailing sentence lost to the
+    # original request still in the model's context.
+    said = what_the_user_said(
+        result.user_notes,
+        result.redirects,
+        replaced=BROWSER_RESULT_REPLACED_REQUEST,
+        said=BROWSER_RESULT_USER_SAID,
+    )
+    lead = f"{said}\n\n" if said else ""
     if result.status == BrowserSessionStatus.COMPLETED and result.success:
         return (
-            f"{redirect}{summary or 'The task finished.'}\n\n"
+            f"{lead}{summary or 'The task finished.'}\n\n"
             f"{_FINISHED_LINE} Reply with a short, natural confirmation of what you found "
             f"or did. {_ONLY_THE_SUMMARY} {_NO_META}"
         )
     if result.status == BrowserSessionStatus.CANCELLED:
         return (
-            f"{redirect}"
+            f"{lead}"
             "BROWSER TASK WAS STOPPED before it finished. It did NOT complete, so there is no "
             "result and you must not claim one. It was stopped either because the user asked, "
             "or because the request that started it ended early; never say the user stopped it "
@@ -156,7 +160,7 @@ def agent_result_message(result: BrowserResultSnapshot) -> str:
             f"or do something else. {_ONLY_THE_SUMMARY} {_NO_META}"
         )
     return (
-        f"{redirect}"
+        f"{lead}"
         f"BROWSER TASK DID NOT COMPLETE. Last state: {summary or 'the task could not be finished'}.\n\n"
         f"{_NO_RETRY} Tell the user honestly and briefly that it couldn't be finished, and why "
         f"if it's clear. Do not fabricate a result, and offer no figure or answer from memory or from "
@@ -174,15 +178,15 @@ class BrowserThreadMirror:
 
     The card shows what the browser is doing; this shows what it called — every
     action with its arguments, grouped under one "Browser" row exactly like a
-    subagent's tool calls, instead of one opaque browser_task row.
-
-    Stateful because only the session snapshot carries the session id, and the
-    group id has to outlive it for the steps and the result that follow.
+    subagent's tool calls, instead of one opaque browser_task row. The group is
+    keyed by the browser_task call that started the run, so a client pairs the
+    call with its group by id, and a move to the fallback engine keeps it.
     """
 
-    def __init__(self, publish: FramePublisher) -> None:
+    def __init__(self, publish: FramePublisher, tool_call_id: str) -> None:
         self._publish = publish
-        # "" reads as falsy exactly like None.
+        self._group = f"browser:{tool_call_id}"
+        # "" reads as falsy exactly like None: set while the group is open.
         self._group_id: str | None = None  # pragma: no mutate
         #: Set when the group opens; nothing reads it before then.
         self._started_at: float
@@ -196,16 +200,16 @@ class BrowserThreadMirror:
 
     async def mirror(self, snapshot: BrowserCardSnapshot) -> None:
         if isinstance(snapshot, BrowserSessionSnapshot):
-            await self._open(snapshot)
+            await self._open()
         elif isinstance(snapshot, BrowserStepSnapshot):
             await self._actions(snapshot)
         elif isinstance(snapshot, BrowserResultSnapshot):
             await self._close()
 
-    async def _open(self, snapshot: BrowserSessionSnapshot) -> None:
-        if self._group_id or not snapshot.session_id:
+    async def _open(self) -> None:
+        if self._group_id:
             return
-        self._group_id = f"browser:{snapshot.session_id}"
+        self._group_id = self._group
         self._started_at = perf_counter()
         await self._publish(
             {
@@ -322,8 +326,9 @@ async def _deliver_snapshot_to_bot(
 class ProgressEmitter:
     """Publishes each card snapshot into the run's feed and to the bot platform.
 
-    Records the CDN screenshots and captions the history recap reads back once
-    the run finishes.
+    Records the published screenshots and captions the history recap reads back
+    once the run finishes, and the run's session and last result card, which a
+    cancelled run is ended with.
     """
 
     def __init__(
@@ -333,14 +338,17 @@ class ProgressEmitter:
         bot_delivery: BotProgressDelivery | None,
     ) -> None:
         self._publish = publish
-        self._thread_mirror = thread_mirror
+        self.thread_mirror = thread_mirror
         self._bot_delivery = bot_delivery
         # Captions for the recap ("what's going on" per step), keyed by step index.
         self.step_goals: dict[int, str] = {}
-        # Only the screenshots that actually reached the CDN. A step whose upload
-        # failed falls back to an inline data URL, which must not be stored as a
-        # history frame — it would render as a permanently broken image.
+        # The screenshots that were published, by step; a step with no photo has none.
         self.step_shots: dict[int, str] = {}
+        #: The session the run opened, whose recap a failure still links; None until then.
+        # Equivalent mutant: nothing is shot before a session opens, so "" links no recap either.
+        self.session_id: str | None = None  # pragma: no mutate
+        #: The result card the run ended on, once it emitted one.
+        self.result: BrowserResultSnapshot | None = None
 
     async def note(self, text: str) -> None:
         """Send one plain line to a bot user; the web card has the live view to watch."""
@@ -349,11 +357,13 @@ class ProgressEmitter:
 
     async def emit(self, snapshot: BrowserCardSnapshot) -> None:
         await self._publish({BROWSER_TASK_EVENT: snapshot.model_dump(mode="json")})
-        await self._thread_mirror.mirror(snapshot)
-        if isinstance(snapshot, BrowserStepSnapshot):
+        await self.thread_mirror.mirror(snapshot)
+        if isinstance(snapshot, BrowserResultSnapshot):
+            self.result = snapshot
+        elif isinstance(snapshot, BrowserStepSnapshot):
             if snapshot.goal:
                 self.step_goals[snapshot.index] = snapshot.goal
-            if snapshot.screenshot and snapshot.screenshot.startswith("http"):
+            if snapshot.screenshot is not None:
                 self.step_shots[snapshot.index] = snapshot.screenshot
         if self._bot_delivery is not None:
             await _deliver_snapshot_to_bot(self._bot_delivery, snapshot)
@@ -372,7 +382,29 @@ def _handoff_snapshot(
         session_id=session.session_id,
         live_view_url=session.live_view_url,
         status=status,
+        saves_login=req.category == SensitiveCategory.CREDENTIALS
+        and settings.BROWSER_PERSIST_LOGINS,
     )
+
+
+async def _await_unless_stopped(
+    job_id: str, handoff_id: str, timeout_seconds: int
+) -> HandoffOutcome:
+    """Wait on the handoff the run is paused on; a stop settles it cancelled, whether it came before the wait or during it."""
+    await set_job_wait(job_id, handoff_id)
+    try:
+        # A stop that landed before the wait was recorded found nothing to settle.
+        if await job_cancel_requested(job_id):
+            await cancel_handoff(handoff_id)
+        return await await_handoff(handoff_id, timeout_seconds)
+    finally:
+        await clear_job_wait(job_id)
+
+
+async def _fail_when_session_gone(session: BrowserHostSession, handoff_id: str) -> None:
+    """End the handoff once the host has lost the paused browser: nobody can finish a step there."""
+    await session.gone.wait()
+    await fail_handoff(handoff_id, EngineFailure.SESSION_GONE)
 
 
 async def _run_handoff(
@@ -380,29 +412,45 @@ async def _run_handoff(
     session: BrowserHostSession,
     *,
     emit: Callable[[BrowserCardSnapshot], Awaitable[None]],
-    user_id: str,
-    conversation_id: str,
+    request: BrowserJobRequest,
 ) -> HandoffOutcome:
     """Pause the run and hand the user a live view to complete the step themselves.
 
     Only the user ends it, by saying they are done or tapping the button; the
-    outcome (completed with optional note, cancelled, or timed out) resumes the loop.
+    outcome (completed with optional note, cancelled, timed out, or failed with
+    the browser) resumes the loop.
     """
     handoff_id = uuid.uuid4().hex
     if req.category == SensitiveCategory.CREDENTIALS:
         # Asked to sign in again here, so an earlier "done" did not leave a login to save.
         page = await host_client.get_session(session.session_id, session.host_url)
         session.forget_login(page.url)
-    await create_pending_handoff(handoff_id, user_id, conversation_id, req.reason)
+    await create_pending_handoff(
+        handoff_id,
+        request.user_id,
+        request.conversation_id,
+        req.reason,
+        reply_to=reply_address(
+            request.conversation_id, request.user_id, request.conversation_source
+        ),
+    )
     await emit(_handoff_snapshot(handoff_id, req, session, HandoffStatus.PENDING))
-    # The paused session produces no CDP/live-view traffic, so keep its idle
-    # clock fresh until the user decides, or the host reaps the browser
-    # they were asked to come back to.
-    keepalive = spawn_background_task(keep_session_alive(session), name="browser_handoff_keepalive")
+    # The job holds the session's lease for its whole life; a browser the host
+    # lost meanwhile leaves the user nothing to come back to.
+    watch = spawn_background_task(
+        _fail_when_session_gone(session, handoff_id), name="browser_handoff_session_watch"
+    )
     try:
-        outcome = await await_handoff(handoff_id, settings.BROWSER_USE_HANDOFF_TIMEOUT_SECONDS)
+        outcome = await _await_unless_stopped(
+            request.job_id, handoff_id, settings.BROWSER_USE_HANDOFF_TIMEOUT_SECONDS
+        )
+    except asyncio.CancelledError:
+        # Cut off mid-wait (a stop's abort, the worker shutting down): the card and
+        # the record must not go on asking the user to finish a step nobody waits for.
+        await asyncio.shield(_abandon_handoff(handoff_id, req, session, emit))
+        raise
     finally:
-        keepalive.cancel()
+        watch.cancel()
     log.set_ns(
         "browser",
         handoff_kind=HandoffKind.USER.value,
@@ -416,40 +464,61 @@ async def _run_handoff(
     return outcome
 
 
-async def _open_fallback_session(
+async def _abandon_handoff(
+    handoff_id: str,
+    req: HandoffRequest,
+    session: BrowserHostSession,
+    emit: Callable[[BrowserCardSnapshot], Awaitable[None]],
+) -> None:
+    status = await cancel_handoff(handoff_id)
+    await emit(_handoff_snapshot(handoff_id, req, session, status))
+
+
+async def _hand_over_to_fallback(
     sessions: contextlib.AsyncExitStack,
+    primary: contextlib.AsyncExitStack,
     user_id: str,
     host_url: str,
     url: str | None,
     carried: LiveSessionState | None,
 ) -> BrowserHostSession:
-    """Open a session on the fallback host for url, seeded with carried; released with the job's other sessions."""
-    return await sessions.enter_async_context(
+    """Open the fallback host's session for url, seeded with carried, then release the primary at once.
+
+    The primary holds nothing the run still needs: its logins moved to the
+    fallback with its state, and an idle browser only costs the host capacity.
+    """
+    fallback = await sessions.enter_async_context(
         browser_session(user_id=user_id, host_url=host_url, start_url=url, carried=carried)
     )
+    await primary.aclose()
+    return fallback
 
 
 async def _run_guidance(
     request: AgentGuidanceRequest,
     *,
-    job_id: str,
-    user_id: str,
-    conversation_id: str,
+    job: BrowserJobRequest,
 ) -> HandoffOutcome:
     """Pause the run and ask the joined agent for one instruction.
 
-    Deliberately silent to the user: an AGENT handoff takes no conversation key
+    Deliberately silent to the user: an AGENT handoff takes no reply address
     and emits no card, so their only sign of it is the step frame's caption.
     """
     handoff_id = uuid.uuid4().hex
     await create_pending_handoff(
-        handoff_id, user_id, conversation_id, request.reason, kind=HandoffKind.AGENT
+        handoff_id, job.user_id, job.conversation_id, request.reason, kind=HandoffKind.AGENT
     )
-    await put_guidance_request(job_id, PendingAgentGuidance(handoff_id=handoff_id, request=request))
+    await put_guidance_request(
+        job.job_id, PendingAgentGuidance(handoff_id=handoff_id, request=request)
+    )
+    # Wakes a join parked on the feed; the request itself is read from its key.
+    await publish_job_event(job.job_id, JOB_GUIDANCE_FRAME)
     try:
-        outcome = await await_handoff(handoff_id, BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS)
+        outcome = await _await_unless_stopped(
+            job.job_id, handoff_id, BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS
+        )
     finally:
-        await clear_guidance_request(job_id)
+        await clear_guidance_request(job.job_id)
     log.set_ns("browser", guidance_result=outcome.status.value)
     return outcome
 
@@ -497,41 +566,50 @@ async def persist_run_outcome(
     )
 
 
+async def _record_finished_run(
+    request: BrowserJobRequest, finished: FinishedRun, emitter: ProgressEmitter
+) -> None:
+    """Record a run that has its result; a failure here is logged and never turns that result into a crash."""
+    record_run_result(finished)
+    try:
+        await persist_run_outcome(request, finished, emitter=emitter)
+    except Exception as exc:
+        log.error(
+            f"{LogTag.BROWSER} Browser run finished but its history was not recorded",
+            error_type=type(exc).__name__,
+            error=str(exc),
+            browser={"job_id": request.job_id},
+        )
+
+
 def hosts_for(engine: BrowserEngine) -> tuple[str, str | None]:
-    """Return the host a run on engine opens on, and the Chrome host it falls back to (Obscura only).
+    """Return the host a run that wants engine opens on, and the Chrome host behind it.
 
-    BROWSER_HOST_URL is the host running BROWSER_ENGINE; BROWSER_FALLBACK_HOST_URL
-    is a Chromium host. Chrome is the default engine, Obscura an opt-in one.
+    BROWSER_FALLBACK_HOST_URL, when set, is a Chrome host. BROWSER_HOST_URL is the
+    primary, whichever engine it runs; its sessions report that engine. Chrome is
+    the default engine, Obscura an opt-in one.
     """
-    primary_is_chrome = settings.BROWSER_ENGINE is BrowserEngine.CHROMIUM
-    chrome_host = (
-        settings.BROWSER_HOST_URL if primary_is_chrome else settings.BROWSER_FALLBACK_HOST_URL
-    )
-    if engine is BrowserEngine.OBSCURA and not primary_is_chrome:
+    chrome_host = settings.BROWSER_FALLBACK_HOST_URL
+    if engine is BrowserEngine.OBSCURA:
         return settings.BROWSER_HOST_URL, chrome_host
-    if chrome_host is None:
-        raise BrowserUnavailableError(BROWSER_NO_CHROME_HOST)
-    return chrome_host, None
+    return chrome_host or settings.BROWSER_HOST_URL, None
 
 
-async def _is_cancelled(request: BrowserJobRequest) -> bool:
-    """Whether the user stopped this run, through the job itself or through the turn that asked for it."""
-    if await job_cancel_requested(request.job_id):
-        return True
-    return bool(request.stream_id) and await stream_manager.is_cancelled(request.stream_id)
-
-
-async def _terminal_failure(
-    emitter: ProgressEmitter, summary: str, session_id: str | None = None
+async def _end_on(
+    emitter: ProgressEmitter, status: BrowserSessionStatus, summary: str
 ) -> BrowserResultSnapshot:
-    """End the run on a failure card: the job's result is the only thing anyone reads back.
+    """End the run on a result card the job itself writes, unless the run already ended on its own.
 
-    Carries the same recap link a finished run gets when a session got far
-    enough to produce screenshots; None when the browser never opened.
+    Once a result card is out it is the run's result: a failure after it (a
+    teardown, a cancel landing late) never puts a second, contradicting card
+    on top. Carries the recap link a finished run gets once a session opened.
     """
+    if emitter.result is not None:
+        return emitter.result
     shots = [emitter.step_shots[index] for index in sorted(emitter.step_shots)]
+    session_id = emitter.session_id
     result = BrowserResultSnapshot(
-        status=BrowserSessionStatus.FAILED,
+        status=status,
         success=False,
         summary=summary,
         replay_url=await create_replay_link(session_id, shots) if session_id else None,
@@ -540,33 +618,83 @@ async def _terminal_failure(
     return result
 
 
-async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapshot:
-    """Run one browser task end to end, publishing cards to the job's feed and to bots.
+async def settle_job(request: BrowserJobRequest, result: BrowserResultSnapshot) -> None:
+    """Write the job's ending: the DONE state a join reads, then the frame that closes its feed."""
+    await put_job_state(
+        BrowserJobState(
+            job_id=request.job_id,
+            status=BrowserJobStatus.DONE,
+            task=request.task,
+            relay_stream_id=request.stream_id,
+            agent_message=agent_result_message(result),
+            result=result,
+        )
+    )
+    await publish_job_event(request.job_id, JOB_TERMINAL_FRAME)
 
-    Every ending publishes a terminal card first: no failure reaches the caller
-    as a bare exception, and a cancellation emits its card before propagating.
-    """
+
+def _emitter_for(request: BrowserJobRequest) -> ProgressEmitter:
     emit_frame = partial(publish_frame_to_job, request.job_id)
-    thread_mirror = BrowserThreadMirror(emit_frame)
-    emitter = ProgressEmitter(
+    return ProgressEmitter(
         emit_frame,
-        thread_mirror,
+        BrowserThreadMirror(emit_frame, request.tool_call_id),
         _build_bot_delivery(request),
     )
 
+
+async def refuse_browser_job(request: BrowserJobRequest, summary: str) -> BrowserResultSnapshot:
+    """End a job that must not run at all on a failure card, with the ending a join waits for."""
+    result = await _end_on(_emitter_for(request), BrowserSessionStatus.FAILED, summary)
+    await settle_job(request, result)
+    return result
+
+
+async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapshot:
+    """Run one browser task end to end, then settle the job: its last card, its DONE state, the end of its feed.
+
+    Every ending publishes a terminal card and settles the job, a cancellation
+    included (a stop's abort, or the worker shutting down), which then propagates.
+    """
+    emitter = _emitter_for(request)
     # Pin this run's canvas/audio fingerprint to the user, so the same person
     # always presents the same device rather than a new one per task.
     seed_token = set_fingerprint_seed(request.user_id)
+    try:
+        result = await _run_job(request, emitter)
+    except asyncio.CancelledError:
+        log.fail(BrowserRunFailure.CANCELLED)
+        # Nobody holds a tool call to hear this; without it the card stays RUNNING forever.
+        await asyncio.shield(_end_cancelled(request, emitter))
+        raise
+    finally:
+        reset_fingerprint_seed(seed_token)
+    await settle_job(request, result)
+    return result
 
+
+async def _end_cancelled(request: BrowserJobRequest, emitter: ProgressEmitter) -> None:
+    """Settle a job whose task was cancelled: on the card the run already ended on, else on a stopped one."""
+    if await job_cancel_requested(request.job_id):
+        result = await _end_on(
+            emitter, BrowserSessionStatus.CANCELLED, BROWSER_RUN_CANCELLED_SUMMARY
+        )
+    else:
+        result = await _end_on(
+            emitter, BrowserSessionStatus.FAILED, BROWSER_JOB_WORKER_STOPPED_SUMMARY
+        )
+    await settle_job(request, result)
+
+
+async def _run_job(request: BrowserJobRequest, emitter: ProgressEmitter) -> BrowserResultSnapshot:
+    """Open the browser and run the task; every failure becomes a terminal result card here."""
+    if await job_cancel_requested(request.job_id):
+        # Stopped while it queued: ARQ is never asked to drop a queued job, so it ends here.
+        return await _end_on(emitter, BrowserSessionStatus.CANCELLED, BROWSER_RUN_CANCELLED_SUMMARY)
     full_task = (
         request.task
         if not request.start_url
         else f"{request.task}\n\nStart at: {request.start_url}"
     )
-
-    # "" reads as falsy exactly like None.
-    session_id: str | None = None  # pragma: no mutate
-
     try:
         engine = (
             BrowserEngine.OBSCURA
@@ -574,32 +702,31 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
             else BrowserEngine.CHROMIUM
         )
         host_url, fallback_host = hosts_for(engine)
-        log.set_ns("browser", engine=engine.value)
-        secrets = RunSecrets(
-            request.secrets,
-            sites=[
-                host
-                for url in (request.start_url, *goal_addresses(request.task))
-                if url and (host := urlsplit(url).hostname)
-            ],
-        )
+        secrets = RunSecrets(request.secrets)
         async with contextlib.AsyncExitStack() as sessions:
-            session = await sessions.enter_async_context(
+            # Its own stack, so a run handed over to the fallback releases it there and then.
+            primary = contextlib.AsyncExitStack()
+            sessions.push_async_callback(primary.aclose)
+            session = await primary.enter_async_context(
                 browser_session(
                     user_id=request.user_id,
                     host_url=host_url,
                     start_url=request.start_url,
                 )
             )
-            session_id = session.session_id
             log.set(browser={"session_id": session.session_id})
+            # A run that fails before its first card still links the recap of this session.
+            emitter.session_id = session.session_id
+            log.set_ns("browser", engine=session.engine.value)
+            if engine is BrowserEngine.CHROMIUM and session.engine is not BrowserEngine.CHROMIUM:
+                # The host says it is not Chrome: a user who never chose Obscura is not run on it.
+                raise BrowserUnavailableError(BROWSER_NO_CHROME_HOST)
             await put_job_state(
                 BrowserJobState(
                     job_id=request.job_id,
                     status=BrowserJobStatus.RUNNING,
                     task=request.task,
-                    session_id=session.session_id,
-                    live_view_url=session.live_view_url,
+                    relay_stream_id=request.stream_id,
                 )
             )
 
@@ -608,29 +735,26 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
                 secrets=secrets,
                 callbacks=BrowserRunnerCallbacks(
                     emit=emitter.emit,
-                    request_handoff=partial(
-                        _run_handoff,
-                        emit=emitter.emit,
-                        user_id=request.user_id,
-                        conversation_id=request.conversation_id,
-                    ),
+                    request_handoff=partial(_run_handoff, emit=emitter.emit, request=request),
+                    # Only a run the host put on Obscura has anywhere to move to.
                     open_fallback_session=(
-                        partial(_open_fallback_session, sessions, request.user_id, fallback_host)
-                        if fallback_host
+                        partial(
+                            _hand_over_to_fallback,
+                            sessions,
+                            primary,
+                            request.user_id,
+                            fallback_host,
+                        )
+                        if fallback_host and session.engine is BrowserEngine.OBSCURA
                         else None
                     ),
-                    is_cancelled=partial(_is_cancelled, request),
+                    is_cancelled=partial(job_cancel_requested, request.job_id),
                     user_waiting=partial(job_messages_waiting, request.job_id),
                     take_user_messages=partial(take_job_messages, request.job_id),
-                    action_results=thread_mirror.results,
+                    action_results=emitter.thread_mirror.results,
                     agent_joined=partial(joiner_lease_held, request.job_id),
                     note=emitter.note,
-                    request_guidance=partial(
-                        _run_guidance,
-                        job_id=request.job_id,
-                        user_id=request.user_id,
-                        conversation_id=request.conversation_id,
-                    ),
+                    request_guidance=partial(_run_guidance, job=request),
                 ),
                 config=BrowserRunConfig(
                     max_steps=settings.BROWSER_USE_MAX_STEPS,
@@ -653,14 +777,14 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
                 actions=runner.ledger.action_count,
                 engine_fallback=runner.used_fallback,
                 run_ms=round((perf_counter() - run_t0) * 1000),
+                failure=runner.failure,
             )
-            record_run_result(finished)
-            await persist_run_outcome(request, finished, emitter=emitter)
-            return result
+        await _record_finished_run(request, finished, emitter)
+        return result
     except BrowserConcurrencyLimit as exc:
         log.warning(f"{LogTag.BROWSER} Browser host at capacity", error=str(exc))
         log.fail(BrowserRunFailure.HOST_AT_CAPACITY)
-        return await _terminal_failure(emitter, str(exc), session_id)
+        return await _end_on(emitter, BrowserSessionStatus.FAILED, str(exc))
     except BrowserUnavailableError as exc:
         log.warning(
             f"{LogTag.BROWSER} Browser session unavailable",
@@ -668,16 +792,7 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
             error=str(exc),
         )
         log.fail(BrowserRunFailure.HOST_UNAVAILABLE)
-        return await _terminal_failure(emitter, str(exc), session_id)
-    except asyncio.CancelledError:
-        log.fail(BrowserRunFailure.CANCELLED)
-        # Nobody holds a tool call to hear this; without it the card stays RUNNING forever.
-        await asyncio.shield(
-            _terminal_failure(
-                emitter, "the browser task was stopped before it finished", session_id
-            )
-        )
-        raise
+        return await _end_on(emitter, BrowserSessionStatus.FAILED, str(exc))
     except Exception as exc:
         log.error(
             f"{LogTag.BROWSER} Browser job crashed",
@@ -687,6 +802,4 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
             exc_info=True,
         )
         log.fail(BrowserRunFailure.RUN_CRASHED)
-        return await _terminal_failure(emitter, BROWSER_JOB_CRASHED_SUMMARY, session_id)
-    finally:
-        reset_fingerprint_seed(seed_token)
+        return await _end_on(emitter, BrowserSessionStatus.FAILED, BROWSER_JOB_CRASHED_SUMMARY)

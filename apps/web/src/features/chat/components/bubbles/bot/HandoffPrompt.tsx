@@ -5,21 +5,19 @@ import { Spinner } from "@heroui/spinner";
 import {
   Alert01Icon,
   CheckmarkCircle02Icon,
+  ComputerRemoveIcon,
   CreditCardIcon,
   CursorInWindowIcon,
   ShieldUserIcon,
   StopCircleIcon,
 } from "@icons";
 import {
-  liveViewPageUrl,
-  liveViewSocketUrl,
-} from "@/features/browser/api/browserApi";
-import type { SettledHandoffStatus } from "@/features/browser/hooks/useHandoffDecision";
-import { useHandoffDecision } from "@/features/browser/hooks/useHandoffDecision";
-import { useLiveViewToken } from "@/features/browser/hooks/useLiveViewToken";
+  type SettledHandoffStatus,
+  useHandoffDecision,
+} from "@/features/browser/hooks/useHandoffDecision";
+import { useLiveView } from "@/features/browser/hooks/useLiveView";
 import type {
   BrowserHandoffSnapshot,
-  BrowserHandoffStatus,
   BrowserSensitiveCategory,
 } from "@/types/features/browserTaskTypes";
 import { LiveBrowserCanvas } from "./LiveBrowserCanvas";
@@ -56,10 +54,10 @@ const HANDOFF_META: Record<
   },
 };
 
-// Resolved elsewhere (chat, another device) or after a reload — server status
-// is the source of truth, so the card never sits on a stale "pending".
+// The server's answer to the user's own decision, shown until the run's
+// resolved handoff snapshot replaces the prompt.
 const RESOLVED_META: Record<
-  Exclude<BrowserHandoffStatus, "pending">,
+  SettledHandoffStatus,
   { icon: React.ComponentType<{ className?: string }>; label: string }
 > = {
   completed: {
@@ -68,34 +66,30 @@ const RESOLVED_META: Record<
   },
   cancelled: { icon: StopCircleIcon, label: "Stopped." },
   timeout: { icon: StopCircleIcon, label: "Timed out, the task was stopped." },
+  // The browser the user was sent to died while it waited on them.
+  failed: { icon: ComputerRemoveIcon, label: "The browser closed." },
 };
 
+/**
+ * The one ask when the browser run hands a step to the user, in the chat card
+ * and in the action bar under the side panel's live screen. The run's own
+ * handoff snapshot says when it resolved (here, in chat, or on another
+ * device); the prompt is unmounted then.
+ */
 export function HandoffPrompt({
   handoff,
   inPanel = false,
   onOpenPanel,
-  onSettled,
 }: {
   handoff: BrowserHandoffSnapshot;
-  /** Rendered inside the browser side panel: the big interactive canvas is
-   * already above, so skip the embedded canvas and the open-browser button. */
+  /** The live browser is in the side panel: skip the embedded canvas and the take-over button. */
   inPanel?: boolean;
   /** Desktop web: the primary action opens the side panel instead of a new tab. */
   onOpenPanel?: () => void;
-  /** Fires once when the handoff reaches a terminal status (this tab or elsewhere). */
-  onSettled?: (status: SettledHandoffStatus) => void;
 }) {
-  const { decide, decided, pending, settled } = useHandoffDecision(
-    handoff.handoff_id,
-    onSettled,
-  );
-  const meta = HANDOFF_META[handoff.category] ?? HANDOFF_META.none;
+  const meta = HANDOFF_META[handoff.category ?? "none"];
   const Icon = meta.icon;
-  const liveToken = useLiveViewToken(handoff.session_id);
-  const pageUrl =
-    handoff.live_view_url && liveToken
-      ? liveViewPageUrl(handoff.live_view_url, liveToken)
-      : null;
+  const live = useLiveView(handoff.session_id, handoff.live_view_url);
 
   return (
     <div className="rounded-2xl bg-zinc-900 p-3.5">
@@ -107,78 +101,90 @@ export function HandoffPrompt({
         {handoff.reason}
       </p>
 
-      {/* On a sign-in handoff, reassure the user the login isn't wasted: the
-          session is saved encrypted and reused so the next task skips it. Only
-          for credentials — never payments/confirmations, which aren't stored. */}
-      {handoff.category === "credentials" && (
+      {/* Reassure the user a sign-in isn't wasted, only when the run will
+          really keep it: never for payments/confirmations, never with login
+          persistence off. */}
+      {handoff.saves_login && (
         <p className="mt-1 text-[12px] text-zinc-500">
           Saved encrypted so next time skips the login.
         </p>
       )}
 
       {/* The canvas is the instruction — it says "you're in control" better than
-          a label above it ever did, so the label is gone. */}
-      {!inPanel && handoff.live_view_url && liveToken && (
+          a label above it ever did. */}
+      {!inPanel && live.socketUrl && (
         <div className="mt-3">
           <LiveBrowserCanvas
-            socketUrl={liveViewSocketUrl(handoff.live_view_url, liveToken)}
+            socketUrl={live.socketUrl}
             interactive
+            onDropped={live.renew}
           />
         </div>
       )}
 
-      {/* Settled beats the in-flight spinner: once the server confirms the
-          decision, show the outcome — never an eternal "Stopping…". */}
-      {settled ? (
-        (() => {
-          const resolved = RESOLVED_META[settled];
-          const ResolvedIcon = resolved.icon;
-          return (
-            <div className="mt-3 flex items-center gap-2 px-0.5 text-xs text-zinc-300">
-              <ResolvedIcon className="size-4" />
-              {resolved.label}
-            </div>
-          );
-        })()
-      ) : decided ? (
-        <div className="mt-3 flex items-center gap-2 px-0.5 text-xs text-zinc-300">
-          <Spinner size="sm" color="current" />
-          {decided === "continue" ? "Continuing…" : "Stopping…"}
-        </div>
-      ) : (
-        <div className="mt-3 pt-1">
-          {/* Three clear choices, in order of intent: take over (do it live),
-              I'm done (resume), skip (give up on this step). "Take over" hides
-              once you're already inside the panel — nothing left to open. */}
-          <div className="flex items-center gap-2">
-            {!inPanel && (onOpenPanel || pageUrl) && (
-              <TakeOverButton
-                cta={meta.cta}
-                pageUrl={pageUrl}
-                onOpenPanel={onOpenPanel}
-              />
-            )}
-            <Button
-              variant="flat"
-              radius="sm"
-              className="flex-1 font-semibold text-zinc-100"
-              isLoading={pending}
-              onPress={() => decide("continue")}
-            >
-              I&rsquo;m done
-            </Button>
-            <Button
-              variant="light"
-              radius="sm"
-              className="shrink-0 px-3 text-zinc-500"
-              isDisabled={pending}
-              onPress={() => decide("cancel")}
-            >
-              Skip
-            </Button>
-          </div>
-        </div>
-      )}
+      <HandoffActions
+        handoffId={handoff.handoff_id}
+        takeOver={
+          !inPanel && (onOpenPanel || live.pageUrl) ? (
+            <TakeOverButton
+              cta={meta.cta}
+              pageUrl={live.pageUrl}
+              onOpenPanel={onOpenPanel}
+            />
+          ) : null
+        }
+      />
+    </div>
+  );
+}
+
+// Three choices, in order of intent: take over (do it live), I'm done (resume),
+// stop the task. Once the user has chosen, the server's answer replaces them.
+function HandoffActions({
+  handoffId,
+  takeOver,
+}: {
+  handoffId: string;
+  takeOver: React.ReactNode;
+}) {
+  const { decide, decided, settled } = useHandoffDecision(handoffId);
+  if (settled) {
+    const resolved = RESOLVED_META[settled];
+    const ResolvedIcon = resolved.icon;
+    return (
+      <div className="mt-3 flex items-center gap-2 px-0.5 text-xs text-zinc-300">
+        <ResolvedIcon className="size-4" />
+        {resolved.label}
+      </div>
+    );
+  }
+  if (decided) {
+    return (
+      <div className="mt-3 flex items-center gap-2 px-0.5 text-xs text-zinc-300">
+        <Spinner size="sm" color="current" />
+        {decided === "continue" ? "Continuing…" : "Stopping…"}
+      </div>
+    );
+  }
+  return (
+    <div className="mt-3 flex items-center gap-2 pt-1">
+      {takeOver}
+      <Button
+        variant="flat"
+        radius="sm"
+        className="flex-1 font-semibold text-zinc-100"
+        onPress={() => decide("continue")}
+      >
+        I&rsquo;m done
+      </Button>
+      <Button
+        variant="light"
+        radius="sm"
+        className="shrink-0 px-3 text-zinc-500"
+        onPress={() => decide("cancel")}
+      >
+        Stop task
+      </Button>
     </div>
   );
 }

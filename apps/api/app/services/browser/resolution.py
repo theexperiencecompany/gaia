@@ -8,6 +8,7 @@ identically on web and bots. Mirrors the HIL conversational-resolution pattern:
 a classifier that fails leaves the handoff pending, never acts on a guess.
 """
 
+from dataclasses import dataclass
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -17,8 +18,8 @@ from app.constants.browser import HandoffDecision, HandoffStatus
 from app.constants.log_tags import LogTag
 from app.services.browser.exceptions import BrowserHandoffNotOwned
 from app.services.browser.handoff import (
-    get_conversation_pending_handoff,
     get_handoff,
+    get_pending_handoff_for_reply,
     resolve_handoff,
 )
 from shared.py.wide_events import log
@@ -63,15 +64,24 @@ class HandoffReplyDecision(BaseModel):
     )
 
 
-async def resolve_handoff_from_message(
-    conversation_id: str, user_id: str, message: str
-) -> HandoffReplyAction | None:
-    """Resolve the conversation's pending browser handoff from message.
+@dataclass(frozen=True)
+class HandoffReply:
+    """How a chat reply was read against the handoff it answered."""
 
-    Returns the classified action, or None when nothing is pending or the
-    reply addressed none of it (so the normal turn runs).
+    action: HandoffReplyAction
+    #: What the paused task had asked the user to do.
+    reason: str
+
+
+async def resolve_handoff_from_message(
+    address: str, user_id: str, message: str
+) -> HandoffReply | None:
+    """Resolve the browser handoff pending at this reply address (handoff.reply_address) from message.
+
+    Returns how the reply was read, or None when nothing is pending there (so
+    the normal turn runs with nothing to add).
     """
-    handoff_id = await get_conversation_pending_handoff(conversation_id)
+    handoff_id = await get_pending_handoff_for_reply(address)
     if not handoff_id:
         return None
     record = await get_handoff(handoff_id)
@@ -85,12 +95,14 @@ async def resolve_handoff_from_message(
         label="browser_handoff_conversational_resolve",
     )
     if decision.action == "unrelated":
-        return "unrelated"
+        return HandoffReply(action="unrelated", reason=record.reason)
 
     kind = HandoffDecision.CANCEL if decision.action == "cancel" else HandoffDecision.CONTINUE
     note = (decision.note or "").strip() or None
     try:
-        await resolve_handoff(handoff_id, kind, user_id, message=note)
+        await resolve_handoff(
+            handoff_id, kind, user_id, message=note, redirect=decision.action == "redirect"
+        )
     except BrowserHandoffNotOwned:
         log.warning(
             f"{LogTag.BROWSER} Handoff reply ignored: the handoff belongs to another user",
@@ -98,4 +110,4 @@ async def resolve_handoff_from_message(
             user_id=user_id,
         )
         return None
-    return decision.action
+    return HandoffReply(action=decision.action, reason=record.reason)

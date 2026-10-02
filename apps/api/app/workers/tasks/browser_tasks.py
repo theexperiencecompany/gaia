@@ -1,9 +1,8 @@
 """The ARQ task that runs one browser job.
 
 The run itself is the job runner's; this owns what only a worker can own: the
-slot heartbeat that says the run is really alive, the terminal state a joiner
-reads, and the hand-off of who speaks the result — a live executor if one is
-waiting, this task otherwise.
+slot the run holds while it really runs, and who speaks the result: a live
+executor if one is joined on it, this task otherwise.
 """
 
 import asyncio
@@ -16,24 +15,24 @@ from app.agents.core.comms_directive import interpret_comms_output
 from app.agents.prompts.comms_prompts import INTERACTIVE_DELIVERY_NOTE
 from app.constants.browser import (
     BROWSER_JOB_HEARTBEAT_SECONDS,
-    BROWSER_JOB_JOINER_LEASE_SECONDS,
-    BROWSER_JOB_JOINER_REFRESH_SECONDS,
-    BROWSER_JOB_POLL_INTERVAL_SECONDS,
+    BROWSER_JOB_SLOT_TAKEN_SUMMARY,
+    ResultSpeaker,
 )
 from app.constants.comms import CommsDirectiveKind
 from app.constants.log_tags import LogTag
-from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJobStatus
-from app.services.browser.job_events import (
-    JOB_TERMINAL_FRAME,
-    publish_job_event,
-    read_job_events,
+from app.schemas.browser_job import BrowserJobRequest
+from app.services.browser.job_events import read_cards
+from app.services.browser.job_runner import (
+    agent_result_message,
+    execute_browser_job,
+    refuse_browser_job,
 )
-from app.services.browser.job_runner import agent_result_message, execute_browser_job
 from app.services.browser.jobs import (
+    await_result_unclaimed,
     claim_conversation_slot,
+    claim_result_delivery,
     heartbeat_conversation_slot,
-    joiner_lease_held,
-    put_job_state,
+    job_cancel_requested,
     release_conversation_slot,
 )
 from app.utils.auth_utils import load_user_context
@@ -47,8 +46,9 @@ async def run_browser_job(
 ) -> str:
     """Run one browser task to completion off the request path.
 
-    Owns the slot heartbeat, the terminal state write, and the delivery
-    hand-off: a live joiner speaks the result, otherwise this delivers it.
+    Owns the slot heartbeat and the delivery hand-off: a live joiner speaks the
+    result, otherwise this delivers it. A stopped run is not narrated: the stop
+    already said so.
     """
     request = BrowserJobRequest.model_validate(payload)
     log.set(
@@ -61,29 +61,21 @@ async def run_browser_job(
         },
     )
     # Nobody heartbeats the enqueuer's slot lease until here, so a long queue wait
-    # can have outlived it. Re-take it before the run, or the run holds no slot at
-    # all: its release is a no-op and a joiner reads a RUNNING job as dead.
+    # can have outlived it, and another run may have taken the conversation since.
     holder = await claim_conversation_slot(request.conversation_id, request.job_id)
     if holder is not None and holder != request.job_id:
         log.warning(
-            f"{LogTag.BROWSER} Browser job starting without its conversation slot",
+            f"{LogTag.BROWSER} Browser job refused: its conversation slot was taken",
             browser={"job_id": request.job_id, "slot_holder": holder},
         )
+        return (await refuse_browser_job(request, BROWSER_JOB_SLOT_TAKEN_SUMMARY)).status.value
     heartbeat = spawn_background_task(_heartbeat(request), name="browser_job_heartbeat")
     try:
         result = await execute_browser_job(request)
-        agent_message = agent_result_message(result)
-        await put_job_state(
-            BrowserJobState(
-                job_id=request.job_id,
-                status=BrowserJobStatus.DONE,
-                task=request.task,
-                agent_message=agent_message,
-                result=result,
-            )
-        )
-        await publish_job_event(request.job_id, JOB_TERMINAL_FRAME)
-        await _deliver_if_unjoined(request, agent_message)
+        if await job_cancel_requested(request.job_id):
+            log.set_ns("browser", delivered_by="stop")
+        else:
+            await _deliver_if_unjoined(request, agent_result_message(result))
         return result.status.value
     finally:
         heartbeat.cancel()
@@ -91,28 +83,44 @@ async def run_browser_job(
 
 
 async def _heartbeat(request: BrowserJobRequest) -> None:
-    """Hold the conversation's browser slot for as long as this run is really running."""
+    """Hold the conversation's browser slot for as long as this run is really running.
+
+    One Redis error costs one beat, not the lease: a heartbeat that died on it
+    would let the slot lapse under a live run.
+    """
     while True:
         await asyncio.sleep(BROWSER_JOB_HEARTBEAT_SECONDS)
-        await heartbeat_conversation_slot(request.conversation_id, request.job_id)
+        try:
+            held = await heartbeat_conversation_slot(request.conversation_id, request.job_id)
+        except Exception as exc:
+            log.error(
+                f"{LogTag.BROWSER} Browser job slot heartbeat failed",
+                error_type=type(exc).__name__,
+                error=str(exc),
+                browser={"job_id": request.job_id},
+            )
+            continue
+        if not held:
+            log.warning(
+                f"{LogTag.BROWSER} Browser job lost its conversation slot while running",
+                browser={"job_id": request.job_id},
+            )
 
 
 async def _deliver_if_unjoined(request: BrowserJobRequest, agent_message: str) -> None:
-    """Deliver the result as a follow-up unless a live executor is joining on it.
+    """Deliver the result as a follow-up unless an executor run that may still join speaks it.
 
-    Waits out the joiner's lease rather than sampling it once: the join deletes
-    the lease as it collects, and an API that died mid-join lets it expire.
+    The run that started the job, and any turn joined on it, hold the result
+    until they end; the one that collects it claims the telling, and once no
+    claim is held this tells it, at once.
     """
-    waited = 0.0
-    was_held = False
-    while waited < BROWSER_JOB_JOINER_LEASE_SECONDS + BROWSER_JOB_JOINER_REFRESH_SECONDS:
-        if await joiner_lease_held(request.job_id):
-            was_held = True
-        elif was_held:
-            log.set_ns("browser", delivered_by="joiner")
-            return
-        await asyncio.sleep(BROWSER_JOB_POLL_INTERVAL_SECONDS)
-        waited += BROWSER_JOB_POLL_INTERVAL_SECONDS
+    await await_result_unclaimed(request.job_id)
+    if (
+        await claim_result_delivery(request.job_id, ResultSpeaker.WORKER)
+        is not ResultSpeaker.WORKER
+    ):
+        log.set_ns("browser", delivered_by=ResultSpeaker.JOINER.value)
+        return
     await _deliver(request, agent_message)
 
 
@@ -142,15 +150,13 @@ async def _deliver(request: BrowserJobRequest, agent_message: str) -> None:
             browser={"job_id": request.job_id, "directive": directive.kind.value},
         )
         return
-    log.set_ns("browser", delivered_by="worker")
+    log.set_ns("browser", delivered_by=ResultSpeaker.WORKER.value)
     await deliver_message_to_conversation(
         conversation_id=request.conversation_id,
         user=user,
         text=directive.payload,
-        # The relay died with the turn, so nothing in an API process collected
-        # these: the job's own feed is the only copy of the run's cards left.
-        tool_data=tool_data_from_events(
-            [payload for _, payload in await read_job_events(request.job_id, "0-0", 0)]
-        ),
+        # The message that speaks the result carries the run's cards: the job's
+        # own feed is their one full copy.
+        tool_data=tool_data_from_events(await read_cards(request.job_id)),
         origin=f"browser task (job {request.job_id})",
     )

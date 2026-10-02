@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from app.constants.browser import BROWSER_ENGINE_WATCH_STRIKES, EngineFailure
+from app.constants.browser import BROWSER_ENGINE_WATCH_STRIKES, BrowserEngine, EngineFailure
 from app.services.browser import engine_watchdog
 from app.services.browser.engine_watchdog import run_watched
 from app.services.browser.run_contract import RunOutcome
@@ -27,8 +27,8 @@ _SESSION = BrowserHostSession(
     session_id="s-1",
     cdp_url="ws://host/cdp",
     live_view_url="https://host/live",
-    context_id="ctx",
     host_url="http://host",
+    engine=BrowserEngine.OBSCURA,
 )
 _WATCH = {"session_id": "s-1", "operation": "engine_watch"}
 
@@ -245,3 +245,23 @@ async def test_a_run_that_will_not_unwind_is_left_after_its_grace_and_logged(
     assert len(outlived) == 1
     assert outlived[0]["msg"]
     assert outlived[0]["browser"] == _WATCH
+
+
+class _SlowToAbandon(_StuckRun):
+    """A run whose own unwind finishes before the watchdog is done abandoning its session."""
+
+    async def abandon(self) -> None:
+        for _ in range(20):
+            await asyncio.sleep(0)
+        self.abandoned = True
+
+
+async def test_a_run_that_unwinds_before_the_watchdog_is_done_still_ends_on_the_engines_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: the cut run finished first and the watchdog's unfinished result was read, crashing the run with "Result is not set"."""
+    _host(monkeypatch)
+    run = _SlowToAbandon()
+
+    assert await _watched(run) is GONE
+    assert run.abandoned

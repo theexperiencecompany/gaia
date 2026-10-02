@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.constants.browser import BrowserEngine
 from app.services.browser import session as session_mod
 from app.services.browser.exceptions import (
     BrowserConcurrencyLimit,
@@ -23,8 +24,8 @@ def _handle(session_id: str = "sess-1") -> BrowserHostSession:
         session_id=session_id,
         cdp_url="ws://cdp",  # NOSONAR
         live_view_url="https://live",
-        context_id="ctx-1",
         host_url=_HOST,
+        engine=BrowserEngine.CHROMIUM,
     )
 
 
@@ -64,7 +65,6 @@ def _login_on(host: str, value: str) -> dict[str, Any]:
 def _make_session_fakes(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     host = MagicMock(
         session_id="s1",
-        context_id="ctx-1",
         cdp_ws="ws://x",  # NOSONAR
         live_ws="ws://live",  # NOSONAR
     )
@@ -158,9 +158,9 @@ async def test_session_fields_are_mapped_from_the_host_response(
     _make_session_fakes(monkeypatch)
     host = MagicMock(
         session_id="sid-x",
-        context_id="ctx-y",
         cdp_ws="ws://cdp-endpoint",  # NOSONAR
         live_ws="ws://live-endpoint",  # NOSONAR
+        engine=BrowserEngine.OBSCURA,
     )
     monkeypatch.setattr(session_mod.host_client, "create_session", AsyncMock(return_value=host))
     live_view_calls: list[str] = []
@@ -175,9 +175,9 @@ async def test_session_fields_are_mapped_from_the_host_response(
     ) as s:
         assert s.session_id == "sid-x"
         assert s.cdp_url == "ws://cdp-endpoint"
-        assert s.context_id == "ctx-y"
         assert s.live_view_url == "LV:sid-x"
         assert s.host_url == _HOST
+        assert s.engine is BrowserEngine.OBSCURA
         # A later handover protects this site's login by it.
         assert s.start_domain == "x"
     assert live_view_calls == ["sid-x"]
@@ -383,7 +383,7 @@ def _host_per_session(
         session_id = next(opened)
         if session_id == "fallback" and fallback_error is not None:
             raise fallback_error
-        return MagicMock(session_id=session_id, context_id="c", cdp_ws="ws://c", live_ws="ws://l")
+        return MagicMock(session_id=session_id, cdp_ws="ws://c", live_ws="ws://l")
 
     async def _delete(session_id: str, host_url: str) -> dict[str, Any]:
         if session_id == "fallback" and fallback_release_error is not None:
@@ -536,13 +536,28 @@ async def test_a_sign_out_on_the_primary_is_not_undone_by_the_saved_login_on_the
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Regression (Greptile on #876): a logout cleared the site's cookies, and the overlay seeded the saved copies back into the fallback."""
+    signed_out = {
+        "cookies": [],
+        "origins": [{"origin": "https://flights.example.com", "localStorage": []}],
+    }
+    carried = session_mod.LiveSessionState(storage_state=signed_out, source=_signed_in_primary())
+
+    seeded = await _seeded_fallback(monkeypatch, carried)
+
+    assert seeded == signed_out
+
+
+async def test_saved_storage_the_live_browser_had_no_page_on_is_kept_for_the_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A browser reports localStorage only for pages it has open, so silence is not a cleared store."""
     carried = session_mod.LiveSessionState(
         storage_state={"cookies": [], "origins": []}, source=_signed_in_primary()
     )
 
     seeded = await _seeded_fallback(monkeypatch, carried)
 
-    assert seeded == {"cookies": [], "origins": []}
+    assert seeded == {"cookies": [], "origins": _SAVED_FLIGHTS_LOGIN["origins"]}
 
 
 async def test_a_cookie_the_primary_deleted_stays_deleted_on_a_site_it_still_holds_cookies_for(
@@ -557,7 +572,7 @@ async def test_a_cookie_the_primary_deleted_stays_deleted_on_a_site_it_still_hol
 
     seeded = await _seeded_fallback(monkeypatch, carried)
 
-    assert seeded == after_logout
+    assert seeded["cookies"] == after_logout["cookies"]
 
 
 async def test_handing_over_a_live_session_reads_its_state_and_names_it_the_source(
@@ -634,12 +649,11 @@ async def test_a_login_is_saved_from_the_primary_when_the_fallback_cannot_open(
     )
 
 
-async def test_a_login_is_saved_from_the_primary_when_the_fallback_cannot_save_it(
+async def test_a_sign_in_asked_for_again_after_the_switch_is_saved_by_neither_browser(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _host_per_session(
-        monkeypatch, fallback_release_error=BrowserUnavailableError("fallback host gone")
-    )
+    """Regression: the fallback forgot the login it was asked to redo, and the primary, released later, saved it anyway."""
+    _host_per_session(monkeypatch)
 
     async with session_mod.browser_session(
         host_url=_HOST, user_id="u1", start_url="https://x.com"
@@ -648,12 +662,10 @@ async def test_a_login_is_saved_from_the_primary_when_the_fallback_cannot_save_i
         carried = await session_mod.hand_over_state(primary)
         async with session_mod.browser_session(
             host_url=_FALLBACK_HOST, user_id="u1", start_url="https://x.com/feed", carried=carried
-        ):
-            pass
+        ) as fallback:
+            fallback.forget_login("https://x.com/login")
 
-    session_mod.save_storage_state.assert_awaited_once_with(
-        "u1", "x.com", _login_on("x.com", "primary")
-    )
+    session_mod.save_storage_state.assert_not_awaited()
 
 
 async def test_release_failure_is_caught_logged_and_unregister_still_runs(
@@ -699,58 +711,70 @@ async def test_save_storage_state_failure_is_also_caught(
 
 
 # ---------------------------------------------------------------------------
-# keep_session_alive — the handoff idle-clock keepalive
+# keep_session_alive — the run's lease on its session
 # ---------------------------------------------------------------------------
 
 
-async def test_keep_session_alive_touches_the_session_each_iteration(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A paused handoff session gets no CDP/live-view traffic, so this loop is the only thing resetting the host's idle clock — it must actually touch every iteration, not just the first."""
-    sleep_mock = AsyncMock(side_effect=[None, None, asyncio.CancelledError()])
-    monkeypatch.setattr(session_mod.asyncio, "sleep", sleep_mock)
-    touch = AsyncMock()
-    monkeypatch.setattr(session_mod.host_client, "touch_session", touch)
-
-    with pytest.raises(asyncio.CancelledError):
-        await session_mod.keep_session_alive(_handle("sess-1"))
-
-    assert touch.await_count == 2
-    touch.assert_awaited_with("sess-1", _HOST)
-
-
-async def test_keep_session_alive_waits_the_configured_keepalive_interval(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The interval is the whole point: it has to stay under the host's idle TTL, so a hardcoded or dropped delay silently lets the reaper win the race."""
-    sleep_mock = AsyncMock(side_effect=[None, asyncio.CancelledError()])
-    monkeypatch.setattr(session_mod.asyncio, "sleep", sleep_mock)
-    monkeypatch.setattr(session_mod.host_client, "touch_session", AsyncMock())
-
-    with pytest.raises(asyncio.CancelledError):
-        await session_mod.keep_session_alive(_handle("sess-1"))
-
-    sleep_mock.assert_awaited_with(session_mod.BROWSER_HANDOFF_KEEPALIVE_SECONDS)
-
-
-async def test_keep_session_alive_logs_a_failed_touch_and_keeps_looping(
+async def test_the_lease_is_renewed_every_interval_and_a_failed_renewal_is_retried(
     monkeypatch: pytest.MonkeyPatch, fake_log: _FakeLog
 ) -> None:
-    """A single failed touch must not break the loop -- the next iteration still tries again, since the alternative is the host reaping the browser mid-handoff."""
+    """The host disposes a session whose lease runs out, so one failed renewal must not end the loop."""
     sleep_mock = AsyncMock(side_effect=[None, None, asyncio.CancelledError()])
     monkeypatch.setattr(session_mod.asyncio, "sleep", sleep_mock)
-    touch = AsyncMock(side_effect=[BrowserUnavailableError("host down"), None])
-    monkeypatch.setattr(session_mod.host_client, "touch_session", touch)
+    renew = AsyncMock(side_effect=[BrowserUnavailableError("host down"), None])
+    monkeypatch.setattr(session_mod.host_client, "renew_session_lease", renew)
 
     with pytest.raises(asyncio.CancelledError):
         await session_mod.keep_session_alive(_handle("sess-1"))
 
-    assert touch.await_count == 2
-    assert len(fake_log.warning_calls) == 1
+    sleep_mock.assert_awaited_with(session_mod.BROWSER_SESSION_LEASE_RENEW_SECONDS)
+    assert renew.await_count == 2
+    renew.assert_awaited_with("sess-1", _HOST)
     message, kwargs = fake_log.warning_calls[0]
-    assert message == "[BROWSER] Browser handoff keepalive failed"
+    assert message == "[BROWSER] Browser session lease renewal failed"
     assert kwargs["error_type"] == "BrowserUnavailableError"
-    assert kwargs["browser"] == {"session_id": "sess-1", "operation": "handoff_keepalive"}
+    assert kwargs["browser"] == {"session_id": "sess-1", "operation": "lease_renewal"}
+
+
+async def test_a_session_its_host_lost_is_marked_gone_and_renewed_no_more(
+    monkeypatch: pytest.MonkeyPatch, fake_log: _FakeLog
+) -> None:
+    """A paused run's handoff ends on the mark; renewing a session the host no longer has would only fail again."""
+    monkeypatch.setattr(session_mod.asyncio, "sleep", AsyncMock())
+    renew = AsyncMock(side_effect=BrowserSessionGone("Browser host returned 404"))
+    monkeypatch.setattr(session_mod.host_client, "renew_session_lease", renew)
+    handle = _handle("sess-1")
+
+    await asyncio.wait_for(session_mod.keep_session_alive(handle), timeout=1)
+
+    assert handle.gone.is_set()
+    renew.assert_awaited_once_with("sess-1", _HOST)
+    [(message, kwargs)] = fake_log.warning_calls
+    assert message == "[BROWSER] Browser session gone from its host"
+    assert kwargs["browser"] == {"session_id": "sess-1", "operation": "lease_renewal"}
+
+
+async def test_a_session_holds_its_lease_for_exactly_its_life(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _make_session_fakes(monkeypatch)
+    held: list[str] = []
+    let_go = asyncio.Event()
+
+    async def _hold(session: BrowserHostSession) -> None:
+        held.append(session.session_id)
+        try:
+            await asyncio.Event().wait()
+        finally:
+            let_go.set()
+
+    monkeypatch.setattr(session_mod, "keep_session_alive", _hold)
+
+    async with session_mod.browser_session(host_url=_HOST, user_id="u1", start_url="https://x"):
+        await asyncio.sleep(0)
+        assert held == ["s1"]
+        assert not let_go.is_set()
+    await asyncio.wait_for(let_go.wait(), 1.0)
 
 
 @pytest.mark.unit

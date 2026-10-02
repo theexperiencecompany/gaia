@@ -29,11 +29,11 @@ async def test_create_live_view_link_mints_code_with_session_and_user_in_order(
     monkeypatch.setattr(links.settings, "BROWSER_LIVE_VIEW_BASE_URL", None)
     monkeypatch.setattr(links.settings, "HOST", "https://api.heygaia.io")
 
-    await live_view.create_live_view_link("sess-abc", "user-1")
+    await live_view.create_live_view_link("sess-abc", "user-1", "h1")
 
     # Order matters: swapping the arguments would still return a link (the mock
     # ignores its inputs) but would mint a code for the wrong session/owner pair.
-    mint.assert_called_once_with("sess-abc", "user-1")
+    mint.assert_called_once_with("sess-abc", "user-1", "h1")
 
 
 @pytest.mark.unit
@@ -105,3 +105,6 @@ def test_render_live_view_page_sends_carriage_return_on_enter_keydown():
     page = live_view.render_live_view_page("x")
 
     assert '"\\r"' in page
+    # The escape must reach the browser as an escape: a real carriage return in
+    # the script ends a // comment early, and the page's whole script fails to parse.
+    assert "\r" not in page

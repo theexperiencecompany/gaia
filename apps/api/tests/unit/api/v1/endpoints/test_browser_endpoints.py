@@ -10,12 +10,10 @@ import pytest
 from tests.helpers import captured_wide_event
 
 from app.api.v1.endpoints import browser as browser_ep
-from app.constants.browser import BrowserSessionStatus, HandoffDecision, HandoffStatus
+from app.constants.browser import BrowserSessionStatus
 from app.schemas.browser import (
     BrowserLoginResponse,
     BrowserTaskResponse,
-    HandoffDecisionRequest,
-    HandoffRecord,
 )
 from app.services.analytics_service import AnalyticsEvents
 
@@ -50,83 +48,6 @@ def _make_task(task_id: str = "t1") -> BrowserTaskResponse:
         source="web",
         frames=[],
     )
-
-
-# ---------------------------------------------------------------------------
-# GET /browser/handoffs/{handoff_id}
-# ---------------------------------------------------------------------------
-
-
-class TestGetBrowserHandoff:
-    async def test_success(self, monkeypatch):
-        record = HandoffRecord(status=HandoffStatus.PENDING, user_id="u1", conversation_id="c1")
-        monkeypatch.setattr(browser_ep, "get_handoff", AsyncMock(return_value=record))
-        resp = await browser_ep.get_browser_handoff("h1", "u1")
-        assert resp.handoff_id == "h1"
-        assert resp.status == HandoffStatus.PENDING
-
-    async def test_not_found_returns_404(self, monkeypatch):
-        monkeypatch.setattr(browser_ep, "get_handoff", AsyncMock(return_value=None))
-        with pytest.raises(HTTPException) as exc:
-            await browser_ep.get_browser_handoff("h1", "u1")
-        assert exc.value.status_code == 404
-
-    async def test_wrong_owner_returns_404(self, monkeypatch):
-        record = HandoffRecord(status=HandoffStatus.PENDING, user_id="owner", conversation_id="c1")
-        monkeypatch.setattr(browser_ep, "get_handoff", AsyncMock(return_value=record))
-        with pytest.raises(HTTPException) as exc:
-            await browser_ep.get_browser_handoff("h1", "intruder")
-        assert exc.value.status_code == 404
-
-
-# ---------------------------------------------------------------------------
-# POST /browser/handoffs/{handoff_id}/decision
-# ---------------------------------------------------------------------------
-
-
-class TestDecideBrowserHandoff:
-    async def test_continue_success(self, monkeypatch):
-        monkeypatch.setattr(
-            browser_ep, "resolve_handoff", AsyncMock(return_value=HandoffStatus.COMPLETED)
-        )
-        payload = HandoffDecisionRequest(decision=HandoffDecision.CONTINUE)
-        resp = await browser_ep.decide_browser_handoff("h1", payload, "u1")
-        assert resp.status == HandoffStatus.COMPLETED
-        assert resp.handoff_id == "h1"
-
-    async def test_cancel_success(self, monkeypatch):
-        monkeypatch.setattr(
-            browser_ep, "resolve_handoff", AsyncMock(return_value=HandoffStatus.CANCELLED)
-        )
-        payload = HandoffDecisionRequest(decision=HandoffDecision.CANCEL)
-        resp = await browser_ep.decide_browser_handoff("h1", payload, "u1")
-        assert resp.status == HandoffStatus.CANCELLED
-
-    async def test_with_message_passed_through(self, monkeypatch):
-        mock_resolve = AsyncMock(return_value=HandoffStatus.COMPLETED)
-        monkeypatch.setattr(browser_ep, "resolve_handoff", mock_resolve)
-        payload = HandoffDecisionRequest(decision=HandoffDecision.CONTINUE, message="grab photo")
-        await browser_ep.decide_browser_handoff("h1", payload, "u1")
-        mock_resolve.assert_awaited_once_with("h1", HandoffDecision.CONTINUE, "u1", "grab photo")
-
-    async def test_not_owned_403(self, monkeypatch):
-        from app.services.browser.exceptions import BrowserHandoffNotOwned
-
-        async def _raise(*args, **kwargs):
-            raise BrowserHandoffNotOwned("nope")
-
-        monkeypatch.setattr(browser_ep, "resolve_handoff", _raise)
-        payload = HandoffDecisionRequest(decision=HandoffDecision.CONTINUE)
-        with pytest.raises(HTTPException) as exc:
-            await browser_ep.decide_browser_handoff("h1", payload, "u1")
-        assert exc.value.status_code == 403
-
-    async def test_expired_returns_410(self, monkeypatch):
-        monkeypatch.setattr(browser_ep, "resolve_handoff", AsyncMock(return_value=None))
-        payload = HandoffDecisionRequest(decision=HandoffDecision.CONTINUE)
-        with pytest.raises(HTTPException) as exc:
-            await browser_ep.decide_browser_handoff("h1", payload, "u1")
-        assert exc.value.status_code == 410
 
 
 # ---------------------------------------------------------------------------
@@ -287,7 +208,6 @@ class TestRouterRegistration:
 
     def test_routes_exist(self):
         paths = {route.path for route in browser_ep.router.routes}
-        assert "/browser/handoffs/{handoff_id}" in paths
         assert "/browser/handoffs/{handoff_id}/decision" in paths
         assert "/browser/sessions/{session_id}/live-view-token" in paths
         assert "/browser/tasks" in paths

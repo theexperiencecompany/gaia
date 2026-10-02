@@ -7,15 +7,11 @@ import { Spinner } from "@heroui/spinner";
 import { AiWebBrowsingIcon, Alert01Icon, CheckmarkCircle02Icon } from "@icons";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
-import {
-  liveViewPageUrl,
-  liveViewSocketUrl,
-} from "@/features/browser/api/browserApi";
-import { useLiveViewToken } from "@/features/browser/hooks/useLiveViewToken";
+import { useLiveView } from "@/features/browser/hooks/useLiveView";
 import { useBrowserPanel } from "@/features/browser/stores/browserPanelStore";
 import {
   BROWSER_STATUS_META,
-  latestAgentCursor,
+  type BrowserCardStatus,
 } from "@/features/browser/utils";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useLayoutSidebar } from "@/stores/layoutStore";
@@ -23,7 +19,6 @@ import type {
   BrowserHandoffSnapshot,
   BrowserResultSnapshot,
   BrowserSessionSnapshot,
-  BrowserSessionStatus,
   BrowserStepSnapshot,
   BrowserTaskSnapshot,
 } from "@/types/features/browserTaskTypes";
@@ -39,6 +34,8 @@ interface BrowserTaskSectionProps {
 }
 
 interface FoldedState {
+  /** The card's identity: its first session, which a fallback to a new one never changes. */
+  cardId?: string;
   session?: BrowserSessionSnapshot;
   steps: BrowserStepSnapshot[];
   handoffs: BrowserHandoffSnapshot[];
@@ -46,20 +43,24 @@ interface FoldedState {
 }
 
 function fold(snapshots: BrowserTaskSnapshot[]): FoldedState {
+  let cardId: string | undefined;
   let session: BrowserSessionSnapshot | undefined;
   let result: BrowserResultSnapshot | undefined;
   const steps = new Map<number, BrowserStepSnapshot>();
   const handoffs = new Map<string, BrowserHandoffSnapshot>();
 
   for (const snap of snapshots) {
-    if (snap.kind === "session") session = snap;
-    else if (snap.kind === "step") steps.set(snap.index, snap);
+    if (snap.kind === "session") {
+      session = snap;
+      cardId ??= snap.session_id ?? undefined;
+    } else if (snap.kind === "step") steps.set(snap.index, snap);
     else if (snap.kind === "handoff")
       handoffs.set(snap.handoff_id, snap); // last wins
     else if (snap.kind === "result") result = snap;
   }
 
   return {
+    cardId,
     session,
     result,
     steps: [...steps.values()].sort((a, b) => a.index - b.index),
@@ -75,105 +76,85 @@ function useBrowserTaskState(
     () => (Array.isArray(data) ? data : [data]),
     [data],
   );
-  const { session, steps, handoffs, result } = useMemo(
+  const { cardId, session, steps, handoffs, result } = useMemo(
     () => fold(snapshots),
     [snapshots],
   );
   const pendingHandoff = handoffs.find((h) => h.status === "pending");
-  const status: BrowserSessionStatus =
-    result?.status ??
-    (pendingHandoff ? "paused" : (session?.status ?? "running"));
+  // The run's terminal frame ends the card; until it lands the run is live.
+  const liveStatus: BrowserCardStatus = pendingHandoff
+    ? "awaiting_user"
+    : (session?.status ?? "running");
+  const status = result?.status ?? liveStatus;
   const active = !result;
   const working = active && !pendingHandoff;
   // Only an active session has an owner — minting a live-view token after it
-  // ends 403s. Fetch it while working or paused on a handoff (the side panel
-  // streams during both); the done state renders the recap instead.
-  const liveViewToken = useLiveViewToken(active ? session?.session_id : null);
-  // The latest step's goal, surfaced live on the collapsed steps header.
-  const currentTask = working ? steps[steps.length - 1]?.goal : undefined;
-  // The agent's live cursor target — only while the agent itself is driving.
-  const agentCursor = useMemo(
-    () => (working ? latestAgentCursor(steps) : null),
-    [working, steps],
+  // ends 403s. The done state renders the recap instead.
+  const live = useLiveView(
+    active ? session?.session_id : null,
+    session?.live_view_url,
   );
-  const liveView = session?.live_view_url;
   return {
+    cardId,
     session,
     steps,
     pendingHandoff,
     result,
     status,
     working,
-    currentTask,
-    agentCursor,
-    socketUrl:
-      liveView && liveViewToken
-        ? liveViewSocketUrl(liveView, liveViewToken)
-        : null,
-    pageUrl:
-      liveView && liveViewToken
-        ? liveViewPageUrl(liveView, liveViewToken)
-        : null,
+    live,
+    // The latest step's goal, surfaced live on the collapsed steps header.
+    currentTask: working ? steps[steps.length - 1]?.goal : undefined,
   };
-}
-
-interface SidePanelInputs {
-  sessionId: string | null;
-  socketUrl: string | null;
-  pageUrl: string | null;
-  status: BrowserSessionStatus;
-  currentTask: string | undefined;
-  pendingHandoff: BrowserHandoffSnapshot | undefined;
-  agentCursor: ReturnType<typeof latestAgentCursor>;
 }
 
 /** The side-panel seam: open it on demand or on a handoff, and mirror this card
  * (the SSE-driven source of truth) into the panel store while it owns the panel. */
 function useBrowserSidePanel({
-  sessionId,
-  socketUrl,
-  pageUrl,
+  cardId,
+  session,
   status,
   currentTask,
   pendingHandoff,
-  agentCursor,
-}: SidePanelInputs) {
+}: Pick<
+  ReturnType<typeof useBrowserTaskState>,
+  "cardId" | "session" | "status" | "currentTask" | "pendingHandoff"
+>) {
   const isMobile = useIsMobile();
   const { setOpen: setLeftSidebarOpen } = useLayoutSidebar();
-  const panelSessionId = useBrowserPanel((state) => state.sessionId);
+  const panelCardId = useBrowserPanel((state) => state.cardId);
   const openPanelStore = useBrowserPanel((state) => state.open);
   const closePanel = useBrowserPanel((state) => state.close);
   const syncPanel = useBrowserPanel((state) => state.sync);
-  const inPanel = !!sessionId && panelSessionId === sessionId;
+  const inPanel = !!cardId && panelCardId === cardId;
+  const sessionId = session?.session_id ?? null;
+  const liveViewUrl = session?.live_view_url ?? null;
 
   const openPanel = useCallback(() => {
-    if (!sessionId) return;
-    openPanelStore(sessionId);
+    if (!cardId) return;
+    openPanelStore(cardId);
     // The panel takes real estate from the chat column — collapse the app
     // sidebar so the conversation keeps a readable width beside the browser.
     setLeftSidebarOpen(false);
-  }, [sessionId, openPanelStore, setLeftSidebarOpen]);
+  }, [cardId, openPanelStore, setLeftSidebarOpen]);
 
   useEffect(() => {
-    if (!inPanel || !sessionId) return;
-    syncPanel({
+    if (!inPanel || !cardId) return;
+    syncPanel(cardId, {
       sessionId,
-      socketUrl,
-      pageUrl,
+      liveViewUrl,
       status,
       currentTask: currentTask ?? null,
       pendingHandoff: pendingHandoff ?? null,
-      agentCursor,
     });
   }, [
     inPanel,
+    cardId,
     sessionId,
-    socketUrl,
-    pageUrl,
+    liveViewUrl,
     status,
     currentTask,
     pendingHandoff,
-    agentCursor,
     syncPanel,
   ]);
 
@@ -256,16 +237,9 @@ function ResultFooter({ result }: { result: BrowserResultSnapshot }) {
 
 export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
   const task = useBrowserTaskState(data);
-  const { session, steps, pendingHandoff, result, status, working } = task;
-  const { inPanel, closePanel, openPanel } = useBrowserSidePanel({
-    sessionId: session?.session_id ?? null,
-    socketUrl: task.socketUrl,
-    pageUrl: task.pageUrl,
-    status,
-    currentTask: task.currentTask,
-    pendingHandoff,
-    agentCursor: task.agentCursor,
-  });
+  const { session, steps, pendingHandoff, result, status, working, live } =
+    task;
+  const { inPanel, closePanel, openPanel } = useBrowserSidePanel(task);
   const statusMeta = BROWSER_STATUS_META[status];
 
   return (
@@ -307,12 +281,12 @@ export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
       )}
 
       <div className="mt-3 space-y-3">
-        {working && task.socketUrl && task.pageUrl && (
+        {working && live.socketUrl && live.pageUrl && (
           <LivePreview
-            socketUrl={task.socketUrl}
-            pageUrl={task.pageUrl}
+            socketUrl={live.socketUrl}
+            pageUrl={live.pageUrl}
             currentTask={task.currentTask}
-            agentCursor={task.agentCursor}
+            onDropped={live.renew}
             inPanel={inPanel}
             onOpenPanel={openPanel}
           />

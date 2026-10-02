@@ -71,7 +71,7 @@ from app.models.agent_models import AgentConfigurable, AgentConfigurableView
 from app.models.chat_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_event
-from app.services.browser.jobs import cancel_conversation_browser_job
+from app.services.browser.job_stop import stop_browser_job
 from app.services.hil.approvals_store import set_resume_item
 from app.services.hil.resume_slot import release_resume_dispatch
 from app.services.latency_metrics import (
@@ -347,7 +347,7 @@ async def _cancel_orphaned_browser_job(conversation_id: str, stream_id: str) -> 
     worker narrates its own conclusion minutes after comms said the run failed.
     """
     try:
-        job_id = await cancel_conversation_browser_job(conversation_id)
+        job_id = await stop_browser_job(conversation_id)
     except Exception as e:  # the run's own error message must still reach comms
         log.error(
             f"{LogTag.AGENT} Could not cancel the browser job left by a failed executor run",

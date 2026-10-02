@@ -393,13 +393,11 @@ export abstract class BaseBotAdapter {
   }
 
   /**
-   * Delivers a file artifact to `destinationId`. Called by the outbound consumer
-   * when an envelope carries an `attachment`. The default sends a short text note
-   * via {@link deliverOutbound}; platforms that support attachments (e.g.
-   * WhatsApp) override this to fetch the artifact bytes and upload them.
-   *
-   * `isChannel` addresses it like {@link deliverOutbound}: a browser run asked
-   * for in a group streams its step photos back into that group.
+   * Delivers a file artifact to `destinationId`, addressed by `isChannel` like
+   * {@link deliverOutbound}. The default sends a short text note instead;
+   * platforms that support attachments (e.g. WhatsApp) override this to upload
+   * the artifact bytes. A browser run's step photos always go to the
+   * requester's DM: its live link and screenshots are private.
    */
   protected async deliverOutboundFile(
     destinationId: string,

@@ -12,14 +12,15 @@ import {
 } from "@icons";
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { useHandoffDecision } from "@/features/browser/hooks/useHandoffDecision";
 import {
   type LiveStatus,
   useLiveBrowser,
 } from "@/features/browser/hooks/useLiveBrowser";
+import { useLiveView } from "@/features/browser/hooks/useLiveView";
 import { useBrowserPanel } from "@/features/browser/stores/browserPanelStore";
 import { BROWSER_STATUS_META } from "@/features/browser/utils";
-import { AgentCursor } from "../bubbles/bot/AgentCursor";
+import type { BrowserHandoffSnapshot } from "@/types/features/browserTaskTypes";
+import { HandoffPrompt } from "../bubbles/bot/HandoffPrompt";
 import { ShimmerText } from "../bubbles/bot/ShimmerText";
 
 type ChipColor =
@@ -74,13 +75,12 @@ function TabCove({ side }: { side: "left" | "right" }) {
  */
 export function BrowserLivePanel() {
   const {
+    cardId,
     sessionId,
-    socketUrl,
-    pageUrl,
+    liveViewUrl,
     status,
     currentTask,
     pendingHandoff,
-    agentCursor,
     close,
   } = useBrowserPanel();
 
@@ -97,18 +97,16 @@ export function BrowserLivePanel() {
     return () => clearTimeout(timer);
   }, [finished, close]);
 
-  if (!sessionId) return null;
+  if (!cardId) return null;
 
   return (
     <BrowserChrome
-      key={sessionId}
-      socketUrl={socketUrl}
-      pageUrl={pageUrl}
+      key={cardId}
+      sessionId={finished ? null : sessionId}
+      liveViewUrl={liveViewUrl}
       status={status}
       currentTask={currentTask}
-      agentCursor={agentCursor}
-      pendingHandoffId={pendingHandoff?.handoff_id ?? null}
-      handoffReason={pendingHandoff?.reason ?? null}
+      pendingHandoff={pendingHandoff}
       onClose={close}
     />
   );
@@ -192,7 +190,6 @@ function TabStrip({
 }
 
 type PanelStatus = ReturnType<typeof useBrowserPanel.getState>["status"];
-type PanelCursor = ReturnType<typeof useBrowserPanel.getState>["agentCursor"];
 
 /** The omnibox — one continuous surface with the tab. No back or reload glyphs:
  * this browser is driven by the agent, and a control that cannot act is worse
@@ -241,29 +238,22 @@ function LiveScreen({
   canvasRef,
   liveStatus,
   interactive,
-  agentCursor,
 }: {
   canvasRef: ReturnType<typeof useLiveBrowser>["canvasRef"];
   liveStatus: LiveStatus;
   interactive: boolean;
-  agentCursor: PanelCursor;
 }) {
   return (
     <>
-      <div className="relative shrink-0">
-        <canvas
-          ref={canvasRef}
-          width={1280}
-          height={800}
-          tabIndex={interactive ? 0 : -1}
-          className={`block h-auto w-full outline-none ${
-            interactive ? "cursor-crosshair" : "pointer-events-none"
-          }`}
-        />
-        {!interactive && liveStatus === "live" && (
-          <AgentCursor target={agentCursor} />
-        )}
-      </div>
+      <canvas
+        ref={canvasRef}
+        width={1280}
+        height={800}
+        tabIndex={interactive ? 0 : -1}
+        className={`block h-auto w-full shrink-0 outline-none ${
+          interactive ? "cursor-crosshair touch-none" : "pointer-events-none"
+        }`}
+      />
       {liveStatus !== "live" && (
         <div className="flex items-center gap-2 bg-zinc-800 px-4 py-3 text-xs text-zinc-400">
           {liveStatus === "connecting" && <Spinner size="sm" color="current" />}
@@ -278,26 +268,23 @@ function LiveScreen({
 
 /** Directly under the screen: the takeover ask during a handoff, else the agent's current step. */
 function ActionBar({
-  pendingHandoffId,
-  handoffReason,
+  pendingHandoff,
   currentTask,
   done,
-  onClose,
 }: {
-  pendingHandoffId: string | null;
-  handoffReason: string | null;
+  pendingHandoff: BrowserHandoffSnapshot | null;
   currentTask: string | null;
   done: boolean;
-  onClose: () => void;
 }) {
-  if (pendingHandoffId && handoffReason) {
+  if (pendingHandoff) {
     return (
-      <HandoffBar
-        key={pendingHandoffId}
-        handoffId={pendingHandoffId}
-        reason={handoffReason}
-        onClosePanel={onClose}
-      />
+      <div className="bg-zinc-800 px-4 pb-4 pt-3">
+        <HandoffPrompt
+          key={pendingHandoff.handoff_id}
+          handoff={pendingHandoff}
+          inPanel
+        />
+      </div>
     );
   }
   if (!currentTask || done) return null;
@@ -309,34 +296,31 @@ function ActionBar({
 }
 
 function BrowserChrome({
-  socketUrl,
-  pageUrl,
+  sessionId,
+  liveViewUrl,
   status,
   currentTask,
-  agentCursor,
-  pendingHandoffId,
-  handoffReason,
+  pendingHandoff,
   onClose,
 }: {
-  socketUrl: string | null;
-  pageUrl: string | null;
+  sessionId: string | null;
+  liveViewUrl: string | null;
   status: PanelStatus;
   currentTask: string | null;
-  agentCursor: PanelCursor;
-  pendingHandoffId: string | null;
-  handoffReason: string | null;
+  pendingHandoff: BrowserHandoffSnapshot | null;
   onClose: () => void;
 }) {
-  const interactive = !!pendingHandoffId;
+  const interactive = !!pendingHandoff;
+  const { socketUrl, pageUrl, renew } = useLiveView(sessionId, liveViewUrl);
   const {
     canvasRef,
     status: liveStatus,
     page,
-  } = useLiveBrowser(socketUrl, interactive);
+  } = useLiveBrowser(socketUrl, interactive, renew);
   const statusMeta = status ? BROWSER_STATUS_META[status] : null;
   const done =
     status === "completed" || status === "failed" || status === "cancelled";
-  const working = status === "running" && !pendingHandoffId;
+  const working = status === "running";
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-zinc-900">
@@ -354,7 +338,6 @@ function BrowserChrome({
           canvasRef={canvasRef}
           liveStatus={liveStatus}
           interactive={interactive}
-          agentCursor={agentCursor}
         />
       ) : (
         <div className="flex aspect-[8/5] items-center justify-center bg-zinc-800 text-sm text-zinc-500">
@@ -362,67 +345,10 @@ function BrowserChrome({
         </div>
       )}
       <ActionBar
-        pendingHandoffId={pendingHandoffId}
-        handoffReason={handoffReason}
+        pendingHandoff={pendingHandoff}
         currentTask={currentTask}
         done={done}
-        onClose={onClose}
       />
-    </div>
-  );
-}
-
-function HandoffBar({
-  handoffId,
-  reason,
-  onClosePanel,
-}: {
-  handoffId: string;
-  reason: string;
-  onClosePanel: () => void;
-}) {
-  const { decide, decided, pending, settled } = useHandoffDecision(
-    handoffId,
-    // A stop/timeout ends the session — nothing left to watch, so the panel
-    // bows out. A continue keeps it open to watch the agent resume.
-    (settledStatus) => {
-      if (settledStatus !== "completed") onClosePanel();
-    },
-  );
-
-  return (
-    <div className="bg-zinc-800 px-4 pb-4 pt-3">
-      <p className="mb-2.5 line-clamp-2 text-[13px] leading-snug text-zinc-200">
-        {reason}
-      </p>
-      {settled ? (
-        <p className="text-xs text-zinc-400">
-          {settled === "completed" ? "Done, resuming the task." : "Stopped."}
-        </p>
-      ) : (
-        // Same two choices as the chat card, same order and weight — the two
-        // surfaces are one component to the user, so they must not diverge.
-        <div className="flex items-center gap-2">
-          <Button
-            radius="sm"
-            variant="flat"
-            className="flex-1 font-semibold text-zinc-100"
-            isLoading={pending || !!decided}
-            onPress={() => decide("continue")}
-          >
-            I&rsquo;m done
-          </Button>
-          <Button
-            variant="light"
-            radius="sm"
-            className="shrink-0 px-3 text-zinc-500"
-            isDisabled={pending || !!decided}
-            onPress={() => decide("cancel")}
-          >
-            Skip
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

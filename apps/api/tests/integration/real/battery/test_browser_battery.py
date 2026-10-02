@@ -62,9 +62,9 @@ def battery(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Battery]:
 #: notes, the note that the run moved to the fallback engine, the three lines
 #: of a handoff prompt, and the closing recap link.
 _PROGRESS_LINE = re.compile(
-    r"^(Step \d+ ·|Still on step|Open the live browser:|📽 |"
+    r"^(Step \d+ ·|Open the live browser:|📽 |"
     f"{re.escape(BROWSER_HANDOFF_REPLY_PROMPT)}|"
-    f"{re.escape(BROWSER_STALL_NOTE)}|{re.escape(BROWSER_ENGINE_FALLBACK_NOTE)})"
+    f"{re.escape(BROWSER_STALL_NOTE.split('{')[0])}|{re.escape(BROWSER_ENGINE_FALLBACK_NOTE)})"
 )
 #: One reply delivered as several messages arrives within this many seconds.
 _ONE_REPLY_SECONDS = 2.0
@@ -316,7 +316,7 @@ def test_a_login_is_handed_to_the_user_then_reused_without_a_second_handoff(
     def watch(job_id: str, state: dict, b: Battery) -> list[dict]:
         deadline = time.monotonic() + 240
         while time.monotonic() < deadline and b.job_state(job_id).get("status") != "done":
-            found = b.pending_handoff(b.conversation_id())
+            found = b.pending_handoff()
             if found:
                 seen_handoff["raised"] = True
                 b.decide_handoff(found[0], "cancel")

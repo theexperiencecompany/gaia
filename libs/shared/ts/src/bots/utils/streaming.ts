@@ -242,18 +242,19 @@ async function _handleStream(
    * harmless — the next preview or the finished-bubble delivery supersedes it.
    */
   const previewBubble = async (text: string): Promise<void> => {
-    if (!text) return;
-    if (bubbleSealed) {
-      currentEditor = await wrappedSendNewMessage(text);
-      shownText = text;
-      bubbleSealed = false;
-      return;
-    }
-    if (text === shownText) return;
+    if (!text || (!bubbleSealed && text === shownText)) return;
+    // A preview is best effort and is queued without being awaited, so it must never reject:
+    // a failed preview would otherwise surface as an unhandled rejection, or fail the final
+    // delivery that awaits the queue.
     try {
-      await currentEditor(text);
+      if (bubbleSealed) {
+        currentEditor = await wrappedSendNewMessage(text);
+        bubbleSealed = false;
+      } else {
+        await currentEditor(text);
+        bubbleProvisional = false;
+      }
       shownText = text;
-      bubbleProvisional = false;
     } catch (err) {
       // Transient: the live bubble may have been deleted or the interaction expired — the next
       // edit or final delivery recovers. But a persistent edit problem is exactly how a bot
@@ -263,10 +264,13 @@ async function _handleStream(
   };
 
   /**
-   * The messages a finished assistant message should be sent as: the model's
-   * own sentinel-separated bubbles, then chunked to the platform's limit.
-   * A reply with no sentinel ships as one message: the model owns the splits
-   * (see Bubbles in the comms prompt), and nothing here invents them.
+   * The messages a finished assistant message should be sent as: segmented into
+   * bubbles the way a person texts, then chunked to the platform's limit.
+   *
+   * Segmentation is not optional politeness. The model is asked to split its
+   * own replies with the sentinel and across 42 consecutive production replies
+   * never once did, so "one sentinel-free reply" is the normal case, not the
+   * edge case — and it arrived as a single 4,358-character Telegram message.
    */
   const bubblesFor = (message: string): string[] =>
     segmentIntoBubbles(message).flatMap((bubble) =>

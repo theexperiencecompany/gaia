@@ -14,10 +14,13 @@ The browser runs on isolated, self-hosted infrastructure. The user sees every
 step live (goal + screenshot).
 
 This tool STARTS the run and returns immediately. It does NOT return a result.
-The run continues in the background even after your turn ends. When you need the
-outcome in this turn, call wait_for_browser_task() and report what IT returns;
-if you finish the turn without joining, the result is delivered to the user as a
-follow-up message and you must not claim an outcome you never saw.
+Call it once per turn: never a second time to retry or to also check something
+else. The run continues in the background even after your turn ends. When you
+need the outcome in this turn, call wait_for_browser_task() and report what IT
+returns; if you finish the turn without joining, the result is delivered to the
+user as a follow-up message and you must not claim an outcome you never saw.
+Never claim the browser is unavailable, busy or rate limited unless a browser
+tool result said so.
 
 This tool CAN handle logins and CAPTCHAs: it hands the step to the user, it does
 not fail. When it reaches a login/password, a one-time code / 2FA, a payment
@@ -59,9 +62,14 @@ Args:
         Describe a control the way the user did (its position, the words they used);
         never invent a label for it, a wrong label sends the browser to the wrong
         control and it skips the step.
-    start_url (str, optional): A URL to open first, if the user named a site.
+    start_url (str, optional): The page to open first. Pass it whenever the task
+        names a site or page: the run starts there, with the user's saved login for
+        that site. Without it the run starts on a blank page.
     secrets (dict, optional): Credentials the user gave for this task, by a short
-        name ({"password": "..."}); the task refers to each as <secret>name</secret>.
+        name, each with the site it belongs to:
+        {"password": {"value": "...", "site": "github.com"}}. A credential is typed
+        only on its own site (and its subdomains), never elsewhere. The task refers
+        to each as <secret>name</secret>.
 
 Returns:
     str: Confirmation that the run has STARTED, with its job id. Never a result.
@@ -105,8 +113,8 @@ never pass a password, a one-time code or a card number (the run hands those to
 the user itself through a live view).
 
 Prefer a different route over repeating what already failed: the request lists
-what the run just tried and whether the page moved at all. If there is no honest
-way forward, say so with give_up=True rather than sending a guess.
+what the run just tried. If there is no honest way forward, say so with
+give_up=True rather than sending a guess.
 
 Args:
     instruction (str): The single concrete next step. Required unless giving up.

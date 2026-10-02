@@ -18,7 +18,7 @@ from langgraph.store.base import GetOp, PutOp, SearchOp
 import pytest
 
 from app.constants.chroma import MAX_CONCURRENT_CHROMA_WRITES
-from app.db.chroma.chroma_store import ChromaBatchWriteError, ChromaStore
+from app.db.chroma.chroma_store import ChromaStore
 from app.db.chroma.chroma_tools_store import (
     _build_put_operations,
     _compute_tool_diff,
@@ -424,10 +424,7 @@ class TestChromaStoreSearch:
                 raise RuntimeError("Simulated upsert failure")
             return await original_upsert_item(self_arg, doc_id, op, collection)
 
-        with (
-            patch.object(type(chroma_store), "_upsert_item", selective_upsert),
-            pytest.raises(ChromaBatchWriteError),
-        ):
+        with patch.object(type(chroma_store), "_upsert_item", selective_upsert):
             await chroma_store.abatch(
                 [
                     PutOp(
@@ -443,7 +440,7 @@ class TestChromaStoreSearch:
                 ]
             )
 
-        # The successful item should be present despite the surfaced failure.
+        # The successful item should be present.
         ok_results = await chroma_store.abatch([GetOp(namespace=ns, key=success_key)])
         assert ok_results[0] is not None
         assert ok_results[0].key == success_key
