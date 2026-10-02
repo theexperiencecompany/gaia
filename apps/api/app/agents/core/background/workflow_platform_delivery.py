@@ -27,11 +27,7 @@ from app.models.user_models import AuthenticatedUser
 from app.services.bot_service import BotService
 from app.services.conversation_service import update_messages
 from app.services.delivery.chat_channel import ChatChannel, resolve_chat_channel
-from app.services.outbound_delivery import (
-    PLATFORM_DISPLAY_NAMES,
-    OutboundResult,
-    publish_outbound_message,
-)
+from app.services.outbound_delivery import OutboundResult, publish_outbound_message
 from app.utils.message_breaks import split_message_bubbles
 from shared.py.wide_events import log
 
@@ -129,10 +125,9 @@ async def _post_workflow_message(
             # the nonblank bubbles (outbound path strips sentinel/blanks)
             # rather than the raw response, which still has control tokens.
             delivered_text = "\n\n".join(b.strip() for b in bubbles if b.strip())
-            display = PLATFORM_DISPLAY_NAMES.get(source, source.value.capitalize())
             await record_platform_delivery(
                 conversation_id,
-                f"[Delivered to the user on {display} — result of {origin}]: {delivered_text}",
+                f"[Delivered to the user on {source.display_name} — result of {origin}]: {delivered_text}",
             )
         log.info(
             f"{LogTag.AGENT} workflow result delivered to platform",
