@@ -78,17 +78,6 @@ async def _platform_banner(ctx: SectionContext) -> str:
     learns the platform. Applies to bot channels only, not web/mobile/desktop.
     """
     source = ConversationSource.coerce(ctx.source)
-    # Desktop tools are named only here, not in the static prompt: retrieval
-    # already gates them by source, so naming them for every channel cost
-    # tokens off-desktop for no benefit.
-    if source is ConversationSource.DESKTOP:
-        return (
-            "You are on the user's desktop app, so desktop tools are available "
-            "(discover them with retrieve_tools): take_screenshot, "
-            "read_clipboard/write_clipboard, open_app, open_url, list_windows. "
-            "Use take_screenshot whenever the user references what they are "
-            "currently looking at."
-        )
     if source is None or source not in BOT_CONVERSATION_SOURCES:
         return ""
     name = source.display_name
@@ -97,6 +86,33 @@ async def _platform_banner(ctx: SectionContext) -> str:
         f"Write like a normal {name} message: plain text, short, no markdown "
         "tables or rich cards."
     )
+
+
+#: The sources a user chats from, as the executor's platform line names them.
+_USER_PLATFORMS: frozenset[ConversationSource] = (
+    frozenset({ConversationSource.WEB, ConversationSource.MOBILE, ConversationSource.DESKTOP})
+    | BOT_CONVERSATION_SOURCES
+)
+
+
+async def _executor_platform(ctx: SectionContext) -> str:
+    """State the platform the user is on, which decides the executor's output formats.
+
+    Desktop tools are named only on desktop: retrieval already gates them by
+    source, so naming them for every channel cost tokens off-desktop.
+    """
+    source = ConversationSource.coerce(ctx.source)
+    if source is None or source not in _USER_PLATFORMS:
+        return ""
+    line = f"The user is on {source.display_name}."
+    if source is ConversationSource.DESKTOP:
+        line += (
+            " Desktop tools are available (discover them with retrieve_tools): "
+            "take_screenshot, read_clipboard/write_clipboard, open_app, open_url, "
+            "list_windows. Use take_screenshot whenever the user references what "
+            "they are currently looking at."
+        )
+    return line
 
 
 async def _user_identity(ctx: SectionContext) -> str:
@@ -210,6 +226,13 @@ SECTIONS: tuple[Section, ...] = (
         frozenset({AgentTier.COMMS}),
         5,
         _platform_banner,
+    ),
+    Section(
+        "executor_platform",
+        PromptSlot.DYNAMIC_STABLE,
+        frozenset({AgentTier.EXECUTOR}),
+        5,
+        _executor_platform,
     ),
     Section("user_identity", PromptSlot.DYNAMIC_STABLE, ALL_TIERS, 10, _user_identity),
     Section("user_prefs", PromptSlot.DYNAMIC_STABLE, ALL_TIERS, 20, _user_prefs),

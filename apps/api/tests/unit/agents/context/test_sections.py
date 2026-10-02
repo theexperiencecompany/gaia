@@ -117,6 +117,7 @@ class TestTheTableIsWellFormed:
         # Redis-cached 12h, so it was re-read for nothing in the volatile slot.
         # A mid-conversation skill install breaks the prefix once, same trade as integrations_manifest.
         assert [s.id for s in sections_for(AgentTier.EXECUTOR, PromptSlot.DYNAMIC_STABLE)] == [
+            "executor_platform",
             "user_identity",
             "user_prefs",
             "workspace_session",
@@ -185,27 +186,9 @@ class TestPlatformBanner:
         """Telling the web app to write plain short text would be actively wrong — its whole point is the cards the bots cannot render."""
         assert await section("platform_banner").fetch(ctx(source=source)) == ""
 
-    async def test_desktop_is_told_about_its_own_tools(self) -> None:
-        """Desktop tools are retrievable only on desktop, so the capability is stated only on desktop — it used to sit in the STATIC prompt, where every web/bot turn read it and reasoned about whether it applied."""
-        rendered = await section("platform_banner").fetch(ctx(source="desktop"))
-
-        # Exact, not a substring match: the tool names are the payload, and a
-        # substring assert stays true against a banner whose surrounding
-        # sentence has been mangled.
-        assert rendered == (
-            "You are on the user's desktop app, so desktop tools are available "
-            "(discover them with retrieve_tools): take_screenshot, "
-            "read_clipboard/write_clipboard, open_app, open_url, list_windows. "
-            "Use take_screenshot whenever the user references what they are "
-            "currently looking at."
-        )
-        # Not the messaging-voice banner: desktop renders rich UI like the web app.
-        assert "plain text, short" not in rendered
-
-    @pytest.mark.parametrize("source", ["web", "mobile", "telegram", "workflow_system"])
-    async def test_non_desktop_never_hears_about_desktop_tools(self, source: str) -> None:
-        """The bug this fixes: naming desktop tools off-desktop made the model stop and reason about a capability it cannot use."""
-        assert "take_screenshot" not in await section("platform_banner").fetch(ctx(source=source))
+    async def test_desktop_gets_no_messaging_banner(self) -> None:
+        """Desktop renders rich UI like the web app; its tools are the executor's to use, not comms's."""
+        assert await section("platform_banner").fetch(ctx(source="desktop")) == ""
 
     @pytest.mark.parametrize("source", [None, "", "not_a_real_channel"])
     async def test_an_unknown_channel_is_silent_rather_than_guessed(
@@ -220,6 +203,46 @@ class TestPlatformBanner:
     def test_it_is_stable_not_volatile(self) -> None:
         """Keep the slot DYNAMIC_STABLE so MEMORY_RECALL doesn't push it outside the cacheable prefix."""
         assert section("platform_banner").slot is PromptSlot.DYNAMIC_STABLE
+
+
+@pytest.mark.unit
+class TestExecutorPlatform:
+    """The executor picks its output formats by platform, so the platform is stated for every one the user chats from."""
+
+    @pytest.mark.parametrize(
+        ("source", "expected"),
+        [
+            ("web", "The user is on Web."),
+            ("mobile", "The user is on Mobile."),
+            ("telegram", "The user is on Telegram."),
+            ("whatsapp", "The user is on WhatsApp."),
+            ("imessage", "The user is on iMessage."),
+        ],
+    )
+    async def test_it_names_the_platform(self, source: str, expected: str) -> None:
+        rendered = await section("executor_platform").fetch(ctx(AgentTier.EXECUTOR, source=source))
+        assert rendered == expected
+
+    async def test_desktop_also_names_its_tools(self) -> None:
+        rendered = await section("executor_platform").fetch(
+            ctx(AgentTier.EXECUTOR, source="desktop")
+        )
+
+        assert rendered == (
+            "The user is on Desktop. Desktop tools are available (discover them with "
+            "retrieve_tools): take_screenshot, read_clipboard/write_clipboard, open_app, "
+            "open_url, list_windows. Use take_screenshot whenever the user references "
+            "what they are currently looking at."
+        )
+
+    @pytest.mark.parametrize("source", [None, "", "workflow_system", "background", "nope"])
+    async def test_no_user_platform_states_nothing(self, source: str | None) -> None:
+        assert (
+            await section("executor_platform").fetch(ctx(AgentTier.EXECUTOR, source=source)) == ""
+        )
+
+    def test_only_the_executor_receives_it(self) -> None:
+        assert section("executor_platform").applies_to == frozenset({AgentTier.EXECUTOR})
 
 
 @pytest.mark.unit
