@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Deterministic fake resolver so the tests never touch the network. Anything
 // not in the table resolves to a public address, and an IP literal resolves to
@@ -36,6 +36,7 @@ import {
   assertIsPublicHttpsUrl,
   fetchPublicAsset,
   isNonPublicAddress,
+  PUBLIC_FETCH_TIMEOUT_MS,
 } from "./public-fetch";
 
 describe("isNonPublicAddress", () => {
@@ -110,10 +111,14 @@ describe("assertIsPublicHttpsUrl", () => {
 
 describe("fetchPublicAsset", () => {
   const okBody = new Uint8Array([1, 2, 3, 4]);
-  const LIMITS = { maxContentLength: 1024, maxBodyLength: 1024 };
+  const MAX_BYTES = 1024;
 
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("fetches bytes and exposes content-type on the happy path", async () => {
@@ -126,7 +131,7 @@ describe("fetchPublicAsset", () => {
     );
     const result = await fetchPublicAsset(
       "https://example.com/a.png",
-      LIMITS,
+      MAX_BYTES,
       fetcher,
     );
     expect(result.data).toEqual(Buffer.from(okBody));
@@ -143,7 +148,7 @@ describe("fetchPublicAsset", () => {
         }),
     );
     await expect(
-      fetchPublicAsset("https://example.com/x", LIMITS, fetcher),
+      fetchPublicAsset("https://example.com/x", MAX_BYTES, fetcher),
     ).rejects.toThrow(/non-public/i);
     // The redirect destination was validated before the second request went out.
     expect(fetcher).toHaveBeenCalledTimes(1);
@@ -160,7 +165,7 @@ describe("fetchPublicAsset", () => {
     );
     const result = await fetchPublicAsset(
       "https://example.com/a.png",
-      LIMITS,
+      MAX_BYTES,
       fetcher,
     );
     expect(result.data).toEqual(Buffer.from(okBody));
@@ -176,7 +181,7 @@ describe("fetchPublicAsset", () => {
         }),
     );
     await expect(
-      fetchPublicAsset("https://example.com/start", LIMITS, fetcher),
+      fetchPublicAsset("https://example.com/start", MAX_BYTES, fetcher),
     ).rejects.toThrow(/too many redirects/i);
   });
 
@@ -184,7 +189,54 @@ describe("fetchPublicAsset", () => {
     const big = new Uint8Array(2048);
     const fetcher = vi.fn(async () => new Response(big, { status: 200 }));
     await expect(
-      fetchPublicAsset("https://example.com/big", LIMITS, fetcher),
+      fetchPublicAsset("https://example.com/big", MAX_BYTES, fetcher),
     ).rejects.toThrow(/content cap/i);
+  });
+
+  it("accepts a body sitting exactly on the cap", async () => {
+    const exact = new Uint8Array(MAX_BYTES);
+    const fetcher = vi.fn(async () => new Response(exact, { status: 200 }));
+    const result = await fetchPublicAsset(
+      "https://example.com/exact",
+      MAX_BYTES,
+      fetcher,
+    );
+    expect(result.data.byteLength).toBe(MAX_BYTES);
+  });
+
+  it("stops reading a huge body once it passes the cap", async () => {
+    // 100 chunks of 512 bytes: buffering it all before checking the cap pulls every one.
+    let pulls = 0;
+    const huge = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        controller.enqueue(new Uint8Array(512));
+        if (pulls === 100) controller.close();
+      },
+    });
+    const fetcher = vi.fn(async () => new Response(huge, { status: 200 }));
+    await expect(
+      fetchPublicAsset("https://example.com/huge", MAX_BYTES, fetcher),
+    ).rejects.toThrow(/content cap/i);
+    expect(pulls).toBeLessThan(10);
+  });
+
+  it("times out a body that stalls after the headers arrive", async () => {
+    vi.useFakeTimers();
+    // One chunk, then nothing: the deadline must cover the body, not just the headers.
+    const stalled = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(4));
+      },
+    });
+    const fetcher = vi.fn(async () => new Response(stalled, { status: 200 }));
+    const pending = fetchPublicAsset(
+      "https://example.com/slow",
+      MAX_BYTES,
+      fetcher,
+    );
+    const outcome = expect(pending).rejects.toThrow(/timed out/i);
+    await vi.advanceTimersByTimeAsync(PUBLIC_FETCH_TIMEOUT_MS);
+    await outcome;
   });
 });
