@@ -11,13 +11,7 @@
 # a comment above it.
 
 https://duckduckgo.com/?q=attention+is+all+you+need&ia=web
-# Engine gap: Obscura shows about half the links Chrome does on every CI run of
-# 2026-09-24 (22-25 vs 45-47), so the site sits on the 0.5 share line: ok at 25 vs
-# 47, a gap at 23 vs 47 (run 36022406465). No Obscura-only JS error since patch 18.
-https://www.bing.com/
-https://en.wikipedia.org/wiki/Transformer_(deep_learning_architecture)
 https://stackoverflow.com/questions
-https://www.amazon.com/
 https://www.booking.com/
 https://www.airbnb.com/
 https://www.bbc.com/news

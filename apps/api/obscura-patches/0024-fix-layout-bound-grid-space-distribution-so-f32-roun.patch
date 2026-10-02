@@ -1,4 +1,4 @@
-From 8890e41c6af826d250982d0320481d6344c92c7c Mon Sep 17 00:00:00 2001
+From df85e21d882ae7ea760242cfd749ed420c006243 Mon Sep 17 00:00:00 2001
 From: gaia <build@heygaia.io>
 Date: Fri, 25 Sep 2026 06:31:11 +0530
 Subject: [PATCH] fix(layout): bound grid space distribution so f32 rounding
@@ -97,6 +97,3 @@ index a2b8c18..90aa5c4 100644
          let track_distribution_proportion_sum: f32 = tracks
              .iter()
              .filter(|track| track_affected_property(track) + track.item_incurred_increase < track_limit(track))
--- 
-2.43.0
-

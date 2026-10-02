@@ -1,8 +1,8 @@
 From 99ea29561b400f5e7cedd439fd6e567b473f5307 Mon Sep 17 00:00:00 2001
 From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
 Date: Wed, 23 Sep 2026 18:46:41 +0530
-Subject: [PATCH 12/18] fix(cli): fit the per-page V8 heap to the container's
- memory limit
+Subject: [PATCH] fix(cli): fit the per-page V8 heap to the container's memory
+ limit
 
 Every page owns an isolate, and the fixed --max-old-space-size=4096 is larger
 than a typical container. A page that retains memory without bound reached

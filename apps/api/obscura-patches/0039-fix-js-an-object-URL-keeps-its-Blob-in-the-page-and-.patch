@@ -1,0 +1,159 @@
+From 465be6b0a36e1487cbc2c00694176135b1704019 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 04:30:38 +0530
+Subject: [PATCH] fix(js): an object URL keeps its Blob in the page, and only a
+ script blob is copied natively
+
+Every URL.createObjectURL copied the Blob's bytes into the page's native
+object-URL store until revokeObjectURL. Pages mint object URLs for images,
+video chunks and downloads and often never revoke them, so native memory grew
+without bound and outside the page's V8 heap limit (patch 0012 caps the heap,
+not this store).
+
+The page now keeps each object URL's Blob in a script-side map, whose bytes
+are V8 heap under that limit; a Worker built from the URL reads its source
+there, still synchronously. Only a Blob with a JavaScript MIME type, the only
+kind a module script fetch accepts, is copied to the native store the module
+loader reads. The native text op that existed for workers is gone.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/js/bootstrap.js | 56 +++++++++++++++++++++----------
+ crates/obscura-js/src/ops.rs      | 24 ++++---------
+ 2 files changed, 45 insertions(+), 35 deletions(-)
+
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index 4260c4a..5ca502f 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -14601,7 +14601,7 @@ globalThis.Worker = class Worker {
+ 
+     let resolvedUrl = url;
+     if (typeof url === 'string') {
+-      const blob = url.startsWith('blob:') ? Deno.core.ops.op_blob_url_text(url) : null;
++      const blob = url.startsWith('blob:') ? _objectUrlText(url) : null;
+       if (blob) {
+         worker._code = blob;
+         // Auto-start on next tick so caller can set onmessage first.
+@@ -14713,6 +14713,26 @@ globalThis.Worker = class Worker {
+   }
+ };
+ 
++// Object URLs this page minted, by URL.
++const _objectUrls = new Map();
++// WHATWG MIME Sniffing's JavaScript MIME type essences.
++const _JAVASCRIPT_MIME_TYPES = new Set([
++  'application/ecmascript', 'application/javascript', 'application/x-ecmascript',
++  'application/x-javascript', 'text/ecmascript', 'text/javascript', 'text/javascript1.0',
++  'text/javascript1.1', 'text/javascript1.2', 'text/javascript1.3', 'text/javascript1.4',
++  'text/javascript1.5', 'text/jscript', 'text/livescript', 'text/x-ecmascript',
++  'text/x-javascript',
++]);
++function _isJavaScriptMimeType(type) {
++  return _JAVASCRIPT_MIME_TYPES.has(String(type || '').split(';')[0].trim().toLowerCase());
++}
++// The text of an object URL's Blob, or null when this page minted no such URL.
++function _objectUrlText(url) {
++  const blob = _objectUrls.get(url);
++  if (!blob) return null;
++  if (blob._bytes) return new TextDecoder().decode(blob._bytes);
++  return null;
++}
+ URL.createObjectURL = function(blob) {
+   // Chrome mints blob:<document-origin>/<v4-uuid> (blob:null/<uuid> on an opaque
+   // origin) and throws a TypeError on missing/non-Blob input. The old code named
+@@ -14744,28 +14764,28 @@ URL.createObjectURL = function(blob) {
+           return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+         });
+     const id = 'blob:' + origin + '/' + uuid;
+-    // Store synchronously so a Worker built from the blob URL in the same
+-    // tick sees its source. Blob-URL Worker construction is synchronous in
+-    // real browsers; the previous async blob.text().then() store raced the
+-    // Worker constructor, so new Worker(blobURL) fell through to fetch() and
+-    // failed (net::ERR_FAILED), which broke AWS WAF's proof-of-work worker.
+-    // The obscura Blob materializes _bytes in its constructor; fall back to
+-    // the async text() store only for foreign Blob shims without _bytes.
+-    // The bytes live in the page's native object-URL store, where the module
+-    // loader resolves blob: module scripts without touching the network.
+-    if (blob._bytes) {
+-      Deno.core.ops.op_blob_url_register(id, blob._bytes);
+-    } else if (typeof blob.text === 'function') {
+-      blob.text().then(text => {
+-        Deno.core.ops.op_blob_url_register(id, new TextEncoder().encode(text));
+-      });
+-    } else {
+-      Deno.core.ops.op_blob_url_register(id, new Uint8Array(0));
++    // The Blob stays in this page's object-URL map (its bytes are V8 heap,
++    // under the page's heap limit), so a Worker built from the URL in the same
++    // tick sees its source synchronously, as in a real browser (AWS WAF's
++    // proof-of-work worker). Only a blob that can be a module script (a
++    // JavaScript MIME type, which module fetches require) is copied to the
++    // native store the module loader reads; copying every image or download
++    // there grew native memory outside any limit until revokeObjectURL.
++    _objectUrls.set(id, blob);
++    if (_isJavaScriptMimeType(blob.type)) {
++      if (blob._bytes) {
++        Deno.core.ops.op_blob_url_register(id, blob._bytes);
++      } else if (typeof blob.text === 'function') {
++        blob.text().then(text => {
++          if (_objectUrls.get(id) === blob) Deno.core.ops.op_blob_url_register(id, new TextEncoder().encode(text));
++        });
++      }
+     }
+     return id;
+   }
+ };
+ URL.revokeObjectURL = function(url) {
++  _objectUrls.delete(String(url));
+   Deno.core.ops.op_blob_url_revoke(String(url));
+ };
+ 
+diff --git a/crates/obscura-js/src/ops.rs b/crates/obscura-js/src/ops.rs
+index eb57b44..7462d35 100644
+--- a/crates/obscura-js/src/ops.rs
++++ b/crates/obscura-js/src/ops.rs
+@@ -177,10 +177,13 @@ pub struct ObscuraState {
+     /// Bytes of payload currently queued above, tracked rather than summed so
+     /// the cap costs nothing per message.
+     pub pending_frame_message_bytes: usize,
+-    /// Object URLs minted by `URL.createObjectURL` in this page's realms,
+-    /// mapped to the Blob's bytes. Module scripts and workers read a `blob:`
+-    /// URL from here; it is never fetched over the network. A new document
+-    /// starts with an empty store, as a browser drops a document's object URLs.
++    /// Object URLs minted by `URL.createObjectURL` in this page's realms for
++    /// a Blob with a JavaScript MIME type (the only kind a module fetch
++    /// accepts), mapped to its bytes. The module loader reads a `blob:` module
++    /// from here; it is never fetched over the network. Other object URLs
++    /// stay in the page's script (`_objectUrls`), under its heap limit. A new
++    /// document starts with an empty store, as a browser drops a document's
++    /// object URLs.
+     pub blob_urls: HashMap<String, Vec<u8>>,
+     /// Requests initiated by this runtime only. Browser contexts share their
+     /// transport client across pages, so the client's aggregate counter cannot
+@@ -1279,18 +1282,6 @@ fn op_blob_url_revoke(state: &OpState, #[string] url: &str) {
+     shared.borrow_mut().blob_urls.remove(url);
+ }
+ 
+-/// The object URL's contents as text, or `None` for an unknown/revoked URL.
+-#[op2]
+-#[string]
+-fn op_blob_url_text(state: &OpState, #[string] url: &str) -> Option<String> {
+-    let shared = state.borrow::<SharedState>().clone();
+-    let state = shared.borrow();
+-    state
+-        .blob_urls
+-        .get(url)
+-        .map(|bytes| String::from_utf8_lossy(bytes).into_owned())
+-}
+-
+ #[op2(fast)]
+ fn op_script_mark_started(state: &OpState, nid: u32, frame_id: u32) -> bool {
+     // A node id only means something in its own realm's document.
+@@ -6127,7 +6118,6 @@ pub fn build_extension() -> Extension {
+         op_script_mark_started(),
+         op_blob_url_register(),
+         op_blob_url_revoke(),
+-        op_blob_url_text(),
+         op_script_try_start(),
+         op_script_run_classic(),
+         op_shadow_attach(),

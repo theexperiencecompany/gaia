@@ -1,8 +1,8 @@
 From 4b8d9193c4dd674408a8e1ee780d4414e76faa39 Mon Sep 17 00:00:00 2001
 From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
 Date: Thu, 24 Sep 2026 00:13:18 +0530
-Subject: [PATCH 17/18] fix(stealth): a stealth page's scripts and form posts
- go out as the same browser as its pages
+Subject: [PATCH] fix(stealth): a stealth page's scripts and form posts go out
+ as the same browser as its pages
 
 A stealth page loads documents, stylesheets, images and scripted fetches through
 the wreq client, which presents the Linux Chrome 145 identity. Two requests

@@ -6,8 +6,7 @@ front, streams JPEG frames out as {"type":"frame", data, url, title}, and turns
 inbound {"type":"mouse"|"key"|"text"|"resize"} messages into CDP input (text is
 a phone keyboard's committed text, inserted as one edit). When the agent moves
 to another tab, or the streamed one closes, it follows; when no page is left it
-ends. Obscura screencasts only the session that caused the repaint, so on
-Obscura a paced capture fills the gaps while the stream is quiet.
+ends.
 
 The session's CdpMux is shared: this viewer borrows it, owns the page session
 it attaches so its frames reach nobody else, and never closes it. Acks are
@@ -34,12 +33,10 @@ from app.browser_host.cdp_mux import (
     cdp_detach,
 )
 from app.browser_host.pumps import pump_until_first_close
-from app.config.browser_host_settings import browser_host_settings
 from app.constants.browser import (
     BROWSER_HOST_LIVENESS_TIMEOUT_SECONDS,
     BROWSER_VIEWPORT_HEIGHT,
     BROWSER_VIEWPORT_WIDTH,
-    BrowserEngine,
 )
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
@@ -55,9 +52,6 @@ _SCREENCAST_FORMAT = "jpeg"
 _SCREENCAST_QUALITY = 72
 # Bounded so a slow viewer drops stale frames instead of stalling the engine (every frame is acked).
 _FRAME_QUEUE_SIZE = 2
-# Obscura screencasts only the session that drove the repaint. 2/s at ~33 KB a
-# capture is an eighth of a live screencast's ~0.5 MB/s and still reads as live.
-_PULL_INTERVAL_SECONDS = 0.5
 
 _MOUSE_FIELDS = ("x", "y", "button", "buttons", "clickCount", "deltaX", "deltaY", "modifiers")
 _KEY_FIELDS = (
@@ -102,12 +96,11 @@ class _Frame:
 
 @dataclass(slots=True)
 class _Stream:
-    """One attach of the live view to one page: its session, meta and latest frame."""
+    """One attach of the live view to one page: its session and meta."""
 
     target_id: str
     page_session: str
     meta: _PageMeta = field(default_factory=_PageMeta)
-    latest: _Frame | None = None
     # Set when the engine lets go of the page (it closed), so the view moves on.
     detached: asyncio.Event = field(default_factory=asyncio.Event)
     # Set when this stream ended to follow another page rather than for the viewer leaving.
@@ -173,15 +166,13 @@ async def _serve_stream(
     frames: asyncio.Queue[_Frame],
     focus_moved: asyncio.Event,
 ) -> None:
-    directions = [
+    await pump_until_first_close(
         _send_frames(client_ws, frames, stream.meta),
         _apply_input(mux, client_ws, stream.page_session),
         mux.wait_closed(),
         _follow_focus(stream, focus_moved),
-    ]
-    if browser_host_settings.BROWSER_ENGINE is BrowserEngine.OBSCURA:
-        directions.append(_pull_frames(mux, stream, frames))
-    await pump_until_first_close(*directions, sockets=(client_ws,))
+        sockets=(client_ws,),
+    )
 
 
 async def _follow_focus(stream: _Stream, focus_moved: asyncio.Event) -> None:
@@ -256,7 +247,6 @@ def _on_screencast_frame(
     # expects; the bitmap may be downscaled, so viewers scale their pointer math by them.
     frame_meta: dict[str, Any] = params.get("metadata") or {}
     frame = _Frame(params["data"], frame_meta.get("deviceWidth"), frame_meta.get("deviceHeight"))
-    stream.latest = frame
     # A viewer that is behind drops this frame and catches the next; the engine was acked.
     with contextlib.suppress(asyncio.QueueFull):
         frames.put_nowait(frame)
@@ -315,57 +305,15 @@ async def _refresh_meta(mux: CdpMux, stream: _Stream) -> None:
     stream.meta.favicon = await _read_favicon(mux, stream.page_session)
 
 
-def _image_params() -> dict[str, Any]:
-    """Return the encoding the screencast and a pulled capture share."""
-    params: dict[str, Any] = {"format": _SCREENCAST_FORMAT}
-    if _SCREENCAST_FORMAT == "jpeg":
-        params["quality"] = _SCREENCAST_QUALITY
-    return params
-
-
 async def _start_screencast(
     mux: CdpMux, page_session: str, max_width: int, max_height: int
 ) -> None:
-    params = _image_params()
+    params: dict[str, Any] = {"format": _SCREENCAST_FORMAT}
+    if _SCREENCAST_FORMAT == "jpeg":
+        params["quality"] = _SCREENCAST_QUALITY
     params["maxWidth"] = max_width
     params["maxHeight"] = max_height
     await cdp_call(mux, "Page.startScreencast", params, session_id=page_session)
-
-
-async def _pull_frames(mux: CdpMux, stream: _Stream, frames: asyncio.Queue[_Frame]) -> None:
-    """Capture the page on a timer for as long as the screencast stays quiet (Obscura only)."""
-    failures = 0
-    seen: _Frame | None = None
-    while True:
-        await asyncio.sleep(_PULL_INTERVAL_SECONDS)
-        latest = stream.latest
-        if latest is not seen:
-            seen = latest
-            failures = 0
-            continue
-        try:
-            # frameNavigated reaches only the session that navigated on Obscura, so a
-            # changed url is the viewer's one sign its meta belongs to a page that is gone.
-            await _refresh_meta(mux, stream)
-            result = await cdp_call(
-                mux, "Page.captureScreenshot", _image_params(), session_id=stream.page_session
-            )
-        except (CDPTimeoutError, CdpCommandError) as exc:
-            # A page mid-navigation refuses one capture; one line per streak keeps a
-            # persistent failure visible without flooding at 2/s.
-            failures += 1
-            if failures == 1:
-                log.warning(
-                    f"{LogTag.BROWSER} Could not pull a live-view frame",
-                    error_type=type(exc).__name__,
-                )
-            continue
-        failures = 0
-        # Same page at the same viewport: it carries the CSS size the screencast last reported.
-        css_width = latest.css_width if latest is not None else None
-        css_height = latest.css_height if latest is not None else None
-        with contextlib.suppress(asyncio.QueueFull):
-            frames.put_nowait(_Frame(result["data"], css_width, css_height))
 
 
 async def _send_frames(

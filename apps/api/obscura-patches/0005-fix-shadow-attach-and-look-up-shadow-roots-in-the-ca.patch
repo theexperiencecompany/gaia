@@ -1,8 +1,8 @@
 From 5d9dcf2c46ca9b5a6640916d161278b64c575fb4 Mon Sep 17 00:00:00 2001
 From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
 Date: Wed, 23 Sep 2026 16:56:26 +0530
-Subject: [PATCH 05/18] fix(shadow): attach and look up shadow roots in the
- caller's own document
+Subject: [PATCH] fix(shadow): attach and look up shadow roots in the caller's
+ own document
 
 op_shadow_attach and op_shadow_root_info always used the page's document,
 while every other DOM call names its realm's frame. Inside a frame realm,

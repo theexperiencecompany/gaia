@@ -1,8 +1,8 @@
 From ed9f4229bf2ed38f859dd96bcd5e977fe92c7723 Mon Sep 17 00:00:00 2001
 From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
 Date: Wed, 23 Sep 2026 17:21:07 +0530
-Subject: [PATCH 07/18] fix(frames): resolve layout, style, scroll and script
- ops in the caller's document
+Subject: [PATCH] fix(frames): resolve layout, style, scroll and script ops in
+ the caller's document
 
 Every op that takes a node id, or reads document-level layout, took the
 page's document even when a frame realm called it. Inside an iframe (such as

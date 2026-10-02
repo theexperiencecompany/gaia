@@ -75,16 +75,14 @@ def test_obscura_without_a_binary_fails_loud(monkeypatch: pytest.MonkeyPatch) ->
     assert missing.value.args == ("Obscura requires OBSCURA_BIN to be set",)
 
 
-def test_obscura_receives_both_load_deadlines_in_milliseconds(
+def test_obscura_receives_its_script_deadline_in_milliseconds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(browser_host_settings, "OBSCURA_NAV_TIMEOUT_SECONDS", 45)
     monkeypatch.setattr(browser_host_settings, "OBSCURA_SCRIPT_DEADLINE_SECONDS", 7)
     monkeypatch.setenv("OBSCURA_PROBE_PASSTHROUGH", "kept")
 
     env = obscura_serve_env()
 
-    assert env["OBSCURA_NAV_TIMEOUT_MS"] == "45000"
     assert env["OBSCURA_SCRIPT_DEADLINE_MS"] == "7000"
     assert env["OBSCURA_PROBE_PASSTHROUGH"] == "kept"
 
@@ -189,7 +187,7 @@ async def test_obscura_is_launched_on_a_free_port_and_stopped_when_it_never_answ
     assert spawn.await_args is not None
     assert spawn.await_args.args == ("/opt/obscura/obscura", "serve", "--port", "9444", "--stealth")
     assert spawn.await_args.kwargs["stdout"] is subprocess.DEVNULL
-    assert spawn.await_args.kwargs["env"]["OBSCURA_NAV_TIMEOUT_MS"]
+    assert spawn.await_args.kwargs["env"]["OBSCURA_SCRIPT_DEADLINE_MS"]
     assert proc.signals == ["term"]
 
 

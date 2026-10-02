@@ -1013,6 +1013,3 @@ index 988ae96..e3c87c3 100644
      pub fn content_size(&self) -> (f32, f32) {
          self.content_size
      }
--- 
-2.43.0
-

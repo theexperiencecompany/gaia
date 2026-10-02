@@ -189,6 +189,3 @@ index a02409e..3c59b54 100644
      #[tokio::test]
      async fn unknown_domsnapshot_method_is_permissive_noop() {
          // Probing the domain (e.g. getSnapshot) must not abort with an
--- 
-2.43.0
-

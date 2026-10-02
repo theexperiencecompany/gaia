@@ -1,7 +1,7 @@
 From 70220aed52a18f2997cc3be63180df57f731d44c Mon Sep 17 00:00:00 2001
 From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
 Date: Wed, 23 Sep 2026 17:38:46 +0530
-Subject: [PATCH 08/18] fix(js): make window a real EventTarget and run custom
+Subject: [PATCH] fix(js): make window a real EventTarget and run custom
  element reactions
 
 YouTube threw "window.__shady_native_addEventListener is not a function"

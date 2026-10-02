@@ -31,11 +31,9 @@ _VISIBLE = "#p-search"
 _UNKNOWN_METHOD = -32601
 # Our proxy's refusal code (app/browser_host/proxy.py).
 _REFUSED = -32000
-# Obscura charges hundreds of ms for a button press and microseconds for a move;
-# well under the smallest press measured (0.45 s) and far above any move (0.4 ms).
-_SLOW_PRESS_SECONDS = 0.05
-# A navigating click measured 4.5s inline and 0.02s deferred; this sits between them.
-_BLOCKING_CLICK_SECONDS = 0.5
+# A command that returns at once, not one that waited for a page load (a
+# navigation measured 2-4 s on these pages).
+_PROMPT_SECONDS = 0.5
 
 
 def _host_answers() -> bool:
@@ -376,28 +374,26 @@ async def test_the_dom_method_is_not_implemented(
 # --- input --------------------------------------------------------------------
 
 
-async def test_input_synthesize_scroll_gesture_is_not_implemented(
+async def test_a_synthesized_scroll_gesture_scrolls_the_page(
     at_wiki: tuple[Cdp, str, Evaluate],
 ) -> None:
-    # default_action_watchdog.py:2134 -- the only scroll path, replaced by
-    # app/patches/browser_use_scroll_patch.py.
+    # default_action_watchdog.py:_scroll_with_cdp_gesture -- Browser-Use's page
+    # scroll. Engine patch 0037 maps the gesture onto the wheel path.
     client, session_id, evaluate = at_wiki
-    before = await evaluate("window.scrollY")
+    await evaluate("window.scrollTo(0, 0)")
     _, error, _ = await client.call(
         "Input.synthesizeScrollGesture", {"x": 400, "y": 400, "yDistance": -400}, session_id
     )
 
-    assert error is not None
-    assert error["code"] == _UNKNOWN_METHOD
-    assert "synthesizeScrollGesture" in error["message"]
-    assert await evaluate("window.scrollY") == before
+    assert error is None
+    assert await evaluate("window.scrollY") == 400
 
 
 async def test_a_dispatched_click_reaches_the_element_the_page_names(
     at_wiki: tuple[Cdp, str, Evaluate],
 ) -> None:
     # actor/element.py:1023 -- Browser-Use's own click; the events are real and
-    # trusted here, and the engine's hit test is document.elementFromPoint.
+    # trusted, and land where document.elementFromPoint says they do.
     client, session_id, evaluate = at_wiki
     await evaluate(
         "window.__hits = [];"
@@ -416,20 +412,21 @@ async def test_a_dispatched_click_reaches_the_element_the_page_names(
     assert hits[0]["agrees"] is True
 
 
-async def test_a_mouse_press_costs_far_more_than_a_mouse_move(
-    at_wiki: tuple[Cdp, str, Evaluate],
+async def test_a_press_focuses_the_field_it_lands_on(
+    at_form: tuple[Cdp, str, Evaluate],
 ) -> None:
-    # Why app/patches/browser_use_click_patch.py clicks in JavaScript: a pressed
-    # button is hundreds of ms per event on Obscura, a move is microseconds.
-    client, session_id, _ = at_wiki
-    _, error, moved = await client.call(
-        "Input.dispatchMouseEvent", {"type": "mouseMoved", "x": 400, "y": 300}, session_id
+    # default_action_watchdog.py:_click_element_node_impl presses at the
+    # element's centre and then types; the press must give the field focus.
+    client, session_id, evaluate = at_form
+    point = json.loads(
+        await evaluate(
+            "JSON.stringify((r => [r.left + r.width / 2, r.top + r.height / 2])"
+            f"(document.querySelector('{_TEXT_FIELD}').getBoundingClientRect()))"
+        )
     )
-    assert error is None
-    pressed = await _press(client, session_id, 400, 300)
+    await _press(client, session_id, point[0], point[1])
 
-    assert moved < _SLOW_PRESS_SECONDS
-    assert pressed > _SLOW_PRESS_SECONDS
+    assert await evaluate("document.activeElement.name") == "my-text"
 
 
 async def test_typing_reaches_the_focused_field_with_trusted_events(
@@ -564,10 +561,9 @@ async def test_insert_text_appends_to_the_focused_field(
 # --- <select>: Jev's SELECT operation -----------------------------------------
 
 
-async def test_setting_option_selected_is_ignored(at_form: tuple[Cdp, str, Evaluate]) -> None:
-    # default_action_watchdog.py:3173 writes this, and it is why Browser-Use's
-    # own select_dropdown reports a reverted selection. See
-    # app/patches/browser_use_select_patch.py.
+async def test_setting_option_selected_selects_it(at_form: tuple[Cdp, str, Evaluate]) -> None:
+    # default_action_watchdog.py:3221 writes value, option.selected and
+    # selectedIndex in turn; each must move the one selection (engine patch 0034).
     _, _, evaluate = at_form
     state = json.loads(
         await evaluate(
@@ -578,15 +574,11 @@ async def test_setting_option_selected_is_ignored(at_form: tuple[Cdp, str, Evalu
         )
     )
 
-    assert state["index"] == 0
-    assert state["value"] == "Open this select menu"
-    # Two options flagged selected in a single-select: the write landed on the
-    # flag and nowhere else.
-    assert state["flags"].count(True) == 2
+    assert state == {"value": "2", "index": 2, "flags": [False, False, True, False]}
 
 
 async def test_assigning_value_selects_the_option(at_form: tuple[Cdp, str, Evaluate]) -> None:
-    # The primitive app/patches/browser_use_select_patch.py relies on.
+    # The first of the three writes Browser-Use's select handler makes.
     _, _, evaluate = at_form
     state = json.loads(
         await evaluate(
@@ -600,95 +592,106 @@ async def test_assigning_value_selects_the_option(at_form: tuple[Cdp, str, Evalu
     assert state == {"value": "2", "index": 2, "text": "Two", "sent": "2"}
 
 
-async def test_the_patched_select_script_picks_the_option(
+async def test_browser_uses_select_sequence_keeps_the_option(
     at_form: tuple[Cdp, str, Evaluate],
 ) -> None:
-    # The live proof for app/patches/browser_use_select_patch.py, run exactly as
-    # the patch runs it: DOM.resolveNode then Runtime.callFunctionOn.
-    from app.patches.browser_use_select_patch import _SELECT_JS
-
-    client, session_id, evaluate = at_form
-    await evaluate(f"document.querySelector('{_SELECT}').selectedIndex = 0")
-    response = await client.ok(
-        "Runtime.callFunctionOn",
-        {
-            "functionDeclaration": _SELECT_JS,
-            "objectId": await _object_id(client, session_id, _SELECT),
-            "returnByValue": True,
-            "arguments": [{"value": "Three"}],
-        },
-        session_id,
+    # default_action_watchdog.py:3221-3240, as Browser-Use runs it: focus, then
+    # value, option.selected and selectedIndex = option.index, input and change,
+    # then a read-back of value that reports a reverted pick when it differs.
+    _, _, evaluate = at_form
+    state = json.loads(
+        await evaluate(
+            f"const s = document.querySelector('{_SELECT}'); s.selectedIndex = 0;"
+            "const o = Array.from(s.options).find(o => o.text.trim() === 'Three');"
+            "s.focus(); s.value = o.value; o.selected = true; s.selectedIndex = o.index;"
+            "s.dispatchEvent(new Event('input', {bubbles: true}));"
+            "s.dispatchEvent(new Event('change', {bubbles: true}));"
+            "JSON.stringify({value: s.value, kept: s.value === o.value,"
+            " sent: new FormData(document.querySelector('form')).get('my-select')})"
+        )
     )
-    outcome = json.loads(response["result"]["value"])
 
-    assert outcome["selected"] is True
-    assert outcome["text"] == "Three"
-    assert await evaluate(f"document.querySelector('{_SELECT}').value") == "3"
+    assert state == {"value": "3", "kept": True, "sent": "3"}
 
 
 # --- tabs ----------------------------------------------------------------------
 
 
-async def test_window_open_opens_no_target(at_wiki: tuple[Cdp, str, Evaluate]) -> None:
-    # popups_watchdog.py:46 and session_manager.py:105 wait for a target that
-    # never arrives. See app/patches/browser_use_window_open_patch.py.
+async def test_window_open_without_user_activation_opens_nothing(
+    at_wiki: tuple[Cdp, str, Evaluate],
+) -> None:
+    # Chrome's popup blocker: a page cannot open a window on its own.
     client, _, evaluate = at_wiki
     before = len((await client.ok("Target.getTargets"))["targetInfos"])
     seen = len(client.events)
     opened = await evaluate("!!window.open('https://en.wikipedia.org/wiki/Dog', '_blank')")
-    await asyncio.sleep(3)
-    after = (await client.ok("Target.getTargets"))["targetInfos"]
+    await asyncio.sleep(1)
 
     assert opened is False
-    assert len(after) == before
+    assert len((await client.ok("Target.getTargets"))["targetInfos"]) == before
     assert [
         event
         for event in client.events[seen:]
-        if str(event.get("method", "")).startswith("Target.")
+        if str(event.get("method", "")).startswith("Target.targetCreated")
     ] == []
 
 
-async def test_an_init_script_does_not_run_immediately(
+async def test_window_open_from_a_click_opens_a_target(
+    at_wiki: tuple[Cdp, str, Evaluate],
+) -> None:
+    # popups_watchdog.py:46 and session_manager.py:105 wait for the new target
+    # a page opens (engine patch 0036).
+    client, session_id, evaluate = at_wiki
+    point = json.loads(
+        await evaluate(
+            "const b = document.createElement('button'); b.textContent = 'open';"
+            "b.style.cssText = 'position:fixed;left:10px;top:200px;z-index:2147483647;padding:8px';"
+            "b.onclick = () => window.open('https://en.wikipedia.org/wiki/Dog', '_blank');"
+            "document.body.appendChild(b);"
+            "JSON.stringify((r => [r.left + r.width / 2, r.top + r.height / 2])"
+            "(b.getBoundingClientRect()))"
+        )
+    )
+    seen = len(client.events)
+    await _press(client, session_id, point[0], point[1])
+    await asyncio.sleep(4)
+    created = [
+        event["params"]["targetInfo"]
+        for event in client.events[seen:]
+        if event.get("method") == "Target.targetCreated"
+    ]
+
+    assert len(created) == 1
+    assert created[0]["openerId"]
+    try:
+        assert await evaluate("location.href") == _WIKI
+        targets = (await client.ok("Target.getTargets"))["targetInfos"]
+        assert "https://en.wikipedia.org/wiki/Dog" in [target["url"] for target in targets]
+    finally:
+        await client.call("Target.closeTarget", {"targetId": created[0]["targetId"]})
+
+
+async def test_an_init_script_runs_immediately_and_on_the_next_document(
     at_wiki: tuple[Cdp, str, Evaluate],
 ) -> None:
     # browser/session.py:3294 and the stealth patch both pass runImmediately.
-    # Obscura accepts it and arms only the next load, so a script meant for the
-    # open page has to be evaluated as well.
     client, session_id, evaluate = at_wiki
-    marker = "window.__init_marker = 1;"
+    marker = "window.__init_marker = (window.__init_marker || 0) + 1;"
     await client.ok(
         "Page.addScriptToEvaluateOnNewDocument",
         {"source": marker, "runImmediately": True},
         session_id,
     )
-    on_the_open_page = await evaluate("!!window.__init_marker")
+    on_the_open_page = await evaluate("window.__init_marker")
     await client.ok("Page.navigate", {"url": _WIKI}, session_id)
     await asyncio.sleep(3)
 
-    assert on_the_open_page is False
-    assert await evaluate("!!window.__init_marker") is True
+    assert on_the_open_page == 1
+    assert await evaluate("window.__init_marker") == 1
 
 
-async def test_the_window_open_shim_sends_the_current_tab_to_the_url(
-    at_wiki: tuple[Cdp, str, Evaluate],
-) -> None:
-    # The live proof for app/patches/browser_use_window_open_patch.py.
-    from app.patches.browser_use_window_open_patch import WINDOW_OPEN_SHIM
-
-    client, session_id, evaluate = at_wiki
-    before = len((await client.ok("Target.getTargets"))["targetInfos"])
-    await evaluate(WINDOW_OPEN_SHIM)
-    returned = await evaluate("!!window.open('https://en.wikipedia.org/wiki/Dog', '_blank')")
-    await asyncio.sleep(4)
-
-    assert returned is True
-    assert await evaluate("location.href") == "https://en.wikipedia.org/wiki/Dog"
-    assert len((await client.ok("Target.getTargets"))["targetInfos"]) == before
-
-
-async def test_a_blank_link_navigates_the_current_tab(at_wiki: tuple[Cdp, str, Evaluate]) -> None:
-    # The engine's own resolution of a page-opened window, which
-    # app/patches/browser_use_window_open_patch.py follows for window.open.
+async def test_a_blank_link_opens_a_new_target(at_wiki: tuple[Cdp, str, Evaluate]) -> None:
+    # A press on a target=_blank link opens the page in a new tab, as in Chrome.
     client, session_id, evaluate = at_wiki
     before = len((await client.ok("Target.getTargets"))["targetInfos"])
     point = json.loads(
@@ -702,11 +705,21 @@ async def test_a_blank_link_navigates_the_current_tab(at_wiki: tuple[Cdp, str, E
             "(a.getBoundingClientRect()))"
         )
     )
+    seen = len(client.events)
     await _press(client, session_id, point[0], point[1])
     await asyncio.sleep(4)
+    created = [
+        event["params"]["targetInfo"]["targetId"]
+        for event in client.events[seen:]
+        if event.get("method") == "Target.targetCreated"
+    ]
 
-    assert len((await client.ok("Target.getTargets"))["targetInfos"]) == before
-    assert await evaluate("location.href") == "https://en.wikipedia.org/wiki/Bird"
+    try:
+        assert len((await client.ok("Target.getTargets"))["targetInfos"]) == before + 1
+        assert await evaluate("location.href") == _WIKI
+    finally:
+        for target_id in created:
+            await client.call("Target.closeTarget", {"targetId": target_id})
 
 
 async def test_opening_and_switching_tabs_over_target_works(page: tuple[Cdp, str]) -> None:
@@ -735,6 +748,38 @@ async def test_opening_and_switching_tabs_over_target_works(page: tuple[Cdp, str
 
 
 # --- navigation ----------------------------------------------------------------
+
+
+async def test_page_navigate_answers_at_commit_and_reports_load_later(
+    page: tuple[Cdp, str],
+) -> None:
+    # session.py:_navigate_and_wait -- Browser-Use bounds Page.navigate at 20s
+    # and then waits for a lifecycle event carrying the loaderId it returned.
+    # Chrome answers at commit; so does Obscura since engine patch 0030.
+    client, session_id = page
+    result, error, answered_after = await client.call("Page.navigate", {"url": _WIKI}, session_id)
+    assert error is None and result is not None
+    loader_id = result["loaderId"]
+    lifecycle = [
+        event["params"]
+        for event in client.events
+        if event.get("method") == "Page.lifecycleEvent"
+        and event["params"].get("loaderId") == loader_id
+    ]
+    assert "commit" in [step["name"] for step in lifecycle]
+
+    deadline = time.perf_counter() + 60
+    while time.perf_counter() < deadline:
+        names = [
+            event["params"]["name"]
+            for event in client.events
+            if event.get("method") == "Page.lifecycleEvent"
+            and event["params"].get("loaderId") == loader_id
+        ]
+        if "load" in names:
+            break
+        await asyncio.sleep(0.1)
+    assert "load" in names, f"no load for the navigation's loader after {answered_after:.1f}s"
 
 
 async def test_going_back_through_the_history_entry_works(
@@ -818,7 +863,7 @@ async def test_an_alert_neither_blocks_the_page_nor_raises_a_dialog_event(
 
 
 async def test_the_page_scrolls_in_javascript(at_wiki: tuple[Cdp, str, Evaluate]) -> None:
-    # The fallback app/patches/browser_use_scroll_patch.py relies on.
+    # Browser-Use's JavaScript scroll fallback.
     _, _, evaluate = at_wiki
     await evaluate("window.scrollTo(0, 0)")
     await evaluate("window.scrollBy(0, 600)")
@@ -829,7 +874,7 @@ async def test_the_page_scrolls_in_javascript(at_wiki: tuple[Cdp, str, Evaluate]
 async def test_an_element_click_in_javascript_follows_the_link(
     at_wiki: tuple[Cdp, str, Evaluate],
 ) -> None:
-    # The fallback app/patches/browser_use_click_patch.py relies on.
+    # Browser-Use's JavaScript click, used when the element is occluded.
     _, _, evaluate = at_wiki
     await evaluate(
         "const a = document.createElement('a');"
@@ -848,33 +893,19 @@ _PROBE_LINK = (
 )
 
 
-async def test_a_click_that_navigates_holds_its_command_for_the_whole_page_load(
+async def test_a_click_that_navigates_returns_before_the_page_loads(
     at_wiki: tuple[Cdp, str, Evaluate],
 ) -> None:
-    # Why the click patch defers: Browser-Use gives a click 15s, and a slow page outlives it.
-    client, session_id, _ = at_wiki
-    _, error, elapsed = await client.call(
-        "Runtime.evaluate", {"expression": _PROBE_LINK + "a.click(); 'clicked'"}, session_id
-    )
-
-    assert error is None
-    assert elapsed > _BLOCKING_CLICK_SECONDS
-
-
-async def test_a_deferred_click_returns_at_once_and_still_navigates(
-    at_wiki: tuple[Cdp, str, Evaluate],
-) -> None:
-    # The shape app/patches/browser_use_click_patch.py sends.
+    # Browser-Use gives a click 15s; the command answers at once, as in Chrome,
+    # and the navigation follows with its own events.
     client, session_id, evaluate = at_wiki
     _, error, elapsed = await client.call(
-        "Runtime.evaluate",
-        {"expression": _PROBE_LINK + "setTimeout(() => a.click(), 0); 'scheduled'"},
-        session_id,
+        "Runtime.evaluate", {"expression": _PROBE_LINK + "a.click(); 'clicked'"}, session_id
     )
     await asyncio.sleep(3)
 
     assert error is None
-    assert elapsed < _BLOCKING_CLICK_SECONDS
+    assert elapsed < _PROMPT_SECONDS
     assert await evaluate("location.href") == "https://en.wikipedia.org/wiki/Dog"
 
 

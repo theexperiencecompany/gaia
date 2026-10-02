@@ -1,8 +1,8 @@
 From e91f261bffb0a017bc4116c361fffde48fc2b6f0 Mon Sep 17 00:00:00 2001
 From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
 Date: Wed, 23 Sep 2026 19:44:13 +0530
-Subject: [PATCH 14/18] fix(layout): give an inline split around block children
- real geometry
+Subject: [PATCH] fix(layout): give an inline split around block children real
+ geometry
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit

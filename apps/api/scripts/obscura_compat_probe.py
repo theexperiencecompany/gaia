@@ -44,7 +44,6 @@ COMMON_SITES = [
     "https://www.reddit.com/r/programming/",
     "https://stackoverflow.com/questions",
     "https://www.selenium.dev/selenium/web/web-form.html",
-    "https://the-internet.herokuapp.com/dynamic_loading/2",
     "https://www.amazon.com/",
     "https://www.ebay.com/",
     "https://www.booking.com/",
@@ -249,7 +248,6 @@ async def _start_obscura(obscura_bin: str) -> asyncio.subprocess.Process:
         [obscura_bin, "serve", "--port", str(OBSCURA_PORT), "--stealth"],
         env={
             **os.environ,
-            "OBSCURA_NAV_TIMEOUT_MS": "90000",
             "OBSCURA_SCRIPT_DEADLINE_MS": "60000",
         },
     )

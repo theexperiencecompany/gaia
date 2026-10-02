@@ -18,8 +18,7 @@ from starlette.websockets import WebSocketState
 from app.browser_host import screencast
 from app.browser_host.cdp_mux import CdpCommandError
 from app.browser_host.chromium import HostSession
-from app.config.browser_host_settings import browser_host_settings
-from app.constants.browser import BROWSER_VIEWPORT_HEIGHT, BROWSER_VIEWPORT_WIDTH, BrowserEngine
+from app.constants.browser import BROWSER_VIEWPORT_HEIGHT, BROWSER_VIEWPORT_WIDTH
 from tests.unit.browser_host.conftest import FakeMux, make_session
 
 pytestmark = pytest.mark.unit
@@ -82,7 +81,6 @@ def _mux() -> FakeMux:
         {
             "Target.getTargetInfo": {"targetInfo": {"url": "https://example.com/", "title": "Ex"}},
             "Runtime.evaluate": {"result": {"value": _FAVICON}},
-            "Page.captureScreenshot": {"data": "<pulled>"},
         }
     )
 
@@ -362,101 +360,18 @@ async def test_a_favicon_read_that_fails_is_warned_about_and_left_empty(
     assert "Could not read page favicon" in warning.call_args.args[0]
 
 
-@pytest.mark.parametrize(
-    ("engine", "pulls"), [(BrowserEngine.OBSCURA, True), (BrowserEngine.CHROMIUM, False)]
-)
-async def test_only_obscura_pulls_a_capture_while_the_screencast_is_quiet(
-    monkeypatch: pytest.MonkeyPatch, engine: BrowserEngine, pulls: bool
-) -> None:
-    """Obscura screencasts only the session that repainted; Chromium screencasts every one."""
-    monkeypatch.setattr(browser_host_settings, "BROWSER_ENGINE", engine)
-    monkeypatch.setattr(screencast, "_PULL_INTERVAL_SECONDS", 0.0)
-    run = _Run()
-    await run.start()
-
-    await _settle()
-    run.viewer.leave()
-    await run.finish()
-
-    assert ("Page.captureScreenshot" in run.mux.methods) is pulls
-    if pulls:
-        assert run.viewer.sent[0]["data"] == "<pulled>"
-        assert run.viewer.sent[0]["cssWidth"] is None
-
-
-async def test_a_pull_waits_while_frames_keep_arriving_and_carries_their_css_size(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    run = _Run()
-    stream = screencast._Stream(target_id="t1", page_session="S")
-    frames: asyncio.Queue[screencast._Frame] = asyncio.Queue(maxsize=2)
-    ticks = 0
-
-    async def _tick(_seconds: float) -> None:
-        nonlocal ticks
-        ticks += 1
-        if ticks == 1:
-            stream.latest = screencast._Frame("<fresh>", 800, 600)
-        if ticks == 4:
-            raise asyncio.CancelledError
-
-    monkeypatch.setattr(screencast.asyncio, "sleep", _tick)
-    with pytest.raises(asyncio.CancelledError):
-        await screencast._pull_frames(cast(Any, run.mux), stream, frames)
-
-    assert run.mux.methods.count("Page.captureScreenshot") == 2
-    pulled = frames.get_nowait()
-    assert (pulled.data, pulled.css_width, pulled.css_height) == ("<pulled>", 800, 600)
-
-
-async def test_a_failing_pull_is_warned_once_per_streak(monkeypatch: pytest.MonkeyPatch) -> None:
-    run = _Run()
-    stream = screencast._Stream(target_id="t1", page_session="S")
-    warned_at: list[int] = []
-    warning = MagicMock(side_effect=lambda *a, **k: warned_at.append(ticks))
-    monkeypatch.setattr(screencast.log, "warning", warning)
-    failing = CdpCommandError({"message": "navigating"})
-    # tick: 1-3 fail, 4 a screencast frame arrives, 5-7 fail, 8 succeeds, 9-11 fail
-    plan = {1: failing, 4: "frame", 5: failing, 8: None, 9: failing, 12: "stop"}
-    ticks = 0
-
-    async def _tick(_seconds: float) -> None:
-        nonlocal ticks
-        ticks += 1
-        step = plan.get(ticks)
-        if step == "stop":
-            raise asyncio.CancelledError
-        if step == "frame":
-            stream.latest = screencast._Frame("<cast>", 1, 1)
-        elif ticks in plan:
-            run.mux.send_error = cast(Any, step)
-
-    monkeypatch.setattr(screencast.asyncio, "sleep", _tick)
-    with pytest.raises(asyncio.CancelledError):
-        await screencast._pull_frames(cast(Any, run.mux), stream, asyncio.Queue(maxsize=2))
-
-    assert warned_at == [1, 5, 9]
-    assert "Could not pull a live-view frame" in warning.call_args.args[0]
-    assert warning.call_args.kwargs == {"error_type": "CdpCommandError"}
-
-
 _ON_ITS_PAGE = {
     "Page.enable",
     "Page.startScreencast",
     "Page.stopScreencast",
     "Page.screencastFrameAck",
-    "Page.captureScreenshot",
     "Runtime.evaluate",
     "Input.dispatchMouseEvent",
     "Input.dispatchKeyEvent",
 }
 
 
-async def test_everything_the_view_does_to_its_page_rides_its_own_page_session(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(browser_host_settings, "BROWSER_ENGINE", BrowserEngine.OBSCURA)
-    monkeypatch.setattr(screencast, "_PULL_INTERVAL_SECONDS", 0.0)
+async def test_everything_the_view_does_to_its_page_rides_its_own_page_session() -> None:
     run = _Run()
     await run.start()
     run.frame("<jpeg>")
@@ -481,7 +396,6 @@ async def test_everything_the_view_does_to_its_page_rides_its_own_page_session(
         for m, params, _ in run.mux.calls
         if m == "Target.getTargetInfo"
     )
-    assert run.mux.params_for("Page.captureScreenshot")[0] == {"format": "jpeg", "quality": 72}
     assert run.mux.params_for("Page.startScreencast")[-1] == {
         "format": "jpeg",
         "quality": 72,
@@ -573,66 +487,6 @@ async def test_a_navigation_without_a_frame_and_a_tab_without_info_are_still_rea
         None,
         None,
     )
-
-
-async def test_a_pull_on_obscura_carries_the_css_size_the_screencast_last_reported(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(browser_host_settings, "BROWSER_ENGINE", BrowserEngine.OBSCURA)
-    monkeypatch.setattr(screencast, "_PULL_INTERVAL_SECONDS", 0.0)
-    run = _Run()
-    await run.start()
-
-    run.frame("<cast>")
-    for _ in range(200):
-        if any(f["data"] == "<pulled>" and f["cssWidth"] == 800 for f in run.viewer.sent):
-            break
-        await asyncio.sleep(0)
-    run.viewer.leave()
-    await run.finish()
-
-    assert any(f["data"] == "<pulled>" and f["cssWidth"] == 800 for f in run.viewer.sent)
-
-
-async def test_the_first_pull_captures_a_page_that_never_repainted() -> None:
-    run = _Run()
-    stream = screencast._Stream(target_id="t1", page_session="S")
-    frames: asyncio.Queue[screencast._Frame] = asyncio.Queue(maxsize=2)
-    ticks = 0
-
-    async def _tick(_seconds: float) -> None:
-        nonlocal ticks
-        ticks += 1
-        if ticks == 2:
-            raise asyncio.CancelledError
-
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(screencast.asyncio, "sleep", _tick)
-        with pytest.raises(asyncio.CancelledError):
-            await screencast._pull_frames(cast(Any, run.mux), stream, frames)
-
-    assert frames.get_nowait().data == "<pulled>"
-
-
-async def test_a_pull_into_a_full_queue_is_dropped_and_the_pull_goes_on(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    run = _Run()
-    stream = screencast._Stream(target_id="t1", page_session="S")
-    frames: asyncio.Queue[screencast._Frame] = asyncio.Queue(maxsize=1)
-    ticks = 0
-
-    async def _tick(_seconds: float) -> None:
-        nonlocal ticks
-        ticks += 1
-        if ticks == 4:
-            raise asyncio.CancelledError
-
-    monkeypatch.setattr(screencast.asyncio, "sleep", _tick)
-    with pytest.raises(asyncio.CancelledError):
-        await screencast._pull_frames(cast(Any, run.mux), stream, frames)
-
-    assert run.mux.methods.count("Page.captureScreenshot") == 3
 
 
 async def test_a_finished_side_task_leaves_the_views_set() -> None:

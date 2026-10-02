@@ -1,8 +1,8 @@
 From 4bc67c709911b75c8e88d8eaca55eaacf1ce4ad1 Mon Sep 17 00:00:00 2001
 From: Aryan Randeriya <aryan.k.randeriya@gmail.com>
 Date: Wed, 23 Sep 2026 13:22:55 +0530
-Subject: [PATCH 01/18] fix(js): let window named properties be reassigned, and
- give <template> its own class
+Subject: [PATCH] fix(js): let window named properties be reassigned, and give
+ <template> its own class
 
 Assigning to a name that an element id exposes on window (Next.js does
 window.__NEXT_DATA__ = ...) threw on the getter-only accessor; a setter now

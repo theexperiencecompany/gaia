@@ -817,6 +817,3 @@ index e3c87c3..70590e3 100644
      /// Hit testing for `document.elementFromPoint`: of the element boxes that
      /// contain the viewport point, are not visibility-hidden, and are not
      /// clipped away there by an ancestor's overflow, the one latest in tree
--- 
-2.43.0
-
