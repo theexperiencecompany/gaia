@@ -119,11 +119,18 @@ def _node(
     )
 
 
+#: The photo Browser-Use took of the page when it read the step's url and title.
+STATE_PHOTO = "c3RhdGU="
+
+
 def _state(
     url: str = "https://example.test/page", selector_map: dict[int, Any] | None = None
 ) -> Any:
     return SimpleNamespace(
-        dom_state=SimpleNamespace(selector_map=selector_map or {}), url=url, title="Example"
+        dom_state=SimpleNamespace(selector_map=selector_map or {}),
+        url=url,
+        title="Example",
+        screenshot=STATE_PHOTO,
     )
 
 
@@ -425,21 +432,22 @@ class TestStepRecords:
             "https://example.test/cart",
             "Example",
         )
-        assert frame.photo is not None
-        assert (await frame.photo, frame.since_prev_ms) == ("c2hvdA==", 0)
+        # The photo of the moment its url and title were read, not one racing the step's actions.
+        assert (frame.photo, frame.since_prev_ms) == (STATE_PHOTO, 0)
 
-    async def test_a_page_that_does_not_answer_its_photo_leaves_the_card_without_one(
+    async def test_a_burst_card_shows_the_page_jev_ended_on_unless_it_does_not_answer(
         self, harness: _Harness, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         async def _unanswered() -> str:
             raise PageUnresponsive("Page.captureScreenshot got no answer in 20s")
 
         await harness.step(index=4)
+        burst = [BrowserAction(name="click", inputs={})]
+        await harness.run._emit_burst(burst, "https://x.test", "X")
         monkeypatch.setattr(harness.run._page, "screenshot", _unanswered)
         async with captured_wide_event() as event:
-            await harness.step(index=5)
-            assert harness.frames[1].photo is not None
-            assert await harness.frames[1].photo is None
+            await harness.run._emit_burst(burst, "https://x.test", "X")
+        assert [frame.photo for frame in harness.frames[1:]] == ["c2hvdA==", None]
         [warning] = event["warnings"]
         assert (warning["msg"].endswith("Step photo not taken"), warning["error_type"]) == (
             True,

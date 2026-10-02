@@ -7,9 +7,11 @@ than mocking the fallback away.
 
 from __future__ import annotations
 
+from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fakeredis
+from PIL import Image
 import pytest
 
 from app.services.browser import screenshots as shots, shot_store
@@ -193,6 +195,22 @@ class TestPublishStepScreenshot:
         mock_warn.assert_called_once()
         assert "upload failed" in mock_warn.call_args[0][0]
         assert mock_warn.call_args[1].get("error_type") == "RuntimeError"
+
+    async def test_a_photo_taken_as_a_png_is_served_as_a_jpeg_of_the_same_page(
+        self, no_r2, redis_backend
+    ):
+        png = BytesIO()
+        Image.new("RGB", (8, 4), (200, 30, 30)).save(png, format="PNG")
+
+        url = await shots.publish_step_screenshot(png.getvalue(), "c1", 1)
+
+        assert url is not None
+        stored = await _read_back(url, 1)
+        assert stored is not None
+        with Image.open(BytesIO(stored)) as served:
+            assert (served.format, served.size) == ("JPEG", (8, 4))
+            red, green, blue = served.convert("RGB").getpixel((4, 2))
+        assert red > 180 and green < 60 and blue < 60
 
     async def test_a_frame_redis_did_not_take_returns_none_and_no_photo(self, no_r2, no_redis):
         assert await shots.publish_step_screenshot(b"x", "c1", 1) is None

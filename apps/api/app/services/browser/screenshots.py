@@ -11,24 +11,29 @@ store still produces real URLs for web and bots alike.
 
 Best-effort throughout: a failed upload falls back to Redis, and only a frame
 neither took returns None, which leaves the step without a photo rather than
-failing the run. Every frame is a JPEG, as the page is captured.
+failing the run. Every frame is served as a JPEG; one taken as a PNG (Browser-Use's
+own photo of the step's page) is converted here, off the browser loop.
 """
 
 import asyncio
 from functools import lru_cache
+from io import BytesIO
 from time import perf_counter
 from typing import Protocol, cast
 
 import boto3
 from botocore.config import Config
+from PIL import Image
 
 from app.config.settings import settings
+from app.constants.browser import BROWSER_STEP_PHOTO_QUALITY
 from app.constants.log_tags import LogTag
 from app.services.browser.shot_store import SHOT_SUFFIX, store_step_screenshot
 from shared.py.wide_events import log
 
 _UPLOAD_TIMEOUT_SECONDS = 15
 _CONTENT_TYPE = "image/jpeg"
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 
 class _S3Putter(Protocol):
@@ -75,8 +80,18 @@ def _put(image: bytes, key: str) -> None:
     )
 
 
-async def publish_step_screenshot(jpeg: bytes, session_id: str, index: int) -> str | None:
-    """Publish one step screenshot and return the URL that serves it, or None."""
+def _png_to_jpeg(png: bytes) -> bytes:
+    with Image.open(BytesIO(png)) as frame:
+        jpeg = BytesIO()
+        frame.convert("RGB").save(jpeg, format="JPEG", quality=BROWSER_STEP_PHOTO_QUALITY)
+    return jpeg.getvalue()
+
+
+async def publish_step_screenshot(image: bytes, session_id: str, index: int) -> str | None:
+    """Publish one step screenshot as a JPEG and return the URL that serves it, or None."""
+    jpeg = (
+        await asyncio.to_thread(_png_to_jpeg, image) if image.startswith(_PNG_SIGNATURE) else image
+    )
     size_bytes = len(jpeg)
     started = perf_counter()
     base = _r2_public_base()

@@ -129,7 +129,7 @@ class _ScriptedRun:
                 actions=[BrowserAction(name="click", inputs={"index": index}, target="Next")],
                 url=PAGE,
                 title="Book a table",
-                photo=asyncio.ensure_future(_photo(screenshot)) if screenshot else None,
+                photo=screenshot,
                 since_prev_ms=since_prev_ms,
             )
         )
@@ -142,10 +142,6 @@ class _ScriptedRun:
 
     def stop(self) -> None:
         self.stopped = True
-
-
-async def _photo(data: str) -> str:
-    return data
 
 
 async def _done(run: _ScriptedRun) -> RunOutcome:

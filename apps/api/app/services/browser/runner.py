@@ -654,8 +654,7 @@ class BrowserTaskRunner:
     async def _emit_step(self, frame: StepFrame) -> None:
         async with self._emit_lock:
             shot_t0 = perf_counter()
-            photo = await frame.photo if frame.photo is not None else None
-            screenshot = await self._render_screenshot(frame, photo)
+            screenshot = await self._render_screenshot(frame)
             if screenshot is not None:
                 self._shots.append(screenshot)
             # Feeds only the info-level step timing line.
@@ -671,7 +670,7 @@ class BrowserTaskRunner:
                     title=frame.title,
                     screenshot=screenshot,
                     elapsed_ms=frame.since_prev_ms or None,
-                    frame_digest=sha256(photo.encode()).hexdigest() if photo else None,
+                    frame_digest=sha256(frame.photo.encode()).hexdigest() if frame.photo else None,
                 )
             )
             # Feeds only the info-level step timing line.
@@ -684,12 +683,14 @@ class BrowserTaskRunner:
                 emit_ms=emit_ms,
             )
 
-    async def _render_screenshot(self, frame: StepFrame, photo: str | None) -> str | None:
+    async def _render_screenshot(self, frame: StepFrame) -> str | None:
         """Return the URL that serves a step frame's photo, or None when it has none to show."""
-        if photo is None:
+        if frame.photo is None:
             return None
         # Keyed by session id (not conversation) so each run is its own replay folder.
-        return await publish_step_screenshot(base64.b64decode(photo), frame.session_id, frame.index)
+        return await publish_step_screenshot(
+            base64.b64decode(frame.photo), frame.session_id, frame.index
+        )
 
     async def _finish(
         self, status: BrowserSessionStatus, summary: str, failure: BrowserRunFailure | None
