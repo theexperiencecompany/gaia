@@ -249,7 +249,7 @@ async def test_jev_sees_which_links_lead_to_pages_this_run_opened_and_where_each
     """Jev clicked one Hacker News story and came back eight times: nothing said it had read that page."""
     story = _action("e5", 15, "click", "Clef", role="link", href="https://blog.test/clef#top")
     other = _action("e6", 16, "click", "Frog", role="link", href="https://blog.test/frog")
-    home = _action("e7", 17, "click", "Shop", role="link", href="https://SHOP.test")
+    home = _action("e7", 17, "click", "Shop", role="link", href="https://shop.test")
     jev = _Jev(operation="DONE")
     went = RecentAction(
         action="Clef", kind="CLICK", text=None, page_changed=True, led_to="https://blog.test/clef"

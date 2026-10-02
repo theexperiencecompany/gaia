@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 import math
 import re
-from urllib.parse import urlsplit
+from urllib.parse import urldefrag, urlsplit
 
 from pydantic import ValidationError
 
@@ -177,8 +177,8 @@ class _Element:
 
 def page_address(url: str) -> str:
     """Return url as the page it opens: no fragment, and an empty path is the root."""
-    parts = urlsplit(url)
-    return parts._replace(netloc=parts.netloc.lower(), path=parts.path or "/", fragment="").geturl()
+    parts = urlsplit(urldefrag(url).url)
+    return parts._replace(path=parts.path or "/").geturl()
 
 
 @dataclass
