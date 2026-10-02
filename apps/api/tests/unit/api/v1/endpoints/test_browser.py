@@ -125,7 +125,9 @@ def _make_task(task_id: str = "t1") -> BrowserTaskResponse:
 
 
 def _record(status: HandoffStatus = HandoffStatus.PENDING, user_id: str = "u1") -> HandoffRecord:
-    return HandoffRecord(status=status, user_id=user_id, conversation_id="c1", job_id="job-1")
+    return HandoffRecord(
+        status=status, user_id=user_id, conversation_id="c1", job_id="job-1", kind=HandoffKind.USER
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -128,7 +128,7 @@ class TestStepScreenshot:
 class TestReplayPage:
     async def test_success(self) -> None:
         record = ReplayRecord(
-            session_id="s1", steps=2, shots=["https://cdn/1.png", "https://cdn/2.png"]
+            session_id="s1", shots=["https://cdn/1.png", "https://cdn/2.png"]
         )
         with (
             patch.object(blv, "resolve_replay_code", new=AsyncMock(return_value=record)),
@@ -702,7 +702,7 @@ class TestReplayPageDetails:
             assert exc.value.detail == "Recap not found or expired"
 
     async def test_logs_operation_and_session_id_and_calls_resolve_with_code(self) -> None:
-        record = ReplayRecord(session_id="s1", steps=1, shots=["https://cdn/1.png"])
+        record = ReplayRecord(session_id="s1", shots=["https://cdn/1.png"])
         with (
             patch.object(
                 blv, "resolve_replay_code", new=AsyncMock(return_value=record)

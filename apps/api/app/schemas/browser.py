@@ -131,8 +131,7 @@ class HandoffRecord(BaseModel):
     conversation_id: str
     #: The browser job paused on it: a stop said in reply stops this job, never another at the address.
     job_id: str
-    #: Defaulted so records written before agent guidance existed still parse.
-    kind: HandoffKind = HandoffKind.USER
+    kind: HandoffKind
     reason: str = ""
     # Optional free-text note the user sends back when continuing ("just grab the
     # photo, skip the login"). Delivered to the agent as guidance on resume.
@@ -174,19 +173,17 @@ class LiveCodeRecord(BaseModel):
     handoff_id: str | None = None
 
 
+class ShotCodeRecord(BaseModel):
+    """What a step-frame code opens: the run whose stored frames it serves."""
+
+    session_id: str
+
+
 class ReplayRecord(BaseModel):
     """What a replay code opens: the screenshots the run actually uploaded."""
 
     session_id: str
-    steps: int
-    # The CDN URLs that really exist. Empty on codes minted before these were
-    # stored, which fall back to deriving them from the session id.
-    shots: list[str] = Field(default_factory=list)
-
-
-# ---------------------------------------------------------------------------
-# Sensitive-action classifier
-# ---------------------------------------------------------------------------
+    shots: list[str]
 
 
 # ---------------------------------------------------------------------------

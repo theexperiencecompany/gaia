@@ -7,7 +7,11 @@ import secrets
 import fakeredis
 import pytest
 
-from app.constants.browser import BROWSER_LIVE_CODE_ENTROPY_BYTES, BROWSER_REPLAY_CODE_TTL_SECONDS
+from app.constants.browser import (
+    BROWSER_LIVE_CODE_ENTROPY_BYTES,
+    BROWSER_REPLAY_CODE_TTL_SECONDS,
+    BROWSER_SHOT_CODE_KEY_PREFIX,
+)
 from app.services.browser import shot_store
 from tests.helpers import captured_wide_event
 
@@ -66,24 +70,15 @@ async def test_a_frame_and_its_code_expire_with_the_recap(
     assert len(_code(url)) == len(secrets.token_urlsafe(BROWSER_LIVE_CODE_ENTROPY_BYTES))
 
 
-async def test_storing_and_reading_a_frame_leave_its_run_size_and_time_on_the_event(
-    fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+async def test_reading_a_frame_leaves_its_run_on_the_event(
+    fake_redis: fakeredis.aioredis.FakeRedis,
 ) -> None:
-    ticks = iter([1.0, 3.0])
-    monkeypatch.setattr(shot_store, "perf_counter", lambda: next(ticks))
-
-    async with captured_wide_event() as stored:
-        url = await shot_store.store_step_screenshot(b"12345", "sess-9", 1)
+    url = await shot_store.store_step_screenshot(b"12345", "sess-9", 1)
     assert url is not None
+
     async with captured_wide_event() as read:
         await shot_store.read_step_screenshot(_code(url), 1)
 
-    assert stored["browser"] == {
-        "session_id": "sess-9",
-        "shot_backend": "redis",
-        "shot_bytes": 5,
-        "shot_store_ms": 2000,
-    }
     assert read["browser"] == {"session_id": "sess-9"}
 
 
@@ -98,5 +93,20 @@ async def test_an_unknown_code_or_a_session_id_opens_nothing(
 
 async def test_a_frame_redis_does_not_take_gets_no_url(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(shot_store.redis_cache, "redis", None)
+
+    assert await shot_store.store_step_screenshot(b"a", "sess-1", 1) is None
+
+
+async def test_a_frame_whose_code_redis_does_not_keep_gets_no_url(
+    fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    setex = fake_redis.setex
+
+    async def _refuse_codes(name: str, time: int, value: str) -> object:
+        if name.startswith(BROWSER_SHOT_CODE_KEY_PREFIX):
+            raise ConnectionError("redis went away")
+        return await setex(name, time, value)
+
+    monkeypatch.setattr(fake_redis, "setex", _refuse_codes)
 
     assert await shot_store.store_step_screenshot(b"a", "sess-1", 1) is None

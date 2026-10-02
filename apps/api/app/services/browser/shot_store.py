@@ -16,8 +16,6 @@ served it.
 from __future__ import annotations
 
 import base64
-import secrets
-from time import perf_counter
 
 from app.constants.browser import (
     BROWSER_LIVE_CODE_ENTROPY_BYTES,
@@ -28,11 +26,18 @@ from app.constants.browser import (
 )
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
+from app.schemas.browser import ShotCodeRecord
+from app.services.browser.capability_code import CapabilityCodes
+from app.services.browser.exceptions import BrowserUnavailableError
 from app.services.browser.links import browser_link_base
 from shared.py.wide_events import log
 
 #: Every step frame is the JPEG the page was captured as.
 SHOT_SUFFIX = ".jpg"
+
+_CODES = CapabilityCodes(
+    BROWSER_SHOT_CODE_KEY_PREFIX, ShotCodeRecord, entropy_bytes=BROWSER_LIVE_CODE_ENTROPY_BYTES
+)
 
 
 def _frame_key(session_id: str, index: int) -> str:
@@ -49,36 +54,25 @@ async def _code_for(session_id: str) -> str:
     existing = await redis_cache.get(session_key)
     if isinstance(existing, str):
         return existing
-    code = secrets.token_urlsafe(BROWSER_LIVE_CODE_ENTROPY_BYTES)
-    await redis_cache.set(session_key, code, ttl=BROWSER_REPLAY_CODE_TTL_SECONDS)
-    await redis_cache.set(
-        f"{BROWSER_SHOT_CODE_KEY_PREFIX}{code}",
-        session_id,
-        ttl=BROWSER_REPLAY_CODE_TTL_SECONDS,
+    code = await _CODES.mint(
+        ShotCodeRecord(session_id=session_id), ttl=BROWSER_REPLAY_CODE_TTL_SECONDS
     )
+    await redis_cache.set(session_key, code, ttl=BROWSER_REPLAY_CODE_TTL_SECONDS)
     return code
-
-
-async def resolve_shot_code(code: str) -> str | None:
-    """Return the run a shot code opens, or None when it is unknown or expired."""
-    session_id = await redis_cache.get(f"{BROWSER_SHOT_CODE_KEY_PREFIX}{code}")
-    return session_id if isinstance(session_id, str) else None
 
 
 async def read_step_screenshot(code: str, index: int) -> bytes | None:
     """Return one stored step frame by its run's code, or None when either is unknown or expired."""
-    session_id = await resolve_shot_code(code)
-    if session_id is None:
+    record = await _CODES.resolve(code)
+    if record is None:
         return None
-    log.set(browser={"session_id": session_id})
-    frame = await redis_cache.get(_frame_key(session_id, index))
+    log.set(browser={"session_id": record.session_id})
+    frame = await redis_cache.get(_frame_key(record.session_id, index))
     return base64.b64decode(frame) if isinstance(frame, str) else None
 
 
 async def store_step_screenshot(jpeg: bytes, session_id: str, index: int) -> str | None:
     """Keep one step frame and return the URL that serves it back, or None when Redis did not take it."""
-    size_bytes = len(jpeg)
-    started = perf_counter()
     stored = await redis_cache.set(
         _frame_key(session_id, index),
         base64.b64encode(jpeg).decode(),
@@ -86,20 +80,12 @@ async def store_step_screenshot(jpeg: bytes, session_id: str, index: int) -> str
     )
     if not stored:
         return None
-    code = await _code_for(session_id)
-    store_ms = round((perf_counter() - started) * 1000)
-    log.set_ns(
-        "browser",
-        session_id=session_id,
-        shot_backend="redis",
-        shot_bytes=size_bytes,
-        shot_store_ms=store_ms,
-    )
-    log.info(
-        f"{LogTag.BROWSER} Browser step screenshot stored",
-        step_index=index,
-        backend="redis",
-        size_bytes=size_bytes,
-        store_ms=store_ms,
-    )
+    try:
+        code = await _code_for(session_id)
+    except BrowserUnavailableError as exc:
+        log.warning(
+            f"{LogTag.BROWSER} Browser step screenshot code not stored",
+            error_type=type(exc).__name__,
+        )
+        return None
     return f"{browser_link_base()}/shots/{code}/{index}{SHOT_SUFFIX}"

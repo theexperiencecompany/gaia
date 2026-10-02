@@ -13,7 +13,7 @@ from typing import Any, cast
 from browser_use.browser.session import BrowserSession
 import pytest
 
-from app.constants.browser import BROWSER_STEP_PHOTO_QUALITY
+from app.constants.browser import BROWSER_STEP_PHOTO_QUALITY, BrowserEngine
 from app.constants.log_tags import LogTag
 from app.services.browser.jev import page as page_mod
 from app.services.browser.jev.page import (
@@ -317,7 +317,7 @@ class _Browser:
 
 def _page(tab: _Tab, **browser: Any) -> tuple[JevPage, _Browser]:
     session = _Browser(tab, **browser)
-    return JevPage(cast("BrowserSession", session)), session
+    return JevPage(cast("BrowserSession", session), BrowserEngine.CHROMIUM), session
 
 
 # --- reading the page --------------------------------------------------------------------

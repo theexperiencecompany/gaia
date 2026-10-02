@@ -43,7 +43,6 @@ from app.constants.browser import (
 )
 from app.constants.log_tags import LogTag
 from app.patches.browser_use_run_lock_patch import isolate_run_events
-from app.patches.obscura_sessions import driving
 from app.schemas.browser import (
     AgentGuidanceRequest,
     BrowserAction,
@@ -289,10 +288,6 @@ class BrowserAgentRun:
         return cast(AgentState, self._agent.state) if self._agent is not None else None
 
     async def execute(self, task: str) -> RunOutcome:
-        with driving(self._session.engine):
-            return await self._execute(task)
-
-    async def _execute(self, task: str) -> RunOutcome:
         self._task = task
         # Before any Browser-Use object exists, so every event bus this run
         # starts takes the run's lock, not the process-wide one.
@@ -417,7 +412,7 @@ class BrowserAgentRun:
 
     def _page_for(self, browser_session: BrowserSession) -> JevPage:
         if self._page is None:
-            self._page = JevPage(browser_session)
+            self._page = JevPage(browser_session, self._session.engine)
         return self._page
 
     async def _current_url(self) -> str | None:
@@ -548,7 +543,7 @@ class BrowserAgentRun:
         del n_steps
         started_at = perf_counter()
         if self._page is None:
-            self._page = JevPage(self._agent.browser_session)
+            self._page = JevPage(self._agent.browser_session, self._session.engine)
         actions = _extract_actions(agent_output, browser_state_summary)
         for action in actions:
             if (typed := _password_typed(action, browser_state_summary)) is not None:
