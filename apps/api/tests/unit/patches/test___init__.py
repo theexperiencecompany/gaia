@@ -1,19 +1,13 @@
-"""Importing app.patches installs every Browser-Use patch the browser run relies on."""
+"""Importing app.patches installs the one Browser-Use patch left: each run's own event lock."""
 
-from browser_use.browser.session import BrowserSession
-from browser_use.tools.registry.service import Registry
+import bubus.service as bubus_service
 import pytest
 
-from app.patches import (
-    browser_use_page_ready_patch,
-    browser_use_page_title_patch,
-    browser_use_secret_scope_patch,
-)
+# Importing a patch module imports app.patches first, which applies every patch.
+from app.patches import browser_use_run_lock_patch
 
 pytestmark = pytest.mark.unit
 
 
-def test_the_secret_scope_and_page_wait_patches_are_installed() -> None:
-    assert Registry.execute_action is browser_use_secret_scope_patch._execute_action
-    assert BrowserSession._navigate_and_wait is browser_use_page_ready_patch._navigate_and_wait
-    assert BrowserSession.get_tabs is browser_use_page_title_patch._get_tabs
+def test_the_run_lock_patch_is_installed() -> None:
+    assert bubus_service._get_global_lock is browser_use_run_lock_patch._get_run_lock

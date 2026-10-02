@@ -21,7 +21,7 @@ import shutil
 from time import perf_counter
 from typing import Any, TypedDict, cast
 
-from browser_use import Agent, Browser
+from browser_use import Agent
 from browser_use.agent.views import ActionResult, AgentHistoryList, AgentOutput, AgentState
 from browser_use.browser.events import BrowserConnectedEvent, NavigationCompleteEvent
 from browser_use.browser.session import BrowserSession
@@ -51,7 +51,8 @@ from app.schemas.browser import (
     GuidanceAction,
     GuidanceElement,
 )
-from app.services.browser.agent_options import agent_options, browser_options
+from app.services.browser.agent_options import agent_options
+from app.services.browser.browser_use_session import GaiaBrowserSession
 from app.services.browser.captions import burst_caption, caption_from_action_list, step_caption
 from app.services.browser.exceptions import (
     BrowserAutomationError,
@@ -324,7 +325,7 @@ class BrowserAgentRun:
             log.set_ns("browser", llm_error=type(exc).__name__)
             raise
         async with open_jev_client() as client:
-            browser = Browser(**browser_options(self._session.cdp_url))
+            browser = GaiaBrowserSession(cdp_url=self._session.cdp_url, user_id=self._user_id)
             stalls = self._stalls = StalledLoads(browser)
             browser.event_bus.on(BrowserConnectedEvent, self._on_connected)
             browser.event_bus.on(BrowserConnectedEvent, stalls.attach)

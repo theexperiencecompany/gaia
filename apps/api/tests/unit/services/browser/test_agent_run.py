@@ -645,7 +645,7 @@ class _History:
 
 
 class _Browser:
-    """Browser-Use's Browser: records what listens on its event bus and its CDP connection."""
+    """The run's GaiaBrowserSession: records what listens on its event bus and its CDP connection."""
 
     def __init__(self, **options: Any) -> None:
         self.options = options
@@ -777,7 +777,7 @@ def built_with(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[tuple[st
         return _TEXT_MODEL
 
     monkeypatch.setattr(agent_run_mod, "Agent", _Agent)
-    monkeypatch.setattr(agent_run_mod, "Browser", _Browser)
+    monkeypatch.setattr(agent_run_mod, "GaiaBrowserSession", _Browser)
     monkeypatch.setattr(agent_run_mod, "build_agent_llm", _llm)
     monkeypatch.setattr(agent_run_mod, "build_text_model", _text_model)
     monkeypatch.setattr(agent_run_mod, "open_jev_client", _JevGateway.opened)
@@ -851,7 +851,8 @@ class TestExecute:
         assert (agent.options["llm"], agent.options["page_extraction_llm"]) == (_LLM, _TEXT_MODEL)
         assert built_with == [("agent", harness.ledger), ("text", harness.ledger)]
         browser = agent.options["browser"]
-        assert browser.options["cdp_url"] == "ws://browser.test/cdp"
+        # The run's own session, fingerprinted for the run's user.
+        assert browser.options == {"cdp_url": "ws://browser.test/cdp", "user_id": "user-1"}
 
     async def test_the_stall_watcher_listens_on_every_connect_of_this_browser(
         self, harness: _Harness

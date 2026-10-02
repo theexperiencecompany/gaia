@@ -9,8 +9,8 @@ page to load, then stops; a shown page still loading is cut short, and said so.
 A form submission is never stopped: the server may already be acting on it.
 Chrome names one in Page.frameRequestedNavigation before it starts (2026-10-02).
 
-It also tells the agent when Browser-Use's capped readiness wait
-(browser_use_page_ready_patch) went on before a page finished loading.
+It also tells the agent when the capped readiness wait (GaiaBrowserSession's
+_navigate_and_wait) went on before a page finished loading.
 """
 
 from __future__ import annotations

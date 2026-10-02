@@ -11,17 +11,14 @@ from app.constants.browser import (
     BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
     BROWSER_AGENT_ROLE,
     BROWSER_AGENT_URL_QUERY_MAX_CHARS,
-    BROWSER_DEVICE_SCALE_FACTOR,
     BROWSER_ENGINE_RESUMED_NOTE,
     BROWSER_HUMAN_CHECKS,
     BROWSER_TASK_QUOTE_RULE,
-    BROWSER_VIEWPORT_HEIGHT,
-    BROWSER_VIEWPORT_WIDTH,
     JEV_FIRST_BURST_DONE_WHEN,
     JEV_FIRST_BURST_GOAL,
 )
 from app.schemas.browser import BrowserTaskSecret
-from app.services.browser.agent_options import agent_options, browser_options
+from app.services.browser.agent_options import agent_options
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.jev.tool import JEV_ACTION
 from app.services.browser.run_contract import BrowserRunConfig
@@ -127,12 +124,3 @@ def test_an_agent_on_the_fast_engine_is_told_where_it_is() -> None:
     assert options["extend_system_message"] == (
         BROWSER_AGENT_ROLE + BROWSER_HUMAN_CHECKS + BROWSER_AGENT_FAST_ENGINE_NOTE
     )
-
-
-def test_the_browser_renders_the_host_session_at_the_screencast_size() -> None:
-    assert browser_options("ws://host.test/devtools/browser/1") == {
-        "cdp_url": "ws://host.test/devtools/browser/1",
-        "viewport": {"width": BROWSER_VIEWPORT_WIDTH, "height": BROWSER_VIEWPORT_HEIGHT},
-        "device_scale_factor": BROWSER_DEVICE_SCALE_FACTOR,
-        "no_viewport": False,
-    }

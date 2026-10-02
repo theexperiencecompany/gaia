@@ -54,7 +54,6 @@ from app.services.browser.exceptions import (
     BrowserSessionGone,
     BrowserUnavailableError,
 )
-from app.services.browser.fingerprint import current_fingerprint_seed, seed_for_user
 from app.services.browser.jev.secrets import RunSecrets, SecretWithheld
 from app.services.browser.job_events import JOB_GUIDANCE_FRAME, JOB_TERMINAL_FRAME
 from app.services.browser.jobs import get_job_state, job_ending
@@ -1620,43 +1619,6 @@ async def test_capture_source_is_the_surface_the_run_came_from(
     await _run(h, _bot_request(task="x"))
 
     assert captured[0][2]["source"] == "bot"
-
-
-# ---------------------------------------------------------------------------
-# execute_browser_job — per-user fingerprint seed
-# ---------------------------------------------------------------------------
-
-
-async def test_run_presents_the_users_own_device_fingerprint(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Pin the canvas/audio seed to the user for the run and release it after; use the raw coroutine, not ainvoke, since the seed rides a contextvar that a task-based call would only see a copy of."""
-    seen: list[int] = []
-
-    async def body(h: Harness) -> BrowserResultSnapshot:
-        seen.append(current_fingerprint_seed())
-        return _result(BrowserSessionStatus.COMPLETED, True, "done")
-
-    h = _install(monkeypatch, run_body=body)
-    before = current_fingerprint_seed()
-
-    await _run(h, _request())
-
-    assert seen == [seed_for_user("u1")]
-    assert seen[0] != before
-    assert current_fingerprint_seed() == before
-
-
-async def test_fingerprint_seed_is_released_even_when_the_session_fails(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A leaked seed would make every later run in this context impersonate the user whose run happened to blow up."""
-    h = _install(monkeypatch, session_error=BrowserUnavailableError("host is down"))
-    before = current_fingerprint_seed()
-
-    await _run(h, _request())
-
-    assert current_fingerprint_seed() == before
 
 
 # ---------------------------------------------------------------------------

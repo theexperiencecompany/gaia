@@ -25,6 +25,7 @@ from app.constants.browser import (
     EngineSwitchReason,
     SensitiveCategory,
 )
+from app.services.browser.browser_use_tools import GaiaTools
 from app.services.browser.user_sites import UserSites
 
 TakeoverFn = Callable[[str, SensitiveCategory], Awaitable[str]]
@@ -59,7 +60,7 @@ def build_browser_tools(
     handle_engine_switch, given only on the fast engine, moves the run to the
     full browser.
     """
-    tools: Tools[None] = Tools()
+    tools: Tools[None] = GaiaTools()
 
     # Registered by function name; BrowserHandoffAction.REQUEST_AGENT_GUIDANCE must spell it the same.
     @tools.action(

@@ -19,7 +19,7 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from browser_use.agent.views import ActionResult, AgentState
+from browser_use.agent.views import ActionResult, AgentHistoryList, AgentState
 from browser_use.browser.events import BrowserConnectedEvent
 import fakeredis.aioredis
 
@@ -229,6 +229,8 @@ class _ScriptedAgent:
         self._browser: _Browser = kwargs["browser"]
         self._stopped = False
         self.state = kwargs.get("injected_agent_state") or _agent_state([])
+        # Its steps are scripted results, not model outputs: nothing it read to report.
+        self.history = AgentHistoryList(history=[])
         self.browser_session = _BrowserSession(double)
         self.new_tasks: list[str] = []
         self.message_manager = SimpleNamespace(add_new_task=self.new_tasks.append)
@@ -489,7 +491,7 @@ async def browser_job_world(
         # sit out the real two-minute budget.
         patch("app.services.browser.job_runner.BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS", 2),
         patch("app.services.browser.agent_run.Agent", double.agent),
-        patch("app.services.browser.agent_run.Browser", lambda **kwargs: browser),
+        patch("app.services.browser.agent_run.GaiaBrowserSession", lambda **kwargs: browser),
         patch("app.agents.tools.browser_tool.enqueue_worker_job", _enqueue),
         patch("app.agents.tools.browser_tool.RedisPoolManager.get_pool", AsyncMock()),
         patch(
@@ -664,6 +666,7 @@ def _tools_of(double: BrowserDouble) -> Callable[..., object]:
     def _build(
         *,
         solve_captcha: bool,
+        user_sites: object,
         handle_takeover: Callable[[str, SensitiveCategory], Any],
         handle_guidance: Callable[[str], Any],
         handle_engine_switch: Callable[[EngineSwitchReason], Any] | None = None,
