@@ -360,14 +360,16 @@ async def _advance_schedule(
     return True
 
 
+# Todos whose every run reads Gmail: the desk triages it, a thread todo fetches its thread.
+_GMAIL_REF_SOURCES = frozenset({ExternalRefSource.INBOX_DESK, ExternalRefSource.GMAIL_THREAD})
+
+
 async def _paused_reason(doc: TodoDocument) -> str | None:
-    """Say why the todo cannot run right now (no active plan, or the desk without Gmail)."""
+    """Say why the todo cannot run right now (no active plan, or Gmail work without Gmail)."""
     if not await is_paid(doc.user_id):
         return "skipped: the user's plan is not active"
-    owns_desk = (
-        doc.external_ref is not None and doc.external_ref.source is ExternalRefSource.INBOX_DESK
-    )
-    if owns_desk and GMAIL_INTEGRATION_ID not in await get_connected_integration_ids(doc.user_id):
+    needs_gmail = doc.external_ref is not None and doc.external_ref.source in _GMAIL_REF_SOURCES
+    if needs_gmail and GMAIL_INTEGRATION_ID not in await get_connected_integration_ids(doc.user_id):
         return "skipped: Gmail is not connected"
     return None
 

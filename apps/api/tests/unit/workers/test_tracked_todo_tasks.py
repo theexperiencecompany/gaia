@@ -706,11 +706,18 @@ class TestARunWaitsForItsAccount:
             _recorded(activity)
         )
 
-    async def test_the_desk_waits_for_gmail(self, account, activity):
+    @pytest.mark.parametrize(
+        "ref",
+        [
+            ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail"),
+            ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="thread-1"),
+        ],
+        ids=["desk", "thread"],
+    )
+    async def test_gmail_work_waits_for_gmail(self, account, activity, ref):
         account.connected.return_value = set()
-        desk = _doc(external_ref=ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail"))
 
-        result, _repo, via_agent = await self._run(desk)
+        result, _repo, via_agent = await self._run(_doc(external_ref=ref))
 
         assert result == "paused:todo-1"
         via_agent.assert_not_awaited()
@@ -719,7 +726,7 @@ class TestARunWaitsForItsAccount:
             _recorded(activity)
         )
 
-    async def test_a_todo_that_is_not_the_desk_runs_without_gmail(self, account):
+    async def test_a_todo_that_reads_no_gmail_runs_without_it(self, account):
         account.connected.return_value = set()
 
         result, _repo, via_agent = await self._run(_doc())

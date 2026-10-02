@@ -21,7 +21,7 @@ Flags:
 --limit N  Only list the first N rows in the report (the totals stay complete).
 
 Safely re-runnable: a retired row no longer matches, and provisioning is idempotent.
-A user whose desk could not be opened keeps their row, so a re-run retries them.
+A row whose owner's desk could not be opened stays live, so a re-run retries it.
 """
 
 import argparse
@@ -49,7 +49,7 @@ class MigrationResult:
     retired: int = 0
     #: Owners who have an open Inbox desk once their row was retired.
     desks_open: int = 0
-    #: user_id -> the error that kept their desk from opening; their row is left live.
+    #: user_id -> the error that stopped their row; a re-run retries any row still live.
     failures: dict[str, str] = field(default_factory=dict)
 
 
@@ -61,18 +61,22 @@ async def run_migration(*, dry_run: bool) -> MigrationResult:
 
     for workflow in workflows:
         try:
-            await provision_inbox_desk(workflow.user_id)
+            await _retire(workflow, result)
         except Exception as e:
             # One user's failure must not end the run for everyone behind them; it is
-            # reported, and the row stays live so a re-run retries this user.
+            # reported, and a re-run retries any row still live.
             result.failures[workflow.user_id] = f"{type(e).__name__}: {e}"
-            continue
-        await WorkflowService.deactivate_workflow(workflow.id, workflow.user_id)
-        result.retired += 1
-        desk = await todo_repository.find_latest_by_external_ref(workflow.user_id, INBOX_DESK_REF)
-        if desk is not None and not desk.completed:
-            result.desks_open += 1
     return result
+
+
+async def _retire(workflow: WorkflowDocument, result: MigrationResult) -> None:
+    """Open the owner's desk, then switch their row off, so nobody is left with neither."""
+    await provision_inbox_desk(workflow.user_id)
+    await WorkflowService.deactivate_workflow(workflow.id, workflow.user_id)
+    result.retired += 1
+    desk = await todo_repository.find_latest_by_external_ref(workflow.user_id, INBOX_DESK_REF)
+    if desk is not None and not desk.completed:
+        result.desks_open += 1
 
 
 def _render(result: MigrationResult, limit: int) -> None:
@@ -83,7 +87,7 @@ def _render(result: MigrationResult, limit: int) -> None:
         print(f"retired:                       {result.retired}")
         print(f"owners with an open desk:      {result.desks_open}")
         if result.failures:
-            print(f"desk failed, row kept (re-run): {len(result.failures)}")
+            print(f"failed (re-run retries):       {len(result.failures)}")
             for user_id, error in result.failures.items():
                 print(f"  {user_id}: {error}")
 
