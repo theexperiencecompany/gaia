@@ -536,7 +536,8 @@ class BrowserTaskRunner:
     async def _handle_takeover(self, reason: str, category: SensitiveCategory) -> str | None:
         """Pause for the human (the agent's takeover hook) and return the note they left, if any.
 
-        Raises to stop the run on cancel, timeout, or one handoff past the limit."""
+        Raises to stop the run on cancel, timeout, one handoff past the limit, or a run already over."""
+        await self._refuse_wait_when_stopping()
         self._handoffs += 1
         if self._handoffs > MAX_HANDOFFS_PER_TASK:
             self._stopped = True
@@ -573,6 +574,11 @@ class BrowserTaskRunner:
         log.info(f"{LogTag.BROWSER} Browser takeover ended", status=outcome.status.value)
         raise BrowserHandoffCancelled(outcome.status.value)
 
+    async def _refuse_wait_when_stopping(self) -> None:
+        """Raise before asking anyone anything once the run must end: nobody is to wait on a run that is over."""
+        if await self._should_stop():
+            raise BrowserHandoffCancelled(BROWSER_RUN_STOPPED_SUMMARY)
+
     async def _guidance_allowed(self) -> bool:
         """Whether a blocked step may still ask the agent that started this run."""
         if self._agent_joined is None or self._guidances >= BROWSER_AGENT_GUIDANCE_MAX:
@@ -583,6 +589,7 @@ class BrowserTaskRunner:
         self, request_guidance: RequestGuidanceFn, request: AgentGuidanceRequest
     ) -> str:
         """Ask the joined agent for one instruction; raise to end the run blocked when none comes back."""
+        await self._refuse_wait_when_stopping()
         self._guidances += 1
         self._waiting_on_someone = True
         waiting_since = perf_counter()
