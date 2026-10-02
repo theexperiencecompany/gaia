@@ -579,7 +579,6 @@ async def _browser_turn_note(
     address = reply_address(conversation_id, user_id, ConversationSource.coerce(source))
     try:
         reply = await resolve_handoff_from_message(address, user_id, message)
-        stopped = reply is None and await stop_running_job_from_message(conversation_id, message)
     except Exception as e:  # chat must survive an optional-feature lookup
         log.error(
             f"{LogTag.CHAT} Pending browser-handoff check failed; normal turn",
@@ -587,16 +586,32 @@ async def _browser_turn_note(
         )
         return None
 
-    if stopped:
+    if reply is not None and reply.action != "unrelated":
+        return BROWSER_HANDOFF_REPLY_NOTE.format(
+            reason=reply.reason, reading=BROWSER_HANDOFF_REPLY_READINGS[reply.action]
+        )
+    if reply is None and await _stops_the_running_task(conversation_id, message):
         return BROWSER_RUN_STOPPED_BY_MESSAGE_NOTE
-    if reply is None or reply.action == "unrelated":
-        job_id = await post_conversation_message(conversation_id, message)
-        if job_id is not None:
-            log.set_ns("browser", job_id=job_id, message_to_running_job=True)
-        return None
-    return BROWSER_HANDOFF_REPLY_NOTE.format(
-        reason=reply.reason, reading=BROWSER_HANDOFF_REPLY_READINGS[reply.action]
-    )
+    job_id = await post_conversation_message(conversation_id, message)
+    if job_id is not None:
+        log.set_ns("browser", job_id=job_id, message_to_running_job=True)
+    return None
+
+
+async def _stops_the_running_task(conversation_id: str, message: str) -> bool:
+    """Whether the message stopped the conversation's running browser task.
+
+    A read that fails stops nothing: the message still reaches the task as
+    something the user said, which its own agent weighs.
+    """
+    try:
+        return await stop_running_job_from_message(conversation_id, message)
+    except Exception as e:  # the user's words must still reach the run
+        log.error(
+            f"{LogTag.CHAT} Reading a mid-run message for a stop failed; it goes to the task",
+            error_type=type(e).__name__,
+        )
+        return False
 
 
 def _set_stream_log_context(

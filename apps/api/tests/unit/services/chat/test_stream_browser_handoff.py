@@ -203,3 +203,23 @@ async def test_a_failed_lookup_leaves_the_turn_as_it_was() -> None:
         f"{LogTag.CHAT} Pending browser-handoff check failed; normal turn",
         error_type="ValueError",
     )
+
+
+async def test_a_failed_read_for_a_stop_still_delivers_the_message_to_the_task() -> None:
+    """The read shared the handoff lookup's failure path, which dropped the user's instruction."""
+    await _running("job-7", CONVERSATION_ID)
+
+    with (
+        patch.object(chat_stream, "log") as log,
+        patch.object(
+            resolution, "ainvoke_structured_gemini", AsyncMock(side_effect=RuntimeError("503"))
+        ),
+    ):
+        note = await _browser_turn_note(_body("use the blue one"), USER_ID, CONVERSATION_ID, "web")
+
+    assert note is None
+    assert await take_job_messages("job-7") == ["use the blue one"]
+    log.error.assert_called_once_with(
+        f"{LogTag.CHAT} Reading a mid-run message for a stop failed; it goes to the task",
+        error_type="RuntimeError",
+    )
