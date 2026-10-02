@@ -68,10 +68,11 @@ _VIEWER_TEMPLATE = r"""<!doctype html>
   html, body { margin: 0; height: 100%; background: #09090b; color: #e4e4e7;
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
   body { display: flex; flex-direction: column; height: 100vh; }
-  header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; }
-  .brand { display: flex; align-items: center; gap: 10px; }
+  /* Brand and status share the first row; on a phone the controls take a row of their own. */
+  header { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; padding: 12px 16px; }
+  .brand { display: flex; align-items: center; gap: 10px; margin-right: auto; }
   .brand img { height: 24px; display: block; }
-  .status { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #a1a1aa; }
+  .status { order: 2; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #a1a1aa; white-space: nowrap; }
   .status .dot { width: 8px; height: 8px; border-radius: 999px; background: #71717a; }
   .status.live { color: #d4d4d8; }
   .status.live .dot { background: #22c55e; }
@@ -81,12 +82,17 @@ _VIEWER_TEMPLATE = r"""<!doctype html>
   #screen { max-width: 100%; max-height: 100%; border-radius: 10px;
     box-shadow: 0 0 0 1px rgba(255,255,255,0.07); background: #18181b;
     cursor: crosshair; outline: none; touch-action: none; }
-  .right { display: flex; align-items: center; gap: 12px; }
+  .controls { order: 1; display: flex; align-items: center; gap: 8px; }
   #kbButton { display: none; font: inherit; font-size: 13px; color: #e4e4e7; background: #27272a;
-    border: 0; border-radius: 999px; padding: 6px 12px; }
+    border: 0; border-radius: 999px; padding: 6px 12px; white-space: nowrap; }
   @media (pointer: coarse) { #kbButton { display: inline-block; } }
   #decision { display: none; align-items: center; gap: 8px; font-size: 13px; color: #a1a1aa; }
-  #decision button { font: inherit; border: 0; border-radius: 999px; padding: 6px 14px; }
+  #decision button { font: inherit; border: 0; border-radius: 999px; padding: 6px 14px; white-space: nowrap; }
+  @media (max-width: 600px) {
+    .controls { order: 3; flex-basis: 100%; }
+    #decision { flex: 2 1 0; }
+    #decision button, #kbButton { flex: 1 1 0; padding: 10px 12px; }
+  }
   #doneButton { background: #00bbff; color: #09090b; font-weight: 600; }
   #stopButton { background: #27272a; color: #e4e4e7; }
   /* Off-screen but focusable: focusing it is what raises a phone's keyboard.
@@ -97,13 +103,13 @@ _VIEWER_TEMPLATE = r"""<!doctype html>
 <body>
 <header>
   <div class="brand"><img src="__WORDMARK__" alt="GAIA" /></div>
-  <div class="right">
+  <div id="status" class="status connecting"><span class="dot"></span><span id="statusLabel">Connecting&hellip;</span></div>
+  <div class="controls">
     <div id="decision">
       <button id="doneButton" type="button">I'm done</button>
       <button id="stopButton" type="button">Stop task</button>
     </div>
     <button id="kbButton" type="button">Keyboard</button>
-    <div id="status" class="status connecting"><span class="dot"></span><span id="statusLabel">Connecting&hellip;</span></div>
   </div>
 </header>
 <input id="kb" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Type into the live browser" />
