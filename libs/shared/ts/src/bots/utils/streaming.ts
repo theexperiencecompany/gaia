@@ -399,14 +399,16 @@ async function _handleStream(
             clearTimeout(editTimer);
             editTimer = null;
           }
-          enqueue(() => previewBubble(previewFor(pending)));
+          // A preview never rejects (previewBubble catches its own failures), so
+          // it is queued without waiting; the final delivery awaits the queue.
+          void enqueue(() => previewBubble(previewFor(pending)));
         } else if (!editTimer) {
           editTimer = setTimeout(
             () => {
               editTimer = null;
               if (!streamDone) {
                 lastEditTime = Date.now();
-                enqueue(() => previewBubble(previewFor(pending)));
+                void enqueue(() => previewBubble(previewFor(pending)));
               }
             },
             editIntervalMs - (now - lastEditTime),
