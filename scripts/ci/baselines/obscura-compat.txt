@@ -1,10 +1,13 @@
 # obscura-compat: sites where Obscura differs from headless Chrome, as found by
 # apps/api/scripts/obscura_compat_probe.py (.github/workflows/obscura-compat.yml).
-# One URL per line; a gap at any other probed site fails the run.
+# One URL per line; a rendering gap at any other probed site fails the run.
 #
-# Some entries are real engine gaps (named JS errors to patch in bootstrap.js),
-# some are bot-detection walls or a live site that varies between loads. Seeded
-# 2026-09-23 from two local runs: a site is here if it gapped in either run.
+# Entries are rendering gaps: the server sent both engines the same document and
+# Obscura made less of it (named JS errors to patch in bootstrap.js, or a live
+# site that varies between loads). A bot wall needs no entry: the probe reports
+# a site that served Obscura a different document on its own, never failing.
+# Seeded 2026-09-23 from two local runs: a site is here if it gapped in either
+# run, from before the probe told the two apart.
 #
 # A line whose site now matches Chrome is reported as removable and does not
 # fail the run; remove it. A site added after the seed carries its evidence in
