@@ -27,6 +27,7 @@ from app.config.rate_limits import (
     get_reset_time,
     get_time_window_key,
 )
+from app.config.settings import settings
 from app.constants.llm import (
     BUDGET_WRAPUP_REMAINING_FRACTION,
     DAILY_BUDGET_TTL_SECONDS,
@@ -243,6 +244,12 @@ async def get_budget_stop_reason(
     per-request token ceiling, and returns the spend/plan read so callers can
     test the wrap-up threshold for free. Fails open only when nothing can be enforced.
     """
+    # Dev-only: the same flag that lifts the count-based tiered limits also lifts
+    # the cost wall, so an eval harness / local dev user on the free plan isn't
+    # blocked mid-run. get_settings() refuses production boot when it is set.
+    if settings.DEV_UNLIMITED_RATE_LIMITS:
+        return None
+
     if user_id is None:
         log.warning(
             f"{LogTag.AGENT} Budget check skipped — no user_id in configurable "
