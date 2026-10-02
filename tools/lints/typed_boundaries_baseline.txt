@@ -44,8 +44,8 @@ apps/api/app/agents/skills/builtin/create-spreadsheet/templates/report.py	TB001
 apps/api/app/agents/skills/builtin/create-spreadsheet/templates/report.py	TB002
 apps/api/app/agents/skills/parser.py	TB002
 apps/api/app/agents/skills/registry.py	TB001
-apps/api/app/agents/templates/mail_templates.py	TB001
-apps/api/app/agents/templates/mail_templates.py	TB002
+apps/api/app/agents/templates/mail_templates.py	TB001	deferred-until=2026-10-31; from_address joined the message view, which the 18 loose annotations shape; they are the untyped message views the gmail_tools deferral names, typed by the same message-view refactor (proposed 2026-10-02, needs sign-off)
+apps/api/app/agents/templates/mail_templates.py	TB002	deferred-until=2026-10-31; the 50 string-key reads are the raw Gmail payload and the untyped message views, typed by the same message-view refactor as gmail_tools (proposed 2026-10-02, needs sign-off)
 apps/api/app/agents/tools/coding/_context.py	TB001
 apps/api/app/agents/tools/coding/_context.py	TB002
 apps/api/app/agents/tools/coding/query_json_tool.py	TB001
@@ -212,8 +212,8 @@ apps/api/app/services/sandbox/lifecycle.py	TB002
 apps/api/app/services/scheduler_service.py	TB001
 apps/api/app/services/storage/_vfs_common.py	TB001
 apps/api/app/services/storage/_vfs_common.py	TB002
-apps/api/app/services/storage/gaia_tasks_vfs.py	TB001
-apps/api/app/services/storage/gaia_tasks_vfs.py	TB002
+apps/api/app/services/storage/gaia_tasks_vfs.py	TB001	deferred-until=2026-10-31; observations.md joined the projection; its meta is dict[str, Any] because _vfs_common (meta_body, updated_at_key, hash_body_with_meta) and user_todos_vfs take it so, and typing it as a TypedDict means typing those shared helpers and both projections together (proposed 2026-10-03, needs sign-off)
+apps/api/app/services/storage/gaia_tasks_vfs.py	TB002	deferred-until=2026-10-31; the 5 meta.get reads are on that same untyped meta dict, typed by the same _vfs_common change (proposed 2026-10-03, needs sign-off)
 apps/api/app/services/storage/metrics.py	TB002
 apps/api/app/services/storage/sessions/meta.py	TB002
 apps/api/app/services/storage/user_todos_vfs.py	TB001
