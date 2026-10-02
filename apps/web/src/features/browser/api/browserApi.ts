@@ -2,16 +2,17 @@ import type {
   HandoffDecisionResponse,
   LiveViewTokenResponse,
 } from "@shared/api/generated";
+import { apiOrigin } from "@/lib/api/client";
 import { api } from "@/lib/api/typed";
 import type { BrowserHandoffDecision } from "@/types/features/browserTaskTypes";
 
 /**
- * The live-view route serves both a GET page and a WebSocket at the same path;
- * the canvas talks to the WebSocket. The snapshot carries the public HTTP
- * live-view base (`{BROWSER_LIVE_VIEW_BASE_URL}/live/{id}`) — a friendly vhost
- * the host-only session cookie is NOT sent to — so every connection must carry a
- * `?t=` takeover token. The socket URL is the base with the scheme swapped to
- * ws(s) and the token appended.
+ * The live-view route serves a WebSocket at `/live/{id}`; the canvas talks to
+ * it. The snapshot carries the public HTTP live-view base
+ * (`{BROWSER_LIVE_VIEW_BASE_URL}/live/{id}`) — a friendly vhost the host-only
+ * session cookie is NOT sent to — so every connection must carry a `?t=`
+ * takeover token. The socket URL is the base with the scheme swapped to ws(s)
+ * and the token appended.
  */
 export function liveViewSocketUrl(
   liveViewHttpUrl: string,
@@ -21,12 +22,19 @@ export function liveViewSocketUrl(
   return `${wsUrl}?t=${encodeURIComponent(token)}`;
 }
 
-/** The full-browser page link carries the same token (cookie is cross-origin). */
-export function liveViewPageUrl(
-  liveViewHttpUrl: string,
-  token: string,
-): string {
-  return `${liveViewHttpUrl}?t=${encodeURIComponent(token)}`;
+/**
+ * The socket the full-page live view dials: `/live/{code}` on the API, where
+ * `code` is the bot link's capability code (it is the authority) or a session
+ * id that a takeover token in `token` authorizes.
+ */
+export function livePageSocketUrl(code: string, token: string | null): string {
+  const base = `${apiOrigin.replace(/^http/, "ws")}/live/${encodeURIComponent(code)}`;
+  return token ? `${base}?t=${encodeURIComponent(token)}` : base;
+}
+
+/** The web's full-page live view of a session, carrying the token its socket needs. */
+export function livePagePath(sessionId: string, token: string): string {
+  return `/live/${encodeURIComponent(sessionId)}?t=${encodeURIComponent(token)}`;
 }
 
 export const browserApi = {
@@ -73,6 +81,20 @@ export const browserApi = {
   ): Promise<HandoffDecisionResponse> =>
     api.post("/api/v1/browser/handoffs/{handoff_id}/decision", {
       path: { handoff_id: handoffId },
+      body: { decision },
+      errorMessage: "Could not send your answer to the browser task",
+    }),
+
+  /**
+   * Done or Stop from the full-page live view a bot link opened: the link's
+   * code authorizes it, so no web session is needed.
+   */
+  postLiveDecision: (
+    code: string,
+    decision: BrowserHandoffDecision,
+  ): Promise<HandoffDecisionResponse> =>
+    api.post("/live/{code}/decision", {
+      path: { code },
       body: { decision },
       errorMessage: "Could not send your answer to the browser task",
     }),

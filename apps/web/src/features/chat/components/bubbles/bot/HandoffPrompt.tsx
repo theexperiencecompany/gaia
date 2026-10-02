@@ -132,16 +132,18 @@ export function HandoffPrompt({
         </div>
       )}
 
-      <HandoffDecision
-        post={post}
-        primary={
-          surface.kind === "card" ? (
-            <TakeOverButton cta={meta.cta} onPress={surface.openPanel} />
-          ) : surface.kind === "mobile" && view.pageUrl ? (
-            <TakeOverButton cta={meta.cta} href={view.pageUrl} />
-          ) : null
-        }
-      />
+      <div className="mt-3">
+        <HandoffDecision
+          post={post}
+          primary={
+            surface.kind === "card" ? (
+              <TakeOverButton cta={meta.cta} onPress={surface.openPanel} />
+            ) : surface.kind === "mobile" && view.pageUrl ? (
+              <TakeOverButton cta={meta.cta} href={view.pageUrl} />
+            ) : null
+          }
+        />
+      </div>
     </div>
   );
 }
@@ -149,24 +151,27 @@ export function HandoffPrompt({
 /**
  * Three choices, in order of intent: an optional primary (take over), I'm done
  * (resume), stop the task. Once the user has chosen, the server's answer
- * replaces them. Shared with the bot user's live page, whose code authorizes
- * `post` and whose `trailing` slot carries the phone keyboard.
+ * replaces them. Shared with the full-page live view a bot link opens, whose
+ * code authorizes `post` and whose `trailing` slot carries the phone keyboard;
+ * there the choice is withdrawn (`canDecide`) once the link's session is gone.
  */
 export function HandoffDecision({
   post,
   primary,
   trailing,
+  canDecide = true,
 }: {
   post: PostHandoffDecision;
   primary?: React.ReactNode;
   trailing?: React.ReactNode;
+  canDecide?: boolean;
 }) {
   const { decide, decided, settled } = useHandoffDecision(post);
   if (settled) {
     const resolved = RESOLVED_META[settled];
     const ResolvedIcon = resolved.icon;
     return (
-      <div className="mt-3 flex items-center gap-2 px-0.5 text-xs text-zinc-300">
+      <div className="flex items-center gap-2 px-0.5 text-xs text-zinc-300">
         <ResolvedIcon className="size-4" />
         {resolved.label}
       </div>
@@ -174,14 +179,15 @@ export function HandoffDecision({
   }
   if (decided) {
     return (
-      <div className="mt-3 flex items-center gap-2 px-0.5 text-xs text-zinc-300">
+      <div className="flex items-center gap-2 px-0.5 text-xs text-zinc-300">
         <Spinner size="sm" color="current" />
         {decided === "continue" ? "Continuing…" : "Stopping…"}
       </div>
     );
   }
+  if (!canDecide) return trailing ?? null;
   return (
-    <div className="mt-3 flex items-center gap-2 pt-1">
+    <div className="flex items-center gap-2">
       {primary}
       <Button
         variant={primary ? "flat" : "solid"}

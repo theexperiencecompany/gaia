@@ -1,17 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback } from "react";
-import {
-  browserApi,
-  liveViewPageUrl,
-  liveViewSocketUrl,
-} from "../api/browserApi";
+import { browserApi, livePagePath, liveViewSocketUrl } from "../api/browserApi";
 
 // The API ends a live-view socket when its token lapses, so a fresh token is
 // minted this long before that, while the old socket is still up.
 const TOKEN_RENEW_LEAD_SECONDS = 60;
 
 /**
- * The tokened socket and page URLs for a session's live view.
+ * The tokened socket URL for a session's live view, and the web page that
+ * shows it full screen.
  *
  * The live view's vhost never sees the session cookie, so every connection
  * carries a takeover token. One token per session is shared by every surface
@@ -49,7 +46,7 @@ export function useLiveView(
   return {
     socketUrl:
       token && liveViewUrl ? liveViewSocketUrl(liveViewUrl, token) : null,
-    pageUrl: token && liveViewUrl ? liveViewPageUrl(liveViewUrl, token) : null,
+    pageUrl: token && sessionId ? livePagePath(sessionId, token) : null,
     renew,
   };
 }
