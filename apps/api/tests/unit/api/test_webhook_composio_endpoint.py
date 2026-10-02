@@ -468,6 +468,52 @@ class TestTriggerEventRouting:
         spawn.assert_called_once()
 
 
+def _without(body: dict, *path: str) -> dict:
+    """Drop the key at path from a copy of body."""
+    copied = json.loads(json.dumps(body))
+    *parents, last = path
+    target = copied
+    for key in parents:
+        target = target[key]
+    del target[last]
+    return copied
+
+
+@pytest.mark.usefixtures("_accepted_delivery")
+class TestAMalformedTriggerDeliveryIsRefused:
+    """Regression: a delivery missing timestamp or connection_id was a 500; it is a 422 naming the field."""
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("path", "loc"),
+        [(("timestamp",), ["timestamp"]), (("data", "connection_id"), ["data", "connection_id"])],
+        ids=["timestamp", "connection_id"],
+    )
+    async def test_a_missing_field_is_a_422_that_names_it(
+        self, unauthed_client: AsyncClient, path: tuple[str, ...], loc: list[str]
+    ) -> None:
+        with patch(f"{MODULE}.get_handler_by_event") as get_handler:
+            response = await _post_event(
+                unauthed_client, _without(_trigger_event(), *path), f"bad-{path[-1]}"
+            )
+
+        assert response.status_code == 422
+        body = response.json()
+        assert body["code"] == "validation_error"
+        assert [issue["loc"] for issue in body["errors"]] == [loc]
+        assert body["errors"][0]["type"] == "missing"
+        get_handler.assert_not_called()
+
+    @pytest.mark.regression
+    async def test_data_that_is_not_an_object_is_a_422(self, unauthed_client: AsyncClient) -> None:
+        body = {**_trigger_event(), "data": "not-an-object"}
+
+        response = await _post_event(unauthed_client, body, "bad-data")
+
+        assert response.status_code == 422
+        assert response.json()["code"] == "validation_error"
+
+
 @pytest.mark.usefixtures("_accepted_delivery")
 class TestDeliveryWithoutAnId:
     async def test_a_delivery_with_no_id_header_is_processed_without_claiming_a_key(

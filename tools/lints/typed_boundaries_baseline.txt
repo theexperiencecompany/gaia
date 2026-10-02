@@ -84,8 +84,6 @@ apps/api/app/api/v1/endpoints/oauth.py	TB002
 apps/api/app/api/v1/endpoints/payments.py	TB002
 apps/api/app/api/v1/endpoints/platform_auth.py	TB001
 apps/api/app/api/v1/endpoints/platform_auth.py	TB002
-apps/api/app/api/v1/endpoints/webhook_composio.py	TB001
-apps/api/app/api/v1/endpoints/webhook_composio.py	TB002
 apps/api/app/config/sentry.py	TB001
 apps/api/app/config/sentry.py	TB002
 apps/api/app/config/token_repository.py	TB001
