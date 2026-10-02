@@ -72,6 +72,17 @@ async def test_a_desk_that_fails_to_open_keeps_its_row_live_and_the_run_going() 
     assert result.retired == 1
 
 
+async def test_a_row_that_fails_to_retire_does_not_stop_the_rows_behind_it() -> None:
+    seams = _seams(_workflow("wf-1", "u-1"), _workflow("wf-2", "u-2"))
+    seams["WorkflowService.deactivate_workflow"].side_effect = [ConnectionError("mongo down"), None]
+
+    result = await _run(seams, dry_run=False)
+
+    seams["WorkflowService.deactivate_workflow"].assert_any_await("wf-2", "u-2")
+    assert result.failures == {"u-1": "ConnectionError: mongo down"}
+    assert (result.retired, result.desks_open) == (1, 1)
+
+
 async def test_an_owner_the_desk_skips_is_still_retired_but_not_counted_open() -> None:
     seams = _seams(_workflow("wf-1", "u-1"), desk_open=False)
 
