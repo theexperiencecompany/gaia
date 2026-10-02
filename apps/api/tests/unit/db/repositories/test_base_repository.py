@@ -127,3 +127,16 @@ async def test_a_repository_that_stamps_nothing_writes_no_updated_at() -> None:
 
 async def test_a_document_without_updated_at_is_not_stamped() -> None:
     assert await _set_written(_concrete()()) == {"name": "x"}
+
+
+async def test_find_one_asks_its_own_collection_with_the_filter_and_order() -> None:
+    collection = MagicMock()
+    collection.find_one = AsyncMock(return_value=None)
+    with patch(
+        "app.db.repositories.base.get_async_collection", return_value=collection
+    ) as get_collection:
+        found = await _concrete()()._find_one({"name": "x"}, sort=[("name", -1)])
+
+    assert found is None
+    get_collection.assert_called_once_with("things")
+    collection.find_one.assert_awaited_once_with({"name": "x"}, sort=[("name", -1)])
