@@ -4,6 +4,7 @@ from collections.abc import Coroutine
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import fakeredis.aioredis
 from langchain_core.runnables.config import RunnableConfig
 import pytest
 
@@ -14,6 +15,8 @@ from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationSource
 from app.schemas.browser import BrowserTaskSecret
 from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJobStatus
+from app.services.browser import jobs
+from app.services.browser.job_stop import stop_browser_job
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
@@ -398,6 +401,29 @@ async def test_a_second_task_is_pointed_at_the_run_already_holding_the_slot(
     }
 
 
+async def test_a_stop_while_the_job_is_being_queued_reaches_it_before_it_runs(
+    monkeypatch: pytest.MonkeyPatch, fake_redis: fakeredis.aioredis.FakeRedis
+) -> None:
+    """A worker may take the job the moment it is queued; a stop from then on must find it."""
+    _install(monkeypatch)
+    monkeypatch.setattr(tool_mod, "put_job_state", jobs.put_job_state)
+    monkeypatch.setattr(tool_mod, "set_latest_job", jobs.set_latest_job)
+    monkeypatch.setattr(tool_mod.RedisPoolManager, "get_pool", AsyncMock(return_value=fake_redis))
+    stopped: list[str | None] = []
+
+    async def _stop_lands_as_it_queues(*_args: object, _job_id: str, **_kwargs: object) -> object:
+        stopped.append(await stop_browser_job("c1"))
+        return object()
+
+    monkeypatch.setattr(tool_mod, "enqueue_worker_job", _stop_lands_as_it_queues)
+
+    await _start({"task": "book a table"}, config=UI_CONFIG)
+
+    [job_id] = stopped
+    assert job_id is not None
+    assert await jobs.job_cancel_requested(job_id)
+
+
 # ---------------------------------------------------------------------------
 # the enqueue failing
 # ---------------------------------------------------------------------------
@@ -414,6 +440,13 @@ async def test_a_dropped_enqueue_frees_the_slot_and_says_so(
     assert out == "I couldn't start the browser task right now. Try again in a moment."
     assert recorder.released == [("c1", recorder.request.job_id)]
     assert recorder.spawned == []
+    # Already findable by a join or a stop, so it is recorded as over, not queued forever.
+    ended = recorder.states[-1]
+    assert (ended.job_id, ended.status, ended.agent_message) == (
+        recorder.request.job_id,
+        BrowserJobStatus.DONE,
+        out,
+    )
 
 
 async def test_a_job_the_queue_did_not_take_is_an_error_on_the_wide_event(

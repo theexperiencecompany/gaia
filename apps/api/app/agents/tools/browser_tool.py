@@ -231,14 +231,25 @@ async def browser_task(
             relay_stream_id=params.stream_id,
         )
     )
-    if not await _enqueue(request):
-        await release_conversation_slot(params.conversation_id, job_id)
-        return _NOT_QUEUED
+    # Findable before a worker can take it, so a stop from the moment it is queued reaches it.
     await set_latest_job(params.conversation_id, job_id)
     bot_chat = reply_address(params.conversation_id, params.user_id, params.conversation_source)
     if bot_chat != params.conversation_id:
         # Its handoffs are answered, and a /stop reaches it, from the requester's bot chat.
         await set_latest_job(bot_chat, job_id)
+    if not await _enqueue(request):
+        # Ended without running, so neither a join nor a stop waits on it.
+        await put_job_state(
+            BrowserJobState(
+                job_id=job_id,
+                status=BrowserJobStatus.DONE,
+                task=task,
+                relay_stream_id=params.stream_id,
+                agent_message=_NOT_QUEUED,
+            )
+        )
+        await release_conversation_slot(params.conversation_id, job_id)
+        return _NOT_QUEUED
 
     log.set_ns("browser", job_id=job_id)
     if params.stream_id:
