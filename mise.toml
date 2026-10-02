@@ -175,6 +175,8 @@ else
   offset=$(( (sum % 199 + 1) * 10 ))
 fi
 
+chroma_suffix=""
+if [ "$offset" -ne 0 ]; then chroma_suffix="_wt$offset"; fi
 api_port=$(( 8000 + offset ))
 web_port=$(( 3000 + offset ))
 
@@ -203,6 +205,10 @@ BOT_DISCORD_PORT=$(( 3200 + offset ))
 BOT_SLACK_PORT=$(( 3201 + offset ))
 BOT_TELEGRAM_PORT=$(( 3202 + offset ))
 BOT_WHATSAPP_PORT=$(( 3203 + offset ))
+# All worktrees share one local ChromaDB, and the tool and trigger stores delete
+# rows their own registry does not know, so each linked worktree gets its own
+# collection names (empty on main, which keeps the default names).
+GAIA_CHROMA_COLLECTION_SUFFIX=$chroma_suffix
 EOF
 
 echo "wt:env → $root/.env.worktree (offset $offset): API_PORT=$api_port WEB_PORT=$web_port"

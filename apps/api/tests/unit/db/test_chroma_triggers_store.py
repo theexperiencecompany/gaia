@@ -4,19 +4,19 @@ import hashlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langgraph.store.base import PutOp
 import pytest
 
+from app.db.chroma.chroma_store import ChromaBatchWriteError
 from app.db.chroma.chroma_triggers_store import (
     TRIGGERS_NAMESPACE,
     _build_put_operations,
     _build_trigger_description,
     _compute_trigger_diff,
     _compute_trigger_hash,
-    _execute_batch_operations,
     _get_current_triggers_with_hashes,
     _get_existing_triggers_from_chroma,
     get_triggers_store,
+    initialize_chroma_triggers_store,
 )
 
 # ---------------------------------------------------------------------------
@@ -280,25 +280,6 @@ class TestBuildPutOperations:
 
 
 # ---------------------------------------------------------------------------
-# _execute_batch_operations
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-class TestExecuteBatchOperations:
-    async def test_noop_on_empty_ops(self):
-        store = AsyncMock()
-        await _execute_batch_operations(store, [])
-        store.abatch.assert_not_awaited()
-
-    async def test_batches_operations(self):
-        store = AsyncMock()
-        ops = [MagicMock(spec=PutOp) for _ in range(75)]
-        await _execute_batch_operations(store, ops, batch_size=50)
-        assert store.abatch.await_count == 2
-
-
-# ---------------------------------------------------------------------------
 # get_triggers_store
 # ---------------------------------------------------------------------------
 
@@ -356,3 +337,92 @@ class TestInitializeChromaTriggersStore:
         delete_op = [o for o in ops if o.value is None][0]
         assert upsert_op.key == "new_slug"
         assert delete_op.key == "old_slug"
+
+    async def test_batch_write_failure_does_not_abort_startup(self):
+        """A warmup embedding failure must not propagate out of init and abort app boot."""
+        upsert = [
+            (
+                "new_slug",
+                {
+                    "hash": "h",
+                    "slug": "new_slug",
+                    "name": "New",
+                    "description": "D",
+                    "integration_id": "i",
+                    "integration_name": "I",
+                    "category": "c",
+                    "rich_description": "R",
+                },
+            )
+        ]
+        mock_store = AsyncMock()
+        mock_store._get_collection = AsyncMock(return_value=AsyncMock())
+
+        with (
+            patch("app.db.chroma.chroma_triggers_store.ChromaClient.get_client", new=AsyncMock()),
+            patch(
+                "app.db.chroma.chroma_triggers_store.providers.aget",
+                new=AsyncMock(return_value=object()),
+            ),
+            patch("app.db.chroma.chroma_triggers_store.ChromaStore", return_value=mock_store),
+            patch(
+                "app.db.chroma.chroma_triggers_store._get_current_triggers_with_hashes",
+                return_value={"new_slug": upsert[0][1]},
+            ),
+            patch(
+                "app.db.chroma.chroma_triggers_store._get_existing_triggers_from_chroma",
+                new=AsyncMock(return_value={}),
+            ),
+            patch(
+                "app.db.chroma.chroma_triggers_store._compute_trigger_diff",
+                return_value=(upsert, []),
+            ),
+            patch(
+                "app.db.chroma.index_warmup.execute_batch_operations",
+                new_callable=AsyncMock,
+                side_effect=ChromaBatchWriteError("1 of 1 ChromaDB writes failed"),
+            ),
+        ):
+            loader = initialize_chroma_triggers_store()
+            result = await loader.loader_func()
+
+        assert result is mock_store
+
+    async def test_warmup_writes_the_diffed_ops_to_the_store_under_its_own_label(self):
+        """The built ops reach the returned store, tagged as the triggers-store warmup."""
+        trigger = {
+            "hash": "h",
+            "slug": "new_slug",
+            "name": "New",
+            "description": "D",
+            "integration_id": "i",
+            "integration_name": "I",
+            "category": "c",
+            "rich_description": "R",
+        }
+        mock_store = AsyncMock()
+        mock_store._get_collection = AsyncMock(return_value=AsyncMock())
+
+        with (
+            patch("app.db.chroma.chroma_triggers_store.ChromaClient.get_client", new=AsyncMock()),
+            patch(
+                "app.db.chroma.chroma_triggers_store.providers.aget",
+                new=AsyncMock(return_value=object()),
+            ),
+            patch("app.db.chroma.chroma_triggers_store.ChromaStore", return_value=mock_store),
+            patch(
+                "app.db.chroma.chroma_triggers_store._get_current_triggers_with_hashes",
+                return_value={"new_slug": trigger},
+            ),
+            patch(
+                "app.db.chroma.chroma_triggers_store._get_existing_triggers_from_chroma",
+                new=AsyncMock(return_value={}),
+            ),
+            patch("app.db.chroma.index_warmup.log") as mock_log,
+        ):
+            loader = initialize_chroma_triggers_store()
+            await loader.loader_func()
+
+        written = mock_store.abatch.await_args.args[0]
+        assert [op.key for op in written] == ["new_slug"]
+        assert mock_log.info.call_args.kwargs["label"] == "triggers_store"
