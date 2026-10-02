@@ -197,3 +197,46 @@ async def test_everything_the_job_store_writes_lapses_with_the_job(
     assert await jobs_mod.get_job_wait("job-1") == "h1"
     await jobs_mod.clear_job_wait("job-1")
     assert await jobs_mod.get_job_wait("job-1") is None
+
+
+async def test_a_stop_and_the_jobs_end_never_both_win(
+    redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stop read RUNNING, the worker wrote DONE and told its result, then the flag landed: two replies."""
+    running = BrowserJobState(job_id="job-1", status=BrowserJobStatus.RUNNING, task="t")
+    await jobs_mod.put_job_state(running)
+    open_pipeline = redis.pipeline
+
+    def _pipeline_that_ends_the_job(*args: object, **kwargs: object) -> object:
+        pipe = open_pipeline(*args, **kwargs)
+        read = pipe.get
+
+        async def _read_then_end(key: str) -> object:
+            value = await read(key)
+            # The worker settles the job between the stop's read and its write.
+            await jobs_mod.put_job_state(
+                running.model_copy(update={"status": BrowserJobStatus.DONE})
+            )
+            return value
+
+        pipe.get = _read_then_end
+        return pipe
+
+    monkeypatch.setattr(redis, "pipeline", _pipeline_that_ends_the_job)
+
+    assert await jobs_mod.request_job_cancel("job-1") is False
+    assert await jobs_mod.job_cancel_requested("job-1") is False
+
+
+async def test_a_latest_job_pointer_goes_back_only_while_the_job_that_never_ran_holds_it() -> None:
+    await jobs_mod.set_latest_job("discord:u1", "job-new")
+    await jobs_mod.restore_latest_job("discord:u1", "job-new", "job-old")
+    assert await jobs_mod.get_latest_job("discord:u1") == "job-old"
+
+    await jobs_mod.set_latest_job("discord:u1", "job-newer")
+    await jobs_mod.restore_latest_job("discord:u1", "job-new", "job-old")
+    assert await jobs_mod.get_latest_job("discord:u1") == "job-newer"
+
+    await jobs_mod.set_latest_job("c1", "job-new")
+    await jobs_mod.restore_latest_job("c1", "job-new", None)
+    assert await jobs_mod.get_latest_job("c1") is None
