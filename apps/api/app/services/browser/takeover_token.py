@@ -20,7 +20,8 @@ from app.config.settings import settings
 from app.constants.auth import JWT_ALGORITHM
 
 _TAKEOVER_ROLE = "browser_takeover"
-_TAKEOVER_TOKEN_EXPIRY_MINUTES = 15
+#: How long a token lives: the web card re-mints one before it lapses.
+TAKEOVER_TOKEN_TTL_SECONDS = 15 * 60
 _MIN_SECRET_LENGTH = 32
 
 
@@ -35,14 +36,14 @@ class TakeoverTokenClaims(TypedDict):
 
 
 def create_takeover_token(session_id: str, user_id: str) -> str:
-    """Mint a 15-minute token binding user_id to one browser session_id."""
+    """Mint a token binding user_id to one browser session_id for TAKEOVER_TOKEN_TTL_SECONDS."""
     secret = _get_takeover_secret()
     now = datetime.now(UTC)
     payload = {
         "sub": user_id,
         "session_id": session_id,
         "role": _TAKEOVER_ROLE,
-        "exp": now + timedelta(minutes=_TAKEOVER_TOKEN_EXPIRY_MINUTES),
+        "exp": now + timedelta(seconds=TAKEOVER_TOKEN_TTL_SECONDS),
         "iat": now,
     }
     token: str = jwt.encode(payload, secret, algorithm=JWT_ALGORITHM)

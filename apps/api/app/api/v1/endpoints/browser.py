@@ -44,11 +44,7 @@ from app.services.browser.handoff_buttons import decide_handoff_by_button
 from app.services.browser.import_token import consume_import_token, mint_import_token
 from app.services.browser.profiles import forget_saved_login, list_saved_logins
 from app.services.browser.storage_persistence import import_browser_profile
-from app.services.browser.takeover_token import (
-    create_takeover_token,
-    takeover_token_ttl_seconds,
-    verify_takeover_token,
-)
+from app.services.browser.takeover_token import TAKEOVER_TOKEN_TTL_SECONDS, create_takeover_token
 from app.services.browser.tasks import delete_browser_task, list_browser_tasks
 from shared.py.wide_events import log
 
@@ -98,10 +94,7 @@ async def get_live_view_token(
 
     token = create_takeover_token(session_id, user_id)
     log.info(f"{LogTag.BROWSER} browser live view token issued")
-    claims = verify_takeover_token(token)
-    return LiveViewTokenResponse(
-        token=token, expires_in=max(int(takeover_token_ttl_seconds(claims)), 0)
-    )
+    return LiveViewTokenResponse(token=token, expires_in=TAKEOVER_TOKEN_TTL_SECONDS)
 
 
 @router.get("/tasks", response_model=list[BrowserTaskResponse])

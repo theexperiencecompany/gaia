@@ -44,7 +44,7 @@ async def create_live_view_link(session_id: str, user_id: str, handoff_id: str) 
 def render_live_view_page(session_id: str) -> str:
     """Self-contained HTML viewer served to a bot user opening the tokened link.
 
-    Opens the WebSocket at its own URL (?t= token or same-origin cookie), draws
+    Opens the WebSocket at its own URL (its code, or a ?t= token), draws
     each JPEG frame onto a canvas, and forwards input as CDP-shaped messages; on
     a phone a drag scrolls and a Keyboard button sends the soft keyboard's text.
     """

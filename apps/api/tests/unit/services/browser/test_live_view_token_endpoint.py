@@ -24,10 +24,14 @@ def _mock_owner(monkeypatch, owner: str | None) -> None:
 async def test_owner_gets_scoped_token(monkeypatch):
     _mock_owner(monkeypatch, "user-1")
     resp = await browser_ep.get_live_view_token("sess-1", "user-1")
-    assert resp.expires_in > 0
     claims = tt.verify_takeover_token(resp.token)
     assert claims["session_id"] == "sess-1"
     assert claims["user_id"] == "user-1"
+    # The lifetime the card renews by is the one the token was minted with.
+    assert resp.expires_in == tt.TAKEOVER_TOKEN_TTL_SECONDS
+    assert tt.TAKEOVER_TOKEN_TTL_SECONDS - 5 < tt.takeover_token_ttl_seconds(claims) <= (
+        tt.TAKEOVER_TOKEN_TTL_SECONDS
+    )
 
 
 async def test_non_owner_is_forbidden(monkeypatch):

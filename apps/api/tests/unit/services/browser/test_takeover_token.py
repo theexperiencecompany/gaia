@@ -31,7 +31,7 @@ async def test_ttl_is_positive_for_fresh_token():
     token = tt.create_takeover_token("sess-1", "user-1")
     claims = tt.verify_takeover_token(token)
     ttl = tt.takeover_token_ttl_seconds(claims)
-    assert 0 < ttl <= tt._TAKEOVER_TOKEN_EXPIRY_MINUTES * 60
+    assert 0 < ttl <= tt.TAKEOVER_TOKEN_TTL_SECONDS
 
 
 async def test_tampered_token_fails():
@@ -49,7 +49,7 @@ async def test_token_signed_with_other_secret_fails(monkeypatch):
 
 
 async def test_expired_token_fails(monkeypatch):
-    monkeypatch.setattr(tt, "_TAKEOVER_TOKEN_EXPIRY_MINUTES", -1)
+    monkeypatch.setattr(tt, "TAKEOVER_TOKEN_TTL_SECONDS", -60)
     token = tt.create_takeover_token("sess-1", "user-1")
     with pytest.raises(JWTError):
         tt.verify_takeover_token(token)
@@ -109,7 +109,7 @@ def test_create_takeover_token_claims_have_exact_shape():
 def test_create_takeover_token_expiry_matches_configured_minutes():
     token = tt.create_takeover_token("sess-1", "user-1")
     payload = jwt.decode(token, _SECRET, algorithms=[JWT_ALGORITHM])
-    expected_seconds = tt._TAKEOVER_TOKEN_EXPIRY_MINUTES * 60
+    expected_seconds = tt.TAKEOVER_TOKEN_TTL_SECONDS
     assert payload["exp"] - payload["iat"] == pytest.approx(expected_seconds, abs=2)
 
 
@@ -120,7 +120,7 @@ def test_a_token_minted_on_a_host_outside_utc_expires_fifteen_minutes_from_now()
         token = tt.create_takeover_token("sess-1", "user-1")
 
     claims = jwt.get_unverified_claims(token)
-    expiry = minted_at + timedelta(minutes=tt._TAKEOVER_TOKEN_EXPIRY_MINUTES)
+    expiry = minted_at + timedelta(seconds=tt.TAKEOVER_TOKEN_TTL_SECONDS)
     assert claims["exp"] == int(expiry.timestamp())
 
 
