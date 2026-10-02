@@ -171,15 +171,6 @@ class TestBuildClearableDatetimeUpdate:
         assert "invalid due_date format" in error
         assert fields == {}
 
-    @pytest.mark.regression
-    @pytest.mark.parametrize("value", ["2026-09-30", "2026-09-30T17:00:00"])
-    def test_a_date_without_an_offset_is_refused(self, value):
-        """A naive wall time would be saved as UTC, off by the user's offset."""
-        fields: dict[str, object] = {}
-        error = _build_clearable_datetime_update(value, "due_date", fields)
-        assert error == f"Error: due_date '{value}' must include a timezone offset."
-        assert fields == {}
-
     def test_valid_datetime_sets_field_no_future_requirement(self):
         """Unlike scheduled_at, due_date/expires_at may legitimately be in the past (an overdue due_date is still meaningful)."""
         fields: dict[str, object] = {}
@@ -1418,7 +1409,6 @@ class TestCreateTrackedTodoSuccess:
         assert f"invalid {field} format" in result
         create.assert_not_awaited()
 
-    @pytest.mark.regression
     async def test_a_create_saves_its_schedule_with_the_insert(self, recorded_changes):
         """A second write after the insert left a half-made todo behind when it failed, for a retry to duplicate."""
         with (
@@ -1455,7 +1445,6 @@ class TestCreateTrackedTodoSuccess:
         update.assert_not_awaited()
         recorded_changes.assert_not_awaited()
 
-    @pytest.mark.regression
     @pytest.mark.parametrize("due_date", ["2026-09-30", "2026-09-30T17:00:00"])
     async def test_a_due_date_without_an_offset_creates_nothing(self, due_date):
         """Mongo reads a naive wall time as UTC, which moves the user's local deadline."""

@@ -765,6 +765,7 @@ class TestUpdateTodo:
         )
         mock_todo_repo.update.assert_not_awaited()
         assert result.workflow_id == "wf1"
+        assert mock_todo_repo.get.await_args == call(FAKE_TODO_ID, user_id=FAKE_USER_ID)
 
     async def test_an_edited_parent_still_reports_its_open_sub_todos(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
