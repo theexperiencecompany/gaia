@@ -708,8 +708,12 @@ async def complete_tracked_todo(
 ) -> str:
     """Complete a tracked todo: mark done and flag its canvas as completed in search.
 
-    Call when the todo's goal is fully achieved. Use the regular todo update for
-    partial completion or status changes only.
+    Call on your own as soon as the goal is clearly resolved: the fix is live
+    and verified, the PR is merged, the external system shows done, the watched
+    event arrived and is handled, or the user confirmed it. Do not wait for the
+    user to report it or ask for closure. Use the regular todo update for
+    partial completion or status changes only. Never repeat the todo ID in
+    user-visible text.
     """
     user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
     if not user_id:
