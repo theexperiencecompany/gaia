@@ -16,7 +16,6 @@ delayed by its window is a missed meeting.
 """
 
 import json
-from typing import Any
 from uuid import uuid4
 
 from redis.exceptions import RedisError
@@ -69,9 +68,9 @@ def coalesce_window_seconds(trigger_config: TriggerConfig) -> int:
 async def buffer_trigger_event(
     workflow_id: str,
     user_id: str,
-    data: dict[str, Any],
+    data: dict[str, object],
     window_seconds: int,
-    context: dict[str, Any],
+    context: dict[str, object],
 ) -> bool:
     """Add one event to the workflow's batch and ensure a run is scheduled.
 
@@ -154,7 +153,7 @@ async def buffer_trigger_event(
     return True
 
 
-async def drain_trigger_batch(batch_key: str) -> list[dict[str, Any]] | None:
+async def drain_trigger_batch(batch_key: str) -> list[dict[str, object]] | None:
     """Take every buffered event for this batch, leaving the key empty.
 
     Read-and-delete in one transaction so events arriving mid-drain open the
@@ -171,7 +170,7 @@ async def drain_trigger_batch(batch_key: str) -> list[dict[str, Any]] | None:
         pipe.delete(batch_key)
         raw_events, _ = await pipe.execute()
 
-    events: list[dict[str, Any]] = []
+    events: list[dict[str, object]] = []
     for raw in raw_events:
         try:
             events.append(json.loads(raw))
@@ -184,7 +183,7 @@ async def drain_trigger_batch(batch_key: str) -> list[dict[str, Any]] | None:
 
 
 async def reschedule_if_refilled(
-    workflow_id: str, batch_key: str, window_seconds: int, context: dict[str, Any]
+    workflow_id: str, batch_key: str, window_seconds: int, context: dict[str, object]
 ) -> bool:
     """Schedule a follow-up run when events landed while the current run held them.
 
