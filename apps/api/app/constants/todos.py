@@ -146,5 +146,11 @@ LIST_TRACKED_TODOS_LIMIT: Final[int] = 50
 INBOX_DESK_TITLE: Final[str] = "Inbox desk"
 INBOX_DESK_RECURRENCE: Final[str] = "0 8 * * *"
 PROVISION_INBOX_DESK_TASK: Final[str] = "provision_inbox_desk"
+# Gmail terms the desk's fetch adds to its window: GitHub and other notifications
+# land in Primary, and this cut a live 24h window from 224 messages to 10 people.
+INBOX_DESK_MAIL_FILTER: Final[str] = (
+    "category:primary -from:noreply -from:no-reply -from:notifications "
+    "-from:notification -from:mailer-daemon -from:donotreply"
+)
 # First retry delay of a failed provisioning; each further try doubles it.
 INBOX_DESK_PROVISION_RETRY_DELAY: Final[timedelta] = timedelta(minutes=2)
