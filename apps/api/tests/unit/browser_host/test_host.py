@@ -22,6 +22,7 @@ from app.browser_host.host import (
     EngineUnresponsiveError,
     SessionNotFoundError,
 )
+from app.browser_host.wire import HealthResponse, SessionInfo
 from app.config.browser_host_settings import browser_host_settings
 from app.constants.browser import BrowserEngine, EngineExit, HostAdmissionRefusal
 from tests.unit.browser_host.conftest import (
@@ -598,8 +599,8 @@ async def test_session_info_reads_the_focused_page_and_answers_on_the_root(
 
     info = await host.session_info(session.session_id)
 
-    assert info["live"] is True
-    assert info["url"] == "https://second.example/"
+    assert info.live is True
+    assert info.url == "https://second.example/"
     stub.answers = False
     with pytest.raises(EngineUnresponsiveError):
         await host.session_info(session.session_id)
@@ -613,7 +614,7 @@ async def test_session_info_on_a_closed_focused_tab_has_no_page(engine: FakeEngi
 
     info = await host.session_info(session.session_id)
 
-    assert (info["url"], info["title"]) == (None, None)
+    assert (info.url, info.title) == (None, None)
 
 
 @pytest.mark.unit
@@ -654,21 +655,15 @@ async def test_a_focus_move_wakes_whoever_watches_once(engine: FakeEngine) -> No
 async def test_healthz_is_a_round_trip_on_the_serving_engine() -> None:
     stub = StubEngine()
     host = make_host(stub)
-    assert await host.healthz() == {
-        "ok": True,
-        "sessions": 0,
-        "engine_up": True,
-        "cdp_responsive": True,
-    }
+    assert await host.healthz() == HealthResponse(
+        ok=True, sessions=0, engine_up=True, cdp_responsive=True
+    )
     stub.answers = False
-    assert (await host.healthz())["ok"] is False
+    assert (await host.healthz()).ok is False
     host._engine = None
-    assert await host.healthz() == {
-        "ok": False,
-        "sessions": 0,
-        "engine_up": False,
-        "cdp_responsive": False,
-    }
+    assert await host.healthz() == HealthResponse(
+        ok=False, sessions=0, engine_up=False, cdp_responsive=False
+    )
 
 
 @pytest.mark.unit
@@ -1170,21 +1165,15 @@ async def test_session_info_is_its_whole_view_inside_the_liveness_budget(
 
     info = await host.session_info(session.session_id)
 
-    assert set(info) == {"session_id", "live", "url", "title", "metrics"}
-    assert (info["session_id"], info["url"], info["title"]) == (
-        session.session_id,
-        "https://x.example/",
-        "X",
+    assert info == SessionInfo(
+        session_id=session.session_id, live=True, url="https://x.example/", title="X"
     )
-    assert info["metrics"] == session.metrics.snapshot() | {
-        "session_lifetime_seconds": info["metrics"]["session_lifetime_seconds"]
-    }
     assert stub.asked_within == [host_mod.BROWSER_HOST_LIVENESS_TIMEOUT_SECONDS]
     getinfo = [c for c in engine.calls if c[0] == "Target.getTargetInfo"]
     assert getinfo[-1][1] == {"targetId": session.target_id}
 
     await engine.close()
-    assert (await host.session_info(session.session_id))["live"] is False
+    assert (await host.session_info(session.session_id)).live is False
 
 
 @pytest.mark.unit

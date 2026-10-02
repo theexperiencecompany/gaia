@@ -33,6 +33,7 @@ from app.browser_host.engine import Engine, launch_engine, resolve_chromium_path
 from app.browser_host.memory import memory_usage_mb
 from app.browser_host.metrics import SessionMetrics
 from app.browser_host.storage import dump_storage_state, seed_storage_state
+from app.browser_host.wire import HealthResponse, SessionInfo
 from app.config.browser_host_settings import browser_host_settings
 from app.constants.browser import (
     BROWSER_HOST_LIVENESS_TIMEOUT_SECONDS,
@@ -325,7 +326,7 @@ class BrowserHost:
                 return preferred
         return pages[-1] if pages else None
 
-    async def session_info(self, session_id: str) -> dict[str, Any]:
+    async def session_info(self, session_id: str) -> SessionInfo:
         """Build the GET /sessions/{id} view: liveness and the page url/title.
 
         Liveness is read on the engine's root connection, which no page's work can
@@ -338,24 +339,23 @@ class BrowserHost:
         )
         if not responsive:
             raise EngineUnresponsiveError(session_id)
-        return {
-            "session_id": session.session_id,
-            "live": session.engine.alive and not session.mux.closed,
-            "url": url,
-            "title": title,
-            "metrics": session.metrics.snapshot(),
-        }
+        return SessionInfo(
+            session_id=session.session_id,
+            live=session.engine.alive and not session.mux.closed,
+            url=url,
+            title=title,
+        )
 
-    async def healthz(self) -> dict[str, Any]:
+    async def healthz(self) -> HealthResponse:
         """Readiness for /healthz: a bounded CDP round-trip on the serving engine, not just liveness."""
         engine = self._engine
         responsive = engine is not None and await engine.responsive(_CDP_HEALTH_TIMEOUT_SECONDS)
-        return {
-            "ok": responsive,
-            "sessions": len(self._sessions),
-            "engine_up": self.engine_up,
-            "cdp_responsive": responsive,
-        }
+        return HealthResponse(
+            ok=responsive,
+            sessions=len(self._sessions),
+            engine_up=self.engine_up,
+            cdp_responsive=responsive,
+        )
 
     # --- internals ---
 
