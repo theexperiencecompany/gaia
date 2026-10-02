@@ -715,6 +715,7 @@ class TestListTodos:
         )
         await TodoService.list_todos(FAKE_USER_ID, params)
         mock_vector_utils["vector_search"].assert_awaited_once()
+        assert mock_vector_utils["vector_search"].await_args.kwargs["user_id"] == FAKE_USER_ID
         mock_todo_repo.list_page.assert_not_called()
         # The request's narrowing reaches the vector search, priority as its stored string.
         assert mock_vector_utils["vector_search"].await_args.kwargs["filters"] == TodoSearchFilters(
@@ -1163,10 +1164,19 @@ class TestBulkCompleteRunsTheTrackedLifecycle:
             ) as complete,
             patch("app.services.todos.todo_service.schedule_user_todos_sync") as sync,
         ):
-            result = await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+            async with captured_wide_event() as event:
+                result = await TodoService.bulk_update_todos(req, FAKE_USER_ID)
 
         assert (result.success, result.failed) == (["t2"], ["t1"])
         assert [c.args[0] for c in complete.await_args_list] == ["t1", "t2"]
+        assert event["errors"] == [
+            {
+                "msg": "todo.bulk_tracked_complete_failed",
+                "todo_id": "t1",
+                "error": "down",
+                "error_type": "RuntimeError",
+            }
+        ]
         sync.assert_called_once_with(FAKE_USER_ID)
 
 
@@ -1509,6 +1519,7 @@ class TestBulkServiceComplete:
 
         assert [todo.id for todo in result.todos] == ["b"]
         assert result.failed == ["a"]
+        assert todo_repo.find_by_ids.await_args == call(FAKE_USER_ID, ["b"])
 
     async def test_captures_completed_count(self, mock_bulk_repos):
         todo_repo, _ = mock_bulk_repos
@@ -1636,7 +1647,9 @@ class TestReopenUnderItsParent:
 
     def _repo_answering(self, repo: MagicMock, family: list[TodoDocument]) -> None:
         repo.find_by_ids = AsyncMock(
-            side_effect=lambda _user, ids: [doc for doc in family if doc.id in ids]
+            side_effect=lambda user, ids: (
+                [doc for doc in family if doc.id in ids] if user == FAKE_USER_ID else []
+            )
         )
 
     async def test_a_single_reopen_is_refused_and_writes_nothing(
@@ -1644,25 +1657,32 @@ class TestReopenUnderItsParent:
     ):
         self._repo_answering(mock_todo_repo, self._family(parent_completed=True))
 
-        with pytest.raises(SubTodoParentError, match="reopen the parent first"):
+        with pytest.raises(SubTodoParentError) as refused:
             await TodoService.update_todo(
                 FAKE_TODO_ID, TodoUpdateRequest(completed=False), FAKE_USER_ID
             )
 
+        assert refused.value.message == (
+            f"Sub-todo {FAKE_TODO_ID} cannot reopen while its parent is completed; "
+            "reopen the parent first."
+        )
         mock_todo_repo.update.assert_not_awaited()
 
     async def test_a_bulk_reopen_is_refused_and_writes_nothing(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
-        self._repo_answering(mock_todo_repo, self._family(parent_completed=True))
+        sibling = _make_todo_doc(todo_id="sibling", completed=True, parent_todo_id=_PARENT)
+        self._repo_answering(mock_todo_repo, [*self._family(parent_completed=True), sibling])
 
-        with pytest.raises(SubTodoParentError, match=FAKE_TODO_ID):
+        with pytest.raises(SubTodoParentError) as refused:
             await TodoService.bulk_update_todos(
                 BulkUpdateRequest(
-                    todo_ids=[FAKE_TODO_ID], updates=TodoUpdateRequest(completed=False)
+                    todo_ids=[FAKE_TODO_ID, "sibling"], updates=TodoUpdateRequest(completed=False)
                 ),
                 FAKE_USER_ID,
             )
+
+        assert refused.value.message.startswith(f"Sub-todo {FAKE_TODO_ID}, sibling cannot reopen")
 
         mock_todo_repo.bulk_update.assert_not_awaited()
 
