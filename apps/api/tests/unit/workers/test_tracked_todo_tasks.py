@@ -1162,7 +1162,8 @@ async def _run_task(
     find = AsyncMock(return_value=[desk])
 
     async def sub_todos(user_id: str, *, limit: int, parent_todo_id: str) -> list[TodoDocument]:
-        return list(children)[:limit] if parent_todo_id == doc.id else []
+        owned = user_id == doc.user_id and parent_todo_id == doc.id
+        return list(children)[:limit] if owned else []
 
     with (
         patch.object(todo_repository, "find_by_ids", find),
@@ -1275,6 +1276,50 @@ class TestSubTodosReachTheParentRun:
         task, _ = await _run_task(_doc(), _desk())
 
         assert SUB_TODOS_LABEL not in task
+
+    async def test_sub_todos_are_one_line_apart_and_an_unlabelled_stateless_one_says_so(self):
+        tagged = _thread(1).model_copy(
+            update={"labels": ["gaia-tracked", "waiting-for-reply", "vip"]}
+        )
+        bare = _thread(2).model_copy(update={"labels": ["gaia-tracked"], "canvas_content": None})
+
+        task, _ = await _run_task(_doc(), _desk(), [tagged, bare])
+
+        assert (
+            f"{SUB_TODOS_LABEL}\n"
+            f'- "Thread 1" [waiting-for-reply, vip] (ID: {_ref_id(11)})\n'
+            "  Current State: Waiting on Sarah to confirm Friday\n"
+            f'- "Thread 2" (ID: {_ref_id(12)})\n'
+            "  Current State: (empty)"
+        ) in task
+
+
+class TestARunWithNothingToReadElsewhere:
+    """Context from other todos adds nothing to the prompt when there is nothing to read."""
+
+    @pytest.mark.parametrize(
+        ("doc", "desk"),
+        [
+            pytest.param(_doc(), _desk(), id="top-level-without-sub-todos"),
+            pytest.param(
+                _doc(parent_todo_id="66f838cc8829054e5f10e499"), _desk(), id="parent-gone"
+            ),
+            pytest.param(
+                _doc(parent_todo_id=_DESK_ID),
+                _desk().model_copy(update={"canvas_content": "## Learnings\n- a\n"}),
+                id="parent-without-rules",
+            ),
+            pytest.param(
+                _doc(parent_todo_id=_DESK_ID),
+                _desk().model_copy(update={"canvas_content": None}),
+                id="parent-without-canvas",
+            ),
+        ],
+    )
+    async def test_the_prompt_is_the_todos_own(self, doc: TodoDocument, desk: TodoDocument):
+        task, _ = await _run_task(doc, desk)
+
+        assert task == _build_execution_prompt(doc)
 
 
 # ---------------------------------------------------------------------------

@@ -29,6 +29,7 @@ from app.agents.prompts.todo_prompts import (
 from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
     CANVAS_CURRENT_STATE_SECTION,
+    CANVAS_LEARNINGS_SECTION,
     CANVAS_STANDING_RULES_SECTION,
     EXECUTE_TRACKED_TODO_TASK,
     FAILED_LABEL,
@@ -441,7 +442,7 @@ async def _collect_parent_rules(parent_todo_id: str | None, user_id: str) -> str
     parent = await todo_repository.get(parent_todo_id, user_id=user_id)
     if parent is None:
         return ""
-    rules = section_body(parent.canvas_content or "", CANVAS_STANDING_RULES_SECTION)
+    rules = section_body(parent.canvas_content, CANVAS_STANDING_RULES_SECTION)
     if not rules:
         return ""
     return (
@@ -462,7 +463,7 @@ async def _collect_sub_todo_states(doc: TodoDocument) -> str:
 def _sub_todo_block(child: TodoDocument) -> str:
     labels = [label for label in child.labels if label != GAIA_TRACKED_LABEL]
     labels_str = f" [{', '.join(labels)}]" if labels else ""
-    state = section_body(child.canvas_content or "", CANVAS_CURRENT_STATE_SECTION)
+    state = section_body(child.canvas_content, CANVAS_CURRENT_STATE_SECTION)
     return (
         f'- "{child.title}"{labels_str} (ID: {child.id})\n'
         f"  Current State: {clip_text(state or '(empty)', SUB_TODO_STATE_EXCERPT_CHARS)}"
@@ -480,7 +481,7 @@ async def _collect_reference_learnings(ref_ids: list[str], user_id: str) -> str:
     learnings = [
         f'From past todo "{doc.title}":\n## Learnings\n{ref_learnings}'
         for doc in (owned[ref] for ref in wanted if ref in owned)
-        if (ref_learnings := section_body(doc.canvas_content or "", "Learnings"))
+        if (ref_learnings := section_body(doc.canvas_content, CANVAS_LEARNINGS_SECTION))
     ]
     return _labelled("Past experience (from similar completed todos):", learnings)
 

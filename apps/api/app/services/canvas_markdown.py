@@ -66,8 +66,10 @@ def _section_span(text: str, heading: str) -> tuple[int, int, int] | None:
     return match.start(), body_start, section_end
 
 
-def section_body(text: str, heading: str) -> str | None:
+def section_body(text: str | None, heading: str) -> str | None:
     """Body of "## {heading}" without its HTML comments, stripped; None when the section is absent."""
+    if text is None:
+        return None
     span = _section_span(text, heading)
     if span is None:
         return None

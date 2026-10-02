@@ -1641,7 +1641,7 @@ class TestTrackedTodoReferences:
     async def test_references_alone_are_an_update(self):
         """Regression: an update carrying only references was refused as "No fields to update"."""
         with (
-            patch(self._FIND, AsyncMock(return_value=self._owned(self.DESK))),
+            patch(self._FIND, AsyncMock(return_value=self._owned(self.DESK))) as find,
             patch(self._GET, AsyncMock(return_value=self._owned("t1")[0])),
             patch(self._UPDATE, AsyncMock()) as update,
             patch(self._ADD, AsyncMock()) as add,
@@ -1653,6 +1653,7 @@ class TestTrackedTodoReferences:
         assert result == "Updated tracked todo t1: references"
         add.assert_awaited_once_with("t1", user_id="user-1", references=[self.DESK])
         update.assert_not_awaited()
+        find.assert_awaited_once_with("user-1", [self.DESK])
 
     async def test_an_update_naming_a_todo_the_user_does_not_own_links_nothing(self):
         with (
@@ -1836,9 +1837,18 @@ class TestListTrackedTodos:
         )
         assert listed.await_args.kwargs["labels"] is None
 
-    async def test_an_empty_filtered_list_says_nothing_matched(self):
+    @pytest.mark.parametrize(
+        "only_filter",
+        [
+            {"labels": ["needs-reply"]},
+            {"gmail_thread_id": "abc"},
+            {"parent_todo_id": "66f838cc8829054e5f10e401"},
+        ],
+        ids=["labels", "thread", "parent"],
+    )
+    async def test_an_empty_filtered_list_says_nothing_matched(self, only_filter):
         with patch(_LIST_ACTIVE, new_callable=AsyncMock, return_value=[]):
-            result = await list_tracked_todos.coroutine(config=_config(), labels=["needs-reply"])
+            result = await list_tracked_todos.coroutine(config=_config(), **only_filter)
         assert result == "No active tracked todos match those filters."
 
     async def test_active_todos_are_listed_with_count(self):

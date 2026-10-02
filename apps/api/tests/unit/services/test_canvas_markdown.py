@@ -49,6 +49,9 @@ class TestSectionBody:
     def test_none_when_missing(self):
         assert section_body(LEGACY, "Nope") is None
 
+    def test_a_todo_without_a_canvas_has_no_section(self):
+        assert section_body(None, "Current State") is None
+
     def test_exact_heading_only(self):
         """'Current' must not match inside '## Current State'."""
         assert section_body(LEGACY, "Current") is None

@@ -315,6 +315,7 @@ class TestCreateTodo:
         created_doc = mock_todo_repo.create.call_args[0][0]
         assert created_doc.project_id == FAKE_INBOX_ID
         assert isinstance(result, TodoResponse)
+        assert result.sub_todo_count == 0
 
     async def test_validates_explicit_project(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
@@ -596,6 +597,7 @@ class TestSubTodoCounts:
 
         assert result.sub_todo_count == 2
         assert result.parent_todo_id == _PARENT
+        mock_todo_repo.count_open_sub_todos.assert_awaited_once_with(FAKE_USER_ID, [FAKE_TODO_ID])
 
     async def test_listing_one_parents_sub_todos_is_not_scoped_to_the_inbox(
         self, mock_todo_repo, mock_project_repo, mock_workflow_repo
@@ -622,6 +624,7 @@ class TestGetTodo:
         result = await TodoService.get_todo(FAKE_TODO_ID, FAKE_USER_ID)
         assert isinstance(result, TodoResponse)
         assert result.id == FAKE_TODO_ID
+        assert result.sub_todo_count == 0
 
     async def test_enriches_workflow_categories(
         self, mock_todo_repo, mock_project_repo, mock_workflow_repo
@@ -632,6 +635,7 @@ class TestGetTodo:
         mock_workflow_repo.return_value = [_workflow_doc("wf1", ["email"])]
         result = await TodoService.get_todo(FAKE_TODO_ID, FAKE_USER_ID)
         assert result.workflow_categories == ["email"]
+        mock_workflow_repo.assert_awaited_once_with(["wf1"], FAKE_USER_ID)
 
     async def test_a_workflow_linked_todo_still_carries_its_pending_approval(
         self, mock_todo_repo, mock_project_repo, mock_workflow_repo
@@ -698,6 +702,21 @@ class TestListTodos:
         assert mock_vector_utils["vector_search"].await_args.kwargs["filters"] == TodoSearchFilters(
             completed=True, priority="high", project_id=FAKE_PROJECT_ID
         )
+
+    async def test_a_search_within_one_parent_keeps_only_its_sub_todos(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils
+    ):
+        child = TodoResponse.from_document(_make_todo_doc(parent_todo_id=_PARENT))
+        stray = TodoResponse.from_document(_make_todo_doc())
+        mock_vector_utils["vector_search"].return_value = [stray, child]
+        params = TodoSearchParams(
+            q="reply", mode=SearchMode.SEMANTIC, page=1, per_page=50, parent_todo_id=_PARENT
+        )
+
+        result = await TodoService.list_todos(FAKE_USER_ID, params)
+
+        assert [todo.id for todo in result.data] == [child.id]
+        assert result.meta.total == 1
 
 
 class TestUpdateTodo:
@@ -996,6 +1015,10 @@ class TestDeletingAParentDeletesItsSubTodos:
             call(_CHILD, user_id=FAKE_USER_ID),
             call(_PARENT, user_id=FAKE_USER_ID),
         ]
+        assert mock_todo_repo.find_sub_todos.await_args_list == [
+            call(FAKE_USER_ID, [_PARENT]),
+            call(FAKE_USER_ID, [_CHILD]),
+        ]
 
     async def test_a_bulk_delete_takes_the_selected_parents_sub_todos_with_it(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
@@ -1045,6 +1068,33 @@ class TestBulkCompleteRunsTheTrackedLifecycle:
         complete.assert_awaited_once_with("t", FAKE_USER_ID, summary="Completed via bulk operation")
         assert mock_todo_repo.bulk_update.await_args.args[1] == ["p"]
         assert sorted(result.success) == ["p", "t"]
+        assert mock_todo_repo.find_by_ids.await_args_list == [
+            call(FAKE_USER_ID, ["t", "p"]),
+            call(FAKE_USER_ID, ["t", "p"]),
+        ]
+
+    async def test_the_rest_of_the_update_still_reaches_the_tracked_todos(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        tracked = _make_todo_doc(todo_id="t", vfs_path=_TRACKED_PATH)
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[tracked, _make_todo_doc(todo_id="p")])
+        mock_todo_repo.bulk_update = AsyncMock(return_value=1)
+        req = BulkUpdateRequest(
+            todo_ids=["t", "p"],
+            updates=TodoUpdateRequest(completed=True, priority=Priority.HIGH),
+        )
+
+        with patch(_COMPLETE_TRACKED, new_callable=AsyncMock, return_value=True):
+            await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+
+        tracked_write, plain_write = mock_todo_repo.bulk_update.await_args_list
+        assert tracked_write.args[:2] == (FAKE_USER_ID, ["t"])
+        assert tracked_write.args[2].model_dump(exclude_unset=True) == {"priority": Priority.HIGH}
+        assert plain_write.args[:2] == (FAKE_USER_ID, ["p"])
+        assert plain_write.args[2].model_dump(exclude_unset=True) == {
+            "completed": True,
+            "priority": Priority.HIGH,
+        }
 
     async def test_only_tracked_todos_means_no_plain_write(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
@@ -1113,6 +1163,22 @@ class TestBulkDeleteClosesTriggers:
         assert order == ["teardown", "delete"]
         teardown.assert_awaited_once_with("a", FAKE_USER_ID, reason="bulk_deleted")
         canvas.assert_awaited_once_with("a")
+
+    async def test_a_canvas_index_that_cannot_be_dropped_does_not_stop_the_delete(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_todo_repo.find_by_ids = AsyncMock(
+            return_value=[_make_todo_doc(todo_id="a", vfs_path=_TRACKED_PATH)]
+        )
+        mock_todo_repo.bulk_delete = AsyncMock(return_value=1)
+        with patch(
+            "app.services.todos.todo_service.delete_canvas_embedding",
+            new=AsyncMock(side_effect=RuntimeError("chroma down")),
+        ):
+            result = await TodoService.bulk_delete_todos(["a"], FAKE_USER_ID)
+
+        mock_todo_repo.bulk_delete.assert_awaited_once_with(FAKE_USER_ID, ["a"])
+        assert result.success == ["a"]
 
 
 class TestBulkOps:

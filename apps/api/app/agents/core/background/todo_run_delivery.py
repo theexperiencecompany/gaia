@@ -101,7 +101,7 @@ async def deliver_todo_run_result(
 
 def _canvas_section(todo: TodoDocument, heading: str, max_chars: int) -> str | None:
     """Return one canvas section's body, bounded, or None when it is missing or empty."""
-    body = section_body(todo.canvas_content, heading) if todo.canvas_content else None
+    body = section_body(todo.canvas_content, heading)
     return body[:max_chars] if body else None
 
 

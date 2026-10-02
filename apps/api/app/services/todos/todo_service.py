@@ -624,16 +624,16 @@ class TodoService:
             if completed_tracked and other_fields.model_fields_set:
                 await todo_repository.bulk_update(user_id, completed_tracked, other_fields)
 
-        try:
-            modified = (
-                await todo_repository.bulk_update(user_id, plain_ids, update) if plain_ids else 0
-            )
-        except BulkWriteError:
-            # A create or reopen took a ref after the check above; the writes before it landed.
-            if reopening:
-                await _refuse_a_reopen_of_a_taken_ref(user_id, request.todo_ids)
-            raise
-        succeeded = [*completed_tracked, *plain_ids[:modified]]
+        succeeded = list(completed_tracked)
+        if plain_ids:
+            try:
+                modified = await todo_repository.bulk_update(user_id, plain_ids, update)
+            except BulkWriteError:
+                # A create or reopen took a ref after the check above; the writes before it landed.
+                if reopening:
+                    await _refuse_a_reopen_of_a_taken_ref(user_id, request.todo_ids)
+                raise
+            succeeded.extend(plain_ids[:modified])
 
         if succeeded:
             try:
