@@ -355,7 +355,7 @@ class BrowserTaskRunner:
         return ended
 
     async def _handle_engine_switch(self, reason: EngineSwitchReason, url: str | None) -> str:
-        """Record that the agent found a page the fast engine cannot serve; the run resumes on the full one."""
+        """Record why the run leaves the fast engine (the agent's call, a bot check, a script it cannot run); the run resumes on the full one."""
         self._engine_switch = reason
         host = urlsplit(url).hostname if url else None
         log.set_ns("browser", engine_switch=reason.value, engine_switch_host=host)

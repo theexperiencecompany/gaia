@@ -36,6 +36,7 @@ from tests.integration.real.battery.harness import (
     battery_enabled,
     hn_front_page_titles,
     stack_answers,
+    user_text,
 )
 
 pytestmark = [
@@ -99,12 +100,12 @@ def _one_final_message(outcome: RunOutcome) -> str:
         if e.get("type") in ("send", "outbound-delivery", "edit") and e.get("text")
     ]
     handoff_prompt = {
-        i - 1 for i, e in enumerate(texts) if str(e["text"]).startswith("Open the live browser:")
+        i - 1 for i, e in enumerate(texts) if user_text(e).startswith("Open the live browser:")
     }
     finals = [
         e
         for i, e in enumerate(texts)
-        if i not in handoff_prompt and not _PROGRESS_LINE.search(str(e["text"]))
+        if i not in handoff_prompt and not _PROGRESS_LINE.search(user_text(e))
     ]
     replies: list[list[dict]] = []
     for e in finals:
@@ -115,9 +116,9 @@ def _one_final_message(outcome: RunOutcome) -> str:
             replies.append([e])
     assert len(replies) == 1, (
         f"expected one outcome reply, got {len(replies)}: "
-        f"{[[str(e['text'])[:80] for e in r] for r in replies]}"
+        f"{[[user_text(e)[:80] for e in r] for r in replies]}"
     )
-    return "\n".join(str(e["text"]) for e in replies[0])
+    return "\n".join(user_text(e) for e in replies[0])
 
 
 def _no_contradiction(outcome: RunOutcome) -> None:
@@ -282,8 +283,10 @@ def test_a_login_is_handed_to_the_user_then_reused_without_a_second_handoff(
     def act(job_id: str, state: dict, b: Battery) -> list[dict]:
         handoff_id, record = b.wait_for_handoff(job_id)
         assert re.search(r"password|sign in|log in", record.get("reason", ""), re.I), record
-        b.run_async(b.type_into_live_session(state["session_id"], _LOGIN_JS))
-        landed = b.wait_for_page(state["session_id"], "/secure")
+        session_id = b.session_id(job_id)
+        assert session_id, "the run paused on a handoff without having opened a browser"
+        b.run_async(b.type_into_live_session(session_id, _LOGIN_JS))
+        landed = b.wait_for_page(session_id, "/secure")
         assert urlsplit(landed).path == "/secure", (
             f"the live login did not land on the secure area: {landed}"
         )
@@ -455,7 +458,8 @@ def test_a_stop_from_the_user_ends_the_run_with_one_message(battery: Battery) ->
     )
 
     assert outcome.success is not True
-    assert outcome.status in ("stopped", "cancelled", "failed"), outcome.state
+    # Stopped, not a failure its own agent declared: only a stop ends unnarrated.
+    assert outcome.status == "cancelled", outcome.state
     _one_final_message(outcome)
     _no_contradiction(outcome)
 
@@ -463,7 +467,8 @@ def test_a_stop_from_the_user_ends_the_run_with_one_message(battery: Battery) ->
 def test_one_message_never_starts_two_browser_runs(battery: Battery) -> None:
     before = set(battery.job_ids())
     outcome = battery.run(
-        "Use the browser. Go to https://example.com and tell me its main heading.",
+        # Its page title: example.com no longer has a heading at all.
+        "Use the browser. Go to https://example.com and tell me its page title.",
     )
     started = set(battery.job_ids()) - before
 

@@ -36,6 +36,7 @@ import redis
 from app.constants.browser import (
     BROWSER_HANDOFF_KEY_PREFIX,
     BROWSER_HANDOFF_REPLY_KEY_PREFIX,
+    BROWSER_JOB_EVENTS_PREFIX,
     BROWSER_JOB_LOCK_PREFIX,
     BROWSER_JOB_STATE_PREFIX,
 )
@@ -170,6 +171,16 @@ class Sender(subprocess.Popen[str]):
         return failed[-1] if failed else None
 
 
+def as_read(markup: str) -> str:
+    """Return HTML as a reader sees it: no tags, entities decoded ("&amp;" is "&")."""
+    return html.unescape(re.sub(r"<[^>]+>", "", markup))
+
+
+def user_text(event: dict[str, Any]) -> str:
+    """Return a delivered message as the user reads it: the bot sends Telegram HTML, which Telegram shows as text."""
+    return as_read(str(event.get("text", "")))
+
+
 @dataclass
 class Transcript:
     """What the bot delivered for one turn, from the harness's JSONL."""
@@ -179,7 +190,7 @@ class Transcript:
     @property
     def texts(self) -> list[str]:
         return [
-            str(e.get("text", ""))
+            user_text(e)
             for e in self.events
             if e.get("type") in ("send", "outbound-delivery") and e.get("text")
         ]
@@ -436,6 +447,22 @@ class Battery:
             time.sleep(_POLL_SECONDS)
         raise AssertionError(f"job {job_id} never reached {statuses}: {self.job_state(job_id)}")
 
+    def session_id(self, job_id: str) -> str | None:
+        """Return the browser session the run is on now, from its card feed; None before it opened one.
+
+        The job state never carries it; a run moved to the fallback engine names its new session last.
+        """
+        feed = cast(
+            list[tuple[str, dict[str, str]]],
+            self.redis.xrange(f"{BROWSER_JOB_EVENTS_PREFIX}{job_id}"),
+        )
+        sessions: list[str] = []
+        for _entry, fields in feed:
+            card = (json.loads(fields["payload"]).get("tool_data") or {}).get("data") or {}
+            if card.get("kind") == "session":
+                sessions.append(card["session_id"])
+        return sessions[-1] if sessions else None
+
     def task_record(self, session_id: str | None) -> dict[str, Any] | None:
         """Return the task-history row for this run's browser session (written when the run ends)."""
         if not session_id:
@@ -489,7 +516,8 @@ class Battery:
         if not handoff_id:
             return None
         record = self.stored(f"{BROWSER_HANDOFF_KEY_PREFIX}{handoff_id}") or {}
-        return (str(handoff_id), record) if record.get("status") == "pending" else None
+        pending = self.handoff_status(str(handoff_id)) == "pending"
+        return (str(handoff_id), record) if pending else None
 
     def wait_for_handoff(
         self, job_id: str, *, timeout: float = 300.0
@@ -508,9 +536,10 @@ class Battery:
         raise AssertionError(f"no handoff was raised for conversation {conversation_id}")
 
     def handoff_status(self, handoff_id: str) -> str:
-        return str(
-            (self.stored(f"{BROWSER_HANDOFF_KEY_PREFIX}{handoff_id}") or {}).get("status", "")
-        )
+        """Return the handoff's status: its decision once settled (kept apart from the record), else the record's."""
+        key = f"{BROWSER_HANDOFF_KEY_PREFIX}{handoff_id}"
+        decided = self.stored(f"{key}:settled") or self.stored(key) or {}
+        return str(decided.get("status", ""))
 
     def wait_while_pending(self, handoff_id: str, *, timeout: float) -> str:
         """Return the handoff's status once it leaves pending, or "pending" at the timeout."""
@@ -630,8 +659,6 @@ class Battery:
         try:
             job_id = self.wait_for_job(proc=proc)
             state = self.wait_for_status(job_id, {"running", "done"}, timeout=240.0)
-            # The terminal state drops the session id; the history row is keyed on it.
-            session_id = state.get("session_id")
             handoffs: list[dict[str, Any]] = []
             if on_running is not None and state.get("status") == "running":
                 handoffs = on_running(job_id, state, self) or []
@@ -649,10 +676,10 @@ class Battery:
                 proc.wait(timeout=60)
             except subprocess.TimeoutExpired:
                 self.stop_sender(proc)
-        # The history row is written at the end of the run; give it a moment.
+        # The history row is written at the end of the run, keyed on its last session; give it a moment.
         record = None
         for _ in range(15):
-            record = self.task_record(session_id)
+            record = self.task_record(self.session_id(job_id))
             if record:
                 break
             time.sleep(1)
@@ -671,7 +698,4 @@ def fetch_text(url: str) -> str:
 def hn_front_page_titles() -> list[str]:
     page = fetch_text("https://news.ycombinator.com/")
     # Titles as a reader sees them: HN escapes the apostrophe in "Stripe's".
-    return [
-        html.unescape(re.sub(r"<[^>]+>", "", m))
-        for m in re.findall(r'<span class="titleline"><a[^>]*>(.*?)</a>', page)
-    ]
+    return [as_read(m) for m in re.findall(r'<span class="titleline"><a[^>]*>(.*?)</a>', page)]

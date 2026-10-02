@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -59,6 +60,29 @@ def _delegate(runner: _Runner) -> tuple[JevDelegate, list[Any]]:
         emitted.append((actions, url))
 
     return JevDelegate(runner_for=lambda: runner, emit=_emit), emitted
+
+
+@pytest.mark.parametrize("movable", [True, False])
+async def test_a_script_the_engine_cannot_run_moves_the_run_where_it_can_move(
+    movable: bool,
+) -> None:
+    """On the fast engine a missing DOM feature is the engine's failure: the run moves, nobody is asked."""
+    moves: list[str] = []
+
+    async def _move() -> str:
+        moves.append("full browser")
+        return "Moving this task to the full browser."
+
+    delegate = JevDelegate(
+        runner_for=lambda: _Runner(_burst(JevStop.ENGINE_SCRIPT_ERROR)),
+        emit=AsyncMock(),
+        on_engine_gap=_move if movable else None,
+    )
+
+    result = await delegate.run(JevParams(goal="search"))
+
+    assert moves == (["full browser"] if movable else [])
+    assert ("Moving this task to the full browser." in (result.extracted_content or "")) is movable
 
 
 async def test_a_burst_that_acted_gets_one_card_with_its_actions() -> None:

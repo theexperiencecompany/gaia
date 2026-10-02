@@ -10,17 +10,38 @@ import fakeredis.aioredis
 import pytest
 
 from app.constants.browser import HandoffStatus
-from app.services.browser import resolution as res_mod
+from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
+from app.services.analytics_service import AnalyticsEvents
+from app.services.browser import job_stop, resolution as res_mod
 from app.services.browser.handoff import await_handoff, create_pending_handoff, get_handoff
-from app.services.browser.resolution import HandoffReplyDecision, resolve_handoff_from_message
+from app.services.browser.jobs import (
+    claim_conversation_slot,
+    job_cancel_requested,
+    put_job_state,
+    set_job_wait,
+    set_latest_job,
+)
+from app.services.browser.resolution import (
+    HandoffReplyDecision,
+    RunningTaskMessageDecision,
+    resolve_handoff_from_message,
+    stop_running_job_from_message,
+)
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
 
 @pytest.fixture(autouse=True)
-async def pending(fake_redis: fakeredis.aioredis.FakeRedis) -> None:
+async def pending(
+    fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Start a job in c1 paused on handoff h1, with ARQ's pool on the same fake Redis."""
+    monkeypatch.setattr(job_stop.RedisPoolManager, "get_pool", AsyncMock(return_value=fake_redis))
+    await set_latest_job("c1", "job-1")
+    await put_job_state(BrowserJobState(job_id="job-1", status=BrowserJobStatus.RUNNING, task="t"))
     await create_pending_handoff("h1", "u1", "c1", "Pay the deposit", reply_to="c1")
+    await set_job_wait("job-1", "h1")
 
 
 def _reads(monkeypatch: pytest.MonkeyPatch, action: str, note: str | None = None) -> AsyncMock:
@@ -37,6 +58,8 @@ async def test_a_reply_the_model_reads_as_done_or_stop_settles_the_handoff(
     monkeypatch: pytest.MonkeyPatch, action: str, status: HandoffStatus
 ) -> None:
     classify = _reads(monkeypatch, action)
+    captured: list[tuple[object, ...]] = []
+    monkeypatch.setattr(res_mod, "capture_event", lambda *args: captured.append(args))
 
     reply = await resolve_handoff_from_message("c1", "u1", "ok, paid")
 
@@ -51,6 +74,15 @@ async def test_a_reply_the_model_reads_as_done_or_stop_settles_the_handoff(
     assert "Pay the deposit" in prompt
     assert "ok, paid" in prompt
     assert classify.await_args.kwargs == {"label": "browser_handoff_conversational_resolve"}
+    # A stop said in chat stops the job itself, so nothing that runs on narrates it.
+    assert await job_cancel_requested("job-1") is (action == "cancel")
+    # The stop is still the user deciding the handoff, attributed to them by id.
+    cancelled = (
+        "u1",
+        AnalyticsEvents.BROWSER_HANDOFF_RESOLVED,
+        {"decision": "cancel", "with_note": False},
+    )
+    assert captured == ([cancelled] if action == "cancel" else [])
 
 
 async def test_only_a_reply_the_model_calls_a_redirect_reaches_the_run_as_one(
@@ -106,7 +138,7 @@ async def test_a_reply_where_nothing_waits_or_from_another_user_resolves_nothing
     record = await get_handoff("h1")
     assert record is not None
     assert record.status is HandoffStatus.PENDING
-    assert classify.await_count == 1
+    assert classify.await_count == 0
 
 
 async def test_a_classifier_failure_reaches_the_turn_and_leaves_the_handoff_pending(
@@ -132,3 +164,27 @@ async def test_a_reply_to_a_handoff_whose_record_expired_resolves_nothing(
 
     assert await resolve_handoff_from_message("c1", "u1", "done") is None
     classify.assert_not_awaited()
+
+
+async def test_a_message_is_read_for_a_stop_only_while_a_task_runs(
+    fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    classify = AsyncMock(return_value=RunningTaskMessageDecision(action="stop"))
+    monkeypatch.setattr(res_mod, "ainvoke_structured_gemini", classify)
+
+    # No job in the conversation, then one that has ended: nothing to stop, nothing read.
+    assert await stop_running_job_from_message("c2", "stop") is False
+    await claim_conversation_slot("c2", "job-2")
+    await put_job_state(BrowserJobState(job_id="job-2", status=BrowserJobStatus.DONE, task="t"))
+    assert await stop_running_job_from_message("c2", "stop") is False
+    classify.assert_not_awaited()
+
+    await claim_conversation_slot("c1", "job-1")
+    assert await stop_running_job_from_message("c1", "stop it please") is True
+
+    schema, prompt = classify.await_args.args
+    assert schema is RunningTaskMessageDecision
+    assert "stop it please" in prompt
+    assert "'t'" in prompt  # the task it would stop
+    assert classify.await_args.kwargs == {"label": "browser_running_task_message"}
+    assert await job_cancel_requested("job-1") is True

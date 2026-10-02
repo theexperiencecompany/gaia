@@ -46,6 +46,7 @@ from app.services.browser.jev.gateway import (
 from app.services.browser.jev.loop import BurstContext, BurstResult, JevRunner, JevStep, OpenedPage
 from app.services.browser.jev.page import (
     Covered,
+    EngineScriptError,
     FieldUnfocused,
     NavigationFailed,
     PageAction,
@@ -489,7 +490,8 @@ async def test_a_field_the_goal_gives_no_value_for_asks_the_agent_naming_the_fie
         (TabUnavailable("No valid agent focus available"), JevStop.TAB_UNAVAILABLE),
         (PageUnresponsive("Runtime.evaluate got no answer in 20s"), JevStop.UNRESPONSIVE),
         (PageLoading("The page is still loading: https://site.test/b"), JevStop.LOADING),
-        (PageScriptError("Jev's page script failed: TypeError"), JevStop.PAGE_SCRIPT_ERROR),
+        (PageScriptError("Jev's page script failed: Error: x"), JevStop.PAGE_SCRIPT_ERROR),
+        (EngineScriptError("Jev's page script failed: TypeError"), JevStop.ENGINE_SCRIPT_ERROR),
     ],
 )
 async def test_a_tab_that_goes_away_mid_burst_ends_it_with_every_step_it_took(

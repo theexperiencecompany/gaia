@@ -4,7 +4,9 @@ Seams the agent reaches for itself: request_human_takeover is the agent's own
 way to pause for the human at a sensitive step (payment, credentials,
 irreversible); solve_captcha_with_help hands a CAPTCHA to the human since there
 is no automatic solver; request_agent_guidance asks the agent that started the
-run, not the user; continue_in_full_browser moves the run to Chrome. Each ends
+run, not the user; continue_in_full_browser moves the run to Chrome. On the
+fast engine a CAPTCHA or bot check is first tried in Chrome, which most such
+checks do not stop: only there does it become the user's to pass. Each ends
 its step's action sequence: the page is about to change hands, so an action
 queued behind one would act on a page nobody looked at.
 """
@@ -90,13 +92,15 @@ def build_browser_tools(
         # Registered by function name; the tool exists only on the fast engine.
         @tools.action(
             description=(
-                "Continue this task in the full browser (Chrome). Use it ONLY when this page "
-                "does not work properly in the current fast browser: it renders wrong or stays "
+                "Continue this task in the full browser (Chrome); you are in the fast one now. "
+                "Use it when the task or the user asks for the full browser (category asked), "
+                "or when this page does not work properly here: it renders wrong or stays "
                 "blank, a control you need is missing or does nothing when used, or a page that "
-                "fills itself in by script never does. Do NOT use it for a login, a CAPTCHA, a "
-                "paywall, an error message the site itself shows, or a site that is down or "
-                "slow: those look the same in any browser. The run continues from this page in "
-                "the full browser. `category` is renders_wrong | control_broken | stays_empty."
+                "fills itself in by script never does. Do NOT use it for a login, a paywall, an "
+                "error message the site itself shows, or a site that is down or slow: those look "
+                "the same in any browser. A CAPTCHA or bot check goes to solve_captcha_with_help, "
+                "which tries the full browser first. The run continues from this page in the "
+                "full browser. `category` is renders_wrong | control_broken | stays_empty | asked."
             ),
             param_model=EngineSwitchParams,
             terminates_sequence=True,
@@ -110,8 +114,11 @@ def build_browser_tools(
         @tools.action(
             description=(
                 "Hand a CAPTCHA to the human to solve in the live browser. Call this "
-                "when you see a CAPTCHA/reCAPTCHA/hCaptcha challenge; the user solves "
-                "it and you then continue. `challenge` is shown to the user verbatim "
+                "when you see a CAPTCHA/reCAPTCHA/hCaptcha challenge or a bot check "
+                "('verify you are human', 'one last step'); the user solves it and you "
+                "then continue. In the fast browser it first moves the task to the full "
+                "browser, which most such checks let through, and you continue there "
+                "instead. `challenge` is shown to the user verbatim "
                 "as their instruction, so write it as a short second-person directive "
                 "describing exactly what to solve (e.g. 'Select all squares with "
                 "motorcycles, then click Verify')."
@@ -119,7 +126,9 @@ def build_browser_tools(
             terminates_sequence=True,
         )
         async def solve_captcha_with_help(challenge: str) -> str:
-            """Return the CAPTCHA tool that asks the user to solve it in live view."""
+            """Return the CAPTCHA tool: the full browser first from the fast one, else the user in live view."""
+            if handle_engine_switch is not None:
+                return await handle_engine_switch(EngineSwitchReason.BOT_CHALLENGE)
             return await handle_takeover(challenge, SensitiveCategory.NONE)
 
     return tools

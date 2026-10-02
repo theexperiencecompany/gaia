@@ -44,11 +44,17 @@ class EngineFailure(StrEnum):
 
 
 class EngineSwitchReason(StrEnum):
-    """Why the agent moved an Obscura run to Chrome: the kinds of breakage the fast engine causes."""
+    """Why an Obscura run moved to Chrome: the breakage the fast engine causes, or the task asking for it."""
 
     RENDERS_WRONG = "renders_wrong"
     CONTROL_BROKEN = "control_broken"
     STAYS_EMPTY = "stays_empty"
+    #: The task or the user asked for the full browser.
+    ASKED = "asked"
+    #: A CAPTCHA or bot check: the full browser is tried before the user is asked to pass it.
+    BOT_CHALLENGE = "bot_challenge"
+    #: Jev's own page script hit a feature the fast engine lacks.
+    SCRIPT_UNSUPPORTED = "script_unsupported"
 
 
 class StateCarry(StrEnum):
@@ -231,6 +237,11 @@ BROWSER_HANDOFF_REPLY_READINGS: dict[str, str] = {
     "redirect": "a new instruction instead of that step, which the task now follows",
 }
 
+#: What the turn reads with a message that stopped the running browser task: its
+#: reply is the one thing the user hears of the stop.
+BROWSER_RUN_STOPPED_BY_MESSAGE_NOTE = (
+    "[This message stopped the browser task that was running, so it was stopped.]"
+)
 
 # An expired handoff is a failed run, not the completed one a takeover made it look like.
 BROWSER_RUN_HANDOFF_TIMED_OUT = "Stopped: nobody finished the step in the live browser in time."
@@ -321,6 +332,9 @@ BROWSER_AGENT_HEDGE_SECONDS = 12.0
 BROWSER_AGENT_URL_QUERY_MAX_CHARS = 2000
 # A top-level load whose server sends nothing for this long is stopped, as a person
 # presses Stop: until it answers, Chrome answers no script on the tab (measured 2026-09-25).
+# No event says a server never will, so it is a patience, not a measurement; the stop
+# waits for the page the tab shows to load, so a server slower than this costs a
+# retry, never a broken page.
 BROWSER_LOAD_STALL_SECONDS = 15.0
 BROWSER_LOAD_STOP_TIMEOUT_SECONDS = 5.0
 #: What the agent reads about a load the browser stopped: the plain fact, no retry rule.
@@ -396,6 +410,13 @@ BROWSER_AGENT_ROLE = (
     "Logins without given credentials, payments, OTPs and CAPTCHAs go to the user through "
     "the handoff actions. Messages the user sends mid-task arrive as follow-up requests: "
     "weigh what each says against the task; it changes the task only where it says so."
+)
+
+#: Told to an agent on the fast engine, which otherwise cannot know which browser it is in.
+BROWSER_AGENT_FAST_ENGINE_NOTE = (
+    "\nYou are in the fast browser, not the full browser (Chrome). When the task or the user "
+    "asks for the full browser, call `continue_in_full_browser` with category `asked` before "
+    "that part; the task goes on there from the same page, with its sign-ins."
 )
 
 #: What the agent reads after a handoff step when the user left no note.
@@ -479,6 +500,8 @@ class JevStop(StrEnum):
     FIELD_UNFOCUSED = "field_unfocused"
     TAB_UNAVAILABLE = "tab_unavailable"
     PAGE_SCRIPT_ERROR = "page_script_error"
+    #: Jev's own script called a feature this browser engine does not have.
+    ENGINE_SCRIPT_ERROR = "engine_script_error"
 
 
 #: Controls offered to Jev per request, in DOM order within the viewport. Vercel's

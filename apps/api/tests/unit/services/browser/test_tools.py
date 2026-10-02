@@ -8,15 +8,6 @@ import pytest
 from app.constants.browser import EngineSwitchReason, SensitiveCategory
 from app.services.browser.tools import build_browser_tools
 
-CAPTCHA_DESCRIPTION = (
-    "Hand a CAPTCHA to the human to solve in the live browser. Call this "
-    "when you see a CAPTCHA/reCAPTCHA/hCaptcha challenge; the user solves "
-    "it and you then continue. `challenge` is shown to the user verbatim "
-    "as their instruction, so write it as a short second-person directive "
-    "describing exactly what to solve (e.g. 'Select all squares with "
-    "motorcycles, then click Verify')."
-)
-
 
 class _FakeGuidance:
     """Records every call to the agent-guidance seam and returns a canned instruction."""
@@ -133,6 +124,23 @@ async def test_captcha_action_always_uses_none_category() -> None:
 
     assert takeover.calls == [("Select all squares with motorcycles", "none")]
     assert result == "resolved:Select all squares with motorcycles:none"
+
+
+async def test_a_captcha_on_the_fast_engine_is_tried_in_the_full_browser_before_the_user() -> None:
+    """Bing's bot check stopped the fast browser only, and the user was asked to pass it."""
+    takeover = _FakeTakeover()
+    switch = _FakeSwitch()
+    tools = build_browser_tools(
+        solve_captcha=True,
+        handle_takeover=takeover,
+        handle_guidance=_FakeGuidance(),
+        handle_engine_switch=switch,
+    )
+
+    result = await _call_action(tools, "solve_captcha_with_help", challenge="Solve the check")
+
+    assert (switch.calls, result) == ([EngineSwitchReason.BOT_CHALLENGE], "moving")
+    assert takeover.calls == []
 
 
 async def test_the_guidance_action_hands_the_reason_to_the_agent_seam() -> None:
