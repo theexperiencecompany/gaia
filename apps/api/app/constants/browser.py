@@ -180,6 +180,8 @@ BROWSER_SESSION_LEASE_RENEW_SECONDS = BROWSER_SESSION_LEASE_SECONDS / 3
 # carries no 32-char session id and no long ?t= token. One per handoff, revoked on settle.
 BROWSER_LIVE_CODE_KEY_PREFIX = "browser:livecode:"
 BROWSER_LIVE_CODE_HANDOFF_PREFIX = "browser:livecode:handoff:"
+# Pub/sub channel a revoked code is announced on, so a socket it opened closes at once.
+BROWSER_LIVE_CODE_REVOKED_PREFIX = "browser:livecode:revoked:"
 
 # Replay: a short code maps to a finished session's screenshot set, so the recap
 # link (browser.heygaia.io/replays/{code}) plays every step back as a slideshow.

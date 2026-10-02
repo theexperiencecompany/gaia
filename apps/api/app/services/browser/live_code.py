@@ -7,6 +7,8 @@ wait, and is revoked the moment the handoff is settled.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import secrets
 
 from app.config.settings import settings
@@ -14,6 +16,7 @@ from app.constants.browser import (
     BROWSER_LIVE_CODE_ENTROPY_BYTES,
     BROWSER_LIVE_CODE_HANDOFF_PREFIX,
     BROWSER_LIVE_CODE_KEY_PREFIX,
+    BROWSER_LIVE_CODE_REVOKED_PREFIX,
 )
 from app.db.redis import redis_cache
 from app.schemas.browser import LiveCodeRecord
@@ -25,6 +28,10 @@ def _key(code: str) -> str:
 
 def _handoff_key(handoff_id: str) -> str:
     return f"{BROWSER_LIVE_CODE_HANDOFF_PREFIX}{handoff_id}"
+
+
+def _revoked_channel(code: str) -> str:
+    return f"{BROWSER_LIVE_CODE_REVOKED_PREFIX}{code}"
 
 
 async def mint_live_code(session_id: str, user_id: str, handoff_id: str) -> str:
@@ -46,6 +53,8 @@ async def revoke_handoff_live_code(handoff_id: str) -> None:
     code = await redis_cache.client.getdel(_handoff_key(handoff_id))
     if code is not None:
         await redis_cache.delete(_key(code))
+        # A socket the code opened is still streaming and taking input: tell it to close.
+        await redis_cache.client.publish(_revoked_channel(code), handoff_id)
 
 
 async def resolve_live_code(code: str) -> LiveCodeRecord | None:
@@ -53,7 +62,20 @@ async def resolve_live_code(code: str) -> LiveCodeRecord | None:
     return await redis_cache.get(_key(code), model=LiveCodeRecord)
 
 
-async def live_code_remaining_seconds(code: str) -> float:
-    """Seconds the code stays valid; 0 once it has lapsed, so a socket bound to it closes at once."""
-    remaining = await redis_cache.ttl_seconds(_key(code))
-    return float(remaining) if remaining is not None else 0.0
+async def live_code_ended(code: str) -> None:
+    """Return once the code is revoked or has lapsed: a socket it opened closes then."""
+    pubsub = redis_cache.client.pubsub()
+    await pubsub.subscribe(_revoked_channel(code))
+    try:
+        # Read after subscribing, so a revoke landing in between is not missed.
+        remaining = await redis_cache.ttl_seconds(_key(code))
+        if remaining is None:
+            return
+        with contextlib.suppress(TimeoutError):
+            async with asyncio.timeout(remaining):
+                async for message in pubsub.listen():
+                    if message["type"] == "message":
+                        return
+    finally:
+        await pubsub.unsubscribe(_revoked_channel(code))
+        await pubsub.aclose()

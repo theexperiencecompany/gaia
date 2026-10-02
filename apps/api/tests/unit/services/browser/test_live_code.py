@@ -1,5 +1,6 @@
 """The short live-view capability link: one per handoff, lapsing with its window, revoked on settle."""
 
+import asyncio
 import re
 from unittest.mock import AsyncMock
 
@@ -24,10 +25,8 @@ async def test_a_code_opens_its_session_for_the_handoffs_window_until_revoked(
     assert await live_code.resolve_live_code(code) == LiveCodeRecord(
         session_id="sess-abc", user_id="user-1", handoff_id="h1"
     )
-    assert (
-        0
-        < await live_code.live_code_remaining_seconds(code)
-        <= (settings.BROWSER_USE_HANDOFF_TIMEOUT_SECONDS)
+    assert 0 < await fake_redis.ttl(f"browser:livecode:{code}") <= (
+        settings.BROWSER_USE_HANDOFF_TIMEOUT_SECONDS
     )
 
     # The handoff's own pointer to its code lapses with it too.
@@ -36,8 +35,8 @@ async def test_a_code_opens_its_session_for_the_handoffs_window_until_revoked(
     await live_code.revoke_handoff_live_code("h1")
 
     assert await live_code.resolve_live_code(code) is None
-    # No time left, so a socket bound to it closes at once.
-    assert await live_code.live_code_remaining_seconds(code) == 0.0
+    # Gone, so a socket it opens from here on closes at once.
+    await asyncio.wait_for(live_code.live_code_ended(code), timeout=1)
 
 
 async def test_a_live_code_is_a_short_url_safe_slug(
