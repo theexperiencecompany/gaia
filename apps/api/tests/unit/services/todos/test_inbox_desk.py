@@ -8,10 +8,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
+import time_machine
 
 from app.agents.prompts import todo_prompts
 from app.agents.prompts.todo_prompts import INBOX_DESK_DELIVERY_RULE, INBOX_DESK_DESCRIPTION
 from app.constants.todos import (
+    CANVAS_SECTIONS,
     INBOX_DESK_RECURRENCE,
     INBOX_DESK_TITLE,
     PROVISION_INBOX_DESK_TASK,
@@ -131,21 +133,14 @@ def seams() -> Iterator[SimpleNamespace]:
         )
 
 
-async def test_the_desk_starts_with_its_observations_after_its_rules(
+async def test_the_desks_canvas_keeps_no_observations_of_its_own(
     seams: SimpleNamespace,
 ) -> None:
+    """One source of truth: the desk's observations live in observations.md alone."""
     await _provision()
 
     canvas = seams.create.await_args.kwargs["initial_canvas"]
-    assert re.findall(r"^## (.+)$", canvas, re.MULTILINE) == [
-        "Standing rules",
-        "Observations",
-        "Key Details",
-        "Current State",
-        "Context",
-        "Learnings",
-    ]
-    assert re.findall(r"^### (.+)$", canvas, re.MULTILINE) == ["Senders", "Recurring", "People"]
+    assert re.findall(r"^## (.+)$", canvas, re.MULTILINE) == list(CANVAS_SECTIONS)
     assert canvas_problems(canvas) == []
     assert normalize_canvas(canvas) == (canvas, None)
 
@@ -161,11 +156,7 @@ async def test_a_paying_user_gets_a_desk_scheduled_with_its_insert(seams: Simple
     assert kwargs["description"] == INBOX_DESK_DESCRIPTION
     assert kwargs["external_ref"] == DESK_REF
     assert kwargs["notify_on_run"] is True
-    assert kwargs["initial_canvas"] == starting_canvas(
-        INBOX_DESK_TITLE,
-        [INBOX_DESK_DELIVERY_RULE],
-        sections=[todo_prompts.INBOX_DESK_OBSERVATIONS_SECTION],
-    )
+    assert kwargs["initial_canvas"] == starting_canvas(INBOX_DESK_TITLE, [INBOX_DESK_DELIVERY_RULE])
     first = kwargs["schedule"].scheduled_at
     assert kwargs["schedule"].recurrence == INBOX_DESK_RECURRENCE
     assert _at_8_in_kolkata(first)
@@ -394,36 +385,75 @@ def stored() -> Iterator[dict[str, TodoDocument]]:
         yield docs
 
 
-@pytest.mark.regression
-async def test_a_desk_opened_before_observations_gets_them_once_before_its_run(
+CANVAS_OBSERVATIONS = (
+    "## Observations\n<!-- patterns the desk learned -->\n### Senders\n<!-- <sender>: <volume> -->\n"
+    "- notifications@github.com: GitHub notifications, ~224/day, low priority\n"
+    "### Recurring\n### People\n- Sarah Lee <sarah@example.com>: replies within the hour\n\n"
+)
+
+
+async def test_a_desk_without_observations_md_is_seeded_once_before_its_run(
     stored: dict[str, TodoDocument],
 ) -> None:
     stored[DESK_ID] = _desk(canvas_content=OLD_DESK_CANVAS, updated_at=STAMP)
 
-    ready = await inbox_desk.with_desk_sections(stored[DESK_ID])
-    again = await inbox_desk.with_desk_sections(ready)
+    ready = await inbox_desk.with_desk_notes(stored[DESK_ID])
+    again = await inbox_desk.with_desk_notes(ready)
 
-    assert ready.canvas_content == starting_canvas(
-        INBOX_DESK_TITLE,
-        [INBOX_DESK_DELIVERY_RULE],
-        sections=[todo_prompts.INBOX_DESK_OBSERVATIONS_SECTION],
+    assert ready.observations_content == todo_prompts.INBOX_DESK_OBSERVATIONS_FILE
+    assert ready.canvas_content == OLD_DESK_CANVAS
+    assert again == ready == stored[DESK_ID]
+    assert ready.updated_at == STAMP
+    assert todo_repository.replace_note_fields.await_count == 1
+
+
+@pytest.mark.regression
+@time_machine.travel(datetime(2026, 10, 3, 7, 0, tzinfo=UTC), tick=False)
+async def test_the_canvas_observations_move_into_observations_md_once(
+    stored: dict[str, TodoDocument],
+) -> None:
+    """Regression: observations lived in a capped canvas section, one line each, losing their evidence."""
+    canvas = OLD_DESK_CANVAS.replace("## Key Details", CANVAS_OBSERVATIONS + "## Key Details")
+    stored[DESK_ID] = _desk(canvas_content=canvas, updated_at=STAMP)
+
+    ready = await inbox_desk.with_desk_notes(stored[DESK_ID])
+    again = await inbox_desk.with_desk_notes(ready)
+
+    seed = todo_prompts.INBOX_DESK_OBSERVATIONS_FILE
+    assert ready.canvas_content == OLD_DESK_CANVAS
+    assert ready.observations_content == seed.replace(
+        "\n\n## Recurring",
+        "\n\n### notifications@github.com\n"
+        "- conclusion: GitHub notifications, ~224/day, low priority\n"
+        "- confidence: low\n- first seen: before 2026-10-03\n\n## Recurring",
+    ).replace(
+        "engages with them -->\n",
+        "engages with them -->\n\n### Sarah Lee <sarah@example.com>\n"
+        "- conclusion: replies within the hour\n"
+        "- confidence: low\n- first seen: before 2026-10-03\n",
     )
     assert again == ready == stored[DESK_ID]
     assert ready.updated_at == STAMP
     assert todo_repository.replace_note_fields.await_count == 1
 
 
-async def test_a_desk_that_has_its_observations_is_not_written(
+async def test_a_desk_that_keeps_observations_md_is_not_written(
     stored: dict[str, TodoDocument],
 ) -> None:
-    canvas = OLD_DESK_CANVAS.replace(
-        "## Key Details", "## Observations\n### Senders\n- github: ~140/day\n\n## Key Details"
-    )
-    desk = _desk(canvas_content=canvas, updated_at=STAMP)
+    desk = _desk(canvas_content=OLD_DESK_CANVAS, observations_content="# mine\n", updated_at=STAMP)
     stored[DESK_ID] = desk
 
-    assert await inbox_desk.with_desk_sections(desk) is desk
+    assert await inbox_desk.with_desk_notes(desk) is desk
     todo_repository.replace_note_fields.assert_not_awaited()
+
+
+async def test_a_desk_whose_notes_moved_since_it_was_read_fails_its_run(
+    stored: dict[str, TodoDocument],
+) -> None:
+    stored[DESK_ID] = _desk(canvas_content=OLD_DESK_CANVAS, updated_at=STAMP + timedelta(days=1))
+
+    with pytest.raises(LookupError, match="changed or vanished"):
+        await inbox_desk.with_desk_notes(_desk(canvas_content=OLD_DESK_CANVAS, updated_at=STAMP))
 
 
 @pytest.mark.parametrize(
@@ -431,11 +461,12 @@ async def test_a_desk_that_has_its_observations_is_not_written(
     [None, ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611")],
     ids=["no-ref", "thread"],
 )
-async def test_a_todo_that_is_not_the_desk_is_not_written(
+async def test_a_todo_that_is_not_the_desk_gets_no_observations(
     stored: dict[str, TodoDocument], external_ref: ExternalRef | None
 ) -> None:
-    todo = _desk(canvas_content=OLD_DESK_CANVAS, external_ref=external_ref, updated_at=STAMP)
+    canvas = OLD_DESK_CANVAS.replace("## Key Details", CANVAS_OBSERVATIONS + "## Key Details")
+    todo = _desk(canvas_content=canvas, external_ref=external_ref, updated_at=STAMP)
     stored[DESK_ID] = todo
 
-    assert await inbox_desk.with_desk_sections(todo) is todo
+    assert await inbox_desk.with_desk_notes(todo) is todo
     todo_repository.replace_note_fields.assert_not_awaited()

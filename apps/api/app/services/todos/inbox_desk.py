@@ -1,19 +1,21 @@
 """The Inbox desk: one tracked todo per user that triages mail, owns its threads and briefs each morning.
 
-Its operating contract rides on every run (INBOX_DESK_RUN_GUIDANCE), its canvas is its
-memory, and the briefing is its run's final report. Nothing here runs mail.
+Its operating contract rides on every run (INBOX_DESK_RUN_GUIDANCE), its canvas and
+observations.md are its memory, and the briefing is its run's final report. Nothing here
+runs mail.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import NamedTuple
 
 from app.agents.prompts.todo_prompts import (
     INBOX_DESK_DELIVERY_RULE,
     INBOX_DESK_DESCRIPTION,
-    INBOX_DESK_OBSERVATIONS_SECTION,
+    INBOX_DESK_OBSERVATIONS_FILE,
 )
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.todos import (
+    CANVAS_OBSERVATIONS_SECTION,
     INBOX_DESK_RECURRENCE,
     INBOX_DESK_TITLE,
     PROVISION_INBOX_DESK_TASK,
@@ -24,8 +26,11 @@ from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators.entitlements import is_paid
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument, TodoUpdate
 from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.canvas_markdown import remove_section
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.todo_activity import record_field_changes
+from app.services.todo_canvas_storage import repair_notes
+from app.services.todo_observations import with_carried_lines
 from app.services.todos.errors import ExternalRefTakenError
 from app.services.tracked_todo_service import starting_canvas, tracked_todo_service
 from app.services.user_service import get_profile_timezone
@@ -37,9 +42,6 @@ from shared.py.wide_events import log
 INBOX_DESK_REF = ExternalRef(source=ExternalRefSource.INBOX_DESK, id=GMAIL_INTEGRATION_ID)
 
 _PROVISIONED_BY = "GAIA, setting up the Inbox desk"
-# The desk's own canvas sections, after its Standing rules: in its starting canvas, and
-# added before the run of a desk opened without one.
-_DESK_SECTIONS = (INBOX_DESK_OBSERVATIONS_SECTION,)
 
 
 async def provision_inbox_desk(user_id: str) -> None:
@@ -107,18 +109,30 @@ async def reconcile_inbox_desks() -> DeskReconcile:
     return DeskReconcile(users=len(paying), failures=failures)
 
 
-async def with_desk_sections(doc: TodoDocument) -> TodoDocument:
-    """Return the todo as its run reads it: an Inbox desk lacking one of its sections gets it first.
+async def with_desk_notes(doc: TodoDocument) -> TodoDocument:
+    """Return the todo as its run reads it: an Inbox desk gets its observations.md first.
 
-    Written as a canvas repair, which keeps updated_at; any other todo comes back as is.
+    A desk without one is seeded, and the Observations section older desks kept in
+    canvas.md moves into it. Written as a repair, which keeps updated_at; any other
+    todo comes back as is.
     """
     if doc.external_ref is None or doc.external_ref.source is not ExternalRefSource.INBOX_DESK:
         return doc
-    if not await tracked_todo_service.normalize_stored_canvas(doc, _DESK_SECTIONS):
+    canvas, carried = remove_section(doc.canvas_content or "", CANVAS_OBSERVATIONS_SECTION)
+    if carried is None and doc.observations_content:
         return doc
-    repaired = await todo_repository.get(doc.id, user_id=doc.user_id)
+    observations = doc.observations_content or INBOX_DESK_OBSERVATIONS_FILE
+    if carried is None:
+        notes = TodoUpdate(observations_content=observations)
+    else:
+        today = datetime.now(UTC).date()
+        notes = TodoUpdate(
+            canvas_content=canvas,
+            observations_content=with_carried_lines(observations, carried, today),
+        )
+    repaired = await repair_notes(doc.id, doc.user_id, notes, expected_updated_at=doc.updated_at)
     if repaired is None:
-        raise LookupError(f"Inbox desk {doc.id} vanished right after its canvas was repaired")
+        raise LookupError(f"Inbox desk {doc.id} changed or vanished while its notes were repaired")
     return repaired
 
 
@@ -139,9 +153,7 @@ async def _open_desk(user_id: str, first_run: datetime) -> TodoDocument:
             user_id,
             INBOX_DESK_TITLE,
             description=INBOX_DESK_DESCRIPTION,
-            initial_canvas=starting_canvas(
-                INBOX_DESK_TITLE, [INBOX_DESK_DELIVERY_RULE], sections=_DESK_SECTIONS
-            ),
+            initial_canvas=starting_canvas(INBOX_DESK_TITLE, [INBOX_DESK_DELIVERY_RULE]),
             external_ref=INBOX_DESK_REF,
             notify_on_run=True,
             schedule=TodoUpdate(recurrence=INBOX_DESK_RECURRENCE, scheduled_at=first_run),

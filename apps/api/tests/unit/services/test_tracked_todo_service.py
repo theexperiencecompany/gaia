@@ -779,20 +779,6 @@ class TestStartingCanvas:
         )
         assert normalize_canvas(canvas) == (canvas, None)
 
-    def test_its_own_sections_follow_the_standing_rules_ahead_of_key_details(self) -> None:
-        template = CANVAS_TEMPLATE.format(title="Inbox desk")
-
-        canvas = starting_canvas(
-            "Inbox desk", ["Brief me by 9"], sections=["## Notes\n<!-- one line each -->"]
-        )
-
-        assert canvas == template.replace(
-            "-->\n\n## Key Details",
-            "-->\n- Brief me by 9\n\n## Notes\n<!-- one line each -->\n\n## Key Details",
-            1,
-        )
-        assert normalize_canvas(canvas) == (canvas, None)
-
     def test_a_title_that_reads_like_the_heading_leaves_the_rules_in_their_section(self) -> None:
         template = CANVAS_TEMPLATE.format(title="## Standing rules")
 
@@ -1061,26 +1047,26 @@ class TestMigrateLegacyCanvas:
     async def test_legacy_canvas_is_split_into_both_fields(self):
         doc = _todo_doc(canvas_content=self.LEGACY, activity_content=None)
         with patch(
-            f"{_MOD}.repair_canvas_and_activity", new_callable=AsyncMock, return_value=True
+            f"{_MOD}.repair_notes", new_callable=AsyncMock, return_value=_todo_doc()
         ) as write:
             assert await TrackedTodoService.normalize_stored_canvas(doc) is True
 
-        kwargs = write.await_args.kwargs
-        assert write.await_args.args == (doc.id, doc.user_id)
-        assert kwargs["expected_updated_at"] == doc.updated_at
-        assert "## Activity Log" not in kwargs["canvas"]
-        assert "## Timeline" not in kwargs["canvas"]
-        assert kwargs["activity"].index("first") < kwargs["activity"].index("second")
-        assert "did x" in kwargs["activity"]
+        notes = write.await_args.args[2]
+        assert write.await_args.args[:2] == (doc.id, doc.user_id)
+        assert write.await_args.kwargs["expected_updated_at"] == doc.updated_at
+        assert "## Activity Log" not in notes.canvas_content
+        assert "## Timeline" not in notes.canvas_content
+        assert notes.activity_content.index("first") < notes.activity_content.index("second")
+        assert "did x" in notes.activity_content
 
     async def test_moved_legacy_entries_come_before_existing_activity(self):
         doc = _todo_doc(canvas_content=self.LEGACY, activity_content="- already here")
         with patch(
-            f"{_MOD}.repair_canvas_and_activity", new_callable=AsyncMock, return_value=True
+            f"{_MOD}.repair_notes", new_callable=AsyncMock, return_value=_todo_doc()
         ) as write:
             await TrackedTodoService.normalize_stored_canvas(doc)
 
-        activity = write.await_args.kwargs["activity"]
+        activity = write.await_args.args[2].activity_content
         assert activity == (
             "- 2026-01-01T00:00:00+00:00 first\n\n- 2026-01-02T00:00:00+00:00 second\n\n"
             "- did x\n\n- already here"
@@ -1088,14 +1074,14 @@ class TestMigrateLegacyCanvas:
 
     async def test_clean_canvas_is_not_touched(self):
         doc = _todo_doc(canvas_content=_CLEAN_CANVAS)
-        with patch(f"{_MOD}.repair_canvas_and_activity", new_callable=AsyncMock) as write:
+        with patch(f"{_MOD}.repair_notes", new_callable=AsyncMock) as write:
             assert await TrackedTodoService.normalize_stored_canvas(doc) is False
 
         write.assert_not_awaited()
 
     async def test_empty_canvas_is_not_touched(self):
         doc = _todo_doc(canvas_content=None)
-        with patch(f"{_MOD}.repair_canvas_and_activity", new_callable=AsyncMock) as write:
+        with patch(f"{_MOD}.repair_notes", new_callable=AsyncMock) as write:
             assert await TrackedTodoService.normalize_stored_canvas(doc) is False
 
         write.assert_not_awaited()
@@ -1109,20 +1095,20 @@ class TestMigrateLegacyCanvas:
         )
         mock_repo.get.return_value = fresh
         with patch(
-            f"{_MOD}.repair_canvas_and_activity",
+            f"{_MOD}.repair_notes",
             new_callable=AsyncMock,
-            side_effect=[False, True],
+            side_effect=[None, _todo_doc()],
         ) as write:
             assert await TrackedTodoService.normalize_stored_canvas(stale) is True
 
         mock_repo.get.assert_awaited_once_with(stale.id, user_id=stale.user_id)
         assert write.await_count == 2
-        assert write.await_args_list[0].args == (stale.id, stale.user_id)
-        assert write.await_args_list[1].args == (fresh.id, fresh.user_id)
+        assert write.await_args_list[0].args[:2] == (stale.id, stale.user_id)
+        assert write.await_args_list[1].args[:2] == (fresh.id, fresh.user_id)
         assert write.await_args_list[0].kwargs["expected_updated_at"] == stale.updated_at
         assert write.await_args_list[1].kwargs["expected_updated_at"] == fresh.updated_at
-        assert write.await_args_list[1].kwargs["canvas"] == _CLEAN_CANVAS
-        assert write.await_args_list[1].kwargs["activity"] == (
+        assert write.await_args_list[1].args[2].canvas_content == _CLEAN_CANVAS
+        assert write.await_args_list[1].args[2].activity_content == (
             "- 2026-01-01T00:00:00+00:00 first\n\n- 2026-01-02T00:00:00+00:00 second\n\n"
             "- did x\n\n- fresh here"
         )
@@ -1134,9 +1120,7 @@ class TestMigrateLegacyCanvas:
             updated_at=datetime.now(UTC),
         )
         mock_repo.get.return_value = fresh
-        with patch(
-            f"{_MOD}.repair_canvas_and_activity", new_callable=AsyncMock, return_value=False
-        ) as write:
+        with patch(f"{_MOD}.repair_notes", new_callable=AsyncMock, return_value=None) as write:
             assert (
                 await TrackedTodoService.normalize_stored_canvas(
                     _todo_doc(canvas_content=self.LEGACY)
@@ -1148,9 +1132,7 @@ class TestMigrateLegacyCanvas:
 
     async def test_vanished_todo_is_not_retried(self, mock_repo):
         mock_repo.get.return_value = None
-        with patch(
-            f"{_MOD}.repair_canvas_and_activity", new_callable=AsyncMock, return_value=False
-        ) as write:
+        with patch(f"{_MOD}.repair_notes", new_callable=AsyncMock, return_value=None) as write:
             assert (
                 await TrackedTodoService.normalize_stored_canvas(
                     _todo_doc(canvas_content=self.LEGACY)

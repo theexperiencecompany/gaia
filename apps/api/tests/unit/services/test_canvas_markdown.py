@@ -9,13 +9,14 @@ from app.constants.todos import CANVAS_PROMPT_MAX_CHARS
 from app.services.canvas_markdown import (
     _extract_entries,
     _line_timestamp,
-    _remove_section,
     bounded_canvas,
     canvas_problems,
     normalize_canvas,
+    remove_section,
     section_body,
     split_legacy_canvas,
     with_missing_sections,
+    with_section_appended,
 )
 
 LEGACY = """# Fix the thing
@@ -286,7 +287,7 @@ class TestSplitLegacyCanvas:
         assert activity == "- a"
 
     def test_remove_section_is_a_noop_when_absent(self):
-        assert _remove_section("# T\n\n## B\n2\n", "Missing") == ("# T\n\n## B\n2\n", None)
+        assert remove_section("# T\n\n## B\n2\n", "Missing") == ("# T\n\n## B\n2\n", None)
 
 
 @pytest.mark.parametrize("heading", ["Activity Log", "Timeline"])
@@ -490,31 +491,18 @@ class TestNormalizeCanvas:
         )
 
 
-class TestOwnSections:
-    """A todo's own sections, beyond the template's, are added after its Standing rules when missing."""
+class TestWithSectionAppended:
+    def test_the_addition_closes_its_section_ahead_of_the_next(self) -> None:
+        text = "# O\n\n## Senders\n<!-- c -->\n### a\n\n## People\n"
 
-    NOTES = "## Notes\n<!-- one line each -->\n### Senders\n<!-- <sender>: <volume> -->"
-    BEFORE = (
-        "# Desk\n\n## Standing rules\n<!-- rules -->\n- Brief me by 9\n\n## Key Details\nk\n\n"
-        "## Current State\n\n## Context\n\n## Learnings\n"
-    )
-
-    @pytest.mark.regression
-    def test_a_missing_section_is_added_once_after_the_standing_rules(self) -> None:
-        canvas, moved = normalize_canvas(self.BEFORE, sections=[self.NOTES])
-
-        assert moved is None
-        assert canvas == self.BEFORE.replace(
-            "- Brief me by 9\n\n", f"- Brief me by 9\n\n{self.NOTES}\n\n", 1
-        )
-        assert normalize_canvas(canvas, sections=[self.NOTES]) == (canvas, None)
-
-    def test_a_section_the_canvas_has_is_left_as_written(self) -> None:
-        canvas = self.BEFORE.replace(
-            "## Key Details", "## notes\n- github: ~140/day\n\n## Key Details"
+        assert with_section_appended(text, "senders", "### b") == (
+            "# O\n\n## Senders\n<!-- c -->\n### a\n\n### b\n\n## People\n"
         )
 
-        assert normalize_canvas(canvas, sections=[self.NOTES]) == (canvas, None)
+    def test_a_missing_section_is_added_at_the_end(self) -> None:
+        assert with_section_appended("# O\n\n## People\n\n", "Recurring", "### r") == (
+            "# O\n\n## People\n\n## Recurring\n### r\n"
+        )
 
 
 class TestWithMissingSectionsKeepsTheLastLine:
@@ -569,21 +557,6 @@ class TestStandingRules:
 
     def test_rules_at_the_cap_are_accepted(self) -> None:
         canvas = f"## Standing rules\n{'r' * todo_constants.STANDING_RULES_MAX_CHARS}\n\n## Key Details\n"
-
-        assert canvas_problems(canvas) == []
-
-    def test_observations_longer_than_their_cap_are_refused_at_write(self) -> None:
-        cap = todo_constants.OBSERVATIONS_MAX_CHARS
-        canvas = f"## Observations\n### Senders\n{'o' * cap}\n\n## Key Details\n"
-
-        assert canvas_problems(canvas) == [
-            f'shorten "## Observations" to {cap} characters: one line per pattern, the stalest '
-            "dropped first"
-        ]
-
-    def test_observations_at_their_cap_are_accepted(self) -> None:
-        body = "o" * todo_constants.OBSERVATIONS_MAX_CHARS
-        canvas = f"## Observations\n<!-- patterns the desk learned -->\n{body}\n\n## Key Details\n"
 
         assert canvas_problems(canvas) == []
 

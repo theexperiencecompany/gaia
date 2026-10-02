@@ -116,6 +116,7 @@ These live at `/workspace/gaia-tasks/`:
         <slug>-<shortid>/
             canvas.md                 recall doc: Standing rules / Key Details / Current State / Context / Learnings
             activity.md               dated log, oldest first: what happened, by whom, outcome
+            observations.md           evidence behind learned patterns, when the todo keeps one (the Inbox desk does)
             log.md                    system-written audit trail (read-only)
             meta.json                 labels, due, priority, schedule, refs (read-only)
 
@@ -132,7 +133,7 @@ These live at `/workspace/gaia-tasks/`:
   `labels=[...]` (todos carrying all of them) or `gmail_thread_id=...`.
 
 The notes are ordinary files for you: `read`, `edit` and `write` work on
-`canvas.md` and `activity.md` (they are stored on the todo, so this works even
+`canvas.md`, `activity.md` and `observations.md` (they are stored on the todo, so this works even
 when the folder is not on disk). `log.md`, `meta.json` and `index.md` are
 generated; edits to them are refused. In `bash`, the folder is a read-only
 projection: `cat` and `grep -r "rahul" gaia-tasks/` are fine, `sed -i` is not.

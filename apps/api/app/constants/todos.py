@@ -120,14 +120,31 @@ CANVAS_SECTIONS: Final[tuple[str, ...]] = (
     "Context",
     CANVAS_LEARNINGS_SECTION,
 )
-# The Inbox desk's own section: the patterns it learned from the user's mail.
+# The Inbox desk's canvas section from before observations.md; its run moves it there.
 CANVAS_OBSERVATIONS_SECTION: Final[str] = "Observations"
 
 # Most a Standing rules section may hold. Every prompt carries it whole, never
 # trimmed, so a canvas write that grows it past this is refused instead.
 STANDING_RULES_MAX_CHARS: Final[int] = 2_000
-# Most the desk's Observations may hold, refused past it the same way: patterns, not a log.
-OBSERVATIONS_MAX_CHARS: Final[int] = 1_500
+
+# observations.md: one block per pattern, its evidence kept across runs.
+OBSERVATIONS_SENDERS_SECTION: Final[str] = "Senders"
+OBSERVATIONS_RECURRING_SECTION: Final[str] = "Recurring"
+OBSERVATIONS_PEOPLE_SECTION: Final[str] = "People"
+OBSERVATION_CONCLUSION: Final[str] = "conclusion"
+OBSERVATION_CONFIDENCE: Final[str] = "confidence"
+OBSERVATION_FIRST_SEEN: Final[str] = "first seen"
+OBSERVATION_LAST_SEEN: Final[str] = "last seen"
+OBSERVATION_DAILY_COUNTS: Final[str] = "daily counts"
+OBSERVATION_EARLIER: Final[str] = "earlier"
+# Days of per-day counts an entry keeps; older days fold into its "earlier" average.
+OBSERVATION_DAILY_COUNT_DAYS: Final[int] = 14
+# Messages from one sender in a run before it gets an entry: a one-off is not a pattern.
+OBSERVATION_MIN_MESSAGES: Final[int] = 3
+# Most observations.md may hold; a write past it is refused.
+OBSERVATIONS_MAX_CHARS: Final[int] = 12_000
+# Most of observations.md a run prompt carries; past it, the conclusions alone.
+OBSERVATIONS_PROMPT_MAX_CHARS: Final[int] = 6_000
 # Most of a todo's Key Details its delivery decision reads.
 DELIVERY_KEY_DETAILS_MAX_CHARS: Final[int] = 1500
 

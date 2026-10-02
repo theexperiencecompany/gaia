@@ -9,7 +9,11 @@ from unittest.mock import AsyncMock, patch
 from bson import ObjectId
 import pytest
 
-from app.constants.todos import GAIA_TRACKED_LABEL, STANDING_RULES_MAX_CHARS
+from app.constants.todos import (
+    GAIA_TRACKED_LABEL,
+    OBSERVATIONS_MAX_CHARS,
+    STANDING_RULES_MAX_CHARS,
+)
 from app.models.todo_models import Priority, TodoDocument
 from app.services.gaia_task_files import (
     GaiaTaskFile,
@@ -36,6 +40,10 @@ RUN_FINISHED = "- 2026-10-01T08:04:10+00:00 [run_finished] result sent on telegr
 VALID_CANVAS = (
     "# Fix the thing\n\n## Standing rules\n\n## Key Details\nk\n\n## Current State\nopen\n\n"
     "## Context\n\n## Learnings\n"
+)
+OBSERVATIONS = (
+    "# Observations\n\n## Senders\n### notifications@github.com\n"
+    "- conclusion: GitHub notifications — low priority\n- confidence: medium\n"
 )
 
 
@@ -178,7 +186,17 @@ class TestReadFile:
 
         assert await read_file(TaskFile(doc, GaiaTaskFile.CANVAS), USER_ID) == ""
         assert await read_file(TaskFile(doc, GaiaTaskFile.ACTIVITY), USER_ID) == ""
+        assert await read_file(TaskFile(doc, GaiaTaskFile.OBSERVATIONS), USER_ID) == ""
         assert await read_file(TaskFile(doc, GaiaTaskFile.LOG), USER_ID) == ""
+
+    async def test_observations_md_resolves_and_reads_its_own_body(self, mock_repo):
+        doc = _doc(observations_content=OBSERVATIONS)
+        mock_repo.find_tracked_by_short_id = AsyncMock(return_value=[doc])
+
+        ref = await resolve(f"gaia-tasks/{FOLDER}/observations.md", USER_ID)
+
+        assert ref == TaskFile(doc, GaiaTaskFile.OBSERVATIONS)
+        assert await read_file(ref, USER_ID) == OBSERVATIONS
 
     async def test_meta_json_matches_the_disk_projection(self, mock_repo):
         body = await read_file(TaskFile(_doc(), GaiaTaskFile.META), USER_ID)
@@ -388,6 +406,42 @@ class TestWriteFile:
         assert refusal is not None and "append-only" in refusal
         activity.assert_not_awaited()
 
+    async def test_observations_are_saved_whole_to_their_own_field(self, writers):
+        canvas, activity, syslog = writers
+        doc = _doc()
+        with patch(
+            f"{_MOD}.write_observations", new_callable=AsyncMock, return_value=True
+        ) as observations:
+            result = await write_file(
+                TaskFile(doc, GaiaTaskFile.OBSERVATIONS), USER_ID, OBSERVATIONS
+            )
+
+        assert result is None
+        observations.assert_awaited_once_with(
+            TODO_ID, USER_ID, OBSERVATIONS, expected_updated_at=doc.updated_at
+        )
+        canvas.assert_not_awaited()
+        activity.assert_not_awaited()
+        assert syslog.await_args.kwargs["details"] == (
+            f"Agent wrote observations.md ({len(OBSERVATIONS)} chars)"
+        )
+
+    async def test_observations_past_their_cap_are_refused_unwritten(self, writers):
+        body = "o" * (OBSERVATIONS_MAX_CHARS + 1)
+        with patch(f"{_MOD}.write_observations", new_callable=AsyncMock) as observations:
+            refusal = await write_file(TaskFile(_doc(), GaiaTaskFile.OBSERVATIONS), USER_ID, body)
+            at_cap = await write_file(
+                TaskFile(_doc(), GaiaTaskFile.OBSERVATIONS), USER_ID, body[:-1]
+            )
+
+        assert refusal == (
+            f"Error: observations.md was not saved: {OBSERVATIONS_MAX_CHARS + 1} characters, "
+            f"over its {OBSERVATIONS_MAX_CHARS}. Fold the oldest daily counts into earlier and "
+            "drop the entries seen least recently."
+        )
+        assert at_cap is None
+        observations.assert_awaited_once()
+
     @pytest.mark.parametrize("filename", [GaiaTaskFile.LOG, GaiaTaskFile.META])
     async def test_system_files_are_refused(self, writers, filename):
         canvas, activity, syslog = writers
@@ -396,7 +450,10 @@ class TestWriteFile:
 
         assert refusal is not None
         assert filename.value in refusal
-        assert "Only canvas.md and activity.md are editable under gaia-tasks/." in refusal
+        assert (
+            "Only canvas.md, activity.md, observations.md are editable under gaia-tasks/."
+            in refusal
+        )
         canvas.assert_not_awaited()
         activity.assert_not_awaited()
         syslog.assert_not_awaited()
@@ -464,6 +521,7 @@ class TestProjectGaiaTask:
             title="Ship it",
             canvas_content="# c",
             activity_content="- a",
+            observations_content="## o",
             log_content="## l",
             labels=[GAIA_TRACKED_LABEL],
             priority=Priority.HIGH,
@@ -475,6 +533,7 @@ class TestProjectGaiaTask:
         assert projection["id"] == "t1"
         assert projection["canvas"] == "# c"
         assert projection["activity"] == "- a"
+        assert projection["observations"] == "## o"
         assert projection["log"] == "## l"
         assert projection["meta"]["title"] == "Ship it"
         assert projection["meta"]["completed"] is True
@@ -486,3 +545,4 @@ class TestProjectGaiaTask:
 
         assert projection["canvas"] == ""
         assert projection["activity"] == ""
+        assert projection["observations"] == ""

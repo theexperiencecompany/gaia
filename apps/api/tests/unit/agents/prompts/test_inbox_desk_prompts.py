@@ -173,33 +173,68 @@ def test_the_briefing_is_section_headings_and_items_never_a_log_of_the_run() -> 
 
 def test_standing_rules_beat_observations_and_both_beat_the_defaults() -> None:
     assert (
-        "its Standing rules (the user's instructions) beat its Observations (patterns you "
-        "learned), and both beat every default below"
+        "canvas.md's Standing rules (the user's instructions) beat the conclusions in "
+        "observations.md (patterns you learned), and both beat every default below"
     ) in "\n".join(_step(1))
 
 
-def test_the_observations_section_has_a_line_format_per_kind() -> None:
-    section = todo_prompts.INBOX_DESK_OBSERVATIONS_SECTION
+def test_the_seeded_observations_have_their_sections_and_one_block_format() -> None:
+    seed = todo_prompts.INBOX_DESK_OBSERVATIONS_FILE
+    block = re.search(
+        r"<!-- one block per pattern, under its section:\n(.+?)\n-->", seed, re.DOTALL
+    )
+    keys = [
+        todo_constants.OBSERVATION_CONCLUSION,
+        todo_constants.OBSERVATION_CONFIDENCE,
+        todo_constants.OBSERVATION_FIRST_SEEN,
+        todo_constants.OBSERVATION_LAST_SEEN,
+        todo_constants.OBSERVATION_DAILY_COUNTS,
+        todo_constants.OBSERVATION_EARLIER,
+    ]
 
-    assert section.startswith(f"## {todo_constants.CANVAS_OBSERVATIONS_SECTION}\n")
-    assert re.findall(r"^### (.+)$", section, re.MULTILINE) == ["Senders", "Recurring", "People"]
-    assert len(re.findall(r"^<!-- .+ -->$", section, re.MULTILINE)) == 4
+    assert re.findall(r"^## (.+)$", seed, re.MULTILINE) == [
+        todo_constants.OBSERVATIONS_SENDERS_SECTION,
+        todo_constants.OBSERVATIONS_RECURRING_SECTION,
+        todo_constants.OBSERVATIONS_PEOPLE_SECTION,
+    ]
+    assert block is not None
+    assert re.findall(r"^- ([a-z ]+):", block.group(1), re.MULTILINE) == keys
+    assert f"the {todo_constants.OBSERVATION_DAILY_COUNT_DAYS} most recent days" in block.group(1)
+    assert len(seed) < todo_constants.OBSERVATIONS_PROMPT_MAX_CHARS
 
 
-def test_observations_are_kept_repeated_bounded_and_announced() -> None:
+@pytest.mark.regression
+def test_observations_keep_their_evidence_and_revise_conclusions_only_on_it() -> None:
+    """Regression: a one-line observation, updated in place, lost the counts behind its conclusion."""
     step = "\n".join(_step(OBSERVATIONS_STEP))
 
-    assert "only once it repeats" in step
-    assert "Senders and Recurring from step 3's counts" in step
+    assert "rewrite observations.md whole in one write" in step
+    assert (
+        f"for each address with {todo_constants.OBSERVATION_MIN_MESSAGES} or more messages in "
+        "step 3's counts, or with an entry already, add today's count"
+    ) in step
+    assert "never for a one-off" in step
+    assert (
+        f"Keep the {todo_constants.OBSERVATION_DAILY_COUNT_DAYS} most recent days in "
+        f"{todo_constants.OBSERVATION_DAILY_COUNTS} and fold older ones into "
+        f"{todo_constants.OBSERVATION_EARLIER}"
+    ) in step
+    assert "only when the evidence has moved for several days" in step
     assert f"under {todo_constants.OBSERVATIONS_MAX_CHARS} characters" in step
-    assert "Noticed: treating GitHub notifications as low priority" in "\n".join(
-        _step(BRIEFING_STEP)
-    )
+    assert "when this prompt shows only its conclusions, read it first" in step
+
+
+def test_a_new_or_changed_conclusion_is_announced_once_in_the_briefing() -> None:
+    briefing = "\n".join(_step(BRIEFING_STEP))
+
+    assert "a conclusion you added or changed in observations.md this run gets one line" in briefing
+    assert "Noticed: treating GitHub notifications as low priority; reply to change" in briefing
+    assert "write observations.md only in step 9" in INBOX_DESK_RUN_GUIDANCE
 
 
 def test_observations_steer_the_query_and_the_classification() -> None:
-    assert "-from:<sender>" in "\n".join(_step(FETCH_STEP))
-    assert "Observations name as recurring is FYI" in "\n".join(_step(CLASSIFY_STEP))
+    assert "-from:<address>" in "\n".join(_step(FETCH_STEP))
+    assert "observations.md names as recurring is FYI" in "\n".join(_step(CLASSIFY_STEP))
 
 
 @pytest.mark.regression

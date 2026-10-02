@@ -490,9 +490,10 @@ class TodoDocument(UserScopedDocument):
     parent_todo_id: str | None = None
     notify_on_run: bool = True
     completed_at: datetime | None = None
-    # Canvas + activity + log bodies for tracked todos live on the document itself.
+    # Canvas, activity, observations and log bodies for tracked todos live on the document itself.
     canvas_content: str | None = None
     activity_content: str | None = None
+    observations_content: str | None = None
     log_content: str | None = None
     trigger_subscriptions: list[TriggerSubscription] = Field(default_factory=list)
     # Sender of the email an onboarding-seeded todo was extracted from.
@@ -532,6 +533,7 @@ class TodoUpdate(BaseModel):
     completed_at: datetime | None = None
     canvas_content: str | None = None
     activity_content: str | None = None
+    observations_content: str | None = None
     log_content: str | None = None
     source_conversation_id: str | None = None
     trigger_subscriptions: list[TriggerSubscription] | None = None

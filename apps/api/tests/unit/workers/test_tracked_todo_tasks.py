@@ -34,7 +34,6 @@ from redis.exceptions import ConnectionError as RedisConnectionError, RedisError
 
 from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import TodoRunRequest
-from app.agents.prompts import todo_prompts
 from app.agents.prompts.todo_prompts import (
     DELIVERED_REPORT_FORM,
     DELIVERED_RESULT_GUIDANCE,
@@ -51,6 +50,7 @@ from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
     CANVAS_PROMPT_MAX_CHARS,
     FAILED_LABEL,
+    OBSERVATIONS_PROMPT_MAX_CHARS,
     REFERENCED_TODOS_PROMPT_LIMIT,
     STANDING_RULES_MAX_CHARS,
     SUB_TODO_STATE_EXCERPT_CHARS,
@@ -1560,16 +1560,19 @@ class TestStandingRulesReachTheRun:
 
 
 class TestTheDeskRunReadsItsObservations:
-    """A desk opened before its Observations section has it, written by code, in the canvas its run reads."""
+    """A desk's run reads its observations.md, seeded by code before the prompt is built."""
 
     @pytest.mark.regression
-    async def test_an_older_desks_run_reads_the_section_seeded_before_its_prompt(self):
+    async def test_an_older_desks_run_reads_the_observations_seeded_before_its_prompt(self):
+        canvas = starting_canvas("Inbox desk", ["brief me by 9"])
         stored = {
             _DESK_ID: _doc(
                 id=_DESK_ID,
                 title="Inbox desk",
                 external_ref=ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail"),
-                canvas_content=starting_canvas("Inbox desk", ["brief me by 9"]),
+                canvas_content=canvas.replace(
+                    "## Key Details", "## Observations\n- github: ~140/day\n\n## Key Details"
+                ),
             )
         }
 
@@ -1594,9 +1597,25 @@ class TestTheDeskRunReadsItsObservations:
                 stored[_DESK_ID], user_data=AuthenticatedUser(user_id="user-1")
             )
 
-        canvas = run.await_args.args[0].task.split("Canvas (canvas.md):\n", 1)[1]
-        assert canvas.startswith(stored[_DESK_ID].canvas_content)
-        assert f"- brief me by 9\n\n{todo_prompts.INBOX_DESK_OBSERVATIONS_SECTION}\n\n" in canvas
+        task = run.await_args.args[0].task
+        observations = stored[_DESK_ID].observations_content
+        assert f"Canvas (canvas.md):\n{canvas}\n\nObservations (observations.md):\n" in task
+        assert f"Observations (observations.md):\n{observations}\n\n" in task
+        assert "### github\n- conclusion: ~140/day\n" in observations
+
+    def test_observations_past_their_prompt_cap_bring_only_their_conclusions(self):
+        evidence = "- daily counts: " + ", ".join(f"2026-09-{d:02}:140" for d in range(1, 15))
+        entry = "### a@example.com\n- conclusion: alerts — low priority\n- confidence: high\n"
+        observations = "# Observations\n\n## Senders\n" + (entry + evidence + "\n\n") * 40
+        assert len(observations) > OBSERVATIONS_PROMPT_MAX_CHARS
+
+        prompt = _build_execution_prompt(_doc(observations_content=observations))
+
+        shown = prompt.split("Observations (observations.md):\n", 1)[1].split("\n\n", 1)[0]
+        assert len(shown) <= OBSERVATIONS_PROMPT_MAX_CHARS
+        assert "read observations.md before you write it" in shown
+        assert "- conclusion: alerts — low priority\n- confidence: high" in shown
+        assert "daily counts" not in shown
 
 
 def _thread(n: int, state: str = "Waiting on Sarah to confirm Friday") -> TodoDocument:

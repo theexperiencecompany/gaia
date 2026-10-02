@@ -6,17 +6,13 @@ written back in the template's casing), and split legacy canvases (which carried
 activity inside the canvas) into the canvas.md / activity.md pair.
 """
 
-from collections.abc import Sequence
 from datetime import UTC, datetime
 import re
-from typing import NamedTuple
 
 from app.constants.todos import (
-    CANVAS_OBSERVATIONS_SECTION,
     CANVAS_PROMPT_MAX_CHARS,
     CANVAS_SECTIONS,
     CANVAS_STANDING_RULES_SECTION,
-    OBSERVATIONS_MAX_CHARS,
     STANDING_RULES_MAX_CHARS,
 )
 
@@ -34,30 +30,8 @@ _ACTIVITY_HEADING_RE = re.compile(
 )
 _ANY_DATED_BLOCK_RE = re.compile(r"^### \d{4}-\d{2}-\d{2}", re.MULTILINE)
 # The template's "<!-- ... -->" guidance for whoever writes the section.
-_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 _TEMPLATE_HEADINGS = {section.casefold(): section for section in CANVAS_SECTIONS}
-
-
-class _SectionCap(NamedTuple):
-    """A section every run reads whole, so a write that grows it past max_chars is refused."""
-
-    heading: str
-    max_chars: int
-    how: str
-
-
-_SECTION_CAPS = (
-    _SectionCap(
-        CANVAS_STANDING_RULES_SECTION,
-        STANDING_RULES_MAX_CHARS,
-        "one line per rule, merged where they overlap",
-    ),
-    _SectionCap(
-        CANVAS_OBSERVATIONS_SECTION,
-        OBSERVATIONS_MAX_CHARS,
-        "one line per pattern, the stalest dropped first",
-    ),
-)
 
 
 def bounded_canvas(canvas: str) -> str:
@@ -69,7 +43,7 @@ def bounded_canvas(canvas: str) -> str:
     """
     if len(canvas) <= CANVAS_PROMPT_MAX_CHARS:
         return canvas
-    rest, rules = _remove_section(canvas, CANVAS_STANDING_RULES_SECTION)
+    rest, rules = remove_section(canvas, CANVAS_STANDING_RULES_SECTION)
     head = f"## {CANVAS_STANDING_RULES_SECTION}\n{rules}\n\n" if rules else ""
     limit = CANVAS_PROMPT_MAX_CHARS - len(head)
     if len(rest) <= limit:
@@ -100,10 +74,20 @@ def section_body(text: str | None, heading: str) -> str | None:
     if span is None:
         return None
     _, body_start, section_end = span
-    return _HTML_COMMENT_RE.sub("", text[body_start:section_end]).strip()
+    return HTML_COMMENT_RE.sub("", text[body_start:section_end]).strip()
 
 
-def _remove_section(text: str, heading: str) -> tuple[str, str | None]:
+def with_section_appended(text: str, heading: str, addition: str) -> str:
+    """Add addition at the end of "## {heading}", which goes at the end of text when absent."""
+    span = _section_span(text, heading)
+    if span is None:
+        return text.rstrip("\n") + f"\n\n## {heading}\n{addition}\n"
+    section_end = span[2]
+    return text[:section_end].rstrip("\n") + f"\n\n{addition}\n" + text[section_end:]
+
+
+def remove_section(text: str, heading: str) -> tuple[str, str | None]:
+    """Cut "## {heading}" out of text; return the rest and its stripped body, None when absent."""
     span = _section_span(text, heading)
     if span is None:
         return text, None
@@ -188,9 +172,9 @@ def split_legacy_canvas(canvas: str) -> tuple[str, str | None]:
     merge oldest-first; undated lines follow in original order. Idempotent: nothing
     to move comes back unchanged.
     """
-    text, activity = _remove_section(canvas, "Activity Log")
+    text, activity = remove_section(canvas, "Activity Log")
     text, rescued = _rescue_dated_blocks(text)
-    text, timeline = _remove_section(text, "Timeline")
+    text, timeline = remove_section(text, "Timeline")
     if text == canvas:
         return canvas, None
     dated: list[tuple[datetime, str]] = []
@@ -269,10 +253,12 @@ def canvas_problems(canvas: str) -> list[str]:
             problems.append(f'merge the {count} "## {heading}" sections into one')
     if _ANY_DATED_BLOCK_RE.search(canvas):
         problems.append('move the dated "### YYYY-MM-DD" entries into activity.md')
-    for cap in _SECTION_CAPS:
-        body = section_body(canvas, cap.heading)
-        if body and len(body) > cap.max_chars:
-            problems.append(f'shorten "## {cap.heading}" to {cap.max_chars} characters: {cap.how}')
+    rules = section_body(canvas, CANVAS_STANDING_RULES_SECTION)
+    if rules and len(rules) > STANDING_RULES_MAX_CHARS:
+        problems.append(
+            f'shorten "## {CANVAS_STANDING_RULES_SECTION}" to {STANDING_RULES_MAX_CHARS} '
+            "characters: one line per rule, merged where they overlap"
+        )
     return problems
 
 
@@ -295,35 +281,21 @@ def _merge_duplicate_sections(canvas: str) -> str:
     return "\n\n".join(filter(None, [preamble.strip("\n"), *sections])) + "\n"
 
 
-def _with_section(canvas: str, section: str) -> str:
-    """Add section, a whole "## " section, after the Standing rules unless the canvas has its heading."""
-    heading = section.partition("\n")[0].removeprefix("## ")
-    if _section_span(canvas, heading) is not None:
-        return canvas
-    rules = _section_span(canvas, CANVAS_STANDING_RULES_SECTION)
-    cut = rules[2] if rules else len(canvas)
-    head = canvas[:cut].rstrip("\n")
-    return f"{head}\n\n{section}\n{canvas[cut:]}"
-
-
-def normalize_canvas(canvas: str, sections: Sequence[str] = ()) -> tuple[str, str | None]:
+def normalize_canvas(canvas: str) -> tuple[str, str | None]:
     """Repair a canvas into the template's shape; return (canvas, activity moved out or None).
 
     Activity-like sections and dated blocks move to activity.md, repeated sections
-    merge, and missing template sections are added, then each of the todo's own
-    sections it lacks, after the Standing rules. Idempotent.
+    merge, and missing template sections are added. Idempotent.
     """
     text, moved = split_legacy_canvas(canvas)
     moved_parts = [moved] if moved else []
     for heading in dict.fromkeys(_headings(text)):
         if _ACTIVITY_HEADING_RE.match(heading):
             while _section_span(text, heading) is not None:
-                text, body = _remove_section(text, heading)
+                text, body = remove_section(text, heading)
                 if body:
                     moved_parts.append(body)
     text = with_missing_sections(_merge_duplicate_sections(text))
-    for section in sections:
-        text = _with_section(text, section)
     if not text.endswith("\n"):
         text += "\n"
     return text, "\n\n".join(moved_parts) if moved_parts else None

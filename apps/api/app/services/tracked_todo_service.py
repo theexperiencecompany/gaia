@@ -46,7 +46,7 @@ from app.services.todo_activity import (
 from app.services.todo_canvas_storage import (
     append_log,
     build_vfs_label,
-    repair_canvas_and_activity,
+    repair_notes,
 )
 from app.services.todos.errors import (
     CanvasShapeError,
@@ -81,20 +81,14 @@ CANVAS_TEMPLATE = """# {title}
 """
 
 
-def starting_canvas(
-    title: str, standing_rules: Sequence[str] = (), *, sections: Sequence[str] = ()
-) -> str:
-    """Render the template canvas with the rules it starts out obeying and its own sections.
-
-    Each of sections is a whole "## " section, placed after the Standing rules.
-    """
+def starting_canvas(title: str, standing_rules: Sequence[str] = ()) -> str:
+    """Render the template canvas with standing rules the todo starts out obeying."""
     canvas = CANVAS_TEMPLATE.format(title=title)
     heading = f"## {CANVAS_STANDING_RULES_SECTION}\n"
     # Rules go under the section's comment line; it is the last such heading, as a title can read like it.
     after_comment = canvas.index("\n", canvas.rindex(heading) + len(heading)) + 1
     rules = "".join(f"- {rule}\n" for rule in standing_rules)
-    own = "".join(f"\n{section}\n" for section in sections)
-    return canvas[:after_comment] + rules + own + canvas[after_comment:]
+    return canvas[:after_comment] + rules + canvas[after_comment:]
 
 
 async def _discard_unwatched_todo(todo_id: str, user_id: str, watch_error: Exception) -> None:
@@ -411,8 +405,8 @@ class TrackedTodoService:
         )
 
     @staticmethod
-    async def normalize_stored_canvas(doc: TodoDocument, sections: Sequence[str] = ()) -> bool:
-        """Repair a canvas into the template's shape plus sections (normalize_canvas); True if written.
+    async def normalize_stored_canvas(doc: TodoDocument) -> bool:
+        """Repair a canvas into the template's shape (see normalize_canvas). True when it wrote.
 
         Activity inside the canvas (legacy sections, append-mode dated entries,
         "Activity Log (append)" and the like) moves to activity_content, first,
@@ -420,17 +414,12 @@ class TrackedTodoService:
         """
         if not doc.canvas_content:
             return False
-        canvas, moved = normalize_canvas(doc.canvas_content, sections)
+        canvas, moved = normalize_canvas(doc.canvas_content)
         if canvas == doc.canvas_content:
             return False
         parts = [p for p in (moved, doc.activity_content) if p]
-        if await repair_canvas_and_activity(
-            doc.id,
-            doc.user_id,
-            canvas=canvas,
-            activity="\n\n".join(parts),
-            expected_updated_at=doc.updated_at,
-        ):
+        notes = TodoUpdate(canvas_content=canvas, activity_content="\n\n".join(parts))
+        if await repair_notes(doc.id, doc.user_id, notes, expected_updated_at=doc.updated_at):
             return True
         # Lost a revision race (or the snapshot went stale): re-read once and
         # retry against fresh content. A concurrent agent write wins over the
@@ -438,17 +427,15 @@ class TrackedTodoService:
         fresh = await todo_repository.get(doc.id, user_id=doc.user_id)
         if fresh is None or not fresh.canvas_content:
             return False
-        canvas, moved = normalize_canvas(fresh.canvas_content, sections)
+        canvas, moved = normalize_canvas(fresh.canvas_content)
         if canvas == fresh.canvas_content:
             return False
         parts = [p for p in (moved, fresh.activity_content) if p]
-        return await repair_canvas_and_activity(
-            fresh.id,
-            fresh.user_id,
-            canvas=canvas,
-            activity="\n\n".join(parts),
-            expected_updated_at=fresh.updated_at,
+        notes = TodoUpdate(canvas_content=canvas, activity_content="\n\n".join(parts))
+        repaired = await repair_notes(
+            fresh.id, fresh.user_id, notes, expected_updated_at=fresh.updated_at
         )
+        return repaired is not None
 
     @staticmethod
     async def schedule_execution(
