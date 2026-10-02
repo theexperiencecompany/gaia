@@ -42,6 +42,7 @@ from app.schemas.browser import (
     BrowserStepSnapshot,
     HandoffOutcome,
     HandoffRequest,
+    NewHandoff,
     PendingAgentGuidance,
 )
 from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJobStatus
@@ -322,7 +323,6 @@ class Harness:
         self.delivery_kwargs: list[dict[str, Any]] = []
         self.delivered: list[tuple[str, Any]] = []
         self.handoffs_created: list[tuple[Any, ...]] = []
-        self.handoff_kwargs: list[dict[str, Any]] = []
         self.handoffs_awaited: list[tuple[Any, ...]] = []
         self.cancel_checks: list[str] = []
         self.job_cancel_checks: list[str] = []
@@ -514,9 +514,8 @@ def _install_handoff(
 ) -> None:
     """Wire the seams a paused run waits on to the recording; the wait ends with outcome."""
 
-    async def _create_pending(*args: Any, **kwargs: Any) -> None:
+    async def _create_pending(*args: Any) -> None:
         h.handoffs_created.append(args)
-        h.handoff_kwargs.append(kwargs)
 
     monkeypatch.setattr(jr, "create_pending_handoff", _create_pending)
 
@@ -1885,9 +1884,17 @@ async def test_a_handoff_is_filed_for_this_user_and_conversation_and_waited_on_f
 
     (created,) = h.handoffs_created
     handoff_id = created[0]
-    assert created == (handoff_id, "u1", "conv-9", "log in")
     # Filed under its own job: a stop said in reply reaches this job, not the newest at the address.
-    assert h.handoff_kwargs == [{"reply_to": reply_to, "job_id": "job-1"}]
+    assert created == (
+        handoff_id,
+        NewHandoff(
+            job_id="job-1",
+            user_id="u1",
+            conversation_id="conv-9",
+            reason="log in",
+            reply_to=reply_to,
+        ),
+    )
     assert h.handoffs_awaited == [(handoff_id, 123)]
     # Where a stop finds the wait it settles, for as long as it is waited on.
     assert h.waits == [("job-1", handoff_id)]
@@ -2108,8 +2115,16 @@ async def test_a_guidance_ask_is_filed_as_an_agent_handoff_and_withdrawn_once_an
 
     (created,) = h.handoffs_created
     handoff_id = created[0]
-    assert created == (handoff_id, "u1", "conv-9", "the button is gone")
-    assert h.handoff_kwargs == [{"kind": HandoffKind.AGENT, "job_id": "job-7"}]
+    assert created == (
+        handoff_id,
+        NewHandoff(
+            job_id="job-7",
+            user_id="u1",
+            conversation_id="conv-9",
+            reason="the button is gone",
+            kind=HandoffKind.AGENT,
+        ),
+    )
     assert h.handoffs_awaited == [(handoff_id, BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS)]
     assert published == [("job-7", PendingAgentGuidance(handoff_id=handoff_id, request=ask))]
     assert cleared == ["job-7"]

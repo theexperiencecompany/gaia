@@ -20,7 +20,7 @@ from app.constants.browser import (
 from app.constants.chat import ConversationSource, SourceCategory
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
-from app.schemas.browser import HandoffOutcome, HandoffRecord
+from app.schemas.browser import HandoffOutcome, HandoffRecord, NewHandoff
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.browser.exceptions import BrowserHandoffNotOwned, BrowserUnavailableError
 from app.services.browser.job_lifetime import browser_job_ttl_seconds
@@ -60,30 +60,21 @@ def reply_address(conversation_id: str, user_id: str, source: ConversationSource
     return conversation_id
 
 
-async def create_pending_handoff(
-    handoff_id: str,
-    user_id: str,
-    conversation_id: str,
-    reason: str = "",
-    kind: HandoffKind = HandoffKind.USER,
-    reply_to: str = "",
-    *,
-    job_id: str,
-) -> None:
+async def create_pending_handoff(handoff_id: str, new: NewHandoff) -> None:
     """Persist a new pending handoff of this kind.
 
     Only a USER handoff takes a reply address (see reply_address): that key is
     what makes a plain chat reply resolve it, and an agent-guidance pause is not
     something the user was ever asked about.
     """
-    address = reply_to if kind is HandoffKind.USER else ""
+    address = new.reply_to if new.kind is HandoffKind.USER else ""
     record = HandoffRecord(
         status=HandoffStatus.PENDING,
-        user_id=user_id,
-        conversation_id=conversation_id,
-        job_id=job_id,
-        kind=kind,
-        reason=reason,
+        user_id=new.user_id,
+        conversation_id=new.conversation_id,
+        job_id=new.job_id,
+        kind=new.kind,
+        reason=new.reason,
         reply_address=address,
     )
     stored = await redis_cache.set(_key(handoff_id), record, ttl=browser_job_ttl_seconds())

@@ -46,6 +46,7 @@ from app.schemas.browser import (
     BrowserStepSnapshot,
     HandoffOutcome,
     HandoffRequest,
+    NewHandoff,
     PendingAgentGuidance,
 )
 from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJobStatus
@@ -433,13 +434,15 @@ async def _run_handoff(
             return HandoffOutcome(status=HandoffStatus.FAILED, cause=EngineFailure.SESSION_GONE)
     await create_pending_handoff(
         handoff_id,
-        request.user_id,
-        request.conversation_id,
-        req.reason,
-        reply_to=reply_address(
-            request.conversation_id, request.user_id, request.conversation_source
+        NewHandoff(
+            job_id=request.job_id,
+            user_id=request.user_id,
+            conversation_id=request.conversation_id,
+            reason=req.reason,
+            reply_to=reply_address(
+                request.conversation_id, request.user_id, request.conversation_source
+            ),
         ),
-        job_id=request.job_id,
     )
     await emit(_handoff_snapshot(handoff_id, req, session, HandoffStatus.PENDING))
     # The job holds the session's lease for its whole life; a browser the host
@@ -539,11 +542,13 @@ async def _run_guidance(
     handoff_id = uuid.uuid4().hex
     await create_pending_handoff(
         handoff_id,
-        job.user_id,
-        job.conversation_id,
-        request.reason,
-        kind=HandoffKind.AGENT,
-        job_id=job.job_id,
+        NewHandoff(
+            job_id=job.job_id,
+            user_id=job.user_id,
+            conversation_id=job.conversation_id,
+            reason=request.reason,
+            kind=HandoffKind.AGENT,
+        ),
     )
     await put_guidance_request(
         job.job_id, PendingAgentGuidance(handoff_id=handoff_id, request=request)

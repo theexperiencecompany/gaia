@@ -10,7 +10,7 @@ import fakeredis.aioredis
 import pytest
 
 from app.constants.browser import BrowserSessionStatus, BrowserStopOutcome, HandoffStatus
-from app.schemas.browser import BrowserResultSnapshot
+from app.schemas.browser import BrowserResultSnapshot, NewHandoff
 from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
 from app.services.browser import job_stop
 from app.services.browser.handoff import create_pending_handoff, get_handoff
@@ -44,7 +44,16 @@ async def test_a_stop_settles_the_handoff_the_run_waits_on_and_aborts_the_runnin
     arq: fakeredis.aioredis.FakeRedis,
 ) -> None:
     await _job(BrowserJobStatus.RUNNING)
-    await create_pending_handoff("h1", "u1", "conv-1", "Sign in", reply_to="conv-1", job_id="job-1")
+    await create_pending_handoff(
+        "h1",
+        NewHandoff(
+            job_id="job-1",
+            user_id="u1",
+            conversation_id="conv-1",
+            reason="Sign in",
+            reply_to="conv-1",
+        ),
+    )
     await set_job_wait("job-1", "h1")
     await arq.set(f"{in_progress_key_prefix}job-1", "1")
 

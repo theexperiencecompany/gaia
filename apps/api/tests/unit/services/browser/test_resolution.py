@@ -10,6 +10,7 @@ import fakeredis.aioredis
 import pytest
 
 from app.constants.browser import HandoffStatus
+from app.schemas.browser import NewHandoff
 from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
 from app.services.analytics_service import AnalyticsEvents
 from app.services.browser import job_stop, resolution as res_mod
@@ -40,7 +41,16 @@ async def pending(
     monkeypatch.setattr(job_stop.RedisPoolManager, "get_pool", AsyncMock(return_value=fake_redis))
     await set_latest_job("c1", "job-1")
     await put_job_state(BrowserJobState(job_id="job-1", status=BrowserJobStatus.RUNNING, task="t"))
-    await create_pending_handoff("h1", "u1", "c1", "Pay the deposit", reply_to="c1", job_id="job-1")
+    await create_pending_handoff(
+        "h1",
+        NewHandoff(
+            job_id="job-1",
+            user_id="u1",
+            conversation_id="c1",
+            reason="Pay the deposit",
+            reply_to="c1",
+        ),
+    )
     await set_job_wait("job-1", "h1")
 
 
