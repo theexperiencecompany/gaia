@@ -490,6 +490,33 @@ class TestNormalizeCanvas:
         )
 
 
+class TestOwnSections:
+    """A todo's own sections, beyond the template's, are added after its Standing rules when missing."""
+
+    NOTES = "## Notes\n<!-- one line each -->\n### Senders\n<!-- <sender>: <volume> -->"
+    BEFORE = (
+        "# Desk\n\n## Standing rules\n<!-- rules -->\n- Brief me by 9\n\n## Key Details\nk\n\n"
+        "## Current State\n\n## Context\n\n## Learnings\n"
+    )
+
+    @pytest.mark.regression
+    def test_a_missing_section_is_added_once_after_the_standing_rules(self) -> None:
+        canvas, moved = normalize_canvas(self.BEFORE, sections=[self.NOTES])
+
+        assert moved is None
+        assert canvas == self.BEFORE.replace(
+            "- Brief me by 9\n\n", f"- Brief me by 9\n\n{self.NOTES}\n\n", 1
+        )
+        assert normalize_canvas(canvas, sections=[self.NOTES]) == (canvas, None)
+
+    def test_a_section_the_canvas_has_is_left_as_written(self) -> None:
+        canvas = self.BEFORE.replace(
+            "## Key Details", "## notes\n- github: ~140/day\n\n## Key Details"
+        )
+
+        assert normalize_canvas(canvas, sections=[self.NOTES]) == (canvas, None)
+
+
 class TestWithMissingSectionsKeepsTheLastLine:
     @pytest.mark.parametrize("last_line", ["- owner: MAX", "- owner: max  "])
     def test_only_trailing_newlines_are_dropped_before_the_added_sections(

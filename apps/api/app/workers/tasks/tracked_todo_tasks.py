@@ -69,6 +69,7 @@ from app.services.hil.utils import untrusted_fence
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.notification_service import notification_service
 from app.services.todo_activity import record_activity
+from app.services.todos.inbox_desk import with_desk_sections
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.triggers.todo_trigger_window import (
@@ -681,6 +682,7 @@ async def _execute_on_executor(
     coalesced: Sequence[TriggerOrigin] = (),
 ) -> None:
     """Run the todo on the executor; its delivery step writes the finish entry and any message."""
+    doc = await with_desk_sections(doc)
     todo_id = doc.id
     user_id = doc.user_id
     prompt = _build_execution_prompt(

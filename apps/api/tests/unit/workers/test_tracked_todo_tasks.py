@@ -34,6 +34,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError, RedisError
 
 from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import TodoRunRequest
+from app.agents.prompts import todo_prompts
 from app.agents.prompts.todo_prompts import (
     DELIVERED_RESULT_GUIDANCE,
     GMAIL_THREAD_RUN_GUIDANCE,
@@ -71,7 +72,7 @@ from app.models.trigger_subscription_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
-from app.services.tracked_todo_service import tracked_todo_service
+from app.services.tracked_todo_service import starting_canvas, tracked_todo_service
 from app.services.triggers.batching import MAX_TRIGGER_BATCH_EVENTS
 from app.services.triggers.subscription_dispatch import dispatch_to_subscribed_todos
 from app.utils.cron_utils import get_next_run_time
@@ -1537,6 +1538,46 @@ class TestStandingRulesReachTheRun:
         task, _ = await _run_task(_doc(canvas_content=canvas), _desk())
 
         assert "## Standing rules\n- 2026-09-28: brief me in bullets" in task
+
+
+class TestTheDeskRunReadsItsObservations:
+    """A desk opened before its Observations section has it, written by code, in the canvas its run reads."""
+
+    @pytest.mark.regression
+    async def test_an_older_desks_run_reads_the_section_seeded_before_its_prompt(self):
+        stored = {
+            _DESK_ID: _doc(
+                id=_DESK_ID,
+                title="Inbox desk",
+                external_ref=ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail"),
+                canvas_content=starting_canvas("Inbox desk", ["brief me by 9"]),
+            )
+        }
+
+        async def replace(todo_id: str, user_id: str, *, update: TodoUpdate, **_: object):
+            stored[todo_id] = stored[todo_id].model_copy(
+                update=update.model_dump(exclude_unset=True)
+            )
+            return stored[todo_id]
+
+        run = AsyncMock()
+        with (
+            patch.object(todo_repository, "replace_note_fields", AsyncMock(side_effect=replace)),
+            patch.object(
+                todo_repository, "get", AsyncMock(side_effect=lambda i, user_id: stored[i])
+            ),
+            patch.object(todo_repository, "list_active_tracked", AsyncMock(return_value=[])),
+            patch("app.services.todo_canvas_storage.schedule_gaia_tasks_sync", MagicMock()),
+            patch(f"{MODULE}.run_todo_on_executor", run),
+            patch(f"{MODULE}.record_activity", AsyncMock()),
+        ):
+            await _execute_on_executor(
+                stored[_DESK_ID], user_data=AuthenticatedUser(user_id="user-1")
+            )
+
+        canvas = run.await_args.args[0].task.split("Canvas (canvas.md):\n", 1)[1]
+        assert canvas.startswith(stored[_DESK_ID].canvas_content)
+        assert f"- brief me by 9\n\n{todo_prompts.INBOX_DESK_OBSERVATIONS_SECTION}\n\n" in canvas
 
 
 def _thread(n: int, state: str = "Waiting on Sarah to confirm Friday") -> TodoDocument:

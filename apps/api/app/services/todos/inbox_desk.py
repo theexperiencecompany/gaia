@@ -37,6 +37,9 @@ from shared.py.wide_events import log
 INBOX_DESK_REF = ExternalRef(source=ExternalRefSource.INBOX_DESK, id=GMAIL_INTEGRATION_ID)
 
 _PROVISIONED_BY = "GAIA, setting up the Inbox desk"
+# The desk's own canvas sections, after its Standing rules: in its starting canvas, and
+# added before the run of a desk opened without one.
+_DESK_SECTIONS = (INBOX_DESK_OBSERVATIONS_SECTION,)
 
 
 async def provision_inbox_desk(user_id: str) -> None:
@@ -104,6 +107,21 @@ async def reconcile_inbox_desks() -> DeskReconcile:
     return DeskReconcile(users=len(paying), failures=failures)
 
 
+async def with_desk_sections(doc: TodoDocument) -> TodoDocument:
+    """Return the todo as its run reads it: an Inbox desk lacking one of its sections gets it first.
+
+    Written as a canvas repair, which keeps updated_at; any other todo comes back as is.
+    """
+    if doc.external_ref is None or doc.external_ref.source is not ExternalRefSource.INBOX_DESK:
+        return doc
+    if not await tracked_todo_service.normalize_stored_canvas(doc, _DESK_SECTIONS):
+        return doc
+    repaired = await todo_repository.get(doc.id, user_id=doc.user_id)
+    if repaired is None:
+        raise LookupError(f"Inbox desk {doc.id} vanished right after its canvas was repaired")
+    return repaired
+
+
 async def queue_inbox_desk_provision(user_id: str) -> None:
     """Hand provision_inbox_desk to the worker, which retries it until the desk is armed."""
     pool = await RedisPoolManager.get_pool()
@@ -122,9 +140,7 @@ async def _open_desk(user_id: str, first_run: datetime) -> TodoDocument:
             INBOX_DESK_TITLE,
             description=INBOX_DESK_DESCRIPTION,
             initial_canvas=starting_canvas(
-                INBOX_DESK_TITLE,
-                [INBOX_DESK_DELIVERY_RULE],
-                sections=[INBOX_DESK_OBSERVATIONS_SECTION],
+                INBOX_DESK_TITLE, [INBOX_DESK_DELIVERY_RULE], sections=_DESK_SECTIONS
             ),
             external_ref=INBOX_DESK_REF,
             notify_on_run=True,

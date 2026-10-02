@@ -6,6 +6,7 @@ written back in the template's casing), and split legacy canvases (which carried
 activity inside the canvas) into the canvas.md / activity.md pair.
 """
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 import re
 from typing import NamedTuple
@@ -294,11 +295,23 @@ def _merge_duplicate_sections(canvas: str) -> str:
     return "\n\n".join(filter(None, [preamble.strip("\n"), *sections])) + "\n"
 
 
-def normalize_canvas(canvas: str) -> tuple[str, str | None]:
+def _with_section(canvas: str, section: str) -> str:
+    """Add section, a whole "## " section, after the Standing rules unless the canvas has its heading."""
+    heading = section.partition("\n")[0].removeprefix("## ")
+    if _section_span(canvas, heading) is not None:
+        return canvas
+    rules = _section_span(canvas, CANVAS_STANDING_RULES_SECTION)
+    cut = rules[2] if rules else len(canvas)
+    head = canvas[:cut].rstrip("\n")
+    return f"{head}\n\n{section}\n{canvas[cut:]}"
+
+
+def normalize_canvas(canvas: str, sections: Sequence[str] = ()) -> tuple[str, str | None]:
     """Repair a canvas into the template's shape; return (canvas, activity moved out or None).
 
     Activity-like sections and dated blocks move to activity.md, repeated sections
-    merge, and missing template sections are added. Idempotent.
+    merge, and missing template sections are added, then each of the todo's own
+    sections it lacks, after the Standing rules. Idempotent.
     """
     text, moved = split_legacy_canvas(canvas)
     moved_parts = [moved] if moved else []
@@ -309,6 +322,8 @@ def normalize_canvas(canvas: str) -> tuple[str, str | None]:
                 if body:
                     moved_parts.append(body)
     text = with_missing_sections(_merge_duplicate_sections(text))
+    for section in sections:
+        text = _with_section(text, section)
     if not text.endswith("\n"):
         text += "\n"
     return text, "\n\n".join(moved_parts) if moved_parts else None

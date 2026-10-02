@@ -16,6 +16,7 @@ from app.constants.todos import (
     INBOX_DESK_TITLE,
     PROVISION_INBOX_DESK_TASK,
 )
+from app.db.repositories.todos import todo_repository
 from app.models.todo_models import (
     ExternalRef,
     ExternalRefSource,
@@ -26,6 +27,7 @@ from app.models.todo_models import (
 from app.models.user_models import UserDocument
 from app.services.analytics_service import AnalyticsEvents
 from app.services.canvas_markdown import canvas_problems, normalize_canvas
+from app.services.todos import inbox_desk
 from app.services.todos.errors import ExternalRefTakenError
 from app.services.todos.inbox_desk import (
     provision_inbox_desk,
@@ -354,3 +356,86 @@ async def test_every_failure_in_a_reconcile_is_counted() -> None:
         result = await reconcile_inbox_desks()
 
     assert (result.users, result.failures) == (2, 2)
+
+
+STAMP = datetime(2026, 9, 1, tzinfo=UTC)
+OLD_DESK_CANVAS = starting_canvas(INBOX_DESK_TITLE, [INBOX_DESK_DELIVERY_RULE])
+
+
+@pytest.fixture
+def stored() -> Iterator[dict[str, TodoDocument]]:
+    """Stand in for the todos collection: a compare-and-set note write, updated_at kept on request."""
+    docs: dict[str, TodoDocument] = {}
+
+    async def _replace(
+        todo_id: str,
+        user_id: str,
+        *,
+        update: TodoUpdate,
+        expected_updated_at: datetime | None,
+        touch: bool = True,
+    ) -> TodoDocument | None:
+        current = docs[todo_id]
+        if expected_updated_at is not None and current.updated_at != expected_updated_at:
+            return None
+        stamp = {"updated_at": datetime.now(UTC)} if touch else {}
+        docs[todo_id] = current.model_copy(update=update.model_dump(exclude_unset=True) | stamp)
+        return docs[todo_id]
+
+    with (
+        patch.object(todo_repository, "replace_note_fields", AsyncMock(side_effect=_replace)),
+        patch.object(
+            todo_repository,
+            "get",
+            AsyncMock(side_effect=lambda todo_id, user_id: docs.get(todo_id)),
+        ),
+        patch("app.services.todo_canvas_storage.schedule_gaia_tasks_sync", MagicMock()),
+    ):
+        yield docs
+
+
+@pytest.mark.regression
+async def test_a_desk_opened_before_observations_gets_them_once_before_its_run(
+    stored: dict[str, TodoDocument],
+) -> None:
+    stored[DESK_ID] = _desk(canvas_content=OLD_DESK_CANVAS, updated_at=STAMP)
+
+    ready = await inbox_desk.with_desk_sections(stored[DESK_ID])
+    again = await inbox_desk.with_desk_sections(ready)
+
+    assert ready.canvas_content == starting_canvas(
+        INBOX_DESK_TITLE,
+        [INBOX_DESK_DELIVERY_RULE],
+        sections=[todo_prompts.INBOX_DESK_OBSERVATIONS_SECTION],
+    )
+    assert again == ready == stored[DESK_ID]
+    assert ready.updated_at == STAMP
+    assert todo_repository.replace_note_fields.await_count == 1
+
+
+async def test_a_desk_that_has_its_observations_is_not_written(
+    stored: dict[str, TodoDocument],
+) -> None:
+    canvas = OLD_DESK_CANVAS.replace(
+        "## Key Details", "## Observations\n### Senders\n- github: ~140/day\n\n## Key Details"
+    )
+    desk = _desk(canvas_content=canvas, updated_at=STAMP)
+    stored[DESK_ID] = desk
+
+    assert await inbox_desk.with_desk_sections(desk) is desk
+    todo_repository.replace_note_fields.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "external_ref",
+    [None, ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611")],
+    ids=["no-ref", "thread"],
+)
+async def test_a_todo_that_is_not_the_desk_is_not_written(
+    stored: dict[str, TodoDocument], external_ref: ExternalRef | None
+) -> None:
+    todo = _desk(canvas_content=OLD_DESK_CANVAS, external_ref=external_ref, updated_at=STAMP)
+    stored[DESK_ID] = todo
+
+    assert await inbox_desk.with_desk_sections(todo) is todo
+    todo_repository.replace_note_fields.assert_not_awaited()

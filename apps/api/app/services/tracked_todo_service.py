@@ -411,8 +411,8 @@ class TrackedTodoService:
         )
 
     @staticmethod
-    async def normalize_stored_canvas(doc: TodoDocument) -> bool:
-        """Repair a canvas into the template's shape (see normalize_canvas). True when it wrote.
+    async def normalize_stored_canvas(doc: TodoDocument, sections: Sequence[str] = ()) -> bool:
+        """Repair a canvas into the template's shape plus sections (normalize_canvas); True if written.
 
         Activity inside the canvas (legacy sections, append-mode dated entries,
         "Activity Log (append)" and the like) moves to activity_content, first,
@@ -420,7 +420,7 @@ class TrackedTodoService:
         """
         if not doc.canvas_content:
             return False
-        canvas, moved = normalize_canvas(doc.canvas_content)
+        canvas, moved = normalize_canvas(doc.canvas_content, sections)
         if canvas == doc.canvas_content:
             return False
         parts = [p for p in (moved, doc.activity_content) if p]
@@ -438,7 +438,7 @@ class TrackedTodoService:
         fresh = await todo_repository.get(doc.id, user_id=doc.user_id)
         if fresh is None or not fresh.canvas_content:
             return False
-        canvas, moved = normalize_canvas(fresh.canvas_content)
+        canvas, moved = normalize_canvas(fresh.canvas_content, sections)
         if canvas == fresh.canvas_content:
             return False
         parts = [p for p in (moved, fresh.activity_content) if p]
