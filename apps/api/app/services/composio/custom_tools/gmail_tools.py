@@ -26,6 +26,7 @@ from app.agents.templates.mail_templates import (
     project_message_view,
 )
 from app.agents.workspace.offload import OffloadInfo
+from app.constants.agents import TOOL_RESULT_FETCHED_AT_KEY
 from app.constants.email import MessageFieldLiteral
 from app.constants.log_tags import LogTag
 from app.constants.offload import OFFLOAD_RESULT_KEY
@@ -566,7 +567,13 @@ def _summarize(
     user_id: str,
     request: FetchMessagesInput,
 ) -> dict[str, Any]:
-    """Top-level orchestrator: resolve → paginate → offload-or-inline."""
+    """Run the query and stamp its result with fetched_at, the Unix second before Gmail was asked."""
+    fetched_at = int(datetime.datetime.now(datetime.UTC).timestamp())
+    return {TOOL_RESULT_FETCHED_AT_KEY: fetched_at, **_fetch_and_shape(user_id, request)}
+
+
+def _fetch_and_shape(user_id: str, request: FetchMessagesInput) -> dict[str, Any]:
+    """Resolve, paginate, then return the result inline or offloaded."""
     config = current_run_config()
     tz = home_timezone_from_config(config)
     combined_query, default_max = _resolve_timeframe(request.timeframe, request.query, tz)
@@ -1189,6 +1196,9 @@ def register_gmail_custom_tools(composio: Composio) -> list[str]:
         tool writes a JSONL file to the session workspace and returns a
         digest + read_plan; the agent fans out parallel reads over the
         chunks or mines it with ``query_json``/``grep``.
+
+        Every result carries ``fetched_at``, the Unix second the query ran:
+        query ``after:<fetched_at>`` next time to fetch only newer mail.
         """
         return _summarize(_user_id(auth_credentials), request)
 

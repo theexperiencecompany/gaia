@@ -5,11 +5,14 @@ raw httpx. Tests patch that helper and assert on the request shape.
 """
 
 import base64
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 import re
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+import time_machine
 
 from app.models.common_models import GatherContextInput
 from app.models.composio_schemas.gmail import FetchMessagesInput
@@ -696,3 +699,94 @@ class TestPartialFetchResult:
             "call again NOW, or answer with what you have and state plainly that "
             "the rest failed and why."
         )
+
+
+FETCH_STARTED = datetime(2026, 10, 1, 17, 24, 5, tzinfo=UTC)
+
+
+def _gmail_taking_a_minute_per_call(
+    traveller: time_machine.Traveller, *, body: str = "", fail_second_page: bool = False
+) -> Callable[[ProxyRequest], dict[str, Any]]:
+    """Serve one list page of three messages, moving the clock a minute on every call."""
+    list_calls = [0]
+    message = {
+        "id": "m",
+        "threadId": "t",
+        "labelIds": ["INBOX"],
+        "payload": {
+            "headers": [{"name": "From", "value": "a@b.com"}],
+            "body": {"data": base64.urlsafe_b64encode(body.encode()).decode()},
+        },
+    }
+
+    def serve(request: ProxyRequest) -> dict[str, Any]:
+        traveller.shift(timedelta(minutes=1))
+        if not re.match(r".+/users/me/messages/?$", request.endpoint):
+            return message
+        list_calls[0] += 1
+        if list_calls[0] > 1:
+            raise RuntimeError("Gmail 503")
+        page: dict[str, Any] = {"messages": [{"id": f"m{i}"} for i in range(3)]}
+        if fail_second_page:
+            page["nextPageToken"] = "t1"
+        return page
+
+    return serve
+
+
+class TestFetchedAt:
+    """The Inbox desk's cursor: every result says when its query ran, before Gmail was asked."""
+
+    def _fetch(self, request: FetchMessagesInput) -> dict[str, Any]:
+        return _register_and_get_tools()["FETCH_MESSAGES"](
+            request=request, execute_request=MagicMock(), auth_credentials=AUTH_CREDS
+        )
+
+    @pytest.mark.regression
+    def test_an_inline_result_carries_the_moment_before_the_query(self, mock_proxy) -> None:
+        with time_machine.travel(FETCH_STARTED, tick=False) as traveller:
+            mock_proxy.side_effect = _gmail_taking_a_minute_per_call(traveller)
+            result = self._fetch(FetchMessagesInput(query="newer_than:1d", per_page=10))
+
+        assert result["fetched_count"] == 3
+        assert result["fetched_at"] == int(FETCH_STARTED.timestamp())
+
+    @pytest.mark.regression
+    def test_an_offloaded_result_carries_it_beside_its_read_plan(
+        self, mock_proxy, tmp_path
+    ) -> None:
+        with (
+            time_machine.travel(FETCH_STARTED, tick=False) as traveller,
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.write_session_file_sync",
+                return_value=(tmp_path / "f.jsonl", "/workspace/sessions/run/f.jsonl"),
+            ),
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.current_run_config",
+                return_value={"configurable": {"vfs_session_id": "run"}},
+            ),
+        ):
+            mock_proxy.side_effect = _gmail_taking_a_minute_per_call(traveller, body="x" * 50_000)
+            result = self._fetch(
+                FetchMessagesInput(
+                    query="newer_than:1d",
+                    per_page=10,
+                    fields=[*FetchMessagesInput.model_fields["fields"].default_factory(), "body"],
+                    body_processing="raw",
+                )
+            )
+
+        assert result["offloaded_to"] == "/workspace/sessions/run/f.jsonl"
+        assert "read_plan" in result
+        assert result["fetched_at"] == int(FETCH_STARTED.timestamp())
+
+    @pytest.mark.regression
+    def test_a_partial_result_carries_it_too(self, mock_proxy) -> None:
+        with time_machine.travel(FETCH_STARTED, tick=False) as traveller:
+            mock_proxy.side_effect = _gmail_taking_a_minute_per_call(
+                traveller, fail_second_page=True
+            )
+            result = self._fetch(FetchMessagesInput(query="newer_than:1d", per_page=3))
+
+        assert result["partial"] is True
+        assert result["fetched_at"] == int(FETCH_STARTED.timestamp())

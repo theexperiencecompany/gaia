@@ -126,7 +126,6 @@ apps/api/app/models/mail_models.py	TB001
 apps/api/app/models/memory_models.py	TB002
 apps/api/app/models/playbook_models.py	TB001
 apps/api/app/models/playbook_models.py	TB002
-apps/api/app/models/workflow_execution_models.py	TB001
 apps/api/app/models/workflow_models.py	TB001
 apps/api/app/models/workflow_models.py	TB002
 apps/api/app/schemas/desktop_schemas.py	TB001
@@ -152,8 +151,8 @@ apps/api/app/services/chat/state.py	TB001
 apps/api/app/services/chat/state.py	TB002
 apps/api/app/services/composio/composio_service.py	TB001
 apps/api/app/services/composio/composio_service.py	TB002
-apps/api/app/services/composio/custom_tools/gmail_tools.py	TB001
-apps/api/app/services/composio/custom_tools/gmail_tools.py	TB002
+apps/api/app/services/composio/custom_tools/gmail_tools.py	TB001	deferred-until=2026-10-31; the Inbox desk's fetched_at stamp touched FETCH_MESSAGES only; the 42 loose annotations are Composio custom-tool contracts (auth_credentials, dict results) and the untyped mail_templates message views, a typed message-view refactor across both modules (proposed 2026-10-02, needs sign-off)
+apps/api/app/services/composio/custom_tools/gmail_tools.py	TB002	deferred-until=2026-10-31; the Inbox desk's fetched_at stamp touched FETCH_MESSAGES only; the 16 string-key reads are on the untyped mail_templates message views and Composio's auth_credentials, typed by the same refactor (proposed 2026-10-02, needs sign-off)
 apps/api/app/services/composio/proxy_client.py	TB001
 apps/api/app/services/composio/proxy_client.py	TB002
 apps/api/app/services/connect_link_service.py	TB002

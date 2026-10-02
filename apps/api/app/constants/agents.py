@@ -92,6 +92,10 @@ PLAYBOOK_HEAL_ATTEMPT_LIMIT = 2
 #: result as the JSON document before this separator; the note is not data.
 TOOL_RESULT_NOTE_SEPARATOR = "\n\n"
 
+#: The Unix second a read tool's query ran. Stamped on every result, found or
+#: not, so it is bookkeeping like the envelope's successful flag, never data.
+TOOL_RESULT_FETCHED_AT_KEY = "fetched_at"
+
 #: How many recent executions a replay searches for the last replay of a tool
 #: that returned data, when judging an empty result. Reaches past every heal
 #: run (which replays nothing) for every suspect the streak allows.
