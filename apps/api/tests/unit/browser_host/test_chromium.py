@@ -283,6 +283,17 @@ async def test_a_create_with_no_engine_serving_says_so_and_frees_its_slot() -> N
     assert host._pending_slots == 0
 
 
+@pytest.mark.unit
+async def test_a_create_refused_by_a_dead_engine_leaves_it_counted_idle() -> None:
+    stub = StubEngine()
+    stub.is_alive = False
+    host = make_host(stub)
+
+    with pytest.raises(EngineUnresponsiveError):
+        await host.create_context(None)
+    assert host._creating[as_engine(stub)] == 0
+
+
 # --- admission ---
 
 
