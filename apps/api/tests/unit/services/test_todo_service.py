@@ -383,7 +383,7 @@ class TestCreateTodo:
             patch(
                 "app.services.todos.todo_service.spawn_logged_task",
                 side_effect=RuntimeError("loop closed"),
-            ),
+            ) as spawn,
             patch("app.services.todos.todo_service.log") as log,
         ):
             result = await TodoService.create_todo_with_workflow(
@@ -394,7 +394,7 @@ class TestCreateTodo:
         log.warning.assert_called_once_with(
             "todo.workflow_queue_failed", title="Buy milk", error="loop closed"
         )
-        mock_workflow_queue.queue_todo_workflow_generation.return_value.close()
+        spawn.call_args.args[1].close()
 
     async def test_create_todo_with_workflow_refuses_a_tracked_todo(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
