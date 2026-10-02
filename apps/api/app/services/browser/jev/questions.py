@@ -14,11 +14,12 @@ A password field is filled with TYPE_TEXT from a stored secret; never submit a l
 WAIT only when the needed control is absent/disabled, or submitted results are still loading.
 If Search/Submit is visible and the required fields are ready, CLICK it immediately.
 Recent WAIT actions are not evidence of loading. Prefer a useful visible control over WAIT.
-Pages already visited are listed, and recent actions say where each led. A page this run opened was
-read there: its text already reached whoever gave the goal. An element marked opened links to such a
-page; never open it again. Open the next item a list goal asks for, or DONE once every one was opened.
+Pages already visited are listed, and recent actions say where each led. Pages this burst read are
+listed with the start of their text: it already reached whoever gave the goal, however little it holds,
+and opening the page again reads nothing new. An element marked opened links to a page this run already
+opened; never open it again. Open the next item a list goal asks for; once each was opened, choose DONE.
 DONE requires visible evidence that ALL requirements are satisfied, or, for a goal that asks to
-find or report something, that the answer is visible now. If asked to open a result, a matching
+find or report something, that the answer is visible now or was read on a page this burst opened. If asked to open a result, a matching
 link is not enough. BLOCKED means no supported operation can make progress: the goal needs a
 value it does not give, a login it gives no credentials for, a CAPTCHA, a payment, or a control
 this page does not have."""
@@ -65,6 +66,9 @@ OPERATIONS: dict[JevOperation, str] = {
     JevOperation.SCROLL_UP: "Scroll up the page, or an inner scrollable area, to see what is above.",
     JevOperation.NAVIGATE: "Open a page by its address: one the goal names, or one already visited.",
     JevOperation.GO_BACK: "Go back to the previous page.",
-    JevOperation.DONE: "Every requirement is visibly satisfied, or what the goal asks to find is visible now.",
+    JevOperation.DONE: (
+        "Every requirement is satisfied, visibly here or on the pages this burst already read, "
+        "or what the goal asks to find is visible now."
+    ),
     JevOperation.BLOCKED: "No supported operation can progress.",
 }

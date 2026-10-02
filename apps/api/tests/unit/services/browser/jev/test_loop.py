@@ -32,6 +32,7 @@ from app.services.browser.jev.decision import (
     GENERATE,
     NONE_VALUE,
     Decision,
+    ReadPage,
     RecentAction,
     Situation,
     Visited,
@@ -117,6 +118,7 @@ class _Jev:
                 "history": situation.history,
                 "visited": list(visited),
                 "addresses": addresses,
+                "read": situation.read,
             }
         )
         if self.on_decide is not None:
@@ -644,6 +646,22 @@ async def test_a_page_the_burst_outran_resets_only_when_an_input_lands_and_the_s
     assert (first.stop, len(first.steps)) == (JevStop.DONE, 2)
     assert run.jev.decided[-1]["addresses"][0] == "https://site.test/start"
     assert run.jev.decided[-1]["addresses"].count("https://site.test/start") == 1
+
+
+async def test_jev_decides_seeing_the_start_of_each_other_page_this_burst_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """It reopened articles it had read because it was never shown it had read them."""
+    monkeypatch.setattr(loop_mod, "JEV_TRAIL_TEXT_CHARS", 4)
+    a, b = page_state(text="list"), page_state(url="https://site.test/b", text="article b")
+    page = FakePage(a, b, a)
+    clicks = [decision(JevOperation.CLICK, BUTTON)] * 2
+    run = _run(monkeypatch, page, *clicks, decision(JevOperation.DONE))
+
+    await run.burst()
+
+    # Back on the list: the article it read, cut to its start; never the page it is on.
+    assert run.jev.decided[-1]["read"] == [ReadPage("Site", "https://site.test/b", "arti")]
 
 
 async def test_a_page_is_one_address_however_it_was_written_and_never_the_page_jev_is_on(

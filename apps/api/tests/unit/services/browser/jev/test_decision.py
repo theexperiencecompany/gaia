@@ -14,6 +14,7 @@ from app.services.browser.jev.decision import (
     NONE_VALUE,
     PAGE_TARGET,
     JevDecisionError,
+    ReadPage,
     RecentAction,
     Situation,
     Visited,
@@ -258,7 +259,13 @@ async def test_jev_sees_which_links_lead_to_pages_this_run_opened_and_where_each
 
     await decide(
         jev,
-        Situation(_page(story, other, home), "open each", [went, stayed], _unmasked),
+        Situation(
+            _page(story, other, home),
+            "open each",
+            [went, stayed],
+            _unmasked,
+            read=[ReadPage("Clef", "https://blog.test/clef", "Clef is a model")],
+        ),
         visited,
         [],
     )
@@ -268,10 +275,18 @@ async def test_jev_sees_which_links_lead_to_pages_this_run_opened_and_where_each
     # The page Jev is on is not one to open again; a link back to it is just a link.
     assert marked == {"Clef": True, "Frog": None, "Shop": None}
     targets = request.questions["click_target"].criteria
-    assert [c.get("opened") for c in targets.values()] == [True, None, None]
+    assert [c["element"] for c in targets.values()] == [
+        "[1] Clef (already opened and read)",
+        "[2] Frog",
+        "[3] Shop",
+    ]
     assert [a.get("led_to") for a in request.state["recent_actions"]] == [
         "https://blog.test/clef",
         None,
+    ]
+    # What the burst already read, so the page is not opened again to read it.
+    assert request.state["read_this_burst"] == [
+        {"title": "Clef", "url": "https://blog.test/clef", "text": "Clef is a model"}
     ]
 
 

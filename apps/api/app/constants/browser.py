@@ -518,6 +518,8 @@ JEV_OUT_OF_CREDIT_SECONDS = 300.0
 JEV_REPORT_PAGE_TEXT_CHARS = 2000
 JEV_REPORT_OPENED_PAGE_CHARS = 1500
 JEV_REPORT_OPENED_PAGES = 6
+#: How much of each page a burst read Jev sees again when it decides: enough to know what it holds.
+JEV_TRAIL_TEXT_CHARS = 300
 JEV_RECENT_ACTIONS = 10
 JEV_VISITED_PAGES = 12
 #: One burst's bounds, from jev-ultrafast: actions, unchanged non-wait actions in a

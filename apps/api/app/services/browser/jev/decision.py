@@ -82,6 +82,8 @@ _OPERATION_QUESTION = "operation"
 _NAVIGATE_QUESTION = "navigate_target"
 _VALUE_QUESTION = "value"
 _OPTION_QUESTION = "option"
+#: How a target that links to a page this run already opened and read is named.
+_OPENED = " (already opened and read)"
 _NO_ANSWER = "Jev returned no answer for a question; no action executed."
 _INVALID_ANSWER = "Invalid Jev response; no action executed."
 
@@ -119,6 +121,15 @@ class Visited:
 
 
 @dataclass(frozen=True)
+class ReadPage:
+    """A page the burst opened, and the start of the text read there."""
+
+    title: str
+    url: str
+    text: str
+
+
+@dataclass(frozen=True)
 class Situation:
     """What every question about one step is asked on: the page as read, the goal, and what Jev did."""
 
@@ -128,6 +139,8 @@ class Situation:
     history: list[RecentAction]
     #: Puts every secret value back as its placeholder before anything is sent.
     mask: Mask
+    #: The pages this burst opened and read, oldest first: the work it need not do again.
+    read: list[ReadPage] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -274,10 +287,9 @@ def _target_criteria(
     """Return an operation's targets as Jev weighs them: label, current value, states, and whether it leads somewhere opened."""
     return {
         index: {
-            "element": f"[{index}] {action['label']}",
+            "element": f"[{index}] {action['label']}{_OPENED if _leads_to(action, opened) else ''}",
             "current_value": action.get("current_value", action.get("value", "")),
             **_fields(action, _TARGET_FIELDS),
-            **({"opened": True} if _leads_to(action, opened) else {}),
         }
         for index, action in candidates.items()
     }
@@ -398,6 +410,10 @@ async def decide(
         ],
         "visited": [{"title": v.title, "url": v.url} for v in visited],
     }
+    if situation.read:
+        state["read_this_burst"] = [
+            {"title": r.title, "url": r.url, "text": r.text} for r in situation.read
+        ]
     left_out = page.omitted_actions + space.left_out
     if left_out:
         state["elements_left_out"] = left_out

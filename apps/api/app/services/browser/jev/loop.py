@@ -33,6 +33,7 @@ from app.constants.browser import (
     JEV_STALE_LIMIT,
     JEV_TEXT_TIMEOUT_SECONDS,
     JEV_TEXT_VALUE_MAX_CHARS,
+    JEV_TRAIL_TEXT_CHARS,
     JEV_UNCHANGED_LIMIT,
     JEV_VISITED_PAGES,
     JevOperation,
@@ -44,6 +45,7 @@ from app.services.browser.jev.decision import (
     NONE_VALUE,
     Decision,
     JevDecisionError,
+    ReadPage,
     RecentAction,
     Situation,
     Visited,
@@ -608,12 +610,18 @@ class JevRunner:
     def _situation(self, state: _Burst) -> Situation:
         """Return the step as Jev's questions are asked on it: the page shown, the goal and recent actions."""
         page = state.current
+        here = page_address(self._secrets.mask(page.url))
         return Situation(
             # Masked before any cut of the text, so a value split there leaves no prefix.
             page=replace(page, text=self._secrets.excerpt(page.text, page.text_cut)),
             goal=state.goal,
             history=_history(state),
             mask=self._secrets.mask,
+            read=[
+                ReadPage(title=p.title, url=p.url, text=p.text[:JEV_TRAIL_TEXT_CHARS])
+                for p in state.opened.values()
+                if page_address(p.url) != here
+            ],
         )
 
     def _visit(self, page: PageState) -> None:
