@@ -73,6 +73,7 @@ from app.services.todos.todo_service import (
 from app.services.triggers.subscription_service import SubscriptionError
 from app.utils.errors import AppError
 from app.utils.todo_vector_utils import TodoSearchFilters
+from tests.helpers import captured_wide_event
 
 FAKE_USER_ID = "507f1f77bcf86cd799439011"
 FAKE_TODO_ID = str(ObjectId())
@@ -730,7 +731,7 @@ class TestUpdateTodo:
             )
 
     async def test_a_workflow_link_goes_through_link_workflow(
-        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_repo
     ):
         linked = _make_todo_doc(todo_id=FAKE_TODO_ID, workflow_id="wf1")
         mock_todo_repo.link_workflow = AsyncMock(return_value=linked)
@@ -743,6 +744,21 @@ class TestUpdateTodo:
         )
         mock_todo_repo.update.assert_not_awaited()
         assert result.workflow_id == "wf1"
+
+    async def test_an_edited_parent_still_reports_its_open_sub_todos(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        edited = _make_todo_doc(todo_id=FAKE_TODO_ID, title="Inbox desk")
+        mock_todo_repo.get = AsyncMock(return_value=edited)
+        mock_todo_repo.update = AsyncMock(return_value=edited)
+        mock_todo_repo.count_open_sub_todos = AsyncMock(return_value={FAKE_TODO_ID: 2})
+
+        result = await TodoService.update_todo(
+            FAKE_TODO_ID, TodoUpdateRequest(title="Inbox desk"), FAKE_USER_ID
+        )
+
+        assert result.sub_todo_count == 2
+        mock_todo_repo.count_open_sub_todos.assert_awaited_once_with(FAKE_USER_ID, [FAKE_TODO_ID])
 
     async def test_a_tracked_todo_refuses_a_workflow_link(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
@@ -805,7 +821,7 @@ class TestUpdateTodo:
         mock_todo_repo.update.assert_not_awaited()
 
     async def test_a_tracked_todo_with_a_legacy_link_can_still_be_relabelled(
-        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_repo
     ):
         """Tracked todos created before this change may still hold a workflow_id nothing reads."""
         legacy = _make_todo_doc(
@@ -818,7 +834,7 @@ class TestUpdateTodo:
         assert mock_todo_repo.update.await_args.kwargs["update"].labels == labels
 
     async def test_relabelling_a_linked_classic_todo_is_allowed(
-        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_repo
     ):
         linked = _make_todo_doc(todo_id=FAKE_TODO_ID, workflow_id="wf1")
         mock_todo_repo.get = AsyncMock(return_value=linked)
@@ -1175,10 +1191,14 @@ class TestBulkDeleteClosesTriggers:
             "app.services.todos.todo_service.delete_canvas_embedding",
             new=AsyncMock(side_effect=RuntimeError("chroma down")),
         ):
-            result = await TodoService.bulk_delete_todos(["a"], FAKE_USER_ID)
+            async with captured_wide_event() as event:
+                result = await TodoService.bulk_delete_todos(["a"], FAKE_USER_ID)
 
         mock_todo_repo.bulk_delete.assert_awaited_once_with(FAKE_USER_ID, ["a"])
         assert result.success == ["a"]
+        assert event["warnings"] == [
+            {"msg": "todo.canvas_embedding_delete_failed", "todo_id": "a", "error": "chroma down"}
+        ]
 
 
 class TestBulkOps:

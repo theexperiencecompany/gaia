@@ -109,6 +109,23 @@ async def _get_pending_approvals_for_todos(
     return refs
 
 
+
+async def todo_responses(user_id: str, todos: list[TodoDocument]) -> list[TodoResponse]:
+    """Project todos onto TodoResponse with their workflow categories, approvals and open sub-todos."""
+    workflow_categories = await _get_workflow_categories_for_todos(todos, user_id)
+    pending_approvals = await _get_pending_approvals_for_todos(todos)
+    sub_todo_counts = await todo_repository.count_open_sub_todos(
+        user_id, [todo.id for todo in todos]
+    )
+    return [
+        TodoResponse.from_document(
+            todo,
+            workflow_categories=workflow_categories.get(todo.id),
+            pending_approval=pending_approvals.get(todo.id),
+            sub_todo_count=sub_todo_counts.get(todo.id, 0),
+        )
+        for todo in todos
+    ]
 def _ensure_subtask_ids(subtasks: list[SubTask]) -> list[SubTask]:
     """Give every subtask a stable id, generating one where it is missing."""
     result: list[SubTask] = []
@@ -395,17 +412,8 @@ class TodoService:
         if not todo:
             raise ValueError(f"Todo {todo_id} not found")
 
-        workflow_categories = (
-            await _get_workflow_categories_for_todos([todo], user_id) if todo.workflow_id else {}
-        )
-        pending = await _get_pending_approvals_for_todos([todo])
-        sub_todo_counts = await todo_repository.count_open_sub_todos(user_id, [todo.id])
-        return TodoResponse.from_document(
-            todo,
-            workflow_categories=workflow_categories.get(todo.id),
-            pending_approval=pending.get(todo.id),
-            sub_todo_count=sub_todo_counts.get(todo.id, 0),
-        )
+        (response,) = await todo_responses(user_id, [todo])
+        return response
 
     @classmethod
     async def list_todos(cls, user_id: str, params: TodoSearchParams) -> TodoListResponse:
@@ -421,20 +429,7 @@ class TodoService:
             user_id=user_id, params=params, inbox_project_id=inbox_project_id
         )
 
-        workflow_categories = await _get_workflow_categories_for_todos(page.items, user_id)
-        pending_approvals = await _get_pending_approvals_for_todos(page.items)
-        sub_todo_counts = await todo_repository.count_open_sub_todos(
-            user_id, [todo.id for todo in page.items]
-        )
-        data = [
-            TodoResponse.from_document(
-                todo,
-                workflow_categories=workflow_categories.get(todo.id),
-                pending_approval=pending_approvals.get(todo.id),
-                sub_todo_count=sub_todo_counts.get(todo.id, 0),
-            )
-            for todo in page.items
-        ]
+        data = await todo_responses(user_id, page.items)
         pages = math.ceil(page.total / params.per_page) if params.per_page else 0
         meta = PaginationMeta(
             total=page.total,
@@ -549,7 +544,8 @@ class TodoService:
                     "has_subtasks": bool(updated.subtasks),
                 },
             )
-        return TodoResponse.from_document(updated)
+        (response,) = await todo_responses(user_id, [updated])
+        return response
 
     @classmethod
     async def delete_todo(cls, todo_id: str, user_id: str) -> None:
