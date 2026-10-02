@@ -14,7 +14,9 @@ A password field is filled with TYPE_TEXT from a stored secret; never submit a l
 WAIT only when the needed control is absent/disabled, or submitted results are still loading.
 If Search/Submit is visible and the required fields are ready, CLICK it immediately.
 Recent WAIT actions are not evidence of loading. Prefer a useful visible control over WAIT.
-Pages already visited are listed; open the next item a list goal asks for, not one already visited.
+Pages already visited are listed, and recent actions say where each led. A page this run opened was
+read there: its text already reached whoever gave the goal. An element marked opened links to such a
+page; never open it again. Open the next item a list goal asks for, or DONE once every one was opened.
 DONE requires visible evidence that ALL requirements are satisfied, or, for a goal that asks to
 find or report something, that the answer is visible now. If asked to open a result, a matching
 link is not enough. BLOCKED means no supported operation can make progress: the goal needs a

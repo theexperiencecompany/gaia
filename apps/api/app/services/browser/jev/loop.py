@@ -52,6 +52,7 @@ from app.services.browser.jev.decision import (
     decide,
     describe_field,
     masked_json,
+    page_address,
 )
 from app.services.browser.jev.gateway import JevDecider, JevEvaluation, JevGatewayError
 from app.services.browser.jev.page import (
@@ -172,6 +173,8 @@ class JevStep:
     opened: str | None = None
     #: What the field held after typing, quoted, when that is not what was typed.
     held: str | None = None
+    #: The page the action took the tab to, when it left the one it was taken on.
+    landed: str | None = None
 
 
 @dataclass(frozen=True)
@@ -342,9 +345,16 @@ class JevRunner:
                 return ended
 
     def _addresses(self, page: PageState) -> list[str]:
-        """Return the pages NAVIGATE may open from page: the starts given and pages visited, on the web, but this one."""
-        known = dict.fromkeys([*self._starts, *(v.url for v in self.visited)])
-        return [url for url in known if url != page.url and _on_the_web(url)]
+        """Return the pages NAVIGATE may open from page: the starts given and pages visited, on the web, but this one.
+
+        One address per page: a start written without its trailing slash once sat beside
+        the same page as visited, and Jev opened the page it was already on six times.
+        """
+        here = page_address(page.url)
+        known: dict[str, str] = {}
+        for url in [*self._starts, *(v.url for v in self.visited)]:
+            known.setdefault(page_address(url), url)
+        return [url for key, url in known.items() if key != here and _on_the_web(url)]
 
     async def _decide(self, state: _Burst, addresses: list[str]) -> Decision:
         state.decisions += 1
@@ -382,7 +392,12 @@ class JevRunner:
         # A person follows the tab a click opens; the read above waited for the click to settle.
         if operation is JevOperation.CLICK and await self._page.follow_new_tab():
             state.page = await self._page.observe()
-        state.steps[-1] = replace(step, page_changed=state.page.fingerprint != before.fingerprint)
+        left = page_address(state.page.url) != page_address(before.url)
+        state.steps[-1] = replace(
+            step,
+            page_changed=state.page.fingerprint != before.fingerprint,
+            landed=self._secrets.mask(state.page.url) if left else None,
+        )
         state.after.append(state.page.fingerprint)
         if stalled := self._load_stalled():
             return stalled
@@ -667,6 +682,7 @@ def _history(state: _Burst) -> list[RecentAction]:
             kind=s.operation.value,
             text=s.text,
             page_changed=s.page_changed,
+            led_to=s.landed,
         )
         for s in state.steps[-JEV_RECENT_ACTIONS:]
     ]

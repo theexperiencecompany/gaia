@@ -275,6 +275,7 @@ async def test_a_burst_ends_when_jev_judges_the_goal_done_and_reports_what_it_di
             text=None,
             url="https://site.test/a",
             page_changed=True,
+            landed="https://site.test/b",
         )
     ]
     assert (result.url, result.title, result.text) == ("https://site.test/b", "Site", "done page")
@@ -645,6 +646,19 @@ async def test_a_page_the_burst_outran_resets_only_when_an_input_lands_and_the_s
     assert run.jev.decided[-1]["addresses"].count("https://site.test/start") == 1
 
 
+async def test_a_page_is_one_address_however_it_was_written_and_never_the_page_jev_is_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A start written without its slash sat beside the same page visited: Jev opened the page it was on six times."""
+    front = replace(page_state(url="https://news.test/"), actions=[BUTTON])
+    page = FakePage(page_state(), front, page_state(url="https://news.test/item"))
+    run = _run(monkeypatch, page, decision(JevOperation.CLICK, BUTTON), decision(JevOperation.DONE))
+
+    await run.burst(start_url="https://news.test")
+
+    assert [d["addresses"] for d in run.jev.decided] == [[], ["https://news.test"]]
+
+
 async def test_a_step_jev_could_not_decide_ends_the_burst_saying_why(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -881,7 +895,13 @@ async def test_jev_sees_what_it_typed_with_a_secret_left_as_its_placeholder(
 
     await run.burst(f"log in with {MASKED}")
 
-    typed_secret = RecentAction(action="Password", kind="TYPE_TEXT", text=MASKED, page_changed=True)
+    typed_secret = RecentAction(
+        action="Password",
+        kind="TYPE_TEXT",
+        text=MASKED,
+        page_changed=True,
+        led_to="https://site.test/b",
+    )
     assert run.jev.decided[1]["history"] == [typed_secret]
     assert page.typed[0] == SECRET
 
@@ -1022,6 +1042,7 @@ async def test_each_step_names_its_target_where_a_link_points_and_the_page_it_wa
             text=None,
             url=f"https://site.test/a?pw={MASKED}",
             page_changed=True,
+            landed="https://site.test/b",
         ),
         JevStep(
             operation=JevOperation.SCROLL_DOWN,
@@ -1031,6 +1052,7 @@ async def test_each_step_names_its_target_where_a_link_points_and_the_page_it_wa
             text=None,
             url="https://site.test/b",
             page_changed=True,
+            landed="https://site.test/c",
         ),
     ]
     assert page.acted == ["e4", "scroll_down"]

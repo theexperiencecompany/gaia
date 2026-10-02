@@ -242,6 +242,39 @@ async def test_jev_is_asked_about_the_page_its_elements_what_it_did_and_where_it
     assert state["elements_left_out"] == 8
 
 
+async def test_jev_sees_which_links_lead_to_pages_this_run_opened_and_where_each_action_led() -> (
+    None
+):
+    """Jev clicked one Hacker News story and came back eight times: nothing said it had read that page."""
+    story = _action("e5", 15, "click", "Clef", role="link", href="https://blog.test/clef#top")
+    other = _action("e6", 16, "click", "Frog", role="link", href="https://blog.test/frog")
+    home = _action("e7", 17, "click", "Shop", role="link", href="https://SHOP.test")
+    jev = _Jev(operation="DONE")
+    went = RecentAction(
+        action="Clef", kind="CLICK", text=None, page_changed=True, led_to="https://blog.test/clef"
+    )
+    stayed = RecentAction(action="Search", kind="TYPE_TEXT", text="x", page_changed=False)
+    visited = [Visited("Clef", "https://blog.test/clef"), Visited("Shop", "https://shop.test")]
+
+    await decide(
+        jev,
+        Situation(_page(story, other, home), "open each", [went, stayed], _unmasked),
+        visited,
+        [],
+    )
+
+    request = _asked(jev)
+    marked = {e["label"]: e.get("opened") for e in request.state["elements"]}
+    # The page Jev is on is not one to open again; a link back to it is just a link.
+    assert marked == {"Clef": True, "Frog": None, "Shop": None}
+    targets = request.questions["click_target"].criteria
+    assert [c.get("opened") for c in targets.values()] == [True, None, None]
+    assert [a.get("led_to") for a in request.state["recent_actions"]] == [
+        "https://blog.test/clef",
+        None,
+    ]
+
+
 async def test_the_operation_question_offers_only_what_this_page_and_the_run_allow() -> None:
     jev = _Jev(operation="DONE")
 

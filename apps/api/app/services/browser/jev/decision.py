@@ -13,6 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 import math
 import re
+from urllib.parse import urlsplit
 
 from pydantic import ValidationError
 
@@ -107,6 +108,8 @@ class RecentAction:
     kind: str
     text: str | None
     page_changed: bool | None
+    #: The page the action took the tab to, when it left the one it was taken on.
+    led_to: str | None = None
 
 
 @dataclass(frozen=True)
@@ -159,8 +162,16 @@ class _Element:
         }
 
 
+def page_address(url: str) -> str:
+    """Return url as the page it opens: no fragment, and an empty path is the root."""
+    parts = urlsplit(url)
+    return parts._replace(netloc=parts.netloc.lower(), path=parts.path or "/", fragment="").geturl()
+
+
 @dataclass
 class _ActionSpace:
+    #: The pages this run already opened: a link to one is marked opened.
+    opened: frozenset[str] = frozenset()
     elements: list[_Element] = field(default_factory=list)
     #: Per target operation: target index -> snapshot action.
     targets: dict[JevOperation, dict[str, PageAction]] = field(default_factory=dict)
@@ -199,6 +210,8 @@ class _ActionSpace:
             self._left_out.add(node)
             return None
         fields = {k: v for k, v in _fields(action, _ELEMENT_FIELDS).items() if v != ""}
+        if _leads_to(action, self.opened):
+            fields["opened"] = True
         if action["kind"] == "select":
             # A dropdown shows its current choice; its options are asked once it is chosen.
             fields["value"] = action["current_value"]
@@ -208,9 +221,15 @@ class _ActionSpace:
         return element
 
 
-def action_space(actions: list[PageAction]) -> _ActionSpace:
-    """One index per observed element; each operation has its own valid targets."""
-    space = _ActionSpace()
+def _leads_to(action: PageAction, opened: frozenset[str]) -> bool:
+    """Whether action is a link to a page this run already opened."""
+    href = action.get("href")
+    return href is not None and page_address(href) in opened
+
+
+def action_space(actions: list[PageAction], opened: frozenset[str] = frozenset()) -> _ActionSpace:
+    """One index per observed element, links to opened pages marked; each operation has its own valid targets."""
+    space = _ActionSpace(opened=opened)
     for action in actions:
         space.add(action)
     return space
@@ -249,13 +268,16 @@ def _target_question(operation: JevOperation) -> str:
     return f"{operation.value.lower()}_target"
 
 
-def _target_criteria(candidates: dict[str, PageAction]) -> dict[str, JsonInput]:
-    """Return an operation's targets as Jev weighs them: label, current value and states."""
+def _target_criteria(
+    candidates: dict[str, PageAction], opened: frozenset[str]
+) -> dict[str, JsonInput]:
+    """Return an operation's targets as Jev weighs them: label, current value, states, and whether it leads somewhere opened."""
     return {
         index: {
             "element": f"[{index}] {action['label']}",
             "current_value": action.get("current_value", action.get("value", "")),
             **_fields(action, _TARGET_FIELDS),
+            **({"opened": True} if _leads_to(action, opened) else {}),
         }
         for index, action in candidates.items()
     }
@@ -326,7 +348,9 @@ async def decide(
 ) -> Decision:
     """Ask Jev for this step's operation and target; raises JevDecisionError on a malformed answer."""
     page, goal, history = situation.page, situation.goal, situation.history
-    space = action_space(page.actions)
+    here = page_address(page.url)
+    opened = frozenset(page_address(v.url) for v in visited) - {here}
+    space = action_space(page.actions, opened)
     controls: dict[JevOperation, PageAction] = space.controls
     operations: dict[str, JsonInput] = {op.value: OPERATIONS[op] for op in space.targets}
     operations.update({op.value: control["label"] for op, control in controls.items()})
@@ -342,7 +366,7 @@ async def decide(
     }
     for operation, candidates in space.targets.items():
         questions[_target_question(operation)] = JevQuestion(
-            criteria=_target_criteria(candidates),
+            criteria=_target_criteria(candidates, opened),
             instructions={
                 "goal": goal,
                 "operation": operation.value,
@@ -363,7 +387,13 @@ async def decide(
         "page": _page(page),
         "elements": [element.described() for element in space.elements],
         "recent_actions": [
-            {"action": h.action, "kind": h.kind, "text": h.text, "page_changed": h.page_changed}
+            {
+                "action": h.action,
+                "kind": h.kind,
+                "text": h.text,
+                "page_changed": h.page_changed,
+                **({"led_to": h.led_to} if h.led_to is not None else {}),
+            }
             for h in history
         ],
         "visited": [{"title": v.title, "url": v.url} for v in visited],
