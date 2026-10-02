@@ -1057,6 +1057,7 @@ class TestBulkCompleteTodos:
 
         assert result["count"] == 1
         assert result["error"] == "Not completed, still open: t2, t3"
+        mock_service.assert_awaited_once_with(["t1", "t2", "t3"], FAKE_USER_ID)
 
 
 # ---------------------------------------------------------------------------

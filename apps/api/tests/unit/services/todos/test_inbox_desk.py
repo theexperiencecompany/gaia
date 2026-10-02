@@ -297,8 +297,34 @@ async def test_the_daily_reconcile_provisions_each_paying_gmail_user_past_a_fail
         patch(f"{MODULE}.subscription_repository.active_user_ids", paying),
         patch(f"{MODULE}.provision_inbox_desk", provision),
     ):
-        result = await reconcile_inbox_desks()
+        async with captured_wide_event() as event:
+            result = await reconcile_inbox_desks()
 
     gmail.assert_awaited_once_with("gmail")
     assert [c.args[0] for c in provision.await_args_list] == ["u2", "u3"]
     assert (result.users, result.failures) == (2, 1)
+    assert event["errors"] == [
+        {
+            "msg": "inbox_desk.reconcile_failed",
+            "user_id": "u2",
+            "error": "mongo down",
+            "error_type": "ConnectionError",
+        }
+    ]
+
+
+async def test_every_failure_in_a_reconcile_is_counted() -> None:
+    with (
+        patch(
+            f"{MODULE}.user_integration_repository.user_ids_with_integration",
+            AsyncMock(return_value=["u1", "u2"]),
+        ),
+        patch(
+            f"{MODULE}.subscription_repository.active_user_ids",
+            AsyncMock(return_value=["u1", "u2"]),
+        ),
+        patch(f"{MODULE}.provision_inbox_desk", AsyncMock(side_effect=ConnectionError("down"))),
+    ):
+        result = await reconcile_inbox_desks()
+
+    assert (result.users, result.failures) == (2, 2)

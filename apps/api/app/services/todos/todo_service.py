@@ -246,6 +246,8 @@ async def _watching_refs_to_reopen(
 
     When the reopen does not land, the watches added here leave every todo still completed.
     """
+    if reopening:
+        await _refuse_a_reopen_under_a_closed_parent(user_id, todo_ids)
     added: dict[str, list[TriggerSubscription]] = {}
     try:
         if reopening:
@@ -288,6 +290,21 @@ async def with_sub_todos(user_id: str, todo_ids: list[str]) -> list[str]:
     """Add every sub-todo of the given todos: deleting a parent takes its sub-todos with it."""
     children = await todo_repository.find_sub_todos(user_id, todo_ids)
     return list(dict.fromkeys([*todo_ids, *(child.id for child in children)]))
+
+
+async def _refuse_a_bulk_update(request: BulkUpdateRequest, user_id: str) -> None:
+    """Refuse, before any write, a bulk update that may only be made one todo at a time."""
+    # A bulk $set skips the per-todo check that keeps a tracked todo unlinked.
+    if request.updates.workflow_id is not None:
+        raise AppError(
+            message="A workflow is linked one todo at a time, not in bulk",
+            status_code=HTTPStatus.BAD_REQUEST,
+        )
+    if request.updates.labels is not None:
+        await _refuse_a_bulk_tracked_label_change(user_id, request.todo_ids, request.updates.labels)
+    project_id = request.updates.project_id
+    if project_id is not None and not await project_repository.get(project_id, user_id=user_id):
+        raise ValueError(f"Project {project_id} not found")
 
 
 class _TrackedCompletion(NamedTuple):
@@ -580,8 +597,6 @@ class TodoService:
                     log.warning("tracked_todo.ui_complete_failed", todo_id=todo_id, error=str(e))
                 update = _drop_completion_fields(update)
 
-        if update.completed is False:
-            await _refuse_a_reopen_under_a_closed_parent(user_id, [todo_id])
         async with _watching_refs_to_reopen(
             user_id, [todo_id], reopening=update.completed is False
         ):
@@ -666,29 +681,13 @@ class TodoService:
         cls, request: BulkUpdateRequest, user_id: str
     ) -> BulkOperationResponse:
         """Bulk update multiple todos."""
-        # A bulk $set skips the per-todo check that keeps a tracked todo unlinked.
-        if request.updates.workflow_id is not None:
-            raise AppError(
-                message="A workflow is linked one todo at a time, not in bulk",
-                status_code=HTTPStatus.BAD_REQUEST,
-            )
-        if request.updates.labels is not None:
-            await _refuse_a_bulk_tracked_label_change(
-                user_id, request.todo_ids, request.updates.labels
-            )
+        await _refuse_a_bulk_update(request, user_id)
         reopening = request.updates.completed is False
-        if reopening:
-            await _refuse_a_reopen_under_a_closed_parent(user_id, request.todo_ids)
         update = _to_todo_update(request.updates)
         if not update.model_fields_set:
             return BulkOperationResponse(
                 success=[], failed=[], total=len(request.todo_ids), message="No updates provided"
             )
-
-        if update.project_id is not None:
-            project = await project_repository.get(update.project_id, user_id=user_id)
-            if not project:
-                raise ValueError(f"Project {update.project_id} not found")
 
         completion = _TrackedCompletion(completed=[], failed=[], plain=request.todo_ids)
         if update.completed is True:
