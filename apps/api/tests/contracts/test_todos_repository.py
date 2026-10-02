@@ -108,6 +108,36 @@ class TestTodosRepository(UserScopedRepositoryContract):
         assert page.total == 1
         assert page.items[0].title == "inbox"
 
+    @pytest.mark.parametrize(
+        "only_filter",
+        [
+            {"q": "milk"},
+            {"completed": False},
+            {"priority": Priority.HIGH},
+            {"labels": ["errand"]},
+        ],
+        ids=["text", "completed", "priority", "labels"],
+    )
+    async def test_list_page_any_one_filter_lifts_the_inbox_default(
+        self, repo, make_doc, only_filter
+    ):
+        for project_id in ("inbox-1", "p2"):
+            await repo.create(
+                make_doc(
+                    user_id="u",
+                    title=f"Buy milk {project_id}",
+                    project_id=project_id,
+                    priority=Priority.HIGH,
+                    labels=["errand"],
+                )
+            )
+
+        page = await repo.list_page(
+            user_id="u", params=_all_params(**only_filter), inbox_project_id="inbox-1"
+        )
+
+        assert sorted(t.project_id for t in page.items) == ["inbox-1", "p2"]
+
     async def test_list_page_text_search(self, repo, make_doc):
         await repo.create(make_doc(user_id="u", title="Buy milk"))
         await repo.create(make_doc(user_id="u", title="Call bank"))
@@ -341,6 +371,33 @@ class TestTodosRepository(UserScopedRepositoryContract):
 
         assert [t.title for t in found] == ["owner"]
 
+    async def test_find_latest_by_external_ref_is_the_users_newest_open_or_completed(
+        self, repo, make_doc, raw_collection
+    ):
+        desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
+        thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="gmail")
+        now = datetime.now(UTC)
+        # Inserted out of age order so an unsorted read would fail here.
+        for title, owner, ref, age, completed in (
+            ("stopped", "u", desk, 1, True),
+            ("first", "u", desk, 3, True),
+            ("theirs", "u2", desk, 0, False),
+            ("thread", "u", thread, 0, False),
+        ):
+            todo = await repo.create(
+                make_doc(user_id=owner, title=title, external_ref=ref, completed=completed)
+            )
+            await raw_collection.update_one(
+                {"_id": ObjectId(todo.id)}, {"$set": {"created_at": now - timedelta(hours=age)}}
+            )
+
+        latest = await repo.find_latest_by_external_ref("u", desk)
+        nothing = await repo.find_latest_by_external_ref("u3", desk)
+
+        assert latest is not None
+        assert (latest.title, latest.completed) == ("stopped", True)
+        assert nothing is None
+
     # ---- sub-todos ----------------------------------------------------------
 
     async def test_top_level_listing_leaves_out_every_sub_todo(self, repo, make_doc):
@@ -355,6 +412,17 @@ class TestTodosRepository(UserScopedRepositoryContract):
         found = await repo.list_active_tracked("u", limit=10, top_level=True)
 
         assert sorted(t.title for t in found) == ["desk", "legacy"]
+
+    async def test_the_default_listing_keeps_sub_todos(self, repo, make_doc):
+        tracked = [GAIA_TRACKED_LABEL]
+        desk = await repo.create(make_doc(user_id="u", title="desk", labels=tracked))
+        await repo.create(
+            make_doc(user_id="u", title="thread", labels=tracked, parent_todo_id=desk.id)
+        )
+
+        found = await repo.list_active_tracked("u", limit=10)
+
+        assert sorted(t.title for t in found) == ["desk", "thread"]
 
     async def test_one_parents_open_sub_todos_are_listed(self, repo, make_doc):
         tracked = [GAIA_TRACKED_LABEL]

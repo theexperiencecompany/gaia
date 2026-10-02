@@ -366,7 +366,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
                 }
             },
             {"$group": {"_id": "$parent_todo_id", "count": {"$sum": 1}}},
-            {"$project": {"parent_todo_id": "$_id", "count": 1, "_id": 0}},
         ]
         counts = await self._aggregate(pipeline, SubTodoCount)
         return {row.parent_todo_id: row.count for row in counts}

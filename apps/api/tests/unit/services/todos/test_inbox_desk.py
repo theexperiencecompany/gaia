@@ -25,7 +25,8 @@ from app.models.user_models import UserDocument
 from app.services.analytics_service import AnalyticsEvents
 from app.services.todos.errors import ExternalRefTakenError
 from app.services.todos.inbox_desk import provision_inbox_desk, queue_inbox_desk_provision
-from app.services.tracked_todo_service import TrackedTodoService
+from app.services.tracked_todo_service import TrackedTodoService, starting_canvas
+from tests.helpers import captured_wide_event
 
 MODULE = "app.services.todos.inbox_desk"
 USER_ID = "507f1f77bcf86cd799439011"
@@ -33,6 +34,7 @@ DESK_ID = "66f838cc8829054e5f10e401"
 KOLKATA = ZoneInfo("Asia/Kolkata")
 DESK_REF = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
 TOMORROW_8 = datetime.now(UTC) + timedelta(hours=12)
+PROVISIONED_BY = "GAIA, setting up the Inbox desk"
 
 
 def _desk(**overrides: object) -> TodoDocument:
@@ -44,6 +46,18 @@ def _desk(**overrides: object) -> TodoDocument:
     }
     fields.update(overrides)
     return TodoDocument.model_validate(fields)
+
+
+def _at_8_in_kolkata(moment: datetime) -> bool:
+    local = moment.astimezone(KOLKATA)
+    return (local.hour, local.minute) == (8, 0)
+
+
+async def _provision() -> dict[str, object]:
+    """Provision the desk inside a real wide-event boundary; return its inbox_desk namespace."""
+    async with captured_wide_event() as event:
+        await provision_inbox_desk(USER_ID)
+    return event["inbox_desk"]
 
 
 def _response() -> TodoResponse:
@@ -78,9 +92,14 @@ def seams() -> Iterator[SimpleNamespace]:
             f"{MODULE}.get_connected_integration_ids", AsyncMock(return_value={"gmail"})
         ) as connected,
         patch(f"{MODULE}.todo_repository", repo),
+        # Only the provisioned user lives in Kolkata; any other lookup falls back to UTC.
         patch(
             "app.services.user_service.get_user_by_id",
-            AsyncMock(return_value=UserDocument(timezone="Asia/Kolkata")),
+            AsyncMock(
+                side_effect=lambda user_id: (
+                    UserDocument(timezone="Asia/Kolkata") if user_id == USER_ID else None
+                )
+            ),
         ),
         patch.object(
             TrackedTodoService, "create_tracked_todo", AsyncMock(side_effect=_create)
@@ -106,29 +125,44 @@ def seams() -> Iterator[SimpleNamespace]:
 async def test_a_paying_user_gets_a_desk_scheduled_with_its_insert(seams: SimpleNamespace) -> None:
     before = datetime.now(UTC)
 
-    await provision_inbox_desk(USER_ID)
+    event = await _provision()
 
+    seams.repo.find_latest_by_external_ref.assert_awaited_once_with(USER_ID, DESK_REF)
     assert seams.create.await_args.args == (USER_ID, INBOX_DESK_TITLE)
     kwargs = seams.create.await_args.kwargs
     assert kwargs["description"] == INBOX_DESK_DESCRIPTION
     assert kwargs["external_ref"] == DESK_REF
     assert kwargs["notify_on_run"] is True
-    assert f"- {INBOX_DESK_DELIVERY_RULE}\n" in kwargs["initial_canvas"]
+    assert kwargs["initial_canvas"] == starting_canvas(INBOX_DESK_TITLE, [INBOX_DESK_DELIVERY_RULE])
     first = kwargs["schedule"].scheduled_at
     assert kwargs["schedule"].recurrence == INBOX_DESK_RECURRENCE
-    assert (first.astimezone(KOLKATA).hour, first.astimezone(KOLKATA).minute) == (8, 0)
+    assert _at_8_in_kolkata(first)
     assert before < first <= before + timedelta(days=1)
+    seams.repo.get.assert_awaited_once_with(DESK_ID, user_id=USER_ID)
     seams.schedule.assert_awaited_once_with(DESK_ID, first)
     seams.capture.assert_called_once_with(USER_ID, AnalyticsEvents.INBOX_DESK_PROVISIONED)
+    assert event == {
+        "operation": "provision",
+        "user_id": USER_ID,
+        "outcome": "armed",
+        "todo_id": DESK_ID,
+        "next_run": first.isoformat(),
+    }
 
 
 async def test_a_desk_the_user_stopped_is_never_revived(seams: SimpleNamespace) -> None:
     seams.repo.find_latest_by_external_ref.return_value = _desk(completed=True)
 
-    await provision_inbox_desk(USER_ID)
+    event = await _provision()
 
     seams.create.assert_not_awaited()
     seams.schedule.assert_not_awaited()
+    assert event == {
+        "operation": "provision",
+        "user_id": USER_ID,
+        "outcome": "stopped_by_user",
+        "todo_id": DESK_ID,
+    }
 
 
 async def test_an_open_desk_without_a_schedule_is_rearmed_on_its_timeline(
@@ -143,7 +177,10 @@ async def test_an_open_desk_without_a_schedule_is_rearmed_on_its_timeline(
     rearmed = seams.stored[DESK_ID]
     assert rearmed.recurrence == INBOX_DESK_RECURRENCE
     assert rearmed.scheduled_at is not None
-    seams.timeline.assert_awaited_once()
+    assert _at_8_in_kolkata(rearmed.scheduled_at)
+    schedule = TodoUpdate(recurrence=INBOX_DESK_RECURRENCE, scheduled_at=rearmed.scheduled_at)
+    seams.repo.update.assert_awaited_once_with(DESK_ID, user_id=USER_ID, update=schedule)
+    seams.timeline.assert_awaited_once_with(DESK_ID, USER_ID, schedule, by=PROVISIONED_BY)
     seams.schedule.assert_awaited_once_with(DESK_ID, rearmed.scheduled_at)
     seams.capture.assert_not_called()
 
@@ -175,10 +212,11 @@ async def test_a_concurrent_create_uses_the_desk_that_won(seams: SimpleNamespace
 async def test_a_user_without_a_plan_gets_no_desk(seams: SimpleNamespace) -> None:
     seams.paid.return_value = False
 
-    await provision_inbox_desk(USER_ID)
+    event = await _provision()
 
     seams.paid.assert_awaited_once_with(USER_ID)
     seams.create.assert_not_awaited()
+    assert event == {"operation": "provision", "user_id": USER_ID, "outcome": "skipped_unpaid"}
 
 
 async def test_a_desk_that_cannot_be_queued_fails_loud(seams: SimpleNamespace) -> None:
@@ -191,10 +229,47 @@ async def test_a_desk_that_cannot_be_queued_fails_loud(seams: SimpleNamespace) -
 async def test_a_user_without_gmail_gets_no_desk(seams: SimpleNamespace) -> None:
     seams.connected.return_value = set()
 
-    await provision_inbox_desk(USER_ID)
+    event = await _provision()
 
     seams.connected.assert_awaited_once_with(USER_ID)
     seams.create.assert_not_awaited()
+    seams.schedule.assert_not_awaited()
+    assert event == {"operation": "provision", "user_id": USER_ID, "outcome": "skipped_no_gmail"}
+
+
+async def test_a_desk_gone_right_after_its_insert_fails_loud(seams: SimpleNamespace) -> None:
+    seams.repo.get.side_effect = None
+    seams.repo.get.return_value = None
+
+    with pytest.raises(LookupError) as caught:
+        await provision_inbox_desk(USER_ID)
+
+    assert str(caught.value) == f"Inbox desk {DESK_ID} vanished right after it was created"
+    seams.schedule.assert_not_awaited()
+
+
+async def test_a_desk_gone_while_it_is_rearmed_fails_loud(seams: SimpleNamespace) -> None:
+    seams.repo.find_latest_by_external_ref.return_value = _desk()
+    seams.repo.update.side_effect = None
+    seams.repo.update.return_value = None
+
+    with pytest.raises(LookupError) as caught:
+        await provision_inbox_desk(USER_ID)
+
+    assert str(caught.value) == f"Inbox desk {DESK_ID} vanished while it was being re-armed"
+    seams.timeline.assert_not_awaited()
+    seams.schedule.assert_not_awaited()
+
+
+async def test_a_rearm_that_did_not_store_the_schedule_fails_loud(seams: SimpleNamespace) -> None:
+    seams.repo.find_latest_by_external_ref.return_value = _desk()
+    seams.repo.update.side_effect = None
+    seams.repo.update.return_value = _desk()
+
+    with pytest.raises(LookupError) as caught:
+        await provision_inbox_desk(USER_ID)
+
+    assert str(caught.value) == f"Inbox desk {DESK_ID} has no next run after it was armed"
     seams.schedule.assert_not_awaited()
 
 

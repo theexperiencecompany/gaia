@@ -49,6 +49,9 @@ class TestSectionBody:
     def test_none_when_missing(self):
         assert section_body(LEGACY, "Nope") is None
 
+    def test_a_todo_without_a_canvas_has_no_section(self):
+        assert section_body(None, "Current State") is None
+
     def test_exact_heading_only(self):
         """'Current' must not match inside '## Current State'."""
         assert section_body(LEGACY, "Current") is None
@@ -307,6 +310,21 @@ class TestBoundedCanvas:
 
         assert bounded_canvas(canvas) == (
             "h" * half + "\n[middle of canvas trimmed: 100 characters]\n" + "t" * half
+        )
+
+    def test_the_rest_that_fits_beside_the_rules_comes_back_whole(self) -> None:
+        head = "## Standing rules\n- r\n\n"
+        rest = "## Key Details\n" + "k" * (CANVAS_PROMPT_MAX_CHARS - len(head) - 15)
+        canvas = f"{rest}\n\n## Standing rules\n- r\n"
+
+        assert bounded_canvas(canvas) == head + rest
+
+    def test_rules_past_the_whole_budget_leave_only_the_rules(self) -> None:
+        rules = "r" * (CANVAS_PROMPT_MAX_CHARS + 1)
+        rest = "## Key Details\nk"
+
+        assert bounded_canvas(f"{rest}\n\n## Standing rules\n{rules}\n") == (
+            f"## Standing rules\n{rules}\n\n\n[middle of canvas trimmed: {len(rest)} characters]\n"
         )
 
 

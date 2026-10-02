@@ -32,6 +32,8 @@ from app.services.todos.errors import ExternalRefTakenError, TrackedTodoWorkflow
 TODOS_ENDPOINT = "app.api.v1.endpoints.todos"
 ANALYTICS_PATCH = "app.api.v1.endpoints.todos.capture_context_event"
 
+pytestmark = pytest.mark.usefixtures("todo_response_reads")
+
 
 @pytest.fixture(autouse=True)
 def _noop_analytics():

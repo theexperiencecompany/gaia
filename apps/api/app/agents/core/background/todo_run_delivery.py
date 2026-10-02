@@ -29,7 +29,6 @@ from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
-    NotificationType,
 )
 from app.models.todo_models import TodoDocument
 from app.services.analytics_service import AnalyticsEvents, capture_event
@@ -108,7 +107,7 @@ async def deliver_todo_run_result(
 
 def _canvas_section(todo: TodoDocument, heading: str, max_chars: int) -> str | None:
     """Return one canvas section's body, bounded, or None when it is missing or empty."""
-    body = section_body(todo.canvas_content, heading) if todo.canvas_content else None
+    body = section_body(todo.canvas_content, heading)
     return body[:max_chars] if body else None
 
 
@@ -119,7 +118,6 @@ async def _send_in_app(todo: TodoDocument, text: str) -> _Resolution:
             NotificationRequest(
                 user_id=todo.user_id,
                 source=NotificationSourceEnum.BACKGROUND_JOB,
-                type=NotificationType.INFO,
                 content=NotificationContent(title=todo.title, body=text),
                 metadata={"todo_id": todo.id},
             )

@@ -657,7 +657,7 @@ class TestARunWaitsForItsAccount:
     def _route_enqueue(self, route_enqueue_via_pool):
         return
 
-    async def _run(self, doc):
+    async def _run(self, doc, tz="UTC"):
         repo = MagicMock()
         repo.get_by_id = AsyncMock(return_value=doc)
         repo.update = AsyncMock()
@@ -666,9 +666,7 @@ class TestARunWaitsForItsAccount:
         with (
             patch(f"{MODULE}.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", via_agent),
-            patch(
-                f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
-            ),
+            patch(f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone=tz))),
             _serving(_pool()),
         ):
             result = await _execute_todo_with_retry("todo-1")
@@ -677,19 +675,24 @@ class TestARunWaitsForItsAccount:
     async def test_a_lapsed_plan_skips_the_run_and_keeps_the_schedule(self, account, activity):
         account.paid.return_value = False
 
-        result, repo, via_agent = await self._run(_doc(recurrence="every_1h"))
+        async with captured_wide_event() as event:
+            result, repo, via_agent = await self._run(
+                _doc(recurrence="0 9 * * *"), tz="Asia/Kolkata"
+            )
 
         assert result == "paused:todo-1"
         via_agent.assert_not_awaited()
         account.paid.assert_awaited_once_with("user-1")
-        assert repo.update_if_scheduled_at.await_count == 1
+        [(_expected, written)] = _schedule_writes(repo)
+        assert written["scheduled_at"].astimezone(KOLKATA).hour == 9
         assert (TodoActivityEvent.RUN_SKIPPED, "skipped: the user's plan is not active") in (
             _recorded(activity)
         )
+        assert event["tracked_todo"] == {"paused": "skipped: the user's plan is not active"}
 
-    @pytest.mark.regression
-    async def test_a_lapsed_plan_moves_a_one_time_run_on_instead_of_dropping_it(self, account):
-        """Regression: a paused one-time run cleared scheduled_at and never ran again."""
+    async def test_a_lapsed_plan_moves_a_one_time_run_on_instead_of_dropping_it(
+        self, account, activity
+    ):
         account.paid.return_value = False
         before = datetime.now(UTC)
 
@@ -699,6 +702,9 @@ class TestARunWaitsForItsAccount:
         rerun_at = repo.update_if_scheduled_at.await_args.kwargs["update"].scheduled_at
         recheck = todo_constants.PAUSED_RUN_RECHECK
         assert before + recheck <= rerun_at <= datetime.now(UTC) + recheck
+        assert (TodoActivityEvent.SCHEDULED, f"next run {rerun_at.isoformat()} (once)") in (
+            _recorded(activity)
+        )
 
     async def test_the_desk_waits_for_gmail(self, account, activity):
         account.connected.return_value = set()
@@ -708,6 +714,7 @@ class TestARunWaitsForItsAccount:
 
         assert result == "paused:todo-1"
         via_agent.assert_not_awaited()
+        account.connected.assert_awaited_once_with("user-1")
         assert (TodoActivityEvent.RUN_SKIPPED, "skipped: Gmail is not connected") in (
             _recorded(activity)
         )
@@ -1288,7 +1295,8 @@ async def _run_task(
     find = AsyncMock(return_value=[desk])
 
     async def sub_todos(user_id: str, *, limit: int, parent_todo_id: str) -> list[TodoDocument]:
-        return list(children)[:limit] if parent_todo_id == doc.id else []
+        owned = user_id == doc.user_id and parent_todo_id == doc.id
+        return list(children)[:limit] if owned else []
 
     with (
         patch.object(todo_repository, "find_by_ids", find),
@@ -1401,6 +1409,50 @@ class TestSubTodosReachTheParentRun:
         task, _ = await _run_task(_doc(), _desk())
 
         assert SUB_TODOS_LABEL not in task
+
+    async def test_sub_todos_are_one_line_apart_and_an_unlabelled_stateless_one_says_so(self):
+        tagged = _thread(1).model_copy(
+            update={"labels": ["gaia-tracked", "waiting-for-reply", "vip"]}
+        )
+        bare = _thread(2).model_copy(update={"labels": ["gaia-tracked"], "canvas_content": None})
+
+        task, _ = await _run_task(_doc(), _desk(), [tagged, bare])
+
+        assert (
+            f"{SUB_TODOS_LABEL}\n"
+            f'- "Thread 1" [waiting-for-reply, vip] (ID: {_ref_id(11)})\n'
+            "  Current State: Waiting on Sarah to confirm Friday\n"
+            f'- "Thread 2" (ID: {_ref_id(12)})\n'
+            "  Current State: (empty)"
+        ) in task
+
+
+class TestARunWithNothingToReadElsewhere:
+    """Context from other todos adds nothing to the prompt when there is nothing to read."""
+
+    @pytest.mark.parametrize(
+        ("doc", "desk"),
+        [
+            pytest.param(_doc(), _desk(), id="top-level-without-sub-todos"),
+            pytest.param(
+                _doc(parent_todo_id="66f838cc8829054e5f10e499"), _desk(), id="parent-gone"
+            ),
+            pytest.param(
+                _doc(parent_todo_id=_DESK_ID),
+                _desk().model_copy(update={"canvas_content": "## Learnings\n- a\n"}),
+                id="parent-without-rules",
+            ),
+            pytest.param(
+                _doc(parent_todo_id=_DESK_ID),
+                _desk().model_copy(update={"canvas_content": None}),
+                id="parent-without-canvas",
+            ),
+        ],
+    )
+    async def test_the_prompt_is_the_todos_own(self, doc: TodoDocument, desk: TodoDocument):
+        task, _ = await _run_task(doc, desk)
+
+        assert task == _build_execution_prompt(doc)
 
 
 # ---------------------------------------------------------------------------

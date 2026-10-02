@@ -73,7 +73,6 @@ class TestFeedbackOnAChatDraft:
         assert ("It applies in two cases only: they reply to a result a todo delivered") in static
         assert "Any other feedback, like notes on a draft you are writing together" in static
 
-    @pytest.mark.regression
     async def test_the_rule_carries_no_email_writing_examples(self) -> None:
         static = await self._static()
 

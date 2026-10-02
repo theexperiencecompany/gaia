@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, patch
 from pydantic import ValidationError
 import pytest
 
+from app.agents.tools import tracked_todo_tools
 from app.agents.tools.tracked_todo_tools import (
     _apply_cron_first_fire,
     _build_clearable_datetime_update,
@@ -23,7 +24,6 @@ from app.agents.tools.tracked_todo_tools import (
     _build_priority_update,
     _build_recurrence_update,
     _build_scheduled_at_update,
-    _creation_field_update,
     _format_create_output,
     _format_first_fire_note,
     _format_tracked_todo_full,
@@ -40,7 +40,8 @@ from app.agents.tools.tracked_todo_tools import (
     search_todo_context,
     update_tracked_todo,
 )
-from app.constants.todos import GAIA_TRACKED_LABEL, LIST_TRACKED_TODOS_LIMIT
+from app.constants import todos as todo_constants
+from app.constants.todos import GAIA_TRACKED_LABEL
 from app.models.todo_models import (
     ExternalRef,
     ExternalRefSource,
@@ -396,7 +397,10 @@ class TestUpdateTrackedTodoValidation:
             result = await update_tracked_todo.coroutine(
                 config=_config(), todo_id="t1", scheduled_at=""
             )
-        assert "cannot have recurrence without scheduled_at" in result
+        assert result == (
+            "Error: cannot have recurrence without scheduled_at. "
+            "Either clear recurrence or provide a scheduled_at value."
+        )
 
     @pytest.mark.parametrize("value", [True, False])
     async def test_toggling_delivery_writes_that_field(self, value):
@@ -693,13 +697,15 @@ class TestResolveCronFirstFire:
 
 class TestCreationFieldUpdate:
     def test_nothing_to_set_is_no_update(self):
-        assert _creation_field_update(None, None, None, None) == (None, None)
+        assert tracked_todo_tools._creation_field_update(None, None, None, None) == (None, None)
 
     def test_an_empty_date_is_unset_not_a_clear(self):
-        assert _creation_field_update(None, None, "", "") == (None, None)
+        assert tracked_todo_tools._creation_field_update(None, None, "", "") == (None, None)
 
     def test_collects_every_field_the_create_sets(self):
-        update, error = _creation_field_update(_FUTURE, "daily", _PAST_ISO, _FUTURE_ISO)
+        update, error = tracked_todo_tools._creation_field_update(
+            _FUTURE, "daily", _PAST_ISO, _FUTURE_ISO
+        )
         assert error is None
         assert update.scheduled_at == _FUTURE
         assert update.recurrence == "daily"
@@ -710,7 +716,7 @@ class TestCreationFieldUpdate:
     @pytest.mark.parametrize("field", ["due_date", "expires_at"])
     def test_an_unparseable_date_is_an_error(self, field):
         dates = {"due_date": None, "expires_at": None, field: "garbage"}
-        update, error = _creation_field_update(_FUTURE, "daily", **dates)
+        update, error = tracked_todo_tools._creation_field_update(_FUTURE, "daily", **dates)
         assert update is None
         assert error == f"Error: invalid {field} format 'garbage'."
 
@@ -1640,8 +1646,9 @@ class TestTrackedTodoReferences:
     @pytest.mark.regression
     async def test_references_alone_are_an_update(self):
         """Regression: an update carrying only references was refused as "No fields to update"."""
+        find = AsyncMock(return_value=self._owned(self.DESK))
         with (
-            patch(self._FIND, AsyncMock(return_value=self._owned(self.DESK))),
+            patch(self._FIND, find),
             patch(self._GET, AsyncMock(return_value=self._owned("t1")[0])),
             patch(self._UPDATE, AsyncMock()) as update,
             patch(self._ADD, AsyncMock()) as add,
@@ -1651,6 +1658,7 @@ class TestTrackedTodoReferences:
             )
 
         assert result == "Updated tracked todo t1: references"
+        find.assert_awaited_once_with("user-1", [self.DESK])
         add.assert_awaited_once_with("t1", user_id="user-1", references=[self.DESK])
         update.assert_not_awaited()
 
@@ -1820,7 +1828,7 @@ class TestListTrackedTodos:
         with patch(_LIST_ACTIVE, new_callable=AsyncMock, return_value=[]) as listed:
             await list_tracked_todos.coroutine(config=_config())
         assert listed.await_args.args == ("user-1",)
-        assert listed.await_args.kwargs["limit"] == LIST_TRACKED_TODOS_LIMIT
+        assert listed.await_args.kwargs["limit"] == todo_constants.LIST_TRACKED_TODOS_LIMIT
 
     async def test_labels_filter_asks_for_todos_carrying_all_of_them(self):
         with patch(_LIST_ACTIVE, new_callable=AsyncMock, return_value=[]) as listed:
@@ -1836,9 +1844,18 @@ class TestListTrackedTodos:
         )
         assert listed.await_args.kwargs["labels"] is None
 
-    async def test_an_empty_filtered_list_says_nothing_matched(self):
+    @pytest.mark.parametrize(
+        "only_filter",
+        [
+            {"labels": ["needs-reply"]},
+            {"gmail_thread_id": "abc"},
+            {"parent_todo_id": "66f838cc8829054e5f10e401"},
+        ],
+        ids=["labels", "thread", "parent"],
+    )
+    async def test_an_empty_filtered_list_says_nothing_matched(self, only_filter):
         with patch(_LIST_ACTIVE, new_callable=AsyncMock, return_value=[]):
-            result = await list_tracked_todos.coroutine(config=_config(), labels=["needs-reply"])
+            result = await list_tracked_todos.coroutine(config=_config(), **only_filter)
         assert result == "No active tracked todos match those filters."
 
     async def test_active_todos_are_listed_with_count(self):

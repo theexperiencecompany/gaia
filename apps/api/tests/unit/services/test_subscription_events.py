@@ -332,6 +332,18 @@ class TestActivationCreatesTheRow:
         mock_subscription_plan_cache_drop.assert_awaited_once_with(FAKE_USER_ID)
         mock_activation_workflow_reactivation.assert_awaited_once_with(FAKE_USER_ID)
 
+    async def test_a_new_subscriber_has_the_inbox_desk_queued(
+        self,
+        mock_webhook_users_collection,
+        mock_webhook_send_email,
+        mock_track_subscription,
+        mock_subscription_plan_cache_drop,
+        mock_queue_inbox_desk,
+    ) -> None:
+        await _apply(SubscriptionEventKind.ACTIVATED)
+
+        mock_queue_inbox_desk.assert_awaited_once_with(FAKE_USER_ID)
+
     async def test_a_zero_amount_subscription_reports_no_price(
         self,
         mock_webhook_subscription_repository,

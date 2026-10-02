@@ -6,8 +6,10 @@ from unittest.mock import AsyncMock, patch
 from arq import Retry
 import pytest
 
+from app.constants.log_tags import LogTag
 from app.constants.todos import INBOX_DESK_PROVISION_RETRY_DELAY
 from app.workers.tasks.inbox_desk_tasks import provision_inbox_desk_task
+from tests.helpers import captured_wide_event
 
 _MOD = "app.workers.tasks.inbox_desk_tasks"
 USER_ID = "507f1f77bcf86cd799439011"
@@ -37,3 +39,32 @@ class TestProvisionInboxDeskTask:
 
         first = INBOX_DESK_PROVISION_RETRY_DELAY / timedelta(milliseconds=1)
         assert defers == [first, first * 2, first * 4]
+
+    async def test_a_bare_context_counts_as_the_first_try(self) -> None:
+        with (
+            patch(f"{_MOD}.provision_inbox_desk", AsyncMock(side_effect=ConnectionError("down"))),
+            pytest.raises(Retry) as caught,
+        ):
+            await provision_inbox_desk_task({}, USER_ID)
+
+        assert caught.value.defer_score == INBOX_DESK_PROVISION_RETRY_DELAY / timedelta(
+            milliseconds=1
+        )
+
+    async def test_each_retry_is_on_the_wide_event_with_its_cause_and_delay(self) -> None:
+        with (
+            patch(f"{_MOD}.provision_inbox_desk", AsyncMock(side_effect=ConnectionError("down"))),
+            pytest.raises(Retry),
+        ):
+            async with captured_wide_event() as event:
+                await provision_inbox_desk_task({"job_try": 2}, USER_ID)
+
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.TODO} Inbox desk provisioning failed; retrying",
+                "user_id": USER_ID,
+                "error": "down",
+                "error_type": "ConnectionError",
+                "defer_seconds": INBOX_DESK_PROVISION_RETRY_DELAY.total_seconds() * 2,
+            }
+        ]

@@ -11,6 +11,7 @@ from app.agents.prompts.capability_prompts import (
     _describe_cron,
     _describe_trigger,
     _describe_workflow,
+    _inbox_desk_line,
     _integrations_line,
     build_capability_block,
 )
@@ -159,12 +160,16 @@ class TestCapabilityBlock:
         assert len(lines) >= 2
         assert all(line.startswith("- ") for line in lines[1:])
 
-    def test_the_inbox_desk_is_described_with_its_real_schedule(self) -> None:
-        block = build_capability_block()
-        assert (
+    def test_the_inbox_desk_is_its_own_section_with_its_real_schedule(self) -> None:
+        assert f"\n\n{_inbox_desk_line()}\n\n" in build_capability_block()
+        assert _inbox_desk_line() == (
             f"INBOX DESK: once Gmail is connected, GAIA keeps one tracked todo, the "
-            f"{INBOX_DESK_TITLE}, that runs {_describe_cron(INBOX_DESK_RECURRENCE)}."
-        ) in block
+            f"{INBOX_DESK_TITLE}, that runs {_describe_cron(INBOX_DESK_RECURRENCE)}. It triages "
+            "new mail, opens a tracked todo for every thread where the user owes a reply or is "
+            "waiting on one, saves reply drafts without sending them, puts personal events from "
+            "mail on the calendar, and ends with one briefing. The user changes when it runs or "
+            "what it does by telling GAIA, like any tracked todo."
+        )
 
     def test_todos_cover_the_tracked_and_recurring_shape(self) -> None:
         block = build_capability_block()
