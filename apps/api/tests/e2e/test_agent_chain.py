@@ -106,9 +106,10 @@ class StreamingScriptedModel(RecordingFakeModel):
         run_manager: AsyncCallbackManagerForLLMRun | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[ChatGenerationChunk]:
-        # Cursor advance lives in the base ``_generate``; calling it keeps one
-        # script position whichever path a tier takes.
-        message = super()._generate(messages, stop=stop, **kwargs).generations[0].message
+        # Through ``self._generate``, as RecordingFakeModel's async path does: one
+        # script position whichever path a tier takes, and a subclass's response
+        # override applies when streamed too.
+        message = self._generate(messages, stop=stop, **kwargs).generations[0].message
         chunk = ChatGenerationChunk(
             message=AIMessageChunk(
                 content=message.content,
