@@ -317,7 +317,7 @@ class BrowserAgentRun:
         # starts takes the run's lock, not the process-wide one.
         isolate_run_events()
         try:
-            llm = await build_agent_llm(self._user_id, self._ledger)
+            llm = build_agent_llm(self._ledger)
             text_model = build_text_model(self._ledger)
         except BrowserUnavailableError as exc:
             # The run's event says the model, not the browser, was unusable.

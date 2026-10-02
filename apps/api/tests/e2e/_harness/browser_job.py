@@ -504,7 +504,7 @@ async def browser_job_world(
             AsyncMock(return_value=scripted_host.fallback_url is not None),
         ),
         # The models and Jev's gateway are never called: the agent and Jev are scripted.
-        patch("app.services.browser.agent_run.build_agent_llm", AsyncMock(return_value=object())),
+        patch("app.services.browser.agent_run.build_agent_llm", MagicMock(return_value=object())),
         patch("app.services.browser.agent_run.build_text_model", lambda ledger: object()),
         patch("app.services.browser.agent_run.open_jev_client", _unused_jev_client),
         patch("app.services.browser.agent_run.JevPage", _Page),

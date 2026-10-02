@@ -327,8 +327,8 @@ BROWSER_GUIDANCE_ANSWER = (
     "when no route is left, never because a step the user already declined is blocked."
 )
 
-# The browser agent's reasoning effort on any lane: it steers and signs off, Jev does the stepping.
-BROWSER_AGENT_REASONING_EFFORT: Literal["low"] = "low"
+#: The efforts the browser agent's model can be run at (BROWSER_AGENT_REASONING_EFFORT).
+BrowserAgentEffort = Literal["none", "minimal", "low", "medium", "high"]
 BROWSER_AGENT_OPENROUTER_KEY_MISSING = "OPENROUTER_API_KEY is not set; the browser agent needs it."
 # When a browser model call gets an identical second request (first answer wins). Agent
 # calls measured p50 3.2 s, p90 4.5 s, with stalls past the 180 s timeout (2026-09-25).

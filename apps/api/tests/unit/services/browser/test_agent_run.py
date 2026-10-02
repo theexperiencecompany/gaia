@@ -600,7 +600,7 @@ class TestConnectionProbe:
 async def test_a_model_that_cannot_be_built_is_named_on_the_runs_event(
     harness: _Harness, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    async def _no_model(user_id: str | None, ledger: RunLedger) -> None:
+    def _no_model(ledger: RunLedger) -> None:
         raise BrowserUnavailableError("OPENROUTER_API_KEY is not set")
 
     monkeypatch.setattr(agent_run_mod, "build_agent_llm", _no_model)
@@ -768,8 +768,8 @@ def built_with(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[tuple[st
     """Stand Browser-Use, the models and the stall watcher in for a run; record what each model was built for."""
     built: list[tuple[str, object]] = []
 
-    async def _llm(user_id: str | None, ledger: RunLedger) -> object:
-        built.append(("agent", (user_id, ledger)))
+    def _llm(ledger: RunLedger) -> object:
+        built.append(("agent", ledger))
         return _LLM
 
     def _text_model(ledger: RunLedger) -> _TextModel:
@@ -841,7 +841,7 @@ class TestExecute:
 
         assert outcome.failure == failure
 
-    async def test_the_agent_runs_on_the_users_models_and_this_runs_browser(
+    async def test_the_agent_runs_on_the_browser_models_and_this_runs_browser(
         self, harness: _Harness, built_with: list[tuple[str, object]]
     ) -> None:
         await harness.run.execute("read my orders")
@@ -849,7 +849,7 @@ class TestExecute:
         agent = _Agent.built[-1]
         assert agent.options["task"].startswith("read my orders")
         assert (agent.options["llm"], agent.options["page_extraction_llm"]) == (_LLM, _TEXT_MODEL)
-        assert built_with == [("agent", ("user-1", harness.ledger)), ("text", harness.ledger)]
+        assert built_with == [("agent", harness.ledger), ("text", harness.ledger)]
         browser = agent.options["browser"]
         assert browser.options["cdp_url"] == "ws://browser.test/cdp"
 

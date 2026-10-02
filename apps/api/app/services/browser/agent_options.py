@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Any, TypedDict
 
+from app.config.settings import settings
 from app.constants.browser import (
     BROWSER_AGENT_FAST_ENGINE_NOTE,
     BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
@@ -108,7 +109,7 @@ def agent_options(
         use_vision=False,
         # Browser-Use's post-run judge bills a whole extra call and nothing reads its verdict.
         use_judge=False,
-        flash_mode=True,
+        flash_mode=settings.BROWSER_AGENT_FLASH_MODE,
         llm_timeout=BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
         max_actions_per_step=config.max_actions_per_step,
         step_timeout=config.step_timeout_seconds,
