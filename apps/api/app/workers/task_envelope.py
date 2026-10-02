@@ -20,7 +20,7 @@ import asyncio
 from collections.abc import Callable, Coroutine, Mapping
 import functools
 import time
-from typing import TypeVar
+from typing import TypedDict, TypeVar
 
 from arq.worker import Function, func as arq_func
 
@@ -36,6 +36,16 @@ T = TypeVar("T")
 #: An ARQ task coroutine. ARQ calls it with (ctx, *args, **kwargs) from the job
 #: payload, so its parameters are the task's own business; its result is typed.
 ArqTask = Callable[..., Coroutine[object, object, T]]
+
+
+class ArqJobContext(TypedDict, total=False):
+    """The ARQ job context, narrowed to the key a retrying task reads.
+
+    job_try is absent only when a caller invokes the task with a bare context.
+    """
+
+    job_try: int
+
 
 #: The worker_task event's reason when the envelope's deadline cut the task off.
 REASON_TASK_TIMEOUT = "task_timeout"

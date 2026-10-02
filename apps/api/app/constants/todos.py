@@ -59,9 +59,17 @@ RUN_SUMMARY_ACTIVITY_CHARS: Final[int] = 200
 # Bounds the Key Details a run's delivery decision reads next to the report.
 DELIVERY_KEY_DETAILS_MAX_CHARS: Final[int] = 1500
 
+# The durable job that finishes a run's delivery when the todo store failed it
+# in-process; keyed by the run and its undone step, so each has one job at a time.
+TODO_RUN_FINISH_TASK: Final[str] = "finish_tracked_todo_run"
+TODO_RUN_FINISH_JOB_PREFIX: Final[str] = "todo-run-finish:"
+# 1+2+4+8+16 minutes across six tries: a Mongo outage that long is an incident.
+TODO_RUN_FINISH_RETRY_DELAY: Final[timedelta] = timedelta(minutes=1)
+TODO_RUN_FINISH_MAX_TRIES: Final[int] = 6
+
 
 class TodoRunFinishFailure(StrEnum):
-    """Why a finished run's wide event failed though the run itself stands."""
+    """What of a finished run's delivery was still undone when its durable job gave up."""
 
     NOT_DELIVERED = "todo_run_result_not_delivered"
     NOT_RECORDED = "todo_run_result_not_recorded"

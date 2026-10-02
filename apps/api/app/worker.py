@@ -8,6 +8,7 @@ import stackprinter
 from app.constants.email import SIGNUP_EMAIL_TASK
 from app.constants.onboarding import INTELLIGENCE_TASK
 from app.constants.payments import SUBSCRIPTION_WORKFLOW_SYNC_TASK
+from app.constants.todos import TODO_RUN_FINISH_MAX_TRIES, TODO_RUN_FINISH_TASK
 
 # Needs the same monkey-patches as the API process (main.py) — without this,
 # custom tools 500 with "Missing user_id in auth_credentials" because the
@@ -46,6 +47,7 @@ from app.workers.tasks.scheduler_recovery_tasks import rescan_pending_scheduled_
 from app.workers.tasks.subscription_workflow_tasks import sync_workflows_for_subscription_state
 from app.workers.tasks.tracked_todo_tasks import (
     execute_tracked_todo,
+    finish_tracked_todo_run,
     resume_tracked_todo,
     safety_net_check_orphaned_todos,
 )
@@ -104,6 +106,12 @@ _deliver_signup_emails = func(
 )
 _sweep_undelivered_signup_emails = arq_task(sweep_undelivered_signup_emails)
 _warm_device_servers = arq_task(warm_device_servers)
+# Named from the constant delivery enqueues by; finish_tracked_todo_run bounds its own tries.
+_finish_tracked_todo_run = func(
+    arq_task(finish_tracked_todo_run),
+    name=TODO_RUN_FINISH_TASK,
+    max_tries=TODO_RUN_FINISH_MAX_TRIES,
+)
 # Named from the constant the webhook enqueues by, so the two cannot drift.
 _sync_workflows_for_subscription_state = func(
     arq_task(sync_workflows_for_subscription_state),
@@ -130,6 +138,7 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _prune_checkpoint_versions,
     _execute_tracked_todo,
     _resume_tracked_todo,
+    _finish_tracked_todo_run,
     _dispatch_todo_subscriptions,
     _backfill_active_users,
     _backfill_user_memories,

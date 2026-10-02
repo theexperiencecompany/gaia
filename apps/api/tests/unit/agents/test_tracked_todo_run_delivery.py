@@ -15,10 +15,13 @@ narration), Redis, the activity store and the outbound transport.
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from arq import Retry
 from pymongo.errors import PyMongoError
 import pytest
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from app.agents.core.background import (
     executor_runner as er,
@@ -42,7 +45,6 @@ from app.constants.agents import AgentTag
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.constants.todos import TodoActivityEvent
-from app.db.mongodb import retry as mongo_retry
 from app.models.chat_models import ConversationSource
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
@@ -50,6 +52,7 @@ from app.models.workflow_models import TriggerType
 from app.services import todo_activity
 from app.services.analytics_service import AnalyticsEvents
 from app.utils.background_tasks import spawn_background_task
+from app.workers.tasks import tracked_todo_tasks
 from tests.helpers import WideEventRecorder, captured_wide_event
 
 pytestmark = pytest.mark.unit
@@ -82,6 +85,7 @@ class _Seams:
     lock: AsyncMock
     spawn: MagicMock
     repo: MagicMock
+    enqueue: AsyncMock
 
 
 @contextmanager
@@ -101,6 +105,7 @@ def _seams(
         lock=AsyncMock(return_value=True),
         spawn=MagicMock(side_effect=spawn_background_task),
         repo=MagicMock(get_by_id=AsyncMock(return_value=todo)),
+        enqueue=AsyncMock(),
     )
     stream_manager = MagicMock()
     stream_manager.is_cancelled = AsyncMock(return_value=False)
@@ -120,6 +125,9 @@ def _seams(
         patch.object(trd, "todo_repository", seams.repo),
         patch.object(todo_activity, "append_activity", seams.activity),
         patch.object(trd, "capture_event", seams.capture),
+        patch.object(trd, "enqueue_worker_job", seams.enqueue),
+        patch.object(trd, "RedisPoolManager", MagicMock(get_pool=AsyncMock())),
+        patch.object(tracked_todo_tasks, "load_user_context", AsyncMock(return_value=USER)),
     ):
         yield seams
     sess._sessions.clear()
@@ -127,7 +135,8 @@ def _seams(
 
 def _no_backoff() -> AbstractContextManager[AsyncMock]:
     """Skip the Mongo retry's backoff sleeps; the attempts themselves still run."""
-    return patch.object(mongo_retry.TRANSIENT_MONGO_RETRY, "sleep", AsyncMock())
+    # By name: the policy's module is newer than the regression lane's base.
+    return patch("app.db.mongodb.retry.TRANSIENT_MONGO_RETRY.sleep", AsyncMock())
 
 
 def _request() -> TodoRunRequest:
@@ -141,12 +150,10 @@ def _request() -> TodoRunRequest:
 
 
 def _activity(seams: _Seams) -> str:
-    """Return the run's finish entry on the todo's timeline."""
+    """Return the run's finish entry on the todo's timeline, after its run id."""
     todo_id, user_id, entry = seams.activity.await_args.args
     assert (todo_id, user_id) == (TODO_ID, USER.user_id)
-    marker = f"[{TodoActivityEvent.RUN_FINISHED.value}] "
-    assert marker in entry
-    return entry.split(marker, 1)[1]
+    return entry.split(f"[{TodoActivityEvent.RUN_FINISHED.value}] run ", 1)[1].split(": ", 1)[1]
 
 
 class TestTheExecutorsResultIsWhatReachesTheUser:
@@ -309,18 +316,17 @@ class TestNothingIsSentWhenNothingShouldBe:
         seams.activity.assert_not_awaited()
 
 
-class TestAFinishedRunIsNeverRunAgainForItsRecord:
-    """The work is done and any message is out, so running the todo again repeats both."""
+class TestAFinishedRunIsNeverRunAgainForItsDelivery:
+    """The work is done, so a store failure is retried as delivery, never as the todo."""
 
-    @pytest.mark.regression
-    async def test_a_record_write_that_fails_once_is_retried_and_the_run_stands(self) -> None:
-        """Regression: an unwritten finish entry failed the run, so the worker ran the todo again."""
+    async def test_a_record_write_that_fails_once_is_retried_into_one_entry(self) -> None:
         written: list[str] = []
         outage = [PyMongoError("primary stepped down")]
 
-        async def store(todo_id: str, user_id: str, entry: str) -> bool:
+        async def store(todo_id: str, user_id: str, entry: str, *, once: str) -> bool:
             if outage:
                 raise outage.pop()
+            assert once in entry
             written.append(entry)
             return True
 
@@ -331,6 +337,7 @@ class TestAFinishedRunIsNeverRunAgainForItsRecord:
         [entry] = written
         assert "result sent on telegram (summary=" in entry
         seams.send.assert_awaited_once()
+        seams.enqueue.assert_not_awaited()
 
     @pytest.mark.regression
     async def test_a_todo_read_that_fails_once_is_retried_and_the_result_still_delivered(
@@ -344,23 +351,54 @@ class TestAFinishedRunIsNeverRunAgainForItsRecord:
         seams.send.assert_awaited_once()
         assert _activity(seams).startswith("result sent on telegram (summary=")
 
-    @pytest.mark.regression
-    async def test_a_record_that_never_writes_fails_loudly_and_the_run_stands(self) -> None:
-        recorder = WideEventRecorder()
-        with (
-            _seams(todo=_todo()) as seams,
-            _no_backoff(),
-            patch("shared.py.wide_events._loguru", recorder),
-        ):
-            seams.activity.side_effect = PyMongoError("primary stepped down")
+    async def test_a_read_that_keeps_failing_is_delivered_by_the_runs_job(self) -> None:
+        with _seams(todo=_todo()) as seams, _no_backoff():
+            seams.repo.get_by_id.side_effect = PyMongoError("primary stepped down")
             await run_todo_on_executor(_request())
+            seams.send.assert_not_awaited()
+            undone = _queued(seams, "todo_run_result_not_delivered")
+
+            seams.repo.get_by_id.side_effect = None
+            await tracked_todo_tasks.finish_tracked_todo_run({"job_try": 2}, undone)
 
         seams.send.assert_awaited_once()
-        _assert_failed_loudly(recorder, todo_constants.TodoRunFinishFailure.NOT_RECORDED)
+        assert _activity(seams).startswith("result sent on telegram (summary=")
+        assert seams.execute.await_count == 1
 
-    async def test_a_todo_read_that_never_succeeds_fails_loudly_and_the_run_stands(
+    async def test_an_entry_that_keeps_failing_is_written_by_its_job_without_a_second_send(
         self,
     ) -> None:
+        with _seams(todo=_todo()) as seams, _no_backoff():
+            seams.activity.side_effect = PyMongoError("primary stepped down")
+            await run_todo_on_executor(_request())
+            undone = _queued(seams, "todo_run_result_not_recorded")
+
+            seams.activity.side_effect = None
+            await tracked_todo_tasks.finish_tracked_todo_run({"job_try": 1}, undone)
+
+        seams.send.assert_awaited_once()
+        assert _activity(seams).startswith("result sent on telegram (summary=")
+
+    async def test_a_job_that_sends_but_cannot_record_hands_the_entry_on(self) -> None:
+        """A replay of the sending job would send again; the entry gets a job of its own."""
+        with _seams(todo=_todo()) as seams, _no_backoff():
+            seams.activity.side_effect = PyMongoError("primary stepped down")
+            await tracked_todo_tasks.finish_tracked_todo_run({"job_try": 1}, _undelivered())
+
+        seams.send.assert_awaited_once()
+        undone = _queued(seams, "todo_run_result_not_recorded")
+        assert "result sent on telegram (summary=" in (undone.finish_entry or "")
+
+    async def test_a_job_for_a_run_already_finished_sends_nothing(self) -> None:
+        marker = f"[{TodoActivityEvent.RUN_FINISHED.value}] run run-1:"
+        todo = _todo().model_copy(update={"activity_content": f"- t {marker} result sent"})
+        with _seams(todo=todo) as seams:
+            await tracked_todo_tasks.finish_tracked_todo_run({"job_try": 1}, _undelivered())
+
+        seams.send.assert_not_awaited()
+        seams.activity.assert_not_awaited()
+
+    async def test_a_job_still_failing_retries_then_gives_up_loudly(self) -> None:
         recorder = WideEventRecorder()
         with (
             _seams(todo=_todo()) as seams,
@@ -368,23 +406,59 @@ class TestAFinishedRunIsNeverRunAgainForItsRecord:
             patch("shared.py.wide_events._loguru", recorder),
         ):
             seams.repo.get_by_id.side_effect = PyMongoError("primary stepped down")
+            with pytest.raises(Retry) as retry:
+                await tracked_todo_tasks.finish_tracked_todo_run({"job_try": 2}, _undelivered())
+            last_try = todo_constants.TODO_RUN_FINISH_MAX_TRIES
+            async with captured_wide_event("finish") as event:
+                await tracked_todo_tasks.finish_tracked_todo_run(
+                    {"job_try": last_try}, _undelivered()
+                )
+
+        assert retry.value.defer_score == 2 * 60 * 1000
+        seams.send.assert_not_awaited()
+        _assert_failed_loudly(event, "todo_run_result_not_delivered")
+
+    async def test_a_handoff_redis_refuses_fails_loudly(self) -> None:
+        recorder = WideEventRecorder()
+        with (
+            _seams(todo=_todo()) as seams,
+            _no_backoff(),
+            patch("shared.py.wide_events._loguru", recorder),
+        ):
+            seams.repo.get_by_id.side_effect = PyMongoError("primary stepped down")
+            seams.enqueue.side_effect = RedisConnectionError("redis down")
             await run_todo_on_executor(_request())
 
-        seams.send.assert_not_awaited()
-        seams.activity.assert_not_awaited()
-        _assert_failed_loudly(recorder, todo_constants.TodoRunFinishFailure.NOT_DELIVERED)
+        _assert_failed_loudly(recorder.event("executor_run"), "todo_run_result_not_delivered")
 
 
-def _assert_failed_loudly(recorder: WideEventRecorder, failure: str) -> None:
-    """Assert the run's event failed for this reason, with one error naming the run and todo."""
-    event = recorder.event("executor_run")
+def _undelivered() -> "trd.FinishedTodoRun":
+    return trd.FinishedTodoRun(
+        run_id="run-1",
+        todo_id=TODO_ID,
+        user_id=USER.user_id,
+        conversation_id="run-conv-1",
+        trigger_type=TriggerType.SCHEDULED_TODO,
+        result_text=EXECUTOR_REPORT,
+    )
+
+
+def _queued(seams: _Seams, undone: str) -> "trd.FinishedTodoRun":
+    """Return the payload of the one finish job queued, checking its key and delay."""
+    _pool, task, payload = seams.enqueue.await_args.args
+    assert task == todo_constants.TODO_RUN_FINISH_TASK
+    assert seams.enqueue.await_args.kwargs == {
+        "_job_id": f"{todo_constants.TODO_RUN_FINISH_JOB_PREFIX}{payload.run_id}:{undone}",
+        "_defer_by": todo_constants.TODO_RUN_FINISH_RETRY_DELAY,
+    }
+    assert (payload.todo_id, payload.user_id) == (TODO_ID, USER.user_id)
+    return payload
+
+
+def _assert_failed_loudly(event: dict[str, Any], failure: str) -> None:
+    """Assert the event failed for this reason, with one error naming the run and todo."""
     assert (event["outcome"], event["reason"]) == ("failed", failure)
     [error] = event["errors"]
     assert error["msg"].startswith(LogTag.AGENT)
-    assert (error["failure"], error["todo_id"], error["stream_id"], error["task_id"]) == (
-        failure,
-        TODO_ID,
-        event["stream_id"],
-        event["task_id"],
-    )
-    assert (error["error"], error["error_type"]) == ("primary stepped down", "PyMongoError")
+    assert (error["failure"], error["todo_id"]) == (failure, TODO_ID)
+    assert error["run_id"] and error["cause"]
