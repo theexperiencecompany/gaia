@@ -3,6 +3,7 @@
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { CheckmarkCircle02Icon } from "@icons";
 import { useRouter } from "next/navigation";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import TodoItem from "@/features/todo/components/TodoItem";
 import { useTodoStore } from "@/stores/todoStore";
 import type {
@@ -174,6 +175,7 @@ export default function TodoSection({
 }: TodoSectionProps) {
   const router = useRouter();
   const updateTodo = useTodoStore((s) => s.updateTodo);
+  const user = useCurrentUser();
 
   // Statistics View
   if (action === "stats" && stats) {
@@ -216,6 +218,7 @@ export default function TodoSection({
             isSelected={false}
             onUpdate={(todoId, updates) => updateTodo(todoId, updates)}
             onClick={(t) => router.push(`/todos?todoId=${t.id}`)}
+            timezone={user?.timezone}
             className="rounded-2xl bg-zinc-800 hover:bg-zinc-800/80"
           />
         ))}

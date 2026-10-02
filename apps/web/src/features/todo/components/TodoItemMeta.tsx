@@ -13,7 +13,7 @@ import {
 } from "@icons";
 import { isTrackedTodo } from "@shared/todos";
 import { formatDistanceToNow } from "date-fns";
-import { memo, useMemo } from "react";
+import { memo } from "react";
 import { Priority, type Project, type Todo } from "@/types/features/todoTypes";
 import { formatDate } from "@/utils/date/dateUtils";
 
@@ -73,15 +73,14 @@ export const TodoItemMeta = memo(function TodoItemMeta({
   isToday,
   isOverdue,
 }: TodoItemMetaProps) {
-  const expiresLabel = useMemo(
-    () =>
-      todo.expires_at
-        ? formatDistanceToNow(new Date(todo.expires_at), {
-            addSuffix: true,
-          })
-        : null,
-    [todo.expires_at],
-  );
+  // Computed at render, not memoized: formatDistanceToNow reads the current
+  // time, so caching it on expires_at alone freezes the label while the page
+  // stays open.
+  const expiresLabel = todo.expires_at
+    ? formatDistanceToNow(new Date(todo.expires_at), {
+        addSuffix: true,
+      })
+    : null;
 
   if (!todoHasMeta(todo)) return null;
 

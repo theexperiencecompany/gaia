@@ -79,4 +79,61 @@ describe("todo store loading", () => {
     expect(api.getAllLabels).toHaveBeenCalledTimes(1);
     expect(api.getTodoCounts).toHaveBeenCalledTimes(1);
   });
+
+  it("a write refreshes totals with a fresh read, not the stale in-flight one", async () => {
+    const api = makeApi();
+    const staleGate = deferred<{
+      inbox: number;
+      today: number;
+      upcoming: number;
+      completed: number;
+      overdue: number;
+    }>();
+    const freshCounts = {
+      inbox: 4,
+      today: 0,
+      upcoming: 0,
+      completed: 1,
+      overdue: 0,
+    };
+    api.getTodoCounts = vi
+      .fn()
+      .mockImplementationOnce(() => staleGate.promise)
+      .mockImplementation(async () => freshCounts);
+    const todo = makeTodo("t1");
+    api.updateTodo = vi.fn(async () => todo);
+    const useStore = createTodoStore(api);
+    useStore.getState().setTodos([todo]);
+
+    const loading = useStore.getState().loadCounts();
+    await useStore.getState().updateTodo("t1", { completed: true });
+    staleGate.resolve({
+      inbox: 5,
+      today: 0,
+      upcoming: 0,
+      completed: 0,
+      overdue: 0,
+    });
+    await loading;
+
+    expect(api.getTodoCounts).toHaveBeenCalledTimes(2);
+    expect(useStore.getState().counts).toEqual(freshCounts);
+  });
+
+  it("a failed write rolls back without masquerading as a failed load", async () => {
+    const api = makeApi();
+    const todo = makeTodo("t1");
+    api.updateTodo = vi.fn(async () => {
+      throw new Error("boom");
+    });
+    const useStore = createTodoStore(api);
+    useStore.getState().setTodos([todo]);
+
+    await expect(
+      useStore.getState().updateTodo("t1", { completed: true }),
+    ).rejects.toThrow("boom");
+
+    expect(useStore.getState().todos).toEqual([todo]);
+    expect(useStore.getState().error).toBeNull();
+  });
 });

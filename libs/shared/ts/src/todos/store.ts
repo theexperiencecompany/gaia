@@ -66,6 +66,7 @@ interface TodoActions {
   deleteProject: (projectId: string) => Promise<void>;
   loadLabels: () => Promise<void>;
   loadCounts: () => Promise<void>;
+  refreshCounts: () => Promise<void>;
   refreshAll: (filters?: TodoFilters) => Promise<void>;
   prefetchWorkflowStatus: (todoId: string) => Promise<void>;
   setWorkflowStatusEntry: (
@@ -122,6 +123,9 @@ export function createTodoStore(
         // Monotonic id so a stale list response (slow first load, fast filter
         // change) never overwrites the newer one — last writer wins.
         let loadTodosSeq = 0;
+        // Same guard for the totals: a counts read that started before a
+        // write must not overwrite the post-write refresh.
+        let loadCountsSeq = 0;
         // One in-flight promise per key so components mounting together
         // (list page + sidebar) share a single network request.
         const inFlight = new Map<string, Promise<unknown>>();
@@ -250,16 +254,17 @@ export function createTodoStore(
               .then((newTodo) => {
                 get().replaceTodo(tempId, newTodo);
                 get()
-                  .loadCounts()
+                  .refreshCounts()
                   .catch(() => undefined);
                 notify?.info?.("Generating workflow...");
                 onTodoCreated?.(newTodo.id);
               })
               .catch((err) => {
                 get().removeTodo(tempId);
+                // Write failures toast but never touch the shared error:
+                // that belongs to list loads, whose screen this is not.
                 const error =
                   err instanceof Error ? err.message : "Failed to create task";
-                set({ error });
                 notify?.error?.(error);
               });
 
@@ -277,14 +282,13 @@ export function createTodoStore(
               const updated = await api.updateTodo(todoId, updates);
               get().updateTodoOptimistic(todoId, updated);
               get()
-                .loadCounts()
+                .refreshCounts()
                 .catch(() => undefined);
               return updated;
             } catch (err) {
               get().updateTodoOptimistic(todoId, current);
-              const error =
-                err instanceof Error ? err.message : "Failed to update todo";
-              set({ error });
+              // Rolls back and rethrows; the shared error stays a list-load
+              // signal so a failed edit never renders as a failed load.
               throw err;
             }
           },
@@ -299,13 +303,12 @@ export function createTodoStore(
             try {
               await api.deleteTodo(todoId);
               get()
-                .loadCounts()
+                .refreshCounts()
                 .catch(() => undefined);
             } catch (err) {
               get().addTodo(current);
-              const error =
-                err instanceof Error ? err.message : "Failed to delete todo";
-              set({ error });
+              // Rolls back and rethrows; the shared error stays a list-load
+              // signal so a failed delete never renders as a failed load.
               throw err;
             }
           },
@@ -366,9 +369,25 @@ export function createTodoStore(
           },
 
           loadCounts: async () => {
+            const seq = loadCountsSeq;
             try {
               const counts = await dedupe("counts", () => api.getTodoCounts());
+              if (seq !== loadCountsSeq) return;
               set({ counts }, false, "loadCounts");
+            } catch {
+              // non-fatal
+            }
+          },
+
+          refreshCounts: async () => {
+            // Post-write refresh: bypass dedupe so it never joins a read
+            // that started before the write, and retire any such read still
+            // in flight by moving the generation forward.
+            const seq = ++loadCountsSeq;
+            try {
+              const counts = await api.getTodoCounts();
+              if (seq !== loadCountsSeq) return;
+              set({ counts }, false, "refreshCounts");
             } catch {
               // non-fatal
             }
@@ -429,7 +448,7 @@ export function createTodoStore(
               "bulkComplete",
             );
             get()
-              .loadCounts()
+              .refreshCounts()
               .catch(() => undefined);
           },
 
@@ -444,7 +463,7 @@ export function createTodoStore(
               "bulkDelete",
             );
             get()
-              .loadCounts()
+              .refreshCounts()
               .catch(() => undefined);
           },
 
@@ -475,7 +494,7 @@ export function createTodoStore(
               "bulkMoveToProject",
             );
             get()
-              .loadCounts()
+              .refreshCounts()
               .catch(() => undefined);
           },
         };
