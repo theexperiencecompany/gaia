@@ -37,6 +37,9 @@ from app.db.chroma.noop_embedding import NoOpEmbeddingFunction
 from app.utils.concurrency import loop_bound_semaphore
 from shared.py.wide_events import VectorContext, log
 
+# Pickled bytes round-trip losslessly through latin-1, so a value is stored as a str document.
+_DOCUMENT_ENCODING = "latin1"
+
 
 class ChromaBatchWriteError(RuntimeError):
     """At least one document in a batch failed to write to ChromaDB."""
@@ -284,7 +287,7 @@ class ChromaStore(BaseStore):
             # Deserialize value from document (stored as pickle base64).
             # Trust boundary: this document was written by this store (_put below); ChromaDB
             # data is service-private — never untrusted input — so pickle.loads is safe here.
-            value = pickle.loads(document.encode("latin1")) if document else {}  # nosec B301 - Internal trusted data only
+            value = pickle.loads(document.encode(_DOCUMENT_ENCODING)) if document else {}  # nosec B301 - Internal trusted data only
 
             return Item(
                 value=value,
@@ -348,7 +351,7 @@ class ChromaStore(BaseStore):
             try:
                 # Trust boundary: documents come from our own _put writes (service-private
                 # ChromaDB collection), never untrusted input.
-                value = pickle.loads(document.encode("latin1"))  # nosec B301 - Internal trusted data only
+                value = pickle.loads(document.encode(_DOCUMENT_ENCODING))  # nosec B301 - Internal trusted data only
             except Exception as e:
                 log.debug(
                     f"{LogTag.CHROMA} Failed to deserialize document at index",
@@ -427,15 +430,15 @@ class ChromaStore(BaseStore):
             if not candidate_ids:
                 results[i] = []
             elif op.query and self.embeddings:
-                results[i] = await self._vector_search(op, self.embeddings, collection)
+                results[i] = await self._vector_search(op, op.query, self.embeddings, collection)
             else:
                 results[i] = await self._filtered_page(op, candidate_ids, collection)
 
     async def _vector_search(
-        self, op: SearchOp, embeddings: Embeddings, collection: AsyncCollection
+        self, op: SearchOp, query: str, embeddings: Embeddings, collection: AsyncCollection
     ) -> list[SearchItem]:
         """Run native ChromaDB similarity search over op's namespace, paginated."""
-        query_embedding = await embeddings.aembed_query(op.query or "")
+        query_embedding = await embeddings.aembed_query(query)
 
         try:
             # Build where filter for namespace prefix
@@ -479,7 +482,7 @@ class ChromaStore(BaseStore):
                     value = (
                         # Trust boundary: documents come from our own _put writes
                         # (service-private ChromaDB collection), never untrusted input.
-                        pickle.loads(document.encode("latin1"))  # nosec B301 - Internal trusted data only
+                        pickle.loads(document.encode(_DOCUMENT_ENCODING))  # nosec B301 - Internal trusted data only
                         if document
                         else {}
                     )
@@ -628,7 +631,7 @@ class ChromaStore(BaseStore):
             metadata["trigger_hash"] = hints["trigger_hash"]
 
         # Serialize value to document
-        document = pickle.dumps(op.value).decode("latin1")
+        document = pickle.dumps(op.value).decode(_DOCUMENT_ENCODING)
 
         # Extract embedding from indexed fields
         supplied = hints.get("embedding")

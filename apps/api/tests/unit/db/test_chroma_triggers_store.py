@@ -122,8 +122,18 @@ class TestGetCurrentTriggersWithHashes:
         ):
             result = _get_current_triggers_with_hashes()
 
-        assert "new_email" in result
-        assert result["new_email"]["integration_id"] == "gmail"
+        assert result == {
+            "new_email": {
+                "hash": _compute_trigger_hash("gmail", trigger),
+                "slug": "new_email",
+                "name": "New Email",
+                "description": "Triggered on email",
+                "integration_id": "gmail",
+                "integration_name": "Gmail",
+                "category": "email",
+                "rich_description": _build_trigger_description(integ, trigger),
+            }
+        }
 
     def test_skips_integration_without_triggers(self):
         integ = SimpleNamespace(
@@ -168,8 +178,17 @@ class TestGetExistingTriggersFromChroma:
             "metadatas": [{"trigger_hash": "h1", "namespace": TRIGGERS_NAMESPACE}],
         }
         result = await _get_existing_triggers_from_chroma(collection)
-        assert "new_email" in result
-        assert result["new_email"]["hash"] == "h1"
+        assert result == {"new_email": {"hash": "h1", "namespace": TRIGGERS_NAMESPACE}}
+        collection.get.assert_awaited_once_with(include=["metadatas"])
+
+    async def test_a_row_without_a_stored_hash_reads_as_changed(self):
+        collection = AsyncMock()
+        collection.get.return_value = {
+            "ids": [f"{TRIGGERS_NAMESPACE}::new_email"],
+            "metadatas": [{"namespace": TRIGGERS_NAMESPACE}],
+        }
+        result = await _get_existing_triggers_from_chroma(collection)
+        assert result == {"new_email": {"hash": "", "namespace": TRIGGERS_NAMESPACE}}
 
     async def test_skips_wrong_namespace(self):
         collection = AsyncMock()
@@ -257,7 +276,31 @@ class TestBuildPutOperations:
         assert len(ops) == 1
         assert ops[0].namespace == (TRIGGERS_NAMESPACE,)
         assert ops[0].key == "new_email"
-        assert ops[0].value["trigger_hash"] == "h1"
+        assert ops[0].index == ["rich_description"]
+        assert ops[0].value == {
+            "slug": "new_email",
+            "name": "New Email",
+            "description": "desc",
+            "integration_id": "gmail",
+            "integration_name": "Gmail",
+            "category": "email",
+            "rich_description": "rich",
+            "trigger_hash": "h1",
+        }
+
+    def test_a_trigger_without_a_category_persists_an_empty_one(self):
+        data = {
+            "slug": "s",
+            "name": "N",
+            "description": None,
+            "integration_id": "i",
+            "integration_name": "I",
+            "rich_description": "R",
+            "hash": "h",
+        }
+        (op,) = _build_put_operations([("s", data)], [])
+        assert op.value["category"] == ""
+        assert op.value["description"] is None
 
     def test_delete_operation(self):
         ops = _build_put_operations([], ["old_slug"])

@@ -10,6 +10,7 @@ from langgraph.store.base import PutOp
 import pytest
 
 from app.constants.chroma import (
+    CHROMA_TOOLS_STORE_COLLECTION,
     TOOLS_INDEX_CACHE_TTL_SECONDS,
     TOOLS_SEED_LOCK_ACQUIRE_TIMEOUT_SECONDS,
     TOOLS_SEED_LOCK_KEY_PREFIX,
@@ -888,9 +889,12 @@ class TestDeleteToolsByNamespace:
             ) as mock_del,
         ):
             mock_providers.aget = AsyncMock(return_value=mock_store)
-            count = await delete_tools_by_namespace("ns")
+            async with captured_wide_event() as event:
+                count = await delete_tools_by_namespace("ns")
 
         assert count == 2
+        assert event["vector"]["operation"] == "delete"
+        assert event["vector"]["collection"] == CHROMA_TOOLS_STORE_COLLECTION
         # Only this namespace's ids are fetched — the filter is what scopes the delete.
         mock_collection.get.assert_awaited_once_with(where={"namespace": {"$eq": "ns"}}, include=[])
         mock_collection.delete.assert_awaited_once_with(ids=["ns::a", "ns::b"])
