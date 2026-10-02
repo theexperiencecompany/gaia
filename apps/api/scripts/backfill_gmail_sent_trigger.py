@@ -147,6 +147,9 @@ async def main() -> None:
 
     if not args.execute:
         print("\nRe-run with --execute to create these triggers.")
+    if result.failed_user_ids:
+        # A job running this must see the backfill as incomplete, not read a success.
+        sys.exit(1)
 
 
 if __name__ == "__main__":
