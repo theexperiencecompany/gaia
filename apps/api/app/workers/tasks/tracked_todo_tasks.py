@@ -18,6 +18,8 @@ from types import MappingProxyType
 from typing import NamedTuple, cast
 from uuid import uuid4
 
+from arq.connections import ArqRedis
+
 from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import TodoRunRequest, run_todo_on_executor
 from app.agents.prompts.todo_prompts import (
@@ -89,6 +91,8 @@ from shared.py.wide_events import log
 MAX_RETRY_ATTEMPTS = 3
 RETRY_BACKOFF = [timedelta(hours=1), timedelta(hours=4)]
 LOCK_TTL_SECONDS = 1800
+# Held by whichever run of a todo is going: a scheduled or triggered run, or an approval resume.
+RUN_LOCK_KEY = "gaia_todo_exec:{todo_id}"
 
 # An approval resume that lands mid-execution waits for the lock instead of vanishing.
 # Bounded, because a todo stuck under the 30-minute lock TTL must eventually give
@@ -155,9 +159,9 @@ async def execute_tracked_todo(
             return f"deferred:{todo_id} (trigger window open until {later_window})"
 
     pool = await RedisPoolManager.get_pool()
-    lock_key = f"gaia_todo_exec:{todo_id}"
-
-    acquired = await pool.set(lock_key, "1", nx=True, ex=LOCK_TTL_SECONDS)
+    acquired = await pool.set(
+        RUN_LOCK_KEY.format(todo_id=todo_id), "1", nx=True, ex=LOCK_TTL_SECONDS
+    )
     if not acquired:
         return await _handle_held_lock(todo_id, origin, coalesced or [])
 
@@ -173,9 +177,14 @@ async def execute_tracked_todo(
         first, *rest = events
         return await _execute_todo_with_retry(todo_id, first, coalesced=rest)
     finally:
-        await pool.delete(lock_key)
-        # After the release, so a drain scheduled for now cannot find this run's lock.
-        await reschedule_todo_trigger_drain(todo_id)
+        await _release_run_lock(pool, todo_id)
+
+
+async def _release_run_lock(pool: ArqRedis, todo_id: str) -> None:
+    """Release a todo's run lock, whoever held it, then drain the events held meanwhile."""
+    await pool.delete(RUN_LOCK_KEY.format(todo_id=todo_id))
+    # After the release, so a drain scheduled for now cannot find this run's lock.
+    await reschedule_todo_trigger_drain(todo_id)
 
 
 async def _take_trigger_events(
@@ -728,9 +737,9 @@ async def resume_tracked_todo(
     """
     log.set(todo_id=todo_id, approval_id=approval_id)
     pool = await RedisPoolManager.get_pool()
-    lock_key = f"gaia_todo_exec:{todo_id}"
-
-    acquired = await pool.set(lock_key, "1", nx=True, ex=LOCK_TTL_SECONDS)
+    acquired = await pool.set(
+        RUN_LOCK_KEY.format(todo_id=todo_id), "1", nx=True, ex=LOCK_TTL_SECONDS
+    )
     if not acquired:
         if attempt >= len(LOCK_DEFER_BACKOFF):
             log.warning("tracked_todo.resume_lock_held", todo_id=todo_id)
@@ -748,6 +757,16 @@ async def resume_tracked_todo(
         )
         return f"resume_deferred:{todo_id} (lock held)"
 
+    try:
+        return await _resume_holding_lock(todo_id, conversation_id, approval_id, receipt)
+    finally:
+        await _release_run_lock(pool, todo_id)
+
+
+async def _resume_holding_lock(
+    todo_id: str, conversation_id: str, approval_id: str, receipt: str
+) -> str:
+    """Continue the parked run under the lock its caller holds; a failure is recorded and raised."""
     doc = await todo_repository.get_by_id(todo_id)
     if not doc:
         return f"not_found:{todo_id}"
@@ -792,8 +811,6 @@ async def resume_tracked_todo(
             f"approval resume failed ({type(exc).__name__}: {str(exc)[:160]})",
         )
         raise
-    finally:
-        await pool.delete(lock_key)
 
 
 async def _mark_todo_failed(todo_id: str, user_id: str, doc: TodoDocument) -> None:
@@ -912,9 +929,7 @@ async def safety_net_check_orphaned_todos(_ctx: Mapping[str, object]) -> str:
 
     for doc in candidates:
         todo_id = doc.id
-        lock_key = f"gaia_todo_exec:{todo_id}"
-
-        lock_exists = await pool.exists(lock_key)
+        lock_exists = await pool.exists(RUN_LOCK_KEY.format(todo_id=todo_id))
         if lock_exists:
             skipped += 1
             continue

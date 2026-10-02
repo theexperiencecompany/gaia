@@ -6,7 +6,6 @@ trigger ids alone finds nothing there — and that is the entire reply-watching
 flow, failing silently.
 """
 
-import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -32,6 +31,7 @@ from app.models.trigger_subscription_models import (
 from app.services.triggers.subscription_dispatch import (
     dispatch_to_subscribed_todos,
 )
+from app.services.triggers.todo_trigger_window import TODO_TRIGGER_WINDOW_CLAIMED
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
@@ -363,13 +363,12 @@ class TestGating:
                 ]
             )
         ]
-        before = int(time.time())
-
         await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
 
         call = deps.redis.redis.set.await_args
         assert call.args[0] == f"todo_trigger_window:{TODO_ID}"
-        assert before + 900 <= int(call.args[1]) <= int(time.time()) + 900
+        # A claim, not an end: only the run, once it starts, says when its window ends.
+        assert call.args[1] == TODO_TRIGGER_WINDOW_CLAIMED
         assert call.kwargs["nx"] is True
         assert call.kwargs["ex"] == 900
         deps.hold.assert_not_awaited()

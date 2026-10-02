@@ -2243,6 +2243,59 @@ class TestTriggerEventsCoalesce:
         assert '"m-2"' in second_prompt
         assert f'"m-{burst}"' in second_prompt
 
+    async def _fire_due(self, queue: ArqRedis) -> list[str]:
+        """Fire every job due within the second, as a worker would while the lock is still held."""
+        due_ms = (datetime.now(UTC) + timedelta(seconds=1)).timestamp() * 1000
+        return [await _fire(queue, job) for job in await _queued(queue) if job.score <= due_ms]
+
+    @pytest.mark.regression
+    async def test_a_reply_held_while_an_approval_resume_runs_is_delivered_after_it(
+        self, queue, fake_redis
+    ):
+        """Regression: a resume released the lock without scheduling a drain, stranding the reply."""
+        row = _TodoRow(_watching(cooldown_seconds=0))
+        during_resume: list[str] = []
+
+        async def reply_lands_during_the_resume(_request: TodoRunRequest) -> None:
+            if during_resume:
+                return
+            await self._reply(1)
+            for _ in range(3):
+                during_resume.extend(await self._fire_due(queue))
+
+        with self._live(row, AsyncMock(side_effect=reply_lands_during_the_resume)) as run:
+            await resume_tracked_todo({}, "todo-1", "conv-parked", "ap_1", "Send briefing")
+            after_resume = await self._fire_due(queue)
+
+        assert during_resume == ["held:todo-1 (lock held)", "skipped:todo-1 (lock held)"]
+        assert after_resume == ["success:todo-1"]
+        assert '"m-1"' in self._prompts(run)[1]
+
+    @pytest.mark.regression
+    async def test_a_first_reply_finding_a_scheduled_run_runs_right_after_it(
+        self, queue, fake_redis
+    ):
+        """Regression: the reply's unstarted window held it the full cooldown behind a run that was not its own."""
+        row = _TodoRow(_watching().model_copy(update={"scheduled_at": datetime.now(UTC)}))
+        during_run: list[str] = []
+
+        async def reply_lands_during_the_scheduled_run(_request: TodoRunRequest) -> None:
+            if during_run:
+                return
+            await self._reply(1)
+            during_run.extend(await self._fire_due(queue))
+
+        with self._live(row, AsyncMock(side_effect=reply_lands_during_the_scheduled_run)) as run:
+            assert await execute_tracked_todo({}, "todo-1") == "success:todo-1"
+            after_run = await self._fire_due(queue)
+            window_end = await fake_redis.get("todo_trigger_window:todo-1")
+
+        assert during_run[0] == "held:todo-1 (lock held)"
+        assert after_run == ["success:todo-1"]
+        assert '"m-1"' in self._prompts(run)[1]
+        # The window the reply's own run opened, not one claimed before any run began.
+        assert int(window_end) >= occurrence_stamp(datetime.now(UTC)) + 890
+
 
 # ---------------------------------------------------------------------------
 # _execute_on_executor
@@ -2716,6 +2769,15 @@ class TestResumeTrackedTodo:
 
         assert run.result == "completed:todo-1"
         run.agent.assert_not_called()
+
+    @pytest.mark.regression
+    async def test_a_resume_with_nothing_to_resume_still_releases_the_lock(self) -> None:
+        """It returned holding the lock, so every run of the todo was skipped for 30 minutes."""
+        run = await self._resume(
+            "todo-1", "conv-parked", "ap_1", "Send briefing", doc=_doc(completed=True)
+        )
+
+        run.pool.delete.assert_awaited_once_with("gaia_todo_exec:todo-1")
 
     async def test_a_held_lock_defers_the_resume_one_backoff_step_later(self) -> None:
         before = datetime.now(UTC)
