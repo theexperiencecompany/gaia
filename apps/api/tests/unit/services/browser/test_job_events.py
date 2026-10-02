@@ -51,6 +51,8 @@ async def test_the_whole_feed_reads_back_as_its_cards_alone() -> None:
     await job_events_mod.publish_job_event("job-1", JOB_TERMINAL_FRAME)
 
     assert await job_events_mod.read_cards("job-1") == [_frame(1), _frame(2)]
+    # A job that ended without running has no result card to add.
+    assert await job_events_mod.read_finished_cards("job-1", None) == [_frame(1), _frame(2)]
 
 
 async def test_a_poisoned_frame_is_dropped_and_logged_not_raised(

@@ -40,7 +40,7 @@ from app.services.browser.agent_guidance import (
 )
 from app.services.browser.handoff import reply_address, resolve_handoff
 from app.services.browser.jev.secrets import RunSecrets
-from app.services.browser.job_events import read_cards, read_job_events
+from app.services.browser.job_events import read_finished_cards, read_job_events
 from app.services.browser.job_relay import hold_collected_result, live_run, relay_job_events
 from app.services.browser.job_runner import agent_result_message
 from app.services.browser.jobs import (
@@ -402,7 +402,7 @@ async def _collect(
     if await claim_result_delivery(job_id, ResultSpeaker.JOINER) is not ResultSpeaker.JOINER:
         return _JoinOutcome(_ALREADY_TOLD.format(outcome=state.agent_message))
     if stream_id and state.relay_stream_id != stream_id:
-        for card in await read_cards(job_id):
+        for card in await read_finished_cards(job_id, state.result):
             await publish_to_stream(stream_id, card)
     run = live_run(stream_id)
     if run is None:
