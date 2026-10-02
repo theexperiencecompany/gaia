@@ -76,7 +76,6 @@ from app.services.browser.run_contract import (
 from app.services.browser.session import BrowserHostSession
 from app.services.browser.stalled_loads import StalledLoads
 from app.services.browser.tools import build_browser_tools
-from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
 # Attributes worth naming an otherwise-unlabelled control by, in the order a
@@ -480,26 +479,29 @@ class BrowserAgentRun:
         self._wait = partial(self._hooks.guidance, request)
         return BROWSER_ANSWER_AFTER_STEP
 
-    async def _screenshot(self, page: JevPage) -> str | None:
-        """Photograph the page for a card, or None when it does not answer: a card never fails its step."""
+    async def _photo(self) -> str | None:
+        """Photograph the page as it is now, or None when photos are off or it does not answer: a card never fails its step."""
+        if self._page is None or not self._config.stream_screenshots:
+            return None
         try:
-            return await page.screenshot()
+            return await self._page.screenshot()
         except (BrowserAutomationError, RuntimeError) as exc:
             log.warning(f"{LogTag.BROWSER} Step photo not taken", error_type=type(exc).__name__)
             return None
 
-    async def _emit_frame(
-        self, *, caption: str, actions: list[BrowserAction], url: str | None, title: str | None
+    def _emit_frame(
+        self,
+        *,
+        caption: str,
+        actions: list[BrowserAction],
+        url: str | None,
+        title: str | None,
+        photo: str | None,
     ) -> None:
-        """Emit one card under the next number the user sees, with a photo of the page taken off the step's path."""
+        """Emit one card under the next number the user sees; photo is of the moment url and title were read."""
         self._frames += 1
         if url:
             self.last_url = url
-        photo = (
-            spawn_background_task(self._screenshot(self._page))
-            if self._page is not None and self._config.stream_screenshots
-            else None
-        )
         self._hooks.step(
             StepFrame(
                 index=self._frames,
@@ -526,8 +528,13 @@ class BrowserAgentRun:
         )
 
     async def _emit_burst(self, actions: list[BrowserAction], url: str, title: str) -> None:
-        await self._emit_frame(
-            caption=burst_caption(actions), actions=actions, url=url, title=title
+        # Jev's burst has ended on this page and nothing acts on it until it returns.
+        self._emit_frame(
+            caption=burst_caption(actions),
+            actions=actions,
+            url=url,
+            title=title,
+            photo=await self._photo(),
         )
 
     async def _on_step(
@@ -547,11 +554,13 @@ class BrowserAgentRun:
         frame: int | None = None  # pragma: no mutate
         # A step that only hands Jev a goal is shown by the burst's own card.
         if own:
-            await self._emit_frame(
+            self._emit_frame(
                 caption=step_caption(own, agent_output.next_goal),
                 actions=own,
                 url=browser_state_summary.url,
                 title=browser_state_summary.title,
+                # Taken with the url and title, before the step's actions run, at no cost to the step.
+                photo=browser_state_summary.screenshot if self._config.stream_screenshots else None,
             )
             frame = self._frames
         self._step = _Step(
@@ -582,7 +591,13 @@ class BrowserAgentRun:
         step, self._step = self._step, None
         if step is None:
             if any(result.error for result in results):
-                await self._emit_frame(caption=STEP_ERROR_CAPTION, actions=[], url=None, title=None)
+                self._emit_frame(
+                    caption=STEP_ERROR_CAPTION,
+                    actions=[],
+                    url=None,
+                    title=None,
+                    photo=await self._photo(),
+                )
             return
         # One result per action run, in order; a step cut short has fewer. Jev's burst has its own card.
         own = list(compress(results, (name != JEV_ACTION for name in step.actions)))

@@ -1,4 +1,11 @@
-import type { BrowserSessionStatus } from "@/types/features/browserTaskTypes";
+import type {
+  BrowserHandoffSnapshot,
+  BrowserResultSnapshot,
+  BrowserSessionSnapshot,
+  BrowserSessionStatus,
+  BrowserStepSnapshot,
+  BrowserTaskSnapshot,
+} from "@/types/features/browserTaskTypes";
 import {
   CONNECT_RUNNERS,
   type ConnectRunner,
@@ -25,6 +32,49 @@ export const BROWSER_STATUS_META: Record<
   failed: { label: "Couldn't finish", color: "danger" },
   cancelled: { label: "Stopped", color: "default" },
 };
+
+/** A browser card's state, folded from every snapshot its run sent. */
+export interface FoldedBrowserTask {
+  /** The card's identity: its first session, which a fallback to a new one never changes. */
+  cardId?: string;
+  session?: BrowserSessionSnapshot;
+  steps: BrowserStepSnapshot[];
+  /** The handoff waiting on the user, if one still is. */
+  pendingHandoff?: BrowserHandoffSnapshot;
+  result?: BrowserResultSnapshot;
+}
+
+/** Fold a card's snapshots, in the order they arrived, into what it shows. */
+export function foldBrowserTask(
+  snapshots: BrowserTaskSnapshot[],
+): FoldedBrowserTask {
+  let cardId: string | undefined;
+  let session: BrowserSessionSnapshot | undefined;
+  let result: BrowserResultSnapshot | undefined;
+  const steps = new Map<number, BrowserStepSnapshot>();
+  const handoffs = new Map<string, BrowserHandoffSnapshot>();
+
+  for (const snap of snapshots) {
+    if (snap.kind === "session") {
+      session = snap;
+      cardId ??= snap.session_id ?? undefined;
+    } else if (snap.kind === "step") steps.set(snap.index, snap);
+    else if (snap.kind === "handoff")
+      handoffs.set(snap.handoff_id, snap); // last wins
+    else if (snap.kind === "result") result = snap;
+  }
+
+  return {
+    cardId,
+    session,
+    result,
+    steps: [...steps.values()].sort((a, b) => a.index - b.index),
+    // The run's end settles a handoff it never sent a resolved snapshot for.
+    pendingHandoff: result
+      ? undefined
+      : [...handoffs.values()].find((h) => h.status === "pending"),
+  };
+}
 
 /** The origin the local `gaia-connect` tool must talk to: the web's API base
  * without its `/api/v1` path, since the tool appends that itself. */

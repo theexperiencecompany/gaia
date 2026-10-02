@@ -24,6 +24,7 @@ from app.schemas.browser import HandoffOutcome, HandoffRecord
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.browser.exceptions import BrowserHandoffNotOwned, BrowserUnavailableError
 from app.services.browser.job_lifetime import browser_job_ttl_seconds
+from app.services.browser.jobs import if_held
 from app.services.browser.live_code import revoke_handoff_live_code
 from shared.py.wide_events import log
 
@@ -197,7 +198,8 @@ async def _settle(handoff_id: str, outcome: HandoffOutcome) -> HandoffOutcome:
         return decided
     record = await redis_cache.get(_key(handoff_id), model=HandoffRecord)
     if record is not None and record.reply_address:
-        await redis_cache.delete(_reply_key(record.reply_address))
+        # A bot address is shared by the user's runs: a newer handoff may hold it now.
+        await if_held(_reply_key(record.reply_address), handoff_id, refresh=None)
     await revoke_handoff_live_code(handoff_id)
     await redis_cache.client.rpush(_wake_key(handoff_id), outcome.status.value)
     await redis_cache.client.expire(_wake_key(handoff_id), ttl)

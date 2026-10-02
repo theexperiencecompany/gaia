@@ -184,14 +184,18 @@ class ChromiumHost:
             if engine is None or not engine.alive:
                 raise EngineUnresponsiveError("no browser engine is serving")
             self._creating[engine] += 1
-            mux = CdpMux(engine.root_ws_url)
-            await mux.start()
-            session = await self._open_session(mux, engine, storage_state)
-            async with self._lock:
-                # The reservation becomes the session in one critical section, so a
-                # concurrent create never sees it counted twice.
-                self._sessions[session.session_id] = session
-                self._pending_slots -= 1
+            try:
+                mux = CdpMux(engine.root_ws_url)
+                await mux.start()
+                session = await self._open_session(mux, engine, storage_state)
+                async with self._lock:
+                    # The reservation becomes the session in one critical section, so a
+                    # concurrent create never sees it counted twice.
+                    self._sessions[session.session_id] = session
+                    self._pending_slots -= 1
+            finally:
+                # Only once the session is registered: the engine is never idle in between.
+                self._creating[engine] -= 1
         except BaseException:
             async with self._lock:
                 self._pending_slots -= 1
@@ -199,9 +203,6 @@ class ChromiumHost:
             if mux is not None:
                 await mux.close()
             raise
-        finally:
-            if engine is not None:
-                self._creating[engine] -= 1
         self._arm_lease(session)
         session.connection_watch = asyncio.create_task(self._watch_connection(session))
         self.sample_resources(session.session_id)

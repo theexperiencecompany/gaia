@@ -9,7 +9,6 @@ back through RunHooks and returns a RunOutcome.
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from time import perf_counter
@@ -67,8 +66,8 @@ class StepFrame:
     actions: list[BrowserAction]
     url: str | None
     title: str | None
-    #: The page's photo as base64 JPEG, taken while the step goes on; None when photos are off.
-    photo: asyncio.Task[str | None] | None
+    #: The page's photo as base64 (PNG or JPEG), taken when its url and title were read; None when there is none.
+    photo: str | None
     since_prev_ms: int
 
 

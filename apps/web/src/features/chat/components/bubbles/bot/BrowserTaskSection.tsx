@@ -12,13 +12,12 @@ import { useBrowserPanel } from "@/features/browser/stores/browserPanelStore";
 import {
   BROWSER_STATUS_META,
   type BrowserCardStatus,
+  foldBrowserTask,
 } from "@/features/browser/utils";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useLayoutSidebar } from "@/stores/layoutStore";
 import type {
-  BrowserHandoffSnapshot,
   BrowserResultSnapshot,
-  BrowserSessionSnapshot,
   BrowserStepSnapshot,
   BrowserTaskSnapshot,
 } from "@/types/features/browserTaskTypes";
@@ -33,41 +32,6 @@ interface BrowserTaskSectionProps {
   data: BrowserTaskSnapshot | BrowserTaskSnapshot[];
 }
 
-interface FoldedState {
-  /** The card's identity: its first session, which a fallback to a new one never changes. */
-  cardId?: string;
-  session?: BrowserSessionSnapshot;
-  steps: BrowserStepSnapshot[];
-  handoffs: BrowserHandoffSnapshot[];
-  result?: BrowserResultSnapshot;
-}
-
-function fold(snapshots: BrowserTaskSnapshot[]): FoldedState {
-  let cardId: string | undefined;
-  let session: BrowserSessionSnapshot | undefined;
-  let result: BrowserResultSnapshot | undefined;
-  const steps = new Map<number, BrowserStepSnapshot>();
-  const handoffs = new Map<string, BrowserHandoffSnapshot>();
-
-  for (const snap of snapshots) {
-    if (snap.kind === "session") {
-      session = snap;
-      cardId ??= snap.session_id ?? undefined;
-    } else if (snap.kind === "step") steps.set(snap.index, snap);
-    else if (snap.kind === "handoff")
-      handoffs.set(snap.handoff_id, snap); // last wins
-    else if (snap.kind === "result") result = snap;
-  }
-
-  return {
-    cardId,
-    session,
-    result,
-    steps: [...steps.values()].sort((a, b) => a.index - b.index),
-    handoffs: [...handoffs.values()],
-  };
-}
-
 /** Everything the card derives from its snapshots — folded once per render. */
 function useBrowserTaskState(
   data: BrowserTaskSnapshot | BrowserTaskSnapshot[],
@@ -76,11 +40,10 @@ function useBrowserTaskState(
     () => (Array.isArray(data) ? data : [data]),
     [data],
   );
-  const { cardId, session, steps, handoffs, result } = useMemo(
-    () => fold(snapshots),
+  const { cardId, session, steps, pendingHandoff, result } = useMemo(
+    () => foldBrowserTask(snapshots),
     [snapshots],
   );
-  const pendingHandoff = handoffs.find((h) => h.status === "pending");
   // The run's terminal frame ends the card; until it lands the run is live.
   const liveStatus: BrowserCardStatus = pendingHandoff
     ? "awaiting_user"

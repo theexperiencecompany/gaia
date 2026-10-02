@@ -129,7 +129,7 @@ class _ScriptedRun:
                 actions=[BrowserAction(name="click", inputs={"index": index}, target="Next")],
                 url=PAGE,
                 title="Book a table",
-                photo=asyncio.ensure_future(_photo(screenshot)) if screenshot else None,
+                photo=screenshot,
                 since_prev_ms=since_prev_ms,
             )
         )
@@ -142,10 +142,6 @@ class _ScriptedRun:
 
     def stop(self) -> None:
         self.stopped = True
-
-
-async def _photo(data: str) -> str:
-    return data
 
 
 async def _done(run: _ScriptedRun) -> RunOutcome:
@@ -302,6 +298,34 @@ async def test_the_handoff_past_the_limit_never_reaches_the_user() -> None:
     await _run(runner)
 
     assert len(seen["handoffs"]) == MAX_HANDOFFS_PER_TASK
+
+
+async def test_a_run_past_its_budget_asks_neither_the_user_nor_the_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stop = type("_Check", (), {"stop_reason": "You've reached today's AI usage limit."})()
+    monkeypatch.setattr(runner_mod, "get_budget_stop_reason", AsyncMock(return_value=stop))
+    guided = _guided(HandoffOutcome(status=HandoffStatus.COMPLETED, message="Use search"))
+    asked = guided.pop("asked")
+
+    async def _asks_after_the_budget(run: _ScriptedRun) -> RunOutcome:
+        assert run.hooks.guidance is not None
+        # What the agent reads back: the run is over, not that someone declined.
+        with pytest.raises(BrowserHandoffCancelled, match="^Browser task stopped.$"):
+            await run.hooks.takeover("Sign in", "credentials")
+        with pytest.raises(BrowserHandoffCancelled, match="^Browser task stopped.$"):
+            await run.hooks.guidance(AgentGuidanceRequest(reason="stuck", task="t"))
+        return RunOutcome(success=False, summary="")
+
+    runner, seen = _runner(_asks_after_the_budget, **guided)
+
+    result = await _run(runner)
+
+    assert (seen["handoffs"], asked) == ([], [])
+    assert (result.status, result.summary) == (
+        BrowserSessionStatus.FAILED,
+        "You've reached today's AI usage limit.",
+    )
 
 
 async def test_a_timed_out_handoff_fails_the_run_even_when_browser_use_swallows_the_cancel() -> (

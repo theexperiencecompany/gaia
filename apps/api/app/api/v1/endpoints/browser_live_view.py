@@ -9,13 +9,16 @@ tokened link); ``WEBSOCKET`` proxies frames + input between the viewer and the
 host's ``WS /live/{id}``. Because the ``wos_session`` cookie is host-only, a
 cross-origin viewer (the chat card on the friendly vhost) authenticates with a
 short-lived ``?t=`` takeover token; a same-origin viewer may still use the
-session cookie. Ownership is re-checked against the Redis registry on connect,
-and a token connection is bounded to the token's remaining lifetime.
+session cookie. Ownership is re-checked against the Redis registry on connect;
+a token connection is bounded to the token's remaining lifetime, and a code
+connection closes the moment its handoff settles.
 """
 
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
+from functools import partial
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request, WebSocket, status
@@ -35,7 +38,7 @@ from app.schemas.browser import HandoffDecisionRequest, HandoffDecisionResponse
 from app.schemas.errors import HTML_ROUTE_ERROR_RESPONSES
 from app.services.browser import registry
 from app.services.browser.handoff_buttons import decide_handoff_by_button
-from app.services.browser.live_code import live_code_remaining_seconds, resolve_live_code
+from app.services.browser.live_code import live_code_ended, resolve_live_code
 from app.services.browser.live_view import render_live_view_page
 from app.services.browser.replay import render_replay_page, resolve_replay_code
 from app.services.browser.shot_store import SHOT_SUFFIX, read_step_screenshot
@@ -50,6 +53,9 @@ router = APIRouter(tags=["Browser"])
 
 # WebSocket close code for "session unknown or has no live stream" (app 4xxx range).
 _WS_SESSION_GONE = 4404
+
+#: What ends a live-view connection besides either side closing: its authority running out.
+_ConnectionEnd = Callable[[], Awaitable[None]]
 
 
 @router.get(f"/shots/{{code}}/{{index}}{SHOT_SUFFIX}", response_class=Response)
@@ -140,14 +146,14 @@ async def live_view_ws(
 ) -> None:
     """Proxy the authenticated live view: host frames out to the viewer, the
     viewer's mouse/key input back to the host. ``code`` is a short capability code
-    (bot link) or a raw session id + ``?t=`` token / cookie (web card). A token
-    connection is bounded to the token's remaining lifetime."""
+    (bot link) or a raw session id + ``?t=`` token / cookie (web card), and the
+    connection ends with whichever authorised it."""
     log.set(browser={"operation": "live_view_ws"})
 
     resolved = await _resolve_target_ws(websocket, code, t)
     if resolved is None:
         return  # already closed the socket with a policy-violation code
-    session_id, user_id, ttl_seconds = resolved
+    session_id, user_id, ends = resolved
     log.set(browser={"session_id": session_id})
 
     entry = await registry.get_session_entry(session_id)
@@ -162,7 +168,7 @@ async def live_view_ws(
 
     await websocket.accept()
     log.info(f"{LogTag.BROWSER} browser live view proxy opened")
-    await _proxy_live_view(websocket, entry.live_ws, ttl_seconds)
+    await _proxy_live_view(websocket, entry.live_ws, ends)
 
 
 async def _resolve_target_page(code: str, request: Request, token: str | None) -> tuple[str, str]:
@@ -177,18 +183,19 @@ async def _resolve_target_page(code: str, request: Request, token: str | None) -
 
 async def _resolve_target_ws(
     websocket: WebSocket, code: str, token: str | None
-) -> tuple[str, str, float | None] | None:
-    """``(session_id, user_id, ttl_seconds)`` for a WS, or ``None`` (socket closed). Both
-    paths bound the connection to what authorised it: the code's remaining life, or
-    the token's."""
+) -> tuple[str, str, _ConnectionEnd | None] | None:
+    """``(session_id, user_id, ends)`` for a WS, or ``None`` (socket closed). The
+    connection ends with what authorised it: the code's handoff settling or the
+    code lapsing, or the token's lifetime; a cookie session has no end of its own."""
     record = await resolve_live_code(code)
     if record is not None:
-        return record.session_id, record.user_id, await live_code_remaining_seconds(code)
+        return record.session_id, record.user_id, partial(live_code_ended, code)
     resolved = await _authorize_ws(websocket, code, token)
     if resolved is None:
         return None
     user_id, ttl_seconds = resolved
-    return code, user_id, ttl_seconds
+    ends = partial(_expire_after, ttl_seconds) if ttl_seconds is not None else None
+    return code, user_id, ends
 
 
 async def _authorize_page(request: Request, session_id: str, token: str | None) -> str:
@@ -241,17 +248,17 @@ def _verify_scoped_token(token: str, session_id: str) -> TakeoverTokenClaims:
 
 
 async def _proxy_live_view(
-    client_ws: WebSocket, host_ws_url: str, ttl_seconds: float | None
+    client_ws: WebSocket, host_ws_url: str, ends: _ConnectionEnd | None
 ) -> None:
-    """Bridge the viewer's WebSocket to the host's live-view WebSocket both ways."""
+    """Bridge the viewer's WebSocket to the host's live-view WebSocket both ways, until either closes or ends returns."""
     try:
         async with websockets.connect(host_ws_url, max_size=None) as host_ws:
-            directions = [
+            directions: list[Awaitable[None]] = [
                 _pump_host_to_client(host_ws, client_ws),
                 _pump_client_to_host(client_ws, host_ws),
             ]
-            if ttl_seconds is not None:
-                directions.append(_expire_after(ttl_seconds))
+            if ends is not None:
+                directions.append(ends())
             await pump_until_first_close(*directions, sockets=(client_ws,))
     except (OSError, websockets.exceptions.WebSocketException) as exc:
         log.warning(

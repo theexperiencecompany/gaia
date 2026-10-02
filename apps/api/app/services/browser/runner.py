@@ -536,7 +536,8 @@ class BrowserTaskRunner:
     async def _handle_takeover(self, reason: str, category: SensitiveCategory) -> str | None:
         """Pause for the human (the agent's takeover hook) and return the note they left, if any.
 
-        Raises to stop the run on cancel, timeout, or one handoff past the limit."""
+        Raises to stop the run on cancel, timeout, one handoff past the limit, or a run already over."""
+        await self._refuse_wait_when_stopping()
         self._handoffs += 1
         if self._handoffs > MAX_HANDOFFS_PER_TASK:
             self._stopped = True
@@ -573,6 +574,11 @@ class BrowserTaskRunner:
         log.info(f"{LogTag.BROWSER} Browser takeover ended", status=outcome.status.value)
         raise BrowserHandoffCancelled(outcome.status.value)
 
+    async def _refuse_wait_when_stopping(self) -> None:
+        """Raise before asking anyone anything once the run must end: nobody is to wait on a run that is over."""
+        if await self._should_stop():
+            raise BrowserHandoffCancelled(BROWSER_RUN_STOPPED_SUMMARY)
+
     async def _guidance_allowed(self) -> bool:
         """Whether a blocked step may still ask the agent that started this run."""
         if self._agent_joined is None or self._guidances >= BROWSER_AGENT_GUIDANCE_MAX:
@@ -583,6 +589,7 @@ class BrowserTaskRunner:
         self, request_guidance: RequestGuidanceFn, request: AgentGuidanceRequest
     ) -> str:
         """Ask the joined agent for one instruction; raise to end the run blocked when none comes back."""
+        await self._refuse_wait_when_stopping()
         self._guidances += 1
         self._waiting_on_someone = True
         waiting_since = perf_counter()
@@ -647,8 +654,7 @@ class BrowserTaskRunner:
     async def _emit_step(self, frame: StepFrame) -> None:
         async with self._emit_lock:
             shot_t0 = perf_counter()
-            photo = await frame.photo if frame.photo is not None else None
-            screenshot = await self._render_screenshot(frame, photo)
+            screenshot = await self._render_screenshot(frame)
             if screenshot is not None:
                 self._shots.append(screenshot)
             # Feeds only the info-level step timing line.
@@ -664,7 +670,7 @@ class BrowserTaskRunner:
                     title=frame.title,
                     screenshot=screenshot,
                     elapsed_ms=frame.since_prev_ms or None,
-                    frame_digest=sha256(photo.encode()).hexdigest() if photo else None,
+                    frame_digest=sha256(frame.photo.encode()).hexdigest() if frame.photo else None,
                 )
             )
             # Feeds only the info-level step timing line.
@@ -677,12 +683,14 @@ class BrowserTaskRunner:
                 emit_ms=emit_ms,
             )
 
-    async def _render_screenshot(self, frame: StepFrame, photo: str | None) -> str | None:
+    async def _render_screenshot(self, frame: StepFrame) -> str | None:
         """Return the URL that serves a step frame's photo, or None when it has none to show."""
-        if photo is None:
+        if frame.photo is None:
             return None
         # Keyed by session id (not conversation) so each run is its own replay folder.
-        return await publish_step_screenshot(base64.b64decode(photo), frame.session_id, frame.index)
+        return await publish_step_screenshot(
+            base64.b64decode(frame.photo), frame.session_id, frame.index
+        )
 
     async def _finish(
         self, status: BrowserSessionStatus, summary: str, failure: BrowserRunFailure | None

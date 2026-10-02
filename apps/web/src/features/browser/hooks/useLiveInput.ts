@@ -27,6 +27,16 @@ function toModifiers(e: MouseEvent | KeyboardEvent): number {
   );
 }
 
+// The hidden input back to just the placeholder, the caret after it, so the
+// next edit is all that changes.
+function resetKeyboard(kb: HTMLInputElement): void {
+  kb.value = KEYBOARD_PLACEHOLDER;
+  kb.setSelectionRange(
+    KEYBOARD_PLACEHOLDER.length,
+    KEYBOARD_PLACEHOLDER.length,
+  );
+}
+
 function pressKey(
   send: Send,
   key: string,
@@ -226,7 +236,7 @@ export function useLiveInput({
       } else if (typed.length > KEYBOARD_PLACEHOLDER.length) {
         send({ type: "text", text: typed.slice(KEYBOARD_PLACEHOLDER.length) });
       }
-      kb.value = KEYBOARD_PLACEHOLDER;
+      resetKeyboard(kb);
     };
     const onCompositionStart = () => {
       composing = true;
@@ -259,7 +269,7 @@ export function useLiveInput({
   const openKeyboard = useCallback(() => {
     const kb = keyboardRef.current;
     if (!kb) return;
-    kb.value = KEYBOARD_PLACEHOLDER;
+    resetKeyboard(kb);
     kb.focus();
   }, [keyboardRef]);
 

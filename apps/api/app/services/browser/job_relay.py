@@ -8,10 +8,13 @@ not the second, and the cards would vanish on reload.
 
 While the executor run that started the job is alive it may still join and
 speak the result, so the relay holds the result for it until that run ends;
-the worker tells the user itself only once nothing holds it.
+a turn that collected the result holds it the same way, and keeps the telling
+only if its run finished. The worker tells the user itself once nothing holds it.
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable
+from functools import partial
 
 from pydantic import TypeAdapter
 
@@ -22,7 +25,15 @@ from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamProgress, stream_manager
 from app.services.browser.job_events import JOB_TERMINAL_FRAME, is_card_frame, read_job_events
 from app.services.browser.job_lifetime import browser_job_ttl_seconds
-from app.services.browser.jobs import hold_result_for_run, job_cancel_requested, release_result_hold
+from app.services.browser.jobs import (
+    drop_joiner_lease,
+    hold_result_for_run,
+    job_cancel_requested,
+    keep_result_claim,
+    refresh_joiner_lease,
+    release_result_hold,
+    settle_result_claim,
+)
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
@@ -37,7 +48,7 @@ async def relay_job_events(job_id: str, stream_id: str) -> None:
     stopped card even though its turn ended with the stop. Never raises.
     """
     log.set(browser={"job_id": job_id})
-    run = _live_run(stream_id)
+    run = live_run(stream_id)
     keeper = (
         spawn_background_task(_hold_until_the_run_ends(job_id, stream_id, run))
         if run is not None
@@ -90,9 +101,33 @@ async def _relay_cards(job_id: str, stream_id: str) -> None:
 
 async def _hold_until_the_run_ends(job_id: str, stream_id: str, run: StreamSession) -> None:
     """Keep the result for the executor run that started the job until that run ends: it may still join and speak it."""
-    while True:
-        # Re-armed on a beat, so the hold lapses by itself if this process dies.
-        await hold_result_for_run(job_id, stream_id)
+    await _until_the_run_ends(run, partial(hold_result_for_run, job_id, stream_id))
+
+
+async def hold_collected_result(job_id: str, stream_id: str, run: StreamSession) -> None:
+    """Keep the result the turn on stream_id collected until its run ends: told by it if the run finished, by the worker if not."""
+    told = False
+    try:
+        await _until_the_run_ends(run, partial(_keep_collected_result, job_id, stream_id))
+        told = not run.executor_failed
+    finally:
+        await settle_result_claim(job_id, told=told)
+        await drop_joiner_lease(job_id, stream_id)
+
+
+async def _keep_collected_result(job_id: str, stream_id: str) -> None:
+    # The claim first, so it never outlives the lease a waiting worker reads.
+    await keep_result_claim(job_id)
+    await refresh_joiner_lease(job_id, stream_id)
+
+
+async def _until_the_run_ends(run: StreamSession, beat: Callable[[], Awaitable[None]]) -> None:
+    """Return once run ends, or its waiter gave up on it, doing beat on every refresh until then.
+
+    The beat re-arms what this process holds, so it lapses by itself if the process dies.
+    """
+    while not run.executor_failed:
+        await beat()
         try:
             await asyncio.wait_for(
                 run.done_event.wait(), timeout=BROWSER_JOB_JOINER_REFRESH_SECONDS
@@ -102,7 +137,7 @@ async def _hold_until_the_run_ends(job_id: str, stream_id: str, run: StreamSessi
         return
 
 
-def _live_run(stream_id: str) -> StreamSession | None:
+def live_run(stream_id: str) -> StreamSession | None:
     """Return the executor run collecting onto this stream, while it has not ended."""
     session = get_session(stream_id)
     return session if session is not None and not session.done_event.is_set() else None
@@ -110,7 +145,7 @@ def _live_run(stream_id: str) -> StreamSession | None:
 
 async def _nobody_listening(stream_id: str) -> bool:
     """Whether nothing reads what the relay writes: the turn's live stream finished, and no run collects onto its message."""
-    if _live_run(stream_id) is not None:
+    if live_run(stream_id) is not None:
         return False
     progress = await stream_manager.get_progress(stream_id)
     return progress is None or _STREAM_PROGRESS.validate_python(progress).is_complete

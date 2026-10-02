@@ -151,24 +151,27 @@ _VIEWER_TEMPLATE = r"""<!doctype html>
     return (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.metaKey ? 4 : 0) | (e.shiftKey ? 8 : 0);
   }
   var BUTTONS = ["left", "middle", "right"];
-  // Coalesce mousemove to one message per animation frame so press/release
-  // events never queue behind a flood of stale moves.
-  var pendingMove = null, moveRaf = 0;
-  function flushMove() {
-    moveRaf = 0;
-    if (pendingMove) { send(pendingMove); pendingMove = null; }
+  // Coalesce moves and drags to one message per animation frame: a raw stream
+  // queues behind the WebSocket + CDP hop and delays press and release.
+  var pendingMove = null, pendingWheel = null, raf = 0;
+  function flush() {
+    raf = 0;
+    if (pendingMove) send(pendingMove);
+    if (pendingWheel) send(pendingWheel);
+    pendingMove = null; pendingWheel = null;
   }
+  function schedule() { if (!raf) raf = requestAnimationFrame(flush); }
   canvas.addEventListener("mousemove", function (e) {
     var p = toPagePoint(e);
     pendingMove = { type: "mouse", event: "mouseMoved", x: p.x, y: p.y, buttons: e.buttons, modifiers: toModifiers(e) };
-    if (!moveRaf) moveRaf = requestAnimationFrame(flushMove);
+    schedule();
   });
   canvas.addEventListener("mousedown", function (e) {
-    e.preventDefault(); canvas.focus(); flushMove(); var p = toPagePoint(e);
+    e.preventDefault(); canvas.focus(); flush(); var p = toPagePoint(e);
     send({ type: "mouse", event: "mousePressed", x: p.x, y: p.y, button: BUTTONS[e.button] || "left", buttons: e.buttons, clickCount: e.detail || 1, modifiers: toModifiers(e) });
   });
   canvas.addEventListener("mouseup", function (e) {
-    e.preventDefault(); flushMove(); var p = toPagePoint(e);
+    e.preventDefault(); flush(); var p = toPagePoint(e);
     send({ type: "mouse", event: "mouseReleased", x: p.x, y: p.y, button: BUTTONS[e.button] || "left", buttons: e.buttons, clickCount: e.detail || 1, modifiers: toModifiers(e) });
   });
   canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
@@ -191,11 +194,7 @@ _VIEWER_TEMPLATE = r"""<!doctype html>
 
   // Touch: a tap already arrives as mousedown/mouseup; a drag scrolls the page
   // as a wheel at the point it started, in page pixels, coalesced per frame.
-  var touch = null, pendingWheel = null, wheelRaf = 0;
-  function flushWheel() {
-    wheelRaf = 0;
-    if (pendingWheel) { send(pendingWheel); pendingWheel = null; }
-  }
+  var touch = null;
   canvas.addEventListener("touchstart", function (e) {
     if (e.touches.length !== 1) { touch = null; return; }
     var t = e.touches[0];
@@ -209,7 +208,7 @@ _VIEWER_TEMPLATE = r"""<!doctype html>
     touch.x = t.clientX; touch.y = t.clientY; touch.moved = true;
     var acc = pendingWheel || { type: "mouse", event: "mouseWheel", x: touch.start.x, y: touch.start.y, deltaX: 0, deltaY: 0 };
     acc.deltaX += dx; acc.deltaY += dy; pendingWheel = acc;
-    if (!wheelRaf) wheelRaf = requestAnimationFrame(flushWheel);
+    schedule();
   }, { passive: false });
   canvas.addEventListener("touchend", function (e) {
     // A drag is not a click: cancelling the end stops the emulated mouse events.
@@ -223,7 +222,10 @@ _VIEWER_TEMPLATE = r"""<!doctype html>
   var kb = document.getElementById("kb");
   var KB_PLACEHOLDER = " ";
   var composing = false;
-  function resetKb() { kb.value = KB_PLACEHOLDER; kb.setSelectionRange(1, 1); }
+  function resetKb() {
+    kb.value = KB_PLACEHOLDER;
+    kb.setSelectionRange(KB_PLACEHOLDER.length, KB_PLACEHOLDER.length);
+  }
   function pressKey(key, code, keyCode, text) {
     var down = { type: "key", event: "keyDown", key: key, code: code, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode };
     if (text) down.text = text;

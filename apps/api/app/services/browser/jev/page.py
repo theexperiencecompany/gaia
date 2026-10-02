@@ -36,10 +36,10 @@ from cdp_use.cdp.target.types import TargetInfo
 from cdp_use.client import CDPClient
 
 from app.constants.browser import (
+    BROWSER_STEP_PHOTO_QUALITY,
     JEV_CDP_TIMEOUT_SECONDS,
     JEV_OBSERVE_ATTEMPTS,
     JEV_PARSE_WAIT_SECONDS,
-    JEV_SCREENSHOT_QUALITY,
     JEV_SETTLE_MAX_SECONDS,
     JEV_WAIT_SECONDS,
 )
@@ -693,7 +693,7 @@ class JevPage:
         session = await self._session()
         result: CaptureScreenshotReturns = await _bounded(
             session.cdp_client.send.Page.captureScreenshot(
-                params={"format": "jpeg", "quality": JEV_SCREENSHOT_QUALITY},
+                params={"format": "jpeg", "quality": BROWSER_STEP_PHOTO_QUALITY},
                 session_id=session.session_id,
             ),
             "Page.captureScreenshot",

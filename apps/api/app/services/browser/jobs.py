@@ -77,12 +77,12 @@ async def claim_conversation_slot(conversation_id: str, job_id: str) -> str | No
 
 async def heartbeat_conversation_slot(conversation_id: str, job_id: str) -> bool:
     """Refresh the slot lease while this job holds it; False once another job does."""
-    return await _if_held(_lock_key(conversation_id), job_id, refresh=BROWSER_JOB_LOCK_TTL_SECONDS)
+    return await if_held(_lock_key(conversation_id), job_id, refresh=BROWSER_JOB_LOCK_TTL_SECONDS)
 
 
 async def release_conversation_slot(conversation_id: str, job_id: str) -> None:
     """Free the slot only while this job still holds it, so a late release never frees a newer run's lease."""
-    await _if_held(_lock_key(conversation_id), job_id, refresh=None)
+    await if_held(_lock_key(conversation_id), job_id, refresh=None)
 
 
 async def get_conversation_slot(conversation_id: str) -> str | None:
@@ -90,7 +90,7 @@ async def get_conversation_slot(conversation_id: str) -> str | None:
     return await redis_cache.client.get(_lock_key(conversation_id)) or None
 
 
-async def _if_held(key: str, holder: str, *, refresh: int | None) -> bool:
+async def if_held(key: str, holder: str, *, refresh: int | None) -> bool:
     """Re-arm key for refresh seconds, or delete it when refresh is None, only while holder holds it."""
     async with redis_cache.client.pipeline() as pipe:
         await pipe.watch(key)
@@ -139,7 +139,7 @@ async def take_joiner_lease(job_id: str, stream_id: str) -> None:
 
 async def refresh_joiner_lease(job_id: str, stream_id: str) -> None:
     """Re-arm this turn's lease; a no-op for a stream that does not hold it."""
-    await _if_held(_joiner_key(job_id), stream_id, refresh=BROWSER_JOB_JOINER_LEASE_SECONDS)
+    await if_held(_joiner_key(job_id), stream_id, refresh=BROWSER_JOB_JOINER_LEASE_SECONDS)
 
 
 async def drop_joiner_lease(job_id: str, stream_id: str) -> None:
@@ -164,7 +164,7 @@ async def release_result_hold(job_id: str, stream_id: str) -> None:
 
 async def _drop(job_id: str, key: str, holder: str) -> None:
     """Delete a claim on the result while holder holds it, and wake a worker waiting for it to go."""
-    if await _if_held(key, holder, refresh=None):
+    if await if_held(key, holder, refresh=None):
         released = _released_key(job_id)
         await redis_cache.client.rpush(released, holder)
         await redis_cache.client.expire(released, BROWSER_JOB_JOINER_LEASE_SECONDS)
@@ -182,11 +182,38 @@ async def await_result_unclaimed(job_id: str) -> None:
 
 
 async def claim_result_delivery(job_id: str, speaker: ResultSpeaker) -> ResultSpeaker:
-    """Claim the one telling of the job's result for speaker; return who holds it, speaker when this call won."""
+    """Claim the one telling of the job's result for speaker; return who holds it, speaker when this call won.
+
+    A joiner's claim lapses within a lease window until settle_result_claim keeps
+    it: a turn that collected the result has told nobody until its run finishes.
+    """
+    ttl = (
+        BROWSER_JOB_JOINER_LEASE_SECONDS
+        if speaker is ResultSpeaker.JOINER
+        else browser_job_ttl_seconds()
+    )
     holder: str | None = await redis_cache.client.set(
-        _delivered_key(job_id), speaker.value, ex=browser_job_ttl_seconds(), nx=True, get=True
+        _delivered_key(job_id), speaker.value, ex=ttl, nx=True, get=True
     )
     return speaker if holder is None else ResultSpeaker(holder)
+
+
+async def keep_result_claim(job_id: str) -> None:
+    """Re-arm a joiner's claim for another lease window while its run goes on."""
+    await if_held(
+        _delivered_key(job_id),
+        ResultSpeaker.JOINER.value,
+        refresh=BROWSER_JOB_JOINER_LEASE_SECONDS,
+    )
+
+
+async def settle_result_claim(job_id: str, *, told: bool) -> None:
+    """Keep a joiner's claim for good once its run told the user, or give it back to the worker when it did not."""
+    await if_held(
+        _delivered_key(job_id),
+        ResultSpeaker.JOINER.value,
+        refresh=browser_job_ttl_seconds() if told else None,
+    )
 
 
 async def request_job_cancel(job_id: str) -> None:

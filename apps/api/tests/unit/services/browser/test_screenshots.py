@@ -7,11 +7,14 @@ than mocking the fallback away.
 
 from __future__ import annotations
 
+from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fakeredis
+from PIL import Image
 import pytest
 
+from app.constants.browser import BROWSER_STEP_PHOTO_QUALITY
 from app.services.browser import screenshots as shots, shot_store
 from tests.helpers import captured_wide_event
 
@@ -193,6 +196,23 @@ class TestPublishStepScreenshot:
         mock_warn.assert_called_once()
         assert "upload failed" in mock_warn.call_args[0][0]
         assert mock_warn.call_args[1].get("error_type") == "RuntimeError"
+
+    async def test_a_photo_taken_as_a_png_is_served_as_a_jpeg_of_the_same_page(
+        self, no_r2, redis_backend
+    ):
+        # With an alpha channel, as a page photo can carry one; a JPEG cannot.
+        png = BytesIO()
+        Image.new("RGBA", (8, 4), (200, 30, 30, 255)).save(png, format="PNG")
+        expected = BytesIO()
+        Image.new("RGB", (8, 4), (200, 30, 30)).save(
+            expected, format="JPEG", quality=BROWSER_STEP_PHOTO_QUALITY
+        )
+
+        url = await shots.publish_step_screenshot(png.getvalue(), "c1", 1)
+
+        assert url is not None
+        # The same JPEG, at the same quality, as every other step photo.
+        assert await _read_back(url, 1) == expected.getvalue()
 
     async def test_a_frame_redis_did_not_take_returns_none_and_no_photo(self, no_r2, no_redis):
         assert await shots.publish_step_screenshot(b"x", "c1", 1) is None
