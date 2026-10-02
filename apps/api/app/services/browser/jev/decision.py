@@ -237,7 +237,15 @@ class _ActionSpace:
 def _leads_to(action: PageAction, opened: frozenset[str]) -> bool:
     """Whether action is a link to a page this run already opened."""
     href = action.get("href")
-    return href is not None and page_address(href) in opened
+    if href is None:
+        return False
+    try:
+        address = page_address(href)
+    except ValueError:
+        # Chrome hands back an href it could not resolve as written ("http://[object Object]/"):
+        # no page at all, so not one this run opened.
+        return False
+    return address in opened
 
 
 def action_space(actions: list[PageAction], opened: frozenset[str] = frozenset()) -> _ActionSpace:
