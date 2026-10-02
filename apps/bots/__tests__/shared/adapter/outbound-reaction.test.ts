@@ -35,6 +35,9 @@ class TestAdapter extends BaseBotAdapter {
   protected async stop(): Promise<void> {
     /* nothing to disconnect */
   }
+  protected async sendOutboundFile(): Promise<void> {
+    /* no file delivery under test */
+  }
   protected override async deliverOutbound(
     destinationId: string,
     text: string,

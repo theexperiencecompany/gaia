@@ -16,7 +16,7 @@ import {
   MEDIA_READ_TIMEOUT_MS,
   MediaReadTimeoutError,
   mediaKindFromMime,
-  type OutboundAttachment,
+  type OutboundFile,
   type PlatformName,
   type RichMessage,
   type RichMessageTarget,
@@ -722,32 +722,16 @@ export class ImessageAdapter extends BaseBotAdapter {
     await space.send(text);
   }
 
-  protected override async deliverOutboundFile(
+  protected override async sendOutboundFile(
     destinationId: string,
-    outboundAttachment: OutboundAttachment,
-    isChannel: boolean,
+    { data, mime, filename, caption }: OutboundFile,
   ): Promise<void> {
-    const artifact = await this.fetchOutboundArtifact(
-      destinationId,
-      outboundAttachment,
-      isChannel,
-    );
-    if (!artifact) return;
-    const { data, contentType } = artifact;
-    const mime =
-      outboundAttachment.content_type ??
-      contentType ??
-      "application/octet-stream";
-
     const space = await this.im.space.create(destinationId);
     await space.send(
-      attachment(Buffer.from(data), {
-        name: outboundAttachment.filename,
-        mimeType: mime,
-      }),
+      attachment(Buffer.from(data), { name: filename, mimeType: mime }),
     );
-    if (outboundAttachment.caption) {
-      await space.send(outboundAttachment.caption);
+    if (caption) {
+      await space.send(caption);
     }
   }
 }

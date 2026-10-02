@@ -11,6 +11,7 @@
 export {
   BaseBotAdapter,
   BotServer,
+  type OutboundFile,
   richMessageToMarkdown,
   runBotProcess,
 } from "./adapter";

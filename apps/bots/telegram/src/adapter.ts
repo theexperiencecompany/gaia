@@ -36,7 +36,7 @@ import {
   type IncomingMedia,
   MEDIA_READ_TIMEOUT_MS,
   type MediaKind,
-  type OutboundAttachment,
+  type OutboundFile,
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
@@ -497,35 +497,26 @@ export class TelegramAdapter extends BaseBotAdapter {
   }
 
   /**
-   * Delivers an agent-generated file artifact to a Telegram chat. Fetches the
-   * bytes from GAIA (bot-authenticated) and uploads them as a photo (for
-   * images) or a document. The chat id is polymorphic (a user's or a group's),
-   * so `isChannel` only addresses the too-large note.
+   * Uploads an agent-generated file artifact to a Telegram chat as a photo
+   * (for images) or a document. The chat id is polymorphic (a user's or a
+   * group's), so `isChannel` does not change the address.
    */
-  protected override async deliverOutboundFile(
+  protected override async sendOutboundFile(
     destinationId: string,
-    attachment: OutboundAttachment,
-    isChannel: boolean,
+    { data, mime, filename, caption }: OutboundFile,
   ): Promise<void> {
-    const artifact = await this.fetchOutboundArtifact(
-      destinationId,
-      attachment,
-      isChannel,
-    );
-    if (!artifact) return; // too large — fetchOutboundArtifact already replied
-    const { data, contentType } = artifact;
-    const mime =
-      attachment.content_type ?? contentType ?? "application/octet-stream";
-    const file = new InputFile(data, attachment.filename);
-    const caption = attachment.caption
-      ? attachment.caption.slice(0, TELEGRAM_CAPTION_MAX_CHARS)
-      : undefined;
+    const file = new InputFile(data, filename);
+    const opts = {
+      caption: caption
+        ? caption.slice(0, TELEGRAM_CAPTION_MAX_CHARS)
+        : undefined,
+    };
     // sendPhoto caps around 10 MB; deliver larger images as a document so they
     // still arrive instead of being rejected.
     if (mime.startsWith("image/") && data.length <= TELEGRAM_PHOTO_MAX_BYTES) {
-      await this.bot.api.sendPhoto(destinationId, file, { caption });
+      await this.bot.api.sendPhoto(destinationId, file, opts);
     } else {
-      await this.bot.api.sendDocument(destinationId, file, { caption });
+      await this.bot.api.sendDocument(destinationId, file, opts);
     }
   }
 

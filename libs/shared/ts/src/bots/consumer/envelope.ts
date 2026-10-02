@@ -31,12 +31,32 @@ const ATTACHMENT_URL_MESSAGE =
  * A file the bot should deliver. Bytes are NOT inlined — the bot fetches them
  * itself, either from the backend artifact store (bot-authenticated) via
  * `conversation_id`/`path`, or directly from a CDN `url` (e.g. a signed
- * browser-automation step screenshot) — exactly one source is set.
+ * browser-automation step screenshot). Exactly one source is set, so the
+ * schema is a union of the two: the type says which source it carries.
  */
 export function outboundAttachmentSchemaFor(ownApiOrigin: string | undefined) {
-  return z
-    .object({
-      conversation_id: z.string().min(1).nullish(),
+  const delivery = {
+    filename: z.string().min(1),
+    content_type: z.string().nullish(),
+    caption: z.string().nullish(),
+  };
+  return z.union([
+    z.object({
+      ...delivery,
+      /** CDN source, or this API serving the bytes itself. */
+      url: z
+        .string()
+        .refine(
+          (u) => u.startsWith("https://") || isOwnApiUrl(ownApiOrigin, u),
+          { message: ATTACHMENT_URL_MESSAGE },
+        ),
+      conversation_id: z.null().optional(),
+      path: z.null().optional(),
+    }),
+    z.object({
+      ...delivery,
+      url: z.null().optional(),
+      conversation_id: z.string().min(1),
       /**
        * Artifact path relative to the session's artifacts/ dir. Rejected at the
        * queue boundary if absolute or containing a `..` segment, so a malformed
@@ -48,24 +68,9 @@ export function outboundAttachmentSchemaFor(ownApiOrigin: string | undefined) {
         .refine((p) => !p.startsWith("/") && !p.split("/").includes(".."), {
           message:
             "path must be relative to artifacts/ (no leading '/' or '..')",
-        })
-        .nullish(),
-      /** CDN source, or this API serving the bytes itself. */
-      url: z
-        .string()
-        .refine(
-          (u) => u.startsWith("https://") || isOwnApiUrl(ownApiOrigin, u),
-          { message: ATTACHMENT_URL_MESSAGE },
-        )
-        .nullish(),
-      filename: z.string().min(1),
-      content_type: z.string().nullish(),
-      caption: z.string().nullish(),
-    })
-    .refine((a) => Boolean(a.url) !== Boolean(a.conversation_id && a.path), {
-      message:
-        "attachment requires exactly one of `url` or (`conversation_id` + `path`)",
-    });
+        }),
+    }),
+  ]);
 }
 
 /**

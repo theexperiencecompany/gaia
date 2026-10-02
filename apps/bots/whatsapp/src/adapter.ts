@@ -32,7 +32,7 @@ import {
   type IncomingMedia,
   type LinkState,
   MEDIA_READ_TIMEOUT_MS,
-  type OutboundAttachment,
+  type OutboundFile,
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
@@ -993,39 +993,29 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   }
 
   /**
-   * Delivers an agent-generated file artifact to a WhatsApp user. Fetches the
-   * bytes from GAIA (bot-authenticated), uploads them to WhatsApp via the Kapso
-   * media API, then sends an image or document message referencing the media id.
+   * Uploads an agent-generated file artifact to WhatsApp via the Kapso media
+   * API, then sends an image or document message referencing the media id.
    */
-  protected override async deliverOutboundFile(
+  protected override async sendOutboundFile(
     destinationId: string,
-    attachment: OutboundAttachment,
-    isChannel: boolean,
+    { data, mime, filename, caption }: OutboundFile,
   ): Promise<void> {
-    const artifact = await this.fetchOutboundArtifact(
-      destinationId,
-      attachment,
-      isChannel,
-    );
-    if (!artifact) return; // too large — fetchOutboundArtifact already replied
-    const { data, contentType } = artifact;
-    const mime =
-      attachment.content_type ?? contentType ?? "application/octet-stream";
     const phoneNumberId = this.whatsAppConfig.kapsoPhoneNumberId;
 
     const uploaded = (await this.whatsAppClient.media.upload({
       phoneNumberId,
       type: mime,
       file: new Blob([new Uint8Array(data)], { type: mime }),
-      fileName: attachment.filename,
+      fileName: filename,
     })) as { id?: string };
     if (!uploaded.id) throw new Error("Kapso media upload returned no id");
 
     const to = `+${destinationId}`;
-    const caption = attachment.caption ?? undefined;
     // WhatsApp image messages cap around 5 MB; deliver larger images as a
     // document so they still arrive instead of being rejected.
-    if (mime.startsWith("image/") && data.length <= WHATSAPP_IMAGE_MAX_BYTES) {
+    const asImage =
+      mime.startsWith("image/") && data.length <= WHATSAPP_IMAGE_MAX_BYTES;
+    if (asImage) {
       await this.whatsAppClient.messages.sendImage({
         phoneNumberId,
         to,
@@ -1035,21 +1025,17 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       await this.whatsAppClient.messages.sendDocument({
         phoneNumberId,
         to,
-        document: { id: uploaded.id, filename: attachment.filename, caption },
+        document: { id: uploaded.id, filename, caption },
       });
     }
-    // The one platform that can actually deliver an artifact — captured after
-    // the send resolves, so a Kapso failure throws before it and is never
-    // recorded as a success. The base class captures the failure paths.
+    // Captured after the send resolves, so a Kapso failure throws before it
+    // and is never recorded as a success. The base class captures the failure paths.
     this.analytics.capture(
       await this.resolveDistinctId(destinationId),
       BOT_EVENTS.FILE_DELIVERED,
       {
         success: true,
-        delivery_kind:
-          mime.startsWith("image/") && data.length <= WHATSAPP_IMAGE_MAX_BYTES
-            ? "image"
-            : "document",
+        delivery_kind: asImage ? "image" : "document",
         bytes: data.length,
       },
     );

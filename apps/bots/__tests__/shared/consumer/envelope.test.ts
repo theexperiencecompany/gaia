@@ -101,6 +101,35 @@ describe("outboundMessageEnvelopeSchemaFor", () => {
     ).toBe(false);
   });
 
+  it("accepts an artifact attachment as Python sends it (the other source null)", () => {
+    const parsed = schema.safeParse({
+      ...photoEnvelope("unused"),
+      attachment: {
+        conversation_id: "conv-1",
+        path: "report.pdf",
+        url: null,
+        filename: "report.pdf",
+        content_type: null,
+        caption: null,
+      },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects an attachment carrying both sources, or neither", () => {
+    const both = photoEnvelope("https://cdn.example.com/x.png");
+    const withBoth = {
+      ...both,
+      attachment: { ...both.attachment, conversation_id: "c", path: "p.pdf" },
+    };
+    const withNeither = {
+      ...both,
+      attachment: { filename: "x.png" },
+    };
+    expect(schema.safeParse(withBoth).success).toBe(false);
+    expect(schema.safeParse(withNeither).success).toBe(false);
+  });
+
   it("accepts a reaction-only envelope (no text body)", () => {
     const { text: _text, ...noText } = valid;
     expect(
