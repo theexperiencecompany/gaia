@@ -23,7 +23,6 @@ from app.constants.browser import (
     BROWSER_RESULT_REPLACED_REQUEST,
     BROWSER_RESULT_USER_SAID,
     BROWSER_RUN_CANCELLED_SUMMARY,
-    BROWSER_TASK_EVENT,
     BROWSER_TOOL_CATEGORY,
     BrowserEngine,
     BrowserRunFailure,
@@ -75,6 +74,7 @@ from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.job_events import (
     JOB_GUIDANCE_FRAME,
     JOB_TERMINAL_FRAME,
+    card_frame,
     publish_job_event,
 )
 from app.services.browser.jobs import (
@@ -369,7 +369,7 @@ class ProgressEmitter:
     async def emit(self, snapshot: BrowserCardSnapshot) -> None:
         if isinstance(snapshot, BrowserResultSnapshot):
             snapshot = await self._as_ended(snapshot)
-        await self._publish({BROWSER_TASK_EVENT: snapshot.model_dump(mode="json")})
+        await self._publish(card_frame(snapshot))
         await self.thread_mirror.mirror(snapshot)
         if isinstance(snapshot, BrowserResultSnapshot):
             self.result = snapshot

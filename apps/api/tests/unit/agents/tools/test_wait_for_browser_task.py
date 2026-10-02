@@ -56,6 +56,9 @@ STEP_CARD: dict[str, object] = {
 RESULT = BrowserResultSnapshot(
     status=BrowserSessionStatus.COMPLETED, success=True, summary="Booked the table."
 )
+RESULT_CARD: dict[str, object] = {
+    "tool_data": {"tool_name": "browser_task_data", "data": RESULT.model_dump(mode="json")}
+}
 
 
 @pytest.fixture(autouse=True)
@@ -76,6 +79,13 @@ def _state(status: BrowserJobStatus) -> BrowserJobState:
         agent_message=ANSWER if done else "",
         result=RESULT if done else None,
     )
+
+
+def _shown(card: dict[str, object]) -> object:
+    """Return what a card frame shows, without the time it was normalized at."""
+    entry = card["tool_data"]
+    assert isinstance(entry, dict)
+    return (entry["tool_name"], entry["data"])
 
 
 async def _forget_who_told() -> None:
@@ -206,12 +216,40 @@ async def test_a_join_from_another_turn_carries_the_runs_cards_onto_its_own_mess
         "configurable": {"user_id": "u1", "thread_id": "c1", "stream_id": "s2"}
     }
     assert await _join(config=later_turn) == ANSWER
-    assert published == [("s2", STEP_CARD)]
+    assert [(stream, _shown(card)) for stream, card in published] == [
+        ("s2", _shown(STEP_CARD)),
+        ("s2", _shown(RESULT_CARD)),
+    ]
 
     await _forget_who_told()
     no_stream: RunnableConfig = {"configurable": {"user_id": "u1", "thread_id": "c1"}}
     assert await _join(config=no_stream) == ANSWER
-    assert published == [("s2", STEP_CARD)]
+    assert len(published) == 2
+
+
+@pytest.mark.parametrize("published_yet", [False, True])
+async def test_a_join_in_the_gap_before_the_result_card_still_ends_the_runs_card(
+    monkeypatch: pytest.MonkeyPatch, published_yet: bool
+) -> None:
+    """Greptile: the record said DONE before the run published its result card, so a joined card stayed running."""
+    published: list[dict[str, object]] = []
+
+    async def _publish(stream_id: str, card: dict[str, object]) -> None:
+        published.append(card)
+
+    monkeypatch.setattr(tool_mod, "publish_to_stream", _publish)
+    await publish_job_event("job-1", STEP_CARD)
+    if published_yet:
+        await publish_job_event("job-1", RESULT_CARD)
+    await _finish()
+    later_turn: RunnableConfig = {
+        "configurable": {"user_id": "u1", "thread_id": "c1", "stream_id": "s2"}
+    }
+
+    assert await _join(config=later_turn) == ANSWER
+
+    # The result card once, from the feed or else from the record: never missing, never twice.
+    assert [_shown(card) for card in published] == [_shown(STEP_CARD), _shown(RESULT_CARD)]
 
 
 async def test_a_result_the_worker_already_told_is_not_told_again() -> None:
