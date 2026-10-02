@@ -51,7 +51,11 @@ from app.models.todo_models import (
     TodoUpdate,
 )
 from app.models.user_models import UserDocument
-from app.services.todos.errors import ExternalRefTakenError, SubTodoParentError
+from app.services.todos.errors import (
+    ExternalRefTakenError,
+    SubTodoParentError,
+    UnwatchedTodoKeptError,
+)
 from app.services.triggers.subscription_service import SubscriptionError
 from shared.py.wide_events import spawn_logged_task
 
@@ -1590,6 +1594,19 @@ class TestCreateThreadTrackedTodo:
         assert "Tracked todo created" not in result
         assert "Could not register 'gmail_email_sent'" in result
 
+    async def test_a_todo_kept_without_its_watch_is_named_for_the_model_to_close(self):
+        kept = UnwatchedTodoKeptError("t1", SubscriptionError("no Gmail"))
+        with patch(self._CREATE, new_callable=AsyncMock, side_effect=kept):
+            result = await create_tracked_todo.coroutine(
+                config=_config(), title="t", gmail_thread_id="abc"
+            )
+
+        assert result == (
+            "Not fully created: Todo t1 could not watch its thread (no Gmail) and could not be "
+            "removed, so it is kept without its watch. Complete it with complete_tracked_todo "
+            "(todo_id=t1) before creating this todo again."
+        )
+
 
 class TestTrackedTodoReferences:
     """A todo that references others inherits their Standing rules, so only the user's own count."""
@@ -1661,6 +1678,18 @@ class TestTrackedTodoReferences:
         find.assert_awaited_once_with("user-1", [self.DESK])
         add.assert_awaited_once_with("t1", user_id="user-1", references=[self.DESK])
         update.assert_not_awaited()
+
+    async def test_references_on_a_todo_deleted_mid_update_are_not_reported_saved(self):
+        with (
+            patch(self._FIND, AsyncMock(return_value=self._owned(self.DESK))),
+            patch(self._GET, AsyncMock(return_value=self._owned("t1")[0])),
+            patch(self._ADD, AsyncMock(return_value=None)),
+        ):
+            result = await update_tracked_todo.coroutine(
+                config=_config(), todo_id="t1", references=[self.DESK]
+            )
+
+        assert result == "Error: tracked todo t1 was gone before its references were saved."
 
     async def test_an_update_naming_a_todo_the_user_does_not_own_links_nothing(self):
         with (

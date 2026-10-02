@@ -47,6 +47,7 @@ from app.services.todos.errors import (
     CanvasShapeError,
     ExternalRefTakenError,
     SubTodoParentError,
+    UnwatchedTodoKeptError,
 )
 from app.services.tracked_todo_service import require_sub_todo_parent, tracked_todo_service
 from app.services.triggers.matchable_fields import MATCHABLE_TRIGGERS, get_matchable_trigger
@@ -583,11 +584,20 @@ def _format_create_output(
 
 
 def _format_refused_create_output(
-    refused: ExternalRefTakenError | SubTodoParentError | CanvasShapeError | SubscriptionError,
+    refused: ExternalRefTakenError
+    | SubTodoParentError
+    | CanvasShapeError
+    | SubscriptionError
+    | UnwatchedTodoKeptError,
 ) -> str:
-    """Tell the model why nothing was created and what to do instead."""
+    """Tell the model why nothing (or only part) was created and what to do instead."""
     if isinstance(refused, ExternalRefTakenError):
         return _format_ref_taken_output(refused.existing, datetime.now(UTC))
+    if isinstance(refused, UnwatchedTodoKeptError):
+        return (
+            f"Not fully created: {refused.message} Complete it with complete_tracked_todo "
+            f"(todo_id={refused.todo_id}) before creating this todo again."
+        )
     if isinstance(refused, SubTodoParentError | CanvasShapeError):
         return f"Not created: {refused.message} Nothing was saved."
     return f"Not created: the thread could not be watched ({refused}). Nothing was saved."
@@ -767,6 +777,7 @@ async def create_tracked_todo(
         SubTodoParentError,
         CanvasShapeError,
         SubscriptionError,
+        UnwatchedTodoKeptError,
     ) as refused:
         return _format_refused_create_output(refused)
 
@@ -975,7 +986,11 @@ async def update_tracked_todo(
             return error
     updated_keys = list(update_fields)
     if references:
-        await todo_repository.add_references(todo_id, user_id=user_id, references=references)
+        if (
+            await todo_repository.add_references(todo_id, user_id=user_id, references=references)
+            is None
+        ):
+            return f"Error: tracked todo {todo_id} was gone before its references were saved."
         updated_keys.append("references")
 
     msg = f"Updated tracked todo {todo_id}: {', '.join(updated_keys)}"

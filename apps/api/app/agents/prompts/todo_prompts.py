@@ -124,6 +124,11 @@ SUB_TODOS_LABEL = (
     "Your open sub-todos. They report to you, not to the user, so their news reaches the "
     "user only through your report. Each one's Current State:"
 )
+# Closes the sub-todo list when it was cut at its limit, so the run does not take it as whole.
+SUB_TODOS_CUT_NOTE = (
+    "(Only the first {limit} are shown; more are open. "
+    'list_tracked_todos(parent_todo_id="{todo_id}") lists them.)'
+)
 
 
 # Appended to a scheduled/triggered run whose todo has notify_on_run set. GAIA
