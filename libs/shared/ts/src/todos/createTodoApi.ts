@@ -75,9 +75,7 @@ function unwrapBulkResponse(response: { updated: Todo[] } | Todo[]): Todo[] {
 export function createTodoApi(http: HttpAdapter): TodoApiClient {
   return {
     getAllTodos: async (filters) => {
-      const qs = buildQueryString(
-        filters as Record<string, QueryValue>,
-      );
+      const qs = buildQueryString(filters as Record<string, QueryValue>);
       const response = await http.get<TodoListResponse | Todo[]>(
         `${TODO_ENDPOINTS.list}${qs}`,
         { silent: true },

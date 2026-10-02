@@ -6,9 +6,7 @@ export type QueryValue =
   | undefined
   | null;
 
-export function buildQueryString(
-  filters?: Record<string, QueryValue>,
-): string {
+export function buildQueryString(filters?: Record<string, QueryValue>): string {
   if (!filters) return "";
   const params = new URLSearchParams();
 
