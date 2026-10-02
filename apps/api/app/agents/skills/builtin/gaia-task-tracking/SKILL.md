@@ -151,7 +151,7 @@ Add an entry by editing the end of the file: `read` it, then `edit` its last lin
 - `priority` — `high` | `medium` | `low` | `none` (default `none`)
 - `scheduled_at` — ISO datetime when GAIA should auto-execute (must be future). Omit for cron recurrence — first fire is computed from the cron.
 - `recurrence` — repeat pattern. Cron-style works alone (no `scheduled_at` needed); shortcut values still need `scheduled_at` as anchor.
-- `due_date` — ISO datetime deadline; may be in the past (overdue still needs doing)
+- `due_date` — ISO datetime deadline with the user's timezone offset; may be in the past (overdue still needs doing)
 - `expires_at` — ISO datetime when todo becomes irrelevant (skipped if expired)
 - `gmail_thread_id` — the email thread this todo is about (one open todo per thread; see above)
 
@@ -291,7 +291,7 @@ create_tracked_todo(title="Weekday standup prep", recurrence="0 9 * * 1-5")
 ### Update after creation
 
 ```python
-update_tracked_todo(todo_id="abc123", due_date="2026-04-15")
+update_tracked_todo(todo_id="abc123", due_date="2026-04-15T17:00:00+05:30")
 update_tracked_todo(todo_id="abc123", scheduled_at="2026-03-30T10:00:00Z")
 update_tracked_todo(todo_id="abc123", scheduled_at="", recurrence="")  # Clear scheduling
 update_tracked_todo(todo_id="abc123", labels=["gaia-tracked", "waiting-for-reply"])

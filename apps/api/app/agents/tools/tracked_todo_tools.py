@@ -43,7 +43,7 @@ from app.models.trigger_subscription_models import (
 from app.services.canvas_markdown import section_body
 from app.services.storage._vfs_common import folder_name
 from app.services.todo_activity import agent_actor, record_field_changes
-from app.services.todos.errors import ExternalRefTakenError
+from app.services.todos.errors import ExternalRefTakenError, UnwatchedTodoKeptError
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.matchable_fields import MATCHABLE_TRIGGERS, get_matchable_trigger
 from app.services.triggers.scope_catalog import scope_fields_for
@@ -695,6 +695,11 @@ async def create_tracked_todo(
         return _format_ref_taken_output(taken.existing, datetime.now(UTC))
     except SubscriptionError as e:
         return f"Not created: the thread could not be watched ({e}). Nothing was saved."
+    except UnwatchedTodoKeptError as kept:
+        return (
+            f"Not fully created: {kept.message} Complete it with complete_tracked_todo "
+            f"(todo_id={kept.todo_id}) before creating this todo again."
+        )
 
     if parsed_scheduled_at:
         schedule_error = await _schedule_execution_after_create(result.id, parsed_scheduled_at)

@@ -51,7 +51,7 @@ from app.models.todo_models import (
     TodoUpdate,
 )
 from app.models.user_models import UserDocument
-from app.services.todos.errors import ExternalRefTakenError
+from app.services.todos.errors import ExternalRefTakenError, UnwatchedTodoKeptError
 from app.services.triggers.subscription_service import SubscriptionError
 from shared.py.wide_events import spawn_logged_task
 
@@ -1575,6 +1575,19 @@ class TestCreateThreadTrackedTodo:
 
         assert "Tracked todo created" not in result
         assert "Could not register 'gmail_email_sent'" in result
+
+    async def test_a_todo_kept_without_its_watch_is_named_for_the_model_to_close(self):
+        kept = UnwatchedTodoKeptError("t1", SubscriptionError("no Gmail"))
+        with patch(self._CREATE, new_callable=AsyncMock, side_effect=kept):
+            result = await create_tracked_todo.coroutine(
+                config=_config(), title="t", gmail_thread_id="abc"
+            )
+
+        assert result == (
+            "Not fully created: Todo t1 could not watch its thread (no Gmail) and could not be "
+            "removed, so it is kept without its watch. Complete it with complete_tracked_todo "
+            "(todo_id=t1) before creating this todo again."
+        )
 
 
 # ---------------------------------------------------------------------------

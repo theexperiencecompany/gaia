@@ -126,7 +126,8 @@ These live at `/workspace/gaia-tasks/`:
   recurrence, expires_at, references.
 - `complete_tracked_todo`: mark done (requires a completion summary).
 - `search_todo_context`: semantic search over all notes (includes done).
-- `list_tracked_todos`: active tracked todos (≤50) with metadata.
+- `list_tracked_todos`: active tracked todos (≤50) with metadata; filter with
+  `labels=[...]` (todos carrying all of them) or `gmail_thread_id=...`.
 
 The notes are ordinary files for you: `read`, `edit` and `write` work on
 `canvas.md` and `activity.md` (they are stored on the todo, so this works even
@@ -188,8 +189,9 @@ write learnings here, and never write activity into canvas.md.
   `every_4h`, `every_1h`) need `scheduled_at` as anchor; cron (`0 9 * * 1-5`)
   does not: first fire is computed from the cron. If both are passed,
   `scheduled_at` is ignored.
-- `due_date` (set via `update_tracked_todo`) = deadline; overdue still needs
-  doing. `expires_at` = relevance window; expired is skipped entirely.
+- `due_date` (set at creation or via `update_tracked_todo`, with a timezone
+  offset) = deadline; overdue still needs doing. `expires_at` = relevance
+  window; expired is skipped entirely.
 - Execution: Redis-locked (no double-run); retries 3× with 1h then 4h backoff;
   after 3 failures a `failed` label is added and the user notified; success
   with recurrence advances `scheduled_at` and re-enqueues.

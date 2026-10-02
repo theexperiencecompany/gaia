@@ -45,6 +45,7 @@ from app.services.todo_canvas_storage import (
     build_vfs_label,
     write_canvas_and_activity,
 )
+from app.services.todos.errors import UnwatchedTodoKeptError
 from app.services.todos.external_ref_watch import watch_external_ref
 from app.services.todos.todo_service import TodoService
 from app.services.triggers.subscription_service import teardown_subscriptions
@@ -71,7 +72,7 @@ CANVAS_TEMPLATE = """# {title}
 
 
 async def _discard_unwatched_todo(todo_id: str, user_id: str, watch_error: Exception) -> None:
-    """Delete a todo whose watch failed; a failed delete is logged and noted on watch_error."""
+    """Delete a todo whose watch failed; UnwatchedTodoKeptError names it when the delete fails too."""
     try:
         await TodoService.delete_todo(todo_id, user_id)
     except Exception as delete_error:
@@ -82,7 +83,7 @@ async def _discard_unwatched_todo(todo_id: str, user_id: str, watch_error: Excep
             error=str(delete_error),
             error_type=type(delete_error).__name__,
         )
-        watch_error.add_note(f"Deleting the unwatched todo {todo_id} failed too: {delete_error!r}")
+        raise UnwatchedTodoKeptError(todo_id, watch_error) from delete_error
 
 
 def _pin_active_todo(docs: list[TodoDocument], active_todo_id: str | None) -> None:
@@ -144,7 +145,8 @@ class TrackedTodoService:
 
         schedule's scheduled_at, recurrence, due_date and expires_at are saved with the insert.
         With external_ref it is the one open todo for that object, already watching it.
-        Raises ExternalRefTakenError when another open todo holds the ref.
+        Raises ExternalRefTakenError when another open todo holds the ref, and
+        UnwatchedTodoKeptError when the watch and the rollback both fail.
         """
         schedule = schedule or TodoUpdate()
         all_labels = list(labels or [])
