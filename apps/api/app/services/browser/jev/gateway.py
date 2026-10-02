@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 import json
 from time import perf_counter
 from typing import Literal, Protocol
+from urllib.parse import urljoin
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
@@ -229,10 +230,20 @@ def _error_message(response: httpx.Response) -> str:
     return str(error.message or error.type or response.text[:200])
 
 
-_OPENROUTER_DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions"
+_OPENROUTER_API_URL = "https://openrouter.ai/api/v1"
 # Vercel AI Gateway evaluation endpoint: same {model, state, questions} body
 # and {answers, usage} response as the OpenRouter decisions route.
 _VERCEL_EVALUATE_URL = "https://ai-gateway.vercel.sh/v1/evaluate"
+
+
+def _openrouter_decisions_url() -> str:
+    """Return OpenRouter's decisions route, which sits beside v1 under /api.
+
+    A development OPENROUTER_BASE_URL (a test stack's model server) moves it with
+    the rest of OpenRouter; production refuses to boot with that override set.
+    """
+    base = settings.OPENROUTER_BASE_URL or _OPENROUTER_API_URL
+    return urljoin(f"{base.rstrip('/')}/", "../alpha/decisions")
 
 
 def _build_jev_client(http: httpx.AsyncClient) -> JevGatewayClient:
@@ -252,7 +263,7 @@ def _build_jev_client(http: httpx.AsyncClient) -> JevGatewayClient:
         api_key, model, url = (
             settings.OPENROUTER_API_KEY,
             settings.BROWSER_USE_JEV_MODEL,
-            _OPENROUTER_DECISIONS_URL,
+            _openrouter_decisions_url(),
         )
     if not api_key:
         raise BrowserUnavailableError(f"Jev's {provider} gateway has no API key configured.")

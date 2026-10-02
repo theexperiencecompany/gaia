@@ -12,6 +12,7 @@ import pytest
 
 from app.agents.llm import client, dev_lane
 from app.agents.llm.client import PROVIDER_MODELS
+from app.config.browser_host_settings import BrowserHostSettings
 from app.config.settings import (
     CommonSettings,
     DevelopmentSettings,
@@ -48,6 +49,8 @@ DEV_OVERRIDE_VARS = (
     "DEV_UNLIMITED_RATE_LIMITS",
     "OPENROUTER_BASE_URL",
     "GAIA_SIM_MODE",
+    "BROWSER_HOST_ALLOW_PRIVATE_ORIGINS",
+    "OBSCURA_ALLOW_PRIVATE_NETWORK",
 )
 
 
@@ -76,6 +79,8 @@ def _fake_chat_openrouter(captured: dict[str, object]) -> type:
         ("DEV_AUTH_BYPASS_EMAIL", "dev@gaia.local"),
         ("OPENROUTER_BASE_URL", "http://localhost:9797"),
         ("GAIA_SIM_MODE", "1"),
+        ("BROWSER_HOST_ALLOW_PRIVATE_ORIGINS", "http://localhost:8123"),
+        ("OBSCURA_ALLOW_PRIVATE_NETWORK", "1"),
     ],
 )
 def test_dev_overrides_block_production_boot(monkeypatch, env_var, value):
@@ -88,6 +93,48 @@ def test_dev_overrides_block_production_boot(monkeypatch, env_var, value):
 
     with pytest.raises(RuntimeError, match=env_var):
         get_settings()
+
+
+@pytest.mark.parametrize(
+    ("env_var", "value"),
+    [
+        ("BROWSER_HOST_ALLOW_PRIVATE_ORIGINS", "http://localhost:8123"),
+        ("OBSCURA_ALLOW_PRIVATE_NETWORK", "1"),
+    ],
+)
+def test_private_browsing_blocks_production_boot_of_the_browser_host(monkeypatch, env_var, value):
+    """The host never loads the API's settings, so its own settings refuse the test stack's private reach."""
+    monkeypatch.setenv("ENV", "production")
+    for var in DEV_OVERRIDE_VARS:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv(env_var, value)
+
+    with pytest.raises(ValidationError, match=env_var):
+        BrowserHostSettings()
+
+
+def test_private_origins_are_read_as_exact_origins_in_development(monkeypatch):
+    monkeypatch.setenv("ENV", "development")
+    monkeypatch.setenv(
+        "BROWSER_HOST_ALLOW_PRIVATE_ORIGINS", "http://localhost:8123, http://127.0.0.1:8124"
+    )
+
+    assert {
+        "http://localhost:8123",
+        "http://127.0.0.1:8124",
+    } == BrowserHostSettings().BROWSER_HOST_ALLOW_PRIVATE_ORIGINS
+
+
+@pytest.mark.parametrize(
+    "origin", ["http://localhost", "http://localhost:8123/form", "localhost:8123"]
+)
+def test_a_private_origin_that_is_not_exact_refuses_to_load(monkeypatch, origin):
+    """A path or a missing port would widen or miss the origin the list means."""
+    monkeypatch.setenv("ENV", "development")
+    monkeypatch.setenv("BROWSER_HOST_ALLOW_PRIVATE_ORIGINS", origin)
+
+    with pytest.raises(ValidationError, match="is not an exact origin|unsupported URL scheme"):
+        BrowserHostSettings()
 
 
 def test_openrouter_base_url_allowed_in_development(monkeypatch):

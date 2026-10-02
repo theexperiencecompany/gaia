@@ -22,8 +22,9 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
 from app.browser_host.pumps import pump_until_first_close
+from app.config.browser_host_settings import browser_host_settings
 from app.constants.log_tags import LogTag
-from app.utils.url_safety import assert_public_http_url
+from app.utils.url_safety import assert_public_http_url, http_origin
 from shared.py.wide_events import log
 
 if TYPE_CHECKING:
@@ -148,12 +149,16 @@ async def _refused_private_target(message: dict[str, Any]) -> str | None:
 
     The engine resolves the name again itself, so this cannot stop DNS rebinding;
     Obscura's own resolver guard and the egress firewall are what hold there, and
-    for the in-page redirects and subresources that never pass this proxy.
+    for the in-page redirects and subresources that never pass this proxy. Only the
+    exact origins a test stack allows (never set in production) skip the check.
     """
     url = _navigation_url(message)
     if url is None:
         return None
+    allowed = browser_host_settings.BROWSER_HOST_ALLOW_PRIVATE_ORIGINS
     try:
+        if allowed and http_origin(url) in allowed:
+            return None
         await assert_public_http_url(url)
     except ValueError as exc:
         return f"navigation to {url} refused: {exc}"

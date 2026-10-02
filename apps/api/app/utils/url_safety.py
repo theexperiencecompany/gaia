@@ -50,6 +50,17 @@ def _parse_http_host_port(url: str) -> tuple[str, int]:
     return host, port
 
 
+def http_origin(url: str) -> str:
+    """Return url's origin as scheme://host:port, the port always written out.
+
+    Parsed as the outbound connection parses it, so an allow-list compared on
+    this string matches the host and port that are actually dialed.
+    """
+    host, port = _parse_http_host_port(url)
+    scheme = httpx.URL(url).scheme
+    return f"{scheme}://{f'[{host}]' if ':' in host else host}:{port}"
+
+
 def _assert_ip_public(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> None:
     # ``is_global`` rejects private, loopback, link-local (incl.
     # 169.254.169.254), reserved, multicast, unspecified, CGNAT

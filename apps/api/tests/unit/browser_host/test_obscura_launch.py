@@ -87,6 +87,25 @@ def test_obscura_receives_its_script_deadline_in_milliseconds(
     assert env["OBSCURA_PROBE_PASSTHROUGH"] == "kept"
 
 
+def test_obscura_reaches_private_addresses_only_while_the_host_allows_private_origins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An ambient OBSCURA_ALLOW_PRIVATE_NETWORK never reaches the engine on its own."""
+    monkeypatch.setenv("OBSCURA_ALLOW_PRIVATE_NETWORK", "1")
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_ALLOW_PRIVATE_ORIGINS", frozenset())
+
+    assert "OBSCURA_ALLOW_PRIVATE_NETWORK" not in obscura_serve_env()
+
+    monkeypatch.delenv("OBSCURA_ALLOW_PRIVATE_NETWORK")
+    monkeypatch.setattr(
+        browser_host_settings,
+        "BROWSER_HOST_ALLOW_PRIVATE_ORIGINS",
+        frozenset({"http://localhost:8123"}),
+    )
+
+    assert obscura_serve_env()["OBSCURA_ALLOW_PRIVATE_NETWORK"] == "1"
+
+
 def test_a_free_port_is_one_nothing_listens_on() -> None:
     port = free_local_port()
 

@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 from pydantic import computed_field, field_validator
 from pydantic_settings import SettingsConfigDict
 
-from app.config.browser_host_settings import BrowserHostSettings
+from app.config.browser_host_settings import OBSCURA_PRIVATE_NETWORK_ENV, BrowserHostSettings
 from app.config.secrets import inject_infisical_secrets
 from app.config.settings_validator import settings_validator
 from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
@@ -854,6 +854,17 @@ def get_settings() -> ProductionSettings | DevelopmentSettings:
                     "OPENROUTER_BASE_URL is set but ENV=production — "
                     "the OpenRouter base-URL override is a development-only stub hook."
                 )
+            # The browser test stack's reach into private addresses; the host process,
+            # which never loads these settings, refuses the same in BrowserHostSettings.
+            for private_reach in (
+                "BROWSER_HOST_ALLOW_PRIVATE_ORIGINS",
+                OBSCURA_PRIVATE_NETWORK_ENV,
+            ):
+                if os.getenv(private_reach):
+                    raise RuntimeError(
+                        f"{private_reach} is set but ENV=production — "
+                        "browsing to private addresses is a test-stack-only switch."
+                    )
             # Boolean-semantic var: an explicit "false"/"0"/"no"/"off" is a
             # legitimate way to DISABLE sim mode and must not trip the guard
             # (unlike the string-valued overrides above, where set == enabled).
