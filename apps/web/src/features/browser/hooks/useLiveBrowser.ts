@@ -24,7 +24,9 @@ export function useLiveBrowser(
   onDropped?: () => void,
 ) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const keyboardRef = useRef<HTMLInputElement | null>(null);
+  // State, not a ref: the keyboard input mounts later than the canvas, and
+  // useLiveInput binds to it when it does.
+  const [keyboard, keyboardRef] = useState<HTMLInputElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   // Page CSS size — the coordinate space CDP input expects. The frame bitmap can
   // be a downscaled rendering of it, so pointer math must use THIS, never the
@@ -140,7 +142,7 @@ export function useLiveBrowser(
 
   const { openKeyboard } = useLiveInput({
     canvasRef,
-    keyboardRef,
+    keyboard,
     cssSizeRef,
     send,
     enabled: interactive && !!socketUrl,
