@@ -240,6 +240,8 @@ class TestCards:
 
         assert [frame.index for frame in harness.frames] == [1, 2, 3]
         assert harness.frames[1].goal == STEP_ERROR_CAPTION
+        # A step that errored shows the page it errored on.
+        assert harness.frames[1].photo == "c2hvdA=="
         assert harness.outputs[-1] == (3, ["confirmed"])
 
     async def test_a_step_that_errored_after_its_card_is_not_shown_twice(

@@ -14,6 +14,7 @@ import fakeredis
 from PIL import Image
 import pytest
 
+from app.constants.browser import BROWSER_STEP_PHOTO_QUALITY
 from app.services.browser import screenshots as shots, shot_store
 from tests.helpers import captured_wide_event
 
@@ -199,18 +200,19 @@ class TestPublishStepScreenshot:
     async def test_a_photo_taken_as_a_png_is_served_as_a_jpeg_of_the_same_page(
         self, no_r2, redis_backend
     ):
+        # With an alpha channel, as a page photo can carry one; a JPEG cannot.
         png = BytesIO()
-        Image.new("RGB", (8, 4), (200, 30, 30)).save(png, format="PNG")
+        Image.new("RGBA", (8, 4), (200, 30, 30, 255)).save(png, format="PNG")
+        expected = BytesIO()
+        Image.new("RGB", (8, 4), (200, 30, 30)).save(
+            expected, format="JPEG", quality=BROWSER_STEP_PHOTO_QUALITY
+        )
 
         url = await shots.publish_step_screenshot(png.getvalue(), "c1", 1)
 
         assert url is not None
-        stored = await _read_back(url, 1)
-        assert stored is not None
-        with Image.open(BytesIO(stored)) as served:
-            assert (served.format, served.size) == ("JPEG", (8, 4))
-            red, green, blue = served.convert("RGB").getpixel((4, 2))
-        assert red > 180 and green < 60 and blue < 60
+        # The same JPEG, at the same quality, as every other step photo.
+        assert await _read_back(url, 1) == expected.getvalue()
 
     async def test_a_frame_redis_did_not_take_returns_none_and_no_photo(self, no_r2, no_redis):
         assert await shots.publish_step_screenshot(b"x", "c1", 1) is None

@@ -41,6 +41,15 @@ async def test_a_code_opens_its_session_for_the_handoffs_window_until_revoked(
     await asyncio.wait_for(live_code.live_code_ended(code), timeout=1)
 
 
+async def test_a_socket_a_code_opened_ends_when_the_code_lapses(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    code = await live_code.mint_live_code("sess-abc", "user-1", "h1")
+    await fake_redis.expire(f"browser:livecode:{code}", 1)
+
+    await asyncio.wait_for(live_code.live_code_ended(code), timeout=3)
+
+
 async def test_a_live_code_is_a_short_url_safe_slug(
     fake_redis: fakeredis.aioredis.FakeRedis,
 ) -> None:

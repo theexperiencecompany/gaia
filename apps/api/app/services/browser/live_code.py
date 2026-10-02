@@ -90,5 +90,5 @@ async def live_code_ended(code: str) -> None:
                     if message["type"] == "message":
                         return
     finally:
-        await pubsub.unsubscribe(_revoked_channel(code))
+        # Closing drops the connection, and the subscription with it.
         await pubsub.aclose()

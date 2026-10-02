@@ -83,7 +83,12 @@ def _put(image: bytes, key: str) -> None:
 def _png_to_jpeg(png: bytes) -> bytes:
     with Image.open(BytesIO(png)) as frame:
         jpeg = BytesIO()
-        frame.convert("RGB").save(jpeg, format="JPEG", quality=BROWSER_STEP_PHOTO_QUALITY)
+        # Equivalent mutant: Pillow upper-cases the format name, so "jpeg" saves the same file.
+        frame.convert("RGB").save(
+            jpeg,
+            format="JPEG",  # pragma: no mutate
+            quality=BROWSER_STEP_PHOTO_QUALITY,
+        )
     return jpeg.getvalue()
 
 

@@ -5,7 +5,11 @@ import asyncio
 import fakeredis.aioredis
 import pytest
 
-from app.constants.browser import BROWSER_JOB_LOCK_TTL_SECONDS, ResultSpeaker
+from app.constants.browser import (
+    BROWSER_JOB_JOINER_LEASE_SECONDS,
+    BROWSER_JOB_LOCK_TTL_SECONDS,
+    ResultSpeaker,
+)
 from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
 from app.services.browser import jobs as jobs_mod
 
@@ -144,6 +148,25 @@ async def test_a_claim_whose_process_died_lapses_and_frees_the_result(
     await redis.pexpire("browser:job:joiner:job-1", 50)
 
     await asyncio.wait_for(jobs_mod.await_result_unclaimed("job-1"), timeout=3)
+
+
+async def test_a_joiners_telling_lapses_with_its_lease_until_its_run_keeps_it(
+    redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    """A turn whose process died after collecting told nobody: its claim must lapse so the worker tells it."""
+    key = "browser:job:delivered:job-1"
+    await jobs_mod.claim_result_delivery("job-1", ResultSpeaker.JOINER)
+    assert 0 < await redis.ttl(key) <= BROWSER_JOB_JOINER_LEASE_SECONDS
+
+    await redis.expire(key, 1)
+    await jobs_mod.keep_result_claim("job-1")
+    assert await redis.ttl(key) > 1
+
+    await jobs_mod.settle_result_claim("job-1", told=True)
+    assert await redis.ttl(key) > BROWSER_JOB_JOINER_LEASE_SECONDS
+    # The worker's telling is final from the start.
+    await jobs_mod.claim_result_delivery("job-2", ResultSpeaker.WORKER)
+    assert await redis.ttl("browser:job:delivered:job-2") > BROWSER_JOB_JOINER_LEASE_SECONDS
 
 
 async def test_everything_the_job_store_writes_lapses_with_the_job(

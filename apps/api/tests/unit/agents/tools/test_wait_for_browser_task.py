@@ -4,6 +4,8 @@ Real code over fakeredis: the job store, its feed and the join; nothing else is 
 """
 
 import asyncio
+from collections.abc import Coroutine
+from typing import Any
 
 import fakeredis.aioredis
 from langchain_core.runnables.config import RunnableConfig
@@ -18,6 +20,7 @@ from app.agents.tools import browser_tool as tool_mod
 from app.agents.tools.browser_tool import wait_for_browser_task
 from app.constants.browser import (
     BROWSER_JOB_DELIVERED_PREFIX,
+    BROWSER_JOB_JOINER_LEASE_SECONDS,
     BrowserSessionStatus,
     ResultSpeaker,
 )
@@ -111,6 +114,9 @@ async def test_a_run_that_ends_while_joined_is_collected_at_its_end_and_told_by_
 
     assert await asyncio.wait_for(joining, timeout=2) == ANSWER
     assert await claim_result_delivery("job-1", ResultSpeaker.WORKER) is ResultSpeaker.JOINER
+    # No run goes on past this answer, so the telling is final at once.
+    delivered = f"{BROWSER_JOB_DELIVERED_PREFIX}job-1"
+    assert await fake_redis.ttl(delivered) > BROWSER_JOB_JOINER_LEASE_SECONDS
     assert await joiner_lease_held("job-1") is False
 
 
@@ -118,13 +124,24 @@ async def test_a_run_that_ends_while_joined_is_collected_at_its_end_and_told_by_
     ("run_failed", "teller"), [(False, ResultSpeaker.JOINER), (True, ResultSpeaker.WORKER)]
 )
 async def test_a_collected_result_is_this_turns_to_tell_only_once_its_run_has_finished(
-    run_failed: bool, teller: ResultSpeaker
+    run_failed: bool, teller: ResultSpeaker, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A turn that collects the answer and then dies has told nobody: the worker must still tell it."""
+    spawned: list[str] = []
+    spawn = tool_mod.spawn_logged_task
+
+    def _spawn(operation: str, coro: Coroutine[Any, Any, None]) -> asyncio.Task[None]:
+        spawned.append(operation)
+        return spawn(operation, coro)
+
+    monkeypatch.setattr(tool_mod, "spawn_logged_task", _spawn)
     get_or_create_session("s1")
     try:
         await _finish()
         assert await _join() == ANSWER
+        # The run goes on past the answer: the worker keeps waiting on it.
+        assert await joiner_lease_held("job-1") is True
+        assert spawned == ["browser_result_hold"]
 
         signal_executor_done("s1", failed=run_failed)
         await asyncio.wait_for(await_result_unclaimed("job-1"), timeout=2)

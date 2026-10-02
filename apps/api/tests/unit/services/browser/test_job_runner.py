@@ -1452,10 +1452,29 @@ async def test_a_sign_in_whose_page_cannot_be_read_still_settles_its_card_and_sa
     h = _install(monkeypatch, run_body=body)
     get_session = AsyncMock(side_effect=[MagicMock(url="https://site.example/login"), host_says])
     monkeypatch.setattr(jr.host_client, "get_session", get_session)
+    fake_log = MagicMock()
+    monkeypatch.setattr(jr, "log", fake_log)
 
     await _run(h, _request(task="x"))
 
     assert outcomes == [ends]
+    unread = [
+        warning
+        for warning in fake_log.warning.call_args_list
+        if warning.kwargs.get("browser", {}).get("operation") == "mark_signed_in"
+    ]
+    if ends.status is HandoffStatus.COMPLETED:
+        # The run goes on unsaved, and the wide event says why.
+        [warning] = unread
+        assert warning.args == (
+            f"{LogTag.BROWSER} Could not read where the user signed in; their login is not saved",
+        )
+        assert warning.kwargs == {
+            "error_type": "BrowserUnavailableError",
+            "browser": {"session_id": "sess-1", "operation": "mark_signed_in"},
+        }
+    else:
+        assert unread == []
     handoff_cards = [card for card in h.cards if card["kind"] == "handoff"]
     assert [card["status"] for card in handoff_cards] == ["pending", ends.status.value]
     h.session.mark_authenticated.assert_not_called()

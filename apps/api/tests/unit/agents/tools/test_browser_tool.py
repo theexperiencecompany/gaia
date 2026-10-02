@@ -441,11 +441,12 @@ async def test_a_dropped_enqueue_frees_the_slot_and_says_so(
     assert recorder.released == [("c1", recorder.request.job_id)]
     assert recorder.spawned == []
     # Already findable by a join or a stop, so it is recorded as over, not queued forever.
-    ended = recorder.states[-1]
-    assert (ended.job_id, ended.status, ended.agent_message) == (
-        recorder.request.job_id,
-        BrowserJobStatus.DONE,
-        out,
+    assert recorder.states[-1] == BrowserJobState(
+        job_id=recorder.request.job_id,
+        status=BrowserJobStatus.DONE,
+        task="x",
+        relay_stream_id="s1",
+        agent_message=out,
     )
 
 

@@ -13,6 +13,7 @@ from typing import Any, cast
 from browser_use.browser.session import BrowserSession
 import pytest
 
+from app.constants.browser import BROWSER_STEP_PHOTO_QUALITY
 from app.constants.log_tags import LogTag
 from app.services.browser.jev import page as page_mod
 from app.services.browser.jev.page import (
@@ -720,3 +721,11 @@ async def test_the_tab_is_told_once_to_render_as_focused_and_to_report_its_page(
 
     assert tab.focus == [True]
     assert tab.page_events == [SESSION]
+
+
+async def test_a_step_photo_is_a_jpeg_of_the_one_step_photo_quality() -> None:
+    tab = _Tab()
+    page, _ = _page(tab)
+
+    assert await page.screenshot() == "c2hvdA=="
+    assert tab.shots == [{"format": "jpeg", "quality": BROWSER_STEP_PHOTO_QUALITY}]

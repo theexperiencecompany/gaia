@@ -310,9 +310,10 @@ async def test_a_run_past_its_budget_asks_neither_the_user_nor_the_agent(
 
     async def _asks_after_the_budget(run: _ScriptedRun) -> RunOutcome:
         assert run.hooks.guidance is not None
-        with pytest.raises(BrowserHandoffCancelled):
+        # What the agent reads back: the run is over, not that someone declined.
+        with pytest.raises(BrowserHandoffCancelled, match="^Browser task stopped.$"):
             await run.hooks.takeover("Sign in", "credentials")
-        with pytest.raises(BrowserHandoffCancelled):
+        with pytest.raises(BrowserHandoffCancelled, match="^Browser task stopped.$"):
             await run.hooks.guidance(AgentGuidanceRequest(reason="stuck", task="t"))
         return RunOutcome(success=False, summary="")
 
