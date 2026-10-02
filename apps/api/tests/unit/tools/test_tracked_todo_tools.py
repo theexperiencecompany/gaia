@@ -51,11 +51,8 @@ from app.models.todo_models import (
     TodoUpdate,
 )
 from app.models.user_models import UserDocument
-from app.services.todos.errors import (
-    ExternalRefTakenError,
-    SubTodoParentError,
-    UnwatchedTodoKeptError,
-)
+from app.services.todos import errors as todo_errors
+from app.services.todos.errors import ExternalRefTakenError, UnwatchedTodoKeptError
 from app.services.triggers.subscription_service import SubscriptionError
 from shared.py.wide_events import spawn_logged_task
 
@@ -1751,7 +1748,7 @@ class TestSubTodoTools:
         assert create.await_args.kwargs["parent_todo_id"] == self.DESK
 
     async def test_a_refused_parent_creates_nothing_and_says_why(self):
-        refusal = SubTodoParentError(
+        refusal = todo_errors.SubTodoParentError(
             f"{self.DESK} is itself a sub-todo; sub-todos go one level deep."
         )
         with (
@@ -1793,7 +1790,9 @@ class TestSubTodoTools:
 
     async def test_a_refused_parent_on_update_saves_nothing(self):
         existing = TodoDocument(id="t1", user_id="user-1", title="Reply to Sam")
-        refusal = SubTodoParentError("t1 has sub-todos of its own, so it cannot become one.")
+        refusal = todo_errors.SubTodoParentError(
+            "t1 has sub-todos of its own, so it cannot become one."
+        )
         with (
             patch(self._GET, AsyncMock(return_value=existing)),
             patch(self._REQUIRE, AsyncMock(side_effect=refusal)),
