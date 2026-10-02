@@ -9,7 +9,7 @@ from arq import Retry
 from app.constants.log_tags import LogTag
 from app.constants.todos import INBOX_DESK_PROVISION_RETRY_DELAY
 from app.services.todos.inbox_desk import provision_inbox_desk
-from app.workers.task_envelope import RETRY_BACKOFF_BASE, ArqJobContext
+from app.workers.job_retry import RETRY_BACKOFF_BASE, ArqJobContext
 from shared.py.wide_events import log
 
 
