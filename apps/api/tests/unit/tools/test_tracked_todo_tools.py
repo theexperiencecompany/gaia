@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, patch
 from pydantic import ValidationError
 import pytest
 
+from app.agents.tools import tracked_todo_tools
 from app.agents.tools.tracked_todo_tools import (
     _apply_cron_first_fire,
     _build_clearable_datetime_update,
@@ -23,7 +24,6 @@ from app.agents.tools.tracked_todo_tools import (
     _build_priority_update,
     _build_recurrence_update,
     _build_scheduled_at_update,
-    _creation_field_update,
     _format_create_output,
     _format_first_fire_note,
     _format_tracked_todo_full,
@@ -40,7 +40,8 @@ from app.agents.tools.tracked_todo_tools import (
     search_todo_context,
     update_tracked_todo,
 )
-from app.constants.todos import GAIA_TRACKED_LABEL, LIST_TRACKED_TODOS_LIMIT
+from app.constants import todos as todo_constants
+from app.constants.todos import GAIA_TRACKED_LABEL
 from app.models.todo_models import (
     ExternalRef,
     ExternalRefSource,
@@ -692,13 +693,15 @@ class TestResolveCronFirstFire:
 
 class TestCreationFieldUpdate:
     def test_nothing_to_set_is_no_update(self):
-        assert _creation_field_update(None, None, None, None) == (None, None)
+        assert tracked_todo_tools._creation_field_update(None, None, None, None) == (None, None)
 
     def test_an_empty_date_is_unset_not_a_clear(self):
-        assert _creation_field_update(None, None, "", "") == (None, None)
+        assert tracked_todo_tools._creation_field_update(None, None, "", "") == (None, None)
 
     def test_collects_every_field_the_create_sets(self):
-        update, error = _creation_field_update(_FUTURE, "daily", _PAST_ISO, _FUTURE_ISO)
+        update, error = tracked_todo_tools._creation_field_update(
+            _FUTURE, "daily", _PAST_ISO, _FUTURE_ISO
+        )
         assert error is None
         assert update.scheduled_at == _FUTURE
         assert update.recurrence == "daily"
@@ -709,7 +712,7 @@ class TestCreationFieldUpdate:
     @pytest.mark.parametrize("field", ["due_date", "expires_at"])
     def test_an_unparseable_date_is_an_error(self, field):
         dates = {"due_date": None, "expires_at": None, field: "garbage"}
-        update, error = _creation_field_update(_FUTURE, "daily", **dates)
+        update, error = tracked_todo_tools._creation_field_update(_FUTURE, "daily", **dates)
         assert update is None
         assert error == f"Error: invalid {field} format 'garbage'."
 
@@ -1518,6 +1521,7 @@ class TestCreateThreadTrackedTodo:
             "source_conversation_id": None,
             "notify_on_run": False,
             "external_ref": ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="abc"),
+            "schedule": None,
         }
 
     async def test_no_thread_id_means_no_ref(self):
@@ -1602,7 +1606,7 @@ class TestListTrackedTodos:
         with patch(_LIST_ACTIVE, new_callable=AsyncMock, return_value=[]) as listed:
             await list_tracked_todos.coroutine(config=_config())
         assert listed.await_args.args == ("user-1",)
-        assert listed.await_args.kwargs["limit"] == LIST_TRACKED_TODOS_LIMIT
+        assert listed.await_args.kwargs["limit"] == todo_constants.LIST_TRACKED_TODOS_LIMIT
 
     async def test_labels_filter_asks_for_todos_carrying_all_of_them(self):
         with patch(_LIST_ACTIVE, new_callable=AsyncMock, return_value=[]) as listed:
