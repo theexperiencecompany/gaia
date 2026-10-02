@@ -7,7 +7,7 @@ per-test Redis; only the viewer's socket and the host's stream are stand-ins.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable
 from types import SimpleNamespace
 from typing import cast
 
@@ -46,10 +46,27 @@ async def client(fake_redis: fakeredis.aioredis.FakeRedis) -> AsyncIterator[Asyn
         yield http
 
 
-class _Viewer:
+class _Observed:
+    """A fake socket end a test can wait on: every change it records wakes the waiters."""
+
+    def __init__(self) -> None:
+        self._changed = asyncio.Condition()
+
+    async def _record(self) -> None:
+        async with self._changed:
+            self._changed.notify_all()
+
+    async def until(self, holds: Callable[[], bool]) -> None:
+        """Return once holds() is true, as of the last change this end recorded."""
+        async with asyncio.timeout(2), self._changed:
+            await self._changed.wait_for(holds)
+
+
+class _Viewer(_Observed):
     """The viewer's end of a live-view socket: what it was sent, and how it was closed."""
 
     def __init__(self, says: list[str] | None = None) -> None:
+        super().__init__()
         self.application_state = WebSocketState.CONNECTED
         self.client_state = WebSocketState.CONNECTED
         self.accepted = False
@@ -59,16 +76,20 @@ class _Viewer:
 
     async def accept(self) -> None:
         self.accepted = True
+        await self._record()
 
     async def close(self, code: int = status.WS_1000_NORMAL_CLOSURE) -> None:
         self.close_code = code
         self.application_state = WebSocketState.DISCONNECTED
+        await self._record()
 
     async def send_bytes(self, data: bytes) -> None:
         self.received.append(data)
+        await self._record()
 
     async def send_text(self, data: str) -> None:
         self.received.append(data)
+        await self._record()
 
     async def receive_text(self) -> str:
         if self._says:
@@ -77,10 +98,12 @@ class _Viewer:
         raise WebSocketDisconnect
 
 
-class _HostStream:
+class _HostStream(_Observed):
     """The host's live stream: sends its frames, records input, and stays open until closed."""
 
     def __init__(self, frames: list[bytes | str] | None = None) -> None:
+        super().__init__()
+        self.opened = False
         self._frames = list(frames or [])
         self._closed = asyncio.Event()
         self.input: list[str] = []
@@ -91,6 +114,8 @@ class _HostStream:
         return self
 
     async def __aenter__(self) -> _HostStream:
+        self.opened = True
+        await self._record()
         return self
 
     async def __aexit__(self, *_exc: object) -> None:
@@ -107,21 +132,18 @@ class _HostStream:
 
     async def send(self, message: str) -> None:
         self.input.append(message)
+        await self._record()
 
 
 @pytest.fixture
-def host(monkeypatch: pytest.MonkeyPatch) -> Iterator[_HostStream]:
+def host(monkeypatch: pytest.MonkeyPatch) -> _HostStream:
     stream = _HostStream()
-    monkeypatch.setattr(blv.websockets, "connect", stream.connect)
+    monkeypatch.setattr("app.api.v1.endpoints.browser_live_view.websockets.connect", stream.connect)
     return stream
 
 
-async def _watch(viewer: _Viewer, code: str, token: str | None = None) -> asyncio.Task[None]:
-    """Open the socket and let it settle into proxying, or into its refusal."""
-    watching = asyncio.create_task(blv.live_view_ws(cast(WebSocket, viewer), code, t=token))
-    for _ in range(20):
-        await asyncio.sleep(0)
-    return watching
+def _watch(viewer: _Viewer, code: str, token: str | None = None) -> asyncio.Task[None]:
+    return asyncio.create_task(blv.live_view_ws(cast(WebSocket, viewer), code, t=token))
 
 
 # --- step frames and the recap --------------------------------------------------
@@ -232,8 +254,10 @@ async def test_a_socket_relays_frames_out_and_input_in(
     host._frames = [b"\xff\xd8frame", '{"type":"meta"}']
     viewer = _Viewer(says=['{"type":"click"}'])
 
-    watching = await _watch(viewer, "sess-1", create_takeover_token("sess-1", "u1"))
+    watching = _watch(viewer, "sess-1", create_takeover_token("sess-1", "u1"))
 
+    await viewer.until(lambda: len(viewer.received) == 2)
+    await host.until(lambda: bool(host.input))
     assert viewer.accepted
     assert host.dialed == [_HOST_STREAM]
     assert viewer.received == [b"\xff\xd8frame", '{"type":"meta"}']
@@ -248,7 +272,7 @@ async def test_a_refused_socket_is_closed_as_a_policy_violation_unopened(
     await register_session("sess-1", "u1", live_ws=_HOST_STREAM)
     viewer = _Viewer()
 
-    await (await _watch(viewer, "sess-1", create_takeover_token("sess-1", "intruder")))
+    await _watch(viewer, "sess-1", create_takeover_token("sess-1", "intruder"))
 
     assert (viewer.accepted, viewer.close_code) == (False, status.WS_1008_POLICY_VIOLATION)
     assert host.dialed == []
@@ -260,7 +284,7 @@ async def test_a_session_with_no_host_stream_closes_as_gone(
     await register_session("sess-1", "u1", live_ws=None)
     viewer = _Viewer()
 
-    await (await _watch(viewer, "sess-1", create_takeover_token("sess-1", "u1")))
+    await _watch(viewer, "sess-1", create_takeover_token("sess-1", "u1"))
 
     assert (viewer.accepted, viewer.close_code) == (False, 4404)
 
@@ -272,7 +296,8 @@ async def test_a_bot_link_socket_closes_the_moment_its_handoff_settles(
     await register_session("sess-1", "u1", live_ws=_HOST_STREAM)
     code = await mint_live_code("sess-1", "u1", "h1")
     viewer = _Viewer()
-    watching = await _watch(viewer, code)
+    watching = _watch(viewer, code)
+    await host.until(lambda: host.opened)
     assert viewer.accepted and not watching.done()
 
     await revoke_handoff_live_code("h1")
@@ -291,7 +316,7 @@ async def test_a_web_socket_ends_when_its_token_lapses(
     monkeypatch.setattr(takeover_token, "time", SimpleNamespace(time=lambda: expiry - 0.01))
     viewer = _Viewer()
 
-    await asyncio.wait_for(await _watch(viewer, "sess-1", token), timeout=2)
+    await asyncio.wait_for(_watch(viewer, "sess-1", token), timeout=2)
 
     assert viewer.accepted and viewer.close_code is not None
 
@@ -302,12 +327,12 @@ async def test_an_unreachable_host_closes_the_viewer(
     def _refused(url: str, max_size: int | None = None) -> object:
         raise OSError("connection refused")
 
-    monkeypatch.setattr(blv.websockets, "connect", _refused)
+    monkeypatch.setattr("app.api.v1.endpoints.browser_live_view.websockets.connect", _refused)
     await register_session("sess-1", "u1", live_ws=_HOST_STREAM)
     viewer = _Viewer()
 
     await asyncio.wait_for(
-        await _watch(viewer, "sess-1", create_takeover_token("sess-1", "u1")), timeout=2
+        _watch(viewer, "sess-1", create_takeover_token("sess-1", "u1")), timeout=2
     )
 
     assert viewer.accepted and viewer.close_code is not None
