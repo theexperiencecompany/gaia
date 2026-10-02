@@ -83,8 +83,8 @@ def starting_canvas(title: str, standing_rules: Sequence[str] = ()) -> str:
     if not standing_rules:
         return canvas
     heading = f"## {CANVAS_STANDING_RULES_SECTION}\n"
-    # Rules go after the section's template comment line, which follows the heading.
-    after_comment = canvas.index("\n", canvas.index(heading) + len(heading)) + 1
+    # Rules go under the section's comment line; it is the last such heading, as a title can read like it.
+    after_comment = canvas.index("\n", canvas.rindex(heading) + len(heading)) + 1
     rules = "".join(f"- {rule}\n" for rule in standing_rules)
     return canvas[:after_comment] + rules + canvas[after_comment:]
 

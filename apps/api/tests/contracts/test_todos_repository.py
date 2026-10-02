@@ -377,10 +377,10 @@ class TestTodosRepository(UserScopedRepositoryContract):
         desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
         thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="gmail")
         now = datetime.now(UTC)
-        # Inserted out of age order so an unsorted read would fail here.
+        # The oldest goes in first, so a read in insertion order would answer it.
         for title, owner, ref, age, completed in (
-            ("stopped", "u", desk, 1, True),
             ("first", "u", desk, 3, True),
+            ("stopped", "u", desk, 1, True),
             ("theirs", "u2", desk, 0, False),
             ("thread", "u", thread, 0, False),
         ):

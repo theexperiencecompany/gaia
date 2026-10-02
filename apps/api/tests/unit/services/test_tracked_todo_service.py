@@ -732,6 +732,15 @@ class TestStartingCanvas:
         )
         assert normalize_canvas(canvas) == (canvas, None)
 
+    def test_a_title_that_reads_like_the_heading_leaves_the_rules_in_their_section(self) -> None:
+        template = CANVAS_TEMPLATE.format(title="## Standing rules")
+
+        canvas = starting_canvas("## Standing rules", ["Brief me by 9"])
+
+        assert canvas == template.replace(
+            "-->\n\n## Key Details", "-->\n- Brief me by 9\n\n## Key Details", 1
+        )
+
 
 class TestCompleteTrackedTodo:
     async def test_false_for_missing_todo(self, mock_repo, mock_deps):
