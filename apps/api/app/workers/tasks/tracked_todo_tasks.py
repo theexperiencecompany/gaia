@@ -23,6 +23,7 @@ from app.agents.prompts.todo_prompts import (
     DELIVERED_RESULT_GUIDANCE,
     PARENT_STANDING_RULES_LABEL,
     SILENT_RUN_GUIDANCE,
+    SUB_TODOS_CUT_NOTE,
     SUB_TODOS_LABEL,
     TRIGGERED_RELEVANCE_GUIDANCE,
 )
@@ -454,10 +455,14 @@ async def _collect_sub_todo_states(doc: TodoDocument) -> str:
     """Each open sub-todo's Current State: a sub-todo reports here, not to the user."""
     if doc.parent_todo_id is not None:
         return ""  # one level deep: a sub-todo has no sub-todos to read
+    # One past the limit tells a full page from a cut one.
     children = await todo_repository.list_active_tracked(
-        doc.user_id, limit=SUB_TODOS_PROMPT_LIMIT, parent_todo_id=doc.id
+        doc.user_id, limit=SUB_TODOS_PROMPT_LIMIT + 1, parent_todo_id=doc.id
     )
-    return _labelled(SUB_TODOS_LABEL, [_sub_todo_block(child) for child in children], "\n")
+    blocks = [_sub_todo_block(child) for child in children[:SUB_TODOS_PROMPT_LIMIT]]
+    if len(children) > SUB_TODOS_PROMPT_LIMIT:
+        blocks.append(SUB_TODOS_CUT_NOTE.format(limit=SUB_TODOS_PROMPT_LIMIT, todo_id=doc.id))
+    return _labelled(SUB_TODOS_LABEL, blocks, "\n")
 
 
 def _sub_todo_block(child: TodoDocument) -> str:

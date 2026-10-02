@@ -46,7 +46,11 @@ from app.services.todo_canvas_storage import (
     build_vfs_label,
     repair_canvas_and_activity,
 )
-from app.services.todos.errors import CanvasShapeError, SubTodoParentError
+from app.services.todos.errors import (
+    CanvasShapeError,
+    SubTodoParentError,
+    UnwatchedTodoKeptError,
+)
 from app.services.todos.external_ref_watch import watch_external_ref
 from app.services.todos.todo_service import TodoService
 from app.services.triggers.subscription_service import teardown_subscriptions
@@ -76,7 +80,7 @@ CANVAS_TEMPLATE = """# {title}
 
 
 async def _discard_unwatched_todo(todo_id: str, user_id: str, watch_error: Exception) -> None:
-    """Delete a todo whose watch failed; a failed delete is logged and noted on watch_error."""
+    """Delete a todo whose watch failed; UnwatchedTodoKeptError names it when the delete fails too."""
     try:
         await TodoService.delete_todo(todo_id, user_id)
     except Exception as delete_error:
@@ -87,7 +91,7 @@ async def _discard_unwatched_todo(todo_id: str, user_id: str, watch_error: Excep
             error=str(delete_error),
             error_type=type(delete_error).__name__,
         )
-        watch_error.add_note(f"Deleting the unwatched todo {todo_id} failed too: {delete_error!r}")
+        raise UnwatchedTodoKeptError(todo_id, watch_error) from delete_error
 
 
 async def require_sub_todo_parent(
@@ -197,10 +201,9 @@ class TrackedTodoService:
     ) -> TodoResponse:
         """Create a todo with its canvas, activity and log, indexed in ChromaDB.
 
-        schedule's fields are saved with the insert; external_ref makes it that object's one open,
-        watching todo; a sub-todo's runs reach the user only on request. Raises
-        ExternalRefTakenError (ref held), SubTodoParentError (unusable parent) and
-        CanvasShapeError (initial_canvas breaks a rule normalizing cannot repair).
+        schedule is saved with the insert; external_ref makes it that object's one open, watching
+        todo; a sub-todo's runs reach the user only on request. Raises ExternalRefTakenError,
+        SubTodoParentError, CanvasShapeError and UnwatchedTodoKeptError (watch and rollback failed).
         """
         if parent_todo_id is not None:
             await require_sub_todo_parent(user_id, parent_todo_id)

@@ -1265,12 +1265,24 @@ class TestSubTodosReachTheParentRun:
         assert state not in task
         assert state[: SUB_TODO_STATE_EXCERPT_CHARS // 2] in task
 
-    async def test_the_list_is_bounded(self):
+    async def test_a_cut_list_says_so_and_how_to_list_the_rest(self):
         children = [_thread(n) for n in range(SUB_TODOS_PROMPT_LIMIT + 5)]
 
         task, _ = await _run_task(_doc(), _desk(), children)
 
         assert task.count("  Current State: ") == SUB_TODOS_PROMPT_LIMIT
+        assert (
+            f"(Only the first {SUB_TODOS_PROMPT_LIMIT} are shown; more are open. "
+            f'list_tracked_todos(parent_todo_id="{_doc().id}") lists them.)'
+        ) in task
+
+    async def test_a_full_list_that_is_whole_carries_no_note(self):
+        children = [_thread(n) for n in range(SUB_TODOS_PROMPT_LIMIT)]
+
+        task, _ = await _run_task(_doc(), _desk(), children)
+
+        assert task.count("  Current State: ") == SUB_TODOS_PROMPT_LIMIT
+        assert "more are open" not in task
 
     async def test_a_todo_without_sub_todos_gets_no_section(self):
         task, _ = await _run_task(_doc(), _desk())

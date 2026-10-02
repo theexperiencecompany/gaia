@@ -417,8 +417,7 @@ class BulkMoveRequest(BulkOperationRequest):
 
 class BulkOperationResponse(BaseModel):
     success: list[str] = Field(default_factory=list)
-    # Todo ids, like ``success`` — the bulk repository calls report a modified
-    # count, never a per-todo error, so there is nothing else to carry.
+    # Todo ids, like ``success``: tracked todos whose completion failed in a bulk complete.
     failed: list[str] = Field(default_factory=list)
     total: int
     message: str

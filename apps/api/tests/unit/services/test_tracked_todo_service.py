@@ -33,6 +33,8 @@ from app.models.trigger_subscription_models import (
     ConditionOperator,
     SubscriptionAction,
     SubscriptionCondition,
+    SubscriptionResolution,
+    TriggerSubscription,
 )
 from app.services.canvas_markdown import normalize_canvas
 from app.services.todos import errors as todo_errors
@@ -128,13 +130,31 @@ _THREAD = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="thread-1")
 _REGISTER = "app.services.todos.external_ref_watch.register_subscription"
 
 
+async def _registered(
+    *, trigger_name: str, conditions: list[SubscriptionCondition], **_: object
+) -> tuple[TriggerSubscription, None]:
+    """Stand in for register_subscription: the stored watch, with no repairs to report."""
+    return (
+        TriggerSubscription(
+            trigger_name=trigger_name,
+            conditions=conditions,
+            action=SubscriptionAction.EXECUTE,
+            resolution=SubscriptionResolution.ACCOUNT,
+        ),
+        None,
+    )
+
+
 @pytest.fixture
 def watch():
     with (
-        patch(_REGISTER, new_callable=AsyncMock) as m_register,
+        patch(_REGISTER, new_callable=AsyncMock, side_effect=_registered) as m_register,
+        patch(
+            "app.services.todos.external_ref_watch.unregister_subscription", new_callable=AsyncMock
+        ) as m_unregister,
         patch(f"{_MOD}.TodoService.delete_todo", new_callable=AsyncMock) as m_delete,
     ):
-        yield SimpleNamespace(register=m_register, delete=m_delete)
+        yield SimpleNamespace(register=m_register, unregister=m_unregister, delete=m_delete)
 
 
 class TestCreateThreadTodo:
@@ -173,7 +193,12 @@ class TestCreateThreadTodo:
         order: list[str] = []
         mock_deps.create.return_value = _todo_response()
         mock_repo.update.side_effect = lambda *a, **k: order.append("setup")
-        watch.register.side_effect = lambda **k: order.append(k["trigger_name"])
+
+        async def register(**kwargs: object) -> tuple[TriggerSubscription, None]:
+            order.append(str(kwargs["trigger_name"]))
+            return await _registered(**kwargs)
+
+        watch.register.side_effect = register
 
         await TrackedTodoService.create_tracked_todo(USER_ID, "Reply", external_ref=_THREAD)
 
@@ -187,28 +212,33 @@ class TestCreateThreadTodo:
     async def test_a_watch_that_fails_takes_the_todo_with_it(self, mock_repo, mock_deps, watch):
         """An unwatched thread todo would hold the thread's key, so every retry would get it back."""
         mock_deps.create.return_value = _todo_response()
-        watch.register.side_effect = [None, SubscriptionError("could not register")]
+        first = await _registered(trigger_name=GMAIL_NEW_MESSAGE_TRIGGER_NAME, conditions=[])
+        watch.register.side_effect = [first, SubscriptionError("could not register")]
 
         with pytest.raises(SubscriptionError):
             await TrackedTodoService.create_tracked_todo(USER_ID, "Reply", external_ref=_THREAD)
 
+        watch.unregister.assert_awaited_once_with(TODO_ID, USER_ID, first[0].id)
         watch.delete.assert_awaited_once_with(TODO_ID, USER_ID)
 
-    async def test_a_rollback_that_fails_still_raises_the_watch_error(
-        self, mock_repo, mock_deps, watch
-    ):
-        """The watch error is the one the caller can act on; the failed delete rides along on it."""
+    async def test_a_rollback_that_fails_names_the_todo_it_kept(self, mock_repo, mock_deps, watch):
+        """The caller has to act on the kept todo, so the error carries its id."""
         mock_deps.create.return_value = _todo_response()
         watch.register.side_effect = SubscriptionError("could not register")
         watch.delete.side_effect = RuntimeError("mongo down")
 
-        with patch(f"{_MOD}.log") as log_mock, pytest.raises(SubscriptionError) as raised:
+        with (
+            patch(f"{_MOD}.log") as log_mock,
+            pytest.raises(todo_errors.UnwatchedTodoKeptError) as raised,
+        ):
             await TrackedTodoService.create_tracked_todo(USER_ID, "Reply", external_ref=_THREAD)
 
-        assert str(raised.value) == "could not register"
-        assert raised.value.__notes__ == [
-            f"Deleting the unwatched todo {TODO_ID} failed too: RuntimeError('mongo down')"
-        ]
+        assert raised.value.todo_id == TODO_ID
+        assert raised.value.message == (
+            f"Todo {TODO_ID} could not watch its thread (could not register) and could not be "
+            "removed, so it is kept without its watch."
+        )
+        assert isinstance(raised.value.__cause__, RuntimeError)
         log_mock.error.assert_called_once_with(
             "tracked_todo.unwatched_discard_failed",
             todo_id=TODO_ID,
