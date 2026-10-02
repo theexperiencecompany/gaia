@@ -1,23 +1,16 @@
-"""Cover create_live_view_link, live_view_url and render_live_view_page.
+"""Cover create_live_view_link and live_view_url.
 
-test_live_code.py already covers the vhost-vs-plain-host branch of
-create_live_view_link with an exact-match assertion on the returned URL; this
-file targets what that leaves open: that mint_live_code is called with the right
-arguments in the right order (an AsyncMock return value alone cannot catch an
-argument swap), and live_view_url/render_live_view_page, neither of which any
-existing test in the suite calls at all.
+test_live_code.py already covers the link create_live_view_link returns with an
+exact-match assertion; this file targets what that leaves open: that
+mint_live_code is called with the right arguments in the right order (an
+AsyncMock return value alone cannot catch an argument swap), and live_view_url.
 """
 
-import base64
-from pathlib import Path
-import re
 from unittest.mock import AsyncMock
 
 import pytest
 
 from app.services.browser import links, live_view
-
-_WORDMARK_PNG = Path(live_view.__file__).parent / "assets" / "gaia_wordmark_white.png"
 
 
 @pytest.mark.unit
@@ -64,47 +57,3 @@ def test_a_base_under_a_path_prefix_loses_only_its_trailing_slash(monkeypatch):
     monkeypatch.setattr(links.settings, "BROWSER_LIVE_VIEW_BASE_URL", "https://edge.corp/SANDBOX/")
 
     assert live_view.live_view_url("sess-1") == "https://edge.corp/SANDBOX/live/sess-1"
-
-
-@pytest.mark.unit
-def test_render_live_view_page_escapes_and_embeds_the_session_id():
-    page = live_view.render_live_view_page('sess"<script>&</script>')
-
-    # The placeholder is gone and replaced with the html-escaped session id —
-    # not the raw, unescaped value (which would be an XSS hole in the viewer
-    # page), and not left as the literal placeholder token.
-    assert "__SESSION_ID__" not in page
-    assert 'sess"<script>&</script>' not in page
-    assert "sess&quot;&lt;script&gt;&amp;&lt;/script&gt;" in page
-    assert "(sess&quot;&lt;script&gt;&amp;&lt;/script&gt;)" in page
-
-
-@pytest.mark.unit
-def test_render_live_view_page_inlines_the_wordmark_so_the_page_needs_no_asset_route():
-    page = live_view.render_live_view_page("sess-1")
-
-    src = re.search(r'<img src="data:image/png;base64,([^"]+)" alt="GAIA"', page)
-    assert src is not None
-    assert base64.b64decode(src.group(1)) == _WORDMARK_PNG.read_bytes()
-    assert "__WORDMARK__" not in page
-
-
-@pytest.mark.unit
-def test_render_live_view_page_maps_pointer_input_via_per_frame_css_size():
-    """Regression: pointer math reads per-frame cssWidth/cssHeight, not bitmap pixels."""
-    page = live_view.render_live_view_page("x")
-
-    assert "cssWidth" in page
-    assert "toModifiers" in page
-
-
-@pytest.mark.unit
-def test_render_live_view_page_sends_carriage_return_on_enter_keydown():
-    # CDP only fires a key's default action (submit a form, insert a newline)
-    # when `text` is set; Enter must send "\r", not the literal key name.
-    page = live_view.render_live_view_page("x")
-
-    assert '"\\r"' in page
-    # The escape must reach the browser as an escape: a real carriage return in
-    # the script ends a // comment early, and the page's whole script fails to parse.
-    assert "\r" not in page

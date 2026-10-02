@@ -4,9 +4,9 @@ Served at ``/live/{session_id}`` (no ``/api/v1`` prefix) so it fronts a friendly
 public vhost — e.g. ``https://browser.heygaia.io/live/{id}`` — that reverse-proxies
 to THIS api service. The browser host is never exposed directly.
 
-``GET`` serves a self-contained HTML canvas viewer (for a bot user opening the
-tokened link); ``WEBSOCKET`` proxies frames + input between the viewer and the
-host's ``WS /live/{id}``. Because the ``wos_session`` cookie is host-only, a
+``WEBSOCKET`` proxies frames + input between a viewer (the chat card, or the
+web app's full-page live view a bot link opens) and the host's ``WS /live/{id}``;
+``POST /live/{code}/decision`` answers the handoff a bot link was sent for. Because the ``wos_session`` cookie is host-only, a
 cross-origin viewer (the chat card on the friendly vhost) authenticates with a
 short-lived ``?t=`` takeover token; a same-origin viewer may still use the
 session cookie. Ownership is re-checked against the Redis registry on connect;
@@ -21,13 +21,13 @@ from collections.abc import Awaitable, Callable
 from functools import partial
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, Request, WebSocket, status
+from fastapi import APIRouter, HTTPException, Query, WebSocket, status
 from fastapi.responses import HTMLResponse, Response
 from jose import JWTError
 from starlette.websockets import WebSocketState
 import websockets
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_current_user_ws
+from app.api.v1.dependencies.oauth_dependencies import get_current_user_ws
 from app.browser_host.pumps import pump_until_first_close
 from app.constants.browser import (
     BROWSER_HANDOFF_GONE_DETAIL,
@@ -39,7 +39,6 @@ from app.schemas.errors import HTML_ROUTE_ERROR_RESPONSES
 from app.services.browser import registry
 from app.services.browser.handoff_buttons import decide_handoff_by_button
 from app.services.browser.live_code import live_code_ended, resolve_live_code
-from app.services.browser.live_view import render_live_view_page
 from app.services.browser.replay import render_replay_page, resolve_replay_code
 from app.services.browser.shot_store import SHOT_SUFFIX, read_step_screenshot
 from app.services.browser.takeover_token import (
@@ -89,28 +88,6 @@ async def replay_page(code: str) -> HTMLResponse:
     log.set(browser={"session_id": record.session_id})
     log.info(f"{LogTag.BROWSER} browser replay page served")
     return HTMLResponse(content=render_replay_page(record))
-
-
-@router.get("/live/{code}", response_class=HTMLResponse, responses=HTML_ROUTE_ERROR_RESPONSES)
-async def live_view_page(
-    code: str,
-    request: Request,
-    t: Annotated[str | None, Query()] = None,
-) -> HTMLResponse:
-    """Standalone live-view page. ``code`` is a short capability code (the bot link)
-    that resolves to a session + owner in Redis; failing that it is treated as a raw
-    session id authorized by the ``?t=`` takeover token or a same-origin cookie (the
-    web chat card)."""
-    log.set(browser={"operation": "live_view_page"})
-    session_id, user_id = await _resolve_target_page(code, request, t)
-    owner = await registry.session_owner(session_id)
-    if owner is None or owner != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this session"
-        )
-    log.set(browser={"session_id": session_id})
-    log.info(f"{LogTag.BROWSER} browser live view page served")
-    return HTMLResponse(content=render_live_view_page(session_id))
 
 
 @router.post("/live/{code}/decision")
@@ -171,16 +148,6 @@ async def live_view_ws(
     await _proxy_live_view(websocket, entry.live_ws, ends)
 
 
-async def _resolve_target_page(code: str, request: Request, token: str | None) -> tuple[str, str]:
-    """``(session_id, user_id)`` for a GET page: a short capability code (the code is the
-    secret), else ``code`` as a raw session id authorized by the ``?t=`` token or cookie."""
-    record = await resolve_live_code(code)
-    if record is not None:
-        return record.session_id, record.user_id
-    user_id = await _authorize_page(request, code, token)
-    return code, user_id
-
-
 async def _resolve_target_ws(
     websocket: WebSocket, code: str, token: str | None
 ) -> tuple[str, str, _ConnectionEnd | None] | None:
@@ -196,15 +163,6 @@ async def _resolve_target_ws(
     user_id, ttl_seconds = resolved
     ends = partial(_expire_after, ttl_seconds) if ttl_seconds is not None else None
     return code, user_id, ends
-
-
-async def _authorize_page(request: Request, session_id: str, token: str | None) -> str:
-    """Resolve the user id for a GET live-view page: takeover token or web session."""
-    if token:
-        claims: TakeoverTokenClaims = _verify_scoped_token(token, session_id)
-        return claims["user_id"]
-    user = await get_current_user(request)
-    return user.user_id
 
 
 async def _authorize_ws(
@@ -230,21 +188,6 @@ async def _authorize_ws(
 
     user = await get_current_user_ws(websocket)  # closes the socket on auth failure
     return user.user_id, None
-
-
-def _verify_scoped_token(token: str, session_id: str) -> TakeoverTokenClaims:
-    """Verify a takeover token and assert it is scoped to ``session_id`` (HTTP path)."""
-    try:
-        claims: TakeoverTokenClaims = verify_takeover_token(token)
-    except JWTError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired link"
-        ) from exc
-    if claims["session_id"] != session_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Link does not match this session"
-        )
-    return claims
 
 
 async def _proxy_live_view(
