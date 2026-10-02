@@ -8,18 +8,13 @@ from unittest.mock import MagicMock
 import httpx
 import pytest
 
-from app.constants.browser import (
-    JEV_GATEWAY_MAX_ATTEMPTS,
-    JEV_GATEWAY_TIMEOUT_SECONDS,
-    JEV_OUT_OF_CREDIT_SECONDS,
-)
+from app.constants.browser import JEV_GATEWAY_MAX_ATTEMPTS, JEV_GATEWAY_TIMEOUT_SECONDS
 from app.constants.log_tags import LogTag
 from app.services.browser.exceptions import BrowserUnavailableError
 from app.services.browser.jev import gateway
 from app.services.browser.jev.gateway import (
     JevChoiceAnswer,
     JevEvaluationRequest,
-    JevFailoverClient,
     JevGatewayClient,
     JevGatewayError,
     JevQuestion,
@@ -200,17 +195,6 @@ async def test_an_unreadable_answer_is_traced_and_quotes_the_start_of_the_body(
     )
 
 
-async def test_a_malformed_answer_from_the_primary_fails_over() -> None:
-    client = JevFailoverClient(
-        primary=_client(lambda _r: httpx.Response(200, text="not json")),
-        fallback=_client(lambda _r: httpx.Response(200, json=ANSWER), provider="vercel"),
-    )
-
-    evaluation = await client.evaluate(REQUEST)
-
-    assert evaluation.provider == "vercel"
-
-
 async def test_gateway_reported_cost_is_parsed() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -242,124 +226,6 @@ async def test_an_answer_is_attributed_to_the_gateway_that_served_it() -> None:
     evaluation = await _client(handler, provider="vercel").evaluate(REQUEST)
 
     assert evaluation.provider == "vercel"
-
-
-def _no_sleep(monkeypatch) -> None:
-    async def fake_sleep(seconds: float) -> None:
-        pass
-
-    monkeypatch.setattr("app.services.browser.jev.gateway.asyncio.sleep", fake_sleep)
-
-
-async def test_a_primary_that_exhausts_its_retries_hands_the_same_request_to_the_fallback(
-    monkeypatch,
-) -> None:
-    _no_sleep(monkeypatch)
-    primary_bodies: list[dict] = []
-    fallback_bodies: list[dict] = []
-
-    def primary(request: httpx.Request) -> httpx.Response:
-        primary_bodies.append(json.loads(request.content))
-        return httpx.Response(503, json={"error": {"message": "Service temporarily unavailable"}})
-
-    def fallback(request: httpx.Request) -> httpx.Response:
-        fallback_bodies.append(json.loads(request.content))
-        return httpx.Response(200, json=ANSWER)
-
-    client = JevFailoverClient(
-        primary=_client(primary, provider="vercel"),
-        fallback=_client(fallback, provider="openrouter"),
-    )
-
-    evaluation = await client.evaluate(REQUEST)
-
-    assert JevChoiceAnswer.model_validate(evaluation.answers["operation"]).choice == "DONE"
-    assert evaluation.provider == "openrouter"
-    assert len(primary_bodies) == 3, "the primary gets every retry before the fallback is asked"
-    assert len(fallback_bodies) == 1
-    assert primary_bodies[0]["state"] == fallback_bodies[0]["state"]
-    assert primary_bodies[0]["questions"] == fallback_bodies[0]["questions"]
-
-
-async def test_a_primary_out_of_credit_is_skipped_until_its_window_passes(monkeypatch) -> None:
-    # Every request would be refused on credit until the account is topped up; asking again only adds latency.
-    primary_calls = 0
-
-    def primary(request: httpx.Request) -> httpx.Response:
-        nonlocal primary_calls
-        primary_calls += 1
-        return httpx.Response(402, json={"error": {"message": "Insufficient credits"}})
-
-    client = JevFailoverClient(
-        primary=_client(primary, provider="openrouter"),
-        fallback=_client(lambda request: httpx.Response(200, json=ANSWER), provider="vercel"),
-    )
-    # Early in the clock's life: a fresh client must not treat that as inside a window.
-    now = [0.5]
-    monkeypatch.setattr(gateway, "monotonic", lambda: now[0])
-
-    first = await client.evaluate(REQUEST)
-    second = await client.evaluate(REQUEST)
-    now[0] += JEV_OUT_OF_CREDIT_SECONDS
-    await client.evaluate(REQUEST)
-
-    assert (first.provider, second.provider) == ("vercel", "vercel")
-    assert primary_calls == 2, "skipped inside the window, asked again once it passed"
-
-
-async def test_the_fallback_is_never_asked_when_the_primary_answers() -> None:
-    fallback_calls = 0
-
-    def primary(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json=ANSWER)
-
-    def fallback(request: httpx.Request) -> httpx.Response:
-        nonlocal fallback_calls
-        fallback_calls += 1
-        return httpx.Response(200, json=ANSWER)
-
-    client = JevFailoverClient(
-        primary=_client(primary, provider="vercel"),
-        fallback=_client(fallback, provider="openrouter"),
-    )
-
-    evaluation = await client.evaluate(REQUEST)
-
-    assert evaluation.provider == "vercel"
-    assert fallback_calls == 0
-
-
-async def test_a_transport_failure_on_the_primary_also_fails_over() -> None:
-    def primary(request: httpx.Request) -> httpx.Response:
-        raise httpx.ConnectError("refused")
-
-    def fallback(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json=ANSWER)
-
-    client = JevFailoverClient(
-        primary=_client(primary, provider="vercel"),
-        fallback=_client(fallback, provider="openrouter"),
-    )
-
-    assert (await client.evaluate(REQUEST)).provider == "openrouter"
-
-
-async def test_both_gateways_failing_surfaces_the_fallbacks_error(monkeypatch) -> None:
-    _no_sleep(monkeypatch)
-
-    def primary(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(503, json={"error": {"message": "primary down"}})
-
-    def fallback(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(429, json={"error": {"message": "fallback limited"}})
-
-    client = JevFailoverClient(
-        primary=_client(primary, provider="vercel"),
-        fallback=_client(fallback, provider="openrouter"),
-    )
-
-    with pytest.raises(JevGatewayError, match="returned HTTP 429: fallback limited"):
-        await client.evaluate(REQUEST)
 
 
 async def test_an_evaluation_reports_the_whole_round_trip_it_took(monkeypatch) -> None:
@@ -416,40 +282,6 @@ async def test_a_transport_failure_is_traced_the_same_way(monkeypatch) -> None:
     )
 
 
-async def test_a_failover_is_traced_naming_both_gateways_and_why(monkeypatch) -> None:
-    logger = MagicMock()
-    monkeypatch.setattr(gateway, "log", logger)
-
-    def primary(request: httpx.Request) -> httpx.Response:
-        raise httpx.ConnectError("refused")
-
-    client = JevFailoverClient(
-        primary=_client(primary, provider="vercel"),
-        fallback=_client(lambda _r: httpx.Response(200, json=ANSWER), provider="openrouter"),
-    )
-
-    await client.evaluate(REQUEST)
-
-    failed_over = logger.warning.call_args_list[-1]
-    assert failed_over.args == (f"{LogTag.BROWSER} Jev decision failed over",)
-    assert failed_over.kwargs == {
-        "provider": "vercel",
-        "fallback_provider": "openrouter",
-        "error_type": "JevGatewayError",
-        "error": "Jev decisions request failed: refused (vercel); no action executed.",
-    }
-
-
-def test_a_failover_client_decides_with_the_primarys_model() -> None:
-    """Jev meters and labels every decision by this model."""
-    primary = _client(lambda _r: httpx.Response(200, json=ANSWER), provider="vercel")
-    primary.model = "typesafe/jev-latest"
-
-    client = JevFailoverClient(primary=primary, fallback=_client(lambda _r: None))
-
-    assert client.model == "typesafe/jev-latest"
-
-
 @pytest.fixture
 def both_gateways(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(gateway.settings, "OPENROUTER_API_KEY", "sk-or-test")
@@ -477,32 +309,24 @@ _VERCEL = (
 
 @pytest.mark.usefixtures("both_gateways")
 @pytest.mark.parametrize(
-    ("provider", "primary", "fallback"),
-    [("openrouter", _OPENROUTER, _VERCEL), ("vercel", _VERCEL, _OPENROUTER)],
+    ("provider", "expected"), [("openrouter", _OPENROUTER), ("vercel", _VERCEL)]
 )
-async def test_the_configured_gateway_decides_with_the_other_behind_it(
-    monkeypatch: pytest.MonkeyPatch,
-    provider: str,
-    primary: tuple[str, str, str, str],
-    fallback: tuple[str, str, str, str],
+async def test_the_configured_gateway_alone_decides(
+    monkeypatch: pytest.MonkeyPatch, provider: str, expected: tuple[str, str, str, str]
 ) -> None:
+    """Both keys set, only the configured gateway is used: one it fails fails the step."""
     monkeypatch.setattr(gateway.settings, "BROWSER_USE_JEV_MODEL", "~typesafe/jev-latest")
     monkeypatch.setattr(gateway.settings, "BROWSER_JEV_VERCEL_MODEL", "typesafe-ai/jev")
     monkeypatch.setattr(gateway.settings, "BROWSER_JEV_PROVIDER", provider)
 
     async with gateway.open_jev_client() as client:
-        assert isinstance(client, JevFailoverClient)
-        assert (_gateway(client.primary), _gateway(client.fallback)) == (primary, fallback)
+        assert _gateway(client) == expected
+        http = client._client
+        assert not http.is_closed
+        # A gateway that never answers cannot hold a step forever.
+        assert http.timeout == httpx.Timeout(JEV_GATEWAY_TIMEOUT_SECONDS)
 
-
-async def test_a_gateway_with_no_other_key_decides_alone(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(gateway.settings, "OPENROUTER_API_KEY", "sk-or-test")
-    monkeypatch.setattr(gateway.settings, "BROWSER_JEV_VERCEL_API_KEY", "")
-    monkeypatch.setattr(gateway.settings, "BROWSER_JEV_PROVIDER", "openrouter")
-
-    async with gateway.open_jev_client() as client:
-        assert isinstance(client, JevGatewayClient)
-        assert client.provider == "openrouter"
+    assert http.is_closed
 
 
 async def test_a_gateway_with_no_key_is_unavailable_saying_which(
@@ -518,23 +342,7 @@ async def test_a_gateway_with_no_key_is_unavailable_saying_which(
 
 
 @pytest.mark.usefixtures("both_gateways")
-async def test_a_runs_gateways_share_one_connection_pool_closed_when_the_run_ends() -> None:
-    async with gateway.open_jev_client() as client:
-        assert isinstance(client, JevFailoverClient)
-        http = client.primary._client
-        assert client.fallback._client is http
-        assert not http.is_closed
-
-    assert http.is_closed
-
-
 @pytest.mark.usefixtures("both_gateways")
-async def test_a_gateway_that_never_answers_cannot_hold_a_step_forever() -> None:
-    async with gateway.open_jev_client() as client:
-        assert isinstance(client, JevFailoverClient)
-        assert client.primary._client.timeout == httpx.Timeout(JEV_GATEWAY_TIMEOUT_SECONDS)
-
-
 @pytest.mark.parametrize(
     "body",
     [

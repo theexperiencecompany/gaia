@@ -12,18 +12,14 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 import json
-from time import monotonic, perf_counter
+from time import perf_counter
 from typing import Literal, Protocol
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
 from app.config.settings import settings
-from app.constants.browser import (
-    JEV_GATEWAY_MAX_ATTEMPTS,
-    JEV_GATEWAY_TIMEOUT_SECONDS,
-    JEV_OUT_OF_CREDIT_SECONDS,
-)
+from app.constants.browser import JEV_GATEWAY_MAX_ATTEMPTS, JEV_GATEWAY_TIMEOUT_SECONDS
 from app.constants.log_tags import LogTag
 from app.services.browser.exceptions import BrowserAutomationError, BrowserUnavailableError
 from shared.py.wide_events import log
@@ -32,16 +28,11 @@ from shared.py.wide_events import log
 JsonInput = str | dict[str, object] | list[object]
 
 _RETRY_STATUSES = frozenset({429, 503, 529})
-_PAYMENT_REQUIRED = 402
 _VERCEL = "vercel"
 
 
 class JevGatewayError(BrowserAutomationError):
     """The gateway refused or failed the evaluation; no action was executed."""
-
-    def __init__(self, message: str, status_code: int | None = None) -> None:
-        super().__init__(message)
-        self.status_code = status_code
 
 
 class _GatewayErrorDetail(BaseModel):
@@ -116,8 +107,7 @@ class JevEvaluation(BaseModel):
     answers: dict[str, JsonValue]
     usage: JevUsage | None = None
     latency_ms: int = 0
-    #: Which gateway served this answer; set by the client, so a failed-over
-    #: decision is attributed to the gateway that actually answered.
+    #: Which gateway served this answer; set by the client.
     provider: str = ""
     provider_metadata: _ProviderMetadata | None = Field(default=None, alias="providerMetadata")
 
@@ -192,8 +182,7 @@ class JevGatewayClient:
             if response.is_error:
                 raise JevGatewayError(
                     f"Jev decisions returned HTTP {response.status_code}: "
-                    f"{_error_message(response)}; no action executed.",
-                    status_code=response.status_code,
+                    f"{_error_message(response)}; no action executed."
                 )
             try:
                 evaluation = JevEvaluation.model_validate_json(response.content)
@@ -216,46 +205,6 @@ class JevGatewayClient:
         raise JevGatewayError(  # pragma: no mutate
             f"Jev decisions unavailable ({self.provider}); no action executed."  # pragma: no mutate
         )
-
-
-class JevFailoverClient:
-    """A primary gateway with a second one behind it for the decisions the primary cannot serve.
-
-    Both gateways answer the same {model, state, questions} shape, so when the
-    primary exhausts its retries (rate limit, outage, transport failure) the
-    same request goes to the fallback instead of costing the run a step. The
-    provider flag still picks the primary; the fallback is whichever other
-    gateway has a key configured.
-    """
-
-    def __init__(self, *, primary: JevGatewayClient, fallback: JevGatewayClient) -> None:
-        self.primary = primary
-        self.fallback = fallback
-        self.model = primary.model
-        #: Until when the primary is skipped: it refused on credit (402).
-        self._primary_skipped_until = 0.0
-
-    async def evaluate(self, request: JevEvaluationRequest) -> JevEvaluation:
-        if self._primary_skipped_until > monotonic():
-            return await self.fallback.evaluate(request)
-        try:
-            return await self.primary.evaluate(request)
-        except JevGatewayError as exc:
-            if exc.status_code == _PAYMENT_REQUIRED:
-                # Every request would be refused the same way until the account is topped up.
-                self._primary_skipped_until = monotonic() + JEV_OUT_OF_CREDIT_SECONDS
-            log.warning(
-                f"{LogTag.BROWSER} Jev decision failed over",
-                provider=self.primary.provider,
-                fallback_provider=self.fallback.provider,
-                error_type=type(exc).__name__,
-                error=str(exc),
-            )
-            return await self.fallback.evaluate(request)
-
-
-#: What the policy asks for a decision: one gateway, or one with a fallback behind it.
-JevDecisionsClient = JevGatewayClient | JevFailoverClient
 
 
 class JevDecider(Protocol):
@@ -286,39 +235,32 @@ _OPENROUTER_DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions"
 _VERCEL_EVALUATE_URL = "https://ai-gateway.vercel.sh/v1/evaluate"
 
 
-def _build_jev_client(http: httpx.AsyncClient) -> JevDecisionsClient:
-    """Return the configured decisions gateway on http, with the other one behind it when it has a key.
+def _build_jev_client(http: httpx.AsyncClient) -> JevGatewayClient:
+    """Return the decisions gateway BROWSER_JEV_PROVIDER names, on http.
 
-    BROWSER_JEV_PROVIDER picks the primary. Raises BrowserUnavailableError when
-    the primary's key is not configured.
+    The one gateway serves every decision; one it fails, after its own retries,
+    fails the step. Raises BrowserUnavailableError when its key is not configured.
     """
-    gateways: dict[str, JevGatewayClient] = {}
-    if settings.OPENROUTER_API_KEY:
-        gateways["openrouter"] = JevGatewayClient(
-            api_key=settings.OPENROUTER_API_KEY,
-            model=settings.BROWSER_USE_JEV_MODEL,
-            url=_OPENROUTER_DECISIONS_URL,
-            provider="openrouter",
-            client=http,
-        )
-    if settings.BROWSER_JEV_VERCEL_API_KEY:
-        gateways[_VERCEL] = JevGatewayClient(
-            api_key=settings.BROWSER_JEV_VERCEL_API_KEY,
-            model=settings.BROWSER_JEV_VERCEL_MODEL,
-            url=_VERCEL_EVALUATE_URL,
-            provider=_VERCEL,
-            client=http,
-        )
     provider = settings.BROWSER_JEV_PROVIDER
-    primary = gateways.pop(provider, None)
-    if primary is None:
+    if provider == _VERCEL:
+        api_key, model, url = (
+            settings.BROWSER_JEV_VERCEL_API_KEY,
+            settings.BROWSER_JEV_VERCEL_MODEL,
+            _VERCEL_EVALUATE_URL,
+        )
+    else:
+        api_key, model, url = (
+            settings.OPENROUTER_API_KEY,
+            settings.BROWSER_USE_JEV_MODEL,
+            _OPENROUTER_DECISIONS_URL,
+        )
+    if not api_key:
         raise BrowserUnavailableError(f"Jev's {provider} gateway has no API key configured.")
-    fallback = next(iter(gateways.values()), None)
-    return JevFailoverClient(primary=primary, fallback=fallback) if fallback else primary
+    return JevGatewayClient(api_key=api_key, model=model, url=url, provider=provider, client=http)
 
 
 @asynccontextmanager
-async def open_jev_client() -> AsyncIterator[JevDecisionsClient]:
-    """Open a run's decisions gateway, failover included, on one HTTP client closed when the run ends."""
+async def open_jev_client() -> AsyncIterator[JevGatewayClient]:
+    """Open a run's decisions gateway on one HTTP client closed when the run ends."""
     async with httpx.AsyncClient(timeout=JEV_GATEWAY_TIMEOUT_SECONDS) as http:
         yield _build_jev_client(http)

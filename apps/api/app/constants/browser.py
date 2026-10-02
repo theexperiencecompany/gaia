@@ -529,8 +529,6 @@ class JevStop(StrEnum):
 JEV_MAX_ELEMENTS = 120
 JEV_GATEWAY_TIMEOUT_SECONDS = 8.0
 JEV_GATEWAY_MAX_ATTEMPTS = 3
-#: After a 402 (out of credit) the failover client skips that gateway this long.
-JEV_OUT_OF_CREDIT_SECONDS = 300.0
 #: How much of the final page's visible text a burst report hands the agent, and of each
 #: other page the burst opened (the most recent ones, up to the count).
 JEV_REPORT_PAGE_TEXT_CHARS = 2000
