@@ -18,6 +18,7 @@ from langchain_core.tools import InjectedToolCallId, tool
 from pydantic import BaseModel, ConfigDict
 
 from app.agents.core.background.redis_writer import publish_to_stream
+from app.agents.core.background.session import mark_browser_job_told, note_browser_job_call
 from app.constants.browser import (
     BROWSER_JOB_JOIN_DEFAULT_WAIT_SECONDS,
     BROWSER_JOB_QUEUE,
@@ -268,6 +269,7 @@ async def browser_task(
 
     log.set_ns("browser", job_id=job_id)
     if params.stream_id:
+        note_browser_job_call(params.stream_id, job_id, tool_call_id)
         spawn_logged_task("browser_job_relay", relay_job_events(job_id, params.stream_id))
     return _STARTED.format(job_id=job_id)
 
@@ -309,6 +311,7 @@ async def _enqueue(request: BrowserJobRequest) -> bool:
 @with_doc(WAIT_FOR_BROWSER_TASK)
 async def wait_for_browser_task(
     config: RunnableConfig,
+    tool_call_id: Annotated[str, InjectedToolCallId],
     # NOSONAR python:S7483 — `timeout` is part of this tool's LLM-facing input
     # schema (the model chooses how long to wait); it is not an internal call
     # timeout that an asyncio.timeout() context manager could replace.
@@ -327,7 +330,7 @@ async def wait_for_browser_task(
     await take_joiner_lease(job_id, stream_id)
     keep_lease = False
     try:
-        outcome = await _join(job_id, params.conversation_id, stream_id, timeout)
+        outcome = await _join(job_id, params.conversation_id, stream_id, tool_call_id, timeout)
         keep_lease = outcome.keep_lease
         return outcome.message
     finally:
@@ -346,7 +349,9 @@ class _JoinOutcome:
     keep_lease: bool = False
 
 
-async def _join(job_id: str, conversation_id: str, stream_id: str, timeout: int) -> _JoinOutcome:
+async def _join(
+    job_id: str, conversation_id: str, stream_id: str, tool_call_id: str, timeout: int
+) -> _JoinOutcome:
     """Wait on the job's feed for its ending or a guidance ask, keeping this turn's claim on the result alive.
 
     Parks on the feed, so it wakes on the frame that ends the run or asks for
@@ -359,7 +364,7 @@ async def _join(job_id: str, conversation_id: str, stream_id: str, timeout: int)
     while True:
         state = await get_job_state(job_id)
         if state is not None and state.status is BrowserJobStatus.DONE:
-            return await _collect(job_id, state, stream_id)
+            return await _collect(job_id, state, stream_id, tool_call_id)
         pending = await get_guidance_request(job_id)
         if pending is not None:
             return _JoinOutcome(guidance_message(pending.request), keep_lease=True)
@@ -378,20 +383,22 @@ async def _join(job_id: str, conversation_id: str, stream_id: str, timeout: int)
         await refresh_joiner_lease(job_id, stream_id)
 
 
-async def _collect(job_id: str, state: BrowserJobState, stream_id: str) -> _JoinOutcome:
+async def _collect(
+    job_id: str, state: BrowserJobState, stream_id: str, tool_call_id: str
+) -> _JoinOutcome:
     """Take the finished job's result to speak, unless the worker's follow-up or a stop already told the user.
 
-    A job a stop ended was told by the stop: the run that joined it is marked
-    told, so its own ending delivers no message, and nothing of the turn is
-    cancelled. The message that speaks a result carries the run's cards: a join
+    A job a stop ended was told by the stop: this join, and the call that
+    started the job, are marked told, so a run that did nothing else delivers
+    no message of its own, and nothing of the turn is cancelled. The message that speaks a result carries the run's cards: a join
     on a turn other than the one that relayed them puts them on this turn's stream.
     """
     if await job_cancel_requested(job_id):
         log.set_ns("browser", join="stopped")
         run = live_run(stream_id)
         if run is not None:
-            # The stop told the user: this run's own ending says nothing more.
-            run.outcome_told = True
+            # The stop told the user: what this run says of the job adds nothing.
+            mark_browser_job_told(run, job_id, tool_call_id)
         return _JoinOutcome(_STOPPED_BY_USER)
     if await claim_result_delivery(job_id, ResultSpeaker.JOINER) is not ResultSpeaker.JOINER:
         return _JoinOutcome(_ALREADY_TOLD.format(outcome=state.agent_message))

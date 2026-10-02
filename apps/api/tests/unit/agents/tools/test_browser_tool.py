@@ -8,6 +8,7 @@ import fakeredis.aioredis
 from langchain_core.runnables.config import RunnableConfig
 import pytest
 
+from app.agents.core.background.session import get_or_create_session, teardown_session
 from app.agents.tools import browser_tool as tool_mod
 from app.agents.tools.browser_tool import browser_task
 from app.constants.browser import BROWSER_JOB_QUEUE, BROWSER_JOB_TASK, JobEnding
@@ -538,11 +539,17 @@ async def test_a_started_task_keeps_its_slot_and_relays_its_cards_onto_this_turn
 ) -> None:
     """The model is told the run started under its job id, and the run's cards follow on this turn's stream."""
     recorder = _install(monkeypatch)
+    session = get_or_create_session("s1")
 
-    async with captured_wide_event() as event:
-        out = await _start({"task": "x"}, config=UI_CONFIG)
+    try:
+        async with captured_wide_event() as event:
+            out = await _start({"task": "x"}, config=UI_CONFIG)
+    finally:
+        teardown_session("s1")
 
     job_id = recorder.request.job_id
+    # The run knows which of its calls started the job, should a stop tell its ending.
+    assert session.browser_job_calls == {job_id: TOOL_CALL_ID}
     assert out == tool_mod._STARTED.format(job_id=job_id)
     assert recorder.released == []
     assert recorder.relays == [(job_id, "s1")]

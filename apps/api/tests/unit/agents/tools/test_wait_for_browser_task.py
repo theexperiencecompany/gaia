@@ -13,6 +13,7 @@ import pytest
 
 from app.agents.core.background.session import (
     get_or_create_session,
+    note_browser_job_call,
     signal_executor_done,
     teardown_session,
 )
@@ -87,8 +88,13 @@ async def _finish() -> None:
     await publish_job_event("job-1", JOB_TERMINAL_FRAME)
 
 
-async def _join(timeout: int = 5) -> str:
-    return await wait_for_browser_task.ainvoke({"timeout": timeout}, config=CONFIG)
+async def _join(timeout: int = 5, config: RunnableConfig = CONFIG) -> str:
+    """Call wait_for_browser_task as the tool node does: a model tool call carrying its id."""
+    message = await wait_for_browser_task.ainvoke(
+        {"args": {"timeout": timeout}, "name": "wait", "type": "tool_call", "id": "call-wait"},
+        config=config,
+    )
+    return str(message.content)
 
 
 async def test_a_run_that_ends_while_joined_is_collected_at_its_end_and_told_by_this_turn(
@@ -199,12 +205,12 @@ async def test_a_join_from_another_turn_carries_the_runs_cards_onto_its_own_mess
     later_turn: RunnableConfig = {
         "configurable": {"user_id": "u1", "thread_id": "c1", "stream_id": "s2"}
     }
-    assert await wait_for_browser_task.ainvoke({"timeout": 5}, config=later_turn) == ANSWER
+    assert await _join(config=later_turn) == ANSWER
     assert published == [("s2", STEP_CARD)]
 
     await _forget_who_told()
     no_stream: RunnableConfig = {"configurable": {"user_id": "u1", "thread_id": "c1"}}
-    assert await wait_for_browser_task.ainvoke({"timeout": 5}, config=no_stream) == ANSWER
+    assert await _join(config=no_stream) == ANSWER
     assert published == [("s2", STEP_CARD)]
 
 
@@ -223,12 +229,14 @@ async def test_a_joined_run_whose_job_was_stopped_is_told_and_cancels_nothing() 
     await record_ending("job-1", JobEnding.STOPPED)
     await _finish()
     session = get_or_create_session("s1")
+    note_browser_job_call("s1", "job-1", "call-start")
     try:
         async with captured_wide_event() as event:
             joined = await _join()
 
         assert joined == tool_mod._STOPPED_BY_USER
-        assert session.outcome_told is True
+        # Told: this join and the call that started the job, not the run's other calls.
+        assert session.told_tool_calls == {"call-wait", "call-start"}
         assert await StreamManager.is_cancelled("s1") is False
         assert await joiner_lease_held("job-1") is False
         assert event["browser"] == {"join": "stopped"}

@@ -13,11 +13,13 @@ The executor:busy Redis key prevents concurrent executor spawns per
 conversation. TTL of 30 minutes is a safety net — released explicitly.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 import time
 from typing import NamedTuple
 from uuid import uuid4
 
+from langchain_core.messages import AnyMessage, ToolMessage
 from langgraph.errors import GraphRecursionError
 from langgraph.types import Command
 from langsmith import traceable
@@ -45,6 +47,8 @@ from app.agents.core.background.session import (
     RunIdentity,
     executor_abandoned,
     get_session,
+    note_run_tool_calls,
+    only_told,
     signal_executor_done,
 )
 from app.agents.core.subagents.subagent_runner import (
@@ -340,6 +344,11 @@ class _ExecutorResult(NamedTuple):
     ctx: SubagentExecutionContext | None = None
 
 
+def _tool_call_ids(messages: Sequence[AnyMessage]) -> tuple[str, ...]:
+    """Return the ids of the tool calls that ran in the executor's own messages: the ones a result answered."""
+    return tuple(message.tool_call_id for message in messages if isinstance(message, ToolMessage))
+
+
 async def _cancel_orphaned_browser_job(conversation_id: str, stream_id: str) -> None:
     """Stop the browser job a failed run left in flight, so it cannot speak a second ending.
 
@@ -411,6 +420,7 @@ async def _execute_executor(
                 log.error(f"{LogTag.HIL} Executor paused with no approval_id", stream_id=stream_id)
                 return _ExecutorResult("Approval request was malformed", "error", ctx=ctx)
             return _ExecutorResult("", EXECUTOR_PAUSED, approval_ids, ctx=ctx)
+        note_run_tool_calls(stream_id, _tool_call_ids(outcome.run_messages))
         return _ExecutorResult(outcome.text, "final", ctx=ctx)
     except GraphRecursionError as e:
         # The executor exhausted its recursion budget. Log the real cause loudly,
@@ -439,14 +449,18 @@ async def _finalize_executor_run(
     result_type: str,
     ctx: SubagentExecutionContext | None = None,
 ) -> None:
-    """Post-run cleanup, in order: signal done → deliver → free the lock → hand it on."""
+    """Post-run cleanup, in order: signal done → deliver → free the lock → hand it on.
+
+    A run whose every tool call's outcome a stop already told has nothing to
+    deliver; one that did more delivers it.
+    """
     if result_type == EXECUTOR_PAUSED:
         await _finalize_paused_run(run)
         return
 
     was_cancelled = bool(run.stream_id) and await StreamManager.is_cancelled(run.stream_id)
     # Read before the done signal tears the session down, like everything below.
-    told = was_cancelled or _outcome_told(run.stream_id)
+    told = was_cancelled or only_told(run.stream_id)
 
     # Snapshot returned-cards BEFORE signalling done: live streams tear down the
     # session in parallel once done_event fires, so reading after would race it.
@@ -558,12 +572,6 @@ async def _finalize_executor_run(
     await _carry_pending_into_new_run(run, ctx)
 
 
-def _outcome_told(stream_id: str) -> bool:
-    """Whether the run's outcome already reached the user: it joined a browser job a stop ended, and the stop said so."""
-    session = get_session(stream_id)
-    return session is not None and session.outcome_told
-
-
 async def _finalize_paused_run(run: ExecutorRun) -> None:
     """Close out a run parked on a HIL approval without ending its turn.
 
@@ -603,7 +611,7 @@ class TerminalOutcome:
 
     result_text: str
     result_type: str
-    #: Stopped, or its outcome already told by a stop: recorded as cancelled, never narrated.
+    #: Stopped, or all it did a stop already told: recorded as cancelled, never narrated.
     was_cancelled: bool
     returned_note: str
     tool_data: list[ToolDataEntry] | None

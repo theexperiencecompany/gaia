@@ -12,11 +12,18 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fakeredis.aioredis
+from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.errors import GraphRecursionError
 import pytest
 
 from app.agents.core.background import executor_runner as er
-from app.agents.core.background.session import ExecutorRun, RunKind
+from app.agents.core.background.session import (
+    ExecutorRun,
+    RunKind,
+    get_or_create_session,
+    teardown_session,
+)
+from app.agents.core.subagents.subagent_runner import SubagentOutcome
 from app.constants.executor import EXECUTOR_STEP_LIMIT_MESSAGE
 from app.models.user_models import AuthenticatedUser
 from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
@@ -24,9 +31,9 @@ from app.services.browser import job_stop, jobs as jobs_mod
 
 
 async def _run_with(
-    side_effect: BaseException, conversation_id: str = "conv-1"
+    side_effect: BaseException | SubagentOutcome, conversation_id: str = "conv-1"
 ) -> er._ExecutorResult:
-    """Run _execute_executor with the graph execution raising side_effect."""
+    """Run _execute_executor with the graph execution raising side_effect, or returning it."""
     ctx = SimpleNamespace(config={}, configurable={})
     run = ExecutorRun(
         stream_id="stream-1",
@@ -40,7 +47,13 @@ async def _run_with(
     with (
         patch.object(er, "prepare_executor_execution", AsyncMock(return_value=(ctx, None))),
         patch.object(er, "make_redis_stream_writer", lambda _sid: None),
-        patch.object(er, "execute_subagent_stream", AsyncMock(side_effect=side_effect)),
+        patch.object(
+            er,
+            "execute_subagent_stream",
+            AsyncMock(return_value=side_effect)
+            if isinstance(side_effect, SubagentOutcome)
+            else AsyncMock(side_effect=side_effect),
+        ),
     ):
         return await er._execute_executor("do the thing", {}, run, None)
 
@@ -95,6 +108,30 @@ class TestExecutorCrashText:
         result = await _run_with(GraphRecursionError("limit"))
 
         assert result.text == EXECUTOR_STEP_LIMIT_MESSAGE
+
+    async def test_a_finished_run_carries_the_tool_calls_its_own_messages_made(self) -> None:
+        """Finalize reads them to tell a run that only joined a told job from one that did more."""
+        calls = [
+            {"id": "wait-1", "name": "wait_for_browser_task", "args": {}},
+            {"id": "mail-1", "name": "send_email", "args": {}},
+        ]
+        outcome = SubagentOutcome(
+            text="Sent.",
+            run_messages=(
+                AIMessage("", tool_calls=calls),
+                ToolMessage("stopped", tool_call_id="wait-1"),
+                ToolMessage("sent", tool_call_id="mail-1"),
+            ),
+        )
+
+        session = get_or_create_session("stream-1")
+        try:
+            result = await _run_with(outcome)
+        finally:
+            teardown_session("stream-1")
+
+        assert (result.text, result.type) == ("Sent.", "final")
+        assert session.ran_tool_calls == ("wait-1", "mail-1")
 
 
 @pytest.mark.unit

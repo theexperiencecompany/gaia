@@ -194,12 +194,14 @@ class TestCancelledRouting:
 
 
 class TestToldRouting:
-    async def test_a_run_whose_browser_outcome_a_stop_told_delivers_nothing(
+    async def test_a_run_that_only_joined_a_job_a_stop_told_delivers_nothing(
         self, boundaries
     ) -> None:
         """Job bb92ce38: the run joined a job the user stopped and narrated it on top of "Stopped."."""
         run = _run(RunKind.QUEUED)
-        create_session("s1", RunKind.QUEUED).outcome_told = True
+        session = create_session("s1", RunKind.QUEUED)
+        session.ran_tool_calls = ("start", "wait")
+        session.told_tool_calls.update({"start", "wait"})
 
         await er._finalize_executor_run(run, TASK, "The browser run stopped before ...", "final")
 
@@ -207,6 +209,21 @@ class TestToldRouting:
         boundaries.record_cancel.assert_awaited_once_with(run.conversation_id, run.task_id, TASK)
         # Told is not cancelled: the turn's stream closes as a finished one.
         boundaries.stream_manager.publish_chunk.assert_awaited_once_with("s1", "data: [DONE]\n\n")
+
+    @pytest.mark.parametrize("tool_calls", [("wait", "send_email"), ()])
+    async def test_a_run_that_did_more_than_the_told_join_delivers_it(
+        self, boundaries, tool_calls: tuple[str, ...]
+    ) -> None:
+        """Greptile: told for the whole run dropped the answer to the turn's other work."""
+        run = _run(RunKind.QUEUED)
+        session = create_session("s1", RunKind.QUEUED)
+        session.ran_tool_calls = tool_calls
+        session.told_tool_calls.add("wait")
+
+        await er._finalize_executor_run(run, TASK, "Sent the email.", "final")
+
+        boundaries.deliver.assert_awaited_once()
+        boundaries.record_cancel.assert_not_awaited()
 
 
 class TestCompletedRouting:
