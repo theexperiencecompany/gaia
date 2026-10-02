@@ -212,20 +212,29 @@ def test_the_sweep_counts_the_whole_window_the_filter_hides() -> None:
     assert "Filtered: the count only, from step 3" in "\n".join(_step(BRIEFING_STEP))
 
 
-def test_the_sweep_asks_the_fetch_for_headers_and_never_a_body_or_thread() -> None:
+def test_the_sweep_asks_the_fetch_for_headers_in_a_file_never_a_body_or_thread() -> None:
     fields = list(todo_prompts.INBOX_DESK_SWEEP_FIELDS)
     step = "\n".join(_step(SWEEP_STEP))
 
-    sweep = FetchMessagesInput(query="newer_than:1d", fields=fields, body_processing="none")
+    sweep = FetchMessagesInput(
+        query="newer_than:1d", fields=fields, body_processing="none", offload=True
+    )
 
-    assert f'fields {json.dumps(fields)}, body_processing "none"' in step
+    assert f'fields {json.dumps(fields)}, body_processing "none", offload true' in step
     assert not message_view_needs_body(sweep.fields, sweep.body_processing)
     assert "Never read a swept message's body or fetch its thread" in step
     assert "GMAIL_FETCH_THREAD" not in step
 
 
-def test_an_offloaded_sweep_is_counted_by_query_json_grouping_never_read() -> None:
+@pytest.mark.regression
+def test_the_sweep_is_counted_per_address_by_query_json_never_read() -> None:
+    """Regression: grouping by the From header split one sender per display name, and the run mis-summed."""
     step = "\n".join(_step(SWEEP_STEP))
 
-    assert 'query_json(path=<that file>, group_count_by="from")' in step
+    assert (
+        'one query_json(path=<its offloaded_to>, group_count_by="from_address") per file, '
+        "never reading the file"
+    ) in step
+    assert 'group_count_by="from")' not in step
+    assert "from_address" in todo_prompts.INBOX_DESK_SWEEP_FIELDS
     assert {"path", "group_count_by"} <= set(query_json.args)

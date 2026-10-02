@@ -17,6 +17,7 @@ import pytest
 import time_machine
 
 from app.agents.prompts import todo_prompts
+from app.agents.tools.coding.query_json_tool import _apply_query
 from app.models.common_models import GatherContextInput
 from app.models.composio_schemas.gmail import BodyProcessingLiteral, FetchMessagesInput
 from app.services.composio.custom_tools.gmail_constants import OFFLOAD_MIN_MESSAGES
@@ -885,6 +886,36 @@ class TestTheDesksSweep:
 
         assert formats == ["full"] * 3
         assert [r["body"] for r in records] == ["never read"] * 3
+
+    @pytest.mark.regression
+    def test_a_sender_counts_once_per_address_whatever_its_display_name(
+        self, mock_proxy, tmp_path
+    ) -> None:
+        senders = [
+            "Ann <notifications@github.com>",
+            '"GitHub" <Notifications@GitHub.com>',
+            "notifications@github.com",
+            "Bob Lee <bob@example.com>",
+        ]
+
+        _, records, _ = self._sweep(mock_proxy, tmp_path, senders, 8)
+
+        counts = _apply_query(
+            records,
+            where=[],
+            match="all",
+            fields=None,
+            sort_by=None,
+            order="desc",
+            limit=50,
+            count_only=False,
+            unique_by=None,
+            group_count_by="from_address",
+        )
+        assert counts == [
+            {"value": "notifications@github.com", "count": 6},
+            {"value": "bob@example.com", "count": 2},
+        ]
 
     def test_a_requested_file_with_no_session_to_hold_it_fails_the_call(self, mock_proxy) -> None:
         mock_proxy.return_value = {"messages": [], "resultSizeEstimate": 0}

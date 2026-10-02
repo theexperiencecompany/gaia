@@ -5,6 +5,7 @@ from collections.abc import Sequence
 import email.message
 import email.parser
 import email.policy
+from email.utils import parseaddr
 from html import unescape
 from typing import Any, cast
 
@@ -451,6 +452,8 @@ def detailed_message_template(
         "id": email_data.get("messageId") or email_data.get("id", ""),
         "threadId": email_data.get("threadId", ""),
         "from": parser.sender,
+        # One key per sender whatever its display name, so counts group by sender.
+        "from_address": parseaddr(parser.sender)[1].lower(),
         "to": parser.to,
         "subject": parser.subject,
         "snippet": email_data.get("snippet", ""),

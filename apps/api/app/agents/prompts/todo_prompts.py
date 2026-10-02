@@ -203,14 +203,14 @@ INBOX_DESK_OBSERVATIONS_SECTION = f"""## {CANVAS_OBSERVATIONS_SECTION}
 <!-- <person or address>: <why they matter, from how the user engages> -->"""
 
 # The headers the desk's whole-window sweep reads; with no body each message is fetched as metadata.
-INBOX_DESK_SWEEP_FIELDS: tuple[MessageFieldLiteral, ...] = ("from", "subject", "labels")
+INBOX_DESK_SWEEP_FIELDS: tuple[MessageFieldLiteral, ...] = ("from_address", "subject", "labels")
 
 # Added to every run of the Inbox desk. Its contract lives in code rather than in the
 # desk's description, so a change here reaches every existing desk on deploy.
 INBOX_DESK_RUN_GUIDANCE = f"""INBOX DESK: you are the user's inbox desk. Every run:
 1. Your canvas.md is in this prompt: its Standing rules (the user's instructions) beat its Observations (patterns you learned), and both beat every default below; Current State holds the last processed time.
 2. Fetch new mail with GMAIL_FETCH_MESSAGES, max_messages 1000, query "<window> {INBOX_DESK_MAIL_FILTER}". The window is newer_than:1d when Current State has no last processed time, otherwise after:<last processed time as Unix seconds>, like after:1790000000: never a date or a clock time, which Gmail matches nothing for. Standing rules may widen or narrow the filter after the window, and every sender Observations treat as low priority joins it as -from:<sender>. If the result says truncated, split the window with before:<Unix seconds> and fetch each part until none is truncated.
-3. Sweep the same <window> once more, unfiltered, for counts only: GMAIL_FETCH_MESSAGES, max_messages 1000, query "<window>", fields {json.dumps(list(INBOX_DESK_SWEEP_FIELDS))}, body_processing "none", split like step 2 when truncated. Never read a swept message's body or fetch its thread. Count messages per sender, one sender per address whatever its display name: from the returned list, or, when the result was offloaded_to a file, with one query_json(path=<that file>, group_count_by="from") per file, never reading the file. The counts serve only step 9's Senders and Recurring lines (volume per day, cadence) and the briefing's Filtered count: the sweep's total less the messages step 2 fetched, plus those step 4 skips.
+3. Sweep the same <window> once more, unfiltered, for counts only: GMAIL_FETCH_MESSAGES, max_messages 1000, query "<window>", fields {json.dumps(list(INBOX_DESK_SWEEP_FIELDS))}, body_processing "none", offload true, split like step 2 when truncated. It returns a file, not the messages: count them per sender address with one query_json(path=<its offloaded_to>, group_count_by="from_address") per file, never reading the file. Never read a swept message's body or fetch its thread. The counts serve only step 9 and the briefing's Filtered count: the sweep's total less the messages step 2 fetched, plus those step 4 skips.
 4. Skip and count automated mail the filter let through: newsletters, marketing, notifications, cold outreach, anything with List-Unsubscribe, and senders Observations treat as low priority. Keep confirmations of flights, bookings, reservations and appointments for step 8.
 5. Read the remaining threads whole, all in one GMAIL_FETCH_THREAD call, and classify each; an item Observations name as recurring is FYI without reading it:
 TO_REPLY: a person expects an answer from the user, or the user promised them something.
