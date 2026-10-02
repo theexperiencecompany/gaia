@@ -1,5 +1,6 @@
 """The Inbox desk's operating prompt and the thread contract: their structure, never model output."""
 
+import json
 import re
 
 import pytest
@@ -10,8 +11,11 @@ from app.agents.prompts.todo_prompts import (
     INBOX_DESK_DESCRIPTION,
     INBOX_DESK_RUN_GUIDANCE,
 )
+from app.agents.templates.mail_templates import message_view_needs_body
+from app.agents.tools.coding.query_json_tool import query_json
 from app.constants import agents as agent_constants, todos as todo_constants
 from app.constants.todos import INBOX_DESK_TITLE, NEEDS_REPLY_LABEL, WAITING_FOR_REPLY_LABEL
+from app.models.composio_schemas.gmail import FetchMessagesInput
 from app.models.todo_models import TodoModel
 
 BRIEFING_SECTIONS = ["Needs you", "Waiting on others", "Done", "Today", "FYI", "Filtered"]
@@ -28,9 +32,14 @@ def _heads(lines: list[str]) -> list[str]:
     return [line.split(":", 1)[0] for line in lines if ":" in line]
 
 
-BRIEFING_STEP = 10
-CURSOR_STEP = 9
-OBSERVATIONS_STEP = 8
+FETCH_STEP = 2
+SWEEP_STEP = 3
+SKIP_STEP = 4
+CLASSIFY_STEP = 5
+THREAD_TODO_STEP = 6
+OBSERVATIONS_STEP = 9
+CURSOR_STEP = 10
+BRIEFING_STEP = 11
 
 
 def test_the_briefing_is_the_five_sections_in_order() -> None:
@@ -38,17 +47,17 @@ def test_the_briefing_is_the_five_sections_in_order() -> None:
 
 
 def test_each_thread_class_is_defined_where_threads_are_classified() -> None:
-    assert _heads(_step(4)[1:]) == THREAD_CLASSES
+    assert _heads(_step(CLASSIFY_STEP)[1:]) == THREAD_CLASSES
 
 
 @pytest.mark.parametrize("label", [NEEDS_REPLY_LABEL, WAITING_FOR_REPLY_LABEL])
 def test_thread_todos_are_filed_and_briefed_under_the_label_constants(label: str) -> None:
-    assert f'["{label}"]' in "\n".join(_step(5))
+    assert f'["{label}"]' in "\n".join(_step(THREAD_TODO_STEP))
     assert f"your {label} sub-todos" in "\n".join(_step(BRIEFING_STEP))
 
 
 def test_thread_todos_are_opened_as_the_desks_sub_todos() -> None:
-    step = "\n".join(_step(5))
+    step = "\n".join(_step(THREAD_TODO_STEP))
 
     assert "parent_todo_id=this todo's id" in step
     assert "references" not in step
@@ -73,7 +82,7 @@ def _line(step: list[str], head: str) -> str:
 
 @pytest.mark.regression
 def test_the_window_is_a_day_first_then_unix_seconds_never_a_clock_time() -> None:
-    step = "\n".join(_step(2))
+    step = "\n".join(_step(FETCH_STEP))
 
     assert "newer_than:1d" in step
     assert "after:<last processed time as Unix seconds>" in step
@@ -83,7 +92,7 @@ def test_the_window_is_a_day_first_then_unix_seconds_never_a_clock_time() -> Non
 
 @pytest.mark.regression
 def test_the_query_filters_automated_senders_and_rules_may_change_the_filter() -> None:
-    step = "\n".join(_step(2))
+    step = "\n".join(_step(FETCH_STEP))
 
     assert todo_constants.INBOX_DESK_MAIL_FILTER in step
     assert "Standing rules may widen or narrow" in step
@@ -96,7 +105,7 @@ def test_the_cursor_is_the_first_fetchs_own_stamp() -> None:
 
 @pytest.mark.regression
 def test_a_document_nobody_awaits_an_answer_on_is_fyi_not_to_reply() -> None:
-    step = _step(4)
+    step = _step(CLASSIFY_STEP)
 
     assert "a person expects an answer" in _line(step, "TO_REPLY")
     assert "statements" in _line(step, "FYI")
@@ -134,8 +143,8 @@ def test_the_observations_section_has_a_line_format_per_kind() -> None:
 def test_observations_are_kept_repeated_bounded_and_announced() -> None:
     step = "\n".join(_step(OBSERVATIONS_STEP))
 
-    assert "add it, with its three sub-headings, when canvas.md lacks it" in step
     assert "only once it repeats" in step
+    assert "Senders and Recurring from step 3's counts" in step
     assert f"under {todo_constants.OBSERVATIONS_MAX_CHARS} characters" in step
     assert "Noticed: treating GitHub notifications as low priority" in "\n".join(
         _step(BRIEFING_STEP)
@@ -143,5 +152,34 @@ def test_observations_are_kept_repeated_bounded_and_announced() -> None:
 
 
 def test_observations_steer_the_query_and_the_classification() -> None:
-    assert "-from:<sender>" in "\n".join(_step(2))
-    assert "Observations name as recurring is FYI" in "\n".join(_step(4))
+    assert "-from:<sender>" in "\n".join(_step(FETCH_STEP))
+    assert "Observations name as recurring is FYI" in "\n".join(_step(CLASSIFY_STEP))
+
+
+@pytest.mark.regression
+def test_the_sweep_counts_the_whole_window_the_filter_hides() -> None:
+    step = "\n".join(_step(SWEEP_STEP))
+
+    assert 'query "<window>"' in step
+    assert todo_constants.INBOX_DESK_MAIL_FILTER not in step
+    assert "Filtered count: the sweep's total less the messages step 2 fetched" in step
+    assert "Filtered: the count only, from step 3" in "\n".join(_step(BRIEFING_STEP))
+
+
+def test_the_sweep_asks_the_fetch_for_headers_and_never_a_body_or_thread() -> None:
+    fields = list(todo_prompts.INBOX_DESK_SWEEP_FIELDS)
+    step = "\n".join(_step(SWEEP_STEP))
+
+    sweep = FetchMessagesInput(query="newer_than:1d", fields=fields, body_processing="none")
+
+    assert f'fields {json.dumps(fields)}, body_processing "none"' in step
+    assert not message_view_needs_body(sweep.fields, sweep.body_processing)
+    assert "Never read a swept message's body or fetch its thread" in step
+    assert "GMAIL_FETCH_THREAD" not in step
+
+
+def test_an_offloaded_sweep_is_counted_by_query_json_grouping_never_read() -> None:
+    step = "\n".join(_step(SWEEP_STEP))
+
+    assert 'query_json(path=<that file>, group_count_by="from")' in step
+    assert {"path", "group_count_by"} <= set(query_json.args)

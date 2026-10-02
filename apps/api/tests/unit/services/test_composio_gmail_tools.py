@@ -7,6 +7,7 @@ raw httpx. Tests patch that helper and assert on the request shape.
 import base64
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+import json
 import re
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -14,8 +15,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 import time_machine
 
+from app.agents.prompts import todo_prompts
 from app.models.common_models import GatherContextInput
 from app.models.composio_schemas.gmail import FetchMessagesInput
+from app.services.composio.custom_tools.gmail_constants import OFFLOAD_MIN_MESSAGES
 from app.services.composio.custom_tools.gmail_tools import (
     ArchiveEmailInput,
     GetContactListInput,
@@ -790,3 +793,60 @@ class TestFetchedAt:
 
         assert result["partial"] is True
         assert result["fetched_at"] == int(FETCH_STARTED.timestamp())
+
+
+class TestTheDesksSweep:
+    """The Inbox desk's whole-window sweep: a big window offloads headers only, never a body."""
+
+    def test_a_window_past_the_offload_size_is_fetched_as_metadata_and_written_bodiless(
+        self, mock_proxy, tmp_path
+    ) -> None:
+        size = OFFLOAD_MIN_MESSAGES + 10
+        senders = ["Ann <notifications@github.com>", "Bob <notifications@github.com>"]
+        formats: list[str] = []
+
+        def gmail(request: ProxyRequest) -> dict[str, Any]:
+            if re.match(r".+/users/me/messages/?$", request.endpoint):
+                refs = [{"id": f"m{i}"} for i in range(size)]
+                return {"messages": refs, "resultSizeEstimate": size}
+            formats.append(request.query["format"])
+            n = int(request.endpoint.rsplit("/m", 1)[1])
+            headers = [
+                {"name": "From", "value": senders[n % 2]},
+                {"name": "Subject", "value": f"[repo] PR #{n}"},
+            ]
+            body = {"data": base64.urlsafe_b64encode(b"never read").decode()}
+            return {
+                "id": f"m{n}",
+                "threadId": f"t{n}",
+                "payload": {"headers": headers, "body": body},
+            }
+
+        mock_proxy.side_effect = gmail
+        with (
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.write_session_file_sync",
+                return_value=(tmp_path / "f.jsonl", "/workspace/sessions/run/f.jsonl"),
+            ) as write,
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.current_run_config",
+                return_value={"configurable": {"vfs_session_id": "run"}},
+            ),
+        ):
+            result = _register_and_get_tools()["FETCH_MESSAGES"](
+                request=FetchMessagesInput(
+                    query="after:1790000000",
+                    max_messages=1000,
+                    fields=list(todo_prompts.INBOX_DESK_SWEEP_FIELDS),
+                    body_processing="none",
+                ),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+        records = [json.loads(line) for line in write.call_args.kwargs["content"].splitlines()]
+        assert result["offloaded_to"] == "/workspace/sessions/run/f.jsonl"
+        assert result["total_messages"] == size
+        assert formats == ["metadata"] * size
+        assert [r["from"] for r in records] == [senders[n % 2] for n in range(size)]
+        assert all("body" not in r for r in records)
