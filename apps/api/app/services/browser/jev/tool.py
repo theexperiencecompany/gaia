@@ -28,6 +28,8 @@ from app.services.browser.jev.loop import BurstResult, JevStep
 
 #: Emits one card for a finished burst: its caption source, and the page it ended on.
 BurstEmitFn = Callable[[list[BrowserAction], str, str], Awaitable[None]]
+#: Moves the run to the full browser, returning what the agent reads of the move.
+EngineGapFn = Callable[[], Awaitable[str]]
 
 
 class Bursts(Protocol):
@@ -95,6 +97,9 @@ _STOP_MEANING = {
     JevStop.FIELD_UNFOCUSED: "Clicking the field did not focus it, so nothing was typed.",
     JevStop.TAB_UNAVAILABLE: "The tab Jev was driving is gone or refused it; check which tab is open.",
     JevStop.PAGE_SCRIPT_ERROR: "Jev could not read this page (its script failed here); continue yourself.",
+    JevStop.ENGINE_SCRIPT_ERROR: (
+        "Jev could not read this page: this browser lacks a feature its script uses; continue yourself."
+    ),
 }
 
 
@@ -179,11 +184,23 @@ def report(result: BurstResult) -> str:
 
 
 class JevDelegate:
-    """The agent's handle on Jev for one run: one runner, built at the first burst."""
+    """The agent's handle on Jev for one run: one runner, built at the first burst.
 
-    def __init__(self, *, runner_for: RunnerFactory, emit: BurstEmitFn) -> None:
+    On an engine the run can leave, a burst whose own script hit a feature the
+    engine lacks moves the run to the full browser, as an engine that stopped
+    answering does: the page is not at fault, so nobody is asked what to do.
+    """
+
+    def __init__(
+        self,
+        *,
+        runner_for: RunnerFactory,
+        emit: BurstEmitFn,
+        on_engine_gap: EngineGapFn | None = None,
+    ) -> None:
         self._runner_for = runner_for
         self._emit = emit
+        self._on_engine_gap = on_engine_gap
         self._runner: Bursts | None = None
 
     async def run(self, params: JevParams) -> ActionResult:
@@ -195,6 +212,8 @@ class JevDelegate:
                 [_step_action(step) for step in result.steps], result.url, result.title
             )
         text = report(result)
+        if result.stop is JevStop.ENGINE_SCRIPT_ERROR and self._on_engine_gap is not None:
+            text = f"{text}\n{await self._on_engine_gap()}"
         return ActionResult(extracted_content=text, long_term_memory=text)
 
 

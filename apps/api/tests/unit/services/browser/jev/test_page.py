@@ -18,6 +18,7 @@ from app.constants.log_tags import LogTag
 from app.services.browser.jev import page as page_mod
 from app.services.browser.jev.page import (
     Covered,
+    EngineScriptError,
     FieldUnfocused,
     JevPage,
     NavigationFailed,
@@ -52,6 +53,8 @@ GUARDS = {str(n): [f"guard-of-{n}"] for n in (7, 8, 9, 10, 11)}
 THROWS = object()
 #: The same, for a throw that carries only its text.
 THROWS_TEXT = object()
+#: What it answers when the script calls a DOM method the engine does not have.
+THROWS_ENGINE_GAP = object()
 #: What it answers when the document went away under the call.
 GONE = object()
 #: A call the browser refuses outright (cdp_use raises it with the error object).
@@ -191,6 +194,15 @@ class _Tab:
             return {
                 "result": {"type": "object"},
                 "exceptionDetails": {"text": "Uncaught SyntaxError"},
+            }
+        if value is THROWS_ENGINE_GAP:
+            missing = {
+                "className": "TypeError",
+                "description": "TypeError: doc.createTreeWalker is not a function",
+            }
+            return {
+                "result": {"type": "object"},
+                "exceptionDetails": {"text": "Uncaught", "exception": missing},
             }
         if value is THROWS:
             return {
@@ -385,16 +397,24 @@ async def test_a_page_that_never_settles_is_stale(monkeypatch: pytest.MonkeyPatc
 
 
 @pytest.mark.parametrize(
-    ("thrown", "reported"), [(THROWS, "Error: x"), (THROWS_TEXT, "Uncaught SyntaxError")]
+    ("thrown", "reported", "error"),
+    [
+        (THROWS, "Error: x", PageScriptError),
+        (THROWS_TEXT, "Uncaught SyntaxError", PageScriptError),
+        # Obscura lacked createTreeWalker: the engine's gap, not the page's error.
+        (THROWS_ENGINE_GAP, "createTreeWalker is not a function", EngineScriptError),
+    ],
 )
 async def test_a_script_that_throws_in_the_page_is_reported_not_read_again(
-    thrown: object, reported: str
+    thrown: object, reported: str, error: type[PageScriptError]
 ) -> None:
     tab = _Tab(snapshots=[thrown, SNAPSHOT])
     page, _ = _page(tab)
 
-    with pytest.raises(PageScriptError, match=reported):
+    with pytest.raises(PageScriptError, match=reported) as raised:
         await page.observe()
+
+    assert type(raised.value) is error
 
     assert tab.scripts == ["snapshot"]
 

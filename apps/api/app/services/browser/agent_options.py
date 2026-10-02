@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any, TypedDict
 
 from app.constants.browser import (
+    BROWSER_AGENT_FAST_ENGINE_NOTE,
     BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
     BROWSER_AGENT_ROLE,
     BROWSER_AGENT_URL_QUERY_MAX_CHARS,
@@ -61,16 +62,24 @@ def browser_options(cdp_url: str) -> BrowserOptions:
 
 
 def agent_options(
-    task: str, config: BrowserRunConfig, secrets: RunSecrets, *, resumed: bool
+    task: str, config: BrowserRunConfig, secrets: RunSecrets, *, resumed: bool, fast_engine: bool
 ) -> AgentOptions:
-    """Return the Agent for task: Jev's burst on the whole task first, the agent steering after."""
+    """Return the Agent for task: Jev's burst on the whole task first, the agent steering after.
+
+    An agent on the fast engine is told so: one that was not believed the page
+    it read there was already the full browser, and never moved when the task said to.
+    """
     return AgentOptions(
         task=task + BROWSER_TAKEOVER_PREAMBLE,
         initial_actions=(
             None if resumed else [{JEV_ACTION: {"goal": task, "start_url": config.start_url}}]
         ),
         sensitive_data=secrets.sensitive_data() or None,
-        extend_system_message=BROWSER_AGENT_ROLE,
+        extend_system_message=(
+            BROWSER_AGENT_ROLE + BROWSER_AGENT_FAST_ENGINE_NOTE
+            if fast_engine
+            else BROWSER_AGENT_ROLE
+        ),
         # The agent reads the page as text; screenshots go to the user's cards, not the model.
         use_vision=False,
         # Browser-Use's post-run judge bills a whole extra call and nothing reads its verdict.

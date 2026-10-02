@@ -44,11 +44,17 @@ class EngineFailure(StrEnum):
 
 
 class EngineSwitchReason(StrEnum):
-    """Why the agent moved an Obscura run to Chrome: the kinds of breakage the fast engine causes."""
+    """Why an Obscura run moved to Chrome: the breakage the fast engine causes, or the task asking for it."""
 
     RENDERS_WRONG = "renders_wrong"
     CONTROL_BROKEN = "control_broken"
     STAYS_EMPTY = "stays_empty"
+    #: The task or the user asked for the full browser.
+    ASKED = "asked"
+    #: A CAPTCHA or bot check: the full browser is tried before the user is asked to pass it.
+    BOT_CHALLENGE = "bot_challenge"
+    #: Jev's own page script hit a feature the fast engine lacks.
+    SCRIPT_UNSUPPORTED = "script_unsupported"
 
 
 class StateCarry(StrEnum):
@@ -403,6 +409,13 @@ BROWSER_AGENT_ROLE = (
     "weigh what each says against the task; it changes the task only where it says so."
 )
 
+#: Told to an agent on the fast engine, which otherwise cannot know which browser it is in.
+BROWSER_AGENT_FAST_ENGINE_NOTE = (
+    "\nYou are in the fast browser, not the full browser (Chrome). When the task or the user "
+    "asks for the full browser, call `continue_in_full_browser` with category `asked` before "
+    "that part; the task goes on there from the same page, with its sign-ins."
+)
+
 #: What the agent reads after a handoff step when the user left no note.
 BROWSER_TAKEOVER_DONE_NOTE = (
     "The user says they finished that step in the live browser. If the page still asks "
@@ -484,6 +497,8 @@ class JevStop(StrEnum):
     FIELD_UNFOCUSED = "field_unfocused"
     TAB_UNAVAILABLE = "tab_unavailable"
     PAGE_SCRIPT_ERROR = "page_script_error"
+    #: Jev's own script called a feature this browser engine does not have.
+    ENGINE_SCRIPT_ERROR = "engine_script_error"
 
 
 #: Controls offered to Jev per request, in DOM order within the viewport. Vercel's

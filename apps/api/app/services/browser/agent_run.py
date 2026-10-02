@@ -325,21 +325,34 @@ class BrowserAgentRun:
                     ),
                 )
 
-            delegate = JevDelegate(runner_for=runner_for, emit=self._emit_burst)
+            switch_engine = (
+                partial(self._switch_engine, self._hooks.switch_engine)
+                if self._hooks.switch_engine is not None
+                else None
+            )
+            delegate = JevDelegate(
+                runner_for=runner_for,
+                emit=self._emit_burst,
+                on_engine_gap=(
+                    partial(switch_engine, EngineSwitchReason.SCRIPT_UNSUPPORTED)
+                    if switch_engine is not None
+                    else None
+                ),
+            )
             tools = build_browser_tools(
                 solve_captcha=self._config.solve_captcha,
                 handle_takeover=self._takeover,
                 handle_guidance=self._guidance,
-                handle_engine_switch=(
-                    partial(self._switch_engine, self._hooks.switch_engine)
-                    if self._hooks.switch_engine is not None
-                    else None
-                ),
+                handle_engine_switch=switch_engine,
             )
             register_jev(tools, delegate)
             self._agent = Agent(
                 **agent_options(
-                    task, self._config, self._secrets, resumed=self._resumed_from is not None
+                    task,
+                    self._config,
+                    self._secrets,
+                    resumed=self._resumed_from is not None,
+                    fast_engine=switch_engine is not None,
                 ),
                 injected_agent_state=self._resumed_state(),
                 llm=llm,

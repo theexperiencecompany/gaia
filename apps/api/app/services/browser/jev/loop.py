@@ -57,6 +57,7 @@ from app.services.browser.jev.gateway import JevDecider, JevEvaluation, JevGatew
 from app.services.browser.jev.page import (
     Covered,
     DocumentReplaced,
+    EngineScriptError,
     FieldUnfocused,
     Frame,
     NavigationFailed,
@@ -294,6 +295,8 @@ class JevRunner:
             stop, detail = JevStop.STALE, str(exc)
         except TabUnavailable as exc:
             stop, detail = JevStop.TAB_UNAVAILABLE, str(exc)
+        except EngineScriptError as exc:
+            stop, detail = JevStop.ENGINE_SCRIPT_ERROR, str(exc)
         except PageScriptError as exc:
             stop, detail = JevStop.PAGE_SCRIPT_ERROR, str(exc)
         log.info(f"{LogTag.BROWSER} Jev burst ended", stop=stop.value, actions=len(state.steps))

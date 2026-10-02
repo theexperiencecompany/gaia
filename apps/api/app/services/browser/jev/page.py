@@ -139,6 +139,15 @@ class PageScriptError(BrowserAutomationError):
     """One of Jev's own scripts threw in a document that stayed: a real script error, not a navigation."""
 
 
+class EngineScriptError(PageScriptError):
+    """One of Jev's own scripts called a feature this browser engine does not have."""
+
+
+#: What our scripts throw where the engine lacks a DOM feature they call (a missing
+#: method is a TypeError, a missing global a ReferenceError), whatever the page is.
+_ENGINE_GAP_ERRORS = frozenset({"TypeError", "ReferenceError"})
+
+
 class NavigationFailed(BrowserAutomationError):
     """The page could not be opened: the site failed, or never answered and its load was stopped."""
 
@@ -385,7 +394,8 @@ class JevPage:
 
         Every script of Jev's returns a value, so an undefined result, or a call the
         browser cut off while the tab still answers, is the document going away under
-        it (DocumentReplaced); PageScriptError is a script that threw in the document.
+        it (DocumentReplaced); PageScriptError is a script that threw in the document,
+        EngineScriptError one that threw because the engine lacks what it called.
         """
         session = await self._session()
         try:
@@ -399,6 +409,8 @@ class JevPage:
         if details is not None:
             exception: RemoteObject | None = details.get("exception")
             thrown = (exception.get("description") if exception else None) or details["text"]
+            if exception is not None and exception.get("className") in _ENGINE_GAP_ERRORS:
+                raise EngineScriptError(f"Jev's page script failed: {thrown}")
             raise PageScriptError(f"Jev's page script failed: {thrown}")
         result: RemoteObject = response["result"]
         if result["type"] == "undefined":
