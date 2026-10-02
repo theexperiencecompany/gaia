@@ -95,7 +95,7 @@ _FINGERPRINT_JS = """(() => {
 
 @dataclass
 class Document:
-    """The server's answer to the main frame's last navigation, at the URL it landed on."""
+    """The server's answer to the navigation the probe asked for, at the URL its redirects landed on."""
 
     status: int
     url: str
@@ -208,7 +208,7 @@ class CdpBrowser:
         return report
 
     async def _main_document(self, events: list[dict[str, Any]], session: str) -> Document | None:
-        """The main frame's last committed document, sized from its body as the engine decoded it.
+        """The main frame's document for the probe's navigation, sized from its body as the engine decoded it.
 
         Not loadingFinished's encodedDataLength: Chrome counts compressed bytes
         plus headers there and Obscura the decoded body, so they never compare.
@@ -231,23 +231,20 @@ class CdpBrowser:
 
 
 def _main_response(events: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any] | None]:
-    """The main frame as it last committed, and the Network.responseReceived behind it.
+    """The main frame's first commit, the probe's own navigation, and the Network.responseReceived behind it.
 
+    The first, not the last: a later commit is the page's own script navigating
+    (a client-side redirect), which an engine that fails the script never makes,
+    and the server chose nothing there. HTTP redirects land before that commit.
     The URL to compare is the frame's: Obscura's responseReceived carries the
     URL before redirects (airbnb's 302 handoff), the frame the one it landed on.
-    Only a loader's first frameNavigated is its commit; Obscura re-sends one for
-    a same-document URL change (wikipedia's replaceState), where Chrome sends
-    navigatedWithinDocument.
     """
     frame: dict[str, Any] = {}
     for event in events:
         committed = (event.get("params") or {}).get("frame") or {}
-        if (
-            event.get("method") == "Page.frameNavigated"
-            and not committed.get("parentId")
-            and committed.get("loaderId") != frame.get("loaderId")
-        ):
+        if event.get("method") == "Page.frameNavigated" and not committed.get("parentId"):
             frame = committed
+            break
     found = None
     for event in events:
         params = event.get("params") or {}
