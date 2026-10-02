@@ -99,8 +99,8 @@ async def require_sub_todo_parent(
 ) -> None:
     """Refuse a parent that is not an open, top-level tracked todo of the user.
 
-    child_id names an existing todo being moved under it, which must not be the
-    parent itself nor have sub-todos of its own: sub-todos go one level deep.
+    child_id names an existing todo being moved under it, which must be open, not the
+    parent itself, and without sub-todos of its own: sub-todos go one level deep.
     """
     parent = (
         await todo_repository.get(parent_todo_id, user_id=user_id)
@@ -123,6 +123,11 @@ async def require_sub_todo_parent(
         return
     if child_id == parent_todo_id:
         raise SubTodoParentError("A todo cannot be its own parent.")
+    child = await todo_repository.get(child_id, user_id=user_id)
+    if child is not None and child.completed:
+        raise SubTodoParentError(
+            f"{child_id} is completed; only an open todo can become a sub-todo."
+        )
     if await todo_repository.find_sub_todos(user_id, [child_id]):
         raise SubTodoParentError(f"{child_id} has sub-todos of its own, so it cannot become one.")
 

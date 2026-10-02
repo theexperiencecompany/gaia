@@ -547,6 +547,18 @@ class TestSubTodoParent:
 
         mock_repo.find_sub_todos.assert_awaited_once_with(USER_ID, [TODO_ID])
 
+    async def test_a_completed_todo_cannot_become_one(self, mock_repo):
+        finished = _child().model_copy(update={"completed": True})
+        mock_repo.get.side_effect = [_parent(), finished]
+
+        with pytest.raises(SubTodoParentError) as refused:
+            await require_sub_todo_parent(USER_ID, _PARENT_ID, child_id=TODO_ID)
+
+        assert refused.value.message == (
+            f"{TODO_ID} is completed; only an open todo can become a sub-todo."
+        )
+        mock_repo.find_sub_todos.assert_not_awaited()
+
 
 class TestCreateSubTodo:
     async def test_the_parent_reaches_the_insert(self, mock_repo, mock_deps):

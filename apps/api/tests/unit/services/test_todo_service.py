@@ -1487,7 +1487,27 @@ class TestBulkServiceComplete:
         )
         todo_repo.bulk_update = AsyncMock(return_value=2)
         result = await bulk_complete_todos(ids, FAKE_USER_ID)
-        assert len(result) == 2
+        assert [todo.id for todo in result.todos] == ["a", "b"]
+        assert result.failed == []
+
+    async def test_a_tracked_todo_that_fails_is_named_and_not_returned_as_done(
+        self, mock_bulk_repos
+    ):
+        todo_repo, _ = mock_bulk_repos
+        docs = [
+            _make_todo_doc(todo_id="a", vfs_path="file:///a"),
+            _make_todo_doc(todo_id="b", vfs_path="file:///b"),
+        ]
+        todo_repo.find_by_ids = AsyncMock(
+            side_effect=lambda _user, ids: [doc for doc in docs if doc.id in ids]
+        )
+        with patch(
+            _COMPLETE_TRACKED, new_callable=AsyncMock, side_effect=[RuntimeError("down"), True]
+        ):
+            result = await bulk_complete_todos(["a", "b"], FAKE_USER_ID)
+
+        assert [todo.id for todo in result.todos] == ["b"]
+        assert result.failed == ["a"]
 
     async def test_captures_completed_count(self, mock_bulk_repos):
         todo_repo, _ = mock_bulk_repos
