@@ -1,15 +1,11 @@
 """Tool-loop guardrail middleware.
 
-Detects a model stuck retrying a failing tool call and nudges it to change
-strategy. Tracks identical failures (same tool + args returning
-status="error") and same-tool failures (one tool failing repeatedly
-regardless of args). Escalates: warn thresholds append an in-band note to
-the error ToolMessage; hard_stop mode (silent/workflow runs) stops executing
-the offending tool and returns a synthetic error once stop thresholds hit.
-
-Counters are keyed by thread_id, not the middleware instance, since the graph
-is a per-process singleton cached by the lazy provider; a bounded LRU over
-recent threads keeps memory flat.
+Repeats: a call identical to the ones the model issued on its previous turns of
+the current delegation is warned on the second turn and not run from the third,
+in every run kind. The streak is read off the messages, so a new delegation on
+the same thread starts clean. Failures: identical and same-tool failure tallies,
+keyed by thread_id in a bounded LRU, append in-band notes; hard_stop mode also
+stops a tool once it has failed LOOP_GUARD_STOP_SAME_TOOL times.
 """
 
 from __future__ import annotations
@@ -18,17 +14,17 @@ from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 import hashlib
 import json
-from typing import Any
+from typing import Any, cast
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ToolCallRequest
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AIMessage, ToolCall, ToolMessage
 from langgraph.types import Command
 
+from app.agents.middleware.completion import current_delegation
 from app.constants.agents import TOOL_RESULT_NOTE_SEPARATOR
 from app.constants.llm import (
     LOOP_GUARD_MAX_TRACKED_RUNS,
-    LOOP_GUARD_STOP_IDENTICAL,
     LOOP_GUARD_STOP_REPEAT,
     LOOP_GUARD_STOP_SAME_TOOL,
     LOOP_GUARD_WARN_IDENTICAL,
@@ -36,7 +32,9 @@ from app.constants.llm import (
     LOOP_GUARD_WARN_SAME_TOOL,
 )
 from app.constants.log_tags import LogTag
-from app.models.agent_models import runtime_configurable
+from app.models.agent_models import AgentConfigurable, runtime_configurable
+from app.override.langgraph_bigtool.utils import State
+from app.services.hil.utils import raw_tool_call
 from shared.py.wide_events import log
 
 _UNKNOWN_RUN = "unknown"
@@ -45,7 +43,7 @@ _UNKNOWN_RUN = "unknown"
 class _RunCounters:
     """Failure tallies for a single run (one thread_id)."""
 
-    __slots__ = ("identical", "last_call_key", "last_failure_key", "per_tool", "repeat")
+    __slots__ = ("identical", "last_failure_key", "per_tool")
 
     def __init__(self) -> None:
         # (tool_name, args_hash) -> consecutive identical-argument failures
@@ -56,15 +54,10 @@ class _RunCounters:
         self.last_failure_key: tuple[str, str] | None = None
         # tool_name -> total failures for this tool this run
         self.per_tool: dict[str, int] = {}
-        # The most recent call's (tool_name, args_hash) and its repeat count.
-        # Counts redundant duplicate calls a weak model loops on even when
-        # they *succeed* — the failure counters never see those.
-        self.last_call_key: tuple[str, str] | None = None
-        self.repeat: int = 0
 
 
 class LoopGuardMiddleware(AgentMiddleware):
-    """Nudge (or, in hard_stop mode, halt) a model looping on a failing tool.
+    """Refuse a model's repeated identical call; nudge (or, in hard_stop mode, halt) a failing tool.
 
     Usage::
 
@@ -84,14 +77,30 @@ class LoopGuardMiddleware(AgentMiddleware):
     async def awrap_tool_call(
         self,
         request: ToolCallRequest,
-        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]],
-    ) -> ToolMessage | Command[Any]:
-        tool_call = request.tool_call
-        tool_name = tool_call.get("name", "") if isinstance(tool_call, dict) else tool_call.name
-        tool_call_id = tool_call.get("id", "") if isinstance(tool_call, dict) else tool_call.id
-        args = tool_call.get("args", {}) if isinstance(tool_call, dict) else tool_call.args
-        args_key = self._args_key(args)
-        failure_key = (tool_name, args_key)
+        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[str]]],
+    ) -> ToolMessage | Command[str]:
+        call = raw_tool_call(request)
+        tool_name, tool_call_id = call.name, call.id
+        failure_key = (tool_name, self._args_key(call.args))
+
+        repeat = self._repeat_streak(request, failure_key)
+        if repeat >= LOOP_GUARD_STOP_REPEAT:
+            log.warning(
+                f"{LogTag.AGENT} Loop guard refused a repeated call — not executed",
+                tool_name=tool_name,
+                repeat=repeat,
+            )
+            return ToolMessage(
+                content=(
+                    f"[Loop guard] This `{tool_name}` call was not run: it repeats your last "
+                    f"{repeat - 1} calls with identical arguments, and its result will not "
+                    "change. Your next step must be a different action or your final answer."
+                ),
+                tool_call_id=tool_call_id,
+                name=tool_name,
+                status="error",
+                additional_kwargs={"loop_guard_stopped": True},
+            )
 
         counters = self._counters_for(request)
         # Only carry the identical tally when the immediately-preceding failure was
@@ -104,48 +113,24 @@ class LoopGuardMiddleware(AgentMiddleware):
         )
         same_tool_before = counters.per_tool.get(tool_name, 0)
 
-        # Consecutive identical calls, regardless of outcome (redundant duplicates).
-        if counters.last_call_key == failure_key:
-            counters.repeat += 1
-        else:
-            counters.last_call_key = failure_key
-            counters.repeat = 1
-        repeat = counters.repeat
-
-        if self.hard_stop:
-            # Failure-specific stop is checked FIRST: it's the more specific
-            # diagnosis, and checking repeat first would shadow it with the
-            # generic duplicate message on a run of identical failing calls.
-            stopped = self._hard_stop_message(
-                tool_name, tool_call_id, identical_before, same_tool_before
+        if self.hard_stop and same_tool_before >= LOOP_GUARD_STOP_SAME_TOOL:
+            log.warning(
+                f"{LogTag.AGENT} Loop guard hard-stopped tool — tool not executed",
+                tool_name=tool_name,
+                same_tool=same_tool_before,
             )
-            if stopped is not None:
-                log.warning(
-                    f"{LogTag.AGENT} Loop guard hard-stopped tool — tool not executed",
-                    tool_name=tool_name,
-                    identical=identical_before,
-                    same_tool=same_tool_before,
-                )
-                return stopped
-
-            if repeat >= LOOP_GUARD_STOP_REPEAT:
-                log.warning(
-                    f"{LogTag.AGENT} Loop guard hard-stopped tool — redundant duplicate call not executed",
-                    tool_name=tool_name,
-                    repeat=repeat,
-                )
-                return ToolMessage(
-                    content=(
-                        f"[Loop guard] Blocked without executing: `{tool_name}` has already been "
-                        f"called {repeat} times in a row with identical arguments (limit "
-                        f"{LOOP_GUARD_STOP_REPEAT}). Re-running it will return the same result — "
-                        "reuse the earlier result, or if the task is done, stop and report it."
-                    ),
-                    tool_call_id=tool_call_id,
-                    name=tool_name,
-                    status="error",
-                    additional_kwargs={"loop_guard_stopped": True},
-                )
+            return ToolMessage(
+                content=(
+                    f"[Loop guard] Blocked without executing: `{tool_name}` has already failed "
+                    f"{same_tool_before} times this run (limit {LOOP_GUARD_STOP_SAME_TOOL}). This "
+                    "tool is not working for the current task — stop calling it, re-read the "
+                    "earlier errors, and try a different approach or step."
+                ),
+                tool_call_id=tool_call_id,
+                name=tool_name,
+                status="error",
+                additional_kwargs={"loop_guard_stopped": True},
+            )
 
         result = await handler(request)
         # Only failures feed the loop counters; a success breaks the consecutive
@@ -165,9 +150,9 @@ class LoopGuardMiddleware(AgentMiddleware):
                 self._append_note(
                     result,
                     f"{TOOL_RESULT_NOTE_SEPARATOR}[Loop guard: `{tool_name}` has now been called "
-                    f"{repeat} times in a row "
-                    "with identical arguments. The result won't change — reuse the earlier result "
-                    "and move on instead of repeating this call.]",
+                    f"{repeat} times in a row with identical arguments. The result won't change — "
+                    "reuse it and move on; an identical call made "
+                    f"{LOOP_GUARD_STOP_REPEAT} times in a row will not be run.]",
                 )
             return result
 
@@ -188,33 +173,24 @@ class LoopGuardMiddleware(AgentMiddleware):
             self._append_note(result, note)
         return result
 
-    def _hard_stop_message(
-        self, tool_name: str, tool_call_id: str, identical: int, same_tool: int
-    ) -> ToolMessage | None:
-        """Return a synthetic error to send *instead of* running the tool, or None."""
-        if identical >= LOOP_GUARD_STOP_IDENTICAL:
-            content = (
-                f"[Loop guard] Blocked without executing: `{tool_name}` has already failed "
-                f"{identical} times this run with identical arguments (limit {LOOP_GUARD_STOP_IDENTICAL}). "
-                "This call will keep failing — stop retrying it, re-read the earlier errors, and "
-                "either change the arguments/approach or move on to a different step."
-            )
-        elif same_tool >= LOOP_GUARD_STOP_SAME_TOOL:
-            content = (
-                f"[Loop guard] Blocked without executing: `{tool_name}` has already failed "
-                f"{same_tool} times this run (limit {LOOP_GUARD_STOP_SAME_TOOL}). This tool is not "
-                "working for the current task — stop calling it, re-read the earlier errors, and try "
-                "a different approach or step."
-            )
-        else:
-            return None
-        return ToolMessage(
-            content=content,
-            tool_call_id=tool_call_id,
-            name=tool_name,
-            status="error",
-            additional_kwargs={"loop_guard_stopped": True},
-        )
+    @classmethod
+    def _repeat_streak(cls, request: ToolCallRequest, call_key: tuple[str, str]) -> int:
+        """Count this delegation's latest model turns, newest first, that each issued this exact call.
+
+        Includes the turn being executed; any turn without the call ends the streak.
+        """
+        state = request.state
+        if not isinstance(state, dict):
+            raise TypeError(f"loop guard needs the graph state dict, got {type(state).__name__}")
+        streak = 0
+        for message in reversed(current_delegation(cast(State, state))):
+            if not isinstance(message, AIMessage):
+                continue
+            issued: list[ToolCall] = message.tool_calls
+            if call_key not in {(call["name"], cls._args_key(call["args"])) for call in issued}:
+                break
+            streak += 1
+        return streak
 
     def _warning_note(self, tool_name: str, identical: int, same_tool: int) -> str | None:
         """In-band note appended to an error result, or None below the thresholds."""
@@ -267,7 +243,8 @@ class LoopGuardMiddleware(AgentMiddleware):
 
     @staticmethod
     def _thread_id(request: ToolCallRequest) -> str:
-        return runtime_configurable(request).get("thread_id") or _UNKNOWN_RUN
+        configurable: AgentConfigurable = runtime_configurable(request)
+        return configurable.get("thread_id") or _UNKNOWN_RUN
 
     @staticmethod
     def _args_key(args: object) -> str:

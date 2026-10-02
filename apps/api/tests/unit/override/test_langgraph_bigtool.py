@@ -3,6 +3,7 @@
 from collections.abc import Sequence
 from dataclasses import replace
 from inspect import iscoroutinefunction
+import math
 from types import SimpleNamespace
 from typing import Any, Protocol, cast
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
@@ -11,6 +12,7 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMes
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool, tool
 from langchain_openrouter import ChatOpenRouter
+from langgraph._internal._config import DEFAULT_RECURSION_LIMIT
 from langgraph._internal._runnable import RunnableCallable
 from langgraph.graph import END, StateGraph
 from langgraph.store.base import BaseStore
@@ -22,8 +24,11 @@ from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
     DEFAULT_MAX_TOKENS,
+    EXECUTOR_RECURSION_LIMIT,
     LANE_FIELD_ID,
-    RECURSION_WRAPUP_THRESHOLD_STEPS,
+    RECURSION_WRAPUP_MIN_STEPS,
+    RECURSION_WRAPUP_REMAINING_FRACTION,
+    SUBAGENT_RECURSION_LIMIT,
     LLMProviderName,
 )
 from app.models.agent_models import AgentConfigurable
@@ -69,6 +74,9 @@ from app.override.langgraph_bigtool.utils import State
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+#: LangGraph's default limit, which a node always finds in its config.
+_RECURSION_LIMIT = 25
 
 
 @tool
@@ -134,7 +142,8 @@ def _make_openrouter_wire_llm() -> MagicMock:
 
 
 def _make_config(**configurable: Any) -> RunnableConfig:
-    return {"configurable": configurable}
+    """Return a node's config as the runtime hands it over, recursion_limit always set."""
+    return {"configurable": configurable, "recursion_limit": _RECURSION_LIMIT}
 
 
 class _ModelNode(Protocol):
@@ -159,13 +168,12 @@ def _make_state(
     messages: Sequence[AnyMessage] | None = None,
     selected_tool_ids: Sequence[str] | None = None,
     todos: Sequence[dict[str, Any]] | None = None,
-    remaining_steps: int = RECURSION_WRAPUP_THRESHOLD_STEPS + 1,
+    remaining_steps: int = _RECURSION_LIMIT,
 ) -> State:
     """Build a complete State — every channel the node's signature promises.
 
-    remaining_steps defaults just clear of the wrap-up threshold so the
-    recursion notice stays out of these tests; pass a lower value to exercise
-    it.
+    remaining_steps defaults to a fresh run's full budget so the recursion
+    notice stays out of these tests; pass a lower value to exercise it.
     """
     # cast, like _maybe_inject_wrapup in the module under test: langgraph_bigtool
     # ships no py.typed, so its State base resolves to Any and mypy sees an
@@ -1396,11 +1404,24 @@ def _make_deps(
     )
 
 
+def _limited(recursion_limit: int) -> RunnableConfig:
+    return {"configurable": {}, "recursion_limit": recursion_limit}
+
+
 class TestMaybeInjectWrapupDirect:
+    def test_a_config_without_a_limit_runs_on_langgraph_s_default(self) -> None:
+        """LangGraph strips a limit equal to its default from a node's config; reading it must not raise."""
+        window = math.ceil(DEFAULT_RECURSION_LIMIT * RECURSION_WRAPUP_REMAINING_FRACTION)
+        inside = _maybe_inject_wrapup(_make_state(remaining_steps=window), {"configurable": {}})
+        outside = _make_state(remaining_steps=window + 1)
+
+        assert "almost out of steps" in inside["messages"][-1].content
+        assert _maybe_inject_wrapup(outside, {"configurable": {}}) is outside
+
     def test_low_budget_appends_the_notice_as_a_trailing_human_message(self) -> None:
         state = _make_state(messages=[HumanMessage("keep going")], remaining_steps=3)
 
-        result = _maybe_inject_wrapup(state)
+        result = _maybe_inject_wrapup(state, _make_config())
 
         notice = result["messages"][-1]
         assert isinstance(notice, HumanMessage)
@@ -1409,35 +1430,46 @@ class TestMaybeInjectWrapupDirect:
         # Original messages are preserved, not replaced.
         assert result["messages"][:-1] == list(state["messages"])
 
-    def test_budget_exactly_at_the_threshold_still_gets_the_notice(self) -> None:
-        """The notice must fire on <=; an off-by-one silently lets runs die with a GraphRecursionError the model never saw."""
-        state = _make_state(
-            messages=[HumanMessage("keep going")], remaining_steps=RECURSION_WRAPUP_THRESHOLD_STEPS
+    def test_the_window_is_a_fraction_of_a_long_run_s_limit(self) -> None:
+        """Regression: a fixed 6 steps gave the executor ~3 of its 50 turns, and a looping model ignored all 3."""
+        window = math.ceil(EXECUTOR_RECURSION_LIMIT * RECURSION_WRAPUP_REMAINING_FRACTION)
+        assert window > RECURSION_WRAPUP_MIN_STEPS, "the floor, not the fraction, would decide"
+
+        at_edge = _maybe_inject_wrapup(
+            _make_state(remaining_steps=window), _limited(EXECUTOR_RECURSION_LIMIT)
         )
+        outside = _make_state(remaining_steps=window + 1)
 
-        result = _maybe_inject_wrapup(state)
+        assert "almost out of steps" in at_edge["messages"][-1].content
+        assert _maybe_inject_wrapup(outside, _limited(EXECUTOR_RECURSION_LIMIT)) is outside
 
-        # The state already ends in a HumanMessage, so "last message is human"
-        # holds either way — the notice's own text is the only real assertion.
-        assert len(result["messages"]) == len(state["messages"]) + 1
-        assert "almost out of steps" in result["messages"][-1].content
+    def test_a_short_run_keeps_the_floor(self) -> None:
+        """A fraction of a 15-step subagent is one model turn — too few to answer in."""
+        at_floor = _maybe_inject_wrapup(
+            _make_state(remaining_steps=RECURSION_WRAPUP_MIN_STEPS),
+            _limited(SUBAGENT_RECURSION_LIMIT),
+        )
+        outside = _make_state(remaining_steps=RECURSION_WRAPUP_MIN_STEPS + 1)
+
+        assert "almost out of steps" in at_floor["messages"][-1].content
+        assert _maybe_inject_wrapup(outside, _limited(SUBAGENT_RECURSION_LIMIT)) is outside
 
     def test_the_notice_text_is_pinned_verbatim(self) -> None:
         state = _make_state(remaining_steps=2)
 
-        result = _maybe_inject_wrapup(state)
+        result = _maybe_inject_wrapup(state, _make_config())
 
         notice = result["messages"][-1]
         assert notice.content == (
             "[System notice: you are almost out of steps for this run "
-            "(~2 left). Stop exploring now — summarize what you "
-            "found and what remains to be done, and finish your reply.]"
+            "(~2 left). Stop calling tools and give your final answer now — "
+            "summarize what you did, what you found and what remains to be done.]"
         )
 
     def test_a_state_without_a_messages_channel_still_gets_the_notice(self) -> None:
         state = cast("State", {"remaining_steps": 1})
 
-        result = _maybe_inject_wrapup(state)
+        result = _maybe_inject_wrapup(state, _make_config())
 
         (notice,) = result["messages"]
         assert isinstance(notice, HumanMessage)
@@ -1445,12 +1477,12 @@ class TestMaybeInjectWrapupDirect:
     def test_budget_above_threshold_returns_state_untouched(self) -> None:
         state = _make_state()
 
-        assert _maybe_inject_wrapup(state) is state
+        assert _maybe_inject_wrapup(state, _make_config()) is state
 
     def test_non_integer_budget_returns_state_untouched(self) -> None:
         state = cast("State", {**_make_state(), "remaining_steps": "many"})
 
-        assert _maybe_inject_wrapup(state) is state
+        assert _maybe_inject_wrapup(state, _make_config()) is state
 
 
 class TestToolsToBindOrdering:
@@ -2234,7 +2266,8 @@ _EXPECTED_FALLBACK_CONFIG = {
         "session_id": "conv-1",
         "provider": LLMProviderName.GEMINI,
         "model": "gemini-x",
-    }
+    },
+    "recursion_limit": _RECURSION_LIMIT,
 }
 
 

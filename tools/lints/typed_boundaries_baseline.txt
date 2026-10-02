@@ -34,8 +34,6 @@ apps/api/app/agents/middleware/accounting.py	TB001
 apps/api/app/agents/middleware/accounting.py	TB002
 apps/api/app/agents/middleware/completion.py	TB002
 apps/api/app/agents/middleware/hil_approval.py	TB001
-apps/api/app/agents/middleware/loop_guard.py	TB001
-apps/api/app/agents/middleware/loop_guard.py	TB002
 apps/api/app/agents/middleware/media.py	TB001
 apps/api/app/agents/middleware/runtime_adapter.py	TB001
 apps/api/app/agents/middleware/runtime_adapter.py	TB002

@@ -90,9 +90,11 @@ WORKFLOW_SUBAGENT_RECURSION_LIMIT = 20
 # Emit a ``recursion_high_water_mark`` wide event when a run uses ≥80% of
 # its limit so we can tune the cap from real traffic.
 RECURSION_HWM_FRACTION = 0.80
-# When this few supersteps remain before the limit, acall_model injects a
-# wrap-up notice so the model finishes with a summary instead of GraphRecursionError.
-RECURSION_WRAPUP_THRESHOLD_STEPS = 6
+# Remaining supersteps (this fraction of the run's limit, floored) at which acall_model
+# starts showing the wrap-up notice, so the model answers before GraphRecursionError.
+# Executor: 20 of 100, ~10 model turns — a fixed 6 left a looping model only 3.
+RECURSION_WRAPUP_REMAINING_FRACTION = 0.2
+RECURSION_WRAPUP_MIN_STEPS = 6
 
 # Nudges the executor on unconfirmed work (a pending tracked todo, or no real
 # tool ran). Scoped to the CURRENT delegation — counting the executor thread
@@ -393,13 +395,11 @@ REQUEST_TOKEN_COUNTER_TTL_SECONDS = 30 * 60
 # in-band nudge to the error ToolMessage; STOP skips the call, returning a synthetic error.
 LOOP_GUARD_WARN_IDENTICAL = 2
 LOOP_GUARD_WARN_SAME_TOOL = 3
-LOOP_GUARD_STOP_IDENTICAL = 5
 LOOP_GUARD_STOP_SAME_TOOL = 8
-# "Repeat" counts CONSECUTIVE identical calls regardless of success or failure:
-# a successful call whose result won't change is as much a loop as a failing
-# one (the failure counters above only see status="error").
-LOOP_GUARD_WARN_REPEAT = 3
-LOOP_GUARD_STOP_REPEAT = 6
+# "Repeat" = consecutive model turns of the current delegation issuing the same
+# tool+args, whatever the outcome: the second is warned, the third is not run.
+LOOP_GUARD_WARN_REPEAT = 2
+LOOP_GUARD_STOP_REPEAT = 3
 # The middleware is a per-process singleton, so failure counters are keyed by the
 # run's thread_id and bounded to the most recent N runs (LRU) to keep memory flat.
 LOOP_GUARD_MAX_TRACKED_RUNS = 512
