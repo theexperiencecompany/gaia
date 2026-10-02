@@ -1,0 +1,148 @@
+From 466ff3e550d695066e2fb2e4128d020f9da225f1 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 11:50:34 +0530
+Subject: [PATCH] fix(js): a Range header on a blob: fetch gets the range, as
+ in Chrome
+
+The blob: fetch path passed only the method, so fetch(blobURL, {headers:
+{Range}}) answered 200 with the whole Blob. It now reads the Range header
+as Chrome does: one satisfiable byte range (first-last, first-, -suffix,
+whitespace allowed) is 206 with Content-Range and the range's
+Content-Length; more than one range, or one starting past the end, is a
+network error; a header that does not parse as a byte range is ignored.
+All twelve cases checked against headless Chrome agree.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/js/bootstrap.js | 53 +++++++++++++++++++++++++++----
+ crates/obscura-js/src/runtime.rs  | 36 +++++++++++++++++++++
+ 2 files changed, 82 insertions(+), 7 deletions(-)
+
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index fbb60d1..320ce7b 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -8047,9 +8047,6 @@ globalThis.fetch = async (input, init = {}) => {
+   // whether the input is absolute. _resolveUrl leaves absolute URLs
+   // unchanged and keeps unparseable input as-is.
+   url = _resolveUrl(url);
+-  if (url.startsWith('blob:')) {
+-    return _fetchObjectUrl(url, String(init.method || (request ? request.method : "GET")).toUpperCase());
+-  }
+   // Normalize the method to uppercase, matching the Request constructor, so
+   // fetch(url, {method:"delete"}) and new Request(url, {method:"delete"}) agree
+   // and lowercase standard methods are not rejected by the case-sensitive CORS
+@@ -8057,6 +8054,10 @@ globalThis.fetch = async (input, init = {}) => {
+   const method = String(init.method || (request ? request.method : "GET")).toUpperCase();
+   const headers = init.headers !== undefined ? init.headers : (request ? request.headers : undefined);
+   let _h = headers instanceof Headers ? Object.fromEntries(headers.entries()) : (headers || {});
++  if (url.startsWith('blob:')) {
++    const rangeName = Object.keys(_h).find(name => name.toLowerCase() === 'range');
++    return _fetchObjectUrl(url, method, rangeName === undefined ? null : String(_h[rangeName]));
++  }
+   const inheritsRequestBody = init.body === undefined && request !== null;
+   const initBody = init.body !== undefined
+     ? init.body
+@@ -14829,13 +14830,51 @@ function _objectUrlText(url) {
+ // Fetch's scheme fetch for blob: URLs: the Blob this page's object URL names,
+ // as a 200 response typed by the Blob, without touching the network. Only GET
+ // reads a blob URL; anything else, or a URL this page did not mint, is a
+-// network error.
+-function _fetchObjectUrl(url, method) {
++// network error. A Range header asks for one byte range, answered with 206
++// and Content-Range as Chrome answers it.
++function _fetchObjectUrl(url, method, range) {
+   const blob = _objectUrls.get(url.split('#')[0]);
+   if (!blob || method !== 'GET') return Promise.reject(new TypeError('Failed to fetch'));
+-  const headers = { 'Content-Length': String(blob.size) };
++  const headers = {};
+   if (blob.type) headers['Content-Type'] = blob.type;
+-  return Promise.resolve(new Response(blob._bytes.slice(), { status: 200, statusText: 'OK', headers, url }));
++  const span = range === null ? null : _blobByteRange(range, blob.size);
++  if (span === 'unsatisfiable') return Promise.reject(new TypeError('Failed to fetch'));
++  if (span === null) {
++    headers['Content-Length'] = String(blob.size);
++    return Promise.resolve(new Response(blob._bytes.slice(), { status: 200, statusText: 'OK', headers, url }));
++  }
++  const [first, last] = span;
++  headers['Content-Length'] = String(last - first + 1);
++  headers['Content-Range'] = 'bytes ' + first + '-' + last + '/' + blob.size;
++  return Promise.resolve(new Response(blob._bytes.slice(first, last + 1),
++    { status: 206, statusText: 'Partial Content', headers, url }));
++}
++// A Range header against a blob of `size` bytes, as Chrome reads it: a
++// header that does not parse as byte ranges is ignored (null, the whole
++// blob); more than one range, or a range starting past the end, cannot be
++// served ('unsatisfiable'); otherwise the inclusive [first, last] it names.
++function _blobByteRange(header, size) {
++  const match = /^[\t ]*bytes[\t ]*=(.*)$/i.exec(header);
++  if (!match) return null;
++  const specs = match[1].split(',').map(spec => spec.trim());
++  const parsed = [];
++  for (const spec of specs) {
++    const range = /^(\d*)[\t ]*-[\t ]*(\d*)$/.exec(spec);
++    if (!range || (range[1] === '' && range[2] === '')) return null;
++    if (range[1] === '') {
++      const suffix = Number(range[2]);
++      if (suffix === 0) return null;
++      parsed.push([Math.max(0, size - suffix), size - 1]);
++      continue;
++    }
++    const first = Number(range[1]);
++    const last = range[2] === '' ? Infinity : Number(range[2]);
++    if (first > last) return null;
++    parsed.push([first, Math.min(last, size - 1)]);
++  }
++  if (parsed.length !== 1) return 'unsatisfiable';
++  const [first, last] = parsed[0];
++  return first >= size || last < first ? 'unsatisfiable' : [first, last];
+ }
+ URL.createObjectURL = function(blob) {
+   // Chrome mints blob:<document-origin>/<v4-uuid> (blob:null/<uuid> on an opaque
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index afca420..6bd3a73 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -7460,6 +7460,42 @@ mod tests {
+         );
+     }
+ 
++    /// A Range header on a blob: fetch is answered as Chrome answers it: one
++    /// satisfiable range is 206 with Content-Range, more than one or one past
++    /// the end is a network error, and a header that is not a byte range is
++    /// ignored.
++    #[tokio::test(flavor = "current_thread")]
++    async fn blob_url_fetches_honour_a_single_byte_range() {
++        let mut rt = setup_runtime_at("<html><body></body></html>", "https://example.com/");
++        rt.evaluate(
++            r#"(() => {
++            const url = URL.createObjectURL(new Blob(['0123456789'], {type: 'text/plain'}));
++            globalThis.__ranges = null;
++            const cases = ['bytes=2-5', 'bytes=-3', 'bytes = 5-100', 'bytes=10-', 'bytes=0-1,4-5', 'bytes=5-2', 'items=0-1'];
++            Promise.all(cases.map(range => fetch(url, {headers: new Headers({Range: range})}).then(
++                async response => [response.status, response.headers.get('content-range'),
++                    response.headers.get('content-length'), await response.text()],
++                error => error.name,
++            ))).then(results => { __ranges = results; });
++            return true;
++            })()"#,
++        )
++        .unwrap();
++        rt.run_event_loop_bounded(200).await.unwrap();
++        assert_eq!(
++            rt.evaluate("__ranges").unwrap(),
++            serde_json::json!([
++                [206, "bytes 2-5/10", "4", "2345"],
++                [206, "bytes 7-9/10", "3", "789"],
++                [206, "bytes 5-9/10", "5", "56789"],
++                "TypeError",
++                "TypeError",
++                [200, null, "10", "0123456789"],
++                [200, null, "10", "0123456789"],
++            ])
++        );
++    }
++
+     #[test]
+     fn service_workers_and_secure_context_follow_the_document_url() {
+         for (url, secure) in [
