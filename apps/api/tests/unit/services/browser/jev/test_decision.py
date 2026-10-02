@@ -14,10 +14,8 @@ from app.services.browser.jev.decision import (
     NONE_VALUE,
     PAGE_TARGET,
     JevDecisionError,
-    ReadPage,
     RecentAction,
     Situation,
-    Visited,
     action_space,
     choose_option,
     choose_value,
@@ -32,7 +30,6 @@ from app.services.browser.jev.gateway import (
 )
 from app.services.browser.jev.page import PageAction, PageState
 from app.services.browser.jev.questions import (
-    NAVIGATE_TARGET,
     NEXT_ACTION,
     OPERATIONS,
     OPTION,
@@ -103,7 +100,6 @@ LIST_UP = PageAction(
 )
 WAIT = PageAction(id="wait", kind="wait", label="Wait for the page to update")
 ENTER = PageAction(id="enter", kind="enter", node=11, label="Press Enter in Search")
-BACK = PageAction(id="go_back", kind="back", label="Go back to Home", entry=3)
 
 
 def _answer(choice: str, keys: list[str]) -> dict[str, object]:
@@ -159,7 +155,7 @@ def _asked(jev: _Jev) -> JevEvaluationRequest:
 
 
 def test_each_element_gets_one_index_and_each_operation_its_own_targets() -> None:
-    space = action_space([SEARCH, OPEN_SEARCH, BUY, SIZE, LIST, LIST_UP, SCROLL, WAIT, ENTER, BACK])
+    space = action_space([SEARCH, OPEN_SEARCH, BUY, SIZE, LIST, LIST_UP, SCROLL, WAIT, ENTER])
 
     assert [(e.index, e.label) for e in space.elements] == [
         ("1", "Search"),
@@ -174,11 +170,7 @@ def test_each_element_gets_one_index_and_each_operation_its_own_targets() -> Non
     # The page scrolls as one target, beside each inner area that scrolls.
     assert space.targets[JevOperation.SCROLL_DOWN] == {PAGE_TARGET: SCROLL, "4": LIST}
     assert space.targets[JevOperation.SCROLL_UP] == {"4": LIST_UP}
-    assert space.controls == {
-        JevOperation.WAIT: WAIT,
-        JevOperation.PRESS_ENTER: ENTER,
-        JevOperation.GO_BACK: BACK,
-    }
+    assert space.controls == {JevOperation.WAIT: WAIT, JevOperation.PRESS_ENTER: ENTER}
 
 
 def test_a_page_with_more_elements_than_one_request_carries_counts_the_ones_left_out() -> None:
@@ -191,16 +183,15 @@ def test_a_page_with_more_elements_than_one_request_carries_counts_the_ones_left
     assert space.controls == {JevOperation.WAIT: WAIT}
 
 
-async def test_jev_is_asked_about_the_page_its_elements_what_it_did_and_where_it_has_been(
+async def test_jev_is_asked_about_the_page_its_elements_and_what_it_did(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(decision_mod, "JEV_MAX_ELEMENTS", 3)
     jev = _Jev(operation="DONE")
     history = [RecentAction(action="Search", kind="TYPE_TEXT", text="shoes", page_changed=True)]
-    visited = [Visited("Home", "https://shop.test/")]
     page = _page(SEARCH, SIZE, DAY, BUY, omitted=7)
 
-    await decide(jev, Situation(page, "buy", history, _unmasked), visited, [])
+    await decide(jev, Situation(page, "buy", "done", history, _unmasked))
 
     state = _asked(jev).state
     assert state["page"] == {
@@ -238,74 +229,26 @@ async def test_jev_is_asked_about_the_page_its_elements_what_it_did_and_where_it
     assert state["recent_actions"] == [
         {"action": "Search", "kind": "TYPE_TEXT", "text": "shoes", "page_changed": True}
     ]
-    assert state["visited"] == [{"title": "Home", "url": "https://shop.test/"}]
     # The snapshot's own cut, and the one a request makes.
     assert state["elements_left_out"] == 8
 
 
-async def test_jev_sees_which_links_lead_to_pages_this_run_opened_and_where_each_action_led() -> (
-    None
-):
-    """Jev clicked one Hacker News story and came back eight times: nothing said it had read that page."""
-    story = _action("e5", 15, "click", "Clef", role="link", href="https://blog.test/clef#top")
-    other = _action("e6", 16, "click", "Frog", role="link", href="https://blog.test/frog")
-    home = _action("e7", 17, "click", "Shop", role="link", href="https://shop.test")
-    jev = _Jev(operation="DONE")
-    went = RecentAction(
-        action="Clef", kind="CLICK", text=None, page_changed=True, led_to="https://blog.test/clef"
-    )
-    stayed = RecentAction(action="Search", kind="TYPE_TEXT", text="x", page_changed=False)
-    visited = [Visited("Clef", "https://blog.test/clef"), Visited("Shop", "https://shop.test")]
-
-    await decide(
-        jev,
-        Situation(
-            _page(story, other, home),
-            "open each",
-            [went, stayed],
-            _unmasked,
-            read=[ReadPage("Clef", "https://blog.test/clef", "Clef is a model")],
-        ),
-        visited,
-        [],
-    )
-
-    request = _asked(jev)
-    marked = {e["label"]: e.get("opened") for e in request.state["elements"]}
-    # The page Jev is on is not one to open again; a link back to it is just a link.
-    assert marked == {"Clef": True, "Frog": None, "Shop": None}
-    targets = request.questions["click_target"].criteria
-    assert [c["element"] for c in targets.values()] == [
-        "[1] Clef (already opened and read)",
-        "[2] Frog",
-        "[3] Shop",
-    ]
-    assert [a.get("led_to") for a in request.state["recent_actions"]] == [
-        "https://blog.test/clef",
-        None,
-    ]
-    # What the burst already read, so the page is not opened again to read it.
-    assert request.state["read_this_burst"] == [
-        {"title": "Clef", "url": "https://blog.test/clef", "text": "Clef is a model"}
-    ]
-
-
 @pytest.mark.parametrize("href", ["http://[object Object]/", "https://[2001:db8::1/x"])
-async def test_a_link_whose_href_is_no_address_is_offered_as_a_link_never_opened(href: str) -> None:
+async def test_a_link_whose_href_is_no_address_is_offered_as_a_link(href: str) -> None:
     """Parsing it raised, which escaped the burst and lost every step the burst had taken."""
     broken = _action("e5", 15, "click", "Broken", role="link", href=href)
     jev = _Jev(operation="DONE")
 
     await decide(
-        jev, Situation(_page(broken), "go", [], _unmasked), [Visited("Shop", "https://x.test/")], []
+        jev,
+        Situation(_page(broken), "go", "done", [], _unmasked, left=frozenset({"https://x.test/"})),
     )
 
-    [element] = _asked(jev).state["elements"]
-    assert "opened" not in element
+    assert [e["label"] for e in _asked(jev).state["elements"]] == ["Broken"]
 
 
-async def test_a_link_to_a_page_this_burst_read_is_not_offered_to_click() -> None:
-    """Labelled "(already opened and read)", it was still clicked and gone back from, to the action cap."""
+async def test_a_link_to_a_page_this_burst_left_is_not_offered_to_click() -> None:
+    """Jev clicked one story, went back and clicked it again, eight times in a burst, to the action cap."""
     story = _action("e5", 15, "click", "Clef", role="link", href="https://blog.test/clef")
     other = _action("e6", 16, "click", "Frog", role="link", href="https://blog.test/frog")
     jev = _Jev(operation="DONE")
@@ -315,12 +258,11 @@ async def test_a_link_to_a_page_this_burst_read_is_not_offered_to_click() -> Non
         Situation(
             _page(story, other),
             "open each",
+            "done",
             [],
             _unmasked,
-            closed=frozenset({"https://blog.test/clef"}),
+            left=frozenset({"https://blog.test/clef"}),
         ),
-        [],
-        [],
     )
 
     assert [e["label"] for e in _asked(jev).state["elements"]] == ["Frog"]
@@ -331,18 +273,12 @@ async def test_the_operation_question_offers_only_what_this_page_and_the_run_all
 
     await decide(
         jev,
-        Situation(_page(SEARCH, BUY, SCROLL, WAIT, ENTER, BACK), "go", [], _unmasked),
-        [],
-        ["https://c.test/"],
+        Situation(_page(SEARCH, BUY, SCROLL, WAIT, ENTER), "go", "it went", [], _unmasked),
     )
 
     question = _asked(jev).questions["operation"]
-    assert question.instructions == {"goal": "go", "rules": NEXT_ACTION}
-    navigate = _asked(jev).questions["navigate_target"]
-    assert (navigate.criteria, navigate.instructions) == (
-        {"U1": "https://c.test/"},
-        {"goal": "go", "operation": "NAVIGATE", "rules": NAVIGATE_TARGET},
-    )
+    # Jev's DONE judges the agent's done_when and nothing else.
+    assert question.instructions == {"goal": "go", "done_when": "it went", "rules": NEXT_ACTION}
     assert question.criteria == {
         "TYPE_TEXT": OPERATIONS[JevOperation.TYPE_TEXT],
         "CLICK": OPERATIONS[JevOperation.CLICK],
@@ -350,50 +286,39 @@ async def test_the_operation_question_offers_only_what_this_page_and_the_run_all
         # A page-level control is offered under its own label.
         "WAIT": "Wait for the page to update",
         "PRESS_ENTER": "Press Enter in Search",
-        "GO_BACK": "Go back to Home",
-        "NAVIGATE": OPERATIONS[JevOperation.NAVIGATE],
         "DONE": OPERATIONS[JevOperation.DONE],
         "BLOCKED": OPERATIONS[JevOperation.BLOCKED],
     }
 
     await decide(
         jev,
-        Situation(_page(BUY), "buy it", [], _unmasked),
-        [Visited("Shop", "https://shop.test/")],
-        [],
+        Situation(_page(BUY), "buy it", "done", [], _unmasked),
     )
 
-    # No focused field, no history to go back through, no address to open.
+    # No focused field, so no Enter to press.
     assert set(_asked(jev).questions["operation"].criteria) == {"CLICK", "DONE", "BLOCKED"}
 
 
 @pytest.mark.parametrize(
-    ("choices", "target", "url"),
+    ("choices", "target"),
     [
-        ({"operation": "CLICK", "click_target": "2"}, BUY, None),
-        ({"operation": "SELECT", "select_target": "3"}, SIZE, None),
-        ({"operation": "SCROLL_DOWN", "scroll_down_target": "4"}, LIST, None),
-        ({"operation": "SCROLL_DOWN", "scroll_down_target": PAGE_TARGET}, SCROLL, None),
-        ({"operation": "GO_BACK"}, BACK, None),
-        ({"operation": "NAVIGATE", "navigate_target": "U2"}, None, "https://b.test/"),
-        ({"operation": "DONE"}, None, None),
+        ({"operation": "CLICK", "click_target": "2"}, BUY),
+        ({"operation": "SELECT", "select_target": "3"}, SIZE),
+        ({"operation": "SCROLL_DOWN", "scroll_down_target": "4"}, LIST),
+        ({"operation": "SCROLL_DOWN", "scroll_down_target": PAGE_TARGET}, SCROLL),
+        ({"operation": "WAIT"}, WAIT),
+        ({"operation": "DONE"}, None),
     ],
 )
-async def test_the_decision_names_the_chosen_snapshot_action_or_address(
-    choices: dict[str, str], target: PageAction | None, url: str | None
+async def test_the_decision_names_the_chosen_snapshot_action(
+    choices: dict[str, str], target: PageAction | None
 ) -> None:
     decision = await decide(
         _Jev(**choices),
-        Situation(_page(SEARCH, BUY, SIZE, LIST, SCROLL, BACK), "buy", [], _unmasked),
-        [],
-        ["https://a.test/", "https://b.test/"],
+        Situation(_page(SEARCH, BUY, SIZE, LIST, SCROLL, WAIT), "buy", "done", [], _unmasked),
     )
 
-    assert (decision.operation, decision.target, decision.url) == (
-        JevOperation(choices["operation"]),
-        target,
-        url,
-    )
+    assert (decision.operation, decision.target) == (JevOperation(choices["operation"]), target)
     assert (decision.latency_ms, decision.evaluation.usage) == (3, JevUsage(inputTokens=9))
 
 
@@ -402,7 +327,7 @@ async def test_a_chosen_dropdown_is_asked_which_of_its_options_to_set() -> None:
     history = [RecentAction(action="Buy now", kind="CLICK", text=None, page_changed=True)]
 
     chosen, evaluation = await choose_option(
-        jev, Situation(_page(SIZE), "a large one", history, _unmasked), SIZE
+        jev, Situation(_page(SIZE), "a large one", "done", history, _unmasked), SIZE
     )
 
     assert (chosen["value"], chosen["current_value"], "options" in chosen) == ("l", "Large", False)
@@ -425,7 +350,7 @@ async def test_each_target_question_shows_its_candidates_as_they_stand_now() -> 
     named = _action("e7", 17, "fill", "Name", role="textbox", ident="name", value="Ada")
 
     await decide(
-        jev, Situation(_page(named, BUY, SIZE, SCROLL), "check out", [], _unmasked), [], []
+        jev, Situation(_page(named, BUY, SIZE, SCROLL), "check out", "done", [], _unmasked)
     )
 
     questions = _asked(jev).questions
@@ -477,26 +402,24 @@ def _choice(choice: str, **probabilities: float) -> JevChoiceAnswer:
 async def test_a_malformed_answer_is_refused_and_nothing_is_executed(answer: object) -> None:
     with pytest.raises(JevDecisionError, match=decision_mod._INVALID_ANSWER):
         await decide(
-            _Answers(operation=answer), Situation(_page(), "buy it", [], _unmasked), [], []
+            _Answers(operation=answer), Situation(_page(), "buy it", "done", [], _unmasked)
         )
 
 
 async def test_no_answer_is_refused() -> None:
     with pytest.raises(JevDecisionError, match=decision_mod._NO_ANSWER):
-        await decide(_Answers(), Situation(_page(), "buy it", [], _unmasked), [], [])
+        await decide(_Answers(), Situation(_page(), "buy it", "done", [], _unmasked))
 
 
 async def test_a_target_answer_is_validated_like_the_operation() -> None:
     with pytest.raises(JevDecisionError, match=decision_mod._NO_ANSWER):
         await decide(
-            _Jev(operation="CLICK"), Situation(_page(BUY), "buy it", [], _unmasked), [], []
+            _Jev(operation="CLICK"), Situation(_page(BUY), "buy it", "done", [], _unmasked)
         )
     with pytest.raises(JevDecisionError, match=decision_mod._INVALID_ANSWER):
         await decide(
             _Jev(operation="CLICK", click_target="7"),
-            Situation(_page(BUY), "buy it", [], _unmasked),
-            [],
-            [],
+            Situation(_page(BUY), "buy it", "done", [], _unmasked),
         )
 
 
@@ -505,9 +428,7 @@ async def test_a_malformed_head_the_decision_does_not_read_costs_nothing() -> No
 
     decision = await decide(
         _Answers(operation=operation, click_target={"type": "choice", "choice": 7}),
-        Situation(_page(BUY), "buy it", [], _unmasked),
-        [],
-        [],
+        Situation(_page(BUY), "buy it", "done", [], _unmasked),
     )
 
     assert decision.operation is JevOperation.DONE
@@ -526,7 +447,7 @@ async def test_a_malformed_head_the_decision_does_not_read_costs_nothing() -> No
 )
 async def test_an_answer_at_the_edges_of_valid_is_taken(answer: JevChoiceAnswer) -> None:
     decision = await decide(
-        _Answers(operation=answer.model_dump()), Situation(_page(), "buy it", [], _unmasked), [], []
+        _Answers(operation=answer.model_dump()), Situation(_page(), "buy it", "done", [], _unmasked)
     )
 
     assert decision.operation is JevOperation.DONE
@@ -540,9 +461,7 @@ async def test_probabilities_off_by_exactly_the_tolerance_are_refused(
     with pytest.raises(JevDecisionError):
         await decide(
             _Answers(operation=_choice("DONE", DONE=0.75, BLOCKED=0.5).model_dump()),
-            Situation(_page(), "g", [], _unmasked),
-            [],
-            [],
+            Situation(_page(), "g", "done", [], _unmasked),
         )
 
 
@@ -550,7 +469,10 @@ async def test_a_password_field_is_offered_the_runs_secrets_and_nothing_else() -
     jev = _Jev(value="V1")
 
     value, _ = await choose_value(
-        jev, Situation(_page(PASSWORD), 'log in as "ada"', [], _unmasked), PASSWORD, ["password"]
+        jev,
+        Situation(_page(PASSWORD), 'log in as "ada"', "done", [], _unmasked),
+        PASSWORD,
+        ["password"],
     )
 
     assert value == "<secret>password</secret>"
@@ -568,7 +490,7 @@ async def test_any_other_field_is_offered_the_goals_literals_the_secrets_or_a_wr
 
     value, evaluation = await choose_value(
         jev,
-        Situation(_page(DAY), 'book "red shoes" for ada@example.com', history, _unmasked),
+        Situation(_page(DAY), 'book "red shoes" for ada@example.com', "done", history, _unmasked),
         DAY,
         ["user"],
     )
@@ -606,7 +528,10 @@ async def test_any_other_field_is_offered_the_goals_literals_the_secrets_or_a_wr
 @pytest.mark.parametrize("choice", [GENERATE, NONE_VALUE])
 async def test_a_field_with_no_literal_comes_back_as_generate_or_none(choice: str) -> None:
     value, _ = await choose_value(
-        _Jev(value=choice), Situation(_page(SEARCH), "find shoes", [], _unmasked), SEARCH, []
+        _Jev(value=choice),
+        Situation(_page(SEARCH), "find shoes", "done", [], _unmasked),
+        SEARCH,
+        [],
     )
 
     assert value == choice

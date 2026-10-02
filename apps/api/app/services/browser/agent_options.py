@@ -1,7 +1,8 @@
 """What a run's Browser-Use Browser and Agent are built with, apart from the live objects they run on.
 
-The run's contract with Browser-Use: Jev acts first on the whole task (a run
-resumed on the fallback engine goes on instead), the agent reads pages as text
+The run's contract with Browser-Use: Jev acts first, on the part of the task
+the start page is for (a run resumed on the fallback engine goes on instead),
+the agent reads pages as text
 with whole URLs, and each step gets the run's step budget, which a handoff's
 wait is outside of.
 """
@@ -20,6 +21,8 @@ from app.constants.browser import (
     BROWSER_TAKEOVER_PREAMBLE,
     BROWSER_VIEWPORT_HEIGHT,
     BROWSER_VIEWPORT_WIDTH,
+    JEV_FIRST_BURST_DONE_WHEN,
+    JEV_FIRST_BURST_GOAL,
 )
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.jev.tool import JEV_ACTION
@@ -66,7 +69,7 @@ def browser_options(cdp_url: str) -> BrowserOptions:
 def agent_options(
     task: str, config: BrowserRunConfig, secrets: RunSecrets, *, resumed: bool, fast_engine: bool
 ) -> AgentOptions:
-    """Return the Agent for task: Jev's burst on the whole task first when there is a page to start on, the agent steering after.
+    """Return the Agent for task: Jev's burst on the start page first when there is one, the agent steering after.
 
     An agent on the fast engine is told so: one that was not believed the page
     it read there was already the full browser, and never moved when the task said to.
@@ -82,7 +85,15 @@ def agent_options(
         directly_open_url=not resumed,
         # With no page to start on, a first burst could only end on the blank tab: the first move is the agent's.
         initial_actions=(
-            [{JEV_ACTION: {"goal": task, "start_url": config.start_url}}]
+            [
+                {
+                    JEV_ACTION: {
+                        "goal": JEV_FIRST_BURST_GOAL.format(task=task),
+                        "done_when": JEV_FIRST_BURST_DONE_WHEN,
+                        "start_url": config.start_url,
+                    }
+                }
+            ]
             if config.start_url and not resumed
             else None
         ),

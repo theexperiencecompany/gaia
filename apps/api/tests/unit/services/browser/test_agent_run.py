@@ -1100,7 +1100,9 @@ class TestJevInTheRun:
 
     async def _burst(self, harness: _Harness) -> str:
         await harness.run.execute("fill the form")
-        result = await _Agent.built[-1].act(JEV_ACTION, {"goal": "fill the form"})
+        result = await _Agent.built[-1].act(
+            JEV_ACTION, {"goal": "fill the form", "done_when": "the form is sent"}
+        )
         return str(result.extracted_content)
 
     async def test_a_script_the_fast_engine_cannot_run_moves_the_run_to_chrome(
@@ -1130,7 +1132,9 @@ class TestJevInTheRun:
         """The run's secrets are the delegate's: the agent's untagged "password" is refused."""
         await harness.run.execute("log in")
 
-        result = await _Agent.built[-1].act(JEV_ACTION, {"goal": 'type "password" and sign in'})
+        result = await _Agent.built[-1].act(
+            JEV_ACTION, {"goal": 'type "password" and sign in', "done_when": "signed in"}
+        )
 
         assert "the name of a secret" in str(result.error)
         assert decisions == []

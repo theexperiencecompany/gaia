@@ -1,4 +1,4 @@
-"""The run's contract with Browser-Use: Jev first on the whole task, whole URLs, text-only steps on the run's budget."""
+"""The run's contract with Browser-Use: Jev first on the start page, whole URLs, text-only steps on the run's budget."""
 
 from __future__ import annotations
 
@@ -16,6 +16,8 @@ from app.constants.browser import (
     BROWSER_TAKEOVER_PREAMBLE,
     BROWSER_VIEWPORT_HEIGHT,
     BROWSER_VIEWPORT_WIDTH,
+    JEV_FIRST_BURST_DONE_WHEN,
+    JEV_FIRST_BURST_GOAL,
 )
 from app.schemas.browser import BrowserTaskSecret
 from app.services.browser.agent_options import agent_options, browser_options
@@ -38,11 +40,17 @@ CONFIG = BrowserRunConfig(
 TASK = "log in with <secret>password</secret> and open the orders page"
 
 
-def test_jev_acts_first_on_the_whole_task_from_the_start_page() -> None:
+def test_jev_acts_first_on_the_part_of_the_task_the_start_page_is_for() -> None:
     options = agent_options(TASK, CONFIG, RunSecrets({}), resumed=False, fast_engine=False)
 
     assert options["initial_actions"] == [
-        {JEV_ACTION: {"goal": TASK, "start_url": "https://shop.test/"}}
+        {
+            JEV_ACTION: {
+                "goal": JEV_FIRST_BURST_GOAL.format(task=TASK),
+                "done_when": JEV_FIRST_BURST_DONE_WHEN,
+                "start_url": "https://shop.test/",
+            }
+        }
     ]
     assert options["task"] == TASK + BROWSER_TAKEOVER_PREAMBLE
     assert options["extend_system_message"] == BROWSER_AGENT_ROLE

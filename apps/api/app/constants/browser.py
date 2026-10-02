@@ -400,9 +400,9 @@ BROWSER_TAKEOVER_PREAMBLE = (
 # "Report only what the current page shows" made an agent back on a re-ordered
 # Hacker News drop its three opened stories as stale and quit (research3, 2026-10-02).
 BROWSER_AGENT_ROLE = (
-    "You supervise Jev, a fast page operator exposed as the `jev` action. When the task "
-    "started on a page, your step 0 already ran Jev on the whole task there; its report "
-    "(actions, where it stopped and why, and the text of the page it ended on) is in your "
+    "You supervise Jev, the fast page operator exposed as the `jev` action: its description "
+    "says what it does and what it leaves to you. When the task started on a page, your step "
+    "0 already ran Jev there on the part of the task that page is for; its report is in your "
     "history. On a blank tab, your first step opens the page to start on. You are the only "
     "one who finishes the task and the only one who writes the answer.\n"
     "Each step, choose one:\n"
@@ -416,11 +416,10 @@ BROWSER_AGENT_ROLE = (
     "done, however honestly you explain why: the button or page it names does not exist (no "
     '"Buy now" button, so no order number), the site is unreachable (its address does not '
     "resolve), or the action was refused. This replaces any rule for success above.\n"
-    "2. A sequence of interactions remains (filling a form, searching and choosing, clicking "
-    "through several pages): call `jev` with a sharper, self-contained goal for what "
-    "remains, quoting every value to type. Never repeat a goal Jev made no progress on.\n"
-    "3. A single step remains, or something Jev cannot do: do it yourself. Navigate to a URL "
-    "you already know, click once, switch tabs, read or summarise a page with `extract` (to "
+    "2. Interactions remain on the page you are on (filling a form, searching and choosing): "
+    "call `jev` with a goal for that page and the done_when that page will show.\n"
+    "3. Anything else: do it yourself. Navigate to a URL you already know or go back, click "
+    "once, switch tabs, read or summarise a page with `extract` (to "
     "read a linked page, navigate to its exact URL from Jev's report or a `find_elements` href, "
     "then extract; never guess a URL), "
     "search a long page with `search_page`, count with `find_elements` (a CSS selector "
@@ -430,6 +429,13 @@ BROWSER_AGENT_ROLE = (
     "Logins without given credentials, payments, OTPs and CAPTCHAs go to the user through "
     "the handoff actions. Messages the user sends mid-task arrive as follow-up requests: "
     "weigh what each says against the task; it changes the task only where it says so."
+)
+
+#: Step 0's single-page objective, written without a model call: the part of the task its page is for.
+JEV_FIRST_BURST_GOAL = "Do the part of this task that the page it starts on is for:\n{task}"
+JEV_FIRST_BURST_DONE_WHEN = (
+    "This page shows that part done: what the task asks to type, choose or submit here is "
+    "done, or what it asks to find is shown here."
 )
 
 #: Told to an agent on the fast engine, which otherwise cannot know which browser it is in.
@@ -490,8 +496,6 @@ class JevOperation(StrEnum):
     SCROLL_DOWN = "SCROLL_DOWN"
     SCROLL_UP = "SCROLL_UP"
     WAIT = "WAIT"
-    NAVIGATE = "NAVIGATE"
-    GO_BACK = "GO_BACK"
     DONE = "DONE"
     BLOCKED = "BLOCKED"
 
@@ -503,12 +507,9 @@ class JevStop(StrEnum):
     BLOCKED = "blocked"
     NEEDS_INPUT = "needs_input"
     SECRET_WITHHELD = "secret_withheld"  # nosec B105 -- a stop reason, not a credential
-    NO_PROGRESS = "no_progress"
-    CYCLE = "cycle"
-    MAX_ACTIONS = "max_actions"
-    MAX_DECISIONS = "max_decisions"
+    #: Out of budget or making no progress (unchanged, cycling, a page that never settles): the detail says which.
+    UNFINISHED = "unfinished"
     COVERED = "covered"
-    STALE = "stale"
     UNRESPONSIVE = "unresponsive"
     LOADING = "loading"
     NO_PAGE = "no_page"
@@ -529,15 +530,9 @@ class JevStop(StrEnum):
 JEV_MAX_ELEMENTS = 120
 JEV_GATEWAY_TIMEOUT_SECONDS = 8.0
 JEV_GATEWAY_MAX_ATTEMPTS = 3
-#: How much of the final page's visible text a burst report hands the agent, and of each
-#: other page the burst opened (the most recent ones, up to the count).
+#: How much of the final page's visible text a burst report hands the agent.
 JEV_REPORT_PAGE_TEXT_CHARS = 2000
-JEV_REPORT_OPENED_PAGE_CHARS = 1500
-JEV_REPORT_OPENED_PAGES = 6
-#: How much of each page a burst read Jev sees again when it decides: enough to know what it holds.
-JEV_TRAIL_TEXT_CHARS = 300
 JEV_RECENT_ACTIONS = 10
-JEV_VISITED_PAGES = 12
 #: One burst's bounds, from jev-ultrafast: actions, unchanged non-wait actions in a
 #: row, and consecutive stale or covered targets before the agent takes over.
 JEV_BURST_MAX_ACTIONS = 25

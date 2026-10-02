@@ -33,7 +33,6 @@ from app.services.browser.jev.gateway import (
 )
 from app.services.browser.jev.page import PageAction, PageState, SelectOption
 from app.services.browser.jev.questions import (
-    NAVIGATE_TARGET,
     NEXT_ACTION,
     OPERATIONS,
     OPTION,
@@ -53,7 +52,6 @@ _KIND_OPERATION = {
 _CONTROL_OPERATION = {
     "wait": JevOperation.WAIT,
     "enter": JevOperation.PRESS_ENTER,
-    "back": JevOperation.GO_BACK,
 }
 #: How the snapshot names every scroll that turns up: the page's, and each container's.
 _SCROLL_UP_ID = "scroll_up"
@@ -79,11 +77,8 @@ _FIELD_KEYS = ("label", "role", "ident", "input_type", "placeholder", "pattern",
 _TIE_TOLERANCE = 1e-6
 _TRAILING_PUNCTUATION = ".,;:!?"
 _OPERATION_QUESTION = "operation"
-_NAVIGATE_QUESTION = "navigate_target"
 _VALUE_QUESTION = "value"
 _OPTION_QUESTION = "option"
-#: How a target that links to a page this run already opened and read is named.
-_OPENED = " (already opened and read)"
 _NO_ANSWER = "Jev returned no answer for a question; no action executed."
 _INVALID_ANSWER = "Invalid Jev response; no action executed."
 
@@ -110,23 +105,6 @@ class RecentAction:
     kind: str
     text: str | None
     page_changed: bool | None
-    #: The page the action took the tab to, when it left the one it was taken on.
-    led_to: str | None = None
-
-
-@dataclass(frozen=True)
-class Visited:
-    title: str
-    url: str
-
-
-@dataclass(frozen=True)
-class ReadPage:
-    """A page the burst opened, and the start of the text read there."""
-
-    title: str
-    url: str
-    text: str
 
 
 @dataclass(frozen=True)
@@ -135,14 +113,14 @@ class Situation:
 
     page: PageState
     goal: str
+    #: What must be visible on the current page for the goal to be done: all Jev's DONE judges.
+    done_when: str
     #: The recent actions Jev may see, already cut to that window.
     history: list[RecentAction]
     #: Puts every secret value back as its placeholder before anything is sent.
     mask: Mask
-    #: The pages this burst opened and read, oldest first: the work it need not do again.
-    read: list[ReadPage] = field(default_factory=list)
-    #: The addresses of those it has not acted on since: no link to one is offered.
-    closed: frozenset[str] = frozenset()
+    #: The addresses of the pages this burst left: Jev only goes forward, so no link to one is offered.
+    left: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -152,7 +130,6 @@ class Decision:
     operation: JevOperation
     #: The snapshot action the operation executes (for SELECT, the dropdown), else None.
     target: PageAction | None
-    url: str | None
     latency_ms: int
     evaluation: JevEvaluation
 
@@ -185,10 +162,8 @@ def page_address(url: str) -> str:
 
 @dataclass
 class _ActionSpace:
-    #: The pages this run already opened: a link to one is marked opened.
-    opened: frozenset[str] = frozenset()
-    #: The pages this burst read and has not acted on since: a link to one is not offered.
-    closed: frozenset[str] = frozenset()
+    #: The pages this burst left: a link to one is not offered.
+    left: frozenset[str] = frozenset()
     elements: list[_Element] = field(default_factory=list)
     #: Per target operation: target index -> snapshot action.
     targets: dict[JevOperation, dict[str, PageAction]] = field(default_factory=dict)
@@ -211,8 +186,8 @@ class _ActionSpace:
         if kind == "scroll" and "node" not in action:
             self.targets.setdefault(operation, {})[PAGE_TARGET] = action
             return
-        if operation is JevOperation.CLICK and _leads_to(action, self.closed):
-            # Its text is already in read_this_burst: opening it again reads only that.
+        if operation is JevOperation.CLICK and _leads_to(action, self.left):
+            # Going back is the agent's move: it knows the pages the run has been on.
             return
         element = self._element(action)
         if element is None:
@@ -230,8 +205,6 @@ class _ActionSpace:
             self._left_out.add(node)
             return None
         fields = {k: v for k, v in _fields(action, _ELEMENT_FIELDS).items() if v != ""}
-        if _leads_to(action, self.opened):
-            fields["opened"] = True
         if action["kind"] == "select":
             # A dropdown shows its current choice; its options are asked once it is chosen.
             fields["value"] = action["current_value"]
@@ -241,8 +214,8 @@ class _ActionSpace:
         return element
 
 
-def _leads_to(action: PageAction, opened: frozenset[str]) -> bool:
-    """Whether action is a link to a page this run already opened."""
+def _leads_to(action: PageAction, pages: frozenset[str]) -> bool:
+    """Whether action is a link to one of pages."""
     href = action.get("href")
     if href is None:
         return False
@@ -250,18 +223,14 @@ def _leads_to(action: PageAction, opened: frozenset[str]) -> bool:
         address = page_address(href)
     except ValueError:
         # Chrome hands back an href it could not resolve as written ("http://[object Object]/"):
-        # no page at all, so not one this run opened.
+        # no page at all, so not one the burst left.
         return False
-    return address in opened
+    return address in pages
 
 
-def action_space(
-    actions: list[PageAction],
-    opened: frozenset[str] = frozenset(),
-    closed: frozenset[str] = frozenset(),
-) -> _ActionSpace:
-    """One index per observed element, links to opened pages marked, to closed ones left out; each operation has its own valid targets."""
-    space = _ActionSpace(opened=opened, closed=closed)
+def action_space(actions: list[PageAction], left: frozenset[str] = frozenset()) -> _ActionSpace:
+    """One index per observed element, links to pages the burst left out; each operation has its own valid targets."""
+    space = _ActionSpace(left=left)
     for action in actions:
         space.add(action)
     return space
@@ -300,13 +269,11 @@ def _target_question(operation: JevOperation) -> str:
     return f"{operation.value.lower()}_target"
 
 
-def _target_criteria(
-    candidates: dict[str, PageAction], opened: frozenset[str]
-) -> dict[str, JsonInput]:
-    """Return an operation's targets as Jev weighs them: label, current value, states, and whether it leads somewhere opened."""
+def _target_criteria(candidates: dict[str, PageAction]) -> dict[str, JsonInput]:
+    """Return an operation's targets as Jev weighs them: label, current value and states."""
     return {
         index: {
-            "element": f"[{index}] {action['label']}{_OPENED if _leads_to(action, opened) else ''}",
+            "element": f"[{index}] {action['label']}",
             "current_value": action.get("current_value", action.get("value", "")),
             **_fields(action, _TARGET_FIELDS),
         }
@@ -374,83 +341,53 @@ def _validate_choice(evaluation: JevEvaluation, question: str, ids: set[str]) ->
     return answer.choice
 
 
-async def decide(
-    client: JevDecider, situation: Situation, visited: list[Visited], addresses: list[str]
-) -> Decision:
+async def decide(client: JevDecider, situation: Situation) -> Decision:
     """Ask Jev for this step's operation and target; raises JevDecisionError on a malformed answer."""
     page, goal, history = situation.page, situation.goal, situation.history
-    here = page_address(page.url)
-    opened = frozenset(page_address(v.url) for v in visited) - {here}
-    space = action_space(page.actions, opened, situation.closed)
+    space = action_space(page.actions, situation.left - {page_address(page.url)})
     controls: dict[JevOperation, PageAction] = space.controls
     operations: dict[str, JsonInput] = {op.value: OPERATIONS[op] for op in space.targets}
     operations.update({op.value: control["label"] for op, control in controls.items()})
-    if addresses:
-        operations[JevOperation.NAVIGATE.value] = OPERATIONS[JevOperation.NAVIGATE]
     operations[JevOperation.DONE.value] = OPERATIONS[JevOperation.DONE]
     operations[JevOperation.BLOCKED.value] = OPERATIONS[JevOperation.BLOCKED]
 
     questions: dict[str, JevQuestion] = {
         _OPERATION_QUESTION: JevQuestion(
-            criteria=operations, instructions={"goal": goal, "rules": NEXT_ACTION}
+            criteria=operations,
+            instructions={"goal": goal, "done_when": situation.done_when, "rules": NEXT_ACTION},
         )
     }
     for operation, candidates in space.targets.items():
         questions[_target_question(operation)] = JevQuestion(
-            criteria=_target_criteria(candidates, opened),
+            criteria=_target_criteria(candidates),
             instructions={
                 "goal": goal,
                 "operation": operation.value,
                 "rules": [NEXT_ACTION, TARGET],
             },
         )
-    address_ids = {f"U{i + 1}": url for i, url in enumerate(addresses)}
-    if address_ids:
-        questions[_NAVIGATE_QUESTION] = JevQuestion(
-            criteria=dict(address_ids),
-            instructions={
-                "goal": goal,
-                "operation": JevOperation.NAVIGATE.value,
-                "rules": NAVIGATE_TARGET,
-            },
-        )
     state: dict[str, object] = {
         "page": _page(page),
         "elements": [element.described() for element in space.elements],
         "recent_actions": [
-            {
-                "action": h.action,
-                "kind": h.kind,
-                "text": h.text,
-                "page_changed": h.page_changed,
-                **({"led_to": h.led_to} if h.led_to is not None else {}),
-            }
+            {"action": h.action, "kind": h.kind, "text": h.text, "page_changed": h.page_changed}
             for h in history
         ],
-        "visited": [{"title": v.title, "url": v.url} for v in visited],
     }
-    if situation.read:
-        state["read_this_burst"] = [
-            {"title": r.title, "url": r.url, "text": r.text} for r in situation.read
-        ]
     left_out = page.omitted_actions + space.left_out
     if left_out:
         state["elements_left_out"] = left_out
     evaluation = await _ask(client, state, questions, situation.mask)
     operation = JevOperation(_validate_choice(evaluation, _OPERATION_QUESTION, set(operations)))
     chosen: PageAction | None = None
-    url: str | None = None
     if operation in space.targets:
         targets = space.targets[operation]
         chosen = targets[_validate_choice(evaluation, _target_question(operation), set(targets))]
     elif operation in controls:
         chosen = controls[operation]
-    elif operation is JevOperation.NAVIGATE:
-        url = address_ids[_validate_choice(evaluation, _NAVIGATE_QUESTION, set(address_ids))]
     return Decision(
         operation=operation,
         target=chosen,
-        url=url,
         latency_ms=evaluation.latency_ms,
         evaluation=evaluation,
     )

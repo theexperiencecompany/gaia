@@ -22,7 +22,6 @@ from app.constants.browser import (
     JEV_SECRET_WRITTEN,
     JEV_STALE_LIMIT,
     JEV_UNCHANGED_LIMIT,
-    JEV_VISITED_PAGES,
     JevOperation,
     JevStop,
 )
@@ -32,10 +31,8 @@ from app.services.browser.jev.decision import (
     GENERATE,
     NONE_VALUE,
     Decision,
-    ReadPage,
     RecentAction,
     Situation,
-    Visited,
     describe_field,
 )
 from app.services.browser.jev.gateway import (
@@ -44,7 +41,7 @@ from app.services.browser.jev.gateway import (
     JevGatewayError,
     JevUsage,
 )
-from app.services.browser.jev.loop import BurstContext, BurstResult, JevRunner, JevStep, OpenedPage
+from app.services.browser.jev.loop import BurstContext, BurstResult, JevRunner, JevStep
 from app.services.browser.jev.page import (
     Covered,
     EngineScriptError,
@@ -61,7 +58,6 @@ from app.services.browser.jev.page import (
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.ledger import CallComponent, ExecutedAction, ModelCall, RunLedger
 from tests.unit.services.browser.jev.conftest import (
-    BACK,
     BUTTON,
     ENTER,
     FIELD,
@@ -107,19 +103,15 @@ class _Jev:
     decided: list[dict[str, Any]] = field(default_factory=list)
     chosen: list[dict[str, Any]] = field(default_factory=list)
 
-    async def decide(
-        self, client: object, situation: Situation, visited: list[Visited], addresses: list[str]
-    ) -> Decision:
+    async def decide(self, client: object, situation: Situation) -> Decision:
         self.decided.append(
             {
                 "client": client,
                 "page": situation.page,
                 "goal": situation.goal,
+                "done_when": situation.done_when,
                 "history": situation.history,
-                "visited": list(visited),
-                "addresses": addresses,
-                "read": situation.read,
-                "closed": situation.closed,
+                "left": situation.left,
             }
         )
         if self.on_decide is not None:
@@ -190,8 +182,10 @@ class _Run:
     jev: _Jev
     ledger: RunLedger
 
-    async def burst(self, goal: str = "go next", start_url: str | None = None) -> BurstResult:
-        return await self.runner.burst(goal, start_url)
+    async def burst(
+        self, goal: str = "go next", start_url: str | None = None, done_when: str = "next is open"
+    ) -> BurstResult:
+        return await self.runner.burst(goal, done_when, start_url)
 
 
 def _flag(value: bool) -> Callable[[], Awaitable[bool]]:
@@ -265,10 +259,13 @@ async def test_a_burst_ends_when_jev_judges_the_goal_done_and_reports_what_it_di
     page = FakePage(page_state(), final)
     run = _run(monkeypatch, page, decision(JevOperation.CLICK, BUTTON), decision(judged))
 
-    result = await run.burst("go next")
+    result = await run.burst("go next", done_when="the next page is open")
 
-    assert (result.goal, result.stop, result.omitted_controls) == ("go next", stop, 4)
-    assert [d["goal"] for d in run.jev.decided] == ["go next", "go next"]
+    assert (result.goal, result.done_when) == ("go next", "the next page is open")
+    assert (result.stop, result.omitted_controls) == (stop, 4)
+    assert [(d["goal"], d["done_when"]) for d in run.jev.decided] == [
+        ("go next", "the next page is open")
+    ] * 2
     assert result.steps == [
         JevStep(
             operation=JevOperation.CLICK,
@@ -278,12 +275,10 @@ async def test_a_burst_ends_when_jev_judges_the_goal_done_and_reports_what_it_di
             text=None,
             url="https://site.test/a",
             page_changed=True,
-            landed="https://site.test/b",
         )
     ]
     assert (result.url, result.title, result.text) == ("https://site.test/b", "Site", "done page")
     assert page.acted == ["e1"]
-    assert [v.url for v in run.runner.visited] == ["https://site.test/a", "https://site.test/b"]
 
 
 async def test_a_judgement_on_a_page_that_moved_on_is_made_again_on_the_new_page(
@@ -319,7 +314,7 @@ async def test_a_burst_asks_jev_a_bounded_number_of_times_even_when_nothing_it_d
 
     result = await run.burst()
 
-    assert result.stop is JevStop.MAX_DECISIONS
+    assert result.stop is JevStop.UNFINISHED
     assert len(run.jev.decided) == 2 * JEV_BURST_MAX_ACTIONS
 
 
@@ -352,7 +347,7 @@ async def test_a_burst_stops_at_its_action_budget(monkeypatch: pytest.MonkeyPatc
 
     result = await run.burst()
 
-    assert result.stop is JevStop.MAX_ACTIONS
+    assert result.stop is JevStop.UNFINISHED
     assert len(result.steps) == 2
 
 
@@ -362,24 +357,21 @@ async def test_actions_that_change_nothing_end_the_burst(monkeypatch: pytest.Mon
 
     result = await run.burst()
 
-    assert result.stop is JevStop.NO_PROGRESS
+    assert result.stop is JevStop.UNFINISHED
     assert len(result.steps) == JEV_UNCHANGED_LIMIT
 
 
-async def test_going_back_and_forth_between_two_moves_ends_the_burst(
+async def test_toggling_the_page_between_two_states_ends_the_burst(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    start, a, b = _pages("start", "a", "b")
-    page = FakePage(start, a, b, a, b, a)
-    back_and_forth = [
-        decision(JevOperation.CLICK, BUTTON),
-        decision(JevOperation.GO_BACK, BACK),
-    ] * 2
-    run = _run(monkeypatch, page, decision(JevOperation.CLICK, BUTTON), *back_and_forth)
+    menu = PageAction(id="e9", node=9, kind="click", label="Menu", role="button", value="")
+    shut, opened = (replace(page_state(), text=text, fingerprint=text) for text in ("shut", "open"))
+    page = FakePage(shut, opened, shut, opened, shut)
+    run = _run(monkeypatch, page, *[decision(JevOperation.CLICK, menu)] * 4)
 
     result = await run.burst()
 
-    assert result.stop is JevStop.CYCLE
+    assert result.stop is JevStop.UNFINISHED
     assert len(result.steps) == 4
 
 
@@ -406,7 +398,7 @@ async def test_a_page_that_keeps_changing_under_each_decision_ends_the_burst(
 
     result = await run.burst()
 
-    assert (result.stop, result.steps) == (JevStop.STALE, [])
+    assert (result.stop, result.steps) == (JevStop.UNFINISHED, [])
 
 
 async def test_a_covered_control_twice_ends_the_burst(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -448,11 +440,9 @@ async def test_an_address_that_cannot_be_opened_ends_the_burst_on_the_page_it_wa
 ) -> None:
     page = FakePage(page_state(), navigate_fails=NavigationFailed("net::ERR_NAME_NOT_RESOLVED"))
     gone = f"https://gone.test/?pw={SECRET}"
-    run = _run(
-        monkeypatch, page, decision(JevOperation.NAVIGATE, url=gone), secrets=_secrets("gone.test")
-    )
+    run = _run(monkeypatch, page, secrets=_secrets("gone.test"))
 
-    result = await run.burst("open gone.test")
+    result = await run.burst("search gone.test", start_url=gone)
 
     assert result.stop is JevStop.NAVIGATION_FAILED
     assert f"https://gone.test/?pw={MASKED}" in result.detail
@@ -511,21 +501,20 @@ async def test_a_tab_that_goes_away_mid_burst_ends_it_with_every_step_it_took(
     assert [step.label for step in result.steps] == ["Next"]
 
 
-async def test_a_blank_tab_is_never_an_address_and_with_none_to_open_the_burst_ends_at_once(
+async def test_a_blank_tab_with_no_page_to_open_ends_the_burst_at_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Regression: from about:blank with no start_url, Jev reopened about:blank to its action budget."""
     wait = PageAction(id="wait", kind="wait", label="Wait for the page to update")
     blank = replace(page_state(url="about:blank"), actions=[wait])
     page = FakePage(blank, *_pages("a", "b"))
-    run = _run(monkeypatch, page, decision(JevOperation.CLICK, BUTTON), decision(JevOperation.DONE))
+    run = _run(monkeypatch, page, decision(JevOperation.DONE))
 
-    stranded = await run.burst("open the docs")
-    await run.burst("open the docs", "https://site.test/a")
+    stranded = await run.burst("search the docs")
+    started = await run.burst("search the docs", "https://site.test/a")
 
     assert (stranded.stop, stranded.steps) == (JevStop.NO_PAGE, [])
-    # The page Jev is on is no address to open either.
-    assert [d["addresses"] for d in run.jev.decided] == [[], ["https://site.test/a"]]
+    assert (started.stop, started.url) == (JevStop.DONE, "https://site.test/a")
 
 
 @pytest.mark.parametrize(
@@ -544,7 +533,7 @@ async def test_a_tab_with_a_control_or_on_the_web_is_decided_on_though_nothing_i
 
     result = await run.burst()
 
-    assert (result.stop, run.jev.decided[0]["addresses"]) == (JevStop.DONE, [])
+    assert result.stop is JevStop.DONE
 
 
 async def test_a_start_address_on_a_tab_that_is_gone_ends_the_burst_with_no_page(
@@ -632,37 +621,18 @@ async def test_a_burst_sets_a_dropdown_and_types_what_each_field_takes(
     }
 
 
-async def test_a_page_the_burst_outran_resets_only_when_an_input_lands_and_the_start_page_stays_offered(
+async def test_a_page_the_burst_outran_resets_only_when_an_input_lands(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     moved = StalePage("moved")
     outran = [moved] * (JEV_STALE_LIMIT - 1)
     page = FakePage(*_pages("start", "b", "c", "d"), act_raises=[*outran, None, *outran, None])
     clicks = [decision(JevOperation.CLICK, BUTTON)] * (2 * JEV_STALE_LIMIT)
-    run = _run(monkeypatch, page, *clicks, decision(JevOperation.DONE), decision(JevOperation.DONE))
-
-    first = await run.burst(start_url="https://site.test/start")
-    await run.burst(start_url="https://site.test/start")
-
-    assert (first.stop, len(first.steps)) == (JevStop.DONE, 2)
-    assert run.jev.decided[-1]["addresses"][0] == "https://site.test/start"
-    assert run.jev.decided[-1]["addresses"].count("https://site.test/start") == 1
-
-
-async def test_jev_decides_seeing_the_start_of_each_other_page_this_burst_read(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """It reopened articles it had read because it was never shown it had read them."""
-    monkeypatch.setattr(loop_mod, "JEV_TRAIL_TEXT_CHARS", 4)
-    a, b = page_state(text="list"), page_state(url="https://site.test/b", text="article b")
-    page = FakePage(a, b, a)
-    clicks = [decision(JevOperation.CLICK, BUTTON)] * 2
     run = _run(monkeypatch, page, *clicks, decision(JevOperation.DONE))
 
-    await run.burst()
+    result = await run.burst(start_url="https://site.test/start")
 
-    # Back on the list: the article it read, cut to its start; never the page it is on.
-    assert run.jev.decided[-1]["read"] == [ReadPage("Site", "https://site.test/b", "arti")]
+    assert (result.stop, len(result.steps)) == (JevStop.DONE, 2)
 
 
 LINK_TO_B = PageAction(
@@ -673,61 +643,27 @@ LINK_TO_C = PageAction(
 )
 
 
-async def test_a_page_read_since_the_burst_last_changed_anything_is_closed(
+async def test_jev_only_goes_forward_and_never_sees_a_link_to_a_page_it_left(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Following links and going back closes what was read to clicks; a press on a control reopens it."""
-    a, b, c = (
-        page_state(text="list"),
-        page_state(url="https://site.test/b", text="article b"),
-        page_state(url="https://site.test/c", text="article c"),
-    )
-    page = FakePage(a, b, a, c, a, a, c, a, a)
+    """It clicked one Hacker News story, went back and clicked it again, eight times in a burst."""
+    a, b, c = (page_state(), *_pages("b", "c"))
+    page = FakePage(a, b, c)
     run = _run(
         monkeypatch,
         page,
         decision(JevOperation.CLICK, LINK_TO_B),
-        decision(JevOperation.GO_BACK, BACK),
         decision(JevOperation.CLICK, LINK_TO_C),
-        decision(JevOperation.GO_BACK, BACK),
-        decision(JevOperation.CLICK, BUTTON),
-        decision(JevOperation.CLICK, LINK_TO_C),
-        decision(JevOperation.GO_BACK, BACK),
-        decision(JevOperation.TYPE_TEXT, FIELD),
         decision(JevOperation.DONE),
-        value="Ada",
     )
 
     await run.burst()
 
-    b_url, c_url = "https://site.test/b", "https://site.test/c"
-    assert [d["closed"] for d in run.jev.decided] == [
-        frozenset(),
-        frozenset(),
-        frozenset({b_url}),
-        frozenset({a.url, b_url}),
-        frozenset({b_url, c_url}),
+    assert [d["left"] for d in run.jev.decided] == [
         frozenset(),
         frozenset({a.url}),
-        frozenset({c_url}),
-        # Typing changes what a page shows, as a press on a control does.
-        frozenset(),
+        frozenset({a.url, b.url}),
     ]
-    # Going back to a read page stays open: a run may return to act there.
-    assert b_url in run.jev.decided[2]["addresses"]
-
-
-async def test_a_page_is_one_address_however_it_was_written_and_never_the_page_jev_is_on(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A start written without its slash sat beside the same page visited: Jev opened the page it was on six times."""
-    front = replace(page_state(url="https://news.test/"), actions=[BUTTON])
-    page = FakePage(page_state(), front, page_state(url="https://news.test/item"))
-    run = _run(monkeypatch, page, decision(JevOperation.CLICK, BUTTON), decision(JevOperation.DONE))
-
-    await run.burst(start_url="https://news.test")
-
-    assert [d["addresses"] for d in run.jev.decided] == [[], ["https://news.test"]]
 
 
 async def test_a_step_jev_could_not_decide_ends_the_burst_saying_why(
@@ -797,16 +733,6 @@ async def test_a_value_the_text_model_never_writes_ends_the_burst_with_nothing_t
     assert page.typed == []
 
 
-async def test_jev_is_shown_the_pages_it_visited_last(monkeypatch: pytest.MonkeyPatch) -> None:
-    pages = _pages(*(str(n) for n in range(JEV_VISITED_PAGES + 2)))
-    clicks = [decision(JevOperation.CLICK, BUTTON)] * (len(pages) - 1)
-    run = _run(monkeypatch, FakePage(*pages), *clicks, decision(JevOperation.DONE))
-
-    await run.burst()
-
-    assert run.runner.visited == [Visited("Site", p.url) for p in pages[-JEV_VISITED_PAGES:]]
-
-
 async def test_a_page_that_never_settles_after_an_action_ends_the_burst_with_the_action_recorded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -816,7 +742,7 @@ async def test_a_page_that_never_settles_after_an_action_ends_the_burst_with_the
 
     result = await run.burst()
 
-    assert (result.stop, result.detail) == (JevStop.STALE, "The page did not settle.")
+    assert (result.stop, result.detail) == (JevStop.UNFINISHED, "The page did not settle.")
     assert [(step.label, step.page_changed) for step in result.steps] == [("Next", None)]
 
 
@@ -914,12 +840,14 @@ async def test_no_secret_reaches_jev_or_the_text_model_and_a_masked_address_stil
             {"src": "", "same_origin": False, "loaded": False, "visible": True},
         ],
     )
-    page = FakePage(first, page_state(url="https://site.test/b"), final)
+    page = FakePage(
+        page_state(url="about:blank"), first, page_state(url="https://site.test/b"), final
+    )
     jev = _RecordingJev(
-        ["TYPE_TEXT", "NAVIGATE", "DONE"],
+        ["TYPE_TEXT", "CLICK", "DONE"],
         type_text_target=lambda ids: ids[0],
         value=lambda ids: GENERATE,
-        navigate_target=lambda ids: ids[0],
+        click_target=lambda ids: ids[0],
     )
     text_model = _TextModel("Ada")
     runner = JevRunner(
@@ -935,7 +863,7 @@ async def test_no_secret_reaches_jev_or_the_text_model_and_a_masked_address_stil
         ),
     )
 
-    result = await runner.burst(f"rename {SECRET} to Ada", None)
+    result = await runner.burst(f"rename {SECRET} to Ada", "the name is Ada", home)
     assert (result.text, result.hidden_frames) == (
         "bye ",
         [f"https://pay.test/?u={MASKED}", "https://site.test/slow"],
@@ -991,7 +919,6 @@ async def test_jev_sees_what_it_typed_with_a_secret_left_as_its_placeholder(
         kind="TYPE_TEXT",
         text=MASKED,
         page_changed=True,
-        led_to="https://site.test/b",
     )
     assert run.jev.decided[1]["history"] == [typed_secret]
     assert page.typed[0] == SECRET
@@ -1133,7 +1060,6 @@ async def test_each_step_names_its_target_where_a_link_points_and_the_page_it_wa
             text=None,
             url=f"https://site.test/a?pw={MASKED}",
             page_changed=True,
-            landed="https://site.test/b",
         ),
         JevStep(
             operation=JevOperation.SCROLL_DOWN,
@@ -1143,84 +1069,21 @@ async def test_each_step_names_its_target_where_a_link_points_and_the_page_it_wa
             text=None,
             url="https://site.test/b",
             page_changed=True,
-            landed="https://site.test/c",
         ),
     ]
     assert page.acted == ["e4", "scroll_down"]
 
 
-async def test_page_level_steps_go_back_press_enter_and_open_an_address(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    page = FakePage(*_pages("a", "b", "c", "d", "e"))
+async def test_enter_is_pressed_as_a_page_level_step(monkeypatch: pytest.MonkeyPatch) -> None:
+    page = FakePage(*_pages("a", "b"))
     run = _run(
-        monkeypatch,
-        page,
-        decision(JevOperation.GO_BACK, BACK),
-        decision(JevOperation.PRESS_ENTER, ENTER),
-        decision(JevOperation.NAVIGATE, url=f"https://docs.test/?pw={SECRET}"),
-        decision(JevOperation.DONE),
-        secrets=_secrets(),
+        monkeypatch, page, decision(JevOperation.PRESS_ENTER, ENTER), decision(JevOperation.DONE)
     )
 
     result = await run.burst()
 
-    assert (page.acted, page.navigated) == (
-        ["go_back", "enter"],
-        [f"https://docs.test/?pw={SECRET}"],
-    )
-    assert [(step.label, step.opened) for step in result.steps] == [
-        ("Go back to Site", None),
-        ("Press Enter in Name", None),
-        (f"Open https://docs.test/?pw={MASKED}", f"https://docs.test/?pw={MASKED}"),
-    ]
-
-
-async def test_pages_opened_along_the_way_are_read_once_masked_and_listed_in_the_order_last_seen(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    long = f"{SECRET} " + "article text " * 200
-    start, b, c, d = _pages("start", "b", "c", "d")
-    b = replace(b, text=long, fingerprint="b1")
-    b_again = replace(b, text="b, read a second time", fingerprint="b2")
-    page = FakePage(start, b, c, b_again, d)
-    run = _run(
-        monkeypatch,
-        page,
-        *[decision(JevOperation.CLICK, BUTTON)] * 4,
-        decision(JevOperation.DONE),
-        secrets=_secrets(),
-    )
-
-    result = await run.burst()
-
-    read = long[: loop_mod.JEV_REPORT_OPENED_PAGE_CHARS].replace(SECRET, MASKED)
-    # The page the burst ended on is its final page, not an opened one.
-    assert result.opened == [
-        OpenedPage(url=c.url, title="Site", text=c.text),
-        OpenedPage(url=b.url, title="Site", text=read),
-    ]
-    assert result.url == d.url
-
-
-async def test_a_page_read_at_its_limit_keeps_no_start_of_a_value_cut_there(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(loop_mod, "JEV_REPORT_OPENED_PAGE_CHARS", 12)
-    start, b, c = _pages("start", "b", "c")
-    b = replace(b, text=f"welcome {SECRET}", fingerprint="b")
-    page = FakePage(start, b, c)
-    run = _run(
-        monkeypatch,
-        page,
-        *[decision(JevOperation.CLICK, BUTTON)] * 2,
-        decision(JevOperation.DONE),
-        secrets=_secrets(),
-    )
-
-    result = await run.burst()
-
-    assert result.opened[-1] == OpenedPage(url=b.url, title="Site", text="welcome ")
+    assert page.acted == ["enter"]
+    assert [step.label for step in result.steps] == ["Press Enter in Name"]
 
 
 async def test_a_judgement_on_a_page_whose_controls_changed_in_place_is_made_again(
@@ -1257,7 +1120,7 @@ async def test_a_click_that_opens_a_tab_continues_on_that_tab(
     result = await run.burst()
 
     assert page.followed == 1
-    assert (result.url, result.opened) == (tab.url, [])
+    assert result.url == tab.url
     assert result.steps[0].page_changed is True
 
 

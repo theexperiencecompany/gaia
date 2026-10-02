@@ -1,11 +1,10 @@
-"""Drive one browser task: Jev first on the whole task, then the Browser-Use agent steers and finishes.
+"""Drive one browser task: Jev first on the start page, then the Browser-Use agent steers and finishes.
 
-One long-lived Browser-Use Agent runs on the reasoning model with Jev registered
-as its jev action. On a run with a page to start on, the Agent's initial action
-is a Jev burst on the whole task, so the first model call the agent makes
-already reads what Jev did; on a blank tab the agent moves first. The agent
-then writes the answer, hands Jev a sharper goal, or acts itself; it is
-the only finisher and the only answer writer. Every agent step and every Jev
+One long-lived Browser-Use Agent runs with Jev registered as its jev action
+(jev/tool.py JEV_DESCRIPTION says what Jev does). On a run with a page to
+start on, the Agent's initial action is a Jev burst there, so the first model
+call the agent makes already reads what Jev did; on a blank tab the agent
+moves first. The agent is the only finisher and the only answer writer. Every agent step and every Jev
 burst reaches the runner as one frame through RunHooks. A run resumed on the
 fallback engine carries the primary agent's state instead of a new Jev burst.
 """

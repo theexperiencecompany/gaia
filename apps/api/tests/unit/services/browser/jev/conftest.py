@@ -13,7 +13,6 @@ from app.services.browser.jev.page import PageAction, PageState, StalePage
 BUTTON = PageAction(id="e1", node=1, kind="click", label="Next", role="button", value="")
 FIELD = PageAction(id="e2", node=2, kind="fill", label="Name", role="textbox", value="")
 PASSWORD = PageAction(id="e3", node=3, kind="secret", label="Password", role="password", value="")
-BACK = PageAction(id="go_back", kind="back", label="Go back to Site", entry=1)
 ENTER = PageAction(id="enter", kind="enter", node=2, label="Press Enter in Name")
 
 
@@ -108,20 +107,14 @@ class FakePage:
         self.current, self._new_tab = self._new_tab, None
         return True
 
-    async def body_text(self, limit: int) -> str:
-        return self.current.text[:limit]
-
     async def screenshot(self) -> str:
         return "c2hvdA=="
 
 
-def decision(
-    operation: JevOperation, target: PageAction | None = None, url: str | None = None
-) -> Decision:
+def decision(operation: JevOperation, target: PageAction | None = None) -> Decision:
     return Decision(
         operation=operation,
         target=target,
-        url=url,
         latency_ms=5,
         evaluation=JevEvaluation(answers={}, provider="openrouter"),
     )
