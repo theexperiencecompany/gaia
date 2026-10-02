@@ -1,11 +1,18 @@
 name: Obscura Compat
 
-# Loads a set of common sites in our Obscura build and in headless Chrome and
-# fails when Obscura throws a JS error Chrome does not, or shows far fewer
-# inputs/buttons/links (apps/api/scripts/obscura_compat_probe.py). Sites with
-# known gaps, bot-detection walls included, sit in
-# scripts/ci/baselines/obscura-compat.txt; only a gap elsewhere fails the run,
-# and a baseline site that now matches Chrome is printed as removable.
+# Loads a set of common sites in our Obscura build and in headless Chrome
+# (apps/api/scripts/obscura_compat_probe.py). A gap is Obscura throwing a JS
+# error Chrome does not, or showing far fewer inputs/buttons/links, and the
+# probe sorts each gap by the main document each engine got:
+#   - rendered differently: the server sent both engines the same document
+#     (same status class, final host/path, body size within 10x), so the gap is
+#     the engine's. Known ones sit in scripts/ci/baselines/obscura-compat.txt;
+#     one elsewhere fails the run, and a baseline site that now matches Chrome
+#     is printed as removable.
+#   - served a different document: the server answered Obscura with something
+#     else (a bot wall, a challenge). Listed in its own section with both
+#     documents' status and size; it never fails the run, since the product
+#     already moves a walled run to Chrome.
 #
 # The probe is informational, never a required check: it loads live third-party
 # sites, so a red probe means "look at the summary", not "the PR is broken". The

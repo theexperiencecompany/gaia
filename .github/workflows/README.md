@@ -86,7 +86,7 @@ flowchart TD
   RELEASE_EVT["release.published (desktop-v*)"]:::event --> DESKTOP_BUILD
 
   OBSCURA_EVT["nightly schedule / dispatch /<br/>PR touching the Obscura build or probe"]:::event --> OBSCURA_COMPAT["obscura-compat.yml<br/>build Obscura, probe common sites vs Chrome<br/>(informational, not a required check)"]:::ci
-  OBSCURA_COMPAT --> OBSCURA_GATE{"gap at a site outside<br/>the baseline?"}:::decision
+  OBSCURA_COMPAT --> OBSCURA_GATE{"rendering gap (same document<br/>in both engines) at a site<br/>outside the baseline?"}:::decision
   OBSCURA_GATE -- "Yes" --> OBSCURA_FAIL["Run fails"]:::terminal
   OBSCURA_GATE -- "No" --> OBSCURA_PASS["Run passes; baseline sites that<br/>now match Chrome printed as removable"]:::terminal
 ```
@@ -164,7 +164,7 @@ Two independent jobs, so one CLI release ships both halves:
 ### `.github/workflows/obscura-compat.yml`
 1. Triggers on a nightly `schedule`, `workflow_dispatch`, and `pull_request` limited to paths `apps/api/obscura-patches/**`, `apps/api/Dockerfile`, `apps/api/scripts/obscura_compat_probe.py`, `scripts/ci/baselines/obscura-compat.txt` and the workflow itself. `permissions: contents: read`. Not a required check and not wired into any gate: it loads live third-party sites.
 2. Builds only the `obscura-bin` stage of `apps/api/Dockerfile` (the same `obscura-builder` the api image ships: pinned `OBSCURA_COMMIT` + the `obscura-patches` series) with `docker/build-push-action`, exported as files (`outputs: type=local`). GHA cache `scope=obscura-bin`, `mode=min`: only the two binaries are cached, so an unchanged build is a full hit and a patch change rebuilds.
-3. Runs `apps/api/scripts/obscura_compat_probe.py --baseline scripts/ci/baselines/obscura-compat.txt` via `uv run --project apps/api --frozen --group backend`, with `CHROMIUM_BIN` set to the runner image's `google-chrome`. Fails only on a gap at a site not in the baseline; baseline sites that now match Chrome are printed as removable and do not fail the run (the baseline only ever shrinks). The probe output goes to the job summary.
+3. Runs `apps/api/scripts/obscura_compat_probe.py --baseline scripts/ci/baselines/obscura-compat.txt` via `uv run --project apps/api --frozen --group backend`, with `CHROMIUM_BIN` set to the runner image's `google-chrome`. A gap (a JS error only Obscura throws, or far fewer inputs/buttons/links than Chrome) is sorted by the main document each engine got (status, final URL, decoded body size): **rendered differently** when the server sent both the same document (same status class, same final host and path, body sizes within 10x), an engine gap; **served a different document** otherwise (a bot wall or challenge for Obscura), listed in its own section with both documents and never failing the run, since the product moves a walled run to Chrome. Fails only on a rendering gap at a site not in the baseline; baseline sites that now match Chrome are printed as removable and do not fail the run (the baseline only ever shrinks), and a baseline site served a different document was not compared that run, so it is neither. The probe output goes to the job summary.
 
 ## File Map
 - `.github/workflows/main.yml` ("Quality Checks"): THE CI correctness gate (build + tests + coverage + docker image + harness tooling + trivy + regression-proof + docker release trigger), home-runner-first with GitHub fallback. Python tests run runner-native against live service containers, split into four slices: `unit-a`, `unit-b`, `integration`, `bridge`.

@@ -4,18 +4,23 @@ Loads each site in a fresh Obscura and a fresh headless Chrome, both driven
 over CDP, and compares what a page is made of once it has settled: the
 JavaScript errors each engine threw, and a fingerprint of what a person could
 use (text inputs, buttons, links, visible text). A site where Obscura throws an
-error Chrome does not, or shows far less to use, is an engine gap; the error
-names the spot to patch in crates/obscura-js/js/bootstrap.js.
+error Chrome does not, or shows far less to use, has a gap. When the server
+answered the two engines with the same main document, the gap is the engine's:
+it renders differently, and the error names the spot to patch in
+crates/obscura-js/js/bootstrap.js. When the server sent Obscura a different
+document (a bot wall, a challenge), the gap is the server's decision, reported
+on its own and never a failure.
 
     uv run --group backend python scripts/obscura_compat_probe.py [--baseline FILE] [url ...]
 
 With no URLs it probes COMMON_SITES. Needs OBSCURA_BIN and CHROMIUM_BIN (or
-/opt/google/chrome/chrome). Exits 1 when any site has a gap; with --baseline,
-only when a site outside that file has one.
+/opt/google/chrome/chrome). Exits 1 when any site renders differently; with
+--baseline, only when a site outside that file does.
 """
 
 import argparse
 import asyncio
+import base64
 import contextlib
 from dataclasses import dataclass, field
 import json
@@ -25,6 +30,7 @@ import shutil
 import sys
 import tempfile
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 import websockets
@@ -68,6 +74,10 @@ NAVIGATE_TIMEOUT_SECONDS = 90.0
 SITE_TIMEOUT_SECONDS = 180.0
 #: Obscura showing under this share of Chrome's inputs, buttons or links is a gap.
 MIN_SHARE_OF_CHROME = 0.5
+#: Main-document bodies further apart than this are different documents. Measured
+#: 2026-10-02: one site's page across loads and engines, up to 3.4x (bing, reddit);
+#: a bot wall vs the real page, 14x (16 KB challenge vs 226 KB) to 150x (amazon).
+MAX_SAME_DOCUMENT_SIZE_RATIO = 10.0
 
 _FINGERPRINT_JS = """(() => {
   const shown = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
@@ -84,11 +94,26 @@ _FINGERPRINT_JS = """(() => {
 
 
 @dataclass
+class Document:
+    """The server's answer to the main frame's last navigation, at the URL it landed on."""
+
+    status: int
+    url: str
+    #: Decoded body bytes; None when the engine no longer holds the body.
+    size: int | None
+
+    def __str__(self) -> str:
+        size = "? KB" if self.size is None else f"{self.size / 1024:.1f} KB"
+        return f"{self.status} {size} {self.url[:100]}"
+
+
+@dataclass
 class PageReport:
     """What one engine made of one site."""
 
     fingerprint: dict[str, Any] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
+    document: Document | None = None
     failure: str | None = None
 
 
@@ -160,6 +185,7 @@ class CdpBrowser:
             )["sessionId"]
             await self._call("Page.enable", events, session)
             await self._call("Runtime.enable", events, session)
+            await self._call("Network.enable", events, session)
             await asyncio.wait_for(
                 self._call("Page.navigate", events, session, url=url), NAVIGATE_TIMEOUT_SECONDS
             )
@@ -168,6 +194,7 @@ class CdpBrowser:
                 "Runtime.evaluate", events, session, expression=_FINGERPRINT_JS, returnByValue=True
             )
             report.fingerprint = dict((result.get("result") or {}).get("value") or {})
+            report.document = await self._main_document(events, session)
         except Exception as exc:
             report.failure = f"{type(exc).__name__}: {exc}"[:200]
         finally:
@@ -179,6 +206,58 @@ class CdpBrowser:
                 )
         report.errors = _errors(events)
         return report
+
+    async def _main_document(self, events: list[dict[str, Any]], session: str) -> Document | None:
+        """The main frame's last committed document, sized from its body as the engine decoded it.
+
+        Not loadingFinished's encodedDataLength: Chrome counts compressed bytes
+        plus headers there and Obscura the decoded body, so they never compare.
+        """
+        frame, response = _main_response(events)
+        if response is None:
+            return None
+        try:
+            body = await self._call(
+                "Network.getResponseBody", events, session, requestId=response["requestId"]
+            )
+            raw = str(body.get("body") or "")
+            size: int | None = (
+                len(base64.b64decode(raw)) if body.get("base64Encoded") else len(raw.encode())
+            )
+        except RuntimeError:
+            size = None
+        status = int((response.get("response") or {}).get("status") or 0)
+        return Document(status, str(frame.get("url") or ""), size)
+
+
+def _main_response(events: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """The main frame as it last committed, and the Network.responseReceived behind it.
+
+    The URL to compare is the frame's: Obscura's responseReceived carries the
+    URL before redirects (airbnb's 302 handoff), the frame the one it landed on.
+    Only a loader's first frameNavigated is its commit; Obscura re-sends one for
+    a same-document URL change (wikipedia's replaceState), where Chrome sends
+    navigatedWithinDocument.
+    """
+    frame: dict[str, Any] = {}
+    for event in events:
+        committed = (event.get("params") or {}).get("frame") or {}
+        if (
+            event.get("method") == "Page.frameNavigated"
+            and not committed.get("parentId")
+            and committed.get("loaderId") != frame.get("loaderId")
+        ):
+            frame = committed
+    found = None
+    for event in events:
+        params = event.get("params") or {}
+        if (
+            event.get("method") == "Network.responseReceived"
+            and params.get("type") == "Document"
+            and params.get("loaderId") == frame.get("loaderId")
+        ):
+            found = params
+    return frame, found
 
 
 def _errors(events: list[dict[str, Any]]) -> list[str]:
@@ -211,6 +290,29 @@ def _gaps(obscura: PageReport, chrome: PageReport) -> list[str]:
         if expected >= 2 and seen < expected * MIN_SHARE_OF_CHROME:
             gaps.append(f"{key}: {seen} shown vs {expected} in Chrome")
     return gaps
+
+
+def _different_document(obscura: Document | None, chrome: Document | None) -> str | None:
+    """How the server's answer to Obscura differs from its answer to Chrome; None if it doesn't.
+
+    Without both documents nothing shows the server chose differently, so the
+    gap stays the engine's.
+    """
+    if obscura is None or chrome is None:
+        return None
+    if obscura.status // 100 != chrome.status // 100:
+        return f"status {obscura.status} vs {chrome.status} in Chrome"
+    seen, expected = urlsplit(obscura.url), urlsplit(chrome.url)
+    if (seen.hostname, seen.path) != (expected.hostname, expected.path):
+        return f"ended at {obscura.url[:100]} vs {chrome.url[:100]} in Chrome"
+    if obscura.size is not None and chrome.size is not None:
+        ratio = max(obscura.size, chrome.size) / max(min(obscura.size, chrome.size), 1)
+        if ratio > MAX_SAME_DOCUMENT_SIZE_RATIO:
+            return (
+                f"body {obscura.size / 1024:.1f} KB vs {chrome.size / 1024:.1f} KB "
+                f"in Chrome, {ratio:.0f}x apart"
+            )
+    return None
 
 
 async def _start(argv: list[str], env: dict[str, str] | None = None) -> asyncio.subprocess.Process:
@@ -249,12 +351,24 @@ async def _start_obscura(obscura_bin: str) -> asyncio.subprocess.Process:
         env={
             **os.environ,
             "OBSCURA_SCRIPT_DEADLINE_MS": "60000",
+            # The default keeps the last 128 bodies, so on a page of many
+            # subresources the main document's is gone before it is sized.
+            "OBSCURA_NETWORK_BODY_BUFFER_ENTRIES": "10000",
         },
     )
 
 
-async def probe(urls: list[str], obscura_bin: str, chrome_bin: str) -> set[str]:
-    """Probe each site in both engines, print what differs, and return the sites with a gap."""
+@dataclass
+class ProbeResult:
+    """Sites whose gap the engine owns, and sites the server sent Obscura something else."""
+
+    rendered_differently: set[str] = field(default_factory=set)
+    #: URL -> how the two main documents differ.
+    served_different_document: dict[str, str] = field(default_factory=dict)
+
+
+async def probe(urls: list[str], obscura_bin: str, chrome_bin: str) -> ProbeResult:
+    """Probe each site in both engines, print what differs, and sort each gap by its owner."""
     profile = tempfile.mkdtemp(prefix="compat-chrome-")
     obscura = await _start_obscura(obscura_bin)
     chrome = await _start(
@@ -267,7 +381,7 @@ async def probe(urls: list[str], obscura_bin: str, chrome_bin: str) -> set[str]:
             "--no-default-browser-check",
         ]
     )
-    gapped: set[str] = set()
+    result = ProbeResult()
     try:
         await asyncio.gather(_await_endpoint(OBSCURA_PORT), _await_endpoint(CHROME_PORT))
         for url in urls:
@@ -282,9 +396,15 @@ async def probe(urls: list[str], obscura_bin: str, chrome_bin: str) -> set[str]:
                 obscura.kill()
                 await obscura.wait()
             gaps = _gaps(o, c)
-            if gaps:
-                gapped.add(url)
-            status = "GAP " if gaps else "ok  "
+            different = _different_document(o.document, c.document) if gaps else None
+            if different:
+                result.served_different_document[url] = different
+                status = "DOC "
+            elif gaps:
+                result.rendered_differently.add(url)
+                status = "GAP "
+            else:
+                status = "ok  "
             print(
                 f"{status}{url}  obscura inputs={o.fingerprint.get('inputs')} "
                 f"buttons={o.fingerprint.get('buttons')} links={o.fingerprint.get('links')} | "
@@ -292,6 +412,9 @@ async def probe(urls: list[str], obscura_bin: str, chrome_bin: str) -> set[str]:
                 f"buttons={c.fingerprint.get('buttons')} links={c.fingerprint.get('links')}",
                 flush=True,
             )
+            print(f"      document: obscura {o.document} | chrome {c.document}", flush=True)
+            if different:
+                print(f"      served a different document: {different}", flush=True)
             for gap in gaps:
                 print(f"      {gap}", flush=True)
     finally:
@@ -300,7 +423,7 @@ async def probe(urls: list[str], obscura_bin: str, chrome_bin: str) -> set[str]:
                 process.terminate()
         await asyncio.gather(obscura.wait(), chrome.wait())
         shutil.rmtree(profile, ignore_errors=True)
-    return gapped
+    return result
 
 
 def _read_baseline(path: Path) -> set[str]:
@@ -321,21 +444,31 @@ def _list(heading: str, urls: list[str]) -> None:
         print(f"      {url}")
 
 
-def _verdict(urls: list[str], gapped: set[str], baseline: set[str] | None) -> int:
-    """Print the summary and return the exit code; a baseline only excuses its own sites."""
-    print(f"\n{len(gapped)} of {len(urls)} sites differ in Obscura")
+def _verdict(urls: list[str], result: ProbeResult, baseline: set[str] | None) -> int:
+    """Print the summary and return the exit code; only rendering gaps can fail the run.
+
+    A baseline excuses only its own sites. A baseline site served a different
+    document was not compared this run, so it is neither a gap nor removable.
+    """
+    gapped, served = result.rendered_differently, result.served_different_document
+    print(f"\n{len(gapped)} of {len(urls)} sites render differently in Obscura")
+    _list(
+        f"{len(served)} sites served Obscura a different document than Chrome "
+        "(the server's decision, not an engine gap; never fails the run)",
+        [f"{url}  {served[url]}" for url in urls if url in served],
+    )
     if baseline is None:
         return 1 if gapped else 0
     new = [url for url in urls if url in gapped and url not in baseline]
     known = [url for url in urls if url in gapped and url in baseline]
-    removable = [url for url in urls if url in baseline and url not in gapped]
-    print(f"{len(known)} known, listed in the baseline")
+    removable = [url for url in urls if url in baseline and url not in gapped | served.keys()]
+    print(f"{len(known)} known rendering gaps, listed in the baseline")
     _list(
         f"{len(removable)} baseline sites now match Chrome; remove them from the baseline",
         removable,
     )
-    _list(f"{len(new)} new gaps at sites not in the baseline", new)
-    print("FAIL: new gaps" if new else "PASS: no gaps outside the baseline")
+    _list(f"{len(new)} new rendering gaps at sites not in the baseline", new)
+    print("FAIL: new rendering gaps" if new else "PASS: no rendering gaps outside the baseline")
     return 1 if new else 0
 
 
@@ -345,7 +478,7 @@ def main() -> None:
     parser.add_argument(
         "--baseline",
         type=Path,
-        help="file of sites with known gaps, one URL per line; only other sites fail the run",
+        help="file of sites with known rendering gaps, one URL per line; only others fail the run",
     )
     args = parser.parse_args()
     baseline = _read_baseline(args.baseline) if args.baseline else None
@@ -353,8 +486,8 @@ def main() -> None:
     chrome_bin = os.environ.get("CHROMIUM_BIN") or "/opt/google/chrome/chrome"
     if not Path(obscura_bin).is_file():
         sys.exit("set OBSCURA_BIN to the obscura binary")
-    gapped = asyncio.run(probe(args.urls, obscura_bin, chrome_bin))
-    sys.exit(_verdict(args.urls, gapped, baseline))
+    result = asyncio.run(probe(args.urls, obscura_bin, chrome_bin))
+    sys.exit(_verdict(args.urls, result, baseline))
 
 
 if __name__ == "__main__":
