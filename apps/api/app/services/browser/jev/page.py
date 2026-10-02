@@ -198,6 +198,8 @@ class PageAction(TypedDict):
 class Frame(TypedDict):
     src: str
     same_origin: bool
+    #: Whether a same-origin frame's document had finished loading when it was read.
+    loaded: bool
     visible: bool
 
 

@@ -85,6 +85,19 @@ async def test_a_script_the_engine_cannot_run_moves_the_run_where_it_can_move(
     assert ("Moving this task to the full browser." in (result.extracted_content or "")) is movable
 
 
+async def test_a_goal_quoting_a_secrets_name_is_refused_before_jev_types_it() -> None:
+    """The agent re-goaled Jev with password "password": Jev would have typed the word itself."""
+    runner = _Runner(_burst(JevStop.DONE))
+    delegate = JevDelegate(runner_for=lambda: runner, emit=AsyncMock(), secret_names=["password"])
+
+    refused = await delegate.run(JevParams(goal='log in as "tomsmith" with password "password"'))
+    tagged = await delegate.run(JevParams(goal="log in with <secret>password</secret>"))
+
+    assert refused.error is not None and "<secret>name</secret>" in refused.error
+    assert runner.goals == ["log in with <secret>password</secret>"]
+    assert tagged.error is None
+
+
 async def test_a_burst_that_acted_gets_one_card_with_its_actions() -> None:
     delegate, emitted = _delegate(_Runner(_burst(JevStop.DONE, _step(page_changed=True))))
 
@@ -178,8 +191,8 @@ def test_a_burst_with_no_actions_reports_so_and_what_it_could_not_see() -> None:
         "--- A (https://site.test/a)\nstart of A\n"
         "Now on: B (https://site.test/b)\n"
         "Visible text of this page, verbatim:\nvisible text of B\n"
-        "Frames on this page Jev cannot see into: "
-        + ", ".join(f"https://ads.test/{n}" for n in range(5))
+        "Frames on this page Jev could not read (another site's, or still loading; their "
+        "text is not above): " + ", ".join(f"https://ads.test/{n}" for n in range(5))
     )
 
 
@@ -202,7 +215,9 @@ def test_each_action_line_says_what_it_targeted_set_typed_and_whether_the_page_c
         "  4. SCROLL_DOWN Scroll down",
     ]
     assert lines[7] == "Now on: B (https://site.test/b)"
-    assert lines[8] == (
+    # An empty read is said: an agent once filled the silence with a frame's tag name.
+    assert lines[8] == "Jev read no visible text on this page."
+    assert lines[9] == (
         "This page has 12 more controls than Jev reads; it saw only the first ones in the "
         "page's order."
     )

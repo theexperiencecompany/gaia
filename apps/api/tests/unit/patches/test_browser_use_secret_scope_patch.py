@@ -112,3 +112,19 @@ def test_apply_routes_every_action_through_the_patch(monkeypatch: pytest.MonkeyP
     patch_module.apply()
 
     assert Registry.execute_action is patch_module._execute_action
+
+
+async def test_an_input_typing_a_secrets_name_bare_types_nothing(
+    executed: list[dict[str, Any]],
+) -> None:
+    """The agent dropped the tags and wrote "password": the field got the word, not the secret."""
+    answer = await patch_module._execute_action(
+        Registry(),
+        "input",
+        {"index": 3, "text": "password"},
+        sensitive_data=SECRETS,
+        browser_session=_on("https://example.test/login"),
+    )
+
+    assert executed == []
+    assert "type <secret>password</secret>" in str(answer.error)

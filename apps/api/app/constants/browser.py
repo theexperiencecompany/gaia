@@ -232,9 +232,16 @@ BROWSER_HANDOFF_REPLY_NOTE = (
     "It was read as {reading}.]"
 )
 BROWSER_HANDOFF_REPLY_READINGS: dict[str, str] = {
-    "continue": "the user finishing that step, so the task carries on",
+    "continue": (
+        "the user finishing that step, so the task carries on. Acknowledge it in a few words "
+        "and say nothing of the task's result or next step: the result reaches the user in "
+        "its own message"
+    ),
     "cancel": "the user stopping the task, so it was stopped",
-    "redirect": "a new instruction instead of that step, which the task now follows",
+    "redirect": (
+        "a new instruction instead of that step, which the task now follows. Acknowledge it "
+        "in a few words and say nothing of the result: it reaches the user in its own message"
+    ),
 }
 
 #: What the turn reads with a message that stopped the running browser task: its
@@ -330,10 +337,10 @@ BROWSER_AGENT_HEDGE_SECONDS = 12.0
 # reads ("?my-text=Aryan&my-pass...1a2b3c4"), so a run asked for the page it landed
 # on reported it could not see it (battery form, 2026-09-25). Room for any real query.
 BROWSER_AGENT_URL_QUERY_MAX_CHARS = 2000
-# A top-level load silent this long is stopped, as a person presses Stop. No event says a
-# server never will answer, so this is patience, not a measurement; the stop waits for the
-# shown page to load, so a slower server costs a retry, never a broken page (stalled_loads).
-BROWSER_LOAD_STALL_SECONDS = 15.0
+# A top-level load silent this long is stopped, as a person presses Stop. herokuapp's 778
+# answers (2026-10-02) took up to 30.98 s (its router 503s at 30.6 s); 15 s cut off a login
+# answering at 28.7 s, so 35 s stops only a server gone silent (stalled_loads).
+BROWSER_LOAD_STALL_SECONDS = 35.0
 BROWSER_LOAD_STOP_TIMEOUT_SECONDS = 5.0
 #: What the agent reads about a load the browser stopped: the plain fact, no retry rule.
 BROWSER_LOAD_STALLED_NOTE = (
@@ -399,11 +406,13 @@ BROWSER_AGENT_ROLE = (
     "Each step, choose one:\n"
     "1. The task is complete: call `done` with the answer. Report only what the current "
     "page or Jev's reports show; copy titles, messages, numbers and URLs exactly. "
-    "Say plainly what was not done or could not be found. success means you answered what the "
-    "task asks as fully as its pages allow, any gap stated plainly: an article with nothing to "
-    "summarise, a name a page does not give. Set success=false only when the task's goal was "
-    "not reached: a page would not open, a step it asks for could not be done, or the answer "
-    "is not there. This replaces any stricter rule for success above.\n"
+    "Say plainly what was not done or could not be found. success=true means the user's "
+    "request was carried out and the answer it asks for delivered; a gap in supporting detail, "
+    "stated plainly, does not change that (one of three articles shows no text to summarise, a "
+    "page does not name the authors). success=false means the request itself could not be "
+    "done, however honestly you explain why: the button or page it names does not exist (no "
+    "\"Buy now\" button, so no order number), the site is unreachable (its address does not "
+    "resolve), or the action was refused. This replaces any rule for success above.\n"
     "2. A sequence of interactions remains (filling a form, searching and choosing, clicking "
     "through several pages): call `jev` with a sharper, self-contained goal for what "
     "remains, quoting every value to type. Never repeat a goal Jev made no progress on.\n"
@@ -565,6 +574,11 @@ JEV_SECRET_MASK = "[hidden]"  # nosec B105 -- the placeholder shown in place of 
 JEV_SECRET_DIFFERS = "a value other than the secret"  # nosec B105 -- report wording, not a credential
 #: Why a written value is not typed when it names a secret.
 JEV_SECRET_WRITTEN = "The written value names a secret; nothing was typed."  # nosec B105 -- report wording, not a credential
+#: Why a jev goal that quotes a secret's name is refused: Jev would type the name itself.
+JEV_GOAL_QUOTES_A_NAME = (
+    "The goal quotes {names}, the name of a secret this task was given, not its value. "
+    "Write it as <secret>name</secret> where it is typed; nothing was done."
+)
 # Probability mass across a choice question must sum to ~1; the gateway rounds.
 JEV_PROBABILITY_SUM_TOLERANCE = 0.02
 

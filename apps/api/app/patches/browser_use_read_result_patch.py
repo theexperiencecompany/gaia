@@ -1,13 +1,14 @@
-"""Show the agent what find_elements and search_page found, not only how many.
+"""Show the agent what its read actions found: the matches, and the page's real title.
 
-Both actions put their matches in extracted_content and a one-line count in
-long_term_memory, without include_extracted_content_only_once. Browser-Use's
-message manager then gives the model the count alone: the matches reach
-neither the read state nor the action results. Measured 2026-09-25 on a
-DuckDuckGo results page: find_elements returned the first result's href three
-times, and each time the agent was told only "Found 1 element" and asked
-again. Flagging the result read-once puts the matches in the next step's read
-state, as extract already does.
+find_elements and search_page put their matches in extracted_content and a
+one-line count in long_term_memory, without include_extracted_content_only_once.
+Browser-Use's message manager then gives the model the count alone (measured
+2026-09-25 on DuckDuckGo: three find_elements, each read as "Found 1 element").
+Flagging the result read-once puts the matches in the next step's read state.
+
+extract reads the page's markdown, which has no <title>: asked for the title of
+example.com, it answered "Not available" and the agent reported the tab label
+"example.com" (h_stall, 2026-10-02). Its result now carries document.title.
 
 Pinned to browser-use==0.11.13; the import fails loudly if the method moves.
 """
@@ -16,11 +17,17 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from browser_use.agent.views import ActionResult
+from browser_use.browser.session import BrowserSession
 from browser_use.tools.registry.views import ActionModel
 from browser_use.tools.service import Tools
 
+from app.constants.log_tags import LogTag
+from shared.py.wide_events import log
+
 #: The actions whose matches are otherwise summarised away.
 _READ_ACTIONS = frozenset({"find_elements", "search_page"})
+#: The action that reads a page's content without its title.
+_EXTRACT_ACTION = "extract"
 
 _original_act: Callable[..., Awaitable[ActionResult]] = Tools.act
 
@@ -32,11 +39,36 @@ async def _act(self: Tools[Any], action: ActionModel, **kwargs: object) -> Actio
     names = set(action.model_dump(exclude_unset=True))
     if names & _READ_ACTIONS and result.extracted_content and not result.error:
         result.include_extracted_content_only_once = True
+    if _EXTRACT_ACTION in names and result.extracted_content and not result.error:
+        session = kwargs.get("browser_session")
+        if isinstance(session, BrowserSession) and (title := await _document_title(session)):
+            titled = f"<page_title>\n{title}\n</page_title>\n"
+            if result.long_term_memory == result.extracted_content:
+                result.long_term_memory = titled + result.long_term_memory
+            result.extracted_content = titled + result.extracted_content
     return result
 
 
+async def _document_title(session: BrowserSession) -> str | None:
+    """Return the focused page's document.title, or None when the page does not answer the read."""
+    try:
+        cdp = await session.get_or_create_cdp_session(focus=False)
+        reply = await cdp.cdp_client.send.Runtime.evaluate(
+            params={"expression": "document.title", "returnByValue": True},
+            session_id=cdp.session_id,
+        )
+    except (RuntimeError, TimeoutError) as exc:
+        # The extract stands without it; a page navigating away answers no read.
+        log.warning(
+            f"{LogTag.BROWSER} Page title not read for extract", error_type=type(exc).__name__
+        )
+        return None
+    value = reply.get("result", {}).get("value")
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
 def apply() -> None:
-    """Flag find_elements and search_page results read-once."""
+    """Flag find_elements and search_page results read-once, and title extract's."""
     # type.__setattr__ mirrors the stealth patch: an honest rebind that keeps
     # mypy satisfied without an ignore.
     type.__setattr__(Tools, "act", _act)
