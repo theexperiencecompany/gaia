@@ -24,7 +24,11 @@ from app.models.todo_models import (
 from app.models.user_models import UserDocument
 from app.services.analytics_service import AnalyticsEvents
 from app.services.todos.errors import ExternalRefTakenError
-from app.services.todos.inbox_desk import provision_inbox_desk, queue_inbox_desk_provision
+from app.services.todos.inbox_desk import (
+    provision_inbox_desk,
+    queue_inbox_desk_provision,
+    reconcile_inbox_desks,
+)
 from app.services.tracked_todo_service import TrackedTodoService, starting_canvas
 from tests.helpers import captured_wide_event
 
@@ -282,3 +286,19 @@ async def test_queueing_hands_the_user_to_the_provisioning_job() -> None:
         await queue_inbox_desk_provision(USER_ID)
 
     enqueue.assert_awaited_once_with(pool, PROVISION_INBOX_DESK_TASK, USER_ID)
+
+
+async def test_the_daily_reconcile_provisions_each_paying_gmail_user_past_a_failure() -> None:
+    gmail = AsyncMock(return_value=["u2", "u3", "u9"])
+    paying = AsyncMock(return_value=["u1", "u2", "u3"])
+    provision = AsyncMock(side_effect=[ConnectionError("mongo down"), None])
+    with (
+        patch(f"{MODULE}.user_integration_repository.user_ids_with_integration", gmail),
+        patch(f"{MODULE}.subscription_repository.active_user_ids", paying),
+        patch(f"{MODULE}.provision_inbox_desk", provision),
+    ):
+        result = await reconcile_inbox_desks()
+
+    gmail.assert_awaited_once_with("gmail")
+    assert [c.args[0] for c in provision.await_args_list] == ["u2", "u3"]
+    assert (result.users, result.failures) == (2, 1)

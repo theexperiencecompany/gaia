@@ -8,7 +8,8 @@ import pytest
 
 from app.constants.log_tags import LogTag
 from app.constants.todos import INBOX_DESK_PROVISION_RETRY_DELAY
-from app.workers.tasks.inbox_desk_tasks import provision_inbox_desk_task
+from app.services.todos.inbox_desk import DeskReconcile
+from app.workers.tasks.inbox_desk_tasks import provision_inbox_desk_task, reconcile_inbox_desks_task
 from tests.helpers import captured_wide_event
 
 _MOD = "app.workers.tasks.inbox_desk_tasks"
@@ -68,3 +69,14 @@ class TestProvisionInboxDeskTask:
                 "defer_seconds": INBOX_DESK_PROVISION_RETRY_DELAY.total_seconds() * 2,
             }
         ]
+
+
+async def test_the_reconcile_job_reports_what_it_did() -> None:
+    with patch(
+        f"{_MOD}.reconcile_inbox_desks", AsyncMock(return_value=DeskReconcile(users=3, failures=1))
+    ):
+        async with captured_wide_event() as event:
+            result = await reconcile_inbox_desks_task({})
+
+    assert result == "reconcile_inbox_desks visited 3 user(s), 1 failure(s)"
+    assert event["inbox_desk_reconcile"] == {"users": 3, "failures": 1}
