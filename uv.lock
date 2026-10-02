@@ -2292,7 +2292,7 @@ requires-dist = [
     { name = "stackprinter", specifier = ">=0.2.12" },
     { name = "typing-extensions", specifier = ">=4.14.1" },
     { name = "ujson", specifier = ">=5.12.0" },
-    { name = "urllib3", specifier = ">=2.6.0" },
+    { name = "urllib3", specifier = ">=2.8.0" },
     { name = "uuid7", specifier = ">=0.1.0" },
     { name = "uvloop", marker = "sys_platform != 'win32'", specifier = ">=0.21.0" },
 ]
@@ -2362,7 +2362,7 @@ backend = [
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "pyarrow", specifier = ">=25.0.0" },
     { name = "pyinstrument", specifier = ">=5.1.1" },
-    { name = "pyjwt", specifier = ">=2.10.0" },
+    { name = "pyjwt", specifier = ">=2.15.0" },
     { name = "pymongo", specifier = "==4.9.2" },
     { name = "pymupdf", specifier = ">=1.25.5" },
     { name = "redis", specifier = "==5.2.1" },
