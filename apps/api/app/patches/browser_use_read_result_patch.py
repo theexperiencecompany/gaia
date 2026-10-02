@@ -20,11 +20,8 @@ from browser_use.agent.views import ActionResult
 from browser_use.browser.session import BrowserSession
 from browser_use.tools.registry.views import ActionModel
 from browser_use.tools.service import Tools
-from cdp_use.cdp.runtime.commands import EvaluateReturns
-from cdp_use.cdp.runtime.types import RemoteObject
 
-from app.constants.log_tags import LogTag
-from shared.py.wide_events import log
+from app.patches.browser_use_page_title_patch import document_title
 
 #: The actions whose matches are otherwise summarised away.
 _READ_ACTIONS = frozenset({"find_elements", "search_page"})
@@ -43,30 +40,12 @@ async def _act(self: Tools[Any], action: ActionModel, **kwargs: object) -> Actio
         result.include_extracted_content_only_once = True
     if _EXTRACT_ACTION in names and result.extracted_content and not result.error:
         session = kwargs.get("browser_session")
-        if isinstance(session, BrowserSession) and (title := await _document_title(session)):
+        if isinstance(session, BrowserSession) and (title := await document_title(session)):
             titled = f"<page_title>\n{title}\n</page_title>\n"
             if result.long_term_memory == result.extracted_content:
                 result.long_term_memory = titled + result.long_term_memory
             result.extracted_content = titled + result.extracted_content
     return result
-
-
-async def _document_title(session: BrowserSession) -> str | None:
-    """Return the focused page's document.title, or None when the page does not answer the read."""
-    try:
-        cdp = await session.get_or_create_cdp_session(focus=False)
-        reply: EvaluateReturns = await cdp.cdp_client.send.Runtime.evaluate(
-            params={"expression": "document.title", "returnByValue": True},
-            session_id=cdp.session_id,
-        )
-    except (RuntimeError, TimeoutError) as exc:
-        # The extract stands without it; a page navigating away answers no read.
-        log.warning(
-            f"{LogTag.BROWSER} Page title not read for extract", error_type=type(exc).__name__
-        )
-        return None
-    result: RemoteObject = reply["result"]
-    return str(result.get("value") or "").strip() or None
 
 
 def apply() -> None:
