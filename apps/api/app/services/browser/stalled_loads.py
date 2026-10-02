@@ -1,21 +1,13 @@
 """Stop a page load the site never answers, as a person presses Stop.
 
-While a tab's top-level navigation waits for the server's first byte, Chrome
-answers no Runtime.evaluate on that tab; Page.stopLoading is still answered and
-leaves the tab on its page (measured 2026-09-25 for typed, clicked and
-cross-site navigations alike).
-
-Page.stopLoading stops every load in the tab, the page it shows included, and
-there is no command that stops a navigation alone: stopped while that page's
-head script was still coming, the page kept its parsed part and lost the rest
-and its scripts (measured 2026-10-02: no script ran, ever), the dead Start
-button of the herokuapp wait task. So a stall waits for the page the tab shows
-to finish loading before it stops anything: Chrome loads that page on while the
-navigation waits, and once it has loaded, the stop takes the navigation alone.
+While a top-level navigation waits for the server's first byte, Chrome answers
+no Runtime.evaluate on the tab; Page.stopLoading still answers (2026-09-25).
+But it stops every load in the tab: stopped mid head script, the shown page
+never ran a script (2026-10-02). So a stall waits for the shown page to load
+first; after that, the stop takes the navigation alone.
 
 A form submission is never stopped: the server may already be acting on it.
-Chrome names one in Page.frameRequestedNavigation, before the navigation starts
-with the same URL (measured 2026-10-02 for POST and GET forms).
+Chrome names one in Page.frameRequestedNavigation before it starts (2026-10-02).
 
 It also tells the agent when Browser-Use's capped readiness wait
 (browser_use_page_ready_patch) went on before a page finished loading.

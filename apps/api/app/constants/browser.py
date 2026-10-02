@@ -330,11 +330,9 @@ BROWSER_AGENT_HEDGE_SECONDS = 12.0
 # reads ("?my-text=Aryan&my-pass...1a2b3c4"), so a run asked for the page it landed
 # on reported it could not see it (battery form, 2026-09-25). Room for any real query.
 BROWSER_AGENT_URL_QUERY_MAX_CHARS = 2000
-# A top-level load whose server sends nothing for this long is stopped, as a person
-# presses Stop: until it answers, Chrome answers no script on the tab (measured 2026-09-25).
-# No event says a server never will, so it is a patience, not a measurement; the stop
-# waits for the page the tab shows to load, so a server slower than this costs a
-# retry, never a broken page.
+# A top-level load silent this long is stopped, as a person presses Stop. No event says a
+# server never will answer, so this is patience, not a measurement; the stop waits for the
+# shown page to load, so a slower server costs a retry, never a broken page (stalled_loads).
 BROWSER_LOAD_STALL_SECONDS = 15.0
 BROWSER_LOAD_STOP_TIMEOUT_SECONDS = 5.0
 #: What the agent reads about a load the browser stopped: the plain fact, no retry rule.
