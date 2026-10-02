@@ -32,9 +32,9 @@ from playwright.sync_api import StorageState
 from pydantic import BaseModel
 
 from app.browser_host.cdp_mux import CdpCommandError, CdpConnectionClosed, CDPTimeoutError
-from app.browser_host.chromium import (
+from app.browser_host.host import (
     AtCapacityError,
-    ChromiumHost,
+    BrowserHost,
     EngineUnresponsiveError,
     HostSession,
     SessionNotFoundError,
@@ -149,7 +149,7 @@ def _exit_for_restart() -> None:
     os.kill(os.getpid(), signal.SIGTERM)
 
 
-_host = ChromiumHost(on_fatal=_exit_for_restart)
+_host = BrowserHost(on_fatal=_exit_for_restart)
 
 
 def host_failed() -> bool:

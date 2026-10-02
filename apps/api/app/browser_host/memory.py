@@ -15,7 +15,7 @@ from pathlib import Path
 
 import psutil
 
-from app.browser_host.obscura_launch import process_tree_rss_mb
+from app.browser_host.process import BYTES_PER_MB, process_tree_rss_mb
 from app.config.browser_host_settings import browser_host_settings
 
 # cgroup v2 (unified) then v1 (legacy): usage, limit, and the stat file whose
@@ -33,7 +33,6 @@ _V1 = (
     "total_inactive_file",
 )
 
-_BYTES_PER_MB = 1024 * 1024
 # cgroup "no limit" is the literal "max" (v2) or a near-INT64 sentinel (v1).
 _UNLIMITED_BYTES = 1 << 62
 
@@ -73,11 +72,11 @@ def memory_usage_mb() -> tuple[float, float]:
     override = browser_host_settings.BROWSER_HOST_MEMORY_LIMIT_MB
     cgroup = _cgroup_working_set_and_limit_bytes()
     if cgroup is not None:
-        used = cgroup[0] / _BYTES_PER_MB
-        limit = cgroup[1] / _BYTES_PER_MB
+        used = cgroup[0] / BYTES_PER_MB
+        limit = cgroup[1] / BYTES_PER_MB
         return used, (min(limit, float(override)) if override else limit)
     used = process_tree_rss_mb(os.getpid())
     if used is None:
         raise RuntimeError("the browser host cannot read its own memory")
-    room = psutil.virtual_memory().available / _BYTES_PER_MB
+    room = psutil.virtual_memory().available / BYTES_PER_MB
     return used, (float(override) if override else used + room)

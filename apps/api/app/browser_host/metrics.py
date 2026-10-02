@@ -13,17 +13,9 @@ per session is only meaningful when comparing runs that each own the host.
 
 from __future__ import annotations
 
-import contextlib
 from dataclasses import dataclass, field
 import time
 from typing import TypedDict
-
-import psutil
-
-from app.constants.log_tags import LogTag
-from shared.py.wide_events import log
-
-_BYTES_PER_MB = 1024 * 1024
 
 
 class AggregateSnapshot(TypedDict):
@@ -128,58 +120,3 @@ class SessionMetrics:
             "cpu_percent": self.cpu_percent.snapshot(),
             "navigation_ms": self.navigation_ms.snapshot(),
         }
-
-
-class ProcessSampler:
-    """Samples the engine process tree's RSS and CPU%.
-
-    cpu_percent() is used in its non-blocking form: the first call on a
-    process seeds the counter and reports 0.0, every later call reports the
-    average since the previous one. That makes a sample a couple of syscalls
-    with no sleep, which is what lets the host sample on events.
-    """
-
-    def __init__(self, pid: int) -> None:
-        self._pid = pid
-        self._root = psutil.Process(pid)
-        self._root.cpu_percent()
-
-    @classmethod
-    def for_pid(cls, pid: int) -> ProcessSampler | None:
-        """Return a sampler for pid, or None — losing metrics must not fail a launch."""
-        try:
-            return cls(pid)
-        # TypeError covers a pid that is not a usable process id at all; psutil
-        # rejects it before it ever raises one of its own errors.
-        except (psutil.Error, OSError, TypeError) as exc:
-            log.warning(
-                f"{LogTag.BROWSER} browser host resource sampler unavailable",
-                error_type=type(exc).__name__,
-                browser={"pid": pid},
-            )
-            return None
-
-    def sample(self) -> tuple[float, float] | None:
-        """(rss_mb, cpu_percent) for the tree, or None if it cannot be read.
-
-        A process that died, or a permission the host does not have, must not
-        take a session down with it; the metric is missing, the session is not.
-        """
-        try:
-            procs = [self._root, *self._root.children(recursive=True)]
-            rss = 0
-            cpu = 0.0
-            for proc in procs:
-                # Children come and go constantly (a renderer per page); one that
-                # exited mid-walk is expected, not a sampling failure.
-                with contextlib.suppress(psutil.NoSuchProcess):
-                    rss += proc.memory_info().rss
-                    cpu += proc.cpu_percent()
-            return rss / _BYTES_PER_MB, cpu
-        except (psutil.Error, OSError) as exc:
-            log.warning(
-                f"{LogTag.BROWSER} browser host resource sample failed",
-                error_type=type(exc).__name__,
-                browser={"pid": self._pid},
-            )
-            return None

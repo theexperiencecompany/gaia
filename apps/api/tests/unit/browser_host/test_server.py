@@ -18,7 +18,7 @@ import pytest
 
 from app.browser_host import server as server_mod
 from app.browser_host.cdp_mux import CdpCommandError, CdpConnectionClosed, CDPTimeoutError
-from app.browser_host.chromium import AtCapacityError, EngineUnresponsiveError, SessionNotFoundError
+from app.browser_host.host import AtCapacityError, EngineUnresponsiveError, SessionNotFoundError
 from app.constants.browser import BrowserEngine, HostAdmissionRefusal
 
 pytestmark = pytest.mark.unit
@@ -35,7 +35,7 @@ _INFO = {
 
 
 class _HostStub:
-    """A ChromiumHost-shaped object whose I/O seams are mocks."""
+    """A BrowserHost-shaped object whose I/O seams are mocks."""
 
     def __init__(self) -> None:
         # The engine the session really runs on, which the client learns from the host.

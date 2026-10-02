@@ -111,12 +111,8 @@ class EngineUnresponsiveError(RuntimeError):
     """Raised when no engine serves, or it does not answer on its root connection in time."""
 
 
-class ChromiumHost:
-    """Owns the engines and every live session on them.
-
-    Named for its first engine; fronts Obscura or Chromium alike, selected by
-    BROWSER_ENGINE, since everything past launch speaks plain CDP.
-    """
+class BrowserHost:
+    """Owns the engines and every live session on them, Obscura or Chromium alike (BROWSER_ENGINE)."""
 
     def __init__(self, on_fatal: Callable[[], None]) -> None:
         # Called once when no engine can be brought back, so the process exits and is restarted.
@@ -494,13 +490,13 @@ class ChromiumHost:
         await engine.shutdown(graceful=graceful)
 
     async def _supervise(self, engine: Engine) -> None:
-        failure = await engine.wait_failed()
+        exit_reason = await engine.wait_failed()
         if self._stopping.is_set():
             return
         log.error(
             f"{LogTag.BROWSER} browser engine failed; its sessions are gone",
-            error_type="EngineFailure",
-            browser={"operation": "engine_failed", "reason": str(failure)},
+            error_type="EngineExit",
+            browser={"operation": "engine_failed", "reason": exit_reason.value},
         )
         await self._engine_lost(engine)
 

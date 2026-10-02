@@ -19,11 +19,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.browser_host import chromium, proxy, storage
+from app.browser_host import host as host_mod, proxy, storage
 from app.browser_host.cdp_mux import CdpCommandError, CdpMux, sinks_for
-from app.browser_host.chromium import ChromiumHost, HostSession
-from app.browser_host.engine import Engine, EngineFailure
-from app.constants.browser import BrowserEngine
+from app.browser_host.engine import Engine
+from app.browser_host.host import BrowserHost, HostSession
+from app.constants.browser import BrowserEngine, EngineExit
 
 FAKE_ROOT_WS_URL = "ws://127.0.0.1:9222/devtools/browser/fake"
 # The browser's own context, where CDP puts anything that names no browserContextId.
@@ -41,8 +41,8 @@ def _no_dns(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 def _ample_memory(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(chromium, "memory_usage_mb", lambda: (100.0, 100_000.0))
-    monkeypatch.setattr(chromium, "_ADMISSION_WAIT_SECONDS", 0.0)
+    monkeypatch.setattr(host_mod, "memory_usage_mb", lambda: (100.0, 100_000.0))
+    monkeypatch.setattr(host_mod, "_ADMISSION_WAIT_SECONDS", 0.0)
 
 
 class FakeMux:
@@ -374,14 +374,14 @@ class StubEngine:
     def rss_mb(self) -> float | None:
         return self.current_rss_mb
 
-    async def wait_failed(self) -> EngineFailure:
-        reason: EngineFailure = await self.failure
+    async def wait_failed(self) -> EngineExit:
+        reason: EngineExit = await self.failure
         return reason
 
-    def fail(self, reason: str = "process exited") -> None:
+    def fail(self, reason: EngineExit = EngineExit.PROCESS_EXITED) -> None:
         """Make the engine fail the way its supervisor watches for."""
         self.is_alive = False
-        self.failure.set_result(EngineFailure(reason))
+        self.failure.set_result(reason)
 
     async def shutdown(self, *, graceful: bool = True) -> None:
         self.is_alive = False
@@ -401,7 +401,7 @@ def mux(monkeypatch: pytest.MonkeyPatch) -> FakeMux:
 def install_mux(monkeypatch: pytest.MonkeyPatch, fake: FakeMux | None = None) -> FakeMux:
     """Make create_context build this fake instead of dialing a real engine connection."""
     fake = fake if fake is not None else FakeMux()
-    monkeypatch.setattr(chromium, "CdpMux", fake.build)
+    monkeypatch.setattr(host_mod, "CdpMux", fake.build)
     return fake
 
 
@@ -417,13 +417,13 @@ def install_launcher(monkeypatch: pytest.MonkeyPatch, *engines: StubEngine) -> l
         launched.append(stub)
         return as_engine(stub), user_agent
 
-    monkeypatch.setattr(chromium, "launch_engine", _launch)
+    monkeypatch.setattr(host_mod, "launch_engine", _launch)
     return launched
 
 
-def make_host(engine: StubEngine | None = None) -> ChromiumHost:
+def make_host(engine: StubEngine | None = None) -> BrowserHost:
     """Build a host already serving on engine (a fresh stub by default), without its supervisor."""
-    host = ChromiumHost(on_fatal=MagicMock())
+    host = BrowserHost(on_fatal=MagicMock())
     host._engine = as_engine(engine if engine is not None else StubEngine())
     return host
 

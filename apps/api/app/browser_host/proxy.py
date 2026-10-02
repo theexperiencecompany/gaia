@@ -29,7 +29,7 @@ from shared.py.wide_events import log
 if TYPE_CHECKING:
     from fastapi import WebSocket
 
-    from app.browser_host.chromium import ChromiumHost, HostSession
+    from app.browser_host.host import BrowserHost, HostSession
 
 # Downstream events that leak other contexts unless filtered by browserContextId.
 _CONTEXT_SCOPED_EVENTS = frozenset(
@@ -213,7 +213,7 @@ def _filter_downstream(
     return message
 
 
-def _note_command(host: ChromiumHost, session: HostSession, message: dict[str, Any]) -> None:
+def _note_command(host: BrowserHost, session: HostSession, message: dict[str, Any]) -> None:
     """Record what a forwarded command tells the host: navigation timing, a new page, a tab brought forward."""
     method = message.get("method")
     if method == _NAVIGATE_METHOD:
@@ -229,7 +229,7 @@ def _note_command(host: ChromiumHost, session: HostSession, message: dict[str, A
 class _Bridge:
     """One client socket bridged to its session's engine connection, filtered to one context."""
 
-    def __init__(self, host: ChromiumHost, session: HostSession, client_ws: WebSocket) -> None:
+    def __init__(self, host: BrowserHost, session: HostSession, client_ws: WebSocket) -> None:
         self.host = host
         self.session = session
         self.client_ws = client_ws
@@ -291,7 +291,7 @@ class _Bridge:
         )
 
 
-async def run_cdp_proxy(host: ChromiumHost, session: HostSession, client_ws: WebSocket) -> None:
+async def run_cdp_proxy(host: BrowserHost, session: HostSession, client_ws: WebSocket) -> None:
     """Bridge a browser-use client socket to the session's engine connection, filtered to one context."""
     bridge = _Bridge(host, session, client_ws)
     unsubscribe = session.mux.subscribe(bridge.enqueue)

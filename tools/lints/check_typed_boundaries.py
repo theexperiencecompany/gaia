@@ -62,7 +62,7 @@ BOUNDARY_MODULES: dict[str, str] = {
     "apps/api/app/override/": "vendored overrides of third-party library internals",
     "apps/api/app/patches/": "monkeypatches of third-party library internals",
     "apps/api/app/browser_host/cdp_mux.py": "the CDP wire: Chrome owns every command and result shape",
-    "apps/api/app/browser_host/chromium.py": "the CDP wire: Chrome owns every command and result shape",
+    "apps/api/app/browser_host/host.py": "the CDP wire: Chrome owns every command and result shape",
     "apps/api/app/browser_host/engine.py": "the CDP wire: Chrome owns every command and result shape",
     "apps/api/app/browser_host/storage.py": "the CDP wire: Chrome owns every command and result shape",
     "apps/api/app/browser_host/proxy.py": "the CDP wire: Chrome owns every command and result shape",
