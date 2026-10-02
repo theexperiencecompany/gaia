@@ -9,20 +9,8 @@ worker layers it imports can record without a cycle.
 from datetime import UTC, datetime
 from typing import Protocol
 
-from pymongo.errors import PyMongoError
-from tenacity import (
-    AsyncRetrying,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential_jitter,
-)
-
-from app.constants.todos import (
-    DURABLE_ACTIVITY_BACKOFF_INITIAL_SECONDS,
-    DURABLE_ACTIVITY_BACKOFF_MAX_SECONDS,
-    DURABLE_ACTIVITY_WRITE_ATTEMPTS,
-    TodoActivityEvent,
-)
+from app.constants.todos import TodoActivityEvent
+from app.db.mongodb.retry import TRANSIENT_MONGO_RETRY
 from app.services.todo_canvas_storage import append_activity
 from shared.py.wide_events import log
 
@@ -52,17 +40,6 @@ async def record_activity(
         return False
 
 
-# Copied per write: a tenacity controller carries per-call state.
-_DURABLE_WRITE_RETRY = AsyncRetrying(
-    stop=stop_after_attempt(DURABLE_ACTIVITY_WRITE_ATTEMPTS),
-    wait=wait_exponential_jitter(
-        initial=DURABLE_ACTIVITY_BACKOFF_INITIAL_SECONDS, max=DURABLE_ACTIVITY_BACKOFF_MAX_SECONDS
-    ),
-    retry=retry_if_exception_type(PyMongoError),
-    reraise=True,
-)
-
-
 async def record_activity_durably(
     todo_id: str, user_id: str, event: TodoActivityEvent, detail: str
 ) -> None:
@@ -72,7 +49,7 @@ async def record_activity_durably(
     meanwhile has nowhere to keep the entry, and append_activity says so.
     """
     line = activity_line(event, detail)
-    async for attempt in _DURABLE_WRITE_RETRY.copy():
+    async for attempt in TRANSIENT_MONGO_RETRY.copy():
         with attempt:
             await append_activity(todo_id, user_id, line)
 

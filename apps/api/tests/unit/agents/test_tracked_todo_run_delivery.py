@@ -42,6 +42,7 @@ from app.constants.agents import AgentTag
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.constants.todos import TodoActivityEvent
+from app.db.mongodb import retry as mongo_retry
 from app.models.chat_models import ConversationSource
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
@@ -125,8 +126,8 @@ def _seams(
 
 
 def _no_backoff() -> AbstractContextManager[AsyncMock]:
-    """Skip the durable write's backoff sleeps; the attempts themselves still run."""
-    return patch.object(todo_activity._DURABLE_WRITE_RETRY, "sleep", AsyncMock())
+    """Skip the Mongo retry's backoff sleeps; the attempts themselves still run."""
+    return patch.object(mongo_retry.TRANSIENT_MONGO_RETRY, "sleep", AsyncMock())
 
 
 def _request() -> TodoRunRequest:
@@ -332,6 +333,18 @@ class TestAFinishedRunIsNeverRunAgainForItsRecord:
         seams.send.assert_awaited_once()
 
     @pytest.mark.regression
+    async def test_a_todo_read_that_fails_once_is_retried_and_the_result_still_delivered(
+        self,
+    ) -> None:
+        """Regression: a failed read of the todo dropped the finished run's message and entry."""
+        with _seams(todo=_todo()) as seams, _no_backoff():
+            seams.repo.get_by_id.side_effect = [PyMongoError("primary stepped down"), _todo()]
+            await run_todo_on_executor(_request())
+
+        seams.send.assert_awaited_once()
+        assert _activity(seams).startswith("result sent on telegram (summary=")
+
+    @pytest.mark.regression
     async def test_a_record_that_never_writes_fails_loudly_and_the_run_stands(self) -> None:
         recorder = WideEventRecorder()
         with (
@@ -346,10 +359,11 @@ class TestAFinishedRunIsNeverRunAgainForItsRecord:
         event = recorder.event("executor_run")
         assert (event["outcome"], event["reason"]) == (
             "failed",
-            todo_constants.RUN_RESULT_NOT_RECORDED,
+            todo_constants.TodoRunFinishFailure.NOT_RECORDED,
         )
         [error] = event["errors"]
         assert error["msg"].startswith(LogTag.AGENT)
+        assert error["failure"] == todo_constants.TodoRunFinishFailure.NOT_RECORDED
         assert (error["todo_id"], error["stream_id"], error["task_id"]) == (
             TODO_ID,
             event["stream_id"],

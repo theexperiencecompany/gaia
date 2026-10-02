@@ -59,12 +59,12 @@ RUN_SUMMARY_ACTIVITY_CHARS: Final[int] = 200
 # Bounds the Key Details a run's delivery decision reads next to the report.
 DELIVERY_KEY_DETAILS_MAX_CHARS: Final[int] = 1500
 
-# A durable activity entry outlasts a replica-set election (~12s): 1+2+4+8s of backoff.
-DURABLE_ACTIVITY_WRITE_ATTEMPTS: Final[int] = 5
-DURABLE_ACTIVITY_BACKOFF_INITIAL_SECONDS: Final[float] = 1.0
-DURABLE_ACTIVITY_BACKOFF_MAX_SECONDS: Final[float] = 8.0
-# The wide-event failure reason of a finished run whose entry could not be written.
-RUN_RESULT_NOT_RECORDED: Final[str] = "todo_run_result_not_recorded"
+
+class TodoRunFinishFailure(StrEnum):
+    """Why a finished run's wide event failed though the run itself stands."""
+
+    NOT_DELIVERED = "todo_run_result_not_delivered"
+    NOT_RECORDED = "todo_run_result_not_recorded"
 
 
 class TodoRunDeliveryOutcome(StrEnum):

@@ -18,11 +18,12 @@ from app.constants.comms import CommsDirectiveKind
 from app.constants.log_tags import LogTag
 from app.constants.todos import (
     DELIVERY_KEY_DETAILS_MAX_CHARS,
-    RUN_RESULT_NOT_RECORDED,
     RUN_SUMMARY_ACTIVITY_CHARS,
     TodoActivityEvent,
     TodoRunDeliveryOutcome,
+    TodoRunFinishFailure,
 )
+from app.db.mongodb.retry import TRANSIENT_MONGO_RETRY
 from app.db.repositories.todos import todo_repository
 from app.models.chat_models import ConversationSource
 from app.models.todo_models import TodoDocument
@@ -63,7 +64,13 @@ async def deliver_todo_run_result(
     log.set_ns("todo_delivery", todo_id=todo_run.todo_id, result_type=result_type)
     if result_type == "error":
         return
-    todo = await todo_repository.get_by_id(todo_run.todo_id)
+    try:
+        async for attempt in TRANSIENT_MONGO_RETRY.copy():
+            with attempt:
+                todo = await todo_repository.get_by_id(todo_run.todo_id)
+    except PyMongoError as e:
+        _fail_finished_run(run, todo_run.todo_id, TodoRunFinishFailure.NOT_DELIVERED, e)
+        return
     if todo is None:
         log.warning(
             f"{LogTag.AGENT} todo run finished for a deleted todo", todo_id=todo_run.todo_id
@@ -87,17 +94,7 @@ async def deliver_todo_run_result(
             f"{resolution.note} (summary={summary!r})",
         )
     except PyMongoError as e:
-        # Not a run failure: the work is done and any message is out, so the
-        # worker's retry would repeat both.
-        log.error(
-            f"{LogTag.AGENT} todo run finished but its result was not recorded",
-            todo_id=todo.id,
-            stream_id=run.stream_id,
-            task_id=run.task_id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        log.fail(RUN_RESULT_NOT_RECORDED)
+        _fail_finished_run(run, todo.id, TodoRunFinishFailure.NOT_RECORDED, e)
     # A worker has no request context: the explicit user id keeps the event off
     # an anonymous profile.
     capture_event(
@@ -111,6 +108,25 @@ async def deliver_todo_run_result(
             "recurring": bool(todo.recurrence),
         },
     )
+
+
+def _fail_finished_run(
+    run: ExecutorRun, todo_id: str, failure: TodoRunFinishFailure, error: PyMongoError
+) -> None:
+    """Report a finished run the todo store let down, loudly, without failing the run.
+
+    The work is done, so failing the run would have the worker run it again.
+    """
+    log.error(
+        f"{LogTag.AGENT} todo run finished but the todo store failed it",
+        failure=failure.value,
+        todo_id=todo_id,
+        stream_id=run.stream_id,
+        task_id=run.task_id,
+        error=str(error),
+        error_type=type(error).__name__,
+    )
+    log.fail(failure)
 
 
 def _standing_requests(todo: TodoDocument) -> str | None:
