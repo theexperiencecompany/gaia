@@ -59,6 +59,8 @@ pytestmark = pytest.mark.unit
 
 USER = AuthenticatedUser(user_id="507f1f77bcf86cd799439011", email="d@gaia.local")
 TODO_ID = "6ab51f1ba7a1fcf0f00ab49a"
+# The finish job loads the user afresh; a distinct object shows which one it used.
+JOB_USER = USER.model_copy()
 EXECUTOR_REPORT = "Checked staging. The deploy failed on migration 42; needs a rollback call."
 NARRATED = f"Staging deploy failed on migration 42.{NEW_MESSAGE_BREAKER}Want me to roll it back?"
 
@@ -86,6 +88,8 @@ class _Seams:
     spawn: MagicMock
     repo: MagicMock
     enqueue: AsyncMock
+    pool: MagicMock
+    load_user: AsyncMock
 
 
 @contextmanager
@@ -106,6 +110,8 @@ def _seams(
         spawn=MagicMock(side_effect=spawn_background_task),
         repo=MagicMock(get_by_id=AsyncMock(return_value=todo)),
         enqueue=AsyncMock(),
+        pool=MagicMock(),
+        load_user=AsyncMock(return_value=JOB_USER),
     )
     stream_manager = MagicMock()
     stream_manager.is_cancelled = AsyncMock(return_value=False)
@@ -126,8 +132,10 @@ def _seams(
         patch.object(todo_activity, "append_activity", seams.activity),
         patch.object(trd, "capture_event", seams.capture),
         patch.object(trd, "enqueue_worker_job", seams.enqueue),
-        patch.object(trd, "RedisPoolManager", MagicMock(get_pool=AsyncMock())),
-        patch.object(tracked_todo_tasks, "load_user_context", AsyncMock(return_value=USER)),
+        patch.object(
+            trd, "RedisPoolManager", MagicMock(get_pool=AsyncMock(return_value=seams.pool))
+        ),
+        patch.object(tracked_todo_tasks, "load_user_context", seams.load_user),
     ):
         yield seams
     sess._sessions.clear()
@@ -362,6 +370,8 @@ class TestAFinishedRunIsNeverRunAgainForItsDelivery:
             await tracked_todo_tasks.finish_tracked_todo_run({"job_try": 2}, undone)
 
         seams.send.assert_awaited_once()
+        assert seams.send.await_args.kwargs["user"] is JOB_USER
+        seams.load_user.assert_awaited_once_with(USER.user_id)
         assert _activity(seams).startswith("result sent on telegram (summary=")
         assert seams.execute.await_count == 1
 
@@ -407,16 +417,19 @@ class TestAFinishedRunIsNeverRunAgainForItsDelivery:
         ):
             seams.repo.get_by_id.side_effect = PyMongoError("primary stepped down")
             with pytest.raises(Retry) as retry:
-                await tracked_todo_tasks.finish_tracked_todo_run({"job_try": 2}, _undelivered())
+                await tracked_todo_tasks.finish_tracked_todo_run({"job_try": 4}, _undelivered())
             last_try = todo_constants.TODO_RUN_FINISH_MAX_TRIES
             async with captured_wide_event("finish") as event:
                 await tracked_todo_tasks.finish_tracked_todo_run(
                     {"job_try": last_try}, _undelivered()
                 )
 
-        assert retry.value.defer_score == 2 * 60 * 1000
+        assert retry.value.defer_score == 8 * 60 * 1000
         seams.send.assert_not_awaited()
-        _assert_failed_loudly(event, "todo_run_result_not_delivered")
+        assert event["todo_id"] == TODO_ID
+        _assert_failed_loudly(
+            event, "todo_run_result_not_delivered", f"still failing after {last_try} tries"
+        )
 
     async def test_a_handoff_redis_refuses_fails_loudly(self) -> None:
         recorder = WideEventRecorder()
@@ -429,7 +442,13 @@ class TestAFinishedRunIsNeverRunAgainForItsDelivery:
             seams.enqueue.side_effect = RedisConnectionError("redis down")
             await run_todo_on_executor(_request())
 
-        _assert_failed_loudly(recorder.event("executor_run"), "todo_run_result_not_delivered")
+        event = recorder.event("executor_run")
+        _assert_failed_loudly(event, "todo_run_result_not_delivered", "ConnectionError: redis down")
+        [store_failure] = event["warnings"]
+        assert (store_failure["error"], store_failure["error_type"]) == (
+            "primary stepped down",
+            "PyMongoError",
+        )
 
 
 def _undelivered() -> "trd.FinishedTodoRun":
@@ -445,8 +464,8 @@ def _undelivered() -> "trd.FinishedTodoRun":
 
 def _queued(seams: _Seams, undone: str) -> "trd.FinishedTodoRun":
     """Return the payload of the one finish job queued, checking its key and delay."""
-    _pool, task, payload = seams.enqueue.await_args.args
-    assert task == todo_constants.TODO_RUN_FINISH_TASK
+    pool, task, payload = seams.enqueue.await_args.args
+    assert (pool, task) == (seams.pool, todo_constants.TODO_RUN_FINISH_TASK)
     assert seams.enqueue.await_args.kwargs == {
         "_job_id": f"{todo_constants.TODO_RUN_FINISH_JOB_PREFIX}{payload.run_id}:{undone}",
         "_defer_by": todo_constants.TODO_RUN_FINISH_RETRY_DELAY,
@@ -455,10 +474,10 @@ def _queued(seams: _Seams, undone: str) -> "trd.FinishedTodoRun":
     return payload
 
 
-def _assert_failed_loudly(event: dict[str, Any], failure: str) -> None:
-    """Assert the event failed for this reason, with one error naming the run and todo."""
+def _assert_failed_loudly(event: dict[str, Any], failure: str, cause: str) -> None:
+    """Assert the event failed for this reason, with one error naming the run, todo and cause."""
     assert (event["outcome"], event["reason"]) == ("failed", failure)
     [error] = event["errors"]
     assert error["msg"].startswith(LogTag.AGENT)
-    assert (error["failure"], error["todo_id"]) == (failure, TODO_ID)
-    assert error["run_id"] and error["cause"]
+    assert (error["failure"], error["todo_id"], error["cause"]) == (failure, TODO_ID, cause)
+    assert error["run_id"]

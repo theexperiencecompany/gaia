@@ -579,8 +579,8 @@ async def finish_tracked_todo_run(ctx: ArqJobContext, undone: FinishedTodoRun) -
     The todo is never run again for it. Each try picks up only what is still
     undone, so a message already sent is not sent twice.
     """
-    job_try = ctx.get("job_try", 1)
-    log.set(todo_id=undone.todo_id, todo_run_finish={"run_id": undone.run_id, "try": job_try})
+    # The envelope already puts the job id (the run's) and job_try on the event.
+    log.set(todo_id=undone.todo_id)
     user, _ = await _load_user_with_tz(undone.user_id)
     left = await finish_todo_run(undone, user)
     if left is None:
@@ -589,6 +589,7 @@ async def finish_tracked_todo_run(ctx: ArqJobContext, undone: FinishedTodoRun) -
         # Sent on this try, entry not written: a replay of this job would send again.
         await hand_unfinished_run_to_job(left)
         return f"sent:{undone.todo_id} (entry handed on)"
+    job_try = ctx["job_try"]
     if job_try < TODO_RUN_FINISH_MAX_TRIES:
         raise Retry(defer=TODO_RUN_FINISH_RETRY_DELAY * 2 ** (job_try - 1))
     report_unfinished_run(left, f"still failing after {job_try} tries")

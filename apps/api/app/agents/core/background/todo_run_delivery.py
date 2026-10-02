@@ -168,8 +168,6 @@ async def hand_unfinished_run_to_job(undone: FinishedTodoRun) -> None:
         )
     except RedisError as e:
         report_unfinished_run(undone, f"{type(e).__name__}: {e}")
-        return
-    log.set_ns("todo_delivery", handed_to_job=_undone(undone).value)
 
 
 async def _send_once(finished: FinishedTodoRun, user: AuthenticatedUser) -> tuple[str, str] | None:
@@ -185,8 +183,7 @@ async def _send_once(finished: FinishedTodoRun, user: AuthenticatedUser) -> tupl
             f"{LogTag.AGENT} todo run finished for a deleted todo", todo_id=finished.todo_id
         )
         return None
-    if run_finished_marker(finished.run_id) in (todo.activity_content or ""):
-        log.set_ns("todo_delivery", already_finished=True)
+    if todo.activity_content and run_finished_marker(finished.run_id) in todo.activity_content:
         return None
 
     # Read now, not when the run started: the run itself may have turned it off.
