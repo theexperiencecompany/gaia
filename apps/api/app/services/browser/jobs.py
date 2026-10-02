@@ -242,11 +242,9 @@ async def settle_result_claim(job_id: str, *, told: bool) -> None:
 async def request_job_cancel(job_id: str) -> bool:
     """Flag a job as stopped unless it has ended; whether it was flagged.
 
-    Atomic against the job's DONE write. The worker writes DONE, then reads this
-    flag to decide whether to tell its result: a stop lands before DONE and the
-    worker stays silent, or finds the job ended and its result is told. Read
-    apart, a stop could see RUNNING, the worker finish and tell, then the flag
-    land, and the chat say "Stopped." after the result.
+    Atomic against the job's DONE write, which the worker makes before it reads
+    this flag: a stop lands before DONE and the worker stays silent, or finds the
+    job ended and its result is told, never both.
     """
     key = _state_key(job_id)
     while True:

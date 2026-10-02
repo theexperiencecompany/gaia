@@ -411,7 +411,7 @@ BROWSER_AGENT_ROLE = (
     "stated plainly, does not change that (one of three articles shows no text to summarise, a "
     "page does not name the authors). success=false means the request itself could not be "
     "done, however honestly you explain why: the button or page it names does not exist (no "
-    "\"Buy now\" button, so no order number), the site is unreachable (its address does not "
+    '"Buy now" button, so no order number), the site is unreachable (its address does not '
     "resolve), or the action was refused. This replaces any rule for success above.\n"
     "2. A sequence of interactions remains (filling a form, searching and choosing, clicking "
     "through several pages): call `jev` with a sharper, self-contained goal for what "
