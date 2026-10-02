@@ -19,7 +19,7 @@ from app.constants.todos import INBOX_DESK_TITLE, NEEDS_REPLY_LABEL, WAITING_FOR
 from app.models.composio_schemas.gmail import FetchMessagesInput
 from app.models.todo_models import TodoModel
 
-BRIEFING_SECTIONS = ["Needs you", "Waiting on others", "Done", "Today", "FYI", "Filtered"]
+BRIEFING_SECTIONS = ["Needs you", "Waiting on others", "Today", "FYI", "Noticed", "Filtered"]
 THREAD_CLASSES = ["TO_REPLY", "AWAITING_REPLY", "FYI", "ACTIONED"]
 
 
@@ -43,7 +43,7 @@ CURSOR_STEP = 10
 BRIEFING_STEP = 11
 
 
-def test_the_briefing_is_the_five_sections_in_order() -> None:
+def test_the_briefing_is_its_sections_in_order() -> None:
     assert _heads(_step(BRIEFING_STEP)[1:])[: len(BRIEFING_SECTIONS)] == BRIEFING_SECTIONS
 
 
@@ -166,9 +166,53 @@ def test_the_briefing_is_section_headings_and_items_never_a_log_of_the_run() -> 
     heading = _step(BRIEFING_STEP)[0]
 
     assert "never an account of the run" in heading
+    assert 'its name alone on one line, then one "- " line per item' in heading
+    assert "a blank line between sections, a section with no items left out" in heading
+
+
+def _briefing_line(head: str) -> str:
+    return _line(_step(BRIEFING_STEP)[1:], head)
+
+
+def test_the_briefing_opens_with_one_line_of_counts_and_repeats_nothing_unchanged() -> None:
+    heading = _step(BRIEFING_STEP)[0]
+
+    assert "read in five seconds" in heading
     assert (
-        'its name alone on one line, then one "- " line per item, a blank line between sections'
+        'Its first line counts what follows, zero parts left out, like "2 need you · 1 waiting '
+        '· 2 events today"'
     ) in heading
+    assert "nothing an earlier briefing reported unless its state changed" in heading
+    assert "your reasoning, ids, account numbers or how you classified anything" in heading
+    assert "Nothing in any section: say only that nothing is new." in INBOX_DESK_RUN_GUIDANCE
+
+
+def test_each_item_is_one_short_line_in_one_shape() -> None:
+    assert (
+        f'one "- " line per item of at most {todo_constants.INBOX_DESK_BRIEFING_ITEM_MAX_WORDS} '
+        "words"
+    ) in _step(BRIEFING_STEP)[0]
+    assert (
+        '"<who> · <what> · <when> · <status>", like "Priya · pitch deck · by Fri · draft ready"'
+    ) in _briefing_line("Needs you")
+    assert "in the same form" in _briefing_line("Waiting on others")
+
+
+def test_the_long_sections_are_capped() -> None:
+    assert (
+        f'at most {todo_constants.INBOX_DESK_NEEDS_YOU_MAX_ITEMS}, then "+<n> more"'
+    ) in _briefing_line("Needs you")
+    assert "that are overdue or changed" in _briefing_line("Waiting on others")
+    assert (
+        'grouped by kind with counts, like "4 newsletters · 2 product updates", at most '
+        f"{todo_constants.INBOX_DESK_FYI_MAX_LINES} lines"
+    ) in _briefing_line("FYI")
+    assert _briefing_line("Filtered") == "Filtered: the number only, from step 3."
+
+
+def test_a_proposed_event_is_one_line_the_user_can_accept_by_reply() -> None:
+    assert 'like "Arjun call Tue 4pm · reply yes to add"' in _briefing_line("Today")
+    assert "propose everything else" in "\n".join(_step(8))
 
 
 def test_standing_rules_beat_observations_and_both_beat_the_defaults() -> None:
@@ -225,10 +269,10 @@ def test_observations_keep_their_evidence_and_revise_conclusions_only_on_it() ->
 
 
 def test_a_new_or_changed_conclusion_is_announced_once_in_the_briefing() -> None:
-    briefing = "\n".join(_step(BRIEFING_STEP))
+    noticed = _briefing_line("Noticed")
 
-    assert "a conclusion you added or changed in observations.md this run gets one line" in briefing
-    assert "Noticed: treating GitHub notifications as low priority; reply to change" in briefing
+    assert "each conclusion you added or changed in observations.md this run" in noticed
+    assert 'one line ending "reply to change"' in noticed
     assert "write observations.md only in step 9" in INBOX_DESK_RUN_GUIDANCE
 
 
@@ -244,7 +288,7 @@ def test_the_sweep_counts_the_whole_window_the_filter_hides() -> None:
     assert 'query "<window>"' in step
     assert todo_constants.INBOX_DESK_MAIL_FILTER not in step
     assert "Filtered count: the sweep's total less the messages step 2 fetched" in step
-    assert "Filtered: the count only, from step 3" in "\n".join(_step(BRIEFING_STEP))
+    assert "Filtered: the number only, from step 3" in "\n".join(_step(BRIEFING_STEP))
 
 
 def test_the_sweep_asks_the_fetch_for_headers_in_a_file_never_a_body_or_thread() -> None:

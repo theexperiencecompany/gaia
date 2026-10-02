@@ -174,5 +174,9 @@ INBOX_DESK_MAIL_FILTER: Final[str] = (
     "category:primary -from:noreply -from:no-reply -from:notifications "
     "-from:notification -from:mailer-daemon -from:donotreply"
 )
+# The desk's briefing is read in seconds: words per item, and lines per capped section.
+INBOX_DESK_BRIEFING_ITEM_MAX_WORDS: Final[int] = 12
+INBOX_DESK_NEEDS_YOU_MAX_ITEMS: Final[int] = 5
+INBOX_DESK_FYI_MAX_LINES: Final[int] = 3
 # First retry delay of a failed provisioning; each further try doubles it.
 INBOX_DESK_PROVISION_RETRY_DELAY: Final[timedelta] = timedelta(minutes=2)
