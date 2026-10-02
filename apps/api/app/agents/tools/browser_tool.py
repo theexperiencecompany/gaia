@@ -253,17 +253,16 @@ async def browser_task(
         # A job that never ran must not hide the one before it from a /stop at the same chat.
         for key, previous in replaced.items():
             await restore_latest_job(key, job_id, previous)
-        # Ended without running, so neither a join nor a stop waits on it.
-        await record_ending(job_id, JobEnding.FINISHED)
-        await put_job_state(
-            BrowserJobState(
-                job_id=job_id,
-                status=BrowserJobStatus.DONE,
-                task=task,
-                relay_stream_id=params.stream_id,
-                agent_message=_NOT_QUEUED,
-            )
+        ended = BrowserJobState(
+            job_id=job_id,
+            status=BrowserJobStatus.DONE,
+            task=task,
+            relay_stream_id=params.stream_id,
+            agent_message=_NOT_QUEUED,
         )
+        # Ended without running, so neither a join nor a stop waits on it; the
+        # record carries the DONE state a join reads.
+        await record_ending(job_id, JobEnding.FINISHED, ended)
         await release_conversation_slot(params.conversation_id, job_id)
         return _NOT_QUEUED
 

@@ -24,7 +24,7 @@ from app.constants.browser import (
     ResultSpeaker,
 )
 from app.db.redis import redis_cache
-from app.schemas.browser_job import BrowserJobState
+from app.schemas.browser_job import BrowserJobEnding, BrowserJobState
 from app.services.browser.job_lifetime import browser_job_ttl_seconds
 
 
@@ -150,7 +150,15 @@ async def put_job_state(state: BrowserJobState) -> None:
 
 
 async def get_job_state(job_id: str) -> BrowserJobState | None:
-    """Load a job's state, or None when it is unknown or has expired."""
+    """Load a job's state, or None when it is unknown or has expired.
+
+    A finished run's ending of record carries its DONE state: that is the
+    job's state from the moment it was recorded, whether or not the worker
+    lived to write it here too.
+    """
+    recorded = await _ending_record(job_id)
+    if recorded is not None and recorded.state is not None:
+        return recorded.state
     return await redis_cache.get(_state_key(job_id), model=BrowserJobState)
 
 
@@ -240,22 +248,35 @@ async def settle_result_claim(job_id: str, *, told: bool) -> None:
     )
 
 
-async def record_ending(job_id: str, ending: JobEnding) -> JobEnding:
+async def record_ending(
+    job_id: str, ending: JobEnding, state: BrowserJobState | None = None
+) -> JobEnding:
     """Record how the job ends unless an ending is recorded already; return the ending of record.
 
     The one decision point between a stop and the run's own end: SET NX, so
-    whoever records first wins, and every reader follows the record.
+    whoever records first wins, and every reader follows the record. A run that
+    finishes records its DONE state with it, so the result is kept in the same write.
     """
-    key = _ending_key(job_id)
-    if await redis_cache.client.set(key, ending.value, nx=True, ex=browser_job_ttl_seconds()):
-        return ending
-    return JobEnding(await redis_cache.client.get(key))
+    record = BrowserJobEnding(ending=ending, state=state)
+    held: str | None = await redis_cache.client.set(
+        _ending_key(job_id),
+        record.model_dump_json(),
+        nx=True,
+        get=True,
+        ex=browser_job_ttl_seconds(),
+    )
+    return ending if held is None else BrowserJobEnding.model_validate_json(held).ending
+
+
+async def _ending_record(job_id: str) -> BrowserJobEnding | None:
+    recorded = await redis_cache.client.get(_ending_key(job_id))
+    return BrowserJobEnding.model_validate_json(recorded) if recorded else None
 
 
 async def job_ending(job_id: str) -> JobEnding | None:
     """Return how the job ended, or None while no ending is recorded."""
-    recorded = await redis_cache.client.get(_ending_key(job_id))
-    return JobEnding(recorded) if recorded else None
+    recorded = await _ending_record(job_id)
+    return recorded.ending if recorded is not None else None
 
 
 async def job_cancel_requested(job_id: str) -> bool:

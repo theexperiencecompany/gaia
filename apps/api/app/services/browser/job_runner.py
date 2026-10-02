@@ -115,8 +115,8 @@ from shared.py.wide_events import log
 
 #: Where one already-shaped stream frame goes: the job's own replayable feed.
 FramePublisher = Callable[[dict[str, object]], Awaitable[None]]
-#: Records how the job ends unless it is recorded already; answers the ending of record.
-RecordEndingFn = Callable[[JobEnding], Awaitable[JobEnding]]
+#: Records that the run finished on this result unless the job's ending is recorded already; answers the ending of record.
+RecordFinishedFn = Callable[[BrowserResultSnapshot], Awaitable[JobEnding]]
 
 # Screenshots stream into the chat live, so the reply must never narrate them.
 _NO_META = (
@@ -345,10 +345,10 @@ class ProgressEmitter:
         publish: FramePublisher,
         thread_mirror: BrowserThreadMirror,
         bot_delivery: BotProgressDelivery | None,
-        record_ending: RecordEndingFn,
+        record_finished: RecordFinishedFn,
     ) -> None:
         self._publish = publish
-        self._record_ending = record_ending
+        self._record_finished = record_finished
         self.thread_mirror = thread_mirror
         self._bot_delivery = bot_delivery
         # Captions for the recap ("what's going on" per step), keyed by step index.
@@ -382,18 +382,18 @@ class ProgressEmitter:
             await _deliver_snapshot_to_bot(self._bot_delivery, snapshot)
 
     async def _as_ended(self, result: BrowserResultSnapshot) -> BrowserResultSnapshot:
-        return await _ended_as_record_says(self._record_ending, result)
+        return await _ended_as_record_says(self._record_finished, result)
 
 
 async def _ended_as_record_says(
-    record_ending: RecordEndingFn, result: BrowserResultSnapshot
+    record_finished: RecordFinishedFn, result: BrowserResultSnapshot
 ) -> BrowserResultSnapshot:
     """Return the result card the job ends on: the run's own when it records the ending first, else the stop's.
 
     The run's end and a stop race to record the one ending (jobs.record_ending);
     a run that lost is shown as stopped, since the stop already told the user.
     """
-    if await record_ending(JobEnding.FINISHED) is JobEnding.FINISHED:
+    if await record_finished(result) is JobEnding.FINISHED:
         return result
     if result.status is BrowserSessionStatus.CANCELLED:
         return result
@@ -699,17 +699,29 @@ async def _end_on(
 
 async def settle_job(request: BrowserJobRequest, result: BrowserResultSnapshot) -> None:
     """Write the job's ending: the DONE state a join reads, then the frame that closes its feed."""
-    await put_job_state(
-        BrowserJobState(
-            job_id=request.job_id,
-            status=BrowserJobStatus.DONE,
-            task=request.task,
-            relay_stream_id=request.stream_id,
-            agent_message=agent_result_message(result),
-            result=result,
-        )
-    )
+    await put_job_state(_done_state(request, result))
     await publish_job_event(request.job_id, JOB_TERMINAL_FRAME)
+
+
+def _done_state(request: BrowserJobRequest, result: BrowserResultSnapshot) -> BrowserJobState:
+    """Return the state the job ends in on result: what a join reads to tell it."""
+    return BrowserJobState(
+        job_id=request.job_id,
+        status=BrowserJobStatus.DONE,
+        task=request.task,
+        relay_stream_id=request.stream_id,
+        agent_message=agent_result_message(result),
+        result=result,
+    )
+
+
+async def _record_finished(request: BrowserJobRequest, result: BrowserResultSnapshot) -> JobEnding:
+    """Record that the run finished on result, its DONE state in the same write, unless the job's ending is recorded already.
+
+    Kept with the decision, the result outlives a worker that dies before it
+    publishes the card or settles the job: any later join reads and tells it.
+    """
+    return await record_ending(request.job_id, JobEnding.FINISHED, _done_state(request, result))
 
 
 def _emitter_for(request: BrowserJobRequest) -> ProgressEmitter:
@@ -718,7 +730,7 @@ def _emitter_for(request: BrowserJobRequest) -> ProgressEmitter:
         emit_frame,
         BrowserThreadMirror(emit_frame, request.tool_call_id),
         _build_bot_delivery(request),
-        partial(record_ending, request.job_id),
+        partial(_record_finished, request),
     )
 
 

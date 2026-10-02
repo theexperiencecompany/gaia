@@ -455,8 +455,8 @@ async def test_a_dropped_enqueue_frees_the_slot_and_says_so(
     assert out == "I couldn't start the browser task right now. Try again in a moment."
     assert recorder.released == [("c1", recorder.request.job_id)]
     assert recorder.spawned == []
-    # Already findable by a join or a stop, so it is recorded as over, not queued forever.
-    assert recorder.states[-1] == BrowserJobState(
+    # Already findable by a join or a stop, so its record says it is over, not queued forever.
+    assert await jobs.get_job_state(recorder.request.job_id) == BrowserJobState(
         job_id=recorder.request.job_id,
         status=BrowserJobStatus.DONE,
         task="x",

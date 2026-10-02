@@ -9,6 +9,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from app.constants.browser import JobEnding
 from app.models.chat_models import ConversationSource
 from app.schemas.browser import BrowserResultSnapshot, BrowserTaskSecret
 
@@ -50,3 +51,15 @@ class BrowserJobState(BaseModel):
     #: The executor-facing guidance string (agent_result_message), set at terminal.
     agent_message: str = ""
     result: BrowserResultSnapshot | None = None
+
+
+class BrowserJobEnding(BaseModel):
+    """The job's one ending of record, and for a run that finished, the state that tells its result.
+
+    Recorded in one write, so a result can never be decided without being kept:
+    a worker that dies right after its run finished still left the answer here.
+    """
+
+    ending: JobEnding
+    #: The DONE state the run finished on; None for a stop, which told the user itself.
+    state: BrowserJobState | None = None

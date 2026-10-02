@@ -57,7 +57,7 @@ from app.services.browser.exceptions import (
 from app.services.browser.fingerprint import current_fingerprint_seed, seed_for_user
 from app.services.browser.jev.secrets import RunSecrets, SecretWithheld
 from app.services.browser.job_events import JOB_GUIDANCE_FRAME, JOB_TERMINAL_FRAME
-from app.services.browser.jobs import job_ending
+from app.services.browser.jobs import get_job_state, job_ending
 from app.services.browser.ledger import CallComponent, ExecutedAction, RunLedger
 from app.services.browser.runner import BrowserRunConfig, BrowserRunnerCallbacks
 from app.services.browser.tasks import BrowserTaskRecord
@@ -2451,13 +2451,13 @@ async def test_the_card_a_run_ends_on_is_its_ending_of_record(
 ) -> None:
     """A stop and the run's end race to one record: a run that lost ends on the stop's card, which told the user."""
     published: list[dict[str, object]] = []
-    asked: list[JobEnding] = []
+    asked: list[BrowserResultSnapshot] = []
 
     async def _publish(frame: dict[str, object]) -> None:
         published.append(frame)
 
-    async def _record(ending: JobEnding) -> JobEnding:
-        asked.append(ending)
+    async def _record(result: BrowserResultSnapshot) -> JobEnding:
+        asked.append(result)
         return recorded
 
     emitter = jr.ProgressEmitter(_publish, jr.BrowserThreadMirror(_publish, "tc-1"), None, _record)
@@ -2467,18 +2467,31 @@ async def test_the_card_a_run_ends_on_is_its_ending_of_record(
 
     await emitter.emit(answer)
 
-    assert asked == [JobEnding.FINISHED]
+    assert asked == [answer]
     assert emitter.result is not None
     assert (emitter.result.status, emitter.result.replay_url) == (ended_on, "r")
     assert (emitter.result.summary == "Booked.") is (recorded is JobEnding.FINISHED)
     assert emitter.result.success is (recorded is JobEnding.FINISHED)
 
 
-async def test_a_jobs_result_card_records_that_jobs_ending(fake_redis: Any) -> None:
-    emitter = jr._emitter_for(_request(job_id="job-9"))
-
-    await emitter.emit(
-        BrowserResultSnapshot(status=BrowserSessionStatus.COMPLETED, success=True, summary="ok")
+async def test_a_jobs_result_card_records_its_ending_with_the_result_to_tell(
+    fake_redis: Any,
+) -> None:
+    """Greptile: a worker dying between the record and settle_job left joiners nothing to tell."""
+    request = _request(job_id="job-9")
+    answer = BrowserResultSnapshot(
+        status=BrowserSessionStatus.COMPLETED, success=True, summary="ok"
     )
 
+    await jr._emitter_for(request).emit(answer)
+
+    # No settle_job ran: the record alone gives every reader the result.
     assert await job_ending("job-9") is JobEnding.FINISHED
+    assert await get_job_state("job-9") == BrowserJobState(
+        job_id="job-9",
+        status=BrowserJobStatus.DONE,
+        task=request.task,
+        relay_stream_id=request.stream_id,
+        agent_message=jr.agent_result_message(answer),
+        result=answer,
+    )
