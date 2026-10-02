@@ -1,0 +1,76 @@
+From a8969bcfc7475f812a91d2efa6b210257df16a71 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 16:53:43 +0530
+Subject: [PATCH] fix(js): a frame's stand-in document creates TreeWalkers and
+ NodeIterators
+
+An about:blank or srcdoc frame, and a frame whose load has not finished,
+expose a stand-in document through contentDocument. It had neither
+createTreeWalker nor createNodeIterator, so a script walking every frame's
+text threw "doc.createTreeWalker is not a function" where Chrome walks the
+frame. Both now come from Document, whose traversal reads only its root.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/js/bootstrap.js | 12 ++++++++++++
+ crates/obscura-js/src/runtime.rs  | 24 ++++++++++++++++++++++++
+ 2 files changed, 36 insertions(+)
+
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index 320ce7b..4036623 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -13498,6 +13498,18 @@ class _IframeDocument {
+   createDocumentFragment() { return document.createDocumentFragment(); }
+   createEvent(type) { return document.createEvent(type); }
+   createRange() { return new Range(); }
++  // TreeWalker and NodeIterator are factories every Document has (DOM 6).
++  // This stand-in, which an about:blank or srcdoc frame and a frame whose
++  // load has not finished all get, lacked both, so a script walking each
++  // frame's text threw "doc.createTreeWalker is not a function" where Chrome
++  // walks the frame. A traversal reads only its root, so the main document's
++  // implementation serves this tree as it is.
++  createTreeWalker(root, whatToShow, filter) {
++    return Document.prototype.createTreeWalker.call(this, root, whatToShow, filter);
++  }
++  createNodeIterator(root, whatToShow, filter) {
++    return Document.prototype.createNodeIterator.call(this, root, whatToShow, filter);
++  }
+   hasFocus() { return false; }
+ 
+   get cookie() { return ''; }
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index 054a0bd..c2270ab 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -21679,6 +21679,30 @@ mod tests {
+             .await;
+     }
+ 
++    /// The stand-in document of a frame with no loaded document of its own
++    /// (about:blank, srcdoc, or still loading) walks its tree like any
++    /// Document; it used to have no createTreeWalker or createNodeIterator.
++    #[test]
++    fn a_stand_in_frame_document_creates_tree_walkers_and_node_iterators() {
++        let mut rt = setup_runtime("<html><body><iframe id=\"f\"></iframe></body></html>");
++        let result = rt
++            .evaluate(
++                "(function() { \
++                    const doc = document.getElementById('f').contentDocument; \
++                    doc.body.innerHTML = '<p>one</p><p>two <b>three</b></p>'; \
++                    const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT); \
++                    const text = []; let node; \
++                    while ((node = walker.nextNode())) text.push(node.data); \
++                    const iterator = doc.createNodeIterator(doc.body, NodeFilter.SHOW_ELEMENT); \
++                    const tags = []; \
++                    while ((node = iterator.nextNode())) tags.push(node.localName); \
++                    return text.join(',') + '|' + tags.join(','); \
++                })()",
++            )
++            .unwrap();
++        assert_eq!(result, serde_json::json!("one,two ,three|body,p,p,b"));
++    }
++
+     /// #734: ICU inherits the host OS locale when no default is set, so
+     /// Intl.resolvedOptions() contradicted navigator.language on any host
+     /// whose OS locale is not en-US. The pinned default must win.

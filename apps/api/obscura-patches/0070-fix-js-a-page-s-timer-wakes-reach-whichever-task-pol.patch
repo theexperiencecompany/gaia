@@ -1,0 +1,314 @@
+From 7177aa125e6c253f31701aaa39df6ea49602f395 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 16:52:53 +0530
+Subject: [PATCH] fix(js): a page's timer wakes reach whichever task polls it
+ now
+
+deno_core's timer queue wakes the waker of the last event-loop poll that
+found no timer due; a poll that finds one due fires it and keeps no waker.
+It assumes one task polls a runtime for life. The CDP server polls a page
+from two: the navigation runs in a task of its own, then the connection
+task pumps the page between commands. Page scripts also queue timers
+before the event loop's first poll. So when a timer was already due at the
+pump's first poll, that poll fired it, and the timer its callback queued
+woke nobody (or the finished navigation task): the page froze until the
+next CDP command arrived. bing.com's US homepage builds its search box,
+buttons and links from a timer chain started by onload, and stayed blank;
+the compat probe saw 0 inputs, buttons and links there on about half of
+its CI runs.
+
+deno_core is now always polled with one waker per page that forwards to
+the task polling right now, and a new page polls once before any script
+can queue a timer, so the timer queue holds that waker from the start.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/src/runtime.rs | 198 ++++++++++++++++++++++++++++---
+ 1 file changed, 181 insertions(+), 17 deletions(-)
+
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index 6bd3a73..054a0bd 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -211,6 +211,9 @@ pub struct ObscuraJsRuntime {
+     /// their shims can call ops; nothing else can reach it, including page
+     /// script.
+     ops_handoff: Option<deno_core::v8::Global<deno_core::v8::Value>>,
++    /// Every poll of `js_runtime`'s event loop goes through this; see
++    /// `EventLoopWaker`.
++    event_loop_waker: EventLoopWaker,
+     // Keep the runtime last: custom `Drop` enters its isolate, then every
+     // V8-backed field above is released before `OwnedIsolate` performs the
+     // matching exit and disposes the isolate.
+@@ -373,6 +376,57 @@ const WATCHDOG_SCHEDULING_MARGIN_MS: u64 = 500;
+ /// many pages exist or what order they are used and dropped in.
+ struct EnteredRuntime<'a>(&'a mut JsRuntime);
+ 
++/// The waker deno_core is polled with. It forwards to whichever task polls
++/// the page's event loop now.
++///
++/// deno_core's timer queue wakes the waker it took from the last poll that
++/// found no timer due; a poll that finds one due fires it and takes nothing.
++/// deno_core assumes one task owns the event loop for life, but Obscura polls
++/// a page from more than one: the CDP server runs a navigation in a task of
++/// its own, then pumps the page from its connection task between commands. A
++/// timer queued after that handoff woke the finished navigation task (or
++/// nobody, if no poll had found the queue idle yet), and the page sat frozen
++/// until the next protocol command. bing.com's US homepage builds its links
++/// from a timer chain started by `onload` and stayed blank. With this one
++/// stable waker, a wake deno_core stored at any time reaches the current
++/// owner.
++struct EventLoopWaker {
++    owner: std::sync::Arc<EventLoopOwner>,
++    waker: std::task::Waker,
++}
++
++struct EventLoopOwner(std::sync::Mutex<Option<std::task::Waker>>);
++
++impl std::task::Wake for EventLoopOwner {
++    fn wake(self: std::sync::Arc<Self>) {
++        self.wake_by_ref();
++    }
++
++    fn wake_by_ref(self: &std::sync::Arc<Self>) {
++        if let Some(waker) = self.0.lock().expect("event loop owner lock").as_ref() {
++            waker.wake_by_ref();
++        }
++    }
++}
++
++impl EventLoopWaker {
++    fn new() -> Self {
++        let owner = std::sync::Arc::new(EventLoopOwner(std::sync::Mutex::new(None)));
++        let waker = std::task::Waker::from(owner.clone());
++        Self { owner, waker }
++    }
++
++    /// Make the task behind `cx` the one deno_core's wakes reach, and return
++    /// the waker to poll deno_core with.
++    fn adopt(&self, cx: &Context<'_>) -> std::task::Waker {
++        let mut current = self.owner.0.lock().expect("event loop owner lock");
++        if !current.as_ref().is_some_and(|waker| waker.will_wake(cx.waker())) {
++            *current = Some(cx.waker().clone());
++        }
++        self.waker.clone()
++    }
++}
++
+ /// Enters an isolate only while an async deno_core operation is being polled.
+ /// Holding an entry across `.await` would let interleaved page futures violate
+ /// V8's per-thread isolate stack.
+@@ -502,6 +556,21 @@ impl ObscuraJsRuntime {
+         EnteredRuntime(&mut self.js_runtime)
+     }
+ 
++    /// One poll of deno_core's event loop on behalf of the task behind `cx`.
++    /// Nothing polls `js_runtime`'s event loop any other way: a poll with the
++    /// caller's own waker would leave that waker in deno_core's timer queue
++    /// after the caller's task has gone (see `EventLoopWaker`).
++    fn poll_page_event_loop(
++        &mut self,
++        cx: &mut Context<'_>,
++    ) -> Poll<Result<(), deno_core::error::CoreError>> {
++        let waker = self.event_loop_waker.adopt(cx);
++        self.runtime().poll_event_loop(
++            &mut Context::from_waker(&waker),
++            deno_core::PollEventLoopOptions::default(),
++        )
++    }
++
+     /// Freeze the document timeline for one JavaScript task. Browser timelines
+     /// update at task/rendering boundaries, not on each forced style or layout
+     /// read. Keeping one sample across the task also lets repeated CSSOM reads
+@@ -608,6 +677,7 @@ impl ObscuraJsRuntime {
+             loaded_module_specifiers,
+             evaluated_module_specifiers: HashMap::new(),
+             ops_handoff: None,
++            event_loop_waker: EventLoopWaker::new(),
+             js_runtime: runtime,
+         };
+         // Take the op table before any page script can run, and drop the global
+@@ -624,6 +694,19 @@ impl ObscuraJsRuntime {
+             instance.js_runtime.v8_isolate().exit();
+         }
+ 
++        // deno_core's timer queue takes a waker only from a poll that finds no
++        // timer due (see `EventLoopWaker`). Page script queues timers before
++        // the page's event loop is first polled; when one is already due by
++        // then, that first poll fires it without taking a waker, and every
++        // later timer falls due with nobody to wake. Poll once now, while
++        // nothing is queued, so the queue holds the forwarding waker from the
++        // start.
++        if let Poll::Ready(Err(error)) =
++            instance.poll_page_event_loop(&mut Context::from_waker(std::task::Waker::noop()))
++        {
++            panic!("a fresh page's event loop failed its first poll: {error}");
++        }
++
+         instance
+     }
+ 
+@@ -2635,8 +2718,7 @@ impl ObscuraJsRuntime {
+         let outcome = tokio::time::timeout(
+             budget,
+             std::future::poll_fn(|cx| {
+-                let mut entered = self.runtime();
+-                match entered.poll_event_loop(cx, deno_core::PollEventLoopOptions::default()) {
++                match self.poll_page_event_loop(cx) {
+                     Poll::Ready(Err(error)) => Poll::Ready(Err(error)),
+                     Poll::Ready(Ok(())) => result.as_mut().poll(cx),
+                     Poll::Pending => result.as_mut().poll(cx),
+@@ -2972,9 +3054,7 @@ impl ObscuraJsRuntime {
+         // (document.fonts.load(...).then(...), framework post-render hooks,
+         // and hydration follow-ups all rely on this boundary).
+         self.runtime().v8_isolate().perform_microtask_checkpoint();
+-        let event_loop = entered_runtime_future(&mut self.js_runtime, |runtime| {
+-            runtime.run_event_loop(deno_core::PollEventLoopOptions::default())
+-        });
++        let event_loop = std::future::poll_fn(|cx| self.poll_page_event_loop(cx));
+         let result = event_loop
+             .await
+             .map_err(|e| format!("Event loop error: {}", e));
+@@ -3191,9 +3271,7 @@ impl ObscuraJsRuntime {
+         self.runtime().v8_isolate().perform_microtask_checkpoint();
+         let mut waiting_for_wake = false;
+         let result = std::future::poll_fn(|cx| {
+-            let tick = self
+-                .runtime()
+-                .poll_event_loop(cx, deno_core::PollEventLoopOptions::default());
++            let tick = self.poll_page_event_loop(cx);
+             match tick {
+                 std::task::Poll::Ready(Ok(())) => std::task::Poll::Ready(Ok(true)),
+                 std::task::Poll::Ready(Err(error)) => std::task::Poll::Ready(Err(format!(
+@@ -3252,9 +3330,7 @@ impl ObscuraJsRuntime {
+                 isolate_handle.clone(),
+                 std::time::Duration::from_millis(AUTONOMOUS_TASK_WATCHDOG_MS),
+             );
+-            let tick = self
+-                .runtime()
+-                .poll_event_loop(cx, deno_core::PollEventLoopOptions::default());
++            let tick = self.poll_page_event_loop(cx);
+             let watchdog_fired = crate::cdp_watchdog::disarm(watchdog);
+             if watchdog_fired {
+                 self.cancel_termination();
+@@ -3468,9 +3544,7 @@ impl ObscuraJsRuntime {
+     pub async fn resolve_promises(&mut self) {
+         self.begin_javascript_task();
+         // Default settle: just pump until idle or 5s.
+-        let event_loop = entered_runtime_future(&mut self.js_runtime, |runtime| {
+-            runtime.run_event_loop(deno_core::PollEventLoopOptions::default())
+-        });
++        let event_loop = std::future::poll_fn(|cx| self.poll_page_event_loop(cx));
+         let _ = tokio::time::timeout(tokio::time::Duration::from_secs(5), event_loop).await;
+         self.recover_heap_limit();
+     }
+@@ -3510,9 +3584,7 @@ impl ObscuraJsRuntime {
+             }
+             // Pump for a short slice. If the loop returns idle in <tick_ms,
+             // run_event_loop returns Ok and we check the predicate again.
+-            let event_loop = entered_runtime_future(&mut self.js_runtime, |runtime| {
+-                runtime.run_event_loop(deno_core::PollEventLoopOptions::default())
+-            });
++            let event_loop = std::future::poll_fn(|cx| self.poll_page_event_loop(cx));
+             let _ = tokio::time::timeout(
+                 tokio::time::Duration::from_millis(tick_ms),
+                 event_loop,
+@@ -21515,6 +21587,98 @@ mod tests {
+         );
+     }
+ 
++    /// Page script queues timers before anything polls the page's event loop
++    /// (see the first poll in `with_base_url_and_proxy`). When the first poll
++    /// finds a timer already due, the timer its callback queues must still
++    /// wake the page: bing.com's US homepage builds its links from such a
++    /// chain off `onload`.
++    #[tokio::test(flavor = "current_thread")]
++    async fn a_timer_queued_by_a_timer_due_at_the_first_poll_wakes_the_page() {
++        let mut rt = setup_runtime("<html><body></body></html>");
++        rt.evaluate(
++            "(function() { \
++                 globalThis.__fired = []; \
++                 setTimeout(() => { \
++                     __fired.push('due'); \
++                     setTimeout(() => __fired.push('queued'), 1); \
++                 }, 0); \
++             })()",
++        )
++        .unwrap();
++        // The first timer falls due before anything polls.
++        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
++        // The deadline is polled first, so its own wake cannot drive the pump.
++        let woken = tokio::select! {
++            biased;
++            _ = tokio::time::sleep(std::time::Duration::from_millis(500)) => false,
++            _ = async {
++                while rt.evaluate("__fired.length === 2").unwrap() != serde_json::json!(true) {
++                    rt.run_autonomous_event_loop_turn().await.unwrap();
++                }
++            } => true,
++        };
++        assert!(
++            woken,
++            "the queued timer never woke the page: {}",
++            rt.evaluate("__fired.join()").unwrap()
++        );
++    }
++
++    /// The CDP server navigates a page in one task and pumps it from another
++    /// (see `EventLoopWaker`). A timer that falls due across that handoff is
++    /// fired by the new task, and the timer its callback queues must wake the
++    /// new task, not the finished one.
++    #[tokio::test(flavor = "current_thread")]
++    async fn a_timer_queued_after_the_polling_task_changes_still_wakes_the_page() {
++        let local = tokio::task::LocalSet::new();
++        local
++            .run_until(async {
++                let mut rt = setup_runtime("<html><body></body></html>");
++                rt.evaluate(
++                    "(function() { \
++                         globalThis.__fired = []; \
++                         setTimeout(() => { \
++                             __fired.push('due'); \
++                             setTimeout(() => __fired.push('queued'), 1); \
++                         }, 5); \
++                     })()",
++                )
++                .unwrap();
++                // The first owner polls once, so the timer sleep stores its
++                // waker, then finishes, as a navigation task does.
++                let mut rt = tokio::task::spawn_local(async move {
++                    let _ = tokio::time::timeout(
++                        std::time::Duration::from_millis(1),
++                        rt.run_autonomous_event_loop_turn(),
++                    )
++                    .await;
++                    rt
++                })
++                .await
++                .unwrap();
++                // The first timer falls due while no task is polling.
++                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
++                // This task takes over, as the connection pump does, and must
++                // be woken for the timer the due one queues. The deadline is
++                // polled first, so its own wake cannot drive the pump.
++                let woken = tokio::select! {
++                    biased;
++                    _ = tokio::time::sleep(std::time::Duration::from_millis(500)) => false,
++                    _ = async {
++                        while rt.evaluate("__fired.length === 2").unwrap() != serde_json::json!(true) {
++                            rt.run_autonomous_event_loop_turn().await.unwrap();
++                        }
++                    } => true,
++                };
++                assert!(
++                    woken,
++                    "the queued timer never woke the new polling task: {}",
++                    rt.evaluate("__fired.join()").unwrap()
++                );
++            })
++            .await;
++    }
++
+     /// #734: ICU inherits the host OS locale when no default is set, so
+     /// Intl.resolvedOptions() contradicted navigator.language on any host
+     /// whose OS locale is not en-US. The pinned default must win.
