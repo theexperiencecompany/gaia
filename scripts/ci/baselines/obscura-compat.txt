@@ -27,3 +27,6 @@ https://www.nytimes.com/
 # container itself in Obscura (their 13 "show" toggles vanish) and table parts compute
 # display:block. 16 buttons vs 29-39 in Chrome, by Chrome's layout of the responsive header.
 https://en.wikipedia.org/wiki/Transformer_(deep_learning_architecture)
+# 2026-10-03: both engines get a 202 AWS WAF challenge, whose script reloads into a page
+# variant Amazon picks per load (Obscura 8-10 buttons; Chrome 8-20 across runs).
+https://www.amazon.com/
