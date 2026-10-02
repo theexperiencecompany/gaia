@@ -182,11 +182,38 @@ async def await_result_unclaimed(job_id: str) -> None:
 
 
 async def claim_result_delivery(job_id: str, speaker: ResultSpeaker) -> ResultSpeaker:
-    """Claim the one telling of the job's result for speaker; return who holds it, speaker when this call won."""
+    """Claim the one telling of the job's result for speaker; return who holds it, speaker when this call won.
+
+    A joiner's claim lapses within a lease window until settle_result_claim keeps
+    it: a turn that collected the result has told nobody until its run finishes.
+    """
+    ttl = (
+        BROWSER_JOB_JOINER_LEASE_SECONDS
+        if speaker is ResultSpeaker.JOINER
+        else browser_job_ttl_seconds()
+    )
     holder: str | None = await redis_cache.client.set(
-        _delivered_key(job_id), speaker.value, ex=browser_job_ttl_seconds(), nx=True, get=True
+        _delivered_key(job_id), speaker.value, ex=ttl, nx=True, get=True
     )
     return speaker if holder is None else ResultSpeaker(holder)
+
+
+async def keep_result_claim(job_id: str) -> None:
+    """Re-arm a joiner's claim for another lease window while its run goes on."""
+    await if_held(
+        _delivered_key(job_id),
+        ResultSpeaker.JOINER.value,
+        refresh=BROWSER_JOB_JOINER_LEASE_SECONDS,
+    )
+
+
+async def settle_result_claim(job_id: str, *, told: bool) -> None:
+    """Keep a joiner's claim for good once its run told the user, or give it back to the worker when it did not."""
+    await if_held(
+        _delivered_key(job_id),
+        ResultSpeaker.JOINER.value,
+        refresh=browser_job_ttl_seconds() if told else None,
+    )
 
 
 async def request_job_cancel(job_id: str) -> None:

@@ -39,7 +39,7 @@ from app.services.browser.agent_guidance import (
 from app.services.browser.handoff import reply_address, resolve_handoff
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.job_events import read_cards, read_job_events
-from app.services.browser.job_relay import relay_job_events
+from app.services.browser.job_relay import hold_collected_result, live_run, relay_job_events
 from app.services.browser.job_runner import agent_result_message
 from app.services.browser.jobs import (
     claim_conversation_slot,
@@ -52,6 +52,7 @@ from app.services.browser.jobs import (
     refresh_joiner_lease,
     release_conversation_slot,
     set_latest_job,
+    settle_result_claim,
     take_joiner_lease,
 )
 from app.templates.docstrings.browser_tool_docs import (
@@ -318,7 +319,7 @@ async def wait_for_browser_task(
     finally:
         # The worker stays silent while this lease is held, so a leaked one loses
         # the result entirely -- except on a guidance request, where this same
-        # turn is coming straight back and is still the one joined.
+        # turn is coming straight back, or a collected result, held until its run ends.
         if not keep_lease:
             await drop_joiner_lease(job_id, stream_id)
 
@@ -374,7 +375,14 @@ async def _collect(job_id: str, state: BrowserJobState, stream_id: str) -> _Join
     if stream_id and state.relay_stream_id != stream_id:
         for card in await read_cards(job_id):
             await publish_to_stream(stream_id, card)
-    return _JoinOutcome(state.agent_message)
+    run = live_run(stream_id)
+    if run is None:
+        # No run goes on past this answer: returning it is the telling.
+        await settle_result_claim(job_id, told=True)
+        return _JoinOutcome(state.agent_message)
+    # Told only once this turn's run has finished; until then the worker waits on it.
+    spawn_logged_task("browser_result_hold", hold_collected_result(job_id, stream_id, run))
+    return _JoinOutcome(state.agent_message, keep_lease=True)
 
 
 @tool

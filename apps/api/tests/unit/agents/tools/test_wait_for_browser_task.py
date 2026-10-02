@@ -9,6 +9,11 @@ import fakeredis.aioredis
 from langchain_core.runnables.config import RunnableConfig
 import pytest
 
+from app.agents.core.background.session import (
+    get_or_create_session,
+    signal_executor_done,
+    teardown_session,
+)
 from app.agents.tools import browser_tool as tool_mod
 from app.agents.tools.browser_tool import wait_for_browser_task
 from app.constants.browser import (
@@ -24,6 +29,7 @@ from app.services.browser import job_events as job_events_mod
 from app.services.browser.agent_guidance import put_guidance_request
 from app.services.browser.job_events import JOB_TERMINAL_FRAME, publish_job_event
 from app.services.browser.jobs import (
+    await_result_unclaimed,
     claim_conversation_slot,
     claim_result_delivery,
     joiner_lease_held,
@@ -106,6 +112,26 @@ async def test_a_run_that_ends_while_joined_is_collected_at_its_end_and_told_by_
     assert await asyncio.wait_for(joining, timeout=2) == ANSWER
     assert await claim_result_delivery("job-1", ResultSpeaker.WORKER) is ResultSpeaker.JOINER
     assert await joiner_lease_held("job-1") is False
+
+
+@pytest.mark.parametrize(
+    ("run_failed", "teller"), [(False, ResultSpeaker.JOINER), (True, ResultSpeaker.WORKER)]
+)
+async def test_a_collected_result_is_this_turns_to_tell_only_once_its_run_has_finished(
+    run_failed: bool, teller: ResultSpeaker
+) -> None:
+    """A turn that collects the answer and then dies has told nobody: the worker must still tell it."""
+    get_or_create_session("s1")
+    try:
+        await _finish()
+        assert await _join() == ANSWER
+
+        signal_executor_done("s1", failed=run_failed)
+        await asyncio.wait_for(await_result_unclaimed("job-1"), timeout=2)
+
+        assert await claim_result_delivery("job-1", ResultSpeaker.WORKER) is teller
+    finally:
+        teardown_session("s1")
 
 
 async def test_a_join_cut_off_mid_wait_lets_go_of_the_result(
