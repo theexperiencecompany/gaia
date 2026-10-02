@@ -14,6 +14,7 @@ from app.agents.prompts.todo_prompts import (
 from app.agents.templates.mail_templates import message_view_needs_body
 from app.agents.tools.coding.query_json_tool import query_json
 from app.constants import agents as agent_constants, todos as todo_constants
+from app.constants.email import DEFAULT_SUMMARY_FIELDS
 from app.constants.todos import INBOX_DESK_TITLE, NEEDS_REPLY_LABEL, WAITING_FOR_REPLY_LABEL
 from app.models.composio_schemas.gmail import FetchMessagesInput
 from app.models.todo_models import TodoModel
@@ -123,6 +124,40 @@ def test_the_thread_state_is_this_todos_label_never_a_gmail_label() -> None:
     assert "Never create, apply or remove Gmail labels" in guidance
     assert "update_tracked_todo labels" in guidance
     assert "set the label to match" not in guidance
+
+
+def _thread_guidance() -> str:
+    return GMAIL_THREAD_RUN_GUIDANCE.format(ref_id="18c2f0a9b7d4e611")
+
+
+@pytest.mark.regression
+def test_the_fetched_thread_beats_the_canvas_on_whether_a_draft_still_exists() -> None:
+    """Regression: a run reported a draft the user had deleted in Gmail, trusting its canvas."""
+    guidance = _thread_guidance()
+
+    assert "The thread as fetched is the truth and canvas.md only your notes" in guidance
+    assert 'a message whose labels include "DRAFT"' in guidance
+    assert "labels" in DEFAULT_SUMMARY_FIELDS
+
+
+@pytest.mark.regression
+def test_a_vanished_draft_is_sent_when_the_user_wrote_since_and_discarded_otherwise() -> None:
+    guidance = _thread_guidance()
+
+    assert (
+        "If the thread has a message from the user dated after that draft was saved, they "
+        "sent it, so re-classify."
+    ) in guidance
+    assert 'Otherwise they discarded it: record "draft discarded by the user <date>"' in guidance
+    assert "the draft id with the date it was saved" in guidance
+
+
+@pytest.mark.regression
+def test_a_discarded_nudge_is_not_drafted_again_for_the_same_follow_up() -> None:
+    guidance = _thread_guidance()
+
+    assert "draft no nudge for that follow-up" in guidance
+    assert "unless Current State says the user discarded the nudge for it" in guidance
 
 
 def test_standing_rules_beat_observations_and_both_beat_the_defaults() -> None:
