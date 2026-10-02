@@ -17,7 +17,15 @@ from types import SimpleNamespace
 from typing import Any, ClassVar
 from unittest.mock import MagicMock
 
-from browser_use.agent.views import AgentState
+from browser_use.agent.views import (
+    ActionResult,
+    AgentHistory,
+    AgentHistoryList,
+    AgentOutput,
+    AgentState,
+)
+from browser_use.browser.views import BrowserStateHistory
+from browser_use.tools.registry.views import ActionModel
 import pytest
 
 from app.constants.browser import (
@@ -44,7 +52,12 @@ from app.schemas.browser import (
     GuidanceElement,
 )
 from app.services.browser import agent_run as agent_run_mod
-from app.services.browser.agent_run import STEP_ERROR_CAPTION, AgentRunSetup, BrowserAgentRun
+from app.services.browser.agent_run import (
+    STEP_ERROR_CAPTION,
+    AgentRunSetup,
+    BrowserAgentRun,
+    found_in_history,
+)
 from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserUnavailableError
 from app.services.browser.jev import loop as loop_mod
 from app.services.browser.jev.decision import GENERATE
@@ -1260,3 +1273,35 @@ class TestGuidance:
 
         assert await harness.run._guidance("stuck") == BROWSER_NO_GUIDANCE_AVAILABLE
         assert asked == []
+
+
+class _Actions(ActionModel):
+    """Two of Browser-Use's actions, as an agent step names them."""
+
+    extract: dict[str, str] | None = None
+    click: dict[str, int] | None = None
+
+
+def _did(memory: str | None, *acts: tuple[str, dict[str, Any], ActionResult]) -> AgentHistory:
+    return AgentHistory(
+        model_output=AgentOutput(
+            memory=memory, action=[_Actions(**{name: params}) for name, params, _ in acts]
+        ),
+        result=[result for _, _, result in acts],
+        state=BrowserStateHistory(url="", title="", tabs=[], interacted_element=[]),
+    )
+
+
+def test_what_a_run_found_is_each_page_it_read_and_its_last_note() -> None:
+    read = ("extract", {"query": "price"}, ActionResult(extracted_content="Price: $12"))
+    failed = ("extract", {"query": "x"}, ActionResult(error="no page", extracted_content="?"))
+    clicked = ("click", {"index": 3}, ActionResult(extracted_content="Clicked Next"))
+    history = AgentHistoryList(
+        history=[
+            _did("Opened the shop.", read, clicked),
+            _did("Price is $12; reviews next.", failed),
+            _did(None, clicked),
+        ]
+    )
+
+    assert found_in_history(history) == ["Price: $12", "Price is $12; reviews next."]

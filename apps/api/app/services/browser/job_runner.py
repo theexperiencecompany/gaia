@@ -848,16 +848,7 @@ async def _run_job(request: BrowserJobRequest, emitter: ProgressEmitter) -> Brow
                     note=emitter.note,
                     request_guidance=partial(_run_guidance, job=request),
                 ),
-                config=BrowserRunConfig(
-                    max_steps=settings.BROWSER_USE_MAX_STEPS,
-                    max_actions_per_step=settings.BROWSER_USE_MAX_ACTIONS_PER_STEP,
-                    task_timeout_seconds=settings.BROWSER_USE_TASK_TIMEOUT_SECONDS,
-                    step_timeout_seconds=settings.BROWSER_USE_STEP_TIMEOUT_SECONDS,
-                    handoff_timeout_seconds=settings.BROWSER_USE_HANDOFF_TIMEOUT_SECONDS,
-                    stream_screenshots=settings.BROWSER_USE_STREAM_SCREENSHOTS,
-                    solve_captcha=settings.BROWSER_USE_SOLVE_CAPTCHA,
-                    start_url=request.start_url or None,
-                ),
+                config=BrowserRunConfig.from_settings(start_url=request.start_url or None),
                 user_id=request.user_id or None,
                 root_request_id=request.root_request_id,
             )

@@ -18,7 +18,8 @@ from app.constants.browser import (
     BROWSER_AGENT_URL_QUERY_MAX_CHARS,
     BROWSER_DEVICE_SCALE_FACTOR,
     BROWSER_ENGINE_RESUMED_NOTE,
-    BROWSER_TAKEOVER_PREAMBLE,
+    BROWSER_HUMAN_CHECKS,
+    BROWSER_TASK_QUOTE_RULE,
     BROWSER_VIEWPORT_HEIGHT,
     BROWSER_VIEWPORT_WIDTH,
     JEV_FIRST_BURST_DONE_WHEN,
@@ -79,7 +80,7 @@ def agent_options(
     return AgentOptions(
         # A resumed agent read its own "switch to the full browser" in its history,
         # and asked again: the request it reads every step says the move is done.
-        task=task + (secrets.mask(moved) if resumed else "") + BROWSER_TAKEOVER_PREAMBLE,
+        task=task + (secrets.mask(moved) if resumed else "") + BROWSER_TASK_QUOTE_RULE,
         # A resumed run's session already opened its last page; reopening the task's
         # first URL lost that page and the agent's place.
         directly_open_url=not resumed,
@@ -99,9 +100,9 @@ def agent_options(
         ),
         sensitive_data=secrets.sensitive_data() or None,
         extend_system_message=(
-            BROWSER_AGENT_ROLE + BROWSER_AGENT_FAST_ENGINE_NOTE
-            if fast_engine
-            else BROWSER_AGENT_ROLE
+            BROWSER_AGENT_ROLE
+            + BROWSER_HUMAN_CHECKS
+            + (BROWSER_AGENT_FAST_ENGINE_NOTE if fast_engine else "")
         ),
         # The agent reads the page as text; screenshots go to the user's cards, not the model.
         use_vision=False,

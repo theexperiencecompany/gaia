@@ -35,6 +35,7 @@ from app.constants.browser import (
     BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS,
     BROWSER_GUIDANCE_RECENT_ACTIONS,
     BROWSER_NO_GUIDANCE_AVAILABLE,
+    BROWSER_RUN_FOUND_MAX_CHARS,
     BROWSER_TAKEOVER_DONE_NOTE,
     BrowserRunFailure,
     EngineSwitchReason,
@@ -75,6 +76,7 @@ from app.services.browser.run_contract import (
 from app.services.browser.session import BrowserHostSession
 from app.services.browser.stalled_loads import StalledLoads
 from app.services.browser.tools import build_browser_tools
+from app.services.browser.user_sites import UserSites
 from shared.py.wide_events import log
 
 # Attributes worth naming an otherwise-unlabelled control by, in the order a
@@ -84,6 +86,8 @@ _LABEL_ATTRIBUTES = ("aria-label", "value", "title", "placeholder", "alt", "name
 _OUTPUT_MAX_CHARS = 1000
 #: Browser-Use's typing action.
 _INPUT_ACTION = "input"
+#: The action whose results are what the agent read off pages: what a stopped run had found.
+_READ_ACTION = "extract"
 
 #: Caption for a step that failed before it picked an action to describe.
 STEP_ERROR_CAPTION = "That step failed"
@@ -190,6 +194,22 @@ def outcome_from_history(history: AgentHistoryList[BaseModel]) -> tuple[bool, st
     final = history.final_result()
     success = bool(history.is_done() and history.is_successful() is not False)
     return success, final
+
+
+def found_in_history(history: AgentHistoryList[BaseModel]) -> list[str]:
+    """Return what the agent gathered: each page it read, and its last note on its progress."""
+    reads = [
+        result.extracted_content[:BROWSER_RUN_FOUND_MAX_CHARS]
+        for item in history.history
+        if item.model_output is not None
+        for action, result in zip(item.model_output.action, item.result, strict=False)
+        if _READ_ACTION in action.model_dump(exclude_none=True)
+        and result.extracted_content
+        and not result.error
+    ]
+    notes = [item.model_output.memory for item in history.history if item.model_output]
+    last = next((note for note in reversed(notes) if note), None)
+    return [*reads, last[:BROWSER_RUN_FOUND_MAX_CHARS]] if last else reads
 
 
 def failure_from_history(
@@ -341,6 +361,7 @@ class BrowserAgentRun:
             )
             tools = build_browser_tools(
                 solve_captcha=self._config.solve_captcha,
+                user_sites=UserSites(task, self._config.start_url, self._secrets.sites),
                 handle_takeover=self._takeover,
                 handle_guidance=self._guidance,
                 handle_engine_switch=switch_engine,
@@ -382,6 +403,12 @@ class BrowserAgentRun:
     def stop(self) -> None:
         if self._agent is not None:
             self._agent.stop()
+
+    def found(self) -> list[str]:
+        """Return what the agent gathered so far, redacted; empty before it is built."""
+        if self._agent is None:
+            return []
+        return [self._secrets.redact(text) for text in found_in_history(self._agent.history)]
 
     async def connection_answers(self) -> bool:
         """Whether the run's own CDP connection answers a bounded read; True before it opens."""

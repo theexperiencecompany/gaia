@@ -155,7 +155,7 @@ class BrowserLoginSource(StrEnum):
     IMPORT = "import"
 
 
-# Defined here rather than beside JevOperation because BROWSER_TAKEOVER_PREAMBLE
+# Defined here rather than beside JevOperation because BROWSER_HUMAN_CHECKS
 # below interpolates it at import time.
 class BrowserHandoffAction(StrEnum):
     """The actions GAIA registers with Browser-Use to hand a step off: two to the human, one to the agent that started the run."""
@@ -361,39 +361,38 @@ BROWSER_LOAD_UNFINISHED_NOTE = (
 # The longest one model call may take; Browser-Use's 75 s default cut off decisions on slow pages.
 BROWSER_AGENT_LLM_TIMEOUT_SECONDS = 180
 
-# Appended to every browser task so the agent uses the takeover action instead
-# of doing sensitive steps itself.
-BROWSER_TAKEOVER_PREAMBLE = (
-    "\n\nIMPORTANT: For a payment, a login whose credentials this task does not give as "
-    "<secret>name</secret> placeholders, an OTP/2FA code, or an irreversible or "
-    "legally-binding confirmation the task did not ask for, do NOT do it yourself. Call the "
-    f"`{BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER}` action so the user completes that step in the "
-    "live browser, then continue toward the goal. A login whose credentials the task gives "
-    "is done by the run itself, never handed over.\n"
-    "If you encounter a CAPTCHA, reCAPTCHA, hCaptcha, or an 'I'm not a robot' / "
-    "image-grid challenge, do NOT attempt to solve it yourself. When the task cannot be "
-    f"done without passing it, call the `{BrowserHandoffAction.SOLVE_CAPTCHA_WITH_HELP}` action "
-    "on the FIRST challenge so the user solves it in the live browser, then continue. When "
-    "the blocked page is only one of several sources the task can use, skip it, carry on "
-    "with the others, and say which page could not be opened. Never keep clicking "
-    "challenge tiles.\n"
-    # The human's part of a login should be only the secret part.
-    "Before you hand off a login, first fill every NON-secret field you can "
-    "yourself: username, email, the account identifier, so the takeover leaves "
-    "the user only the secret step (password, OTP, 2FA). Then hand off.\n"
+# The one statement of what goes to the user, in the agent's system message beside its role.
+BROWSER_HUMAN_CHECKS = (
+    "\nSteps that are the user's, never yours:\n"
+    "- A payment, a login whose credentials this task does not give as <secret>name</secret> "
+    "placeholders, an OTP/2FA code, or an irreversible or legally-binding confirmation the "
+    f"task did not ask for: call `{BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER}` so the user "
+    "does that step in the live browser, then continue toward the goal. A login whose "
+    "credentials the task gives is done by the run itself, never handed over. Before you hand "
+    "off a login, fill every non-secret field yourself (username, email, the account "
+    "identifier), so the user is left only the secret step.\n"
+    "- A CAPTCHA, reCAPTCHA, hCaptcha, an 'I'm not a robot' or image-grid challenge, or any "
+    f"other bot check: call `{BrowserHandoffAction.SOLVE_CAPTCHA_WITH_HELP}` on the first one "
+    "and do what its result says. Never try to solve one yourself or click challenge tiles.\n"
     # Measured on a real investor-application form: given only a name and email,
-    # the agent invented a phone number and country and reported the form as
-    # correctly filled, fabricated data submitted under the user's name.
-    "NEVER invent a value for a field the task did not give you. No made-up phone "
-    "numbers, addresses, dates, amounts, countries or company details, and no "
-    "plausible-looking placeholder. If a field you cannot leave empty has no value "
-    f"in the task, call `{BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER}` and say which field is missing. "
-    "The one exception is when the task itself says the run is a test or that dummy "
-    "values are fine.\n"
-    # The agent reported only "Received!" for a page whose heading is "Form submitted"
-    # in about a third of runs while this sat in the system prompt.
-    "When you report what a page shows, says or displays, quote all of its visible text that "
-    "answers that, the page's heading included: a result page's title and its message."
+    # the agent invented a phone number and country and reported the form as filled.
+    "- A field you cannot leave empty that the task gives no value for: NEVER invent one (no "
+    "made-up phone numbers, addresses, dates, amounts, countries or company details, and no "
+    f"plausible-looking placeholder). Call `{BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER}` "
+    "and say which field is missing, unless the task itself says the run is a test or that "
+    "dummy values are fine."
+)
+# Read with the task, not the system message: there the agent reported only "Received!" for a
+# page whose heading is "Form submitted" in about a third of runs.
+BROWSER_TASK_QUOTE_RULE = (
+    "\n\nWhen you report what a page shows, says or displays, quote all of its visible text "
+    "that answers that, the page's heading included: a result page's title and its message."
+)
+#: What the agent reads when a bot check blocks a site the user never named: skip it, no pause.
+BROWSER_CAPTCHA_SKIP_SOURCE = (
+    "{host} shows a bot check, and it is not a site the task names, so it is not put to the "
+    "user. Skip this source, carry on with the others, and say in your answer that {host} "
+    "could not be opened."
 )
 
 # The agent's role around Jev, appended to Browser-Use's system prompt.
@@ -426,8 +425,7 @@ BROWSER_AGENT_ROLE = (
     "returns every match), never count by eye.\n"
     "Work through every part of the task before you finish: a part is reported as not done "
     "only after you tried it and it could not be done.\n"
-    "Logins without given credentials, payments, OTPs and CAPTCHAs go to the user through "
-    "the handoff actions. Messages the user sends mid-task arrive as follow-up requests: "
+    "Messages the user sends mid-task arrive as follow-up requests: "
     "weigh what each says against the task; it changes the task only where it says so."
 )
 
@@ -460,6 +458,10 @@ BROWSER_RUN_SESSION_LOST_SUMMARY = (
 )
 BROWSER_RUN_DONE_SUMMARY = "Completed the browser task."
 BROWSER_RUN_NOT_DONE_SUMMARY = "Could not complete the browser task."
+#: Added to the summary of a run that ended before the agent answered: what it had gathered.
+BROWSER_RUN_FOUND_NOTE = "\n\nWhat it had found before it stopped:\n{found}"
+#: The most of each read, and of its last note, a stopped run's summary carries.
+BROWSER_RUN_FOUND_MAX_CHARS = 1500
 #: Logged when the agent could not attach to a session the host created: nearly always the CDP proxy.
 BROWSER_CDP_ATTACH_HINT = (
     "Check that the browser host is reachable from the API at BROWSER_HOST_URL."

@@ -2,23 +2,30 @@
 
 Seams the agent reaches for itself: request_human_takeover is the agent's own
 way to pause for the human at a sensitive step (payment, credentials,
-irreversible); solve_captcha_with_help hands a CAPTCHA to the human since there
-is no automatic solver; request_agent_guidance asks the agent that started the
-run, not the user; continue_in_full_browser moves the run to Chrome. On the
-fast engine a CAPTCHA or bot check is first tried in Chrome, which most such
-checks do not stop: only there does it become the user's to pass. Each ends
-its step's action sequence: the page is about to change hands, so an action
-queued behind one would act on a page nobody looked at.
+irreversible); solve_captcha_with_help hands a bot check on a site the user
+named to the human (there is no automatic solver) and tells the agent to skip
+any other site; request_agent_guidance asks the agent that started the run,
+not the user; continue_in_full_browser moves the run to Chrome. On the fast
+engine a named site's bot check is first tried in Chrome, which most such
+checks do not stop. Each ends its step's action sequence: the page is about to
+change hands, so an action queued behind one would act on a page nobody looked at.
+When each is called is stated once, in BROWSER_HUMAN_CHECKS.
 """
 
-from __future__ import annotations
-
+# No `from __future__ import annotations`: Browser-Use reads browser_session's annotation as a type.
 from collections.abc import Awaitable, Callable
+from urllib.parse import urlsplit
 
 from browser_use import Tools
+from browser_use.browser.session import BrowserSession
 from pydantic import BaseModel
 
-from app.constants.browser import EngineSwitchReason, SensitiveCategory
+from app.constants.browser import (
+    BROWSER_CAPTCHA_SKIP_SOURCE,
+    EngineSwitchReason,
+    SensitiveCategory,
+)
+from app.services.browser.user_sites import UserSites
 
 TakeoverFn = Callable[[str, SensitiveCategory], Awaitable[str]]
 AgentGuidanceFn = Callable[[str], Awaitable[str]]
@@ -41,6 +48,7 @@ class TakeoverParams(BaseModel):
 def build_browser_tools(
     *,
     solve_captcha: bool,
+    user_sites: UserSites,
     handle_takeover: TakeoverFn,
     handle_guidance: AgentGuidanceFn,
     handle_engine_switch: EngineSwitchFn | None = None,
@@ -113,20 +121,22 @@ def build_browser_tools(
         # Registered by function name; BrowserHandoffAction.SOLVE_CAPTCHA_WITH_HELP must spell it the same.
         @tools.action(
             description=(
-                "Hand a CAPTCHA to the human to solve in the live browser. Call this "
-                "when you see a CAPTCHA/reCAPTCHA/hCaptcha challenge or a bot check "
-                "('verify you are human', 'one last step'); the user solves it and you "
-                "then continue. In the fast browser it first moves the task to the full "
-                "browser, which most such checks let through, and you continue there "
-                "instead. `challenge` is shown to the user verbatim "
-                "as their instruction, so write it as a short second-person directive "
-                "describing exactly what to solve (e.g. 'Select all squares with "
-                "motorcycles, then click Verify')."
+                "Deal with a CAPTCHA or bot check on the current page. On a site the task "
+                "names, the user solves it in the live browser and you then continue (in "
+                "the fast browser the task first moves to the full browser, which most such "
+                "checks let through). On any other site you are told to skip it. "
+                "`challenge` is shown to the user verbatim as their instruction, so write "
+                "it as a short second-person directive describing exactly what to solve "
+                "(e.g. 'Select all squares with motorcycles, then click Verify')."
             ),
             terminates_sequence=True,
         )
-        async def solve_captcha_with_help(challenge: str) -> str:
-            """Return the CAPTCHA tool: the full browser first from the fast one, else the user in live view."""
+        async def solve_captcha_with_help(challenge: str, browser_session: BrowserSession) -> str:
+            """Return the CAPTCHA tool: a named site's check to the full browser or the user, any other skipped."""
+            url = await browser_session.get_current_page_url()
+            if not user_sites.named(url):
+                host = urlsplit(url).hostname or url
+                return BROWSER_CAPTCHA_SKIP_SOURCE.format(host=host)
             if handle_engine_switch is not None:
                 return await handle_engine_switch(EngineSwitchReason.BOT_CHALLENGE)
             return await handle_takeover(challenge, SensitiveCategory.NONE)
