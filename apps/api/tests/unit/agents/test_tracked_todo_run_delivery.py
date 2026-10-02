@@ -445,7 +445,17 @@ class TestAFinishedRunIsNeverRunAgainForItsDelivery:
         event = recorder.event("executor_run")
         _assert_failed_loudly(event, "todo_run_result_not_delivered", "ConnectionError: redis down")
         [store_failure] = event["warnings"]
-        assert (store_failure["error"], store_failure["error_type"]) == (
+        assert store_failure["msg"].startswith(LogTag.AGENT)
+        assert (
+            store_failure["todo_id"],
+            store_failure["run_id"],
+            store_failure["undone"],
+            store_failure["error"],
+            store_failure["error_type"],
+        ) == (
+            TODO_ID,
+            event["stream_id"],
+            "todo_run_result_not_delivered",
             "primary stepped down",
             "PyMongoError",
         )
