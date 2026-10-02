@@ -56,7 +56,11 @@ from app.services.browser.agent_guidance import (
     put_guidance_request,
 )
 from app.services.browser.bot_delivery import BotProgressDelivery
-from app.services.browser.exceptions import BrowserConcurrencyLimit, BrowserUnavailableError
+from app.services.browser.exceptions import (
+    BrowserConcurrencyLimit,
+    BrowserSessionGone,
+    BrowserUnavailableError,
+)
 from app.services.browser.fingerprint import reset_fingerprint_seed, set_fingerprint_seed
 from app.services.browser.handoff import (
     await_handoff,
@@ -423,8 +427,10 @@ async def _run_handoff(
     handoff_id = uuid.uuid4().hex
     if req.category == SensitiveCategory.CREDENTIALS:
         # Asked to sign in again here, so an earlier "done" did not leave a login to save.
-        page = await host_client.get_session(session.session_id, session.host_url)
-        session.forget_login(page.url)
+        try:
+            session.forget_login(await _page_url(session))
+        except BrowserSessionGone:
+            return HandoffOutcome(status=HandoffStatus.FAILED, cause=EngineFailure.SESSION_GONE)
     await create_pending_handoff(
         handoff_id,
         request.user_id,
@@ -451,16 +457,41 @@ async def _run_handoff(
         raise
     finally:
         watch.cancel()
+    if outcome.status == HandoffStatus.COMPLETED and req.category == SensitiveCategory.CREDENTIALS:
+        outcome = await _mark_signed_in(session, outcome)
     log.set_ns(
         "browser",
         handoff_kind=HandoffKind.USER.value,
         handoff_category=req.category.value,
         handoff_result=outcome.status.value,
     )
-    if outcome.status == HandoffStatus.COMPLETED and req.category == SensitiveCategory.CREDENTIALS:
-        page = await host_client.get_session(session.session_id, session.host_url)
-        session.mark_authenticated(page.url)
     await emit(_handoff_snapshot(handoff_id, req, session, outcome.status))
+    return outcome
+
+
+async def _page_url(session: BrowserHostSession) -> str | None:
+    """Return the page the session shows now; raises BrowserSessionGone, marking it gone, once the host has lost it."""
+    try:
+        page = await host_client.get_session(session.session_id, session.host_url)
+    except BrowserSessionGone:
+        session.gone.set()
+        raise
+    return page.url
+
+
+async def _mark_signed_in(session: BrowserHostSession, outcome: HandoffOutcome) -> HandoffOutcome:
+    """Record the site the user said they signed in on, so its login is saved; a lost browser ends the handoff with it."""
+    try:
+        session.mark_authenticated(await _page_url(session))
+    except BrowserSessionGone:
+        return HandoffOutcome(status=HandoffStatus.FAILED, cause=EngineFailure.SESSION_GONE)
+    except BrowserUnavailableError as exc:
+        # The run goes on; with the site unknown, no login is saved for it.
+        log.warning(
+            f"{LogTag.BROWSER} Could not read where the user signed in; their login is not saved",
+            error_type=type(exc).__name__,
+            browser={"session_id": session.session_id, "operation": "mark_signed_in"},
+        )
     return outcome
 
 

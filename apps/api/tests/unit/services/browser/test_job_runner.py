@@ -47,7 +47,11 @@ from app.schemas.browser import (
 from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJobStatus
 from app.services.analytics_service import AnalyticsEvents
 from app.services.browser import job_runner as jr
-from app.services.browser.exceptions import BrowserConcurrencyLimit, BrowserUnavailableError
+from app.services.browser.exceptions import (
+    BrowserConcurrencyLimit,
+    BrowserSessionGone,
+    BrowserUnavailableError,
+)
 from app.services.browser.fingerprint import current_fingerprint_seed, seed_for_user
 from app.services.browser.jev.secrets import RunSecrets, SecretWithheld
 from app.services.browser.job_events import JOB_GUIDANCE_FRAME, JOB_TERMINAL_FRAME
@@ -1419,6 +1423,70 @@ async def test_a_completed_login_takeover_marks_the_session_worth_saving(
     h.session.forget_login.assert_called_once_with("https://site.example/login")
     # Saved under the site signed in to, which a run with no start URL has no other way to know.
     h.session.mark_authenticated.assert_called_once_with("https://site.example/account")
+
+
+@pytest.mark.parametrize(
+    ("host_says", "ends"),
+    [
+        (
+            BrowserSessionGone("gone"),
+            HandoffOutcome(status=HandoffStatus.FAILED, cause=EngineFailure.SESSION_GONE),
+        ),
+        (BrowserUnavailableError("503"), HandoffOutcome(status=HandoffStatus.COMPLETED)),
+    ],
+)
+async def test_a_sign_in_whose_page_cannot_be_read_still_settles_its_card_and_saves_nothing(
+    monkeypatch: pytest.MonkeyPatch, host_says: Exception, ends: HandoffOutcome
+) -> None:
+    """The user did their part: a browser the host lost ends the run lost, an unreadable one goes on unsaved."""
+    outcomes: list[HandoffOutcome] = []
+
+    async def body(h: Harness) -> BrowserResultSnapshot:
+        outcomes.append(
+            await h.request_handoff(
+                HandoffRequest(category=SensitiveCategory.CREDENTIALS, reason="log in")
+            )
+        )
+        return _result(BrowserSessionStatus.COMPLETED, True, "done")
+
+    h = _install(monkeypatch, run_body=body)
+    get_session = AsyncMock(side_effect=[MagicMock(url="https://site.example/login"), host_says])
+    monkeypatch.setattr(jr.host_client, "get_session", get_session)
+
+    await _run(h, _request(task="x"))
+
+    assert outcomes == [ends]
+    handoff_cards = [card for card in h.cards if card["kind"] == "handoff"]
+    assert [card["status"] for card in handoff_cards] == ["pending", ends.status.value]
+    h.session.mark_authenticated.assert_not_called()
+    assert h.session.gone.is_set() is (ends.status is HandoffStatus.FAILED)
+
+
+async def test_a_sign_in_asked_for_in_a_browser_already_lost_never_reaches_the_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    outcomes: list[HandoffOutcome] = []
+
+    async def body(h: Harness) -> BrowserResultSnapshot:
+        outcomes.append(
+            await h.request_handoff(
+                HandoffRequest(category=SensitiveCategory.CREDENTIALS, reason="log in")
+            )
+        )
+        return _result(BrowserSessionStatus.COMPLETED, True, "done")
+
+    h = _install(monkeypatch, run_body=body)
+    monkeypatch.setattr(
+        jr.host_client, "get_session", AsyncMock(side_effect=BrowserSessionGone("gone"))
+    )
+
+    await _run(h, _request(task="x"))
+
+    assert outcomes == [
+        HandoffOutcome(status=HandoffStatus.FAILED, cause=EngineFailure.SESSION_GONE)
+    ]
+    assert (h.handoffs_created, [c for c in h.cards if c["kind"] == "handoff"]) == ([], [])
+    assert h.session.gone.is_set()
 
 
 @pytest.mark.parametrize(
