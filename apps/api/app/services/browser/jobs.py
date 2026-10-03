@@ -26,6 +26,7 @@ from app.constants.browser import (
     BROWSER_JOB_WAKE_KEY,
     JobEnding,
 )
+from app.constants.hil import EXECUTOR_INBOX_TTL
 from app.db.redis import redis_cache
 from app.models.agent_models import InboxEntry
 from app.schemas.browser_job import (
@@ -226,7 +227,7 @@ async def record_ending(
                 landing.inbox.stage_append(pipe, landing.entry)
             if landing is not None and landing.wake is not None:
                 pipe.hset(BROWSER_JOB_WAKE_KEY, job_id, landing.wake.model_dump_json())
-                pipe.expire(BROWSER_JOB_WAKE_KEY, browser_job_ttl_seconds())
+                pipe.expire(BROWSER_JOB_WAKE_KEY, EXECUTOR_INBOX_TTL)
             try:
                 await pipe.execute()
             except WatchError:
@@ -251,6 +252,15 @@ async def landed_wake(job_id: str) -> BrowserJobWake | None:
     """Return the job's result waiting to be told, or None when there is none."""
     raw = await redis_cache.client.hget(BROWSER_JOB_WAKE_KEY, job_id)
     return BrowserJobWake.model_validate_json(raw) if raw is not None else None
+
+
+async def keep_wakes() -> None:
+    """Keep every result still to be told for as long as its inbox entry lives, from now.
+
+    A run parked on an approval re-arms its inbox when it parks; the sweep re-arms
+    these with it, so the record that wakes a reader never lapses before the entry.
+    """
+    await redis_cache.client.expire(BROWSER_JOB_WAKE_KEY, EXECUTOR_INBOX_TTL)
 
 
 async def forget_wake(job_id: str) -> None:

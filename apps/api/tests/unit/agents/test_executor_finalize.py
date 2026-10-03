@@ -34,6 +34,7 @@ from app.agents.core.background.executor_capture import (
     drain_executor_tool_data,
     teardown_executor_capture,
 )
+from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import (
     PreparedQueuedTask,
     build_lock_value,
@@ -50,7 +51,7 @@ from app.agents.core.background.session import (
 from app.agents.core.nodes import executor_status
 from app.agents.core.subagents.subagent_runner import SubagentExecutionContext, SubagentOutcome
 from app.constants.agents import AgentTag, wrap_agent_payload
-from app.constants.cache import EXECUTOR_BUSY_PREFIX
+from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_INBOX_PREFIX
 from app.constants.executor import (
     EXECUTOR_APPROVAL_LOST_MESSAGE,
     EXECUTOR_CRASH_MESSAGE,
@@ -110,6 +111,7 @@ class _Boundaries:
         self.read_inbox = AsyncMock(side_effect=lambda: list(self.pending))
         self.inbox_cls.return_value.read = self.read_inbox
         self.inbox_cls.return_value.retire = AsyncMock()
+        self.inbox_cls.return_value.keep_for = AsyncMock()
         self.prepare = stack.enter_context(
             patch.object(er, "prepare_run_from_item", new_callable=AsyncMock, return_value=None)
         )
@@ -992,6 +994,8 @@ class TestTerminalRunMetrics:
         )
 
 
+# A park re-arms the inbox in Redis: a per-test one, never the ambient client.
+@pytest.mark.usefixtures("fake_redis")
 class TestFinalizePausedRun:
     """A HIL pause holds the lock and signals the stream.
 
@@ -1024,6 +1028,21 @@ class TestFinalizePausedRun:
         # A successful extend is not a warning: the orphan warning is for the
         # losing branch only.
         mock_log.warning.assert_not_called()
+
+    async def test_work_waiting_for_a_parked_run_outlives_the_park(self, fake_redis) -> None:
+        """A result handed over just before the park is read when the run resumes, hours later."""
+        inbox_key = f"{EXECUTOR_INBOX_PREFIX}conv-1"
+        await ExecutorInbox("conv-1").append("e1", "the answer", AgentTag.BROWSER_RESULT)
+        await fake_redis.expire(inbox_key, 60)
+        with (
+            patch.object(er, "extend_lock_if_owned", AsyncMock(return_value=True)),
+            patch.object(er, "signal_executor_done"),
+            patch.object(er, "_close_queued_stream", AsyncMock()),
+        ):
+            await er._finalize_paused_run(_run(RunKind.QUEUED))
+
+        assert await fake_redis.ttl(inbox_key) > HIL_PAUSED_LOCK_TTL_SECONDS - 5
+        assert [entry.id for entry in await ExecutorInbox("conv-1").read()] == ["e1"]
 
     async def test_a_pause_that_lost_its_lock_says_the_approval_may_be_orphaned(self) -> None:
         run = _run(RunKind.QUEUED)

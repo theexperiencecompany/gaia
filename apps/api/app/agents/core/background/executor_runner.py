@@ -576,6 +576,8 @@ async def _finalize_paused_run(run: ExecutorRun) -> None:
         build_lock_value(run.stream_id, run.task_id or ""),
         HIL_PAUSED_LOCK_TTL_SECONDS,
     )
+    # Work handed over until the resume must still be there when it reads.
+    await ExecutorInbox(run.conversation_id).keep_for(HIL_PAUSED_LOCK_TTL_SECONDS)
     if not await extend_lock_if_owned(
         run.conversation_id, run.stream_id, run.task_id, HIL_PAUSED_LOCK_TTL_SECONDS
     ):

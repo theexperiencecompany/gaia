@@ -210,7 +210,6 @@ EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS = 30
 # Pending messages for a conversation's executor (see executor_channel). Not a
 # queue of runs: an entry is text some executor run will read into its history.
 EXECUTOR_INBOX_PREFIX = "executor:inbox:"
-EXECUTOR_INBOX_TTL = ONE_HOUR_TTL  # Unread work expires after an hour
 # Per-subagent mailbox (see subagent_channel). Keyed by the subagent's own
 # thread_id, written ONLY by the executor's message_subagent tool, drained by
 # that subagent's own pre-model hook — never a broadcast, never read by peers.
