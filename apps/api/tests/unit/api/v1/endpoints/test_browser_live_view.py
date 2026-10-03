@@ -320,7 +320,9 @@ async def test_a_refused_socket_is_closed_as_a_policy_violation_unopened(
 
     assert (viewer.accepted, viewer.close_code) == (False, status.WS_1008_POLICY_VIOLATION)
     assert host.dialed == []
-    assert event["warnings"][-1]["reason"] == "Not authorized for this session"
+    (refusal,) = event["warnings"]
+    assert "refused" in refusal["msg"]
+    assert refusal["reason"] == "Not authorized for this session"
 
 
 async def test_a_session_with_no_host_stream_closes_as_gone(
@@ -388,7 +390,9 @@ async def test_an_unreachable_host_closes_the_viewer(
         )
 
     assert viewer.accepted and viewer.close_code is not None
-    assert event["warnings"][-1]["error_type"] == "OSError"
+    (unreachable,) = event["warnings"]
+    assert "unreachable" in unreachable["msg"]
+    assert unreachable["error_type"] == "OSError"
 
 
 async def test_a_viewer_gone_mid_frame_ends_the_proxy_without_an_error(
