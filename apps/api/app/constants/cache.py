@@ -196,6 +196,13 @@ BOT_UPGRADE_LINK_TTL = ONE_HOUR_TTL
 
 EXECUTOR_BUSY_PREFIX = "executor:busy:"
 EXECUTOR_BUSY_TTL = THIRTY_MINUTES_TTL
+# The busy lock's holder renews this while its process lives (a parked run holds it as long
+# as its park): a lock without it is a run that died, reclaimable by whoever must start one.
+EXECUTOR_ALIVE_PREFIX = "executor:alive:"
+EXECUTOR_ALIVE_TTL = 60
+EXECUTOR_ALIVE_BEAT_SECONDS = 20
+# A lock this young may be a run between taking it and its first beat: never reclaimed.
+EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS = 30
 # Pending messages for a conversation's executor (see executor_channel). Not a
 # queue of runs: an entry is text some executor run will read into its history.
 EXECUTOR_INBOX_PREFIX = "executor:inbox:"

@@ -26,7 +26,13 @@ from app.agents.core.background.session import (
     create_session,
     teardown_session,
 )
-from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_BUSY_TTL
+from app.constants.cache import (
+    EXECUTOR_ALIVE_PREFIX,
+    EXECUTOR_ALIVE_TTL,
+    EXECUTOR_BUSY_PREFIX,
+    EXECUTOR_BUSY_TTL,
+    EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
+)
 from app.constants.log_tags import LogTag
 from app.constants.streaming import WS_EVENT_EXECUTOR_STREAM_STARTED, DetachedStreamKind
 from app.core.stream_manager import StreamManager
@@ -209,6 +215,42 @@ async def get_lock_holder(conversation_id: str) -> str | None:
         return None
     raw = await redis_cache.client.get(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
     return None if raw is None else decode_raw_item(raw)
+
+
+async def hold_run_alive(
+    conversation_id: str, lock_value: str, ttl_seconds: int = EXECUTOR_ALIVE_TTL
+) -> None:
+    """Say the run holding lock_value lives, for ttl_seconds: what tells a busy lock from a dead one."""
+    if redis_cache.client:
+        await redis_cache.client.set(
+            f"{EXECUTOR_ALIVE_PREFIX}{conversation_id}", lock_value, ex=ttl_seconds
+        )
+
+
+async def reclaim_dead_lock(conversation_id: str) -> bool:
+    """Free a busy lock whose run died with its process; return whether no run holds the lock now.
+
+    Dead takes evidence: the holder's liveness lapsed, and the lock is older than
+    a run takes to start beating. Compare-and-delete, so a live re-acquire stands.
+    """
+    holder = await get_lock_holder(conversation_id)
+    if holder is None:
+        return True
+    if not redis_cache.client:
+        return False
+    alive = await redis_cache.client.get(f"{EXECUTOR_ALIVE_PREFIX}{conversation_id}")
+    if alive is not None and decode_raw_item(alive) == holder:
+        return False
+    remaining = await redis_cache.client.ttl(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
+    # Every lock this code takes expires: one without a TTL has no age to judge it by.
+    if remaining < 0 or EXECUTOR_BUSY_TTL - remaining < EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS:
+        return False
+    log.warning(
+        f"{LogTag.AGENT} Reclaimed the busy lock of an executor run that died",
+        conversation_id=conversation_id,
+        holder=holder,
+    )
+    return await break_holder_lock(conversation_id, holder)
 
 
 async def is_executor_busy(conversation_id: str) -> bool:

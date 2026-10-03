@@ -402,7 +402,7 @@ async def test_a_login_is_handed_to_the_user_and_then_reused_without_asking_agai
     reuse = await stack.finished(job_id)
     await stack.settled(conversation_id)
 
-    assert reuse.result is not None and reuse.result.success, reuse.result
+    assert reuse.success, reuse
     assert len(dm.matching(_LIVE_LINK.pattern)) == asked_before, "the saved login was not reused"
     assert stack.models.errors == []
 

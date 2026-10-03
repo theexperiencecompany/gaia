@@ -14,6 +14,7 @@ from app.constants.todos import TODO_RUN_FINISH_MAX_TRIES, TODO_RUN_FINISH_TASK
 # custom tools 500 with "Missing user_id in auth_credentials" because the
 # CustomTool user_id-injection patch never loads here.
 import app.patches  # noqa: F401 -- applies monkeypatches on import; must run before the patched SDKs are used
+from app.workers.browser_worker import browser_reaper_cron
 from app.workers.config.worker_settings import WorkerFunction, WorkerSettings
 from app.workers.lifecycle import shutdown, startup
 from app.workers.task_envelope import arq_task
@@ -161,6 +162,9 @@ WorkerSettings.cron_jobs = [
         _sweep_hil_approvals,
         second=0,
     ),
+    # Every few seconds: a browser job whose worker died is ended, and a result no
+    # run was woken for is told, within moments rather than a lock's TTL.
+    browser_reaper_cron(),
     cron(
         _cleanup_expired_reminders,
         hour=0,  # At midnight

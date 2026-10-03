@@ -11,10 +11,12 @@ first use, as in production.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Literal
 
+from arq.worker import Worker
 from fastapi import FastAPI
 import uvicorn
 
@@ -25,7 +27,8 @@ from app.db.rabbitmq import declare_outbound_topology_on_startup
 from app.db.redis import redis_cache
 from app.helpers.lifespan_helpers import init_mongodb_async
 from app.utils.concurrency import capture_running_loop
-from app.workers.browser_worker import build_browser_worker
+from app.workers.browser_worker import browser_reaper_cron, build_browser_worker
+from app.workers.config.worker_settings import WorkerSettings
 from shared.py.wide_events import log
 from tests.integration.real.browser._stack.processes import API_READY_LINE, WORKER_READY_LINE
 
@@ -41,11 +44,21 @@ async def start_app_services(context: Literal["main_app", "arq_worker"]) -> None
 
 
 async def serve_browser_queue() -> None:
-    """Boot the worker's services, then serve the browser queue until killed."""
+    """Boot the worker's services, then serve the browser queue and the main worker's browser reaper until killed.
+
+    Production runs the reaper as one of the main worker's crons; here a main-queue
+    worker with that one cron stands in for it, so a killed worker is made good.
+    """
     await start_app_services("arq_worker")
     worker = build_browser_worker()
+    reaper = Worker(
+        functions=[],
+        cron_jobs=[browser_reaper_cron()],
+        redis_settings=WorkerSettings.redis_settings,
+        handle_signals=False,
+    )
     log.info(WORKER_READY_LINE)
-    await worker.async_run()
+    await asyncio.gather(worker.async_run(), reaper.async_run())
 
 
 @asynccontextmanager

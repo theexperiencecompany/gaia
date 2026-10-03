@@ -52,7 +52,11 @@ def _seams(*, busy: list[bool], started: bool):
     async def _is_busy(conversation_id: str) -> bool:
         return next(answers) if conversation_id == CONVERSATION else False
 
-    stack = patch.object(er, "is_executor_busy", new=_is_busy)
+    async def _free_after_reclaim(conversation_id: str) -> bool:
+        # The post-append check reclaims a dead holder first: free means no run holds it.
+        return not await _is_busy(conversation_id)
+
+    stack = patch.multiple(er, is_executor_busy=_is_busy, reclaim_dead_lock=_free_after_reclaim)
     start = patch.object(er, "_start_executor_run", new_callable=AsyncMock, return_value=started)
     append = patch.object(er.ExecutorInbox, "append", new_callable=AsyncMock)
     return stack, start, append

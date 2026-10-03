@@ -289,11 +289,19 @@ class TestWorkerSettings:
     setup instead of depending on import order (pytest-randomly).
     """
 
+    _WIRED = ("functions", "cron_jobs", "on_startup", "on_shutdown")
+
     def setup_method(self) -> None:
+        # Put back after, or every later test reading app.worker's wiring sees it wiped.
+        self._wired = {name: getattr(WorkerSettings, name) for name in self._WIRED}
         WorkerSettings.functions = []
         WorkerSettings.cron_jobs = []
         WorkerSettings.on_startup = None
         WorkerSettings.on_shutdown = None
+
+    def teardown_method(self) -> None:
+        for name, value in self._wired.items():
+            setattr(WorkerSettings, name, value)
 
     def test_redis_settings_from_dsn(self):
         """redis_settings is populated from the REDIS_URL setting."""

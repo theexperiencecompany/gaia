@@ -34,15 +34,22 @@ from app.agents.core.background.executor_queue import (
     extend_lock_if_owned,
     get_lock_holder,
     get_lock_state,
+    hold_run_alive,
     is_executor_busy,
     parse_lock_value,
     prepare_run_from_item,
+    reclaim_dead_lock,
     release_lock_if_owned,
     safe_configurable,
     try_acquire_lock,
 )
 from app.agents.core.background.session import RunIdentity, RunKind, get_session
-from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_BUSY_TTL
+from app.constants.cache import (
+    EXECUTOR_ALIVE_PREFIX,
+    EXECUTOR_BUSY_PREFIX,
+    EXECUTOR_BUSY_TTL,
+    EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
+)
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable
 from app.models.user_models import AuthenticatedUser
@@ -645,6 +652,51 @@ class TestRunItemCarriesWorkflowExecution:
         assert prepared is not None
         assert prepared.run.workflow_id == "wf-9"
         assert prepared.run.workflow_execution_id == "exec-42"
+
+
+class TestReclaimDeadLock:
+    """A run that died with its process must not hold its conversation for the lock's whole TTL."""
+
+    _OLD = EXECUTOR_BUSY_TTL - EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS
+
+    async def test_a_lock_whose_run_stopped_beating_is_freed(self, redis) -> None:
+        await redis.set(BUSY_KEY, "s1:t1", ex=self._OLD)
+
+        assert await reclaim_dead_lock(CONVERSATION) is True
+        assert await redis.get(BUSY_KEY) is None
+
+    async def test_a_beating_run_keeps_its_lock(self, redis) -> None:
+        await redis.set(BUSY_KEY, "s1:t1", ex=self._OLD)
+        await hold_run_alive(CONVERSATION, "s1:t1")
+
+        assert await reclaim_dead_lock(CONVERSATION) is False
+        assert await redis.get(BUSY_KEY) == "s1:t1"
+
+    async def test_another_runs_beat_does_not_keep_a_dead_holder(self, redis) -> None:
+        await redis.set(BUSY_KEY, "s1:t1", ex=self._OLD)
+        await hold_run_alive(CONVERSATION, "s0:t0")
+
+        assert await reclaim_dead_lock(CONVERSATION) is True
+
+    @pytest.mark.parametrize(
+        "ttl", [EXECUTOR_BUSY_TTL - EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS + 1, None]
+    )
+    async def test_a_lock_too_young_or_without_an_age_is_never_taken(
+        self, redis, ttl: int | None
+    ) -> None:
+        """A run just started has not beaten yet: reclaiming it would run two executors at once."""
+        await redis.set(BUSY_KEY, "s1:t1", ex=ttl)
+
+        assert await reclaim_dead_lock(CONVERSATION) is False
+        assert await redis.get(BUSY_KEY) == "s1:t1"
+
+    async def test_no_lock_is_free(self, redis) -> None:
+        assert await reclaim_dead_lock(CONVERSATION) is True
+
+    async def test_a_parked_runs_liveness_lasts_its_park(self, redis) -> None:
+        await hold_run_alive(CONVERSATION, "s1:t1", 9000)
+
+        assert 8990 < await redis.ttl(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}") <= 9000
 
 
 class TestBreakHolderLock:

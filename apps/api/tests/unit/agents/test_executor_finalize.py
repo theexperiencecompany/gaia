@@ -1001,6 +1001,7 @@ class TestFinalizePausedRun:
     async def _pause(self, *, queued: bool):
         run = replace(_run(RunKind.QUEUED), queued=queued)
         with (
+            patch.object(er, "hold_run_alive", AsyncMock()) as alive,
             patch.object(er, "extend_lock_if_owned", AsyncMock(return_value=True)) as extend,
             patch.object(er, "signal_executor_done") as signal,
             patch.object(er, "_close_queued_stream", AsyncMock()) as close,
@@ -1008,6 +1009,8 @@ class TestFinalizePausedRun:
             patch.object(er, "log") as mock_log,
         ):
             await er._finalize_paused_run(run)
+        # A parked run has no process beating for it: it is alive for as long as its park.
+        alive.assert_awaited_once_with("conv-1", "s1:task-1", HIL_PAUSED_LOCK_TTL_SECONDS)
         return run, extend, signal, close, total, mock_log
 
     async def test_it_extends_the_lock_signals_done_and_counts_paused(self) -> None:

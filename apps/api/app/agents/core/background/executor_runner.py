@@ -13,6 +13,7 @@ The executor:busy Redis key prevents concurrent executor spawns per
 conversation. TTL of 30 minutes is a safety net — released explicitly.
 """
 
+import asyncio
 from dataclasses import dataclass, replace
 import time
 from typing import NamedTuple
@@ -31,11 +32,14 @@ from app.agents.core.background.executor_channel import ExecutorInbox, decide_dr
 from app.agents.core.background.executor_queue import (
     LockClaim,
     PreparedQueuedTask,
+    build_lock_value,
     build_run_item,
     close_detached_stream,
     extend_lock_if_owned,
+    hold_run_alive,
     is_executor_busy,
     prepare_run_from_item,
+    reclaim_dead_lock,
     release_lock_if_owned,
 )
 from app.agents.core.background.redis_writer import make_redis_stream_writer
@@ -55,6 +59,7 @@ from app.agents.core.subagents.subagent_runner import (
     thread_messages,
 )
 from app.constants.agents import NON_WAKING_TAGS, AgentTag
+from app.constants.cache import EXECUTOR_ALIVE_BEAT_SECONDS
 from app.constants.executor import (
     EXECUTOR_APPROVAL_LOST_MESSAGE,
     EXECUTOR_CARRY_TASK,
@@ -149,6 +154,11 @@ async def run_executor_background(
         if executor_user_id:
             capture_event(executor_user_id, AnalyticsEvents.AGENT_RUN_STARTED, run_props)
 
+        lock_value = build_lock_value(run.stream_id, run.task_id or "")
+        await hold_run_alive(run.conversation_id, lock_value)
+        alive = spawn_background_task(
+            _beat_alive(run.conversation_id, lock_value), name="executor_alive_beat"
+        )
         try:
             with span() as elapsed_active:
                 result = await _execute_executor(task, configurable, run, resume)
@@ -187,12 +197,20 @@ async def run_executor_background(
                 result_type=result_type,
             )
         finally:
+            alive.cancel()
             await _finalize_executor_run(run, task, result_text, result_type, run_ctx)
             if resume is not None:
                 # This run held the conversation's resume slot (claimed at dispatch).
                 # Freeing it AFTER finalize means the next decision can dispatch only
                 # once this run's pause/completion bookkeeping is fully written.
                 await release_resume_dispatch(run.conversation_id)
+
+
+async def _beat_alive(conversation_id: str, lock_value: str) -> None:
+    """Renew the run's liveness while its process lives: a run that died stops, and its lock can be reclaimed."""
+    while True:
+        await asyncio.sleep(EXECUTOR_ALIVE_BEAT_SECONDS)
+        await hold_run_alive(conversation_id, lock_value)
 
 
 def _run_props(run: ExecutorRun) -> dict[str, str]:
@@ -563,6 +581,12 @@ async def _finalize_paused_run(run: ExecutorRun) -> None:
     held until resolve_approval resumes this thread. Re-arms the lock's TTL to
     cover the approval window, and still signals SSE so the user sees the approval card.
     """
+    # A parked run has no process to beat for it: it lives as long as its park.
+    await hold_run_alive(
+        run.conversation_id,
+        build_lock_value(run.stream_id, run.task_id or ""),
+        HIL_PAUSED_LOCK_TTL_SECONDS,
+    )
     if not await extend_lock_if_owned(
         run.conversation_id, run.stream_id, run.task_id, HIL_PAUSED_LOCK_TTL_SECONDS
     ):
@@ -729,8 +753,10 @@ async def wake_executor_for_inbox(
 
     Checked after the append: only a free lock needs a rescue, and the rescue
     carries EXECUTOR_CARRY_TASK because the entry already holds the real work.
+    A lock whose run died with its process is reclaimed first, or it would hold
+    the work back for the lock's whole TTL.
     """
-    if not await is_executor_busy(conversation_id) and await _start_executor_run(
+    if await reclaim_dead_lock(conversation_id) and await _start_executor_run(
         conversation_id,
         user,
         EXECUTOR_CARRY_TASK,

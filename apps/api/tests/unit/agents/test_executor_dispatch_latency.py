@@ -528,6 +528,24 @@ class TestBackgroundRunExactWiring:
 
         env.execute.assert_awaited_once_with("the task", configurable, run, None)
 
+    async def test_a_running_run_says_it_lives_and_stops_beating_once_it_ends(self) -> None:
+        """A run whose process died stops beating, and only then can its lock be reclaimed."""
+        run = _run("exec-alive")
+        held: list[tuple[str, str]] = []
+
+        async def _hold(conversation_id: str, lock_value: str) -> None:
+            held.append((conversation_id, lock_value))
+
+        with (
+            self._env(run, perf_values=[1000.0, 1000.0, 1000.5]),
+            patch.object(er, "hold_run_alive", _hold),
+        ):
+            await run_executor_background(run=run, task="t", configurable={"user_id": "u1"})
+
+        assert held == [("conv-1", "exec-alive:task-1")]
+        beats = [t for t in asyncio.all_tasks() if t.get_name() == "executor_alive_beat"]
+        assert all(t.cancelled() or t.done() for t in beats)
+
     async def test_ttft_helper_receives_the_run_and_its_start(self) -> None:
         run = _run("exec-ttft-args")
         ttft = MagicMock(return_value=None)

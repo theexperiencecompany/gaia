@@ -64,10 +64,7 @@ async def test_the_browser_job_is_registered_under_the_name_enqueuers_use(
 
     monkeypatch.setattr(browser_worker_mod, "run_browser_job", _renamed_task)
 
-    assert list(browser_worker_mod.build_browser_worker().functions) == [
-        BROWSER_JOB_TASK,
-        "cron:reap_browser_jobs",
-    ]
+    assert list(browser_worker_mod.build_browser_worker().functions) == [BROWSER_JOB_TASK]
 
 
 async def test_the_browser_worker_shares_the_main_workers_redis_and_limits(
@@ -113,7 +110,7 @@ async def test_the_browser_worker_serves_only_browser_jobs_on_their_own_queue() 
     worker = browser_worker_mod.build_browser_worker()
 
     assert worker.queue_name == BROWSER_JOB_QUEUE
-    assert list(worker.functions) == [BROWSER_JOB_TASK, "cron:reap_browser_jobs"]
+    assert list(worker.functions) == [BROWSER_JOB_TASK]
     assert worker.functions[BROWSER_JOB_TASK].timeout_s == (
         browser_job_deadline_seconds() + ARQ_BACKSTOP_GRACE_SECONDS
     )
@@ -211,10 +208,10 @@ async def test_shutdown_after_a_startup_that_never_started_it_is_a_no_op() -> No
     await browser_worker_mod.stop_browser_worker({})
 
 
-async def test_the_browser_worker_reaps_its_own_jobs_every_few_seconds() -> None:
-    """Every deployment that runs browser jobs makes good their dead workers and their untold results."""
-    worker = browser_worker_mod.build_browser_worker()
+async def test_the_reaper_runs_every_few_seconds_on_the_main_workers_queue() -> None:
+    """Never behind the browser jobs it watches: their slots are held for hours."""
+    reaper = browser_worker_mod.browser_reaper_cron()
 
-    [reaper] = worker.cron_jobs
     assert reaper.name == "cron:reap_browser_jobs"
     assert reaper.second == {0, 15, 30, 45}
+    assert browser_worker_mod.build_browser_worker().cron_jobs == []

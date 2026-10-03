@@ -16,6 +16,7 @@ import socket
 from typing import TypedDict, cast
 
 from arq import cron
+from arq.cron import CronJob
 from arq.typing import WorkerCoroutine
 from arq.worker import Worker
 
@@ -55,6 +56,18 @@ class _SignalOptions(TypedDict):
 _SIGNALS_STAY_WITH_MAIN_WORKER: _SignalOptions = {"handle_signals": False}  # pragma: no mutate
 
 
+def browser_reaper_cron() -> CronJob:
+    """Return the sweep that makes good a browser worker that died, for the main worker to run.
+
+    Not on the browser queue: a job slot there is held for hours by a run, so
+    a reaper queued behind them would wait out the very runs it watches.
+    """
+    return cron(
+        cast(WorkerCoroutine, arq_task(reap_browser_jobs)),
+        second=set(range(0, 60, BROWSER_JOB_REAP_EVERY_SECONDS)),
+    )
+
+
 def build_browser_worker() -> Worker:
     """Build the arq Worker for the browser queue; signals stay with the main worker."""
     # One run per conversation is enforced by the browser slot lease, not by ARQ,
@@ -68,13 +81,6 @@ def build_browser_worker() -> Worker:
     )
     return Worker(
         functions=[browser_job],
-        # Beside the jobs it makes good, so any deployment that runs browser jobs reaps them.
-        cron_jobs=[
-            cron(
-                cast(WorkerCoroutine, arq_task(reap_browser_jobs)),
-                second=set(range(0, 60, BROWSER_JOB_REAP_EVERY_SECONDS)),
-            )
-        ],
         queue_name=BROWSER_JOB_QUEUE,
         redis_settings=WorkerSettings.redis_settings,
         **_SIGNALS_STAY_WITH_MAIN_WORKER,
