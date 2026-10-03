@@ -139,9 +139,7 @@ class TestExpireConnection:
             await _expire_connection(USER_ID, "googlecalendar", None, "ca-1")  # no raise
 
     async def test_real_sleeping_handler_hits_the_real_timeout(self) -> None:
-        """The timeout is load-bearing.
-
-        Without it a hung queue blocks the expiry task forever."""
+        """Without the timeout a hung queue blocks the expiry task forever."""
 
         async def _hang(*args, **kwargs) -> None:
             await asyncio.sleep(3600)

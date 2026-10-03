@@ -72,6 +72,12 @@ def _shared_voice(**overrides) -> ElevenLabsSharedVoice:
 def _voice_seams(
     account: list | None = None, shared: list | None = None, selected: str | None = None
 ):
+    """Double the provider reads at the names list_voices actually calls.
+
+    Patching _fetch_* instead would leave the @Cacheable wrappers live: a
+    warm cache (real Redis in CI) serves the real catalog and the test
+    asserts against data it never scripted.
+    """
     user_repo = MagicMock()
     user_repo.get = AsyncMock(
         return_value=SimpleNamespace(selected_voice_id=selected) if selected else None
@@ -80,8 +86,8 @@ def _voice_seams(
     user_repo.get_starred_voice_ids = AsyncMock(return_value=[])
     user_repo.set_starred_voices = AsyncMock()
     return (
-        patch(f"{VOICE_MOD}._fetch_elevenlabs_voices", AsyncMock(return_value=account or [])),
-        patch(f"{VOICE_MOD}._fetch_shared_voices", AsyncMock(return_value=shared or [])),
+        patch(f"{VOICE_MOD}.get_elevenlabs_voices", AsyncMock(return_value=account or [])),
+        patch(f"{VOICE_MOD}.get_shared_voices", AsyncMock(return_value=shared or [])),
         patch(f"{VOICE_MOD}.user_repository", user_repo),
     ), user_repo
 

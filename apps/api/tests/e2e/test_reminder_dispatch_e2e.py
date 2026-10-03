@@ -139,10 +139,7 @@ class TestStaticReminderFiresEndToEnd:
         assert store.statuses == [ScheduledTaskStatus.COMPLETED]
 
     async def test_second_worker_loses_the_claim_and_sends_nothing(self) -> None:
-        """The loser of a claim race sends nothing.
-
-        Two ARQ jobs for one reminder is ordinary (startup scan + re-arm);
-        the loser must not execute."""
+        """Two ARQ jobs per reminder is ordinary; the loser must not execute."""
         reminder = _make_reminder()
         store = _MemoryReminderStore(reminder)
         repo_patchers, _ = _patch_repo(store)
@@ -170,11 +167,7 @@ class TestStaticReminderFiresEndToEnd:
 
 class TestLapsedSubscriptionSkipsButRearms:
     async def test_unpaid_fire_skips_delivery_and_stays_completed(self) -> None:
-        """Lapsed subscription skips delivery but stays completed.
-
-        The paywall gate skips (never writes PAUSED — the scheduler's own
-        reschedule would overwrite it); a recurring reminder re-arms once the
-        subscription resumes."""
+        """The gate skips without writing PAUSED, so recurring reminders re-arm on resume."""
         reminder = _make_reminder()
         store = _MemoryReminderStore(reminder)
         repo_patchers, _ = _patch_repo(store)

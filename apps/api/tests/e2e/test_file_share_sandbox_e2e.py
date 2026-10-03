@@ -168,10 +168,7 @@ class TestSandboxTokenBudgetChain:
         _frozen_minute: None,
         fake_redis: fakeredis.aioredis.FakeRedis,
     ) -> None:
-        """Real counters across calls.
-
-        Every unit test faked the counts, so a key mismatch between increment
-        and limit would never show."""
+        """Unit tests faked the counts; here a key mismatch between increment and limit would show."""
         token = mint_execute_token("u1", "run-1", scoped_tool_names=None, ttl_seconds=600)
         auth = f"Bearer {token}"
         from app.constants.execute import SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN

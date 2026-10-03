@@ -75,10 +75,7 @@ class TestOneTapLinkDeliversFirstContact:
         capture.assert_called_once()
 
     async def test_failed_first_contact_is_reported_not_retried(self) -> None:
-        """Failed first contact is reported, not retried.
-
-        Nothing retries the publish, so the caller must learn it failed and
-        hand the bubbles back to the bot that asked for the link."""
+        """The caller must learn the greeting failed: nothing retries the publish."""
         publish = AsyncMock(return_value=OutboundResult.FAILED)
         with (
             patch(

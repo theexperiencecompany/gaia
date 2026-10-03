@@ -91,9 +91,7 @@ class TestMemoryReachesThePrompt:
             assert await fetchers.build_memory_recall_block(_ctx()) == ""
 
     async def test_core_is_fetched_once_for_both_sections(self) -> None:
-        """The singleflight is load-bearing.
-
-        Without it every concurrent section pays its own core read."""
+        """Without the singleflight every concurrent section pays its own core read."""
         import asyncio
 
         engine = _engine_double()
@@ -190,10 +188,7 @@ class TestReconcileVerdicts:
         llm.assert_not_awaited()
 
     async def test_forgotten_row_never_absorbs_a_restatement(self) -> None:
-        """Dead rows never absorb facts.
-
-        Chroma metadata lags Postgres by one flag update; matching against
-        the dead row would swallow the restatement as DUPLICATE forever."""
+        """Chroma metadata lags Postgres, so a dead row must never absorb a restatement."""
         fact = _fact()
         results, llm = await _reconcile(fact, _row(content=fact.content, is_forgotten=True))
 

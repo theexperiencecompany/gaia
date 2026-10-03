@@ -159,10 +159,7 @@ class TestUnreadablePlanIsRetryableNotRefusal:
     async def test_plan_outage_returns_503_with_retry_after(
         self, gated_client: AsyncClient
     ) -> None:
-        """Plan outage is retryable, not a refusal.
-
-        'Could not read your plan' is not 'you are not subscribed' — a 402
-        here showed every paying user a paywall during a Redis blip."""
+        """A plan outage is a 503 retry, not a 402 refusal — it once paywalled everyone during a Redis blip."""
         with (
             patch(
                 f"{ENT}.payment_service.get_cached_plan_type",
