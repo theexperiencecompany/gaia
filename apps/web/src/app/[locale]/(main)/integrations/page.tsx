@@ -19,6 +19,7 @@ import { IntegrationsList } from "@/features/integrations/components/Integration
 import { IntegrationsSearchInput } from "@/features/integrations/components/IntegrationsSearchInput";
 import { ALL_CATEGORIES } from "@/features/integrations/constants/categories";
 import {
+  CONNECT_LINK_ERROR_MESSAGES,
   POST_CONNECT_POLL_INTERVAL_MS,
   POST_CONNECT_POLL_MAX_ATTEMPTS,
 } from "@/features/integrations/constants/connect";
@@ -176,6 +177,13 @@ export default function IntegrationsPage() {
     },
     onConnectRequested: (integrationId) => {
       void connectIntegration(integrationId);
+    },
+    onConnectLinkFailed: (reason) => {
+      const messages: Partial<Record<string, string>> =
+        CONNECT_LINK_ERROR_MESSAGES;
+      toast.error(
+        messages[reason] ?? CONNECT_LINK_ERROR_MESSAGES.could_not_start,
+      );
     },
   });
 

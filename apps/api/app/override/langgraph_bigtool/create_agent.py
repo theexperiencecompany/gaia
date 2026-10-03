@@ -12,6 +12,7 @@ import math
 from typing import Any, cast
 
 from langchain.agents.middleware import AgentMiddleware
+from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import (
@@ -50,6 +51,8 @@ from app.agents.middleware.completion import (
     work_looks_unfinished,
 )
 from app.agents.middleware.executor import MiddlewareExecutor
+from app.agents.middleware.loop_guard import LoopGuardMiddleware
+from app.agents.middleware.runtime_adapter import BigtoolToolRuntime
 from app.constants.agents import (
     MAX_PLAYBOOK_DECISION_NUDGES,
     PLAYBOOK_DECISION_NUDGE_MESSAGE,
@@ -447,7 +450,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
 
 
 def _retrieval_call_kwargs(
-    tool_call: dict[str, Any],
+    tool_call: Mapping[str, Any],
     store_arg: str | None,
     store: BaseStore,
     config: RunnableConfig,
@@ -490,6 +493,41 @@ def _resolve_retrieval_result(
     return filtered_bind, response
 
 
+def _retrieval_request(
+    tool_call: Mapping[str, Any],
+    retrieve_tools: BaseTool,
+    config: RunnableConfig,
+    store: BaseStore,
+) -> ToolCallRequest:
+    """Wrap one select_tools call as the request the tool node would hand its middleware."""
+    return ToolCallRequest(
+        # Every call routed here is a retrieve_tools call (see should_continue).
+        tool_call=ToolCall(name=retrieve_tools.name, args=tool_call["args"], id=tool_call["id"]),
+        tool=retrieve_tools,
+        state={},
+        runtime=BigtoolToolRuntime.from_graph_context(
+            config=config, store=store, tool_name=retrieve_tools.name
+        ),
+    )
+
+
+async def _through_loop_guard(
+    loop_guard: LoopGuardMiddleware | None,
+    request: ToolCallRequest,
+    retrieve: Callable[[ToolCallRequest], Awaitable[ToolMessage]],
+) -> ToolMessage:
+    """Answer one retrieve_tools call, letting the stack's loop guard warn on or block it."""
+    if loop_guard is None:
+        return await retrieve(request)
+    guarded = await loop_guard.awrap_tool_call(request, retrieve)
+    if not isinstance(guarded, ToolMessage):
+        raise TypeError(
+            f"loop guard returned {type(guarded).__name__} for retrieve_tools call "
+            f"{request.tool_call['id']}; select_tools only renders ToolMessages"
+        )
+    return guarded
+
+
 def _select_tools_node(deps: _AgentDeps) -> RunnableCallable | Callable[..., Any]:
     def select_tools(
         tool_calls: list[dict[str, Any]], config: RunnableConfig, *, store: BaseStore
@@ -516,23 +554,48 @@ def _select_tools_node(deps: _AgentDeps) -> RunnableCallable | Callable[..., Any
     async def aselect_tools(
         tool_calls: list[dict[str, Any]], config: RunnableConfig, *, store: BaseStore
     ) -> State:
-        """Async twin of select_tools — resolve retrieve_tools calls into bindings."""
-        if deps.retrieve_tools is None:
+        """Async twin of select_tools — resolve retrieve_tools calls into bindings.
+
+        Each call passes through the stack's loop guard: retrieve_tools never
+        reaches the tool node, the only other place the guard sits, so without
+        this a model re-issuing the same search is never warned or stopped.
+        """
+        retrieve_tools = deps.retrieve_tools
+        if retrieve_tools is None:
             raise RuntimeError("retrieve_tools is disabled and aselect_tools should not be called")
+        loop_guard = deps.middleware_executor.loop_guard if deps.middleware_executor else None
 
-        selected_tools = {}
-        response_tools = {}
-        response_texts: dict[str, str] = {}
-        for tool_call in tool_calls:
-            kwargs = _retrieval_call_kwargs(tool_call, deps.store_arg, store, config)
-            result = await deps.retrieve_tools.ainvoke(kwargs, config=config)
+        selected_tools: dict[str, list[str]] = {}
+
+        async def retrieve(request: ToolCallRequest) -> ToolMessage:
+            """Run one retrieve_tools call; record what it binds, return what the model reads."""
+            tool_call_id = request.tool_call["id"]
+            if tool_call_id is None:
+                raise ValueError("retrieve_tools call carries no id to answer it under")
+            kwargs = _retrieval_call_kwargs(request.tool_call, deps.store_arg, store, config)
+            result = await retrieve_tools.ainvoke(kwargs, config=config)
+            response_texts: dict[str, str] = {}
             filtered_bind, response = _resolve_retrieval_result(
-                result, tool_call["id"], response_texts
+                result, tool_call_id, response_texts
             )
-            selected_tools[tool_call["id"]] = dedupe_str_list(filtered_bind)
-            response_tools[tool_call["id"]] = dedupe_str_list(response)
+            selected_tools[tool_call_id] = dedupe_str_list(filtered_bind)
+            messages, _ = format_selected_tools(
+                {tool_call_id: dedupe_str_list(response)},
+                deps.tool_registry,  # type: ignore[arg-type]  # tool-registry element types are wider than the helper's narrowed params
+                response_texts,
+            )
+            return messages[0]
 
-        tool_messages, _ = format_selected_tools(response_tools, deps.tool_registry, response_texts)  # type: ignore[arg-type]  # tool-registry element types are wider than the helper's narrowed params
+        tool_messages = [
+            await _through_loop_guard(
+                loop_guard,
+                _retrieval_request(tool_call, retrieve_tools, config, store),
+                retrieve,
+            )
+            for tool_call in tool_calls
+        ]
+
+        # A call the guard blocked never ran, so it binds nothing.
         _, bind_ids = format_selected_tools(selected_tools, deps.tool_registry)  # type: ignore[arg-type]  # tool-registry element types are wider than the helper's narrowed params
         return {"messages": tool_messages, "selected_tool_ids": bind_ids}  # type: ignore[return-value]  # helper's declared return is wider than the dict actually built
 

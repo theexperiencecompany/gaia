@@ -49,6 +49,9 @@ class MigrationResult:
     retired: int = 0
     #: Owners who have an open Inbox desk once their row was retired.
     desks_open: int = 0
+    #: Owners whose desk stays stopped by their own hand: their row is left live,
+    #: and re-runs leave it too, instead of failing it forever.
+    desks_stopped: int = 0
     #: user_id -> the error that stopped their row; a re-run retries any row still live.
     failures: dict[str, str] = field(default_factory=dict)
 
@@ -70,13 +73,24 @@ async def run_migration(*, dry_run: bool) -> MigrationResult:
 
 
 async def _retire(workflow: WorkflowDocument, result: MigrationResult) -> None:
-    """Open the owner's desk, then switch their row off, so nobody is left with neither."""
+    """Open the owner's desk, then switch their row off, so nobody is left with neither.
+
+    The row is switched off only while an open desk exists: without one the owner
+    would lose the old briefing and gain nothing. A stopped desk is the owner
+    saying no to the new briefing while keeping the old one, so that row is left
+    live rather than failed forever; anything else stays live for a re-run.
+    """
     await provision_inbox_desk(workflow.user_id)
-    await WorkflowService.deactivate_workflow(workflow.id, workflow.user_id)
-    result.retired += 1
     desk = await todo_repository.find_latest_by_external_ref(workflow.user_id, INBOX_DESK_REF)
     if desk is not None and not desk.completed:
+        await WorkflowService.deactivate_workflow(workflow.id, workflow.user_id)
+        result.retired += 1
         result.desks_open += 1
+        return
+    if desk is not None:
+        result.desks_stopped += 1
+        return
+    raise LookupError(f"No open Inbox desk for {workflow.user_id}; leaving Inbox Triage live.")
 
 
 def _render(result: MigrationResult, limit: int) -> None:
@@ -86,6 +100,7 @@ def _render(result: MigrationResult, limit: int) -> None:
     if not result.dry_run:
         print(f"retired:                       {result.retired}")
         print(f"owners with an open desk:      {result.desks_open}")
+        print(f"owners whose desk stays stopped:{result.desks_stopped}")
         if result.failures:
             print(f"failed (re-run retries):       {len(result.failures)}")
             for user_id, error in result.failures.items():

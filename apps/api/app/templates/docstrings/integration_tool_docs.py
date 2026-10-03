@@ -98,18 +98,21 @@ PARAMETERS:
 - `integration_ids` (List[str]): List of exact integration IDs to connect.
   - Use integration IDs (e.g., "gmail", "notion", "twitter"); call list_integrations first if unsure
   - Can be a single ID or multiple IDs
+- `force_reconnect` (bool, optional): Set true only when the user explicitly asks to reconnect or refresh an integration that may already be connected. Defaults to false.
 
 BEHAVIOR:
 - Validates each integration ID (exact match only)
 - Checks if integration is available
 - Checks if integration is already connected
 - Initiates OAuth/connection flow for disconnected integrations
+- When `force_reconnect` is true, bypasses the connected-status check and starts reauthorization
 
 IMPORTANT:
 - This tool does NOT directly connect integrations
 - It initiates the OAuth flow and the user must complete authentication
 - Multiple integrations can be connected in a single call
 - If an integration is already connected, it will skip and inform the user
+- Do not force reconnection unless the user explicitly asks to reconnect or refresh access
 
 RETURN VALUE:
 Returns a status message for each integration:

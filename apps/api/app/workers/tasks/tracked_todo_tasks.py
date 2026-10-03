@@ -240,6 +240,42 @@ async def _handle_held_lock(
     return f"held:{todo_id} (lock held)"
 
 
+async def _hold_fire_events_for_catch_up(
+    todo_id: str, origin: TriggerOrigin, coalesced: Sequence[TriggerOrigin]
+) -> None:
+    """Hold drained fire events again for the catch-up drain instead of dropping them."""
+    # Buffering schedules the drain itself, so this is also the catch-up arrangement.
+    for event in [origin, *coalesced]:
+        if not await buffer_todo_trigger_event(todo_id, event):
+            log.error(
+                "tracked_todo.trigger_event_lost_paused",
+                todo_id=todo_id,
+                trigger_name=event.trigger_name,
+                subscription_id=event.subscription_id,
+            )
+
+
+async def _paused_result(
+    doc: TodoDocument,
+    user_tz: Timezone,
+    origin: TriggerOrigin | None,
+    coalesced: Sequence[TriggerOrigin],
+) -> str | None:
+    """Skip a run the account cannot make, holding fire events for the catch-up drain."""
+    if not (paused := await _paused_reason(doc)):
+        return None
+    # Like a lapsed workflow: skip this occurrence, keep the schedule, run again once it clears.
+    if origin is None:
+        await _advance_schedule(
+            doc, user_tz.value, one_time_rerun_at=datetime.now(UTC) + PAUSED_RUN_RECHECK
+        )
+    else:
+        await _hold_fire_events_for_catch_up(doc.id, origin, coalesced)
+    await record_activity(doc.id, doc.user_id, TodoActivityEvent.RUN_SKIPPED, paused)
+    log.set(tracked_todo={"paused": paused})
+    return f"paused:{doc.id}"
+
+
 async def _execute_todo_with_retry(
     todo_id: str,
     origin: TriggerOrigin | None = None,
@@ -263,15 +299,8 @@ async def _execute_todo_with_retry(
     # without an extra DB round-trip.
     user_data, user_tz = await _load_user_with_tz(user_id)
 
-    if paused := await _paused_reason(doc):
-        # Like a lapsed workflow: skip this occurrence, keep the schedule, run again once it clears.
-        if origin is None:
-            await _advance_schedule(
-                doc, user_tz.value, one_time_rerun_at=datetime.now(UTC) + PAUSED_RUN_RECHECK
-            )
-        await record_activity(todo_id, user_id, TodoActivityEvent.RUN_SKIPPED, paused)
-        log.set(tracked_todo={"paused": paused})
-        return f"paused:{todo_id}"
+    if paused_result := await _paused_result(doc, user_tz, origin, coalesced):
+        return paused_result
 
     # Cost wall before any LLM work: a trigger fire is not a user action. The
     # window opens first, so a walled run still counts as its window's one run.
@@ -527,13 +556,34 @@ class _RunContext(NamedTuple):
 
 
 async def _collect_run_context(doc: TodoDocument) -> _RunContext:
-    """Gather everything a run reads from the owner's other todos."""
-    parent_rules, sub_todos, learnings = await asyncio.gather(
-        _collect_parent_rules(doc.parent_todo_id, doc.user_id),
+    """Gather everything a run reads from the owner's other todos.
+
+    The parent's Standing rules govern the run, so their read failure raises
+    and the run retries with backoff rather than acting without instructions
+    it must obey. The other two reads are enrichment: a failed one degrades
+    to "" and is logged, so a Mongo blip does not burn the run's retries.
+    """
+    parent_rules = await _collect_parent_rules(doc.parent_todo_id, doc.user_id)
+    sub_todos, learnings = await asyncio.gather(
         _collect_sub_todo_states(doc),
         _collect_reference_learnings(doc.references, doc.user_id),
+        return_exceptions=True,
     )
-    return _RunContext(parent_rules=parent_rules, sub_todos=sub_todos, learnings=learnings)
+    context = {"sub_todos": sub_todos, "learnings": learnings}
+    degraded: dict[str, str] = {}
+    for name, result in context.items():
+        if isinstance(result, str):
+            degraded[name] = result
+            continue
+        log.warning(
+            "tracked_todo.run_context_incomplete",
+            todo_id=doc.id,
+            section=name,
+            error=str(result),
+            error_type=type(result).__name__,
+        )
+        degraded[name] = ""
+    return _RunContext(parent_rules=parent_rules, **degraded)
 
 
 async def _collect_parent_rules(parent_todo_id: str | None, user_id: str) -> str:

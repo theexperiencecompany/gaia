@@ -45,6 +45,7 @@ export {
   connectionPromptState,
   INTEGRATION_STATE_ORDER,
   integrationConnectionState,
+  reconcileIntegrationStatus,
 } from "./integrationStatus";
 export {
   NEW_MESSAGE_BREAK_TOKEN,

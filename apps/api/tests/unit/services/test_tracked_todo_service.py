@@ -43,6 +43,7 @@ from app.services.todos.errors import SubTodoParentError
 from app.services.tracked_todo_service import (
     CANVAS_TEMPLATE,
     TrackedTodoService,
+    _reconcile_parent_completion,
     require_sub_todo_parent,
     starting_canvas,
     tracked_todo_service,
@@ -579,6 +580,44 @@ class TestSubTodoParent:
         mock_repo.find_sub_todos.assert_not_awaited()
         assert mock_repo.get.await_args_list[1] == call(TODO_ID, user_id=USER_ID)
 
+    async def test_an_untracked_todo_cannot_become_one(self, mock_repo):
+        plain = _child().model_copy(update={"labels": ["work"]})
+        mock_repo.get.side_effect = [_parent(), plain]
+
+        with pytest.raises(SubTodoParentError, match="not a tracked todo"):
+            await require_sub_todo_parent(USER_ID, _PARENT_ID, child_id=TODO_ID)
+
+
+class TestReconcileParentCompletion:
+    """The link check and the write are two writes; a completion can run between them."""
+
+    async def test_an_open_parent_keeps_the_newborn(self, mock_repo):
+        mock_repo.get.return_value = _parent()
+        with patch.object(
+            TrackedTodoService, "complete_tracked_todo", new_callable=AsyncMock
+        ) as complete:
+            await _reconcile_parent_completion(USER_ID, _PARENT_ID, _CHILD_ID)
+
+        complete.assert_not_awaited()
+
+    async def test_a_parent_completed_mid_create_completes_the_newborn(self, mock_repo):
+        mock_repo.get.return_value = _parent().model_copy(update={"completed": True})
+        with patch.object(
+            TrackedTodoService, "complete_tracked_todo", new_callable=AsyncMock
+        ) as complete:
+            await _reconcile_parent_completion(USER_ID, _PARENT_ID, _CHILD_ID)
+
+        assert complete.await_args.args[:2] == (_CHILD_ID, USER_ID)
+
+    async def test_a_parent_deleted_mid_create_completes_the_newborn(self, mock_repo):
+        mock_repo.get.return_value = None
+        with patch.object(
+            TrackedTodoService, "complete_tracked_todo", new_callable=AsyncMock
+        ) as complete:
+            await _reconcile_parent_completion(USER_ID, _PARENT_ID, _CHILD_ID)
+
+        complete.assert_awaited_once()
+
 
 class TestCreateSubTodo:
     async def test_the_parent_reaches_the_insert(self, mock_repo, mock_deps):
@@ -590,7 +629,26 @@ class TestCreateSubTodo:
         )
 
         assert mock_deps.create.await_args.kwargs["parent_todo_id"] == _PARENT_ID
-        mock_repo.get.assert_awaited_once_with(_PARENT_ID, user_id=USER_ID)
+        # Once to validate the parent before the insert, once to reconcile after it.
+        assert mock_repo.get.await_args_list == [
+            call(_PARENT_ID, user_id=USER_ID),
+            call(_PARENT_ID, user_id=USER_ID),
+        ]
+
+    async def test_the_newborn_is_reconciled_against_the_parent_it_landed_under(
+        self, mock_repo, mock_deps
+    ):
+        mock_repo.get.return_value = _parent()
+        mock_deps.create.return_value = _todo_response()
+        with patch(
+            "app.services.tracked_todo_service._reconcile_parent_completion",
+            new_callable=AsyncMock,
+        ) as reconcile:
+            await TrackedTodoService.create_tracked_todo(
+                USER_ID, "Reply to Sam", parent_todo_id=_PARENT_ID
+            )
+
+        reconcile.assert_awaited_once_with(USER_ID, _PARENT_ID, TODO_ID)
 
     async def test_a_sub_todo_reports_to_its_parent_instead_of_the_user_by_default(
         self, mock_repo, mock_deps

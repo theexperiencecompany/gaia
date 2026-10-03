@@ -83,10 +83,25 @@ async def test_a_row_that_fails_to_retire_does_not_stop_the_rows_behind_it() -> 
     assert (result.retired, result.desks_open) == (1, 1)
 
 
-async def test_an_owner_the_desk_skips_is_still_retired_but_not_counted_open() -> None:
+async def test_an_owner_with_no_desk_keeps_their_row_live_for_a_rerun() -> None:
+    """No open desk, no retirement: the old briefing is all they have."""
     seams = _seams(_workflow("wf-1", "u-1"), desk_open=False)
 
     result = await _run(seams, dry_run=False)
 
-    seams["WorkflowService.deactivate_workflow"].assert_awaited_once_with("wf-1", "u-1")
-    assert (result.retired, result.desks_open) == (1, 0)
+    seams["WorkflowService.deactivate_workflow"].assert_not_awaited()
+    assert (result.retired, result.desks_open) == (0, 0)
+    assert list(result.failures) == ["u-1"]
+
+
+async def test_an_owner_who_stopped_their_desk_keeps_the_row_they_kept() -> None:
+    """A stopped desk says no to the new briefing; the kept row stays live."""
+    stopped = MagicMock(completed=True)
+    seams = _seams(_workflow("wf-1", "u-1"))
+    seams["todo_repository"].find_latest_by_external_ref = AsyncMock(return_value=stopped)
+
+    result = await _run(seams, dry_run=False)
+
+    seams["WorkflowService.deactivate_workflow"].assert_not_awaited()
+    assert (result.retired, result.desks_open, result.desks_stopped) == (0, 0, 1)
+    assert result.failures == {}
