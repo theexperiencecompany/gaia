@@ -4,20 +4,21 @@ Each case runs app.services.browser.job_runner.execute_browser_job in this
 process, as a fresh Pro user, against the browser hosts the environment names
 (BROWSER_HOST_URL, BROWSER_FALLBACK_HOST_URL): the same run the ARQ worker
 makes, minus the chat around it. An actor stands in for the user where a case
-needs one (a live-view sign-in, a cancel, a stop, a change of plan). Its one
-gate, browser_outcome, runs the case's scorer over what the run reported.
+needs one (a live-view sign-in, a cancel, a stop, a change of plan); one that
+raises errors the case. Its one gate, browser_outcome, runs the case's scorer
+over what the run reported; the journal keeps each job's step cards and Jev
+bursts, masked as the run masks them.
 
-What this does NOT exercise: comms, the executor, and delivery to a chat. The
-hermetic browser stack (tests/integration/real/browser) proves those with
-scripted models; this measures the models themselves, and is not a CI gate.
-Run it against a booted host pair with real model keys: ``mise eval:browser``.
+Not exercised: comms, the executor, delivery to a chat (the hermetic browser
+stack proves those). Not a CI gate; run it with real keys: mise eval:browser.
 """
 
 from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
+from enum import StrEnum
 import html
 import os
 from pathlib import Path
@@ -27,9 +28,26 @@ from typing import Any, ClassVar, TypeVar
 from urllib.parse import urlsplit
 import uuid
 
+from browser_use import Browser
 import httpx
 
-from app.schemas.browser import BrowserResultSnapshot
+from app.constants.browser import BrowserStopOutcome, HandoffDecision, HandoffStatus
+from app.db.repositories.llm_calls import llm_calls_repository
+from app.schemas.browser import BrowserResultSnapshot, BrowserTaskSecret
+from app.schemas.browser_job import BrowserJobRequest
+from app.services.browser.handoff import (
+    get_handoff,
+    get_pending_handoff_for_reply,
+    reply_address,
+    resolve_handoff,
+)
+from app.services.browser.job_events import read_job_events
+from app.services.browser.job_runner import execute_browser_job
+from app.services.browser.job_stop import stop_job
+from app.services.browser.jobs import post_job_message
+from app.services.browser.ledger import RunLedger
+from app.services.browser.registry import get_session_entry
+from app.services.dev_service import mint_dev_user
 from scripts.evals.core.app_boot import ensure_app_registered
 from scripts.evals.core.cases import load_case_files
 from scripts.evals.core.cost import EvalCostTracker
@@ -53,8 +71,6 @@ _LOGIN_JS = """(() => {
   document.querySelector('#password').value = 'SuperSecretPassword!';
   document.querySelector('#login').submit();
 })()"""
-#: How long an actor waits for what it acts on (a handoff, the run's first steps).
-_ACTOR_SECONDS = 300.0
 #: Steps a run takes before the stop and message actors act on it.
 _STEPS_BEFORE_ACTING = 2
 _POLL_SECONDS = 1.0
@@ -341,9 +357,11 @@ def outcome_failures(case: Case, run: CaseRun) -> list[str]:
     """Return what the case's scorer found wrong with the run; a run with no outcome fails outright."""
     if not run.end_state:
         return ["the run reported no outcome"]
+    missed = run.end_state.get("actor_missed")
+    unacted = [f"the run ended before its {missed} actor acted"] if missed else []
     scorer = SCORERS[str(case.expected["scorer"])]
     truth = run.end_state.get("truth") or {}
-    return scorer(Outcome.from_end_state(run.end_state), truth, case.expected)
+    return unacted + scorer(Outcome.from_end_state(run.end_state), truth, case.expected)
 
 
 def _outcome_gate(case: Case, run: CaseRun) -> float:
@@ -354,6 +372,50 @@ BROWSER_GATES: ExtraGates = {_GATE: _outcome_gate}
 
 
 # --- running one case --------------------------------------------------------
+
+
+class Actor(StrEnum):
+    """Who stands in for the user mid-run; every one but DECLINE must act for its case to count."""
+
+    #: Cancels every handoff the case never asked for.
+    DECLINE = "decline"
+    CAPTCHA_CANCEL = "captcha_cancel"
+    LOGIN_HANDOFF = "login_handoff"
+    STOP = "stop"
+    MESSAGE = "message"
+
+
+class ActorFailedError(RuntimeError):
+    """The actor standing in for the user raised: the case did not run as written."""
+
+
+@dataclass(frozen=True)
+class CasePlan:
+    """What a case's setup asks for, validated when the suite loads, before any run."""
+
+    prompt: str
+    secrets: dict[str, str]
+    actor: Actor
+    message: str | None
+    reuse_prompt: str | None
+    hn_truth: bool
+
+    @classmethod
+    def of(cls, case: Case) -> CasePlan:
+        setup = case.setup
+        actor = Actor(str(setup.get("actor") or Actor.DECLINE.value))
+        message = setup.get("message")
+        if (actor is Actor.MESSAGE) != (message is not None):
+            raise ValueError(f"{case.id}: setup.message goes with actor: message, and only with it")
+        reuse = setup.get("reuse_prompt")
+        return cls(
+            prompt=case.prompt.replace("{internet}", INTERNET),
+            secrets={str(k): str(v) for k, v in (setup.get("secrets") or {}).items()},
+            actor=actor,
+            message=str(message) if message is not None else None,
+            reuse_prompt=str(reuse).replace("{internet}", INTERNET) if reuse else None,
+            hn_truth=setup.get("truth") == "hn_titles",
+        )
 
 
 def hn_titles() -> list[str]:
@@ -376,39 +438,58 @@ def _site_of(task: str) -> str:
     return urlsplit(url.group(0)).hostname or ""
 
 
+def job_request(user_id: str, prompt: str, secrets: dict[str, str]) -> BrowserJobRequest:
+    """Build the job a case runs: headless, so the ending comes back to this call and lands in no inbox."""
+    job_id = uuid.uuid4().hex
+    return BrowserJobRequest(
+        job_id=job_id,
+        user_id=user_id,
+        conversation_id=f"eval-{job_id[:12]}",
+        tool_call_id=f"eval-call-{job_id[:12]}",
+        task=prompt,
+        in_background=False,
+        start_url=start_url_of(prompt),
+        secrets={
+            name: BrowserTaskSecret(value=value, site=_site_of(prompt))
+            for name, value in secrets.items()
+        },
+    )
+
+
 @dataclass
 class _Run:
-    """One browser job of a case: its ids, and the handoffs its actor saw."""
+    """One browser job of a case: who it runs for, what its actor did, and the run's own record."""
 
     job_id: str
-    conversation_id: str
     user_id: str
+    #: Where the user's reply to the run's handoff arrives.
+    reply_to: str
+    #: The run's model calls, actions and Jev bursts, as the runner records them.
+    ledger: RunLedger = field(default_factory=RunLedger)
     handoffs: list[str] = field(default_factory=list)
+    acted: bool = False
+    #: Every step card the run showed (the agent's own actions, one card per Jev burst).
+    steps: list[dict[str, Any]] = field(default_factory=list)
 
 
 async def _pending_handoff(run: _Run) -> tuple[str, str] | None:
     """Return the handoff the run waits on now (id, reason), if any."""
-    from app.services.browser.handoff import get_handoff, get_pending_handoff_for_reply
-
-    handoff_id = await get_pending_handoff_for_reply(run.conversation_id)
+    handoff_id = await get_pending_handoff_for_reply(run.reply_to)
     if handoff_id is None:
         return None
     record = await get_handoff(handoff_id)
-    return (
-        (handoff_id, record.reason)
-        if record is not None and record.status.value == "pending"
-        else None
-    )
+    if record is None or record.status is not HandoffStatus.PENDING:
+        return None
+    return handoff_id, record.reason
 
 
-async def _wait_for(check: Callable[[], Awaitable[T | None]], what: str) -> T:
-    deadline = time.monotonic() + _ACTOR_SECONDS
-    while time.monotonic() < deadline:
+async def _until(check: Callable[[], Awaitable[T | None]]) -> T:
+    """Poll check until it finds something; the run's end is what bounds the wait."""
+    while True:
         found = await check()
         if found is not None:
             return found
         await asyncio.sleep(_POLL_SECONDS)
-    raise TimeoutError(f"the actor waited {_ACTOR_SECONDS}s for {what}")
 
 
 def _cards_in(frame: object) -> list[dict[str, Any]]:
@@ -422,11 +503,10 @@ def _cards_in(frame: object) -> list[dict[str, Any]]:
 
 
 async def _cards(run: _Run, kind: str) -> list[dict[str, Any]]:
-    from app.services.browser.job_events import read_cards
-
+    """Return the run's cards of one kind, read from its feed from the start."""
     return [
         card
-        for frame in await read_cards(run.job_id)
+        for _, frame in await read_job_events(run.job_id, "0-0")
         for card in _cards_in(frame)
         if card.get("kind") == kind
     ]
@@ -434,10 +514,6 @@ async def _cards(run: _Run, kind: str) -> list[dict[str, Any]]:
 
 async def _sign_in_live(run: _Run) -> None:
     """Sign in through the run's own page, as a person does in the live view."""
-    from browser_use import Browser
-
-    from app.services.browser.registry import get_session_entry
-
     sessions = [str(card["session_id"]) for card in await _cards(run, "session")]
     entry = await get_session_entry(sessions[-1]) if sessions else None
     if entry is None or not entry.live_ws:
@@ -456,31 +532,31 @@ async def _sign_in_live(run: _Run) -> None:
         await browser.stop()
 
 
-async def _act(actor: str, run: _Run, setup: dict[str, Any]) -> None:
-    """Stand in for the user mid-run, as the case says."""
-    from app.constants.browser import HandoffDecision
-    from app.services.browser.handoff import resolve_handoff
-    from app.services.browser.job_stop import stop_job
-    from app.services.browser.jobs import post_job_message
-
-    if actor == "stop":
-        await _wait_for(lambda: _at_least(run, _STEPS_BEFORE_ACTING), "the run's first steps")
-        await stop_job(run.job_id)
+async def _act(actor: Actor, run: _Run, message: str | None) -> None:
+    """Stand in for the user mid-run, as the case says; run.acted records that it did."""
+    if actor is Actor.STOP:
+        await _until(lambda: _at_least(run, _STEPS_BEFORE_ACTING))
+        # A stop that lost to the run's own ending stopped nothing.
+        run.acted = await stop_job(run.job_id) is BrowserStopOutcome.STOPPED
         return
-    if actor == "message":
-        await _wait_for(lambda: _at_least(run, 1), "the run's first step")
-        await post_job_message(run.job_id, str(setup["message"]))
+    if actor is Actor.MESSAGE:
+        if message is None:
+            raise ValueError("the message actor has no message to send")
+        await _until(lambda: _at_least(run, 1))
+        await post_job_message(run.job_id, message)
+        run.acted = True
         return
     while True:
-        handoff_id, reason = await _wait_for(lambda: _pending_handoff(run), "a handoff")
+        handoff_id, reason = await _until(lambda: _pending_handoff(run))
         run.handoffs.append(reason)
-        if actor == "login_handoff":
+        if actor is Actor.LOGIN_HANDOFF:
             await _sign_in_live(run)
             decision = HandoffDecision.CONTINUE
         else:
             decision = HandoffDecision.CANCEL
         await resolve_handoff(handoff_id, decision, run.user_id)
-        if actor != "login_handoff":
+        run.acted = True
+        if actor is Actor.CAPTCHA_CANCEL:
             return
 
 
@@ -491,48 +567,52 @@ async def _at_least(run: _Run, steps: int) -> int | None:
 
 
 async def _one_job(
-    prompt: str, user_id: str, secrets: dict[str, str], actor: str, setup: dict[str, Any]
+    request: BrowserJobRequest, actor: Actor, message: str | None
 ) -> tuple[BrowserResultSnapshot, _Run]:
-    from app.schemas.browser import BrowserTaskSecret
-    from app.schemas.browser_job import BrowserJobRequest
-    from app.services.browser.job_runner import execute_browser_job
-
-    job_id = uuid.uuid4().hex
-    run = _Run(job_id=job_id, conversation_id=f"eval-{job_id[:12]}", user_id=user_id)
-    request = BrowserJobRequest(
-        job_id=job_id,
-        user_id=user_id,
-        conversation_id=run.conversation_id,
-        tool_call_id=f"eval-call-{job_id[:12]}",
-        task=prompt,
-        start_url=start_url_of(prompt),
-        secrets={
-            name: BrowserTaskSecret(value=value, site=_site_of(prompt))
-            for name, value in secrets.items()
-        },
+    """Run one job with its actor beside it; an actor that raises ends the job and raises ActorFailedError."""
+    run = _Run(
+        job_id=request.job_id,
+        user_id=request.user_id,
+        reply_to=reply_address(
+            request.conversation_id, request.user_id, request.conversation_source
+        ),
     )
-    acting = asyncio.create_task(_act(actor, run, setup))
+    job = asyncio.create_task(execute_browser_job(request, run.ledger))
+    acting = asyncio.create_task(_act(actor, run, message))
     try:
-        result = await execute_browser_job(request)
+        await asyncio.wait({job, acting}, return_when=asyncio.FIRST_COMPLETED)
+        failure = acting.exception() if acting.done() else None
+        if failure is not None:
+            raise ActorFailedError(f"the {actor} actor failed: {failure!r}") from failure
+        result = await job
+        run.steps = [_step_record(card) for card in await _cards(run, "step")]
+        return result, run
     finally:
+        job.cancel()
         acting.cancel()
-        await asyncio.gather(acting, return_exceptions=True)
-    return result, run
+        await asyncio.wait({job, acting})
 
 
-def _state(result: BrowserResultSnapshot, run: _Run) -> dict[str, Any]:
+def _step_record(card: dict[str, Any]) -> dict[str, Any]:
+    """Return a step card as the journal keeps it: its caption, actions and page, without the photo."""
+    return {key: card.get(key) for key in ("index", "goal", "actions", "url")}
+
+
+def _state(result: BrowserResultSnapshot, run: _Run, actor: Actor) -> dict[str, Any]:
+    """Return what one job reported and did, secrets masked as the run masks them."""
     return {
         "summary": result.summary,
         "success": result.success,
         "status": result.status.value,
         "steps": result.steps,
         "handoffs": run.handoffs,
+        "actor_missed": None if actor is Actor.DECLINE or run.acted else actor.value,
+        "step_cards": run.steps,
+        "jev_bursts": [asdict(burst) for burst in run.ledger.bursts],
     }
 
 
 async def _fresh_pro_user() -> str:
-    from app.services.dev_service import mint_dev_user
-
     email = f"eval-browser-{uuid.uuid4().hex[:10]}@gaia.local"
     user = await mint_dev_user(email)
     await grant_pro(email)
@@ -544,8 +624,6 @@ async def _metered_tokens(user_id: str) -> tuple[int, int]:
 
     The ledger writes off the run's path, so the totals are read until they hold still.
     """
-    from app.db.repositories.llm_calls import llm_calls_repository
-
     last = await llm_calls_repository.token_totals_for_user(user_id)
     deadline = time.monotonic() + _LEDGER_SETTLE_SECONDS
     while time.monotonic() < deadline:
@@ -560,18 +638,17 @@ async def _metered_tokens(user_id: str) -> tuple[int, int]:
 async def run_case(case: Case) -> CaseRun:
     """Run a case's browser job (and its reuse run, for a login handoff) and record what it reported."""
     await ensure_app_registered()
-    setup = case.setup
-    prompt = case.prompt.replace("{internet}", INTERNET)
-    truth: dict[str, Any] = {"titles": hn_titles()} if setup.get("truth") == "hn_titles" else {}
+    plan = CasePlan.of(case)
+    truth: dict[str, Any] = {"titles": hn_titles()} if plan.hn_truth else {}
     user_id = await _fresh_pro_user()
     started = time.monotonic()
-    actor = str(setup.get("actor") or "decline")
-    result, run = await _one_job(prompt, user_id, dict(setup.get("secrets") or {}), actor, setup)
-    state = _state(result, run)
-    if "reuse_prompt" in setup:
-        reuse_prompt = str(setup["reuse_prompt"]).replace("{internet}", INTERNET)
-        reuse, reuse_run = await _one_job(reuse_prompt, user_id, {}, "decline", setup)
-        state["reuse"] = _state(reuse, reuse_run)
+    request = job_request(user_id, plan.prompt, plan.secrets)
+    result, run = await _one_job(request, plan.actor, plan.message)
+    state = _state(result, run, plan.actor)
+    if plan.reuse_prompt is not None:
+        reuse_request = job_request(user_id, plan.reuse_prompt, {})
+        reuse, reuse_run = await _one_job(reuse_request, Actor.DECLINE, None)
+        state["reuse"] = _state(reuse, reuse_run, Actor.DECLINE)
         state["reuse_handoff"] = bool(reuse_run.handoffs)
     if truth:
         truth["after"] = hn_titles()
@@ -580,7 +657,7 @@ async def run_case(case: Case) -> CaseRun:
     return CaseRun(
         case_id=case.id,
         messages=[
-            {"role": "user", "content": prompt},
+            {"role": "user", "content": plan.prompt},
             {"role": "assistant", "content": result.summary},
         ],
         end_state=state,
@@ -607,6 +684,8 @@ class BrowserSuite(Suite):
         unknown = [c.id for c in cases if c.expected.get("scorer") not in SCORERS]
         if unknown:
             raise ValueError(f"browser cases name no known scorer: {unknown}")
+        for case in cases:
+            CasePlan.of(case)
         return cases
 
     def transport(
