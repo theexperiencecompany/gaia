@@ -542,8 +542,7 @@ class BrowserAgentRun:
         """Fire after the agent picks actions, before they execute: one card for its own actions."""
         del n_steps
         started_at = perf_counter()
-        if self._page is None:
-            self._page = JevPage(self._agent.browser_session, self._session.engine)
+        self._page_for(self._agent.browser_session)
         actions = _extract_actions(agent_output, browser_state_summary)
         for action in actions:
             if (typed := _password_typed(action, browser_state_summary)) is not None:
