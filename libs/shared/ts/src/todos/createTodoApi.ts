@@ -1,4 +1,4 @@
-import { buildQueryString } from "../api/queryBuilder";
+import { buildQueryString, type QueryValue } from "../api/queryBuilder";
 import { normalizeListResponse } from "../api/responseNormalizer";
 import { TODO_ENDPOINTS } from "../api/todosApi";
 import type {
@@ -75,9 +75,7 @@ function unwrapBulkResponse(response: { updated: Todo[] } | Todo[]): Todo[] {
 export function createTodoApi(http: HttpAdapter): TodoApiClient {
   return {
     getAllTodos: async (filters) => {
-      const qs = buildQueryString(
-        filters as Record<string, string | number | boolean | null | undefined>,
-      );
+      const qs = buildQueryString(filters as Record<string, QueryValue>);
       const response = await http.get<TodoListResponse | Todo[]>(
         `${TODO_ENDPOINTS.list}${qs}`,
         { silent: true },
