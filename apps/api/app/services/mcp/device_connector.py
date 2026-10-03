@@ -69,15 +69,31 @@ class DeviceConnector(BaseConnector):
     def public_identifier(self) -> str:
         return f"device:{self.device_id}:{self.server_key}"
 
-    async def connect(self) -> None:
-        if self.client_session is not None:
-            return
+    async def _check_online(self) -> None:
+        """Presence gate before opening a session.
+
+        A hook so the sandbox subclass can check its own registry — the open
+        flow below stays shared.
+        """
         if not redis_cache.redis:
             raise DeviceConnectionError("Device bridge unavailable (no Redis connection)")
         if not await is_online(self.device_id):
             raise DeviceConnectionError(
                 "Your device is offline. Run `gaia bridge up` on that machine and try again."
             )
+
+    async def _send_down(self, frame: dict[str, Any]) -> None:
+        """Publish one frame to the tunnel.
+
+        A hook so the sandbox subclass can address its own down-channel —
+        the framing stays shared.
+        """
+        await send_down(self.device_id, frame)
+
+    async def connect(self) -> None:
+        if self.client_session is not None:
+            return
+        await self._check_online()
 
         loop = asyncio.get_running_loop()
         self._opened = loop.create_future()
@@ -96,8 +112,7 @@ class DeviceConnector(BaseConnector):
         try:
             # "pod" tells the device (and the owning pod, which echoes it back on
             # every reply) which pod's up-channel to address responses to.
-            await send_down(
-                self.device_id,
+            await self._send_down(
                 {
                     "t": FRAME_MCP_OPEN,
                     "sid": self.session_id,
@@ -182,8 +197,7 @@ class DeviceConnector(BaseConnector):
         try:
             async for session_message in write_recv:
                 payload = session_message.message.model_dump_json(by_alias=True, exclude_none=True)
-                await send_down(
-                    self.device_id,
+                await self._send_down(
                     {"t": FRAME_MCP_MSG, "sid": self.session_id, "data": payload},
                 )
         except asyncio.CancelledError:
@@ -209,7 +223,7 @@ class DeviceConnector(BaseConnector):
         if not self._connected and self._reader_task is None:
             return
         with contextlib.suppress(Exception):
-            await send_down(self.device_id, {"t": FRAME_MCP_CLOSE, "sid": self.session_id})
+            await self._send_down({"t": FRAME_MCP_CLOSE, "sid": self.session_id})
         for task in (self._writer_task, self._reader_task):
             if task is not None:
                 task.cancel()

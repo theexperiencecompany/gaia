@@ -6,6 +6,8 @@ input bounds, and health-probe windows. Import these instead of redefining
 local literals in the sandbox lifecycle and coding tools.
 """
 
+from typing import Final
+
 # Bash tool command execution (seconds), forwarded to E2B as the server-side
 # command-stream deadline. Generous because coding is paid-tier, with long jobs
 # (builds, large installs) expected.
@@ -52,3 +54,23 @@ SANDBOX_LOCK_ACQUIRE_TIMEOUT_SECONDS = 180
 # holder can't block the user forever. Comfortably above the real critical
 # section (cold create + 120s mount).
 SANDBOX_LOCK_MAX_HOLD_SECONDS = 300
+
+# --- Sandbox bridge (the in-sandbox bridge client dials /ws/sandbox like the
+# device daemon dials /ws/device; frame names are reused from
+# constants/device_bridge.py, never reinvented) ---
+# Distinct audience so a sandbox token can never replay against the
+# device-bridge or chat agent-token paths — the WS handler checks aud explicitly.
+SANDBOX_TOKEN_AUDIENCE: Final[str] = "sandbox-bridge"
+SANDBOX_TOKEN_EXPIRY_MINUTES: Final[int] = 15
+# Presence: which user currently holds the sandbox's socket (heartbeat TTL).
+# The value is the owning user_id, so every open can gate on ownership.
+SANDBOX_PRESENCE_PREFIX: Final[str] = "sandbox:presence:"
+SANDBOX_PRESENCE_TTL_SECONDS: Final[int] = 90
+# Reverse lookup so a sandbox://<user_id>/<server_key> URL resolves to the
+# user's live sandbox_id without touching Mongo on the hot path.
+SANDBOX_OWNER_PREFIX: Final[str] = "sandbox:owner:"
+# Downstream (any worker -> owning pod -> sandbox socket): one channel per sandbox.
+SANDBOX_DOWN_CHANNEL_PREFIX: Final[str] = "sandbox:down:"
+# Transport marker stored on the integration's mcp_config so _open_session routes
+# through the sandbox bridge instead of an outbound URL.
+SANDBOX_TRANSPORT: Final[str] = "sandbox"
