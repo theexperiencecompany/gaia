@@ -8423,6 +8423,19 @@ export interface components {
             collapsed_at?: string | null;
         };
         /**
+         * FoldedCards
+         * @description Cards a detached run closed before the message they fold into was saved; its save takes them.
+         */
+        FoldedCards: {
+            /** Cards */
+            cards?: components["schemas"]["ToolDataEntry"][];
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+        };
+        /**
          * GenerateWorkflowPromptRequest
          * @description Request model for AI-generated workflow instructions.
          */
@@ -15440,6 +15453,7 @@ export type FirstStepKey = components['schemas']['FirstStepKey'];
 export type FirstStepsCollapseRequest = components['schemas']['FirstStepsCollapseRequest'];
 export type FirstStepsResponse = components['schemas']['FirstStepsResponse'];
 export type FirstStepsState = components['schemas']['FirstStepsState'];
+export type FoldedCards = components['schemas']['FoldedCards'];
 export type GenerateWorkflowPromptRequest = components['schemas']['GenerateWorkflowPromptRequest'];
 export type GenerateWorkflowPromptResponse = components['schemas']['GenerateWorkflowPromptResponse'];
 export type GetPlatformLinksResponse = components['schemas']['GetPlatformLinksResponse'];

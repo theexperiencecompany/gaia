@@ -6133,6 +6133,28 @@
         "title": "FirstStepsState",
         "type": "object"
       },
+      "FoldedCards": {
+        "description": "Cards a detached run closed before the message they fold into was saved; its save takes them.",
+        "properties": {
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/ToolDataEntry"
+            },
+            "title": "Cards",
+            "type": "array"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          }
+        },
+        "required": [
+          "since"
+        ],
+        "title": "FoldedCards",
+        "type": "object"
+      },
       "GenerateWorkflowPromptRequest": {
         "description": "Request model for AI-generated workflow instructions.",
         "properties": {
