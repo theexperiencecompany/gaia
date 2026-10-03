@@ -18,24 +18,19 @@ import pytest
 
 from app.browser_host import server as server_mod
 from app.browser_host.cdp_mux import CdpCommandError, CdpConnectionClosed, CDPTimeoutError
-from app.browser_host.chromium import AtCapacityError, EngineUnresponsiveError, SessionNotFoundError
+from app.browser_host.host import AtCapacityError, EngineUnresponsiveError, SessionNotFoundError
+from app.browser_host.wire import HealthResponse, SessionInfo
 from app.constants.browser import BrowserEngine, HostAdmissionRefusal
 
 pytestmark = pytest.mark.unit
 
 _KEY = "k" * 32
 _TOKEN = "session-token"
-_INFO = {
-    "session_id": "s1",
-    "live": True,
-    "url": "https://example.com",
-    "title": "Example",
-    "metrics": {"session_lifetime_seconds": 1.0, "navigation_count": 0, "page_count": 1},
-}
+_INFO = SessionInfo(session_id="s1", live=True, url="https://example.com", title="Example")
 
 
 class _HostStub:
-    """A ChromiumHost-shaped object whose I/O seams are mocks."""
+    """A BrowserHost-shaped object whose I/O seams are mocks."""
 
     def __init__(self) -> None:
         # The engine the session really runs on, which the client learns from the host.
@@ -48,7 +43,7 @@ class _HostStub:
         self.storage_state = AsyncMock(return_value={"cookies": [], "origins": []})
         self.session_info = AsyncMock(return_value=_INFO)
         self.healthz = AsyncMock(
-            return_value={"ok": True, "sessions": 0, "engine_up": True, "cdp_responsive": True}
+            return_value=HealthResponse(ok=True, sessions=0, engine_up=True, cdp_responsive=True)
         )
         self.renew_lease = MagicMock()
         self.get = MagicMock(return_value=None)
@@ -150,16 +145,15 @@ def test_a_live_read_returns_the_state_and_info_returns_the_page(
     }
     host.storage_state.assert_awaited_once_with("abc")
     info = client.get("/sessions/abc").json()
-    assert info["url"] == "https://example.com"
-    assert info["metrics"]["rss_mb"] is None
+    assert info == _INFO.model_dump()
     host.session_info.assert_awaited_once_with("abc")
 
 
-def test_a_renewed_lease_says_how_long_it_lasts(client: TestClient, host: _HostStub) -> None:
+def test_a_renewed_lease_is_acknowledged(client: TestClient, host: _HostStub) -> None:
     with patch("shared.py.wide_events._loguru") as loguru:
         resp = client.post("/sessions/abc/lease")
 
-    assert resp.json() == {"session_id": "abc", "lease_seconds": 90.0}
+    assert resp.status_code == 204
     host.renew_lease.assert_called_once_with("abc")
     assert _event(loguru)["browser"] == {"session_id": "abc", "operation": "lease"}
 
@@ -229,12 +223,9 @@ def test_healthz_is_503_when_the_engine_does_not_answer(
         "engine_up": True,
         "cdp_responsive": True,
     }
-    host.healthz.return_value = {
-        "ok": False,
-        "sessions": 2,
-        "engine_up": True,
-        "cdp_responsive": False,
-    }
+    host.healthz.return_value = HealthResponse(
+        ok=False, sessions=2, engine_up=True, cdp_responsive=False
+    )
     assert client.get("/healthz").status_code == 503
     recorded.assert_called_with(browser={"operation": "healthz", "session_id": ""})
 

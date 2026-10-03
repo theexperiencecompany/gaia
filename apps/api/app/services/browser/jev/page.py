@@ -41,9 +41,9 @@ from app.constants.browser import (
     JEV_PARSE_WAIT_SECONDS,
     JEV_SETTLE_MAX_SECONDS,
     JEV_WAIT_SECONDS,
+    BrowserEngine,
 )
 from app.constants.log_tags import LogTag
-from app.patches.obscura_sessions import on_obscura
 from app.services.browser.exceptions import BrowserAutomationError
 from shared.py.wide_events import log
 
@@ -347,8 +347,10 @@ class _Requests:
 class JevPage:
     """The focused tab of one Browser-Use session, as Jev observes and drives it."""
 
-    def __init__(self, browser: BrowserSession) -> None:
+    def __init__(self, browser: BrowserSession, engine: BrowserEngine) -> None:
         self._browser = browser
+        #: The engine under the session, as the host reported it.
+        self._engine = engine
         #: The last input, whose effect the next observation waits for.
         self._after_input: PageAction | None = None
         #: Page sessions already told to render as if focused and to report their page's events.
@@ -446,7 +448,7 @@ class JevPage:
         self._requests = _Requests(session.session_id, session.target_id)
         # Obscura reports a page's requests only once its navigation is done, never as they
         # finish, so there the read after an input waits on the DOM alone.
-        if not on_obscura():
+        if self._engine is not BrowserEngine.OBSCURA:
             client = session.cdp_client
             client.register.Network.requestWillBeSent(self._requests.started)
             client.register.Network.loadingFinished(self._requests.ended)

@@ -14,6 +14,7 @@ import httpx
 import pytest
 
 from app.browser_host import server
+from app.browser_host.wire import CreatedSession, SessionInfo
 from app.constants.browser import BROWSER_HOST_KEY_HEADER, BrowserEngine
 from app.services.browser import host_client
 from app.services.browser.exceptions import (
@@ -77,7 +78,7 @@ async def test_a_session_is_created_with_its_seed_the_key_and_a_deadline(host: A
 
     created = await host_client.create_session(_STATE, _HOST)
 
-    assert created == host_client.HostSession(
+    assert created == CreatedSession(
         session_id="s1", cdp_ws="ws://c", live_ws="ws://l", engine=BrowserEngine.OBSCURA
     )
     sent = fake.requests[0]
@@ -109,13 +110,7 @@ async def test_a_dispose_and_a_live_read_return_the_state(host: Any) -> None:
 
 
 async def test_renewing_a_lease_posts_to_the_sessions_lease(host: Any) -> None:
-    fake = host(
-        {
-            "POST /sessions/s1/lease": httpx.Response(
-                200, json={"session_id": "s1", "lease_seconds": 90}
-            )
-        }
-    )
+    fake = host({"POST /sessions/s1/lease": httpx.Response(204)})
 
     await host_client.renew_session_lease("s1", _HOST)
 
@@ -127,26 +122,20 @@ async def test_session_info_is_read_inside_the_callers_own_deadline(host: Any) -
         {
             "GET /sessions/s1": httpx.Response(
                 200,
-                json={
-                    "session_id": "s1",
-                    "live": True,
-                    "url": "https://x.com",
-                    "title": None,
-                    "metrics": {},
-                },
+                json={"session_id": "s1", "live": True, "url": "https://x.com", "title": None},
             )
         }
     )
 
     info = await host_client.get_session("s1", _HOST, timeout=5.0)
 
-    assert info == host_client.HostSessionInfo(session_id="s1", live=True, url="https://x.com")
+    assert info == SessionInfo(session_id="s1", live=True, url="https://x.com")
     assert fake.requests[0].headers["X-Host-Deadline"] == "5.0"
     assert fake.timeouts == [5.0]
 
 
 async def test_without_a_key_none_is_sent(host: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    fake = host({"POST /sessions/s1/lease": httpx.Response(200, json={})})
+    fake = host({"POST /sessions/s1/lease": httpx.Response(204)})
     monkeypatch.setattr(host_client.settings, "BROWSER_HOST_KEY", None)
 
     await host_client.renew_session_lease("s1", _HOST)

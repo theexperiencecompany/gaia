@@ -14,7 +14,6 @@ When each is called is stated once, in BROWSER_HUMAN_CHECKS.
 
 # No `from __future__ import annotations`: Browser-Use reads browser_session's annotation as a type.
 from collections.abc import Awaitable, Callable
-from urllib.parse import urlsplit
 
 from browser_use import Tools
 from browser_use.browser.session import BrowserSession
@@ -26,7 +25,7 @@ from app.constants.browser import (
     SensitiveCategory,
 )
 from app.services.browser.browser_use_tools import GaiaTools
-from app.services.browser.user_sites import UserSites
+from app.utils.sites import UserSites, host_of
 
 TakeoverFn = Callable[[str, SensitiveCategory], Awaitable[str]]
 AgentGuidanceFn = Callable[[str], Awaitable[str]]
@@ -136,7 +135,7 @@ def build_browser_tools(
             """Return the CAPTCHA tool: a named site's check to the full browser or the user, any other skipped."""
             url = await browser_session.get_current_page_url()
             if not user_sites.named(url):
-                host = urlsplit(url).hostname or url
+                host = host_of(url) or url
                 return BROWSER_CAPTCHA_SKIP_SOURCE.format(host=host)
             if handle_engine_switch is not None:
                 return await handle_engine_switch(EngineSwitchReason.BOT_CHALLENGE)

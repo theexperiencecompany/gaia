@@ -7,7 +7,7 @@ import pytest
 
 from app.constants.browser import EngineFailure, HandoffDecision, HandoffKind, HandoffStatus
 from app.constants.chat import ConversationSource
-from app.schemas.browser import HandoffRecord, NewHandoff
+from app.schemas.browser import NewHandoff
 from app.services.analytics_service import AnalyticsEvents
 from app.services.browser import handoff as handoff_mod
 from app.services.browser.exceptions import BrowserHandoffNotOwned, BrowserUnavailableError
@@ -254,10 +254,3 @@ async def test_a_decision_whose_marker_never_landed_fails_loud(
     monkeypatch.setattr(handoff_mod.redis_cache, "set_if_absent", _write_fails)
     with pytest.raises(BrowserUnavailableError, match="h10"):
         await handoff_mod.cancel_handoff("h10")
-
-
-def test_a_record_written_before_reply_addresses_still_parses() -> None:
-    record = HandoffRecord.model_validate(
-        {"status": "pending", "user_id": "user-1", "conversation_id": "conv-old", "job_id": "job-1"}
-    )
-    assert (record.kind, record.reply_address) == (HandoffKind.USER, "")

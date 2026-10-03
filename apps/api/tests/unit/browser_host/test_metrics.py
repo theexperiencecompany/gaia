@@ -2,29 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import psutil
 import pytest
 
 from app.browser_host import metrics as metrics_module
-from app.browser_host.metrics import Aggregate, ProcessSampler, SessionMetrics
-from app.constants.log_tags import LogTag
-
-_MB = 1024 * 1024
-
-
-def _fake_proc(rss_mb: float, cpu: float) -> MagicMock:
-    proc = MagicMock()
-    proc.memory_info.return_value = MagicMock(rss=int(rss_mb * _MB))
-    proc.cpu_percent.return_value = cpu
-    return proc
-
-
-def _sampler_over(root: MagicMock, pid: int = 4321) -> ProcessSampler:
-    """Return a real sampler for pid whose process tree resolves to root."""
-    with patch.object(metrics_module.psutil, "Process", return_value=root):
-        return ProcessSampler(pid)
+from app.browser_host.metrics import Aggregate, SessionMetrics
 
 
 @pytest.mark.unit
@@ -88,88 +71,3 @@ class TestNavigationTiming:
         assert snapshot["navigation_ms"] is None
         assert snapshot["rss_mb"] == {"count": 1, "min": 400.0, "max": 400.0, "avg": 400.0}
         assert snapshot["cpu_percent"] == {"count": 1, "min": 12.0, "max": 12.0, "avg": 12.0}
-
-
-@pytest.mark.unit
-class TestProcessSamplerReadings:
-    def test_sample_sums_the_whole_process_tree_and_reports_rss_in_megabytes(self) -> None:
-        root = _fake_proc(rss_mb=100.0, cpu=10.0)
-        root.children.return_value = [_fake_proc(50.0, 5.0), _fake_proc(25.0, 2.5)]
-
-        assert _sampler_over(root).sample() == (175.0, 17.5)
-
-    def test_the_tree_walk_is_recursive_so_a_renderers_own_children_are_counted(self) -> None:
-        grandchild = _fake_proc(25.0, 2.5)
-        child = _fake_proc(50.0, 5.0)
-        root = _fake_proc(100.0, 10.0)
-        root.children.side_effect = lambda recursive: (
-            [child, grandchild] if recursive else [child]
-        )
-
-        assert _sampler_over(root).sample() == (175.0, 17.5)
-
-    def test_a_child_that_exits_mid_walk_is_skipped_while_the_rest_still_count(self) -> None:
-        gone = _fake_proc(50.0, 5.0)
-        gone.memory_info.side_effect = psutil.NoSuchProcess(99)
-        root = _fake_proc(100.0, 10.0)
-        root.children.return_value = [gone, _fake_proc(25.0, 2.5)]
-
-        assert _sampler_over(root).sample() == (125.0, 12.5)
-
-
-@pytest.mark.unit
-class TestSamplerFailureIsolation:
-    def test_sampler_for_a_dead_process_is_none_not_an_exception(self) -> None:
-        with patch.object(metrics_module.psutil, "Process", side_effect=psutil.NoSuchProcess(1234)):
-            assert ProcessSampler.for_pid(1234) is None
-
-    def test_an_unusable_pid_warns_with_the_pid_and_the_real_failure_type(self) -> None:
-        with (
-            patch.object(metrics_module.psutil, "Process", side_effect=psutil.NoSuchProcess(1234)),
-            patch.object(metrics_module, "log") as mock_log,
-        ):
-            assert ProcessSampler.for_pid(1234) is None
-
-        mock_log.warning.assert_called_once_with(
-            f"{LogTag.BROWSER} browser host resource sampler unavailable",
-            error_type="NoSuchProcess",
-            browser={"pid": 1234},
-        )
-
-    def test_sample_returns_none_when_the_process_tree_cannot_be_read(self) -> None:
-        root = MagicMock()
-        root.children.side_effect = psutil.AccessDenied(1234)
-        assert _sampler_over(root).sample() is None
-
-    def test_a_failed_sample_warns_with_the_sampled_pid_and_the_real_failure_type(self) -> None:
-        root = MagicMock()
-        root.children.side_effect = psutil.AccessDenied(1234)
-
-        with patch.object(metrics_module, "log") as mock_log:
-            assert _sampler_over(root, pid=777).sample() is None
-
-        mock_log.warning.assert_called_once_with(
-            f"{LogTag.BROWSER} browser host resource sample failed",
-            error_type="AccessDenied",
-            browser={"pid": 777},
-        )
-
-    def test_for_pid_samples_the_pid_it_was_given_and_names_it_when_that_fails(self) -> None:
-        """A sampler aimed at the wrong pid reports another process's numbers as this session's."""
-        root = MagicMock()
-        root.children.side_effect = psutil.AccessDenied(4321)
-
-        with patch.object(metrics_module.psutil, "Process", return_value=root) as process:
-            sampler = ProcessSampler.for_pid(4321)
-
-        assert sampler is not None
-        process.assert_called_once_with(4321)
-
-        with patch.object(metrics_module, "log") as mock_log:
-            assert sampler.sample() is None
-
-        mock_log.warning.assert_called_once_with(
-            f"{LogTag.BROWSER} browser host resource sample failed",
-            error_type="AccessDenied",
-            browser={"pid": 4321},
-        )

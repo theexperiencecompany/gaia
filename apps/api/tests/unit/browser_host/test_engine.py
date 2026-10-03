@@ -15,9 +15,15 @@ import pytest
 
 from app.browser_host import engine as engine_mod
 from app.browser_host.cdp_mux import CdpMux
-from app.browser_host.engine import Engine, EngineFailure, launch_engine
-from app.browser_host.obscura_launch import EngineLaunchError, LaunchedEngine
-from app.constants.browser import BROWSER_VIEWPORT_HEIGHT, BROWSER_VIEWPORT_WIDTH, BrowserEngine
+from app.browser_host.engine import Engine, launch_engine
+from app.browser_host.obscura_launch import LaunchedEngine
+from app.browser_host.process import EngineLaunchError
+from app.constants.browser import (
+    BROWSER_VIEWPORT_HEIGHT,
+    BROWSER_VIEWPORT_WIDTH,
+    BrowserEngine,
+    EngineExit,
+)
 from tests.unit.browser_host.conftest import FakeMux
 
 pytestmark = pytest.mark.unit
@@ -307,7 +313,7 @@ async def test_an_engine_whose_process_exits_has_failed() -> None:
 
     proc.exit(-9)
 
-    assert str(await asyncio.wait_for(watch, 1.0)) == "process exited"
+    assert await asyncio.wait_for(watch, 1.0) is EngineExit.PROCESS_EXITED
     assert not engine.alive
 
 
@@ -319,7 +325,7 @@ async def test_an_engine_whose_root_connection_drops_has_failed() -> None:
 
     await mux.close()
 
-    assert str(await asyncio.wait_for(watch, 1.0)) == "root connection closed"
+    assert await asyncio.wait_for(watch, 1.0) is EngineExit.CONNECTION_CLOSED
     assert not engine.alive
 
 
@@ -339,8 +345,7 @@ async def test_an_engine_that_stops_answering_fails_only_after_the_strikes_in_a_
 
     failure = await asyncio.wait_for(engine.wait_failed(), 1.0)
 
-    assert isinstance(failure, EngineFailure)
-    assert str(failure) == "stopped answering"
+    assert failure is EngineExit.STOPPED_ANSWERING
     assert len(asked) == 4
 
 

@@ -24,6 +24,7 @@ from browser_use.browser.events import BrowserConnectedEvent
 import fakeredis.aioredis
 
 from app.agents.core.background.session import RunKind, create_session, signal_executor_done
+from app.browser_host.wire import SessionInfo
 from app.config.settings import settings
 from app.constants.browser import (
     BROWSER_ANSWER_AFTER_STEP,
@@ -35,7 +36,6 @@ from app.core.stream_manager import StreamManager
 from app.models.hil_models import HILPreferences
 from app.schemas.browser_job import BrowserJobRequest
 from app.services.browser.exceptions import BrowserSessionGone
-from app.services.browser.host_client import HostSessionInfo
 from app.workers.tasks import browser_tasks
 from shared.py import wide_events
 
@@ -564,12 +564,12 @@ def _host_patches(
 
     async def _get_host_session(
         session_id: str, host_url: str, *, timeout: float | None = None
-    ) -> HostSessionInfo:
+    ) -> SessionInfo:
         if session_id in world.dead_sessions:
             raise BrowserSessionGone(
                 f"Browser host returned 404 for {host_url}/sessions/{session_id}"
             )
-        return HostSessionInfo(
+        return SessionInfo(
             session_id=session_id,
             live=True,
             url=double.url,
@@ -689,7 +689,7 @@ class _Tools:
 class _Page:
     """Jev's view of the tab, as far as a step card's photo and a guidance ask read it."""
 
-    def __init__(self, browser: _BrowserSession) -> None:
+    def __init__(self, browser: _BrowserSession, engine: BrowserEngine) -> None:
         self._browser = browser
 
     async def screenshot(self) -> str:

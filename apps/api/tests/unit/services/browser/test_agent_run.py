@@ -44,7 +44,6 @@ from app.constants.browser import (
     JevStop,
 )
 from app.constants.log_tags import LogTag
-from app.patches.obscura_sessions import on_obscura
 from app.schemas.browser import (
     AgentGuidanceRequest,
     BrowserAction,
@@ -230,9 +229,11 @@ class _JevPages:
     def __init__(self, run: BrowserAgentRun, page: FakePage) -> None:
         self._run = run
         self.page = page
+        self.engines: list[BrowserEngine] = []
 
-    def __call__(self, browser_session: object) -> FakePage:
+    def __call__(self, browser_session: object, engine: BrowserEngine) -> FakePage:
         assert browser_session is self._run._agent.browser_session
+        self.engines.append(engine)
         return self.page
 
 
@@ -711,7 +712,6 @@ class _Agent:
         return await self.options["tools"].registry.execute_action(action, params)
 
     async def run(self, max_steps: int, on_step_start: Any, on_step_end: Any) -> _History:
-        self.on_obscura_during_run = on_obscura()
         if self.raises is not None:
             raise self.raises
         for action in self.steps[:max_steps]:
@@ -925,7 +925,9 @@ class TestExecute:
     ) -> None:
         primary = AgentState(n_steps=7, stopped=True, paused=True, consecutive_failures=3)
         run = _Harness(started=False, resumed_from=primary).run
-        monkeypatch.setattr(agent_run_mod, "JevPage", lambda session: FakePage(page_state()))
+        monkeypatch.setattr(
+            agent_run_mod, "JevPage", lambda session, engine: FakePage(page_state())
+        )
         run._config = replace(CONFIG, start_url=start_url)
 
         await run.execute("buy the ticket")
@@ -939,15 +941,18 @@ class TestExecute:
         assert BROWSER_ENGINE_RESUMED_NOTE.format(page=page) in options["task"]
         assert options["directly_open_url"] is False
 
-    @pytest.mark.parametrize(
-        ("engine", "on_obscura"), [(BrowserEngine.OBSCURA, True), (BrowserEngine.CHROMIUM, False)]
-    )
-    async def test_everything_the_run_starts_sees_the_engine_its_host_reported(
-        self, engine: BrowserEngine, on_obscura: bool
+    @pytest.mark.parametrize("engine", list(BrowserEngine))
+    async def test_jev_drives_the_page_on_the_engine_its_host_reported(
+        self, monkeypatch: pytest.MonkeyPatch, engine: BrowserEngine
     ) -> None:
-        await _Harness(started=False, engine=engine).run.execute("read my orders")
+        harness = _Harness(started=False, engine=engine)
+        pages = _JevPages(harness.run, FakePage(page_state()))
+        monkeypatch.setattr(agent_run_mod, "JevPage", pages)
+        _Agent.steps = [_Action("click", {"index": 1})]
 
-        assert _Agent.built[-1].on_obscura_during_run is on_obscura
+        await harness.run.execute("read my orders")
+
+        assert set(pages.engines) == {engine}
 
     async def test_a_run_stops_at_its_step_limit(self, harness: _Harness) -> None:
         _Agent.steps = [_Action("click", {"index": n}) for n in range(CONFIG.max_steps + 5)]

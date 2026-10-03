@@ -19,9 +19,9 @@ from browser_use.browser.profile import CHROME_DEFAULT_ARGS
 from playwright.sync_api import sync_playwright
 
 from app.browser_host.cdp_mux import CdpMux, cdp_call
-from app.browser_host.metrics import ProcessSampler
-from app.browser_host.obscura_launch import (
-    launch_obscura,
+from app.browser_host.obscura_launch import launch_obscura
+from app.browser_host.process import (
+    ProcessSampler,
     process_tree_rss_mb,
     spawn_engine,
     stop_process,
@@ -33,6 +33,7 @@ from app.constants.browser import (
     BROWSER_VIEWPORT_HEIGHT,
     BROWSER_VIEWPORT_WIDTH,
     BrowserEngine,
+    EngineExit,
 )
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
@@ -52,10 +53,6 @@ _JS_HEAP_MB = 512
 # timer; this many unanswered asks in a row is a dead engine, not a busy one.
 _LIVENESS_PROBE_INTERVAL_SECONDS = 15.0
 _LIVENESS_STRIKES = 2
-
-
-class EngineFailure(RuntimeError):
-    """How an engine stopped serving; the reason its sessions died."""
 
 
 def _headless_shell_beside(chromium: Path) -> Path | None:
@@ -206,19 +203,19 @@ class Engine:
         """Resident memory of the engine's process tree, or None when it cannot be read."""
         return process_tree_rss_mb(self.proc.pid)
 
-    async def wait_failed(self) -> EngineFailure:
+    async def wait_failed(self) -> EngineExit:
         """Return once the engine has stopped serving, saying how."""
         watches = {
-            asyncio.ensure_future(self.proc.wait()): "process exited",
-            asyncio.ensure_future(self.root_mux.wait_closed()): "root connection closed",
-            asyncio.ensure_future(self._stops_answering()): "stopped answering",
+            asyncio.ensure_future(self.proc.wait()): EngineExit.PROCESS_EXITED,
+            asyncio.ensure_future(self.root_mux.wait_closed()): EngineExit.CONNECTION_CLOSED,
+            asyncio.ensure_future(self._stops_answering()): EngineExit.STOPPED_ANSWERING,
         }
         try:
             done, _ = await asyncio.wait(list(watches), return_when=asyncio.FIRST_COMPLETED)
         finally:
             for watch in watches:
                 watch.cancel()
-        return EngineFailure(watches[next(iter(done))])
+        return watches[next(iter(done))]
 
     async def _stops_answering(self) -> None:
         strikes = 0

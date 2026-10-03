@@ -5630,9 +5630,7 @@ export interface paths {
         };
         /**
          * Replay Page
-         * @description Standalone recap slideshow for a finished session. ``code`` resolves to the
-         *     session + step count in Redis; the step screenshots are public R2 URLs, so no
-         *     per-session auth is needed (the code itself is the unguessable capability).
+         * @description Standalone recap slideshow for a finished session: its code is the capability.
          */
         get: operations["browser_replay_page"];
         put?: never;

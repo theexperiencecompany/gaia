@@ -744,6 +744,14 @@ class HostAdmissionRefusal(StrEnum):
     MEMORY = "memory"
 
 
+class EngineExit(StrEnum):
+    """How an engine stopped serving: the reason every session on it died."""
+
+    PROCESS_EXITED = "process_exited"
+    CONNECTION_CLOSED = "connection_closed"
+    STOPPED_ANSWERING = "stopped_answering"
+
+
 class HostSessionEnd(StrEnum):
     """How a session left the browser host; the operation its wide event carries."""
 

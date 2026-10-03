@@ -11,7 +11,7 @@ from app.constants.browser import (
     SensitiveCategory,
 )
 from app.services.browser.tools import build_browser_tools
-from app.services.browser.user_sites import UserSites
+from app.utils.sites import UserSites
 
 #: The task names shop.test; nothing else is the user's.
 SITES = UserSites("buy the red shoes on www.shop.test", None, ())

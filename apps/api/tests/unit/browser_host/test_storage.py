@@ -1,6 +1,6 @@
 """A context's storage_state in and out: the restore script and the cookie shapes.
 
-The round trip through a live session is in test_chromium.py; this pins what
+The round trip through a live session is in test_host.py; this pins what
 that cannot see: the restore script only writes absent keys on its own origin,
 and a saved value can never break out of the literal it is embedded in.
 """

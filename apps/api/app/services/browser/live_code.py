@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import secrets
 from typing import TypedDict
 
 from pydantic import TypeAdapter
@@ -23,6 +22,7 @@ from app.constants.browser import (
 )
 from app.db.redis import redis_cache
 from app.schemas.browser import LiveCodeRecord
+from app.services.browser.capability_code import CapabilityCodes
 
 
 class _PubSubMessage(TypedDict):
@@ -32,10 +32,9 @@ class _PubSubMessage(TypedDict):
 
 
 _PUBSUB_MESSAGE: TypeAdapter[_PubSubMessage] = TypeAdapter(_PubSubMessage)
-
-
-def _key(code: str) -> str:
-    return f"{BROWSER_LIVE_CODE_KEY_PREFIX}{code}"
+_CODES = CapabilityCodes(
+    BROWSER_LIVE_CODE_KEY_PREFIX, LiveCodeRecord, entropy_bytes=BROWSER_LIVE_CODE_ENTROPY_BYTES
+)
 
 
 def _handoff_key(handoff_id: str) -> str:
@@ -48,13 +47,9 @@ def _revoked_channel(code: str) -> str:
 
 async def mint_live_code(session_id: str, user_id: str, handoff_id: str) -> str:
     """Create a short code that opens the session for its owner while this handoff waits."""
-    code = secrets.token_urlsafe(BROWSER_LIVE_CODE_ENTROPY_BYTES)
     ttl: int = settings.BROWSER_USE_HANDOFF_TIMEOUT_SECONDS
-    await redis_cache.set(
-        _key(code),
-        LiveCodeRecord(session_id=session_id, user_id=user_id, handoff_id=handoff_id),
-        ttl=ttl,
-        model=LiveCodeRecord,
+    code = await _CODES.mint(
+        LiveCodeRecord(session_id=session_id, user_id=user_id, handoff_id=handoff_id), ttl=ttl
     )
     await redis_cache.client.set(_handoff_key(handoff_id), code, ex=ttl)
     return code
@@ -64,14 +59,14 @@ async def revoke_handoff_live_code(handoff_id: str) -> None:
     """Close the link minted for this handoff, if one was: it is settled, so nobody is to act in that browser now."""
     code = await redis_cache.client.getdel(_handoff_key(handoff_id))
     if code is not None:
-        await redis_cache.delete(_key(code))
+        await _CODES.revoke(code)
         # A socket the code opened is still streaming and taking input: tell it to close.
         await redis_cache.client.publish(_revoked_channel(code), handoff_id)
 
 
 async def resolve_live_code(code: str) -> LiveCodeRecord | None:
     """Return the session and owner a code opens, or None if unknown, expired or revoked."""
-    return await redis_cache.get(_key(code), model=LiveCodeRecord)
+    return await _CODES.resolve(code)
 
 
 async def live_code_ended(code: str) -> None:
@@ -80,7 +75,7 @@ async def live_code_ended(code: str) -> None:
     await pubsub.subscribe(_revoked_channel(code))
     try:
         # Read after subscribing, so a revoke landing in between is not missed.
-        remaining = await redis_cache.ttl_seconds(_key(code))
+        remaining = await _CODES.seconds_left(code)
         if remaining is None:
             return
         with contextlib.suppress(TimeoutError):

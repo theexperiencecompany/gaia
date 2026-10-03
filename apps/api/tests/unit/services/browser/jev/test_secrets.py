@@ -37,6 +37,8 @@ def test_each_placeholder_opens_its_value_only_on_its_own_site() -> None:
         ("<secret>pin</secret>", "https://example.test/"),
         ("<secret>password</secret>", "https://evil.test/example.test"),
         ("<secret>password</secret>", "about:blank"),
+        # Browser-Use fills a secret on https only; Jev types on the same pages, no others.
+        ("<secret>password</secret>", "http://example.test/login"),
         ("<secret>unknown</secret>", "https://example.test/"),
     ]:
         with pytest.raises(SecretWithheld, match=r"<secret>\w+</secret>"):

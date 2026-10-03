@@ -44,7 +44,7 @@ from shared.py.wide_events import log
 if TYPE_CHECKING:
     from fastapi import WebSocket
 
-    from app.browser_host.chromium import ChromiumHost, HostSession
+    from app.browser_host.host import BrowserHost, HostSession
 
 # JPEG, not PNG: a live view is judged on smoothness, and a PNG frame is ~8-10x
 # larger (and slower to encode and decode), which is what makes the stream lag.
@@ -107,7 +107,7 @@ class _Stream:
     retargeted: bool = False
 
 
-async def run_live_view(host: ChromiumHost, session: HostSession, client_ws: WebSocket) -> None:
+async def run_live_view(host: BrowserHost, session: HostSession, client_ws: WebSocket) -> None:
     """Stream the session's focused page to a live-view client and apply its input."""
     mux = session.mux
     frames: asyncio.Queue[_Frame] = asyncio.Queue(maxsize=_FRAME_QUEUE_SIZE)

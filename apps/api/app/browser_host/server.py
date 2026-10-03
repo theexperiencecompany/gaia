@@ -28,25 +28,28 @@ from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket
 from fastapi.responses import JSONResponse
-from playwright.sync_api import StorageState
-from pydantic import BaseModel
 
 from app.browser_host.cdp_mux import CdpCommandError, CdpConnectionClosed, CDPTimeoutError
-from app.browser_host.chromium import (
+from app.browser_host.host import (
     AtCapacityError,
-    ChromiumHost,
+    BrowserHost,
     EngineUnresponsiveError,
     HostSession,
     SessionNotFoundError,
 )
 from app.browser_host.proxy import run_cdp_proxy
 from app.browser_host.screencast import run_live_view
+from app.browser_host.wire import (
+    CreatedSession,
+    CreateSessionRequest,
+    HealthResponse,
+    SessionInfo,
+    StorageStateResponse,
+)
 from app.config.browser_host_settings import browser_host_settings
 from app.constants.browser import (
     BROWSER_HOST_DEADLINE_HEADER,
     BROWSER_HOST_KEY_HEADER,
-    BROWSER_SESSION_LEASE_SECONDS,
-    BrowserEngine,
     HostRequestFailure,
 )
 from app.constants.log_tags import LogTag
@@ -63,83 +66,6 @@ _ALLOWED_WS_ORIGIN_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 _T = TypeVar("_T")
 
 
-class CreateSessionRequest(BaseModel):
-    """Create-session payload: optional storage state to seed the new context."""
-
-    storage_state: StorageState | None = None
-
-
-class CreateSessionResponse(BaseModel):
-    """Handle for a created session: its CDP and live-view websocket URLs and the engine it runs on."""
-
-    session_id: str
-    cdp_ws: str
-    live_ws: str
-    engine: BrowserEngine
-
-
-class DeleteSessionResponse(BaseModel):
-    """Result of disposing a context: the storage state to persist."""
-
-    storage_state: StorageState
-
-
-class SessionStorageStateResponse(BaseModel):
-    """A live context's cookies and localStorage, read without disposing it."""
-
-    storage_state: StorageState
-
-
-class LeaseResponse(BaseModel):
-    """The renewed lease: how long the session lives unless renewed again."""
-
-    session_id: str
-    lease_seconds: float
-
-
-class AggregateResponse(BaseModel):
-    """A sampled quantity's spread over the session so far."""
-
-    count: int
-    min: float
-    max: float
-    avg: float
-
-
-class SessionMetricsResponse(BaseModel):
-    """Live per-session profiling numbers. Aggregates are null until first sampled.
-
-    rss_mb/cpu_percent describe the whole engine process tree, which every
-    session on that engine shares (see browser_host/metrics.py).
-    """
-
-    session_lifetime_seconds: float
-    navigation_count: int
-    page_count: int
-    rss_mb: AggregateResponse | None = None
-    cpu_percent: AggregateResponse | None = None
-    navigation_ms: AggregateResponse | None = None
-
-
-class SessionInfoResponse(BaseModel):
-    """Live status for a session: whether it serves, and its focused page's url and title."""
-
-    session_id: str
-    live: bool
-    url: str | None = None
-    title: str | None = None
-    metrics: SessionMetricsResponse
-
-
-class HealthResponse(BaseModel):
-    """Host health probe: engine liveness plus a real CDP round-trip result."""
-
-    ok: bool
-    sessions: int
-    engine_up: bool
-    cdp_responsive: bool
-
-
 class _DeadlineExceeded(RuntimeError):
     """Raised when a request outlives the deadline its caller sent."""
 
@@ -149,7 +75,7 @@ def _exit_for_restart() -> None:
     os.kill(os.getpid(), signal.SIGTERM)
 
 
-_host = ChromiumHost(on_fatal=_exit_for_restart)
+_host = BrowserHost(on_fatal=_exit_for_restart)
 
 
 def host_failed() -> bool:
@@ -274,7 +200,7 @@ async def _request_wide_event(
 
 
 @app.post("/sessions")
-async def create_session(request: Request, payload: CreateSessionRequest) -> CreateSessionResponse:
+async def create_session(request: Request, payload: CreateSessionRequest) -> CreatedSession:
     """Create a context on the host for one session; 429 at capacity."""
     _require_host_key(request)
     log.set(browser={"operation": "create"})
@@ -294,7 +220,7 @@ async def create_session(request: Request, payload: CreateSessionRequest) -> Cre
         log.warning(f"{LogTag.BROWSER} browser host at capacity", browser=admission)
         log.fail(HostRequestFailure.AT_CAPACITY, browser=admission)
         raise HTTPException(status_code=429, detail="at_capacity") from exc
-    return CreateSessionResponse(
+    return CreatedSession(
         session_id=session.session_id,
         cdp_ws=_ws_url(f"/cdp/{session.session_id}", session.token),
         live_ws=_ws_url(f"/live/{session.session_id}", session.token),
@@ -303,48 +229,44 @@ async def create_session(request: Request, payload: CreateSessionRequest) -> Cre
 
 
 @app.delete("/sessions/{session_id}")
-async def delete_session(request: Request, session_id: str) -> DeleteSessionResponse:
+async def delete_session(request: Request, session_id: str) -> StorageStateResponse:
     """Dispose the context and return the storage state to persist."""
     _require_host_key(request)
     log.set(browser={"session_id": session_id, "operation": "delete"})
     storage_state = await _within_deadline(request, partial(_host.dispose_context, session_id))
-    return DeleteSessionResponse(storage_state=storage_state)
+    return StorageStateResponse(storage_state=storage_state)
 
 
 @app.get("/sessions/{session_id}/storage-state")
-async def get_session_storage_state(
-    request: Request, session_id: str
-) -> SessionStorageStateResponse:
+async def get_session_storage_state(request: Request, session_id: str) -> StorageStateResponse:
     """Read the live context's storage state, leaving the session running."""
     _require_host_key(request)
     log.set(browser={"session_id": session_id, "operation": "storage_state"})
     storage_state = await _within_deadline(request, partial(_host.storage_state, session_id))
-    return SessionStorageStateResponse(storage_state=storage_state)
+    return StorageStateResponse(storage_state=storage_state)
 
 
-@app.post("/sessions/{session_id}/lease")
-async def renew_session_lease(request: Request, session_id: str) -> LeaseResponse:
+@app.post("/sessions/{session_id}/lease", status_code=204)
+async def renew_session_lease(request: Request, session_id: str) -> None:
     """Renew the lease the session's run holds; a session whose run stops renewing is disposed."""
     _require_host_key(request)
     log.set(browser={"session_id": session_id, "operation": "lease"})
     _host.renew_lease(session_id)
-    return LeaseResponse(session_id=session_id, lease_seconds=BROWSER_SESSION_LEASE_SECONDS)
 
 
 @app.get("/sessions/{session_id}")
-async def get_session(request: Request, session_id: str) -> SessionInfoResponse:
+async def get_session(request: Request, session_id: str) -> SessionInfo:
     """Fetch live session info; 404 when the session is gone, 503 when its engine does not answer."""
     _require_host_key(request)
     log.set(browser={"session_id": session_id, "operation": "get"})
-    info = await _within_deadline(request, partial(_host.session_info, session_id))
-    return SessionInfoResponse.model_validate(info)
+    return await _within_deadline(request, partial(_host.session_info, session_id))
 
 
 @app.get("/healthz")
 async def healthz(request: Request, response: Response) -> HealthResponse:
     """Report 503 when CDP is unresponsive so the orchestrator restarts the host."""
     _require_host_key(request)
-    health = HealthResponse.model_validate(await _host.healthz())
+    health = await _host.healthz()
     log.set(browser={"operation": "healthz", "session_id": ""})
     if not health.ok:
         response.status_code = 503
