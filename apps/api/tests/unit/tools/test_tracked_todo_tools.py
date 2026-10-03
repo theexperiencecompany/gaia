@@ -1789,6 +1789,47 @@ class TestSubTodoTools:
         assert "Tracked todo created: t1" in result
         assert create.await_args.kwargs["parent_todo_id"] == self.DESK
 
+    _RULED = "## Standing rules\n- Do not draft until Dhruv decides.\n\n## Current State\n- open\n"
+
+    @staticmethod
+    def _run_config(mode: str) -> dict:
+        return {"metadata": {"user_id": "user-1"}, "configurable": {"execution_mode": mode}}
+
+    @pytest.mark.regression
+    async def test_a_background_run_cannot_give_a_sub_todo_rules_nobody_said(self):
+        """Regression: the desk opened a thread todo with "do not draft until Dhruv decides" as its rule."""
+        with patch(self._CREATE, AsyncMock(return_value=self._response())) as create:
+            result = await create_tracked_todo.coroutine(
+                config=self._run_config("background"),
+                title="Reply to Vikram",
+                parent_todo_id=self.DESK,
+                initial_canvas=self._RULED,
+            )
+
+        assert result == tracked_todo_tools.SUB_TODO_STANDING_RULES_REFUSAL
+        create.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        ("mode", "parent", "canvas"),
+        [
+            ("interactive", DESK, _RULED),
+            ("background", None, _RULED),
+            ("background", DESK, "## Standing rules\n<!-- the user's instructions -->\n"),
+            ("background", DESK, None),
+        ],
+    )
+    async def test_rules_are_kept_where_the_user_can_have_given_them(self, mode, parent, canvas):
+        with patch(self._CREATE, AsyncMock(return_value=self._response())) as create:
+            result = await create_tracked_todo.coroutine(
+                config=self._run_config(mode),
+                title="Reply to Vikram",
+                parent_todo_id=parent,
+                initial_canvas=canvas,
+            )
+
+        assert "Tracked todo created: t1" in result
+        create.assert_awaited_once()
+
     async def test_a_refused_parent_creates_nothing_and_says_why(self):
         refusal = todo_errors.SubTodoParentError(
             f"{self.DESK} is itself a sub-todo; sub-todos go one level deep."

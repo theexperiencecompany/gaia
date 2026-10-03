@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.constants.todos import (
     CANVAS_CURRENT_STATE_SECTION,
+    CANVAS_STANDING_RULES_SECTION,
     EXISTING_TODO_STATE_EXCERPT_CHARS,
     GAIA_TRACKED_LABEL,
     LIST_TRACKED_TODOS_LIMIT,
@@ -83,6 +84,23 @@ _PARENT_TODO_DESC = (
     "deep: a sub-todo cannot have sub-todos."
 )
 _ERR_NO_USER_ID = "Error: user_id not found in config"
+# Nobody gave a background run's sub-todo rules, and its parent's Standing rules already bind it.
+SUB_TODO_STANDING_RULES_REFUSAL = (
+    "Not created: a sub-todo opened by a background run starts with an empty Standing rules "
+    "section. Standing rules hold only the user's own instructions, and its parent's already "
+    "bind it; put what you noticed under Context and call again. Nothing was saved."
+)
+
+
+def _gives_sub_todo_rules(
+    config: RunnableConfig, parent_todo_id: str | None, initial_canvas: str | None
+) -> bool:
+    """Whether a background run is opening a sub-todo with Standing rules no user gave."""
+    return (
+        parent_todo_id is not None
+        and read_agent_configurable(config).execution_mode == "background"
+        and bool(section_body(initial_canvas, CANVAS_STANDING_RULES_SECTION))
+    )
 
 
 async def _get_user_tz(user_id: str) -> str:
@@ -755,6 +773,8 @@ async def create_tracked_todo(
 
     if references and (refusal := await _references_refusal(user_id, references)):
         return refusal
+    if _gives_sub_todo_rules(config, parent_todo_id, initial_canvas):
+        return SUB_TODO_STANDING_RULES_REFUSAL
 
     external_ref = _gmail_thread_ref(gmail_thread_id)
     try:
