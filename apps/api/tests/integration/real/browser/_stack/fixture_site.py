@@ -24,9 +24,9 @@ from starlette.datastructures import FormData
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse, Response
 from starlette.routing import Route
-import uvicorn
 
 from tests.helpers import pick_free_port
+from tests.integration.real.browser._stack.local_server import LocalServer, serve_locally
 
 #: The account the fake login accepts.
 LOGIN_USER = "tomsmith"
@@ -68,8 +68,7 @@ class FixtureSite:
     a: str = ""
     b: str = ""
     posts: list[FormPost] = field(default_factory=list)
-    _servers: list[uvicorn.Server] = field(default_factory=list)
-    _tasks: list[asyncio.Task[None]] = field(default_factory=list)
+    _servers: list[LocalServer] = field(default_factory=list)
     _sessions: set[str] = field(default_factory=set)
     #: Set at stop, so a held /hang request lets the server shut down.
     _closing: asyncio.Event = field(default_factory=asyncio.Event)
@@ -86,22 +85,16 @@ class FixtureSite:
         port_a, port_b = pick_free_port(), pick_free_port()
         self.a = f"http://localhost:{port_a}"
         self.b = f"http://127.0.0.1:{port_b}"
-        for port, app in ((port_a, self._origin_a()), (port_b, self._origin_b())):
-            config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
-            server = uvicorn.Server(config)
-            self._servers.append(server)
-            self._tasks.append(asyncio.create_task(server.serve()))
-        while not all(server.started for server in self._servers):
-            for task in self._tasks:
-                if task.done():
-                    task.result()
-            await asyncio.sleep(0.05)
+        for name, port, app in (
+            ("fixture origin A", port_a, self._origin_a()),
+            ("fixture origin B", port_b, self._origin_b()),
+        ):
+            self._servers.append(await serve_locally(name, app, port))
 
     async def stop(self) -> None:
         self._closing.set()
         for server in self._servers:
-            server.should_exit = True
-        await asyncio.gather(*self._tasks)
+            await server.stop()
 
     def posts_to(self, path: str) -> list[FormPost]:
         return [post for post in self.posts if post.path == path]
@@ -127,6 +120,7 @@ class FixtureSite:
                 Route("/hang", self._hang),
                 Route("/signup", self._signup, methods=["GET", "POST"]),
                 Route("/elsewhere", self._elsewhere),
+                Route("/partner-offers", self._partner_offers),
             ]
         )
 
@@ -274,6 +268,12 @@ function go() {{
             f'<h1>Partner offer</h1><a href="{self.b}/partner-login">Continue to partner</a>',
         )
 
+    async def _partner_offers(self, request: Request) -> Response:
+        return _page(
+            "Offers",
+            f'<h1>Offers</h1><a href="{self.b}/captcha">See the partner\'s offer</a>',
+        )
+
     # --- origin B -----------------------------------------------------------
 
     def _origin_b(self) -> Starlette:
@@ -281,6 +281,7 @@ function go() {{
             routes=[
                 Route("/iframe/editor", self._editor),
                 Route("/partner-login", self._partner_login, methods=["GET", "POST"]),
+                Route("/captcha", self._captcha),
             ]
         )
 

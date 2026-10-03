@@ -20,17 +20,22 @@ from pathlib import Path
 import secrets
 import shutil
 import time
+from typing import Any
+from urllib.parse import urlsplit
 import uuid
 
+from browser_use import Browser
 from bson import ObjectId
+from cryptography.fernet import Fernet
 import httpx
+import psutil
 import pytest
 from redis.asyncio import Redis
 
 from app.agents.core.background.executor_queue import is_executor_busy
 from app.config.feature_flags import FeatureFlag
 from app.config.settings import settings
-from app.constants.browser import BrowserEngine
+from app.constants.browser import BrowserEngine, JobEnding
 from app.constants.cache import SUBSCRIPTION_PLAN_CACHE_PREFIX, SUBSCRIPTION_PLAN_CACHE_TTL
 from app.constants.llm import LLMProviderName
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME
@@ -39,7 +44,9 @@ from app.db.repositories.subscriptions import subscription_repository
 from app.models.payment_models import PlanType, SubscriptionDocument
 from app.schemas.browser_job import BrowserJobState
 from app.services.browser.handoff import get_handoff, get_pending_handoff_for_reply
-from app.services.browser.jobs import get_job_state, get_latest_job
+from app.services.browser.job_events import read_cards
+from app.services.browser.jobs import get_job_state, get_latest_job, job_ending
+from app.services.browser.registry import get_session_entry
 from app.services.dev_service import mint_dev_user, seed_dev_data
 from app.services.feature_flags import set_user_flag
 from tests.helpers import pick_free_port, worker_redis_url
@@ -102,6 +109,8 @@ class BrowserStack:
         self.api_port = pick_free_port()
         #: One key for both hosts: the worker presents the same BROWSER_HOST_KEY to each.
         self.host_key = secrets.token_hex(16)
+        #: Encrypts the logins a run saves, as production's key does.
+        self.state_key = Fernet.generate_key().decode()
         self.observer = OutboundObserver(settings.RABBITMQ_URL)
         self.chrome: BrowserHost | None = None
         self.obscura: BrowserHost | None = None
@@ -200,6 +209,7 @@ class BrowserStack:
             "BROWSER_LIVE_VIEW_BASE_URL": self.api_url,
             "GAIA_BOT_API_KEY": _BOT_KEY,
             "BOT_SESSION_TOKEN_SECRET": _BOT_SESSION_SECRET,
+            "BROWSER_STATE_ENCRYPTION_KEY": self.state_key,
         }
 
     def _read_the_stacks_redis(self) -> None:
@@ -324,6 +334,11 @@ class BrowserStack:
             await asyncio.sleep(1.0)
         raise AssertionError(f"{conversation_id} never went quiet within {timeout}s\n{self.logs()}")
 
+    async def handoff_waiting(self, user: BotUser) -> bool:
+        """Whether a bot run of this user is waiting on the user right now."""
+        handoff_id = await get_pending_handoff_for_reply(f"{_TELEGRAM}:{user.user_id}")
+        return handoff_id is not None and await get_handoff(handoff_id) is not None
+
     async def pending_handoff(self, user: BotUser, *, timeout: float = RUN_SECONDS) -> str:
         """Return the handoff a bot run of this user is waiting on, once it is raised."""
         address = f"{_TELEGRAM}:{user.user_id}"
@@ -335,11 +350,86 @@ class BrowserStack:
             await asyncio.sleep(_POLL_SECONDS)
         raise AssertionError(f"no handoff was raised within {timeout}s\n{self.logs()}")
 
+    async def ending(self, job_id: str) -> JobEnding | None:
+        """Return how the job's ending was recorded: stopped or finished, None while it runs."""
+        return await job_ending(job_id)
+
+    async def sessions_of(self, job_id: str) -> list[str]:
+        """Return every browser session the run opened, in order: one, or two after a move to Chrome."""
+        sessions = [
+            str(card["session_id"])
+            for frame in await read_cards(job_id)
+            for card in _cards_in(frame)
+            if card.get("kind") == "session"
+        ]
+        return list(dict.fromkeys(sessions))
+
+    async def in_live_page(self, job_id: str, script: str) -> object:
+        """Run JS in the run's own page, the way a person acts in the live view during a handoff.
+
+        Dialled with the session's own token, as the live view is: the host refuses a bare /cdp/<id>.
+        """
+        sessions = await self.sessions_of(job_id)
+        if not sessions:
+            raise AssertionError(f"job {job_id} has opened no browser session")
+        session_id = sessions[-1]
+        entry = await get_session_entry(session_id)
+        if entry is None or not entry.live_ws:
+            raise AssertionError(f"session {session_id} has no live view")
+        live = urlsplit(entry.live_ws)
+        cdp = live._replace(path=live.path.replace(f"/live/{session_id}", f"/cdp/{session_id}"))
+        browser = Browser(cdp_url=cdp.geturl())
+        await browser.start()
+        try:
+            session = await browser.get_or_create_cdp_session(focus=False)
+            result = await session.cdp_client.send.Runtime.evaluate(
+                params={"expression": script, "awaitPromise": True, "returnByValue": True},
+                session_id=session.session_id,
+            )
+            return result.get("result", {}).get("value")
+        finally:
+            await browser.stop()
+
+    async def page_reaches(self, job_id: str, path: str, *, timeout: float = 30.0) -> None:
+        """Wait until the run's page is on path, read from the page itself."""
+        deadline = time.monotonic() + timeout
+        seen: object = None
+        while time.monotonic() < deadline:
+            seen = await self.in_live_page(job_id, "location.pathname")
+            if seen == path:
+                return
+            await asyncio.sleep(_POLL_SECONDS)
+        raise AssertionError(f"the run's page never reached {path} (last on {seen})")
+
+    def kill_obscura_engine(self) -> None:
+        """SIGKILL the Obscura engine under its host, as an engine crash would end it."""
+        if self.obscura is None or self.obscura.process.proc is None:
+            raise RuntimeError("the Obscura host is not running")
+        engines = [
+            child
+            for child in psutil.Process(self.obscura.process.proc.pid).children(recursive=True)
+            if "obscura" in child.name()
+        ]
+        if not engines:
+            raise AssertionError("the Obscura host runs no engine to kill")
+        for engine in engines:
+            engine.kill()
+
     async def decide_on_live_page(self, live_url: str, decision: str) -> int:
         """Press the live view page's Done ("continue") or Cancel, as its buttons do."""
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(f"{live_url}/decision", json={"decision": decision})
         return response.status_code
+
+
+def _cards_in(frame: Any) -> list[dict[str, Any]]:
+    """Return every card a feed frame carries, however deep its envelope nests it."""
+    if not isinstance(frame, dict):
+        return []
+    found = [frame] if "kind" in frame else []
+    for value in frame.values():
+        found.extend(_cards_in(value))
+    return found
 
 
 async def _make_pro(user_id: str) -> None:

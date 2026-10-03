@@ -45,9 +45,9 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
-import uvicorn
 
 from tests.helpers import pick_free_port
+from tests.integration.real.browser._stack.local_server import LocalServer, serve_locally
 
 _LLM_STUB_DIR = Path(__file__).resolve().parents[7] / "tools" / "llm-stub"
 
@@ -82,7 +82,6 @@ _INTERACTIVE_LINE = re.compile(
 )
 _ATTRIBUTE = re.compile(r"(?P<key>[\w-]+)=(?P<value>'[^']*'|\S+)")
 _TEXT_ATTRIBUTES = ("value", "aria-label", "placeholder", "title", "alt", "name")
-_STEP_NUMBER = re.compile(r"<step_info>\s*Step\s*(\d+)")
 _BROWSER_STATE = re.compile(r"<browser_state>(.*?)</browser_state>", re.DOTALL)
 _WEBPAGE_CONTENT = re.compile(r"<webpage_content>(.*?)</webpage_content>", re.DOTALL)
 _CURRENT_TAB = re.compile(r"^Current tab: (\w+)", re.MULTILINE)
@@ -91,8 +90,6 @@ _TAB = re.compile(r"^Tab (\w+): (\S+)", re.MULTILINE)
 PAGE_URL = "{page_url}"
 #: The tools and triggers stores are built for vectors this long.
 _EMBEDDING_DIMS = 768
-#: How many agent steps a wait_for step may spend waiting before the script counts as broken.
-_MAX_WAIT_STEPS = 20
 
 
 @dataclass(frozen=True)
@@ -104,16 +101,21 @@ class Text:
 
 @dataclass(frozen=True)
 class AgentStep:
-    """One agent step: its actions, taken once wait_for (if any) is visible on the page.
+    """One agent step: its actions, taken once what it waits on is there.
 
     An action is {name: params}; any param that is a Text is resolved to an element
-    index, and PAGE_URL in a string param becomes the current tab's address. A done
-    action is sent only when every require string was seen in the page state or the
-    run's history.
+    index, and PAGE_URL in a string param becomes the current tab's address. Until
+    wait_for is on the page, heard is anywhere in what the agent is shown (a
+    follow-up the user sent mid-run), and gate (if any) is set, the agent waits a
+    second instead, at most patience times. A done action is sent only when every
+    require string was seen in the page state or the run's history.
     """
 
     actions: list[dict[str, Any]]
     wait_for: str | None = None
+    heard: str | None = None
+    gate: asyncio.Event | None = None
+    patience: int = 20
     require: tuple[str, ...] = ()
 
 
@@ -143,8 +145,8 @@ class RunScript:
     jev_cursor: int = 0
     waited: int = 0
     last_move: JevMove | None = None
-    #: Agent answers by step number, so a re-asked step gets the same answer.
-    answered: dict[int, dict[str, Any]] = field(default_factory=dict)
+    #: Agent answers by the request that asked: a retried or hedged duplicate gets the same answer.
+    answered: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -204,8 +206,10 @@ class FakeModels:
         self.calls: list[ModelCall] = []
         self.errors: list[str] = []
         self._runs: dict[str, RunScript] = {}
-        self._server: uvicorn.Server | None = None
-        self._task: asyncio.Task[None] | None = None
+        #: While cleared, comms and executor model calls wait: a test holds what comes after a run.
+        self.agent_tier_open = asyncio.Event()
+        self.agent_tier_open.set()
+        self._server: LocalServer | None = None
 
     @property
     def base_url(self) -> str:
@@ -234,18 +238,11 @@ class FakeModels:
                 Route("/v1beta/models/{call}", self._gemini_embeddings, methods=["POST"]),
             ]
         )
-        config = uvicorn.Config(app, host="127.0.0.1", port=self.port, log_level="warning")
-        self._server = uvicorn.Server(config)
-        self._task = asyncio.create_task(self._server.serve())
-        while not self._server.started:
-            if self._task.done():
-                self._task.result()
-            await asyncio.sleep(0.05)
+        self._server = await serve_locally("fake model server", app, self.port)
 
     async def stop(self) -> None:
-        if self._server is not None and self._task is not None:
-            self._server.should_exit = True
-            await self._task
+        if self._server is not None:
+            await self._server.stop()
 
     # --- routing ------------------------------------------------------------
 
@@ -261,14 +258,14 @@ class FakeModels:
     async def _chat(self, request: Request) -> Response:
         body = await request.json()
         try:
-            return self._answer_chat(body)
+            return await self._answer_chat(body)
         except (
             Exception
         ) as exc:  # a fault in the fake itself is recorded and answered loud, never hidden
             self._fail(f"the fake failed on {json.dumps(body)[:600]}: {exc!r}")
             return JSONResponse(status_code=500, content={"error": {"message": repr(exc)}})
 
-    def _answer_chat(self, body: dict[str, Any]) -> Response:
+    async def _answer_chat(self, body: dict[str, Any]) -> Response:
         response_format = body.get("response_format") or {}
         schema = (response_format.get("json_schema") or {}).get("schema") or {}
         properties = set((schema.get("properties") or {}).keys())
@@ -278,6 +275,7 @@ class FakeModels:
         if not body.get("stream") and len(tools) == 1:
             return self._structured_one_shot(body, tools[0])
         if body.get("stream") or tools:
+            await self.agent_tier_open.wait()
             return self._agent_tier(body)
         if (response_format.get("json_schema") or {}).get("name") == _AGENT_OUTPUT:
             if properties == {"memory", "action"}:
@@ -346,12 +344,11 @@ class FakeModels:
         if run is None:
             self._fail(f"an agent step for no scripted run: {state[:300]}")
             return _done("No run was scripted for this task.", success=False)
-        step_match = _STEP_NUMBER.search(state)
-        step = int(step_match.group(1)) if step_match else -1
-        if step in run.answered:
-            return run.answered[step]
+        asked = hashlib.sha256(json.dumps(messages, sort_keys=True).encode()).hexdigest()
+        if asked in run.answered:
+            return run.answered[asked]
         answer = self._next_agent_answer(run, state, schema)
-        run.answered[step] = answer
+        run.answered[asked] = answer
         return answer
 
     def _next_agent_answer(
@@ -362,12 +359,17 @@ class FakeModels:
             return _done("The scripted agent ran out of steps.", success=False)
         planned = run.agent[run.agent_cursor]
         page = _browser_state(state)
-        if planned.wait_for is not None and planned.wait_for not in page:
+        waiting = (
+            (planned.wait_for is not None and planned.wait_for not in page)
+            or (planned.heard is not None and planned.heard not in state)
+            or (planned.gate is not None and not planned.gate.is_set())
+        )
+        if waiting:
             run.waited += 1
-            if run.waited > _MAX_WAIT_STEPS:
-                self._fail(f"{run.marker}: {planned.wait_for!r} never appeared")
-                return _done(f"{planned.wait_for!r} never appeared.", success=False)
-            return {"memory": "Waiting for the page.", "action": [{"wait": {"seconds": 1}}]}
+            if run.waited > planned.patience:
+                self._fail(f"{run.marker}: step {run.agent_cursor + 1} waited past its patience")
+                return _done("What the step waited on never came.", success=False)
+            return {"memory": "Waiting.", "action": [{"wait": {"seconds": 1}}]}
         missing = [needed for needed in planned.require if needed not in state]
         if missing:
             self._fail(f"{run.marker}: the agent was to report {missing} but never saw them")
