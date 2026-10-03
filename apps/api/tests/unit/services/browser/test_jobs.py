@@ -84,11 +84,8 @@ async def test_the_worker_waits_while_a_run_or_a_join_may_speak_and_wakes_when_b
     await asyncio.wait_for(waiting, timeout=1)
 
 
-async def test_a_message_reaches_only_the_running_job_and_is_taken_once() -> None:
-    assert await jobs_mod.post_conversation_message("conv-1", "hello") is None
-    await jobs_mod.claim_conversation_slot("conv-1", "job-1")
-
-    assert await jobs_mod.post_conversation_message("conv-1", "use the blue one") == "job-1"
+async def test_messages_for_a_job_are_taken_once_in_order() -> None:
+    await jobs_mod.post_job_message("job-1", "use the blue one")
     await jobs_mod.post_job_message("job-1", "then the big one")
     await jobs_mod.post_job_message("job-1", "no, the small one")
     assert await jobs_mod.job_messages_waiting("job-1") is True

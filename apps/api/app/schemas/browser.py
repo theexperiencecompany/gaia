@@ -114,7 +114,7 @@ class BrowserResultSnapshot(BaseModel):
     # What the user said while the run went: messages, and notes left with a
     # handoff. The closing reply is written against the original request otherwise.
     user_notes: list[str] = Field(default_factory=list)
-    # The notes among them that replaced the request, as the reply classifier read them.
+    # The notes among them that replaced the request, as comms' browser_step_done marked them.
     redirects: list[str] = Field(default_factory=list)
 
 
@@ -160,7 +160,7 @@ class HandoffOutcome(BaseModel):
 
     status: HandoffStatus
     message: str | None = None
-    #: The note replaces the task: only the reply classifier says so, never a plain note.
+    #: The note replaces the task: only comms' browser_step_done says so, never a plain note.
     redirect: bool = False
     #: Why a FAILED handoff failed.
     cause: EngineFailure | None = None
@@ -231,7 +231,7 @@ class AgentGuidanceRequest(BaseModel):
     # What the user said mid-run. Without it the executor guides toward the
     # original task and sends the run back to a step they declined.
     user_notes: list[str] = Field(default_factory=list)
-    # The notes among them the reply classifier read as replacing the task.
+    # The notes among them comms' browser_step_done marked as replacing the task.
     redirects: list[str] = Field(default_factory=list)
 
 

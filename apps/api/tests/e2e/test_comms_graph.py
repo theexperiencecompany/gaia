@@ -29,7 +29,13 @@ from langchain_core.messages import (
 from langgraph.graph.state import CompiledStateGraph
 import pytest
 
+from app.agents.context.slots import BROWSER_TASK_MARKER
+from app.constants.browser import HandoffStatus
 from app.constants.general import NEW_MESSAGE_BREAKER
+from app.schemas.browser import NewHandoff
+from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
+from app.services.browser.handoff import create_pending_handoff, get_handoff
+from app.services.browser.jobs import put_job_state, set_latest_job
 from app.utils.multimodal import extract_text_content
 from tests.e2e._harness.graph_run import (
     AGENT_NODE,
@@ -58,6 +64,10 @@ class TestCommsToolSurface:
             # worker tier.
             "find_integration",
             "search_public_workflows",
+            # What the user says to a browser task already running.
+            "browser_step_done",
+            "stop_browser_task",
+            "tell_browser_task",
         ],
     )
     async def test_the_comms_tools_are_bound_from_the_start(self, tool: str):
@@ -114,6 +124,42 @@ class TestCommsToolSurface:
             run = await run_graph(graph, "do the thing")
 
         assert "delegating that now." in run.final_text()
+
+
+class TestBrowserTaskReply:
+    async def test_a_done_reaches_the_paused_step_comms_was_shown(self):
+        """The frame tells the model what the task waits on, and its tool settles that very step."""
+        async with comms_graph(
+            [call("browser_step_done", {}, call_id="b1"), "Carrying on."]
+        ) as graph:
+            await set_latest_job("conv-browser", "job-1")
+            await put_job_state(
+                BrowserJobState(
+                    job_id="job-1", status=BrowserJobStatus.RUNNING, task="book a table"
+                )
+            )
+            await create_pending_handoff(
+                "h1",
+                NewHandoff(
+                    job_id="job-1",
+                    user_id="u-1",
+                    conversation_id="conv-browser",
+                    reason="Sign in to opentable.com",
+                    reply_to="conv-browser",
+                ),
+            )
+            run = await run_graph(graph, "done, signed in", thread_id="conv-browser")
+            record = await get_handoff("h1")
+
+        [frame] = [
+            message
+            for message in run.prompts[0]
+            if isinstance(message, SystemMessage)
+            and message.additional_kwargs.get(BROWSER_TASK_MARKER)
+        ]
+        assert "Sign in to opentable.com" in str(frame.content)
+        assert record is not None
+        assert record.status is HandoffStatus.COMPLETED
 
 
 class TestMemoryTools:

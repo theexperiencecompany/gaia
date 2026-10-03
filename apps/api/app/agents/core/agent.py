@@ -111,8 +111,6 @@ class AgentRunOptions:
     source: str | None = None
     langfuse_trace_id: str | None = None
     langfuse_tags: list[str] | None = None
-    #: A fact about this turn the model reads with the user's message (MessageAttachments.turn_note).
-    turn_note: str | None = None
 
 
 @dataclass(frozen=True)
@@ -182,7 +180,6 @@ async def _core_agent_logic(
                 files_data=request.fileData,
                 currently_uploaded_file_ids=request.fileIds,
                 trigger_context=trigger_context,
-                turn_note=options.turn_note,
             ),
         ),
         GraphManager.get_graph("comms_agent"),
@@ -312,7 +309,6 @@ async def call_agent(
                 source=source,
                 langfuse_trace_id=langfuse_trace_id,
                 langfuse_tags=["comms_agent", settings.ENV],
-                turn_note=options.turn_note,
             ),
         )
 

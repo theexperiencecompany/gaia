@@ -321,6 +321,7 @@ class TestBuildCommsGraph:
             deps["builder"].compile.assert_called_once()
 
     async def test_yields_compiled_graph_postgres(self):
+        """The default, as build_comms_agent builds it: the shared Postgres checkpointer."""
         fake_cp = MagicMock(name="postgres_checkpointer")
         fake_manager = MagicMock()
         fake_manager.get_checkpointer.return_value = fake_cp
@@ -332,9 +333,7 @@ class TestBuildCommsGraph:
             )
             from app.agents.core.graph_builder.build_graph import build_comms_graph
 
-            async with build_comms_graph(
-                chat_llm=deps["llm"], in_memory_checkpointer=False
-            ) as graph:
+            async with build_comms_graph(chat_llm=deps["llm"]) as graph:
                 assert graph is deps["compiled"]
 
             call_kwargs = deps["builder"].compile.call_args.kwargs
@@ -398,6 +397,9 @@ class TestBuildCommsGraph:
             assert kwargs["tools_config"].initial_tool_ids == [
                 "call_executor",
                 "cancel_executor",
+                "browser_step_done",
+                "stop_browser_task",
+                "tell_browser_task",
                 "find_integration",
                 "search_public_workflows",
                 web_search_tool.name,
@@ -456,8 +458,8 @@ class TestBuildCommsGraph:
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
             pre_model_hooks = kwargs["hooks_config"].pre_model_hooks
             # comms agent: filter_messages_node, executor_status_hook,
-            # manage_system_prompts_node
-            assert len(pre_model_hooks) == 3
+            # browser_task_status_hook, manage_system_prompts_node
+            assert len(pre_model_hooks) == 4
 
     async def test_comms_middleware_passed_to_create_agent(self):
         mock_mw = [MagicMock(name="mw1")]

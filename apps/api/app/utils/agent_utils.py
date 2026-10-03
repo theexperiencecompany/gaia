@@ -342,6 +342,9 @@ _SPECIAL_TOOLS: dict[str, tuple[str, str | None, bool]] = {
     "retrieve_tools": ("retrieve_tools", "Retrieve tools", False),
     "call_executor": ("executor", "Delegating to executor", False),
     "cancel_executor": ("cancel_executor", "Cancelling the task", False),
+    "browser_step_done": (BROWSER_TOOL_CATEGORY, "Continuing the browser task", False),
+    "stop_browser_task": (BROWSER_TOOL_CATEGORY, "Stopping the browser task", False),
+    "tell_browser_task": (BROWSER_TOOL_CATEGORY, "Telling the browser task", False),
     "handoff": ("handoff", None, False),  # message will be set from args
     "spawn_subagent": ("spawn_subagent", "Spawn subagent", False),
     "activate_integration": ("integrations", "Activating integration", False),

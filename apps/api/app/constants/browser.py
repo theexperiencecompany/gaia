@@ -225,31 +225,6 @@ BROWSER_HANDOFF_NOT_OWNED_DETAIL = "Not authorized to resolve this handoff"
 BROWSER_HANDOFF_GONE_DETAIL = "Handoff not found or expired"
 BROWSER_LIVE_VIEW_NOT_WAITING_DETAIL = "This live view is no longer waiting"
 
-# Read with a chat message that answered a paused browser task, so the turn's
-# reply knows what the message already did to it.
-BROWSER_HANDOFF_REPLY_NOTE = (
-    "[This message answered the browser task that was paused for the user ({reason}). "
-    "It was read as {reading}.]"
-)
-BROWSER_HANDOFF_REPLY_READINGS: dict[str, str] = {
-    "continue": (
-        "the user finishing that step, so the task carries on. Acknowledge it in a few words "
-        "and say nothing of the task's result or next step: the result reaches the user in "
-        "its own message"
-    ),
-    "cancel": "the user stopping the task, so it was stopped",
-    "redirect": (
-        "a new instruction instead of that step, which the task now follows. Acknowledge it "
-        "in a few words and say nothing of the result: it reaches the user in its own message"
-    ),
-}
-
-#: What the turn reads with a message that stopped the running browser task: its
-#: reply is the one thing the user hears of the stop.
-BROWSER_RUN_STOPPED_BY_MESSAGE_NOTE = (
-    "[This message stopped the browser task that was running, so it was stopped.]"
-)
-
 # An expired handoff is a failed run, not the completed one a takeover made it look like.
 BROWSER_RUN_HANDOFF_TIMED_OUT = "Stopped: nobody finished the step in the live browser in time."
 # The run asked the user to take over more often than one task may.
@@ -707,6 +682,15 @@ class BrowserStopOutcome(StrEnum):
     STOPPED = "stopped"
     #: The run had already ended on its own result, which the user is told.
     ALREADY_ENDED = "already_ended"
+
+
+# What a stop of a chat's browser task came to, as the model that asked for it reads it.
+BROWSER_STOP_REPORTS: dict[BrowserStopOutcome, str] = {
+    BrowserStopOutcome.STOPPED: "Stopped the browser task.",
+    BrowserStopOutcome.ALREADY_ENDED: (
+        "The browser task had already finished before the stop reached it; its result stands."
+    ),
+}
 
 
 # How long a read of a job's feed parks on it for the next frame: the beat the

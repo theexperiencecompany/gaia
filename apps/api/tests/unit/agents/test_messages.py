@@ -737,21 +737,3 @@ class TestOpenuiVariantReachesTheModel:
 
         assert "Platform Context" in result[0].content
         assert "## Output Format (this app renders rich components)" not in result[0].content
-
-
-class TestTurnNote:
-    @pytest.mark.asyncio
-    async def test_a_turn_note_is_read_with_the_users_message(self) -> None:
-        """What the message already did (it answered a paused browser task) reaches the model with it, and only then."""
-        p = _patches()
-        with p["create_system"], p["build_dynamic"], p["format_reply"], p["format_files"]:
-            noted = await construct_langchain_messages(
-                messages=[{"role": "user", "content": "done"}],
-                attachments=MessageAttachments(turn_note="[it resumed the task]"),
-            )
-            plain = await construct_langchain_messages(
-                messages=[{"role": "user", "content": "done"}],
-            )
-
-        assert noted[-2].content == "done\n\n[it resumed the task]"
-        assert plain[-2].content == "done"
