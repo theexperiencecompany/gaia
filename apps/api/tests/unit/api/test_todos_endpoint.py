@@ -32,6 +32,8 @@ from app.services.todos.errors import ExternalRefTakenError, TrackedTodoWorkflow
 TODOS_ENDPOINT = "app.api.v1.endpoints.todos"
 ANALYTICS_PATCH = "app.api.v1.endpoints.todos.capture_context_event"
 
+pytestmark = pytest.mark.usefixtures("todo_response_reads")
+
 
 @pytest.fixture(autouse=True)
 def _noop_analytics():
@@ -294,6 +296,54 @@ class TestTodoWideEventContext:
             user={"id": "507f1f77bcf86cd799439011"},
             todo={"operation": "delete_project", "project_id": "p1"},
         )
+
+    async def test_a_new_checklist_item_answers_with_the_todos_open_sub_todos(
+        self, client: AsyncClient, todo_response_reads: AsyncMock
+    ) -> None:
+        doc = TodoDocument(
+            id="todo-1",
+            user_id="507f1f77bcf86cd799439011",
+            title="Inbox desk",
+            created_at=datetime(2025, 1, 1, tzinfo=UTC),
+            updated_at=datetime(2025, 1, 1, tzinfo=UTC),
+        )
+        todo_response_reads.return_value = {"todo-1": 2}
+        with patch(
+            f"{TODOS_ENDPOINT}.todo_repository.add_subtask",
+            new_callable=AsyncMock,
+            return_value=doc,
+        ):
+            resp = await client.post("/api/v1/todos/todo-1/subtasks", json={"title": "Buy milk"})
+
+        assert resp.json()["sub_todo_count"] == 2
+        todo_response_reads.assert_awaited_once_with("507f1f77bcf86cd799439011", ["todo-1"])
+
+    async def test_a_ticked_checklist_item_answers_with_the_todos_open_sub_todos(
+        self, client: AsyncClient, todo_response_reads: AsyncMock
+    ) -> None:
+        doc = TodoDocument(
+            id="todo-1",
+            user_id="507f1f77bcf86cd799439011",
+            title="Inbox desk",
+            created_at=datetime(2025, 1, 1, tzinfo=UTC),
+            updated_at=datetime(2025, 1, 1, tzinfo=UTC),
+            subtasks=[SubTask(id="sub-1", title="Buy milk", completed=False)],
+        )
+        todo_response_reads.return_value = {"todo-1": 2}
+        with (
+            patch(
+                f"{TODOS_ENDPOINT}.todo_repository.get", new_callable=AsyncMock, return_value=doc
+            ),
+            patch(
+                f"{TODOS_ENDPOINT}.todo_repository.set_subtask_fields",
+                new_callable=AsyncMock,
+                return_value=doc,
+            ),
+        ):
+            resp = await client.post("/api/v1/todos/todo-1/subtasks/sub-1/toggle")
+
+        assert resp.json()["sub_todo_count"] == 2
+        todo_response_reads.assert_awaited_once_with("507f1f77bcf86cd799439011", ["todo-1"])
 
     async def test_create_subtask_stamps_the_parent_todo(self, client: AsyncClient) -> None:
         doc = TodoDocument(

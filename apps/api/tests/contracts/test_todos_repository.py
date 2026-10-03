@@ -108,6 +108,36 @@ class TestTodosRepository(UserScopedRepositoryContract):
         assert page.total == 1
         assert page.items[0].title == "inbox"
 
+    @pytest.mark.parametrize(
+        "only_filter",
+        [
+            {"q": "milk"},
+            {"completed": False},
+            {"priority": Priority.HIGH},
+            {"labels": ["errand"]},
+        ],
+        ids=["text", "completed", "priority", "labels"],
+    )
+    async def test_list_page_any_one_filter_lifts_the_inbox_default(
+        self, repo, make_doc, only_filter
+    ):
+        for project_id in ("inbox-1", "p2"):
+            await repo.create(
+                make_doc(
+                    user_id="u",
+                    title=f"Buy milk {project_id}",
+                    project_id=project_id,
+                    priority=Priority.HIGH,
+                    labels=["errand"],
+                )
+            )
+
+        page = await repo.list_page(
+            user_id="u", params=_all_params(**only_filter), inbox_project_id="inbox-1"
+        )
+
+        assert sorted(t.project_id for t in page.items) == ["inbox-1", "p2"]
+
     async def test_list_page_text_search(self, repo, make_doc):
         await repo.create(make_doc(user_id="u", title="Buy milk"))
         await repo.create(make_doc(user_id="u", title="Call bank"))
@@ -340,6 +370,96 @@ class TestTodosRepository(UserScopedRepositoryContract):
         found = await repo.list_active_tracked("u", limit=10, external_ref=thread)
 
         assert [t.title for t in found] == ["owner"]
+
+    # ---- sub-todos ----------------------------------------------------------
+
+    async def test_top_level_listing_leaves_out_every_sub_todo(self, repo, make_doc):
+        tracked = [GAIA_TRACKED_LABEL]
+        desk = await repo.create(make_doc(user_id="u", title="desk", labels=tracked))
+        await repo.create(
+            make_doc(user_id="u", title="thread", labels=tracked, parent_todo_id=desk.id)
+        )
+        # A document written before sub-todos existed has no parent_todo_id field at all.
+        await repo.create(make_doc(user_id="u", title="legacy", labels=tracked))
+
+        found = await repo.list_active_tracked("u", limit=10, top_level=True)
+
+        assert sorted(t.title for t in found) == ["desk", "legacy"]
+
+    async def test_the_default_listing_keeps_sub_todos(self, repo, make_doc):
+        tracked = [GAIA_TRACKED_LABEL]
+        desk = await repo.create(make_doc(user_id="u", title="desk", labels=tracked))
+        await repo.create(
+            make_doc(user_id="u", title="thread", labels=tracked, parent_todo_id=desk.id)
+        )
+
+        found = await repo.list_active_tracked("u", limit=10)
+
+        assert sorted(t.title for t in found) == ["desk", "thread"]
+
+    async def test_one_parents_open_sub_todos_are_listed(self, repo, make_doc):
+        tracked = [GAIA_TRACKED_LABEL]
+        desk = await repo.create(make_doc(user_id="u", title="desk", labels=tracked))
+        other = await repo.create(make_doc(user_id="u", title="other", labels=tracked))
+        await repo.create(
+            make_doc(user_id="u", title="open", labels=tracked, parent_todo_id=desk.id)
+        )
+        await repo.create(
+            make_doc(
+                user_id="u", title="done", labels=tracked, parent_todo_id=desk.id, completed=True
+            )
+        )
+        await repo.create(
+            make_doc(user_id="u", title="elsewhere", labels=tracked, parent_todo_id=other.id)
+        )
+
+        found = await repo.list_active_tracked("u", limit=10, parent_todo_id=desk.id)
+
+        assert [t.title for t in found] == ["open"]
+
+    async def test_open_sub_todos_are_counted_per_parent_for_the_caller_only(self, repo, make_doc):
+        tracked = [GAIA_TRACKED_LABEL]
+        desk = await repo.create(make_doc(user_id="u", title="desk", labels=tracked))
+        lone = await repo.create(make_doc(user_id="u", title="lone", labels=tracked))
+        for i in range(3):
+            await repo.create(make_doc(user_id="u", title=f"t{i}", parent_todo_id=desk.id))
+        await repo.create(
+            make_doc(user_id="u", title="done", parent_todo_id=desk.id, completed=True)
+        )
+        await repo.create(make_doc(user_id="u2", title="theirs", parent_todo_id=desk.id))
+
+        counts = await repo.count_open_sub_todos("u", [desk.id, lone.id])
+
+        assert counts == {desk.id: 3}
+
+    async def test_find_sub_todos_returns_open_and_completed_of_every_given_parent(
+        self, repo, make_doc
+    ):
+        a = await repo.create(make_doc(user_id="u", title="a"))
+        b = await repo.create(make_doc(user_id="u", title="b"))
+        await repo.create(make_doc(user_id="u", title="a1", parent_todo_id=a.id))
+        await repo.create(make_doc(user_id="u", title="b1", parent_todo_id=b.id, completed=True))
+        await repo.create(make_doc(user_id="u", title="loose"))
+        await repo.create(make_doc(user_id="u2", title="theirs", parent_todo_id=a.id))
+
+        found = await repo.find_sub_todos("u", [a.id, b.id])
+
+        assert sorted(t.title for t in found) == ["a1", "b1"]
+
+    async def test_list_page_filters_by_parent_across_projects(self, repo, make_doc):
+        await repo.create(
+            make_doc(user_id="u", title="in inbox", project_id="inbox-1", parent_todo_id="p")
+        )
+        await repo.create(
+            make_doc(user_id="u", title="elsewhere", project_id="p2", parent_todo_id="p")
+        )
+        await repo.create(make_doc(user_id="u", title="unrelated", project_id="inbox-1"))
+
+        page = await repo.list_page(
+            user_id="u", params=_all_params(parent_todo_id="p"), inbox_project_id="inbox-1"
+        )
+
+        assert sorted(t.title for t in page.items) == ["elsewhere", "in inbox"]
 
     async def test_vfs_partitions_by_tracked_label(self, repo, make_doc):
         cutoff = datetime.now(UTC) - timedelta(days=7)
@@ -649,6 +769,41 @@ class TestReplaceNoteFields:
         )
 
         assert updated is not None and updated.canvas_content == "v2"
+
+    @pytest.mark.regression
+    async def test_untouched_replace_keeps_updated_at(self, repo, make_doc, raw_collection):
+        """A canvas repair is not activity: dormancy and recency read updated_at."""
+        created = await repo.create(make_doc(user_id="u1", canvas_content="v1"))
+        idle_since = datetime(2026, 9, 1, tzinfo=UTC)
+        await raw_collection.update_one(
+            {"_id": repo._id_value(created.id)}, {"$set": {"updated_at": idle_since}}
+        )
+
+        updated = await repo.replace_note_fields(
+            created.id,
+            "u1",
+            update=TodoUpdate(canvas_content="v2"),
+            expected_updated_at=idle_since,
+            touch=False,
+        )
+
+        assert updated is not None and updated.canvas_content == "v2"
+        stored = await repo.get_by_id(created.id)
+        assert stored is not None and stored.updated_at == idle_since
+
+    async def test_untouched_replace_still_refuses_a_stale_revision(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1", canvas_content="v1"))
+
+        assert (
+            await repo.replace_note_fields(
+                created.id,
+                "u1",
+                update=TodoUpdate(canvas_content="v2"),
+                expected_updated_at=datetime(2020, 1, 1, tzinfo=UTC),
+                touch=False,
+            )
+            is None
+        )
 
 
 class TestUpdateIfScheduledAt:

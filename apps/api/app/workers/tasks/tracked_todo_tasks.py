@@ -9,24 +9,36 @@ Handles:
 - Safety-net cron for orphaned todos
 """
 
+import asyncio
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 import json
 import random
-from typing import cast
+from typing import NamedTuple, cast
 from uuid import uuid4
 
 from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import TodoRunRequest, run_todo_on_executor
 from app.agents.prompts.todo_prompts import (
     DELIVERED_RESULT_GUIDANCE,
+    PARENT_STANDING_RULES_LABEL,
     SILENT_RUN_GUIDANCE,
+    SUB_TODOS_CUT_NOTE,
+    SUB_TODOS_LABEL,
     TRIGGERED_RELEVANCE_GUIDANCE,
 )
 from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
+    CANVAS_CURRENT_STATE_SECTION,
+    CANVAS_LEARNINGS_SECTION,
+    CANVAS_STANDING_RULES_SECTION,
     EXECUTE_TRACKED_TODO_TASK,
     FAILED_LABEL,
+    GAIA_TRACKED_LABEL,
+    REFERENCED_TODOS_PROMPT_LIMIT,
+    STANDING_RULES_MAX_CHARS,
+    SUB_TODO_STATE_EXCERPT_CHARS,
+    SUB_TODOS_PROMPT_LIMIT,
     TODO_SCHEDULE_FIRE_GRACE,
     TRIGGER_EVENTS_PROMPT_MAX_CHARS,
     TodoActivityEvent,
@@ -47,7 +59,6 @@ from app.services.canvas_markdown import bounded_canvas, section_body
 from app.services.hil.utils import untrusted_fence
 from app.services.notification_service import notification_service
 from app.services.todo_activity import record_activity
-from app.services.todo_canvas_storage import read_activity, read_canvas
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.triggers.todo_trigger_window import (
@@ -60,6 +71,7 @@ from app.services.triggers.todo_trigger_window import (
 )
 from app.utils.auth_utils import load_user_context
 from app.utils.cron_utils import CronError, get_next_run_time
+from app.utils.general_utils import clip_text
 from app.utils.occurrence import occurrence_stamp, parse_occurrence_stamp
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import Timezone
@@ -407,33 +419,85 @@ def _trigger_type(origin: TriggerOrigin | None) -> TriggerType:
     return TriggerType.SCHEDULED_TODO if origin is None else TriggerType.TODO_TRIGGER
 
 
-def _extract_learnings(ref_canvas: str) -> str | None:
-    """Return the ## Learnings section of a canvas (heading included), or None if absent."""
-    body = section_body(ref_canvas, "Learnings")
-    if body is None:
-        return None
-    return f"## Learnings\n{body}"
+class _RunContext(NamedTuple):
+    """What a run reads from other todos: its parent's rules, its sub-todos, past lessons."""
+
+    parent_rules: str = ""
+    sub_todos: str = ""
+    learnings: str = ""
 
 
-async def _collect_reference_context(ref_ids: list[str], user_id: str) -> str:
-    """Gather ## Learnings from up to 5 referenced todos for prompt context."""
-    if not ref_ids:
+async def _collect_run_context(doc: TodoDocument) -> _RunContext:
+    """Gather everything a run reads from the owner's other todos."""
+    parent_rules, sub_todos, learnings = await asyncio.gather(
+        _collect_parent_rules(doc.parent_todo_id, doc.user_id),
+        _collect_sub_todo_states(doc),
+        _collect_reference_learnings(doc.references, doc.user_id),
+    )
+    return _RunContext(parent_rules=parent_rules, sub_todos=sub_todos, learnings=learnings)
+
+
+async def _collect_parent_rules(parent_todo_id: str | None, user_id: str) -> str:
+    """Render the parent's Standing rules, which a sub-todo's run obeys like its own."""
+    if parent_todo_id is None:
         return ""
-    ref_parts: list[str] = []
-    for ref_id in ref_ids[:5]:  # Cap at 5 to avoid context bloat
-        try:
-            ref_doc = await todo_repository.get_by_id(ref_id)
-            if not ref_doc:
-                continue
-            learnings = _extract_learnings(await read_canvas(ref_id, user_id) or "")
-            if learnings:
-                ref_parts.append(f'From past todo "{ref_doc.title}":\n{learnings.strip()}')
-        except Exception as e:
-            log.debug("execute_todo.reference_read_failed", ref_id=ref_id, error=str(e))
-            continue
-    if not ref_parts:
+    parent = await todo_repository.get(parent_todo_id, user_id=user_id)
+    if parent is None:
         return ""
-    return "\n\nPast experience (from similar completed todos):\n" + "\n\n".join(ref_parts)
+    rules = section_body(parent.canvas_content, CANVAS_STANDING_RULES_SECTION)
+    if not rules:
+        return ""
+    return (
+        f'{PARENT_STANDING_RULES_LABEL}\nFrom "{parent.title}":\n{rules[:STANDING_RULES_MAX_CHARS]}'
+    )
+
+
+async def _collect_sub_todo_states(doc: TodoDocument) -> str:
+    """Each open sub-todo's Current State: a sub-todo reports here, not to the user."""
+    if doc.parent_todo_id is not None:
+        return ""  # one level deep: a sub-todo has no sub-todos to read
+    # One past the limit tells a full page from a cut one.
+    children = await todo_repository.list_active_tracked(
+        doc.user_id, limit=SUB_TODOS_PROMPT_LIMIT + 1, parent_todo_id=doc.id
+    )
+    blocks = [_sub_todo_block(child) for child in children[:SUB_TODOS_PROMPT_LIMIT]]
+    if len(children) > SUB_TODOS_PROMPT_LIMIT:
+        blocks.append(SUB_TODOS_CUT_NOTE.format(limit=SUB_TODOS_PROMPT_LIMIT, todo_id=doc.id))
+    return _labelled(SUB_TODOS_LABEL, blocks, "\n")
+
+
+def _sub_todo_block(child: TodoDocument) -> str:
+    labels = [label for label in child.labels if label != GAIA_TRACKED_LABEL]
+    labels_str = f" [{', '.join(labels)}]" if labels else ""
+    state = section_body(child.canvas_content, CANVAS_CURRENT_STATE_SECTION)
+    return (
+        f'- "{child.title}"{labels_str} (ID: {child.id})\n'
+        f"  Current State: {clip_text(state or '(empty)', SUB_TODO_STATE_EXCERPT_CHARS)}"
+    )
+
+
+async def _collect_reference_learnings(ref_ids: list[str], user_id: str) -> str:
+    """Gather Learnings from the first referenced todos the user owns."""
+    wanted = [
+        ref for ref in ref_ids[:REFERENCED_TODOS_PROMPT_LIMIT] if todo_repository.is_valid_id(ref)
+    ]
+    if not wanted:
+        return ""
+    owned = {doc.id: doc for doc in await todo_repository.find_by_ids(user_id, wanted)}
+    learnings = [
+        f'From past todo "{doc.title}":\n## {CANVAS_LEARNINGS_SECTION}\n{ref_learnings}'
+        for doc in (owned[ref] for ref in wanted if ref in owned)
+        if (ref_learnings := section_body(doc.canvas_content, CANVAS_LEARNINGS_SECTION))
+    ]
+    return _labelled("Past experience (from similar completed todos):", learnings)
+
+
+def _labelled(label: str, blocks: list[str], joiner: str = "\n\n") -> str:
+    """Join blocks under their label, or nothing when there are none."""
+    return f"{label}\n" + joiner.join(blocks) if blocks else ""
+
+
+_NO_CONTEXT = _RunContext()
 
 
 def _bounded_events(events_json: str) -> str:
@@ -450,9 +514,7 @@ def _bounded_events(events_json: str) -> str:
 def _build_execution_prompt(
     doc: TodoDocument,
     *,
-    canvas_content: str | None,
-    reference_context: str,
-    activity_content: str | None = None,
+    context: _RunContext = _NO_CONTEXT,
     origin: TriggerOrigin | None = None,
     coalesced: Sequence[TriggerOrigin] = (),
 ) -> str:
@@ -488,17 +550,19 @@ def _build_execution_prompt(
         ]
     if doc.description:
         prompt_parts.append(f"Details: {doc.description}")
-    if canvas_content:
-        prompt_parts.append(f"Canvas (canvas.md):\n{bounded_canvas(canvas_content)}")
-    if activity_content:
+    if doc.canvas_content:
+        prompt_parts.append(f"Canvas (canvas.md):\n{bounded_canvas(doc.canvas_content)}")
+    # Next to the canvas: rules the run obeys and the sub-todos it answers for.
+    prompt_parts.extend(part for part in (context.parent_rules, context.sub_todos) if part)
+    if activity_content := doc.activity_content:
         tail = activity_content[-ACTIVITY_PROMPT_TAIL_CHARS:]
         truncated = " (older entries omitted; read activity.md for the full log)"
         label = "Recent activity (activity.md)"
         if len(activity_content) > len(tail):
             label += truncated
         prompt_parts.append(f"{label}:\n{tail}")
-    if reference_context:
-        prompt_parts.append(reference_context)
+    if context.learnings:
+        prompt_parts.append(context.learnings)
     prompt_parts.append(DELIVERED_RESULT_GUIDANCE if doc.notify_on_run else SILENT_RUN_GUIDANCE)
     return "\n\n".join(prompt_parts)
 
@@ -513,24 +577,9 @@ async def _execute_on_executor(
     """Run the todo on the executor; its delivery step writes the finish entry and any message."""
     todo_id = doc.id
     user_id = doc.user_id
-
-    canvas_content: str | None = None
-    activity_content: str | None = None  # pragma: no mutate — falsy; reassigned before truth test
-    try:
-        canvas_content = await read_canvas(todo_id, user_id)
-        activity_content = await read_activity(todo_id, user_id)
-    except Exception as exc:
-        log.warning(
-            "tracked_todo.canvas_read_failed",
-            todo_id=todo_id,
-            error=str(exc),
-        )
-
     prompt = _build_execution_prompt(
         doc,
-        canvas_content=canvas_content,
-        activity_content=activity_content,
-        reference_context=await _collect_reference_context(doc.references, user_id),
+        context=await _collect_run_context(doc),
         origin=origin,
         coalesced=coalesced,
     )

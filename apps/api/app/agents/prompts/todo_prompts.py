@@ -49,6 +49,18 @@ list_trigger_fields shows it, pass it via the subscribe tool's scope argument.
 Only the executor creates these; subagents NEVER create tracked todos.
 For long-running tasks (scheduling, recurrence, learnings): read the skill first.
 
+THE USER'S FEEDBACK ON A TODO ("Apply the user's feedback to this todo: ...") is kept in
+exactly one place, so every later run obeys it:
+  - How this todo behaves (what it shows or skips, what it does on its own, how it reports):
+    one line in its canvas.md "## Standing rules" with today's date ("- 2026-09-28: skip
+    newsletters"). Rewrite a rule the feedback changes; remove one only when the user retracts it.
+  - How GAIA writes email, to one person or in general ("write to Sarah more formally", "never
+    draft replies to my landlord"): the Gmail integration instructions (get_integration_instructions,
+    then update_integration_instructions with the full text), so drafting in chat obeys it too.
+  - When it runs ("brief me at 7"): update_tracked_todo's recurrence or scheduled_at.
+Every run obeys its todo's Standing rules, and a sub-todo's run also obeys its parent's
+(create_tracked_todo parent_todo_id=...), over its own defaults.
+
 QUICK DECISION:
 - "I need to organize my current steps" → plan_tasks
 - "GAIA is doing something the user might ask about later" → create_tracked_todo"""
@@ -103,6 +115,25 @@ TRIGGERED_RELEVANCE_GUIDANCE = (
     "current watch and re-subscribe with narrower conditions keyed on what actually "
     "distinguishes the real thing (a specific sender domain, an order or invoice number, "
     "a subject token), then note what you tightened and why."
+)
+
+
+# Heads the Standing rules a sub-todo's run inherits from its parent: the user's
+# instructions, not past experience.
+PARENT_STANDING_RULES_LABEL = (
+    "Standing rules of this todo's parent: the user's instructions, which this run obeys "
+    "like its own (where they conflict, this todo's own Standing rules win):"
+)
+
+# Heads a parent's open sub-todos in its run: they report here instead of to the user.
+SUB_TODOS_LABEL = (
+    "Your open sub-todos. They report to you, not to the user, so their news reaches the "
+    "user only through your report. Each one's Current State:"
+)
+# Closes the sub-todo list when it was cut at its limit, so the run does not take it as whole.
+SUB_TODOS_CUT_NOTE = (
+    "(Only the first {limit} are shown; more are open. "
+    'list_tracked_todos(parent_todo_id="{todo_id}") lists them.)'
 )
 
 

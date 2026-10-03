@@ -6,12 +6,19 @@ completion/archival, and the context-summary renderers the agent sees.
 
 from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
+import re
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
-from app.constants.todos import GAIA_TRACKED_LABEL, TodoActivityEvent
+from app.constants import todos as todo_constants
+from app.constants.todos import (
+    ACTIVE_TRACKED_SUMMARY_LIMIT,
+    CANVAS_SECTIONS,
+    GAIA_TRACKED_LABEL,
+    TodoActivityEvent,
+)
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.models.todo_models import (
     ExternalRef,
@@ -29,10 +36,13 @@ from app.models.trigger_subscription_models import (
     SubscriptionResolution,
     TriggerSubscription,
 )
+from app.services.canvas_markdown import normalize_canvas
 from app.services.todos import errors as todo_errors
+from app.services.todos.errors import SubTodoParentError
 from app.services.tracked_todo_service import (
     CANVAS_TEMPLATE,
     TrackedTodoService,
+    require_sub_todo_parent,
     tracked_todo_service,
 )
 from app.services.triggers.subscription_service import SubscriptionError
@@ -81,6 +91,9 @@ def mock_repo():
         m.get = AsyncMock(return_value=None)
         m.update = AsyncMock(return_value=None)
         m.list_active_tracked = AsyncMock(return_value=[])
+        m.find_sub_todos = AsyncMock(return_value=[])
+        m.count_open_sub_todos = AsyncMock(return_value={})
+        m.is_valid_id = MagicMock(side_effect=lambda todo_id: len(todo_id) == 24)
         yield m
 
 
@@ -366,7 +379,7 @@ class TestCreateTrackedTodo:
         )
 
         update = mock_repo.update.await_args.kwargs["update"]
-        assert update.canvas_content.startswith("# T\n\n## Key Details\nk\n")
+        assert update.canvas_content.startswith("# T\n\n## Standing rules\n\n## Key Details\nk\n")
         assert update.activity_content.count("\n") == 0  # only the creation marker
 
     async def test_creates_with_template_canvas_and_indexes(self, mock_repo, mock_deps):
@@ -437,6 +450,305 @@ class TestCreateTrackedTodo:
 
         todo_model: TodoModel = mock_deps.create.call_args.args[0]
         assert set(todo_model.labels) == {"work", "finance", GAIA_TRACKED_LABEL}
+
+    async def test_the_todos_it_references_are_saved_with_it(self, mock_repo, mock_deps):
+        mock_deps.create.return_value = _todo_response()
+
+        await TrackedTodoService.create_tracked_todo(
+            USER_ID, "Reply to Sam", references=["desk-1", "lease-1"]
+        )
+
+        assert mock_deps.create.call_args.args[0].references == ["desk-1", "lease-1"]
+
+    async def test_standing_rules_over_their_cap_save_nothing(self, mock_repo, mock_deps):
+        rules = "- " + "x" * todo_constants.STANDING_RULES_MAX_CHARS
+
+        with pytest.raises(todo_errors.CanvasShapeError, match="shorten"):
+            await TrackedTodoService.create_tracked_todo(
+                USER_ID, "Inbox desk", initial_canvas=f"## Standing rules\n{rules}\n"
+            )
+
+        mock_deps.create.assert_not_awaited()
+        mock_repo.update.assert_not_awaited()
+
+    def test_a_canvas_refusal_is_a_bad_request_naming_every_problem(self) -> None:
+        refused = todo_errors.CanvasShapeError(["shorten the rules", "merge the sections"])
+
+        assert (refused.status_code, refused.code, refused.message) == (
+            400,
+            "canvas_shape_invalid",
+            "initial_canvas breaks the canvas shape: shorten the rules; merge the sections.",
+        )
+
+
+_PARENT_ID = "66f838cc8829054e5f10e401"
+_CHILD_ID = "66f838cc8829054e5f10e402"
+
+
+def _parent(**overrides: object) -> TodoDocument:
+    return _todo_doc(id=_PARENT_ID, title="Inbox desk", **overrides)
+
+
+def _child(**overrides: object) -> TodoDocument:
+    fields: dict[str, object] = {"id": _CHILD_ID, "title": "Reply to Sam"}
+    fields.update(overrides)
+    return _todo_doc(parent_todo_id=_PARENT_ID, **fields)
+
+
+class TestSubTodoParent:
+    """One level deep, same owner, open and tracked: anything else is refused before a write."""
+
+    async def test_an_open_tracked_todo_of_the_same_user_is_accepted(self, mock_repo):
+        mock_repo.get.return_value = _parent()
+
+        await require_sub_todo_parent(USER_ID, _PARENT_ID)
+
+        mock_repo.get.assert_awaited_once_with(_PARENT_ID, user_id=USER_ID)
+
+    @pytest.mark.parametrize(
+        ("parent", "reason"),
+        [
+            pytest.param(None, "no open tracked todo", id="missing-or-another-users"),
+            pytest.param(_todo_doc(id=_PARENT_ID, completed=True), "is completed", id="completed"),
+            pytest.param(
+                _todo_doc(id=_PARENT_ID, labels=["work"]), "not a tracked todo", id="untracked"
+            ),
+            pytest.param(
+                _todo_doc(id=_PARENT_ID, parent_todo_id=_CHILD_ID),
+                "itself a sub-todo",
+                id="grandchild",
+            ),
+        ],
+    )
+    async def test_an_unusable_parent_is_refused_with_the_reason(self, mock_repo, parent, reason):
+        mock_repo.get.return_value = parent
+
+        with pytest.raises(SubTodoParentError, match=reason):
+            await require_sub_todo_parent(USER_ID, _PARENT_ID)
+
+    async def test_a_malformed_id_is_refused_without_a_lookup(self, mock_repo):
+        with pytest.raises(SubTodoParentError, match="no open tracked todo"):
+            await require_sub_todo_parent(USER_ID, "not-an-id")
+
+        mock_repo.get.assert_not_awaited()
+
+    async def test_a_todo_cannot_be_its_own_parent(self, mock_repo):
+        mock_repo.get.return_value = _parent()
+
+        with pytest.raises(SubTodoParentError) as refused:
+            await require_sub_todo_parent(USER_ID, _PARENT_ID, child_id=_PARENT_ID)
+
+        assert refused.value.message == "A todo cannot be its own parent."
+        assert refused.value.status_code == HTTPStatus.BAD_REQUEST
+        assert refused.value.code == "sub_todo_parent_invalid"
+
+    async def test_a_todo_with_sub_todos_cannot_become_one(self, mock_repo):
+        mock_repo.get.return_value = _parent()
+        mock_repo.find_sub_todos.return_value = [_child()]
+
+        with pytest.raises(SubTodoParentError, match="has sub-todos of its own"):
+            await require_sub_todo_parent(USER_ID, _PARENT_ID, child_id=TODO_ID)
+
+        mock_repo.find_sub_todos.assert_awaited_once_with(USER_ID, [TODO_ID])
+
+    async def test_a_completed_todo_cannot_become_one(self, mock_repo):
+        finished = _child().model_copy(update={"completed": True})
+        mock_repo.get.side_effect = [_parent(), finished]
+
+        with pytest.raises(SubTodoParentError) as refused:
+            await require_sub_todo_parent(USER_ID, _PARENT_ID, child_id=TODO_ID)
+
+        assert refused.value.message == (
+            f"{TODO_ID} is completed; only an open todo can become a sub-todo."
+        )
+        mock_repo.find_sub_todos.assert_not_awaited()
+        assert mock_repo.get.await_args_list[1] == call(TODO_ID, user_id=USER_ID)
+
+
+class TestCreateSubTodo:
+    async def test_the_parent_reaches_the_insert(self, mock_repo, mock_deps):
+        mock_repo.get.return_value = _parent()
+        mock_deps.create.return_value = _todo_response()
+
+        await TrackedTodoService.create_tracked_todo(
+            USER_ID, "Reply to Sam", parent_todo_id=_PARENT_ID
+        )
+
+        assert mock_deps.create.await_args.kwargs["parent_todo_id"] == _PARENT_ID
+        mock_repo.get.assert_awaited_once_with(_PARENT_ID, user_id=USER_ID)
+
+    async def test_a_sub_todo_reports_to_its_parent_instead_of_the_user_by_default(
+        self, mock_repo, mock_deps
+    ):
+        mock_repo.get.return_value = _parent()
+        mock_deps.create.return_value = _todo_response()
+
+        await TrackedTodoService.create_tracked_todo(
+            USER_ID, "Reply to Sam", parent_todo_id=_PARENT_ID
+        )
+
+        assert mock_deps.create.call_args.args[0].notify_on_run is False
+
+    async def test_a_sub_todo_can_still_ask_to_message_the_user(self, mock_repo, mock_deps):
+        mock_repo.get.return_value = _parent()
+        mock_deps.create.return_value = _todo_response()
+
+        await TrackedTodoService.create_tracked_todo(
+            USER_ID, "Reply to Sam", parent_todo_id=_PARENT_ID, notify_on_run=True
+        )
+
+        assert mock_deps.create.call_args.args[0].notify_on_run is True
+
+    async def test_an_unusable_parent_creates_nothing(self, mock_repo, mock_deps):
+        with pytest.raises(SubTodoParentError):
+            await TrackedTodoService.create_tracked_todo(
+                USER_ID, "Reply to Sam", parent_todo_id=_PARENT_ID
+            )
+
+        mock_deps.create.assert_not_awaited()
+
+
+class TestCompletingAParentCompletesItsSubTodos:
+    """A sub-todo does not outlive its parent: completion goes through the one completion path."""
+
+    async def test_each_open_sub_todo_is_completed_and_stops_watching(self, mock_repo, mock_deps):
+        docs = {_PARENT_ID: _parent(), _CHILD_ID: _child()}
+        mock_repo.get.side_effect = lambda todo_id, user_id: docs.get(todo_id)
+        mock_repo.find_sub_todos.side_effect = lambda user_id, parent_ids: (
+            [docs[_CHILD_ID]] if parent_ids == [_PARENT_ID] else []
+        )
+
+        async def _write(todo_id: str, *, user_id: str, update: object) -> None:
+            docs[todo_id] = docs[todo_id].model_copy(update={"completed": True})
+
+        mock_repo.update.side_effect = _write
+
+        await TrackedTodoService.complete_tracked_todo(_PARENT_ID, USER_ID, "Desk retired")
+
+        completed = [c.args[0] for c in mock_repo.update.await_args_list]
+        assert completed == [_CHILD_ID, _PARENT_ID]
+        assert [c.args[0] for c in mock_deps.teardown.await_args_list] == [_CHILD_ID, _PARENT_ID]
+        child_entry = mock_deps.record.await_args_list[0].args
+        assert child_entry == (
+            _CHILD_ID,
+            USER_ID,
+            TodoActivityEvent.COMPLETED,
+            'Parent "Inbox desk" completed: Desk retired',
+        )
+        assert mock_repo.find_sub_todos.await_args_list[0] == call(USER_ID, [_PARENT_ID])
+
+    async def test_a_sub_todo_already_completed_is_left_alone(self, mock_repo, mock_deps):
+        docs = {_PARENT_ID: _parent(), _CHILD_ID: _child(completed=True)}
+        mock_repo.get.side_effect = lambda todo_id, user_id: docs.get(todo_id)
+        mock_repo.find_sub_todos.return_value = [docs[_CHILD_ID]]
+
+        await TrackedTodoService.complete_tracked_todo(_PARENT_ID, USER_ID, "Desk retired")
+
+        assert [c.args[0] for c in mock_repo.update.await_args_list] == [_PARENT_ID]
+
+    async def test_a_sub_todo_created_while_the_parent_closes_is_completed_too(
+        self, mock_repo, mock_deps
+    ):
+        docs = {_PARENT_ID: _parent(), _CHILD_ID: _child()}
+        mock_repo.get.side_effect = lambda todo_id, user_id: docs.get(todo_id)
+        mock_repo.find_sub_todos.side_effect = [[], [docs[_CHILD_ID]], [], []]
+
+        await TrackedTodoService.complete_tracked_todo(_PARENT_ID, USER_ID, "Desk retired")
+
+        assert [c.args[0] for c in mock_repo.update.await_args_list] == [_PARENT_ID, _CHILD_ID]
+        assert mock_deps.record.await_args_list[1] == call(
+            _CHILD_ID,
+            USER_ID,
+            TodoActivityEvent.COMPLETED,
+            'Parent "Inbox desk" completed: Desk retired',
+        )
+
+
+class TestACompletedSubTodoReportsToItsParent:
+    async def test_the_parents_timeline_gets_the_sub_todos_outcome(self, mock_repo, mock_deps):
+        mock_repo.get.return_value = _child()
+
+        await TrackedTodoService.complete_tracked_todo(_CHILD_ID, USER_ID, "Sam confirmed Friday")
+
+        assert mock_deps.record.await_args_list == [
+            call(_CHILD_ID, USER_ID, TodoActivityEvent.COMPLETED, "Sam confirmed Friday"),
+            call(
+                _PARENT_ID,
+                USER_ID,
+                TodoActivityEvent.SUB_TODO_COMPLETED,
+                f'"Reply to Sam" ({_CHILD_ID}): Sam confirmed Friday',
+            ),
+        ]
+
+    async def test_a_top_level_todo_reports_nowhere(self, mock_repo, mock_deps):
+        mock_repo.get.return_value = _parent()
+
+        await TrackedTodoService.complete_tracked_todo(_PARENT_ID, USER_ID, "Desk retired")
+
+        assert mock_deps.record.await_args_list == [
+            call(_PARENT_ID, USER_ID, TodoActivityEvent.COMPLETED, "Desk retired")
+        ]
+
+
+class TestTheSummaryCollapsesSubTodos:
+    """Sub-todos would push every other todo out of the 15 the agent sees; they fold under a count."""
+
+    async def test_only_top_level_todos_are_listed_each_with_its_open_sub_todo_count(
+        self, mock_repo
+    ):
+        mock_repo.list_active_tracked.return_value = [_parent()]
+        mock_repo.count_open_sub_todos.return_value = {_PARENT_ID: 12}
+
+        summary = await TrackedTodoService.get_active_tracked_summary(USER_ID)
+
+        mock_repo.list_active_tracked.assert_awaited_once_with(
+            USER_ID, limit=ACTIVE_TRACKED_SUMMARY_LIMIT, top_level=True
+        )
+        mock_repo.count_open_sub_todos.assert_awaited_once_with(USER_ID, [_PARENT_ID])
+        assert f"ID: {_PARENT_ID}" in summary
+        assert "12 open sub-todos" in summary
+
+    async def test_the_running_sub_todo_is_shown_even_though_sub_todos_are_folded(self, mock_repo):
+        mock_repo.list_active_tracked.return_value = [_parent()]
+        mock_repo.count_open_sub_todos.return_value = {_PARENT_ID: 1}
+        mock_repo.get.return_value = _child()
+
+        summary = await TrackedTodoService.get_active_tracked_summary(
+            USER_ID, active_todo_id=_CHILD_ID
+        )
+
+        lines = summary.split("\n")
+        assert lines[1].startswith('  ⭐ ACTIVE "Reply to Sam"')
+        assert f"sub-todo of {_PARENT_ID}" in lines[1]
+        mock_repo.get.assert_awaited_once_with(_CHILD_ID, user_id=USER_ID)
+
+    async def test_a_todo_without_sub_todos_shows_no_count(self, mock_repo):
+        mock_repo.list_active_tracked.return_value = [_todo_doc()]
+
+        summary = await TrackedTodoService.get_active_tracked_summary(USER_ID)
+
+        assert "sub-todo" not in summary
+        assert summary.split("\n")[1] == (
+            '  "Prepare Q3 report" [work] — 2d old, updated 0d ago'
+            " | ID: todo-1 | files: /workspace/gaia-tasks/prepare-q3-report-todo-1/"
+        )
+
+    async def test_a_completed_running_todo_is_not_pinned(self, mock_repo):
+        mock_repo.list_active_tracked.return_value = [_parent()]
+        mock_repo.get.return_value = _child(completed=True)
+
+        summary = await TrackedTodoService.get_active_tracked_summary(
+            USER_ID, active_todo_id=_CHILD_ID
+        )
+
+        assert [line.split('"')[1] for line in summary.split("\n")[1:]] == ["Inbox desk"]
+
+
+def test_the_template_opens_on_standing_rules_and_is_already_in_shape() -> None:
+    canvas = CANVAS_TEMPLATE.format(title="Inbox desk")
+
+    assert normalize_canvas(canvas) == (canvas, None)
+    assert re.findall(r"^## (.+)$", canvas, re.MULTILINE) == list(CANVAS_SECTIONS)
 
 
 class TestCompleteTrackedTodo:
@@ -681,6 +993,12 @@ class TestSingleton:
         assert Priority.NONE.value == "none"
 
 
+_CLEAN_CANVAS = (
+    "# T\n\n## Standing rules\n\n## Key Details\nk\n\n## Current State\n\n## Context\n\n"
+    "## Learnings\n"
+)
+
+
 class TestMigrateLegacyCanvas:
     LEGACY = (
         "# T\n\n## Key Details\nk\n\n## Activity Log\n- did x\n\n"
@@ -691,7 +1009,7 @@ class TestMigrateLegacyCanvas:
     async def test_legacy_canvas_is_split_into_both_fields(self):
         doc = _todo_doc(canvas_content=self.LEGACY, activity_content=None)
         with patch(
-            f"{_MOD}.write_canvas_and_activity", new_callable=AsyncMock, return_value=True
+            f"{_MOD}.repair_canvas_and_activity", new_callable=AsyncMock, return_value=True
         ) as write:
             assert await TrackedTodoService.normalize_stored_canvas(doc) is True
 
@@ -706,7 +1024,7 @@ class TestMigrateLegacyCanvas:
     async def test_moved_legacy_entries_come_before_existing_activity(self):
         doc = _todo_doc(canvas_content=self.LEGACY, activity_content="- already here")
         with patch(
-            f"{_MOD}.write_canvas_and_activity", new_callable=AsyncMock, return_value=True
+            f"{_MOD}.repair_canvas_and_activity", new_callable=AsyncMock, return_value=True
         ) as write:
             await TrackedTodoService.normalize_stored_canvas(doc)
 
@@ -717,17 +1035,15 @@ class TestMigrateLegacyCanvas:
         )
 
     async def test_clean_canvas_is_not_touched(self):
-        doc = _todo_doc(
-            canvas_content="# T\n\n## Key Details\nk\n\n## Current State\n\n## Context\n\n## Learnings\n"
-        )
-        with patch(f"{_MOD}.write_canvas_and_activity", new_callable=AsyncMock) as write:
+        doc = _todo_doc(canvas_content=_CLEAN_CANVAS)
+        with patch(f"{_MOD}.repair_canvas_and_activity", new_callable=AsyncMock) as write:
             assert await TrackedTodoService.normalize_stored_canvas(doc) is False
 
         write.assert_not_awaited()
 
     async def test_empty_canvas_is_not_touched(self):
         doc = _todo_doc(canvas_content=None)
-        with patch(f"{_MOD}.write_canvas_and_activity", new_callable=AsyncMock) as write:
+        with patch(f"{_MOD}.repair_canvas_and_activity", new_callable=AsyncMock) as write:
             assert await TrackedTodoService.normalize_stored_canvas(doc) is False
 
         write.assert_not_awaited()
@@ -741,7 +1057,7 @@ class TestMigrateLegacyCanvas:
         )
         mock_repo.get.return_value = fresh
         with patch(
-            f"{_MOD}.write_canvas_and_activity",
+            f"{_MOD}.repair_canvas_and_activity",
             new_callable=AsyncMock,
             side_effect=[False, True],
         ) as write:
@@ -753,9 +1069,7 @@ class TestMigrateLegacyCanvas:
         assert write.await_args_list[1].args == (fresh.id, fresh.user_id)
         assert write.await_args_list[0].kwargs["expected_updated_at"] == stale.updated_at
         assert write.await_args_list[1].kwargs["expected_updated_at"] == fresh.updated_at
-        assert write.await_args_list[1].kwargs["canvas"] == (
-            "# T\n\n## Key Details\nk\n\n## Learnings\n\n## Current State\n\n## Context\n"
-        )
+        assert write.await_args_list[1].kwargs["canvas"] == _CLEAN_CANVAS
         assert write.await_args_list[1].kwargs["activity"] == (
             "- 2026-01-01T00:00:00+00:00 first\n\n- 2026-01-02T00:00:00+00:00 second\n\n"
             "- did x\n\n- fresh here"
@@ -764,12 +1078,12 @@ class TestMigrateLegacyCanvas:
     async def test_fresh_doc_already_clean_skips_retry(self, mock_repo):
         """When the re-read doc has no legacy sections, the migration gives up instead of reporting a write it never made."""
         fresh = _todo_doc(
-            canvas_content="# T\n\n## Key Details\nk\n\n## Current State\n\n## Context\n\n## Learnings\n",
+            canvas_content=_CLEAN_CANVAS,
             updated_at=datetime.now(UTC),
         )
         mock_repo.get.return_value = fresh
         with patch(
-            f"{_MOD}.write_canvas_and_activity", new_callable=AsyncMock, return_value=False
+            f"{_MOD}.repair_canvas_and_activity", new_callable=AsyncMock, return_value=False
         ) as write:
             assert (
                 await TrackedTodoService.normalize_stored_canvas(
@@ -783,7 +1097,7 @@ class TestMigrateLegacyCanvas:
     async def test_vanished_todo_is_not_retried(self, mock_repo):
         mock_repo.get.return_value = None
         with patch(
-            f"{_MOD}.write_canvas_and_activity", new_callable=AsyncMock, return_value=False
+            f"{_MOD}.repair_canvas_and_activity", new_callable=AsyncMock, return_value=False
         ) as write:
             assert (
                 await TrackedTodoService.normalize_stored_canvas(

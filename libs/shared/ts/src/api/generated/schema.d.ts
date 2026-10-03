@@ -13106,6 +13106,11 @@ export interface components {
              * @default true
              */
             notify_on_run: boolean;
+            /**
+             * Parent Todo Id
+             * @description Read-only; the tracked todo this one is a sub-todo of, set by GAIA
+             */
+            parent_todo_id: string | null;
             /** @description Oldest live approval parked against this todo, if any — the UI's jump link to the card's conversation */
             pending_approval: components["schemas"]["PendingApprovalRef"] | null;
             /**
@@ -13133,6 +13138,12 @@ export interface components {
              * @description When GAIA should execute this tracked todo
              */
             scheduled_at: string | null;
+            /**
+             * Sub Todo Count
+             * @description Open sub-todos of this tracked todo
+             * @default 0
+             */
+            sub_todo_count: number;
             /**
              * Subtasks
              * @description List of subtasks
@@ -26649,6 +26660,7 @@ export interface operations {
                 mode?: components["schemas"]["SearchMode"];
                 overdue?: boolean | null;
                 page?: number;
+                parent_todo_id?: string | null;
                 per_page?: number;
                 priority?: components["schemas"]["Priority"] | null;
                 project_id?: string | null;
