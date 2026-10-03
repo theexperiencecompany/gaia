@@ -17,6 +17,7 @@ from app.constants.todos import (
     ACTIVE_TRACKED_SUMMARY_LIMIT,
     CANVAS_SECTIONS,
     GAIA_TRACKED_LABEL,
+    INBOX_DESK_WATCH_WINDOW_SECONDS,
     TodoActivityEvent,
 )
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
@@ -210,7 +211,7 @@ class TestCreateThreadTodo:
         await TrackedTodoService.create_tracked_todo(USER_ID, "Reply")
         watch.register.assert_not_awaited()
 
-    async def test_the_inbox_desk_ref_is_an_identity_that_watches_nothing(
+    async def test_a_new_inbox_desk_watches_its_mailbox_for_new_mail(
         self, mock_repo, mock_deps, watch
     ):
         desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
@@ -219,7 +220,9 @@ class TestCreateThreadTodo:
         await TrackedTodoService.create_tracked_todo(USER_ID, "Inbox desk", external_ref=desk)
 
         assert mock_deps.create.await_args.kwargs["external_ref"] == desk
-        watch.register.assert_not_awaited()
+        (call,) = watch.register.await_args_list
+        assert call.kwargs["trigger_name"] == GMAIL_NEW_MESSAGE_TRIGGER_NAME
+        assert call.kwargs["cooldown_seconds"] == INBOX_DESK_WATCH_WINDOW_SECONDS
 
     async def test_a_watch_that_fails_takes_the_todo_with_it(self, mock_repo, mock_deps, watch):
         """An unwatched thread todo would hold the thread's key, so every retry would get it back."""

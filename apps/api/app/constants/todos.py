@@ -164,16 +164,31 @@ EXISTING_TODO_STATE_EXCERPT_CHARS: Final[int] = 400
 # Most todos list_tracked_todos returns, filtered or not; the freshest win.
 LIST_TRACKED_TODOS_LIMIT: Final[int] = 50
 
-# The one tracked todo per user that triages mail, owns its threads and briefs each morning.
+# The one tracked todo per user that triages mail, owns its threads, briefs each morning and alerts on new mail.
 INBOX_DESK_TITLE: Final[str] = "Inbox desk"
 INBOX_DESK_RECURRENCE: Final[str] = "0 8 * * *"
 PROVISION_INBOX_DESK_TASK: Final[str] = "provision_inbox_desk"
-# Gmail terms the desk's fetch adds to its window: GitHub and other notifications
-# land in Primary, and this cut a live 24h window from 224 messages to 10 people.
-INBOX_DESK_MAIL_FILTER: Final[str] = (
-    "category:primary -from:noreply -from:no-reply -from:notifications "
-    "-from:notification -from:mailer-daemon -from:donotreply"
+# Automated senders the desk's fetch and its mail watch both leave out: GitHub and other
+# notifications land in Primary, and this cut a live 24h window from 224 messages to 10 people.
+INBOX_DESK_AUTOMATED_SENDERS: Final[tuple[str, ...]] = (
+    "noreply",
+    "no-reply",
+    "notifications",
+    "notification",
+    "mailer-daemon",
+    "donotreply",
 )
+# Gmail terms the desk's fetch adds to its window.
+INBOX_DESK_MAIL_FILTER: Final[str] = "category:primary " + " ".join(
+    f"-from:{sender}" for sender in INBOX_DESK_AUTOMATED_SENDERS
+)
+# Gmail labels new mail needs to wake the desk: in the inbox, in Primary.
+INBOX_DESK_WATCH_LABELS: Final[tuple[str, ...]] = ("INBOX", "CATEGORY_PERSONAL")
+# New mail wakes the desk at once; more mail within the hour rides one run at its end.
+INBOX_DESK_WATCH_WINDOW_SECONDS: Final[int] = 3600
+# Local hours in which mail-woken desk runs send no alert; the morning briefing carries it.
+INBOX_DESK_QUIET_HOURS_START: Final[int] = 22
+INBOX_DESK_QUIET_HOURS_END: Final[int] = 8
 # The desk's briefing is read in seconds: words per item, and lines per capped section.
 INBOX_DESK_BRIEFING_ITEM_MAX_WORDS: Final[int] = 12
 INBOX_DESK_NEEDS_YOU_MAX_ITEMS: Final[int] = 5

@@ -120,8 +120,10 @@ def seams() -> Iterator[SimpleNamespace]:
         ) as schedule,
         patch(f"{MODULE}.record_field_changes", AsyncMock()) as timeline,
         patch(f"{MODULE}.capture_event", MagicMock()) as capture,
+        patch(f"{MODULE}.watch_external_ref", AsyncMock(return_value=[])) as watch,
     ):
         yield SimpleNamespace(
+            watch=watch,
             paid=paid,
             connected=connected,
             repo=repo,
@@ -220,6 +222,26 @@ async def test_a_scheduled_desk_only_has_its_next_run_queued_again(
     seams.create.assert_not_awaited()
     seams.repo.update.assert_not_awaited()
     seams.schedule.assert_awaited_once_with(DESK_ID, TOMORROW_8)
+
+
+async def test_every_provision_makes_sure_the_desk_watches_new_mail(
+    seams: SimpleNamespace,
+) -> None:
+    """A desk opened before it had a watch gets one on its next provision, never a second."""
+    desk = _desk(scheduled_at=TOMORROW_8, recurrence=INBOX_DESK_RECURRENCE)
+    seams.repo.find_latest_by_external_ref.return_value = desk
+
+    await provision_inbox_desk(USER_ID)
+
+    seams.watch.assert_awaited_once_with(DESK_ID, USER_ID, DESK_REF, desk.trigger_subscriptions)
+
+
+async def test_a_desk_the_user_stopped_gets_no_watch(seams: SimpleNamespace) -> None:
+    seams.repo.find_latest_by_external_ref.return_value = _desk(completed=True)
+
+    await provision_inbox_desk(USER_ID)
+
+    seams.watch.assert_not_awaited()
 
 
 async def test_a_concurrent_create_uses_the_desk_that_won(seams: SimpleNamespace) -> None:

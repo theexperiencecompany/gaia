@@ -1,4 +1,4 @@
-"""The Inbox desk: one tracked todo per user that triages mail, owns its threads and briefs each morning.
+"""The Inbox desk: one tracked todo per user that triages mail, owns its threads, briefs and alerts.
 
 Its operating contract rides on every run (INBOX_DESK_RUN_GUIDANCE), its canvas and
 observations.md are its memory, and the briefing is its run's final report. Nothing here
@@ -32,6 +32,7 @@ from app.services.todo_activity import record_field_changes
 from app.services.todo_canvas_storage import repair_notes
 from app.services.todo_observations import with_carried_lines
 from app.services.todos.errors import ExternalRefTakenError
+from app.services.todos.external_ref_watch import watch_external_ref
 from app.services.tracked_todo_service import starting_canvas, tracked_todo_service
 from app.services.user_service import get_profile_timezone
 from app.utils.cron_utils import get_next_run_time
@@ -64,6 +65,7 @@ async def provision_inbox_desk(user_id: str) -> None:
     desk = existing or await _open_desk(user_id, await _next_morning(user_id))
     if desk.scheduled_at is None:
         desk = await _rearm(desk, await _next_morning(user_id))
+    await watch_external_ref(desk.id, user_id, INBOX_DESK_REF, desk.trigger_subscriptions)
     next_run = desk.scheduled_at
     if next_run is None:
         raise LookupError(f"Inbox desk {desk.id} has no next run after it was armed")

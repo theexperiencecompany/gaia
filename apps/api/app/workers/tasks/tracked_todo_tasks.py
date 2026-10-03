@@ -26,6 +26,7 @@ from app.agents.prompts.todo_prompts import (
     DELIVERED_RESULT_GUIDANCE,
     DELIVERED_RESULT_RULES,
     GMAIL_THREAD_RUN_GUIDANCE,
+    INBOX_DESK_MAIL_WAKE_OPENING,
     INBOX_DESK_RUN_GUIDANCE,
     PARENT_STANDING_RULES_LABEL,
     SILENT_RUN_GUIDANCE,
@@ -110,6 +111,11 @@ _EXTERNAL_REF_RUN_GUIDANCE: Mapping[ExternalRefSource, str] = MappingProxyType(
         ExternalRefSource.GMAIL_THREAD: GMAIL_THREAD_RUN_GUIDANCE,
         ExternalRefSource.INBOX_DESK: INBOX_DESK_RUN_GUIDANCE,
     }
+)
+
+# Kinds whose watch only says when to run: the run's own steps read what changed.
+_WAKE_OPENINGS: Mapping[ExternalRefSource, str] = MappingProxyType(
+    {ExternalRefSource.INBOX_DESK: INBOX_DESK_MAIL_WAKE_OPENING}
 )
 
 
@@ -611,11 +617,15 @@ def _delivery_guidance(doc: TodoDocument) -> str:
 
 
 def _opening_parts(
-    title: str, origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
+    doc: TodoDocument, origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
 ) -> list[str]:
     """Open the run prompt with what woke it; trigger payloads share one untrusted fence."""
+    title = doc.title
     if origin is None:
         return [f"Execute the following scheduled task: {title}"]
+    wake = _WAKE_OPENINGS.get(doc.external_ref.source) if doc.external_ref else None
+    if wake is not None:
+        return [wake.format(title=title)]
     fence = untrusted_fence()
     if coalesced:
         opening = f"Events you were watching fired. Execute this task: {title}"
@@ -662,7 +672,7 @@ def _build_execution_prompt(
     model. They are attacker-influenceable, so all of them share one fence
     labelled untrusted. doc.notify_on_run decides which delivery contract is stated.
     """
-    prompt_parts = _opening_parts(doc.title, origin, coalesced)
+    prompt_parts = _opening_parts(doc, origin, coalesced)
     prompt_parts.append(TODO_ID_LINE.format(todo_id=doc.id))
     if doc.description:
         prompt_parts.append(f"Details: {doc.description}")
