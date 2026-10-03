@@ -27,6 +27,7 @@ def _graph_run(
     *,
     expired: bool = False,
     execution_mode: str | None = None,
+    frontend: str = _FAKE_FRONTEND,
 ) -> Iterator[MagicMock]:
     """Run the prompt inside a graph run of category, yielding its stream writer.
 
@@ -63,7 +64,7 @@ def _graph_run(
         patch("app.utils.integration_checker.settings") as mock_settings,
         patch.object(user_integration_repository, "is_expired", AsyncMock(side_effect=_is_expired)),
     ):
-        mock_settings.FRONTEND_URL = _FAKE_FRONTEND
+        mock_settings.FRONTEND_URL = frontend
         yield writer
 
 
@@ -192,3 +193,27 @@ class TestBackgroundRunPrompt:
 
         assert "EXPIRED" in msg
         assert "carry on with the rest of the task" in msg
+
+    async def test_background_copy_names_the_gap_and_where_to_connect(self) -> None:
+        with _graph_run("bg", execution_mode="background", frontend=f"{_FAKE_FRONTEND}/"):
+            msg = await request_integration_connection("gmail", "Gmail", "user1")
+
+        assert msg == (
+            "Gmail needs to be connected. This is a background run and no user is present to "
+            "connect it, so retrying Gmail this run cannot succeed. Record in your result that "
+            "Gmail is not connected (the user can connect it at "
+            "https://app.example.com/integrations), then carry on with the rest of the task."
+        )
+
+    async def test_background_copy_for_an_expired_grant_names_the_expired_connection(
+        self,
+    ) -> None:
+        with _graph_run("bg", execution_mode="background", expired=True):
+            msg = await request_integration_connection("gmail", "Gmail", "user1")
+
+        assert msg.endswith(
+            "This is a background run and no user is present to reconnect it, so retrying "
+            "Gmail this run cannot succeed. Record in your result that the Gmail connection "
+            "expired (the user can reconnect it at https://app.example.com/integrations), then "
+            "carry on with the rest of the task."
+        )

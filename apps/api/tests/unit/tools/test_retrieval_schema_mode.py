@@ -464,6 +464,20 @@ class TestUnconnectedIntegrationBinding:
         assert "activate_integration" not in text
         assert "retrieve_tools(query=" not in text
 
+    async def test_one_line_names_every_requested_tool_of_the_unconnected_integration(
+        self, _integrations_connected: AsyncMock
+    ) -> None:
+        _integrations_connected.return_value = {"googlecalendar": False}
+        names = ["GOOGLECALENDAR_EVENTS_LIST", "GOOGLECALENDAR_CREATE_EVENT"]
+
+        text = (await _bind(names, AsyncMock(return_value=None)))["response_text"]
+
+        assert (
+            "Google Calendar needs to be connected: none of its tools "
+            "(GOOGLECALENDAR_EVENTS_LIST, GOOGLECALENDAR_CREATE_EVENT) can run" in text
+        )
+        assert text.count("Google Calendar needs to be connected") == 1
+
     async def test_a_connected_integration_still_renders_its_schema(self) -> None:
         resolver = AsyncMock(return_value=ResolvedTool("GMAIL_SEND_EMAIL", _gmail_tool(), True))
         text = (await _bind(["GMAIL_SEND_EMAIL"], resolver))["response_text"]

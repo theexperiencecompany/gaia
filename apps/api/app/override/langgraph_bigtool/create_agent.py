@@ -47,6 +47,7 @@ from app.agents.middleware.completion import (
     work_looks_unfinished,
 )
 from app.agents.middleware.executor import MiddlewareExecutor
+from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.agents.middleware.runtime_adapter import BigtoolToolRuntime
 from app.constants.agents import (
     MAX_PLAYBOOK_DECISION_NUDGES,
@@ -476,6 +477,41 @@ def _resolve_retrieval_result(
     return filtered_bind, response
 
 
+def _retrieval_request(
+    tool_call: Mapping[str, Any],
+    retrieve_tools: BaseTool,
+    config: RunnableConfig,
+    store: BaseStore,
+) -> ToolCallRequest:
+    """Wrap one select_tools call as the request the tool node would hand its middleware."""
+    return ToolCallRequest(
+        # Every call routed here is a retrieve_tools call (see should_continue).
+        tool_call=ToolCall(name=retrieve_tools.name, args=tool_call["args"], id=tool_call["id"]),
+        tool=retrieve_tools,
+        state={},
+        runtime=BigtoolToolRuntime.from_graph_context(
+            config=config, store=store, tool_name=retrieve_tools.name
+        ),
+    )
+
+
+async def _through_loop_guard(
+    loop_guard: LoopGuardMiddleware | None,
+    request: ToolCallRequest,
+    retrieve: Callable[[ToolCallRequest], Awaitable[ToolMessage]],
+) -> ToolMessage:
+    """Answer one retrieve_tools call, letting the stack's loop guard warn on or block it."""
+    if loop_guard is None:
+        return await retrieve(request)
+    guarded = await loop_guard.awrap_tool_call(request, retrieve)
+    if not isinstance(guarded, ToolMessage):
+        raise TypeError(
+            f"loop guard returned {type(guarded).__name__} for retrieve_tools call "
+            f"{request.tool_call['id']}; select_tools only renders ToolMessages"
+        )
+    return guarded
+
+
 def _select_tools_node(deps: _AgentDeps) -> RunnableCallable | Callable[..., Any]:
     def select_tools(
         tool_calls: list[dict[str, Any]], config: RunnableConfig, *, store: BaseStore
@@ -534,29 +570,14 @@ def _select_tools_node(deps: _AgentDeps) -> RunnableCallable | Callable[..., Any
             )
             return messages[0]
 
-        tool_messages: list[ToolMessage] = []
-        for tool_call in tool_calls:
-            request = ToolCallRequest(
-                # Every call routed here is a retrieve_tools call (see should_continue).
-                tool_call=ToolCall(
-                    name=retrieve_tools.name, args=tool_call["args"], id=tool_call["id"]
-                ),
-                tool=retrieve_tools,
-                state={},
-                runtime=BigtoolToolRuntime.from_graph_context(
-                    config=config, store=store, tool_name=retrieve_tools.name
-                ),
+        tool_messages = [
+            await _through_loop_guard(
+                loop_guard,
+                _retrieval_request(tool_call, retrieve_tools, config, store),
+                retrieve,
             )
-            if loop_guard is None:
-                tool_messages.append(await retrieve(request))
-                continue
-            guarded = await loop_guard.awrap_tool_call(request, retrieve)
-            if not isinstance(guarded, ToolMessage):
-                raise TypeError(
-                    f"loop guard returned {type(guarded).__name__} for retrieve_tools call "
-                    f"{tool_call['id']}; select_tools only renders ToolMessages"
-                )
-            tool_messages.append(guarded)
+            for tool_call in tool_calls
+        ]
 
         # A call the guard blocked never ran, so it binds nothing.
         _, bind_ids = format_selected_tools(selected_tools, deps.tool_registry)  # type: ignore[arg-type]  # tool-registry element types are wider than the helper's narrowed params

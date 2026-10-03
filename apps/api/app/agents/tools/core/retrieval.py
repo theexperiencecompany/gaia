@@ -55,7 +55,7 @@ from app.services.integrations.integration_service import (
 from app.services.integrations.user_integrations import get_user_integrations
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.oauth.oauth_service import (
-    check_integration_status,
+    check_multiple_integrations_status,
     get_all_integrations_status,
 )
 from app.utils.mcp_utils import canonical_tool_name_map
@@ -109,19 +109,21 @@ async def _unconnected_for_tools(
     user_id: str | None, tool_names: Sequence[str]
 ) -> dict[str, _UnconnectedIntegration]:
     """Map each Composio tool name whose integration the user has not connected to it."""
-    if not user_id:
+    integrations = {
+        name: integration
+        for name in tool_names
+        if (integration := get_integration_by_tool_slug(name)) is not None
+    }
+    if not user_id or not integrations:
         return {}
-    connected: dict[str, bool] = {}
-    unconnected: dict[str, _UnconnectedIntegration] = {}
-    for name in tool_names:
-        integration = get_integration_by_tool_slug(name)
-        if integration is None:
-            continue
-        if integration.id not in connected:
-            connected[integration.id] = await check_integration_status(integration.id, user_id)
-        if not connected[integration.id]:
-            unconnected[name] = _UnconnectedIntegration(integration.id, integration.name)
-    return unconnected
+    connected = await check_multiple_integrations_status(
+        list({integration.id for integration in integrations.values()}), user_id
+    )
+    return {
+        name: _UnconnectedIntegration(integration.id, integration.name)
+        for name, integration in integrations.items()
+        if not connected[integration.id]
+    }
 
 
 async def _unconnected_named_in(
@@ -134,10 +136,16 @@ async def _unconnected_named_in(
     """
     if not user_id or not query:
         return []
+    providers = [provider for provider in providers_named_in(query) if provider.managed_by != "mcp"]
+    if not providers:
+        return []
+    connected = await check_multiple_integrations_status(
+        [provider.id for provider in providers], user_id
+    )
     return [
         _UnconnectedIntegration(provider.id, provider.name)
-        for provider in providers_named_in(query)
-        if provider.managed_by != "mcp" and not await check_integration_status(provider.id, user_id)
+        for provider in providers
+        if not connected[provider.id]
     ]
 
 
@@ -804,8 +812,8 @@ def _render_discovery_response(
     total_candidates: int,
     limit: int,
     *,
-    not_connected: Sequence[_UnconnectedIntegration] = (),
-    background: bool = False,
+    not_connected: Sequence[_UnconnectedIntegration],
+    background: bool,
 ) -> str:
     """Render discovery hits as the JSON the model acts on.
 

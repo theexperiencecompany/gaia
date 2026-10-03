@@ -1106,6 +1106,8 @@ def _render_text(
         query,
         opts.total_candidates,
         opts.limit,
+        not_connected=(),
+        background=False,
     )
 
 

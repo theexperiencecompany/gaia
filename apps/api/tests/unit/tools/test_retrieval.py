@@ -1123,6 +1123,8 @@ class TestDiscoveryResponseGuidance:
             "track issues",
             2,
             25,
+            not_connected=(),
+            background=False,
         )
         body = json.loads(text)
         assert body["mcp_subagents"] == [{"id": "my-mcp", "name": "My MCP"}]
@@ -1139,7 +1141,14 @@ class TestDiscoveryResponseGuidance:
 
     def test_unnamed_pointers_carry_only_their_id(self) -> None:
         text = retrieval._render_discovery_response(
-            ["subagent:my-mcp", "integration:linear"], MagicMock(), {}, None, 2, 25
+            ["subagent:my-mcp", "integration:linear"],
+            MagicMock(),
+            {},
+            None,
+            2,
+            25,
+            not_connected=(),
+            background=False,
         )
         body = json.loads(text)
         assert body["mcp_subagents"] == [{"id": "my-mcp"}]
@@ -1243,3 +1252,135 @@ class TestDiscoveryNamesAnUnconnectedIntegration:
 
         assert "not_connected" not in body
         assert "needs to be connected" not in body["next"]
+
+
+_CALENDAR = retrieval._UnconnectedIntegration("googlecalendar", "Google Calendar")
+_GMAIL = retrieval._UnconnectedIntegration("gmail", "Gmail")
+
+
+def _provider(provider_id: str, name: str, managed_by: str = "composio") -> SimpleNamespace:
+    return SimpleNamespace(id=provider_id, name=name, managed_by=managed_by)
+
+
+@pytest.mark.unit
+class TestNotConnectedLine:
+    def test_an_interactive_run_is_sent_to_activate_it_once(self) -> None:
+        assert retrieval._not_connected_line(_CALENDAR, False) == (
+            "Google Calendar needs to be connected: none of its tools can run until the user "
+            "connects it, so do not search for or re-request them. Call "
+            'activate_integration(integration_id="googlecalendar") once: that shows the user '
+            "the connect card."
+        )
+
+    def test_a_background_run_names_the_requested_tools_and_carries_on(self) -> None:
+        line = retrieval._not_connected_line(
+            _CALENDAR, True, ["GOOGLECALENDAR_EVENTS_LIST", "GOOGLECALENDAR_CREATE_EVENT"]
+        )
+
+        assert line == (
+            "Google Calendar needs to be connected: none of its tools "
+            "(GOOGLECALENDAR_EVENTS_LIST, GOOGLECALENDAR_CREATE_EVENT) can run until the user "
+            "connects it, so do not search for or re-request them. This is a background run and "
+            "no user is present to connect it: record in your result that Google Calendar is not "
+            "connected, then carry on with the rest of the task."
+        )
+
+
+@pytest.mark.unit
+class TestUnconnectedForTools:
+    async def test_each_tool_of_an_unconnected_integration_is_mapped_to_it(self) -> None:
+        status = AsyncMock(return_value={"gmail": False, "googlecalendar": True})
+        with patch.object(retrieval, "check_multiple_integrations_status", new=status):
+            unconnected = await retrieval._unconnected_for_tools(
+                "u1",
+                ["web_search", "GMAIL_SEND_EMAIL", "GOOGLECALENDAR_EVENTS_LIST", "GMAIL_FETCH"],
+            )
+
+        assert unconnected == {"GMAIL_SEND_EMAIL": _GMAIL, "GMAIL_FETCH": _GMAIL}
+        status.assert_awaited_once()
+        ids, user_id = status.await_args.args
+        assert sorted(ids) == ["gmail", "googlecalendar"]
+        assert user_id == "u1"
+
+    @pytest.mark.parametrize(
+        ("user_id", "tool_names"),
+        [(None, ["GMAIL_SEND_EMAIL"]), ("u1", ["web_search", "handoff"]), ("u1", [])],
+    )
+    async def test_no_user_or_no_integration_tool_reads_no_status(
+        self, user_id: str | None, tool_names: list[str]
+    ) -> None:
+        status = AsyncMock(return_value={})
+        with patch.object(retrieval, "check_multiple_integrations_status", new=status):
+            assert await retrieval._unconnected_for_tools(user_id, tool_names) == {}
+        status.assert_not_awaited()
+
+
+@pytest.mark.unit
+class TestUnconnectedNamedIn:
+    async def test_named_providers_the_user_has_not_connected_are_returned(self) -> None:
+        named = [
+            _provider("linear_mcp", "Linear", managed_by="mcp"),
+            _provider("googlecalendar", "Google Calendar"),
+            _provider("gmail", "Gmail"),
+        ]
+        status = AsyncMock(return_value={"googlecalendar": False, "gmail": True})
+        with (
+            patch.object(retrieval, "providers_named_in", return_value=named),
+            patch.object(retrieval, "check_multiple_integrations_status", new=status),
+        ):
+            unconnected = await retrieval._unconnected_named_in("u1", "calendar and gmail")
+
+        assert unconnected == [_CALENDAR]
+        status.assert_awaited_once_with(["googlecalendar", "gmail"], "u1")
+
+    @pytest.mark.parametrize(("user_id", "query"), [(None, "Google Calendar"), ("u1", None)])
+    async def test_no_user_or_no_query_reads_no_status(
+        self, user_id: str | None, query: str | None
+    ) -> None:
+        status = AsyncMock(return_value={})
+        with (
+            patch.object(
+                retrieval,
+                "providers_named_in",
+                return_value=[_provider("googlecalendar", "Google Calendar")],
+            ),
+            patch.object(retrieval, "check_multiple_integrations_status", new=status),
+        ):
+            assert await retrieval._unconnected_named_in(user_id, query) == []
+        status.assert_not_awaited()
+
+    async def test_a_query_naming_only_mcp_providers_reads_no_status(self) -> None:
+        status = AsyncMock(return_value={})
+        with (
+            patch.object(
+                retrieval,
+                "providers_named_in",
+                return_value=[_provider("linear_mcp", "Linear", managed_by="mcp")],
+            ),
+            patch.object(retrieval, "check_multiple_integrations_status", new=status),
+        ):
+            assert await retrieval._unconnected_named_in("u1", "Linear issues") == []
+        status.assert_not_awaited()
+
+
+@pytest.mark.unit
+class TestDiscoveryWithUnconnectedIntegrations:
+    def test_with_no_other_match_their_lines_are_the_whole_next_step(self) -> None:
+        body = json.loads(
+            retrieval._render_discovery_response(
+                [],
+                MagicMock(),
+                {},
+                "calendar and mail",
+                0,
+                25,
+                not_connected=[_CALENDAR, _GMAIL],
+                background=False,
+            )
+        )
+
+        assert body["next"] == (
+            f"{retrieval._not_connected_line(_CALENDAR, False)} "
+            f"{retrieval._not_connected_line(_GMAIL, False)}"
+        )
+        assert "search_matched_nothing" not in body

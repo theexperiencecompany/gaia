@@ -37,6 +37,7 @@ from app.constants.llm import (
 )
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, runtime_configurable
+from app.services.hil.utils import raw_tool_call
 from shared.py.wide_events import log
 
 _UNKNOWN_RUN = "unknown"
@@ -80,16 +81,14 @@ class LoopGuardMiddleware(AgentMiddleware):
     async def awrap_tool_call(
         self,
         request: ToolCallRequest,
-        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]],
-    ) -> ToolMessage | Command[Any]:
-        tool_call = request.tool_call
-        tool_name = tool_call.get("name", "") if isinstance(tool_call, dict) else tool_call.name
-        tool_call_id = tool_call.get("id", "") if isinstance(tool_call, dict) else tool_call.id
-        args = tool_call.get("args", {}) if isinstance(tool_call, dict) else tool_call.args
-        args_key = self._args_key(args)
+        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[str]]],
+    ) -> ToolMessage | Command[str]:
+        call = raw_tool_call(request)
+        tool_name, tool_call_id = call.name, call.id
+        args_key = self._args_key(call.args)
         failure_key = (tool_name, args_key)
 
-        configurable = runtime_configurable(request)
+        configurable: AgentConfigurable = runtime_configurable(request)
         counters = self._counters_for(self._run_key(configurable))
         # Only carry the identical tally when the immediately-preceding failure was
         # this same call — a success or a different failing call in between resets
