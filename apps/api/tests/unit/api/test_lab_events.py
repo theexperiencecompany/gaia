@@ -12,6 +12,7 @@ from app.api.v1.endpoints.lab_events import LabEventResponse, report_lab_event
 from app.api.v1.middleware.auth import WorkOSAuthMiddleware
 from app.api.v1.middleware.entitlement_allowlist import is_free_path
 from app.api.v1.routes import router as v1_router
+from app.constants.chat import ConversationSource
 from app.constants.execute import SANDBOX_LAB_EVENTS_TOKEN_TTL_SECONDS
 from app.constants.todos import TodoActivityEvent
 from app.models.todo_models import TodoDocument
@@ -547,8 +548,10 @@ class TestRecordLabEventPersist:
 
 @pytest.mark.unit
 class TestRecordLabEventWake:
-    async def test_question_wakes_the_user(self) -> None:
-        patches = _svc_stack()
+    async def test_question_delivers_when_notify_on(self) -> None:
+        patches = _svc_stack(
+            **{f"{SVC}.deliver_result_to_platforms": AsyncMock(return_value=ConversationSource.TELEGRAM)}
+        )
         with (
             patch(f"{SVC}.is_paid", patches[f"{SVC}.is_paid"]),
             patch(f"{SVC}.is_agent_lab_enabled", patches[f"{SVC}.is_agent_lab_enabled"]),
@@ -566,10 +569,27 @@ class TestRecordLabEventWake:
         deliver.assert_awaited_once()
         assert deliver.await_args.kwargs["user_id"] == "u1"
         assert "Which table?" in deliver.await_args.kwargs["notification_text"]
-        assert (
-            "result sent" in activity.await_args.args[3]
-            or "result not sent" in activity.await_args.args[3]
-        )
+        assert "result sent on telegram" in activity.await_args.args[3]
+        assert "not sent" not in activity.await_args.args[3]
+
+    async def test_question_without_linked_chat_records_not_sent(self) -> None:
+        patches = _svc_stack()
+        with (
+            patch(f"{SVC}.is_paid", patches[f"{SVC}.is_paid"]),
+            patch(f"{SVC}.is_agent_lab_enabled", patches[f"{SVC}.is_agent_lab_enabled"]),
+            patch(f"{SVC}.todo_repository", patches[f"{SVC}.todo_repository"]),
+            patch(f"{SVC}.record_activity", patches[f"{SVC}.record_activity"]) as activity,
+            patch(f"{SVC}.load_user_context", patches[f"{SVC}.load_user_context"]),
+            patch(
+                f"{SVC}.deliver_result_to_platforms",
+                patches[f"{SVC}.deliver_result_to_platforms"],
+            ) as deliver,
+        ):
+            await record_lab_event(
+                "run-1", user_id="u1", kind="question", raw={"message": "Which table?"}
+            )
+        deliver.assert_awaited_once()
+        assert "result not sent: no linked chat app accepted it" in activity.await_args.args[3]
 
     async def test_completion_wakes_the_user(self) -> None:
         patches = _svc_stack()
