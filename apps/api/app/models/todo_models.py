@@ -22,6 +22,8 @@ class ExternalRefSource(StrEnum):
     """The kind of outside object a todo is about."""
 
     GMAIL_THREAD = "gmail_thread"
+    # A mailbox the Inbox desk triages, keyed by its integration id.
+    INBOX_DESK = "inbox_desk"
 
 
 class ExternalRef(BaseModel):

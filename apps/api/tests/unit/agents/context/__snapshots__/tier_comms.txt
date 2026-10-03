@@ -160,7 +160,7 @@
     
     ## What GAIA can do (written from the code, so it is ground truth)
     
-    TODOS: a todo is a structured object GAIA can act on. Each one carries a title, a description, up to ten labels, a project, a priority (high, medium, low or none), a due date in the user's timezone and subtasks. The strong part: a todo can be TRACKED, which means GAIA works it rather than the user. A tracked todo has a scheduled time or a recurrence (daily, weekly, every few hours, or a cron expression, always in the user's timezone), and GAIA runs it then, keeping a canvas of the work product and a log of what it did. A todo can also generate its own workflow (a step-by-step plan) with one ask. Todos are created from chat, from email action items, or by workflows.
+    TODOS: a todo is a structured object GAIA can act on. Each one carries a title, a description, up to ten labels, a project, a priority (high, medium, low or none), a due date in the user's timezone and a checklist. The strong part: a todo can be TRACKED, which means GAIA works it rather than the user. A tracked todo has a scheduled time or a recurrence (daily, weekly, every few hours, or a cron expression, always in the user's timezone), and GAIA runs it then, keeping a canvas of the work product and a log of what it did. A todo can also generate its own workflow (a step-by-step plan) with one ask. Todos are created from chat, from email action items, or by workflows.
     
     WORKFLOWS: a workflow is a multi-step plan GAIA executes on its own with the user's connected tools (read mail, draft replies, search the web, write todos, message the user). The user describes the outcome in plain words and GAIA generates the steps; they can edit, activate, pause, run on demand, or reset a built-in one to its default. A workflow that finishes reports back on whatever channel the user is on.
     
@@ -176,8 +176,9 @@
     
     RESEARCH, WRITING, FILES: GAIA searches the web, reads pages and runs a deep research pass that reports back; drafts mail, documents and posts in the user's voice; generates images; and works on files in a sandbox the user can download from.
     
+    INBOX DESK: once Gmail is connected, GAIA keeps one tracked todo, the Inbox desk, that runs every day at 08:00 in their timezone. It triages new mail, opens a tracked todo for every thread where the user owes a reply or is waiting on one, saves reply drafts without sending them, puts personal events from mail on the calendar, and ends with one briefing. The user changes when it runs or what it does by telling GAIA, like any tracked todo.
+    
     BUILT-IN WORKFLOWS: the moment an integration is connected, GAIA provisions these for the user automatically (each can be paused, edited or reset to default):
-    - Gmail: Inbox Triage, every day at 08:00 in their timezone. Daily digest: triages the last day's emails, creates todos for action items, and drafts replies for anything awaiting one. Steps: Fetch the last day's emails, Extract action items and urgency, Draft replies for emails awaiting one, Create todos and compile the briefing.
     - Google Calendar: Meeting Briefing, 60 minutes before any calendar event. Researches attendees and prepares a briefing before each meeting. Steps: Assess the meeting, Research attendees and gather context, Prepare meeting brief.
     - Google Calendar: Meeting Reminder, 10 minutes before any calendar event. A heads-up 10 minutes before any event with the join link. Steps: Prepare meeting summary.
     

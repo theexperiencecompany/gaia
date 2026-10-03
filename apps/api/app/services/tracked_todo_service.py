@@ -15,10 +15,12 @@ app/services/todo_canvas_storage.py for the storage primitives. No
 JuiceFS / FUSE mount is required, so tracked todos work in every dev mode.
 """
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from app.constants.todos import (
     ACTIVE_TRACKED_SUMMARY_LIMIT,
+    CANVAS_STANDING_RULES_SECTION,
     EXECUTE_TRACKED_TODO_TASK,
     GAIA_TRACKED_LABEL,
     TodoActivityEvent,
@@ -77,6 +79,18 @@ CANVAS_TEMPLATE = """# {title}
 ## Learnings
 <!-- written on completion: what worked, what did not, timing insights, reusable patterns -->
 """
+
+
+def starting_canvas(title: str, standing_rules: Sequence[str] = ()) -> str:
+    """Render the template canvas with standing rules the todo starts out obeying."""
+    canvas = CANVAS_TEMPLATE.format(title=title)
+    if not standing_rules:
+        return canvas
+    heading = f"## {CANVAS_STANDING_RULES_SECTION}\n"
+    # Rules go under the section's comment line; it is the last such heading, as a title can read like it.
+    after_comment = canvas.index("\n", canvas.rindex(heading) + len(heading)) + 1
+    rules = "".join(f"- {rule}\n" for rule in standing_rules)
+    return canvas[:after_comment] + rules + canvas[after_comment:]
 
 
 async def _discard_unwatched_todo(todo_id: str, user_id: str, watch_error: Exception) -> None:

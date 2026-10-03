@@ -190,7 +190,7 @@ export const TodoItemMeta = memo(function TodoItemMeta({
 
       <TodoPriorityChip priority={todo.priority} />
 
-      {/* Subtasks Count */}
+      {/* Checklist progress */}
       {todo.subtasks.length > 0 && (
         <Chip
           size="sm"
@@ -202,7 +202,7 @@ export const TodoItemMeta = memo(function TodoItemMeta({
           }
         >
           {todo.subtasks.filter((s) => s.completed).length}/
-          {todo.subtasks.length} subtasks
+          {todo.subtasks.length} checklist
         </Chip>
       )}
     </div>

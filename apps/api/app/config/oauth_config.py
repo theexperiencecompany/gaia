@@ -417,7 +417,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                 "delete_todo",
                 "search_todos",
                 "get_today_todos",
-                "add_subtask",
+                "add_checklist_item",
             ],
             memory_prompt=TODO_MEMORY_PROMPT,
         ),
@@ -2009,6 +2009,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
 
 @cache
 def get_integration_by_id(integration_id: str) -> OAuthIntegration | None:
+    """Return the OAuth integration with this id, or None when no integration has it."""
     return next((i for i in OAUTH_INTEGRATIONS if i.id == integration_id), None)
 
 

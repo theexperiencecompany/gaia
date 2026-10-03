@@ -43,6 +43,7 @@ from app.services.tracked_todo_service import (
     CANVAS_TEMPLATE,
     TrackedTodoService,
     require_sub_todo_parent,
+    starting_canvas,
     tracked_todo_service,
 )
 from app.services.triggers.subscription_service import SubscriptionError
@@ -207,6 +208,17 @@ class TestCreateThreadTodo:
     async def test_a_todo_without_a_ref_watches_nothing(self, mock_repo, mock_deps, watch):
         mock_deps.create.return_value = _todo_response()
         await TrackedTodoService.create_tracked_todo(USER_ID, "Reply")
+        watch.register.assert_not_awaited()
+
+    async def test_the_inbox_desk_ref_is_an_identity_that_watches_nothing(
+        self, mock_repo, mock_deps, watch
+    ):
+        desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
+        mock_deps.create.return_value = _todo_response()
+
+        await TrackedTodoService.create_tracked_todo(USER_ID, "Inbox desk", external_ref=desk)
+
+        assert mock_deps.create.await_args.kwargs["external_ref"] == desk
         watch.register.assert_not_awaited()
 
     async def test_a_watch_that_fails_takes_the_todo_with_it(self, mock_repo, mock_deps, watch):
@@ -749,6 +761,32 @@ def test_the_template_opens_on_standing_rules_and_is_already_in_shape() -> None:
 
     assert normalize_canvas(canvas) == (canvas, None)
     assert re.findall(r"^## (.+)$", canvas, re.MULTILINE) == list(CANVAS_SECTIONS)
+
+
+class TestStartingCanvas:
+    def test_without_rules_it_is_the_template(self) -> None:
+        assert starting_canvas("Inbox desk") == CANVAS_TEMPLATE.format(title="Inbox desk")
+
+    def test_rules_open_the_standing_rules_section_under_its_comment_in_order(self) -> None:
+        template = CANVAS_TEMPLATE.format(title="Inbox desk")
+
+        canvas = starting_canvas("Inbox desk", ["Brief me by 9", "Never send a draft"])
+
+        assert canvas == template.replace(
+            "-->\n\n## Key Details",
+            "-->\n- Brief me by 9\n- Never send a draft\n\n## Key Details",
+            1,
+        )
+        assert normalize_canvas(canvas) == (canvas, None)
+
+    def test_a_title_that_reads_like_the_heading_leaves_the_rules_in_their_section(self) -> None:
+        template = CANVAS_TEMPLATE.format(title="## Standing rules")
+
+        canvas = starting_canvas("## Standing rules", ["Brief me by 9"])
+
+        assert canvas == template.replace(
+            "-->\n\n## Key Details", "-->\n- Brief me by 9\n\n## Key Details", 1
+        )
 
 
 class TestCompleteTrackedTodo:

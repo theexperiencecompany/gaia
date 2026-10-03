@@ -84,13 +84,13 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     @staticmethod
     def _list_query(
         user_id: str, *, exclude_todo_workflows: bool, exclude_system_workflows: bool = False
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         """Build the shared filter for a user's listed workflows.
 
         The single source of truth for both list_for_user and count_for_user,
         so a paginated list and its total can never drift apart.
         """
-        query: dict[str, Any] = {"user_id": user_id}
+        query: dict[str, object] = {"user_id": user_id}
         if exclude_todo_workflows:
             query["$or"] = [
                 {"is_todo_workflow": {"$exists": False}},
@@ -167,6 +167,19 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
                 "user_id": user_id,
                 "system_workflow_key": system_workflow_key,
                 "is_system_workflow": True,
+            }
+        )
+
+    async def find_live_system_workflows(self, system_workflow_key: str) -> list[WorkflowDocument]:
+        """Every user's system workflow under system_workflow_key that runs or that GAIA may resume.
+
+        A row the user switched off themselves (no deactivated_reason) is not live.
+        """
+        return await self._find(
+            {
+                "system_workflow_key": system_workflow_key,
+                "is_system_workflow": True,
+                "$or": [{"activated": True}, {"deactivated_reason": {"$ne": None}}],
             }
         )
 
@@ -406,7 +419,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         return await self._count(self._step_category_match(category))
 
     @staticmethod
-    def _step_category_match(category: str) -> dict[str, Any]:
+    def _step_category_match(category: str) -> dict[str, object]:
         return {
             "$or": [{"is_public": True}, {"is_explore": True}],
             "steps": {"$elemMatch": {"category": {"$regex": re.escape(category), "$options": "i"}}},
@@ -582,9 +595,9 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         return result is not None
 
     @staticmethod
-    def _rearm_set_fields(rearm: WorkflowRearm) -> dict[str, Any]:
+    def _rearm_set_fields(rearm: WorkflowRearm) -> dict[str, object]:
         """Translate a WorkflowRearm into a Mongo $set fragment (see WorkflowRearm for UNSET-vs-None)."""
-        set_fields: dict[str, Any] = {}
+        set_fields: dict[str, object] = {}
         if not isinstance(rearm.scheduled_at, _Unset):
             set_fields["scheduled_at"] = rearm.scheduled_at
         if rearm.occurrence_count is not None:

@@ -14,6 +14,7 @@ rendered prompt.
 from collections import Counter
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
+from app.constants.todos import INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
 from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
 from app.models.trigger_configs import CalendarEventStartingSoonConfig
 from app.models.workflow_models import CreateWorkflowRequest, TriggerConfig, TriggerType
@@ -24,7 +25,7 @@ CAPABILITY_SECTION_HEADER = "## What GAIA can do (written from the code, so it i
 _TODOS = (
     "TODOS: a todo is a structured object GAIA can act on. Each one carries a title, a "
     "description, up to ten labels, a project, a priority (high, medium, low or none), a due "
-    "date in the user's timezone and subtasks. The strong part: a todo can be TRACKED, which "
+    "date in the user's timezone and a checklist. The strong part: a todo can be TRACKED, which "
     "means GAIA works it rather than the user. A tracked todo has a scheduled time or a "
     "recurrence (daily, weekly, every few hours, or a cron expression, always in the user's "
     "timezone), and GAIA runs it then, keeping a canvas of the work product and a log of what "
@@ -139,7 +140,19 @@ def _channels_line() -> str:
     )
 
 
+def _inbox_desk_line() -> str:
+    return (
+        f"INBOX DESK: once Gmail is connected, GAIA keeps one tracked todo, the {INBOX_DESK_TITLE}, "
+        f"that runs {_describe_cron(INBOX_DESK_RECURRENCE)}. It triages new mail, opens a tracked "
+        "todo for every thread where the user owes a reply or is waiting on one, saves reply "
+        "drafts without sending them, puts personal events from mail on the calendar, and ends "
+        "with one briefing. The user changes when it runs or what it does by telling GAIA, like "
+        "any tracked todo."
+    )
+
+
 def build_capability_block() -> str:
+    """Return the prompt section describing what GAIA can do, ending with the built-in workflows."""
     trigger_kinds = "; ".join(_TRIGGER_TEXT[kind] for kind in TriggerType)
     triggers = f"TRIGGERS: a run starts one of these ways: {trigger_kinds}."
     workflows = "\n".join(
@@ -162,6 +175,7 @@ def build_capability_block() -> str:
         _channels_line(),
         _MEMORY,
         _RESEARCH,
+        _inbox_desk_line(),
         built_in,
     )
     return f"{CAPABILITY_SECTION_HEADER}\n\n" + "\n\n".join(sections)

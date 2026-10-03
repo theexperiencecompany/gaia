@@ -120,6 +120,8 @@ class AnalyticsEvents(StrEnum):
     TODO_TRIGGER_FIRED = "todos:trigger_fired"
     # A tracked todo's run result reaching (or not reaching) the user's chat app.
     TODO_RUN_RESULT_DELIVERED = "todos:run_result_delivered"
+    # The user's Inbox desk tracked todo exists and its first morning run is armed.
+    INBOX_DESK_PROVISIONED = "todos:inbox_desk_provisioned"
 
     PROJECT_CREATED = "projects:created"
     PROJECT_UPDATED = "projects:updated"

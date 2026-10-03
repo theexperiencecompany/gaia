@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import json
 import re
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
@@ -35,12 +36,14 @@ from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import TodoRunRequest
 from app.agents.prompts.todo_prompts import (
     DELIVERED_RESULT_GUIDANCE,
+    GMAIL_THREAD_RUN_GUIDANCE,
     PARENT_STANDING_RULES_LABEL,
     SILENT_RUN_GUIDANCE,
     SUB_TODOS_LABEL,
     TRIGGERED_RELEVANCE_GUIDANCE,
 )
 from app.constants import todos as todo_constants
+from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
     CANVAS_PROMPT_MAX_CHARS,
@@ -57,7 +60,7 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
 )
-from app.models.todo_models import TodoDocument, TodoUpdate
+from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import (
     ConditionOperator,
     SubscriptionAction,
@@ -140,6 +143,19 @@ def activity() -> Iterator[AsyncMock]:
     """Capture every activity.md entry the worker records, as (todo_id, user_id, event, detail)."""
     with patch(f"{MODULE}.record_activity", AsyncMock(return_value=True)) as recorded:
         yield recorded
+
+
+@pytest.fixture(autouse=True)
+def account() -> Iterator[SimpleNamespace]:
+    """Make the user paying with Gmail connected, so no run pauses unless a test says so."""
+    with (
+        patch(f"{MODULE}.is_paid", AsyncMock(return_value=True)) as paid,
+        patch(
+            f"{MODULE}.get_connected_integration_ids",
+            AsyncMock(return_value={GMAIL_INTEGRATION_ID}),
+        ) as connected,
+    ):
+        yield SimpleNamespace(paid=paid, connected=connected)
 
 
 @pytest.fixture(autouse=True)
@@ -677,6 +693,91 @@ class TestTriggeredExecutionGating:
 # ---------------------------------------------------------------------------
 
 
+class TestARunWaitsForItsAccount:
+    """No plan, or a desk without Gmail: the run is skipped and its schedule moves on."""
+
+    @pytest.fixture(autouse=True)
+    def _route_enqueue(self, route_enqueue_via_pool):
+        return
+
+    async def _run(self, doc, tz="UTC"):
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=doc)
+        repo.update = AsyncMock()
+        repo.update_if_scheduled_at = AsyncMock(return_value=doc)
+        via_agent = AsyncMock()
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}._execute_on_executor", via_agent),
+            patch(f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone=tz))),
+            _serving(_pool()),
+        ):
+            result = await _execute_todo_with_retry("todo-1")
+        return result, repo, via_agent
+
+    async def test_a_lapsed_plan_skips_the_run_and_keeps_the_schedule(self, account, activity):
+        account.paid.return_value = False
+
+        async with captured_wide_event() as event:
+            result, repo, via_agent = await self._run(
+                _doc(recurrence="0 9 * * *"), tz="Asia/Kolkata"
+            )
+
+        assert result == "paused:todo-1"
+        via_agent.assert_not_awaited()
+        account.paid.assert_awaited_once_with("user-1")
+        [(_expected, written)] = _schedule_writes(repo)
+        assert written["scheduled_at"].astimezone(KOLKATA).hour == 9
+        assert (TodoActivityEvent.RUN_SKIPPED, "skipped: the user's plan is not active") in (
+            _recorded(activity)
+        )
+        assert event["tracked_todo"] == {"paused": "skipped: the user's plan is not active"}
+
+    async def test_a_lapsed_plan_moves_a_one_time_run_on_instead_of_dropping_it(
+        self, account, activity
+    ):
+        account.paid.return_value = False
+        before = datetime.now(UTC)
+
+        result, repo, _via_agent = await self._run(_doc())
+
+        assert result == "paused:todo-1"
+        rerun_at = repo.update_if_scheduled_at.await_args.kwargs["update"].scheduled_at
+        recheck = todo_constants.PAUSED_RUN_RECHECK
+        assert before + recheck <= rerun_at <= datetime.now(UTC) + recheck
+        assert (TodoActivityEvent.SCHEDULED, f"next run {rerun_at.isoformat()} (once)") in (
+            _recorded(activity)
+        )
+
+    @pytest.mark.parametrize(
+        "ref",
+        [
+            ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail"),
+            ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="thread-1"),
+        ],
+        ids=["desk", "thread"],
+    )
+    async def test_gmail_work_waits_for_gmail(self, account, activity, ref):
+        account.connected.return_value = set()
+
+        result, _repo, via_agent = await self._run(_doc(external_ref=ref))
+
+        assert result == "paused:todo-1"
+        via_agent.assert_not_awaited()
+        account.connected.assert_awaited_once_with("user-1")
+        assert (TodoActivityEvent.RUN_SKIPPED, "skipped: Gmail is not connected") in (
+            _recorded(activity)
+        )
+
+    async def test_a_todo_that_reads_no_gmail_runs_without_it(self, account):
+        account.connected.return_value = set()
+
+        result, _repo, via_agent = await self._run(_doc())
+
+        assert result == "success:todo-1"
+        via_agent.assert_awaited_once()
+
+
 class TestExecuteTodoWithRetryEarlyExits:
     @pytest.fixture(autouse=True)
     def _route_enqueue(self, route_enqueue_via_pool):
@@ -1110,10 +1211,21 @@ class TestCollectReferenceLearnings:
 
 class TestBuildExecutionPrompt:
     def test_title_only(self):
-        assert (
-            _build_execution_prompt(_doc(title="Ship it"))
-            == f"Execute the following scheduled task: Ship it\n\n{DELIVERED_RESULT_GUIDANCE}"
+        assert _build_execution_prompt(_doc(title="Ship it")) == (
+            "Execute the following scheduled task: Ship it\n\n"
+            "This todo's id: todo-1.\n\n"
+            f"{DELIVERED_RESULT_GUIDANCE}"
         )
+
+    def test_a_triggered_run_is_told_its_own_id_too(self):
+        """A run links a sub-todo to itself with parent_todo_id, so it must know its own id."""
+        origin = TriggerOrigin(
+            subscription_id="sub-1", trigger_name="gmail_new_message", payload={"thread_id": "t"}
+        )
+
+        prompt = _build_execution_prompt(_doc(id="desk-9"), origin=origin)
+
+        assert "This todo's id: desk-9." in prompt
 
     def test_all_sections_appear_in_order(self):
         prompt = _build_execution_prompt(
@@ -1129,6 +1241,7 @@ class TestBuildExecutionPrompt:
         )
         assert prompt.split("\n\n") == [
             "Execute the following scheduled task: Ship it",
+            "This todo's id: todo-1.",
             "Details: the release",
             "Canvas (canvas.md):\n## Current State\nblocked",
             # Next to the canvas: rules the run obeys, not background reading.
@@ -1183,6 +1296,32 @@ class TestTheCanvasIsBoundedInThePrompt:
         assert "## Learnings\nlast" in prompt
         assert "[middle of canvas trimmed:" in prompt
         assert len(prompt) < CANVAS_PROMPT_MAX_CHARS + 2_000
+
+
+class TestAThreadTodoRunCarriesTheThreadContract:
+    """The desk opens thread todos with whatever description it writes; the contract rides on the run."""
+
+    def test_a_thread_todo_is_told_how_to_work_its_thread_next_to_its_details(self):
+        thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611")
+
+        prompt = _build_execution_prompt(
+            _doc(description="Sam asked for the lease", external_ref=thread)
+        )
+
+        assert prompt.split("\n\n")[2:4] == [
+            "Details: Sam asked for the lease",
+            GMAIL_THREAD_RUN_GUIDANCE.format(ref_id="18c2f0a9b7d4e611"),
+        ]
+
+    @pytest.mark.parametrize(
+        "external_ref",
+        [None, ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")],
+        ids=["no-ref", "inbox-desk"],
+    )
+    def test_a_todo_that_owns_no_thread_gets_no_thread_contract(self, external_ref):
+        prompt = _build_execution_prompt(_doc(external_ref=external_ref))
+
+        assert GMAIL_THREAD_RUN_GUIDANCE.split("{ref_id}")[0] not in prompt
 
 
 _DESK_ID = "66f838cc8829054e5f10e401"
