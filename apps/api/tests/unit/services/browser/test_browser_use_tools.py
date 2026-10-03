@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 
 from browser_use.agent.views import ActionResult
 from browser_use.tools.registry.views import ActionModel
@@ -21,14 +21,18 @@ MATCHES = "1. <a href='https://example.test/first'>First result</a>"
 READ = "<url>\nhttps://example.com\n</url>\n<result>\nDocument page title: Not available\n</result>"
 
 
-class _Action:
-    """One of Browser-Use's action models: only the chosen action is set."""
+class _Actions(ActionModel):
+    """Some of Browser-Use's actions, as an agent step names one of them."""
 
-    def __init__(self, name: str, params: dict[str, Any]) -> None:
-        self._dumped = {name: params}
-
-    def model_dump(self, exclude_unset: bool = False) -> dict[str, Any]:
-        return dict(self._dumped)
+    input: dict[str, Any] | None = None
+    send_keys: dict[str, Any] | None = None
+    done: dict[str, Any] | None = None
+    jev: dict[str, Any] | None = None
+    navigate: dict[str, Any] | None = None
+    click: dict[str, Any] | None = None
+    find_elements: dict[str, Any] | None = None
+    search_page: dict[str, Any] | None = None
+    extract: dict[str, Any] | None = None
 
 
 class _BrowserUse:
@@ -67,7 +71,7 @@ class _Page(GaiaBrowserSession):
 
 
 async def _act(name: str, params: dict[str, Any], page: _Page) -> ActionResult:
-    action = cast(ActionModel, _Action(name, params))
+    action = _Actions(**{name: params})
     return await GaiaTools().act(action=action, browser_session=page, sensitive_data=SECRETS)
 
 

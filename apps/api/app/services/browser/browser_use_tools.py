@@ -128,17 +128,12 @@ class GaiaTools(Tools[None]):
             return result
         if name in _READ_ACTIONS:
             result.include_extracted_content_only_once = True
+        # The page's markdown has no <title>: asked for it, extract said "Not available".
         if name == _EXTRACT_ACTION and isinstance(browser_session, GaiaBrowserSession):
-            await _titled(result, browser_session)
+            title = await browser_session.document_title()
+            if title:
+                titled = f"<page_title>\n{title}\n</page_title>\n{result.extracted_content}"
+                if result.long_term_memory == result.extracted_content:
+                    result.long_term_memory = titled
+                result.extracted_content = titled
         return result
-
-
-async def _titled(result: ActionResult, browser_session: GaiaBrowserSession) -> None:
-    """Lead extract's result with the page's title: its markdown has none ("Not available")."""
-    title = await browser_session.document_title()
-    if not title:
-        return
-    titled = f"<page_title>\n{title}\n</page_title>\n"
-    if result.long_term_memory == result.extracted_content:
-        result.long_term_memory = titled + (result.long_term_memory or "")
-    result.extracted_content = titled + (result.extracted_content or "")

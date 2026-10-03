@@ -11,11 +11,7 @@ from browser_use.browser.views import TabInfo
 import pytest
 
 from app.browser_host.stealth import build_stealth_script
-from app.constants.browser import (
-    BROWSER_DEVICE_SCALE_FACTOR,
-    BROWSER_VIEWPORT_HEIGHT,
-    BROWSER_VIEWPORT_WIDTH,
-)
+from app.constants.browser import BROWSER_VIEWPORT_HEIGHT, BROWSER_VIEWPORT_WIDTH
 from app.services.browser import browser_use_session as session_mod
 from app.services.browser.browser_use_session import GaiaBrowserSession, seed_for_user
 from tests.helpers import captured_wide_event
@@ -27,13 +23,17 @@ def _session(user_id: str | None = "user-1") -> GaiaBrowserSession:
     return GaiaBrowserSession(cdp_url="ws://host.test/x", user_id=user_id)
 
 
-def _tabs(monkeypatch: pytest.MonkeyPatch, add_script: AsyncMock) -> dict[str, Any]:
-    """Serve each target its own CDP session from Browser-Use's pool; return them by target."""
+def _tabs(
+    monkeypatch: pytest.MonkeyPatch, add_script: AsyncMock
+) -> tuple[dict[str, Any], list[bool]]:
+    """Serve each target its own CDP session from Browser-Use's pool; return them by target, and each focus asked."""
     served: dict[str, Any] = {}
+    focuses: list[bool] = []
 
     async def _pooled(
         self: BrowserSession, target_id: str | None = None, focus: bool = True
     ) -> Any:
+        focuses.append(focus)
         page = SimpleNamespace(addScriptToEvaluateOnNewDocument=add_script)
         return served.setdefault(
             target_id or "t1",
@@ -45,21 +45,20 @@ def _tabs(monkeypatch: pytest.MonkeyPatch, add_script: AsyncMock) -> dict[str, A
         )
 
     monkeypatch.setattr(BrowserSession, "get_or_create_cdp_session", _pooled)
-    return served
+    return served, focuses
 
 
-def test_the_session_renders_at_the_screencast_size() -> None:
+def test_the_session_attaches_to_the_host_at_the_screencast_size() -> None:
     session = _session()
 
     profile = session.browser_profile
+    assert session.cdp_url == "ws://host.test/x"
     assert (profile.viewport.width, profile.viewport.height) == (
         BROWSER_VIEWPORT_WIDTH,
         BROWSER_VIEWPORT_HEIGHT,
     )
-    assert (profile.device_scale_factor, profile.no_viewport) == (
-        BROWSER_DEVICE_SCALE_FACTOR,
-        False,
-    )
+    # Shots and click points share one coordinate space.
+    assert (profile.device_scale_factor, profile.no_viewport) == (1, False)
 
 
 async def test_every_tab_gets_the_users_stealth_script_once(
@@ -67,7 +66,7 @@ async def test_every_tab_gets_the_users_stealth_script_once(
 ) -> None:
     """Regression: the script registered on the first tab only, so a window.open tab was fingerprint-naked."""
     add_script = AsyncMock(return_value={"identifier": "1"})
-    _tabs(monkeypatch, add_script)
+    _, focuses = _tabs(monkeypatch, add_script)
     session = _session("user-1")
 
     await session.get_or_create_cdp_session(target_id="t1")
@@ -79,13 +78,14 @@ async def test_every_tab_gets_the_users_stealth_script_once(
         {"params": {"source": source, "runImmediately": True}, "session_id": "sess-t1"},
         {"params": {"source": source, "runImmediately": True}, "session_id": "sess-t2"},
     ]
+    assert focuses == [True, True, False]
 
 
 async def test_a_script_that_did_not_register_is_tried_again_and_the_page_goes_on(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     add_script = AsyncMock(side_effect=[RuntimeError("cdp down"), {"identifier": "1"}])
-    served = _tabs(monkeypatch, add_script)
+    served, _ = _tabs(monkeypatch, add_script)
     session = _session()
 
     async with captured_wide_event() as event:
@@ -94,7 +94,11 @@ async def test_a_script_that_did_not_register_is_tried_again_and_the_page_goes_o
 
     assert add_script.await_count == 2
     [warning] = event["warnings"]
-    assert (warning["error_type"], warning["target_id"]) == ("RuntimeError", "t1")
+    assert (warning["msg"], warning["error_type"], warning["target_id"]) == (
+        "[BROWSER] Stealth script not registered",
+        "RuntimeError",
+        "t1",
+    )
 
 
 def test_each_user_is_one_stable_device_and_no_user_still_one() -> None:
@@ -127,7 +131,7 @@ def _titled_page(monkeypatch: pytest.MonkeyPatch, answer: dict[str, Any] | Excep
 
     async def _cdp(self: BrowserSession, target_id: str | None = None, focus: bool = True) -> Any:
         async def _evaluate(params: dict[str, Any], session_id: str) -> dict[str, Any]:
-            reads.append((focus, params))
+            reads.append((focus, params, session_id))
             if isinstance(answer, Exception):
                 raise answer
             return answer
@@ -165,16 +169,31 @@ async def test_the_agents_tab_is_titled_from_its_document(monkeypatch: pytest.Mo
 
     assert await _tab_title(monkeypatch) == "Example Domain"
     # Read without taking focus from the run's tab.
-    assert reads == [(False, {"expression": "document.title", "returnByValue": True})]
+    assert reads == [(False, {"expression": "document.title", "returnByValue": True}, "s1")]
     assert await _tab_title(monkeypatch, focused="T2") == "example.com"
 
 
 @pytest.mark.parametrize(
-    "answer", [{"result": {"type": "string", "value": "  "}}, ValueError("detached")]
+    "answer", [{"result": {"type": "string", "value": "  "}}, {"result": {"type": "undefined"}}]
 )
-async def test_a_page_with_no_title_or_no_answer_keeps_the_tabs_label(
-    monkeypatch: pytest.MonkeyPatch, answer: dict[str, Any] | Exception
+async def test_a_page_with_no_title_keeps_the_tabs_label(
+    monkeypatch: pytest.MonkeyPatch, answer: dict[str, Any]
 ) -> None:
     _titled_page(monkeypatch, answer)
 
     assert await _tab_title(monkeypatch) == "example.com"
+
+
+async def test_a_page_that_does_not_answer_keeps_the_tabs_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _titled_page(monkeypatch, ValueError("detached"))
+
+    async with captured_wide_event() as event:
+        assert await _tab_title(monkeypatch) == "example.com"
+
+    [warning] = event["warnings"]
+    assert (warning["msg"], warning["error_type"]) == (
+        "[BROWSER] Page title not read",
+        "ValueError",
+    )

@@ -17,11 +17,7 @@ from pydantic import PrivateAttr
 from typing_extensions import override
 
 from app.browser_host.stealth import build_stealth_script
-from app.constants.browser import (
-    BROWSER_DEVICE_SCALE_FACTOR,
-    BROWSER_VIEWPORT_HEIGHT,
-    BROWSER_VIEWPORT_WIDTH,
-)
+from app.constants.browser import BROWSER_VIEWPORT_HEIGHT, BROWSER_VIEWPORT_WIDTH
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
@@ -47,12 +43,10 @@ class GaiaBrowserSession(BrowserSession):
     _stealthed: set[str] = PrivateAttr(default_factory=set)
 
     def __init__(self, *, cdp_url: str, user_id: str | None) -> None:
+        # Browser-Use sizes the page to a given viewport (at scale 1): the size the host screencasts.
         super().__init__(
             cdp_url=cdp_url,
             viewport={"width": BROWSER_VIEWPORT_WIDTH, "height": BROWSER_VIEWPORT_HEIGHT},
-            device_scale_factor=BROWSER_DEVICE_SCALE_FACTOR,
-            # Browser-Use sizes the page to the viewport, the size the host screencasts.
-            no_viewport=False,
         )
         self._fingerprint_seed = seed_for_user(user_id)
 

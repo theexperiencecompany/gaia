@@ -483,8 +483,6 @@ BROWSER_NO_GUIDANCE_AVAILABLE = (
 # downscaled stream, a takeover coordinate mismatch and bigger vision payloads.
 BROWSER_VIEWPORT_WIDTH = 1280
 BROWSER_VIEWPORT_HEIGHT = 800
-#: CSS pixels per screen pixel: shots and click points share one coordinate space.
-BROWSER_DEVICE_SCALE_FACTOR = 1
 
 
 # --- Jev decision policy ---
