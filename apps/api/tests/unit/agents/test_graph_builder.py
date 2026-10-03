@@ -214,12 +214,26 @@ class TestCheckpointerManager:
 
     @staticmethod
     def _record_setup_order(
-        mock_pool_cls, mock_saver_cls, mock_store_cls, *, store_error: Exception | None = None
+        mock_pool_cls,
+        mock_saver_cls,
+        mock_store_cls,
+        *,
+        store_error: Exception | None = None,
+        lock_answers: tuple[bool, ...] = (True,),
     ) -> MagicMock:
+        """Record setup's statements in order; pg_try_advisory_lock answers lock_answers in turn, then True."""
         order = MagicMock()
         pool = _mock_pool()
         conn = pool.connection.return_value.__aenter__.return_value
-        conn.execute.side_effect = lambda sql, params: order.execute(sql, params)
+        answers = iter(lock_answers)
+
+        def execute(sql: str, params: tuple[int, ...]) -> MagicMock:
+            order.execute(sql, params)
+            cursor = MagicMock()
+            cursor.fetchone = AsyncMock(return_value=(next(answers, True),))
+            return cursor
+
+        conn.execute.side_effect = execute
         mock_pool_cls.return_value = pool
 
         saver = AsyncMock()
@@ -248,11 +262,50 @@ class TestCheckpointerManager:
         mock_store_cls.from_conn_string.assert_called_once_with(_TEST_DB_URL)
         lock = (LANGGRAPH_SETUP_LOCK_ID,)
         assert order.mock_calls == [
-            call.execute("SELECT pg_advisory_lock(%s)", lock),
+            call.execute("SELECT pg_try_advisory_lock(%s)", lock),
             call.saver_setup(),
             call.store_setup(),
             call.execute("SELECT pg_advisory_unlock(%s)", lock),
         ]
+
+    @patch(f"{_CM_MOD}.AsyncPostgresStore")
+    @patch(f"{_CM_MOD}.AsyncPostgresSaver")
+    @patch(f"{_CM_MOD}.AsyncConnectionPool")
+    async def test_a_starter_waits_for_the_lock_by_asking_again_never_inside_a_statement(
+        self, mock_pool_cls, mock_saver_cls, mock_store_cls, monkeypatch
+    ):
+        """A blocking wait sits in a transaction the holder's CREATE INDEX CONCURRENTLY waits on."""
+        monkeypatch.setattr(f"{_CM_MOD}.LANGGRAPH_SETUP_LOCK_POLL_SECONDS", 0)
+        order = self._record_setup_order(
+            mock_pool_cls, mock_saver_cls, mock_store_cls, lock_answers=(False, False, True)
+        )
+
+        await self._make_manager().setup()
+
+        lock = (LANGGRAPH_SETUP_LOCK_ID,)
+        assert order.mock_calls[:4] == [
+            call.execute("SELECT pg_try_advisory_lock(%s)", lock),
+            call.execute("SELECT pg_try_advisory_lock(%s)", lock),
+            call.execute("SELECT pg_try_advisory_lock(%s)", lock),
+            call.saver_setup(),
+        ]
+
+    @patch(f"{_CM_MOD}.AsyncPostgresStore")
+    @patch(f"{_CM_MOD}.AsyncPostgresSaver")
+    @patch(f"{_CM_MOD}.AsyncConnectionPool")
+    async def test_a_lock_never_released_fails_setup_loud_without_migrating(
+        self, mock_pool_cls, mock_saver_cls, mock_store_cls, monkeypatch
+    ):
+        monkeypatch.setattr(f"{_CM_MOD}.LANGGRAPH_SETUP_LOCK_POLL_SECONDS", 0)
+        monkeypatch.setattr(f"{_CM_MOD}.LANGGRAPH_SETUP_LOCK_WAIT_SECONDS", 0)
+        order = self._record_setup_order(
+            mock_pool_cls, mock_saver_cls, mock_store_cls, lock_answers=(False,) * 1000
+        )
+
+        with pytest.raises(RuntimeError, match=f"setup lock {LANGGRAPH_SETUP_LOCK_ID} still held"):
+            await self._make_manager().setup()
+
+        assert call.saver_setup() not in order.mock_calls
 
     @patch(f"{_CM_MOD}.AsyncPostgresStore")
     @patch(f"{_CM_MOD}.AsyncPostgresSaver")
