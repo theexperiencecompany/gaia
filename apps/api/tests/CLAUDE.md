@@ -70,6 +70,7 @@ behavior belongs in `test:real`, not in the default run.
   - `tests/conftest.py` — env fence, `client` / `unauthed_client` (ASGITransport), `fake_user` / `fake_user_2`, `fake_redis` (per-test fakeredis behind `redis_cache`; any tier whose code path touches Redis without a real-services fixture)
   - `tests/helpers.py` — `create_fake_llm`, `create_fake_llm_with_tool_calls`, auth middlewares, `worker_redis_url` / `worker_mongo_db_name`
   - `tests/factories.py` — `make_user`, `make_conversation`, `make_state`, `make_config`
+  - `tests/browser_factories.py` — `make_browser_job_state` (kept apart so suites that never touch a browser job import none of its schema)
   - `tests/unit/conftest.py` — `mock_mongodb`, `mock_redis`
   - `tests/e2e/_harness/graph_run.py` — `RecordingFakeModel` (`last_chat_messages`, `chat_messages_log`), `CallAllToolsModel`, `comms_graph` / `executor_graph`, `run_graph`, `GraphRun`
   - `tests/integration/real/db_fixtures.py` — `mongodb_url`, `redis_url`, `postgres_url`, `mongo_db`, `real_redis` (shared by e2e and real-infra suites)
