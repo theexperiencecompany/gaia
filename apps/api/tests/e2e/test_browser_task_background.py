@@ -16,6 +16,7 @@ from langchain_core.tools import BaseTool
 import pytest
 
 from app.agents.tools.browser_chat_tools import browser_step_done, stop_browser_task
+from app.agents.tools.executor_tool import cancel_executor
 from app.constants.agents import AgentTag
 from app.constants.browser import (
     BROWSER_RUN_SESSION_LOST_SUMMARY,
@@ -189,9 +190,17 @@ async def test_a_bot_conversation_gets_one_photo_per_step_and_only_the_recap_lin
 async def test_a_second_browser_task_in_one_turn_is_refused_by_name() -> None:
     """One browser per conversation: a second run would fight the first for the same live view, and the model would narrate whichever finished last."""
     second = call("browser_task", {"task": "also check the menu"}, "b2")
-    async with browser_job_world(STREAM, steps=TWO_STEPS) as world:
+    # The first run waits on the page, so it still holds the conversation when the second asks.
+    still_running = [ScriptedStep(actions=[], await_stop=True)]
+    async with browser_job_world(STREAM, steps=still_running) as world:
         async with executor_graph([RETRIEVE, START, second, "Started."]) as graph:
-            run = await _drive(graph, world)
+            run = await run_graph(
+                graph, "book me a table", thread_id=CONVERSATION, user_id=USER, **_configurable()
+            )
+            await cancel_executor.ainvoke(
+                {"task_ids": []}, config={"configurable": {"thread_id": CONVERSATION}}
+            )
+            await world.settle()
 
     assert len(world.enqueued) == 1
     refusal = run.results_from("tools")
@@ -201,8 +210,6 @@ async def test_a_second_browser_task_in_one_turn_is_refused_by_name() -> None:
 
 async def test_a_stop_reaches_the_browser_and_releases_the_conversation() -> None:
     """The run outlives the turn that started it, so a stop typed later has to reach the job itself rather than a stream nobody is on."""
-    from app.agents.tools.executor_tool import cancel_executor
-
     waiting = [ScriptedStep(actions=[], await_stop=True)]
     async with browser_job_world(STREAM, steps=waiting) as world:
         async with executor_graph([RETRIEVE, START, "Started."]) as graph:
@@ -671,7 +678,6 @@ async def test_a_stop_while_the_user_is_asked_to_sign_in_ends_the_run_stopped_at
 ) -> None:
     """Regression: a stop during a handoff waited out the handoff window, and the run then read as timed out, not stopped."""
     from app.agents.tools import executor_tool
-    from app.agents.tools.executor_tool import cancel_executor
     from app.config.settings import settings
 
     # Short, so a stop the wait never hears ends as the timeout it once was, not a hang.
