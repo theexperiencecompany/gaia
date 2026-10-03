@@ -23,6 +23,7 @@ from posthog import Posthog
 from app.config.settings import settings
 from app.constants.analytics import POSTHOG_PROVIDER_KEY
 from app.core.lazy_loader import providers
+from app.db.repositories.users import user_repository
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from shared.py.wide_events import log
 
@@ -203,6 +204,26 @@ async def is_jev_reply_enabled(user_id: str | None) -> bool:
     return await is_enabled(FeatureFlag.HIL_JEV_REPLY, user_id)
 
 
+def _agent_lab_allowlist() -> set[str]:
+    """Lowercased allowlist emails from settings; empty when unconfigured."""
+    raw = settings.AGENT_LAB_USER_EMAILS or ""
+    return {part.strip().lower() for part in raw.split(",") if part.strip()}
+
+
 async def is_agent_lab_enabled(user_id: str | None) -> bool:
     """Whether the user can run private agent lab sessions inside their sandbox."""
+    allowlist = _agent_lab_allowlist()
+    if allowlist and user_id:
+        try:
+            user = await user_repository.get(user_id)
+        except Exception as e:
+            log.debug(
+                "Agent lab allowlist lookup failed, falling back to flag evaluation",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+        else:
+            email = user.email if user is not None else None
+            if email and email.strip().lower() in allowlist:
+                return True
     return await is_enabled(FeatureFlag.AGENT_LAB, user_id)

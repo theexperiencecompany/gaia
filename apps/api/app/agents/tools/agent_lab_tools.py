@@ -51,7 +51,7 @@ LAB_SEED_TIMEOUT_SECONDS: int = 300
 
 LAB_DISABLED_MESSAGE: str = (
     "Agent lab is not enabled for this user. Tell the user agent lab is off "
-    "and stop — do not retry, do not work around it."
+    "and stop - do not retry, do not work around it."
 )
 
 
@@ -192,7 +192,7 @@ async def lab_start(
         f"--session-id {cli_session_id}`; lab-opencode-drive: `opencode run --format json "
         f'-s {cli_session_id} "<message>"`). If the CLI shows a login code or key, relay '
         "it to the user ad hoc and continue after they paste it back. "
-        f'Tell the user: a coding agent is now working on "{todo.title}" — no ids, '
+        f'Tell the user: a coding agent is now working on "{todo.title}" - no ids, '
         "no paths, no session tokens in that message."
     )
 

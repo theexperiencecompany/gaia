@@ -314,8 +314,47 @@ FLAG_KILL_SWITCHES = {
 
 
 class TestAgentLab:
-    async def test_agent_lab_flag_defaults_off(self, no_client: None) -> None:
+    async def test_agent_lab_flag_defaults_off(
+        self, monkeypatch: pytest.MonkeyPatch, no_client: None
+    ) -> None:
+        monkeypatch.setattr(app_settings, "AGENT_LAB_USER_EMAILS", "")
+        monkeypatch.setattr(app_settings, "ENABLE_AGENT_LAB", False)
         assert await is_agent_lab_enabled("some-user") is False
+
+
+class TestAgentLabAllowlist:
+    async def test_allowlisted_email_enables_without_posthog(
+        self, monkeypatch: pytest.MonkeyPatch, no_client: None, evaluated: MagicMock
+    ) -> None:
+        user = MagicMock()
+        user.email = "alice@example.com"
+        monkeypatch.setattr(app_settings, "AGENT_LAB_USER_EMAILS", "alice@example.com")
+        with patch(
+            "app.services.feature_flags.user_repository.get", return_value=user
+        ) as get:
+            assert await is_agent_lab_enabled("u1") is True
+            get.assert_called_once_with("u1")
+
+    async def test_non_listed_email_falls_back_to_default(
+        self, monkeypatch: pytest.MonkeyPatch, no_client: None
+    ) -> None:
+        user = MagicMock()
+        user.email = "mallory@example.com"
+        monkeypatch.setattr(app_settings, "AGENT_LAB_USER_EMAILS", "alice@example.com")
+        monkeypatch.setattr(app_settings, "ENABLE_AGENT_LAB", False)
+        with patch("app.services.feature_flags.user_repository.get", return_value=user):
+            assert await is_agent_lab_enabled("u1") is False
+
+    async def test_allowlist_matches_case_insensitively(
+        self, monkeypatch: pytest.MonkeyPatch, no_client: None
+    ) -> None:
+        user = MagicMock()
+        user.email = "Alice@Example.COM"
+        monkeypatch.setattr(
+            app_settings, "AGENT_LAB_USER_EMAILS", "  alice@example.com , bob@example.com "
+        )
+        with patch("app.services.feature_flags.user_repository.get", return_value=user):
+            assert await is_agent_lab_enabled("u1") is True
 
 
 class TestShippedDefaults:
