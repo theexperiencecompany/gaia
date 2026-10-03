@@ -312,6 +312,18 @@ class TestWriteFile:
         assert await write_file(TaskFile(doc, GaiaTaskFile.ACTIVITY), USER_ID, appended) is None
         activity.assert_awaited_once()
 
+    async def test_an_append_to_a_log_that_opens_on_a_blank_line_keeps_it(self, writers):
+        # Only the trailing edge of the stored log is normalized away, so the append
+        # cannot swallow the blank line a todo's first entry sits under.
+        _canvas, activity, _syslog = writers
+        doc = _doc(activity_content="\n- 2026-09-01T09:00:00+00:00 started\n")
+        appended = "\n- 2026-09-01T09:00:00+00:00 started\n- 2026-09-02T10:00:00+00:00 replied"
+
+        assert await write_file(TaskFile(doc, GaiaTaskFile.ACTIVITY), USER_ID, appended) is None
+        activity.assert_awaited_once_with(
+            TODO_ID, USER_ID, appended, expected_updated_at=doc.updated_at
+        )
+
     async def test_activity_write_goes_to_mongo(self, writers):
         canvas, activity, syslog = writers
         doc = _doc()

@@ -15,8 +15,6 @@ PER_EMAIL_TRIGGER_NAMES: Final = frozenset(
     {GMAIL_NEW_MESSAGE_TRIGGER_NAME, GMAIL_EMAIL_SENT_TRIGGER_NAME}
 )
 
-# How many times a subscription write re-reads the todo and retries after losing a
-# compare-and-set to a concurrent write. Two provisions of the same Inbox desk race
-# on exactly this append, and three attempts is enough for the loser to see the
-# watch the winner stored.
+# Retries for a subscription append that loses its compare-and-set: the Inbox desk
+# is provisioned once per Gmail connect, and two connects race on that one append.
 SUBSCRIPTION_WRITE_ATTEMPTS: Final = 3
