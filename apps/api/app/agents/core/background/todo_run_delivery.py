@@ -137,7 +137,10 @@ async def _send_in_app(todo: TodoDocument, text: str) -> _Resolution:
 
 
 async def _narrate_and_send(run: ExecutorRun, todo: TodoDocument, result_text: str) -> _Resolution:
-    """Have comms write the result up (or decline to), then send it to the chat app."""
+    """Have comms write the result up (or decline to), then send it to the chat app.
+
+    A report whose form its todo's guidance sets is sent as written: comms decides only whether.
+    """
     text = await narrate_executor_result(
         result_text,
         "result",
@@ -166,14 +169,17 @@ async def _narrate_and_send(run: ExecutorRun, todo: TodoDocument, result_text: s
         )
         return _not_sent(TodoRunDeliveryOutcome.INVALID_DIRECTIVE)
 
+    # comms' retelling dropped the headings a report-form owner's guidance requires.
+    owns_form = todo.external_ref is not None and todo.external_ref.source.owns_report_form
+    message = result_text if owns_form else directive.payload
     platform = await deliver_result_to_platforms(
         user=run.user,
         user_id=todo.user_id,
-        notification_text=directive.payload,
+        notification_text=message,
         origin=f'tracked todo "{todo.title}" (id {todo.id})',
     )
     if platform is None:
-        return await _send_in_app(todo, directive.payload)
+        return await _send_in_app(todo, message)
     return _Resolution(
         TodoRunDeliveryOutcome.DELIVERED, f"result sent on {platform.value}", platform
     )

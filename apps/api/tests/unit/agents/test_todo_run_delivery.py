@@ -21,7 +21,7 @@ from app.constants.log_tags import LogTag
 from app.constants.todos import TodoActivityEvent
 from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import NotificationType
-from app.models.todo_models import TodoDocument
+from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.tracked_todo_service import CANVAS_TEMPLATE
@@ -150,6 +150,48 @@ class TestResultsThatReachNobody:
         seams.narrate.assert_not_awaited()
         seams.activity.assert_not_awaited()
         seams.capture.assert_not_called()
+
+
+class TestABriefingThatOwnsItsForm:
+    """The desk's run guidance sets its briefing's form; comms decides only whether it is sent."""
+
+    BRIEFING = "1 need you\n\nNeeds you\n- Priya · pitch deck · by Fri · draft ready"
+
+    def _desk(self) -> TodoDocument:
+        return _todo(external_ref=ExternalRef(source=ExternalRefSource.INBOX_DESK, id="int-1"))
+
+    @pytest.mark.regression
+    async def test_a_desk_briefing_reaches_the_app_as_the_desk_wrote_it(self) -> None:
+        """Regression: comms retold a sectioned desk briefing as flat lines, its headings gone."""
+        with _seams(todo=self._desk(), narrated="Priya: send the deck by Friday.") as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, self.BRIEFING, "final")
+
+        assert seams.in_app.await_args.args[0].content.body == self.BRIEFING
+
+    async def test_a_desk_briefing_reaches_a_chat_app_as_the_desk_wrote_it(self) -> None:
+        with _seams(
+            todo=self._desk(),
+            narrated="Priya: send the deck by Friday.",
+            sent_on=ConversationSource.TELEGRAM,
+        ) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, self.BRIEFING, "final")
+
+        assert seams.send.await_args.kwargs["notification_text"] == self.BRIEFING
+
+    async def test_comms_can_still_keep_a_desk_briefing_quiet(self) -> None:
+        with _seams(todo=self._desk(), narrated="<SILENCE>nothing new</SILENCE>") as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, self.BRIEFING, "final")
+
+        seams.send.assert_not_awaited()
+        seams.in_app.assert_not_awaited()
+        assert seams.props()["outcome"] == "silenced"
+
+    async def test_a_thread_todos_result_is_still_written_up_by_comms(self) -> None:
+        thread = _todo(external_ref=ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="t1"))
+        with _seams(todo=thread) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        assert seams.in_app.await_args.args[0].content.body == "Deploy failed."
 
 
 class TestAttribution:

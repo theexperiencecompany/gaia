@@ -112,9 +112,6 @@ _EXTERNAL_REF_RUN_GUIDANCE: Mapping[ExternalRefSource, str] = MappingProxyType(
     }
 )
 
-# Kinds whose run guidance sets the final report's form, so the default form is left out.
-_REPORT_FORM_OWNERS = frozenset({ExternalRefSource.INBOX_DESK})
-
 
 async def _load_user_with_tz(user_id: str) -> tuple[AuthenticatedUser, Timezone]:
     """Fetch user record once and resolve their home timezone.
@@ -608,7 +605,7 @@ def _delivery_guidance(doc: TodoDocument) -> str:
     """State where the run's final report goes; a kind that sets its own report form gets no second one."""
     if not doc.notify_on_run:
         return SILENT_RUN_GUIDANCE
-    if doc.external_ref is not None and doc.external_ref.source in _REPORT_FORM_OWNERS:
+    if doc.external_ref is not None and doc.external_ref.source.owns_report_form:
         return DELIVERED_RESULT_RULES
     return DELIVERED_RESULT_GUIDANCE
 

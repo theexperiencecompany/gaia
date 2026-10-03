@@ -25,6 +25,11 @@ class ExternalRefSource(StrEnum):
     # A mailbox the Inbox desk triages, keyed by its integration id.
     INBOX_DESK = "inbox_desk"
 
+    @property
+    def owns_report_form(self) -> bool:
+        """Whether this kind's run guidance sets its final report's form, so it reaches the user as written."""
+        return self is ExternalRefSource.INBOX_DESK
+
 
 class ExternalRef(BaseModel):
     """The outside object a todo is about; at most one open todo per user holds a given ref."""
