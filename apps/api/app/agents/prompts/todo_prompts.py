@@ -196,8 +196,8 @@ HEALTH_CHECK_VERDICT_ONLY = (
 
 # What the user reads as the Inbox desk's description; how it works rides on every run.
 INBOX_DESK_DESCRIPTION = (
-    "Triages new mail every morning: opens a sub-todo for each thread that needs you, "
-    "drafts replies, and sends you a briefing."
+    "Triages your mail each morning and as it arrives: opens a sub-todo for each thread "
+    "that needs you, drafts replies, briefs you daily and alerts you to what cannot wait."
 )
 
 # The Inbox desk's first standing rule: delivery may otherwise shorten a long briefing
