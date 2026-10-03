@@ -12,7 +12,7 @@ import type {
   TodoAction,
   TodoToolStats,
 } from "@/types/features/todoToolTypes";
-import type { Project, Todo } from "@/types/features/todoTypes";
+import type { Project, Todo, TodoUpdate } from "@/types/features/todoTypes";
 
 interface TodoSectionProps {
   todos?: ChatTodoItem[];
@@ -197,60 +197,98 @@ export default function TodoSection({
   // Todos List View — reuse the canonical todos-page TodoItem. No card chrome:
   // just the rows, clicking opens the task on the todos page.
   if (todos && todos.length > 0) {
-    // Build the projects lookup TodoItem needs from the streamed projects plus
-    // any project embedded inline on a task.
-    const projectMap = new Map<string, Project>();
-    for (const p of projects ?? []) projectMap.set(p.id, toCanonicalProject(p));
-    for (const t of todos) {
-      if (t.project && !projectMap.has(t.project.id)) {
-        projectMap.set(t.project.id, toCanonicalProject(t.project));
-      }
-    }
-    const projectList = Array.from(projectMap.values());
-
     return (
-      <ScrollShadow className="mt-3 flex max-h-[400px] w-full max-w-xl flex-col gap-2">
-        {todos.map((todo) => (
-          <TodoItem
-            key={todo.id}
-            todo={toCanonicalTodo(todo)}
-            projects={projectList}
-            isSelected={false}
-            onUpdate={(todoId, updates) => updateTodo(todoId, updates)}
-            onClick={(t) => router.push(`/todos?todoId=${t.id}`)}
-            timezone={user?.timezone}
-            className="rounded-2xl bg-zinc-800 hover:bg-zinc-800/80"
-          />
-        ))}
-      </ScrollShadow>
+      <TodoSectionList
+        todos={todos}
+        projects={projects}
+        timezone={user?.timezone}
+        onUpdateTodo={(todoId, updates) => updateTodo(todoId, updates)}
+        onOpenTodo={(t) => router.push(`/todos?todoId=${t.id}`)}
+      />
     );
   }
 
   // Empty State
   if (action === "list" && (!todos || todos.length === 0)) {
-    return (
-      <div className="mt-3 w-fit min-w-[300px] rounded-2xl rounded-bl-none bg-zinc-800 p-6 text-center">
-        <CheckmarkCircle02Icon className="mx-auto h-8 w-8 text-zinc-600" />
-        <p className="mt-2 text-sm text-zinc-300">No tasks found</p>
-        {message && <p className="mt-1 text-xs text-zinc-500">{message}</p>}
-      </div>
-    );
+    return <TodoSectionEmpty message={message} />;
   }
 
   // Success/Action Message (delete confirmations etc. that return no task rows)
   if (message && !todos && !stats && !projects) {
-    const isDeleteAction = action === "delete";
-    const iconColor = isDeleteAction ? "text-red-500" : "text-green-500";
-
-    return (
-      <div className="mt-3 w-fit rounded-2xl rounded-bl-none bg-zinc-800 p-4">
-        <div className="flex items-center gap-2">
-          <CheckmarkCircle02Icon className={`h-4 w-4 ${iconColor}`} />
-          <p className="text-sm">{message}</p>
-        </div>
-      </div>
-    );
+    return <TodoSectionMessage action={action} message={message} />;
   }
 
   return null;
+}
+
+function TodoSectionEmpty({ message }: { message: string | undefined }) {
+  return (
+    <div className="mt-3 w-fit min-w-[300px] rounded-2xl rounded-bl-none bg-zinc-800 p-6 text-center">
+      <CheckmarkCircle02Icon className="mx-auto h-8 w-8 text-zinc-600" />
+      <p className="mt-2 text-sm text-zinc-300">No tasks found</p>
+      {message && <p className="mt-1 text-xs text-zinc-500">{message}</p>}
+    </div>
+  );
+}
+
+function TodoSectionMessage({
+  action,
+  message,
+}: {
+  action: TodoAction;
+  message: string;
+}) {
+  const isDeleteAction = action === "delete";
+  const iconColor = isDeleteAction ? "text-red-500" : "text-green-500";
+
+  return (
+    <div className="mt-3 w-fit rounded-2xl rounded-bl-none bg-zinc-800 p-4">
+      <div className="flex items-center gap-2">
+        <CheckmarkCircle02Icon className={`h-4 w-4 ${iconColor}`} />
+        <p className="text-sm">{message}</p>
+      </div>
+    </div>
+  );
+}
+
+function TodoSectionList({
+  todos,
+  projects,
+  timezone,
+  onUpdateTodo,
+  onOpenTodo,
+}: {
+  todos: ChatTodoItem[];
+  projects: ChatTodoProject[] | undefined;
+  timezone: string | undefined;
+  onUpdateTodo: (todoId: string, updates: TodoUpdate) => void;
+  onOpenTodo: (todo: Todo) => void;
+}) {
+  // Build the projects lookup TodoItem needs from the streamed projects plus
+  // any project embedded inline on a task.
+  const projectMap = new Map<string, Project>();
+  for (const p of projects ?? []) projectMap.set(p.id, toCanonicalProject(p));
+  for (const t of todos) {
+    if (t.project && !projectMap.has(t.project.id)) {
+      projectMap.set(t.project.id, toCanonicalProject(t.project));
+    }
+  }
+  const projectList = Array.from(projectMap.values());
+
+  return (
+    <ScrollShadow className="mt-3 flex max-h-[400px] w-full max-w-xl flex-col gap-2">
+      {todos.map((todo) => (
+        <TodoItem
+          key={todo.id}
+          todo={toCanonicalTodo(todo)}
+          projects={projectList}
+          isSelected={false}
+          onUpdate={onUpdateTodo}
+          onClick={onOpenTodo}
+          timezone={timezone}
+          className="rounded-2xl bg-zinc-800 hover:bg-zinc-800/80"
+        />
+      ))}
+    </ScrollShadow>
+  );
 }
