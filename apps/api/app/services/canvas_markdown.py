@@ -86,8 +86,15 @@ def with_section_appended(text: str, heading: str, addition: str) -> str:
     return text[:section_end].rstrip("\n") + f"\n\n{addition}\n" + text[section_end:]
 
 
-def remove_section(text: str, heading: str) -> tuple[str, str | None]:
-    """Cut "## {heading}" out of text; return the rest and its stripped body, None when absent."""
+def remove_section(text: str | None, heading: str) -> tuple[str, str | None]:
+    """Cut "## {heading}" out of text; return the rest and its stripped body, None when absent.
+
+    A todo with no canvas at all is an empty canvas, not a missing one, so a None text
+    comes back as "" with no body: callers write the rest back and neither has to invent
+    a placeholder of its own.
+    """
+    if text is None:
+        return "", None
     span = _section_span(text, heading)
     if span is None:
         return text, None
