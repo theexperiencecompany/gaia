@@ -426,8 +426,10 @@ class TodoService:
             user_id=user_id, params=params, inbox_project_id=inbox_project_id
         )
 
-        workflow_categories = await _get_workflow_categories_for_todos(page.items, user_id)
-        pending_approvals = await _get_pending_approvals_for_todos(page.items)
+        workflow_categories, pending_approvals = await asyncio.gather(
+            _get_workflow_categories_for_todos(page.items, user_id),
+            _get_pending_approvals_for_todos(page.items),
+        )
         data = [
             TodoResponse.from_document(
                 todo,

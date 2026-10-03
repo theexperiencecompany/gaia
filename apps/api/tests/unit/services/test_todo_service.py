@@ -610,6 +610,16 @@ class TestListTodos:
         assert by_id[linked.id].workflow_categories == ["email"]
         assert by_id[plain.id].workflow_categories == []
 
+    async def test_workflow_enrichment_is_scoped_to_the_requesting_user(
+        self, mock_todo_repo, mock_project_repo, mock_workflow_repo
+    ):
+        linked = _make_todo_doc(workflow_id="wf1")
+        mock_todo_repo.list_page = AsyncMock(return_value=TodoPage(items=[linked], total=1))
+        mock_workflow_repo.return_value = [_workflow_doc("wf1", ["email"])]
+        params = TodoSearchParams(mode=SearchMode.TEXT, page=1, per_page=50)
+        await TodoService.list_todos(FAKE_USER_ID, params)
+        mock_workflow_repo.assert_awaited_once_with(["wf1"], FAKE_USER_ID)
+
     async def test_semantic_route_uses_vector_search(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils
     ):
