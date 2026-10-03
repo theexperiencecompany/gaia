@@ -63,6 +63,7 @@ TEMPLATE_NAME_DEFAULT = "gaia-coder"
 
 MOUNT_SCRIPT_PATH = Path(__file__).parent / "mount_juicefs.sh"
 JFS_LAUNCHER_PATH = Path(__file__).parent / "jfs_launcher.py"
+SANDBOX_BRIDGE_PATH = Path(__file__).parent / "sandbox_bridge.py"
 
 # Shared, read-only, release-pinned system files (INDEX.md, GUIDE.md docs,
 # builtin skill bodies) are baked into the image instead of served by a live
@@ -107,6 +108,8 @@ def build(name: str) -> str:
         raise SystemExit(f"Mount script not found at {MOUNT_SCRIPT_PATH}")
     if not JFS_LAUNCHER_PATH.exists():
         raise SystemExit(f"jfs_launcher not found at {JFS_LAUNCHER_PATH}")
+    if not SANDBOX_BRIDGE_PATH.exists():
+        raise SystemExit(f"sandbox_bridge not found at {SANDBOX_BRIDGE_PATH}")
 
     # Stage the baked system files into file_context (removed after the build).
     _stage_system_tarball()
@@ -216,19 +219,24 @@ def build(name: str) -> str:
         # /etc/gaia in the next root run_cmd; never read back from /tmp.
         .copy("mount_juicefs.sh", "/tmp/mount.sh", mode=0o755)  # NOSONAR python:S5443
         .copy("jfs_launcher.py", "/tmp/jfs_launcher.py", mode=0o755)  # NOSONAR python:S5443
+        .copy("sandbox_bridge.py", "/tmp/sandbox_bridge.py", mode=0o755)  # NOSONAR python:S5443
         .run_cmd(
             "mkdir -p /etc/gaia && "
             "mv /tmp/mount.sh /etc/gaia/mount.sh && "
             "mv /tmp/jfs_launcher.py /etc/gaia/jfs_launcher.py && "
+            "mv /tmp/sandbox_bridge.py /etc/gaia/sandbox_bridge.py && "
             "chown root:root /etc/gaia /etc/gaia/mount.sh "
-            "   /etc/gaia/jfs_launcher.py && "
+            "   /etc/gaia/jfs_launcher.py /etc/gaia/sandbox_bridge.py && "
             "chmod 0755 /etc/gaia && "
             "chmod 0750 /etc/gaia/mount.sh && "
             # jfs_launcher.py is 0755 so root-owned juicefs invocations from
             # mount.sh can exec it. It's not a setuid binary; running it as
             # the unprivileged user just runs juicefs as that user (and the
             # daemon would fail to mount without root anyway).
-            "chmod 0755 /etc/gaia/jfs_launcher.py",
+            "chmod 0755 /etc/gaia/jfs_launcher.py && "
+            # sandbox_bridge.py is 0755 root-owned: it runs as the unprivileged
+            # user (dials out, spawns MCP stdio children, reads /workspace).
+            "chmod 0755 /etc/gaia/sandbox_bridge.py",
             user="root",
         )
         # Bake the shared, read-only system files into the image (see
