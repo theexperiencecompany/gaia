@@ -6,13 +6,14 @@ stack's environment: this test process's own credential-fenced environment plus
 what wires them to each other, the fake models and the fixture site. Each takes
 its every setting from that environment at import, as in production, and runs
 under guard.py, so a hard-killed test process takes it and its engines along.
-Each writes a log a failing test's report carries. Readiness is a polled deadline.
+Each writes a log a failing test's report carries. Readiness is what each serves,
+polled to a deadline: an HTTP health route, or the workers' ARQ health keys.
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 import os
 from pathlib import Path
@@ -22,14 +23,15 @@ import sys
 import time
 
 import httpx
+from redis.asyncio import Redis
 
 from app.constants.browser import BROWSER_HOST_KEY_HEADER, BrowserEngine
+from app.workers.browser_worker import browser_worker_health_key
 from tests.helpers import pick_free_port
 
 API_ROOT = Path(__file__).resolve().parents[5]
-#: What serve.py's processes log once their services are up: the lines the stack waits for.
-WORKER_READY_LINE = "browser stack worker serving the browser queue"
-API_READY_LINE = "browser stack api serving"
+#: The health key the worker process's reaper (a main-queue ARQ worker) refreshes while it polls.
+REAPER_HEALTH_KEY = "browser-stack:reaper:health"
 #: How long a process gets to boot: a cold import of the app, or an engine launch.
 READY_SECONDS = 120.0
 _SERVE_MODULE = "tests.integration.real.browser._stack.serve"
@@ -95,15 +97,27 @@ class StackProcess:
                 f"{self.name} exited with {self.proc.returncode}\n{self.tail()}"
             )
 
-    async def wait_for_line(self, line: str) -> None:
-        """Wait until the process logs line, failing at once if it exits first."""
+    async def wait_until(self, ready: Callable[[], Awaitable[bool]], what: str) -> None:
+        """Wait until ready() holds, failing at once if the process exits first."""
         deadline = time.monotonic() + READY_SECONDS
         while time.monotonic() < deadline:
             self.assert_alive()
-            if line in self.log():
+            if await ready():
                 return
             await asyncio.sleep(_POLL_SECONDS)
-        raise StackProcessError(f"{self.name} never logged {line!r}\n{self.tail()}")
+        raise StackProcessError(f"{self.name} never {what}\n{self.tail()}")
+
+    async def wait_healthy(self, url: str, headers: Mapping[str, str] | None = None) -> None:
+        """Wait until url answers 200: the process serves HTTP with its startup done."""
+        async with httpx.AsyncClient(timeout=5, headers=headers) as client:
+
+            async def answers() -> bool:
+                try:
+                    return (await client.get(url)).status_code == 200
+                except httpx.TransportError:
+                    return False
+
+            await self.wait_until(answers, f"answered 200 on {url}")
 
 
 def child_environment(overrides: Mapping[str, str]) -> dict[str, str]:
@@ -131,21 +145,8 @@ class BrowserHost:
         return f"http://127.0.0.1:{self.port}"
 
     async def wait_ready(self) -> None:
-        deadline = time.monotonic() + READY_SECONDS
-        async with httpx.AsyncClient(timeout=5) as client:
-            while time.monotonic() < deadline:
-                self.process.assert_alive()
-                try:
-                    response = await client.get(
-                        f"{self.url}/healthz", headers={BROWSER_HOST_KEY_HEADER: self.key}
-                    )
-                    if response.status_code == 200:
-                        return
-                except httpx.TransportError:
-                    pass
-                await asyncio.sleep(_POLL_SECONDS)
-        raise StackProcessError(
-            f"{self.process.name} never answered healthz\n{self.process.tail()}"
+        await self.process.wait_healthy(
+            f"{self.url}/healthz", headers={BROWSER_HOST_KEY_HEADER: self.key}
         )
 
 
@@ -195,9 +196,12 @@ def api_process(env: dict[str, str], port: int, log_dir: Path) -> StackProcess:
 class BrowserWorker:
     """The ARQ browser worker process; restartable, so a test can kill one and bring up the next."""
 
-    def __init__(self, env: dict[str, str], log_dir: Path) -> None:
+    def __init__(self, env: dict[str, str], log_dir: Path, redis: Redis) -> None:
         self._env = env
         self._log_dir = log_dir
+        #: The stack's own database, where both of the process's ARQ workers record their health.
+        self._redis = redis
+        self._health_keys = (browser_worker_health_key(), REAPER_HEALTH_KEY)
         self._generation = 0
         self.process = self._next()
 
@@ -211,8 +215,17 @@ class BrowserWorker:
         )
 
     async def start(self) -> None:
+        """Start the process and wait until both its workers poll, each having refreshed its health key.
+
+        A SIGKILLed predecessor leaves its keys behind, so they are cleared first.
+        """
+        await self._redis.delete(*self._health_keys)
         self.process.start()
-        await self.process.wait_for_line(WORKER_READY_LINE)
+
+        async def polling() -> bool:
+            return await self._redis.exists(*self._health_keys) == len(self._health_keys)
+
+        await self.process.wait_until(polling, "polled its queues (no ARQ health keys)")
 
     def kill(self) -> None:
         self.process.kill()

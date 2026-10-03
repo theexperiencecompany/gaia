@@ -68,6 +68,11 @@ def browser_reaper_cron() -> CronJob:
     )
 
 
+def browser_worker_health_key() -> str:
+    """Return the key this host's browser worker refreshes while it polls its queue (ARQ's health check)."""
+    return f"{BROWSER_JOB_QUEUE}:health:{socket.gethostname()}"
+
+
 def build_browser_worker() -> Worker:
     """Build the arq Worker for the browser queue; signals stay with the main worker."""
     # One run per conversation is enforced by the browser slot lease, not by ARQ,
@@ -87,7 +92,7 @@ def build_browser_worker() -> Worker:
         max_jobs=WorkerSettings.max_jobs,
         keep_result=0,
         health_check_interval=WorkerSettings.health_check_interval,
-        health_check_key=f"{BROWSER_JOB_QUEUE}:health:{socket.gethostname()}",
+        health_check_key=browser_worker_health_key(),
         allow_abort_jobs=True,
     )
 

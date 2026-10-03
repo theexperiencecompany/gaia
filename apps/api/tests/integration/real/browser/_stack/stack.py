@@ -56,7 +56,6 @@ from tests.integration.real.browser._stack.fake_models import FakeModels
 from tests.integration.real.browser._stack.fixture_site import FixtureSite
 from tests.integration.real.browser._stack.observe import OutboundObserver, Transcript
 from tests.integration.real.browser._stack.processes import (
-    API_READY_LINE,
     BrowserHost,
     BrowserWorker,
     StackProcess,
@@ -166,7 +165,9 @@ class BrowserStack:
             self.log_dir,
         )
         env = child_environment(self._app_environment())
-        self.worker = BrowserWorker(env, self.log_dir)
+        if self.redis is None:
+            raise RuntimeError("the stack claims its Redis database before it starts the worker")
+        self.worker = BrowserWorker(env, self.log_dir, self.redis)
         self.api = api_process(env, self.api_port, self.log_dir)
         for process in (self.chrome.process, self.obscura.process, self.api):
             process.start()
@@ -175,7 +176,7 @@ class BrowserStack:
             self._phase("Chrome host answers healthz", self.chrome.wait_ready()),
             self._phase("Obscura host answers healthz", self.obscura.wait_ready()),
             self._phase("browser worker serves its queue", self.worker.start()),
-            self._phase("API serves", self.api.wait_for_line(API_READY_LINE)),
+            self._phase("API serves", self.api.wait_healthy(f"{self.api_url}/health")),
         )
         self._lend_the_app_this_loops_clients()
         await self.observer.start()
