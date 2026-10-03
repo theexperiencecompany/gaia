@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from contextlib import suppress
 from importlib import import_module
 import os
 import sys
@@ -30,10 +29,10 @@ sys.stdout.reconfigure(line_buffering=True)
 
 
 def _load_suites() -> None:
-    """Import every suite module so @register_suite fires.
+    """Import every suite module so @register_suite fires; one that cannot import is an error.
 
-    Missing ones are simply not available — e.g. when a suite's optional
-    deps are absent.
+    No suite has an optional dependency (all of them come with --group backend),
+    so an ImportError is a broken suite, never an absent extra.
     """
     load_opik_env()
     for _suite_module in (
@@ -51,8 +50,7 @@ def _load_suites() -> None:
         "regression",
         "browser",
     ):
-        with suppress(ImportError):
-            import_module(f".suites.{_suite_module}", __package__)
+        import_module(f".suites.{_suite_module}", __package__)
 
 
 def main() -> int | None:
