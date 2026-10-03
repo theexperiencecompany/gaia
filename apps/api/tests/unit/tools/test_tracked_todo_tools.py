@@ -554,10 +554,17 @@ class TestCompleteTrackedTodo:
         assert "user_id not found" in result
 
     async def test_service_failure_returns_error(self):
-        with patch(
-            "app.agents.tools.tracked_todo_tools.tracked_todo_service.complete_tracked_todo",
-            new_callable=AsyncMock,
-            return_value=False,
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.get",
+                new_callable=AsyncMock,
+                return_value=TodoDocument(id="t1", user_id="u1", title="t"),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.complete_tracked_todo",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
         ):
             result = await complete_tracked_todo.coroutine(
                 config=_config(), todo_id="t1", summary="done"
@@ -565,15 +572,50 @@ class TestCompleteTrackedTodo:
         assert "could not complete" in result
 
     async def test_success_returns_confirmation(self):
-        with patch(
-            "app.agents.tools.tracked_todo_tools.tracked_todo_service.complete_tracked_todo",
-            new_callable=AsyncMock,
-            return_value=True,
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.get",
+                new_callable=AsyncMock,
+                return_value=TodoDocument(id="t1", user_id="u1", title="t"),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.complete_tracked_todo",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
         ):
             result = await complete_tracked_todo.coroutine(
                 config=_config(), todo_id="t1", summary="done"
             )
         assert "completed and archived" in result
+
+    async def test_missing_todo_returns_error(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools.todo_repository.get",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await complete_tracked_todo.coroutine(
+                config=_config(), todo_id="t1", summary="done"
+            )
+        assert "could not complete" in result
+
+    async def test_active_recurrence_refuses_and_names_the_stop_procedure(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools.todo_repository.get",
+            new_callable=AsyncMock,
+            return_value=TodoDocument(id="t1", user_id="u1", title="t", recurrence="daily"),
+        ) as repo_get:
+            result = await complete_tracked_todo.coroutine(
+                config=_config(), todo_id="t1", summary="done"
+            )
+        repo_get.assert_awaited_once_with("t1", user_id="user-1")
+        assert result == (
+            "Error: tracked todo t1 still has an active recurrence (daily). "
+            "One finished run never ends a standing schedule: leave it open, "
+            "or if the user asked to stop it entirely, clear its recurrence "
+            "(and scheduled_at) with update_tracked_todo first, then complete it."
+        )
 
 
 # ---------------------------------------------------------------------------

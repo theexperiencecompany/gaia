@@ -50,11 +50,6 @@ SPAWN_SUBAGENT_TOOL = {"spawn_subagent"}
 # clean file). Generic compaction must leave their output alone.
 SELF_OFFLOADING_TOOL_NAMES = {"GMAIL_FETCH_MESSAGES", "GMAIL_FETCH_THREAD"}
 
-# Loop-guard hard-stop is OFF by default: only safe for unattended runs. The
-# executor graph is a per-process singleton shared by both run kinds, so this
-# can't be selected per run at build time (see create_middleware_stack).
-LOOP_GUARD_HARD_STOP = False
-
 
 @dataclass(frozen=True)
 class AccountingOptions:
@@ -100,10 +95,14 @@ class ContextOptions:
 
 @dataclass(frozen=True)
 class LoopGuardOptions:
-    """LoopGuardMiddleware knobs; warn-only unless hard_stop."""
+    """LoopGuardMiddleware knobs; enabled=False leaves it out.
+
+    Whether it may block a call is decided per call from the run's
+    execution_mode (background runs only), never here: the executor graph is
+    a per-process singleton shared by interactive and background runs.
+    """
 
     enabled: bool = True
-    hard_stop: bool = LOOP_GUARD_HARD_STOP
 
 
 def create_middleware_stack(
@@ -209,14 +208,10 @@ def create_middleware_stack(
     log.debug(f"{LogTag.AGENT} Media description middleware enabled", agent_name=agent_name)
 
     # Added LAST so it sits innermost, observing the raw tool result before
-    # compaction/summarization transform it. warn-only unless hard_stop is on.
+    # compaction/summarization transform it. Blocks only in background runs.
     if loop_guard.enabled:
-        middleware.append(LoopGuardMiddleware(hard_stop=loop_guard.hard_stop))
-        log.debug(
-            f"{LogTag.AGENT} Loop guard middleware enabled",
-            agent_name=agent_name,
-            hard_stop=loop_guard.hard_stop,
-        )
+        middleware.append(LoopGuardMiddleware())
+        log.debug(f"{LogTag.AGENT} Loop guard middleware enabled", agent_name=agent_name)
 
     return middleware
 

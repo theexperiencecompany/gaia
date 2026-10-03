@@ -1,3 +1,8 @@
+# Commit hooks run at commit only; the one pre-push hook below re-runs the CI
+# lanes this branch touches, so a push that would red the gate stops here.
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
@@ -5,7 +10,12 @@ repos:
       - id: check-yaml
         priority: 0
       - id: check-json
-        exclude: ^(apps/web/.*tsconfig.*\.json|\.vscode/.*\.json|packages/cli/.*tsconfig.*\.json)$
+        # Every tsconfig is JSONC — tsc accepts comments, check-json does not.
+        # apps/desktop/tsconfig.json carries a load-bearing comment block explaining
+        # why rootDir is widened, so this was a guaranteed failure on any commit
+        # touching a .ts/.tsx file anywhere in the repo. Match tsconfigs by name
+        # rather than per-app, so a new app's tsconfig needs no entry here.
+        exclude: ^(.*tsconfig.*\.json|\.vscode/.*\.json)$
         priority: 0
       - id: check-toml
         priority: 0
@@ -103,3 +113,16 @@ repos:
         entry: sh -c 'react_doctor_output=$(mktemp "${TMPDIR:-/tmp}/react-doctor-hook.XXXXXX"); if react-doctor --staged --blocking warning > "$react_doctor_output" 2>&1; then rm -f "$react_doctor_output"; else cat "$react_doctor_output" >&2; rm -f "$react_doctor_output"; printf "%s\n" "React Doctor found staged regressions." "Run react-doctor --staged --blocking warning to inspect." "Want them fixed? Ask your agent to run that command and resolve the findings." >&2; fi'
         language: system
         pass_filenames: false
+
+  - repo: local
+    hooks:
+      # Same lanes, pins and diff base as CI (the PR's base, else origin/master),
+      # limited to the lanes this branch touches. It caught nothing a push
+      # couldn't, only ~10 minutes and a full pipeline sooner (#1307).
+      - id: ci-local-touched-lanes
+        name: CI lanes this push touches (mise ci:local)
+        entry: mise ci:local
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

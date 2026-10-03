@@ -1,9 +1,9 @@
 """Integration config, catalog, and connection routes."""
 
-from typing import cast
+from typing import Annotated
 
 from bson.errors import InvalidId
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
@@ -17,11 +17,12 @@ from app.schemas.integrations.requests import ConnectIntegrationRequest
 from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
     IntegrationsConfigResponse,
+    IntegrationStatusesResponse,
     IntegrationSuccessResponse,
     IntegrationToolsResponse,
     MyIntegrationsResponse,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import AnalyticsEvents, capture_context_event, capture_event
 from app.services.connect_link_service import resolve_and_consume_connect_code
 from app.services.integrations.integration_connection_service import (
     build_integrations_config,
@@ -35,9 +36,11 @@ from app.services.integrations.integration_resolver import (
     IntegrationResolver,
     ResolvedIntegration,
 )
+from app.services.integrations.integration_status import get_all_integrations_status
 from app.services.integrations.my_integrations import (
     get_integration_tools,
     get_my_integrations,
+    get_my_integrations_snapshot,
 )
 from shared.py.wide_events import log
 
@@ -63,9 +66,29 @@ async def get_my_integrations_endpoint(
     log.set(operation="get_my_integrations", user={"id": user_id})
     result = await get_my_integrations(user_id)
     log.set(result_count=result.total, outcome="success")
-    # Cacheable erases the wrapped function's return type; get_my_integrations is
-    # declared -> MyIntegrationsResponse, so this is correct by construction.
-    return cast(MyIntegrationsResponse, result)
+    return result
+
+
+@router.get("/me/snapshot")
+async def get_my_integrations_snapshot_endpoint(
+    user_id: str = Depends(get_user_id),
+) -> MyIntegrationsResponse:
+    """Return the workspace catalog without waiting for connection checks."""
+    log.set(operation="get_my_integrations_snapshot", user={"id": user_id})
+    result = await get_my_integrations_snapshot(user_id)
+    log.set(result_count=result.total, outcome="success")
+    return result
+
+
+@router.get("/status")
+async def get_integration_statuses_endpoint(
+    user_id: str = Depends(get_user_id),
+) -> IntegrationStatusesResponse:
+    """Refresh connection state independently from the fast catalog snapshot."""
+    log.set(operation="get_integration_statuses", user={"id": user_id})
+    statuses = await get_all_integrations_status(user_id)
+    log.set(result_count=len(statuses), outcome="success")
+    return IntegrationStatusesResponse(statuses=statuses)
 
 
 @router.get("/{integration_id}/tools")
@@ -247,6 +270,11 @@ async def connect_integration_endpoint(
             error=str(e),
         )
     log.set(outcome="success")
+    if result.status == "redirect":
+        capture_context_event(
+            AnalyticsEvents.INTEGRATION_CONNECT_INITIATED,
+            {"integration_id": integration_id, "managed_by": resolved.managed_by},
+        )
     return result
 
 
@@ -257,20 +285,24 @@ def _connect_link_error(reason: str) -> RedirectResponse:
     still lands somewhere useful.
     """
     base = settings.FRONTEND_URL.rstrip("/")
-    return RedirectResponse(url=f"{base}/integrations?connect_error={reason}")
+    return RedirectResponse(
+        url=f"{base}/integrations?connect_error={reason}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
 
 
-@router.get("/connect-link", response_class=RedirectResponse)
+@router.post(
+    "/connect-link", response_class=RedirectResponse, status_code=status.HTTP_303_SEE_OTHER
+)
 @limiter.limit("10/minute")
-async def connect_link_endpoint(request: Request, code: str) -> RedirectResponse:  # noqa: ARG001 -- slowapi's @limiter.limit requires request in the handler signature
-    """Login-free entry point for bot / non-UI users.
+async def connect_link_endpoint(request: Request, code: Annotated[str, Form()]) -> RedirectResponse:  # noqa: ARG001 -- slowapi's @limiter.limit requires request in the handler signature
+    """Login-free entry point for bot / non-UI users: spend the code, 303 into OAuth.
 
-    Resolves the single-use connect code to its bound ``(user, integration)``
-    (no session required — the code is the credential) and bounces the user
-    straight into the provider OAuth flow. Invalid/expired/used codes redirect
-    to a friendly page. Excluded from auth in WorkOSAuthMiddleware; it
-    self-authenticates. Per-IP rate limited so the short code can't be brute
-    forced online.
+    POST-only because spending the code is a state change: link-preview
+    crawlers (Telegram, Slack) GET every link in a message and would burn it
+    before the user taps. The web /connect/<code> page posts here from a button.
+    Excluded from auth (the code is the credential) and per-IP rate limited
+    so the short code can't be brute forced online.
     """
     log.set(operation="connect_link")
     verified = await resolve_and_consume_connect_code(code)
@@ -335,8 +367,13 @@ async def connect_link_endpoint(request: Request, code: str) -> RedirectResponse
         redirect_path="/integrations",
     )
     if result and result.status == "redirect" and result.redirect_url:
+        capture_event(
+            user_id,
+            AnalyticsEvents.INTEGRATION_CONNECT_INITIATED,
+            {"integration_id": integration_id, "source": "connect_link"},
+        )
         log.set(outcome="redirect")
-        return RedirectResponse(url=result.redirect_url)
+        return RedirectResponse(url=result.redirect_url, status_code=status.HTTP_303_SEE_OTHER)
 
     log.set(outcome="error")
     return _connect_link_error("could_not_start")
