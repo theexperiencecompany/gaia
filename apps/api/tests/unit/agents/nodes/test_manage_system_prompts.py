@@ -332,6 +332,18 @@ class TestPromptPruningWideEvent:
         assert before["slot_digests"]["static"] == after["slot_digests"]["static"]
         assert before["slot_digests"]["dynamic_stable"] != after["slot_digests"]["dynamic_stable"]
 
+    def test_a_kept_slot_is_reported_kept_and_an_absent_one_not(self) -> None:
+        """One field per slot says what actually survived, keyed by the slot held.
+
+        A run that keeps one slot and never saw another must say so both ways.
+        """
+        pruning = self._pruning_for([_static("prompt"), _dynamic("ctx")])
+
+        assert pruning["kept_static"] is True
+        assert pruning["kept_dynamic"] is True
+        assert pruning["kept_onboarding"] is False
+        assert pruning["kept_time"] is False
+
     def test_a_slot_holding_several_messages_reports_their_combined_size(self) -> None:
         """The conversation slot's size must account for every message plus the separator between them, not just the first."""
         pruning = self._pruning_for(

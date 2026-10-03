@@ -77,6 +77,30 @@ class TestSplitLegacyCanvas:
         assert "sent email" in activity
         assert "scheduled run finished" in activity
 
+    @pytest.mark.parametrize(
+        ("heading", "line"),
+        [
+            ("activity log", "sent email"),
+            ("ACTIVITY LOG", "sent email"),
+            ("timeline", "scheduled run finished"),
+            ("TIMELINE", "scheduled run finished"),
+        ],
+        ids=["activity-lower", "activity-upper", "timeline-lower", "timeline-upper"],
+    )
+    def test_the_legacy_headings_are_found_however_they_are_cased(self, heading, line):
+        """A canvas a model wrote in a different case is still a legacy canvas.
+
+        The section lookup is case-insensitive, so the heading is cut out whole
+        rather than only its dated blocks being rescued.
+        """
+        original = "## Activity Log" if "activity" in heading.lower() else "## Timeline"
+        canvas = LEGACY.replace(original, f"## {heading}")
+
+        new_canvas, activity = split_legacy_canvas(canvas)
+
+        assert activity is not None and line in activity
+        assert f"## {heading}" not in new_canvas
+
     def test_timeline_reordered_chronologically(self):
         """Legacy Timeline inserted newest-first; activity.md is oldest-first."""
         _, activity = split_legacy_canvas(LEGACY)
@@ -502,6 +526,21 @@ class TestWithSectionAppended:
     def test_a_missing_section_is_added_at_the_end(self) -> None:
         assert with_section_appended("# O\n\n## People\n\n", "Recurring", "### r") == (
             "# O\n\n## People\n\n## Recurring\n### r\n"
+        )
+
+    @pytest.mark.parametrize("tail", ["kX   ", "note   ", "xX"])
+    def test_only_trailing_newlines_go_before_an_added_heading(self, tail: str) -> None:
+        """The last line's own characters are the user's: only the blank lines under it go."""
+        assert with_section_appended(f"# O\n{tail}\n\n", "Recurring", "### r") == (
+            f"# O\n{tail}\n\n## Recurring\n### r\n"
+        )
+
+    @pytest.mark.parametrize("tail", ["kX   ", "note   ", "xX"])
+    def test_only_trailing_newlines_go_before_an_appended_line(self, tail: str) -> None:
+        text = f"# O\n\n## Senders\n{tail}\n\n## People\n"
+
+        assert with_section_appended(text, "Senders", "### b") == (
+            f"# O\n\n## Senders\n{tail}\n\n### b\n\n## People\n"
         )
 
 

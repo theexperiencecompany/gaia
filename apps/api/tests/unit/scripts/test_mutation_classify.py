@@ -426,3 +426,62 @@ class TestFalsyAssignmentEquivalence:
 
         assert result.stdout.strip() != "EQUIV", result.stdout + result.stderr
         assert result.returncode == 1
+
+
+class TestCaseInsensitiveHeading:
+    """canvas_markdown matches a heading with re.IGNORECASE, so its case is a no-op.
+
+    Four re-cased survivors on split_legacy_canvas were exactly that: the
+    IGNORECASE pattern selects the same span whatever the literal's case, so no
+    test can tell the two programs apart.
+    """
+
+    @staticmethod
+    def _module(workdir: Path) -> None:
+        (workdir / MODULE_REL).write_text(
+            "import re\n"
+            "def probe(canvas):\n"
+            '    return cut(canvas, "Activity Log")\n'
+            "def cut(text, heading):\n"
+            "    return _span(text, heading)\n"
+            "def _span(text, heading):\n"
+            '    return re.compile(rf"## {heading}", re.IGNORECASE).search(text)\n'
+        )
+
+    def test_a_recased_heading_is_equivalent(self, workdir: Path) -> None:
+        self._module(workdir)
+        body = '    return cut(canvas, "Activity Log")'
+        _write_mutants(workdir, body, body.replace("Activity Log", "activity log"))
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip() == "EQUIV", result.stdout + result.stderr
+        assert result.returncode == 0
+
+    def test_a_renamed_heading_is_a_real_survivor(self, workdir: Path) -> None:
+        """Case-only, not merely different — this asks for a heading nobody wrote."""
+        self._module(workdir)
+        body = '    return cut(canvas, "Activity Log")'
+        _write_mutants(workdir, body, body.replace("Activity Log", "XXActivity LogXX"))
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip().startswith("CHANGED"), result.stdout + result.stderr
+        assert result.returncode == 1
+
+    def test_a_recased_literal_to_a_case_sensitive_callee_is_a_real_survivor(
+        self, workdir: Path
+    ) -> None:
+        """Only the IGNORECASE matcher makes case a no-op; a plain lookup keeps it."""
+        (workdir / MODULE_REL).write_text(
+            "def probe(canvas):\n"
+            '    return cut(canvas, "Activity Log")\n'
+            "def cut(text, heading):\n    return text.split(heading)\n"
+        )
+        body = '    return cut(canvas, "Activity Log")'
+        _write_mutants(workdir, body, body.replace("Activity Log", "activity log"))
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip().startswith("CHANGED"), result.stdout + result.stderr
+        assert result.returncode == 1

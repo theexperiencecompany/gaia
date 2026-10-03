@@ -99,6 +99,18 @@ class TestBuildContactIndex:
 
         assert result["contacts"][0]["name"] == "Alice"
 
+    def test_a_second_name_does_not_replace_the_first(self):
+        # Both headers name the person, so there is nothing to fill in: the address
+        # was already known with a name and the second message must not churn it.
+        messages = [
+            _message([{"name": "From", "value": "Alice Smith <alice@example.com>"}]),
+            _message([{"name": "From", "value": "Alice S <alice@example.com>"}]),
+        ]
+
+        result = build_contact_index(messages)
+
+        assert result["contacts"] == [{"name": "Alice Smith", "email": "alice@example.com"}]
+
     def test_sorted_by_name_then_email(self):
         messages = [
             _message(

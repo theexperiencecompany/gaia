@@ -229,6 +229,31 @@ async def test_success_does_not_clear_the_same_tool_tally() -> None:
     assert f"failed {LOOP_GUARD_WARN_SAME_TOOL} times this run" in result.content
 
 
+async def test_a_success_midway_resets_the_identical_run_without_ending_the_tally() -> None:
+    """The success clears the identical streak; the failures after it are still this run's."""
+    history = [
+        *_attempt(0, args={"q": "a"}),
+        *_attempt(1, args={"q": "fine"}, failed=False),
+        *_attempt(2, args={"q": "b"}),
+        *_attempt(3, args={"q": "c"}),
+    ]
+    result = await _wrap(LoopGuardMiddleware(), _after(*history, args={"q": "d"}), _failing())
+
+    assert f"failed {LOOP_GUARD_WARN_SAME_TOOL + 1} times this run" in result.content
+
+
+async def test_a_result_this_delegation_never_issued_is_skipped_not_fatal() -> None:
+    """A ToolMessage whose call predates the delegation is skipped, not fatal.
+
+    It is not one of this run's failures, and the failures after it still are.
+    """
+    orphan = ToolMessage(content="boom", tool_call_id="t-elsewhere", name="search", status="error")
+    history = [orphan, *_retries(LOOP_GUARD_WARN_IDENTICAL - 1)]
+    result = await _wrap(LoopGuardMiddleware(), _after(*history), _failing())
+
+    assert f"failed {LOOP_GUARD_WARN_IDENTICAL} times in a row" in result.content
+
+
 async def test_successes_never_count_as_failures() -> None:
     history = _distinct(LOOP_GUARD_WARN_SAME_TOOL, failed=False)
     result = await _wrap(LoopGuardMiddleware(), _after(*history, args={"q": "last"}), _failing())
@@ -581,5 +606,9 @@ async def test_a_state_that_is_not_the_graph_dict_fails_loudly() -> None:
         runtime=_runtime({"configurable": {}}),
     )
 
-    with pytest.raises(TypeError, match="graph state dict"):
+    with pytest.raises(TypeError, match="graph state dict") as caught:
         await LoopGuardMiddleware().awrap_tool_call(request, _succeeding())
+
+    # The message names the type it actually got: "NoneType" would send an operator
+    # looking for a missing state instead of the list the framework really passed.
+    assert "got list" in str(caught.value)

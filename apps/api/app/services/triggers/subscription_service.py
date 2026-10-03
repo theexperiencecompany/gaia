@@ -219,11 +219,10 @@ async def _append_subscription(
 ) -> TriggerSubscription | None:
     """Add the watch compare-and-set on updated_at, and return the row now on the todo.
 
-    Two provisions of the same Inbox desk race exactly here: each reads the todo
-    before either write lands, so a plain read-modify-write either loses one watch or
-    (as two unconditional appends would) stores the same watch twice and the desk
-    fires twice for one burst. A lost compare-and-set re-reads and asks again, so the
-    loser returns the row the winner stored. None means every attempt lost.
+    The watch list is read, extended and written back, so two Gmail connects
+    provisioning one desk at once would overwrite each other without the gate: the
+    second write loses the desk's watch, or (as an unconditional append) doubles it.
+    A lost write re-reads and asks again, returning the row the winner stored.
     """
     current = todo
     for _ in range(SUBSCRIPTION_WRITE_ATTEMPTS):
