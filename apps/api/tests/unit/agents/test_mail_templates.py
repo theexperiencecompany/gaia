@@ -9,14 +9,22 @@ from app.agents.templates.mail_templates import (
     _copy_headers,
     _decode_part_payload,
     _get_text_from_html,
+    build_message_view,
     detailed_message_template,
     draft_template,
     minimal_message_template,
     process_get_thread_response,
     process_list_drafts_response,
+    project_message_view,
     thread_template,
 )
-from app.models.composio_schemas.gmail import GmailMessagePart
+from app.models.composio_schemas.gmail import (
+    BodyProcessingLiteral,
+    GmailMessagePart,
+    GmailMessageView,
+)
+from app.models.integrations.gmail import GmailThreadData
+from app.models.integrations.gmail_messages import RelayedGmailMessage
 from shared.py.wide_events import log
 
 # ---------------------------------------------------------------------------
@@ -24,23 +32,29 @@ from shared.py.wide_events import log
 # ---------------------------------------------------------------------------
 
 
+_RAW_EMAIL_HEADERS = {
+    "subject": "Subject",
+    "sender": "From",
+    "to": "To",
+    "cc": "Cc",
+    "date": "Date",
+}
+_RAW_EMAIL_DEFAULTS = {
+    "subject": "Test Subject",
+    "sender": "alice@example.com",
+    "to": "bob@example.com",
+    "date": "Mon, 01 Jan 2025 12:00:00 +0000",
+}
+
+
 def _make_raw_email(
-    subject: str = "Test Subject",
-    sender: str = "alice@example.com",
-    to: str = "bob@example.com",
-    cc: str = "",
-    body_text: str = "Hello plain text",
-    body_html: str = "",
-    date: str = "Mon, 01 Jan 2025 12:00:00 +0000",
+    body_text: str = "Hello plain text", body_html: str = "", **headers: str
 ) -> str:
-    """Build a raw base64url-encoded email."""
+    """Build a raw base64url-encoded email; headers (subject, sender, to, cc, date) override the defaults."""
     msg = email.message.EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = sender
-    msg["To"] = to
-    if cc:
-        msg["Cc"] = cc
-    msg["Date"] = date
+    for key, value in {**_RAW_EMAIL_DEFAULTS, **headers}.items():
+        if value:
+            msg[_RAW_EMAIL_HEADERS[key]] = value
     if body_html:
         msg.set_content(body_text)
         msg.add_alternative(body_html, subtype="html")
@@ -76,6 +90,10 @@ def _make_gmail_message(
 
 def _b64_encode(text: str) -> str:
     return base64.urlsafe_b64encode(text.encode("utf-8")).decode("ascii")
+
+
+def _parser(message: dict) -> GmailMessageParser:
+    return GmailMessageParser(RelayedGmailMessage.model_validate(message))
 
 
 # ---------------------------------------------------------------------------
@@ -120,14 +138,14 @@ class TestGmailMessageParserRaw:
         raw = _make_raw_email(subject="Important", sender="a@b.com", body_text="content")
         msg = _make_gmail_message(raw=raw)
 
-        parser = GmailMessageParser(msg)
+        parser = _parser(msg)
         assert parser.parse() is True
         assert parser.subject == "Important"
         assert parser.sender == "a@b.com"
         assert "content" in parser.text_content
 
     def test_properties_before_parse(self):
-        parser = GmailMessageParser({"id": "x"})
+        parser = _parser({"id": "x"})
         assert parser.subject == ""
         assert parser.sender == ""
         assert parser.to == ""
@@ -144,7 +162,7 @@ class TestGmailMessageParserRaw:
         )
         msg = _make_gmail_message(raw=raw)
 
-        parser = GmailMessageParser(msg)
+        parser = _parser(msg)
         parser.parse()
 
         assert "HTML content" in parser.html_content
@@ -154,7 +172,7 @@ class TestGmailMessageParserRaw:
         raw = _make_raw_email(cc="cc@example.com")
         msg = _make_gmail_message(raw=raw)
 
-        parser = GmailMessageParser(msg)
+        parser = _parser(msg)
         parser.parse()
         assert "cc@example.com" in parser.cc
 
@@ -162,7 +180,7 @@ class TestGmailMessageParserRaw:
         raw = _make_raw_email(to="recipient@example.com")
         msg = _make_gmail_message(raw=raw)
 
-        parser = GmailMessageParser(msg)
+        parser = _parser(msg)
         parser.parse()
         assert "recipient@example.com" in parser.to
 
@@ -170,7 +188,7 @@ class TestGmailMessageParserRaw:
         raw = _make_raw_email(date="Tue, 15 Mar 2025 10:30:00 +0000")
         msg = _make_gmail_message(raw=raw)
 
-        parser = GmailMessageParser(msg)
+        parser = _parser(msg)
         parser.parse()
         assert "2025" in parser.date
 
@@ -192,7 +210,7 @@ class TestGmailMessageParserPayload:
         }
         msg = _make_gmail_message(payload=payload)
 
-        parser = GmailMessageParser(msg)
+        parser = _parser(msg)
         assert parser.parse() is True
         assert parser.subject == "Test"
         assert "Body content" in parser.text_content
@@ -205,7 +223,7 @@ class TestGmailMessageParserPayload:
         }
         msg = _make_gmail_message(payload=payload)
 
-        parser = GmailMessageParser(msg)
+        parser = _parser(msg)
         parser.parse()
         assert "Hello HTML" in parser.html_content
 
@@ -228,7 +246,7 @@ class TestGmailMessageParserPayload:
         }
         msg = _make_gmail_message(payload=payload)
 
-        parser = GmailMessageParser(msg)
+        parser = _parser(msg)
         parser.parse()
         assert "Plain part" in parser.text_content or "HTML part" in parser.html_content
 
@@ -261,7 +279,7 @@ class TestGmailMessageParserPayload:
         }
         msg = _make_gmail_message(payload=payload)
 
-        parser = GmailMessageParser(msg)
+        parser = _parser(msg)
         parser.parse()
         assert parser.subject == "With Attach"
 
@@ -285,21 +303,21 @@ class TestGmailMessageParserPayload:
         }
         msg = _make_gmail_message(payload=payload)
 
-        parser = GmailMessageParser(msg)
+        parser = _parser(msg)
         assert parser.parse() is True
 
     def test_empty_payload_returns_false(self):
         """Empty payload dict is falsy, so parsing returns None / False."""
         msg = _make_gmail_message(payload={})
 
-        parser = GmailMessageParser(msg)
+        parser = _parser(msg)
         # Empty dict is falsy, so `if payload:` is False -> returns None -> parse is False
         assert parser.parse() is False
 
     def test_no_raw_no_payload(self):
         msg = {"id": "msg_empty"}
 
-        parser = GmailMessageParser(msg)
+        parser = _parser(msg)
         result = parser.parse()
         # No raw, no payload -> email_message is None -> returns False
         assert result is False
@@ -312,7 +330,7 @@ class TestGmailMessageParserPayload:
         }
         msg = _make_gmail_message(payload=payload)
 
-        parser = GmailMessageParser(msg)
+        parser = _parser(msg)
         parser.parse()
         assert parser.text_content == ""
 
@@ -320,82 +338,27 @@ class TestGmailMessageParserPayload:
         """Simulate a parse error."""
         msg = _make_gmail_message()
 
-        parser = GmailMessageParser(msg)
+        parser = _parser(msg)
         with patch.object(parser, "_parse_with_email_parser", side_effect=Exception("parse fail")):
             assert parser.parse() is False
             assert parser._parsed is False
 
 
 # ---------------------------------------------------------------------------
-# GmailMessageParser — labels, is_read
+# GmailMessageParser — labels
 # ---------------------------------------------------------------------------
 
 
 class TestGmailMessageParserLabels:
     def test_labels(self):
         msg = _make_gmail_message(label_ids=["INBOX", "UNREAD", "HAS_ATTACHMENT"])
-        parser = GmailMessageParser(msg)
+        parser = _parser(msg)
         assert parser.labels == ["INBOX", "UNREAD", "HAS_ATTACHMENT"]
-
-    def test_is_read_true(self):
-        msg = _make_gmail_message(label_ids=["INBOX"])
-        parser = GmailMessageParser(msg)
-        assert parser.is_read is True
-
-    def test_is_read_false(self):
-        msg = _make_gmail_message(label_ids=["INBOX", "UNREAD"])
-        parser = GmailMessageParser(msg)
-        assert parser.is_read is False
 
     def test_no_label_ids_returns_empty_list(self):
         msg = {"id": "x"}
-        parser = GmailMessageParser(msg)
+        parser = _parser(msg)
         assert parser.labels == []
-
-
-# ---------------------------------------------------------------------------
-# GmailMessageParser — attachments
-# ---------------------------------------------------------------------------
-
-
-class TestGmailMessageParserAttachments:
-    def test_attachments_from_parsed_email(self):
-        raw = _make_raw_email(body_text="text")
-        msg = _make_gmail_message(raw=raw)
-        parser = GmailMessageParser(msg)
-        parser.parse()
-        # Simple email without attachments
-        assert parser.attachments == []
-
-    def test_attachments_fallback_to_payload(self):
-        """When not parsed, fall back to manual extraction from payload."""
-        msg = {
-            "id": "m1",
-            "payload": {
-                "parts": [
-                    {
-                        "filename": "doc.pdf",
-                        "mimeType": "application/pdf",
-                        "body": {"attachmentId": "att_1", "size": 1024},
-                    },
-                    {
-                        "filename": "",
-                        "body": {},  # Not an attachment
-                    },
-                ],
-            },
-        }
-        parser = GmailMessageParser(msg)
-        # Not parsed, so fallback kicks in
-        atts = parser.attachments
-        assert len(atts) == 1
-        assert atts[0]["filename"] == "doc.pdf"
-        assert atts[0]["attachmentId"] == "att_1"
-
-    def test_attachments_fallback_no_payload(self):
-        msg = {"id": "m2"}
-        parser = GmailMessageParser(msg)
-        assert parser.attachments == []
 
 
 # ---------------------------------------------------------------------------
@@ -409,7 +372,7 @@ class TestGmailMessageParserTextContentFallback:
         raw = _make_raw_email(body_text="", body_html="<p>Only HTML</p>")
         msg = _make_gmail_message(raw=raw)
 
-        parser = GmailMessageParser(msg)
+        parser = _parser(msg)
         parser.parse()
         # text_content should extract from html_content or return whitespace
         text = parser.text_content
@@ -433,38 +396,41 @@ class TestMinimalMessageTemplate:
         )
         msg = _make_gmail_message(raw=raw, snippet="Preview")
 
-        result = minimal_message_template(msg)
+        result = minimal_message_template(RelayedGmailMessage.model_validate(msg))
 
-        assert result["id"] == "msg_001"
-        assert result["subject"] == "Hello"
-        assert result["from"] == "a@b.com"
-        assert result["snippet"] == "Preview"
+        assert result.id == "msg_001"
+        assert result.subject == "Hello"
+        assert result.sender == "a@b.com"
+        assert result.snippet == "Preview"
         # Short body is truncated to 100 chars
-        assert len(result["body"]) <= 100
+        assert len(result.body) <= 100
+        assert "content" not in result.model_dump(mode="json", by_alias=True)
 
     def test_short_body_false(self):
         raw = _make_raw_email(body_text="A" * 200)
         msg = _make_gmail_message(raw=raw)
 
-        result = minimal_message_template(msg, short_body=False)
-        assert len(result["body"]) >= 200
+        result = minimal_message_template(RelayedGmailMessage.model_validate(msg), short_body=False)
+        assert len(result.body) >= 200
 
     def test_include_both_formats(self):
         raw = _make_raw_email(body_text="Plain", body_html="<p>HTML</p>")
         msg = _make_gmail_message(raw=raw)
 
-        result = minimal_message_template(msg, include_both_formats=True)
-        assert "content" in result
-        assert "text" in result["content"]
-        assert "html" in result["content"]
+        result = minimal_message_template(
+            RelayedGmailMessage.model_validate(msg), include_both_formats=True
+        )
+        assert result.content is not None
+        assert "Plain" in result.content["text"]
+        assert "HTML" in result.content["html"]
 
     def test_is_read_and_has_attachment(self):
         raw = _make_raw_email()
         msg = _make_gmail_message(raw=raw, label_ids=["UNREAD", "HAS_ATTACHMENT"])
 
-        result = minimal_message_template(msg)
-        assert result["isRead"] is False
-        assert result["hasAttachment"] is True
+        result = minimal_message_template(RelayedGmailMessage.model_validate(msg))
+        assert result.is_read is False
+        assert result.has_attachment is True
 
     def test_fallback_fields(self):
         """When parser returns empty, fallback to email_data fields."""
@@ -481,9 +447,9 @@ class TestMinimalMessageTemplate:
             "labelIds": [],
         }
 
-        result = minimal_message_template(msg)
-        assert result["id"] == "mid_1"
-        assert result["from"] == "fallback@sender.com"
+        result = minimal_message_template(RelayedGmailMessage.model_validate(msg))
+        assert result.id == "mid_1"
+        assert result.sender == "fallback@sender.com"
 
 
 # ---------------------------------------------------------------------------
@@ -520,6 +486,49 @@ class TestDetailedMessageTemplate:
 
 
 # ---------------------------------------------------------------------------
+# build_message_view / project_message_view
+# ---------------------------------------------------------------------------
+
+
+def _fetched_view(body_processing: BodyProcessingLiteral) -> GmailMessageView:
+    raw = _make_raw_email(body_text="Plain words", body_html="<p>HTML words</p>")
+    message = RelayedGmailMessage.model_validate(_make_gmail_message(raw=raw))
+    return build_message_view(message, body_processing)
+
+
+class TestFetchedMessageView:
+    def test_the_agent_reads_every_field_under_its_documented_key(self):
+        assert list(project_message_view(_fetched_view("raw"), None)) == [
+            "id",
+            "threadId",
+            "from",
+            "from_address",
+            "to",
+            "subject",
+            "snippet",
+            "time",
+            "isRead",
+            "hasAttachment",
+            "attachments",
+            "labels",
+            "cc",
+            "body",
+        ]
+
+    def test_the_dual_text_and_html_blob_never_reaches_the_agent(self):
+        wire = project_message_view(_fetched_view("raw"), None)
+
+        assert "content" not in wire
+        assert "Plain words" in str(wire["body"])
+
+    def test_an_unfetched_body_is_absent_rather_than_null(self):
+        view = _fetched_view("none")
+
+        assert "body" not in project_message_view(view, None)
+        assert project_message_view(view, ["body", "id"]) == {"id": "msg_001"}
+
+
+# ---------------------------------------------------------------------------
 # thread_template
 # ---------------------------------------------------------------------------
 
@@ -535,23 +544,23 @@ class TestThreadTemplate:
             ],
         }
 
-        result = thread_template(thread_data)
-        assert result["id"] == "thread_001"
-        assert result["messageCount"] == 2
-        assert len(result["messages"]) == 2
+        result = thread_template(GmailThreadData.model_validate(thread_data))
+        assert result.id == "thread_001"
+        assert result.message_count == 2
+        assert [message.id for message in result.messages] == ["m1", "m2"]
 
     def test_thread_no_messages(self):
         thread_data = {"id": "t_empty", "messages": []}
 
-        result = thread_template(thread_data)
-        assert result["messageCount"] == 0
-        assert result["messages"] == []
+        result = thread_template(GmailThreadData.model_validate(thread_data))
+        assert result.message_count == 0
+        assert result.messages == []
 
     def test_thread_missing_messages_key(self):
         thread_data = {"id": "t_none"}
 
-        result = thread_template(thread_data)
-        assert result["messageCount"] == 0
+        result = thread_template(GmailThreadData.model_validate(thread_data))
+        assert result.message_count == 0
 
 
 # ---------------------------------------------------------------------------
@@ -609,11 +618,6 @@ class TestProcessListDraftsResponse:
         result = process_list_drafts_response(response)
         assert result["resultSize"] == 0
 
-    def test_with_error(self):
-        response = {"drafts": [], "error": "Draft error"}
-        result = process_list_drafts_response(response)
-        assert result["error"] == "Draft error"
-
 
 # ---------------------------------------------------------------------------
 # process_get_thread_response
@@ -662,31 +666,9 @@ class TestMalformedPartDoesNotAbortTheMessage:
         }
         msg = _make_gmail_message(payload=payload)
 
-        parser = GmailMessageParser(msg)
+        parser = _parser(msg)
         assert parser.parse() is True
         assert "Good part" in parser.text_content
-
-    def test_attachment_listing_survives_a_malformed_part(self):
-        payload = {
-            "mimeType": "multipart/mixed",
-            "headers": [{"name": "Subject", "value": "Attach"}],
-            "parts": [
-                {
-                    "mimeType": "application/pdf",
-                    "filename": "report.pdf",
-                    "headers": [
-                        {"name": "Content-Transfer-Encoding", "value": "base64"},
-                    ],
-                    "body": {},
-                },
-            ],
-        }
-        msg = _make_gmail_message(payload=payload)
-
-        parser = GmailMessageParser(msg)
-        assert parser.parse() is True
-        names = [a["filename"] for a in parser.attachments]
-        assert names == ["report.pdf"]
 
     def test_synthesized_part_drops_the_source_wire_transfer_encoding(self):
         """set_content stores already-decoded text; carrying the source wire encoding across describes it wrongly."""
@@ -750,7 +732,7 @@ class TestUndecodablePartIsSkippedNotFatal:
                 },
             ],
         }
-        parser = GmailMessageParser(_make_gmail_message(payload=payload))
+        parser = _parser(_make_gmail_message(payload=payload))
         assert parser.parse() is True
         _stamp_wire_encoding(parser, "text/plain")
 
@@ -773,35 +755,11 @@ class TestUndecodablePartIsSkippedNotFatal:
                 },
             ],
         }
-        parser = GmailMessageParser(_make_gmail_message(payload=payload))
+        parser = _parser(_make_gmail_message(payload=payload))
         assert parser.parse() is True
         _stamp_wire_encoding(parser, "text/html")
 
         assert "Good HTML" in parser.html_content
-
-    def test_an_undecodable_attachment_is_listed_without_content(self):
-        """The attachment still has to appear even when its bytes cannot be pulled out."""
-        payload = {
-            "mimeType": "multipart/mixed",
-            "headers": [{"name": "Subject", "value": "Attach"}],
-            "parts": [
-                {
-                    "mimeType": "application/pdf",
-                    "filename": "report.pdf",
-                    "headers": [{"name": "Content-Type", "value": "application/pdf"}],
-                    "body": {},
-                },
-            ],
-        }
-        parser = GmailMessageParser(_make_gmail_message(payload=payload))
-        assert parser.parse() is True
-        _stamp_wire_encoding(parser, "application/pdf")
-
-        attachments = parser.attachments
-        assert len(attachments) == 1
-        assert attachments[0]["filename"] == "report.pdf"
-        assert attachments[0]["content"] is None
-        assert attachments[0]["size"] == 0
 
     def test_a_message_of_nothing_but_bad_parts_yields_empty_content(self):
         payload = {
@@ -809,7 +767,7 @@ class TestUndecodablePartIsSkippedNotFatal:
             "headers": [{"name": "Subject", "value": "All bad"}],
             "parts": [{"mimeType": "text/plain", "headers": [], "body": {}}],
         }
-        parser = GmailMessageParser(_make_gmail_message(payload=payload))
+        parser = _parser(_make_gmail_message(payload=payload))
         assert parser.parse() is True
         _stamp_wire_encoding(parser, "text/plain")
 
