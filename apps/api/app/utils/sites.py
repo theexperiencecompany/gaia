@@ -20,17 +20,16 @@ _WRITTEN_HOST = re.compile(
     r"(?<![\w.@-])((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63})(?![\w-])", re.I
 )
 _WWW = "www."
-#: A scheme with no "//" after it (about:blank, data:, mailto:): a URL with no host. A port is digits.
-_HOSTLESS_SCHEME = re.compile(r"^[a-z][a-z0-9+.-]*:(?!\d)", re.I)
+#: A URL's scheme (https:, about:, mailto:); what follows a site's colon is its port, digits.
+_SCHEME = re.compile(r"^[a-z][a-z0-9+.-]*:(?!\d)", re.I)
 
 
 def host_of(address: str | None) -> str | None:
     """Return the lowercased host of a URL or a bare site ("github.com/login"), or None when it names none."""
     if not address:
         return None
-    bare = "://" not in address and not _HOSTLESS_SCHEME.match(address)
     try:
-        host = urlsplit(f"https://{address}" if bare else address).hostname
+        host = urlsplit(address if _SCHEME.match(address) else f"https://{address}").hostname
     except ValueError:
         return None
     return host or None
