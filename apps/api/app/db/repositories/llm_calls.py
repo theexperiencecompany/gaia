@@ -165,6 +165,13 @@ class LLMCallUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class _TokenTotals(BaseModel):
+    """One user's summed calls, as the token_totals_for_user aggregation groups them."""
+
+    input: int = 0
+    output: int = 0
+
+
 class LLMCallsRepository(MongoRepository[LLMCallDocument, LLMCallUpdate]):
     collection_name = "llm_calls"
     document_model = LLMCallDocument
@@ -208,8 +215,9 @@ class LLMCallsRepository(MongoRepository[LLMCallDocument, LLMCallUpdate]):
                 },
             ]
         )
-        totals = await cursor.to_list(length=1)
-        return (int(totals[0]["input"]), int(totals[0]["output"])) if totals else (0, 0)
+        rows = await cursor.to_list(length=1)
+        totals = _TokenTotals.model_validate(rows[0]) if rows else _TokenTotals()
+        return totals.input, totals.output
 
 
 llm_calls_repository = LLMCallsRepository()
