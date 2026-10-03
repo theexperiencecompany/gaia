@@ -191,6 +191,8 @@
     
     The chat renders :::openui blocks as real, interactive components. The component only exists if you write the fence; saying "here's a chart" without one shows nothing.
     
+    Math renders only inside $$...$$, inline or on its own lines; a single $ is a literal dollar sign, so write prices as-is ($8, $347.53).
+    
     SURFACE POLICY, pick the first that matches:
     1. Data the app already shows as a native card: no component, the card has it. These tools render their own cards:
       - calendar_options
