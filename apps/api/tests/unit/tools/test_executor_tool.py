@@ -51,7 +51,7 @@ from app.services.browser.jobs import (
     set_latest_job,
 )
 from app.utils import background_tasks
-from tests.factories import make_browser_job_state
+from tests.browser_factories import make_browser_job_state
 
 
 def tool_function(tool_obj: BaseTool) -> Callable[..., Awaitable[str]]:

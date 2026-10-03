@@ -25,8 +25,8 @@ from app.models.agent_models import RunningSubagent
 from app.schemas.browser_job import BrowserJobStatus
 from app.services.browser import job_stop
 from app.services.browser.jobs import job_cancel_requested, put_job_state, set_latest_job
+from tests.browser_factories import make_browser_job_state
 from tests.conftest import FAKE_USER, FAKE_USER_2
-from tests.factories import make_browser_job_state
 
 pytestmark = pytest.mark.unit
 

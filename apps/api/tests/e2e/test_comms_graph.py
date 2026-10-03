@@ -37,6 +37,7 @@ from app.schemas.browser_job import BrowserJobStatus
 from app.services.browser.handoff import create_pending_handoff, get_handoff
 from app.services.browser.jobs import put_job_state, set_latest_job
 from app.utils.multimodal import extract_text_content
+from tests.browser_factories import make_browser_job_state
 from tests.e2e._harness.graph_run import (
     AGENT_NODE,
     REJECT_NODE,
@@ -47,7 +48,6 @@ from tests.e2e._harness.graph_run import (
     memory_engine_of,
     run_graph,
 )
-from tests.factories import make_browser_job_state
 
 pytestmark = pytest.mark.e2e
 

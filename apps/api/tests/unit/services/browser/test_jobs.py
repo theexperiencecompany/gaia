@@ -19,7 +19,7 @@ from app.schemas.browser_job import (
     BrowserJobWake,
 )
 from app.services.browser import jobs as jobs_mod
-from tests.factories import make_browser_job_state
+from tests.browser_factories import make_browser_job_state
 
 pytestmark = pytest.mark.unit
 

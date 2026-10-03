@@ -22,7 +22,7 @@ from app.constants.executor import EXECUTOR_STEP_LIMIT_MESSAGE
 from app.models.user_models import AuthenticatedUser
 from app.schemas.browser_job import BrowserJobStatus
 from app.services.browser import job_stop, jobs as jobs_mod
-from tests.factories import make_browser_job_state
+from tests.browser_factories import make_browser_job_state
 
 
 async def _run_with(

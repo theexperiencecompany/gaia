@@ -48,7 +48,7 @@ from app.services.browser.jobs import (
     set_latest_job,
     take_job_messages,
 )
-from tests.factories import make_browser_job_state
+from tests.browser_factories import make_browser_job_state
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit

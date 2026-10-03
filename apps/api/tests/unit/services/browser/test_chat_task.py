@@ -25,7 +25,7 @@ from app.services.browser.chat_task import (
 from app.services.browser.handoff import bot_chat_address, create_pending_handoff, resolve_handoff
 from app.services.browser.job_stop import RequesterChat
 from app.services.browser.jobs import put_job_state, set_latest_job
-from tests.factories import make_browser_job_state
+from tests.browser_factories import make_browser_job_state
 from tests.helpers import captured_wide_event
 
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("fake_redis")]

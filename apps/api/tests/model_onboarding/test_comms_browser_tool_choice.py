@@ -36,7 +36,7 @@ from app.constants.llm import (
 )
 from app.schemas.browser_job import BrowserJobStatus
 from app.services.browser.chat_task import ChatBrowserTasks, PausedStep
-from tests.factories import make_browser_job_state
+from tests.browser_factories import make_browser_job_state
 
 # One loop for the module: the custom lane's client is cached, and its pool is bound to the first loop.
 pytestmark = [pytest.mark.model_onboarding, pytest.mark.asyncio(loop_scope="module")]
