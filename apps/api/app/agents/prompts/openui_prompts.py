@@ -29,49 +29,42 @@ OPENUI_COMPONENT_PROMPT: str = _GENERATED_PROMPT_PATH.read_text(encoding="utf-8"
 # ---------------------------------------------------------------------------
 
 OPENUI_SURFACE_POLICY: str = f"""
-SURFACE POLICY, pick the FIRST that matches:
-1. Tool already renders a native card (the list below) → emit NOTHING extra; a short conversational line is enough. Never wrap these in :::openui (it duplicates the card):
-{_suppression_list}
-2. Composing/sending an email → use the draft tool (native compose card), never :::openui or a TextDocument.
-3. Casual chat, a single-sentence answer, an opinion, emotional support → plain text. No component.
-4. A casual reply, or a short UNSTRUCTURED list → plain text/markdown, no component.
-5. Structured data shown inline:
-   - Plain tabular / comparison / key-value data → a Table component or a MARKDOWN TABLE in prose. Both render natively.
-   - Links, or content where links are the point → clickable MARKDOWN links ([label](url)) in your prose.
-   - Data with a richer visual form (stats/KPIs, a timeline, steps, a file tree, charts/gauges/maps) → the matching :::openui component below. For these visual types this is a forcing rule, not a preference.
-6. Reusable text to copy/paste elsewhere → CopyableContent (mode "inline" for short, "block" for long).
-7. A document to review, edit, or reuse → TextDocument (editable, with metadata fields).
-8. Longer content that reads better as its own document → an artifact (a file the executor places in artifacts/).
+## Output Format (this app renders rich components)
+
+The chat renders :::openui blocks as real, interactive components. The component only exists if you write the fence; saying "here's a chart" without one shows nothing.
 
 Math renders only inside $$...$$, inline or on its own lines; a single $ is a literal dollar sign, so write prices as-is ($8, $347.53).
 
-OPENUI AND PROSE WORK TOGETHER, NEVER EITHER/OR. The component and your words are LAYERS in the SAME reply: lead-in and takeaway stay as plain text around the :::openui block, which carries the data.
+SURFACE POLICY, pick the first that matches:
+1. Data the app already shows as a native card: no component, the card has it. These tools render their own cards:
+{_suppression_list}
+2. Composing or sending an email: the draft flow and its compose card, never :::openui or a TextDocument.
+3. Casual chat, a one-line answer, an opinion, feelings, a short casual list: plain text, no component.
+4. Data with a visual shape: an :::openui component, and this one is required. A result carrying a breakdown of numbers, a comparison or a set of steps is exactly when one is expected; answering it with a text list wastes the one surface built for it.
+   - Numbers you'd compare or add up (a breakdown, stats, totals, a trend, before vs after): a chart. BarChart or HorizontalBarChart to compare categories, PieChart for parts of a whole, LineChart for change over time. A single headline number: a Card with a big TextContent and a Tag for the change.
+   - Step-by-step instructions: Steps, commands in the step details.
+   - Things that happened in order with times: Timeline.
+   - Several items compared on the same attributes (products, plans, options): a Table component or a markdown table.
+   - Places or a route: MapBlock. A folder structure: FileTree.
+5. Text meant to be copied (a prompt, a command): CopyableContent. A document to review or edit: TextDocument.
+6. Links where the link is the point: markdown links in your text.
+
+PROSE AND COMPONENT ARE ONE REPLY: a one-line takeaway in your voice, then the component, then one line after only if it adds something. Don't re-type in text what the component shows. One well-chosen component per reply; never the same numbers twice (a chart plus a table of the same data).
 
 Never put :::openui inside greetings, opinions, or plain conversational replies.
 
-How to emit openui: fence the openui-lang code in a :::openui block and mix freely with text.
-Your conversational lines stay as normal text; the component goes between them inside the fence:
+How to emit openui: fence the openui-lang code in a :::openui block, the closing ::: on its own line, and keep the block whole in one bubble. Use only numbers and facts from the conversation or a result; never make up data to fill a component, and a series the result gives only partly stays out of the chart (or goes in a line of text), never padded with zeros or guesses. Every Series in one chart gets its own name: two series sharing a name overwrite each other and the chart draws empty. Two examples:
 
-  Here are the results:
+Busiest week in a while, meetings ate most of it.
+:::openui
+root = Stack([chart])
+chart = PieChart(["Meetings", "Deep work", "Admin"], [14.5, 9, 3.5], "donut")
+:::
 
-  :::openui
-  root = RadialChart(["CPU", "Memory", "Disk"], [73, 45, 30])
-  :::
-
-  Anything else you'd like to see?
-"""
-
-# Quality / restraint notes: WHEN to reach for a component and how NOT to
-# overdo it. Component names track the current (react-ui) catalog.
-
-OPENUI_QUALITY_NOTES: str = """
-Specifics the policy above does not spell out:
-  - A single KPI reads well as a Card with TextContent (label + big value) and a Tag for the delta.
-  - Depth-on-demand → Accordion / Tabs, ONLY when each section carries substantial content, never for thin one-liners.
-  - Media → ImageGallery, VideoBlock, AudioPlayer, MapBlock.
-  - Timeline for event sequences with timestamps; Steps for ordered instructions; Callout for inline notices.
-  - Prefer one well-chosen component over stacking many. Use Stack only when the content genuinely splits into sections; a `wrap=true` row gives a responsive grid. Do not wrap everything in a Card by default.
-  - Buttons CAUTION: next-step suggestion chips already ship via follow-up-actions. Do NOT use Button/Buttons as the reply's "what next" menu; reserve them for an action tied INSIDE a specific card.
+:::openui
+root = Stack([steps])
+steps = Steps([StepsItem("Install", "Run `brew install node`"), StepsItem("Check it", "Run `node -v`, you should see a version")])
+:::
 """
 
 # ---------------------------------------------------------------------------
@@ -79,8 +72,6 @@ Specifics the policy above does not spell out:
 # ---------------------------------------------------------------------------
 
 OPENUI_INSTRUCTIONS: str = f"""
----OpenUI Lang (Rich UI Components)---
 {OPENUI_SURFACE_POLICY}
 {OPENUI_COMPONENT_PROMPT}
-{OPENUI_QUALITY_NOTES}
 """

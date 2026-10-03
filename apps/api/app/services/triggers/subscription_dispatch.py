@@ -13,11 +13,10 @@ case.
 """
 
 from datetime import UTC, datetime
-from typing import Any
 
 from redis.exceptions import RedisError
 
-from app.constants.todos import BLOCKING_LABELS
+from app.constants.todos import BLOCKING_LABELS, TodoActivityEvent
 from app.db.redis import redis_cache
 from app.db.repositories.todos import todo_repository
 from app.models.notification.notification_models import (
@@ -34,6 +33,7 @@ from app.models.trigger_subscription_models import (
 )
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.notification_service import notification_service
+from app.services.todo_activity import record_activity
 from app.services.todos.todo_notifications import todo_redirect_action
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.condition_matching import conditions_match
@@ -48,7 +48,7 @@ async def dispatch_to_subscribed_todos(
     trigger_name: str,
     trigger_id: str | None,
     user_id: str | None,
-    payload: dict[str, Any],
+    payload: dict[str, object],
 ) -> int:
     """Run every matching subscription's action. Returns how many fired."""
     todos = await _resolve_subscribers(trigger_name, trigger_id, user_id)
@@ -104,7 +104,7 @@ async def _fire_if_matching(
     subscription: TriggerSubscription,
     trigger_name: str,
     trigger_id: str | None,
-    payload: dict[str, Any],
+    payload: dict[str, object],
 ) -> bool:
     """Gate one subscription on trigger, instance, status, conditions and cooldown, then act."""
     if subscription.trigger_name != trigger_name:
@@ -178,7 +178,7 @@ async def _claim_cooldown(subscription: TriggerSubscription) -> bool:
 
 
 async def _perform_action(
-    todo: TodoDocument, subscription: TriggerSubscription, payload: dict[str, Any]
+    todo: TodoDocument, subscription: TriggerSubscription, payload: dict[str, object]
 ) -> None:
     log.set(
         component="trigger_subscription",
@@ -188,19 +188,35 @@ async def _perform_action(
         trigger_name=subscription.trigger_name,
         subscription_action=subscription.action.value,
     )
-    match subscription.action:
-        case SubscriptionAction.EXECUTE:
-            await _execute(todo, subscription, payload)
-        case SubscriptionAction.NOTIFY:
-            await _notify(todo, subscription)
-        case SubscriptionAction.COMPLETE:
-            await _complete(todo, subscription)
-        case SubscriptionAction.UNBLOCK:
-            await _unblock(todo, subscription)
+    await record_activity(
+        todo.id,
+        todo.user_id,
+        TodoActivityEvent.TRIGGER_FIRED,
+        f"{subscription.trigger_name} matched; action: {subscription.action.value}",
+    )
+    try:
+        match subscription.action:
+            case SubscriptionAction.EXECUTE:
+                await _execute(todo, subscription, payload)
+            case SubscriptionAction.NOTIFY:
+                await _notify(todo, subscription)
+            case SubscriptionAction.COMPLETE:
+                await _complete(todo, subscription)
+            case SubscriptionAction.UNBLOCK:
+                await _unblock(todo, subscription)
+    except Exception as e:
+        # The fire is already on the timeline; without this it reads as if the action ran.
+        await record_activity(
+            todo.id,
+            todo.user_id,
+            TodoActivityEvent.TRIGGER_ACTION_FAILED,
+            f"{subscription.action.value} failed: {type(e).__name__}",
+        )
+        raise
 
 
 async def _execute(
-    todo: TodoDocument, subscription: TriggerSubscription, payload: dict[str, Any]
+    todo: TodoDocument, subscription: TriggerSubscription, payload: dict[str, object]
 ) -> None:
     """Enqueue the todo's normal execution, stamped with where it came from."""
     pool = await RedisPoolManager.get_pool()

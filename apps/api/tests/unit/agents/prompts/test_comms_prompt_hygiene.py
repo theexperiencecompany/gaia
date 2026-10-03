@@ -23,7 +23,7 @@ EM_DASH = "—"
 EN_DASH = "–"
 
 #: Messaging channels whose replies are delivered as separate chat messages.
-MESSAGING_SOURCES = ("whatsapp", "telegram", "discord", "slack")
+MESSAGING_SOURCES = ("whatsapp", "telegram", "discord", "slack", "imessage")
 
 #: Literal spellings of the negation-antithesis. These may not appear anywhere,
 #: not even as a "bad example" — a negative few-shot still puts the string in

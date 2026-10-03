@@ -30,7 +30,6 @@ from shared.py.wide_events import log
 class FeatureFlag(StrEnum):
     """PostHog flag keys GAIA evaluates; member name is the code handle, value the dashboard key."""
 
-    COMMS_OPENUI = "COMMS_OPENUI"
     CODE_MODE = "CODE_MODE"
     HIL_LEDGER = "HIL_LEDGER"
     HIL_JEV_JUDGE = "HIL_JEV_JUDGE"
@@ -40,10 +39,6 @@ class FeatureFlag(StrEnum):
 # Human description per flag, kept next to the key so the dashboard setup and
 # the code cannot drift apart.
 FEATURE_FLAG_DESCRIPTIONS: dict[FeatureFlag, str] = {
-    FeatureFlag.COMMS_OPENUI: (
-        "Include the OpenUI component reference in the comms prompt on "
-        "renderable channels; off serves the markdown fallback."
-    ),
     FeatureFlag.CODE_MODE: (
         "Bash runs seed the `gaia.execute` client and mint a per-invocation "
         "token; off runs bash with no GAIA_EXECUTE_* env. On by default "
@@ -70,8 +65,6 @@ FEATURE_FLAG_DESCRIPTIONS: dict[FeatureFlag, str] = {
 def _default(flag: FeatureFlag) -> bool:
     """Return the env default and kill-switch for the flag, read at call time so tests can override settings."""
     match flag:
-        case FeatureFlag.COMMS_OPENUI:
-            return bool(settings.ENABLE_COMMS_OPENUI)
         case FeatureFlag.CODE_MODE:
             return bool(settings.ENABLE_CODE_MODE)
         case FeatureFlag.HIL_LEDGER:

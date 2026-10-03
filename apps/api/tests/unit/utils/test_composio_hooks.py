@@ -52,6 +52,8 @@ from app.utils.composio_hooks.twitter_hooks import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+_ENVELOPE = {"data": {"raw": True}, "successful": True, "error": None}
+
 
 def _make_tool_schema(**overrides: Any) -> MagicMock:
     """Create a mock Tool schema with common fields."""
@@ -211,6 +213,11 @@ class TestComposioHookRegistry:
         result = registry.execute_before_hooks("T", "K", params)
         assert result is params
 
+    def test_a_new_registry_hooks_no_tools(self) -> None:
+        registry = ComposioHookRegistry()
+        assert registry.after_hook_tools == set()
+        assert registry.has_broad_after_hook is False
+
     def test_empty_registry_returns_response_unchanged(self) -> None:
         registry = ComposioHookRegistry()
         response = {"data": "hello"}
@@ -238,6 +245,8 @@ class TestDecoratorRegistration:
 
         self._orig_before = hook_registry._before_hooks.copy()
         self._orig_after = hook_registry._after_hooks.copy()
+        self._orig_after_tools = hook_registry.after_hook_tools.copy()
+        self._orig_broad = hook_registry.has_broad_after_hook
         self._orig_schema = hook_registry._schema_modifiers.copy()
 
     def teardown_method(self) -> None:
@@ -245,6 +254,8 @@ class TestDecoratorRegistration:
 
         hook_registry._before_hooks = self._orig_before
         hook_registry._after_hooks = self._orig_after
+        hook_registry.after_hook_tools = self._orig_after_tools
+        hook_registry.has_broad_after_hook = self._orig_broad
         hook_registry._schema_modifiers = self._orig_schema
 
     def test_before_hook_with_specific_tool_matches(self) -> None:
@@ -313,8 +324,26 @@ class TestDecoratorRegistration:
             return {"processed": True}
 
         # Matching
-        result = hook_registry.execute_after_hooks("GMAIL_FETCH_EMAILS", "GMAIL", "raw")
-        assert result == {"processed": True}
+        result = hook_registry.execute_after_hooks("GMAIL_FETCH_EMAILS", "GMAIL", _ENVELOPE)
+        assert result == {**_ENVELOPE, "data": {"processed": True}}
+
+    def test_after_hook_gets_the_call_and_a_failed_call_skips_it(self) -> None:
+        from app.utils.composio_hooks.registry import hook_registry
+
+        calls: list[tuple[str, str, Any]] = []
+
+        @register_after_hook(tools=["GMAIL_FETCH_EMAILS"])
+        def gmail_after(tool: str, toolkit: str, response: Any) -> Any:
+            calls.append((tool, toolkit, response))
+            return {"processed": True}
+
+        failed = {"data": {}, "successful": False, "error": "Rate limited"}
+        assert hook_registry.execute_after_hooks("GMAIL_FETCH_EMAILS", "GMAIL", failed) == failed
+        assert calls == []
+        hook_registry.execute_after_hooks("GMAIL_FETCH_EMAILS", "GMAIL", _ENVELOPE)
+        assert calls == [("GMAIL_FETCH_EMAILS", "GMAIL", _ENVELOPE)]
+        assert "GMAIL_FETCH_EMAILS" in hook_registry.after_hook_tools
+        assert hook_registry.has_broad_after_hook is False
 
     def test_after_hook_skips_non_matching(self) -> None:
         from app.utils.composio_hooks.registry import hook_registry
@@ -1112,13 +1141,6 @@ class TestGmailAfterHooks:
         assert result["size"] == 1024
         assert "data" not in result
         assert "message" in result
-
-    def test_attachment_after_hook_unsuccessful(self) -> None:
-        from app.utils.composio_hooks.gmail_hooks import gmail_attachment_after_hook
-
-        response = _make_response({"error": "Not found"}, successful=False)
-        result = gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "GMAIL", response)
-        assert result == {"error": "Not found"}
 
     @patch("app.utils.composio_hooks.gmail_hooks.detailed_message_template")
     def test_fetch_by_id_after_hook(self, mock_template: MagicMock) -> None:
@@ -2818,6 +2840,8 @@ class TestDecoratorStringArgsAndToolkitMatching:
 
         self._orig_before = hook_registry._before_hooks.copy()
         self._orig_after = hook_registry._after_hooks.copy()
+        self._orig_after_tools = hook_registry.after_hook_tools.copy()
+        self._orig_broad = hook_registry.has_broad_after_hook
         self._orig_schema = hook_registry._schema_modifiers.copy()
 
     def teardown_method(self) -> None:
@@ -2825,6 +2849,8 @@ class TestDecoratorStringArgsAndToolkitMatching:
 
         hook_registry._before_hooks = self._orig_before
         hook_registry._after_hooks = self._orig_after
+        hook_registry.after_hook_tools = self._orig_after_tools
+        hook_registry.has_broad_after_hook = self._orig_broad
         hook_registry._schema_modifiers = self._orig_schema
 
     def test_after_hook_string_toolkit(self) -> None:
@@ -2835,8 +2861,9 @@ class TestDecoratorStringArgsAndToolkitMatching:
         def slack_toolkit_after(tool: str, toolkit: str, response: Any) -> Any:
             return {"slack_processed": True}
 
-        result = hook_registry.execute_after_hooks("SLACK_SEND_MESSAGE", "SLACK", "raw")
-        assert result == {"slack_processed": True}
+        result = hook_registry.execute_after_hooks("SLACK_SEND_MESSAGE", "SLACK", _ENVELOPE)
+        assert result == {**_ENVELOPE, "data": {"slack_processed": True}}
+        assert hook_registry.has_broad_after_hook is True
 
     def test_after_hook_string_tool(self) -> None:
         """register_after_hook with tools as a single string."""
@@ -2846,8 +2873,8 @@ class TestDecoratorStringArgsAndToolkitMatching:
         def single_tool_after(tool: str, toolkit: str, response: Any) -> Any:
             return {"single": True}
 
-        result = hook_registry.execute_after_hooks("MY_TOOL", "KIT", "raw")
-        assert result == {"single": True}
+        result = hook_registry.execute_after_hooks("MY_TOOL", "KIT", _ENVELOPE)
+        assert result == {**_ENVELOPE, "data": {"single": True}}
 
     def test_schema_modifier_string_toolkit(self) -> None:
         """register_schema_modifier with toolkits as a string."""
@@ -2896,8 +2923,9 @@ class TestDecoratorStringArgsAndToolkitMatching:
         def universal_after(tool: str, toolkit: str, response: Any) -> Any:
             return {"universal": True}
 
-        result = hook_registry.execute_after_hooks("ANY", "ANY", "raw")
-        assert result == {"universal": True}
+        result = hook_registry.execute_after_hooks("ANY", "ANY", _ENVELOPE)
+        assert result == {**_ENVELOPE, "data": {"universal": True}}
+        assert hook_registry.has_broad_after_hook is True
 
     def test_before_hook_string_toolkit(self) -> None:
         """register_before_hook with toolkits as a single string."""

@@ -17,7 +17,6 @@
  * @module
  */
 
-import { BOT_EVENTS } from "@gaia/shared/analytics";
 import {
   BaseBotAdapter,
   type BotCommand,
@@ -31,8 +30,9 @@ import {
   type IncomingMedia,
   type MediaOutcome,
   type OutboundAttachment,
-  type OutboundReaction,
   type PlatformName,
+  REACTION_OUTCOME,
+  type ReactionOutcome,
   type RichMessage,
   type RichMessageTarget,
   renderForPlatform,
@@ -236,11 +236,12 @@ export class DiscordAdapter extends BaseBotAdapter {
     });
   }
 
-  protected override async deliverOutboundReaction(
+  protected override async reactToMessage(
     destinationId: string,
-    reaction: OutboundReaction,
+    platformMessageId: string,
+    emoji: string,
     isChannel: boolean,
-  ): Promise<void> {
+  ): Promise<ReactionOutcome> {
     try {
       const channel = isChannel
         ? await this.client.channels.fetch(destinationId)
@@ -250,27 +251,16 @@ export class DiscordAdapter extends BaseBotAdapter {
           `Discord destination ${destinationId} has no fetchable messages`,
         );
       }
-      const message = await channel.messages.fetch(
-        reaction.target_platform_message_id,
-      );
-      await message.react(reaction.emoji);
-      this.analytics.capture(
-        await this.resolveDistinctId(destinationId),
-        BOT_EVENTS.REACTION_DELIVERED,
-        { success: true, delivery: "native" },
-      );
+      const message = await channel.messages.fetch(platformMessageId);
+      await message.react(emoji);
+      return REACTION_OUTCOME.ATTACHED;
     } catch (err) {
       this.adapterLogger.warn("outbound_reaction_attach_failed", {
         ...(err instanceof Error
           ? { error_type: err.name, error: err.message }
           : { error: String(err) }),
       });
-      await this.deliverOutbound(destinationId, reaction.emoji, isChannel);
-      this.analytics.capture(
-        await this.resolveDistinctId(destinationId),
-        BOT_EVENTS.REACTION_DELIVERED,
-        { success: true, delivery: "fallback_text", reason: "attach_failed" },
-      );
+      return REACTION_OUTCOME.ATTACH_FAILED;
     }
   }
 
@@ -508,7 +498,6 @@ export class DiscordAdapter extends BaseBotAdapter {
         platformUserId: userId,
         channelId,
         isDm: !interaction.guild,
-        platformMessageId: interaction.targetMessage.id,
       },
       async (text: string) => {
         replied = true;
@@ -697,6 +686,8 @@ export class DiscordAdapter extends BaseBotAdapter {
         },
         STREAMING_DEFAULTS.discord,
         await this.analyticsFor(userId),
+        (emoji: string) =>
+          this.reactToMessage(userId, message.id, emoji, false),
       );
 
       stopTyping();
@@ -936,6 +927,10 @@ export class DiscordAdapter extends BaseBotAdapter {
         },
         STREAMING_DEFAULTS.discord,
         await this.analyticsFor(message.author.id),
+        (emoji: string) =>
+          message.guild
+            ? this.reactToMessage(message.channelId, message.id, emoji, true)
+            : this.reactToMessage(message.author.id, message.id, emoji, false),
       );
 
       stopTyping();

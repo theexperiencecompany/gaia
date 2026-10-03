@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from redis.exceptions import RedisError
 
+from app.constants.todos import TodoActivityEvent
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
@@ -75,6 +76,7 @@ def deps():
         patch(f"{_MOD}.notification_service.create_notification", new_callable=AsyncMock) as notify,
         patch(f"{_MOD}.tracked_todo_service.complete_tracked_todo", new_callable=AsyncMock) as done,
         patch(f"{_MOD}.capture_event") as capture,
+        patch(f"{_MOD}.record_activity", new_callable=AsyncMock) as activity,
     ):
         repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
         repo.find_active_by_user_and_trigger = AsyncMock(return_value=[])
@@ -88,6 +90,7 @@ def deps():
             complete=done,
             capture=capture,
             pool=get_pool.return_value,
+            activity=activity,
         )
 
 
@@ -390,6 +393,38 @@ class TestGating:
 
 
 class TestActions:
+    async def test_a_fire_is_on_the_todos_timeline(self, deps) -> None:
+        sub = _subscription()
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[sub])
+        ]
+
+        await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
+
+        todo_id, user_id, event, detail = deps.activity.await_args.args
+        assert (todo_id, user_id, event) == (TODO_ID, USER_ID, TodoActivityEvent.TRIGGER_FIRED)
+        assert detail == f"{GMAIL} matched; action: {sub.action.value}"
+
+    async def test_an_action_that_fails_is_on_the_timeline_after_the_fire(self, deps) -> None:
+        """Regression: a failed action left only "trigger_fired", reading as if it had run."""
+        sub = _subscription(action=SubscriptionAction.NOTIFY)
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[sub])
+        ]
+        deps.notify.side_effect = RuntimeError("push service down")
+
+        assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {}) == 0
+
+        assert [c.args for c in deps.activity.await_args_list] == [
+            (TODO_ID, USER_ID, TodoActivityEvent.TRIGGER_FIRED, f"{GMAIL} matched; action: notify"),
+            (
+                TODO_ID,
+                USER_ID,
+                TodoActivityEvent.TRIGGER_ACTION_FAILED,
+                "notify failed: RuntimeError",
+            ),
+        ]
+
     async def test_the_fire_is_stamped_onto_the_wide_event(self, deps) -> None:
         # Every field the action is dispatched under must land on the event, so a
         # fired subscription is attributable after the fact.

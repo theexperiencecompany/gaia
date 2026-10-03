@@ -25,10 +25,16 @@ from app.agents.core.background.session import (
     ExecutorRun,
     RunKind,
 )
+from app.agents.prompts.comms_prompts import (
+    INTERACTIVE_DELIVERY_NOTE,
+    PLATFORM_DELIVERY_NOTE,
+    SILENCE_NOTE,
+)
 from app.constants.executor import (
     EXECUTOR_NARRATION_FAILED_ERROR_MESSAGE,
     EXECUTOR_NARRATION_FAILED_MESSAGE,
 )
+from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationSource, MessageModel, ToolDataEntry
@@ -1801,7 +1807,7 @@ class TestNarrateResultCallContract:
 
     Every one of these is a scoping key: the conversation decides which
     checkpoint (and therefore which persona and history) comms loads, the user
-    decides whose it is, and the workflow_id switches it to the workflow voice.
+    decides whose it is, and the preamble decides the voice (a workflow's here).
     A blanked or dropped one still returns text, so nothing downstream notices
     that the text was voiced for the wrong conversation.
     """
@@ -1814,15 +1820,9 @@ class TestNarrateResultCallContract:
             msg_type: str,
             conversation_id: str,
             user,
-            returned_note: str = "",
-            workflow_id: str | None = None,
+            preamble: str,
         ) -> str:
-            calls.append(
-                (
-                    (result_text, msg_type, conversation_id, user),
-                    {"returned_note": returned_note, "workflow_id": workflow_id},
-                )
-            )
+            calls.append(((result_text, msg_type, conversation_id, user), {"preamble": preamble}))
             return "voiced"
 
         with patch.object(rd, "narrate_executor_result", new=_record):
@@ -1834,23 +1834,9 @@ class TestNarrateResultCallContract:
         assert calls == [
             (
                 ("raw text", "final", "conv-1", AuthenticatedUser(user_id="user-1")),
-                {"returned_note": "handed back by the subagent", "workflow_id": "wf-1"},
+                {"preamble": PLATFORM_DELIVERY_NOTE},
             )
         ]
-
-    async def test_the_decided_approval_outcomes_ride_on_the_result_text(self) -> None:
-        """The note stops comms re-offering an approve/decline the user already answered, so it must be in the text comms reads."""
-        with (
-            patch.object(
-                rd, "_approval_outcomes_note", new=AsyncMock(return_value="\n\n[APPROVAL] done")
-            ),
-            patch.object(
-                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="voiced"
-            ) as narrate,
-        ):
-            await rd._narrate_result(_run(), "raw text", "final", "")
-
-        assert narrate.await_args.args[0] == "raw text\n\n[APPROVAL] done"
 
 
 class TestBuildBotMessageShape:
@@ -2074,7 +2060,24 @@ class TestDeliveryContextIsThreadedWhole:
                 _run(), "raw", "final", "handed back by the subagent", tool_data=None
             )
 
-        assert narrate.await_args.kwargs["returned_note"] == "handed back by the subagent"
+        assert narrate.await_args.kwargs["preamble"].startswith("handed back by the subagent")
+
+
+class TestDeliveryPreamble:
+    """Which delivery instructions comms writes a run's reply under."""
+
+    CARD_NOTE = "<returned_to_frontend>a card is on screen</returned_to_frontend>"
+
+    def test_a_workflow_result_is_restated_in_full_with_no_card_note(self) -> None:
+        """The card note would tell comms not to list data that has no card to fall back on."""
+        assert rd._delivery_preamble(_run(workflow=True), self.CARD_NOTE) == (
+            PLATFORM_DELIVERY_NOTE
+        )
+
+    def test_an_interactive_result_reads_the_card_note_before_the_split_rule(self) -> None:
+        assert rd._delivery_preamble(_run(), self.CARD_NOTE) == (
+            self.CARD_NOTE + INTERACTIVE_DELIVERY_NOTE + SILENCE_NOTE
+        )
 
 
 class TestWorkflowNotificationRef:
@@ -2247,7 +2250,8 @@ class TestCommsDirectiveDelivery:
     async def test_silence_delivers_nothing_on_any_surface(self) -> None:
         with patch.object(rd, "capture_event") as capture:
             save, platform, ws = await _deliver(
-                ConversationSource.WHATSAPP, comms_text="SILENCE: routine calendar refresh"
+                ConversationSource.WHATSAPP,
+                comms_text="<SILENCE>routine calendar refresh</SILENCE>",
             )
         save.assert_not_awaited()
         platform.assert_not_awaited()
@@ -2259,9 +2263,20 @@ class TestCommsDirectiveDelivery:
         assert capture.call_args.args[1] == rd.AnalyticsEvents.CHAT_BACKGROUND_UPDATE_RESOLVED
         assert capture.call_args.args[2] == {"outcome": "silence"}
 
+    @pytest.mark.regression
+    async def test_a_message_with_a_trailing_directive_delivers_only_the_message(self) -> None:
+        message = "Your passport expires in 13 days."
+        save, platform, _ws = await _deliver(
+            ConversationSource.TELEGRAM,
+            comms_text=f"{message}{NEW_MESSAGE_BREAKER}<EMOJI>👍</EMOJI>",
+        )
+        assert platform.await_args.args[2] == message
+        saved = save.await_args.args[0].messages[0]
+        assert (saved.response, saved.kind) == (message, rd.MessageKind.TEXT)
+
     async def test_silence_on_web_broadcasts_nothing(self) -> None:
         save, platform, ws = await _deliver(
-            ConversationSource.WEB, comms_text="SILENCE: nothing new"
+            ConversationSource.WEB, comms_text="<SILENCE>nothing new</SILENCE>"
         )
         save.assert_not_awaited()
         ws.assert_not_awaited()
@@ -2270,7 +2285,7 @@ class TestCommsDirectiveDelivery:
     async def test_react_delivers_the_emoji_as_the_message_on_a_bot(self) -> None:
         with patch.object(rd, "capture_event") as capture:
             save, platform, _ws = await _deliver(
-                ConversationSource.WHATSAPP, comms_text="REACT: 👍"
+                ConversationSource.WHATSAPP, comms_text="<EMOJI>👍</EMOJI>"
             )
         platform.assert_awaited_once()
         assert platform.await_args.args[2] == "👍"
@@ -2287,7 +2302,7 @@ class TestCommsDirectiveDelivery:
         assert save.await_args.args[0].messages[0].kind is rd.MessageKind.EMOJI_ACK
 
     async def test_react_delivers_the_emoji_over_websocket_on_web(self) -> None:
-        save, _platform, ws = await _deliver(ConversationSource.WEB, comms_text="REACT: ✅")
+        save, _platform, ws = await _deliver(ConversationSource.WEB, comms_text="<EMOJI>✅</EMOJI>")
         ws.assert_awaited_once()
         assert ws.await_args.args[1]["message"]["response"] == "✅"
         assert save.await_args.args[0].messages[0].kind is rd.MessageKind.EMOJI_ACK
@@ -2299,7 +2314,10 @@ class TestCommsDirectiveDelivery:
         run = replace(_run(), user_message_id="user-msg-1")
         with (
             patch.object(
-                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="REACT: 👍"
+                rd,
+                "narrate_executor_result",
+                new_callable=AsyncMock,
+                return_value="<EMOJI>👍</EMOJI>",
             ),
             patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
@@ -2349,7 +2367,10 @@ class TestCommsDirectiveDelivery:
         run = replace(_run(), user_message_id="user-msg-1")
         with (
             patch.object(
-                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="REACT: 👍"
+                rd,
+                "narrate_executor_result",
+                new_callable=AsyncMock,
+                return_value="<EMOJI>👍</EMOJI>",
             ),
             patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "update_messages", new_callable=AsyncMock),
@@ -2378,7 +2399,10 @@ class TestCommsDirectiveDelivery:
         run = replace(_run(), user_message_id="user-msg-1")
         with (
             patch.object(
-                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="REACT: ✅"
+                rd,
+                "narrate_executor_result",
+                new_callable=AsyncMock,
+                return_value="<EMOJI>✅</EMOJI>",
             ),
             patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "update_messages", new_callable=AsyncMock),
@@ -2403,7 +2427,10 @@ class TestCommsDirectiveDelivery:
         run = replace(_run(), user_message_id="user-msg-1")
         with (
             patch.object(
-                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="REACT: ✅"
+                rd,
+                "narrate_executor_result",
+                new_callable=AsyncMock,
+                return_value="<EMOJI>✅</EMOJI>",
             ),
             patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "update_messages", new_callable=AsyncMock),
@@ -2428,7 +2455,10 @@ class TestCommsDirectiveDelivery:
         run = replace(_run(), user_message_id="user-msg-1")
         with (
             patch.object(
-                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="REACT: ✅"
+                rd,
+                "narrate_executor_result",
+                new_callable=AsyncMock,
+                return_value="<EMOJI>✅</EMOJI>",
             ),
             patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "update_messages", new_callable=AsyncMock),
@@ -2558,10 +2588,10 @@ class TestTheCommsVerdictIsOnTheWideEvent:
         ("comms_text", "expected"),
         [
             (
-                "SILENCE: routine refresh",
+                "<SILENCE>routine refresh</SILENCE>",
                 {"comms_delivery": "silenced", "silence_reason": "routine refresh"},
             ),
-            ("REACT: 👍", {"comms_delivery": "reacted"}),
+            ("<EMOJI>👍</EMOJI>", {"comms_delivery": "reacted"}),
             ("Booked your flight.", {"comms_delivery": "message"}),
         ],
     )
@@ -2598,7 +2628,7 @@ class TestResolutionAnalyticsIsOnePerUpdate:
     async def test_a_web_react_lands_as_a_badge(self) -> None:
         delivered = await _deliver_run(
             replace(_run(), user_message_id="user-msg-1"),
-            _Seams(comms_text="REACT: ✅", source=None),
+            _Seams(comms_text="<EMOJI>✅</EMOJI>", source=None),
         )
 
         assert delivered.capture.call_args.args[2] == {
@@ -2634,7 +2664,7 @@ class TestInlineFollowUpsOnlyWhereNothingWaits:
 
     async def test_a_bot_reaction_generates_no_follow_ups(self) -> None:
         delivered = await _deliver_run(
-            _run(), _Seams(comms_text="REACT: 👍", source=ConversationSource.WHATSAPP)
+            _run(), _Seams(comms_text="<EMOJI>👍</EMOJI>", source=ConversationSource.WHATSAPP)
         )
 
         delivered.follow_ups.assert_not_awaited()
@@ -2652,7 +2682,7 @@ class TestInlineFollowUpsOnlyWhereNothingWaits:
         assert kwargs["target"].conversation_id == "conv-1"
 
     async def test_a_web_ack_with_no_answered_message_carries_no_reaction_target(self) -> None:
-        delivered = await _deliver_run(_run(), _Seams(comms_text="REACT: ✅", source=None))
+        delivered = await _deliver_run(_run(), _Seams(comms_text="<EMOJI>✅</EMOJI>", source=None))
 
         assert "reacts_to_message_id" not in delivered.ws.await_args.args[1]["message"]
 
@@ -2688,7 +2718,7 @@ class TestAWorkflowResult:
 
     async def test_a_workflow_react_falls_back_to_the_text_ack(self) -> None:
         delivered = await _deliver_run(
-            _run(workflow=True), _Seams(comms_text="REACT: 👍", source=None)
+            _run(workflow=True), _Seams(comms_text="<EMOJI>👍</EMOJI>", source=None)
         )
 
         assert delivered.returned == (None, _saved(delivered).message_id)
@@ -2704,7 +2734,9 @@ class TestAPlatformReaction:
         delivered = await _deliver_run(
             replace(_run(), user_message_id="user-msg-1"),
             _Seams(
-                comms_text="REACT: 👍", source=ConversationSource.WHATSAPP, platform_id="wamid.123"
+                comms_text="<EMOJI>👍</EMOJI>",
+                source=ConversationSource.WHATSAPP,
+                platform_id="wamid.123",
             ),
         )
 
@@ -2715,7 +2747,7 @@ class TestAPlatformReaction:
     async def test_no_platform_id_falls_back_to_a_text_bubble(self) -> None:
         delivered = await _deliver_run(
             replace(_run(), user_message_id="user-msg-1"),
-            _Seams(comms_text="REACT: 👍", source=ConversationSource.WHATSAPP),
+            _Seams(comms_text="<EMOJI>👍</EMOJI>", source=ConversationSource.WHATSAPP),
         )
 
         delivered.reaction.assert_not_awaited()

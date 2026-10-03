@@ -23,7 +23,7 @@ import { BOT_EVENTS } from "../../analytics/events/bots";
 import type { ApprovalRequestData } from "../../chat";
 import { formatApprovalAge } from "../../chat/approvals";
 import type { GaiaClient } from "../api";
-import { BOT_STREAM_ERROR } from "../api/chat-stream";
+import { BOT_STREAM_ERROR, type ReactionHandler } from "../api/chat-stream";
 import type { ChatRequest, PlatformName } from "../types";
 import { segmentIntoBubbles } from "./bubbles";
 import { isMessageGoneError, retryAfterMs } from "./delivery-errors";
@@ -38,6 +38,12 @@ import {
   hashLogIdentifier,
   sanitizeErrorForLog,
 } from "./logger";
+import {
+  REACTION_OUTCOME,
+  REACTION_SURFACE,
+  type ReactionOutcome,
+  reactionDeliveredProperties,
+} from "./reaction-outcome";
 import { chunkResponse, PLATFORM_LIMITS } from "./text";
 import { wideLog, withWideEvent } from "./wide-events";
 
@@ -110,6 +116,7 @@ async function _handleStream(
     onError: (error: Error) => void | Promise<void>,
     deliverOutOfBand: (text: string) => Promise<void>,
     onMessageBoundary: (discarded: boolean) => Promise<void>,
+    onReaction: ReactionHandler,
   ) => Promise<string>,
   request: ChatRequest,
   gaia: GaiaClient,
@@ -118,6 +125,7 @@ async function _handleStream(
   onAuthError: ((authUrl: string) => Promise<void>) | null,
   onGenericError: (formattedError: string) => Promise<void>,
   options: StreamingOptions,
+  onReaction: ReactionHandler | undefined,
 ): Promise<void> {
   const { editIntervalMs, streaming, platform } = options;
 
@@ -362,6 +370,20 @@ async function _handleStream(
     });
   };
 
+  /**
+   * Hands the turn's emoji ack to the adapter to attach natively, once any edit still in
+   * flight has landed — the adapter may be about to delete the bubble that edit targets.
+   */
+  const reactToTurn = async (emoji: string): Promise<ReactionOutcome> => {
+    if (!onReaction) return REACTION_OUTCOME.NO_TARGET;
+    // Overwritten by the queued call; enqueue rejects if it throws.
+    let outcome: ReactionOutcome = REACTION_OUTCOME.NO_TARGET;
+    await enqueue(async () => {
+      outcome = await onReaction(emoji);
+    });
+    return outcome;
+  };
+
   try {
     await streamFn(
       (chunk) => {
@@ -449,6 +471,7 @@ async function _handleStream(
       },
       deliverOutOfBand,
       handleMessageBoundary,
+      reactToTurn,
     );
   } catch (error) {
     // `streamChat` reports a non-retryable failure via `onError` and THEN rethrows, so by the
@@ -479,6 +502,7 @@ export async function handleStreamingChat(
   onGenericError: (formattedError: string) => Promise<void>,
   options: StreamingOptions,
   analytics?: AnalyticsContext,
+  onReaction?: ReactionHandler,
 ): Promise<void> {
   // Latency + high-cardinality observability for the chat pipeline. user_hash
   // is the HMAC-hashed id (no PII). ttfb_ms = time to first streamed chunk.
@@ -510,6 +534,7 @@ export async function handleStreamingChat(
         analytics,
         userHash,
         channelHash,
+        onReaction,
       ),
   );
 }
@@ -526,6 +551,7 @@ async function runStreamingChat(
   analytics: AnalyticsContext | undefined,
   userHash: string | undefined,
   channelHash: string | undefined,
+  onReaction: ReactionHandler | undefined,
 ): Promise<void> {
   const startMs = Date.now();
   let responseLength = 0;
@@ -535,6 +561,9 @@ async function runStreamingChat(
   let discardedMessages = 0;
   let notices = 0;
   let conversationId = "";
+  let reactionDelivered:
+    | ReturnType<typeof reactionDeliveredProperties>
+    | undefined;
 
   analytics?.client.capture(analytics.distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
     interaction_type: "chat",
@@ -583,6 +612,7 @@ async function runStreamingChat(
     onError: (error: Error) => void | Promise<void>,
     deliverOutOfBand: (text: string) => Promise<void>,
     onMessageBoundary: (discarded: boolean) => Promise<void>,
+    reactToTurn: ReactionHandler,
   ) =>
     gaia.chatStream(
       request,
@@ -624,6 +654,19 @@ async function runStreamingChat(
         notices += 1;
         await deliverOutOfBand(text);
       },
+      async (emoji: string) => {
+        const outcome = await reactToTurn(emoji);
+        reactionDelivered = reactionDeliveredProperties(
+          outcome,
+          REACTION_SURFACE.LIVE,
+        );
+        analytics?.client.capture(
+          analytics.distinctId,
+          BOT_EVENTS.REACTION_DELIVERED,
+          reactionDelivered,
+        );
+        return outcome;
+      },
     );
 
   try {
@@ -636,6 +679,7 @@ async function runStreamingChat(
       wrappedOnAuthError,
       wrappedOnGenericError,
       options,
+      onReaction,
     );
   } finally {
     wideLog.set({
@@ -645,6 +689,8 @@ async function runStreamingChat(
       notices_delivered: notices,
       response_length: responseLength,
       conversation_id: conversationId || undefined,
+      reaction_delivery: reactionDelivered?.delivery,
+      reaction_reason: reactionDelivered?.reason,
     });
     if (!hadError) {
       analytics?.client.capture(

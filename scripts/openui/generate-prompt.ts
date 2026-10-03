@@ -71,10 +71,21 @@ const mergedSpec = {
 
 const prompt = generatePrompt(mergedSpec);
 
+// lang-core hardcodes this rule into every prompt; GAIA renders the user's real
+// data, so it tells comms to invent numbers. Throw if the wording moves, so a
+// library bump cannot quietly bring it back.
+const FABRICATE_DATA_RULE =
+  "- When asked about data, generate realistic/plausible data\n";
+if (!prompt.includes(FABRICATE_DATA_RULE)) {
+  throw new Error(
+    "lang-core's plausible-data rule changed wording: re-check generatePrompt output",
+  );
+}
+
 // This artifact lands in apps/api/app/agents/prompts/, where the repo rule
 // forbids em/en dashes in prompt prose. Normalize any the react-ui library or
 // the component descriptions emit so every regeneration stays compliant.
-const sanitized = prompt.replace(/[—–]/g, "-");
+const sanitized = prompt.replace(FABRICATE_DATA_RULE, "").replace(/[—–]/g, "-");
 
 mkdirSync(dirname(OUTPUT_PATH), { recursive: true });
 writeFileSync(OUTPUT_PATH, sanitized, "utf-8");

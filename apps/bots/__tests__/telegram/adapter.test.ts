@@ -135,6 +135,7 @@ import {
   fetchBytesCapped,
   handleStreamingChat,
   MEDIA_READ_TIMEOUT_MS,
+  type ReactionOutcome,
   renderForPlatform,
   richMessageToMarkdown,
 } from "@gaia/shared/bots";
@@ -286,6 +287,7 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      expect.any(Function), // onReaction
     );
   });
 
@@ -343,6 +345,7 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      expect.any(Function), // onReaction
     );
   });
 
@@ -566,6 +569,7 @@ describe("TelegramAdapter - handleTelegramStreaming (streaming setup)", () => {
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      expect.any(Function), // onReaction
     );
   });
 
@@ -1106,6 +1110,7 @@ describe("TelegramAdapter - /gaia command", () => {
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      expect.any(Function), // onReaction
     );
   });
 });
@@ -1500,6 +1505,7 @@ describe("TelegramAdapter - media message routing", () => {
       expect.objectContaining({
         distinctId: expect.any(String),
       }),
+      expect.any(Function), // onReaction
     );
   });
 
@@ -1654,54 +1660,127 @@ describe("TelegramAdapter - media message routing", () => {
 });
 
 // ---------------------------------------------------------------------------
-// deliverOutboundReaction — native attach with text fallback
+// reactToMessage — the native reaction primitive, and the live turn using it
 // ---------------------------------------------------------------------------
 
-describe("TelegramAdapter - deliverOutboundReaction", () => {
-  type Reactor = {
-    deliverOutboundReaction: (
-      destinationId: string,
-      reaction: { target_platform_message_id: string; emoji: string },
-      isChannel: boolean,
-    ) => Promise<void>;
-    analytics: { capture: (...args: unknown[]) => void };
-  };
+type TelegramReactor = {
+  reactToMessage: (
+    destinationId: string,
+    platformMessageId: string,
+    emoji: string,
+    isChannel: boolean,
+  ) => Promise<ReactionOutcome>;
+};
 
+describe("TelegramAdapter - reactToMessage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it("attaches via setMessageReaction with numeric chat and message ids", async () => {
-    const adapter = makeAdapter() as unknown as Reactor;
-    adapter.analytics = { capture: vi.fn() };
+    const adapter = makeAdapter() as unknown as TelegramReactor;
 
-    await adapter.deliverOutboundReaction(
-      "4242",
-      { target_platform_message_id: "777", emoji: "👍" },
-      false,
-    );
+    const attached = await adapter.reactToMessage("4242", "777", "👍", false);
 
+    expect(attached).toBe("attached");
     expect(mockSetMessageReaction).toHaveBeenCalledWith("4242", 777, [
       { type: "emoji", emoji: "👍" },
     ]);
   });
 
-  it("falls back to a text bubble when attach fails", async () => {
+  it("sends a heart without the variation selector Telegram's reaction list omits", async () => {
+    const adapter = makeAdapter() as unknown as TelegramReactor;
+
+    const attached = await adapter.reactToMessage("4242", "777", "❤️", false);
+
+    expect(attached).toBe("attached");
+    expect(mockSetMessageReaction).toHaveBeenCalledWith("4242", 777, [
+      { type: "emoji", emoji: "❤" },
+    ]);
+  });
+
+  it("refuses without sending text when Telegram rejects the emoji", async () => {
     mockSetMessageReaction.mockRejectedValueOnce(new Error("Bad Request"));
-    const adapter = makeAdapter() as unknown as Reactor;
-    adapter.analytics = { capture: vi.fn() };
+    const adapter = makeAdapter() as unknown as TelegramReactor;
 
-    await adapter.deliverOutboundReaction(
-      "4242",
-      { target_platform_message_id: "777", emoji: "✅" },
-      false,
+    const attached = await adapter.reactToMessage("4242", "777", "✅", false);
+
+    expect(attached).toBe("attach_failed");
+    expect(mockBotInstance.api.sendMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe("TelegramAdapter - live turn reaction", () => {
+  let adapter: TelegramAdapter;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    adapter = makeAdapter();
+  });
+
+  /** Streams one turn and returns the reaction hook it handed the shared streamer. */
+  async function streamAndTakeHook(
+    ctx: ReturnType<typeof makeCtx>,
+  ): Promise<(emoji: string) => Promise<ReactionOutcome>> {
+    await (
+      adapter as unknown as {
+        handleTelegramStreaming: (
+          c: typeof ctx,
+          userId: string,
+          message: string,
+        ) => Promise<void>;
+      }
+    ).handleTelegramStreaming(ctx, "999", "thanks!");
+    const call = vi.mocked(handleStreamingChat).mock.calls.at(-1);
+    return call?.[8] as (emoji: string) => Promise<ReactionOutcome>;
+  }
+
+  function liveCtx(deleteMessage: ReturnType<typeof vi.fn>) {
+    const ctx = makeCtx({
+      replyFn: vi.fn().mockResolvedValue({ message_id: 42 }),
+    });
+    return {
+      ...ctx,
+      msg: { message_id: 10 },
+      api: { ...ctx.api, deleteMessage },
+    };
+  }
+
+  it("reacts to the inbound message and deletes the Thinking... placeholder", async () => {
+    const react = vi
+      .spyOn(adapter as unknown as TelegramReactor, "reactToMessage")
+      .mockResolvedValue("attached");
+    const deleteMessage = vi.fn().mockResolvedValue(true);
+
+    const hook = await streamAndTakeHook(liveCtx(deleteMessage));
+
+    await expect(hook("👍")).resolves.toBe("attached");
+    expect(react).toHaveBeenCalledWith("123456", "10", "👍", false);
+    expect(deleteMessage).toHaveBeenCalledWith(123456, 42);
+  });
+
+  it("keeps the placeholder for the text fallback when the reaction is refused", async () => {
+    vi.spyOn(
+      adapter as unknown as TelegramReactor,
+      "reactToMessage",
+    ).mockResolvedValue("attach_failed");
+    const deleteMessage = vi.fn().mockResolvedValue(true);
+
+    const hook = await streamAndTakeHook(liveCtx(deleteMessage));
+
+    await expect(hook("👍")).resolves.toBe("attach_failed");
+    expect(deleteMessage).not.toHaveBeenCalled();
+  });
+
+  it("falls back to text when the inbound message id is unknown", async () => {
+    const react = vi.spyOn(
+      adapter as unknown as TelegramReactor,
+      "reactToMessage",
     );
 
-    const sendMessage = mockBotInstance.api.sendMessage;
-    expect(sendMessage).toHaveBeenCalledWith(
-      "4242",
-      expect.stringContaining("✅"),
-      expect.anything(),
-    );
+    const hook = await streamAndTakeHook(makeCtx());
+
+    await expect(hook("👍")).resolves.toBe("no_target");
+    expect(react).not.toHaveBeenCalled();
   });
 });

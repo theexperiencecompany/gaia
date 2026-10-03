@@ -414,9 +414,8 @@ def _bot_message_frame(data: BotWebStreamPayload) -> tuple[str | None, bool]:
     if "message_boundary" in present:
         return message_boundary_frame(data.message_boundary), False
 
-    # A turn resolved to a comms `REACT: <emoji>` ack — the streamed text was
-    # the raw directive, and the bot takes it back and delivers the bare emoji
-    # (shared chat-stream.ts replaces its buffers on this frame).
+    # A turn resolved to a comms `<EMOJI>…</EMOJI>` ack: no text was streamed,
+    # and the bot delivers the bare emoji as the turn's reply.
     if "emoji_ack" in present and data.emoji_ack is not None:
         return emoji_ack_frame(
             emoji=data.emoji_ack.emoji,

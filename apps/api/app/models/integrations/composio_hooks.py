@@ -12,6 +12,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    JsonValue,
     PrivateAttr,
     SerializerFunctionWrapHandler,
     model_serializer,
@@ -49,6 +50,14 @@ class ComposioToolResponse(BaseModel):
     data: object
     error: str | None = None
     successful: bool = True
+
+
+class ComposioDataError(BaseModel):
+    """The error a provider reports inside a call's data, which Composio can still mark successful."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    error: JsonValue = None
 
 
 class RunMetadata(BaseModel):

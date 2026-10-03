@@ -61,6 +61,12 @@ import {
   OUTBOUND_FILE_LIMITS,
   processBotMedia,
 } from "../utils/media";
+import {
+  REACTION_OUTCOME,
+  REACTION_SURFACE,
+  type ReactionOutcome,
+  reactionDeliveredProperties,
+} from "../utils/reaction-outcome";
 import { wideLog, withWideEvent } from "../utils/wide-events";
 import { BotServer } from "./base-server";
 
@@ -387,30 +393,45 @@ export abstract class BaseBotAdapter {
   }
 
   /**
-   * Attaches an emoji reaction to an existing platform message. Called by the
-   * outbound consumer when an envelope carries a `reaction`. The default sends
-   * the emoji as a text bubble via {@link deliverOutbound}; platforms with a
-   * native reaction API override this to attach it to the target message (and
-   * fall back to the text bubble when the attach call fails, so the ack is
-   * never lost).
+   * Attaches `emoji` natively to an existing platform message — the one reaction
+   * primitive, used by live turns and the outbound consumer alike. This default
+   * is for platforms with no reaction API.
    */
-  protected async deliverOutboundReaction(
+  protected reactToMessage(
+    _destinationId: string,
+    _platformMessageId: string,
+    _emoji: string,
+    _isChannel: boolean,
+  ): Promise<ReactionOutcome> {
+    return Promise.resolve(REACTION_OUTCOME.PLATFORM_UNSUPPORTED);
+  }
+
+  /**
+   * Delivers an outbound envelope's `reaction`: attached natively when the
+   * platform allows it, otherwise sent as a text bubble so the ack is never lost.
+   */
+  private async deliverOutboundReaction(
     destinationId: string,
     reaction: OutboundReaction,
     isChannel: boolean,
   ): Promise<void> {
-    wideLog.warning("outbound_reaction_fallback_text", {
-      target_platform_message_id: reaction.target_platform_message_id,
-    });
-    await this.deliverOutbound(destinationId, reaction.emoji, isChannel);
+    const outcome = await this.reactToMessage(
+      destinationId,
+      reaction.target_platform_message_id,
+      reaction.emoji,
+      isChannel,
+    );
+    if (outcome !== REACTION_OUTCOME.ATTACHED) {
+      wideLog.warning("outbound_reaction_fallback_text", {
+        target_platform_message_id: reaction.target_platform_message_id,
+        reason: outcome,
+      });
+      await this.deliverOutbound(destinationId, reaction.emoji, isChannel);
+    }
     this.analytics.capture(
       await this.resolveDistinctId(destinationId),
       BOT_EVENTS.REACTION_DELIVERED,
-      {
-        success: true,
-        delivery: "fallback_text",
-        reason: "platform_unsupported",
-      },
+      reactionDeliveredProperties(outcome, REACTION_SURFACE.OUTBOUND),
     );
   }
 

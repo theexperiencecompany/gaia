@@ -18,11 +18,14 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Any
 
-from app.agents.llm.client import PROVIDER_MODELS, next_fallback_provider
+from pydantic import TypeAdapter
+
+from app.agents.llm.client import PROVIDER_MODELS, next_fallback_provider, openai_lane_available
 from app.config.rate_limits import RateLimitPeriod, get_reset_time, get_time_window_key
 from app.config.settings import settings
 from app.constants.cache import COST_BUDGET_NOTIFIED_KEY
 from app.constants.llm import (
+    COMMS_MODEL_NAME,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
@@ -42,6 +45,7 @@ from app.constants.llm import (
 )
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
+from app.models.agent_config import LaneRecord
 from app.models.agent_models import AgentConfigurable
 from app.models.notification.notification_models import (
     NotificationContent,
@@ -54,6 +58,8 @@ from app.services.notification_service import notification_service
 from app.services.payments.payment_service import payment_service
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
+
+_LANE_RECORD: TypeAdapter[LaneRecord] = TypeAdapter(LaneRecord)
 
 #: Every configurable key a lane owns. These must be REPLACED wholesale on a lane
 #: change, never merged into — a leftover key is the previous lane still steering
@@ -94,7 +100,7 @@ class ModelLane:
     provider_pin: dict[str, Any] | None
     max_input_tokens: int
 
-    def to_configurable(self) -> dict[str, Any]:
+    def to_configurable(self) -> LaneRecord:
         """Return the JSON-safe form stored on configurable[LANE_CONFIG_KEY]."""
         return {
             "provider": self.provider,
@@ -123,7 +129,7 @@ class ModelLane:
             keys["model_kwargs"] = self.provider_pin
         return keys
 
-    def rebind(self, configurable: Mapping[str, Any]) -> dict[str, Any]:
+    def rebind(self, configurable: Mapping[str, object]) -> dict[str, object]:
         """Build configurable with THIS lane's binding keys, and the previous lane's cleared.
 
         A plain merge is not enough: LangChain merges a passed config OVER a
@@ -146,12 +152,13 @@ class ModelLane:
         """
         if not isinstance(raw, dict) or "provider" not in raw:
             return None
+        record: LaneRecord = _LANE_RECORD.validate_python(raw)
         return cls(
-            provider=LLMProviderName(raw["provider"]),
-            model=raw.get("model"),
-            reasoning=raw.get("reasoning"),
-            provider_pin=raw.get("provider_pin"),
-            max_input_tokens=int(raw.get("max_input_tokens") or DEFAULT_MAX_TOKENS),
+            provider=LLMProviderName(record["provider"]),
+            model=record.get("model"),
+            reasoning=record.get("reasoning"),
+            provider_pin=record.get("provider_pin"),
+            max_input_tokens=record.get("max_input_tokens") or DEFAULT_MAX_TOKENS,
         )
 
     def fallback(self) -> "ModelLane | None":
@@ -168,7 +175,7 @@ class ModelLane:
         return replace(self, provider=provider, model=model, provider_pin=None, reasoning=None)
 
 
-def _reasoning_for(role: AgentRole) -> dict[str, Any]:
+def _reasoning_for(role: AgentRole) -> dict[str, str]:
     """Return the effort a PAID lane gives each role. The free lane's is fixed in :func:_default_lane.
 
     Comms gets its own knob so it can be raised past the executor's default.
@@ -188,6 +195,25 @@ def _default_lane() -> ModelLane:
         provider_pin=None,
         max_input_tokens=DEFAULT_MAX_TOKENS,
     )
+
+
+def _comms_lane() -> ModelLane | None:
+    """Return comms' own direct-OpenAI lane, or None when OpenAI is not configured."""
+    if not openai_lane_available():
+        return None
+    return ModelLane(
+        provider=LLMProviderName.OPENAI,
+        model=COMMS_MODEL_NAME,
+        # The effort is fixed on the client; a reasoning key would only be ignored.
+        reasoning=None,
+        provider_pin=None,
+        max_input_tokens=DEFAULT_MAX_TOKENS,
+    )
+
+
+def inherits_lane(parent_lane: ModelLane, role: AgentRole) -> bool:
+    """Whether a child run in role takes its parent's lane; comms' OpenAI lane never passes down."""
+    return role is AgentRole.COMMS or parent_lane.provider is not LLMProviderName.OPENAI
 
 
 def _dev_lane(option: DevModelOption, role: AgentRole) -> ModelLane:
@@ -249,22 +275,27 @@ async def resolve_lane(
 ) -> tuple[ModelLane, PlanType | None]:
     """Choose the single model. Returns the lane and the plan tier it was resolved from.
 
-    Free runs the default model; every paid tier gets the paid model. A paid
-    user past the monthly economic guard degrades to the free lane rather than
-    being blocked. dev_option (development only) wins over all of it.
+    Comms runs its own lane on every plan. Otherwise free runs the default model
+    and every paid tier the paid model; a paid user past the monthly economic
+    guard degrades to the free lane rather than being blocked. dev_option
+    (development only) wins over all of it.
     """
     if dev_option is not None:
         return _dev_lane(dev_option, role), None
 
+    comms_lane = _comms_lane() if role is AgentRole.COMMS else None
     if not user_id:
-        return _default_lane(), None
+        return comms_lane or _default_lane(), None
 
     try:
         plan = await payment_service.get_cached_plan_type(user_id)
     except Exception as e:
         # A transient lookup failure must not fail the turn — keep the default.
         log.warning(f"{LogTag.AGENT} plan lookup failed; keeping the default lane", error=str(e))
-        return _default_lane(), None
+        return comms_lane or _default_lane(), None
+
+    if comms_lane is not None:
+        return comms_lane, plan
 
     if plan == PlanType.FREE:
         return _default_lane(), plan

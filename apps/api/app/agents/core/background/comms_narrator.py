@@ -11,11 +11,6 @@ from langchain_core.messages import AIMessage, HumanMessage
 from app.agents.context.slots import BACKGROUND_EXECUTOR_NAME
 from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
 from app.agents.llm.lane import AgentRole
-from app.agents.prompts.comms_prompts import (
-    INTERACTIVE_DELIVERY_NOTE,
-    PLATFORM_DELIVERY_NOTE,
-    SILENCE_NOTE,
-)
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import (
@@ -37,27 +32,17 @@ async def narrate_executor_result(
     msg_type: str,
     conversation_id: str,
     user: AuthenticatedUser,
-    returned_note: str = "",
-    workflow_id: str | None = None,
+    preamble: str,
 ) -> str:
     """Invoke the comms graph silently with the executor result as internal context.
 
     Injected as a HumanMessage framed in a stable tag so comms treats it as
-    ground-truth and re-voices it in its own persona. Returns the
-    comms-generated text, or an empty string on failure.
+    ground-truth and re-voices it in its own persona; preamble is the delivery
+    instructions for where the reply goes. Returns the comms-generated text,
+    or an empty string on failure.
     """
     tag = AgentTag.EXECUTOR_ERROR if msg_type == "error" else AgentTag.EXECUTOR_RESULT
-    result_block = wrap_agent_payload(tag, result_text)
-    if workflow_id:
-        # Text-only platform delivery: tell comms to restate everything. The
-        # card-suppression note (returned_note) is deliberately dropped here —
-        # it would tell comms NOT to list data that has no card to fall back on.
-        content = f"{PLATFORM_DELIVERY_NOTE}{result_block}"
-    else:
-        # Interactive chat: prepend the "already shown as a card" note (if any)
-        # so comms doesn't re-narrate data the frontend rendered natively, plus
-        # the bubble-split instruction at the seam where the reply is written.
-        content = f"{returned_note}{INTERACTIVE_DELIVERY_NOTE}{SILENCE_NOTE}{result_block}"
+    content = f"{preamble}{wrap_agent_payload(tag, result_text)}"
     try:
         comms_graph = await GraphManager.get_graph("comms_agent")
     except GraphUnavailableError as e:

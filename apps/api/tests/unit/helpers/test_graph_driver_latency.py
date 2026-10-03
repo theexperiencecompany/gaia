@@ -10,22 +10,9 @@ from prometheus_client import REGISTRY
 import pytest
 
 from app.helpers.agent_helpers import execute_graph_streaming
+from tests.helpers import ScriptedGraph
 
 HELPERS = "app.helpers.agent_helpers"
-
-
-class _ScriptedGraph:
-    def __init__(self, events: list[tuple[Any, ...]]) -> None:
-        self._events = events
-
-    def astream(self, *_args: Any, **_kwargs: Any) -> AsyncGenerator[tuple[Any, ...], None]:
-        events = self._events
-
-        async def stream() -> AsyncGenerator[tuple[Any, ...], None]:
-            for event in events:
-                yield event
-
-        return stream()
 
 
 def _graph_count(status: str) -> float:
@@ -37,7 +24,7 @@ def _config() -> Any:
 
 
 async def test_streaming_run_observes_graph_span() -> None:
-    graph = _ScriptedGraph(
+    graph = ScriptedGraph(
         [
             ((), "messages", (AIMessageChunk(id="m1", content="hi"), {})),
             ((), "updates", {"agent": {"messages": [AIMessage(id="m1", content="hi")]}}),
@@ -50,7 +37,7 @@ async def test_streaming_run_observes_graph_span() -> None:
 
 
 async def test_first_text_yield_stamps_pipeline_ttft() -> None:
-    graph = _ScriptedGraph(
+    graph = ScriptedGraph(
         [
             ((), "messages", (AIMessageChunk(id="m1", content="hi"), {})),
             ((), "updates", {"agent": {"messages": [AIMessage(id="m1", content="hi")]}}),
@@ -68,7 +55,7 @@ async def test_first_text_yield_stamps_pipeline_ttft() -> None:
 
 
 async def test_run_without_text_stamps_no_pipeline_ttft() -> None:
-    graph = _ScriptedGraph([])
+    graph = ScriptedGraph([])
     with patch(f"{HELPERS}.log") as mock_log:
         frames = [frame async for frame in execute_graph_streaming(graph, {}, _config())]
     assert frames[-2].startswith("nostream: ")
@@ -79,7 +66,7 @@ async def test_run_without_text_stamps_no_pipeline_ttft() -> None:
 
 async def test_first_text_yield_stamps_the_exact_rounded_milliseconds() -> None:
     """The stamp is first text minus run start, in ms to two places, with only agent_helpers' clock frozen."""
-    graph = _ScriptedGraph(
+    graph = ScriptedGraph(
         [
             ((), "messages", (AIMessageChunk(id="m1", content="hi"), {})),
             ((), "updates", {"agent": {"messages": [AIMessage(id="m1", content="hi")]}}),
@@ -105,7 +92,7 @@ async def test_first_text_yield_stamps_the_exact_rounded_milliseconds() -> None:
 
 async def test_the_cancel_check_names_the_runs_own_stream() -> None:
     """The cancel flag is keyed by this run's own stream id, not another or none."""
-    graph = _ScriptedGraph([((), "custom", {"progress": "working"})])
+    graph = ScriptedGraph([((), "custom", {"progress": "working"})])
     config = {"agent_name": "comms_agent", "configurable": {"stream_id": "stream-42"}}
 
     with patch(f"{HELPERS}.stream_manager.is_cancelled", AsyncMock(return_value=False)) as check:
@@ -115,7 +102,7 @@ async def test_the_cancel_check_names_the_runs_own_stream() -> None:
 
 
 async def test_a_cancelled_run_observes_the_cancelled_status() -> None:
-    graph = _ScriptedGraph([((), "custom", {"progress": "working"})])
+    graph = ScriptedGraph([((), "custom", {"progress": "working"})])
     config = {"agent_name": "comms_agent", "configurable": {"stream_id": "stream-1"}}
     before = _graph_count("cancelled")
 
@@ -147,7 +134,7 @@ async def test_a_graph_error_observes_the_error_status_and_reraises() -> None:
 
 async def test_aclose_mid_stream_observes_the_abandoned_status() -> None:
     """A close without cancellation or exception, the shutdown path, is neither success nor cancelled."""
-    graph = _ScriptedGraph(
+    graph = ScriptedGraph(
         [
             ((), "custom", {"progress": "working"}),
             ((), "custom", {"progress": "never reached"}),

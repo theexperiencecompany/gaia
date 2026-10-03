@@ -12,8 +12,7 @@ from arq.connections import ArqRedis
 
 from app.agents.core.agent import AgentRunOptions, call_agent_silent
 from app.agents.prompts.todo_prompts import HEALTH_CHECK_VERDICT_ONLY
-from app.constants.chat import MAX_MESSAGE_LENGTH
-from app.constants.todos import BLOCKING_LABELS
+from app.constants.todos import BLOCKING_LABELS, TodoActivityEvent
 from app.db.repositories.todos import todo_repository
 from app.models.message_models import MessageRequestWithHistory
 from app.models.notification.notification_models import (
@@ -22,9 +21,11 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
 )
-from app.models.todo_models import TodoDocument
+from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.user_models import AuthenticatedUser
+from app.services.canvas_markdown import bounded_canvas
 from app.services.notification_service import notification_service
+from app.services.todo_activity import record_activity
 from app.services.todos.todo_notifications import todo_redirect_action
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
@@ -39,11 +40,6 @@ MAX_HEALTH_CHECKS_PER_USER = 10  # Max agent health-check calls per user per swe
 # Legacy-migration page size: the cursor loop pages to a short page, so the
 # scan is complete no matter how many tracked todos exist.
 _MIGRATION_PAGE_SIZE = 200
-
-# A canvas over MAX_MESSAGE_LENGTH raised ValidationError and aborted the whole
-# cron mid-sweep; this budget derives from that cap (never a literal, to avoid
-# drift) — two fifths leaves 30k chars, far more than the scaffolding needs.
-HEALTH_CHECK_CANVAS_MAX_CHARS = MAX_MESSAGE_LENGTH * 2 // 5
 
 # Escalating backoff between repeat notifications for the same todo: notify, then
 # wait 1 day, then 3, then 7 before each repeat. After the schedule is exhausted
@@ -79,7 +75,7 @@ async def maintenance_sweep_tracked_todos(_ctx: Mapping[str, object]) -> str:
     pool = await RedisPoolManager.get_pool()
 
     todos = await todo_repository.list_active_tracked_all_users(limit=200)
-    migrated = await _migrate_all_legacy_canvases()
+    migrated = await _normalize_all_canvases()
     expired, overdue, dormant = await _classify_tracked_todos(pool, now, todos)
 
     # Track health-check calls per user to cap LLM usage per sweep
@@ -122,11 +118,11 @@ async def maintenance_sweep_tracked_todos(_ctx: Mapping[str, object]) -> str:
     return summary
 
 
-async def _migrate_all_legacy_canvases() -> int:
-    """Cursor every tracked todo, active or completed, through the one-shot canvas-to-activity split.
+async def _normalize_all_canvases() -> int:
+    """Cursor every tracked todo, active or completed, through canvas normalization.
 
     The tier classification scans active todos only, so this loop covers completed
-    ones too; migration is idempotent, so re-scans are safe.
+    ones too; normalization is idempotent, so re-scans are safe.
     """
     migrated = 0
     after_id: str | None = None
@@ -136,23 +132,23 @@ async def _migrate_all_legacy_canvases() -> int:
         )
         if not page:
             break
-        migrated += await _migrate_legacy_canvases(page)
+        migrated += await _normalize_stored_canvases(page)
         if len(page) < _MIGRATION_PAGE_SIZE:
             break
         after_id = page[-1].id
     return migrated
 
 
-async def _migrate_legacy_canvases(todos: list[TodoDocument]) -> int:
-    """Offer every scanned todo to the one-shot canvas → activity split."""
+async def _normalize_stored_canvases(todos: list[TodoDocument]) -> int:
+    """Offer every scanned todo to canvas normalization."""
     migrated = 0
     for todo in todos:
         try:
-            if await tracked_todo_service.migrate_legacy_canvas(todo):
+            if await tracked_todo_service.normalize_stored_canvas(todo):
                 migrated += 1
         except Exception as exc:
             log.warning(
-                "maintenance_sweep.legacy_canvas_migration_failed",
+                "maintenance_sweep.canvas_normalization_failed",
                 todo_id=todo.id,
                 error_type=type(exc).__name__,
                 error=str(exc),
@@ -371,7 +367,7 @@ async def _health_check_expired(todo: TodoDocument, pool: ArqRedis) -> ExpiredOu
     user_id = todo.user_id
     title = todo.title
 
-    canvas = _bounded_canvas(await _read_canvas(todo))
+    canvas = bounded_canvas(await _read_canvas(todo))
 
     prompt = (
         f"A tracked todo has expired.\n"
@@ -407,6 +403,9 @@ async def _health_check_expired(todo: TodoDocument, pool: ArqRedis) -> ExpiredOu
         todo_id=todo_id,
         notification_type=NotificationType.WARNING,
     )
+    await record_activity(
+        todo_id, user_id, TodoActivityEvent.MAINTENANCE, "told the user this todo expired"
+    )
     log.info("maintenance_sweep.expired_notified", todo_id=todo_id)
     return "notified"
 
@@ -426,7 +425,7 @@ async def _health_check_dormant(todo: TodoDocument, pool: ArqRedis) -> DormantOu
 
     idle_days = (now - updated_at).days if updated_at else DORMANT_DAYS
 
-    canvas = _bounded_canvas(await _read_canvas(todo))
+    canvas = bounded_canvas(await _read_canvas(todo))
 
     prompt = (
         f"A tracked todo has been dormant for {idle_days} days.\n"
@@ -443,13 +442,18 @@ async def _health_check_dormant(todo: TodoDocument, pool: ArqRedis) -> DormantOu
     if response.startswith("EXECUTE:"):
         jitter_seconds = random.randint(10, 120)  # nosec B311  # NOSONAR python:S2245: non-crypto scheduling jitter
         scheduled_at = now + timedelta(seconds=jitter_seconds)
+        # Stored first: the run drops a fire its todo's scheduled_at doesn't name,
+        # and the safety net can only recover a job whose time is on the todo.
+        await todo_repository.update(
+            todo_id, user_id=user_id, update=TodoUpdate(scheduled_at=scheduled_at)
+        )
         await tracked_todo_service.schedule_execution(todo_id, scheduled_at)
         action = response[len("EXECUTE:") :].strip()
-        await tracked_todo_service.system_log(
+        await record_activity(
             todo_id,
             user_id,
-            "maintenance_requeued",
-            f"Dormant todo re-queued by maintenance sweep (idle {idle_days}d). Action: {action}",
+            TodoActivityEvent.MAINTENANCE,
+            f"re-queued after {idle_days} idle days to: {action}",
         )
         # Re-queued for execution, not notified: a short cooldown avoids
         # re-processing before the scheduled run; no escalation strike consumed.
@@ -495,6 +499,12 @@ async def _notify_overdue(todo: TodoDocument, pool: ArqRedis) -> bool:
 
     # Add needs-follow-up label
     await todo_repository.add_labels(todo_id, user_id=user_id, labels=["needs-follow-up"])
+    await record_activity(
+        todo_id,
+        user_id,
+        TodoActivityEvent.MAINTENANCE,
+        f"told the user it is {days_overdue} day(s) overdue with nothing scheduled",
+    )
 
     log.info(
         "maintenance_sweep.overdue_notified",
@@ -589,21 +599,6 @@ async def _read_canvas(todo: TodoDocument) -> str:
             error=str(exc),
         )
         return ""
-
-
-def _bounded_canvas(canvas: str) -> str:
-    """Trim an oversized canvas to its head and tail, within HEALTH_CHECK_CANVAS_MAX_CHARS.
-
-    Key Details/Current State sit near the top; activity-log/timeline entries
-    append at the bottom — both ends carry what a health check needs, so the
-    middle is dropped behind a marker so the agent doesn't read it as a gap.
-    """
-    if len(canvas) <= HEALTH_CHECK_CANVAS_MAX_CHARS:
-        return canvas
-
-    half = HEALTH_CHECK_CANVAS_MAX_CHARS // 2
-    trimmed = len(canvas) - 2 * half
-    return f"{canvas[:half]}\n[middle of canvas trimmed: {trimmed} characters]\n{canvas[-half:]}"
 
 
 async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> str:

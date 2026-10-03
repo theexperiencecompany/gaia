@@ -40,12 +40,12 @@ class TestNoUserId:
     async def test_no_user_returns_default_without_io(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
-        assert await is_enabled(FeatureFlag.COMMS_OPENUI, None) is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, None) is True
         mock_client.get_feature_flag.assert_not_called()
         evaluated.assert_not_called()
 
     async def test_explicit_default_wins_without_user(self) -> None:
-        assert await is_enabled(FeatureFlag.COMMS_OPENUI, None, default=False) is False
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, None, default=False) is False
 
 
 class TestLiveEvaluation:
@@ -54,28 +54,28 @@ class TestLiveEvaluation:
     ) -> None:
         """No cache: consecutive evaluations each hit PostHog so a dashboard flip applies on the very next turn."""
         mock_client.get_feature_flag.return_value = True
-        assert await is_enabled(FeatureFlag.COMMS_OPENUI, "u1") is True
-        assert await is_enabled(FeatureFlag.COMMS_OPENUI, "u1") is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
         assert mock_client.get_feature_flag.call_count == 2
-        mock_client.get_feature_flag.assert_called_with("COMMS_OPENUI", "u1")
+        mock_client.get_feature_flag.assert_called_with("HIL_LEDGER", "u1")
 
     async def test_false_disables(self, mock_client: MagicMock, evaluated: MagicMock) -> None:
         mock_client.get_feature_flag.return_value = False
-        assert await is_enabled(FeatureFlag.COMMS_OPENUI, "u1") is False
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is False
 
     async def test_none_falls_back_to_default(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.return_value = None
-        assert await is_enabled(FeatureFlag.COMMS_OPENUI, "u1") is True
-        assert await is_enabled(FeatureFlag.COMMS_OPENUI, "u1", default=False) is False
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1", default=False) is False
 
     async def test_exception_fails_open(self, mock_client: MagicMock, evaluated: MagicMock) -> None:
         mock_client.get_feature_flag.side_effect = TimeoutError("posthog down")
-        assert await is_enabled(FeatureFlag.COMMS_OPENUI, "u1") is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
 
     async def test_no_client_falls_back(self, no_client: None) -> None:
-        assert await is_enabled(FeatureFlag.COMMS_OPENUI, "u1") is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
 
 
 class TestEvaluationEvent:
@@ -84,40 +84,40 @@ class TestEvaluationEvent:
     ) -> None:
         """The SDK auto-emits $feature_flag_called on success; our event covers only the paths it cannot see, so this must stay silent."""
         mock_client.get_feature_flag.return_value = True
-        assert await is_enabled(FeatureFlag.COMMS_OPENUI, "u1") is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
         evaluated.assert_not_called()
 
     async def test_disabled_value_emits_nothing(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.return_value = False
-        assert await is_enabled(FeatureFlag.COMMS_OPENUI, "u1") is False
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is False
         evaluated.assert_not_called()
 
     async def test_unevaluated_flag_names_the_reason(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.return_value = None
-        assert await is_enabled(FeatureFlag.COMMS_OPENUI, "u1") is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
         call = evaluated.call_args
         assert call.args[0] == "u1"
         assert call.args[1] == AnalyticsEvents.FEATURE_FLAG_EVALUATED
-        assert call.args[2]["flag"] == "COMMS_OPENUI"
+        assert call.args[2]["flag"] == "HIL_LEDGER"
         assert call.args[2]["enabled"] is True
         assert call.args[2]["fallback_reason"] == "flag_unevaluated"
-        assert call.kwargs["dedupe_key"].startswith("feature-flag-evaluated:COMMS_OPENUI:u1:")
+        assert call.kwargs["dedupe_key"].startswith("feature-flag-evaluated:HIL_LEDGER:u1:")
 
     async def test_fail_open_names_the_reason(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.side_effect = TimeoutError("posthog down")
-        assert await is_enabled(FeatureFlag.COMMS_OPENUI, "u1") is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
         assert evaluated.call_args.args[2]["fallback_reason"] == "evaluation_error"
 
     async def test_unconfigured_posthog_still_counts_fallback(
         self, no_client: None, evaluated: MagicMock
     ) -> None:
-        assert await is_enabled(FeatureFlag.COMMS_OPENUI, "u1") is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
         assert evaluated.call_args.args[2]["fallback_reason"] == "posthog_unconfigured"
 
 
@@ -165,7 +165,7 @@ class TestFlags:
         assert AnalyticsEvents.FEATURE_FLAG_EVALUATED == "feature_flag:evaluated"
 
     def test_flag_keys_match_dashboard(self) -> None:
-        assert FeatureFlag.COMMS_OPENUI == "COMMS_OPENUI"
+        assert FeatureFlag.HIL_LEDGER == "HIL_LEDGER"
         assert FeatureFlag.CODE_MODE == "CODE_MODE"
 
 
@@ -176,19 +176,19 @@ class TestExplicitDefaultIsFallbackOnly:
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.return_value = True
-        assert await is_enabled(FeatureFlag.COMMS_OPENUI, "u1", default=False) is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1", default=False) is True
 
     async def test_live_false_beats_explicit_true(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.return_value = False
-        assert await is_enabled(FeatureFlag.COMMS_OPENUI, "u1", default=True) is False
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1", default=True) is False
 
     async def test_exception_uses_explicit_default(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.side_effect = TimeoutError("posthog down")
-        assert await is_enabled(FeatureFlag.COMMS_OPENUI, "u1", default=False) is False
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1", default=False) is False
         assert evaluated.call_args.args[2]["enabled"] is False
         assert evaluated.call_args.args[2]["fallback_reason"] == "evaluation_error"
 
@@ -197,7 +197,7 @@ class TestFalsyUserId:
     async def test_empty_user_id_means_no_evaluation(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
-        assert await is_enabled(FeatureFlag.COMMS_OPENUI, "") is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, "") is True
         mock_client.get_feature_flag.assert_not_called()
         evaluated.assert_not_called()
 
@@ -227,14 +227,14 @@ class TestTrackingNeverBreaksEvaluation:
     ) -> None:
         mock_client.get_feature_flag.return_value = True
         evaluated.side_effect = RuntimeError("telemetry down")
-        assert await is_enabled(FeatureFlag.COMMS_OPENUI, "u1") is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
 
     async def test_capture_failure_still_returns_fallback(
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.side_effect = TimeoutError("posthog down")
         evaluated.side_effect = RuntimeError("telemetry down")
-        assert await is_enabled(FeatureFlag.COMMS_OPENUI, "u1") is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
 
 
 class TestCoerceExtended:
@@ -267,7 +267,7 @@ class TestRegistry:
         from datetime import UTC, datetime
 
         mock_client.get_feature_flag.return_value = None
-        await is_enabled(FeatureFlag.COMMS_OPENUI, "u9")
+        await is_enabled(FeatureFlag.HIL_LEDGER, "u9")
         key = evaluated.call_args.kwargs["dedupe_key"]
         assert key.endswith(datetime.now(UTC).date().isoformat())
 
@@ -304,7 +304,6 @@ class TestCodeModeDefaultFollowsSettings:
 
 
 FLAG_KILL_SWITCHES = {
-    FeatureFlag.COMMS_OPENUI: "ENABLE_COMMS_OPENUI",
     FeatureFlag.CODE_MODE: "ENABLE_CODE_MODE",
     FeatureFlag.HIL_LEDGER: "ENABLE_HIL_LEDGER",
     FeatureFlag.HIL_JEV_JUDGE: "ENABLE_HIL_JEV_JUDGE",
@@ -349,7 +348,7 @@ class TestTrackingIdentity:
     async def test_unconfigured_tracks_user_and_enabled(
         self, no_client: None, evaluated: MagicMock
     ) -> None:
-        assert await is_enabled(FeatureFlag.COMMS_OPENUI, "u1") is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
         call = evaluated.call_args
         assert call.args[0] == "u1"
         assert call.args[2]["enabled"] is True
@@ -358,7 +357,7 @@ class TestTrackingIdentity:
         self, mock_client: MagicMock, evaluated: MagicMock
     ) -> None:
         mock_client.get_feature_flag.side_effect = TimeoutError("posthog down")
-        assert await is_enabled(FeatureFlag.COMMS_OPENUI, "u1") is True
+        assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
         assert evaluated.call_args.args[0] == "u1"
 
 
@@ -396,10 +395,10 @@ class TestLogContract:
     ) -> None:
         mock_client.get_feature_flag.side_effect = TimeoutError("posthog down")
         with patch("app.services.feature_flags.log") as mock_log:
-            assert await is_enabled(FeatureFlag.COMMS_OPENUI, "u1") is True
+            assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
             mock_log.warning.assert_called_once_with(
                 "Feature flag evaluation failed, falling back to default",
-                flag="COMMS_OPENUI",
+                flag="HIL_LEDGER",
                 error="posthog down",
                 error_type="TimeoutError",
             )
@@ -409,8 +408,8 @@ class TestLogContract:
     ) -> None:
         mock_client.get_feature_flag.return_value = True
         with patch("app.services.feature_flags.log") as mock_log:
-            assert await is_enabled(FeatureFlag.COMMS_OPENUI, "u1") is True
-            mock_log.set.assert_called_once_with(flags={"COMMS_OPENUI": True})
+            assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
+            mock_log.set.assert_called_once_with(flags={"HIL_LEDGER": True})
 
     async def test_tracking_failure_logs_debug_with_cause(
         self, mock_client: MagicMock, evaluated: MagicMock
@@ -418,10 +417,10 @@ class TestLogContract:
         mock_client.get_feature_flag.return_value = None
         evaluated.side_effect = RuntimeError("telemetry down")
         with patch("app.services.feature_flags.log") as mock_log:
-            assert await is_enabled(FeatureFlag.COMMS_OPENUI, "u1") is True
+            assert await is_enabled(FeatureFlag.HIL_LEDGER, "u1") is True
             mock_log.debug.assert_called_once_with(
                 "Feature flag evaluation event skipped",
-                flag="COMMS_OPENUI",
+                flag="HIL_LEDGER",
                 error="telemetry down",
                 error_type="RuntimeError",
             )
@@ -432,5 +431,5 @@ class TestLogContract:
         mock_client.get_feature_flag.return_value = None
         with patch("app.services.feature_flags.datetime") as mock_dt:
             mock_dt.now.return_value = real_datetime.now(UTC)
-            await is_enabled(FeatureFlag.COMMS_OPENUI, "u1")
+            await is_enabled(FeatureFlag.HIL_LEDGER, "u1")
             mock_dt.now.assert_called_once_with(UTC)

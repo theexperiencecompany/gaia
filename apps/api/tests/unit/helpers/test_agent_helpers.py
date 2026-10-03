@@ -381,6 +381,64 @@ class TestBuildAgentConfig:
         assert configurable["selected_tool"] == "web_search"
         assert configurable["vfs_session_id"] == "vfs-sess-1"
 
+    @patch("app.helpers.agent_helpers.resolve_lane")
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_a_comms_run_keeps_the_comms_lane_it_inherits(self, mock_providers, mock_resolve):
+        mock_providers.get.return_value = None
+        comms_lane = ModelLane(
+            provider=LLMProviderName.OPENAI,
+            model="comms-model",
+            reasoning=None,
+            provider_pin=None,
+            max_input_tokens=128_000,
+        )
+
+        config = await build_agent_config(
+            identity=AgentIdentity(
+                conversation_id=CONV_ID, user=FAKE_USER, agent_name="comms_agent"
+            ),
+            thread=AgentThread(base_configurable={"lane": comms_lane.to_configurable()}),
+            lane=AgentLane(role=AgentRole.COMMS),
+        )
+
+        assert ModelLane.from_configurable(config["configurable"]["lane"]) == comms_lane
+        mock_resolve.assert_not_awaited()
+
+    @patch("app.helpers.agent_helpers.resolve_lane")
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_an_executor_dispatched_by_comms_resolves_its_own_lane(
+        self, mock_providers, mock_resolve
+    ):
+        """Comms' OpenAI lane is comms-only: inherited whole, the executor would run on the comms model."""
+        mock_providers.get.return_value = None
+        executor_lane = ModelLane(
+            provider=LLMProviderName.OPENROUTER,
+            model="work-model",
+            reasoning={"effort": "medium"},
+            provider_pin=None,
+            max_input_tokens=128_000,
+        )
+        mock_resolve.return_value = (executor_lane, PlanType.PRO)
+        comms_lane = ModelLane(
+            provider=LLMProviderName.OPENAI,
+            model="comms-model",
+            reasoning=None,
+            provider_pin=None,
+            max_input_tokens=128_000,
+        )
+
+        config = await build_agent_config(
+            identity=AgentIdentity(conversation_id=CONV_ID, user=FAKE_USER, agent_name="executor"),
+            thread=AgentThread(base_configurable={"lane": comms_lane.to_configurable()}),
+            lane=AgentLane(role=AgentRole.EXECUTOR),
+        )
+
+        configurable = config["configurable"]
+        assert ModelLane.from_configurable(configurable["lane"]) == executor_lane
+        assert configurable["provider"] == LLMProviderName.OPENROUTER
+        assert configurable["model"] == "work-model"
+        assert mock_resolve.await_args.args[1] is AgentRole.EXECUTOR
+
     @patch("app.helpers.agent_helpers.providers")
     async def test_every_parent_fallback_key_fills_only_its_own_blank(self, mock_providers):
         """Each fallback key inherits from the same key on the parent, and no other — a crossed key would type-check fine since both are str | None."""

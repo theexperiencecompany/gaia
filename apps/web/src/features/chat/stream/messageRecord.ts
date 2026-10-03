@@ -19,7 +19,7 @@ export interface TurnMessageMeta {
 }
 
 /**
- * The turn's reply resolved to a comms `REACT: <emoji>` ack (server frame
+ * The turn's reply resolved to a comms `<EMOJI>…</EMOJI>` ack (server frame
  * `emoji_ack`). The record becomes the bare emoji stamped `emoji_ack` +
  * `reacts_to_message_id`, which `foldReactionAcks` turns into a reaction badge
  * on the user's message instead of a bubble.

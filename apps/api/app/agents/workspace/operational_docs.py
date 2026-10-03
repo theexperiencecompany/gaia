@@ -164,14 +164,18 @@ Overusing tracked todos degrades search quality and clutters GAIA's memory.
 addresses, URLs needed to act), `Current State` (true right now; rewrite it
 after every action), `Context` (decisions, open questions, signals), `Learnings`
 (written ONLY at completion: what worked, timing insights, reusable patterns).
-Keep it short and current: `edit` the section that changed, never append to the
-end of the file.
+One section each, plus any of your own. Keep it short and current: `edit` the
+section that changed, never append to the end of the file. A write that
+repeats a section or carries a log or dated entries is refused.
 
 `activity.md` is the chronological record: one dated entry per thing that
 happened (`- 2026-09-02T10:15:00+00:00 Gmail agent: sent ... thread 18f3a2b`),
-oldest first, newest at the end. Scheduled runs stamp their own start/finish
-markers here. After delegation, add what each agent did (tools used, ids,
-outcome). Never write learnings here, and never write activity into canvas.md.
+oldest first, newest at the end. It is append-only: add entries at the end, and
+a write that changes or drops an earlier one is refused. GAIA records its own
+lifecycle entries here as `- <time> [event] detail` (runs and their outcome,
+schedule and delivery changes, watches, trigger fires, failures, completion).
+After delegation, add what each agent did (tools used, ids, outcome). Never
+write learnings here, and never write activity into canvas.md.
 
 ## Scheduling & recurrence
 
@@ -190,17 +194,17 @@ outcome). Never write learnings here, and never write activity into canvas.md.
 
 ## Results & notifications
 
-When a scheduled or triggered run finishes, its final message is delivered
-automatically to the user's chat app (WhatsApp/Telegram/Discord/Slack), as a
-normal GAIA message. So the run's answer IS the user-facing message: write it
-for them, and do NOT also call `send_notification` to announce it, which sends
-it twice. A run with nothing worth saying should end with an empty message, and
-nothing is sent.
+When a scheduled or triggered run finishes, GAIA reads its final report and
+messages the user's chat app (WhatsApp/Telegram/Discord/Slack) only if the run
+found something they need to know or decide; a routine or no-op run sends
+nothing. So end with a factual report of what you did and what changed, and do
+NOT call `send_notification` to announce it, which sends it twice. Every run's
+outcome, sent or not, is recorded in activity.md.
 
 `notify_on_run` (on `create_tracked_todo` / `update_tracked_todo`, default on)
-turns that delivery off for a todo whose runs the user should not hear about,
-typically a frequent poll that usually finds nothing. A silent todo reaches the
-user only if the run deliberately calls `send_notification`.
+turns that delivery off entirely. It is the user's setting: change it only when
+they ask. A silent todo reaches the user only if the run deliberately calls
+`send_notification`.
 
 Unrelated to the todo being marked completed, and separate from the failure
 notification above, which always fires.
@@ -366,12 +370,12 @@ to announce one of them sends it to the user twice:
 
 - A finished **workflow** run delivers its result to the user's linked platforms
   plus in-app, unless the workflow is silent. See the `workflows` doc.
-- A finished **tracked todo** run delivers its final message to the user's chat
-  app, unless that todo has `notify_on_run` off. See the `tracked-todos` doc.
+- A finished **tracked todo** run is reported to the user's chat app when it
+  found something that matters, unless that todo has `notify_on_run` off. See
+  the `tracked-todos` doc.
 
-In both cases the run's own final message is what the user reads, so write it
-for them and let it be delivered. Notify only for something genuinely separate
-and urgent.
+In both cases the run's result is delivered for you. Notify only for something
+genuinely separate and urgent.
 """
 
 

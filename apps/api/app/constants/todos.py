@@ -4,7 +4,11 @@ Todo Constants.
 Constants for todo service operations.
 """
 
+from datetime import timedelta
+from enum import StrEnum
 from typing import Final
+
+from app.constants.chat import MAX_MESSAGE_LENGTH
 
 ONBOARDING_TODO_LIMIT = 3
 
@@ -39,3 +43,62 @@ BLOCKING_LABELS: Final[frozenset[str]] = frozenset(
 # enough for the recent trail, bounded so a long-lived recurring todo does not
 # grow the prompt without limit. Older entries stay readable via the file.
 ACTIVITY_PROMPT_TAIL_CHARS: Final[int] = 4_000
+
+# How much of canvas.md a prompt carries, head and tail kept, middle trimmed. An
+# uncapped canvas pushed a tracked todo's run past MAX_MESSAGE_LENGTH and failed
+# it on every retry; two fifths of that cap leaves room for the rest of the prompt.
+CANVAS_PROMPT_MAX_CHARS: Final[int] = MAX_MESSAGE_LENGTH * 2 // 5
+
+# How far past its stored scheduled_at a scheduled fire may land and still run.
+# ARQ fires a deferred job at its defer time; a fire outside this window is a
+# job left behind by a reschedule (ARQ cannot cancel it) and is dropped.
+TODO_SCHEDULE_FIRE_GRACE: Final[timedelta] = timedelta(minutes=2)
+
+# How much of a run's final report is kept in its activity.md entry.
+RUN_SUMMARY_ACTIVITY_CHARS: Final[int] = 200
+# Bounds the Key Details a run's delivery decision reads next to the report.
+DELIVERY_KEY_DETAILS_MAX_CHARS: Final[int] = 1500
+
+
+class TodoRunDeliveryOutcome(StrEnum):
+    """What happened to a tracked todo run's result, for activity.md and analytics."""
+
+    DELIVERED = "delivered"
+    UNDELIVERED = "undelivered"
+    SILENCED = "silenced"
+    NOTIFY_OFF = "notify_off"
+    NARRATION_FAILED = "narration_failed"
+    INVALID_DIRECTIVE = "invalid_directive"
+
+
+class TodoActivityEvent(StrEnum):
+    """A lifecycle event code records in a tracked todo's activity.md, as "[event] detail"."""
+
+    CREATED = "created"
+    SCHEDULED = "scheduled"
+    SCHEDULE_CLEARED = "schedule_cleared"
+    RECURRENCE_CHANGED = "recurrence_changed"
+    DELIVERY_CHANGED = "delivery_changed"
+    EXPIRY_CHANGED = "expiry_changed"
+    DUE_DATE_CHANGED = "due_date_changed"
+    WATCH_ADDED = "watch_added"
+    WATCH_REMOVED = "watch_removed"
+    WATCH_PAUSED = "watch_paused"
+    WATCH_RESUMED = "watch_resumed"
+    TRIGGER_FIRED = "trigger_fired"
+    TRIGGER_ACTION_FAILED = "trigger_action_failed"
+    RUN_STARTED = "run_started"
+    RUN_FINISHED = "run_finished"
+    RUN_FAILED = "run_failed"
+    RUN_SKIPPED = "run_skipped"
+    RETRY_SCHEDULED = "retry_scheduled"
+    MARKED_FAILED = "marked_failed"
+    APPROVAL_GRANTED = "approval_granted"
+    APPROVAL_DENIED = "approval_denied"
+    MAINTENANCE = "maintenance"
+    COMPLETED = "completed"
+
+
+# The sections every canvas.md carries exactly once, in this order. Activity
+# (anything dated, any run log) belongs in activity.md, never here.
+CANVAS_SECTIONS: Final[tuple[str, ...]] = ("Key Details", "Current State", "Context", "Learnings")

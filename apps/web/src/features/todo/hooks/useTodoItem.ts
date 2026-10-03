@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo } from "react";
-import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { getBrowserTimezone } from "@/lib/timezone";
 import {
   Priority,
@@ -60,9 +59,17 @@ interface UseTodoItemParams {
   todo: Todo;
   projects: Project[];
   onUpdate: (todoId: string, updates: TodoUpdate) => void;
+  /** User's preferred timezone; falls back to the browser timezone. Passed
+   *  down from the list so every row doesn't subscribe to the user query. */
+  timezone?: string;
 }
 
-export function useTodoItem({ todo, projects, onUpdate }: UseTodoItemParams) {
+export function useTodoItem({
+  todo,
+  projects,
+  onUpdate,
+  timezone,
+}: UseTodoItemParams) {
   const handleToggleComplete = (e: React.ChangeEvent<HTMLInputElement>) => {
     e.stopPropagation();
     const newCompletedState = !todo.completed;
@@ -70,12 +77,11 @@ export function useTodoItem({ todo, projects, onUpdate }: UseTodoItemParams) {
     onUpdate(todo.id, { completed: newCompletedState });
   };
 
-  const user = useCurrentUser();
   // Format scheduled time in the user's preferred timezone so it matches the
   // task-edit modal / ScheduledFieldChip instead of the browser's local timezone.
   const scheduledLabel = useMemo(
-    () => formatScheduledLabel(todo.scheduled_at, user?.timezone),
-    [todo.scheduled_at, user?.timezone],
+    () => formatScheduledLabel(todo.scheduled_at, timezone),
+    [todo.scheduled_at, timezone],
   );
 
   const todoProject = projects?.find((p) => p.id === todo.project_id);

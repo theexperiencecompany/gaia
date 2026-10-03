@@ -32,7 +32,7 @@ from scripts.evals.core.prompt_contracts import (
     resolve,
 )
 
-EMOJI_RULE = "- Emojis EXTREMELY RARE,"
+EMOJI_RULE = "- No emojis in your text unless the user has used one"
 TONE_REF = "comms.tone_mirroring"
 EMOJI_REF = "comms.emoji_discipline"
 
@@ -100,7 +100,7 @@ def test_a_deleted_rule_does_not_fall_back_to_a_cached_copy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Resolving the clause once (warming any cache) and then deleting the rule must still raise."""
-    assert "Emojis EXTREMELY RARE" in resolve(EMOJI_REF)
+    assert "No emojis in your text" in resolve(EMOJI_REF)
 
     _edit(monkeypatch, lambda text: text.replace(EMOJI_RULE, "- Emojis are fine whenever,"))
 
@@ -122,9 +122,9 @@ def test_a_reordered_prompt_is_caught(monkeypatch: pytest.MonkeyPatch) -> None:
     """End anchor before start anchor means the section moved — not a valid span."""
 
     def swap(text: str) -> str:
-        return text.replace("Mechanics:", "TONE MIRRORING (PRIMARY DIRECTIVE):", 1).replace(
-            "TONE MIRRORING (PRIMARY DIRECTIVE): match the user exactly",
-            "Mechanics: match the user exactly",
+        return text.replace("JUST CHATTING?", "MATCH THEM.", 1).replace(
+            "MATCH THEM. Mirror the user's",
+            "JUST CHATTING? Mirror the user's",
             1,
         )
 
@@ -138,10 +138,10 @@ def test_a_renamed_section_header_breaks_the_clause(monkeypatch: pytest.MonkeyPa
     """Renaming a section is the realistic prompt edit, and it must not pass."""
     _edit(
         monkeypatch,
-        lambda text: text.replace("TONE MIRRORING (PRIMARY DIRECTIVE):", "MATCHING THE USER:"),
+        lambda text: text.replace("MATCH THEM.", "MATCHING THE USER:"),
     )
 
-    with pytest.raises(ClauseResolutionError, match="TONE MIRRORING"):
+    with pytest.raises(ClauseResolutionError, match="MATCH THEM"):
         resolve(TONE_REF)
 
 
@@ -166,11 +166,11 @@ def test_resolve_returns_the_shipped_text_not_a_paraphrase() -> None:
     """Sanity: the clause is the prompt's own words, header included."""
     text = resolve(TONE_REF)
 
-    assert text.startswith("TONE MIRRORING (PRIMARY DIRECTIVE)")
-    assert "match the user exactly" in text
-    assert "Never default to one fixed style" in text
+    assert text.startswith("MATCH THEM.")
+    assert "Mirror the user's length, casing, punctuation and energy" in text
+    assert "Mirror the user only, never your own earlier messages" in text
     # The extent stops where the next section starts.
-    assert "Mechanics:" not in text
+    assert "JUST CHATTING?" not in text
 
 
 def test_an_edited_rule_flows_through_without_touching_any_eval(
@@ -178,17 +178,17 @@ def test_an_edited_rule_flows_through_without_touching_any_eval(
 ) -> None:
     """Change the prompt, the rubric changes; a hand-written YAML criterion would still say the old thing here."""
     before = resolve(TONE_REF)
-    assert "mirror their punctuation" not in before
+    assert "mirror their sign-offs" not in before
 
     _edit(
         monkeypatch,
         lambda text: text.replace(
-            "Never default to one fixed style.",
-            "Never default to one fixed style. Also mirror their punctuation.",
+            "- Mirror the user only, never your own earlier messages.",
+            "- Mirror the user only, never your own earlier messages. Also mirror their sign-offs.",
         ),
     )
 
-    assert "Also mirror their punctuation." in resolve(TONE_REF)
+    assert "Also mirror their sign-offs." in resolve(TONE_REF)
 
 
 def test_a_line_clause_is_exactly_one_line() -> None:
@@ -196,19 +196,19 @@ def test_a_line_clause_is_exactly_one_line() -> None:
     text = resolve(EMOJI_REF)
 
     assert text.count("\n") == 0
-    assert text.startswith("- Emojis EXTREMELY RARE")
-    assert "never before the user has used one first" in text
+    assert text.startswith("- No emojis in your text unless the user has used one")
+    assert "Reactions are the exception" in text
 
 
 def test_the_bubble_clause_stops_at_the_end_of_the_bubble_section() -> None:
     """Bubble evals are judged against this span, so the next sections' doctrine must stay out."""
     text = resolve("comms.bubble_splitting")
 
-    assert text.startswith("## Chat Bubbles")
-    assert "ONE RULE: conversational beats become separate bubbles" in text
-    assert "## Rich UI Components" not in text
+    assert text.startswith("## Bubbles")
+    assert "Never split structured content" in text
+    assert "## What you do yourself" not in text
     assert ":::openui" not in text
-    assert "## Actions (call_executor)" not in text
+    assert "## Actions: three moments" not in text
 
 
 def test_clause_helper_matches_resolve() -> None:
@@ -238,15 +238,15 @@ def test_contract_criteria_change_when_the_prompt_changes(
     _edit(
         monkeypatch,
         lambda text: text.replace(
-            "and never before the user has used one first",
-            "and NEVER use one under any circumstance",
+            "even then only common ones, rarely.",
+            "and NEVER use one under any circumstance.",
         ),
     )
 
     (criterion,) = contract_criteria([EMOJI_REF])
 
     assert "NEVER use one under any circumstance" in criterion
-    assert "before the user has used one first" not in criterion
+    assert "even then only common ones, rarely" not in criterion
 
 
 def test_contract_criteria_is_empty_for_no_refs() -> None:

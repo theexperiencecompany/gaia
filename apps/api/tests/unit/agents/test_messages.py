@@ -724,7 +724,7 @@ class TestOpenuiVariantReachesTheModel:
                 scope=MessageScope(user_id="uid-1", source="web"),
             )
 
-        assert "---OpenUI Lang (Rich UI Components)---" in result[0].content
+        assert "## Output Format (this app renders rich components)" in result[0].content
 
     @pytest.mark.asyncio
     async def test_text_channel_serves_the_platform_variant(self) -> None:
@@ -736,4 +736,4 @@ class TestOpenuiVariantReachesTheModel:
             )
 
         assert "Platform Context" in result[0].content
-        assert "---OpenUI Lang (Rich UI Components)---" not in result[0].content
+        assert "## Output Format (this app renders rich components)" not in result[0].content
