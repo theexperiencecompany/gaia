@@ -33,10 +33,12 @@ from app.agents.core.nodes.pre_model_hooks import (
 )
 from app.agents.core.subagents.subagent_helpers import create_subagent_system_message
 from app.agents.core.subagents.subagent_runner import ThreadSeed, build_initial_messages
+from app.agents.llm.lane import ModelLane
 from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
 from app.agents.templates.agent_template import EXECUTOR_PROMPT_TEMPLATE
 from app.agents.tools.todo_tools import create_todo_pre_model_hook
 from app.config.settings import settings
+from app.constants.llm import DEFAULT_MAX_TOKENS, LLMProviderName
 from app.helpers.agent_helpers import (
     AgentIdentity,
     AgentThread,
@@ -153,6 +155,18 @@ def hooks_for(tier: AgentTier) -> list[HookType]:
         return worker_pre_model_hooks()
     source = "executor" if tier is AgentTier.EXECUTOR else PROVIDER_INTEGRATION_ID
     return worker_pre_model_hooks(cast(HookType, create_todo_pre_model_hook(source=source)))
+
+
+def bound_for(provider: LLMProviderName) -> AgentConfigurable:
+    """Return the keys a run bound for provider carries: its lane, and LangChain's binding copy."""
+    lane = ModelLane(
+        provider=provider,
+        model=None,
+        reasoning=None,
+        provider_pin=None,
+        max_input_tokens=DEFAULT_MAX_TOKENS,
+    )
+    return {"lane": lane.to_configurable(), **lane.binding_keys()}
 
 
 async def build_configurable(

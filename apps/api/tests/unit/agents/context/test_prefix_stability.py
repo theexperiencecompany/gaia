@@ -18,6 +18,7 @@ from tests._harness.context_chain import (
     FIXED_NOW,
     ContextSeed,
     HarnessUser,
+    bound_for,
     common_prefix_len,
     effective_context,
     request_bytes,
@@ -194,7 +195,7 @@ class TestAModelCallExtendsThePreviousOneOnOpenAI:
     async def test_the_next_call_begins_with_the_whole_previous_request(
         self, tier: AgentTier
     ) -> None:
-        on_openai = {"provider": LLMProviderName.OPENAI}
+        on_openai = bound_for(LLMProviderName.OPENAI)
         first = await effective_context(
             tier, ContextSeed(sources=SOURCES, configurable_overrides=on_openai)
         )

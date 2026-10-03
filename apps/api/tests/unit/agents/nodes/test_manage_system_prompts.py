@@ -26,7 +26,9 @@ from app.agents.core.nodes.manage_system_prompts import (
     _KeptPrompts,
     manage_system_prompts_node,
 )
+from app.constants.llm import LLMProviderName
 from app.override.langgraph_bigtool.utils import State
+from tests._harness.context_chain import bound_for
 
 
 def _static(content: str) -> SystemMessage:
@@ -40,7 +42,7 @@ def _dynamic(content: str, marker: str = "dynamic_context") -> SystemMessage:
 def _config(provider: str | None = None) -> RunnableConfig:
     cfg: dict[str, Any] = {"user_id": "u1", "thread_id": "t1"}
     if provider is not None:
-        cfg["provider"] = provider
+        cfg.update(bound_for(LLMProviderName(provider)))
     return cast(RunnableConfig, {"configurable": cfg})
 
 
@@ -175,6 +177,19 @@ class TestManageSystemPrompts:
             ("human", "hello"),
             ("ai", "reply"),
         ]
+
+    def test_the_order_follows_the_lane_not_langchains_binding_key(self) -> None:
+        """The lane is the one model key GAIA reads; provider is LangChain's binding copy."""
+        msgs = [_static("prompt"), HumanMessage(content="hello"), AIMessage(content="reply")]
+        msgs.append(HumanMessage(content="time", additional_kwargs={"time_context": True}))
+        lane_only = cast(
+            RunnableConfig,
+            {"configurable": {"user_id": "u1", "lane": bound_for(LLMProviderName.OPENAI)["lane"]}},
+        )
+
+        result = manage_system_prompts_node(cast(State, {"messages": msgs}), lane_only, _store())
+
+        assert [m.content for m in result["messages"]] == ["prompt", "time", "hello", "reply"]
 
     def test_leading_layout_preserved_for_gemini(self) -> None:
         """Gemini only promotes a leading contiguous run of SystemMessages, so volatile slots must stay in that leading block."""

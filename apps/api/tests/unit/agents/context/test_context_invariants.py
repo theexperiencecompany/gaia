@@ -16,6 +16,7 @@ from tests._harness.context_chain import (
     AgentTier,
     ContextSeed,
     HarnessUser,
+    bound_for,
     effective_context,
     message_in_slot,
     slots_of,
@@ -93,7 +94,7 @@ class TestSystemBlockIsLeadingAndContiguous:
             ContextSeed(
                 sources=RICH_SOURCES,
                 prior_messages=list(STALE_THREAD) if multi_turn else None,
-                configurable_overrides={"provider": LLMProviderName.GEMINI},
+                configurable_overrides=bound_for(LLMProviderName.GEMINI),
             ),
         )
 
@@ -260,7 +261,7 @@ class TestOneMessagePerSlot:
             ContextSeed(
                 sources=RICH_SOURCES,
                 prior_messages=list(STALE_THREAD),
-                configurable_overrides={"provider": provider},
+                configurable_overrides=bound_for(provider),
             ),
         )
 
