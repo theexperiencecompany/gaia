@@ -35,7 +35,8 @@ class TestGetIntegrationByToolSlug:
     def test_a_slug_without_a_toolkit_prefix_resolves_to_nothing(self, slug: str) -> None:
         assert get_integration_by_tool_slug(slug) is None
 
-    @pytest.mark.parametrize("order", [("google", "google_maps"), ("google_maps", "google")])
+    # Case differs so the longest toolkit is not also the greatest string.
+    @pytest.mark.parametrize("order", [("google", "GOOGLE_MAPS"), ("GOOGLE_MAPS", "google")])
     def test_the_longest_toolkit_claims_a_slug_both_prefix(self, order: tuple[str, str]) -> None:
         integrations = [_integration("no_composio", None)] + [
             _integration(toolkit, toolkit) for toolkit in order
@@ -45,6 +46,6 @@ class TestGetIntegrationByToolSlug:
             search = get_integration_by_tool_slug("GOOGLE_SEARCH")
 
         assert maps is not None
-        assert maps.id == "google_maps"
+        assert maps.id == "GOOGLE_MAPS"
         assert search is not None
         assert search.id == "google"

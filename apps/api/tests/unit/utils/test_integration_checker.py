@@ -195,14 +195,15 @@ class TestBackgroundRunPrompt:
         assert "carry on with the rest of the task" in msg
 
     async def test_background_copy_names_the_gap_and_where_to_connect(self) -> None:
-        with _graph_run("bg", execution_mode="background", frontend=f"{_FAKE_FRONTEND}/"):
+        # A host ending in X shows only the trailing slash is stripped.
+        with _graph_run("bg", execution_mode="background", frontend="https://GAIA.BOX/"):
             msg = await request_integration_connection("gmail", "Gmail", "user1")
 
         assert msg == (
             "Gmail needs to be connected. This is a background run and no user is present to "
             "connect it, so retrying Gmail this run cannot succeed. Record in your result that "
             "Gmail is not connected (the user can connect it at "
-            "https://app.example.com/integrations), then carry on with the rest of the task."
+            "https://GAIA.BOX/integrations), then carry on with the rest of the task."
         )
 
     async def test_background_copy_for_an_expired_grant_names_the_expired_connection(

@@ -2100,6 +2100,21 @@ class TestSelectToolsTwinWiring:
             {"query": "calendar", "store": store}, config=config
         )
 
+    async def test_async_twin_builds_each_guard_request_from_the_graph_store(self) -> None:
+        retrieve_tools = MagicMock(name="retrieve_tools")
+        retrieve_tools.ainvoke = AsyncMock(return_value=["dummy_tool_a"])
+        node = _select_tools_node(_make_branch_deps(retrieve_tools=retrieve_tools))
+        tool_call = {"id": "c1", "args": {"query": "calendar"}}
+        config = _make_config()
+        store = MagicMock()
+
+        with patch(
+            f"{_CREATE_AGENT_MODULE}._retrieval_request", wraps=_retrieval_request
+        ) as build_request:
+            await node.afunc([tool_call], config, store=store)
+
+        build_request.assert_called_once_with(tool_call, retrieve_tools, config, store)
+
     @patch(f"{_CREATE_AGENT_MODULE}._retrieval_call_kwargs")
     async def test_async_twin_passes_call_store_arg_store_and_config(
         self, mock_call_kwargs: MagicMock
