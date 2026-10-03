@@ -290,6 +290,50 @@ def test_a_sample_sums_the_whole_tree_and_skips_a_child_that_exits_mid_walk(
     assert _sampler_over(root, monkeypatch).sample() == (175.0, 17.5)
 
 
+class _PsProcess:
+    """A psutil.Process as psutil has one: equal by process, and CPU% measured per object since its last call."""
+
+    def __init__(self, pid: int, cpu: float, tree: dict[int, float] | None = None) -> None:
+        self.pid = pid
+        self._cpu = cpu
+        self._tree = tree or {}
+        self._primed = False
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, _PsProcess) and other.pid == self.pid
+
+    def __hash__(self) -> int:
+        return hash(self.pid)
+
+    def cpu_percent(self) -> float:
+        first, self._primed = not self._primed, True
+        return 0.0 if first else self._cpu
+
+    def memory_info(self) -> MagicMock:
+        return MagicMock(rss=_MB)
+
+    def children(self, recursive: bool) -> list[_PsProcess]:
+        # A new object per call for every child, exactly as psutil builds them.
+        return [_PsProcess(pid, cpu) for pid, cpu in self._tree.items()]
+
+
+def test_a_busy_child_reads_busy_from_its_second_sample_and_an_exited_one_drops_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _PsProcess(1, 10.0, tree={2: 50.0, 3: 30.0})
+    monkeypatch.setattr(process.psutil, "Process", MagicMock(return_value=root))
+    sampler = ProcessSampler(1)
+
+    # The first sample primes each child, as psutil's first call on a process does.
+    assert sampler.sample() == (3.0, 10.0)
+    assert sampler.sample() == (3.0, 90.0)
+    del root._tree[3]
+    root._tree[4] = 70.0
+    # A child that exited no longer counts; a new one is primed before it does.
+    assert sampler.sample() == (3.0, 60.0)
+    assert sampler.sample() == (3.0, 130.0)
+
+
 async def test_a_tree_that_cannot_be_read_has_no_sample_and_says_whose(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
