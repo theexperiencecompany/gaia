@@ -315,9 +315,11 @@ class _Browser:
         return asyncio.sleep(0)
 
 
-def _page(tab: _Tab, **browser: Any) -> tuple[JevPage, _Browser]:
+def _page(
+    tab: _Tab, engine: BrowserEngine = BrowserEngine.CHROMIUM, **browser: Any
+) -> tuple[JevPage, _Browser]:
     session = _Browser(tab, **browser)
-    return JevPage(cast("BrowserSession", session), BrowserEngine.CHROMIUM), session
+    return JevPage(cast("BrowserSession", session), engine), session
 
 
 # --- reading the page --------------------------------------------------------------------
@@ -462,6 +464,18 @@ async def test_the_read_after_an_input_waits_for_its_requests_and_a_quiet_dom_af
 
     # Quiet, then the request finished, then quiet again on what it rendered.
     assert tab.scripts.count("settle") == 2
+
+
+async def test_on_obscura_the_read_after_an_input_waits_on_the_dom_alone() -> None:
+    """Obscura reports a page's requests only once its navigation is done, never as they finish."""
+    tab = _Tab(act={8: {"x": 10, "y": 20}}, settle=[True])
+    page, _ = _page(tab, BrowserEngine.OBSCURA)
+
+    await page.act(LINK, _state())
+    await asyncio.wait_for(page.observe(), timeout=1)
+
+    assert not any(method.startswith("Network.") for method in tab.handlers)
+    assert tab.scripts.count("settle") == 1
 
 
 async def test_a_new_top_document_ends_the_wait_on_loads_of_the_one_before_and_is_settled_in_turn() -> (
