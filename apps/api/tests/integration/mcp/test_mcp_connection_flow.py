@@ -116,6 +116,7 @@ def _build_client_with_no_auth(user_id: str = "test-user") -> MCPClient:
     client.token_store.get_bearer_token = AsyncMock(return_value=None)
     client.token_store.get_oauth_token = AsyncMock(return_value=None)
     client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
+    client.token_store.get_refresh_token = AsyncMock(return_value=None)
     client.token_store.store_unauthenticated = AsyncMock()
     client.token_store.get_oauth_discovery = AsyncMock(return_value=None)
     client.token_store.delete_credentials = AsyncMock()

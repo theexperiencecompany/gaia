@@ -210,7 +210,7 @@ export default function IntegrationConnectionPrompt({
         />
       ) : (
         // Catalog still loading: header from the streamed name + spinner, rather
-        // than flashing empty until /integrations/me resolves.
+        // than flashing empty until the integrations snapshot resolves.
         <div className="flex w-fit items-center gap-3 rounded-3xl bg-zinc-800/50 p-4 text-white">
           <Spinner size="sm" />
           <span className="text-sm font-medium">

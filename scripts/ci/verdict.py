@@ -85,6 +85,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from typing import Any, NamedTuple, NotRequired, TypedDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -678,10 +679,23 @@ def cmd_consolidate(args: list[str]) -> int:
             "point: an undeclared lane that reports nothing still fails the gate."
         ),
     )
+    parser.add_argument(
+        "--reused",
+        default="{}",
+        help="JSON {job: note} from `reuse-plan`: a skipped lane listed here is labelled reused",
+    )
     opts = parser.parse_args(args)
 
     found = _load_verdicts(opts.directory) if opts.directory.is_dir() else {}
-    rows = consolidated_rows(opts.expect, found)
+    reused: dict[str, str] = json.loads(opts.reused or "{}")
+    rows = [
+        (
+            lane,
+            status,
+            f"reused — {reused[lane]}" if status is Status.SKIP and lane in reused else summary,
+        )
+        for lane, status, summary in consolidated_rows(opts.expect, found)
+    ]
 
     print("::group::Per-lane verdicts")
     for lane, status, summary in rows:
@@ -1271,6 +1285,63 @@ def _gate_conclusion(jobs: list[dict[str, Any]], gate_job: str) -> str | None:
     return None
 
 
+# How often a waiting mirror re-reads the runs: one listing plus one jobs call
+# per run, so the API budget stays far inside the token's hourly limit.
+MIRROR_POLL_SECONDS = 30
+
+
+class _MirrorDecision(NamedTuple):
+    """One pass over this head SHA's runs: an exit code, or None while the deciding run is still going."""
+
+    code: int | None
+    message: str
+
+
+def _mirror_once(repo: str, sha: str, workflow: str, gate_job: str, run_id: int) -> _MirrorDecision:
+    listing = _gh_json(f"repos/{repo}/actions/workflows/{workflow}/runs?head_sha={sha}&per_page=50")
+    if listing is None:
+        return _MirrorDecision(
+            1, f"::error::quality-gate: could not read the runs for {sha} — nothing to mirror"
+        )
+
+    # Newest first, as the API returns them. Only the NEWEST substantive run
+    # decides: falling back past one that is still running or was cancelled
+    # would republish a success the latest validation has not confirmed.
+    for run in listing.get("workflow_runs", []):
+        candidate = int(run["id"])
+        if candidate == run_id:
+            continue
+        jobs = _run_jobs(repo, candidate)
+        if _is_plain_edit_run(jobs, gate_job):
+            continue
+        conclusion = _gate_conclusion(jobs, gate_job)
+        if conclusion is None:
+            # Still running is worth waiting for; a finished run whose gate never
+            # concluded (cancelled) will not change, so it fails now.
+            code = None if run.get("status") != "completed" else 1
+            return _MirrorDecision(
+                code,
+                f"::error::quality-gate: the latest validation has not concluded — run {candidate} "
+                f"is the newest run deciding {sha} and its gate reached no verdict. "
+                "Re-run this gate once that run finishes.",
+            )
+        if conclusion == "success":
+            return _MirrorDecision(
+                0, f"quality-gate: PASSED — mirroring run {candidate}, which concluded success"
+            )
+        return _MirrorDecision(
+            1,
+            f"::error::quality-gate: run {candidate} concluded {conclusion} for this commit, and "
+            "this edit changed no code. Fix the failures and push, or re-run that run.",
+        )
+
+    return _MirrorDecision(
+        1,
+        f"::error::quality-gate: no run of {workflow} has validated {sha} yet, so there "
+        "is no verdict to mirror. Re-run this gate once the lanes finish.",
+    )
+
+
 def cmd_mirror_previous_gate(args: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="verdict.py mirror-previous-gate")
     parser.add_argument("--repo", required=True, help="owner/name")
@@ -1285,47 +1356,255 @@ def cmd_mirror_previous_gate(args: list[str]) -> int:
     parser.add_argument("--workflow", required=True, help="this workflow's file name")
     parser.add_argument("--job", required=True, help="the gate job's `name:`")
     parser.add_argument("--run-id", required=True, type=int, help="this run, excluded")
+    parser.add_argument(
+        "--wait-seconds",
+        type=int,
+        default=0,
+        help=(
+            "keep polling while the deciding run is still in progress, up to this long — "
+            "an edit no longer cancels that run, so its verdict is worth waiting for"
+        ),
+    )
     opts = parser.parse_args(args)
 
+    deadline = time.monotonic() + opts.wait_seconds
+    while True:
+        decision = _mirror_once(opts.repo, opts.sha, opts.workflow, opts.job, opts.run_id)
+        if decision.code is not None or time.monotonic() >= deadline:
+            print(decision.message)
+            return 1 if decision.code is None else decision.code
+        print(
+            f"quality-gate: waiting for the deciding run to conclude (next look in {MIRROR_POLL_SECONDS}s)"
+        )
+        time.sleep(MIRROR_POLL_SECONDS)
+
+
+# ---------------------------------------------------------------------------
+# reuse-plan
+#
+# A push used to re-run every lane its PR touched against the base, even when
+# the push changed nothing a lane reads: the last commit on #1307 touched four
+# Python files and still rebuilt the web app, re-ran knip, jscpd and the TS
+# lanes. A lane's last PASS on this PR still holds when nothing in its scope
+# (the lane table's `scope` regexes, unioned per `ci_job`) and nothing in CI or
+# tooling changed between that pass's head commit and this one. `changes`
+# computes the plan, each reusable job skips on it, and the gate reads a skip
+# as a pass exactly as it does for an untouched language. Anything unreadable
+# means no reuse: the only safe direction here is running more.
+# ---------------------------------------------------------------------------
+
+LANES_FILE = REPO_ROOT / "scripts" / "dev" / "verify-lanes.json"
+
+# A change here can alter any lane's verdict without touching its scope: the
+# workflows and composites, the CI and lint tooling, and every config manifest.
+GLOBAL_INVALIDATORS = re.compile(
+    r"^(\.github/|\.dagger/|\.config/|\.mise/|scripts/|tools/|config/|patches/)"
+    r"|^[^/]+$"
+    r"|(^|/)(pyproject\.toml|package\.json|project\.json|tsconfig[^/]*\.json|biome\.jsonc?|uv\.lock|pnpm-lock\.yaml)$"
+)
+REUSE_LOOKBACK_RUNS = 30
+# The annotation each run's plan leaves on its `changes` job naming the base tip
+# it validated, so a later run can diff base movement too: a pull_request run
+# checks the MERGE of head and base, and the base moves between pushes.
+VALIDATED_BASE_TITLE = "reuse-plan base"
+CHANGES_JOB = "changes"
+
+
+def _job_display_names(workflow: Path) -> dict[str, str]:
+    """Map each job id to its `name:` (the job API reports display names only)."""
+    names: dict[str, str] = {}
+    job: str | None = None
+    for line in workflow.read_text().splitlines():
+        header = re.fullmatch(r"  ([A-Za-z0-9_-]+):", line)
+        if header:
+            job = header.group(1)
+            names.setdefault(job, job)
+            continue
+        named = re.fullmatch(r"    name: (.+)", line)
+        if job and named:
+            names[job] = named.group(1).strip().strip("\"'")
+    return names
+
+
+def _job_scopes(lanes_file: Path) -> dict[str, list[re.Pattern[str]]]:
+    scopes: dict[str, list[re.Pattern[str]]] = defaultdict(list)
+    for lane in json.loads(lanes_file.read_text())["lanes"]:
+        if lane.get("ci_job"):
+            scopes[lane["ci_job"]].append(re.compile(lane["scope"]))
+    return dict(scopes)
+
+
+def _changed_between(anchor: str, head: str) -> list[str] | None:
+    """Paths changed from anchor to head, or None when either commit is not in the checkout."""
+    proc = subprocess.run(
+        ["git", "diff", "--name-only", f"{anchor}..{head}"],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=REPO_ROOT,
+    )
+    if proc.returncode != 0:
+        print(f"  git diff {anchor[:12]}..{head[:12]} failed: {proc.stderr.strip()}")
+        return None
+    return [line for line in proc.stdout.splitlines() if line]
+
+
+def _validated_base(head_sha: str) -> str | None:
+    """Return the base tip this pull_request checkout merged the head into, or None when HEAD is not that merge."""
+    proc = subprocess.run(
+        ["git", "rev-list", "--parents", "-n", "1", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=REPO_ROOT,
+    )
+    commits = proc.stdout.split()
+    if proc.returncode != 0 or len(commits) != 3 or head_sha not in commits[1:]:
+        return None
+    return next(parent for parent in commits[1:] if parent != head_sha)
+
+
+def _recorded_base(job: dict[str, Any]) -> str | None:
+    """Return the base tip an earlier run's plan annotated on its changes job, if it left one."""
+    url = str(job.get("check_run_url") or "")
+    if "api.github.com/" not in url:
+        return None
+    annotations = _gh_json(f"{url.split('api.github.com/', 1)[1]}/annotations")
+    for note in annotations if isinstance(annotations, list) else []:
+        if note.get("title") == VALIDATED_BASE_TITLE:
+            return str(note.get("message", "")).strip() or None
+    return None
+
+
+class _Anchor(NamedTuple):
+    run_id: int
+    head_sha: str
+    base_sha: str
+
+
+class _PrRuns(NamedTuple):
+    """Which runs to read: this PR's earlier runs of one workflow, against one base branch."""
+
+    repo: str
+    workflow: str
+    branch: str
+    base: str
+    run_id: int
+
+
+def _reuse_anchors(pr: _PrRuns, names: dict[str, str], changes_name: str) -> dict[str, _Anchor]:
+    """Each job's newest earlier PASS on this PR (same base branch, recorded base tip), keyed by job id."""
     listing = _gh_json(
-        f"repos/{opts.repo}/actions/workflows/{opts.workflow}/runs?head_sha={opts.sha}&per_page=50"
+        f"repos/{pr.repo}/actions/workflows/{pr.workflow}/runs"
+        f"?branch={pr.branch}&event=pull_request&per_page={REUSE_LOOKBACK_RUNS}"
     )
     if listing is None:
-        print(f"::error::quality-gate: could not read the runs for {opts.sha} — nothing to mirror")
-        return 1
-
-    # Newest first, as the API returns them. Only the NEWEST substantive run
-    # decides: falling back past one that is still running or was cancelled
-    # would republish a success the latest validation has not confirmed.
+        return {}
+    wanted = {name: job for job, name in names.items()}
+    anchors: dict[str, _Anchor] = {}
     for run in listing.get("workflow_runs", []):
-        run_id = int(run["id"])
-        if run_id == opts.run_id:
+        if int(run["id"]) == pr.run_id or run.get("status") != "completed":
             continue
-        jobs = _run_jobs(opts.repo, run_id)
-        if _is_plain_edit_run(jobs, opts.job):
+        bases = {entry.get("base", {}).get("ref") for entry in run.get("pull_requests") or []}
+        if pr.base not in bases:
             continue
-        conclusion = _gate_conclusion(jobs, opts.job)
-        if conclusion is None:
-            print(
-                f"::error::quality-gate: the latest validation has not concluded — run {run_id} "
-                f"is the newest run deciding {opts.sha} and its gate reached no verdict. "
-                "Re-run this gate once that run finishes."
-            )
-            return 1
-        if conclusion == "success":
-            print(f"quality-gate: PASSED — mirroring run {run_id}, which concluded success")
-            return 0
-        print(
-            f"::error::quality-gate: run {run_id} concluded {conclusion} for this commit, and "
-            "this edit changed no code. Fix the failures and push, or re-run that run."
-        )
-        return 1
+        jobs = _run_jobs(pr.repo, int(run["id"]))
+        passed = [
+            wanted[str(job.get("name"))]
+            for job in jobs
+            if str(job.get("name")) in wanted
+            and wanted[str(job.get("name"))] not in anchors
+            and job.get("conclusion") == "success"
+        ]
+        changes = next((job for job in jobs if job.get("name") == changes_name), None)
+        recorded = _recorded_base(changes) if passed and changes else None
+        if recorded:
+            for key in passed:
+                anchors[key] = _Anchor(int(run["id"]), str(run["head_sha"]), recorded)
+        if len(anchors) == len(wanted):
+            break
+    return anchors
 
-    print(
-        f"::error::quality-gate: no run of {opts.workflow} has validated {opts.sha} yet, so there "
-        "is no verdict to mirror. Re-run this gate once the lanes finish."
+
+def cmd_reuse_plan(args: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="verdict.py reuse-plan")
+    parser.add_argument("--repo", required=True)
+    parser.add_argument(
+        "--workflow", required=True, help="the workflow file name, e.g. code-quality.yml"
     )
-    return 1
+    parser.add_argument("--branch", required=True, help="the PR head branch")
+    parser.add_argument(
+        "--base", required=True, help="the PR base branch this run validates against"
+    )
+    parser.add_argument(
+        "--head-sha", required=True, help="the PR HEAD sha (github.sha is the merge commit)"
+    )
+    parser.add_argument("--run-id", required=True, type=int)
+    parser.add_argument("--run-attempt", type=int, default=1, help="a manual re-run reuses nothing")
+    parser.add_argument("--event", required=True)
+    parser.add_argument("--lanes", type=Path, default=LANES_FILE)
+    opts = parser.parse_args(args)
+
+    reused: dict[str, str] = {}
+    current_base = _validated_base(opts.head_sha) if opts.event == "pull_request" else None
+    if current_base:
+        print(f"::notice title={VALIDATED_BASE_TITLE}::{current_base}")
+    if current_base is None or opts.run_attempt > 1:
+        print(
+            f"reuse-plan: {opts.event} attempt {opts.run_attempt}, validated base "
+            f"{current_base or 'unknown'} — every lane runs"
+        )
+    else:
+        scopes = _job_scopes(opts.lanes)
+        all_names = _job_display_names(REPO_ROOT / ".github" / "workflows" / opts.workflow)
+        names = {job: name for job, name in all_names.items() if job in scopes}
+        anchors = _reuse_anchors(
+            _PrRuns(opts.repo, opts.workflow, opts.branch, opts.base, opts.run_id),
+            names,
+            all_names.get(CHANGES_JOB, CHANGES_JOB),
+        )
+        for job in sorted(names):
+            anchor = anchors.get(job)
+            if anchor is None:
+                print(f"  {job + ':':<28} runs — no earlier pass on this PR")
+                continue
+            head_changes = _changed_between(anchor.head_sha, opts.head_sha)
+            base_changes = _changed_between(anchor.base_sha, current_base)
+            if head_changes is None or base_changes is None:
+                print(
+                    f"  {job + ':':<28} runs — run {anchor.run_id}'s commits are not in the checkout"
+                )
+                continue
+            changed = head_changes + base_changes
+            hit = next(
+                (
+                    path
+                    for path in changed
+                    if GLOBAL_INVALIDATORS.search(path)
+                    or any(rx.search(path) for rx in scopes[job])
+                ),
+                None,
+            )
+            if hit:
+                print(f"  {job + ':':<28} runs — {hit} changed since run {anchor.run_id}")
+                continue
+            reused[job] = (
+                f"passed at {anchor.head_sha[:12]} in run {anchor.run_id}; nothing it reads changed since"
+            )
+            print(f"  {job + ':':<28} REUSED — {reused[job]}")
+
+    outputs = os.environ.get("GITHUB_OUTPUT")
+    if outputs:
+        with Path(outputs).open("a") as handle:
+            handle.write(f"reused_jobs={json.dumps(sorted(reused))}\n")
+            handle.write(f"reused={json.dumps(reused)}\n")
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary and reused:
+        rows = "\n".join(f"| `{job}` | {note} |" for job, note in sorted(reused.items()))
+        with Path(summary).open("a") as handle:
+            handle.write(f"### Reused lanes\n\n| lane | why |\n| --- | --- |\n{rows}\n")
+    print(f"reuse-plan: {len(reused)} lane(s) reused")
+    return 0
 
 
 SUBCOMMANDS = {
@@ -1339,6 +1618,7 @@ SUBCOMMANDS = {
     "collect": cmd_collect,
     "step-outcomes": cmd_step_outcomes,
     "mirror-previous-gate": cmd_mirror_previous_gate,
+    "reuse-plan": cmd_reuse_plan,
 }
 
 

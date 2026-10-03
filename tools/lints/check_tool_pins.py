@@ -41,6 +41,7 @@ ROOT_PRE_COMMIT = REPO_ROOT / ".pre-commit-config.yaml"
 CODE_QUALITY = REPO_ROOT / ".github/workflows/code-quality.yml"
 VERIFY_LANES = REPO_ROOT / "scripts/dev/verify-lanes.json"
 ROOT_PACKAGE_JSON = REPO_ROOT / "package.json"
+ROOT_MISE = REPO_ROOT / "mise.toml"
 API_MISE = REPO_ROOT / "apps/api/mise.toml"
 API_PYPROJECT = REPO_ROOT / "apps/api/pyproject.toml"
 PNPM_LOCK = REPO_ROOT / "pnpm-lock.yaml"
@@ -70,7 +71,17 @@ EXPECTED = {
 SURFACES = {
     # `uv run ruff` surfaces (nx targets, the Claude hook, package.json) are
     # pinned by uv.lock; the uvx ones name the version themselves.
-    "ruff": ("PRE_COMMIT", "ROOT_PRE_COMMIT", "CODE_QUALITY", "IGNORE_STALENESS", "UV_LOCK"),
+    # ROOT_MISE holds the whole-repo `lint:py` tasks, which run the python-ruff
+    # lane's command verbatim. Without it here the guard would pass while those
+    # tasks had silently drifted to a different ruff than the lane they mirror.
+    "ruff": (
+        "PRE_COMMIT",
+        "ROOT_PRE_COMMIT",
+        "CODE_QUALITY",
+        "IGNORE_STALENESS",
+        "UV_LOCK",
+        "ROOT_MISE",
+    ),
     # The api mypy hook runs `uv run mypy`, so the lockfile IS the pin.
     "mypy": ("UV_LOCK",),
     "bandit": ("PRE_COMMIT", "CODE_QUALITY", "VERIFY_LANES", "API_MISE", "API_PYPROJECT"),

@@ -34,8 +34,6 @@ apps/api/app/agents/middleware/accounting.py	TB001
 apps/api/app/agents/middleware/accounting.py	TB002
 apps/api/app/agents/middleware/completion.py	TB002
 apps/api/app/agents/middleware/hil_approval.py	TB001
-apps/api/app/agents/middleware/loop_guard.py	TB001
-apps/api/app/agents/middleware/loop_guard.py	TB002
 apps/api/app/agents/middleware/media.py	TB001
 apps/api/app/agents/middleware/runtime_adapter.py	TB001
 apps/api/app/agents/middleware/runtime_adapter.py	TB002
@@ -133,7 +131,6 @@ apps/api/app/models/workflow_models.py	TB002
 apps/api/app/schemas/desktop_schemas.py	TB001
 apps/api/app/schemas/errors.py	TB001
 apps/api/app/schemas/errors.py	TB002
-apps/api/app/schemas/integrations/responses.py	TB002
 apps/api/app/scripts/backfill_public_workflow_descriptions.py	TB001
 apps/api/app/scripts/backfill_public_workflow_descriptions.py	TB002
 apps/api/app/scripts/delete_user_account.py	TB001
@@ -151,8 +148,6 @@ apps/api/app/services/chat/artifacts_registry.py	TB001
 apps/api/app/services/chat/artifacts_registry.py	TB002
 apps/api/app/services/chat/state.py	TB001
 apps/api/app/services/chat/state.py	TB002
-apps/api/app/services/composio/composio_service.py	TB001
-apps/api/app/services/composio/composio_service.py	TB002
 apps/api/app/services/composio/custom_tools/gmail_tools.py	TB001
 apps/api/app/services/composio/custom_tools/gmail_tools.py	TB002
 apps/api/app/services/composio/proxy_client.py	TB001
@@ -175,13 +170,8 @@ apps/api/app/services/gaia_knowledge_service.py	TB002	deferred-until=2026-10-15;
 apps/api/app/services/hil/classification.py	TB002
 apps/api/app/services/hil/notify.py	TB001
 apps/api/app/services/hil/notify.py	TB002
-apps/api/app/services/integrations/integration_connection_service.py	TB002
-apps/api/app/services/integrations/integration_status.py	TB002
 apps/api/app/services/integrations/marketplace.py	TB001
 apps/api/app/services/integrations/marketplace.py	TB002
-apps/api/app/services/integrations/my_integrations.py	TB002
-apps/api/app/services/integrations/user_integrations.py	TB001
-apps/api/app/services/integrations/user_integrations.py	TB002
 apps/api/app/services/llm_metering.py	TB001
 apps/api/app/services/llm_metering.py	TB002
 apps/api/app/services/mail/email_importance_service.py	TB001
@@ -192,7 +182,6 @@ apps/api/app/services/mcp/mcp_tools_service.py	TB002
 apps/api/app/services/mcp/oauth_discovery.py	TB002
 apps/api/app/services/mcp/resilient_adapter.py	TB001
 apps/api/app/services/mcp/resilient_adapter.py	TB002
-apps/api/app/services/mcp/token_management.py	TB002
 apps/api/app/services/nurture/predicates.py	TB002
 apps/api/app/services/nurture/service.py	TB001
 apps/api/app/services/nurture/service.py	TB002

@@ -37,7 +37,7 @@
       criteria:
         - "The reply is in the same language as the user's message — plain English, with no Hindi/Hinglish words such as 'kar raha hoon', 'ho gaya', 'bhi', 'batata hoon'."
         - "The reply does not claim the todo is saved and confirmed before it can see that result."
-        - "The reply is one short line."
+        - "The acknowledgment is a reaction, or one short line."
     score: {gates: [emoji_discipline, tool_call_correctness, tool_card]}
 
 - id: quality-voice-emoji-user-opens
@@ -92,7 +92,7 @@
       criteria:
         - "The reply is entirely in English. It contains no Hindi or Hinglish words (for example 'kar raha hoon', 'ho gaya', 'abhi', 'thoda', 'daal raha hoon', 'batata hoon')."
         - "The reply does not claim the reminder is confirmed before it can see that."
-        - "The reply is one short line and does not restate the request back as a receipt."
+        - "The acknowledgment is a reaction, or one short line that does not restate the request back as a receipt."
     score: {gates: [emoji_discipline, tool_call_correctness, tool_card]}
 
 - id: quality-voice-no-em-dash

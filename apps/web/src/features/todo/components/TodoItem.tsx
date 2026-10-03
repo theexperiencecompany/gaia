@@ -2,7 +2,7 @@
 
 import { Checkbox } from "@heroui/checkbox";
 import { isTrackedTodo } from "@shared/todos";
-import { memo } from "react";
+import { memo, useEffect, useRef } from "react";
 import { ChevronRight } from "@/components/shared/icons";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useTodoItem } from "@/features/todo/hooks/useTodoItem";
@@ -20,6 +20,7 @@ interface TodoItemProps {
   // onEdit?: (todo: Todo) => void;
   onClick?: (todo: Todo) => void;
   onPrefetchWorkflow?: (todoId: string) => void;
+  timezone?: string;
   className?: string;
 }
 
@@ -68,6 +69,7 @@ export default memo(function TodoItem({
   // onEdit,
   onClick,
   onPrefetchWorkflow,
+  timezone,
   className,
 }: TodoItemProps) {
   const {
@@ -79,8 +81,29 @@ export default memo(function TodoItem({
     checkboxColor,
     checkboxWrapperClassName,
     titleClassName,
-  } = useTodoItem({ todo, projects, onUpdate });
+  } = useTodoItem({ todo, projects, onUpdate, timezone });
   const tracked = isTrackedTodo(todo);
+
+  // Hover intent: a fast mouse pass over the list used to fire one
+  // workflow-status request per row. Wait for a deliberate hover instead.
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    },
+    [],
+  );
+  const handleMouseEnter = () => {
+    if (tracked || !onPrefetchWorkflow) return;
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    hoverTimer.current = setTimeout(() => onPrefetchWorkflow(todo.id), 150);
+  };
+  const handleMouseLeave = () => {
+    if (hoverTimer.current) {
+      clearTimeout(hoverTimer.current);
+      hoverTimer.current = null;
+    }
+  };
 
   return (
     <div
@@ -90,8 +113,8 @@ export default memo(function TodoItem({
         todo.completed && "opacity-30",
         className,
       )}
-      style={{ contentVisibility: "auto", containIntrinsicSize: "0 80px" }}
-      onMouseEnter={tracked ? undefined : () => onPrefetchWorkflow?.(todo.id)}
+      onMouseEnter={tracked ? undefined : handleMouseEnter}
+      onMouseLeave={tracked ? undefined : handleMouseLeave}
     >
       <button
         type="button"
