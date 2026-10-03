@@ -51,9 +51,20 @@ SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN = 300
 SANDBOX_EXECUTE_MAX_CALLS_PER_MINUTE = 60
 # Lab lifecycle pushes (POST /api/v1/lab/events) ride the same HMAC token
 # scheme, minted per lab session with an empty tool scope so the token is
-# useless on /sandbox/execute. TTL covers one E2B max lifetime; a session that
-# outlives its token re-seeds on its next start (no refresh loop in MVP).
-SANDBOX_LAB_EVENTS_TOKEN_TTL_SECONDS = 86400
+# useless on /sandbox/execute. 6h covers a long agent session without forcing
+# a re-seed; a run that outlives its token re-seeds on its next start
+# (no refresh loop in MVP).
+SANDBOX_LAB_EVENTS_TOKEN_TTL_SECONDS = 21600
+# Lab budget counters must outlive the 6h lab token, so a counter can never
+# expire (and reset) while its token is still valid.
+SANDBOX_LAB_EVENTS_BUDGET_WINDOW_SECONDS = 25200
+# Raw hook payloads are stored verbatim on the todo, so the receiver refuses
+# anything bigger than this before it touches the budget or the database.
+LAB_EVENT_MAX_RAW_BYTES = 64 * 1024
+# Only the tail of a raw payload is kept on the todo's log: the marked lab
+# section is overwritten per event, so a chatty run cannot grow log.md
+# without bound.
+LAB_LOG_TAIL_MAX_CHARS = 4000
 # Budget counters must outlive any legal token; bash caps command timeouts well
 # under this, so a counter can never expire while its token is still valid.
 SANDBOX_EXECUTE_BUDGET_WINDOW_SECONDS = 3600

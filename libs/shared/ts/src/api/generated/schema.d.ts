@@ -8919,20 +8919,6 @@ export interface components {
             text_color?: string | null;
         };
         /**
-         * LabEventRequest
-         * @description One lifecycle push; kind is free-form, raw is the untouched agent payload.
-         */
-        LabEventRequest: {
-            /** Kind */
-            kind: string;
-            /** Raw */
-            raw?: {
-                [key: string]: unknown;
-            };
-            /** Session Id */
-            session_id: string;
-        };
-        /**
          * LabEventResponse
          * @description Accepted for storage; the payload itself is never echoed back.
          */
@@ -14990,7 +14976,6 @@ export type IntegrationSuccessResponse = components['schemas']['IntegrationSucce
 export type IntegrationTool = components['schemas']['IntegrationTool'];
 export type IntegrationToolsResponse = components['schemas']['IntegrationToolsResponse'];
 export type LabelRequest = components['schemas']['LabelRequest'];
-export type LabEventRequest = components['schemas']['LabEventRequest'];
 export type LabEventResponse = components['schemas']['LabEventResponse'];
 export type LinearCommentAddedConfig = components['schemas']['LinearCommentAddedConfig'];
 export type LinearIssueCreatedConfig = components['schemas']['LinearIssueCreatedConfig'];
@@ -21070,11 +21055,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LabEventRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Client Error */
             "4XX": {

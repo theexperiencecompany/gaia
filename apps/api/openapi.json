@@ -7475,32 +7475,6 @@
         "title": "IntegrationsConfigResponse",
         "type": "object"
       },
-      "LabEventRequest": {
-        "description": "One lifecycle push; kind is free-form, raw is the untouched agent payload.",
-        "properties": {
-          "kind": {
-            "minLength": 1,
-            "title": "Kind",
-            "type": "string"
-          },
-          "raw": {
-            "additionalProperties": true,
-            "title": "Raw",
-            "type": "object"
-          },
-          "session_id": {
-            "minLength": 1,
-            "title": "Session Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "session_id",
-          "kind"
-        ],
-        "title": "LabEventRequest",
-        "type": "object"
-      },
       "LabEventResponse": {
         "description": "Accepted for storage; the payload itself is never echoed back.",
         "properties": {
@@ -27271,16 +27245,6 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LabEventRequest"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "202": {
             "content": {

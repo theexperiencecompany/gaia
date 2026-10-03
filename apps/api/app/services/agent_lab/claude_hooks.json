@@ -29,6 +29,19 @@
             "allowedEnvVars": []
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "{{GAIA_LAB_EVENTS_URL}}",
+            "timeout": 15,
+            "headers": {
+              "Authorization": "Bearer {{GAIA_LAB_TOKEN}}"
+            },
+            "allowedEnvVars": []
+          }
+        ]
       }
     ]
   }

@@ -97,6 +97,8 @@ class TodoActivityEvent(StrEnum):
     APPROVAL_DENIED = "approval_denied"
     MAINTENANCE = "maintenance"
     COMPLETED = "completed"
+    # A raw agent-lab lifecycle push landed on this todo (receiver record path).
+    LAB_EVENT_RECEIVED = "lab_event_received"
 
 
 # The sections every canvas.md carries exactly once, in this order. Activity
