@@ -4,9 +4,9 @@ The hosts run python -m app.browser_host (one Chrome, one Obscura); the API
 and the worker run serve.py. All of them run on this interpreter with the
 stack's environment: this test process's own credential-fenced environment plus
 what wires them to each other, the fake models and the fixture site. Each takes
-its every setting from that environment at import, as in production. Each writes
-a log the stack attaches to a failing test's report. Readiness is a polled
-deadline, never a fixed sleep.
+its every setting from that environment at import, as in production, and runs
+under guard.py, so a hard-killed test process takes it and its engines along.
+Each writes a log a failing test's report carries. Readiness is a polled deadline.
 """
 
 from __future__ import annotations
@@ -33,6 +33,8 @@ API_READY_LINE = "browser stack api serving"
 #: How long a process gets to boot: a cold import of the app, or an engine launch.
 READY_SECONDS = 120.0
 _SERVE_MODULE = "tests.integration.real.browser._stack.serve"
+#: Runs each process so it dies with this one, however this one dies (guard.py).
+_GUARD_MODULE = "tests.integration.real.browser._stack.guard"
 _POLL_SECONDS = 0.2
 #: The lines of a process log a failing test's report carries.
 LOG_TAIL_LINES = 80
@@ -45,7 +47,7 @@ class StackProcessError(RuntimeError):
 
 @dataclass
 class StackProcess:
-    """One child process, in its own process group, and the log it writes."""
+    """One child process, in its own process group under a guard that dies with this process, and its log."""
 
     name: str
     argv: list[str]
@@ -56,7 +58,7 @@ class StackProcess:
     def start(self) -> None:
         with self.log_path.open("ab") as log:
             self.proc = subprocess.Popen(  # nosec B603 -- fixed argv built here, no shell
-                self.argv,
+                [sys.executable, "-m", _GUARD_MODULE, str(os.getpid()), *self.argv],
                 cwd=API_ROOT,
                 env=self.env,
                 stdout=log,
