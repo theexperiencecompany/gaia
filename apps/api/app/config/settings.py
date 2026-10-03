@@ -271,9 +271,9 @@ class CommonSettings(BaseAppSettings):
     # When false, a session's login is never persisted or restored (per-deployment
     # opt-out of "log in once, reuse next time").
     BROWSER_PERSIST_LOGINS: bool = True
-    # Public base URL fronting the authenticated live-view route, e.g.
-    # https://browser.heygaia.io in prod, where a vhost reverse-proxies to this
-    # api service. When unset, live-view links fall back to HOST.
+    # Public base URL for the recap and step-screenshot links a user is sent, e.g.
+    # https://browser.heygaia.io where a vhost reverse-proxies to this api service.
+    # When unset, those links fall back to HOST.
     BROWSER_LIVE_VIEW_BASE_URL: str | None = None
 
     # Custom OpenRouter/OpenAI-compatible endpoint for cheap bulk dev/test usage.

@@ -312,7 +312,6 @@ class Harness:
         self.published_to: list[str] = []
         self.session = MagicMock(
             session_id="sess-1",
-            live_view_url="https://live/abc",
             engine=BrowserEngine.CHROMIUM,
             gone=asyncio.Event(),
         )
@@ -1565,7 +1564,7 @@ async def test_a_run_finished_on_the_fallback_engine_is_recorded_against_that_se
 ) -> None:
     """The history row names the session the run ended on, and the event says the fallback recovered it."""
     captured = _capture(monkeypatch)
-    fallback = MagicMock(session_id="sess-fallback", live_view_url="https://live/fb")
+    fallback = MagicMock(session_id="sess-fallback")
 
     async def body(h: Harness) -> BrowserResultSnapshot:
         h.runner.session = fallback
@@ -1986,12 +1985,9 @@ async def test_a_handoff_card_points_the_user_at_the_paused_session(
     await _run(h, _request())
 
     handoff_cards = [c for c in h.cards if c["kind"] == "handoff"]
-    assert [
-        (c["status"], c["category"], c["reason"], c["session_id"], c["live_view_url"])
-        for c in handoff_cards
-    ] == [
-        ("pending", "payment", "confirm the order", "sess-1", "https://live/abc"),
-        ("completed", "payment", "confirm the order", "sess-1", "https://live/abc"),
+    assert [(c["status"], c["category"], c["reason"], c["session_id"]) for c in handoff_cards] == [
+        ("pending", "payment", "confirm the order", "sess-1"),
+        ("completed", "payment", "confirm the order", "sess-1"),
     ]
 
 

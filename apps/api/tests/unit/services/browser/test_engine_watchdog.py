@@ -26,7 +26,6 @@ GONE = EngineFailure.SESSION_GONE
 _SESSION = BrowserHostSession(
     session_id="s-1",
     cdp_url="ws://host/cdp",
-    live_view_url="https://host/live",
     host_url="http://host",
     engine=BrowserEngine.OBSCURA,
 )

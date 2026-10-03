@@ -1,10 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import {
-  browserApi,
-  livePageSocketUrl,
-} from "@/features/browser/api/browserApi";
+import { browserApi, liveSocketUrl } from "@/features/browser/api/browserApi";
 import {
   type LiveStatus,
   useLiveBrowser,
@@ -36,7 +33,7 @@ interface LiveViewPageProps {
  */
 export function LiveViewPage({ code, token }: LiveViewPageProps) {
   const isMobile = useIsMobile();
-  const live = useLiveBrowser(livePageSocketUrl(code, token), true);
+  const live = useLiveBrowser(liveSocketUrl(code, token), true);
   const status = STATUS_LABEL[live.status];
   const keyboard =
     isMobile && live.status === "live" ? (

@@ -154,7 +154,6 @@ class _Harness:
             session=BrowserHostSession(
                 session_id="sess-1",
                 cdp_url="ws://browser.test/cdp",
-                live_view_url="https://browser.test/live/sess-1",
                 host_url="http://browser.test",
                 engine=engine,
             ),

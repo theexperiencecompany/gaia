@@ -42,10 +42,7 @@ function useBrowserTaskState(
   const phase = browserCardPhase(folded);
   // Only a live session has an owner — minting a live-view token after it
   // ends 403s. The ended state renders the recap instead.
-  const live = useLiveView(
-    phase.ended ? null : session?.session_id,
-    session?.live_view_url,
-  );
+  const live = useLiveView(phase.ended ? null : session?.session_id);
   return {
     cardId,
     session,
@@ -175,7 +172,6 @@ export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
         <RightSidebarPanel mode="artifact" onClose={closePanel}>
           <BrowserLivePanel
             sessionId={session?.session_id ?? null}
-            liveViewUrl={session?.live_view_url ?? null}
             phase={phase}
             currentTask={task.currentTask ?? null}
             pendingHandoff={pendingHandoff ?? null}

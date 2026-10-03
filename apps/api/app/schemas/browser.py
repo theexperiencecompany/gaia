@@ -34,7 +34,6 @@ class BrowserSessionSnapshot(BaseModel):
     task: str
     status: BrowserSessionStatus
     session_id: str | None = None
-    live_view_url: str | None = None
     detail: str | None = None
 
 
@@ -92,7 +91,6 @@ class BrowserHandoffSnapshot(BaseModel):
     category: SensitiveCategory = SensitiveCategory.NONE
     reason: str
     session_id: str | None = None
-    live_view_url: str | None = None
     #: Required, not defaulted: a snapshot that forgot to say it had been
     #: resolved would silently render as still-pending to the user.
     status: HandoffStatus

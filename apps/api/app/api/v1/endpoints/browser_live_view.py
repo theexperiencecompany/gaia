@@ -1,13 +1,13 @@
 """Root-mounted authenticated browser live view.
 
-Served at ``/live/{session_id}`` (no ``/api/v1`` prefix) so it fronts a friendly
-public vhost — e.g. ``https://browser.heygaia.io/live/{id}`` — that reverse-proxies
-to THIS api service. The browser host is never exposed directly.
+Root-mounted (no ``/api/v1`` prefix), so the recap and screenshot links can sit
+on a friendly public vhost that reverse-proxies to THIS api service. The browser
+host is never exposed directly.
 
-``WEBSOCKET`` proxies frames + input between a viewer (the chat card, or the
-web app's full-page live view a bot link opens) and the host's ``WS /live/{id}``;
-``POST /live/{code}/decision`` answers the handoff a bot link was sent for. Because the ``wos_session`` cookie is host-only, a
-cross-origin viewer (the chat card on the friendly vhost) authenticates with a
+``WEBSOCKET /live/{id}`` proxies frames + input between a viewer (the chat card,
+or the web app's full-page live view a bot link opens), dialled on the API's own
+origin, and the host's ``WS /live/{id}``; ``POST /live/{code}/decision`` answers
+the handoff a bot link was sent for. The web card authenticates with a
 short-lived ``?t=`` takeover token; a same-origin viewer may still use the
 session cookie. Ownership is re-checked against the Redis registry on connect;
 a token connection is bounded to the token's remaining lifetime, and a code

@@ -7,28 +7,13 @@ import { api } from "@/lib/api/typed";
 import type { BrowserHandoffDecision } from "@/types/features/browserTaskTypes";
 
 /**
- * The live-view route serves a WebSocket at `/live/{id}`; the canvas talks to
- * it. The snapshot carries the public HTTP live-view base
- * (`{BROWSER_LIVE_VIEW_BASE_URL}/live/{id}`) — a friendly vhost the host-only
- * session cookie is NOT sent to — so every connection must carry a `?t=`
- * takeover token. The socket URL is the base with the scheme swapped to ws(s)
- * and the token appended.
+ * The live-view socket, `/live/{target}` on the API: every surface dials it
+ * here. `target` is a session id that the takeover `token` authorizes (chat
+ * card, side panel, its full-page link), or a bot link's capability code,
+ * which is its own authority (no token).
  */
-export function liveViewSocketUrl(
-  liveViewHttpUrl: string,
-  token: string,
-): string {
-  const wsUrl = liveViewHttpUrl.replace(/^http/, "ws");
-  return `${wsUrl}?t=${encodeURIComponent(token)}`;
-}
-
-/**
- * The socket the full-page live view dials: `/live/{code}` on the API, where
- * `code` is the bot link's capability code (it is the authority) or a session
- * id that a takeover token in `token` authorizes.
- */
-export function livePageSocketUrl(code: string, token: string | null): string {
-  const base = `${apiOrigin.replace(/^http/, "ws")}/live/${encodeURIComponent(code)}`;
+export function liveSocketUrl(target: string, token: string | null): string {
+  const base = `${apiOrigin.replace(/^http/, "ws")}/live/${encodeURIComponent(target)}`;
   return token ? `${base}?t=${encodeURIComponent(token)}` : base;
 }
 
@@ -100,10 +85,8 @@ export const browserApi = {
     }),
 
   /**
-   * Mint a short-lived takeover token for opening this session's live view. The
-   * live view is served from a friendly vhost the session cookie can't reach, so
-   * the card fetches a token (cookie auth works same-origin to the API) and rides
-   * it on the cross-origin socket + page link.
+   * Mint a short-lived takeover token for opening this session's live view; the
+   * card carries it on the socket and the full-page link.
    */
   getLiveViewToken: (sessionId: string): Promise<LiveViewTokenResponse> =>
     api.get("/api/v1/browser/sessions/{session_id}/live-view-token", {

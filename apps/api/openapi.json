@@ -21857,7 +21857,7 @@
     },
     "/api/v1/browser/sessions/{session_id}/live-view-token": {
       "get": {
-        "description": "Mint a short-lived takeover token so the web card can open the cross-origin\nlive view (the host-only session cookie is not sent to the live-view vhost).",
+        "description": "Mint a short-lived takeover token the web card carries on its live-view\nsocket and full-page link, so neither depends on the session cookie.",
         "operationId": "browser_get_live_view_token",
         "parameters": [
           {

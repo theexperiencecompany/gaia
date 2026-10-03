@@ -422,7 +422,6 @@ def _handoff_snapshot(
         category=req.category,
         reason=req.reason,
         session_id=session.session_id,
-        live_view_url=session.live_view_url,
         status=status,
         saves_login=req.category == SensitiveCategory.CREDENTIALS
         and settings.BROWSER_PERSIST_LOGINS,

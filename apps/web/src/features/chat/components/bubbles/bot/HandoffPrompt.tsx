@@ -94,7 +94,7 @@ export function HandoffPrompt({
   const Icon = meta.icon;
   const inline = surface.kind !== "panel";
   const isMobile = useIsMobile();
-  const view = useLiveView(handoff.session_id, handoff.live_view_url);
+  const view = useLiveView(handoff.session_id);
   // The side panel already streams this session: no second socket here.
   const live = useLiveBrowser(inline ? view.socketUrl : null, true, view.renew);
   const post = (decision: BrowserHandoffDecision) =>

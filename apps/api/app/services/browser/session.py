@@ -25,7 +25,6 @@ from app.constants.browser import (
 from app.constants.log_tags import LogTag
 from app.services.browser import host_client
 from app.services.browser.exceptions import BrowserSessionGone, BrowserUnavailableError
-from app.services.browser.live_view import live_view_url
 from app.services.browser.registry import register_session, unregister_session
 from app.services.browser.storage_persistence import (
     domain_of,
@@ -44,7 +43,6 @@ class BrowserHostSession:
 
     session_id: str
     cdp_url: str
-    live_view_url: str
     #: The browser host this context lives on: the primary engine's, or the
     #: fallback's after a switch.
     host_url: str
@@ -175,7 +173,6 @@ async def browser_session(
     session = BrowserHostSession(
         session_id=host.session_id,
         cdp_url=host.cdp_ws,
-        live_view_url=live_view_url(host.session_id),
         host_url=host_url,
         engine=host.engine,
         start_domain=domain,

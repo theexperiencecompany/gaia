@@ -86,7 +86,6 @@ def _session(session_id: str = "s-primary") -> BrowserHostSession:
     return BrowserHostSession(
         session_id=session_id,
         cdp_url=f"ws://{session_id}",
-        live_view_url=f"http://{session_id}/live",
         host_url=f"http://{session_id}-host",
         engine=BrowserEngine.OBSCURA if session_id == "s-primary" else BrowserEngine.CHROMIUM,
     )
@@ -639,7 +638,6 @@ async def test_the_run_opens_on_its_session_and_ends_with_its_result() -> None:
         task="book a table",
         status=BrowserSessionStatus.RUNNING,
         session_id="s-primary",
-        live_view_url="http://s-primary/live",
     )
     assert seen["emitted"][-1] == result
 
@@ -1505,7 +1503,6 @@ async def test_a_run_moved_to_the_fallback_resumes_at_the_page_it_was_on(
             task="book a table",
             status=BrowserSessionStatus.RUNNING,
             session_id="s-fallback",
-            live_view_url="http://s-fallback/live",
         )
         in seen["emitted"]
     )

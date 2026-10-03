@@ -1,9 +1,9 @@
-"""The public base URL fronting the browser's own routes.
+"""The public base URL for the browser links a user is handed.
 
-Live view, recap and step screenshots are all served by the root-mounted browser
-router and all handed to a user as a link, so they share one base: the friendly
-vhost when one is configured, else this service's own host. Kept in one place
-because a link built from the wrong base is only discovered by a user clicking it.
+Recaps and step screenshots are served by the root-mounted browser router and
+sent to a user as links, so they share one base: the friendly vhost when one is
+configured, else this service's own host. Kept in one place because a link built
+from the wrong base is only discovered by a user clicking it.
 """
 
 from __future__ import annotations
