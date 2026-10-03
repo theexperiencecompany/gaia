@@ -97,6 +97,18 @@ def test_obscura_reaches_private_addresses_only_while_the_host_allows_private_or
     assert obscura_serve_env()["OBSCURA_ALLOW_PRIVATE_NETWORK"] == "1"
 
 
+def test_obscura_trusts_a_test_stacks_ca_only_while_one_is_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_TEST_CA_FILE", None)
+    assert "SSL_CERT_FILE" not in obscura_serve_env()
+
+    monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_TEST_CA_FILE", "/stack/ca.pem")
+
+    assert obscura_serve_env()["SSL_CERT_FILE"] == "/stack/ca.pem"
+
+
 def test_a_free_port_is_one_nothing_listens_on() -> None:
     port = free_local_port()
 

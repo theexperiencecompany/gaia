@@ -189,6 +189,8 @@ class FakeModels:
         self.port = pick_free_port()
         self.calls: list[ModelCall] = []
         self.errors: list[str] = []
+        #: Every tool comms or the executor was answered with, in order.
+        self.tool_calls: list[str] = []
         self._runs: dict[str, RunScript] = {}
         #: While cleared, comms and executor model calls wait: a test holds what comes after a run.
         self.agent_tier_open = asyncio.Event()
@@ -299,6 +301,8 @@ class FakeModels:
         if response is None:
             response = _directives.resolve_response(parsed.messages, parsed.available_tools)
         self.calls.append(ModelCall("agent_tier", None))
+        if isinstance(response, _directives.ToolCallResponse):
+            self.tool_calls.append(response.name)
         if parsed.stream:
             return StreamingResponse(
                 _wire.sse_lines(parsed.model, response), media_type="text/event-stream"

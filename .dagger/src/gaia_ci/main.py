@@ -58,6 +58,8 @@ _RABBITMQ_IMAGE = (
 
 # The one definition of the test-python slices; main.yml's matrix reads it too.
 _SLICES_FILE = "scripts/ci/lib/test-slices.json"
+# Where the browser slice's container keeps the Obscura binaries it builds.
+_OBSCURA_DIR = "/opt/obscura"
 # Mounted as a cache volume; the warmup below is the one setup-python-test-env runs.
 _MODEL_CACHE_DIR = "/root/.cache/fastembed"
 _PREFETCH_MODELS = (
@@ -263,14 +265,43 @@ class GaiaCi:
             str, Doc("A slice in scripts/ci/lib/test-slices.json; empty runs all in turn")
         ] = "",
     ) -> str:
-        """Run the test-python slices exactly as main.yml does: same file, same runner script."""
+        """Run the test-python slices exactly as main.yml does: same file, same runner script.
+
+        A slice that drives real browser engines (engines: true, the browser slice)
+        runs only when named: it builds Obscura from apps/api/Dockerfile and installs
+        Chromium first, which an every-slice run should not pay for.
+        """
         slices = json.loads(await source.file(_SLICES_FILE).contents())["slices"]
-        chosen = [s for s in slices if not slice_name or s["name"] == slice_name]
+        if slice_name:
+            chosen = [s for s in slices if s["name"] == slice_name]
+        else:
+            chosen = [s for s in slices if s["engines"] != "true"]
         if not chosen:
             names = ", ".join(s["name"] for s in slices)
             raise ValueError(f"unknown slice {slice_name!r}; {_SLICES_FILE} defines: {names}")
         outputs = [await self._run_slice(source, s) for s in chosen]
+        left_out = [s["name"] for s in slices if s not in chosen and not slice_name]
+        if left_out:
+            outputs.append(f"not run (needs real browser engines; run by name): {', '.join(left_out)}")
         return "\n".join(outputs)
+
+    def _with_browser_engines(self, container: dagger.Container, source: Source) -> dagger.Container:
+        """Add Chromium and the Obscura build the api image ships, where a browser host finds them."""
+        obscura = source.docker_build(dockerfile="apps/api/Dockerfile", target="obscura-bin")
+        return (
+            container.with_exec(
+                [
+                    "sh",
+                    "-c",
+                    "apt-get update && apt-get install -y --no-install-recommends chromium"
+                    " && apt-get clean && rm -rf /var/lib/apt/lists/*",
+                ]
+            )
+            .with_file(f"{_OBSCURA_DIR}/obscura", obscura.file("/obscura"))
+            .with_file(f"{_OBSCURA_DIR}/obscura-worker", obscura.file("/obscura-worker"))
+            .with_env_variable("OBSCURA_BIN", f"{_OBSCURA_DIR}/obscura")
+            .with_env_variable("CHROMIUM_BIN", "/usr/bin/chromium")
+        )
 
     async def _run_slice(self, source: Source, spec: dict[str, Any]) -> str:
         """Run one slice through scripts/ci/pytest.sh slice, with services if it needs them."""
@@ -278,6 +309,8 @@ class GaiaCi:
         container = (
             self._service_test_container(source) if needs_services else self.ci_env(source)
         )
+        if spec["engines"] == "true":
+            container = self._with_browser_engines(container, source)
         container = (
             container.with_mounted_cache(_MODEL_CACHE_DIR, dag.cache_volume("fastembed-models"))
             .with_env_variable("ENV", "test")

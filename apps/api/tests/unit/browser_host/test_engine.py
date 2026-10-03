@@ -149,6 +149,41 @@ def test_the_full_browser_runs_the_new_headless_mode_and_a_headed_host_none(
     assert not any(a.startswith("--headless") for a in engine_mod.chromium_argv(_SHELL, "/p", None))
 
 
+#: A throwaway CA (a public certificate, no key), and its SPKI pin as openssl computes it
+#: (pkey -pubin -outform der | dgst -sha256 | base64).
+_TEST_CA_PEM = """-----BEGIN CERTIFICATE-----
+MIIBlzCCAT2gAwIBAgIUAoFsjAAE3xxbIEhmPMsdO3EKhZMwCgYIKoZIzj0EAwIw
+IDEeMBwGA1UEAwwVYnJvd3NlciBzdGFjayB0ZXN0IENBMCAXDTI2MTAwMzAxMTgz
+NVoYDzIxMjYwOTA5MDExODM1WjAgMR4wHAYDVQQDDBVicm93c2VyIHN0YWNrIHRl
+c3QgQ0EwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAATL7JwItBwMiVgDHFAlUAje
+VyK8V28pkCHeTKLjP1rFzd4x1+VbjthFC45qRH52xtpzDjYekkKYOm+3CuB/vB33
+o1MwUTAdBgNVHQ4EFgQUKEDP8pgIJcbB2o3IYL0U1M/xH4kwHwYDVR0jBBgwFoAU
+KEDP8pgIJcbB2o3IYL0U1M/xH4kwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQD
+AgNIADBFAiAblNP7iEJMr5Gxk5u1Nzm4bKxBG/k01ZfFg8aD1HhszAIhAK0Hghzc
+paMViKIAHZ+GlPEKYALVJgqJMY2CTa8M4lzM
+-----END CERTIFICATE-----
+"""
+_TEST_CA_PIN = "Pp4xppYSf3OB1ZBSw+8Gjix3drxeRv2dNV4Uql7d38c="
+
+
+def test_chrome_accepts_a_test_stacks_ca_only_while_one_is_set(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    ca_file = tmp_path / "ca.pem"
+    ca_file.write_text(_TEST_CA_PEM)
+    monkeypatch.setattr(engine_mod.browser_host_settings, "BROWSER_HOST_TEST_CA_FILE", None)
+    assert not any(
+        a.startswith("--ignore-certificate-errors")
+        for a in engine_mod.chromium_argv(_SHELL, "/p", None)
+    )
+
+    monkeypatch.setattr(engine_mod.browser_host_settings, "BROWSER_HOST_TEST_CA_FILE", str(ca_file))
+
+    assert f"--ignore-certificate-errors-spki-list={_TEST_CA_PIN}" in engine_mod.chromium_argv(
+        _SHELL, "/p", None
+    )
+
+
 # --- the DevTools endpoint file ---
 
 

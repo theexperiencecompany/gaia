@@ -66,6 +66,9 @@ class BrowserHostSettings(BaseSettings):
     # reach though they resolve private, for the hermetic browser stack's fixture site.
     # Production refuses to boot with any set (see _no_private_reach_in_production).
     BROWSER_HOST_ALLOW_PRIVATE_ORIGINS: Annotated[frozenset[str], NoDecode] = frozenset()
+    # Test-only: a PEM CA certificate both engines trust, for the hermetic stack's https
+    # fixture site (a secret is typed only on https). Production refuses to boot with it set.
+    BROWSER_HOST_TEST_CA_FILE: str | None = None
 
     @field_validator("BROWSER_HOST_KEY", mode="after")
     @classmethod
@@ -90,6 +93,8 @@ class BrowserHostSettings(BaseSettings):
     @model_validator(mode="after")
     def _no_private_reach_in_production(self) -> Self:
         """Refuse to boot a production process that could browse to private addresses."""
+        if self.ENV == "production" and self.BROWSER_HOST_TEST_CA_FILE:
+            raise ValueError("BROWSER_HOST_TEST_CA_FILE is set but ENV=production")
         if self.ENV == "production" and self.BROWSER_HOST_ALLOW_PRIVATE_ORIGINS:
             raise ValueError("BROWSER_HOST_ALLOW_PRIVATE_ORIGINS is set but ENV=production")
         if self.ENV == "production" and os.environ.get(OBSCURA_PRIVATE_NETWORK_ENV):

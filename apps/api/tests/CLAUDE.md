@@ -105,7 +105,7 @@ the whole job through the real executor graph), the integration suites
 (`tests/integration/agents/test_browser_job_*.py`, relay and delivery over real product
 code), the Obscura conformance suite (`tests/integration/real/test_obscura_conformance.py`),
 and the browser stack (`tests/integration/real/browser/`, the `browser` CI slice;
-`mise test:python:browser`). The stack runs the API and the ARQ browser worker as
+`mise test:python:browser`, or `dagger call test-python --slice-name browser`). The stack runs the API and the ARQ browser worker as
 processes, a Chrome and an Obscura host, one fake model server and a two-origin
 fixture site the hosts may reach through `BROWSER_HOST_ALLOW_PRIVATE_ORIGINS`
 (refused in production), and judges each scenario on the Telegram user's

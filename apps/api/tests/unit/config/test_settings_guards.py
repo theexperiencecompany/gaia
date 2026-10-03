@@ -51,6 +51,7 @@ DEV_OVERRIDE_VARS = (
     "GAIA_SIM_MODE",
     "BROWSER_HOST_ALLOW_PRIVATE_ORIGINS",
     "OBSCURA_ALLOW_PRIVATE_NETWORK",
+    "BROWSER_HOST_TEST_CA_FILE",
 )
 
 
@@ -98,6 +99,7 @@ def test_dev_overrides_block_production_boot(monkeypatch, env_var, value):
     [
         ("BROWSER_HOST_ALLOW_PRIVATE_ORIGINS", "http://localhost:8123"),
         ("OBSCURA_ALLOW_PRIVATE_NETWORK", "1"),
+        ("BROWSER_HOST_TEST_CA_FILE", "/stack/ca.pem"),
     ],
 )
 def test_private_browsing_blocks_production_boot_of_the_host_and_the_api(

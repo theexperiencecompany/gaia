@@ -148,9 +148,14 @@ class BrowserHost:
 
 
 def browser_host(
-    engine: BrowserEngine, binary: str, key: str, allowed_origins: tuple[str, ...], log_dir: Path
+    engine: BrowserEngine,
+    binary: str,
+    key: str,
+    site: tuple[tuple[str, ...], Path],
+    log_dir: Path,
 ) -> BrowserHost:
-    """Build (not start) a host for engine, allowed to reach exactly the fixture site's origins."""
+    """Build (not start) a host for engine, reaching exactly the fixture site's origins and trusting its CA."""
+    allowed_origins, ca_file = site
     port = pick_free_port()
     binary_var = "OBSCURA_BIN" if engine is BrowserEngine.OBSCURA else "CHROMIUM_BIN"
     env = child_environment(
@@ -163,6 +168,7 @@ def browser_host(
             "BROWSER_HOST_URL": f"http://127.0.0.1:{port}",
             "BROWSER_HOST_KEY": key,
             "BROWSER_HOST_ALLOW_PRIVATE_ORIGINS": ",".join(allowed_origins),
+            "BROWSER_HOST_TEST_CA_FILE": str(ca_file),
         }
     )
     process = StackProcess(

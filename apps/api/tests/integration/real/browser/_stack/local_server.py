@@ -9,6 +9,8 @@ import time
 from starlette.types import ASGIApp
 import uvicorn
 
+from tests.integration.real.browser._stack.tls import FixtureTls
+
 #: How long a local server gets to bind its port before the stack gives up on it.
 _START_SECONDS = 30.0
 _POLL_SECONDS = 0.05
@@ -28,9 +30,19 @@ class LocalServer:
         await self.task
 
 
-async def serve_locally(name: str, app: ASGIApp, port: int) -> LocalServer:
-    """Start app on port and return once it accepts connections; raise if it exits or never binds."""
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
+async def serve_locally(
+    name: str, app: ASGIApp, port: int, tls: FixtureTls | None = None
+) -> LocalServer:
+    """Start app on port (over TLS when given) and return once it accepts connections; raise if it exits or never binds."""
+    config = uvicorn.Config(
+        app,
+        host="127.0.0.1",
+        port=port,
+        log_level="warning",
+        ssl_certfile=str(tls.chain_file) if tls else None,
+        ssl_keyfile=str(tls.key_file) if tls else None,
+    )
+    server = uvicorn.Server(config)
     task = asyncio.create_task(server.serve())
     deadline = time.monotonic() + _START_SECONDS
     while not server.started:

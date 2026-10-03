@@ -67,7 +67,7 @@ def obscura_serve_env() -> dict[str, str]:
 
     Obscura refuses private addresses on its own unless told otherwise, and is told
     only while the host allows private origins (a test stack); the proxy keeps
-    explicit navigations to exactly those origins.
+    explicit navigations to exactly those origins. A test stack's CA becomes its trust store.
     """
     env = {key: value for key, value in os.environ.items() if key != OBSCURA_PRIVATE_NETWORK_ENV}
     env["OBSCURA_SCRIPT_DEADLINE_MS"] = str(
@@ -75,6 +75,9 @@ def obscura_serve_env() -> dict[str, str]:
     )
     if browser_host_settings.BROWSER_HOST_ALLOW_PRIVATE_ORIGINS:
         env[OBSCURA_PRIVATE_NETWORK_ENV] = "1"
+    if browser_host_settings.BROWSER_HOST_TEST_CA_FILE:
+        # Obscura's trust store, replaced: a test stack's engine reaches only its fixture site.
+        env["SSL_CERT_FILE"] = browser_host_settings.BROWSER_HOST_TEST_CA_FILE
     return env
 
 
