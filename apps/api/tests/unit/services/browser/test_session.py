@@ -728,10 +728,11 @@ async def test_a_session_holds_its_lease_for_exactly_its_life(
 ) -> None:
     _make_session_fakes(monkeypatch)
     held: list[str] = []
-    let_go = asyncio.Event()
+    holding, let_go = asyncio.Event(), asyncio.Event()
 
     async def _hold(session: BrowserHostSession) -> None:
         held.append(session.session_id)
+        holding.set()
         try:
             await asyncio.Event().wait()
         finally:
@@ -740,7 +741,7 @@ async def test_a_session_holds_its_lease_for_exactly_its_life(
     monkeypatch.setattr(session_mod, "keep_session_alive", _hold)
 
     async with session_mod.browser_session(host_url=_HOST, user_id="u1", start_url="https://x"):
-        await asyncio.sleep(0)
+        await asyncio.wait_for(holding.wait(), 1.0)
         assert held == ["s1"]
         assert not let_go.is_set()
     await asyncio.wait_for(let_go.wait(), 1.0)

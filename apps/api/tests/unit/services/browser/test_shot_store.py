@@ -109,4 +109,9 @@ async def test_a_frame_whose_code_redis_does_not_keep_gets_no_url(
 
     monkeypatch.setattr(fake_redis, "setex", _refuse_codes)
 
-    assert await shot_store.store_step_screenshot(b"a", "sess-1", 1) is None
+    async with captured_wide_event() as event:
+        assert await shot_store.store_step_screenshot(b"a", "sess-1", 1) is None
+
+    warning = event["warnings"][-1]
+    assert "code" in warning["msg"]
+    assert warning["error_type"] == "BrowserUnavailableError"

@@ -36,7 +36,7 @@ class CapabilityCodes(Generic[RecordT]):
         A code Redis never stored would go out in a link that opens nothing.
         """
         code = secrets.token_urlsafe(self._entropy_bytes)
-        if not await redis_cache.set(self._key(code), record, ttl=ttl, model=self._record):
+        if not await redis_cache.set(self._key(code), record, ttl=ttl):
             raise BrowserUnavailableError(f"Could not store a {self._prefix} code.")
         return code
 

@@ -23,6 +23,7 @@ from app.browser_host.process import (
     stop_process,
     until_published,
 )
+from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
@@ -81,7 +82,6 @@ async def test_an_engine_that_exits_first_is_never_mistaken_for_one_on_its_port(
         return _WS
 
     waiting = asyncio.create_task(until_published(cast(Any, proc), _read))
-    await asyncio.sleep(0)
     proc.returncode = 1
     proc.exited.set()
 
@@ -263,10 +263,17 @@ def _fake_proc(rss_mb: float, cpu: float) -> MagicMock:
     return proc
 
 
-def _sampler_over(root: MagicMock, monkeypatch: pytest.MonkeyPatch) -> ProcessSampler:
-    """Return a real sampler whose process tree resolves to root."""
-    monkeypatch.setattr(process.psutil, "Process", MagicMock(return_value=root))
-    return ProcessSampler(4321)
+def _sampler_over(
+    root: MagicMock, monkeypatch: pytest.MonkeyPatch, pid: int = 4321
+) -> ProcessSampler:
+    """Return a real sampler for pid whose process tree resolves to root."""
+    process_of = MagicMock(return_value=root)
+    monkeypatch.setattr(process.psutil, "Process", process_of)
+    sampler = ProcessSampler.for_pid(pid)
+    assert sampler is not None
+    # Aimed anywhere else, it reports another process's numbers as the engine's.
+    process_of.assert_called_once_with(pid)
+    return sampler
 
 
 def test_a_sample_sums_the_whole_tree_and_skips_a_child_that_exits_mid_walk(
@@ -283,12 +290,27 @@ def test_a_sample_sums_the_whole_tree_and_skips_a_child_that_exits_mid_walk(
     assert _sampler_over(root, monkeypatch).sample() == (175.0, 17.5)
 
 
-def test_a_tree_that_cannot_be_read_has_no_sample_and_a_dead_pid_no_sampler(
+async def test_a_tree_that_cannot_be_read_has_no_sample_and_says_whose(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = MagicMock()
-    root.children.side_effect = psutil.AccessDenied(4321)
+    root.children.side_effect = psutil.AccessDenied(777)
+    sampler = _sampler_over(root, monkeypatch, pid=777)
 
-    assert _sampler_over(root, monkeypatch).sample() is None
+    async with captured_wide_event() as event:
+        assert sampler.sample() is None
+
+    (warning,) = event["warnings"]
+    assert "sample failed" in warning["msg"]
+    assert (warning["error_type"], warning["browser"]) == ("AccessDenied", {"pid": 777})
+
+
+async def test_a_dead_pid_has_no_sampler_and_says_whose(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(process.psutil, "Process", MagicMock(side_effect=psutil.NoSuchProcess(1)))
-    assert ProcessSampler.for_pid(1234) is None
+
+    async with captured_wide_event() as event:
+        assert ProcessSampler.for_pid(1234) is None
+
+    (warning,) = event["warnings"]
+    assert "sampler unavailable" in warning["msg"]
+    assert (warning["error_type"], warning["browser"]) == ("NoSuchProcess", {"pid": 1234})

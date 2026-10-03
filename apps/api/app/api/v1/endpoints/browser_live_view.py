@@ -60,7 +60,6 @@ class _Target:
     """The session a viewer may watch and drive, its host stream, and what ends the connection."""
 
     session_id: str
-    user_id: str
     live_ws: str | None
     ends: _ConnectionEnd
 
@@ -96,7 +95,7 @@ async def _authorize(code: str, token: str | None) -> _Target | _Denied:
     entry = await registry.get_session_entry(session_id)
     if entry is None or entry.owner != user_id:
         return _Denied(status.HTTP_403_FORBIDDEN, "Not authorized for this session")
-    return _Target(session_id=session_id, user_id=user_id, live_ws=entry.live_ws, ends=ends)
+    return _Target(session_id=session_id, live_ws=entry.live_ws, ends=ends)
 
 
 @router.get(f"/shots/{{code}}/{{index}}{SHOT_SUFFIX}", response_class=Response)

@@ -73,10 +73,17 @@ async def test_no_recap_link_when_no_screenshot_uploaded(
     assert await fake_redis.keys() == []
 
 
-async def test_no_recap_link_when_its_code_was_not_kept(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_no_recap_link_when_its_code_was_not_kept_and_the_run_says_why(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(redis_cache, "redis", None)
 
-    assert await create_replay_link("s1", ["https://cdn/1.jpg"]) is None
+    async with captured_wide_event() as event:
+        assert await create_replay_link("s1", ["https://cdn/1.jpg"]) is None
+
+    (error,) = event["errors"]
+    assert "replay" in error["msg"]
+    assert error["error_type"] == "BrowserUnavailableError"
 
 
 async def test_minting_reports_the_session_its_frame_count_and_latency_on_the_wide_event(

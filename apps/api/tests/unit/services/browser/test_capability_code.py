@@ -20,40 +20,46 @@ class _Grant(BaseModel):
     user_id: str
 
 
-_CODES = CapabilityCodes("test:grant:", _Grant, entropy_bytes=9)
+@pytest.fixture
+def codes() -> CapabilityCodes[_Grant]:
+    return CapabilityCodes("test:grant:", _Grant, entropy_bytes=9)
 
 
 async def test_a_code_opens_its_record_until_its_time_runs_out(
-    fake_redis: fakeredis.aioredis.FakeRedis,
+    fake_redis: fakeredis.aioredis.FakeRedis, codes: CapabilityCodes[_Grant]
 ) -> None:
-    code = await _CODES.mint(_Grant(user_id="u1"), ttl=60)
+    code = await codes.mint(_Grant(user_id="u1"), ttl=60)
 
-    assert await _CODES.resolve(code) == _Grant(user_id="u1")
+    assert await codes.resolve(code) == _Grant(user_id="u1")
     assert 50 < await fake_redis.ttl(f"test:grant:{code}") <= 60
-    assert await _CODES.seconds_left(code) == await fake_redis.ttl(f"test:grant:{code}")
-    assert await _CODES.resolve("never-minted") is None
+    assert await codes.seconds_left(code) == await fake_redis.ttl(f"test:grant:{code}")
+    assert await codes.resolve("never-minted") is None
 
 
-async def test_a_revoked_code_opens_nothing(fake_redis: fakeredis.aioredis.FakeRedis) -> None:
-    code = await _CODES.mint(_Grant(user_id="u1"), ttl=60)
+async def test_a_revoked_code_opens_nothing(
+    fake_redis: fakeredis.aioredis.FakeRedis, codes: CapabilityCodes[_Grant]
+) -> None:
+    code = await codes.mint(_Grant(user_id="u1"), ttl=60)
 
-    await _CODES.revoke(code)
+    await codes.revoke(code)
 
-    assert await _CODES.resolve(code) is None
-    assert await _CODES.seconds_left(code) is None
+    assert await codes.resolve(code) is None
+    assert await codes.seconds_left(code) is None
 
 
-async def test_a_consumed_code_is_redeemed_once(fake_redis: fakeredis.aioredis.FakeRedis) -> None:
-    code = await _CODES.mint(_Grant(user_id="u1"), ttl=60)
+async def test_a_consumed_code_is_redeemed_once(
+    fake_redis: fakeredis.aioredis.FakeRedis, codes: CapabilityCodes[_Grant]
+) -> None:
+    code = await codes.mint(_Grant(user_id="u1"), ttl=60)
 
-    assert await _CODES.consume(code) == _Grant(user_id="u1")
-    assert await _CODES.consume(code) is None
+    assert await codes.consume(code) == _Grant(user_id="u1")
+    assert await codes.consume(code) is None
 
 
 async def test_every_code_is_a_fresh_url_safe_slug_of_its_entropy(
-    fake_redis: fakeredis.aioredis.FakeRedis,
+    fake_redis: fakeredis.aioredis.FakeRedis, codes: CapabilityCodes[_Grant]
 ) -> None:
-    codes = {await _CODES.mint(_Grant(user_id="u1"), ttl=60) for _ in range(5)}
+    codes = {await codes.mint(_Grant(user_id="u1"), ttl=60) for _ in range(5)}
 
     assert len(codes) == 5
     # token_urlsafe base64-encodes the entropy: 4 characters per 3 bytes.
@@ -61,9 +67,10 @@ async def test_every_code_is_a_fresh_url_safe_slug_of_its_entropy(
 
 
 async def test_a_code_redis_did_not_keep_is_never_handed_out(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, codes: CapabilityCodes[_Grant]
 ) -> None:
     monkeypatch.setattr("app.services.browser.capability_code.redis_cache.redis", None)
 
-    with pytest.raises(BrowserUnavailableError):
-        await _CODES.mint(_Grant(user_id="u1"), ttl=60)
+    # Named for its purpose, so the failure says which links stopped working.
+    with pytest.raises(BrowserUnavailableError, match="test:grant:"):
+        await codes.mint(_Grant(user_id="u1"), ttl=60)
