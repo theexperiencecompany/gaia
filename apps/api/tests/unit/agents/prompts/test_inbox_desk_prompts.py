@@ -38,6 +38,7 @@ SWEEP_STEP = 3
 SKIP_STEP = 4
 CLASSIFY_STEP = 5
 THREAD_TODO_STEP = 6
+DRAFT_STEP = 7
 OBSERVATIONS_STEP = 9
 CURSOR_STEP = 10
 BRIEFING_STEP = 11
@@ -213,6 +214,39 @@ def test_the_long_sections_are_capped() -> None:
 def test_a_proposed_event_is_one_line_the_user_can_accept_by_reply() -> None:
     assert 'like "Arjun call Tue 4pm · reply yes to add"' in _briefing_line("Today")
     assert "propose everything else" in "\n".join(_step(8))
+
+
+@pytest.mark.regression
+def test_a_meeting_request_is_answered_from_the_calendar_into_a_draft() -> None:
+    """Regression: a live run left Arjun's 4pm ask undrafted as "availability unknown"."""
+    rule = todo_prompts.REPLY_DRAFT_RULE
+    assert "memory, the thread or the user's calendar can answer it" in rule
+    assert "check that slot on the calendar" in rule
+    assert "a yes when it is free, or two free times when it is not" in rule
+    assert "only when a fact or file only the user has is missing" in rule
+
+
+def test_the_desk_and_the_thread_draft_by_one_rule() -> None:
+    thread = GMAIL_THREAD_RUN_GUIDANCE.format(ref_id="18c2f0a9b7d4e611")
+    assert todo_prompts.REPLY_DRAFT_RULE in "\n".join(_step(DRAFT_STEP))
+    assert todo_prompts.REPLY_DRAFT_RULE in thread
+
+
+@pytest.mark.regression
+def test_an_event_proposed_from_mail_is_listed_whatever_its_date() -> None:
+    """Regression: a live briefing said "0 events today" and left out Arjun's Tuesday call."""
+    assert "then every event you added or propose from mail, whatever its date" in (
+        _briefing_line("Today")
+    )
+
+
+@pytest.mark.regression
+def test_the_briefing_lists_only_what_this_run_or_a_sub_todo_holds() -> None:
+    """Regression: a run listed Ravi under Needs you from observations.md, with no todo or mail."""
+    assert (
+        "Every item comes from your sub-todos, this run's mail or the calendar; "
+        "observations.md never adds one."
+    ) in _step(BRIEFING_STEP)[0]
 
 
 def test_standing_rules_beat_observations_and_both_beat_the_defaults() -> None:
