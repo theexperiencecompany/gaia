@@ -5607,10 +5607,7 @@ export interface paths {
         };
         /**
          * Live View Page
-         * @description Standalone live-view page. ``code`` is a short capability code (the bot link)
-         *     that resolves to a session + owner in Redis; failing that it is treated as a raw
-         *     session id authorized by the ``?t=`` takeover token or a same-origin cookie (the
-         *     web chat card).
+         * @description Standalone live-view page, opened by a bot link's code or a session id with its ?t= token.
          */
         get: operations["browser_live_view_page"];
         put?: never;
@@ -5653,9 +5650,7 @@ export interface paths {
         };
         /**
          * Replay Page
-         * @description Standalone recap slideshow for a finished session. ``code`` resolves to the
-         *     session + step count in Redis; the step screenshots are public R2 URLs, so no
-         *     per-session auth is needed (the code itself is the unguessable capability).
+         * @description Standalone recap slideshow for a finished session: its code is the capability.
          */
         get: operations["browser_replay_page"];
         put?: never;
