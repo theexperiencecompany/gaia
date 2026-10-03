@@ -124,7 +124,7 @@ def test_a_host_with_no_private_reach_boots_in_production_and_one_with_it_in_dev
     monkeypatch.setenv("ENV", "production")
     for var in DEV_OVERRIDE_VARS:
         monkeypatch.delenv(var, raising=False)
-    assert BrowserHostSettings().BROWSER_HOST_ALLOW_PRIVATE_ORIGINS == frozenset()
+    assert not BrowserHostSettings().BROWSER_HOST_ALLOW_PRIVATE_ORIGINS
 
     monkeypatch.setenv("ENV", "development")
     monkeypatch.setenv("OBSCURA_ALLOW_PRIVATE_NETWORK", "1")
