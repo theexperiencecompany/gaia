@@ -40,6 +40,8 @@ class AgentTag(StrEnum):
     SUBAGENT_INTERJECTION = "subagent_interjection"
     #: A subagent the executor force-stopped, told in its returned result.
     SUBAGENT_CANCELLED = "subagent_cancelled"
+    #: What the chat's browser task is doing, told to comms each turn it can act on it.
+    BROWSER_TASK = "browser_task"
 
 
 def wrap_agent_payload(tag: AgentTag, body: str, agent: str | None = None) -> str:

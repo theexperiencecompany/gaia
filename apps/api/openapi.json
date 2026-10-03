@@ -21857,7 +21857,7 @@
     },
     "/api/v1/browser/sessions/{session_id}/live-view-token": {
       "get": {
-        "description": "Mint a short-lived takeover token so the web card can open the cross-origin\nlive view (the host-only session cookie is not sent to the live-view vhost).",
+        "description": "Mint a short-lived takeover token the web card carries on its live-view\nsocket and full-page link, so neither depends on the session cookie.",
         "operationId": "browser_get_live_view_token",
         "parameters": [
           {
@@ -40351,85 +40351,6 @@
         "summary": "Health Check",
         "tags": [
           "Health"
-        ]
-      }
-    },
-    "/live/{code}": {
-      "get": {
-        "description": "Standalone live-view page, opened by a bot link's code or a session id with its ?t= token.",
-        "operationId": "browser_live_view_page",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "code",
-            "required": true,
-            "schema": {
-              "title": "Code",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "t",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "T"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "4XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Client Error"
-          },
-          "5XX": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Server Error"
-          }
-        },
-        "summary": "Live View Page",
-        "tags": [
-          "Browser"
         ]
       }
     },

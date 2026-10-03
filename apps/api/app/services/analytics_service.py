@@ -343,7 +343,6 @@ class AIFeature(StrEnum):
     RESEARCH = "research", ("research_queries",)
     MODERATION = "moderation", ("profanity",)
     TITLE_GENERATION = "title_generation", ("chatbot",)
-    BROWSER = "browser", ("browser_handoff_conversational_resolve", "browser_running_task_message")
     # A caller whose label no member claims.
     UNATTRIBUTED = "unattributed"
 

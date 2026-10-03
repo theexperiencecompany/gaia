@@ -2,31 +2,24 @@ import type {
   HandoffDecisionResponse,
   LiveViewTokenResponse,
 } from "@shared/api/generated";
+import { apiOrigin } from "@/lib/api/client";
 import { api } from "@/lib/api/typed";
 import type { BrowserHandoffDecision } from "@/types/features/browserTaskTypes";
 
 /**
- * The live-view route serves both a GET page and a WebSocket at the same path;
- * the canvas talks to the WebSocket. The snapshot carries the public HTTP
- * live-view base (`{BROWSER_LIVE_VIEW_BASE_URL}/live/{id}`) — a friendly vhost
- * the host-only session cookie is NOT sent to — so every connection must carry a
- * `?t=` takeover token. The socket URL is the base with the scheme swapped to
- * ws(s) and the token appended.
+ * The live-view socket, `/live/{target}` on the API: every surface dials it
+ * here. `target` is a session id that the takeover `token` authorizes (chat
+ * card, side panel, its full-page link), or a bot link's capability code,
+ * which is its own authority (no token).
  */
-export function liveViewSocketUrl(
-  liveViewHttpUrl: string,
-  token: string,
-): string {
-  const wsUrl = liveViewHttpUrl.replace(/^http/, "ws");
-  return `${wsUrl}?t=${encodeURIComponent(token)}`;
+export function liveSocketUrl(target: string, token: string | null): string {
+  const base = `${apiOrigin.replace(/^http/, "ws")}/live/${encodeURIComponent(target)}`;
+  return token ? `${base}?t=${encodeURIComponent(token)}` : base;
 }
 
-/** The full-browser page link carries the same token (cookie is cross-origin). */
-export function liveViewPageUrl(
-  liveViewHttpUrl: string,
-  token: string,
-): string {
-  return `${liveViewHttpUrl}?t=${encodeURIComponent(token)}`;
+/** The web's full-page live view of a session, carrying the token its socket needs. */
+export function livePagePath(sessionId: string, token: string): string {
+  return `/live/${encodeURIComponent(sessionId)}?t=${encodeURIComponent(token)}`;
 }
 
 export const browserApi = {
@@ -78,10 +71,22 @@ export const browserApi = {
     }),
 
   /**
-   * Mint a short-lived takeover token for opening this session's live view. The
-   * live view is served from a friendly vhost the session cookie can't reach, so
-   * the card fetches a token (cookie auth works same-origin to the API) and rides
-   * it on the cross-origin socket + page link.
+   * Done or Stop from the full-page live view a bot link opened: the link's
+   * code authorizes it, so no web session is needed.
+   */
+  postLiveDecision: (
+    code: string,
+    decision: BrowserHandoffDecision,
+  ): Promise<HandoffDecisionResponse> =>
+    api.post("/live/{code}/decision", {
+      path: { code },
+      body: { decision },
+      errorMessage: "Could not send your answer to the browser task",
+    }),
+
+  /**
+   * Mint a short-lived takeover token for opening this session's live view; the
+   * card carries it on the socket and the full-page link.
    */
   getLiveViewToken: (sessionId: string): Promise<LiveViewTokenResponse> =>
     api.get("/api/v1/browser/sessions/{session_id}/live-view-token", {

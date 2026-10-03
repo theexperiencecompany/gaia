@@ -5,8 +5,16 @@ from collections.abc import Awaitable, Callable
 from pydantic import ValidationError
 import pytest
 
-from app.constants.browser import EngineSwitchReason, SensitiveCategory
+from app.constants.browser import (
+    BROWSER_CAPTCHA_SKIP_SOURCE,
+    EngineSwitchReason,
+    SensitiveCategory,
+)
 from app.services.browser.tools import build_browser_tools
+from app.utils.sites import UserSites
+
+#: The task names shop.test; nothing else is the user's.
+SITES = UserSites("buy the red shoes on www.shop.test", None, ())
 
 
 class _FakeGuidance:
@@ -35,10 +43,20 @@ def _get_action(tools, name: str):
     return tools.registry.registry.actions[name]
 
 
-async def _call_action(tools, name: str, **kwargs) -> str:
+class _Session:
+    """The browser session an action reads the current page from."""
+
+    def __init__(self, url: str) -> None:
+        self._url = url
+
+    async def get_current_page_url(self) -> str:
+        return self._url
+
+
+async def _call_action(tools, name: str, page: str = "https://shop.test/p", **kwargs) -> str:
     action = _get_action(tools, name)
     params = action.param_model(**kwargs)
-    return await action.function(params=params)
+    return await action.function(params=params, browser_session=_Session(page))
 
 
 def test_registers_takeover_action_only_when_captcha_disabled() -> None:
@@ -46,7 +64,7 @@ def test_registers_takeover_action_only_when_captcha_disabled() -> None:
     guidance = _FakeGuidance()
 
     tools = build_browser_tools(
-        solve_captcha=False, handle_takeover=takeover, handle_guidance=guidance
+        user_sites=SITES, solve_captcha=False, handle_takeover=takeover, handle_guidance=guidance
     )
 
     actions = tools.registry.registry.actions
@@ -59,7 +77,7 @@ def test_registers_both_actions_when_captcha_enabled() -> None:
     guidance = _FakeGuidance()
 
     tools = build_browser_tools(
-        solve_captcha=True, handle_takeover=takeover, handle_guidance=guidance
+        user_sites=SITES, solve_captcha=True, handle_takeover=takeover, handle_guidance=guidance
     )
 
     actions = tools.registry.registry.actions
@@ -70,7 +88,10 @@ def test_registers_both_actions_when_captcha_enabled() -> None:
 @pytest.mark.parametrize("arguments", [{}, {"category": "shipping"}])
 def test_a_takeover_needs_one_of_the_known_categories(arguments: dict[str, str]) -> None:
     tools = build_browser_tools(
-        solve_captcha=False, handle_takeover=_FakeTakeover(), handle_guidance=_FakeGuidance()
+        user_sites=SITES,
+        solve_captcha=False,
+        handle_takeover=_FakeTakeover(),
+        handle_guidance=_FakeGuidance(),
     )
 
     with pytest.raises(ValidationError):
@@ -83,7 +104,7 @@ async def test_takeover_passes_explicit_category_through_unchanged() -> None:
     takeover = _FakeTakeover()
     guidance = _FakeGuidance()
     tools = build_browser_tools(
-        solve_captcha=False, handle_takeover=takeover, handle_guidance=guidance
+        user_sites=SITES, solve_captcha=False, handle_takeover=takeover, handle_guidance=guidance
     )
 
     result = await _call_action(
@@ -102,7 +123,10 @@ async def test_takeover_propagates_cancellation_from_seam() -> None:
         raise _Cancelled("user cancelled")
 
     tools = build_browser_tools(
-        solve_captcha=False, handle_takeover=raising_takeover, handle_guidance=_FakeGuidance()
+        user_sites=SITES,
+        solve_captcha=False,
+        handle_takeover=raising_takeover,
+        handle_guidance=_FakeGuidance(),
     )
 
     with pytest.raises(_Cancelled):
@@ -115,7 +139,7 @@ async def test_captcha_action_always_uses_none_category() -> None:
     takeover = _FakeTakeover()
     guidance = _FakeGuidance()
     tools = build_browser_tools(
-        solve_captcha=True, handle_takeover=takeover, handle_guidance=guidance
+        user_sites=SITES, solve_captcha=True, handle_takeover=takeover, handle_guidance=guidance
     )
 
     result = await _call_action(
@@ -126,11 +150,33 @@ async def test_captcha_action_always_uses_none_category() -> None:
     assert result == "resolved:Select all squares with motorcycles:none"
 
 
+@pytest.mark.parametrize(
+    ("page", "host"), [("https://ads.test/x", "ads.test"), ("about:blank", "about:blank")]
+)
+async def test_a_captcha_on_a_site_the_user_never_named_is_skipped_without_asking_anyone(
+    page: str, host: str
+) -> None:
+    takeover, switch = _FakeTakeover(), _FakeSwitch()
+    tools = build_browser_tools(
+        user_sites=SITES,
+        solve_captcha=True,
+        handle_takeover=takeover,
+        handle_guidance=_FakeGuidance(),
+        handle_engine_switch=switch,
+    )
+
+    result = await _call_action(tools, "solve_captcha_with_help", page=page, challenge="Solve it")
+
+    assert result == BROWSER_CAPTCHA_SKIP_SOURCE.format(host=host)
+    assert (takeover.calls, switch.calls) == ([], [])
+
+
 async def test_a_captcha_on_the_fast_engine_is_tried_in_the_full_browser_before_the_user() -> None:
     """Bing's bot check stopped the fast browser only, and the user was asked to pass it."""
     takeover = _FakeTakeover()
     switch = _FakeSwitch()
     tools = build_browser_tools(
+        user_sites=SITES,
         solve_captcha=True,
         handle_takeover=takeover,
         handle_guidance=_FakeGuidance(),
@@ -147,7 +193,7 @@ async def test_the_guidance_action_hands_the_reason_to_the_agent_seam() -> None:
     takeover = _FakeTakeover()
     guidance = _FakeGuidance()
     tools = build_browser_tools(
-        solve_captcha=False, handle_takeover=takeover, handle_guidance=guidance
+        user_sites=SITES, solve_captcha=False, handle_takeover=takeover, handle_guidance=guidance
     )
 
     result = await _call_action(
@@ -165,7 +211,7 @@ def test_the_guidance_action_is_registered_even_with_captcha_off() -> None:
     guidance = _FakeGuidance()
 
     tools = build_browser_tools(
-        solve_captcha=False, handle_takeover=takeover, handle_guidance=guidance
+        user_sites=SITES, solve_captcha=False, handle_takeover=takeover, handle_guidance=guidance
     )
 
     assert "request_agent_guidance" in tools.registry.registry.actions
@@ -184,7 +230,10 @@ class _FakeSwitch:
 
 def test_a_run_on_chrome_is_never_offered_the_full_browser() -> None:
     tools = build_browser_tools(
-        solve_captcha=False, handle_takeover=_FakeTakeover(), handle_guidance=_FakeGuidance()
+        user_sites=SITES,
+        solve_captcha=False,
+        handle_takeover=_FakeTakeover(),
+        handle_guidance=_FakeGuidance(),
     )
 
     assert "continue_in_full_browser" not in tools.registry.registry.actions
@@ -193,6 +242,7 @@ def test_a_run_on_chrome_is_never_offered_the_full_browser() -> None:
 async def test_a_run_on_the_fast_engine_can_move_to_the_full_browser_naming_why() -> None:
     switch = _FakeSwitch()
     tools = build_browser_tools(
+        user_sites=SITES,
         solve_captcha=False,
         handle_takeover=_FakeTakeover(),
         handle_guidance=_FakeGuidance(),

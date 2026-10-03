@@ -72,6 +72,15 @@ import {
 import { wideLog, withWideEvent } from "../utils/wide-events";
 import { BotServer } from "./base-server";
 
+/** An outbound artifact, fetched and within the platform's cap, ready to upload. */
+export interface OutboundFile {
+  data: Buffer;
+  /** The envelope's declared type, else what the server sent. */
+  mime: string;
+  filename: string;
+  caption: string | undefined;
+}
+
 /**
  * Abstract base class all platform bot adapters extend, providing shared command dispatch,
  * streaming chat, error handling, and lifecycle management; platform-specific behavior is
@@ -323,39 +332,62 @@ export abstract class BaseBotAdapter {
   ): Promise<void>;
 
   /**
+   * Delivers a file artifact to `destinationId`, addressed by `isChannel` like
+   * {@link deliverOutbound}: fetches the bytes under this platform's size cap,
+   * then hands them to the platform's {@link sendOutboundFile}. A browser run's
+   * step photos always go to the requester's DM: its live link and screenshots
+   * are private.
+   */
+  protected async deliverOutboundFile(
+    destinationId: string,
+    attachment: OutboundAttachment,
+    isChannel: boolean,
+  ): Promise<void> {
+    const artifact = await this.fetchOutboundArtifact(
+      destinationId,
+      attachment,
+      isChannel,
+    );
+    if (!artifact) return; // too large — fetchOutboundArtifact already replied
+    await this.sendOutboundFile(
+      destinationId,
+      {
+        data: artifact.data,
+        mime: attachment.content_type ?? artifact.contentType,
+        filename: attachment.filename,
+        caption: attachment.caption ?? undefined,
+      },
+      isChannel,
+    );
+  }
+
+  /** Uploads one fetched artifact through the platform's SDK. */
+  protected abstract sendOutboundFile(
+    destinationId: string,
+    file: OutboundFile,
+    isChannel: boolean,
+  ): Promise<void>;
+
+  /**
    * Fetches an outbound artifact's bytes, enforcing this platform's file-size
    * cap. Returns the bytes, or `null` after sending a short "too large" note via
    * {@link deliverOutbound} when the artifact exceeds the limit — so an oversized
    * file tells the user instead of silently dead-lettering on a rejected upload.
-   *
-   * Adapter `deliverOutboundFile` overrides should fetch through this helper
-   * rather than calling `gaia.downloadArtifact` directly.
    */
-  protected async fetchOutboundArtifact(
+  private async fetchOutboundArtifact(
     destinationId: string,
     attachment: OutboundAttachment,
     isChannel: boolean,
   ): Promise<{ data: Buffer; contentType: string } | null> {
-    let artifact: { data: Buffer; contentType: string };
-    if (attachment.url) {
-      artifact = await this.gaia.downloadAttachmentUrl(attachment.url, {
-        platform: this.platform,
-        platformUserId: destinationId,
-      });
-    } else {
-      if (!attachment.conversation_id || !attachment.path) {
-        // The envelope schema's refine already guarantees exactly one source —
-        // reaching here means a malformed envelope slipped past validation.
-        throw new Error(
-          "outbound attachment has neither `url` nor `conversation_id`/`path`",
-        );
-      }
-      artifact = await this.gaia.downloadArtifact(
-        attachment.conversation_id,
-        attachment.path,
-        { platform: this.platform, platformUserId: destinationId },
-      );
-    }
+    const ctx = { platform: this.platform, platformUserId: destinationId };
+    const artifact =
+      attachment.url != null
+        ? await this.gaia.downloadAttachmentUrl(attachment.url, ctx)
+        : await this.gaia.downloadArtifact(
+            attachment.conversation_id,
+            attachment.path,
+            ctx,
+          );
     const limit = OUTBOUND_FILE_LIMITS[this.platform];
     if (artifact.data.length > limit) {
       // `platform` is already on every line's envelope — repeating it as a
@@ -390,36 +422,6 @@ export abstract class BaseBotAdapter {
       return null;
     }
     return artifact;
-  }
-
-  /**
-   * Delivers a file artifact to `destinationId`, addressed by `isChannel` like
-   * {@link deliverOutbound}. The default sends a short text note instead;
-   * platforms that support attachments (e.g. WhatsApp) override this to upload
-   * the artifact bytes. A browser run's step photos always go to the
-   * requester's DM: its live link and screenshots are private.
-   */
-  protected async deliverOutboundFile(
-    destinationId: string,
-    attachment: OutboundAttachment,
-    isChannel: boolean,
-  ): Promise<void> {
-    wideLog.warning("outbound_file_fallback_text", {
-      attachment_filename: attachment.filename,
-    });
-    // The base implementation IS the "this platform can't send files" path — platforms that
-    // can (WhatsApp) override the whole method and capture their own success. Reaching here
-    // always means the user got text instead of the artifact they asked for.
-    this.analytics.capture(
-      await this.resolveDistinctId(destinationId),
-      BOT_EVENTS.FILE_DELIVERED,
-      { success: false, reason: "platform_unsupported" },
-    );
-    await this.deliverOutbound(
-      destinationId,
-      `I created *${attachment.filename}*, but I can't send files on ${this.platform} yet.`,
-      isChannel,
-    );
   }
 
   /**

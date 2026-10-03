@@ -80,13 +80,17 @@ async def test_a_live_code_is_a_short_url_safe_slug(
     assert _URL_SAFE_RE.match(code)
 
 
-async def test_link_keeps_the_live_path_on_a_vhost(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_link_opens_the_web_live_page_not_the_browser_link_vhost(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     mint = AsyncMock(return_value="Xk3p9qR2mN4t")
     monkeypatch.setattr(live_view, "mint_live_code", mint)
+    monkeypatch.setattr(live_view.settings, "FRONTEND_URL", "https://heygaia.io")
     monkeypatch.setattr(links.settings, "BROWSER_LIVE_VIEW_BASE_URL", "https://browser.heygaia.io")
 
     link = await live_view.create_live_view_link("sess-abc", "user-1", "h1")
 
-    # No session id and no ?t= token; /live/ keeps a bare /{code} off the API root.
-    assert link == "https://browser.heygaia.io/live/Xk3p9qR2mN4t"
+    # The web app serves the viewer; the recap/screenshot vhost plays no part.
+    # No session id and no ?t= token in the link: the code is the authority.
+    assert link == "https://heygaia.io/live/Xk3p9qR2mN4t"
     mint.assert_awaited_once_with("sess-abc", "user-1", "h1")

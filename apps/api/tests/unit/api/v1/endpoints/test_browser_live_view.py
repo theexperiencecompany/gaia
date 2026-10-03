@@ -217,73 +217,6 @@ async def test_a_recap_link_opens_its_slideshow_and_an_unknown_one_does_not(
     ]
 
 
-# --- who may open the live view page --------------------------------------------
-
-
-async def test_a_bot_link_opens_its_session_while_its_handoff_waits(
-    client: AsyncClient, events: list[dict[str, Any]]
-) -> None:
-    await register_session("sess-1", "u1", live_ws=_HOST_STREAM)
-    code = await mint_live_code("sess-1", "u1", "h1")
-
-    page = await client.get(f"/live/{code}")
-
-    assert page.status_code == 200
-    assert "sess-1" in page.text
-    assert events[-1]["browser"] == {"operation": "live_view_page", "session_id": "sess-1"}
-    await revoke_handoff_live_code("h1")
-    settled = await client.get(f"/live/{code}")
-    assert (settled.status_code, settled.json()["detail"]) == (
-        404,
-        "Live view not found or expired",
-    )
-    assert events[-1]["browser"] == {"operation": "live_view_page"}
-
-
-async def test_the_web_cards_token_opens_its_own_session(client: AsyncClient) -> None:
-    await register_session("sess-1", "u1", live_ws=_HOST_STREAM)
-
-    page = await client.get("/live/sess-1", params={"t": create_takeover_token("sess-1", "u1")})
-
-    assert page.status_code == 200
-    assert "sess-1" in page.text
-
-
-@pytest.mark.parametrize(
-    ("path", "token", "refused", "why"),
-    [
-        # A raw session id without a token is no authority at all: there is no cookie path.
-        ("/live/sess-1", None, 404, "Live view not found or expired"),
-        ("/live/sess-1", "not-a-token", 401, "Invalid or expired link"),
-        ("/live/sess-2", ("sess-1", "u1"), 403, "Link does not match this session"),
-        ("/live/sess-1", ("sess-1", "intruder"), 403, "Not authorized for this session"),
-    ],
-)
-async def test_anything_else_is_turned_away_saying_why(
-    client: AsyncClient,
-    path: str,
-    token: tuple[str, str] | str | None,
-    refused: int,
-    why: str,
-) -> None:
-    await register_session("sess-1", "u1", live_ws=_HOST_STREAM)
-    await register_session("sess-2", "u2", live_ws=_HOST_STREAM)
-    sent = create_takeover_token(*token) if isinstance(token, tuple) else token
-
-    page = await client.get(path, params={"t": sent} if sent is not None else None)
-
-    assert (page.status_code, page.json()["detail"]) == (refused, why)
-
-
-async def test_a_bot_link_for_a_session_its_owner_no_longer_holds_is_refused(
-    client: AsyncClient,
-) -> None:
-    await register_session("sess-1", "someone-else", live_ws=_HOST_STREAM)
-    code = await mint_live_code("sess-1", "u1", "h1")
-
-    assert (await client.get(f"/live/{code}")).status_code == status.HTTP_403_FORBIDDEN
-
-
 # --- the live socket ------------------------------------------------------------
 
 
@@ -309,20 +242,41 @@ async def test_a_socket_relays_frames_out_and_input_in(
     await asyncio.gather(watching, return_exceptions=True)
 
 
-async def test_a_refused_socket_is_closed_as_a_policy_violation_unopened(
-    fake_redis: fakeredis.aioredis.FakeRedis, host: _HostStream
+@pytest.mark.parametrize(
+    ("target", "token", "why"),
+    [
+        # A raw session id without a token is no authority at all: there is no cookie path.
+        ("sess-1", None, "Live view not found or expired"),
+        ("sess-1", "not-a-token", "Invalid or expired link"),
+        ("sess-2", ("sess-1", "u1"), "Link does not match this session"),
+        ("sess-1", ("sess-1", "intruder"), "Not authorized for this session"),
+        # A bot link for a session its owner no longer holds.
+        ("code", None, "Not authorized for this session"),
+    ],
+)
+async def test_anything_else_is_closed_as_a_policy_violation_unopened_saying_why(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+    host: _HostStream,
+    target: str,
+    token: tuple[str, str] | str | None,
+    why: str,
 ) -> None:
     await register_session("sess-1", "u1", live_ws=_HOST_STREAM)
+    await register_session("sess-2", "u2", live_ws=_HOST_STREAM)
+    if target == "code":
+        await register_session("sess-3", "someone-else", live_ws=_HOST_STREAM)
+        target = await mint_live_code("sess-3", "u1", "h1")
+    sent = create_takeover_token(*token) if isinstance(token, tuple) else token
     viewer = _Viewer()
 
     async with captured_wide_event() as event:
-        await _watch(viewer, "sess-1", create_takeover_token("sess-1", "intruder"))
+        await _watch(viewer, target, sent)
 
     assert (viewer.accepted, viewer.close_code) == (False, status.WS_1008_POLICY_VIOLATION)
     assert host.dialed == []
     (refusal,) = event["warnings"]
     assert "refused" in refusal["msg"]
-    assert refusal["reason"] == "Not authorized for this session"
+    assert refusal["reason"] == why
 
 
 async def test_a_session_with_no_host_stream_closes_as_gone(

@@ -23,7 +23,7 @@ import {
   createBotLogger,
   extractSubcommandArgs,
   handleStreamingChat,
-  type OutboundAttachment,
+  type OutboundFile,
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
@@ -137,30 +137,24 @@ export class HarnessAdapter extends BaseBotAdapter {
   }
 
   /**
-   * Records a backend-originated file delivery, fetching the bytes through the
-   * real shared helper first. The base class would answer "I can't send files on
-   * telegram yet" — but the harness stands in for a platform that can, so a
-   * transcript has to show the caption and prove the download succeeded.
+   * Records a backend-originated file delivery, after the base class fetched
+   * the bytes through the real shared helper. The harness stands in for a
+   * platform that can send files, so a transcript has to show the caption and
+   * prove the download succeeded.
    */
-  protected override async deliverOutboundFile(
+  protected override sendOutboundFile(
     destinationId: string,
-    attachment: OutboundAttachment,
-    isChannel: boolean,
+    { data, mime, filename, caption }: OutboundFile,
   ): Promise<void> {
-    const artifact = await this.fetchOutboundArtifact(
-      destinationId,
-      attachment,
-      isChannel,
-    );
-    if (!artifact) return; // too large — fetchOutboundArtifact already replied
     this.transcript.record({
       type: "outbound-attachment",
       destinationId,
-      filename: attachment.filename,
-      text: attachment.caption ?? "",
-      bytes: artifact.data.length,
-      contentType: attachment.content_type ?? artifact.contentType,
+      filename,
+      text: caption ?? "",
+      bytes: data.length,
+      contentType: mime,
     });
+    return Promise.resolve();
   }
 
   /**

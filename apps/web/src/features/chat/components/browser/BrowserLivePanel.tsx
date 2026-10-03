@@ -1,8 +1,6 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Spinner } from "@heroui/spinner";
 import { Tooltip } from "@heroui/tooltip";
 import {
   AiWebBrowsingIcon,
@@ -12,19 +10,14 @@ import {
 } from "@icons";
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import {
-  type LiveStatus,
-  useLiveBrowser,
-} from "@/features/browser/hooks/useLiveBrowser";
+import { BrowserStatusChip } from "@/features/browser/components/BrowserStatusChip";
+import { useLiveBrowser } from "@/features/browser/hooks/useLiveBrowser";
 import { useLiveView } from "@/features/browser/hooks/useLiveView";
-import { useBrowserPanel } from "@/features/browser/stores/browserPanelStore";
-import { BROWSER_STATUS_META } from "@/features/browser/utils";
+import type { BrowserCardPhase } from "@/features/browser/types";
 import type { BrowserHandoffSnapshot } from "@/types/features/browserTaskTypes";
 import { HandoffPrompt } from "../bubbles/bot/HandoffPrompt";
+import { LiveScreen } from "../bubbles/bot/LiveScreen";
 import { ShimmerText } from "../bubbles/bot/ShimmerText";
-
-type ChipColor =
-  (typeof BROWSER_STATUS_META)[keyof typeof BROWSER_STATUS_META]["color"];
 
 // The tab's surface color — the cove curves and the toolbar must all be
 // exactly this so tab → toolbar reads as one continuous piece of chrome.
@@ -66,49 +59,66 @@ function TabCove({ side }: { side: "left" | "right" }) {
   );
 }
 
+interface BrowserLivePanelProps {
+  /** The session the run is on now: it changes when the run falls back to another engine. */
+  sessionId: string | null;
+  phase: BrowserCardPhase;
+  currentTask: string | null;
+  pendingHandoff: BrowserHandoffSnapshot | null;
+  onClose: () => void;
+}
+
 /**
  * The live browser as a browser: a Chrome-style surface in the right side
  * panel — a tab carrying the page's favicon and title, an omnibox, the live
  * screen, and an action bar directly under the screen that carries the
- * takeover ask during a handoff. Renders purely from the browser-panel store,
- * which the chat's browser card keeps in sync from the SSE stream.
+ * takeover ask during a handoff. The chat's browser card that owns the panel
+ * renders it from its own SSE-driven state.
  */
-export function BrowserLivePanel() {
-  const {
-    cardId,
-    sessionId,
-    liveViewUrl,
-    status,
-    currentTask,
-    pendingHandoff,
-    close,
-  } = useBrowserPanel();
-
+export function BrowserLivePanel({
+  sessionId,
+  phase,
+  currentTask,
+  pendingHandoff,
+  onClose,
+}: BrowserLivePanelProps) {
   // A finished run has nothing left to watch (the socket is gone, the card has
   // the recap), so hand the width back to the conversation — after a beat, so
   // the final frame and status are seen rather than vanishing on completion.
-  const finished =
-    status === "completed" || status === "failed" || status === "cancelled";
+  const { ended } = phase;
   useEffect(() => {
-    if (!finished) return undefined;
-    const timer = setTimeout(() => {
-      close();
-    }, PANEL_CLOSE_DELAY_MS);
+    if (!ended) return undefined;
+    const timer = setTimeout(onClose, PANEL_CLOSE_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [finished, close]);
+  }, [ended, onClose]);
 
-  if (!cardId) return null;
+  const interactive = !!pendingHandoff;
+  const { socketUrl, pageUrl, renew } = useLiveView(ended ? null : sessionId);
+  const live = useLiveBrowser(socketUrl, interactive, renew);
 
   return (
-    <BrowserChrome
-      key={cardId}
-      sessionId={finished ? null : sessionId}
-      liveViewUrl={liveViewUrl}
-      status={status}
-      currentTask={currentTask}
-      pendingHandoff={pendingHandoff}
-      onClose={close}
-    />
+    <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-zinc-900">
+      <TabStrip
+        title={live.page.title}
+        host={hostnameOf(live.page.url)}
+        favicon={live.page.favicon}
+        phase={phase}
+        onClose={onClose}
+      />
+      <Omnibox url={live.page.url} pageUrl={pageUrl} />
+      {socketUrl ? (
+        <LiveScreen live={live} interactive={interactive} />
+      ) : (
+        <div className="flex aspect-[8/5] items-center justify-center bg-zinc-800 text-sm text-zinc-500">
+          {ended ? "This browser session has ended." : "Connecting…"}
+        </div>
+      )}
+      <ActionBar
+        pendingHandoff={pendingHandoff}
+        currentTask={currentTask}
+        ended={ended}
+      />
+    </div>
   );
 }
 
@@ -116,15 +126,13 @@ function TabStrip({
   title,
   host,
   favicon,
-  statusMeta,
-  working,
+  phase,
   onClose,
 }: {
   title: string | null;
   host: string | null;
   favicon: string | null;
-  statusMeta: { label: string; color: ChipColor } | null;
-  working: boolean;
+  phase: BrowserCardPhase;
   onClose: () => void;
 }) {
   const [faviconFailed, setFaviconFailed] = useState(false);
@@ -156,23 +164,7 @@ function TabStrip({
         <TabCove side="right" />
       </div>
       <div className="ml-auto flex items-center gap-1.5 pb-1.5 pl-4">
-        {working && (
-          <Spinner size="sm" color="current" className="text-[#00bbff]" />
-        )}
-        {statusMeta && (
-          <Chip
-            size="sm"
-            variant="flat"
-            color={statusMeta.color}
-            classNames={
-              working
-                ? { base: "!bg-[#00bbff]/15", content: "!text-[#00bbff]" }
-                : undefined
-            }
-          >
-            {statusMeta.label}
-          </Chip>
-        )}
+        <BrowserStatusChip phase={phase} />
         <Button
           isIconOnly
           size="sm"
@@ -188,8 +180,6 @@ function TabStrip({
     </div>
   );
 }
-
-type PanelStatus = ReturnType<typeof useBrowserPanel.getState>["status"];
 
 /** The omnibox — one continuous surface with the tab. No back or reload glyphs:
  * this browser is driven by the agent, and a control that cannot act is worse
@@ -233,48 +223,15 @@ function Omnibox({
   );
 }
 
-/** The screen at its natural height, so the action bar sits right below it. */
-function LiveScreen({
-  canvasRef,
-  liveStatus,
-  interactive,
-}: {
-  canvasRef: ReturnType<typeof useLiveBrowser>["canvasRef"];
-  liveStatus: LiveStatus;
-  interactive: boolean;
-}) {
-  return (
-    <>
-      <canvas
-        ref={canvasRef}
-        width={1280}
-        height={800}
-        tabIndex={interactive ? 0 : -1}
-        className={`block h-auto w-full shrink-0 outline-none ${
-          interactive ? "cursor-crosshair touch-none" : "pointer-events-none"
-        }`}
-      />
-      {liveStatus !== "live" && (
-        <div className="flex items-center gap-2 bg-zinc-800 px-4 py-3 text-xs text-zinc-400">
-          {liveStatus === "connecting" && <Spinner size="sm" color="current" />}
-          {liveStatus === "closed"
-            ? "This browser session has ended"
-            : "Connecting…"}
-        </div>
-      )}
-    </>
-  );
-}
-
 /** Directly under the screen: the takeover ask during a handoff, else the agent's current step. */
 function ActionBar({
   pendingHandoff,
   currentTask,
-  done,
+  ended,
 }: {
   pendingHandoff: BrowserHandoffSnapshot | null;
   currentTask: string | null;
-  done: boolean;
+  ended: boolean;
 }) {
   if (pendingHandoff) {
     return (
@@ -282,73 +239,15 @@ function ActionBar({
         <HandoffPrompt
           key={pendingHandoff.handoff_id}
           handoff={pendingHandoff}
-          inPanel
+          surface={{ kind: "panel" }}
         />
       </div>
     );
   }
-  if (!currentTask || done) return null;
+  if (!currentTask || ended) return null;
   return (
     <div className="bg-zinc-800 px-4 py-3 text-sm">
       <ShimmerText text={currentTask} />
-    </div>
-  );
-}
-
-function BrowserChrome({
-  sessionId,
-  liveViewUrl,
-  status,
-  currentTask,
-  pendingHandoff,
-  onClose,
-}: {
-  sessionId: string | null;
-  liveViewUrl: string | null;
-  status: PanelStatus;
-  currentTask: string | null;
-  pendingHandoff: BrowserHandoffSnapshot | null;
-  onClose: () => void;
-}) {
-  const interactive = !!pendingHandoff;
-  const { socketUrl, pageUrl, renew } = useLiveView(sessionId, liveViewUrl);
-  const {
-    canvasRef,
-    status: liveStatus,
-    page,
-  } = useLiveBrowser(socketUrl, interactive, renew);
-  const statusMeta = status ? BROWSER_STATUS_META[status] : null;
-  const done =
-    status === "completed" || status === "failed" || status === "cancelled";
-  const working = status === "running";
-
-  return (
-    <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-zinc-900">
-      <TabStrip
-        title={page.title}
-        host={hostnameOf(page.url)}
-        favicon={page.favicon}
-        statusMeta={statusMeta}
-        working={working}
-        onClose={onClose}
-      />
-      <Omnibox url={page.url} pageUrl={pageUrl} />
-      {socketUrl && !done ? (
-        <LiveScreen
-          canvasRef={canvasRef}
-          liveStatus={liveStatus}
-          interactive={interactive}
-        />
-      ) : (
-        <div className="flex aspect-[8/5] items-center justify-center bg-zinc-800 text-sm text-zinc-500">
-          {done ? "This browser session has ended." : "Connecting…"}
-        </div>
-      )}
-      <ActionBar
-        pendingHandoff={pendingHandoff}
-        currentTask={currentTask}
-        done={done}
-      />
     </div>
   );
 }

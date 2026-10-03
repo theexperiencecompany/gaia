@@ -20,7 +20,7 @@ from app.constants.browser import (
     HandoffStatus,
     SensitiveCategory,
 )
-from app.utils.sites import host_of
+from app.utils.sites import site_of
 
 # ---------------------------------------------------------------------------
 # SSE card snapshots (data of a `browser_task_data` tool_data entry)
@@ -34,7 +34,6 @@ class BrowserSessionSnapshot(BaseModel):
     task: str
     status: BrowserSessionStatus
     session_id: str | None = None
-    live_view_url: str | None = None
     detail: str | None = None
 
 
@@ -92,7 +91,6 @@ class BrowserHandoffSnapshot(BaseModel):
     category: SensitiveCategory = SensitiveCategory.NONE
     reason: str
     session_id: str | None = None
-    live_view_url: str | None = None
     #: Required, not defaulted: a snapshot that forgot to say it had been
     #: resolved would silently render as still-pending to the user.
     status: HandoffStatus
@@ -114,7 +112,7 @@ class BrowserResultSnapshot(BaseModel):
     # What the user said while the run went: messages, and notes left with a
     # handoff. The closing reply is written against the original request otherwise.
     user_notes: list[str] = Field(default_factory=list)
-    # The notes among them that replaced the request, as the reply classifier read them.
+    # The notes among them that replaced the request, as comms' browser_step_done marked them.
     redirects: list[str] = Field(default_factory=list)
 
 
@@ -159,7 +157,7 @@ class HandoffOutcome(BaseModel):
 
     status: HandoffStatus
     message: str | None = None
-    #: The note replaces the task: only the reply classifier says so, never a plain note.
+    #: The note replaces the task: only comms' browser_step_done says so, never a plain note.
     redirect: bool = False
     #: Why a FAILED handoff failed.
     cause: EngineFailure | None = None
@@ -228,7 +226,7 @@ class AgentGuidanceRequest(BaseModel):
     # What the user said mid-run. Without it the executor guides toward the
     # original task and sends the run back to a step they declined.
     user_notes: list[str] = Field(default_factory=list)
-    # The notes among them the reply classifier read as replacing the task.
+    # The notes among them comms' browser_step_done marked as replacing the task.
     redirects: list[str] = Field(default_factory=list)
 
 
@@ -373,7 +371,7 @@ class BrowserTaskSecret(BaseModel):
     @classmethod
     def _host(cls, site: str) -> str:
         """Keep the site's host alone, without www.; a site naming no host is refused."""
-        host = host_of(site)
-        if host is None:
+        named = site_of(site)
+        if named is None:
             raise ValueError(f"{site!r} names no site")
-        return host.removeprefix("www.")
+        return named

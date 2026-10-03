@@ -33,17 +33,11 @@ from app.agents.core.background.executor_capture import (
 from app.agents.core.background.session import get_session
 from app.agents.core.comms_directive import interpret_comms_output
 from app.constants.artifacts import ARTIFACT_FORWARDER_SUBSCRIBE_TIMEOUT
-from app.constants.browser import (
-    BROWSER_HANDOFF_REPLY_NOTE,
-    BROWSER_HANDOFF_REPLY_READINGS,
-    BROWSER_RUN_STOPPED_BY_MESSAGE_NOTE,
-)
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT, VOICE_EXECUTOR_RESULT_TIMEOUT_S
 from app.constants.chat import (
     EMPTY_RESPONSE_FALLBACK,
     GENERIC_TURN_ERROR,
     RECURSION_LIMIT_MESSAGE,
-    ConversationSource,
 )
 from app.constants.comms import CommsDirectiveKind
 from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED, HIL_CLASSIFIER_HISTORY_TURNS
@@ -65,13 +59,6 @@ from app.services.analytics_service import (
     AnalyticsEvents,
     AnalyticsProperties,
     capture_event,
-)
-from app.services.browser.handoff import reply_address
-from app.services.browser.job_stop import RequesterChat, requester_chat
-from app.services.browser.jobs import post_conversation_message
-from app.services.browser.resolution import (
-    resolve_handoff_from_message,
-    stop_running_job_from_message,
 )
 from app.services.chat.artifact_forwarder import forward_artifact_events
 from app.services.chat.chunks import ChunkAccumulators, extract_response_text, process_data_chunk
@@ -190,8 +177,6 @@ class _TurnContext:
     stream_id: str
     source: str | None
     usage_callback: UsageMetadataCallbackHandler
-    #: What the model reads with the user's message about what it already did.
-    note: str | None = None
 
 
 class _StreamState:
@@ -348,10 +333,6 @@ async def _run_chat_stream(
         if is_new_conversation and user_id and body.fileData:
             await _wait_for_artifact_forwarder(forwarder_subscribed, stream_id)
             await FileService.seed_uploads(body.fileData, user_id, conversation_id)
-        # A chat reply ("I paid, continue" / "stop") resolves a paused browser task's
-        # handoff like the card's buttons, on web and bots alike. Always falls
-        # through to the normal turn, which reads what the reply did with it.
-        browser_note = await _browser_turn_note(body, user.user_id, conversation_id, source)
 
         # Starts only after the conversation row exists (_publish_init_chunk);
         # starting earlier races the insert and the $set description update can
@@ -367,7 +348,6 @@ async def _run_chat_stream(
                 stream_id=stream_id,
                 source=source,
                 usage_callback=usage_callback,
-                note=browser_note,
             ),
             description_task,
             state,
@@ -561,63 +541,6 @@ async def _resolve_pending_approval_turn(
     return True
 
 
-async def _browser_turn_note(
-    body: MessageRequestWithHistory,
-    user_id: str | None,
-    conversation_id: str,
-    source: str | None,
-) -> str | None:
-    """Read the user's message against their browser task: resolve its handoff, stop it, or pass the message on to it.
-
-    Returns what the turn's model must read with the message when it answered a
-    handoff or stopped the task, None otherwise. Any other message reaches the
-    running task as something the user said, which its agent weighs at its next step.
-    """
-    message = user_message_content_from(body)
-    if not user_id or not message:
-        return None
-
-    address = reply_address(conversation_id, user_id, ConversationSource.coerce(source))
-    try:
-        reply = await resolve_handoff_from_message(address, user_id, message)
-    except Exception as e:  # chat must survive an optional-feature lookup
-        log.error(
-            f"{LogTag.CHAT} Pending browser-handoff check failed; normal turn",
-            error_type=type(e).__name__,
-        )
-        return None
-
-    if reply is not None and reply.action != "unrelated":
-        return BROWSER_HANDOFF_REPLY_NOTE.format(
-            reason=reply.reason, reading=BROWSER_HANDOFF_REPLY_READINGS[reply.action]
-        )
-    requester = requester_chat(user_id, ConversationSource.coerce(source))
-    if reply is None and await _stops_the_running_task(conversation_id, requester, message):
-        return BROWSER_RUN_STOPPED_BY_MESSAGE_NOTE
-    job_id = await post_conversation_message(conversation_id, message)
-    if job_id is not None:
-        log.set_ns("browser", job_id=job_id, message_to_running_job=True)
-    return None
-
-
-async def _stops_the_running_task(
-    conversation_id: str, requester: RequesterChat | None, message: str
-) -> bool:
-    """Whether the message stopped the conversation's running browser task.
-
-    A read that fails stops nothing: the message still reaches the task as
-    something the user said, which its own agent weighs.
-    """
-    try:
-        return await stop_running_job_from_message(conversation_id, requester, message)
-    except Exception as e:  # the user's words must still reach the run
-        log.error(
-            f"{LogTag.CHAT} Reading a mid-run message for a stop failed; it goes to the task",
-            error_type=type(e).__name__,
-        )
-        return False
-
-
 def _set_stream_log_context(
     body: MessageRequestWithHistory,
     user_id: str | None,
@@ -761,9 +684,7 @@ async def _consume_agent_stream(
         request=body,
         user=user,
         conversation_id=turn.conversation_id,
-        options=AgentRunOptions(
-            usage_metadata_callback=turn.usage_callback, source=turn.source, turn_note=turn.note
-        ),
+        options=AgentRunOptions(usage_metadata_callback=turn.usage_callback, source=turn.source),
         ids=StreamMessageIds(
             stream_id=stream_id,
             user_message_id=state.user_message_id,

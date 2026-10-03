@@ -28,7 +28,7 @@ import {
   extractSubcommandArgs,
   handleStreamingChat,
   hashLogIdentifier,
-  type OutboundAttachment,
+  type OutboundFile,
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
@@ -310,28 +310,21 @@ export class SlackAdapter extends BaseBotAdapter {
   }
 
   /**
-   * Delivers an agent-generated file artifact via files.uploadV2, with the
-   * caption as the message comment. Fetches the bytes from GAIA
-   * (bot-authenticated), then uploads them into the channel when `isChannel`,
-   * else into the user's DM channel.
+   * Uploads an agent-generated file artifact via files.uploadV2, with the
+   * caption as the message comment: into the channel when `isChannel`, else
+   * into the user's DM channel.
    */
-  protected override async deliverOutboundFile(
+  protected override async sendOutboundFile(
     destinationId: string,
-    attachment: OutboundAttachment,
+    { data, filename, caption }: OutboundFile,
     isChannel: boolean,
   ): Promise<void> {
-    const artifact = await this.fetchOutboundArtifact(
-      destinationId,
-      attachment,
-      isChannel,
-    );
-    if (!artifact) return; // too large — fetchOutboundArtifact already replied
     await this.sendToConversation(destinationId, isChannel, (channel) =>
       this.app.client.files.uploadV2({
         channel_id: channel,
-        file: artifact.data,
-        filename: attachment.filename,
-        initial_comment: attachment.caption ?? undefined,
+        file: data,
+        filename,
+        initial_comment: caption,
       }),
     );
   }

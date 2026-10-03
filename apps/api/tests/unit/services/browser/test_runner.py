@@ -29,6 +29,7 @@ from app.constants.browser import (
     BROWSER_RUN_CANCELLED_SUMMARY,
     BROWSER_RUN_CRASHED_SUMMARY,
     BROWSER_RUN_DONE_SUMMARY,
+    BROWSER_RUN_FOUND_NOTE,
     BROWSER_RUN_HANDOFF_LIMIT_SUMMARY,
     BROWSER_RUN_HANDOFF_TIMED_OUT,
     BROWSER_RUN_NOT_DONE_SUMMARY,
@@ -86,7 +87,6 @@ def _session(session_id: str = "s-primary") -> BrowserHostSession:
     return BrowserHostSession(
         session_id=session_id,
         cdp_url=f"ws://{session_id}",
-        live_view_url=f"http://{session_id}/live",
         host_url=f"http://{session_id}-host",
         engine=BrowserEngine.OBSCURA if session_id == "s-primary" else BrowserEngine.CHROMIUM,
     )
@@ -118,6 +118,8 @@ class _ScriptedRun:
         self.answers = True
         self.connected = True
         self.agent_state: object = f"state of run {len(type(self).made)}"
+        #: What the agent had read off pages and noted, as found() hands it over.
+        self.gathered: list[str] = []
         type(self).made.append(self)
 
     async def execute(self, task: str) -> RunOutcome:
@@ -146,6 +148,9 @@ class _ScriptedRun:
 
     def stop(self) -> None:
         self.stopped = True
+
+    def found(self) -> list[str]:
+        return list(self.gathered)
 
 
 async def _done(run: _ScriptedRun) -> RunOutcome:
@@ -639,7 +644,6 @@ async def test_the_run_opens_on_its_session_and_ends_with_its_result() -> None:
         task="book a table",
         status=BrowserSessionStatus.RUNNING,
         session_id="s-primary",
-        live_view_url="http://s-primary/live",
     )
     assert seen["emitted"][-1] == result
 
@@ -1011,6 +1015,26 @@ async def test_a_handoff_the_user_cancelled_stops_the_run_even_when_the_cancel_i
         BrowserSessionStatus.CANCELLED,
         False,
         BROWSER_RUN_STOPPED_SUMMARY,
+    )
+
+
+async def test_a_run_stopped_before_it_answered_delivers_what_it_had_found() -> None:
+    """A stopped run's result said only that it stopped, and what the agent had read was lost."""
+
+    async def _reads_then_hands_off(run: _ScriptedRun) -> RunOutcome:
+        run.gathered = ["Clef: a model of music", "Read 1 of 3 stories."]
+        with contextlib.suppress(BrowserHandoffCancelled):
+            await run.hooks.takeover("Sign in", "credentials")
+        return RunOutcome(False, "")
+
+    runner, _ = _runner(
+        _reads_then_hands_off, handoff=HandoffOutcome(status=HandoffStatus.CANCELLED)
+    )
+
+    result = await _run(runner)
+
+    assert result.summary == BROWSER_RUN_STOPPED_SUMMARY + BROWSER_RUN_FOUND_NOTE.format(
+        found="Clef: a model of music\n\nRead 1 of 3 stories."
     )
 
 
@@ -1505,7 +1529,6 @@ async def test_a_run_moved_to_the_fallback_resumes_at_the_page_it_was_on(
             task="book a table",
             status=BrowserSessionStatus.RUNNING,
             session_id="s-fallback",
-            live_view_url="http://s-fallback/live",
         )
         in seen["emitted"]
     )

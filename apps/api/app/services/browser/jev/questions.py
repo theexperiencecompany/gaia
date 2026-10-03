@@ -14,25 +14,15 @@ A password field is filled with TYPE_TEXT from a stored secret; never submit a l
 WAIT only when the needed control is absent/disabled, or submitted results are still loading.
 If Search/Submit is visible and the required fields are ready, CLICK it immediately.
 Recent WAIT actions are not evidence of loading. Prefer a useful visible control over WAIT.
-Pages already visited are listed, and recent actions say where each led. Pages this burst read are
-listed with the start of their text: it already reached whoever gave the goal, however little it holds.
-An element marked opened links to a page this run already opened and read; do not open it again just
-to read it. Open it again when the run changed it since (added to a cart, sent a message, submitted a
-form) or the goal needs it to act on. Open the next item a list goal asks for; once each was opened,
-choose DONE.
-DONE requires visible evidence that ALL requirements are satisfied, or, for a goal that asks to
-find or report something, that the answer is visible now or was read on a page this burst opened. If asked to open a result, a matching
-link is not enough. BLOCKED means no supported operation can make progress: the goal needs a
-value it does not give, a login it gives no credentials for, a CAPTCHA, a payment, or a control
-this page does not have."""
+DONE means done_when is visibly true on the CURRENT page; judge nothing else. If done_when asks
+for a page to be open, a matching link to it is not enough. BLOCKED means no supported operation
+can make progress: the goal needs a value it does not give, a login it gives no credentials for,
+a CAPTCHA, a payment, or a control this page does not have."""
 
 TARGET = """Choose the best observed target if the next operation is the one specified in this question.
 Use the user's entire goal, field values, nearby text, and recent actions. This question chooses only
 a target for that operation; another question decides which operation to execute. Do not choose
 a field that already contains the requested value. Choose only an offered element index."""
-
-NAVIGATE_TARGET = """Choose the address to open if the next operation is NAVIGATE: a page the goal
-names, or a page already visited that the goal needs again. Choose only an offered address."""
 
 VALUE = """Choose the value to type into this field. Choose the literal the goal gives for exactly
 this field. Choose a stored secret where the goal names it for this field (a password, or a
@@ -66,11 +56,6 @@ OPERATIONS: dict[JevOperation, str] = {
     JevOperation.PRESS_ENTER: "Press Enter in the field that has focus, to submit what was just typed.",
     JevOperation.SCROLL_DOWN: "Scroll down the page, or an inner scrollable area, to see more of it.",
     JevOperation.SCROLL_UP: "Scroll up the page, or an inner scrollable area, to see what is above.",
-    JevOperation.NAVIGATE: "Open a page by its address: one the goal names, or one already visited.",
-    JevOperation.GO_BACK: "Go back to the previous page.",
-    JevOperation.DONE: (
-        "Every requirement is satisfied, visibly here or on the pages this burst already read, "
-        "or what the goal asks to find is visible now."
-    ),
+    JevOperation.DONE: "done_when is visibly true on this page.",
     JevOperation.BLOCKED: "No supported operation can progress.",
 }

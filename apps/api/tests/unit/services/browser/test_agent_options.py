@@ -1,4 +1,4 @@
-"""The run's contract with Browser-Use: Jev first on the whole task, whole URLs, text-only steps on the run's budget."""
+"""The run's contract with Browser-Use: Jev first on the start page, whole URLs, text-only steps on the run's budget."""
 
 from __future__ import annotations
 
@@ -11,14 +11,14 @@ from app.constants.browser import (
     BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
     BROWSER_AGENT_ROLE,
     BROWSER_AGENT_URL_QUERY_MAX_CHARS,
-    BROWSER_DEVICE_SCALE_FACTOR,
     BROWSER_ENGINE_RESUMED_NOTE,
-    BROWSER_TAKEOVER_PREAMBLE,
-    BROWSER_VIEWPORT_HEIGHT,
-    BROWSER_VIEWPORT_WIDTH,
+    BROWSER_HUMAN_CHECKS,
+    BROWSER_TASK_QUOTE_RULE,
+    JEV_FIRST_BURST_DONE_WHEN,
+    JEV_FIRST_BURST_GOAL,
 )
 from app.schemas.browser import BrowserTaskSecret
-from app.services.browser.agent_options import agent_options, browser_options
+from app.services.browser.agent_options import agent_options
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.jev.tool import JEV_ACTION
 from app.services.browser.run_contract import BrowserRunConfig
@@ -38,14 +38,21 @@ CONFIG = BrowserRunConfig(
 TASK = "log in with <secret>password</secret> and open the orders page"
 
 
-def test_jev_acts_first_on_the_whole_task_from_the_start_page() -> None:
+def test_jev_acts_first_on_the_part_of_the_task_the_start_page_is_for() -> None:
     options = agent_options(TASK, CONFIG, RunSecrets({}), resumed=False, fast_engine=False)
 
     assert options["initial_actions"] == [
-        {JEV_ACTION: {"goal": TASK, "start_url": "https://shop.test/"}}
+        {
+            JEV_ACTION: {
+                "goal": JEV_FIRST_BURST_GOAL.format(task=TASK),
+                "done_when": JEV_FIRST_BURST_DONE_WHEN,
+                "start_url": "https://shop.test/",
+            }
+        }
     ]
-    assert options["task"] == TASK + BROWSER_TAKEOVER_PREAMBLE
-    assert options["extend_system_message"] == BROWSER_AGENT_ROLE
+    # What goes to the user is the system's rule, never words the agent reads as the user's.
+    assert options["task"] == TASK + BROWSER_TASK_QUOTE_RULE
+    assert options["extend_system_message"] == BROWSER_AGENT_ROLE + BROWSER_HUMAN_CHECKS
     assert options["directly_open_url"] is True
 
 
@@ -96,7 +103,7 @@ def test_a_run_resumed_on_the_fallback_engine_is_told_where_it_is_and_stays_ther
     options = agent_options(TASK, config, RunSecrets({}), resumed=True, fast_engine=True)
 
     moved = BROWSER_ENGINE_RESUMED_NOTE.format(page=page)
-    assert options["task"] == TASK + moved + BROWSER_TAKEOVER_PREAMBLE
+    assert options["task"] == TASK + moved + BROWSER_TASK_QUOTE_RULE
     # Neither Jev on the whole task again, nor a reopen of its first page.
     assert (options["initial_actions"], options["directly_open_url"]) == (None, False)
 
@@ -114,13 +121,6 @@ def test_an_agent_on_the_fast_engine_is_told_where_it_is() -> None:
     """Never told, an agent asked to move read the fast browser's page as the full one's and stayed."""
     options = agent_options(TASK, CONFIG, RunSecrets({}), resumed=False, fast_engine=True)
 
-    assert options["extend_system_message"] == BROWSER_AGENT_ROLE + BROWSER_AGENT_FAST_ENGINE_NOTE
-
-
-def test_the_browser_renders_the_host_session_at_the_screencast_size() -> None:
-    assert browser_options("ws://host.test/devtools/browser/1") == {
-        "cdp_url": "ws://host.test/devtools/browser/1",
-        "viewport": {"width": BROWSER_VIEWPORT_WIDTH, "height": BROWSER_VIEWPORT_HEIGHT},
-        "device_scale_factor": BROWSER_DEVICE_SCALE_FACTOR,
-        "no_viewport": False,
-    }
+    assert options["extend_system_message"] == (
+        BROWSER_AGENT_ROLE + BROWSER_HUMAN_CHECKS + BROWSER_AGENT_FAST_ENGINE_NOTE
+    )

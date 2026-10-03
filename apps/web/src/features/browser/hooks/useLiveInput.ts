@@ -54,8 +54,8 @@ function pressKey(
 }
 
 /**
- * Forwards the user's input on the live canvas as CDP-shaped messages, kept
- * parallel with the standalone viewer the API serves (services/browser/live_view.py).
+ * Forwards the user's input on the live canvas as CDP-shaped messages, for
+ * every surface that shows it (chat card, side panel, full-page live view).
  *
  * Pointer and keys map one to one. On a touch screen a tap arrives as the
  * emulated mouse events, a drag scrolls the page as a wheel at the point it
@@ -64,13 +64,15 @@ function pressKey(
  */
 export function useLiveInput({
   canvasRef,
-  keyboardRef,
+  keyboard,
   cssSizeRef,
   send,
   enabled,
 }: {
   canvasRef: RefObject<HTMLCanvasElement | null>;
-  keyboardRef: RefObject<HTMLInputElement | null>;
+  /** The hidden input, as an element: it mounts only once the stream is live,
+   * after input is enabled, and its listeners must bind then. */
+  keyboard: HTMLInputElement | null;
   cssSizeRef: CssSize;
   send: Send;
   enabled: boolean;
@@ -226,7 +228,7 @@ export function useLiveInput({
   }, [enabled, canvasRef, cssSizeRef, send]);
 
   useEffect(() => {
-    const kb = keyboardRef.current;
+    const kb = keyboard;
     if (!enabled || !kb) return undefined;
     let composing = false;
     const read = () => {
@@ -264,14 +266,13 @@ export function useLiveInput({
       kb.removeEventListener("input", onInput);
       kb.removeEventListener("keydown", onKeyDown);
     };
-  }, [enabled, keyboardRef, send]);
+  }, [enabled, keyboard, send]);
 
   const openKeyboard = useCallback(() => {
-    const kb = keyboardRef.current;
-    if (!kb) return;
-    resetKeyboard(kb);
-    kb.focus();
-  }, [keyboardRef]);
+    if (!keyboard) return;
+    resetKeyboard(keyboard);
+    keyboard.focus();
+  }, [keyboard]);
 
   return { openKeyboard };
 }

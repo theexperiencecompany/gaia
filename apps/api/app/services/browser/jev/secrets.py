@@ -88,6 +88,11 @@ class RunSecrets:
     def names(self) -> list[str]:
         return list(self._values)
 
+    @property
+    def sites(self) -> list[str]:
+        """The site each secret is typed on: sites the user named for the task."""
+        return [secret.site for secret in self._secrets.values()]
+
     def value_for(self, placeholder: str, url: str) -> str:
         """Return the value placeholder stands for on url's page; raise SecretWithheld off its site."""
         match = PLACEHOLDER.fullmatch(placeholder)

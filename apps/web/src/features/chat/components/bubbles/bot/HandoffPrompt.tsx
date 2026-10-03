@@ -11,16 +11,23 @@ import {
   ShieldUserIcon,
   StopCircleIcon,
 } from "@icons";
+import { browserApi } from "@/features/browser/api/browserApi";
 import {
+  type PostHandoffDecision,
   type SettledHandoffStatus,
   useHandoffDecision,
 } from "@/features/browser/hooks/useHandoffDecision";
+import { useLiveBrowser } from "@/features/browser/hooks/useLiveBrowser";
 import { useLiveView } from "@/features/browser/hooks/useLiveView";
+import type { LiveSurface } from "@/features/browser/types";
+import { useIsMobile } from "@/hooks/ui/useMobile";
 import type {
+  BrowserHandoffDecision,
   BrowserHandoffSnapshot,
   BrowserSensitiveCategory,
 } from "@/types/features/browserTaskTypes";
-import { LiveBrowserCanvas } from "./LiveBrowserCanvas";
+import { LiveKeyboard } from "./LiveKeyboard";
+import { LiveScreen } from "./LiveScreen";
 
 // Each sensitive category gets an icon, a title that says what the user does,
 // and a call-to-action for the button that opens the live browser.
@@ -78,18 +85,20 @@ const RESOLVED_META: Record<
  */
 export function HandoffPrompt({
   handoff,
-  inPanel = false,
-  onOpenPanel,
+  surface,
 }: {
   handoff: BrowserHandoffSnapshot;
-  /** The live browser is in the side panel: skip the embedded canvas and the take-over button. */
-  inPanel?: boolean;
-  /** Desktop web: the primary action opens the side panel instead of a new tab. */
-  onOpenPanel?: () => void;
+  surface: LiveSurface;
 }) {
   const meta = HANDOFF_META[handoff.category ?? "none"];
   const Icon = meta.icon;
-  const live = useLiveView(handoff.session_id, handoff.live_view_url);
+  const inline = surface.kind !== "panel";
+  const isMobile = useIsMobile();
+  const view = useLiveView(handoff.session_id);
+  // The side panel already streams this session: no second socket here.
+  const live = useLiveBrowser(inline ? view.socketUrl : null, true, view.renew);
+  const post = (decision: BrowserHandoffDecision) =>
+    browserApi.postHandoffDecision(handoff.handoff_id, decision);
 
   return (
     <div className="rounded-2xl bg-zinc-900 p-3.5">
@@ -112,47 +121,57 @@ export function HandoffPrompt({
 
       {/* The canvas is the instruction — it says "you're in control" better than
           a label above it ever did. */}
-      {!inPanel && live.socketUrl && (
-        <div className="mt-3">
-          <LiveBrowserCanvas
-            socketUrl={live.socketUrl}
-            interactive
-            onDropped={live.renew}
-          />
+      {inline && view.socketUrl && (
+        <div className="mt-3 overflow-hidden rounded-xl bg-zinc-900">
+          <LiveScreen live={live} interactive />
+          {isMobile && live.status === "live" && (
+            <div className="px-3 py-2">
+              <LiveKeyboard live={live} />
+            </div>
+          )}
         </div>
       )}
 
-      <HandoffActions
-        handoffId={handoff.handoff_id}
-        takeOver={
-          !inPanel && (onOpenPanel || live.pageUrl) ? (
-            <TakeOverButton
-              cta={meta.cta}
-              pageUrl={live.pageUrl}
-              onOpenPanel={onOpenPanel}
-            />
-          ) : null
-        }
-      />
+      <div className="mt-3">
+        <HandoffDecision
+          post={post}
+          primary={
+            surface.kind === "card" ? (
+              <TakeOverButton cta={meta.cta} onPress={surface.openPanel} />
+            ) : surface.kind === "mobile" && view.pageUrl ? (
+              <TakeOverButton cta={meta.cta} href={view.pageUrl} />
+            ) : null
+          }
+        />
+      </div>
     </div>
   );
 }
 
-// Three choices, in order of intent: take over (do it live), I'm done (resume),
-// stop the task. Once the user has chosen, the server's answer replaces them.
-function HandoffActions({
-  handoffId,
-  takeOver,
+/**
+ * Three choices, in order of intent: an optional primary (take over), I'm done
+ * (resume), stop the task. Once the user has chosen, the server's answer
+ * replaces them. Shared with the full-page live view a bot link opens, whose
+ * code authorizes `post` and whose `trailing` slot carries the phone keyboard;
+ * there the choice is withdrawn (`canDecide`) once the link's session is gone.
+ */
+export function HandoffDecision({
+  post,
+  primary,
+  trailing,
+  canDecide = true,
 }: {
-  handoffId: string;
-  takeOver: React.ReactNode;
+  post: PostHandoffDecision;
+  primary?: React.ReactNode;
+  trailing?: React.ReactNode;
+  canDecide?: boolean;
 }) {
-  const { decide, decided, settled } = useHandoffDecision(handoffId);
+  const { decide, decided, settled } = useHandoffDecision(post);
   if (settled) {
     const resolved = RESOLVED_META[settled];
     const ResolvedIcon = resolved.icon;
     return (
-      <div className="mt-3 flex items-center gap-2 px-0.5 text-xs text-zinc-300">
+      <div className="flex items-center gap-2 px-0.5 text-xs text-zinc-300">
         <ResolvedIcon className="size-4" />
         {resolved.label}
       </div>
@@ -160,19 +179,22 @@ function HandoffActions({
   }
   if (decided) {
     return (
-      <div className="mt-3 flex items-center gap-2 px-0.5 text-xs text-zinc-300">
+      <div className="flex items-center gap-2 px-0.5 text-xs text-zinc-300">
         <Spinner size="sm" color="current" />
         {decided === "continue" ? "Continuing…" : "Stopping…"}
       </div>
     );
   }
+  if (!canDecide) return trailing ?? null;
   return (
-    <div className="mt-3 flex items-center gap-2 pt-1">
-      {takeOver}
+    <div className="flex items-center gap-2">
+      {primary}
       <Button
-        variant="flat"
+        variant={primary ? "flat" : "solid"}
         radius="sm"
-        className="flex-1 font-semibold text-zinc-100"
+        className={`flex-1 font-semibold ${
+          primary ? "text-zinc-100" : "bg-[#00bbff] text-zinc-900"
+        }`}
         onPress={() => decide("continue")}
       >
         I&rsquo;m done
@@ -185,45 +207,40 @@ function HandoffActions({
       >
         Stop task
       </Button>
+      {trailing}
     </div>
   );
 }
 
 // "Take over": open the live browser — the side panel on desktop, the tokened
-// page in a new tab on bots/mobile.
+// page in a new tab on mobile.
 function TakeOverButton({
   cta,
-  pageUrl,
-  onOpenPanel,
+  onPress,
+  href,
 }: {
   cta: string;
-  pageUrl: string | null;
-  onOpenPanel?: () => void;
+  onPress?: () => void;
+  href?: string;
 }) {
-  if (onOpenPanel) {
-    return (
-      <Button
-        radius="sm"
-        className="flex-1 bg-[#00bbff] font-semibold text-zinc-900"
-        onPress={onOpenPanel}
-      >
-        {cta}
-      </Button>
-    );
-  }
-  if (pageUrl) {
+  const className = "flex-1 bg-[#00bbff] font-semibold text-zinc-900";
+  if (href) {
     return (
       <Button
         as="a"
-        href={pageUrl}
+        href={href}
         target="_blank"
         rel="noopener noreferrer"
         radius="sm"
-        className="flex-1 bg-[#00bbff] font-semibold text-zinc-900"
+        className={className}
       >
         {cta}
       </Button>
     );
   }
-  return null;
+  return (
+    <Button radius="sm" className={className} onPress={onPress}>
+      {cta}
+    </Button>
+  );
 }

@@ -29,7 +29,7 @@ import {
   hashLogIdentifier,
   type IncomingMedia,
   type MediaOutcome,
-  type OutboundAttachment,
+  type OutboundFile,
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
@@ -237,25 +237,18 @@ export class DiscordAdapter extends BaseBotAdapter {
   }
 
   /**
-   * Delivers an agent-generated file artifact as a message attachment. Fetches
-   * the bytes from GAIA (bot-authenticated), then posts them into the channel
-   * when `isChannel`, else DMs them to the stored Discord user id.
+   * Uploads an agent-generated file artifact as a message attachment: into the
+   * channel when `isChannel`, else a DM to the stored Discord user id.
    */
-  protected override async deliverOutboundFile(
+  protected override async sendOutboundFile(
     destinationId: string,
-    attachment: OutboundAttachment,
+    { data, filename, caption }: OutboundFile,
     isChannel: boolean,
   ): Promise<void> {
-    const artifact = await this.fetchOutboundArtifact(
-      destinationId,
-      attachment,
-      isChannel,
-    );
-    if (!artifact) return; // too large — fetchOutboundArtifact already replied
     const target = await this.resolveOutboundTarget(destinationId, isChannel);
     await target.send({
-      content: attachment.caption ?? undefined,
-      files: [{ attachment: artifact.data, name: attachment.filename }],
+      content: caption,
+      files: [{ attachment: data, name: filename }],
     });
   }
 

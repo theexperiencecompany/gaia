@@ -129,10 +129,7 @@ export async function downloadArtifactRequest(
 export async function downloadUrlRequest(
   url: string,
 ): Promise<{ data: Buffer; contentType: string }> {
-  return fetchPublicAsset(url, {
-    maxContentLength: MAX_DOWNLOAD_BYTES,
-    maxBodyLength: MAX_DOWNLOAD_BYTES,
-  });
+  return fetchPublicAsset(url, MAX_DOWNLOAD_BYTES);
 }
 
 /**

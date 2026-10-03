@@ -91,7 +91,6 @@ class _ScriptedBrowser:
                 task=task,
                 status=BrowserSessionStatus.RUNNING,
                 session_id=self.session.session_id,
-                live_view_url=self.session.live_view_url,
             )
         )
         await emit(
@@ -173,7 +172,6 @@ def browser(monkeypatch: pytest.MonkeyPatch) -> None:
     """Everything outside the process: the host session, the engine choice, the history write."""
     session = MagicMock(
         session_id="sess-7",
-        live_view_url="https://host.test/live/sess-7",
         engine=BrowserEngine.CHROMIUM,
     )
 

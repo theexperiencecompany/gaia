@@ -136,15 +136,21 @@ class TestDeclaredChains:
         assert len(hooks) == 5
         assert hooks[-1] is manage_system_prompts_node
 
-    async def test_comms_slots_the_executor_status_before_the_prompt_manager(self):
-        """Gemini drops any SystemMessage after a non-system message, so the status frame must be slotted, not appended."""
+    async def test_comms_slots_the_status_frames_before_the_prompt_manager(self):
+        """Gemini drops any SystemMessage after a non-system message, so the status frames must be slotted, not appended."""
+        from app.agents.core.nodes.browser_task_status import browser_task_status_hook
         from app.agents.core.nodes.executor_status import executor_status_hook
         from app.agents.core.nodes.filter_messages import filter_messages_node
         from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 
         hooks = await self._hooks_for("build_comms_graph")
 
-        assert hooks == [filter_messages_node, executor_status_hook, manage_system_prompts_node]
+        assert hooks == [
+            filter_messages_node,
+            executor_status_hook,
+            browser_task_status_hook,
+            manage_system_prompts_node,
+        ]
 
     async def test_comms_does_not_carry_the_executor_only_hooks(self):
         """Comms has no todos and no media lane; carrying those hooks would cost every chat turn unused work."""
@@ -153,7 +159,7 @@ class TestDeclaredChains:
         hooks = await self._hooks_for("build_comms_graph")
 
         assert adapt_media_node not in hooks
-        assert len(hooks) == 3
+        assert len(hooks) == 4
 
 
 class TestEndGraphHooks:

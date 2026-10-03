@@ -1,4 +1,4 @@
-"""The browser run's two chat models: the agent's reasoning model and Jev's tiny text model.
+"""The browser run's two chat models: the agent's model and Jev's tiny text model.
 
 Both are Browser-Use chat models (OpenAI wire, which OpenRouter and the dev
 endpoint both speak), and every call either makes is recorded into the run's
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from time import perf_counter
-from typing import Literal, TypeVar, overload
+from typing import TypeVar, overload
 
 from browser_use import ChatOpenAI
 from browser_use.llm.base import BaseChatModel
@@ -19,21 +19,19 @@ from pydantic import BaseModel
 from pydantic_core import CoreSchema, core_schema
 
 from app.agents.llm.dev_lane import custom_endpoint, custom_lane_forced
-from app.agents.llm.lane import AgentRole, resolve_lane
 from app.config.settings import settings
 from app.constants.browser import (
     BROWSER_AGENT_HEDGE_SECONDS,
     BROWSER_AGENT_LLM_TIMEOUT_SECONDS,
     BROWSER_AGENT_OPENROUTER_KEY_MISSING,
-    BROWSER_AGENT_REASONING_EFFORT,
     JEV_TEXT_HEDGE_SECONDS,
     JEV_TEXT_OPENROUTER_KEY_MISSING,
+    BrowserAgentEffort,
 )
 from app.constants.llm import (
     DEV_LLM_BROWSER_HEADERS,
     OPENAI_REASONING_EFFORT,
     OPENROUTER_REASONING_EFFORT,
-    LLMProviderName,
     ReasoningLevel,
 )
 from app.services.browser.exceptions import BrowserUnavailableError
@@ -50,8 +48,6 @@ _TEXT_MAX_COMPLETION_TOKENS = 4096
 _TEXT_REASONING = ReasoningLevel.LIGHT
 # An agent step writes a whole action list plus its memory under flash mode.
 _AGENT_MAX_COMPLETION_TOKENS = 8192
-
-_Effort = Literal["none", "minimal", "low"]
 
 
 class MeteredChatModel:
@@ -135,7 +131,7 @@ def _openai_wire_model(
     base_url: str,
     default_headers: Mapping[str, str] | None,
     max_completion_tokens: int,
-    reasoning_effort: _Effort,
+    reasoning_effort: BrowserAgentEffort,
 ) -> BaseChatModel:
     """Build the one kind of chat model a browser run uses, sending reasoning_effort to model.
 
@@ -153,10 +149,12 @@ def _openai_wire_model(
     )
 
 
-async def build_agent_llm(user_id: str | None, ledger: RunLedger) -> MeteredChatModel:
-    """Return the reasoning model the Browser-Use agent runs on: the user's executor lane, at low effort."""
-    lane, _plan = await resolve_lane(user_id, AgentRole.EXECUTOR)
-    if lane.provider is LLMProviderName.CUSTOM:
+def build_agent_llm(ledger: RunLedger) -> MeteredChatModel:
+    """Return the Browser-Use agent's model: BROWSER_AGENT_MODEL over OpenRouter, or the forced dev lane's endpoint.
+
+    One setting for every user: the agent's model is not the user's chat lane.
+    """
+    if custom_lane_forced():
         endpoint = custom_endpoint()
         model = _openai_wire_model(
             model=endpoint.model,
@@ -164,22 +162,18 @@ async def build_agent_llm(user_id: str | None, ledger: RunLedger) -> MeteredChat
             base_url=endpoint.base_url,
             default_headers=DEV_LLM_BROWSER_HEADERS,
             max_completion_tokens=_AGENT_MAX_COMPLETION_TOKENS,
-            reasoning_effort=BROWSER_AGENT_REASONING_EFFORT,
+            reasoning_effort=settings.BROWSER_AGENT_REASONING_EFFORT,
         )
-    elif lane.provider is LLMProviderName.OPENROUTER and lane.model:
+    else:
         if not settings.OPENROUTER_API_KEY:
             raise BrowserUnavailableError(BROWSER_AGENT_OPENROUTER_KEY_MISSING)
         model = _openai_wire_model(
-            model=lane.model,
+            model=settings.BROWSER_AGENT_MODEL,
             api_key=settings.OPENROUTER_API_KEY,
             base_url=_OPENROUTER_BASE_URL,
             default_headers=None,
             max_completion_tokens=_AGENT_MAX_COMPLETION_TOKENS,
-            reasoning_effort=BROWSER_AGENT_REASONING_EFFORT,
-        )
-    else:
-        raise BrowserUnavailableError(
-            f"The browser agent runs on an OpenAI-wire lane; {lane.provider} is not one."
+            reasoning_effort=settings.BROWSER_AGENT_REASONING_EFFORT,
         )
     return MeteredChatModel(model, ledger, CallComponent.AGENT, BROWSER_AGENT_HEDGE_SECONDS)
 

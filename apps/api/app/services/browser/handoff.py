@@ -122,8 +122,8 @@ async def resolve_handoff(
 ) -> HandoffStatus | None:
     """Resolve a pending handoff, optionally attaching a free-text note the user sends back with a continue.
 
-    redirect marks the note as the user replacing the task, which only the reply
-    classifier says. Return the new status, or None when it does not exist or
+    redirect marks the note as the user replacing the task, which only comms'
+    browser_step_done says. Return the new status, or None when it does not exist or
     expired. Raise BrowserHandoffNotOwned for another user's handoff. One-time:
     a settled handoff keeps its original status.
     """

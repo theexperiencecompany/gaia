@@ -2,7 +2,6 @@ import type {
   BrowserHandoffSnapshot,
   BrowserResultSnapshot,
   BrowserSessionSnapshot,
-  BrowserSessionStatus,
   BrowserStepSnapshot,
   BrowserTaskSnapshot,
 } from "@/types/features/browserTaskTypes";
@@ -12,26 +11,74 @@ import {
   GAIA_CONNECT_DEFAULT_API_ORIGIN,
   GAIA_CONNECT_INSTALL_URL,
 } from "./constants";
+import type { BrowserCardPhase, BrowserCardStatus } from "./types";
 
-/** What a browser card shows: the run's own status, or that it is waiting on
- * the user (a pending handoff), which the run reports as a handoff, not a status. */
-export type BrowserCardStatus = BrowserSessionStatus | "awaiting_user";
-
-/** Machine states → plain language the user understands at a glance. Shared by
- * the chat card and the browser side panel so the two never disagree. */
+/** Machine states → plain language the user understands at a glance: one
+ * table for the chat card, the side panel and the task history. `color` is the
+ * chip's; `dot`/`text` are the history row's status line. */
 export const BROWSER_STATUS_META: Record<
   BrowserCardStatus,
   {
     label: string;
     color: "default" | "primary" | "success" | "danger" | "warning";
+    dot: string;
+    text: string;
   }
 > = {
-  running: { label: "Working", color: "primary" },
-  awaiting_user: { label: "Action needed", color: "warning" },
-  completed: { label: "Done", color: "success" },
-  failed: { label: "Couldn't finish", color: "danger" },
-  cancelled: { label: "Stopped", color: "default" },
+  running: {
+    label: "Working",
+    color: "primary",
+    dot: "bg-[#00bbff]",
+    text: "text-[#00bbff]",
+  },
+  awaiting_user: {
+    label: "Action needed",
+    color: "warning",
+    dot: "bg-amber-500",
+    text: "text-amber-400",
+  },
+  completed: {
+    label: "Done",
+    color: "success",
+    dot: "bg-emerald-500",
+    text: "text-emerald-400",
+  },
+  failed: {
+    label: "Couldn't finish",
+    color: "danger",
+    dot: "bg-red-500",
+    text: "text-red-400",
+  },
+  cancelled: {
+    label: "Stopped",
+    color: "default",
+    dot: "bg-zinc-500",
+    text: "text-zinc-400",
+  },
 };
+
+const ENDED_STATUSES: ReadonlySet<BrowserCardStatus> = new Set([
+  "completed",
+  "failed",
+  "cancelled",
+]);
+
+/** The card's status, derived once from its folded snapshots: the result's
+ * when the run ended, else waiting on the user, else the session's own. */
+export function browserCardPhase({
+  session,
+  pendingHandoff,
+  result,
+}: FoldedBrowserTask): BrowserCardPhase {
+  const status: BrowserCardStatus =
+    result?.status ??
+    (pendingHandoff ? "awaiting_user" : (session?.status ?? "running"));
+  return {
+    status,
+    ended: ENDED_STATUSES.has(status),
+    working: status === "running",
+  };
+}
 
 /** A browser card's state, folded from every snapshot its run sent. */
 export interface FoldedBrowserTask {

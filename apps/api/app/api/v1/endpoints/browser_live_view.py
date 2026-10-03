@@ -1,15 +1,17 @@
 """Root-mounted authenticated browser live view.
 
-Served at ``/live/{session_id}`` (no ``/api/v1`` prefix) so it fronts a friendly
-public vhost — e.g. ``https://browser.heygaia.io/live/{id}`` — that reverse-proxies
-to THIS api service. The browser host is never exposed directly.
+Root-mounted (no /api/v1 prefix), so the recap and screenshot links can sit on a
+friendly public vhost that reverse-proxies to THIS api service. The browser host
+is never exposed directly.
 
-GET serves a self-contained HTML canvas viewer; the websocket proxies frames and
-input between the viewer and the host's WS /live/{id}. Both are opened by one of
-two authorities: a bot link's short code, or a session id with the ?t= takeover
-token the web card fetched (the session cookie never reaches the live-view vhost).
-Ownership is re-checked against the Redis registry each time, and a connection
-ends with its authority: a code's handoff settling, or a token's lifetime.
+WS /live/{id} proxies frames and input between a viewer (the chat card, or the
+web app's full-page live view a bot link opens), dialled on the API's own
+origin, and the host's WS /live/{id}; POST /live/{code}/decision answers the
+handoff a bot link was sent for. A socket is opened by one of two authorities:
+a bot link's short code, or a session id with the ?t= takeover token the web
+card fetched. Ownership is re-checked against the Redis registry each time, and
+a connection ends with its authority: a code's handoff settling, or a token's
+lifetime.
 """
 
 from __future__ import annotations
@@ -37,7 +39,6 @@ from app.schemas.errors import HTML_ROUTE_ERROR_RESPONSES
 from app.services.browser import registry
 from app.services.browser.handoff_buttons import decide_handoff_by_button
 from app.services.browser.live_code import live_code_ended, resolve_live_code
-from app.services.browser.live_view import render_live_view_page
 from app.services.browser.replay import render_replay_page, resolve_replay_code
 from app.services.browser.shot_store import SHOT_SUFFIX, read_step_screenshot
 from app.services.browser.takeover_token import (
@@ -66,10 +67,9 @@ class _Target:
 
 @dataclass(frozen=True, slots=True)
 class _Denied:
-    """Why a viewer was turned away, as the HTTP status and detail the page answers with."""
+    """Why a viewer was turned away."""
 
-    status_code: int
-    detail: str
+    reason: str
 
 
 async def _authorize(code: str, token: str | None) -> _Target | _Denied:
@@ -80,21 +80,21 @@ async def _authorize(code: str, token: str | None) -> _Target | _Denied:
     if token is None:
         record = await resolve_live_code(code)
         if record is None:
-            return _Denied(status.HTTP_404_NOT_FOUND, "Live view not found or expired")
+            return _Denied("Live view not found or expired")
         session_id, user_id = record.session_id, record.user_id
         ends: _ConnectionEnd = partial(live_code_ended, code)
     else:
         try:
             claims = verify_takeover_token(token)
         except JWTError:
-            return _Denied(status.HTTP_401_UNAUTHORIZED, "Invalid or expired link")
+            return _Denied("Invalid or expired link")
         if claims.session_id != code:
-            return _Denied(status.HTTP_403_FORBIDDEN, "Link does not match this session")
+            return _Denied("Link does not match this session")
         session_id, user_id = code, claims.user_id
         ends = partial(asyncio.sleep, max(takeover_token_ttl_seconds(claims), 0.0))
     entry = await registry.get_session_entry(session_id)
     if entry is None or entry.owner != user_id:
-        return _Denied(status.HTTP_403_FORBIDDEN, "Not authorized for this session")
+        return _Denied("Not authorized for this session")
     return _Target(session_id=session_id, live_ws=entry.live_ws, ends=ends)
 
 
@@ -127,18 +127,6 @@ async def replay_page(code: str) -> HTMLResponse:
     log.set(browser={"session_id": record.session_id})
     log.info(f"{LogTag.BROWSER} browser replay page served")
     return HTMLResponse(content=render_replay_page(record))
-
-
-@router.get("/live/{code}", response_class=HTMLResponse, responses=HTML_ROUTE_ERROR_RESPONSES)
-async def live_view_page(code: str, t: Annotated[str | None, Query()] = None) -> HTMLResponse:
-    """Standalone live-view page, opened by a bot link's code or a session id with its ?t= token."""
-    log.set(browser={"operation": "live_view_page"})
-    target = await _authorize(code, t)
-    if isinstance(target, _Denied):
-        raise HTTPException(status_code=target.status_code, detail=target.detail)
-    log.set(browser={"session_id": target.session_id})
-    log.info(f"{LogTag.BROWSER} browser live view page served")
-    return HTMLResponse(content=render_live_view_page(target.session_id))
 
 
 @router.post("/live/{code}/decision")
@@ -179,7 +167,7 @@ async def live_view_ws(
     log.set(browser={"operation": "live_view_ws"})
     target = await _authorize(code, t)
     if isinstance(target, _Denied):
-        log.warning(f"{LogTag.BROWSER} browser live view refused", reason=target.detail)
+        log.warning(f"{LogTag.BROWSER} browser live view refused", reason=target.reason)
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
     log.set(browser={"session_id": target.session_id})

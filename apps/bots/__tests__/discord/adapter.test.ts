@@ -238,7 +238,11 @@ vi.mock("@gaia/shared/bots", async () => {
 // Now import the real adapter (which will use the mocks above).
 // ---------------------------------------------------------------------------
 
-import { handleStreamingChat, type ReactionOutcome } from "@gaia/shared/bots";
+import {
+  handleStreamingChat,
+  type OutboundFile,
+  type ReactionOutcome,
+} from "@gaia/shared/bots";
 import { DiscordAdapter } from "../../discord/src/adapter";
 import { captureBotEvents } from "../shared/helpers/capture-bot-event";
 
@@ -1299,29 +1303,25 @@ describe("DiscordAdapter - deliverOutbound channel routing", () => {
   });
 });
 
-describe("DiscordAdapter - deliverOutboundFile channel routing", () => {
+describe("DiscordAdapter - sendOutboundFile channel routing", () => {
   type FileDeliverer = {
-    deliverOutboundFile: (
+    sendOutboundFile: (
       destinationId: string,
-      attachment: { url: string; filename: string; caption?: string },
+      file: OutboundFile,
       isChannel: boolean,
     ) => Promise<void>;
-    fetchOutboundArtifact: ReturnType<typeof vi.fn>;
     client: unknown;
   };
 
-  const shot = {
-    url: "https://cdn.example.com/shot-1.png",
+  const shot: OutboundFile = {
+    data: Buffer.from("png"),
+    mime: "image/png",
     filename: "browser-step-1.png",
     caption: "Step 1",
   };
 
   function makeAdapter() {
     const adapter = new DiscordAdapter() as unknown as FileDeliverer;
-    adapter.fetchOutboundArtifact = vi.fn().mockResolvedValue({
-      data: Buffer.from("png"),
-      contentType: "image/png",
-    });
     const channelSend = vi.fn().mockResolvedValue(undefined);
     const userSend = vi.fn().mockResolvedValue(undefined);
     const client = {
@@ -1339,7 +1339,7 @@ describe("DiscordAdapter - deliverOutboundFile channel routing", () => {
   it("posts a group's photo into the channel, never a DM", async () => {
     const { adapter, client, channelSend } = makeAdapter();
 
-    await adapter.deliverOutboundFile("chan-1", shot, true);
+    await adapter.sendOutboundFile("chan-1", shot, true);
 
     expect(client.channels.fetch).toHaveBeenCalledWith("chan-1");
     expect(channelSend).toHaveBeenCalledWith(
@@ -1351,7 +1351,7 @@ describe("DiscordAdapter - deliverOutboundFile channel routing", () => {
   it("DMs a photo to the user when not a channel", async () => {
     const { adapter, client, userSend } = makeAdapter();
 
-    await adapter.deliverOutboundFile("user-1", shot, false);
+    await adapter.sendOutboundFile("user-1", shot, false);
 
     expect(client.users.fetch).toHaveBeenCalledWith("user-1");
     expect(userSend).toHaveBeenCalledWith(
@@ -1365,7 +1365,7 @@ describe("DiscordAdapter - deliverOutboundFile channel routing", () => {
     client.channels.fetch.mockResolvedValueOnce({ isTextBased: () => false });
 
     await expect(
-      adapter.deliverOutboundFile("voice-1", shot, true),
+      adapter.sendOutboundFile("voice-1", shot, true),
     ).rejects.toThrow("not a sendable text channel");
   });
 });
