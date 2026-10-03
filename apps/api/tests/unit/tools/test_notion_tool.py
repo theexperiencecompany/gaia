@@ -31,11 +31,12 @@ from app.models.common_models import GatherContextInput
 from app.models.composio_schemas import ComposioResponse
 from app.models.integrations.composio import CustomToolAuthCredentials
 from app.models.integrations.notion import (
+    NotionDatabaseSearchResult,
     NotionGetPagePropertyArgs,
+    NotionPageSearchResult,
     NotionParent,
     NotionPropertyValue,
     NotionRichTextSegment,
-    NotionSearchResult,
 )
 from app.models.integrations.notion_blocks import (
     NotionBlock,
@@ -263,6 +264,51 @@ def test_fetch_data_databases_without_query_omits_query_and_defaults_has_more() 
         )
     )
     assert result == {"values": [], "count": 0, "has_more": False}
+
+
+def test_fetch_data_databases_reads_top_level_title_past_the_property_schema() -> None:
+    database = {
+        "object": "database",
+        "id": "d1",
+        "title": [
+            {
+                "type": "text",
+                "text": {"content": "Grocery List", "link": None},
+                "plain_text": "Grocery List",
+                "href": None,
+            }
+        ],
+        "description": [],
+        "is_inline": False,
+        "properties": {
+            "Price": {
+                "id": "evWq",
+                "name": "Price",
+                "type": "number",
+                "number": {"format": "dollar"},
+            },
+            "Tags": {
+                "id": "Q~Tn",
+                "name": "Tags",
+                "type": "multi_select",
+                "multi_select": {"options": []},
+            },
+            "Name": {"id": "title", "name": "Name", "type": "title", "title": {}},
+        },
+        "parent": {"type": "workspace", "workspace": True},
+        "url": "https://www.notion.so/d1",
+        "archived": False,
+    }
+    proxy = MagicMock(return_value={"object": "list", "results": [database], "has_more": False})
+
+    with patch(f"{MODULE}.proxy_request_sync", proxy):
+        result = _fetch_data(FetchDataInput(fetch_type="databases"), CREDS)
+
+    assert result == {
+        "values": [{"id": "d1", "title": "Grocery List", "type": "database"}],
+        "count": 1,
+        "has_more": False,
+    }
 
 
 def test_fetch_data_body_that_is_not_a_search_response_fails() -> None:
@@ -833,7 +879,7 @@ def test_insert_markdown_all_tables_succeeds_without_content_call(
 
 
 def test_item_title_page_with_empty_title_property_falls_back_to_untitled() -> None:
-    item = NotionSearchResult(
+    item = NotionPageSearchResult(
         id="p1",
         object="page",
         properties={"Name": NotionPropertyValue(type="title", title=[])},
@@ -843,11 +889,13 @@ def test_item_title_page_with_empty_title_property_falls_back_to_untitled() -> N
 
 
 def test_item_title_database_without_title_falls_back_to_untitled() -> None:
-    assert _item_title(NotionSearchResult(id="d1", object="database", title=[])) == "Untitled"
+    assert (
+        _item_title(NotionDatabaseSearchResult(id="d1", object="database", title=[])) == "Untitled"
+    )
 
 
 def test_item_title_page_reads_the_title_property_not_the_first_property() -> None:
-    item = NotionSearchResult(
+    item = NotionPageSearchResult(
         id="p1",
         object="page",
         properties={
@@ -862,4 +910,4 @@ def test_item_title_page_reads_the_title_property_not_the_first_property() -> No
 
 
 def test_item_title_page_without_properties_falls_back_to_untitled() -> None:
-    assert _item_title(NotionSearchResult(id="p1", object="page")) == "Untitled"
+    assert _item_title(NotionPageSearchResult(id="p1", object="page")) == "Untitled"
