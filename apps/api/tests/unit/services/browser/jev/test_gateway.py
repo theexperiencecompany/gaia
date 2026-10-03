@@ -287,6 +287,7 @@ def both_gateways(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(gateway.settings, "OPENROUTER_API_KEY", "sk-or-test")
     monkeypatch.setattr(gateway.settings, "BROWSER_JEV_VERCEL_API_KEY", "vk-test")
     monkeypatch.setattr(gateway.settings, "BROWSER_JEV_PROVIDER", "openrouter")
+    monkeypatch.setattr(gateway.settings, "OPENROUTER_BASE_URL", None)
 
 
 def _gateway(client: JevGatewayClient) -> tuple[str, str, str, str]:
@@ -327,6 +328,24 @@ async def test_the_configured_gateway_alone_decides(
         assert http.timeout == httpx.Timeout(JEV_GATEWAY_TIMEOUT_SECONDS)
 
     assert http.is_closed
+
+
+@pytest.mark.usefixtures("both_gateways")
+@pytest.mark.parametrize(
+    ("base_url", "decisions"),
+    [
+        ("http://127.0.0.1:9797/api/v1", "http://127.0.0.1:9797/api/alpha/decisions"),
+        ("http://127.0.0.1:9797/api/v1/", "http://127.0.0.1:9797/api/alpha/decisions"),
+    ],
+)
+async def test_a_development_openrouter_base_moves_the_decisions_route_with_it(
+    monkeypatch: pytest.MonkeyPatch, base_url: str, decisions: str
+) -> None:
+    """The browser test stack serves Jev from its own model server, next to the chat models."""
+    monkeypatch.setattr(gateway.settings, "OPENROUTER_BASE_URL", base_url)
+
+    async with gateway.open_jev_client() as client:
+        assert client._url == decisions
 
 
 async def test_a_gateway_with_no_key_is_unavailable_saying_which(

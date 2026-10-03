@@ -11,6 +11,7 @@ One doc, read before writing any test. Enforcement lives in the lints and `tests
 | Unit | `tests/unit/` (mirrors `app/`) | nothing — mocked, hermetic, no I/O | new service fn → `unit/services/`; new endpoint → `unit/api/` |
 | Integration | `tests/integration/` | nothing — real production code, mocked infra | wiring between components, full request cycle |
 | Real-infra | `tests/integration/real/` (incl. `real/memory/`) | Docker + `USE_REAL_SERVICES=1` — otherwise the whole tier skips at collection (milliseconds, never a hang) | behavior only provable against real Postgres/Redis/Mongo |
+| Browser stack | `tests/integration/real/browser/` | the real-infra services plus Chrome (`CHROMIUM_BIN` or `google-chrome`) and `OBSCURA_BIN`; a missing binary fails, never skips | a browser promise a user sees end to end: one answer, a stop, a handoff, a secret kept, an engine or worker death |
 | Contracts | `tests/contracts/` | real Mongo + Redis | repository contract changes (never mocks) |
 | E2E | `tests/e2e/` | real compiled graphs + fake LLM (`_harness/`), offline | user journey through the compiled graph |
 | Stress | `tests/stress/` | none — in-process fakes, no sleeps | race/retry/idempotency invariants |
@@ -27,6 +28,9 @@ A bug ships a failing-then-passing test in the *natural* file for the tier that 
 4. **Not a duplicate.** If a tier already proves it, extend there — don't re-prove it in a new file.
 5. **No theater.** Never mock the thing under test — mock its seams (repositories, clients). A caller mocking a service means that service's logic has never run: un-mock it instead.
 6. **Deterministic.** No real sleeps, no wall-clock races, no machine-speed dependence.
+   The one exception is the browser stack, where real processes and a real engine do
+   the work: it waits only by polling a condition against a deadline that fails with
+   what it waited for (`_stack/` and the scenarios' `_until`), never a fixed sleep.
 7. **No LLM-prose asserts.** Assert on structure, tool calls, and state — never on generated sentence text.
 
 ## Run it
@@ -99,14 +103,23 @@ live value is genuinely required.
 Gates, in order: the hermetic e2e journeys (`tests/e2e/test_browser_task_background.py`,
 the whole job through the real executor graph), the integration suites
 (`tests/integration/agents/test_browser_job_*.py`, relay and delivery over real product
-code), the Obscura conformance suite (`tests/integration/real/test_obscura_conformance.py`), and
-the live Telegram battery through the bot harness:
-`nx run bot-harness:sim -- send --emulate telegram --user dev@gaia.local --settle 20000 --out t.jsonl "<task>"`.
+code), the Obscura conformance suite (`tests/integration/real/test_obscura_conformance.py`),
+and the browser stack (`tests/integration/real/browser/`, the `browser` CI slice;
+`mise test:python:browser`). The stack runs the API and the ARQ browser worker as
+processes, a Chrome and an Obscura host, one fake model server and a two-origin
+fixture site the hosts may reach through `BROWSER_HOST_ALLOW_PRIVATE_ORIGINS`
+(refused in production), and judges each scenario on the Telegram user's
+transcript read off the outbound queue. Its models are scripted, so it proves
+plumbing and promises, never model judgement: that is the browser eval
+(`mise eval:browser`, real models on real sites, not gating).
 
 Unit tests here carry invariants and regressions only: an owner-checked lease, an applied
 cap, a refusal that never enqueues, a note that reaches the goal, the handoff timeout
 message. What a journey proves end to end gets no second unit copy, and a test pinning a
 call sequence, a poll count or a line of copy is deleted rather than maintained.
 
-A green suite is not the finish line for a browser change: the battery is. Cards, shots
-and handoffs only prove themselves against a real browser on a real platform.
+A green suite is not the finish line for a browser change: the browser stack proves the
+product's promises with scripted models, and the browser eval (`mise eval:browser`) shows
+what real models make of real sites. Run the eval for any change to what the agent or Jev
+is told or decides; a real chat on a real platform is still the last word on how cards,
+shots and handoffs read to a person.

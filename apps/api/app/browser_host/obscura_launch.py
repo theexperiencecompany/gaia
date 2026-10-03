@@ -15,7 +15,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.browser_host.process import spawn_engine, stop_process, until_published
-from app.config.browser_host_settings import browser_host_settings
+from app.config.browser_host_settings import OBSCURA_PRIVATE_NETWORK_ENV, browser_host_settings
 
 _LOOPBACK = "127.0.0.1"
 
@@ -63,13 +63,19 @@ def obscura_serve_argv(port: int) -> list[str]:
 
 
 def obscura_serve_env() -> dict[str, str]:
-    """Return the environment an Obscura process runs with: ours plus its script deadline."""
-    return {
-        **os.environ,
-        "OBSCURA_SCRIPT_DEADLINE_MS": str(
-            browser_host_settings.OBSCURA_SCRIPT_DEADLINE_SECONDS * 1000
-        ),
-    }
+    """Return the environment an Obscura process runs with: ours plus its script deadline.
+
+    Obscura refuses private addresses on its own unless told otherwise, and is told
+    only while the host allows private origins (a test stack); the proxy keeps
+    explicit navigations to exactly those origins.
+    """
+    env = {key: value for key, value in os.environ.items() if key != OBSCURA_PRIVATE_NETWORK_ENV}
+    env["OBSCURA_SCRIPT_DEADLINE_MS"] = str(
+        browser_host_settings.OBSCURA_SCRIPT_DEADLINE_SECONDS * 1000
+    )
+    if browser_host_settings.BROWSER_HOST_ALLOW_PRIVATE_ORIGINS:
+        env[OBSCURA_PRIVATE_NETWORK_ENV] = "1"
+    return env
 
 
 def _json_version_reader(
