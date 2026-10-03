@@ -249,6 +249,15 @@ def test_the_briefing_lists_only_what_this_run_or_a_sub_todo_holds() -> None:
     ) in _step(BRIEFING_STEP)[0]
 
 
+@pytest.mark.regression
+def test_a_desk_run_never_writes_a_standing_rule_of_its_own() -> None:
+    """Regression: a run added "do not track GitHub notifications" to Standing rules unasked."""
+    assert (
+        "edit canvas.md only for step 10. Standing rules are the user's own instructions, "
+        "never yours: what you notice goes to observations.md."
+    ) in INBOX_DESK_RUN_GUIDANCE
+
+
 def test_standing_rules_beat_observations_and_both_beat_the_defaults() -> None:
     assert (
         "canvas.md's Standing rules (the user's instructions) beat the conclusions in "
