@@ -471,13 +471,34 @@ class _RunContext(NamedTuple):
 
 
 async def _collect_run_context(doc: TodoDocument) -> _RunContext:
-    """Gather everything a run reads from the owner's other todos."""
-    parent_rules, sub_todos, learnings = await asyncio.gather(
-        _collect_parent_rules(doc.parent_todo_id, doc.user_id),
+    """Gather everything a run reads from the owner's other todos.
+
+    The parent's Standing rules govern the run, so their read failure raises
+    and the run retries with backoff rather than acting without instructions
+    it must obey. The other two reads are enrichment: a failed one degrades
+    to "" and is logged, so a Mongo blip does not burn the run's retries.
+    """
+    parent_rules = await _collect_parent_rules(doc.parent_todo_id, doc.user_id)
+    sub_todos, learnings = await asyncio.gather(
         _collect_sub_todo_states(doc),
         _collect_reference_learnings(doc.references, doc.user_id),
+        return_exceptions=True,
     )
-    return _RunContext(parent_rules=parent_rules, sub_todos=sub_todos, learnings=learnings)
+    context = {"sub_todos": sub_todos, "learnings": learnings}
+    degraded: dict[str, str] = {}
+    for name, result in context.items():
+        if isinstance(result, str):
+            degraded[name] = result
+            continue
+        log.warning(
+            "tracked_todo.run_context_incomplete",
+            todo_id=doc.id,
+            section=name,
+            error=str(result),
+            error_type=type(result).__name__,
+        )
+        degraded[name] = ""
+    return _RunContext(parent_rules=parent_rules, **degraded)
 
 
 async def _collect_parent_rules(parent_todo_id: str | None, user_id: str) -> str:

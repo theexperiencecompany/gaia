@@ -115,10 +115,10 @@ async def _get_pending_approvals_for_todos(
 
 async def todo_responses(user_id: str, todos: list[TodoDocument]) -> list[TodoResponse]:
     """Project todos onto TodoResponse with their workflow categories, approvals and open sub-todos."""
-    workflow_categories = await _get_workflow_categories_for_todos(todos, user_id)
-    pending_approvals = await _get_pending_approvals_for_todos(todos)
-    sub_todo_counts = await todo_repository.count_open_sub_todos(
-        user_id, [todo.id for todo in todos]
+    workflow_categories, pending_approvals, sub_todo_counts = await asyncio.gather(
+        _get_workflow_categories_for_todos(todos, user_id),
+        _get_pending_approvals_for_todos(todos),
+        todo_repository.count_open_sub_todos(user_id, [todo.id for todo in todos]),
     )
     return [
         TodoResponse.from_document(

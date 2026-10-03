@@ -441,6 +441,27 @@ run = "nx run-many -t format:check --parallel=3"
 description = "Whitespace/indentation only for affected projects — does NOT sort imports"
 run = "nx affected -t format --parallel=3"
 
+# Whole-repo Python lint/format, scoped to the files no Nx project owns.
+#
+# `nx run-many -t format` only reaches the 12 Nx projects (apps/*, libs/*).
+# CI runs `ruff format --check .` from the repo root, which also covers the ~161
+# Python files under scripts/, tools/, .agents/skills/, docs/ and
+# libs/wake-word/ — none of which belong to an Nx project. That asymmetry is how
+# scripts/ci/tests/test_workflow_suites.py and scripts/test/mutation_classify.py
+# sat unformatted since 2026-09-24 and only ever failed in CI.
+#
+# These run CI's exact command, from the root, at CI's exact pin, so a clean
+# local run means a clean lane. Keep the ruff version in lockstep with
+# .github/workflows/code-quality.yml, .pre-commit-config.yaml and uv.lock —
+# `python3 tools/lints/check_tool_pins.py` enforces that.
+[tasks."lint:py"]
+description = "Whole-repo Python lint + format check — CI's exact ruff command (covers scripts/, tools/)"
+run = "uvx --no-build ruff@0.14.13 check . && uvx --no-build ruff@0.14.13 format --check ."
+
+[tasks."lint:py:fix"]
+description = "Whole-repo Python autofix + format — CI's exact ruff command"
+run = "uvx --no-build ruff@0.14.13 check --fix . && uvx --no-build ruff@0.14.13 format ."
+
 [tasks."type-check"]
 description = "Type-check all apps (parallel with caching)"
 run = "nx run-many -t type-check --parallel=3"
@@ -470,8 +491,8 @@ description = "Run all pre-commit checks (workspace mode)"
 run = "prek run --all-files"
 
 [tasks."pre-commit:install"]
-description = "Install pre-commit hooks using prek"
-run = "prek install"
+description = "Install the commit and pre-push hooks using prek"
+run = "prek install --hook-type pre-commit --hook-type pre-push"
 
 [tasks."pre-commit:run"]
 description = "Run pre-commit hooks on staged files"
@@ -670,7 +691,10 @@ run = "python3 tools/evlog_map --all"
 # ── Agent-legible gates ──────────────────────────────────────────────────────
 [tasks."ci:local"]
 description = "Run CI quality gates locally (same lanes/versions as GitHub Actions); --list shows all lanes"
-run = "uv run python scripts/dev/gaia_verify.py"
+# --no-project: the runner is stdlib-only. A project run synced the workspace
+# root (voice-agent's livekit included) into the shared .venv, so the mypy lane
+# saw packages CI never installs and failed where CI passes.
+run = "uv run --no-project python scripts/dev/gaia_verify.py"
 
 
 [tasks."pr:comments"]

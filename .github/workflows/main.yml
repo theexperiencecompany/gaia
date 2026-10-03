@@ -45,8 +45,10 @@ on:
 # finish (a cancelled pytest step wedges the self-hosted worker for the
 # listener's 5-minute cancellation timeout). select-runner cancels the
 # superseded runs via the API instead — scripts/ci/runner.sh cancel-superseded.
+# A plain title/body edit gets its own group: it shares the merge sha with the
+# run that validated the commit, and in that group it used to cancel it.
 concurrency:
-  group: ci-${{ github.head_ref || github.ref }}-${{ github.sha }}
+  group: ci-${{ github.head_ref || github.ref }}-${{ github.sha }}${{ github.event.action == 'edited' && github.event.changes.base == '' && '-edit' || '' }}
   cancel-in-progress: true
 
 env:
@@ -966,7 +968,8 @@ jobs:
       # changelog-sync deliberately excluded (non-blocking, auto-opens fix PRs)
       # static checks + dead-code live in code-quality.yml (its own gate)
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    # Covers the edit path's wait for the run that validated this commit.
+    timeout-minutes: 45
     permissions:
       contents: read
       actions: read # read this head SHA's previous runs (mirror step below)
@@ -1016,7 +1019,7 @@ jobs:
         if: ${{ github.event.action == 'edited' && github.event.changes.base == '' }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/ci/verdict.py mirror-previous-gate --repo "$GITHUB_REPOSITORY" --sha "${{ github.event.pull_request.head.sha }}" --workflow main.yml --job quality-gate --run-id "$GITHUB_RUN_ID"
+        run: python3 scripts/ci/verdict.py mirror-previous-gate --repo "$GITHUB_REPOSITORY" --sha "${{ github.event.pull_request.head.sha }}" --workflow main.yml --job quality-gate --run-id "$GITHUB_RUN_ID" --wait-seconds 2400
 
   # --- Docker phase, split so the long part runs parallel to the gate -------
   # build-images starts right after detect (master only) and builds/publishes

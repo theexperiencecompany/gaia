@@ -840,12 +840,32 @@ async def complete_tracked_todo(
 ) -> str:
     """Complete a tracked todo: mark done and flag its canvas as completed in search.
 
-    Call when the todo's goal is fully achieved. Use the regular todo update for
-    partial completion or status changes only.
+    Call on your own as soon as the goal is clearly resolved: the fix is live
+    and verified, the PR is merged, the external system shows done, the watched
+    event arrived and is handled, or the user confirmed it. Do not wait for the
+    user to report it or ask for closure. Use the regular todo update for
+    partial completion or status changes only. Never repeat the todo ID in
+    user-visible text.
+
+    Refuses a todo with an active recurrence: one finished run never ends a
+    standing schedule. To stop one entirely, clear its recurrence (and
+    scheduled_at) with update_tracked_todo first, then complete it.
     """
     user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
     if not user_id:
         return _ERR_NO_USER_ID
+
+    doc = await todo_repository.get(todo_id, user_id=user_id)
+    if doc is None:
+        return f"Error: could not complete tracked todo {todo_id}, not found or missing vfs_path"
+    if doc.recurrence:
+        return (
+            f"Error: tracked todo {todo_id} still has an active recurrence "
+            f"({doc.recurrence}). One finished run never ends a standing schedule: "
+            "leave it open, or if the user asked to stop it entirely, clear its "
+            "recurrence (and scheduled_at) with update_tracked_todo first, "
+            "then complete it."
+        )
 
     success = await tracked_todo_service.complete_tracked_todo(
         todo_id=todo_id, user_id=user_id, summary=summary
@@ -853,6 +873,22 @@ async def complete_tracked_todo(
     if not success:
         return f"Error: could not complete tracked todo {todo_id}, not found or missing vfs_path"
     return f"Tracked todo {todo_id} completed and archived."
+
+
+async def _rollback_stale_move(user_id: str, todo_id: str, parent_todo_id: str) -> str | None:
+    """Re-check a move after its write; roll back when the parent closed meanwhile."""
+    try:
+        await require_sub_todo_parent(user_id, parent_todo_id)
+    except SubTodoParentError:
+        await todo_repository.update(
+            todo_id, user_id=user_id, update=TodoUpdate(parent_todo_id=None)
+        )
+        return (
+            f"Error: the parent no longer accepts sub-todos, "
+            f"so moving todo {todo_id} under it was rolled back. "
+            "Reopen the parent first, or pick an open one."
+        )
+    return None
 
 
 async def _save_field_update(existing: TodoDocument, update: TodoUpdate, actor: str) -> str | None:
@@ -874,6 +910,11 @@ async def _save_field_update(existing: TodoDocument, update: TodoUpdate, actor: 
     if update.scheduled_at is not None:
         await tracked_todo_service.schedule_execution(existing.id, update.scheduled_at)
     await record_field_changes(existing.id, existing.user_id, update, by=actor)
+    # The link check and this write are two separate writes: when the parent
+    # closed in between, the move is rolled back rather than completing the
+    # user's open todo out from under them.
+    if update.parent_todo_id is not None:
+        return await _rollback_stale_move(existing.user_id, existing.id, update.parent_todo_id)
     return None
 
 

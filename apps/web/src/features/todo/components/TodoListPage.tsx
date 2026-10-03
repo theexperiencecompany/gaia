@@ -1,10 +1,11 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
 import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
 import { TodoSidebar } from "@/components/layout/sidebar/right-variants/TodoSidebar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { todoApi } from "@/features/todo/api/todoApi";
 import TodoList from "@/features/todo/components/TodoList";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
@@ -151,25 +152,22 @@ export default function TodoListPage({
   const storeTodos = useTodoStore((state) => state.todos);
   const storeProjects = useTodoStore((state) => state.projects);
   const initialLoading = useTodoStore((state) => state.initialLoading);
+  const loadError = useTodoStore((state) => state.error);
+  const user = useCurrentUser();
 
-  // Use useTodoData for initial load and actions
-  const {
-    todos: dataTodos,
-    projects: dataProjects,
-    updateTodo,
-    deleteTodo,
-    refresh,
-  } = useTodoData({ filters, autoLoad: true });
+  // useTodoData triggers the initial load for these filters; actions below
+  // operate on the same store, which is the single source of truth.
+  const { updateTodo, deleteTodo, refresh } = useTodoData({
+    filters,
+    autoLoad: true,
+  });
 
-  // Merge todos: prefer store (for real-time updates) but fallback to data
   const todos = useMemo(() => {
-    const baseTodos = storeTodos.length > 0 ? storeTodos : dataTodos;
-    if (filterTodos) return filterTodos(baseTodos);
-    return baseTodos;
-  }, [storeTodos, dataTodos, filterTodos]);
+    if (filterTodos) return filterTodos(storeTodos);
+    return storeTodos;
+  }, [storeTodos, filterTodos]);
 
-  // Merge projects similarly
-  const projects = storeProjects.length > 0 ? storeProjects : dataProjects;
+  const projects = storeProjects;
 
   // Use refs to store latest callback versions to avoid stale closures
   const updateTodoRef = useRef(updateTodo);
@@ -249,6 +247,23 @@ export default function TodoListPage({
     );
   }
 
+  // Fail loud: a failed first load used to render an empty list with no way
+  // to recover, which looked like a blank page until the next navigation
+  // triggered a refetch.
+  if (loadError && todos.length === 0) {
+    return (
+      <div className="flex h-full w-full flex-col">
+        <div className="flex w-full flex-1 flex-col items-center justify-center gap-3 px-4">
+          <p className="text-base text-zinc-300">Couldn&apos;t load tasks</p>
+          <p className="text-sm text-zinc-500">{loadError}</p>
+          <Button color="primary" variant="flat" onPress={() => refresh()}>
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full w-full flex-col">
       <SelectedTodoSidebarPanel
@@ -274,6 +289,7 @@ export default function TodoListPage({
           onRefresh={refresh}
           onPrefetchWorkflow={handlePrefetchWorkflow}
           scrollContainerRef={scrollContainerRef}
+          timezone={user?.timezone}
         />
       </div>
     </div>
