@@ -92,6 +92,7 @@ from app.workers.tasks.tracked_todo_tasks import (
     _execute_todo_with_retry,
     _mark_todo_failed,
     _RunContext,
+    _schedule_retry,
     execute_tracked_todo,
     resume_tracked_todo,
     safety_net_check_orphaned_todos,
@@ -1085,6 +1086,16 @@ class TestExecuteTodoWithRetryFailure:
         assert args == ("execute_tracked_todo", "todo-1")
         assert kwargs.items() >= _scheduled(next_attempt).items()
 
+    @pytest.mark.parametrize("attempt", [0, len(RETRY_BACKOFF) + 1, -1])
+    async def test_a_retry_off_the_ladder_fails_loudly(self, attempt):
+        """Refuse an attempt the ladder has no rung for.
+
+        Queueing it at the wrong delay, or crashing inside the index, would both read as
+        a run that failed for a reason nobody sent.
+        """
+        with pytest.raises(ValueError, match="no rung on the"):
+            await _schedule_retry(_doc(), attempt, None, [])
+
     async def test_retry_parks_scheduled_at_on_the_backoff_target(self):
         """Leaving scheduled_at in the past lets the 30-minute safety net collapse the 1h/4h backoff to 30 minutes."""
         _result, repo, pool, _mf = await self._run(_doc(gaia_retry_count=0))
@@ -1151,7 +1162,14 @@ class TestARecurringTodoOutlivesAFailedOccurrence:
     def _route_enqueue(self, route_enqueue_via_pool):
         return
 
-    async def _run(self, doc: TodoDocument, origin: TriggerOrigin | None = None):
+    async def _run(
+        self,
+        doc: TodoDocument,
+        origin: TriggerOrigin | None = None,
+        *,
+        timezone: str = "UTC",
+        fails: bool = True,
+    ):
         pool = _pool()
         repo = MagicMock()
         repo.get_by_id = AsyncMock(return_value=doc)
@@ -1160,11 +1178,13 @@ class TestARecurringTodoOutlivesAFailedOccurrence:
         repo.add_labels = AsyncMock()
         notify = AsyncMock()
         teardown = AsyncMock(return_value=2)
+        executed = AsyncMock(side_effect=RuntimeError("402")) if fails else AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
-            patch(f"{MODULE}._execute_on_executor", AsyncMock(side_effect=RuntimeError("402"))),
+            patch(f"{MODULE}._execute_on_executor", executed),
             patch(
-                f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
+                f"{MODULE}.load_user_context",
+                AsyncMock(side_effect=_user_context(timezone=timezone)),
             ),
             patch(f"{MODULE}.notification_service.create_notification", notify),
             patch(f"{MODULE}.teardown_subscriptions", teardown),
@@ -1237,6 +1257,36 @@ class TestARecurringTodoOutlivesAFailedOccurrence:
         assert _updates(seams.repo) == [{"gaia_retry_count": 0}]
         seams.repo.add_labels.assert_not_awaited()
 
+    @pytest.mark.regression
+    async def test_a_delivered_run_arms_the_next_occurrence_in_the_users_own_timezone(self):
+        """The next run is stamped in the user's zone, not the worker's UTC.
+
+        The desk runs at 08:00 wherever the user is; computing the next occurrence in UTC
+        puts an evening user's briefing in the middle of the night.
+        """
+        doc = _doc(recurrence="0 8 * * *")  # due now, so this is a real occurrence
+
+        _result, seams = await self._run(doc, timezone="Asia/Kolkata", fails=False)
+
+        (call,) = seams.repo.update_if_scheduled_at.await_args_list
+        scheduled_at = call.kwargs["update"].scheduled_at
+        assert call.args[:2] == ("todo-1", "user-1")
+        assert scheduled_at.astimezone(KOLKATA).hour == 8
+
+    @pytest.mark.regression
+    async def test_a_watch_run_delivered_leaves_the_schedule_and_clears_the_count(self):
+        """A watch firing is not the todo's schedule, so only the retry count is its to clear."""
+        pending = datetime.now(UTC) + timedelta(hours=5)
+        origin = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
+
+        result, seams = await self._run(
+            self._last_attempt(scheduled_at=pending), origin, fails=False
+        )
+
+        assert result == "success:todo-1"
+        seams.repo.update_if_scheduled_at.assert_not_awaited()
+        assert _updates(seams.repo) == [{"gaia_retry_count": 0}]
+
     async def test_a_one_shot_todo_still_stops_as_failed(self):
         result, seams = await self._run(_doc(recurrence=None, gaia_retry_count=2))
 
@@ -1246,6 +1296,43 @@ class TestARecurringTodoOutlivesAFailedOccurrence:
         )
         seams.teardown.assert_awaited_once_with("todo-1", "user-1", reason="failed")
         seams.repo.update_if_scheduled_at.assert_not_awaited()
+
+    async def test_the_failure_is_recorded_on_the_todo_that_failed(self):
+        """The exhausted retry count is written to THIS todo, under its owner.
+
+        Naming another todo leaves the failed one looking retryable, and naming another
+        user writes the count onto a document this run never touched.
+        """
+        _result, seams = await self._run(_doc(recurrence=None, gaia_retry_count=2))
+
+        assert seams.repo.update.await_args.args == ("todo-1",)
+        assert seams.repo.update.await_args.kwargs["user_id"] == "user-1"
+        assert seams.repo.update.await_args.kwargs["update"] == TodoUpdate(
+            gaia_retry_count=MAX_RETRY_ATTEMPTS
+        )
+
+    async def test_the_given_up_occurrence_is_armed_in_the_users_own_timezone(self):
+        """A recurring todo that gave up still owes its user the next 08:00, local to them."""
+        result, seams = await self._run(self._last_attempt(), timezone="Asia/Kolkata")
+
+        assert result == "gave_up:todo-1 (max retries reached; the next occurrence is armed)"
+        (call,) = seams.repo.update_if_scheduled_at.await_args_list
+        assert call.kwargs["update"].scheduled_at.astimezone(KOLKATA).hour == 8
+
+    async def test_a_watch_run_that_gives_up_clears_the_count_on_its_own_todo(self):
+        """A watch's give-up cannot advance the schedule, so the count is cleared here.
+
+        Naming another todo or another user would leave this one still carrying its
+        exhausted retries, and the next watch fire would give up without running.
+        """
+        pending = datetime.now(UTC) + timedelta(hours=5)
+        origin = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
+
+        _result, seams = await self._run(self._last_attempt(scheduled_at=pending), origin)
+
+        assert seams.repo.update.await_args.args == ("todo-1",)
+        assert seams.repo.update.await_args.kwargs["user_id"] == "user-1"
+        assert _updates(seams.repo) == [{"gaia_retry_count": 0}]
 
 
 # ---------------------------------------------------------------------------

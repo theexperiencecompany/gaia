@@ -107,8 +107,13 @@ async def _expire_connection(
 
 
 def _delivered_keys(delivered: BaseModel) -> list[str]:
-    """The keys a delivery carried: the declared fields it set, and every extra."""
-    return sorted({*delivered.model_fields_set, *(delivered.model_extra or {})})
+    """The keys a delivery carried, declared and undeclared alike.
+
+    ``model_fields_set`` already holds the extras on an ``extra="allow"`` model, and is
+    None-free on every other config, so it is the whole answer on its own: unioning
+    ``model_extra`` over it added a second source that could only ever repeat it.
+    """
+    return sorted(delivered.model_fields_set)
 
 
 def _handle_connection_event(body: object) -> ComposioWebhookAckResponse:
