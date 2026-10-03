@@ -11,6 +11,7 @@ from app.services.feature_flags import (
     FeatureFlag,
     _coerce_result,
     _get_posthog_client,
+    is_agent_lab_enabled,
     is_code_mode_enabled,
     is_enabled,
     is_hil_ledger_enabled,
@@ -308,7 +309,13 @@ FLAG_KILL_SWITCHES = {
     FeatureFlag.HIL_LEDGER: "ENABLE_HIL_LEDGER",
     FeatureFlag.HIL_JEV_JUDGE: "ENABLE_HIL_JEV_JUDGE",
     FeatureFlag.HIL_JEV_REPLY: "ENABLE_HIL_JEV_REPLY",
+    FeatureFlag.AGENT_LAB: "ENABLE_AGENT_LAB",
 }
+
+
+class TestAgentLab:
+    async def test_agent_lab_flag_defaults_off(self, no_client: None) -> None:
+        assert await is_agent_lab_enabled("some-user") is False
 
 
 class TestShippedDefaults:

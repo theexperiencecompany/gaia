@@ -34,6 +34,7 @@ class FeatureFlag(StrEnum):
     HIL_LEDGER = "HIL_LEDGER"
     HIL_JEV_JUDGE = "HIL_JEV_JUDGE"
     HIL_JEV_REPLY = "HIL_JEV_REPLY"
+    AGENT_LAB = "AGENT_LAB"
 
 
 # Human description per flag, kept next to the key so the dashboard setup and
@@ -59,6 +60,11 @@ FEATURE_FLAG_DESCRIPTIONS: dict[FeatureFlag, str] = {
         "reply classifier first, falling back to the LLM classifier on transport "
         "failure; off keeps the LLM classifier. On by default (see ENABLE_HIL_JEV_REPLY)."
     ),
+    FeatureFlag.AGENT_LAB: (
+        "Private agent lab runs Claude Code, Codex, and OpenCode CLIs inside "
+        "the per-user E2B sandbox, controllable from chat. Off by default "
+        "(see ENABLE_AGENT_LAB)."
+    ),
 }
 
 
@@ -73,6 +79,8 @@ def _default(flag: FeatureFlag) -> bool:
             return bool(settings.ENABLE_HIL_JEV_JUDGE)
         case FeatureFlag.HIL_JEV_REPLY:
             return bool(settings.ENABLE_HIL_JEV_REPLY)
+        case FeatureFlag.AGENT_LAB:
+            return bool(settings.ENABLE_AGENT_LAB)
 
 
 def _coerce_result(result: object, default: bool) -> bool:
@@ -193,3 +201,8 @@ async def is_jev_judge_enabled(user_id: str | None) -> bool:
 async def is_jev_reply_enabled(user_id: str | None) -> bool:
     """Whether the user's chat replies to pending approvals are classified by JEV first (LLM fallback on transport failure)."""
     return await is_enabled(FeatureFlag.HIL_JEV_REPLY, user_id)
+
+
+async def is_agent_lab_enabled(user_id: str | None) -> bool:
+    """Whether the user can run private agent lab sessions inside their sandbox."""
+    return await is_enabled(FeatureFlag.AGENT_LAB, user_id)
