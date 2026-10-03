@@ -258,6 +258,7 @@ async def test_a_job_whose_conversation_another_run_took_never_runs_and_says_so(
     assert await get_conversation_slot("conv-9") == "job-other"
 
 
+@pytest.mark.usefixtures("fake_redis")
 async def test_one_failed_heartbeat_does_not_end_the_runs_hold_on_its_slot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
