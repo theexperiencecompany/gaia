@@ -589,9 +589,7 @@ class TestCompleteTrackedTodo:
         with patch(
             "app.agents.tools.tracked_todo_tools.todo_repository.get",
             new_callable=AsyncMock,
-            return_value=TodoDocument(
-                id="t1", user_id="u1", title="t", recurrence="daily"
-            ),
+            return_value=TodoDocument(id="t1", user_id="u1", title="t", recurrence="daily"),
         ):
             result = await complete_tracked_todo.coroutine(
                 config=_config(), todo_id="t1", summary="done"
