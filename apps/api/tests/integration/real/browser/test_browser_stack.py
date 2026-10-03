@@ -6,11 +6,6 @@ site, and the outbound queue the bot would send from. The models are scripted
 (see _stack/fake_models.py), so these prove the product's plumbing and its
 promises (one answer, no leaked secret, a stop that stops, a handoff that hands
 over), never a model's judgement; that is the browser eval's job.
-
-Assertions that hold only once a parallel stream of PR #876 has merged carry its
-name in a mark-free comment: teller (one teller, results through the executor
-inbox, Cancel is a stop), reader (comms' browser_step_done / stop_browser_task /
-tell_browser_task tools), runcore (forward-only Jev, done_when, human checks).
 """
 
 from __future__ import annotations
@@ -180,7 +175,6 @@ async def test_a_form_is_filled_with_a_secret_and_the_answer_reaches_the_user_on
     assert dm.photos, "no step photo reached the chat"
     # One message started one run.
     assert len(await browser_task_repository.list_recent_for_user(user.user_id)) == 1
-    # teller: the answer is told once, by the one teller.
     assert len(dm.matching(FORM_RECEIVED)) == 1, [d.said for d in dm.deliveries]
 
 
@@ -212,7 +206,6 @@ async def test_content_that_appears_after_a_wait_is_read_once_it_is_there(
 
     assert result.success, result
     assert stack.models.errors == []
-    # teller: told once.
     assert len([d for d in _told(dm) if DYNAMIC_TEXT in d.text]) == 1, dm.texts
 
 
@@ -448,7 +441,7 @@ async def test_cancelling_a_captcha_handoff_stops_the_run_and_nothing_more_is_sa
 
     assert result.status is BrowserSessionStatus.CANCELLED
     assert CAPTCHA_HEADING not in result.summary
-    # teller: Cancel is a stop: the ending is STOPPED and nothing wakes to tell anything.
+    # Cancel is a stop: the ending is STOPPED and nothing wakes to tell anything.
     assert await stack.ending(job_id) is JobEnding.STOPPED
     assert len(_told(dm)) == told_before, [d.text for d in _told(dm)]
 
@@ -474,7 +467,7 @@ async def test_a_captcha_on_a_site_the_user_never_named_is_skipped_not_handed_ov
     conversation_id, job_id = await _start(
         stack, user, f"Open {page} and tell me the partner's offer. {marker}", page
     )
-    # runcore: a check on a host the user never named is skipped, never handed to them.
+    # A check on a host the user never named is skipped, never handed to them.
     await _until(
         lambda: _ended_or_handed_over(stack, user, job_id), "the run ending or handing over"
     )
@@ -554,7 +547,6 @@ async def test_a_stop_from_the_dm_ends_a_run_started_in_a_group_and_nothing_more
     assert stack.models.calls_for(marker, "agent") == asked, "the agent kept running after the stop"
     # A group run's steps and handoffs go to the requester's DM, never the group.
     assert group.photos == [] and dm.photos
-    # teller: a stopped run tells nothing more, anywhere.
     assert len(_told(group)) + len(_told(dm)) == told_before
 
 
@@ -566,7 +558,7 @@ async def test_a_stop_said_in_chat_stops_the_run(stack: BrowserStack) -> None:
 
     stops_before = stack.models.tool_calls.count("stop_browser_task")
 
-    # reader: comms answers a stop by calling stop_browser_task on the chat's own job.
+    # Comms answers a stop by calling stop_browser_task on the chat's own job.
     await stack.say(user, "stop that [[tool:stop_browser_task {}]]")
     assert stack.models.tool_calls.count("stop_browser_task") == stops_before + 1
     result = await stack.finished(job_id)
@@ -602,7 +594,7 @@ async def test_what_the_user_adds_mid_run_reaches_the_run(stack: BrowserStack) -
 
     tells_before = stack.models.tool_calls.count("tell_browser_task")
 
-    # reader: comms passes what the user added to the running job with tell_browser_task.
+    # Comms passes what the user added to the running job with tell_browser_task.
     await stack.say(
         user, f"and note {token} [[tool:tell_browser_task {json.dumps({'text': token})}]]"
     )
@@ -685,7 +677,7 @@ async def test_a_result_survives_its_worker_dying_right_after_the_run_ends(
     finally:
         stack.models.agent_tier_open.set()
 
-    # teller: the ending and the executor-inbox entry landed together, and the reaper tells it once.
+    # The ending and the executor-inbox entry landed together, and the reaper tells it once.
     await wait_for(dm, "Fixture Domain", timeout=RUN_SECONDS)
     await stack.settled(conversation_id)
     assert len([d for d in _told(dm) if "Fixture Domain" in d.text]) == 1, dm.texts
