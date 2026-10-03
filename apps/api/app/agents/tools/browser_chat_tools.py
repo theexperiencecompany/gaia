@@ -9,6 +9,7 @@ from typing import Annotated
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
+from pydantic import BaseModel, Field
 
 from app.constants.browser import HandoffDecision, HandoffStatus
 from app.models.agent_models import agent_configurable
@@ -50,21 +51,24 @@ _TOLD_PAUSED = (
 )
 
 
-@tool
-async def browser_step_done(
-    config: RunnableConfig,
-    note: Annotated[
-        str | None,
-        "Anything the user asked for beyond saying they finished, in their words "
+class _StepDoneArgs(BaseModel):
+    """What the model passes browser_step_done; the defaults live here, where the schema reads them."""
+
+    note: str | None = Field(
+        default=None,
+        description="Anything the user asked for beyond saying they finished, in their words "
         "('ok done, also grab the photo' -> 'also grab the photo'). Leave it out for a bare "
         "'done'. With redirect, the whole new instruction.",
-    ] = None,
-    redirect: Annotated[
-        bool,
-        "True when the user will NOT do the paused step and says what to do instead "
+    )
+    redirect: bool = Field(
+        default=False,
+        description="True when the user will NOT do the paused step and says what to do instead "
         "('never mind the login, just tell me X'). note then holds the new instruction.",
-    ] = False,
-) -> str:
+    )
+
+
+@tool(args_schema=_StepDoneArgs)
+async def browser_step_done(config: RunnableConfig, note: str | None, redirect: bool) -> str:
     """Tell the paused browser task the user finished its step in the live view, so it carries on.
 
     Use it only while a <browser_task> note says the task is paused, and only when

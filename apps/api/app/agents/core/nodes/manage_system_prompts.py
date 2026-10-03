@@ -30,7 +30,7 @@ from app.agents.context.slots import (
     slot_of,
 )
 from app.constants.log_tags import LogTag
-from app.models.agent_models import agent_configurable, config_agent_name
+from app.models.agent_models import AgentConfigurable, agent_configurable, config_agent_name
 from app.override.langgraph_bigtool.utils import PRUNED_MESSAGE_IDS_KEY, State
 from app.services.latency_metrics import observe_graph_node
 from app.utils.multimodal import extract_text_content
@@ -121,7 +121,8 @@ def _manage_system_prompts(state: State, config: RunnableConfig) -> State:
         for message in messages:
             by_slot[slot_of(message)].append(message)
 
-        slot_order = request_slot_order(agent_configurable(config).get("provider"))
+        configurable: AgentConfigurable = agent_configurable(config)
+        slot_order = request_slot_order(configurable.get("provider"))
         kept = _keep_latest_per_slot(by_slot, slot_order)
 
         # A short content fingerprint per slot, to name which slot moved the

@@ -321,6 +321,7 @@ class TestBuildCommsGraph:
             deps["builder"].compile.assert_called_once()
 
     async def test_yields_compiled_graph_postgres(self):
+        """The default, as build_comms_agent builds it: the shared Postgres checkpointer."""
         fake_cp = MagicMock(name="postgres_checkpointer")
         fake_manager = MagicMock()
         fake_manager.get_checkpointer.return_value = fake_cp
@@ -332,9 +333,7 @@ class TestBuildCommsGraph:
             )
             from app.agents.core.graph_builder.build_graph import build_comms_graph
 
-            async with build_comms_graph(
-                chat_llm=deps["llm"], in_memory_checkpointer=False
-            ) as graph:
+            async with build_comms_graph(chat_llm=deps["llm"]) as graph:
                 assert graph is deps["compiled"]
 
             call_kwargs = deps["builder"].compile.call_args.kwargs

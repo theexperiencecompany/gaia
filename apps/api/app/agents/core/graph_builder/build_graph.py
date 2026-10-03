@@ -247,27 +247,6 @@ async def build_executor_agent() -> CompiledAgentGraph:
     return graph
 
 
-def comms_tools() -> dict[str, BaseTool]:
-    """Return the comms agent's whole tool set, by name; all bound from the start.
-
-    The discovery pair are read-only catalogue lookups, so they do not breach
-    "delegate every real ask". Connecting an integration is a real ask and
-    goes to the executor. The browser trio acts on a task already running.
-    """
-    return {
-        "call_executor": call_executor,
-        "cancel_executor": cancel_executor,
-        browser_step_done.name: browser_step_done,
-        stop_browser_task.name: stop_browser_task,
-        tell_browser_task.name: tell_browser_task,
-        "find_integration": find_integration,
-        "search_public_workflows": search_public_workflows,
-        web_search_tool.name: web_search_tool,
-        fetch_webpages.name: fetch_webpages,
-        **{memory_tool.name: memory_tool for memory_tool in memory_tools.tools},
-    }
-
-
 @asynccontextmanager
 async def build_comms_graph(
     chat_llm: LanguageModelLike | None = None,
@@ -320,6 +299,27 @@ async def build_comms_graph(
         log.debug(f"{LogTag.AGENT} Comms graph compiled with PostgreSQL checkpointer")
         log.set(agent={"model": model_name})
         yield graph
+
+
+def comms_tools() -> dict[str, BaseTool]:
+    """Return the comms agent's whole tool set, by name; all bound from the start.
+
+    The discovery pair are read-only catalogue lookups, so they do not breach
+    "delegate every real ask". Connecting an integration is a real ask and
+    goes to the executor. The browser trio acts on a task already running.
+    """
+    return {
+        "call_executor": call_executor,
+        "cancel_executor": cancel_executor,
+        browser_step_done.name: browser_step_done,
+        stop_browser_task.name: stop_browser_task,
+        tell_browser_task.name: tell_browser_task,
+        "find_integration": find_integration,
+        "search_public_workflows": search_public_workflows,
+        web_search_tool.name: web_search_tool,
+        fetch_webpages.name: fetch_webpages,
+        **{memory_tool.name: memory_tool for memory_tool in memory_tools.tools},
+    }
 
 
 @lazy_provider(

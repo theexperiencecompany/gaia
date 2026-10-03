@@ -1,14 +1,16 @@
 """The <browser_task> frame: comms learns each turn what the chat's browser task is doing, and only on the user's turns."""
 
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import HumanMessage
 import pytest
 
 from app.agents.context.slots import BROWSER_TASK_MARKER, PromptSlot, slot_of
+from app.agents.core.nodes import browser_task_status
 from app.agents.core.nodes.browser_task_status import browser_task_status_hook
 from app.constants.chat import ConversationSource
+from app.constants.log_tags import LogTag
 from app.schemas.browser import NewHandoff
 from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
 from app.services.browser.handoff import bot_chat_address, create_pending_handoff
@@ -44,8 +46,33 @@ async def test_a_running_task_is_framed_in_its_own_slot() -> None:
 
     assert frame.additional_kwargs.get(BROWSER_TASK_MARKER) is True
     assert slot_of(frame) is PromptSlot.BROWSER_TASK
-    assert "Running" in frame.content
-    assert "book a table for two" in frame.content
+    assert frame.content == "<browser_task>\nRunning. Task: book a table for two\n</browser_task>\n"
+
+
+async def test_a_state_with_no_messages_still_gets_the_frame() -> None:
+    await _running("job-1", "book a table for two")
+
+    out = await browser_task_status_hook({}, _config(), MagicMock())
+
+    assert [slot_of(message) for message in out["messages"]] == [PromptSlot.BROWSER_TASK]
+
+
+async def test_a_failed_read_leaves_the_turn_as_it_was_and_says_why() -> None:
+    state = {"messages": [HumanMessage(content="done")]}
+    with (
+        patch.object(browser_task_status, "log") as log,
+        patch.object(
+            browser_task_status,
+            "chat_browser_tasks",
+            AsyncMock(side_effect=ConnectionError("redis down")),
+        ),
+    ):
+        out = await browser_task_status_hook(state, _config(), MagicMock())
+
+    assert out is state
+    log.error.assert_called_once_with(
+        f"{LogTag.AGENT} browser_task_status_hook failed", error_type="ConnectionError"
+    )
 
 
 async def test_a_paused_task_says_what_it_waits_on() -> None:
@@ -114,5 +141,8 @@ async def test_a_paused_run_a_newer_run_displaced_from_the_bot_chat_is_still_fra
         }
     )
 
-    assert "Running. Task: buy a lamp" in frame.content
-    assert "Sign in to opentable.com. Task: book a table" in frame.content
+    assert frame.content.splitlines()[1:-1] == [
+        "Running. Task: buy a lamp",
+        "Paused, waiting for the user to finish a step in the live view: "
+        "Sign in to opentable.com. Task: book a table",
+    ]
