@@ -65,6 +65,11 @@ LAB_EVENT_MAX_RAW_BYTES = 64 * 1024
 # section is overwritten per event, so a chatty run cannot grow log.md
 # without bound.
 LAB_LOG_TAIL_MAX_CHARS = 4000
+# Max lab wall-clock since run start (12h): past this the keep-warm tick stops
+# refreshing that user's sandbox, E2B's idle-pause reclaims it naturally, and
+# the user gets one notification per cap window. Bounds E2B burn on
+# forgotten/wedged runs; the supervisor tick owns dead-run marking, not this.
+SANDBOX_LAB_MAX_RUN_SECONDS = 43200
 # Budget counters must outlive any legal token; bash caps command timeouts well
 # under this, so a counter can never expire while its token is still valid.
 SANDBOX_EXECUTE_BUDGET_WINDOW_SECONDS = 3600
