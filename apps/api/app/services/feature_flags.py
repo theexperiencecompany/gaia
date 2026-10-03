@@ -203,12 +203,6 @@ async def is_jev_reply_enabled(user_id: str | None) -> bool:
     return await is_enabled(FeatureFlag.HIL_JEV_REPLY, user_id)
 
 
-def _agent_lab_allowlist() -> set[str]:
-    """Lowercased allowlist emails from settings; empty when unconfigured."""
-    raw = settings.AGENT_LAB_USER_EMAILS or ""
-    return {part.strip().lower() for part in raw.split(",") if part.strip()}
-
-
 async def is_agent_lab_enabled(user_id: str | None) -> bool:
     """Whether the user can run private agent lab sessions inside their sandbox."""
     return await is_enabled(FeatureFlag.AGENT_LAB, user_id)
