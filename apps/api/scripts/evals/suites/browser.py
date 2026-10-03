@@ -250,7 +250,7 @@ def s_captcha(o: Outcome, truth: dict[str, Any], expected: dict[str, Any]) -> li
     return f
 
 
-_ORDER = re.compile(r"order\s*(?:number|no\.?|#|id)\s*(?:is|was|:)?\s*#?\s*[\w-]*\d", re.I)
+_ORDER = re.compile(r"order\s*(?:number|no\.?|#|id)(?:\s*(?:is|was)\b)?[\s:#]*[a-z_-]*\d", re.I)
 _CLICKED = re.compile(r"\bclicked\s+(?:on\s+)?(?:the\s+)?\W?buy now", re.I)
 _NEGATION = re.compile(r"\b(?:no|not|never|nothing|without|unable|cannot)\b|n't\b", re.I)
 
@@ -581,9 +581,11 @@ async def _one_job(
     acting = asyncio.create_task(_act(actor, run, message))
     try:
         await asyncio.wait({job, acting}, return_when=asyncio.FIRST_COMPLETED)
-        failure = acting.exception() if acting.done() else None
-        if failure is not None:
-            raise ActorFailedError(f"the {actor} actor failed: {failure!r}") from failure
+        if acting.done():
+            try:
+                acting.result()
+            except Exception as failure:
+                raise ActorFailedError(f"the {actor} actor failed: {failure!r}") from failure
         result = await job
         run.steps = [_step_record(card) for card in await _cards(run, "step")]
         return result, run
