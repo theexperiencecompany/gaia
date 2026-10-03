@@ -18,8 +18,7 @@ _WWW = "www."
 
 
 def _site(host: str) -> str:
-    host = host.lower().rstrip(".")
-    return host.removeprefix(_WWW)
+    return host.lower().removeprefix(_WWW)
 
 
 class UserSites:

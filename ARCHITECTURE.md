@@ -558,7 +558,7 @@ A browser task is a background job, not a tool call the turn holds open. `browse
 - Handoff: `request_human_takeover` and `solve_captcha_with_help`, registered in `apps/api/app/services/browser/tools.py`, are the agent's own way to pause; the runner blocks the task and resumes it with the user's note.
 - `apps/api/app/services/browser/stalled_loads.py`: a top-level load whose site sends nothing for 15 s is stopped, because Chrome answers no script on a tab until its pending navigation gets a first byte; the agent (or Jev's report) is told which page stalled.
 - Each run takes its own bubus event lock (`app/patches/browser_use_run_lock_patch.py`): bubus otherwise serialises every Browser-Use session in the worker process.
-- Browser-Use is pinned (`browser-use==0.11.13` in `apps/api/pyproject.toml`); several `app/patches/browser_use_*` patches rebind its internals.
+- Browser-Use is pinned (`browser-use==0.11.13` in `apps/api/pyproject.toml`). GAIA's changes to it are overrides on objects each run builds, not patches: `GaiaBrowserSession` (`services/browser/browser_use_session.py`: per-user stealth script on every tab, capped load wait, document titles) and `GaiaTools` (`services/browser/browser_use_tools.py`: secret values only for `input` on the secret's site, read results shown in full). What goes to the user (logins, payments, OTPs, bot checks on sites the user named) is `BROWSER_HUMAN_CHECKS`, in the agent's system message.
 
 ---
 
