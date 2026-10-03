@@ -529,3 +529,11 @@ async def test_a_todo_that_is_not_the_desk_gets_no_observations(
 
     assert await inbox_desk.with_desk_notes(todo) is todo
     todo_repository.replace_note_fields.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("hour", "minute", "quiet"),
+    [(21, 59, False), (22, 0, True), (23, 8, True), (0, 30, True), (7, 59, True), (8, 0, False)],
+)
+def test_quiet_hours_span_midnight(hour: int, minute: int, quiet: bool) -> None:
+    assert inbox_desk.in_quiet_hours(datetime(2026, 10, 3, hour, minute, tzinfo=KOLKATA)) is quiet

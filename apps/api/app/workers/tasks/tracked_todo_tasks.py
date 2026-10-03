@@ -27,6 +27,7 @@ from app.agents.prompts.todo_prompts import (
     DELIVERED_RESULT_RULES,
     GMAIL_THREAD_RUN_GUIDANCE,
     INBOX_DESK_MAIL_WAKE_OPENING,
+    INBOX_DESK_QUIET_HOURS_NOTE,
     INBOX_DESK_RUN_GUIDANCE,
     PARENT_STANDING_RULES_LABEL,
     SILENT_RUN_GUIDANCE,
@@ -72,7 +73,7 @@ from app.services.integrations.user_integrations import get_connected_integratio
 from app.services.notification_service import notification_service
 from app.services.todo_activity import record_activity
 from app.services.todo_observations import bounded_observations
-from app.services.todos.inbox_desk import with_desk_notes
+from app.services.todos.inbox_desk import in_quiet_hours, with_desk_notes
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.triggers.todo_trigger_window import (
@@ -310,7 +311,9 @@ async def _execute_todo_with_retry(
         await enforce_daily_cost_budget(user_id, feature_key=TRIGGER_TODO_FEATURE_KEY)
 
     try:
-        await _execute_on_executor(doc, user_data=user_data, origin=origin, coalesced=coalesced)
+        await _execute_on_executor(
+            doc, user_data=user_data, user_tz=user_tz, origin=origin, coalesced=coalesced
+        )
     except Exception as exc:
         log.exception("tracked_todo.execution_failed", todo_id=todo_id, error=str(exc))
         new_retry_count = retry_count + 1
@@ -671,7 +674,10 @@ def _delivery_guidance(doc: TodoDocument) -> str:
 
 
 def _opening_parts(
-    doc: TodoDocument, origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
+    doc: TodoDocument,
+    origin: TriggerOrigin | None,
+    coalesced: Sequence[TriggerOrigin],
+    local_now: datetime,
 ) -> list[str]:
     """Open the run prompt with what woke it; trigger payloads share one untrusted fence."""
     title = doc.title
@@ -679,7 +685,10 @@ def _opening_parts(
         return [f"Execute the following scheduled task: {title}"]
     wake = _WAKE_OPENINGS.get(doc.external_ref.source) if doc.external_ref else None
     if wake is not None:
-        return [wake.format(title=title)]
+        woken = [wake.format(title=title)]
+        if in_quiet_hours(local_now):
+            woken.append(INBOX_DESK_QUIET_HOURS_NOTE.format(local_time=f"{local_now:%H:%M}"))
+        return woken
     fence = untrusted_fence()
     if coalesced:
         opening = f"Events you were watching fired. Execute this task: {title}"
@@ -719,14 +728,15 @@ def _build_execution_prompt(
     context: _RunContext = _NO_CONTEXT,
     origin: TriggerOrigin | None = None,
     coalesced: Sequence[TriggerOrigin] = (),
+    local_now: datetime,
 ) -> str:
-    """Assemble the run prompt from the todo's fields and context.
+    """Assemble the run prompt from the todo's fields and context, local_now on the user's clock.
 
     The trigger payloads go in the prompt itself, the only way they reach the
     model. They are attacker-influenceable, so all of them share one fence
     labelled untrusted. doc.notify_on_run decides which delivery contract is stated.
     """
-    prompt_parts = _opening_parts(doc, origin, coalesced)
+    prompt_parts = _opening_parts(doc, origin, coalesced, local_now)
     prompt_parts.append(TODO_ID_LINE.format(todo_id=doc.id))
     if doc.description:
         prompt_parts.append(f"Details: {doc.description}")
@@ -756,6 +766,7 @@ async def _execute_on_executor(
     doc: TodoDocument,
     *,
     user_data: AuthenticatedUser,
+    user_tz: Timezone,
     origin: TriggerOrigin | None = None,
     coalesced: Sequence[TriggerOrigin] = (),
 ) -> None:
@@ -768,6 +779,7 @@ async def _execute_on_executor(
         context=await _collect_run_context(doc),
         origin=origin,
         coalesced=coalesced,
+        local_now=datetime.now(user_tz.tzinfo),
     )
 
     # A fresh conversation per run: runs are independent, and history must not

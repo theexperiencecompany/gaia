@@ -16,6 +16,8 @@ from app.agents.prompts.todo_prompts import (
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.todos import (
     CANVAS_OBSERVATIONS_SECTION,
+    INBOX_DESK_QUIET_HOURS_END,
+    INBOX_DESK_QUIET_HOURS_START,
     INBOX_DESK_RECURRENCE,
     INBOX_DESK_TITLE,
     PROVISION_INBOX_DESK_TASK,
@@ -136,6 +138,11 @@ async def with_desk_notes(doc: TodoDocument) -> TodoDocument:
     if repaired is None:
         raise LookupError(f"Inbox desk {doc.id} changed or vanished while its notes were repaired")
     return repaired
+
+
+def in_quiet_hours(moment: datetime) -> bool:
+    """Whether moment, on the user's own clock, falls in the desk's quiet hours, which span midnight."""
+    return moment.hour >= INBOX_DESK_QUIET_HOURS_START or moment.hour < INBOX_DESK_QUIET_HOURS_END
 
 
 async def queue_inbox_desk_provision(user_id: str) -> None:
