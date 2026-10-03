@@ -272,6 +272,28 @@ class TestTheExpiryIsHandedOffCorrectly:
             },
         }
 
+    async def test_the_wide_event_names_the_keys_a_delivery_carried_beyond_the_schema(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        """Report the delivered shape, so an undeclared field Composio added is visible.
+
+        The keys are what the run was asked to act on; reading only the declared fields
+        would report the same shape for a delivery that grew a field, which is exactly the
+        drift this event is here to catch. The values are never logged, state included.
+        """
+        body = {
+            **_expired_connection_event(),
+            "sdk_version": "3.9.1",
+            "data": {**_expired_connection_event()["data"], "sdk_hint": "new-field"},
+        }
+
+        with patch(f"{MODULE}.spawn_logged_task"), patch(f"{MODULE}.log") as mock_log:
+            await _post_event(unauthed_client, body, "conn-extra-keys")
+
+        fields = _ns_fields(mock_log)
+        assert "sdk_version" in fields["envelope_keys"]
+        assert "sdk_hint" in fields["data_keys"]
+
     async def test_the_wide_event_records_the_connection_it_acted_on(
         self, unauthed_client: AsyncClient
     ) -> None:
@@ -512,6 +534,45 @@ class TestAMalformedTriggerDeliveryIsRefused:
 
         assert response.status_code == 422
         assert response.json()["code"] == "validation_error"
+
+    @pytest.mark.regression
+    async def test_the_422_reports_the_field_that_was_wrong_and_echoes_no_input(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        """The refusal names the field, says what was wrong with it, and quotes nothing back.
+
+        include_url and include_input are both off: a URL pointing into GAIA's own schema
+        tells the caller nothing about what to send instead, and the input is their own
+        payload — a token in it would come back to them inside a 422.
+        """
+        secret = "sk-live-should-not-be-echoed"
+        body = {**_trigger_event(), "data": "not-an-object", "token": secret}
+
+        response = await _post_event(unauthed_client, body, "bad-quoting")
+
+        assert response.status_code == 422
+        issue = response.json()["errors"][0]
+        assert issue["loc"] == ["data"]
+        assert issue["type"]
+        assert "input" not in issue
+        assert secret not in response.text
+
+    @pytest.mark.regression
+    async def test_the_422_carries_no_url_into_the_schema(
+        self, unauthed_client: AsyncClient
+    ) -> None:
+        """include_url is off: a link into GAIA's own schema tells the caller nothing.
+
+        They cannot read the schema behind this webhook, so a URL in the refusal is a
+        dead end in the one place they will look for what to send instead.
+        """
+        body = {**_trigger_event(), "data": "not-an-object"}
+
+        response = await _post_event(unauthed_client, body, "bad-url")
+
+        issue = response.json()["errors"][0]
+        assert issue["loc"] == ["data"]
+        assert "url" not in issue
 
 
 @pytest.mark.usefixtures("_accepted_delivery")

@@ -342,7 +342,11 @@ async def _schedule_retry(
     coalesced: Sequence[TriggerOrigin],
 ) -> str:
     """Queue the next attempt of a failed run on the backoff ladder."""
-    backoff = RETRY_BACKOFF[min(attempt - 1, len(RETRY_BACKOFF) - 1)]
+    if not 1 <= attempt <= len(RETRY_BACKOFF):
+        raise ValueError(
+            f"retry attempt {attempt} has no rung on the {len(RETRY_BACKOFF)}-rung ladder"
+        )
+    backoff = RETRY_BACKOFF[attempt - 1]
     next_attempt = datetime.now(UTC) + backoff
     if origin is None:
         # Parked on the backoff target: left in the past, scheduled_at matches
