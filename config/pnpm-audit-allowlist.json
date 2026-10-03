@@ -5,6 +5,11 @@
       "id": "GHSA-86w9-cpqp-85rv",
       "reason": "node-forge RSA PKCS#1 v1.5 verification accepts extra DigestAlgorithm elements; no fixed release exists upstream (patched <0.0.0). Reachable only transitively via Expo CLI build tooling, never for signature verification of untrusted input.",
       "expires": "2027-01-02"
+    },
+    {
+      "id": "GHSA-vfj7-8cjw-p6xm",
+      "reason": "braces mishandles unclosed extended glob syntax; no fixed release exists upstream (patched <0.0.0). Reachable only transitively via Expo metro file-map globbing of local project files, never on untrusted input.",
+      "expires": "2027-01-02"
     }
   ]
 }
