@@ -17,8 +17,9 @@ cleanup_legacy_todos_dir is a one-shot migration removing the prior release's
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import TypedDict
 
 from app.services.storage._vfs_common import (
     GUIDE_FILENAME,
@@ -26,6 +27,7 @@ from app.services.storage._vfs_common import (
     META_FILENAME,
     READONLY_DIR_MODE,
     RW_DIR_MODE,
+    TodoProjectionMeta,
     folder_name as common_folder_name,
     hash_body_with_meta,
     meta_body,
@@ -61,6 +63,15 @@ LEGACY_TODOS_MARKER = ".gaia/todos.v"
 LEGACY_TODOS_PER_DOC_MARKER_DIR = ".gaia/todos"
 
 
+class GaiaTaskMeta(TodoProjectionMeta):
+    """A gaia-task's meta.json: the shared todo fields plus the tracking ones."""
+
+    references: list[str]
+    scheduled_at: datetime | None
+    recurrence: str | None
+    expires_at: datetime | None
+
+
 class GaiaTaskProjection(TypedDict):
     """In-memory shape passed from the Mongo glue to the materializer."""
 
@@ -69,7 +80,7 @@ class GaiaTaskProjection(TypedDict):
     activity: str
     observations: str
     log: str
-    meta: dict[str, Any]
+    meta: GaiaTaskMeta
 
 
 # ====================================================================
@@ -140,12 +151,17 @@ def cleanup_legacy_todos_dir(user_root: Path) -> bool:
 # ====================================================================
 
 
-def _glyph(meta: dict[str, Any]) -> str:
+def _glyph(meta: GaiaTaskMeta) -> str:
     return "DONE" if meta.get("completed") else "OPEN"
 
 
 def _folder_name(doc: GaiaTaskProjection) -> str:
-    return common_folder_name(doc["id"], doc["meta"].get("title"))
+    meta: GaiaTaskMeta = doc["meta"]
+    return common_folder_name(doc["id"], meta.get("title"))
+
+
+def _recency(doc: GaiaTaskProjection) -> str:
+    return updated_at_key(doc["meta"])
 
 
 def render_index(docs: list[GaiaTaskProjection]) -> str:
@@ -155,12 +171,12 @@ def render_index(docs: list[GaiaTaskProjection]) -> str:
         "last-updated, newest first. Do not edit — regenerated on every "
         "sync. -->\n"
     )
-    sorted_docs = sorted(docs, key=lambda d: updated_at_key(d["meta"]), reverse=True)
+    sorted_docs: list[GaiaTaskProjection] = sorted(docs, key=_recency, reverse=True)
     if not sorted_docs:
         return header + "\n# No active gaia-tasks.\n"
     body = []
     for d in sorted_docs:
-        meta = d["meta"]
+        meta: GaiaTaskMeta = d["meta"]
         title = (meta.get("title") or "(untitled)").replace("\n", " ").strip()
         updated = updated_at_key(meta) or "—"
         body.append(f"- [{_glyph(meta)}] `{_folder_name(d)}`  {title}  _(updated {updated})_")
