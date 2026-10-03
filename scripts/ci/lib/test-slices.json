@@ -56,7 +56,7 @@
       "services": "true",
       "workers": "2",
       "serial": "false",
-      "timeout_minutes": "20",
+      "timeout_minutes": "30",
       "after": [],
       "engines": "true"
     }

@@ -14,6 +14,7 @@ from tests.integration.real.browser._stack.tls import FixtureTls
 #: How long a local server gets to bind its port before the stack gives up on it.
 _START_SECONDS = 30.0
 _POLL_SECONDS = 0.05
+_STOP_GRACE_SECONDS = 5
 
 
 @dataclass
@@ -39,6 +40,8 @@ async def serve_locally(
         host="127.0.0.1",
         port=port,
         log_level="warning",
+        # A request a test left open (a page that never answers) must not hold shutdown.
+        timeout_graceful_shutdown=_STOP_GRACE_SECONDS,
         ssl_certfile=str(tls.chain_file) if tls else None,
         ssl_keyfile=str(tls.key_file) if tls else None,
     )

@@ -39,9 +39,14 @@ from tests.integration.real.browser._stack.fixture_site import (
     SECURE_HEADING,
 )
 from tests.integration.real.browser._stack.observe import Delivery, Transcript, wait_for
-from tests.integration.real.browser._stack.stack import RUN_SECONDS, BotUser, BrowserStack
+from tests.integration.real.browser._stack.stack import (
+    RUN_SECONDS,
+    SCENARIO_SECONDS,
+    BotUser,
+    BrowserStack,
+)
 
-pytestmark = [pytest.mark.asyncio(loop_scope="module"), pytest.mark.timeout(900)]
+pytestmark = [pytest.mark.asyncio(loop_scope="module"), pytest.mark.timeout(SCENARIO_SECONDS)]
 
 _PASSWORD = "gaia-test-123"  # pragma: allowlist secret
 

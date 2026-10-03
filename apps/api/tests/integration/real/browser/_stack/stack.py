@@ -12,6 +12,7 @@ view's own decision endpoint for a handoff's Done and Cancel.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
@@ -19,6 +20,7 @@ import os
 from pathlib import Path
 import secrets
 import shutil
+import socket
 import time
 from typing import Any
 from urllib.parse import urlsplit
@@ -62,6 +64,7 @@ from tests.integration.real.browser._stack.processes import (
     browser_host,
     child_environment,
 )
+from tests.integration.real.browser._stack.progress import Progress
 from tests.integration.real.browser._stack.tls import FixtureTls, issue
 
 _TELEGRAM = "telegram"
@@ -70,8 +73,16 @@ _BOT_SESSION_SECRET = "browser-stack-session-" + "y" * 42  # pragma: allowlist s
 _FAKE_MODEL = "browser-stack-model"
 _FAKE_KEY = "browser-stack-model-key"  # pragma: allowlist secret
 _POLL_SECONDS = 0.2
+#: The key a stack claims its Redis database by, and how long a claim lives unrefreshed.
+_CLAIM_KEY = "browser-stack:owner"
+_CLAIM_SECONDS = 60
+#: How long acting in the run's own page (attach, then one script) may take.
+_LIVE_PAGE_SECONDS = 30.0
 #: How long a whole browser run may take in this stack before a scenario gives up on it.
 RUN_SECONDS = 120.0
+#: One scenario's cap, the stack's boot included for a module's first: the boot's own
+#: deadlines (READY_SECONDS) plus a scenario's two longest waits, with room to say why.
+SCENARIO_SECONDS = 480
 
 
 def required_binary(variable: str, fallback: str | None = None) -> str:
@@ -102,8 +113,9 @@ class BotReply:
 class BrowserStack:
     """The whole browser path, wired together and observable."""
 
-    def __init__(self, log_dir: Path) -> None:
+    def __init__(self, log_dir: Path, progress: Progress) -> None:
         self.log_dir = log_dir
+        self.progress = progress
         self.site = FixtureSite()
         self.models = FakeModels()
         self.redis_url = worker_redis_url(settings.REDIS_URL or "redis://localhost:6379/0")
@@ -112,7 +124,7 @@ class BrowserStack:
         self.host_key = secrets.token_hex(16)
         #: Encrypts the logins a run saves, as production's key does.
         self.state_key = Fernet.generate_key().decode()
-        self.observer = OutboundObserver(settings.RABBITMQ_URL)
+        self.observer = OutboundObserver(settings.RABBITMQ_URL, progress)
         self.tls: FixtureTls | None = None
         self.chrome: BrowserHost | None = None
         self.obscura: BrowserHost | None = None
@@ -120,6 +132,7 @@ class BrowserStack:
         self.api: StackProcess | None = None
         self.redis: Redis | None = None
         self._patches: pytest.MonkeyPatch = pytest.MonkeyPatch()
+        self._claim: asyncio.Task[None] | None = None
 
     @property
     def api_url(self) -> str:
@@ -128,9 +141,15 @@ class BrowserStack:
     # --- lifecycle ----------------------------------------------------------
 
     async def start(self) -> None:
+        say = self.progress.say
+        say(
+            f"booting on Redis {self.redis_url}, RabbitMQ {_without_credentials(settings.RABBITMQ_URL)}"
+        )
+        await self._own_the_redis_database()
         tls = self.tls = issue(self.log_dir)
         await self.site.start(tls)
         await self.models.start()
+        say(f"fixture site at {self.site.a} and {self.site.b}, models at {self.models.base_url}")
         self.chrome = browser_host(
             BrowserEngine.CHROMIUM,
             required_binary("CHROMIUM_BIN", "google-chrome"),
@@ -150,14 +169,46 @@ class BrowserStack:
         self.api = api_process(env, self.api_port, self.log_dir)
         for process in (self.chrome.process, self.obscura.process, self.api):
             process.start()
+        say(f"processes started; logs in {self.log_dir}")
         await asyncio.gather(
-            self.chrome.wait_ready(),
-            self.obscura.wait_ready(),
-            self.worker.start(),
-            self.api.wait_for_line(API_READY_LINE),
+            self._phase("Chrome host answers healthz", self.chrome.wait_ready()),
+            self._phase("Obscura host answers healthz", self.obscura.wait_ready()),
+            self._phase("browser worker serves its queue", self.worker.start()),
+            self._phase("API serves", self.api.wait_for_line(API_READY_LINE)),
         )
         self._read_the_stacks_redis()
         await self.observer.start()
+        say("ready")
+
+    async def _phase(self, what: str, waiting: Awaitable[None]) -> None:
+        await waiting
+        self.progress.say(what)
+
+    async def _own_the_redis_database(self) -> None:
+        """Claim this stack's Redis database, then empty it: its ARQ queue and job keys are this stack's alone.
+
+        Two stacks on one database steal each other's browser jobs, so a held claim
+        fails the boot naming its holder rather than letting the scenarios race.
+        """
+        self.redis = Redis.from_url(self.redis_url, decode_responses=True)
+        holder = f"{socket.gethostname()}:{os.getpid()}"
+        if not await self.redis.set(_CLAIM_KEY, holder, nx=True, ex=_CLAIM_SECONDS):
+            raise RuntimeError(
+                f"Redis {self.redis_url} is already a browser stack's (held by "
+                f"{await self.redis.get(_CLAIM_KEY)}); give this run its own database "
+                "(REDIS_URL / GAIA_REDIS_DB_BASE)"
+            )
+        await self.redis.flushdb()
+        await self.redis.set(_CLAIM_KEY, holder, ex=_CLAIM_SECONDS)
+        self._claim = asyncio.create_task(self._keep_claim(holder))
+
+    async def _keep_claim(self, holder: str) -> None:
+        redis = self.redis
+        if redis is None:
+            raise RuntimeError("the claim is kept only after it is made")
+        while True:
+            await asyncio.sleep(_CLAIM_SECONDS / 3)
+            await redis.set(_CLAIM_KEY, holder, ex=_CLAIM_SECONDS)
 
     async def stop(self) -> None:
         await self.observer.stop()
@@ -172,10 +223,14 @@ class BrowserStack:
                 process.stop()
         await self.models.stop()
         await self.site.stop()
+        if self._claim is not None:
+            self._claim.cancel()
+            await asyncio.gather(self._claim, return_exceptions=True)
         if self.redis is not None:
             await self.redis.flushdb()
             await self.redis.aclose()
         self._patches.undo()
+        self.progress.say("stopped")
 
     def logs(self) -> str:
         """Every process's log tail, for a failing scenario's report."""
@@ -217,7 +272,6 @@ class BrowserStack:
 
     def _read_the_stacks_redis(self) -> None:
         """Point this process's Redis helpers (job state, handoffs, the plan cache) at the stack's database."""
-        self.redis = Redis.from_url(self.redis_url, decode_responses=True)
         self._patches.setattr(redis_cache, "redis", _new_client(self.redis_url))
 
     # --- users and chats ------------------------------------------------------
@@ -245,7 +299,11 @@ class BrowserStack:
         chunks: list[str] = []
         conversation_id: str | None = None
         error: str | None = None
-        async with httpx.AsyncClient(base_url=self.api_url, timeout=RUN_SECONDS) as client:
+        # Keepalive frames reset a read timeout, so a turn that never ends is bounded as a whole.
+        async with (
+            asyncio.timeout(RUN_SECONDS),
+            httpx.AsyncClient(base_url=self.api_url, timeout=RUN_SECONDS) as client,
+        ):
             async with client.stream(
                 "POST", "/api/v1/bot/chat-stream", json=body, headers=self._bot_headers(user)
             ) as response:
@@ -382,13 +440,15 @@ class BrowserStack:
         live = urlsplit(entry.live_ws)
         cdp = live._replace(path=live.path.replace(f"/live/{session_id}", f"/cdp/{session_id}"))
         browser = Browser(cdp_url=cdp.geturl())
-        await browser.start()
+        async with asyncio.timeout(_LIVE_PAGE_SECONDS):
+            await browser.start()
         try:
             session = await browser.get_or_create_cdp_session(focus=False)
-            result = await session.cdp_client.send.Runtime.evaluate(
-                params={"expression": script, "awaitPromise": True, "returnByValue": True},
-                session_id=session.session_id,
-            )
+            async with asyncio.timeout(_LIVE_PAGE_SECONDS):
+                result = await session.cdp_client.send.Runtime.evaluate(
+                    params={"expression": script, "awaitPromise": True, "returnByValue": True},
+                    session_id=session.session_id,
+                )
             return result.get("result", {}).get("value")
         finally:
             await browser.stop()
@@ -427,6 +487,12 @@ class BrowserStack:
         async with httpx.AsyncClient(base_url=self.api_url, timeout=30) as client:
             response = await client.post(f"/live/{code}/decision", json={"decision": decision})
         return response.status_code
+
+
+def _without_credentials(url: str) -> str:
+    parts = urlsplit(url)
+    host = f"{parts.hostname or ''}{f':{parts.port}' if parts.port else ''}"
+    return parts._replace(netloc=host).geturl()
 
 
 def _cards_in(frame: Any) -> list[dict[str, Any]]:
