@@ -80,6 +80,8 @@ class _Harness:
         self.register = AsyncMock()
         self.unregister = AsyncMock(return_value=True)
         self.update = AsyncMock(return_value=None)
+        # The watch append is compare-and-set, so the write carries the stamp it read.
+        self.set_subscriptions = AsyncMock(return_value=todo)
         self.capture = Mock()
 
     def __enter__(self) -> "_Harness":
@@ -91,6 +93,11 @@ class _Harness:
             "app.services.triggers.subscription_service.todo_repository",
             get=self.get,
             update=self.update,
+            # create=True: on a base revision the compare-and-set write does not
+            # exist yet, and this harness still has to patch so the test can run
+            # and fail on its assertions rather than error on the patch itself.
+            set_trigger_subscriptions=self.set_subscriptions,
+            create=True,
         )
         self._svc = patch(
             "app.services.triggers.subscription_service.TriggerService",
@@ -112,7 +119,7 @@ class _Harness:
 
     @property
     def written_subscriptions(self) -> list[TriggerSubscription]:
-        return self.update.await_args.kwargs["update"].trigger_subscriptions
+        return self.set_subscriptions.await_args.kwargs["subscriptions"]
 
 
 class TestRegisterSubscription:
@@ -245,6 +252,51 @@ class TestRegisterSubscription:
         assert len(h.written_subscriptions) == 2
         assert h.written_subscriptions[0].id == existing.id
 
+    @pytest.mark.regression
+    async def test_a_concurrent_write_of_the_same_watch_returns_the_stored_row(self) -> None:
+        """Two Gmail connects provision one desk at once; the desk ends with one watch, not two."""
+        first = _subscription()
+        with _Harness(_todo(), ["ti_1"]) as h:
+            h.set_subscriptions.return_value = None  # the other writer's write won
+            reads: list[TodoDocument] = [_todo(), _todo(trigger_subscriptions=[first])]
+            h.get.side_effect = lambda *_, **__: reads.pop(0)
+
+            subscription, _outcome = await register_subscription(
+                todo_id=TODO_ID,
+                user_id=USER_ID,
+                trigger_name=INSTANCE_TRIGGER,
+                conditions=[],
+                action=SubscriptionAction.EXECUTE,
+            )
+
+        assert subscription.id == first.id
+        # Nothing is appended on top of it, and the instance registered for the row
+        # that lost the race is released rather than left orphaned upstream.
+        assert h.set_subscriptions.await_count == 1
+        h.unregister.assert_awaited_once()
+
+    @pytest.mark.regression
+    async def test_an_unresolvable_write_conflict_is_refused_not_silently_dropped(self) -> None:
+        with _Harness(_todo(), ["ti_9"]) as h:
+            h.set_subscriptions.return_value = None  # every compare-and-set loses
+            h.get.return_value = _todo()  # the re-read finds a doc, but the stamp never matches
+
+            with pytest.raises(SubscriptionError, match="changed while this one was being added"):
+                await register_subscription(
+                    todo_id=TODO_ID,
+                    user_id=USER_ID,
+                    trigger_name=INSTANCE_TRIGGER,
+                    conditions=[],
+                    action=SubscriptionAction.EXECUTE,
+                )
+
+        assert h.set_subscriptions.await_count == 3
+        h.capture.assert_called_once_with(
+            USER_ID,
+            AnalyticsEvents.TODO_SUBSCRIPTION_FAILED,
+            {"trigger_name": INSTANCE_TRIGGER, "reason": "write_conflict"},
+        )
+
     async def test_register_stamps_the_wide_event(self) -> None:
         # A watch registered under the wrong operation/component/ids cannot be
         # found in the wide event when it later misbehaves.
@@ -314,8 +366,10 @@ class TestRegisterSubscription:
         assert kwargs["raise_on_failure"] is True
         # The subscription is persisted against THIS todo and user — a swapped id
         # writes the watch onto the wrong document.
-        assert h.update.await_args.args[0] == TODO_ID
-        assert h.update.await_args.kwargs["user_id"] == USER_ID
+        assert h.set_subscriptions.await_args.args[:2] == (TODO_ID, USER_ID)
+        # The write is gated on the stamp it read, so a concurrent append cannot be
+        # overwritten by this one.
+        assert h.set_subscriptions.await_args.kwargs["expected_updated_at"] == _todo().updated_at
 
     async def test_match_and_cooldown_are_stored_on_the_subscription(self) -> None:
         # Both are registration-time knobs the payload cannot express; dropping

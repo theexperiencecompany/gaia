@@ -33,7 +33,7 @@ from app.models.todo_models import (
     TodoStats,
     TodoUpdate,
 )
-from app.models.trigger_subscription_models import TriggerSubscriptionStatus
+from app.models.trigger_subscription_models import TriggerSubscription, TriggerSubscriptionStatus
 
 # Top-N labels surfaced in the stats aggregation (mirrors the legacy pipeline).
 _STATS_LABEL_LIMIT = 50
@@ -676,6 +676,27 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         if expected_updated_at is not None:
             extra["updated_at"] = expected_updated_at
         return await self._apply_update(todo_id, user_id, extra, update, touch=touch)
+
+    async def set_trigger_subscriptions(
+        self,
+        todo_id: str,
+        user_id: str,
+        *,
+        subscriptions: list[TriggerSubscription],
+        expected_updated_at: datetime,
+    ) -> TodoDocument | None:
+        """Store the todo's whole watch list, only while updated_at still matches.
+
+        Compare-and-set: a watch list is read, extended in Python and written back,
+        so two writers reading the same snapshot would otherwise overwrite each
+        other. Returns None on mismatch, so the caller re-reads and retries.
+        """
+        return await self._apply_update(
+            todo_id,
+            user_id,
+            {"user_id": user_id, "updated_at": expected_updated_at},
+            TodoUpdate(trigger_subscriptions=subscriptions),
+        )
 
     async def update_if_scheduled_at(
         self, todo_id: str, user_id: str, *, expected: datetime | None, update: TodoUpdate
