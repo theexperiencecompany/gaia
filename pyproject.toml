@@ -668,6 +668,7 @@ warn_no_return = true
 [[tool.mypy.overrides]]
 module = [
   "app.db.repositories.*",
+  "app.models.agent_lab_models",
   "app.models.notes_models",
   "app.models.todo_models",
   "app.models.mail_models",
