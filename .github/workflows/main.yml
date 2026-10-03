@@ -352,8 +352,9 @@ jobs:
     # in minutes (whole suite 183s at 16 workers), but on 2026-09-16 a loaded
     # box (mutation shards starved then fail-open + both push workflows
     # overlapping) crept past 22m without finishing; 45 bounds a hang while
-    # leaving a saturated fallback room to land.
-    timeout-minutes: 45
+    # leaving a saturated fallback room to land. Per slice (test-slices.json):
+    # the browser slice is bounded tighter, a whole stack per worker.
+    timeout-minutes: ${{ fromJSON(matrix.slice.timeout_minutes) }}
     permissions:
       contents: read
       actions: read # `test_impact.py fetch` reads the map artifact of a master run
@@ -375,6 +376,29 @@ jobs:
         with:
           node: ${{ matrix.slice.node }}
           services: ${{ matrix.slice.services }}
+      # The browser slice runs real browser hosts: Chrome from the runner image and
+      # Obscura from the same obscura-bin stage (and GHA cache scope) obscura-compat
+      # builds. A missing binary fails the slice; it never skips.
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        if: matrix.slice.name == 'browser'
+      - name: Build the Obscura binaries from apps/api/Dockerfile
+        if: matrix.slice.name == 'browser'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          target: obscura-bin
+          outputs: type=local,dest=${{ runner.temp }}/obscura
+          cache-from: type=gha,scope=obscura-bin
+          cache-to: type=gha,scope=obscura-bin,mode=min
+      - name: Locate the browser binaries
+        if: matrix.slice.name == 'browser'
+        run: |
+          set -euo pipefail
+          chrome="$(command -v google-chrome)" || { echo "::error::google-chrome is not on this runner"; exit 1; }
+          echo "OBSCURA_BIN=$RUNNER_TEMP/obscura/obscura" >> "$GITHUB_ENV"
+          echo "CHROMIUM_BIN=$chrome" >> "$GITHUB_ENV"
+          "$chrome" --version
       # Only the GitHub-hosted fallback uses this: the static shares below are
       # sized for the 16-thread box and would put 7 workers on a 4-vCPU VM.
       - name: Detect parallelism
@@ -384,20 +408,22 @@ jobs:
           PY=$(bash scripts/ci/runner.sh parallel --pytest-n)
           echo "py=$PY" >> "$GITHUB_OUTPUT"
           echo "pytest xdist n=$PY on $(nproc) vCPUs ($(free -g | awk '/^Mem:/{print $7}')G available)"
-      # ── Test impact selection (PRs only, never the bridge slice) ───────────
+      # ── Test impact selection (PRs only, never the bridge or browser slice) ─
       # The bridge slice is one serial file; selecting inside it saves nothing
-      # and its e2e is the least safe thing to skip. See the header of scripts/ci/test_impact.py.
+      # and its e2e is the least safe thing to skip. The browser slice runs the
+      # app in child processes coverage never traces, so the map cannot know
+      # which app files reach it: selection there would skip it on every change. See the header of scripts/ci/test_impact.py.
       # Artifact, not actions/cache: a PR run cannot restore a cache written on
       # its head branch, only on its merge ref or master (`test_impact.py fetch`).
       - name: Fetch test impact map
-        if: github.event_name == 'pull_request' && matrix.slice.name != 'bridge'
+        if: github.event_name == 'pull_request' && matrix.slice.name != 'bridge' && matrix.slice.name != 'browser'
         env:
           SLICE_NAME: ${{ matrix.slice.name }}
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/ci/test_impact.py fetch
       - name: Select impacted tests
         id: impact
-        if: github.event_name == 'pull_request' && matrix.slice.name != 'bridge'
+        if: github.event_name == 'pull_request' && matrix.slice.name != 'bridge' && matrix.slice.name != 'browser'
         env:
           SLICE_NAME: ${{ matrix.slice.name }}
           SLICE_PATHS: ${{ matrix.slice.paths }}
@@ -430,7 +456,8 @@ jobs:
           # serial lanes get -n 0 (GitHub's expression engine treats the string "0" as
           # falsy, hence the explicit flag); the box gets its static share, the
           # GitHub-hosted fallback the count detected on the VM it landed on.
-          XDIST_N: ${{ matrix.slice.serial == 'true' && '0' || (needs.select-runner.outputs.is_self_hosted == 'true' && matrix.slice.workers || steps.par.outputs.py) }}
+          # The browser slice keeps its own share everywhere: each worker boots a whole stack.
+          XDIST_N: ${{ matrix.slice.serial == 'true' && '0' || ((needs.select-runner.outputs.is_self_hosted == 'true' || matrix.slice.name == 'browser') && matrix.slice.workers || steps.par.outputs.py) }}
         run: |
           echo "Runner: ${{ needs.select-runner.outputs.runner_label }} (self_hosted=${{ needs.select-runner.outputs.is_self_hosted }}) nproc=$(nproc) xdist=$XDIST_N slice=${{ matrix.slice.name }}"
           bash scripts/ci/pytest.sh slice
@@ -531,7 +558,7 @@ jobs:
         run: |
           set -euo pipefail
           ls -la .coverage.*
-          uv run --frozen --package gaia --group dev coverage combine .coverage.unit-a .coverage.unit-b .coverage.integration .coverage.bridge
+          uv run --frozen --package gaia --group dev coverage combine .coverage.unit-a .coverage.unit-b .coverage.integration .coverage.bridge .coverage.browser
           uv run --frozen --package gaia --group dev coverage report --fail-under="$FAIL_UNDER" | tail -n 5
           echo "coverage gate: fail-under=$FAIL_UNDER (master/dispatch only — PR lanes do not trace coverage)" >> "$GITHUB_STEP_SUMMARY"
           uv run --frozen --package gaia --group dev coverage xml -o coverage.xml
