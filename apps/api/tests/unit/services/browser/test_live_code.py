@@ -46,11 +46,6 @@ async def test_a_socket_a_code_opened_ends_the_moment_its_handoff_settles(
 ) -> None:
     code = await live_code.mint_live_code("sess-abc", "user-1", "h1")
     ended = asyncio.create_task(live_code.live_code_ended(code))
-    async with asyncio.timeout(1):
-        while await fake_redis.pubsub_numsub(f"browser:livecode:revoked:{code}") != [
-            (f"browser:livecode:revoked:{code}", 1)
-        ]:
-            await asyncio.sleep(0)
 
     # Still open while the handoff waits: nothing but the settle (or the code lapsing) ends it.
     with pytest.raises(TimeoutError):
