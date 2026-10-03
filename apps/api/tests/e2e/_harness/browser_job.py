@@ -19,12 +19,13 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from browser_use.agent.views import ActionResult, AgentState
+from browser_use.agent.views import ActionResult, AgentHistoryList, AgentState
 from browser_use.browser.events import BrowserConnectedEvent
 import fakeredis.aioredis
 
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.session import RunKind, create_session
+from app.browser_host.wire import SessionInfo
 from app.config.settings import settings
 from app.constants.agents import AgentTag
 from app.constants.browser import (
@@ -40,7 +41,6 @@ from app.models.chat_models import MessageModel
 from app.models.hil_models import HILPreferences
 from app.schemas.browser_job import BrowserJobRequest
 from app.services.browser.exceptions import BrowserSessionGone
-from app.services.browser.host_client import HostSessionInfo
 from app.workers.tasks import browser_tasks
 from shared.py import wide_events
 
@@ -222,6 +222,8 @@ class _ScriptedAgent:
         self._browser: _Browser = kwargs["browser"]
         self._stopped = False
         self.state = kwargs.get("injected_agent_state") or _agent_state([])
+        # Its steps are scripted results, not model outputs: nothing it read to report.
+        self.history = AgentHistoryList(history=[])
         self.browser_session = _BrowserSession(double)
         self.new_tasks: list[str] = []
         self.message_manager = SimpleNamespace(add_new_task=self.new_tasks.append)
@@ -478,7 +480,7 @@ async def browser_job_world(
         patch("app.db.redis.redis_cache.redis", redis),
         patch("app.services.browser.job_stop._abort_if_started", _abort),
         patch("app.services.browser.agent_run.Agent", double.agent),
-        patch("app.services.browser.agent_run.Browser", lambda **kwargs: browser),
+        patch("app.services.browser.agent_run.GaiaBrowserSession", lambda **kwargs: browser),
         patch("app.agents.tools.browser_tool.enqueue_worker_job", _enqueue),
         patch("app.agents.tools.browser_tool.RedisPoolManager.get_pool", AsyncMock()),
         patch(
@@ -493,7 +495,7 @@ async def browser_job_world(
             AsyncMock(return_value=scripted_host.fallback_url is not None),
         ),
         # The models and Jev's gateway are never called: the agent and Jev are scripted.
-        patch("app.services.browser.agent_run.build_agent_llm", AsyncMock(return_value=object())),
+        patch("app.services.browser.agent_run.build_agent_llm", MagicMock(return_value=object())),
         patch("app.services.browser.agent_run.build_text_model", lambda ledger: object()),
         patch("app.services.browser.agent_run.open_jev_client", _unused_jev_client),
         patch("app.services.browser.agent_run.JevPage", _Page),
@@ -551,12 +553,12 @@ def _host_patches(
 
     async def _get_host_session(
         session_id: str, host_url: str, *, timeout: float | None = None
-    ) -> HostSessionInfo:
+    ) -> SessionInfo:
         if session_id in world.dead_sessions:
             raise BrowserSessionGone(
                 f"Browser host returned 404 for {host_url}/sessions/{session_id}"
             )
-        return HostSessionInfo(
+        return SessionInfo(
             session_id=session_id,
             live=True,
             url=double.url,
@@ -663,6 +665,7 @@ def _tools_of(double: BrowserDouble) -> Callable[..., object]:
     def _build(
         *,
         solve_captcha: bool,
+        user_sites: object,
         handle_takeover: Callable[[str, SensitiveCategory], Any],
         handle_engine_switch: Callable[[EngineSwitchReason], Any] | None = None,
     ) -> object:
@@ -683,7 +686,7 @@ class _Tools:
 class _Page:
     """Jev's view of the tab, as far as a step card's photo reads it."""
 
-    def __init__(self, browser: _BrowserSession) -> None:
+    def __init__(self, browser: _BrowserSession, engine: BrowserEngine) -> None:
         self._browser = browser
 
     async def screenshot(self) -> str:

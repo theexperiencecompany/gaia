@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from types import SimpleNamespace
-from typing import Any, TypeVar
+from typing import TypeVar
 
 from browser_use import ChatOpenAI
 from browser_use.llm.messages import BaseMessage, UserMessage
@@ -13,13 +13,12 @@ from pydantic import BaseModel
 import pytest
 
 from app.agents.llm.dev_lane import CustomEndpoint
-from app.agents.llm.lane import AgentRole
 from app.config.settings import settings
 from app.constants.browser import (
     BROWSER_AGENT_OPENROUTER_KEY_MISSING,
     JEV_TEXT_OPENROUTER_KEY_MISSING,
 )
-from app.constants.llm import DEV_LLM_BROWSER_HEADERS, DevLLMApi, LLMProviderName
+from app.constants.llm import DEV_LLM_BROWSER_HEADERS, DevLLMApi
 from app.services.browser import llm as llm_mod
 from app.services.browser.exceptions import BrowserUnavailableError
 from app.services.browser.ledger import CallComponent, RunLedger
@@ -35,10 +34,9 @@ _ENDPOINT = CustomEndpoint(
     model="gpt-6-luna",
     api=DevLLMApi.CHAT_COMPLETIONS,
 )
-_USER = "user-1"
 _OPENROUTER_KEY = "sk-or-x"
 _OPENROUTER_URL = "https://openrouter.ai/api/v1"
-_LANE_MODEL = "vendor/model-x"
+_AGENT_MODEL = "vendor/model-x"
 
 
 def _inner(model: MeteredChatModel) -> ChatOpenAI:
@@ -48,31 +46,20 @@ def _inner(model: MeteredChatModel) -> ChatOpenAI:
 
 
 def _on_dev(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Force the dev lane: the executor lane resolves to CUSTOM and the text helper follows it."""
+    """Force the dev lane: both models go to its endpoint."""
     monkeypatch.setattr(llm_mod, "custom_lane_forced", lambda: True)
     monkeypatch.setattr(llm_mod, "custom_endpoint", lambda: _ENDPOINT)
-    _lane(monkeypatch, LLMProviderName.CUSTOM, None)
 
 
 def _on_openrouter(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(llm_mod, "custom_lane_forced", lambda: False)
     monkeypatch.setattr(settings, "OPENROUTER_API_KEY", _OPENROUTER_KEY)
-    _lane(monkeypatch, LLMProviderName.OPENROUTER, _LANE_MODEL)
-
-
-def _lane(monkeypatch: pytest.MonkeyPatch, provider: LLMProviderName, model: str | None) -> None:
-    """Serve the lane as _USER's executor lane; any other user or role gets a lane the agent refuses."""
-
-    async def resolve(user_id: str | None, role: AgentRole) -> tuple[Any, None]:
-        if (user_id, role) != (_USER, AgentRole.EXECUTOR):
-            return SimpleNamespace(provider=LLMProviderName.GEMINI, model="gemini-x"), None
-        return SimpleNamespace(provider=provider, model=model), None
-
-    monkeypatch.setattr(llm_mod, "resolve_lane", resolve)
+    monkeypatch.setattr(settings, "BROWSER_AGENT_MODEL", _AGENT_MODEL)
+    monkeypatch.setattr(settings, "BROWSER_AGENT_REASONING_EFFORT", "medium")
 
 
 async def _agent(ledger: RunLedger) -> MeteredChatModel:
-    return await build_agent_llm(_USER, ledger)
+    return build_agent_llm(ledger)
 
 
 async def _text(ledger: RunLedger) -> MeteredChatModel:
@@ -101,8 +88,8 @@ _Build = Callable[[RunLedger], Awaitable[MeteredChatModel]]
         pytest.param(
             _on_openrouter,
             _agent,
-            (_LANE_MODEL, _OPENROUTER_KEY, _OPENROUTER_URL, None, 8192, "low"),
-            id="agent-on-the-users-openrouter-lane",
+            (_AGENT_MODEL, _OPENROUTER_KEY, _OPENROUTER_URL, None, 8192, "medium"),
+            id="agent-on-its-own-setting-whatever-the-users-lane",
         ),
         pytest.param(
             _on_dev,
@@ -168,15 +155,6 @@ async def test_without_the_openrouter_key_each_model_refuses_with_the_reason(
         await build(RunLedger())
 
     assert str(refused.value) == missing
-
-
-async def test_a_lane_that_does_not_speak_the_openai_wire_is_refused(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _lane(monkeypatch, LLMProviderName.GEMINI, "gemini-x")
-
-    with pytest.raises(BrowserUnavailableError, match="OpenAI-wire lane"):
-        await build_agent_llm(_USER, RunLedger())
 
 
 class _Plan(BaseModel):
@@ -340,7 +318,7 @@ async def test_a_hedged_call_that_lost_is_metered_once_it_lands(
     monkeypatch.setattr(ChatOpenAI, "ainvoke", _first_is_late)
     landed = asyncio.Event()
     ledger = RunLedger(on_call=lambda call: landed.set() if call.output_tokens == 9 else None)
-    model = await build_agent_llm(_USER, ledger)
+    model = build_agent_llm(ledger)
 
     task = await _settle(model.ainvoke([]))
     release.set()
@@ -358,7 +336,7 @@ async def test_a_call_nothing_answers_gives_up_at_the_llm_deadline(
     monkeypatch.setattr(llm_mod, "BROWSER_AGENT_LLM_TIMEOUT_SECONDS", 0.05)
     monkeypatch.setattr(ChatOpenAI, "ainvoke", _Provider(stall_every_call=True))
     ledger = RunLedger()
-    model = await build_agent_llm(_USER, ledger)
+    model = build_agent_llm(ledger)
 
     task = await _settle(model.ainvoke([]))
 

@@ -6,13 +6,18 @@ and dozens of fields the host never uses. The API and worker inherit these field
 through their own settings, so both sides read one declaration.
 """
 
-from typing import Literal
+import os
+from typing import Annotated, Literal, Self
 
 from dotenv import load_dotenv
-from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from app.constants.browser import BrowserEngine
+from app.utils.url_safety import http_origin
+
+#: Obscura's own switch that lets it fetch loopback and private addresses.
+OBSCURA_PRIVATE_NETWORK_ENV = "OBSCURA_ALLOW_PRIVATE_NETWORK"
 
 
 class BrowserHostSettings(BaseSettings):
@@ -57,12 +62,44 @@ class BrowserHostSettings(BaseSettings):
     # host resolves Playwright's headless shell (its download can be
     # unreachable from a dev box); set, that binary is used as is.
     CHROMIUM_BIN: str | None = None
+    # Test-only: exact origins (scheme://host:port, comma-separated) a navigation may
+    # reach though they resolve private, for the hermetic browser stack's fixture site.
+    # Production refuses to boot with any set (see _no_private_reach_in_production).
+    BROWSER_HOST_ALLOW_PRIVATE_ORIGINS: Annotated[frozenset[str], NoDecode] = frozenset()
+    # Test-only: a PEM CA certificate both engines trust, for the hermetic stack's https
+    # fixture site (a secret is typed only on https). Production refuses to boot with it set.
+    BROWSER_HOST_TEST_CA_FILE: str | None = None
 
     @field_validator("BROWSER_HOST_KEY", mode="after")
     @classmethod
     def _blank_key_is_unset(cls, v: str | None) -> str | None:
         # Compose spells an unset key ${BROWSER_HOST_KEY:-}, an empty string: that is no key.
         return v or None
+
+    @field_validator("BROWSER_HOST_ALLOW_PRIVATE_ORIGINS", mode="before")
+    @classmethod
+    def _exact_origins(cls, v: str | frozenset[str]) -> frozenset[str]:
+        """Read the list as exact origins: an entry with a path or query, or without its port, is refused."""
+        entries = v.split(",") if isinstance(v, str) else v
+        origins = {entry.strip() for entry in entries} - {""}
+        for origin in origins:
+            # Written exactly as http_origin writes it, or a path or a missing port slipped in.
+            if http_origin(origin) != origin:
+                raise ValueError(
+                    f"{origin!r} is not an exact origin; write it as {http_origin(origin)!r}"
+                )
+        return frozenset(origins)
+
+    @model_validator(mode="after")
+    def _no_private_reach_in_production(self) -> Self:
+        """Refuse to boot a production process that could browse to private addresses."""
+        if self.ENV == "production" and self.BROWSER_HOST_TEST_CA_FILE:
+            raise ValueError("BROWSER_HOST_TEST_CA_FILE is set but ENV=production")
+        if self.ENV == "production" and self.BROWSER_HOST_ALLOW_PRIVATE_ORIGINS:
+            raise ValueError("BROWSER_HOST_ALLOW_PRIVATE_ORIGINS is set but ENV=production")
+        if self.ENV == "production" and os.environ.get(OBSCURA_PRIVATE_NETWORK_ENV):
+            raise ValueError(f"{OBSCURA_PRIVATE_NETWORK_ENV} is set but ENV=production")
+        return self
 
 
 load_dotenv()

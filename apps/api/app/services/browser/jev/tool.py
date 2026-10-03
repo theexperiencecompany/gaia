@@ -1,10 +1,10 @@
-"""Jev as a Browser-Use action: the agent hands it a goal, Jev drives, the agent reads what it did.
+"""Jev as a Browser-Use action: the agent hands it a single-page objective, Jev drives, the agent reads what it did.
 
-The run starts with this action as the Agent's initial action, so the first
-burst costs no agent model call; the agent may call it again with a sharper
-goal. The result the agent reads is written from
-the burst's own record: every action, where Jev ended and why, and that
-page's text.
+JEV_DESCRIPTION is the one statement of what Jev does and does not do; the
+agent's role, the docs and ARCHITECTURE.md point to it. The run starts with
+this action as the Agent's initial action, so the first burst costs no agent
+model call. The result the agent reads is written from the burst's own record:
+every action, where Jev ended and why, and that page's text.
 """
 
 from __future__ import annotations
@@ -18,8 +18,6 @@ from pydantic import BaseModel, Field
 
 from app.constants.browser import (
     JEV_GOAL_QUOTES_A_NAME,
-    JEV_REPORT_OPENED_PAGE_CHARS,
-    JEV_REPORT_OPENED_PAGES,
     JEV_REPORT_PAGE_TEXT_CHARS,
     JevOperation,
     JevStop,
@@ -37,7 +35,7 @@ EngineGapFn = Callable[[], Awaitable[str]]
 class Bursts(Protocol):
     """What the agent's jev action runs: one burst per goal, on the run's tab."""
 
-    async def burst(self, goal: str, start_url: str | None) -> BurstResult: ...
+    async def burst(self, goal: str, done_when: str, start_url: str | None) -> BurstResult: ...
 
 
 #: Builds the burst runner, on the Agent's browser session, at the first burst.
@@ -45,17 +43,20 @@ RunnerFactory = Callable[[], Bursts]
 
 JEV_ACTION = "jev"
 
-_DESCRIPTION = (
-    "Hand a goal to Jev, the fast page operator: it clicks, types, selects, scrolls and "
-    "navigates step by step (~1 s per step) until the goal is done or it is stuck, then "
-    "reports every action (with each clicked link's URL), where it stopped and why, and the "
-    "text of the pages it opened. Use it for sequences of interactions: filling forms, "
-    "searching and choosing, clicking through pages. Jev only operates controls: it cannot "
-    "read, summarise, count or compare content, so never ask it to; open the page and use "
-    "extract yourself for that. Give a concrete, self-contained goal naming the values to "
-    "type (quote them) and what counts as done. When the browser is on a blank tab, pass "
-    "start_url with the page to start on. Never give Jev the same goal again after it made no "
-    "progress on it."
+#: What Jev is, for the agent that calls it: the one place this is said.
+JEV_DESCRIPTION = (
+    "Hand Jev, the fast page operator, one single-page objective. Jev clicks, types, selects, "
+    "presses Enter, scrolls and waits (~1 s per step) on the page the browser is on, or on "
+    "start_url, and only goes forward: it never goes back and never opens an address. It stops "
+    "once done_when is visibly true on the page it is on, or when it is stuck, then reports "
+    "every action (with each clicked link's URL), why it stopped, and the visible text of the "
+    "page it ended on. Jev only operates controls: it cannot read, summarise, count or compare "
+    "content, and it does not move between pages you already know; do those yourself "
+    "(navigate, extract, find_elements). goal says what to do, self-contained, quoting every "
+    "value to type. done_when says what that one page shows once the goal is done (the page "
+    "says the form was sent; the results for the query are listed). When the browser is on a "
+    "blank tab, pass start_url. Never give Jev the same goal again after it made no progress "
+    "on it."
 )
 
 # Jev's steps as the Browser-Use actions the card and the thread already know how to name.
@@ -67,14 +68,12 @@ _STEP_ACTION = {
     JevOperation.SCROLL_DOWN: "scroll",
     JevOperation.SCROLL_UP: "scroll",
     JevOperation.WAIT: "wait",
-    JevOperation.NAVIGATE: "navigate",
-    JevOperation.GO_BACK: "go_back",
 }
 
 _STOP_MEANING = {
     JevStop.DONE: (
-        "Jev judged the goal done. The page it ended on is already in your browser state and "
-        "its text is below: if they answer the task, finish now."
+        "Jev judged done_when true on the page it ended on. That page is already in your "
+        "browser state and its text is below: if they answer the task, finish now."
     ),
     JevStop.BLOCKED: "Jev found nothing on this page that advances the goal.",
     JevStop.NEEDS_INPUT: "The goal gives no value for a field: ask the user, or hand the step over.",
@@ -82,12 +81,11 @@ _STOP_MEANING = {
         "A secret is typed only on the site it was given for, and this page is on another; "
         "nothing was typed."
     ),
-    JevStop.NO_PROGRESS: "Jev's last actions changed nothing on the page.",
-    JevStop.CYCLE: "Jev went back and forth without progress.",
-    JevStop.MAX_ACTIONS: "Jev used its action budget for one burst; it may be partway.",
-    JevStop.MAX_DECISIONS: "Jev used its decision budget for one burst without settling on the page.",
+    JevStop.UNFINISHED: (
+        "Jev stopped before done_when held and may be partway. Do not hand it the same goal "
+        "again: act yourself, or give it a narrower one."
+    ),
     JevStop.COVERED: "An overlay or hidden control blocks the target; deal with it yourself.",
-    JevStop.STALE: "The page kept changing under Jev's decisions.",
     JevStop.UNRESPONSIVE: "The page stopped answering; an input sent just then may or may not have landed.",
     JevStop.LOADING: "The page had not finished loading, so Jev could not read it; nothing was done on it.",
     JevStop.NO_PAGE: "Pass start_url with the page to start on, or open the page yourself.",
@@ -111,7 +109,10 @@ _CHANGED = {True: " (page changed)", False: " (no change)"}
 
 class JevParams(BaseModel):
     goal: str = Field(
-        description="What Jev should achieve, self-contained, with every value quoted."
+        description="What Jev should achieve on one page, self-contained, with every value quoted."
+    )
+    done_when: str = Field(
+        description="What that page shows once the goal is done; all Jev judges DONE on."
     )
     start_url: str | None = Field(
         default=None,
@@ -126,8 +127,6 @@ def _step_action(step: JevStep) -> BrowserAction:
         inputs["text"] = step.text
     elif step.option is not None:
         inputs["text"] = step.option
-    elif step.opened is not None:
-        inputs["url"] = step.opened
     elif step.operation is JevOperation.PRESS_ENTER:
         inputs["keys"] = "Enter"
     target = step.label if step.operation in (JevOperation.CLICK, JevOperation.TYPE_TEXT) else None
@@ -172,6 +171,7 @@ def report(result: BurstResult) -> str:
     """Return the burst as the agent reads it: why it stopped, what it did, and the page it ended on."""
     lines = [
         f'Jev ran on: "{result.goal}"',
+        f'Done when: "{result.done_when}"',
         f"Stopped: {result.stop.value}. {result.detail} {_STOP_MEANING[result.stop]}",
     ]
     if result.steps:
@@ -179,13 +179,6 @@ def report(result: BurstResult) -> str:
         lines.extend(_step_line(n, step) for n, step in enumerate(result.steps, 1))
     else:
         lines.append("Actions: none.")
-    earlier = result.opened[-JEV_REPORT_OPENED_PAGES:]
-    if earlier:
-        lines.append("Other pages Jev opened in this burst, with the start of their text:")
-        lines.extend(
-            f"--- {page.title} ({page.url})\n{page.text[:JEV_REPORT_OPENED_PAGE_CHARS]}"
-            for page in earlier
-        )
     return "\n".join([*lines, *_page_lines(result)])
 
 
@@ -217,7 +210,7 @@ class JevDelegate:
             return ActionResult(error=JEV_GOAL_QUOTES_A_NAME.format(names=", ".join(untagged)))
         if self._runner is None:
             self._runner = self._runner_for()
-        result = await self._runner.burst(params.goal, params.start_url)
+        result = await self._runner.burst(params.goal, params.done_when, params.start_url)
         if result.steps:
             await self._emit(
                 [_step_action(step) for step in result.steps], result.url, result.title
@@ -231,7 +224,7 @@ class JevDelegate:
 def register_jev(tools: Tools[None], delegate: JevDelegate) -> None:
     """Register the jev action on the agent's tools."""
 
-    @tools.action(_DESCRIPTION, param_model=JevParams)
+    @tools.action(JEV_DESCRIPTION, param_model=JevParams)
     async def jev(params: JevParams) -> ActionResult:
         return await delegate.run(params)
 

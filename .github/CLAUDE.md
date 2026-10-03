@@ -140,7 +140,13 @@ ephemeral runner cost ~5 min per run, its exit code needed a session-cleanup
 workaround (grep for a `GAIA_PYTEST_EXIT` sentinel), and its engine-image pull
 was flaky enough to need a retry loop. **The Dagger module (`.dagger/`) is the
 local harness** — `dagger call test-python` gives you the identical topology
-on a dev machine; keep the two in sync (images, credentials, env vars).
+on a dev machine; keep the two in sync (images, credentials, env vars). The
+browser slice (`engines: true` in `test-slices.json`) is the one slice a bare
+`dagger call test-python` leaves out: it needs Chromium and an Obscura build, so
+it runs only by name, `dagger call test-python --slice-name browser`, which
+builds Obscura from the Dockerfile's `obscura-bin` stage and installs Chromium.
+In CI the lane finds both through `scripts/ci/browser.sh locate` and fails, never
+skips, when either is missing.
 
 Gotcha that will bite conversions: the repo has no `.npmrc` any more — pnpm's
 default isolated linker is what runners, dev machines and the Dagger env all

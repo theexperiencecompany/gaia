@@ -78,7 +78,11 @@ vi.mock("@gaia/shared/bots", async () => {
 // Import adapter after mocks are in place
 // ---------------------------------------------------------------------------
 
-import { handleStreamingChat, type ReactionOutcome } from "@gaia/shared/bots";
+import {
+  handleStreamingChat,
+  type OutboundFile,
+  type ReactionOutcome,
+} from "@gaia/shared/bots";
 import { SlackAdapter } from "../../slack/src/adapter";
 import { captureBotEvents } from "../shared/helpers/capture-bot-event";
 
@@ -936,29 +940,25 @@ describe("SlackAdapter - deliverOutbound channel routing", () => {
   });
 });
 
-describe("SlackAdapter - deliverOutboundFile channel routing", () => {
+describe("SlackAdapter - sendOutboundFile channel routing", () => {
   type FileDeliverer = {
-    deliverOutboundFile: (
+    sendOutboundFile: (
       destinationId: string,
-      attachment: { url: string; filename: string; caption?: string },
+      file: OutboundFile,
       isChannel: boolean,
     ) => Promise<void>;
-    fetchOutboundArtifact: ReturnType<typeof vi.fn>;
     app: unknown;
   };
 
-  const shot = {
-    url: "https://cdn.example.com/shot-1.png",
+  const shot: OutboundFile = {
+    data: Buffer.from("png"),
+    mime: "image/png",
     filename: "browser-step-1.png",
     caption: "Step 1",
   };
 
   function makeAdapter() {
     const adapter = new SlackAdapter() as unknown as FileDeliverer;
-    adapter.fetchOutboundArtifact = vi.fn().mockResolvedValue({
-      data: Buffer.from("png"),
-      contentType: "image/png",
-    });
     const app = {
       client: {
         files: { uploadV2: vi.fn().mockResolvedValue({}) },
@@ -974,7 +974,7 @@ describe("SlackAdapter - deliverOutboundFile channel routing", () => {
   it("uploads a group's photo into the channel and skips DM resolution", async () => {
     const { adapter, app } = makeAdapter();
 
-    await adapter.deliverOutboundFile("C-group", shot, true);
+    await adapter.sendOutboundFile("C-group", shot, true);
 
     expect(app.client.conversations.open).not.toHaveBeenCalled();
     expect(app.client.files.uploadV2).toHaveBeenCalledWith(
@@ -985,7 +985,7 @@ describe("SlackAdapter - deliverOutboundFile channel routing", () => {
   it("uploads a photo to the user's DM when not a channel", async () => {
     const { adapter, app } = makeAdapter();
 
-    await adapter.deliverOutboundFile("U-user", shot, false);
+    await adapter.sendOutboundFile("U-user", shot, false);
 
     expect(app.client.conversations.open).toHaveBeenCalledWith({
       users: "U-user",
@@ -1002,9 +1002,9 @@ describe("SlackAdapter - deliverOutboundFile channel routing", () => {
     );
 
     await expect(
-      adapter.deliverOutboundFile("U-user", shot, false),
+      adapter.sendOutboundFile("U-user", shot, false),
     ).rejects.toThrow("channel_not_found");
-    await adapter.deliverOutboundFile("U-user", shot, false);
+    await adapter.sendOutboundFile("U-user", shot, false);
 
     expect(app.client.conversations.open).toHaveBeenCalledTimes(2);
   });

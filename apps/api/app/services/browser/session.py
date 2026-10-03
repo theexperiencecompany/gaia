@@ -25,16 +25,15 @@ from app.constants.browser import (
 from app.constants.log_tags import LogTag
 from app.services.browser import host_client
 from app.services.browser.exceptions import BrowserSessionGone, BrowserUnavailableError
-from app.services.browser.live_view import live_view_url
 from app.services.browser.registry import register_session, unregister_session
 from app.services.browser.storage_persistence import (
-    domain_of,
     load_storage_state,
     overlay_storage_state,
     save_storage_state,
     storage_state_for_host,
 )
 from app.utils.background_tasks import spawn_background_task
+from app.utils.sites import host_of
 from shared.py.wide_events import log
 
 
@@ -44,7 +43,6 @@ class BrowserHostSession:
 
     session_id: str
     cdp_url: str
-    live_view_url: str
     #: The browser host this context lives on: the primary engine's, or the
     #: fallback's after a switch.
     host_url: str
@@ -75,7 +73,7 @@ class BrowserHostSession:
             self.login_domains.discard(domain)
 
     def _site_of(self, url: str | None) -> str | None:
-        return domain_of(url) or self.start_domain
+        return host_of(url) or self.start_domain
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,7 +153,7 @@ async def browser_session(
     moves here; on exit save each of login_domains its own slice of the returned state. Raises
     BrowserUnavailableError, or BrowserConcurrencyLimit at capacity.
     """
-    domain = domain_of(start_url)
+    domain = host_of(start_url)
     saved_login = await load_storage_state(user_id, domain)
     # A seeded run writes its state back so a rotated token is not lost.
     login_domains = {domain} if saved_login is not None and domain is not None else set()
@@ -175,7 +173,6 @@ async def browser_session(
     session = BrowserHostSession(
         session_id=host.session_id,
         cdp_url=host.cdp_ws,
-        live_view_url=live_view_url(host.session_id),
         host_url=host_url,
         engine=host.engine,
         start_domain=domain,

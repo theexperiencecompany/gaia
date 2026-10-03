@@ -12,7 +12,7 @@
  * and `BaseBotAdapter.fetchOutboundArtifact` under test are all real.
  */
 
-import { BaseBotAdapter } from "@gaia/shared/bots";
+import { BaseBotAdapter, type OutboundFile } from "@gaia/shared/bots";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GaiaClient } from "../../../../../libs/shared/ts/src/bots/api";
 import type { OutboundAttachment } from "../../../../../libs/shared/ts/src/bots/consumer/envelope";
@@ -31,7 +31,7 @@ vi.mock("../../../../../libs/shared/ts/src/bots/utils/public-fetch", () => ({
 }));
 const publicFetch = vi.mocked(fetchPublicAsset);
 
-/** Concrete adapter exposing the protected artifact fetch to the test. */
+/** Concrete adapter that keeps the file the base class fetched and handed it. */
 class TestAdapter extends BaseBotAdapter {
   readonly platform = "discord" as const;
   protected readonly defaultServerPort = 3200;
@@ -54,6 +54,13 @@ class TestAdapter extends BaseBotAdapter {
   protected async deliverOutbound(): Promise<void> {
     /* no outbound delivery under test */
   }
+  sentFile: OutboundFile | null = null;
+  protected async sendOutboundFile(
+    _destinationId: string,
+    file: OutboundFile,
+  ): Promise<void> {
+    this.sentFile = file;
+  }
   override buildContext() {
     return {} as never;
   }
@@ -66,8 +73,9 @@ class TestAdapter extends BaseBotAdapter {
     };
   }
 
-  fetch(attachment: OutboundAttachment) {
-    return this.fetchOutboundArtifact(DESTINATION_ID, attachment);
+  async fetch(attachment: OutboundAttachment): Promise<OutboundFile | null> {
+    await this.deliverOutboundFile(DESTINATION_ID, attachment, false);
+    return this.sentFile;
   }
 }
 
@@ -117,7 +125,7 @@ describe("fetchOutboundArtifact URL routing", () => {
     // per-platform OUTBOUND_FILE_LIMITS note still does the user-facing work.
     expect(options.maxContentLength).toBe(100 * 1024 * 1024);
     expect(options.maxBodyLength).toBe(100 * 1024 * 1024);
-    expect(artifact?.contentType).toBe("image/png");
+    expect(artifact?.mime).toBe("image/png");
     expect(artifact?.data.toString()).toBe(PNG.toString());
   });
 

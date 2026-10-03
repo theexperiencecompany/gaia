@@ -282,7 +282,7 @@ function write(level: BotLogLevel, line: string): void {
     return;
   }
   if (level === "info" || level === "audit") {
-    console.log(line);
+    console.info(line);
     return;
   }
   if (level === "warn") {

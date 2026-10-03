@@ -51,65 +51,6 @@ def test_captions_follow_the_surviving_frames() -> None:
 
 
 @pytest.mark.unit
-def test_older_tasks_without_stored_urls_still_render(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Rows recorded before the URLs were stored must keep working."""
-    monkeypatch.setattr("app.services.browser.tasks.settings.R2_PUBLIC_BASE_URL", "https://cdn")
-
-    frames = _frames(_doc(step_screenshots=[]))
-
-    assert [f.url for f in frames] == [
-        "https://cdn/browser_steps/sess1/step_1.png",
-        "https://cdn/browser_steps/sess1/step_2.png",
-        "https://cdn/browser_steps/sess1/step_3.png",
-    ]
-
-
-@pytest.mark.unit
-def test_an_older_one_step_task_still_renders_its_single_frame(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr("app.services.browser.tasks.settings.R2_PUBLIC_BASE_URL", "https://cdn")
-
-    frames = _frames(_doc(step_screenshots=[], steps=1, step_goals=["Opening"]))
-
-    assert [f.url for f in frames] == ["https://cdn/browser_steps/sess1/step_1.png"]
-
-
-@pytest.mark.unit
-def test_a_base_url_with_a_trailing_slash_derives_urls_without_a_double_slash(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        "app.services.browser.tasks.settings.R2_PUBLIC_BASE_URL", "https://r2.example/GAIA-BOX/"
-    )
-
-    frames = _frames(_doc(step_screenshots=[], steps=1, step_goals=["Opening"]))
-
-    assert [f.url for f in frames] == ["https://r2.example/GAIA-BOX/browser_steps/sess1/step_1.png"]
-
-
-@pytest.mark.unit
-def test_derived_frames_use_captions_shifted_back_one_step(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Step i's image (1-indexed) is captioned by step_goals[i - 1] (0-indexed)."""
-    monkeypatch.setattr("app.services.browser.tasks.settings.R2_PUBLIC_BASE_URL", "https://cdn")
-    doc = _doc(step_screenshots=[], steps=2, step_goals=["Opening", "Typing"])
-
-    frames = _frames(doc)
-
-    assert [f.caption for f in frames] == ["Opening", "Typing"]
-
-
-@pytest.mark.unit
-def test_no_derived_frames_without_a_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No R2_PUBLIC_BASE_URL configured means no guessed URLs, not a crash."""
-    monkeypatch.setattr("app.services.browser.tasks.settings.R2_PUBLIC_BASE_URL", "")
-
-    assert _frames(_doc(step_screenshots=[])) == []
-
-
-@pytest.mark.unit
 def test_caption_out_of_range_index_returns_none() -> None:
     assert _caption(["Opening", "Typing"], 2) is None
 

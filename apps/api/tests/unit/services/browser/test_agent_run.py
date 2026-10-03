@@ -17,7 +17,15 @@ from types import SimpleNamespace
 from typing import Any, ClassVar
 from unittest.mock import MagicMock
 
-from browser_use.agent.views import AgentState
+from browser_use.agent.views import (
+    ActionResult,
+    AgentHistory,
+    AgentHistoryList,
+    AgentOutput,
+    AgentState,
+)
+from browser_use.browser.views import BrowserStateHistory
+from browser_use.tools.registry.views import ActionModel
 import pytest
 
 from app.constants.browser import (
@@ -32,13 +40,17 @@ from app.constants.browser import (
     JevStop,
 )
 from app.constants.log_tags import LogTag
-from app.patches.obscura_sessions import on_obscura
 from app.schemas.browser import (
     BrowserAction,
     BrowserTaskSecret,
 )
 from app.services.browser import agent_run as agent_run_mod
-from app.services.browser.agent_run import STEP_ERROR_CAPTION, AgentRunSetup, BrowserAgentRun
+from app.services.browser.agent_run import (
+    STEP_ERROR_CAPTION,
+    AgentRunSetup,
+    BrowserAgentRun,
+    found_in_history,
+)
 from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserUnavailableError
 from app.services.browser.jev import loop as loop_mod
 from app.services.browser.jev.decision import GENERATE
@@ -148,7 +160,6 @@ class _Harness:
             session=BrowserHostSession(
                 session_id="sess-1",
                 cdp_url="ws://browser.test/cdp",
-                live_view_url="https://browser.test/live/sess-1",
                 host_url="http://browser.test",
                 engine=engine,
             ),
@@ -212,9 +223,11 @@ class _JevPages:
     def __init__(self, run: BrowserAgentRun, page: FakePage) -> None:
         self._run = run
         self.page = page
+        self.engines: list[BrowserEngine] = []
 
-    def __call__(self, browser_session: object) -> FakePage:
+    def __call__(self, browser_session: object, engine: BrowserEngine) -> FakePage:
         assert browser_session is self._run._agent.browser_session
+        self.engines.append(engine)
         return self.page
 
 
@@ -581,7 +594,7 @@ class TestConnectionProbe:
 async def test_a_model_that_cannot_be_built_is_named_on_the_runs_event(
     harness: _Harness, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    async def _no_model(user_id: str | None, ledger: RunLedger) -> None:
+    def _no_model(ledger: RunLedger) -> None:
         raise BrowserUnavailableError("OPENROUTER_API_KEY is not set")
 
     monkeypatch.setattr(agent_run_mod, "build_agent_llm", _no_model)
@@ -626,7 +639,7 @@ class _History:
 
 
 class _Browser:
-    """Browser-Use's Browser: records what listens on its event bus and its CDP connection."""
+    """The run's GaiaBrowserSession: records what listens on its event bus and its CDP connection."""
 
     def __init__(self, **options: Any) -> None:
         self.options = options
@@ -693,7 +706,6 @@ class _Agent:
         return await self.options["tools"].registry.execute_action(action, params)
 
     async def run(self, max_steps: int, on_step_start: Any, on_step_end: Any) -> _History:
-        self.on_obscura_during_run = on_obscura()
         if self.raises is not None:
             raise self.raises
         for action in self.steps[:max_steps]:
@@ -749,8 +761,8 @@ def built_with(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[tuple[st
     """Stand Browser-Use, the models and the stall watcher in for a run; record what each model was built for."""
     built: list[tuple[str, object]] = []
 
-    async def _llm(user_id: str | None, ledger: RunLedger) -> object:
-        built.append(("agent", (user_id, ledger)))
+    def _llm(ledger: RunLedger) -> object:
+        built.append(("agent", ledger))
         return _LLM
 
     def _text_model(ledger: RunLedger) -> _TextModel:
@@ -758,7 +770,7 @@ def built_with(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[tuple[st
         return _TEXT_MODEL
 
     monkeypatch.setattr(agent_run_mod, "Agent", _Agent)
-    monkeypatch.setattr(agent_run_mod, "Browser", _Browser)
+    monkeypatch.setattr(agent_run_mod, "GaiaBrowserSession", _Browser)
     monkeypatch.setattr(agent_run_mod, "build_agent_llm", _llm)
     monkeypatch.setattr(agent_run_mod, "build_text_model", _text_model)
     monkeypatch.setattr(agent_run_mod, "open_jev_client", _JevGateway.opened)
@@ -822,7 +834,7 @@ class TestExecute:
 
         assert outcome.failure == failure
 
-    async def test_the_agent_runs_on_the_users_models_and_this_runs_browser(
+    async def test_the_agent_runs_on_the_browser_models_and_this_runs_browser(
         self, harness: _Harness, built_with: list[tuple[str, object]]
     ) -> None:
         await harness.run.execute("read my orders")
@@ -830,9 +842,10 @@ class TestExecute:
         agent = _Agent.built[-1]
         assert agent.options["task"].startswith("read my orders")
         assert (agent.options["llm"], agent.options["page_extraction_llm"]) == (_LLM, _TEXT_MODEL)
-        assert built_with == [("agent", ("user-1", harness.ledger)), ("text", harness.ledger)]
+        assert built_with == [("agent", harness.ledger), ("text", harness.ledger)]
         browser = agent.options["browser"]
-        assert browser.options["cdp_url"] == "ws://browser.test/cdp"
+        # The run's own session, fingerprinted for the run's user.
+        assert browser.options == {"cdp_url": "ws://browser.test/cdp", "user_id": "user-1"}
 
     async def test_the_stall_watcher_listens_on_every_connect_of_this_browser(
         self, harness: _Harness
@@ -906,7 +919,9 @@ class TestExecute:
     ) -> None:
         primary = AgentState(n_steps=7, stopped=True, paused=True, consecutive_failures=3)
         run = _Harness(started=False, resumed_from=primary).run
-        monkeypatch.setattr(agent_run_mod, "JevPage", lambda session: FakePage(page_state()))
+        monkeypatch.setattr(
+            agent_run_mod, "JevPage", lambda session, engine: FakePage(page_state())
+        )
         run._config = replace(CONFIG, start_url=start_url)
 
         await run.execute("buy the ticket")
@@ -920,15 +935,18 @@ class TestExecute:
         assert BROWSER_ENGINE_RESUMED_NOTE.format(page=page) in options["task"]
         assert options["directly_open_url"] is False
 
-    @pytest.mark.parametrize(
-        ("engine", "on_obscura"), [(BrowserEngine.OBSCURA, True), (BrowserEngine.CHROMIUM, False)]
-    )
-    async def test_everything_the_run_starts_sees_the_engine_its_host_reported(
-        self, engine: BrowserEngine, on_obscura: bool
+    @pytest.mark.parametrize("engine", list(BrowserEngine))
+    async def test_jev_drives_the_page_on_the_engine_its_host_reported(
+        self, monkeypatch: pytest.MonkeyPatch, engine: BrowserEngine
     ) -> None:
-        await _Harness(started=False, engine=engine).run.execute("read my orders")
+        harness = _Harness(started=False, engine=engine)
+        pages = _JevPages(harness.run, FakePage(page_state()))
+        monkeypatch.setattr(agent_run_mod, "JevPage", pages)
+        _Agent.steps = [_Action("click", {"index": 1})]
 
-        assert _Agent.built[-1].on_obscura_during_run is on_obscura
+        await harness.run.execute("read my orders")
+
+        assert set(pages.engines) == {engine}
 
     async def test_a_run_stops_at_its_step_limit(self, harness: _Harness) -> None:
         _Agent.steps = [_Action("click", {"index": n}) for n in range(CONFIG.max_steps + 5)]
@@ -1006,6 +1024,35 @@ class TestTools:
             BROWSER_AGENT_FAST_ENGINE_NOTE not in _Agent.built[-1].options["extend_system_message"]
         )
 
+    @pytest.mark.parametrize(
+        ("page", "handed"), [("https://shop.test/cart", True), ("https://ads.test/x", False)]
+    )
+    async def test_a_bot_check_goes_to_the_user_only_on_a_site_the_task_named(
+        self, harness: _Harness, page: str, handed: bool
+    ) -> None:
+        asked: list[str] = []
+
+        async def _takeover(reason: str, category: str) -> str | None:
+            asked.append(reason)
+            return None
+
+        harness.run._hooks = replace(harness.run._hooks, takeover=_takeover)
+        harness.run._config = replace(CONFIG, solve_captcha=True, start_url="https://shop.test/")
+        await harness.run.execute("buy the ticket")
+        agent = _Agent.built[-1]
+
+        async def _on_page() -> str:
+            return page
+
+        captcha = agent.options["tools"].registry.registry.actions["solve_captcha_with_help"]
+        await captcha.function(
+            params=captcha.param_model(challenge="Tick the box."),
+            browser_session=SimpleNamespace(get_current_page_url=_on_page),
+        )
+        await harness.run._on_step_end(agent)
+
+        assert asked == (["Tick the box."] if handed else [])
+
     async def test_the_agent_on_the_fast_engine_can_move_the_run_to_chrome(
         self, harness: _Harness
     ) -> None:
@@ -1062,7 +1109,9 @@ class TestJevInTheRun:
 
     async def _burst(self, harness: _Harness) -> str:
         await harness.run.execute("fill the form")
-        result = await _Agent.built[-1].act(JEV_ACTION, {"goal": "fill the form"})
+        result = await _Agent.built[-1].act(
+            JEV_ACTION, {"goal": "fill the form", "done_when": "the form is sent"}
+        )
         return str(result.extracted_content)
 
     async def test_a_script_the_fast_engine_cannot_run_moves_the_run_to_chrome(
@@ -1092,7 +1141,9 @@ class TestJevInTheRun:
         """The run's secrets are the delegate's: the agent's untagged "password" is refused."""
         await harness.run.execute("log in")
 
-        result = await _Agent.built[-1].act(JEV_ACTION, {"goal": 'type "password" and sign in'})
+        result = await _Agent.built[-1].act(
+            JEV_ACTION, {"goal": 'type "password" and sign in', "done_when": "signed in"}
+        )
 
         assert "the name of a secret" in str(result.error)
         assert decisions == []
@@ -1133,3 +1184,36 @@ class TestJevInTheRun:
         report = await self._burst(harness)
 
         assert f"Stopped: {JevStop.USER_MESSAGE.value}." in report
+
+
+class _Actions(ActionModel):
+    """Two of Browser-Use's actions, as an agent step names them."""
+
+    extract: dict[str, str] | None = None
+    click: dict[str, int] | None = None
+
+
+def _did(memory: str | None, *acts: tuple[str, dict[str, Any], ActionResult]) -> AgentHistory:
+    return AgentHistory(
+        model_output=AgentOutput(
+            memory=memory, action=[_Actions(**{name: params}) for name, params, _ in acts]
+        ),
+        result=[result for _, _, result in acts],
+        state=BrowserStateHistory(url="", title="", tabs=[], interacted_element=[]),
+    )
+
+
+def test_what_a_run_found_is_each_page_it_read_and_its_last_note() -> None:
+    read = ("extract", {"query": "price"}, ActionResult(extracted_content="Price: $12"))
+    failed = ("extract", {"query": "x"}, ActionResult(error="no page", extracted_content="?"))
+    clicked = ("click", {"index": 3}, ActionResult(extracted_content="Clicked Next"))
+    # A step cut short ran fewer actions than it chose.
+    cut_short = _did("Opened the shop.", read, clicked)
+    cut_short.result.pop()
+    history = AgentHistoryList(
+        history=[cut_short, _did("Price is $12; reviews next.", failed), _did(None, clicked)]
+    )
+
+    assert found_in_history(history) == ["Price: $12", "Price is $12; reviews next."]
+    # With no note at all, only what it read.
+    assert found_in_history(AgentHistoryList(history=[_did(None, read)])) == ["Price: $12"]

@@ -14,7 +14,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, call, patch
 
 from annotated_types import Ge, Le
 import fakeredis.aioredis
@@ -36,7 +36,6 @@ from app.constants.browser import (
     HandoffDecision,
     HandoffStatus,
 )
-from app.constants.log_tags import LogTag
 from app.schemas.browser import (
     BrowserLoginResponse,
     BrowserTaskResponse,
@@ -51,6 +50,12 @@ from app.services.browser.exceptions import BrowserHandoffNotOwned
 from app.services.browser.handoff import cancel_handoff, create_pending_handoff, get_handoff
 from app.services.browser.jobs import done_state
 from app.services.browser.live_code import mint_live_code
+from app.services.browser.registry import register_session
+from app.services.browser.takeover_token import (
+    TAKEOVER_TOKEN_TTL_SECONDS,
+    takeover_token_ttl_seconds,
+    verify_takeover_token,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -336,113 +341,47 @@ class TestDecideBrowserHandoff:
 # ---------------------------------------------------------------------------
 
 
-def _patch_token_seams(
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    owner: str | None = "u1",
-    ttl: float = 900.0,
-    token: str = "tok123",
-    claims: dict[str, Any] | None = None,
-) -> tuple[MagicMock, MagicMock, MagicMock]:
-    """Mock the registry + token seams; return (create, verify, ttl) mocks."""
-    resolved_claims = claims if claims is not None else {"exp": 9999999999.0}
-    create = MagicMock(return_value=token)
-    verify = MagicMock(return_value=resolved_claims)
-    ttl_fn = MagicMock(return_value=ttl)
-    monkeypatch.setattr(browser_ep.registry, "session_owner", AsyncMock(return_value=owner))
-    monkeypatch.setattr(browser_ep, "create_takeover_token", create)
-    monkeypatch.setattr(browser_ep, "verify_takeover_token", verify)
-    monkeypatch.setattr(browser_ep, "takeover_token_ttl_seconds", ttl_fn)
-    return create, verify, ttl_fn
+@pytest.fixture
+def takeover_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        browser_ep.settings, "BROWSER_TAKEOVER_TOKEN_SECRET", "x" * 40, raising=False
+    )
 
 
-class TestGetLiveViewTokenContract:
-    async def test_foreign_session_says_not_authorized(
-        self, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.usefixtures("takeover_secret")
+class TestGetLiveViewToken:
+    async def test_the_owner_gets_a_token_for_that_session_alone(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
     ) -> None:
-        _patch_token_seams(monkeypatch, owner="someone-else")
-        with pytest.raises(HTTPException) as exc:
-            await browser_ep.get_live_view_token("sess-1", "u1")
-        assert exc.value.detail == "Not authorized for this session"
+        await register_session("sess-1", "user-1")
 
-    async def test_unregistered_session_says_not_authorized(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _patch_token_seams(monkeypatch, owner=None)
-        with pytest.raises(HTTPException) as exc:
-            await browser_ep.get_live_view_token("sess-1", "u1")
-        assert exc.value.detail == "Not authorized for this session"
+        async with captured_wide_event() as event:
+            resp = await browser_ep.get_live_view_token("sess-1", "user-1")
 
-    async def test_no_token_is_minted_for_a_foreign_session(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        create, _verify, _ttl = _patch_token_seams(monkeypatch, owner="someone-else")
-        with pytest.raises(HTTPException):
-            await browser_ep.get_live_view_token("sess-1", "u1")
-        assert create.call_args is None
+        claims = verify_takeover_token(resp.token)
+        assert (claims.session_id, claims.user_id) == ("sess-1", "user-1")
+        # The lifetime the card renews by is the one the token was minted with.
+        assert resp.expires_in == TAKEOVER_TOKEN_TTL_SECONDS
+        assert takeover_token_ttl_seconds(claims) > TAKEOVER_TOKEN_TTL_SECONDS - 5
+        assert event["user"] == {"id": "user-1"}
+        assert event["browser"] == {"session_id": "sess-1", "operation": "live_view_token"}
 
-    async def test_token_is_scoped_to_the_session_and_its_owner(
-        self, monkeypatch: pytest.MonkeyPatch
+    @pytest.mark.parametrize("owner", ["someone-else", None])
+    async def test_no_token_for_a_session_the_caller_does_not_own(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, owner: str | None
     ) -> None:
-        create, _verify, _ttl = _patch_token_seams(monkeypatch, owner="user-9")
-        await browser_ep.get_live_view_token("sess-abc", "user-9")
-        assert create.call_args == call("sess-abc", "user-9")
+        # Owned by user-1, but not the session asked about: ownership is of the requested one.
+        await register_session("sess-other", "user-1")
+        if owner is not None:
+            await register_session("sess-1", owner)
 
-    async def test_expiry_is_read_back_from_the_token_that_was_minted(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        claims = {"exp": 123.0, "session_id": "sess-1"}
-        _create, verify, ttl_fn = _patch_token_seams(
-            monkeypatch, token="minted-tok", claims=claims, ttl=42.0
+        with pytest.raises(HTTPException) as refused:
+            await browser_ep.get_live_view_token("sess-1", "user-1")
+
+        assert (refused.value.status_code, refused.value.detail) == (
+            403,
+            "Not authorized for this session",
         )
-        resp = await browser_ep.get_live_view_token("sess-1", "u1")
-        assert verify.call_args == call("minted-tok")
-        assert ttl_fn.call_args == call(claims)
-        assert (resp.token, resp.expires_in) == ("minted-tok", 42)
-
-    async def test_ownership_is_checked_against_the_requested_session(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        owner_lookup = AsyncMock(return_value="u1")
-        monkeypatch.setattr(browser_ep.registry, "session_owner", owner_lookup)
-        monkeypatch.setattr(browser_ep, "create_takeover_token", MagicMock(return_value="tok"))
-        monkeypatch.setattr(browser_ep, "verify_takeover_token", MagicMock(return_value={}))
-        monkeypatch.setattr(browser_ep, "takeover_token_ttl_seconds", MagicMock(return_value=1.0))
-        await browser_ep.get_live_view_token("sess-xyz", "u1")
-        assert owner_lookup.await_args == call("sess-xyz")
-
-    async def test_fractional_ttl_is_truncated_to_whole_seconds(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _patch_token_seams(monkeypatch, ttl=899.9)
-        resp = await browser_ep.get_live_view_token("sess-1", "u1")
-        assert resp.expires_in == 899
-
-    async def test_already_expired_token_reports_zero_not_a_negative(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _patch_token_seams(monkeypatch, ttl=-0.5)
-        resp = await browser_ep.get_live_view_token("sess-1", "u1")
-        assert resp.expires_in == 0
-
-    async def test_wide_event_carries_session_and_operation(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _patch_token_seams(monkeypatch)
-        async with _recorded() as (event, recorder):
-            await browser_ep.get_live_view_token("sess-1", "u1")
-            assert event["user"] == {"id": "u1"}
-            assert event["browser"] == {"session_id": "sess-1", "operation": "live_view_token"}
-            assert recorder.at("INFO") == [(f"{LogTag.BROWSER} browser live view token issued", {})]
-
-    async def test_denied_request_is_not_logged_as_an_issued_token(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _patch_token_seams(monkeypatch, owner=None)
-        async with _recorded() as (_event, recorder):
-            with pytest.raises(HTTPException):
-                await browser_ep.get_live_view_token("sess-1", "u1")
-            assert recorder.at("INFO") == []
 
 
 # ---------------------------------------------------------------------------

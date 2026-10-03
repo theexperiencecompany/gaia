@@ -8,7 +8,6 @@
 
 from datetime import datetime
 from typing import Any, Literal
-from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -20,6 +19,7 @@ from app.constants.browser import (
     HandoffStatus,
     SensitiveCategory,
 )
+from app.utils.sites import site_of
 
 # ---------------------------------------------------------------------------
 # SSE card snapshots (data of a `browser_task_data` tool_data entry)
@@ -33,7 +33,6 @@ class BrowserSessionSnapshot(BaseModel):
     task: str
     status: BrowserSessionStatus
     session_id: str | None = None
-    live_view_url: str | None = None
     detail: str | None = None
 
 
@@ -91,7 +90,6 @@ class BrowserHandoffSnapshot(BaseModel):
     category: SensitiveCategory = SensitiveCategory.NONE
     reason: str
     session_id: str | None = None
-    live_view_url: str | None = None
     #: Required, not defaulted: a snapshot that forgot to say it had been
     #: resolved would silently render as still-pending to the user.
     status: HandoffStatus
@@ -113,7 +111,7 @@ class BrowserResultSnapshot(BaseModel):
     # What the user said while the run went: messages, and notes left with a
     # handoff. The closing reply is written against the original request otherwise.
     user_notes: list[str] = Field(default_factory=list)
-    # The notes among them that replaced the request, as the reply classifier read them.
+    # The notes among them that replaced the request, as comms' browser_step_done marked them.
     redirects: list[str] = Field(default_factory=list)
 
 
@@ -156,7 +154,7 @@ class HandoffOutcome(BaseModel):
 
     status: HandoffStatus
     message: str | None = None
-    #: The note replaces the task: only the reply classifier says so, never a plain note.
+    #: The note replaces the task: only comms' browser_step_done says so, never a plain note.
     redirect: bool = False
     #: Why a FAILED handoff failed.
     cause: EngineFailure | None = None
@@ -170,19 +168,17 @@ class LiveCodeRecord(BaseModel):
     handoff_id: str | None = None
 
 
+class ShotCodeRecord(BaseModel):
+    """What a step-frame code opens: the run whose stored frames it serves."""
+
+    session_id: str
+
+
 class ReplayRecord(BaseModel):
     """What a replay code opens: the screenshots the run actually uploaded."""
 
     session_id: str
-    steps: int
-    # The CDN URLs that really exist. Empty on codes minted before these were
-    # stored, which fall back to deriving them from the session id.
-    shots: list[str] = Field(default_factory=list)
-
-
-# ---------------------------------------------------------------------------
-# Sensitive-action classifier
-# ---------------------------------------------------------------------------
+    shots: list[str]
 
 
 # ---------------------------------------------------------------------------
@@ -331,7 +327,7 @@ class BrowserTaskSecret(BaseModel):
     @classmethod
     def _host(cls, site: str) -> str:
         """Keep the site's host alone, without www.; a site naming no host is refused."""
-        host = urlsplit(site if "://" in site else f"https://{site}").hostname
-        if not host:
+        named = site_of(site)
+        if named is None:
             raise ValueError(f"{site!r} names no site")
-        return host.removeprefix("www.")
+        return named

@@ -51,42 +51,6 @@ def _make_task(task_id: str = "t1") -> BrowserTaskResponse:
 
 
 # ---------------------------------------------------------------------------
-# GET /browser/sessions/{session_id}/live-view-token
-# ---------------------------------------------------------------------------
-
-
-class TestGetLiveViewToken:
-    async def test_owner_gets_token(self, monkeypatch):
-        monkeypatch.setattr(browser_ep.registry, "session_owner", AsyncMock(return_value="u1"))
-        monkeypatch.setattr(browser_ep, "create_takeover_token", lambda sid, uid: "tok123")
-        monkeypatch.setattr(browser_ep, "verify_takeover_token", lambda tok: {"exp": 9999999999.0})
-        monkeypatch.setattr(browser_ep, "takeover_token_ttl_seconds", lambda claims: 900)
-        resp = await browser_ep.get_live_view_token("sess-1", "u1")
-        assert resp.token == "tok123"
-        assert resp.expires_in == 900
-
-    async def test_negative_ttl_clamped_to_zero(self, monkeypatch):
-        monkeypatch.setattr(browser_ep.registry, "session_owner", AsyncMock(return_value="u1"))
-        monkeypatch.setattr(browser_ep, "create_takeover_token", lambda sid, uid: "tok")
-        monkeypatch.setattr(browser_ep, "verify_takeover_token", lambda tok: {"exp": 0})
-        monkeypatch.setattr(browser_ep, "takeover_token_ttl_seconds", lambda claims: -10)
-        resp = await browser_ep.get_live_view_token("sess-1", "u1")
-        assert resp.expires_in == 0
-
-    async def test_non_owner_403(self, monkeypatch):
-        monkeypatch.setattr(browser_ep.registry, "session_owner", AsyncMock(return_value="other"))
-        with pytest.raises(HTTPException) as exc:
-            await browser_ep.get_live_view_token("sess-1", "u1")
-        assert exc.value.status_code == 403
-
-    async def test_unregistered_403(self, monkeypatch):
-        monkeypatch.setattr(browser_ep.registry, "session_owner", AsyncMock(return_value=None))
-        with pytest.raises(HTTPException) as exc:
-            await browser_ep.get_live_view_token("sess-1", "u1")
-        assert exc.value.status_code == 403
-
-
-# ---------------------------------------------------------------------------
 # GET /browser/tasks
 # ---------------------------------------------------------------------------
 

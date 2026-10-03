@@ -1,33 +1,33 @@
 """Root-mounted authenticated browser live view.
 
-Served at ``/live/{session_id}`` (no ``/api/v1`` prefix) so it fronts a friendly
-public vhost — e.g. ``https://browser.heygaia.io/live/{id}`` — that reverse-proxies
-to THIS api service. The browser host is never exposed directly.
+Root-mounted (no /api/v1 prefix), so the recap and screenshot links can sit on a
+friendly public vhost that reverse-proxies to THIS api service. The browser host
+is never exposed directly.
 
-``GET`` serves a self-contained HTML canvas viewer (for a bot user opening the
-tokened link); ``WEBSOCKET`` proxies frames + input between the viewer and the
-host's ``WS /live/{id}``. Because the ``wos_session`` cookie is host-only, a
-cross-origin viewer (the chat card on the friendly vhost) authenticates with a
-short-lived ``?t=`` takeover token; a same-origin viewer may still use the
-session cookie. Ownership is re-checked against the Redis registry on connect;
-a token connection is bounded to the token's remaining lifetime, and a code
-connection closes the moment its handoff settles.
+WS /live/{id} proxies frames and input between a viewer (the chat card, or the
+web app's full-page live view a bot link opens), dialled on the API's own
+origin, and the host's WS /live/{id}; POST /live/{code}/decision answers the
+handoff a bot link was sent for. A socket is opened by one of two authorities:
+a bot link's short code, or a session id with the ?t= takeover token the web
+card fetched. Ownership is re-checked against the Redis registry each time, and
+a connection ends with its authority: a code's handoff settling, or a token's
+lifetime.
 """
 
 from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from functools import partial
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, Request, WebSocket, status
+from fastapi import APIRouter, HTTPException, Query, WebSocket, status
 from fastapi.responses import HTMLResponse, Response
 from jose import JWTError
 from starlette.websockets import WebSocketState
 import websockets
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_current_user_ws
 from app.browser_host.pumps import pump_until_first_close
 from app.constants.browser import (
     BROWSER_HANDOFF_GONE_DETAIL,
@@ -39,11 +39,9 @@ from app.schemas.errors import HTML_ROUTE_ERROR_RESPONSES
 from app.services.browser import registry
 from app.services.browser.handoff_buttons import decide_handoff_by_button
 from app.services.browser.live_code import live_code_ended, resolve_live_code
-from app.services.browser.live_view import render_live_view_page
 from app.services.browser.replay import render_replay_page, resolve_replay_code
 from app.services.browser.shot_store import SHOT_SUFFIX, read_step_screenshot
 from app.services.browser.takeover_token import (
-    TakeoverTokenClaims,
     takeover_token_ttl_seconds,
     verify_takeover_token,
 )
@@ -56,6 +54,48 @@ _WS_SESSION_GONE = 4404
 
 #: What ends a live-view connection besides either side closing: its authority running out.
 _ConnectionEnd = Callable[[], Awaitable[None]]
+
+
+@dataclass(frozen=True, slots=True)
+class _Target:
+    """The session a viewer may watch and drive, its host stream, and what ends the connection."""
+
+    session_id: str
+    live_ws: str | None
+    ends: _ConnectionEnd
+
+
+@dataclass(frozen=True, slots=True)
+class _Denied:
+    """Why a viewer was turned away."""
+
+    reason: str
+
+
+async def _authorize(code: str, token: str | None) -> _Target | _Denied:
+    """Resolve what opens a live view: a bot link's code, or a session id with a takeover token.
+
+    Either way the session must still be registered to the user it names.
+    """
+    if token is None:
+        record = await resolve_live_code(code)
+        if record is None:
+            return _Denied("Live view not found or expired")
+        session_id, user_id = record.session_id, record.user_id
+        ends: _ConnectionEnd = partial(live_code_ended, code)
+    else:
+        try:
+            claims = verify_takeover_token(token)
+        except JWTError:
+            return _Denied("Invalid or expired link")
+        if claims.session_id != code:
+            return _Denied("Link does not match this session")
+        session_id, user_id = code, claims.user_id
+        ends = partial(asyncio.sleep, max(takeover_token_ttl_seconds(claims), 0.0))
+    entry = await registry.get_session_entry(session_id)
+    if entry is None or entry.owner != user_id:
+        return _Denied("Not authorized for this session")
+    return _Target(session_id=session_id, live_ws=entry.live_ws, ends=ends)
 
 
 @router.get(f"/shots/{{code}}/{{index}}{SHOT_SUFFIX}", response_class=Response)
@@ -77,9 +117,7 @@ async def step_screenshot(code: str, index: int) -> Response:
 
 @router.get("/replays/{code}", response_class=HTMLResponse, responses=HTML_ROUTE_ERROR_RESPONSES)
 async def replay_page(code: str) -> HTMLResponse:
-    """Standalone recap slideshow for a finished session. ``code`` resolves to the
-    session + step count in Redis; the step screenshots are public R2 URLs, so no
-    per-session auth is needed (the code itself is the unguessable capability)."""
+    """Standalone recap slideshow for a finished session: its code is the capability."""
     log.set(browser={"operation": "replay_page"})
     record = await resolve_replay_code(code)
     if record is None:
@@ -89,28 +127,6 @@ async def replay_page(code: str) -> HTMLResponse:
     log.set(browser={"session_id": record.session_id})
     log.info(f"{LogTag.BROWSER} browser replay page served")
     return HTMLResponse(content=render_replay_page(record))
-
-
-@router.get("/live/{code}", response_class=HTMLResponse, responses=HTML_ROUTE_ERROR_RESPONSES)
-async def live_view_page(
-    code: str,
-    request: Request,
-    t: Annotated[str | None, Query()] = None,
-) -> HTMLResponse:
-    """Standalone live-view page. ``code`` is a short capability code (the bot link)
-    that resolves to a session + owner in Redis; failing that it is treated as a raw
-    session id authorized by the ``?t=`` takeover token or a same-origin cookie (the
-    web chat card)."""
-    log.set(browser={"operation": "live_view_page"})
-    session_id, user_id = await _resolve_target_page(code, request, t)
-    owner = await registry.session_owner(session_id)
-    if owner is None or owner != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this session"
-        )
-    log.set(browser={"session_id": session_id})
-    log.info(f"{LogTag.BROWSER} browser live view page served")
-    return HTMLResponse(content=render_live_view_page(session_id))
 
 
 @router.post("/live/{code}/decision")
@@ -144,122 +160,37 @@ async def live_view_ws(
     code: str,
     t: Annotated[str | None, Query()] = None,
 ) -> None:
-    """Proxy the authenticated live view: host frames out to the viewer, the
-    viewer's mouse/key input back to the host. ``code`` is a short capability code
-    (bot link) or a raw session id + ``?t=`` token / cookie (web card), and the
-    connection ends with whichever authorised it."""
+    """Proxy the live view: host frames out to the viewer, its mouse/key input back to the host.
+
+    The connection ends with whichever authority opened it.
+    """
     log.set(browser={"operation": "live_view_ws"})
-
-    resolved = await _resolve_target_ws(websocket, code, t)
-    if resolved is None:
-        return  # already closed the socket with a policy-violation code
-    session_id, user_id, ends = resolved
-    log.set(browser={"session_id": session_id})
-
-    entry = await registry.get_session_entry(session_id)
-    if entry is None or entry.owner != user_id:
-        log.warning(f"{LogTag.BROWSER} browser live view ownership denied", session_id=session_id)
+    target = await _authorize(code, t)
+    if isinstance(target, _Denied):
+        log.warning(f"{LogTag.BROWSER} browser live view refused", reason=target.reason)
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
-    if not entry.live_ws:
-        log.warning(f"{LogTag.BROWSER} browser live view has no host stream", session_id=session_id)
+    log.set(browser={"session_id": target.session_id})
+    if not target.live_ws:
+        log.warning(f"{LogTag.BROWSER} browser live view has no host stream")
         await websocket.close(code=_WS_SESSION_GONE)
         return
 
     await websocket.accept()
     log.info(f"{LogTag.BROWSER} browser live view proxy opened")
-    await _proxy_live_view(websocket, entry.live_ws, ends)
+    await _proxy_live_view(websocket, target.live_ws, target.ends)
 
 
-async def _resolve_target_page(code: str, request: Request, token: str | None) -> tuple[str, str]:
-    """``(session_id, user_id)`` for a GET page: a short capability code (the code is the
-    secret), else ``code`` as a raw session id authorized by the ``?t=`` token or cookie."""
-    record = await resolve_live_code(code)
-    if record is not None:
-        return record.session_id, record.user_id
-    user_id = await _authorize_page(request, code, token)
-    return code, user_id
-
-
-async def _resolve_target_ws(
-    websocket: WebSocket, code: str, token: str | None
-) -> tuple[str, str, _ConnectionEnd | None] | None:
-    """``(session_id, user_id, ends)`` for a WS, or ``None`` (socket closed). The
-    connection ends with what authorised it: the code's handoff settling or the
-    code lapsing, or the token's lifetime; a cookie session has no end of its own."""
-    record = await resolve_live_code(code)
-    if record is not None:
-        return record.session_id, record.user_id, partial(live_code_ended, code)
-    resolved = await _authorize_ws(websocket, code, token)
-    if resolved is None:
-        return None
-    user_id, ttl_seconds = resolved
-    ends = partial(_expire_after, ttl_seconds) if ttl_seconds is not None else None
-    return code, user_id, ends
-
-
-async def _authorize_page(request: Request, session_id: str, token: str | None) -> str:
-    """Resolve the user id for a GET live-view page: takeover token or web session."""
-    if token:
-        claims: TakeoverTokenClaims = _verify_scoped_token(token, session_id)
-        return claims["user_id"]
-    user = await get_current_user(request)
-    return user.user_id
-
-
-async def _authorize_ws(
-    websocket: WebSocket, session_id: str, token: str | None
-) -> tuple[str, float | None] | None:
-    """Resolve ``(user_id, ttl_seconds)`` for a live-view WS, or close and return None.
-
-    ``ttl_seconds`` is the token's remaining lifetime for a takeover connection, or
-    ``None`` for a cookie session (no token deadline).
-    """
-    if token:
-        try:
-            claims: TakeoverTokenClaims = verify_takeover_token(token)
-        except JWTError:
-            log.warning(f"{LogTag.BROWSER} browser live view rejected invalid takeover token")
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-            return None
-        if claims["session_id"] != session_id:
-            log.warning(f"{LogTag.BROWSER} browser live view token session mismatch")
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-            return None
-        return claims["user_id"], max(takeover_token_ttl_seconds(claims), 0.0)
-
-    user = await get_current_user_ws(websocket)  # closes the socket on auth failure
-    return user.user_id, None
-
-
-def _verify_scoped_token(token: str, session_id: str) -> TakeoverTokenClaims:
-    """Verify a takeover token and assert it is scoped to ``session_id`` (HTTP path)."""
-    try:
-        claims: TakeoverTokenClaims = verify_takeover_token(token)
-    except JWTError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired link"
-        ) from exc
-    if claims["session_id"] != session_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Link does not match this session"
-        )
-    return claims
-
-
-async def _proxy_live_view(
-    client_ws: WebSocket, host_ws_url: str, ends: _ConnectionEnd | None
-) -> None:
+async def _proxy_live_view(client_ws: WebSocket, host_ws_url: str, ends: _ConnectionEnd) -> None:
     """Bridge the viewer's WebSocket to the host's live-view WebSocket both ways, until either closes or ends returns."""
     try:
         async with websockets.connect(host_ws_url, max_size=None) as host_ws:
-            directions: list[Awaitable[None]] = [
+            await pump_until_first_close(
                 _pump_host_to_client(host_ws, client_ws),
                 _pump_client_to_host(client_ws, host_ws),
-            ]
-            if ends is not None:
-                directions.append(ends())
-            await pump_until_first_close(*directions, sockets=(client_ws,))
+                ends(),
+                sockets=(client_ws,),
+            )
     except (OSError, websockets.exceptions.WebSocketException) as exc:
         log.warning(
             f"{LogTag.BROWSER} browser live view host unreachable", error_type=type(exc).__name__
@@ -282,8 +213,3 @@ async def _pump_client_to_host(client_ws: WebSocket, host_ws: websockets.ClientC
     while True:
         message = await client_ws.receive_text()
         await host_ws.send(message)
-
-
-async def _expire_after(seconds: float) -> None:
-    """End the proxy once the takeover token's lifetime elapses (WS then closes)."""
-    await asyncio.sleep(max(seconds, 0.0))

@@ -233,12 +233,3 @@ async def take_job_messages(job_id: str) -> list[str]:
         pipe.delete(key)
         messages, _deleted = await pipe.execute()
     return [str(message) for message in messages]
-
-
-async def post_conversation_message(conversation_id: str, text: str) -> str | None:
-    """Queue a user message for this conversation's running browser job; returns its id, or None when none runs."""
-    job_id = await get_conversation_slot(conversation_id)
-    if job_id is None:
-        return None
-    await post_job_message(job_id, text)
-    return job_id

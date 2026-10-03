@@ -41,6 +41,20 @@ async def test_a_code_opens_its_session_for_the_handoffs_window_until_revoked(
     await asyncio.wait_for(live_code.live_code_ended(code), timeout=1)
 
 
+async def test_a_socket_a_code_opened_ends_the_moment_its_handoff_settles(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    code = await live_code.mint_live_code("sess-abc", "user-1", "h1")
+    ended = asyncio.create_task(live_code.live_code_ended(code))
+
+    # Still open while the handoff waits: nothing but the settle (or the code lapsing) ends it.
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(asyncio.shield(ended), 0.05)
+    await live_code.revoke_handoff_live_code("h1")
+
+    await asyncio.wait_for(ended, 1)
+
+
 async def test_a_socket_a_code_opened_ends_when_the_code_lapses(
     fake_redis: fakeredis.aioredis.FakeRedis,
 ) -> None:
@@ -61,13 +75,17 @@ async def test_a_live_code_is_a_short_url_safe_slug(
     assert _URL_SAFE_RE.match(code)
 
 
-async def test_link_keeps_the_live_path_on_a_vhost(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_link_opens_the_web_live_page_not_the_browser_link_vhost(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     mint = AsyncMock(return_value="Xk3p9qR2mN4t")
     monkeypatch.setattr(live_view, "mint_live_code", mint)
+    monkeypatch.setattr(live_view.settings, "FRONTEND_URL", "https://heygaia.io")
     monkeypatch.setattr(links.settings, "BROWSER_LIVE_VIEW_BASE_URL", "https://browser.heygaia.io")
 
     link = await live_view.create_live_view_link("sess-abc", "user-1", "h1")
 
-    # No session id and no ?t= token; /live/ keeps a bare /{code} off the API root.
-    assert link == "https://browser.heygaia.io/live/Xk3p9qR2mN4t"
+    # The web app serves the viewer; the recap/screenshot vhost plays no part.
+    # No session id and no ?t= token in the link: the code is the authority.
+    assert link == "https://heygaia.io/live/Xk3p9qR2mN4t"
     mint.assert_awaited_once_with("sess-abc", "user-1", "h1")

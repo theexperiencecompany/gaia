@@ -387,7 +387,11 @@ run = "cd apps/api && uv run --group backend --group dev pytest -q --tb=short"
 
 [tasks."test:python:real"]
 description = "Run the real-infra tier (Postgres/Redis/Mongo/Chroma via docker compose) — opt-in"
-run = "cd apps/api && USE_REAL_SERVICES=1 uv run --group backend --group dev pytest tests/integration/real tests/contracts tests/e2e/test_hil_barrier_e2e.py tests/e2e/test_hil_spawn_e2e.py --tb=short -q"
+run = "cd apps/api && USE_REAL_SERVICES=1 uv run --group backend --group dev pytest tests/integration/real tests/contracts tests/e2e/test_hil_barrier_e2e.py tests/e2e/test_hil_spawn_e2e.py --ignore=tests/integration/real/browser --tb=short -q"
+
+[tasks."test:python:browser"]
+description = "Run the hermetic browser stack (API, worker, Chrome and Obscura hosts, fake models, fixture site) — needs the real services, CHROMIUM_BIN or google-chrome, and OBSCURA_BIN"
+run = "cd apps/api && USE_REAL_SERVICES=1 uv run --group backend --group dev pytest tests/integration/real/browser -n 2 --tb=short -q"
 
 [tasks."test:one"]
 description = "Run one or more API test files exactly as CI does, minus xdist: `mise test:one tests/unit/x.py [more...]` (keeps --strict-markers and the -m filter; `-o addopts=\"\"` silently drops both)"
@@ -638,6 +642,10 @@ run = "docker compose -f apps/api/scripts/evals/infra/compose.opik.yml down -v"
 [tasks."eval:smoke"]
 description = "Run the eval-harness smoke suite (3 toy cases; verifies rotation, journal, report)"
 run = "cd apps/api && uv run --group backend python -m scripts.evals run --suite smoke"
+
+[tasks."eval:browser"]
+description = "Run the browser quality eval: real models drive the hosts BROWSER_HOST_URL / BROWSER_FALLBACK_HOST_URL through 22 real-site tasks (bills model calls; not a CI gate; OPENROUTER_MODEL names the browser agent's model for the record)"
+run = "bash scripts/ci/browser.sh eval"
 
 [tasks."eval:gate"]
 description = "Stub-driven regression gate (free) — run before pushing agent/LLM/tool changes"

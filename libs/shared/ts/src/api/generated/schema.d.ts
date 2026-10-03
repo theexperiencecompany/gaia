@@ -499,8 +499,8 @@ export interface paths {
         };
         /**
          * Get Live View Token
-         * @description Mint a short-lived takeover token so the web card can open the cross-origin
-         *     live view (the host-only session cookie is not sent to the live-view vhost).
+         * @description Mint a short-lived takeover token the web card carries on its live-view
+         *     socket and full-page link, so neither depends on the session cookie.
          */
         get: operations["browser_get_live_view_token"];
         put?: never;
@@ -5598,29 +5598,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/live/{code}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Live View Page
-         * @description Standalone live-view page. ``code`` is a short capability code (the bot link)
-         *     that resolves to a session + owner in Redis; failing that it is treated as a raw
-         *     session id authorized by the ``?t=`` takeover token or a same-origin cookie (the
-         *     web chat card).
-         */
-        get: operations["browser_live_view_page"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/live/{code}/decision": {
         parameters: {
             query?: never;
@@ -5653,9 +5630,7 @@ export interface paths {
         };
         /**
          * Replay Page
-         * @description Standalone recap slideshow for a finished session. ``code`` resolves to the
-         *     session + step count in Redis; the step screenshots are public R2 URLs, so no
-         *     per-session auth is needed (the code itself is the unguessable capability).
+         * @description Standalone recap slideshow for a finished session: its code is the capability.
          */
         get: operations["browser_replay_page"];
         put?: never;
@@ -30948,57 +30923,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DegradedHealthResponse"];
-                };
-            };
-        };
-    };
-    browser_live_view_page: {
-        parameters: {
-            query?: {
-                t?: string | null;
-            };
-            header?: never;
-            path: {
-                code: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "text/html": string;
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };

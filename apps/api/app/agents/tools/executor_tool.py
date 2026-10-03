@@ -32,7 +32,6 @@ from app.agents.core.background.session import (
     mark_executor_spawned,
 )
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
-from app.constants.browser import BrowserStopOutcome
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.chat import ConversationSource
 from app.constants.general import CALL_EXECUTOR_NAME
@@ -42,6 +41,7 @@ from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, agent_configurable
+from app.services.browser.chat_task import stop_report
 from app.services.browser.job_stop import requester_chat, stop_chat_jobs
 from app.services.hil.ledger_decide import cancel_ledger_approvals
 from app.services.hil.resolution import cancel_conversation_approvals
@@ -395,12 +395,7 @@ async def _stop_the_browser(configurable: AgentConfigurable, conversation_id: st
         ConversationSource.coerce(configurable.get("conversation_source")),
     )
     outcomes = await stop_chat_jobs(conversation_id, requester)
-    if not outcomes:
-        return None
-    stopped = BrowserStopOutcome.STOPPED in outcomes.values()
-    return _BROWSER_STOP_REPORTS[
-        BrowserStopOutcome.STOPPED if stopped else BrowserStopOutcome.ALREADY_ENDED
-    ]
+    return stop_report(outcomes.values()) if outcomes else None
 
 
 async def _cancel_executor_work(
@@ -483,14 +478,6 @@ async def _cancel_executor_work(
 
 
 #: What the agent is told a browser stop came to, as the job's ending of record says.
-_BROWSER_STOP_REPORTS = {
-    BrowserStopOutcome.STOPPED: "Stopped the browser task.",
-    BrowserStopOutcome.ALREADY_ENDED: (
-        "The browser task had already finished before the stop reached it; its result stands."
-    ),
-}
-
-
 async def _broadcast_executor_cancelled(
     *,
     user_id: str,

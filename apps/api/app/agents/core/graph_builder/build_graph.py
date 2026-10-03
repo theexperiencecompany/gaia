@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from langchain_core.language_models import LanguageModelLike
+from langchain_core.tools import BaseTool
 from langgraph.checkpoint.memory import InMemorySaver
 
 from app.agents.core.graph_builder.checkpointer_manager import (
@@ -29,6 +30,11 @@ from app.agents.middleware import (
 )
 from app.agents.middleware.subagent import SubagentMiddleware, bind_spawner
 from app.agents.tools import memory_tools
+from app.agents.tools.browser_chat_tools import (
+    browser_step_done,
+    stop_browser_task,
+    tell_browser_task,
+)
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.store import get_tools_store
@@ -244,18 +250,7 @@ async def build_comms_graph(
     if chat_llm is None:
         chat_llm = init_llm()
 
-    # The discovery pair are read-only catalogue lookups, so they do not breach
-    # "delegate every real ask". Connecting an integration is a real ask and
-    # goes to the executor.
-    tool_registry = {
-        "call_executor": call_executor,
-        "cancel_executor": cancel_executor,
-        "find_integration": find_integration,
-        "search_public_workflows": search_public_workflows,
-        web_search_tool.name: web_search_tool,
-        fetch_webpages.name: fetch_webpages,
-        **{memory_tool.name: memory_tool for memory_tool in memory_tools.tools},
-    }
+    tool_registry = comms_tools()
     store = await get_tools_store()
 
     middleware = create_comms_middleware(chat_llm=chat_llm)
@@ -267,15 +262,7 @@ async def build_comms_graph(
         tool_registry,
         tools_config=ToolRetrievalConfig(
             disable_retrieve_tools=True,
-            initial_tool_ids=[
-                "call_executor",
-                "cancel_executor",
-                "find_integration",
-                "search_public_workflows",
-                web_search_tool.name,
-                fetch_webpages.name,
-                *[memory_tool.name for memory_tool in memory_tools.tools],
-            ],
+            initial_tool_ids=list(tool_registry),
         ),
         hooks_config=HookConfig(
             pre_model_hooks=pre_model_hooks,
@@ -306,6 +293,27 @@ async def build_comms_graph(
         log.debug(f"{LogTag.AGENT} Comms graph compiled with PostgreSQL checkpointer")
         log.set(agent={"model": model_name})
         yield graph
+
+
+def comms_tools() -> dict[str, BaseTool]:
+    """Return the comms agent's whole tool set, by name; all bound from the start.
+
+    The discovery pair are read-only catalogue lookups, so they do not breach
+    "delegate every real ask". Connecting an integration is a real ask and
+    goes to the executor. The browser trio acts on a task already running.
+    """
+    return {
+        "call_executor": call_executor,
+        "cancel_executor": cancel_executor,
+        browser_step_done.name: browser_step_done,
+        stop_browser_task.name: stop_browser_task,
+        tell_browser_task.name: tell_browser_task,
+        "find_integration": find_integration,
+        "search_public_workflows": search_public_workflows,
+        web_search_tool.name: web_search_tool,
+        fetch_webpages.name: fetch_webpages,
+        **{memory_tool.name: memory_tool for memory_tool in memory_tools.tools},
+    }
 
 
 @lazy_provider(

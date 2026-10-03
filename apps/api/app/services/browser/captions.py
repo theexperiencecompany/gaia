@@ -8,7 +8,6 @@ target; the agent's own next_goal names only a step that finishes the run.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict
 
@@ -16,6 +15,7 @@ from app.constants.browser import (
     BrowserHandoffAction,
 )
 from app.schemas.browser import BrowserAction
+from app.utils.sites import host_of
 
 
 def _shorten(text: str) -> str:
@@ -37,7 +37,7 @@ class _ActionParams(BaseModel):
 
 
 def _navigate_caption(params: _ActionParams, _target: str | None) -> str:
-    host = urlparse(params.url).hostname if params.url else None
+    host = host_of(params.url)
     return f"Opening {host.removeprefix('www.')}" if host else "Opening the page"
 
 

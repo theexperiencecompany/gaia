@@ -8,13 +8,14 @@ proves a run survives an API restart or that Browser-Use behaves as scripted.
 """
 
 import asyncio
-from collections.abc import Awaitable, Callable
 import json
 from typing import Any
 from unittest.mock import AsyncMock
 
+from langchain_core.tools import BaseTool
 import pytest
 
+from app.agents.tools.browser_chat_tools import browser_step_done, stop_browser_task
 from app.constants.agents import AgentTag
 from app.constants.browser import (
     BROWSER_RUN_SESSION_LOST_SUMMARY,
@@ -25,7 +26,7 @@ from app.constants.browser import (
 )
 from app.constants.chat import SourceCategory
 from app.models.chat_models import ConversationSource
-from app.services.browser import job_runner, resolution, session as session_mod
+from app.services.browser import job_runner, session as session_mod
 from app.services.browser.handoff import get_handoff
 from app.services.browser.jobs import get_conversation_slot
 from tests.e2e._harness.browser_job import (
@@ -283,24 +284,15 @@ async def test_a_handoff_note_reaches_the_run_and_the_agent_deciding_it() -> Non
     told = world.result_told()
     # The closing reply is written against the original booking otherwise, and
     # confirms a table nobody booked, so what the user said leads; a note is what
-    # they said, not a replaced request, until the reply classifier calls it one.
+    # they said, not a replaced request, until browser_step_done marks it one.
     assert told.startswith(f'While it ran, the user said: "{note}"')
     assert "REPLACED THE REQUEST" not in told
     assert "The table is booked for 7pm on Friday." in told
 
 
-async def test_a_chat_redirect_makes_the_changed_instruction_lead_the_executors_result(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_a_chat_redirect_makes_the_changed_instruction_lead_the_executors_result() -> None:
     """Regression: the run read what the chat reply asked for and the closing still reported the login it had been told to skip."""
-    from app.services.browser import resolution
-
     note = "never mind the login, just tell me the opening hours"
-
-    async def _redirect(*_args: Any, **_kwargs: Any) -> resolution.HandoffReplyDecision:
-        return resolution.HandoffReplyDecision(action="redirect", note=note)
-
-    monkeypatch.setattr(resolution, "ainvoke_structured_gemini", _redirect)
     steps = [
         ScriptedStep(actions=[], takeover=("Sign in and come back", "credentials")),
         ScriptedStep(actions=[("input", {"index": 1, "text": "hours"})]),
@@ -318,9 +310,7 @@ async def test_a_chat_redirect_makes_the_changed_instruction_lead_the_executors_
                 )
             )
             await _wait_for_pending_handoff(world)
-            reply = await resolution.resolve_handoff_from_message(CONVERSATION, USER, note)
-            assert reply is not None
-            assert reply.action == "redirect"
+            await _reply_in_chat(browser_step_done, {"note": note, "redirect": True})
             await run_task
             await world.settle()
 
@@ -355,21 +345,13 @@ SIGN_IN = ScriptedStep(
     actions=[], url=LOGIN_URL, takeover=("Enter your password and sign in.", "credentials")
 )
 BOOK_SIGNED_IN = ScriptedStep(actions=[("click", {"index": 4})], url=SIGNED_IN_URL)
-LOGGED_IN = "ok I'm logged in"
-STOP = "stop, forget it"
-
-Classifier = Callable[..., Awaitable[resolution.HandoffReplyDecision]]
 
 
-def _reading(replies: dict[str, resolution.HandoffReplyDecision]) -> Classifier:
-    """Stand in for the reply classifier: what the model makes of each reply the journey sends."""
-
-    async def _classify(
-        schema: type[resolution.HandoffReplyDecision], prompt: str, *, label: str
-    ) -> resolution.HandoffReplyDecision:
-        return next(decision for reply, decision in replies.items() if reply in prompt)
-
-    return _classify
+async def _reply_in_chat(chat_tool: BaseTool, args: dict[str, Any]) -> None:
+    """Act on the paused task as comms does on the user's chat reply, from that turn's identity."""
+    await chat_tool.ainvoke(
+        args, config={"configurable": {"thread_id": CONVERSATION, "user_id": USER}}
+    )
 
 
 async def _still_pending(handoff_id: str) -> bool:
@@ -377,16 +359,8 @@ async def _still_pending(handoff_id: str) -> bool:
     return record is not None and record.status is HandoffStatus.PENDING
 
 
-async def test_a_signed_in_page_does_not_end_a_login_handoff_until_the_user_says_so(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_a_signed_in_page_does_not_end_a_login_handoff_until_the_user_says_so() -> None:
     """Regression: a login handoff ended itself once the page left the sign-in path, and its cookies were saved as the user's login."""
-    monkeypatch.setattr(
-        resolution,
-        "ainvoke_structured_gemini",
-        _reading({LOGGED_IN: resolution.HandoffReplyDecision(action="continue")}),
-    )
-
     async with browser_job_world(STREAM, steps=[SIGN_IN, BOOK_SIGNED_IN]) as world:
         with long_waits_pass_quickly():
             async with executor_graph([RETRIEVE, START, "Started."]) as graph:
@@ -399,12 +373,10 @@ async def test_a_signed_in_page_does_not_end_a_login_handoff_until_the_user_says
                 assert await _still_pending(handoff_id)
                 assert world.browser.takeover_notes == []
 
-                reply = await resolution.resolve_handoff_from_message(CONVERSATION, USER, LOGGED_IN)
+                await _reply_in_chat(browser_step_done, {})
                 await run_task
         saves = session_mod.save_storage_state.await_args_list
 
-    assert reply is not None
-    assert reply.action == "continue"
     handoffs = [card for card in world.cards() if card["kind"] == "handoff"]
     assert [card["status"] for card in handoffs] == ["pending", "completed"]
     assert world.browser.takeover_notes == [BROWSER_TAKEOVER_DONE_NOTE]
@@ -416,35 +388,19 @@ async def test_a_signed_in_page_does_not_end_a_login_handoff_until_the_user_says
     assert [call.args[1:] for call in saves] == [("example.test", LIVE_STORAGE_STATE)]
 
 
-async def test_a_done_that_left_the_user_signed_out_is_asked_again_and_saves_nothing(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_a_done_that_left_the_user_signed_out_is_asked_again_and_saves_nothing() -> None:
     """Regression: the user said done while the login had failed, and the failed attempt's cookies were saved over their login."""
-    monkeypatch.setattr(
-        resolution,
-        "ainvoke_structured_gemini",
-        _reading(
-            {
-                LOGGED_IN: resolution.HandoffReplyDecision(action="continue"),
-                STOP: resolution.HandoffReplyDecision(action="cancel"),
-            }
-        ),
-    )
-
     async with browser_job_world(STREAM, steps=[SIGN_IN, SIGN_IN, BOOK_SIGNED_IN]) as world:
         async with executor_graph([RETRIEVE, START, "Started."]) as graph:
             run_task = asyncio.create_task(_drive(graph, world))
             await _wait_for_pending_handoff(world)
             # Said while the page is still the sign-in form: the login did not take.
-            first = await resolution.resolve_handoff_from_message(CONVERSATION, USER, LOGGED_IN)
+            await _reply_in_chat(browser_step_done, {})
             await _wait_for_pending_handoff(world, count=2)
-            second = await resolution.resolve_handoff_from_message(CONVERSATION, USER, STOP)
+            await _reply_in_chat(stop_browser_task, {})
             await run_task
         saves = session_mod.save_storage_state.await_args_list
 
-    assert first is not None
-    assert second is not None
-    assert (first.action, second.action) == ("continue", "cancel")
     handoffs = [card for card in world.cards() if card["kind"] == "handoff"]
     assert [card["status"] for card in handoffs] == ["pending", "completed", "pending", "cancelled"]
     assert world.browser.next_step == 2

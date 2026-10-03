@@ -9,19 +9,23 @@ new sessions and lets a recycled one drain beside it, so each knows only itself.
 from __future__ import annotations
 
 import asyncio
+import base64
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+import hashlib
 from pathlib import Path
 import shutil
 import tempfile
 
 from browser_use.browser.profile import CHROME_DEFAULT_ARGS
+from cryptography import x509
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from playwright.sync_api import sync_playwright
 
 from app.browser_host.cdp_mux import CdpMux, cdp_call
-from app.browser_host.metrics import ProcessSampler
-from app.browser_host.obscura_launch import (
-    launch_obscura,
+from app.browser_host.obscura_launch import launch_obscura
+from app.browser_host.process import (
+    ProcessSampler,
     process_tree_rss_mb,
     spawn_engine,
     stop_process,
@@ -33,6 +37,7 @@ from app.constants.browser import (
     BROWSER_VIEWPORT_HEIGHT,
     BROWSER_VIEWPORT_WIDTH,
     BrowserEngine,
+    EngineExit,
 )
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
@@ -52,10 +57,6 @@ _JS_HEAP_MB = 512
 # timer; this many unanswered asks in a row is a dead engine, not a busy one.
 _LIVENESS_PROBE_INTERVAL_SECONDS = 15.0
 _LIVENESS_STRIKES = 2
-
-
-class EngineFailure(RuntimeError):
-    """How an engine stopped serving; the reason its sessions died."""
 
 
 def _headless_shell_beside(chromium: Path) -> Path | None:
@@ -93,6 +94,13 @@ def resolve_chromium_path() -> str:
     return str(shell or full)
 
 
+def spki_pin(pem_path: str) -> str:
+    """Return a PEM certificate's SPKI pin as Chrome reads one: base64 of its key's SHA-256."""
+    certificate = x509.load_pem_x509_certificate(Path(pem_path).read_bytes())
+    key = certificate.public_key().public_bytes(Encoding.DER, PublicFormat.SubjectPublicKeyInfo)
+    return base64.b64encode(hashlib.sha256(key).digest()).decode()
+
+
 def chromium_argv(chromium_path: str, profile_dir: str, user_agent: str | None) -> list[str]:
     """Build the full Chromium argv for one launch into its own fresh profile."""
     args = [chromium_path, "--remote-debugging-port=0", f"--user-data-dir={profile_dir}"]
@@ -102,6 +110,11 @@ def chromium_argv(chromium_path: str, profile_dir: str, user_agent: str | None) 
     args.append(f"--js-flags=--max-old-space-size={_JS_HEAP_MB}")
     # The window is the viewport, so pages paint edge to edge instead of into 800x600.
     args.append(f"--window-size={BROWSER_VIEWPORT_WIDTH},{BROWSER_VIEWPORT_HEIGHT}")
+    if browser_host_settings.BROWSER_HOST_TEST_CA_FILE:
+        # A test stack's fixture site: its chain carries this CA, whose key Chrome then accepts.
+        args.append(
+            f"--ignore-certificate-errors-spki-list={spki_pin(browser_host_settings.BROWSER_HOST_TEST_CA_FILE)}"
+        )
     if user_agent is not None:
         args.append(f"--user-agent={user_agent}")
     if not browser_host_settings.BROWSER_HOST_HEADED:
@@ -206,19 +219,19 @@ class Engine:
         """Resident memory of the engine's process tree, or None when it cannot be read."""
         return process_tree_rss_mb(self.proc.pid)
 
-    async def wait_failed(self) -> EngineFailure:
+    async def wait_failed(self) -> EngineExit:
         """Return once the engine has stopped serving, saying how."""
         watches = {
-            asyncio.ensure_future(self.proc.wait()): "process exited",
-            asyncio.ensure_future(self.root_mux.wait_closed()): "root connection closed",
-            asyncio.ensure_future(self._stops_answering()): "stopped answering",
+            asyncio.ensure_future(self.proc.wait()): EngineExit.PROCESS_EXITED,
+            asyncio.ensure_future(self.root_mux.wait_closed()): EngineExit.CONNECTION_CLOSED,
+            asyncio.ensure_future(self._stops_answering()): EngineExit.STOPPED_ANSWERING,
         }
         try:
             done, _ = await asyncio.wait(list(watches), return_when=asyncio.FIRST_COMPLETED)
         finally:
             for watch in watches:
                 watch.cancel()
-        return EngineFailure(watches[next(iter(done))])
+        return watches[next(iter(done))]
 
     async def _stops_answering(self) -> None:
         strikes = 0

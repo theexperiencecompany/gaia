@@ -1,17 +1,17 @@
-"""Short-lived signed tokens that let a bot user open a browser live view.
+"""Short-lived signed tokens that let the web card open a browser live view.
 
 A takeover token authorizes one user to watch (and, during a handoff, drive) one
-browser session over the live-view WebSocket without a web login; it is embedded
-in the link a bot delivers to that user's own channel. Same JWT shape as
+browser session over the live-view WebSocket without the session cookie; the
+web card mints one and carries it on its socket and full-page link. Same JWT shape as
 bot_token_service (jose HS256, dedicated secret, role claim, 15-min exp); the
 secret never overlaps with the bot-session secret so a leak is contained.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import time
-from typing import TypedDict
 
 from jose import JWTError, jwt
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -20,11 +20,13 @@ from app.config.settings import settings
 from app.constants.auth import JWT_ALGORITHM
 
 _TAKEOVER_ROLE = "browser_takeover"
-_TAKEOVER_TOKEN_EXPIRY_MINUTES = 15
+#: How long a token lives: the web card re-mints one before it lapses.
+TAKEOVER_TOKEN_TTL_SECONDS = 15 * 60
 _MIN_SECRET_LENGTH = 32
 
 
-class TakeoverTokenClaims(TypedDict):
+@dataclass(frozen=True, slots=True)
+class TakeoverTokenClaims:
     """The verified claims of a takeover token — always signature-checked."""
 
     session_id: str
@@ -35,14 +37,14 @@ class TakeoverTokenClaims(TypedDict):
 
 
 def create_takeover_token(session_id: str, user_id: str) -> str:
-    """Mint a 15-minute token binding user_id to one browser session_id."""
+    """Mint a token binding user_id to one browser session_id for TAKEOVER_TOKEN_TTL_SECONDS."""
     secret = _get_takeover_secret()
     now = datetime.now(UTC)
     payload = {
         "sub": user_id,
         "session_id": session_id,
         "role": _TAKEOVER_ROLE,
-        "exp": now + timedelta(minutes=_TAKEOVER_TOKEN_EXPIRY_MINUTES),
+        "exp": now + timedelta(seconds=TAKEOVER_TOKEN_TTL_SECONDS),
         "iat": now,
     }
     token: str = jwt.encode(payload, secret, algorithm=JWT_ALGORITHM)
@@ -89,7 +91,7 @@ def verify_takeover_token(token: str) -> TakeoverTokenClaims:
     if claims.session_id is None or claims.sub is None or claims.exp is None:
         raise JWTError(_MISSING_CLAIMS_MESSAGE)
 
-    return {"session_id": claims.session_id, "user_id": claims.sub, "exp": claims.exp}
+    return TakeoverTokenClaims(session_id=claims.session_id, user_id=claims.sub, exp=claims.exp)
 
 
 def takeover_token_ttl_seconds(claims: TakeoverTokenClaims) -> float:
@@ -98,7 +100,7 @@ def takeover_token_ttl_seconds(claims: TakeoverTokenClaims) -> float:
     Bounds the live-view WebSocket to the token's lifetime. claims must come
     from verify_takeover_token; no unverified claim is ever trusted here.
     """
-    return claims["exp"] - time.time()
+    return claims.exp - time.time()
 
 
 def _get_takeover_secret() -> str:

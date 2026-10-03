@@ -36,6 +36,3 @@ def isolate_run_events() -> None:
 def apply() -> None:
     """Route bubus's lock lookup through the run's context."""
     bubus_service._get_global_lock = _get_run_lock
-
-
-apply()

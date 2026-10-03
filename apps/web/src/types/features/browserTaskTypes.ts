@@ -26,7 +26,6 @@ export interface BrowserSessionSnapshot {
   task: string;
   status: BrowserSessionStatus;
   session_id?: string | null;
-  live_view_url?: string | null;
   detail?: string | null;
 }
 
@@ -57,7 +56,6 @@ export interface BrowserHandoffSnapshot {
   category?: BrowserSensitiveCategory;
   reason: string;
   session_id?: string | null;
-  live_view_url?: string | null;
   status: BrowserHandoffStatus;
   /** A sign-in finished here is kept for the next task (false when persistence is off). */
   saves_login?: boolean;

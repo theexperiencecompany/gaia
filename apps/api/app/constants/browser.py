@@ -143,7 +143,7 @@ class BrowserLoginSource(StrEnum):
     IMPORT = "import"
 
 
-# Defined here rather than beside JevOperation because BROWSER_TAKEOVER_PREAMBLE
+# Defined here rather than beside JevOperation because BROWSER_HUMAN_CHECKS
 # below interpolates it at import time.
 class BrowserHandoffAction(StrEnum):
     """The actions GAIA registers with Browser-Use to hand a step to the human."""
@@ -212,31 +212,6 @@ BROWSER_HANDOFF_NOT_OWNED_DETAIL = "Not authorized to resolve this handoff"
 BROWSER_HANDOFF_GONE_DETAIL = "Handoff not found or expired"
 BROWSER_LIVE_VIEW_NOT_WAITING_DETAIL = "This live view is no longer waiting"
 
-# Read with a chat message that answered a paused browser task, so the turn's
-# reply knows what the message already did to it.
-BROWSER_HANDOFF_REPLY_NOTE = (
-    "[This message answered the browser task that was paused for the user ({reason}). "
-    "It was read as {reading}.]"
-)
-BROWSER_HANDOFF_REPLY_READINGS: dict[str, str] = {
-    "continue": (
-        "the user finishing that step, so the task carries on. Acknowledge it in a few words "
-        "and say nothing of the task's result or next step: the result reaches the user in "
-        "its own message"
-    ),
-    "cancel": "the user stopping the task, so it was stopped",
-    "redirect": (
-        "a new instruction instead of that step, which the task now follows. Acknowledge it "
-        "in a few words and say nothing of the result: it reaches the user in its own message"
-    ),
-}
-
-#: What the turn reads with a message that stopped the running browser task: its
-#: reply is the one thing the user hears of the stop.
-BROWSER_RUN_STOPPED_BY_MESSAGE_NOTE = (
-    "[This message stopped the browser task that was running, so it was stopped.]"
-)
-
 # An expired handoff is a failed run, not the completed one a takeover made it look like.
 BROWSER_RUN_HANDOFF_TIMED_OUT = "Stopped: nobody finished the step in the live browser in time."
 # The run asked the user to take over more often than one task may.
@@ -276,8 +251,8 @@ BROWSER_RESULT_USER_SAID = (
     "request and the reply."
 )
 
-# The browser agent's reasoning effort on any lane: it steers and signs off, Jev does the stepping.
-BROWSER_AGENT_REASONING_EFFORT: Literal["low"] = "low"
+#: The efforts the browser agent's model can be run at (BROWSER_AGENT_REASONING_EFFORT).
+BrowserAgentEffort = Literal["none", "minimal", "low", "medium", "high"]
 BROWSER_AGENT_OPENROUTER_KEY_MISSING = "OPENROUTER_API_KEY is not set; the browser agent needs it."
 # When a browser model call gets an identical second request (first answer wins). Agent
 # calls measured p50 3.2 s, p90 4.5 s, with stalls past the 180 s timeout (2026-09-25).
@@ -310,48 +285,47 @@ BROWSER_LOAD_UNFINISHED_NOTE = (
 # The longest one model call may take; Browser-Use's 75 s default cut off decisions on slow pages.
 BROWSER_AGENT_LLM_TIMEOUT_SECONDS = 180
 
-# Appended to every browser task so the agent uses the takeover action instead
-# of doing sensitive steps itself.
-BROWSER_TAKEOVER_PREAMBLE = (
-    "\n\nIMPORTANT: For a payment, a login whose credentials this task does not give as "
-    "<secret>name</secret> placeholders, an OTP/2FA code, or an irreversible or "
-    "legally-binding confirmation the task did not ask for, do NOT do it yourself. Call the "
-    f"`{BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER}` action so the user completes that step in the "
-    "live browser, then continue toward the goal. A login whose credentials the task gives "
-    "is done by the run itself, never handed over.\n"
-    "If you encounter a CAPTCHA, reCAPTCHA, hCaptcha, or an 'I'm not a robot' / "
-    "image-grid challenge, do NOT attempt to solve it yourself. When the task cannot be "
-    f"done without passing it, call the `{BrowserHandoffAction.SOLVE_CAPTCHA_WITH_HELP}` action "
-    "on the FIRST challenge so the user solves it in the live browser, then continue. When "
-    "the blocked page is only one of several sources the task can use, skip it, carry on "
-    "with the others, and say which page could not be opened. Never keep clicking "
-    "challenge tiles.\n"
-    # The human's part of a login should be only the secret part.
-    "Before you hand off a login, first fill every NON-secret field you can "
-    "yourself: username, email, the account identifier, so the takeover leaves "
-    "the user only the secret step (password, OTP, 2FA). Then hand off.\n"
+# The one statement of what goes to the user, in the agent's system message beside its role.
+BROWSER_HUMAN_CHECKS = (
+    "\nSteps that are the user's, never yours:\n"
+    "- A payment, a login whose credentials this task does not give as <secret>name</secret> "
+    "placeholders, an OTP/2FA code, or an irreversible or legally-binding confirmation the "
+    f"task did not ask for: call `{BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER}` so the user "
+    "does that step in the live browser, then continue toward the goal. A login whose "
+    "credentials the task gives is done by the run itself, never handed over. Before you hand "
+    "off a login, fill every non-secret field yourself (username, email, the account "
+    "identifier), so the user is left only the secret step.\n"
+    "- A CAPTCHA, reCAPTCHA, hCaptcha, an 'I'm not a robot' or image-grid challenge, or any "
+    f"other bot check: call `{BrowserHandoffAction.SOLVE_CAPTCHA_WITH_HELP}` on the first one "
+    "and do what its result says. Never try to solve one yourself or click challenge tiles.\n"
     # Measured on a real investor-application form: given only a name and email,
-    # the agent invented a phone number and country and reported the form as
-    # correctly filled, fabricated data submitted under the user's name.
-    "NEVER invent a value for a field the task did not give you. No made-up phone "
-    "numbers, addresses, dates, amounts, countries or company details, and no "
-    "plausible-looking placeholder. If a field you cannot leave empty has no value "
-    f"in the task, call `{BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER}` and say which field is missing. "
-    "The one exception is when the task itself says the run is a test or that dummy "
-    "values are fine.\n"
-    # The agent reported only "Received!" for a page whose heading is "Form submitted"
-    # in about a third of runs while this sat in the system prompt.
-    "When you report what a page shows, says or displays, quote all of its visible text that "
-    "answers that, the page's heading included: a result page's title and its message."
+    # the agent invented a phone number and country and reported the form as filled.
+    "- A field you cannot leave empty that the task gives no value for: NEVER invent one (no "
+    "made-up phone numbers, addresses, dates, amounts, countries or company details, and no "
+    f"plausible-looking placeholder). Call `{BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER}` "
+    "and say which field is missing, unless the task itself says the run is a test or that "
+    "dummy values are fine."
+)
+# Read with the task, not the system message: there the agent reported only "Received!" for a
+# page whose heading is "Form submitted" in about a third of runs.
+BROWSER_TASK_QUOTE_RULE = (
+    "\n\nWhen you report what a page shows, says or displays, quote all of its visible text "
+    "that answers that, the page's heading included: a result page's title and its message."
+)
+#: What the agent reads when a bot check blocks a site the user never named: skip it, no pause.
+BROWSER_CAPTCHA_SKIP_SOURCE = (
+    "{host} shows a bot check, and it is not a site the task names, so it is not put to the "
+    "user. Skip this source, carry on with the others, and say in your answer that {host} "
+    "could not be opened."
 )
 
 # The agent's role around Jev, appended to Browser-Use's system prompt.
 # "Report only what the current page shows" made an agent back on a re-ordered
 # Hacker News drop its three opened stories as stale and quit (research3, 2026-10-02).
 BROWSER_AGENT_ROLE = (
-    "You supervise Jev, a fast page operator exposed as the `jev` action. When the task "
-    "started on a page, your step 0 already ran Jev on the whole task there; its report "
-    "(actions, where it stopped and why, and the text of the page it ended on) is in your "
+    "You supervise Jev, the fast page operator exposed as the `jev` action: its description "
+    "says what it does and what it leaves to you. When the task started on a page, your step "
+    "0 already ran Jev there on the part of the task that page is for; its report is in your "
     "history. On a blank tab, your first step opens the page to start on. You are the only "
     "one who finishes the task and the only one who writes the answer.\n"
     "Each step, choose one:\n"
@@ -365,20 +339,25 @@ BROWSER_AGENT_ROLE = (
     "done, however honestly you explain why: the button or page it names does not exist (no "
     '"Buy now" button, so no order number), the site is unreachable (its address does not '
     "resolve), or the action was refused. This replaces any rule for success above.\n"
-    "2. A sequence of interactions remains (filling a form, searching and choosing, clicking "
-    "through several pages): call `jev` with a sharper, self-contained goal for what "
-    "remains, quoting every value to type. Never repeat a goal Jev made no progress on.\n"
-    "3. A single step remains, or something Jev cannot do: do it yourself. Navigate to a URL "
-    "you already know, click once, switch tabs, read or summarise a page with `extract` (to "
+    "2. Interactions remain on the page you are on (filling a form, searching and choosing): "
+    "call `jev` with a goal for that page and the done_when that page will show.\n"
+    "3. Anything else: do it yourself. Navigate to a URL you already know or go back, click "
+    "once, switch tabs, read or summarise a page with `extract` (to "
     "read a linked page, navigate to its exact URL from Jev's report or a `find_elements` href, "
     "then extract; never guess a URL), "
     "search a long page with `search_page`, count with `find_elements` (a CSS selector "
     "returns every match), never count by eye.\n"
     "Work through every part of the task before you finish: a part is reported as not done "
     "only after you tried it and it could not be done.\n"
-    "Logins without given credentials, payments, OTPs and CAPTCHAs go to the user through "
-    "the handoff actions. Messages the user sends mid-task arrive as follow-up requests: "
+    "Messages the user sends mid-task arrive as follow-up requests: "
     "weigh what each says against the task; it changes the task only where it says so."
+)
+
+#: Step 0's single-page objective, written without a model call: the part of the task its page is for.
+JEV_FIRST_BURST_GOAL = "Do the part of this task that the page it starts on is for:\n{task}"
+JEV_FIRST_BURST_DONE_WHEN = (
+    "This page shows that part done: what the task asks to type, choose or submit here is "
+    "done, or what it asks to find is shown here."
 )
 
 #: Told to an agent on the fast engine, which otherwise cannot know which browser it is in.
@@ -403,6 +382,10 @@ BROWSER_RUN_SESSION_LOST_SUMMARY = (
 )
 BROWSER_RUN_DONE_SUMMARY = "Completed the browser task."
 BROWSER_RUN_NOT_DONE_SUMMARY = "Could not complete the browser task."
+#: Added to the summary of a run that ended before the agent answered: what it had gathered.
+BROWSER_RUN_FOUND_NOTE = "\n\nWhat it had found before it stopped:\n{found}"
+#: The most of each read, and of its last note, a stopped run's summary carries.
+BROWSER_RUN_FOUND_MAX_CHARS = 1500
 #: Logged when the agent could not attach to a session the host created: nearly always the CDP proxy.
 BROWSER_CDP_ATTACH_HINT = (
     "Check that the browser host is reachable from the API at BROWSER_HOST_URL."
@@ -419,8 +402,6 @@ BROWSER_NO_CHROME_HOST = "No Chrome browser host is configured (BROWSER_FALLBACK
 # downscaled stream, a takeover coordinate mismatch and bigger vision payloads.
 BROWSER_VIEWPORT_WIDTH = 1280
 BROWSER_VIEWPORT_HEIGHT = 800
-#: CSS pixels per screen pixel: shots and click points share one coordinate space.
-BROWSER_DEVICE_SCALE_FACTOR = 1
 
 
 # --- Jev decision policy ---
@@ -434,8 +415,6 @@ class JevOperation(StrEnum):
     SCROLL_DOWN = "SCROLL_DOWN"
     SCROLL_UP = "SCROLL_UP"
     WAIT = "WAIT"
-    NAVIGATE = "NAVIGATE"
-    GO_BACK = "GO_BACK"
     DONE = "DONE"
     BLOCKED = "BLOCKED"
 
@@ -447,12 +426,9 @@ class JevStop(StrEnum):
     BLOCKED = "blocked"
     NEEDS_INPUT = "needs_input"
     SECRET_WITHHELD = "secret_withheld"  # nosec B105 -- a stop reason, not a credential
-    NO_PROGRESS = "no_progress"
-    CYCLE = "cycle"
-    MAX_ACTIONS = "max_actions"
-    MAX_DECISIONS = "max_decisions"
+    #: Out of budget or making no progress (unchanged, cycling, a page that never settles): the detail says which.
+    UNFINISHED = "unfinished"
     COVERED = "covered"
-    STALE = "stale"
     UNRESPONSIVE = "unresponsive"
     LOADING = "loading"
     NO_PAGE = "no_page"
@@ -473,15 +449,9 @@ class JevStop(StrEnum):
 JEV_MAX_ELEMENTS = 120
 JEV_GATEWAY_TIMEOUT_SECONDS = 8.0
 JEV_GATEWAY_MAX_ATTEMPTS = 3
-#: How much of the final page's visible text a burst report hands the agent, and of each
-#: other page the burst opened (the most recent ones, up to the count).
+#: How much of the final page's visible text a burst report hands the agent.
 JEV_REPORT_PAGE_TEXT_CHARS = 2000
-JEV_REPORT_OPENED_PAGE_CHARS = 1500
-JEV_REPORT_OPENED_PAGES = 6
-#: How much of each page a burst read Jev sees again when it decides: enough to know what it holds.
-JEV_TRAIL_TEXT_CHARS = 300
 JEV_RECENT_ACTIONS = 10
-JEV_VISITED_PAGES = 12
 #: One burst's bounds, from jev-ultrafast: actions, unchanged non-wait actions in a
 #: row, and consecutive stale or covered targets before the agent takes over.
 JEV_BURST_MAX_ACTIONS = 25
@@ -638,6 +608,14 @@ class BrowserStopOutcome(StrEnum):
     ALREADY_ENDED = "already_ended"
 
 
+# What a stop of a chat's browser task came to, as the model that asked for it reads it.
+BROWSER_STOP_REPORTS: dict[BrowserStopOutcome, str] = {
+    BrowserStopOutcome.STOPPED: "Stopped the browser task.",
+    BrowserStopOutcome.ALREADY_ENDED: (
+        "The browser task had already finished before the stop reached it; its result stands."
+    ),
+}
+
 # The executor inbox entries that tell a job's ending (job_teller); never shown to the user.
 BROWSER_JOB_RESULT_ENTRY = "The browser task you started (job {job_id}) has ended.\n\n{outcome}"
 BROWSER_JOB_STOPPED_NOTICE = (
@@ -701,6 +679,14 @@ class HostAdmissionRefusal(StrEnum):
 
     SESSION_CEILING = "session_ceiling"
     MEMORY = "memory"
+
+
+class EngineExit(StrEnum):
+    """How an engine stopped serving: the reason every session on it died."""
+
+    PROCESS_EXITED = "process_exited"
+    CONNECTION_CLOSED = "connection_closed"
+    STOPPED_ANSWERING = "stopped_answering"
 
 
 class HostSessionEnd(StrEnum):

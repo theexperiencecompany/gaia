@@ -148,8 +148,8 @@ def test_the_browser_text_model_runs_on_the_endpoint() -> None:
     assert text_model.reasoning_effort == "low"
 
 
-async def test_the_browser_agent_runs_on_the_endpoint_at_low_effort() -> None:
-    agent_model = (await build_agent_llm(None, RunLedger()))._inner
+def test_the_browser_agent_runs_on_the_endpoint_at_low_effort() -> None:
+    agent_model = build_agent_llm(RunLedger())._inner
 
     assert isinstance(agent_model, BrowserUseChatOpenAI)
     assert (agent_model.model, str(agent_model.base_url)) == (_MODEL, _BASE_URL)

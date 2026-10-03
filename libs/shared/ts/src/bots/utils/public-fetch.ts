@@ -23,8 +23,12 @@
 
 import { lookup } from "node:dns/promises";
 import { BlockList, isIP } from "node:net";
+import { readResponseBytesCapped } from "./fetch-bytes";
 
 const MAX_REDIRECTS = 5; // parity with app/constants/search.py MAX_HTTPX_REDIRECTS
+
+/** Deadline for each phase of a hop: the response headers, then the body. */
+export const PUBLIC_FETCH_TIMEOUT_MS = 60_000;
 
 const NON_PUBLIC_IPV4 = new BlockList();
 
@@ -195,29 +199,24 @@ export async function assertIsPublicHttpsUrl(url: string): Promise<void> {
 /**
  * Fetch an https asset with the SSRF guard applied on every redirect hop.
  *
- * Returns the body buffer plus the response's content-type, preserving the
- * contract `downloadUrlRequest` had before the guard — so callers that only
- * needed bytes keep working unchanged.
+ * The body is streamed against `maxBytes` and the hop's deadline, so an
+ * oversized or trickling body is refused rather than buffered in full.
+ * Returns the bytes plus the response's content-type.
  */
 export async function fetchPublicAsset(
   url: string,
-  limits: { maxContentLength: number; maxBodyLength: number },
+  maxBytes: number,
   fetcher: typeof fetch = fetch,
   maxRedirects: number = MAX_REDIRECTS,
 ): Promise<{ data: Buffer; contentType: string }> {
   let current = url;
   for (let hop = 0; hop <= maxRedirects; hop += 1) {
-    const parsed = assertPublicHttpsUrl(current);
-    const lookedUp = await lookup(parsed.hostname, {
-      all: true,
-      verbatim: true,
-    });
-    assertPublicResolvedAddresses(lookedUp);
+    await assertIsPublicHttpsUrl(current);
 
     // AbortSignal.timeout is DOM-only in some consumers' TS lib — use an
     // AbortController + setTimeout so bots type-check on every target lib.
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 60_000);
+    const timer = setTimeout(() => controller.abort(), PUBLIC_FETCH_TIMEOUT_MS);
     let response: Response;
     try {
       response = await fetcher(current, {
@@ -227,38 +226,34 @@ export async function fetchPublicAsset(
     } finally {
       clearTimeout(timer);
     }
-    const contentType =
-      response.headers.get("content-type") ?? "application/octet-stream";
 
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location");
       if (!location) {
         throw new PublicFetchError(`redirect without Location at hop ${hop}`);
       }
-      const next = new URL(location, current).toString();
-      // The next hop gets the full resolve-time check at the top of this loop;
-      // catching a redirect to a banned host here only shortens the error path.
-      const nextParsed = assertPublicHttpsUrl(next);
-      const nextAddr = await lookup(nextParsed.hostname, {
-        all: true,
-        verbatim: true,
-      });
-      assertPublicResolvedAddresses(nextAddr);
-      current = next;
+      // Release the connection; the next hop is guarded at the top of the loop.
+      await response.body?.cancel();
+      current = new URL(location, current).toString();
       continue;
     }
 
-    if (!response.ok) {
-      throw new PublicFetchError(
-        `server responded with status ${response.status}`,
-      );
-    }
-
-    const body = Buffer.from(await response.arrayBuffer());
-    if (body.byteLength > limits.maxContentLength) {
+    // The body gets its own deadline; one byte past the cap is read so a body
+    // sitting exactly on it passes.
+    const bytes = await readResponseBytesCapped(
+      response,
+      maxBytes + 1,
+      "asset",
+      PUBLIC_FETCH_TIMEOUT_MS,
+    );
+    if (bytes.byteLength > maxBytes) {
       throw new PublicFetchError("body exceeds the configured content cap");
     }
-    return { data: body, contentType };
+    return {
+      data: Buffer.from(bytes),
+      contentType:
+        response.headers.get("content-type") ?? "application/octet-stream",
+    };
   }
   throw new PublicFetchError(`too many redirects (≥ ${maxRedirects + 1})`);
 }

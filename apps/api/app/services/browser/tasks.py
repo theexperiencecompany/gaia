@@ -10,7 +10,6 @@ happened; do not recompute what might not exist.
 
 from dataclasses import dataclass
 
-from app.config.settings import settings
 from app.db.repositories.browser_tasks import browser_task_repository
 from app.models.browser_task_models import BrowserTaskDocument
 from app.schemas.browser import BrowserResultSnapshot, BrowserTaskFrame, BrowserTaskResponse
@@ -71,26 +70,12 @@ def _frames(doc: BrowserTaskDocument) -> list[BrowserTaskFrame]:
     """Recap frames (screenshot URL + step caption), in step order.
 
     Uses the screenshots the run actually uploaded. A step whose upload failed
-    has no frame rather than a URL that 404s. Tasks recorded before those URLs
-    were stored fall back to deriving them from the session id.
+    has no frame rather than a URL that 404s.
     """
-    if doc.step_screenshots:
-        return [
-            BrowserTaskFrame(url=url, caption=_caption(doc.step_goals, i))
-            for i, url in enumerate(doc.step_screenshots)
-            if url
-        ]
-
-    base = settings.R2_PUBLIC_BASE_URL
-    if not base or doc.steps < 1:
-        return []
-    root = base.rstrip("/")
     return [
-        BrowserTaskFrame(
-            url=f"{root}/browser_steps/{doc.session_id}/step_{i}.png",
-            caption=_caption(doc.step_goals, i - 1),
-        )
-        for i in range(1, doc.steps + 1)
+        BrowserTaskFrame(url=url, caption=_caption(doc.step_goals, i))
+        for i, url in enumerate(doc.step_screenshots)
+        if url
     ]
 
 

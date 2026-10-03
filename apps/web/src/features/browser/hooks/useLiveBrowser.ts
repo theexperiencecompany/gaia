@@ -7,6 +7,8 @@ import { useLiveInput } from "./useLiveInput";
 
 export type LiveStatus = "connecting" | "live" | "closed";
 
+export type LiveBrowser = ReturnType<typeof useLiveBrowser>;
+
 const RECONNECT_ATTEMPTS = 3;
 const RECONNECT_DELAY_MS = 1500;
 
@@ -22,7 +24,9 @@ export function useLiveBrowser(
   onDropped?: () => void,
 ) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const keyboardRef = useRef<HTMLInputElement | null>(null);
+  // State, not a ref: the keyboard input mounts later than the canvas, and
+  // useLiveInput binds to it when it does.
+  const [keyboard, keyboardRef] = useState<HTMLInputElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   // Page CSS size — the coordinate space CDP input expects. The frame bitmap can
   // be a downscaled rendering of it, so pointer math must use THIS, never the
@@ -56,15 +60,16 @@ export function useLiveBrowser(
   useEffect(() => {
     const url = dial.url;
     if (!url) return undefined;
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return undefined;
 
+    // The canvas is looked up per frame: a surface may move it (inline to a
+    // full-screen modal) while the socket stays up.
     const img = new window.Image();
     img.onload = () => {
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d");
       const w = img.naturalWidth;
       const h = img.naturalHeight;
-      if (!w || !h) return;
+      if (!canvas || !ctx || !w || !h) return;
       if (canvas.width !== w || canvas.height !== h) {
         canvas.width = w;
         canvas.height = h;
@@ -137,7 +142,7 @@ export function useLiveBrowser(
 
   const { openKeyboard } = useLiveInput({
     canvasRef,
-    keyboardRef,
+    keyboard,
     cssSizeRef,
     send,
     enabled: interactive && !!socketUrl,
