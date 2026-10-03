@@ -12,7 +12,6 @@ Add/change config
 """
 
 import asyncio
-import time
 from typing import cast
 
 from langgraph.checkpoint.postgres.aio import (
@@ -25,9 +24,9 @@ from psycopg_pool import AsyncConnectionPool
 
 from app.config.settings import settings
 from app.constants.db import (
+    LANGGRAPH_SETUP_LOCK_ATTEMPTS,
     LANGGRAPH_SETUP_LOCK_ID,
     LANGGRAPH_SETUP_LOCK_POLL_SECONDS,
-    LANGGRAPH_SETUP_LOCK_WAIT_SECONDS,
 )
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 
@@ -102,18 +101,16 @@ class CheckpointerManager:
 
 async def _take_setup_lock(conn: AsyncConnection[TupleRow]) -> None:
     """Take the setup lock without waiting inside a statement, which the holder's concurrent index build would wait on."""
-    deadline = time.monotonic() + LANGGRAPH_SETUP_LOCK_WAIT_SECONDS
-    while True:
+    for _ in range(LANGGRAPH_SETUP_LOCK_ATTEMPTS):
         cursor = await conn.execute("SELECT pg_try_advisory_lock(%s)", (LANGGRAPH_SETUP_LOCK_ID,))
         row = await cursor.fetchone()
         if row is not None and row[0]:
             return
-        if time.monotonic() > deadline:
-            raise RuntimeError(
-                f"LangGraph setup lock {LANGGRAPH_SETUP_LOCK_ID} still held after "
-                f"{LANGGRAPH_SETUP_LOCK_WAIT_SECONDS:.0f}s by another starter"
-            )
         await asyncio.sleep(LANGGRAPH_SETUP_LOCK_POLL_SECONDS)
+    raise RuntimeError(
+        f"LangGraph setup lock {LANGGRAPH_SETUP_LOCK_ID} still held by another starter "
+        f"after {LANGGRAPH_SETUP_LOCK_ATTEMPTS} attempts"
+    )
 
 
 @lazy_provider(

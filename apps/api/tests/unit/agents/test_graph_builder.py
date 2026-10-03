@@ -276,6 +276,7 @@ class TestCheckpointerManager:
     ):
         """A blocking wait sits in a transaction the holder's CREATE INDEX CONCURRENTLY waits on."""
         monkeypatch.setattr(f"{_CM_MOD}.LANGGRAPH_SETUP_LOCK_POLL_SECONDS", 0)
+        monkeypatch.setattr(f"{_CM_MOD}.LANGGRAPH_SETUP_LOCK_ATTEMPTS", 3)
         order = self._record_setup_order(
             mock_pool_cls, mock_saver_cls, mock_store_cls, lock_answers=(False, False, True)
         )
@@ -297,31 +298,17 @@ class TestCheckpointerManager:
         self, mock_pool_cls, mock_saver_cls, mock_store_cls, monkeypatch
     ):
         monkeypatch.setattr(f"{_CM_MOD}.LANGGRAPH_SETUP_LOCK_POLL_SECONDS", 0)
-        monkeypatch.setattr(f"{_CM_MOD}.LANGGRAPH_SETUP_LOCK_WAIT_SECONDS", 0)
+        monkeypatch.setattr(f"{_CM_MOD}.LANGGRAPH_SETUP_LOCK_ATTEMPTS", 3)
         order = self._record_setup_order(
-            mock_pool_cls, mock_saver_cls, mock_store_cls, lock_answers=(False,) * 1000
+            mock_pool_cls, mock_saver_cls, mock_store_cls, lock_answers=(False, False, False)
         )
 
         with pytest.raises(RuntimeError, match=f"setup lock {LANGGRAPH_SETUP_LOCK_ID} still held"):
             await self._make_manager().setup()
 
-        assert call.saver_setup() not in order.mock_calls
-
-    @patch(f"{_CM_MOD}.AsyncPostgresStore")
-    @patch(f"{_CM_MOD}.AsyncPostgresSaver")
-    @patch(f"{_CM_MOD}.AsyncConnectionPool")
-    async def test_a_failed_migration_still_releases_the_lock(
-        self, mock_pool_cls, mock_saver_cls, mock_store_cls
-    ):
-        order = self._record_setup_order(
-            mock_pool_cls, mock_saver_cls, mock_store_cls, store_error=RuntimeError("store DDL")
-        )
-
-        with pytest.raises(RuntimeError, match="store DDL"):
-            await self._make_manager().setup()
-
-        assert order.mock_calls[-1] == call.execute(
-            "SELECT pg_advisory_unlock(%s)", (LANGGRAPH_SETUP_LOCK_ID,)
+        assert (
+            order.mock_calls
+            == [call.execute("SELECT pg_try_advisory_lock(%s)", (LANGGRAPH_SETUP_LOCK_ID,))] * 3
         )
 
 

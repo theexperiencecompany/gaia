@@ -17,7 +17,8 @@ LANGGRAPH_SETUP_LOCK_ID = 743_001_994
 # setup() builds indexes CONCURRENTLY, which wait for every open transaction, a
 # blocked lock wait included, so a blocking waiter and the holder hang each other.
 LANGGRAPH_SETUP_LOCK_POLL_SECONDS = 0.5
-LANGGRAPH_SETUP_LOCK_WAIT_SECONDS = 120.0
+# Two minutes of asking, then setup fails loud: far beyond one starter's DDL.
+LANGGRAPH_SETUP_LOCK_ATTEMPTS = 240
 
 # A transient Mongo failure is retried long enough to outlast a replica-set
 # election (~12s): 1+2+4+8s of backoff across five attempts.
