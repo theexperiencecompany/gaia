@@ -26,6 +26,9 @@ from app.constants.executor import EXECUTOR_PAUSED
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents
 
+# A run says it lives in Redis while it runs: give it a per-test Redis, never the ambient one.
+pytestmark = pytest.mark.usefixtures("fake_redis")
+
 
 def _count(name: str, labels: dict[str, str]) -> float:
     return REGISTRY.get_sample_value(f"{name}_count", labels) or 0.0

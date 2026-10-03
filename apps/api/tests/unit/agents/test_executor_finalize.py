@@ -496,6 +496,7 @@ class TestLockThenInboxHandoff:
         spawn.assert_not_awaited()
 
 
+@pytest.mark.usefixtures("fake_redis")
 class TestThePausedRunKeepsItsLock:
     """A run parked on a HIL approval is NOT over: its thread is checkpointed with pending work, so no other run may take it.
 
