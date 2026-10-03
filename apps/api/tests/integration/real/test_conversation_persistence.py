@@ -18,8 +18,6 @@ from tests.factories import make_authenticated_user
 
 
 @pytest.mark.service
-# A saved bot message takes the cards that waited for it from Redis: the real one, on this loop.
-@pytest.mark.usefixtures("real_redis")
 class TestUpdateMessagesReal:
     """Call the real update_messages() against real MongoDB."""
 

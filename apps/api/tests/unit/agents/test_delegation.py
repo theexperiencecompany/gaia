@@ -46,7 +46,6 @@ from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, RunningSubagent, SubagentKind
 from app.models.chat_models import MessageModel, ToolDataEntry
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
-from app.services.folded_cards import fold_waiting_cards
 from app.utils import background_tasks
 from app.utils.agent_utils import IntegrationMetadata
 from shared.py.wide_events import log
@@ -1069,19 +1068,18 @@ class TestSavingABackgroundRunsFrames:
     async def test_frames_for_a_message_not_saved_yet_wait_for_its_save(
         self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder
     ) -> None:
-        """A fast run can end before its turn saved the message: its cards land when it is."""
+        """A fast run can end before its turn saved the message: its cards wait on the conversation."""
         conversations = client_edges.conversations
         conversations.get_message.return_value = None
+        conversations.park_folded_cards = AsyncMock(return_value=True)
 
         await self._run([GROUP, SEARCH])
 
         conversations.append_message_tool_data.assert_not_awaited()
-        assert "errors" not in recorder.event("subagent_run")
-        conversations.get_message.return_value = MessageModel(type="bot", response="")
-        await fold_waiting_cards(CONVERSATION, "u1", "bot-msg-1")
-        conversations.append_message_tool_data.assert_awaited_once_with(
+        conversations.park_folded_cards.assert_awaited_once_with(
             CONVERSATION, user_id="u1", message_id="bot-msg-1", entries=[GROUP, SEARCH]
         )
+        assert "errors" not in recorder.event("subagent_run")
 
     async def test_an_append_that_matched_nothing_is_recorded(
         self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder

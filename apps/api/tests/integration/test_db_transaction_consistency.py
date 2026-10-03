@@ -386,8 +386,6 @@ class TestConcurrentConversationUpdates:
 
 
 @pytest.mark.integration
-# A saved bot message takes the cards that waited for it from Redis: a per-test one.
-@pytest.mark.usefixtures("fake_redis")
 class TestMessageOrdering:
     """Verify the service forwards messages to the repository in order and surfaces its ids.
 

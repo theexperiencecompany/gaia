@@ -29,7 +29,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.db.repositories.base import UserScopedDocument
 from app.models.artifact_models import ArtifactRegistryEntry
-from app.models.chat_models import ConversationSource, MessageModel, SystemPurpose
+from app.models.chat_models import (
+    ConversationSource,
+    MessageModel,
+    SystemPurpose,
+    ToolDataEntry,
+)
 from app.schemas.common import ResponseModel
 from app.utils.tool_data_utils import convert_legacy_tool_data
 
@@ -46,6 +51,15 @@ def _coerce_source(value: object) -> object:
     if isinstance(value, (ConversationSource, str)):
         return ConversationSource.coerce(value)
     return value
+
+
+class FoldedCards(BaseModel):
+    """Cards a detached run closed before the message they fold into was saved; its save takes them."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    since: datetime
+    cards: list[ToolDataEntry] = Field(default_factory=list)
 
 
 class ConversationDocument(UserScopedDocument):
@@ -73,6 +87,8 @@ class ConversationDocument(UserScopedDocument):
     # Conversation-level artifact registry: one entry per agent-written file,
     # deduped by path; services/chat/artifacts_registry.py owns every write.
     artifacts: list[ArtifactRegistryEntry] = Field(default_factory=list)
+    # Write-side state only (see FOLDED_CARDS_FIELD): never serialized to a reader.
+    folded_cards: dict[str, FoldedCards] = Field(default_factory=dict, exclude=True)
     createdAt: str | None = None
     updatedAt: datetime | None = None
 
