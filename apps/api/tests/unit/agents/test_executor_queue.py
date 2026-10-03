@@ -740,3 +740,54 @@ class TestBreakHolderLock:
 
         assert broken is False
         assert await redis.get(BUSY_KEY) == "s2:t2"
+
+
+class TestLivenessRenewal:
+    """A holder renews while it lives; one that cannot prove it lives stops acting."""
+
+    async def test_a_failed_renewal_does_not_end_the_holders_liveness(self, redis) -> None:
+        """One Redis blip once ended renewal for good, and the live run's lock later read as dead."""
+        writes: list[str] = []
+
+        async def _hold(conversation_id: str, lock_value: str, ttl_seconds: int = 0) -> None:
+            writes.append(lock_value)
+            if len(writes) == 2:
+                raise ConnectionError("redis blip")
+
+        with (
+            patch.object(eq, "EXECUTOR_ALIVE_BEAT_SECONDS", 0),
+            patch.object(eq, "hold_run_alive", _hold),
+        ):
+            alive = await keep_alive(CONVERSATION, "s1:t1")
+            for _ in range(50):
+                await asyncio.sleep(0)
+            renewing = not alive.done()
+            alive.cancel()
+            await asyncio.gather(alive, return_exceptions=True)
+
+        assert renewing
+        assert len(writes) > 3
+
+    async def test_a_holder_that_cannot_prove_it_lives_is_cancelled(self, redis) -> None:
+        """Past the point its liveness could lapse, another run may take over: this one must stop."""
+        writes: list[str] = []
+
+        async def _hold(conversation_id: str, lock_value: str, ttl_seconds: int = 0) -> None:
+            writes.append(lock_value)
+            if len(writes) > 1:
+                raise ConnectionError("redis down")
+
+        async def _holder() -> None:
+            await keep_alive(CONVERSATION, "s1:t1")
+            await asyncio.Event().wait()
+
+        with (
+            patch.object(eq, "EXECUTOR_ALIVE_BEAT_SECONDS", 0),
+            patch.object(eq, "EXECUTOR_ALIVE_GIVE_UP_SECONDS", 0),
+            patch.object(eq, "hold_run_alive", _hold),
+        ):
+            holder = asyncio.create_task(_holder())
+            for _ in range(50):
+                await asyncio.sleep(0)
+
+        assert holder.cancelled()

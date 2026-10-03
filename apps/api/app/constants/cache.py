@@ -202,6 +202,9 @@ EXECUTOR_ALIVE_PREFIX = "executor:alive:"
 EXECUTOR_ALIVE_TTL = 60
 EXECUTOR_ALIVE_BEAT_SECONDS = 20
 EXECUTOR_ALIVE_TASK_NAME = "executor_alive_beat"
+# A holder that has not proven it lives for this long could lapse before its next
+# renewal lands, so it stops rather than run beside whoever reclaims its lock.
+EXECUTOR_ALIVE_GIVE_UP_SECONDS = EXECUTOR_ALIVE_TTL - EXECUTOR_ALIVE_BEAT_SECONDS
 # A lock this young may be a run between taking it and its first beat: never reclaimed.
 EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS = 30
 # Pending messages for a conversation's executor (see executor_channel). Not a

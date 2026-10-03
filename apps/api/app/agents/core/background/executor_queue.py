@@ -14,6 +14,7 @@ Preparing is this module's job, spawning the runner's — the one-way dependency
 import asyncio
 from dataclasses import dataclass
 from enum import StrEnum
+import time
 from typing import Any, TypedDict, cast
 from uuid import uuid4
 
@@ -29,6 +30,7 @@ from app.agents.core.background.session import (
 )
 from app.constants.cache import (
     EXECUTOR_ALIVE_BEAT_SECONDS,
+    EXECUTOR_ALIVE_GIVE_UP_SECONDS,
     EXECUTOR_ALIVE_PREFIX,
     EXECUTOR_ALIVE_TASK_NAME,
     EXECUTOR_ALIVE_TTL,
@@ -238,18 +240,45 @@ async def keep_alive(conversation_id: str, lock_value: str) -> asyncio.Task[None
     """Hold lock_value's liveness now and renew it until the returned task is cancelled.
 
     The one liveness contract: whatever holds the busy lock keeps this running for
-    as long as it holds it, so a holder whose process died stops renewing.
+    as long as it holds it, so a holder whose process died stops renewing. The
+    calling task is the holder: if its liveness cannot be written in time, it is
+    cancelled before the key can lapse and another run take the conversation.
     """
+    holder = asyncio.current_task()
+    if holder is None:
+        raise RuntimeError("keep_alive is called from the task that holds the lock")
     await hold_run_alive(conversation_id, lock_value)
     return spawn_background_task(
-        _renew_alive(conversation_id, lock_value), name=EXECUTOR_ALIVE_TASK_NAME
+        _renew_alive(conversation_id, lock_value, holder), name=EXECUTOR_ALIVE_TASK_NAME
     )
 
 
-async def _renew_alive(conversation_id: str, lock_value: str) -> None:
+async def _renew_alive(conversation_id: str, lock_value: str, holder: asyncio.Task[object]) -> None:
+    proven_at = time.monotonic()
     while True:
         await asyncio.sleep(EXECUTOR_ALIVE_BEAT_SECONDS)
-        await hold_run_alive(conversation_id, lock_value)
+        try:
+            await hold_run_alive(conversation_id, lock_value)
+            proven_at = time.monotonic()
+        except Exception as e:  # one failed write must not end the renewal of a live holder
+            unproven = time.monotonic() - proven_at
+            log.error(
+                f"{LogTag.AGENT} Could not renew an executor lock holder's liveness",
+                conversation_id=conversation_id,
+                holder=lock_value,
+                unproven_seconds=round(unproven, 1),
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+            if unproven >= EXECUTOR_ALIVE_GIVE_UP_SECONDS:
+                log.error(
+                    f"{LogTag.AGENT} Lock holder stopped: its liveness could lapse before "
+                    "the next renewal, and another run take the conversation",
+                    conversation_id=conversation_id,
+                    holder=lock_value,
+                )
+                holder.cancel("executor liveness lost")
+                return
 
 
 async def reclaim_dead_lock(conversation_id: str) -> bool:
