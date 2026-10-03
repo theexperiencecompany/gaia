@@ -194,7 +194,7 @@ def _tail_matches(todo: TodoDocument, session_id: str, kind: str, raw: dict[str,
     if LAB_TAIL_MARKER not in content:
         return False
     want = _event_fingerprint(session_id, kind, raw)
-    return f"[lab:{kind}#{want}]" in content
+    return f"[lab:{kind.lower()}#{want}]" in content
 
 
 def _render_tail(session_id: str, kind: str, raw: dict[str, Any]) -> str:
@@ -202,7 +202,7 @@ def _render_tail(session_id: str, kind: str, raw: dict[str, Any]) -> str:
     stamp = datetime.now(UTC).isoformat()
     fingerprint = _event_fingerprint(session_id, kind, raw)
     tail = json.dumps(raw, default=str)[:LAB_LOG_TAIL_MAX_CHARS]
-    return f"## {stamp} [lab:{kind}#{fingerprint}] session {session_id}\n```json\n{tail}\n```"
+    return f"## {stamp} [lab:{kind.lower()}#{fingerprint}] session {session_id}\n```json\n{tail}\n```"
 
 
 async def _overwrite_lab_tail(todo: TodoDocument, user_id: str, tail: str) -> None:

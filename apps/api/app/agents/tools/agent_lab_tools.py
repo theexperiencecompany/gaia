@@ -49,6 +49,12 @@ LAB_RUN_DIR_PREFIX: str = "/workspace/.gaia/lab"
 #: Seed runs CLI installs, so allow time for a cold download.
 LAB_SEED_TIMEOUT_SECONDS: int = 300
 
+#: Probe budget for `opencode session list` — a local index read, never agent work.
+LAB_SESSION_PROBE_TIMEOUT_SECONDS: int = 30
+
+#: Bound for the resume turn so a wedged CLI cannot hang the relay forever.
+LAB_RESUME_TIMEOUT_SECONDS: int = 600
+
 LAB_DISABLED_MESSAGE: str = (
     "Agent lab is not enabled for this user. Tell the user agent lab is off "
     "and stop - do not retry, do not work around it."
@@ -72,7 +78,7 @@ def _routing_ref(run_id: str, cli_session_id: str) -> str:
     return f"{LAB_REF_PREFIX}{run_id}:{cli_session_id}"
 
 
-def _parse_routing_ref(entry: str) -> tuple[str, str] | None:
+def parse_lab_routing_ref(entry: str) -> tuple[str, str] | None:
     """Split a ``lab:<run_id>:<cli_session_id>`` entry; None for anything else."""
     if not entry.startswith(LAB_REF_PREFIX):
         return None
@@ -86,7 +92,7 @@ def _parse_routing_ref(entry: str) -> tuple[str, str] | None:
 def _latest_routing_ref(references: list[str]) -> tuple[str, str] | None:
     """The run's routing entry: the last ``lab:`` entry wins, earlier runs are history."""
     for entry in reversed(references):
-        parsed = _parse_routing_ref(entry)
+        parsed = parse_lab_routing_ref(entry)
         if parsed is not None:
             return parsed
     return None
@@ -197,6 +203,21 @@ async def lab_start(
     )
 
 
+def _lab_resume_command(cli: str, cli_session_id: str, text: str, run_dir: str) -> str:
+    """CLI-native resume from the run workdir.
+
+    Verbatim shapes from the drive skills, never invented flags: lab-claude-drive
+    re-enters with ``claude --resume <uuid> "<follow-up>"``,
+    lab-opencode-drive with ``opencode run -s <id> "<follow-up>"``.
+    """
+    quoted = sh_quote(text.strip())
+    if cli == "opencode":
+        resume = f"opencode run -s {sh_quote(cli_session_id)} {quoted}"
+    else:
+        resume = f"claude --resume {sh_quote(cli_session_id)} {quoted}"
+    return f"cd {sh_quote(run_dir)} && {resume}"
+
+
 @tool
 async def lab_message(
     config: RunnableConfig,
@@ -225,6 +246,49 @@ async def lab_message(
                 await sbx.files.write(inbox_path, text.strip() + "\n")
             except CommandExitException as e:
                 return f"Error: could not write the reply into the sandbox ({e})."
+            # lab_start mints one cli_session_id for EITHER cli and the model
+            # launches one of them by hand, so no record names the CLI. Probe
+            # opencode's session index: a hit names opencode, a miss means
+            # claude (foreground -p sessions have no listable index — the
+            # transcript subpath is UNVERIFIED per the drive skill, so there is
+            # nothing reliable to grep). A wrong default still fails loudly at
+            # resume (unknown session exits non-zero), never misdelivers.
+            try:
+                session_list = await sbx.commands.run(
+                    "opencode session list", timeout=LAB_SESSION_PROBE_TIMEOUT_SECONDS
+                )
+            except CommandExitException as e:
+                return (
+                    "Error: reply filed to the run inbox but the CLI could not be "
+                    "determined (`opencode session list` failed: "
+                    f"{(e.stderr or '').strip()[-1000:]}). The run has NOT seen "
+                    f"the reply — resume session {run.cli_session_id} by hand "
+                    f"from {run.run_dir}."
+                )
+            cli = (
+                "opencode"
+                if run.cli_session_id in (session_list.stdout or "")
+                else "claude"
+            )
+            try:
+                await sbx.commands.run(
+                    _lab_resume_command(cli, run.cli_session_id, text, run.run_dir),
+                    timeout=LAB_RESUME_TIMEOUT_SECONDS,
+                )
+            except CommandExitException as e:
+                detail = (e.stderr or "").strip()[-2000:]
+                await record_activity(
+                    run.todo_id,
+                    user_id,
+                    TodoActivityEvent.LAB_MESSAGE_RELAYED,
+                    f"reply filed to inbox but {cli} resume failed: {detail[:200]}",
+                )
+                return (
+                    f"Error: reply filed to the run inbox but {cli} resume failed "
+                    f"(exit {e.exit_code}): {detail}. The run has NOT seen the "
+                    f"reply — resume session {run.cli_session_id} by hand from "
+                    f"{run.run_dir}."
+                )
     except SandboxAcquisitionError as e:
         return f"Error: sandbox unavailable ({e})"
     except Exception as e:
@@ -235,11 +299,8 @@ async def lab_message(
         run.todo_id, user_id, TodoActivityEvent.LAB_MESSAGE_RELAYED, text.strip()[:200]
     )
     return (
-        f'Reply filed for the run on "{run.todo_title}". Now deliver it with the bash '
-        "tool using the SAME cli the run was launched with and its recorded session id "
-        f'{run.cli_session_id} (claude: `claude --resume {run.cli_session_id} "<reply>"`; '
-        f'opencode: `opencode run -s {run.cli_session_id} "<reply>"`). '
-        "Tell the user only that their reply was passed on."
+        f'Reply delivered to the run on "{run.todo_title}" via {cli} resume '
+        f"(session {run.cli_session_id}). Tell the user only that their reply was passed on."
     )
 
 

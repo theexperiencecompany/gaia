@@ -204,6 +204,10 @@ class TestLabMessage:
         assert ctx["activity"].await_args.args[2] is TodoActivityEvent.LAB_MESSAGE_RELAYED
         result = run.result_for("lab_message") or ""
         assert cli_session_id in result
+        probe_cmd, resume_cmd = (c.args[0] for c in sbx.commands.run.await_args_list)
+        assert probe_cmd == "opencode session list"
+        assert f"claude --resume '{cli_session_id}'" in resume_cmd
+        assert "'use the staging key'" in resume_cmd
 
     async def test_message_without_a_run_says_so(self):
         sbx = _sandbox()
@@ -235,6 +239,59 @@ class TestLabMessage:
         inbox_path = sbx.files.write.await_args.args[0]
         assert inbox_path.startswith(f"/workspace/.gaia/lab/{new_run}/.gaia/inbox/")
         assert new_cli in (run.result_for("lab_message") or "")
+        resume_cmd = sbx.commands.run.await_args.args[0]
+        assert new_cli in resume_cmd
+        assert old_cli not in resume_cmd
+
+    async def test_message_resumes_the_opencode_session_when_listed(self):
+        """A session id present in `opencode session list` resumes via opencode, not claude."""
+        run_id, cli_session_id, todo = self._todo_with_run()
+        sbx = _sandbox()
+
+        async def _run(cmd: str, timeout: int = 0) -> SimpleNamespace:
+            if cmd == "opencode session list":
+                return SimpleNamespace(
+                    exit_code=0, stdout=f"sessions:\n- {cli_session_id}\n", stderr=""
+                )
+            return SimpleNamespace(exit_code=0, stdout="", stderr="")
+
+        sbx.commands.run = AsyncMock(side_effect=_run)
+        ctx = _patch_lab(sbx, todo, active_todo_id="t1")
+        script = [call("lab_message", {"text": "use the staging key"}), "Relayed."]
+        async with _RunWith(ctx["patches"], script) as run:
+            pass
+
+        assert run.ran("lab_message")
+        resume_cmd = sbx.commands.run.await_args.args[0]
+        assert f"opencode run -s '{cli_session_id}'" in resume_cmd
+        assert "'use the staging key'" in resume_cmd
+        assert "claude" not in resume_cmd
+        result = run.result_for("lab_message") or ""
+        assert "opencode" in result
+
+    async def test_message_resume_failure_is_loud_not_silent(self):
+        """Filed to the inbox but resume failed: an Error naming the un-delivery, not success."""
+        run_id, cli_session_id, todo = self._todo_with_run()
+        sbx = _sandbox()
+
+        async def _run(cmd: str, timeout: int = 0) -> SimpleNamespace:
+            if cmd == "opencode session list":
+                return SimpleNamespace(exit_code=0, stdout="", stderr="")
+            raise CommandExitException("session gone", "", 1, None)
+
+        sbx.commands.run = AsyncMock(side_effect=_run)
+        ctx = _patch_lab(sbx, todo, active_todo_id="t1")
+        script = [call("lab_message", {"text": "use the staging key"}), "Relayed."]
+        async with _RunWith(ctx["patches"], script) as run:
+            pass
+
+        assert run.ran("lab_message")
+        sbx.files.write.assert_awaited()
+        result = run.result_for("lab_message") or ""
+        assert result.startswith("Error:")
+        assert "NOT seen" in result
+        assert "session gone" in result
+        ctx["activity"].assert_awaited_once()
 
 
 class TestLabStop:

@@ -499,6 +499,29 @@ class TestRecordLabEventPersist:
         deliver.assert_awaited_once()
         assert "duplicate suppressed" in activity.await_args.args[3]
 
+    async def test_repost_with_different_case_kind_suppresses_second_wake(self) -> None:
+        """Fingerprint lowercases kind, so the marker must too — or a recased re-POST wakes twice."""
+        patches = _svc_stack()
+        raw = {"hook_event_name": "Notification", "message": "CASE-DUPE-UNIQUE"}
+        with (
+            patch(f"{SVC}.is_paid", patches[f"{SVC}.is_paid"]),
+            patch(f"{SVC}.is_agent_lab_enabled", patches[f"{SVC}.is_agent_lab_enabled"]),
+            patch(f"{SVC}.todo_repository", patches[f"{SVC}.todo_repository"]) as repo,
+            patch(f"{SVC}.record_activity", patches[f"{SVC}.record_activity"]) as activity,
+            patch(f"{SVC}.load_user_context", patches[f"{SVC}.load_user_context"]),
+            patch(
+                f"{SVC}.deliver_result_to_platforms",
+                patches[f"{SVC}.deliver_result_to_platforms"],
+            ) as deliver,
+        ):
+            await record_lab_event("run-1", user_id="u1", kind="Notification", raw=raw)
+            first_written: str = repo.replace_note_fields.await_args.kwargs["update"].log_content
+            assert "CASE-DUPE-UNIQUE" in first_written
+            repo.find_by_reference = AsyncMock(return_value=_todo(log_content=first_written))
+            await record_lab_event("run-1", user_id="u1", kind="notification", raw=raw)
+        deliver.assert_awaited_once()
+        assert "duplicate suppressed" in activity.await_args.args[3]
+
     async def test_system_trail_outside_the_tail_survives(self) -> None:
         repo = MagicMock()
         repo.find_by_reference = AsyncMock(

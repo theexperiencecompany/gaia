@@ -5,10 +5,11 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 import time
 from types import TracebackType
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.agents.tools.agent_lab_tools import LAB_RUN_DIR_PREFIX, LAB_SEED_TIMEOUT_SECONDS
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
@@ -96,8 +97,11 @@ class _FakeAcquire:
         self._seen = seen
         self._user_id = user_id
 
-    async def __aenter__(self) -> None:
+    async def __aenter__(self) -> MagicMock:
         self._seen.append(self._user_id)
+        sbx = MagicMock()
+        sbx.commands.run = AsyncMock()
+        return sbx
 
     async def __aexit__(
         self,
@@ -177,14 +181,16 @@ class TestRefreshTimeout:
         sbx.set_timeout.assert_not_awaited()
 
 
-def _lab_todo(updated_ago_hours: float, *, todo_id: str = "todo-lab") -> TodoDocument:
+def _lab_todo(
+    updated_ago_hours: float, *, todo_id: str = "todo-lab", references: list[str] | None = None
+) -> TodoDocument:
     now = datetime.now(UTC)
     return TodoDocument(
         id=todo_id,
         user_id="lab",
         title="Lab run",
         labels=[GAIA_TRACKED_LABEL],
-        references=["run-1"],
+        references=references if references is not None else ["run-1", "lab:run-1:cli-1"],
         created_at=now - timedelta(hours=updated_ago_hours + 1),
         updated_at=now - timedelta(hours=updated_ago_hours),
     )
@@ -361,6 +367,197 @@ class TestLabRunCap:
         assert first == "Refreshed 0 lab sandboxes, skipped 1 past cap"
         assert second == "Refreshed 0 lab sandboxes, skipped 1 past cap"
         notify_create.assert_awaited_once()
+
+
+class TestLabCapIgnoresNonLabReferences:
+    async def test_old_unrelated_todo_does_not_block_the_cap(self) -> None:
+        """The cap scan only counts routing entries; an old memory-link todo is invisible."""
+        old_lab = _lab_todo(
+            13, todo_id="old-lab", references=["run-old", "lab:run-old:cli-old"]
+        )
+        old_plain = _lab_todo(13, todo_id="old-plain", references=["some-memory-link"])
+
+        def fake_acquire(user_id: str) -> _FakeAcquire:
+            raise AssertionError("capped user must not be re-acquired")
+
+        with (
+            patch(
+                f"{TASKS_MODULE}.e2b_sandbox_repository.find_live_user_ids",
+                AsyncMock(return_value=["lab"]),
+            ),
+            patch(
+                f"{TASKS_MODULE}.todo_repository.list_active_tracked",
+                AsyncMock(return_value=[old_lab, old_plain]),
+            ),
+            patch(
+                f"{TASKS_MODULE}.is_agent_lab_enabled",
+                AsyncMock(return_value=True),
+            ),
+            patch(f"{TASKS_MODULE}.acquire_sandbox", side_effect=fake_acquire),
+            patch(
+                f"{TASKS_MODULE}.notification_service.create_notification",
+                AsyncMock(),
+            ) as notify_create,
+        ):
+            result = await sandbox_tasks.refresh_lab_sandboxes({})
+        assert result == "Refreshed 0 lab sandboxes, skipped 1 past cap"
+        notify_create.assert_awaited_once()
+        assert notify_create.await_args.args[0].metadata["todo_ids"] == ["old-lab"]
+
+    async def test_only_unrelated_references_still_refreshes(self) -> None:
+        """No routing entry anywhere means no lab run, however old the todo is."""
+        seen: list[str] = []
+
+        def fake_acquire(user_id: str) -> _FakeAcquire:
+            return _FakeAcquire(seen, user_id)
+
+        with (
+            patch(
+                f"{TASKS_MODULE}.e2b_sandbox_repository.find_live_user_ids",
+                AsyncMock(return_value=["lab"]),
+            ),
+            patch(
+                f"{TASKS_MODULE}.todo_repository.list_active_tracked",
+                AsyncMock(
+                    return_value=[
+                        _lab_todo(13, todo_id="old-plain", references=["some-memory-link"])
+                    ]
+                ),
+            ),
+            patch(
+                f"{TASKS_MODULE}.is_agent_lab_enabled",
+                AsyncMock(return_value=True),
+            ),
+            patch(f"{TASKS_MODULE}.acquire_sandbox", side_effect=fake_acquire),
+            patch(
+                f"{TASKS_MODULE}.notification_service.create_notification",
+                AsyncMock(),
+            ) as notify_create,
+        ):
+            result = await sandbox_tasks.refresh_lab_sandboxes({})
+        assert seen == ["lab"]
+        assert result == "Refreshed 1 lab sandboxes, skipped 0 past cap"
+        notify_create.assert_not_awaited()
+
+    async def test_bare_run_id_without_routing_entry_is_not_a_run(self) -> None:
+        """A bare id alone (no lab: entry) never caps, even when stale."""
+        seen: list[str] = []
+
+        def fake_acquire(user_id: str) -> _FakeAcquire:
+            return _FakeAcquire(seen, user_id)
+
+        with (
+            patch(
+                f"{TASKS_MODULE}.e2b_sandbox_repository.find_live_user_ids",
+                AsyncMock(return_value=["lab"]),
+            ),
+            patch(
+                f"{TASKS_MODULE}.todo_repository.list_active_tracked",
+                AsyncMock(return_value=[_lab_todo(13, references=["run-1"])]),
+            ),
+            patch(
+                f"{TASKS_MODULE}.is_agent_lab_enabled",
+                AsyncMock(return_value=True),
+            ),
+            patch(f"{TASKS_MODULE}.acquire_sandbox", side_effect=fake_acquire),
+            patch(
+                f"{TASKS_MODULE}.notification_service.create_notification",
+                AsyncMock(),
+            ) as notify_create,
+        ):
+            result = await sandbox_tasks.refresh_lab_sandboxes({})
+        assert seen == ["lab"]
+        assert result == "Refreshed 1 lab sandboxes, skipped 0 past cap"
+        notify_create.assert_not_awaited()
+
+
+EVENTS_URL = "https://gaia.test/api/v1/lab/events"
+
+
+class _SbxAcquire:
+    """Yields a caller-owned fake sandbox."""
+
+    def __init__(self, sbx: MagicMock) -> None:
+        self._sbx = sbx
+
+    async def __aenter__(self) -> MagicMock:
+        return self._sbx
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> bool:
+        return False
+
+
+class TestLabTokenReseed:
+    async def test_refreshed_run_gets_a_fresh_token_staged(self) -> None:
+        """Mint → canonical seed command → staged in the run workdir, per active run."""
+        sbx = MagicMock()
+        sbx.commands.run = AsyncMock()
+        todo = _lab_todo(1, todo_id="t1", references=["run-abc", "lab:run-abc:cli-abc"])
+        staged: list[tuple[str, str, str, str]] = []
+
+        def fake_build(events_url: str, token: str, session_id: str, run_dir: str) -> str:
+            staged.append((events_url, token, session_id, run_dir))
+            return "SEED-CMD"
+
+        with (
+            patch(
+                f"{TASKS_MODULE}.e2b_sandbox_repository.find_live_user_ids",
+                AsyncMock(return_value=["lab"]),
+            ),
+            patch(
+                f"{TASKS_MODULE}.todo_repository.list_active_tracked",
+                AsyncMock(return_value=[todo]),
+            ),
+            patch(
+                f"{TASKS_MODULE}.is_agent_lab_enabled",
+                AsyncMock(return_value=True),
+            ),
+            patch(f"{TASKS_MODULE}.acquire_sandbox", side_effect=lambda _: _SbxAcquire(sbx)),
+            patch(f"{TASKS_MODULE}.lab_events_url", return_value=EVENTS_URL),
+            patch(f"{TASKS_MODULE}.mint_lab_hooks_token", return_value="tok-fresh") as mint,
+            patch(f"{TASKS_MODULE}.build_seed_command", side_effect=fake_build),
+        ):
+            result = await sandbox_tasks.refresh_lab_sandboxes({})
+        assert result == "Refreshed 1 lab sandboxes, skipped 0 past cap"
+        mint.assert_called_once_with("lab", "run-abc")
+        assert staged == [(EVENTS_URL, "tok-fresh", "run-abc", f"{LAB_RUN_DIR_PREFIX}/run-abc")]
+        sbx.commands.run.assert_awaited_once_with("SEED-CMD", timeout=LAB_SEED_TIMEOUT_SECONDS)
+
+    async def test_reseed_failure_does_not_fail_the_refresh(self) -> None:
+        """One wedged seeder costs a warning line; the tick still counts the refresh."""
+        sbx = MagicMock()
+        sbx.commands.run = AsyncMock()
+        todo = _lab_todo(1, todo_id="t1", references=["run-abc", "lab:run-abc:cli-abc"])
+
+        with (
+            patch(
+                f"{TASKS_MODULE}.e2b_sandbox_repository.find_live_user_ids",
+                AsyncMock(return_value=["lab"]),
+            ),
+            patch(
+                f"{TASKS_MODULE}.todo_repository.list_active_tracked",
+                AsyncMock(return_value=[todo]),
+            ),
+            patch(
+                f"{TASKS_MODULE}.is_agent_lab_enabled",
+                AsyncMock(return_value=True),
+            ),
+            patch(f"{TASKS_MODULE}.acquire_sandbox", side_effect=lambda _: _SbxAcquire(sbx)),
+            patch(f"{TASKS_MODULE}.lab_events_url", return_value=EVENTS_URL),
+            patch(f"{TASKS_MODULE}.mint_lab_hooks_token", return_value="tok-fresh"),
+            patch(
+                f"{TASKS_MODULE}.build_seed_command",
+                side_effect=RuntimeError("seed exploded"),
+            ),
+        ):
+            result = await sandbox_tasks.refresh_lab_sandboxes({})
+        assert result == "Refreshed 1 lab sandboxes, skipped 0 past cap"
+        sbx.commands.run.assert_not_awaited()
 
 
 class TestLabMissPolicy:

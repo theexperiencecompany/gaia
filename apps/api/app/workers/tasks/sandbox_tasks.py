@@ -22,7 +22,13 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from arq.connections import ArqRedis
+from e2b import AsyncSandbox
 
+from app.agents.tools.agent_lab_tools import (
+    LAB_RUN_DIR_PREFIX,
+    LAB_SEED_TIMEOUT_SECONDS,
+    parse_lab_routing_ref,
+)
 from app.config.settings import settings
 from app.constants.execute import SANDBOX_LAB_MAX_RUN_SECONDS
 from app.constants.log_tags import LogTag
@@ -35,6 +41,11 @@ from app.models.notification.notification_models import (
     NotificationType,
 )
 from app.models.todo_models import TodoDocument
+from app.services.agent_lab.sandbox_setup import (
+    build_seed_command,
+    lab_events_url,
+    mint_lab_hooks_token,
+)
 from app.services.feature_flags import is_agent_lab_enabled
 from app.services.notification_service import notification_service
 from app.services.sandbox import acquire_sandbox, mark_sandbox_dead
@@ -79,7 +90,8 @@ async def refresh_lab_sandboxes(ctx: dict[str, Any]) -> str:
         try:
             if not await is_agent_lab_enabled(user_id):
                 continue
-            past_cap, capped_todo_ids = await _lab_runs_past_cap(user_id)
+            lab_todos = await _lab_run_todos(user_id)
+            past_cap, capped_todo_ids = _lab_cap_status(lab_todos)
             if past_cap:
                 capped += 1
                 log.info(
@@ -91,8 +103,11 @@ async def refresh_lab_sandboxes(ctx: dict[str, Any]) -> str:
                 continue
             # Re-acquire refreshes the kill timer (connect carries a full
             # lifetime), touches last_used_at, and re-stages the bridge token.
-            async with acquire_sandbox(user_id):
-                pass
+            # The hooks token outlives nothing here: it is 6h against the 12h
+            # cap, so a refreshed run also gets a fresh token re-seeded into
+            # each of its workdirs (same candidate scan the cap uses).
+            async with acquire_sandbox(user_id) as sbx:
+                await _reseed_lab_tokens(user_id, sbx, lab_todos)
             refreshed += 1
         except Exception as e:
             # TODO-S1-supervisor-tick: this catch is the whole miss policy today —
@@ -120,7 +135,11 @@ async def refresh_lab_sandboxes(ctx: dict[str, Any]) -> str:
 
 
 # How many of a user's tracked todos to scan for lab-run candidates per tick.
-_LAB_RUN_TODO_SCAN_LIMIT = 50
+# list_active_tracked returns most-recently-updated first and a silent/wedged
+# lab run's todo goes stale, so stale lab todos sort last: the scan must cover
+# a deep tracked backlog or a capped run hides past the cutoff and refreshes
+# forever. One bounded query; a miss fails open (keep refreshing), never caps.
+_LAB_RUN_TODO_SCAN_LIMIT = 200
 
 
 def _lab_cap_notified_key(user_id: str) -> str:
@@ -145,30 +164,97 @@ def _lab_run_started_at(todo: TodoDocument) -> datetime | None:
     return stamp if stamp.tzinfo is not None else stamp.replace(tzinfo=UTC)
 
 
-async def _lab_runs_past_cap(user_id: str) -> tuple[bool, list[str]]:
-    """Whether every lab-run candidate todo for user_id is older than the cap.
+def _lab_run_ids(references: list[str]) -> list[str]:
+    """Run ids with a routing entry, in reference order, deduplicated.
 
-    Candidates are active tracked todos carrying references (where lab_start
-    records run ids). `references` also carries non-lab institutional-memory
-    links, so an old unrelated todo can read as a capped run — but an active
-    run's todo stays fresh via event tails, so all-old with a live run means
-    the run has been silent for 12h and genuinely looks dead. No candidates
-    (or any fresh one) means keep refreshing.
+    Only ``lab:<run_id>:<cli_session_id>`` entries (written by lab_start via
+    parse_lab_routing_ref's shape) mark a lab run. Bare ids and institutional-
+    memory links are ignored: an old unrelated todo must never read as a
+    capped run or steer a token re-seed.
     """
+    seen: set[str] = set()
+    run_ids: list[str] = []
+    for entry in references:
+        parsed = parse_lab_routing_ref(entry)
+        if parsed is None:
+            continue
+        run_id, _ = parsed
+        if run_id not in seen:
+            seen.add(run_id)
+            run_ids.append(run_id)
+    return run_ids
+
+
+async def _lab_run_todos(user_id: str) -> list[TodoDocument]:
+    """Active tracked todos actually carrying a lab run (routing entry present)."""
     todos = await todo_repository.list_active_tracked(user_id, limit=_LAB_RUN_TODO_SCAN_LIMIT)
-    runs = [todo for todo in todos if todo.references]
-    if not runs:
+    return [todo for todo in todos if _lab_run_ids(todo.references)]
+
+
+def _lab_cap_status(lab_todos: list[TodoDocument]) -> tuple[bool, list[str]]:
+    """Whether every lab-run candidate todo is older than the cap.
+
+    `references` also carries non-lab institutional-memory links, but those
+    never reach here — _lab_run_todos already filtered to routing entries —
+    so all-old means every live run has been silent for 12h and genuinely
+    looks dead. No candidates (or any fresh one) means keep refreshing.
+    """
+    if not lab_todos:
         return False, []
     now = datetime.now(UTC)
     capped_ids = [
         todo.id
-        for todo in runs
+        for todo in lab_todos
         if (started := _lab_run_started_at(todo)) is not None
         and (now - started).total_seconds() > SANDBOX_LAB_MAX_RUN_SECONDS
     ]
-    if len(capped_ids) != len(runs):
+    if len(capped_ids) != len(lab_todos):
         return False, []
     return True, capped_ids
+
+
+async def _lab_runs_past_cap(user_id: str) -> tuple[bool, list[str]]:
+    """Whether every lab-run candidate todo for user_id is older than the cap."""
+    return _lab_cap_status(await _lab_run_todos(user_id))
+
+
+async def _reseed_lab_tokens(user_id: str, sbx: AsyncSandbox, lab_todos: list[TodoDocument]) -> None:
+    """Stage a fresh hooks token into each active lab run's workdir.
+
+    The hooks token lives 6h against the 12h run cap, so a refreshed run would
+    otherwise go deaf halfway through its second half. Re-runs the canonical
+    seeder per run (idempotent by construction); one run's failure costs a
+    warning line, never the tick or its sibling runs.
+    """
+    if not lab_todos:
+        return
+    try:
+        events_url = lab_events_url()
+    except Exception as e:
+        log.warning(
+            f"{LogTag.SANDBOX} lab token re-seed skipped: events URL unconfigured",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        return
+    for todo in lab_todos:
+        for run_id in _lab_run_ids(todo.references):
+            try:
+                token = mint_lab_hooks_token(user_id, run_id)
+                seed = build_seed_command(
+                    events_url, token, run_id, f"{LAB_RUN_DIR_PREFIX}/{run_id}"
+                )
+                await sbx.commands.run(seed, timeout=LAB_SEED_TIMEOUT_SECONDS)
+            except Exception as e:
+                log.warning(
+                    f"{LogTag.SANDBOX} lab token re-seed failed; run keeps its aging token",
+                    user_id=user_id,
+                    todo_id=todo.id,
+                    run_id=run_id,
+                    error_type=type(e).__name__,
+                    error=str(e),
+                )
 
 
 async def _notify_lab_cap_hit(ctx: dict[str, Any], user_id: str, todo_ids: list[str]) -> None:
