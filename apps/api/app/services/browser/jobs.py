@@ -164,7 +164,7 @@ async def forget_live_job(job_id: str) -> None:
 
 async def hold_job_alive(job_id: str) -> None:
     """Take or renew the worker's lease on the job it runs: the evidence the reaper needs that it lives."""
-    await redis_cache.client.set(_alive_key(job_id), "1", ex=BROWSER_JOB_LOCK_TTL_SECONDS)
+    await redis_cache.client.set(_alive_key(job_id), job_id, ex=BROWSER_JOB_LOCK_TTL_SECONDS)
 
 
 async def release_job_alive(job_id: str) -> None:

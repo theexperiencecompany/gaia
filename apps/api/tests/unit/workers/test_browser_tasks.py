@@ -51,6 +51,7 @@ from app.services.browser.jobs import (
     live_job_ids,
     put_job_state,
     record_ending,
+    release_job_alive,
 )
 from app.workers.tasks import browser_tasks as tasks_mod
 from tests.helpers import captured_wide_event
@@ -198,14 +199,22 @@ async def test_the_running_job_beats_on_its_own_slot(
 ) -> None:
     beat = asyncio.Event()
     beats: list[tuple[str, str]] = []
+    leased_at_beat: list[bool] = []
     release = asyncio.Event()
 
     async def _beat(conversation_id: str, job_id: str) -> bool:
         beats.append((conversation_id, job_id))
+        leased_at_beat.append(await job_alive(job_id))
         beat.set()
         return True
 
     async def _execute(request: BrowserJobRequest) -> BrowserResultSnapshot:
+        # As if the lease lapsed: only the beat can renew it before the reaper reads it.
+        await release_job_alive(request.job_id)
+        # The second beat after the lapse renewed the lease wholly after it.
+        for _ in range(2):
+            beat.clear()
+            await beat.wait()
         await release.wait()
         return DONE
 
@@ -219,6 +228,7 @@ async def test_the_running_job_beats_on_its_own_slot(
     await asyncio.wait_for(running, timeout=2)
 
     assert set(beats) == {("conv-9", "job-1")}
+    assert leased_at_beat[-1] is True
 
 
 async def test_a_job_whose_conversation_another_run_took_never_runs_and_says_so(
@@ -354,6 +364,16 @@ async def test_one_sweep_without_a_worker_is_no_evidence_of_death(
     assert await done_state("job-1") is None
 
     await _suspected_long_ago(fake_redis, "job-1")
+    assert await tasks_mod.reap_browser_jobs({}) == "reaped=1 results_to_tell=0"
+
+
+async def test_a_job_unleased_for_exactly_the_confirm_window_is_dead(
+    world: World, fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _running_with_no_worker(fake_redis)
+    await fake_redis.hset(BROWSER_JOB_SUSPECT_KEY, "job-1", "1000.0")
+    monkeypatch.setattr(tasks_mod, "time", lambda: 1000.0 + BROWSER_JOB_DEATH_CONFIRM_SECONDS)
+
     assert await tasks_mod.reap_browser_jobs({}) == "reaped=1 results_to_tell=0"
 
 

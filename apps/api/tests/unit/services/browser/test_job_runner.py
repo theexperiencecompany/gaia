@@ -1781,10 +1781,13 @@ async def test_the_job_ends_on_its_ending_record_carrying_its_result_then_closes
 ) -> None:
     """A follower stops on the feed's end and then reads the ending, so the ending is written first."""
     h = _install(monkeypatch)
+    monkeypatch.setattr(jr, "time", lambda: 1234.0)
 
     result = await jr.execute_browser_job(_request(task="book a table"))
 
     assert [state.status for state in h.states] == [BrowserJobStatus.RUNNING]
+    # When it started is what lets a reaper end the group a dead worker opened.
+    assert h.states[0].running_since == 1234.0
     ending = await done_state("job-1")
     assert isinstance(ending, BrowserJobFinished)
     assert ending.result == result

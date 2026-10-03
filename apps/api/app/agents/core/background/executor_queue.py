@@ -236,8 +236,6 @@ async def reclaim_dead_lock(conversation_id: str) -> bool:
     holder = await get_lock_holder(conversation_id)
     if holder is None:
         return True
-    if not redis_cache.client:
-        return False
     alive = await redis_cache.client.get(f"{EXECUTOR_ALIVE_PREFIX}{conversation_id}")
     if alive is not None and decode_raw_item(alive) == holder:
         return False

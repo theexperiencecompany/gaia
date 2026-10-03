@@ -1024,6 +1024,18 @@ class TestFinalizePausedRun:
         # losing branch only.
         mock_log.warning.assert_not_called()
 
+    async def test_a_pause_without_a_task_id_beats_with_the_locks_value(self) -> None:
+        run = replace(_run(RunKind.QUEUED), task_id=None)
+        with (
+            patch.object(er, "hold_run_alive", AsyncMock()) as alive,
+            patch.object(er, "extend_lock_if_owned", AsyncMock(return_value=True)),
+            patch.object(er, "signal_executor_done"),
+            patch.object(er, "_close_queued_stream", AsyncMock()),
+        ):
+            await er._finalize_paused_run(run)
+
+        alive.assert_awaited_once_with("conv-1", "s1:", HIL_PAUSED_LOCK_TTL_SECONDS)
+
     async def test_a_non_queued_pause_is_counted_as_not_queued(self) -> None:
         _run_arg, _extend, _signal, _close, total, _log = await self._pause(queued=False)
 

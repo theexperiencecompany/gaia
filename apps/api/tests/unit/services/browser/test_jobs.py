@@ -116,9 +116,12 @@ async def test_everything_the_job_store_writes_lapses_with_the_job(
     await jobs_mod.record_ending("job-1", BrowserJobStopped())
     await jobs_mod.set_job_wait("job-1", "h1")
     await jobs_mod.post_job_message("job-1", "hi")
+    await jobs_mod.hold_job_alive("job-1")
 
     keys = await redis.keys("browser:job:*")
-    assert len(keys) == 6
+    assert len(keys) == 7
+    # A lease its worker stopped renewing lapses: that lapse is the reaper's evidence.
+    assert 0 < await redis.ttl("browser:job:alive:job-1") <= BROWSER_JOB_LOCK_TTL_SECONDS
     assert all([await redis.ttl(key) > 0 for key in keys])
     # The job's own record lives as long as the job can, not the cache's default hour.
     assert await redis.ttl("browser:job:job-1") > 3600

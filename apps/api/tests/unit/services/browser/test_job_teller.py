@@ -44,20 +44,22 @@ async def _queued(job_id: str, conversation_id: str, *, in_background: bool = Tr
 
 async def test_each_ending_lands_as_its_own_entry_under_its_tag() -> None:
     """An inbox entry is retired by its id: two endings sharing one would retire each other."""
-    await _queued("job-1", "conv-1")
-    await _queued("job-2", "conv-1")
+    endings = [FINISHED, FINISHED, BrowserJobStopped(), BrowserJobStopped()]
+    for n, ending in enumerate(endings):
+        await _queued(f"job-{n}", "conv-1")
+        await end_job(f"job-{n}", ending)
 
-    await end_job("job-1", FINISHED)
-    await end_job("job-2", BrowserJobStopped())
-
-    result, stopped = await ExecutorInbox("conv-1").read()
-    assert (result.tag, stopped.tag) == (AgentTag.BROWSER_RESULT, AgentTag.BROWSER_STOPPED)
-    assert (result.text, stopped.text) == (
-        ending_message("job-1", FINISHED),
-        ending_message("job-2", BrowserJobStopped()),
-    )
-    assert result.id and stopped.id
-    assert result.id != stopped.id
+    entries = await ExecutorInbox("conv-1").read()
+    assert [entry.tag for entry in entries] == [
+        AgentTag.BROWSER_RESULT,
+        AgentTag.BROWSER_RESULT,
+        AgentTag.BROWSER_STOPPED,
+        AgentTag.BROWSER_STOPPED,
+    ]
+    assert [entry.text for entry in entries] == [
+        ending_message(f"job-{n}", ending) for n, ending in enumerate(endings)
+    ]
+    assert len({entry.id for entry in entries}) == len(endings)
 
 
 async def test_an_ending_for_a_job_nobody_queued_is_recorded_told_to_nobody_and_said() -> None:

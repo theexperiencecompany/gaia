@@ -53,6 +53,7 @@ from app.constants.cache import (
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable
 from app.models.user_models import AuthenticatedUser
+from tests.helpers import captured_wide_event
 
 CONVERSATION = "conv-1"
 BUSY_KEY = f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION}"
@@ -662,8 +663,20 @@ class TestReclaimDeadLock:
     async def test_a_lock_whose_run_stopped_beating_is_freed(self, redis) -> None:
         await redis.set(BUSY_KEY, "s1:t1", ex=self._OLD)
 
-        assert await reclaim_dead_lock(CONVERSATION) is True
+        async with captured_wide_event() as event:
+            assert await reclaim_dead_lock(CONVERSATION) is True
+
         assert await redis.get(BUSY_KEY) is None
+        [warning] = event["warnings"]
+        assert warning["msg"].endswith("Reclaimed the busy lock of an executor run that died")
+        assert (warning["conversation_id"], warning["holder"]) == (CONVERSATION, "s1:t1")
+
+    async def test_a_lock_in_its_last_second_is_old_enough(self, redis) -> None:
+        """Redis rounds a sub-second TTL down to 0: that lock is at its oldest, not ageless."""
+        await redis.set(BUSY_KEY, "s1:t1", px=300)
+
+        assert await redis.ttl(BUSY_KEY) == 0
+        assert await reclaim_dead_lock(CONVERSATION) is True
 
     async def test_a_beating_run_keeps_its_lock(self, redis) -> None:
         await redis.set(BUSY_KEY, "s1:t1", ex=self._OLD)
