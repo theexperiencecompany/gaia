@@ -53,7 +53,7 @@ async def _request(
     try:
         async with httpx.AsyncClient(base_url=host_url, timeout=timeout, headers=headers) as client:
             response = await client.request(
-                method.value, path, json=body.model_dump(mode="json") if body else None
+                method.value, path, json=body.model_dump() if body else None
             )
     except httpx.HTTPError as exc:
         raise BrowserUnavailableError(
