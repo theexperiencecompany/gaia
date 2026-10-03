@@ -21,6 +21,7 @@ from app.constants.todos import GAIA_TRACKED_LABEL, ONBOARDING_LABEL
 from app.db.repositories.base import UserScopedRepository, cached_query
 from app.db.repositories.cache import CachePolicy
 from app.models.todo_models import (
+    ExternalRef,
     SearchMode,
     SubTask,
     TodoCounts,
@@ -67,6 +68,14 @@ class _CountsFacet(BaseModel):
     upcoming: list[_FacetCount] = Field(default_factory=list)
     overdue: list[_FacetCount] = Field(default_factory=list)
     completed: list[_FacetCount] = Field(default_factory=list)
+
+
+def _external_ref_filter(ref: ExternalRef) -> dict[str, object]:
+    # $type keeps the query inside the partial filter; a bare equality is not, and scans.
+    return {
+        "external_ref.source": ref.source.value,
+        "external_ref.id": {"$eq": ref.id, "$type": "string"},
+    }
 
 
 def _first_count(buckets: list[_FacetCount]) -> int:
@@ -302,17 +311,28 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._aggregate(pipeline, TodoLabelCount)
 
     @cached_query(list[TodoDocument])
-    async def list_active_tracked(self, user_id: str, *, limit: int) -> list[TodoDocument]:
-        """Return a user's active (incomplete) tracked todos, most-recently-updated first.
+    async def list_active_tracked(
+        self,
+        user_id: str,
+        *,
+        limit: int,
+        labels: list[str] | None = None,
+        external_ref: ExternalRef | None = None,
+    ) -> list[TodoDocument]:
+        """Return a user's open tracked todos, most-recently-updated first.
 
-        Cached under the user's generation, so context assembly reads Mongo once
-        per write rather than once per turn.
+        labels keeps todos carrying all of them; external_ref keeps the one owning that object.
+        Cached under the user's generation, so context assembly reads Mongo once per write.
         """
-        return await self._find(
-            {"user_id": user_id, "labels": GAIA_TRACKED_LABEL, "completed": False},
-            sort=[("updated_at", -1)],
-            limit=limit,
-        )
+        query: dict[str, object] = {
+            "user_id": user_id,
+            # Mongo bounds the (user_id, labels) index scan on the first $all element only.
+            "labels": {"$all": [*(labels or []), GAIA_TRACKED_LABEL]},
+            "completed": False,
+        }
+        if external_ref is not None:
+            query.update(_external_ref_filter(external_ref))
+        return await self._find(query, sort=[("updated_at", -1)], limit=limit)
 
     async def list_active_gaia_tracked_since(
         self, user_id: str, *, completed_since: datetime
@@ -362,6 +382,14 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
                     }
                 },
             }
+        )
+
+    async def find_open_by_external_ref(
+        self, user_id: str, ref: ExternalRef
+    ) -> TodoDocument | None:
+        """Return the user's open todo about ref; uncached, as a losing insert reads the winner here."""
+        return await self._find_one(
+            {"user_id": user_id, **_external_ref_filter(ref), "completed": False}
         )
 
     async def list_active_tracked_all_users(self, *, limit: int) -> list[TodoDocument]:

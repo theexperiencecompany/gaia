@@ -27,7 +27,7 @@ from app.models.todo_models import (
     TodoUpdateRequest,
 )
 from app.services.analytics_service import AnalyticsEvents
-from app.services.todos.errors import TrackedTodoWorkflowError
+from app.services.todos.errors import ExternalRefTakenError, TrackedTodoWorkflowError
 
 TODOS_ENDPOINT = "app.api.v1.endpoints.todos"
 ANALYTICS_PATCH = "app.api.v1.endpoints.todos.capture_context_event"
@@ -587,3 +587,38 @@ class TestTodoCanvas:
         assert resp.status_code == 404
         assert resp.json()["message"] == "Todo not found"
         get.assert_awaited_once_with("todo-1", user_id="507f1f77bcf86cd799439011")
+
+
+class TestReopenOfATakenThread:
+    """The 409 body names the open todo, so the client can send the user to it."""
+
+    @staticmethod
+    def _taken() -> ExternalRefTakenError:
+        holder = TodoDocument(id="held-1", user_id="u1", title="Reply to Sam")
+        return ExternalRefTakenError(holder)
+
+    async def test_single_update_is_409_naming_the_open_todo(self, client: AsyncClient) -> None:
+        with patch(
+            f"{TODOS_ENDPOINT}.TodoService.update_todo",
+            new=AsyncMock(side_effect=self._taken()),
+        ):
+            resp = await client.put("/api/v1/todos/todo-1", json={"completed": False})
+
+        assert resp.status_code == 409
+        body = resp.json()
+        assert body["code"] == "external_ref_taken"
+        assert body["todo_id"] == "held-1"
+        assert "Reply to Sam" in body["message"]
+
+    async def test_bulk_update_is_409_naming_the_open_todo(self, client: AsyncClient) -> None:
+        with patch(
+            f"{TODOS_ENDPOINT}.TodoService.bulk_update_todos",
+            new=AsyncMock(side_effect=self._taken()),
+        ):
+            resp = await client.put(
+                "/api/v1/todos/bulk",
+                json={"todo_ids": ["a", "b"], "updates": {"completed": False}},
+            )
+
+        assert resp.status_code == 409
+        assert resp.json()["todo_id"] == "held-1"

@@ -10,11 +10,19 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
+from bson import ObjectId
+from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.constants.todos import GAIA_TRACKED_LABEL
-from app.db.repositories.todos import TodosRepository
+from app.db.mongodb.indexes import (
+    TODO_OPEN_EXTERNAL_REF_KEYS,
+    TODO_OPEN_EXTERNAL_REF_OPTIONS,
+)
+from app.db.repositories.todos import TodosRepository, _external_ref_filter
 from app.models.todo_models import (
+    ExternalRef,
+    ExternalRefSource,
     Priority,
     SearchMode,
     SubTask,
@@ -260,6 +268,23 @@ class TestTodosRepository(UserScopedRepositoryContract):
         active = await repo.list_active_tracked("u", limit=10)
         assert [t.title for t in active] == ["open"]
 
+    async def test_list_active_tracked_returns_the_freshest_up_to_the_limit(
+        self, repo, make_doc, raw_collection
+    ):
+        now = datetime.now(UTC)
+        # Inserted out of freshness order so an unsorted read would fail here.
+        for title, age in (("stale", 3), ("fresh", 0), ("middle", 1)):
+            todo = await repo.create(
+                make_doc(user_id="u", title=title, labels=[GAIA_TRACKED_LABEL])
+            )
+            await raw_collection.update_one(
+                {"_id": ObjectId(todo.id)}, {"$set": {"updated_at": now - timedelta(hours=age)}}
+            )
+
+        found = await repo.list_active_tracked("u", limit=2)
+
+        assert [t.title for t in found] == ["fresh", "middle"]
+
     async def test_list_active_tracked_is_generation_cached(self, repo, make_doc, raw_collection):
         """The active-tracked list is served from Redis until a write bumps the generation."""
         user = "tracked-cache-user"
@@ -281,6 +306,40 @@ class TestTodosRepository(UserScopedRepositoryContract):
             "b",
             "c",
         ]
+
+    async def test_list_active_tracked_keeps_todos_carrying_every_given_label(self, repo, make_doc):
+        tracked = GAIA_TRACKED_LABEL
+        await repo.create(make_doc(user_id="u", title="both", labels=[tracked, "a", "b"]))
+        await repo.create(make_doc(user_id="u", title="only a", labels=[tracked, "a"]))
+        await repo.create(make_doc(user_id="u", title="untracked", labels=["a", "b"]))
+        await repo.create(
+            make_doc(user_id="u", title="done", labels=[tracked, "a", "b"], completed=True)
+        )
+        # Primes the cache for this generation: a filtered read must not be served from it.
+        assert len(await repo.list_active_tracked("u", limit=10)) == 2
+
+        found = await repo.list_active_tracked("u", limit=10, labels=["b", "a"])
+
+        assert [t.title for t in found] == ["both"]
+
+    async def test_list_active_tracked_keeps_the_todo_owning_an_external_ref(self, repo, make_doc):
+        thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="thread-1")
+        other = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="thread-2")
+        tracked = [GAIA_TRACKED_LABEL]
+        done = await repo.create(
+            make_doc(user_id="u", title="done", labels=tracked, external_ref=thread)
+        )
+        await repo.update(done.id, user_id="u", update=TodoUpdate(completed=True))
+        await repo.create(make_doc(user_id="u", title="owner", labels=tracked, external_ref=thread))
+        await repo.create(make_doc(user_id="u", title="other", labels=tracked, external_ref=other))
+        await repo.create(make_doc(user_id="u", title="plain", labels=tracked))
+        await repo.create(
+            make_doc(user_id="u2", title="theirs", labels=tracked, external_ref=thread)
+        )
+
+        found = await repo.list_active_tracked("u", limit=10, external_ref=thread)
+
+        assert [t.title for t in found] == ["owner"]
 
     async def test_vfs_partitions_by_tracked_label(self, repo, make_doc):
         cutoff = datetime.now(UTC) - timedelta(days=7)
@@ -736,3 +795,62 @@ class TestLinkWorkflow:
 
         fresh = await repo.get(created.id, user_id="u1")
         assert fresh is not None and fresh.workflow_id == "wf1"
+
+
+class TestOpenExternalRefIndex:
+    """One open todo per (user, external object), enforced by the index startup ships."""
+
+    @pytest.fixture(autouse=True)
+    async def _shipped_index(self, raw_collection) -> None:
+        await raw_collection.create_index(
+            TODO_OPEN_EXTERNAL_REF_KEYS, **TODO_OPEN_EXTERNAL_REF_OPTIONS
+        )
+
+    @staticmethod
+    def _thread(thread_id: str = "thread-1") -> ExternalRef:
+        return ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id=thread_id)
+
+    async def test_a_second_open_todo_for_the_same_thread_is_rejected(self, repo, make_doc):
+        await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
+        with pytest.raises(DuplicateKeyError):
+            await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
+
+    async def test_completing_the_todo_frees_the_thread(self, repo, make_doc):
+        first = await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
+        await repo.update(first.id, user_id="u1", update=TodoUpdate(completed=True))
+
+        second = await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
+
+        assert second.id != first.id
+        assert second.external_ref == self._thread()
+
+    async def test_todos_without_a_ref_never_collide(self, repo, make_doc):
+        for i in range(3):
+            await repo.create(make_doc(user_id="u1", title=f"plain {i}"))
+        assert await repo.count_for_user("u1") == 3
+
+    async def test_the_same_thread_is_independent_per_user_and_per_thread(self, repo, make_doc):
+        await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
+        await repo.create(make_doc(user_id="u2", external_ref=self._thread()))
+        await repo.create(make_doc(user_id="u1", external_ref=self._thread("thread-2")))
+        assert await repo.count_for_user("u1") == 2
+
+    async def test_a_ref_lookup_is_served_by_the_partial_index(self, raw_collection):
+        """An untyped equality is not provably inside the partial filter, so Mongo scanned every open todo."""
+        query = {"user_id": "u1", **_external_ref_filter(self._thread()), "completed": False}
+
+        plan = (await raw_collection.find(query).explain())["queryPlanner"]["winningPlan"]
+
+        assert TODO_OPEN_EXTERNAL_REF_OPTIONS["name"] in str(plan)
+
+    async def test_find_open_by_external_ref_returns_only_the_open_owner_todo(self, repo, make_doc):
+        done = await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
+        await repo.update(done.id, user_id="u1", update=TodoUpdate(completed=True))
+        open_todo = await repo.create(make_doc(user_id="u1", external_ref=self._thread()))
+        await repo.create(make_doc(user_id="u1", external_ref=self._thread("thread-2")))
+
+        found = await repo.find_open_by_external_ref("u1", self._thread())
+
+        assert found is not None and found.id == open_todo.id
+        assert await repo.find_open_by_external_ref("u2", self._thread()) is None
+        assert await repo.find_open_by_external_ref("u1", self._thread("thread-3")) is None

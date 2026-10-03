@@ -48,10 +48,14 @@ ACTIVITY_PROMPT_TAIL_CHARS: Final[int] = 4_000
 # uncapped canvas pushed a tracked todo's run past MAX_MESSAGE_LENGTH and failed
 # it on every retry; two fifths of that cap leaves room for the rest of the prompt.
 CANVAS_PROMPT_MAX_CHARS: Final[int] = MAX_MESSAGE_LENGTH * 2 // 5
+# Most of a triggered run's event data inlined in its prompt; the run can fetch the source.
+TRIGGER_EVENTS_PROMPT_MAX_CHARS: Final[int] = MAX_MESSAGE_LENGTH // 5
 
-# How far past its stored scheduled_at a scheduled fire may land and still run.
-# ARQ fires a deferred job at its defer time; a fire outside this window is a
-# job left behind by a reschedule (ARQ cannot cancel it) and is dropped.
+# The ARQ task that runs a tracked todo; also the prefix of its per-occurrence job id.
+EXECUTE_TRACKED_TODO_TASK: Final[str] = "execute_tracked_todo"
+
+# How far past its stored scheduled_at an unstamped fire (queued before jobs
+# carried their occurrence) may land and still run; outside it, it is dropped.
 TODO_SCHEDULE_FIRE_GRACE: Final[timedelta] = timedelta(minutes=2)
 
 # How much of a run's final report is kept in its activity.md entry.
@@ -101,4 +105,16 @@ class TodoActivityEvent(StrEnum):
 
 # The sections every canvas.md carries exactly once, in this order. Activity
 # (anything dated, any run log) belongs in activity.md, never here.
-CANVAS_SECTIONS: Final[tuple[str, ...]] = ("Key Details", "Current State", "Context", "Learnings")
+CANVAS_CURRENT_STATE_SECTION: Final[str] = "Current State"
+CANVAS_SECTIONS: Final[tuple[str, ...]] = (
+    "Key Details",
+    CANVAS_CURRENT_STATE_SECTION,
+    "Context",
+    "Learnings",
+)
+
+# How much of an existing todo's Current State a refused duplicate create shows.
+EXISTING_TODO_STATE_EXCERPT_CHARS: Final[int] = 400
+
+# Most todos list_tracked_todos returns, filtered or not; the freshest win.
+LIST_TRACKED_TODOS_LIMIT: Final[int] = 50

@@ -1,5 +1,5 @@
 from datetime import UTC, datetime, timedelta
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -16,6 +16,21 @@ class Priority(str, Enum):
     MEDIUM = "medium"  # yellow
     LOW = "low"  # blue
     NONE = "none"  # no color
+
+
+class ExternalRefSource(StrEnum):
+    """The kind of outside object a todo is about."""
+
+    GMAIL_THREAD = "gmail_thread"
+
+
+class ExternalRef(BaseModel):
+    """The outside object a todo is about; at most one open todo per user holds a given ref."""
+
+    model_config = ConfigDict(frozen=True)
+
+    source: ExternalRefSource
+    id: str = Field(min_length=1)
 
 
 class SubTask(ResponseModel):
@@ -462,6 +477,8 @@ class TodoDocument(UserScopedDocument):
     # The chat that created this tracked todo, captured at creation. None for todos
     # created outside a chat (onboarding/REST).
     source_conversation_id: str | None = None
+    # Set only at insert, never updated: the unique index keys on it while the todo is open.
+    external_ref: ExternalRef | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

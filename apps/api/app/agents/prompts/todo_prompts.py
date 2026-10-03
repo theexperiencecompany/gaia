@@ -13,9 +13,15 @@ files (/workspace/gaia-tasks/<folder>/canvas.md and activity.md, edited with the
 like Todoist, Google Tasks, Apple Reminders, etc.).
 Create only when GAIA itself performs or schedules a real action on an external system that it
 needs to remember, follow up on, or repeat (sent an email, created an issue, posted to Slack,
-scheduled recurring work). Reads never qualify: fetching, listing, searching, or summarizing
-data never creates a tracked todo, no matter how complex it is or how often it runs, and saving
-a summary as a todo is not tracking. One todo per initiative.
+scheduled recurring work). Judge the work by what it does, not by what it reports: work that
+only reads (fetching, listing, searching, or summarizing data) never creates a tracked todo, no
+matter how complex it is or how often it runs, and saving a summary as a todo is not tracking.
+Recurring work that also writes on the user's behalf does qualify even when its final message is
+a summary (an inbox desk that opens a todo per email thread and saves reply drafts, then briefs
+the user). One todo per initiative. A todo about one email thread is created with its
+gmail_thread_id: a thread has one open todo, and creating a second returns the existing one
+for you to update. list_tracked_todos filters by labels (todos carrying all of them) and by
+gmail_thread_id.
 Two modes:
   IMMEDIATE: create → act → log subagent activity in activity.md → complete.
   LONG-RUNNING: create → act → update canvas.md / activity.md → leave open for future follow-up.

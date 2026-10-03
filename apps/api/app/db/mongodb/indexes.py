@@ -235,6 +235,21 @@ async def create_conversation_indexes() -> None:
         raise
 
 
+# One open todo per user per outside object (a Gmail thread): the atomic backstop that
+# makes a racing second create fail. Completing a todo drops it out of the filter, so the
+# object can be tracked again. Shared with the contract suite, which builds this exact spec.
+TODO_OPEN_EXTERNAL_REF_KEYS: IndexKeys = [
+    ("user_id", 1),
+    ("external_ref.source", 1),
+    ("external_ref.id", 1),
+]
+TODO_OPEN_EXTERNAL_REF_OPTIONS: IndexOptions = {
+    "unique": True,
+    "name": "user_open_external_ref_unique",
+    "partialFilterExpression": {"external_ref.id": {"$type": "string"}, "completed": False},
+}
+
+
 async def create_todo_indexes() -> None:
     """Create indexes for todos collection."""
     todos_collection = get_async_collection("todos")
@@ -303,6 +318,9 @@ async def create_todo_indexes() -> None:
                 [("user_id", 1), ("trigger_subscriptions.trigger_name", 1)],
                 name="user_subscription_trigger_name",
                 sparse=True,
+            ),
+            todos_collection.create_index(
+                TODO_OPEN_EXTERNAL_REF_KEYS, **TODO_OPEN_EXTERNAL_REF_OPTIONS
             ),
         )
 

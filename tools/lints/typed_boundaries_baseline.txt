@@ -127,8 +127,6 @@ apps/api/app/models/mail_models.py	TB001
 apps/api/app/models/memory_models.py	TB002
 apps/api/app/models/playbook_models.py	TB001
 apps/api/app/models/playbook_models.py	TB002
-apps/api/app/models/trigger_configs.py	TB001
-apps/api/app/models/trigger_configs.py	TB002
 apps/api/app/models/workflow_execution_models.py	TB001
 apps/api/app/models/workflow_models.py	TB001
 apps/api/app/models/workflow_models.py	TB002
@@ -229,15 +227,10 @@ apps/api/app/services/storage/user_todos_vfs.py	TB001
 apps/api/app/services/storage/user_todos_vfs.py	TB002
 apps/api/app/services/support_service.py	TB002
 apps/api/app/services/tools/tools_service.py	TB002
-apps/api/app/services/triggers/base.py	TB001
-apps/api/app/services/triggers/base.py	TB002
-apps/api/app/services/triggers/batching.py	TB001
 apps/api/app/services/triggers/condition_matching.py	TB001
 apps/api/app/services/triggers/handlers/asana.py	TB001
 apps/api/app/services/triggers/handlers/calendar.py	TB001
 apps/api/app/services/triggers/handlers/github.py	TB001
-apps/api/app/services/triggers/handlers/gmail.py	TB001
-apps/api/app/services/triggers/handlers/gmail.py	TB002
 apps/api/app/services/triggers/handlers/gmail_poll.py	TB001
 apps/api/app/services/triggers/handlers/google_docs.py	TB001
 apps/api/app/services/triggers/handlers/google_sheets.py	TB001

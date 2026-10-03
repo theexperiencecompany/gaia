@@ -8,6 +8,7 @@ import stackprinter
 from app.constants.email import SIGNUP_EMAIL_TASK
 from app.constants.onboarding import INTELLIGENCE_TASK
 from app.constants.payments import SUBSCRIPTION_WORKFLOW_SYNC_TASK
+from app.constants.todos import EXECUTE_TRACKED_TODO_TASK
 
 # Needs the same monkey-patches as the API process (main.py) — without this,
 # custom tools 500 with "Missing user_id in auth_credentials" because the
@@ -83,7 +84,8 @@ _backfill_user_memories = arq_task(backfill_user_memories)
 _sweep_idle_sandboxes = arq_task(sweep_idle_sandboxes)
 _prune_inactive_sessions = arq_task(prune_inactive_sessions)
 _prune_checkpoint_versions = arq_task(prune_checkpoint_versions)
-_execute_tracked_todo = arq_task(execute_tracked_todo)
+# Named from the constant its per-occurrence job ids are built from.
+_execute_tracked_todo = func(arq_task(execute_tracked_todo), name=EXECUTE_TRACKED_TODO_TASK)
 _resume_tracked_todo = arq_task(resume_tracked_todo)
 _dispatch_todo_subscriptions = arq_task(dispatch_todo_subscriptions)
 _safety_net_check_orphaned_todos = arq_task(safety_net_check_orphaned_todos)

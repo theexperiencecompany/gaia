@@ -225,7 +225,3 @@ class TriggerOrigin(BaseModel):
         default_factory=dict,
         description="The webhook payload that matched, for the agent's context",
     )
-    defer_attempts: int = Field(
-        default=0,
-        description="How many times this fire was re-enqueued past a held execution lock",
-    )

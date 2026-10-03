@@ -5,18 +5,38 @@ completion/archival, and the context-summary renderers the agent sees.
 """
 
 from datetime import UTC, datetime, timedelta
+from http import HTTPStatus
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.constants.todos import GAIA_TRACKED_LABEL, TodoActivityEvent
-from app.models.todo_models import Priority, TodoDocument, TodoModel, TodoResponse
+from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
+from app.models.todo_models import (
+    ExternalRef,
+    ExternalRefSource,
+    Priority,
+    TodoDocument,
+    TodoModel,
+    TodoResponse,
+    TodoUpdate,
+)
+from app.models.trigger_subscription_models import (
+    ConditionOperator,
+    SubscriptionAction,
+    SubscriptionCondition,
+    SubscriptionResolution,
+    TriggerSubscription,
+)
+from app.services.todos import errors as todo_errors
 from app.services.tracked_todo_service import (
     CANVAS_TEMPLATE,
     TrackedTodoService,
     tracked_todo_service,
 )
+from app.services.triggers.subscription_service import SubscriptionError
+from app.utils.occurrence import occurrence_stamp
 
 _MOD = "app.services.tracked_todo_service"
 USER_ID = "507f1f77bcf86cd799439011"
@@ -93,6 +113,133 @@ def mock_deps():
         )
 
 
+_THREAD = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="thread-1")
+_REGISTER = "app.services.todos.external_ref_watch.register_subscription"
+
+
+async def _registered(
+    *, trigger_name: str, conditions: list[SubscriptionCondition], **_: object
+) -> tuple[TriggerSubscription, None]:
+    """Stand in for register_subscription: the stored watch, with no repairs to report."""
+    return (
+        TriggerSubscription(
+            trigger_name=trigger_name,
+            conditions=conditions,
+            action=SubscriptionAction.EXECUTE,
+            resolution=SubscriptionResolution.ACCOUNT,
+        ),
+        None,
+    )
+
+
+@pytest.fixture
+def watch():
+    with (
+        patch(_REGISTER, new_callable=AsyncMock, side_effect=_registered) as m_register,
+        patch(
+            "app.services.todos.external_ref_watch.unregister_subscription", new_callable=AsyncMock
+        ) as m_unregister,
+        patch(f"{_MOD}.TodoService.delete_todo", new_callable=AsyncMock) as m_delete,
+    ):
+        yield SimpleNamespace(register=m_register, unregister=m_unregister, delete=m_delete)
+
+
+class TestCreateThreadTodo:
+    """A todo about a Gmail thread is created already watching that thread both ways."""
+
+    async def test_the_ref_reaches_the_insert(self, mock_repo, mock_deps, watch):
+        mock_deps.create.return_value = _todo_response()
+        await TrackedTodoService.create_tracked_todo(USER_ID, "Reply", external_ref=_THREAD)
+        assert mock_deps.create.await_args.args[1] == USER_ID
+        assert mock_deps.create.await_args.kwargs["external_ref"] == _THREAD
+
+    async def test_incoming_and_sent_mail_on_the_thread_both_run_the_todo(
+        self, mock_repo, mock_deps, watch
+    ):
+        mock_deps.create.return_value = _todo_response()
+
+        await TrackedTodoService.create_tracked_todo(USER_ID, "Reply", external_ref=_THREAD)
+
+        calls = [c.kwargs for c in watch.register.await_args_list]
+        assert sorted(c["trigger_name"] for c in calls) == sorted(
+            [GMAIL_NEW_MESSAGE_TRIGGER_NAME, GMAIL_EMAIL_SENT_TRIGGER_NAME]
+        )
+        on_thread = [
+            SubscriptionCondition(
+                field_name="thread_id", operator=ConditionOperator.EQUALS, value="thread-1"
+            )
+        ]
+        for kwargs in calls:
+            assert kwargs["todo_id"] == TODO_ID
+            assert kwargs["user_id"] == USER_ID
+            assert kwargs["conditions"] == on_thread
+            assert kwargs["action"] is SubscriptionAction.EXECUTE
+
+    async def test_the_watches_follow_the_creation_entry(self, mock_repo, mock_deps, watch):
+        """Each watch appends to activity.md, so it must land after the write that sets it."""
+        order: list[str] = []
+        mock_deps.create.return_value = _todo_response()
+        mock_repo.update.side_effect = lambda *a, **k: order.append("setup")
+
+        async def register(**kwargs: object) -> tuple[TriggerSubscription, None]:
+            order.append(str(kwargs["trigger_name"]))
+            return await _registered(**kwargs)
+
+        watch.register.side_effect = register
+
+        await TrackedTodoService.create_tracked_todo(USER_ID, "Reply", external_ref=_THREAD)
+
+        assert order[0] == "setup" and len(order) == 3
+
+    async def test_a_todo_without_a_ref_watches_nothing(self, mock_repo, mock_deps, watch):
+        mock_deps.create.return_value = _todo_response()
+        await TrackedTodoService.create_tracked_todo(USER_ID, "Reply")
+        watch.register.assert_not_awaited()
+
+    async def test_a_watch_that_fails_takes_the_todo_with_it(self, mock_repo, mock_deps, watch):
+        """An unwatched thread todo would hold the thread's key, so every retry would get it back."""
+        mock_deps.create.return_value = _todo_response()
+        first = await _registered(trigger_name=GMAIL_NEW_MESSAGE_TRIGGER_NAME, conditions=[])
+        watch.register.side_effect = [first, SubscriptionError("could not register")]
+
+        with pytest.raises(SubscriptionError):
+            await TrackedTodoService.create_tracked_todo(USER_ID, "Reply", external_ref=_THREAD)
+
+        watch.unregister.assert_awaited_once_with(TODO_ID, USER_ID, first[0].id)
+        watch.delete.assert_awaited_once_with(TODO_ID, USER_ID)
+
+    async def test_a_rollback_that_fails_names_the_todo_it_kept(self, mock_repo, mock_deps, watch):
+        """The caller has to act on the kept todo, so the error carries its id."""
+        mock_deps.create.return_value = _todo_response()
+        watch.register.side_effect = SubscriptionError("could not register")
+        watch.delete.side_effect = RuntimeError("mongo down")
+
+        with (
+            patch(f"{_MOD}.log") as log_mock,
+            pytest.raises(todo_errors.UnwatchedTodoKeptError) as raised,
+        ):
+            await TrackedTodoService.create_tracked_todo(USER_ID, "Reply", external_ref=_THREAD)
+
+        assert raised.value.todo_id == TODO_ID
+        assert (raised.value.status_code, raised.value.code, raised.value.public) == (
+            HTTPStatus.INTERNAL_SERVER_ERROR,
+            "unwatched_todo_kept",
+            {"todo_id": TODO_ID},
+        )
+        assert raised.value.message == (
+            f"Todo {TODO_ID} could not watch its thread (could not register) and could not be "
+            "removed, so it is kept without its watch."
+        )
+        assert isinstance(raised.value.__cause__, RuntimeError)
+        log_mock.error.assert_called_once_with(
+            "tracked_todo.unwatched_discard_failed",
+            todo_id=TODO_ID,
+            user_id=USER_ID,
+            error="mongo down",
+            error_type="RuntimeError",
+        )
+
+
 class TestCreateTrackedTodo:
     async def test_activity_in_the_initial_canvas_is_moved_to_activity_md(
         self, mock_repo, mock_deps
@@ -152,6 +299,52 @@ class TestCreateTrackedTodo:
         assert mock_repo.update.await_args.kwargs["update"].activity_content == (
             "- 2026-09-13T12:00:00+00:00 [created] from conversation 0123abcd"
         )
+
+    async def test_the_schedule_is_saved_with_the_insert(self, mock_repo, mock_deps):
+        """A schedule written after the insert could fail and leave the todo half-made for a retry to duplicate."""
+        mock_deps.create.return_value = _todo_response()
+        at = datetime(2026, 10, 3, 9, 0, tzinfo=UTC)
+        due = datetime(2026, 10, 2, 17, 0, tzinfo=UTC)
+        expires = datetime(2026, 10, 9, 0, 0, tzinfo=UTC)
+        schedule = TodoUpdate(scheduled_at=at, recurrence="daily", due_date=due, expires_at=expires)
+
+        await TrackedTodoService.create_tracked_todo(
+            USER_ID, "Prepare Q3 report", schedule=schedule
+        )
+
+        inserted: TodoModel = mock_deps.create.call_args.args[0]
+        assert (inserted.scheduled_at, inserted.recurrence) == (at, "daily")
+        assert (inserted.due_date, inserted.expires_at) == (due, expires)
+        assert mock_repo.update.await_args.kwargs["update"].model_fields_set.isdisjoint(
+            {"scheduled_at", "recurrence", "due_date", "expires_at"}
+        )
+
+    @pytest.mark.parametrize(
+        ("conversation_id", "actor"),
+        [("00f7c88f-4ac1-4169", "GAIA in conversation 00f7c88f"), (None, "GAIA")],
+        ids=["from-a-conversation", "outside-a-conversation"],
+    )
+    async def test_the_schedule_is_on_the_timeline_naming_who_set_it(
+        self, mock_repo, mock_deps, conversation_id, actor
+    ):
+        mock_deps.create.return_value = _todo_response()
+        fixed = datetime(2026, 9, 13, 12, 0, tzinfo=UTC)
+        due = datetime(2026, 10, 2, 17, 0, tzinfo=UTC)
+
+        with patch(f"{_MOD}.datetime") as m_now:
+            m_now.now.return_value = fixed
+            await TrackedTodoService.create_tracked_todo(
+                USER_ID,
+                "Prepare Q3 report",
+                source_conversation_id=conversation_id,
+                schedule=TodoUpdate(due_date=due),
+            )
+
+        activity = mock_repo.update.await_args.kwargs["update"].activity_content
+        assert activity.splitlines()[-1] == (
+            f"- 2026-09-13T12:00:00+00:00 [due_date_changed] due {due.isoformat()}, by {actor}"
+        )
+        assert activity.count("\n") == 1  # the creation marker, then the due date
 
     async def test_an_initial_canvas_missing_sections_gets_them(self, mock_repo, mock_deps):
         """A canvas a later edit would refuse for its shape must not be created in that shape."""
@@ -395,7 +588,7 @@ class TestSystemLog:
 
 
 class TestScheduleExecution:
-    async def test_enqueues_deferred_job(self, mock_repo, mock_deps):
+    async def test_the_job_is_armed_for_its_occurrence(self, mock_repo, mock_deps):
         pool = AsyncMock()
         mock_deps.pool.return_value = pool
         when = datetime.now(UTC) + timedelta(hours=1)
@@ -408,13 +601,53 @@ class TestScheduleExecution:
         # into this worker) — pin the job contract, not the trace.
         pool.enqueue_job.assert_awaited_once()
         args, kwargs = pool.enqueue_job.await_args
+        stamp = occurrence_stamp(when)
         assert args == ("execute_tracked_todo", TODO_ID)
+        assert kwargs["scheduled_for"] == stamp
+        # One job id per occurrence: a repeat enqueue for it dedupes in ARQ.
+        assert kwargs["_job_id"] == f"execute_tracked_todo:{TODO_ID}:{stamp}"
         assert kwargs["_defer_until"] == when
 
-    async def test_false_when_enqueue_fails(self, mock_repo, mock_deps):
-        mock_deps.pool.side_effect = RuntimeError("redis down")
+    async def test_a_delayed_fire_keeps_the_occurrence_it_is_for(self, mock_repo, mock_deps):
+        pool = AsyncMock()
+        mock_deps.pool.return_value = pool
+        due = datetime.now(UTC) - timedelta(minutes=5)
+        later = datetime.now(UTC) + timedelta(seconds=30)
+
+        await TrackedTodoService.schedule_execution(TODO_ID, due, defer_until=later)
+
+        kwargs = pool.enqueue_job.await_args.kwargs
+        assert kwargs["scheduled_for"] == occurrence_stamp(due)
+        assert kwargs["_defer_until"] == later
+
+    async def test_a_naive_time_is_stamped_as_the_utc_instant_mongo_stores(
+        self, mock_repo, mock_deps
+    ):
+        pool = AsyncMock()
+        mock_deps.pool.return_value = pool
+        naive = datetime(2026, 9, 27, 10, 0, 0)
+
+        await TrackedTodoService.schedule_execution(TODO_ID, naive)
+
+        aware = naive.replace(tzinfo=UTC)
+        kwargs = pool.enqueue_job.await_args.kwargs
+        assert kwargs["scheduled_for"] == occurrence_stamp(aware)
+        # A naive defer time would be read as the worker's local time, not UTC.
+        assert kwargs["_defer_until"] == aware
+
+    async def test_false_when_the_occurrence_is_already_queued(self, mock_repo, mock_deps):
+        pool = AsyncMock()
+        pool.enqueue_job.return_value = None
+        mock_deps.pool.return_value = pool
 
         assert await TrackedTodoService.schedule_execution(TODO_ID, datetime.now(UTC)) is False
+
+    async def test_a_queue_failure_propagates(self, mock_repo, mock_deps):
+        """Every caller persisted scheduled_at first; hiding the failure hid a todo that never runs."""
+        mock_deps.pool.side_effect = RuntimeError("redis down")
+
+        with pytest.raises(RuntimeError, match="redis down"):
+            await TrackedTodoService.schedule_execution(TODO_ID, datetime.now(UTC))
 
 
 class TestArchiveTrackedTodo:

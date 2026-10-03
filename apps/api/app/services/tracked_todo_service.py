@@ -17,21 +17,40 @@ JuiceFS / FUSE mount is required, so tracked todos work in every dev mode.
 
 from datetime import UTC, datetime
 
-from app.constants.todos import GAIA_TRACKED_LABEL, TodoActivityEvent
+from app.constants.todos import (
+    EXECUTE_TRACKED_TODO_TASK,
+    GAIA_TRACKED_LABEL,
+    TodoActivityEvent,
+)
 from app.db.repositories.todos import todo_repository
-from app.models.todo_models import Priority, TodoDocument, TodoModel, TodoResponse, TodoUpdate
+from app.models.todo_models import (
+    ExternalRef,
+    Priority,
+    TodoDocument,
+    TodoModel,
+    TodoResponse,
+    TodoUpdate,
+)
 from app.services.canvas_markdown import normalize_canvas
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from app.services.storage._vfs_common import folder_name
-from app.services.todo_activity import activity_line, record_activity
+from app.services.todo_activity import (
+    activity_line,
+    agent_actor,
+    field_change_lines,
+    record_activity,
+)
 from app.services.todo_canvas_storage import (
     append_log,
     build_vfs_label,
     write_canvas_and_activity,
 )
+from app.services.todos.errors import UnwatchedTodoKeptError
+from app.services.todos.external_ref_watch import watch_external_ref
 from app.services.todos.todo_service import TodoService
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.utils.canvas_vector_utils import mark_canvas_completed, store_canvas_embedding
+from app.utils.occurrence import occurrence_stamp
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log
@@ -50,6 +69,21 @@ CANVAS_TEMPLATE = """# {title}
 ## Learnings
 <!-- written on completion: what worked, what did not, timing insights, reusable patterns -->
 """
+
+
+async def _discard_unwatched_todo(todo_id: str, user_id: str, watch_error: Exception) -> None:
+    """Delete a todo whose watch failed; UnwatchedTodoKeptError names it when the delete fails too."""
+    try:
+        await TodoService.delete_todo(todo_id, user_id)
+    except Exception as delete_error:
+        log.error(
+            "tracked_todo.unwatched_discard_failed",
+            todo_id=todo_id,
+            user_id=user_id,
+            error=str(delete_error),
+            error_type=type(delete_error).__name__,
+        )
+        raise UnwatchedTodoKeptError(todo_id, watch_error) from delete_error
 
 
 def _pin_active_todo(docs: list[TodoDocument], active_todo_id: str | None) -> None:
@@ -99,20 +133,22 @@ class TrackedTodoService:
         title: str,
         description: str | None = None,
         project_id: str | None = None,
-        due_date: datetime | None = None,
         priority: Priority = Priority.NONE,
         labels: list[str] | None = None,
         initial_canvas: str | None = None,
         source_conversation_id: str | None = None,
         notify_on_run: bool = True,
+        external_ref: ExternalRef | None = None,
+        schedule: TodoUpdate | None = None,
     ) -> TodoResponse:
-        """Create a todo with VFS canvas and ChromaDB indexing.
+        """Create a todo with its canvas, activity and log, indexed in ChromaDB.
 
-        1. Creates a regular todo with 'gaia-tracked' label
-        2. Initializes the canvas + log on the todo doc
-        3. Sets vfs_path on the todo document
-        4. Indexes canvas in ChromaDB
+        schedule's scheduled_at, recurrence, due_date and expires_at are saved with the insert.
+        With external_ref it is the one open todo for that object, already watching it.
+        Raises ExternalRefTakenError when another open todo holds the ref, and
+        UnwatchedTodoKeptError when the watch and the rollback both fail.
         """
+        schedule = schedule or TodoUpdate()
         all_labels = list(labels or [])
         if GAIA_TRACKED_LABEL not in all_labels:
             all_labels.append(GAIA_TRACKED_LABEL)
@@ -121,12 +157,15 @@ class TrackedTodoService:
             title=title,
             description=description,
             project_id=project_id,
-            due_date=due_date,
             priority=priority,
             labels=all_labels,
             notify_on_run=notify_on_run,
+            scheduled_at=schedule.scheduled_at,
+            recurrence=schedule.recurrence,
+            due_date=schedule.due_date,
+            expires_at=schedule.expires_at,
         )
-        result = await TodoService.create_todo(todo, user_id)
+        result = await TodoService.create_todo(todo, user_id, external_ref=external_ref)
         todo_id = result.id
 
         vfs_path = build_vfs_label(todo_id)
@@ -136,12 +175,14 @@ class TrackedTodoService:
         canvas_content, moved_activity = normalize_canvas(canvas_content)
         now = datetime.now(UTC)
         # Moved legacy entries come first (oldest-first, like the migration); the
-        # creation marker stays last so an edit-append has a line to anchor on,
+        # creation entries stay last so an edit-append has a line to anchor on,
         # and models reach for edit before write.
-        created = activity_line(
-            TodoActivityEvent.CREATED,
-            f"from conversation {source_conversation_id[:8]}" if source_conversation_id else "",
-            at=now,
+        origin = f"from conversation {source_conversation_id[:8]}" if source_conversation_id else ""
+        created = "\n".join(
+            [
+                activity_line(TodoActivityEvent.CREATED, origin, at=now),
+                *field_change_lines(schedule, by=agent_actor(source_conversation_id), at=now),
+            ]
         )
         activity_content = "\n\n".join(p for p in (moved_activity, created) if p)
         log_content = f"# System Log: {title}\n"
@@ -157,6 +198,14 @@ class TrackedTodoService:
                 source_conversation_id=source_conversation_id,
             ),
         )
+
+        if external_ref is not None:
+            try:
+                await watch_external_ref(todo_id, user_id, external_ref, ())
+            except Exception as watch_error:
+                # Unwatched, it would still hold the ref and answer every retry as a duplicate.
+                await _discard_unwatched_todo(todo_id, user_id, watch_error)
+                raise
 
         await store_canvas_embedding(
             todo_id=todo_id,
@@ -287,26 +336,31 @@ class TrackedTodoService:
         )
 
     @staticmethod
-    async def schedule_execution(todo_id: str, scheduled_at: datetime) -> bool:
-        """Enqueue an ARQ deferred job to execute this tracked todo at scheduled_at.
+    async def schedule_execution(
+        todo_id: str,
+        scheduled_at: datetime,
+        *,
+        defer_until: datetime | None = None,
+    ) -> bool:
+        """Queue the run armed for scheduled_at; False when that occurrence is already queued.
 
-        The todo's stored scheduled_at must already name this time: a fire that
-        finds it moved is dropped as stale, which is also how a reschedule
-        retires the job it replaces (ARQ cannot cancel a deferred job).
-        Returns True if the job was enqueued.
+        Store scheduled_at on the todo first: the job id dedupes a repeat enqueue,
+        and a fire whose todo has moved off its stamp is dropped as stale, which is
+        how a reschedule retires the job ARQ cannot cancel. defer_until only delays it.
         """
-        try:
-            pool = await RedisPoolManager.get_pool()
-            await enqueue_worker_job(
-                pool,
-                "execute_tracked_todo",
-                todo_id,
-                _defer_until=scheduled_at,
-            )
-            return True
-        except Exception as e:
-            log.warning("tracked_todo.schedule_failed", todo_id=todo_id, error=str(e))
-            return False
+        # Mongo stores a naive datetime as UTC, so the stamp must name that instant.
+        armed_for = scheduled_at if scheduled_at.tzinfo else scheduled_at.replace(tzinfo=UTC)
+        stamp = occurrence_stamp(armed_for)
+        pool = await RedisPoolManager.get_pool()
+        job = await enqueue_worker_job(
+            pool,
+            EXECUTE_TRACKED_TODO_TASK,
+            todo_id,
+            scheduled_for=stamp,
+            _job_id=f"{EXECUTE_TRACKED_TODO_TASK}:{todo_id}:{stamp}",
+            _defer_until=defer_until or armed_for,
+        )
+        return job is not None
 
     @staticmethod
     async def archive_tracked_todo(todo_id: str, user_id: str, reason: str) -> bool:

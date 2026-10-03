@@ -14,12 +14,16 @@ from unittest.mock import AsyncMock, call, patch
 from bson import ObjectId
 from fastapi import HTTPException
 from pydantic import ValidationError
+from pymongo.errors import BulkWriteError, DuplicateKeyError
 import pytest
 
 from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.models.todo_models import (
     BulkMoveRequest,
     BulkUpdateRequest,
+    ExternalRef,
+    ExternalRefSource,
     PendingApprovalRef,
     Priority,
     ProjectCreate,
@@ -37,12 +41,19 @@ from app.models.todo_models import (
     UpdateProjectRequest,
 )
 from app.models.trigger_subscription_models import (
+    ConditionOperator,
     SubscriptionAction,
+    SubscriptionCondition,
     SubscriptionResolution,
     TriggerSubscription,
 )
 from app.services.analytics_service import AnalyticsEvents
-from app.services.todos.errors import TrackedLabelChangeError, TrackedTodoWorkflowError
+from app.services.todos.errors import (
+    ExternalRefReopenedTwiceError,
+    ExternalRefTakenError,
+    TrackedLabelChangeError,
+    TrackedTodoWorkflowError,
+)
 from app.services.todos.todo_bulk_service import (
     bulk_complete_todos,
     bulk_delete_todos as bulk_service_delete_todos,
@@ -59,6 +70,7 @@ from app.services.todos.todo_service import (
     get_todo,
     update_project,
 )
+from app.services.triggers.subscription_service import SubscriptionError
 from app.utils.errors import AppError
 from app.utils.todo_vector_utils import TodoSearchFilters
 
@@ -446,6 +458,91 @@ class TestCreateTodo:
         assert mock_capture.call_args.args[2]["has_project"] is True
 
 
+_THREAD = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="thread-1")
+_REGISTER = "app.services.todos.external_ref_watch.register_subscription"
+_UNREGISTER = "app.services.todos.external_ref_watch.unregister_subscription"
+_ON_THREAD = SubscriptionCondition(
+    field_name="thread_id", operator=ConditionOperator.EQUALS, value=_THREAD.id
+)
+
+
+async def _registered(
+    *, trigger_name: str, conditions: list[SubscriptionCondition], **_: object
+) -> tuple[TriggerSubscription, None]:
+    """Stand in for register_subscription: the stored watch, with no repairs to report."""
+    return (
+        TriggerSubscription(
+            trigger_name=trigger_name,
+            conditions=conditions,
+            action=SubscriptionAction.EXECUTE,
+            resolution=SubscriptionResolution.ACCOUNT,
+        ),
+        None,
+    )
+
+
+def _completed_thread_todo(
+    todo_id: str = FAKE_TODO_ID, watching: tuple[str, ...] = ()
+) -> TodoDocument:
+    todo = _make_todo_doc(todo_id=todo_id, completed=True)
+    # Its own instance, as each document read from Mongo has: equal refs, not one object.
+    todo.external_ref = _THREAD.model_copy()
+    todo.trigger_subscriptions = [
+        TriggerSubscription(
+            trigger_name=name,
+            conditions=[_ON_THREAD],
+            action=SubscriptionAction.EXECUTE,
+            resolution=SubscriptionResolution.ACCOUNT,
+        )
+        for name in watching
+    ]
+    return todo
+
+
+class TestCreateTodoWithExternalRef:
+    async def test_the_ref_is_written_by_the_insert_itself(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_todo_repo.create = AsyncMock(return_value=_make_todo_doc())
+        await TodoService.create_todo(TodoModel(title="Reply"), FAKE_USER_ID, external_ref=_THREAD)
+        assert mock_todo_repo.create.await_args.args[0].external_ref == _THREAD
+
+    async def test_a_taken_ref_raises_with_the_open_todo_that_holds_it(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        winner = _make_todo_doc(title="Reply to Sam")
+        mock_todo_repo.create = AsyncMock(side_effect=DuplicateKeyError("E11000"))
+        mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=winner)
+
+        with pytest.raises(ExternalRefTakenError) as raised:
+            await TodoService.create_todo(
+                TodoModel(title="Reply"), FAKE_USER_ID, external_ref=_THREAD
+            )
+
+        assert raised.value.existing is winner
+        mock_todo_repo.find_open_by_external_ref.assert_awaited_once_with(FAKE_USER_ID, _THREAD)
+        mock_vector_utils["store_embedding"].assert_not_awaited()
+
+    async def test_a_duplicate_key_with_no_open_holder_is_not_disguised(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_todo_repo.create = AsyncMock(side_effect=DuplicateKeyError("E11000"))
+        mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=None)
+        with pytest.raises(DuplicateKeyError):
+            await TodoService.create_todo(
+                TodoModel(title="Reply"), FAKE_USER_ID, external_ref=_THREAD
+            )
+
+    async def test_a_duplicate_key_without_a_ref_propagates(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_todo_repo.create = AsyncMock(side_effect=DuplicateKeyError("E11000"))
+        mock_todo_repo.find_open_by_external_ref = AsyncMock()
+        with pytest.raises(DuplicateKeyError):
+            await TodoService.create_todo(TodoModel(title="Reply"), FAKE_USER_ID)
+        mock_todo_repo.find_open_by_external_ref.assert_not_awaited()
+
+
 class TestGetTodo:
     async def test_not_found_raises(self, mock_todo_repo, mock_project_repo):
         mock_todo_repo.get = AsyncMock(return_value=None)
@@ -569,6 +666,7 @@ class TestUpdateTodo:
         )
         mock_todo_repo.update.assert_not_awaited()
         assert result.workflow_id == "wf1"
+        assert mock_todo_repo.get.await_args == call(FAKE_TODO_ID, user_id=FAKE_USER_ID)
 
     async def test_a_tracked_todo_refuses_a_workflow_link(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
@@ -1196,3 +1294,349 @@ class TestTodoUpdateCannotLinkAWorkflow:
         """Only link_workflow may write workflow_id, so it cannot bypass the tracked-todo guard."""
         with pytest.raises(ValidationError):
             TodoUpdate(workflow_id="wf1")
+
+
+class TestReopenOfATakenRef:
+    """Reopening a todo whose outside object already has an open todo is a named conflict."""
+
+    async def test_update_names_the_open_todo_holding_the_ref(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        reopened = _make_todo_doc(todo_id=FAKE_TODO_ID, completed=True)
+        reopened.external_ref = _THREAD
+        holder = _make_todo_doc(title="Reply to Sam")
+        mock_todo_repo.get = AsyncMock(return_value=reopened)
+        mock_todo_repo.update = AsyncMock(side_effect=DuplicateKeyError("E11000"))
+        mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=holder)
+
+        with pytest.raises(ExternalRefTakenError) as raised:
+            await TodoService.update_todo(
+                FAKE_TODO_ID, TodoUpdateRequest(completed=False), FAKE_USER_ID
+            )
+
+        assert raised.value.existing is holder
+        assert raised.value.status_code == 409
+        assert holder.id in raised.value.message and "Reply to Sam" in raised.value.message
+        mock_todo_repo.find_open_by_external_ref.assert_awaited_once_with(FAKE_USER_ID, _THREAD)
+        mock_todo_repo.update.assert_awaited_once_with(
+            FAKE_TODO_ID,
+            user_id=FAKE_USER_ID,
+            update=TodoUpdate(completed=False, completed_at=None),
+        )
+        mock_todo_repo.get.assert_awaited_once_with(FAKE_TODO_ID, user_id=FAKE_USER_ID)
+
+    async def test_an_update_rejected_with_no_open_holder_is_not_disguised(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        reopened = _make_todo_doc(todo_id=FAKE_TODO_ID, completed=True)
+        reopened.external_ref = _THREAD
+        mock_todo_repo.get = AsyncMock(return_value=reopened)
+        mock_todo_repo.update = AsyncMock(side_effect=DuplicateKeyError("E11000"))
+        mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=None)
+
+        with pytest.raises(DuplicateKeyError):
+            await TodoService.update_todo(
+                FAKE_TODO_ID, TodoUpdateRequest(completed=False), FAKE_USER_ID
+            )
+
+    async def test_bulk_reopen_is_refused_before_any_write(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        reopened = _make_todo_doc(todo_id="b", completed=True)
+        reopened.external_ref = _THREAD
+        holder = _make_todo_doc(title="Reply to Sam")
+        mock_todo_repo.find_by_ids = AsyncMock(
+            return_value=[_make_todo_doc(todo_id="a", completed=True), reopened]
+        )
+        mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=holder)
+
+        with pytest.raises(ExternalRefTakenError) as raised:
+            await TodoService.bulk_update_todos(
+                BulkUpdateRequest(todo_ids=["a", "b"], updates=TodoUpdateRequest(completed=False)),
+                FAKE_USER_ID,
+            )
+
+        assert raised.value.existing is holder
+        mock_todo_repo.bulk_update.assert_not_awaited()
+        mock_todo_repo.find_by_ids.assert_awaited_once_with(FAKE_USER_ID, ["a", "b"])
+        mock_todo_repo.find_open_by_external_ref.assert_awaited_once_with(FAKE_USER_ID, _THREAD)
+
+    async def test_bulk_reopen_of_free_refs_writes(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        reopened = _make_todo_doc(todo_id="b", completed=True)
+        reopened.external_ref = _THREAD
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[reopened])
+        mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=None)
+        mock_todo_repo.bulk_update = AsyncMock(return_value=1)
+
+        with patch(_REGISTER, new_callable=AsyncMock, side_effect=_registered):
+            await TodoService.bulk_update_todos(
+                BulkUpdateRequest(todo_ids=["b"], updates=TodoUpdateRequest(completed=False)),
+                FAKE_USER_ID,
+            )
+
+        mock_todo_repo.bulk_update.assert_awaited_once_with(
+            FAKE_USER_ID, ["b"], TodoUpdate(completed=False)
+        )
+
+    async def test_an_open_todo_in_a_bulk_reopen_is_not_its_own_conflict(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        """The open todo holding a ref is found by it; only a completed one can be refused."""
+        already_open = _make_todo_doc(todo_id="b")
+        already_open.external_ref = _THREAD
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[already_open])
+        mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=already_open)
+        mock_todo_repo.bulk_update = AsyncMock(return_value=0)
+
+        await TodoService.bulk_update_todos(
+            BulkUpdateRequest(todo_ids=["b"], updates=TodoUpdateRequest(completed=False)),
+            FAKE_USER_ID,
+        )
+
+        mock_todo_repo.bulk_update.assert_awaited_once()
+
+    async def test_a_bulk_write_that_loses_the_race_is_still_named(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        """Another reopen can take the ref between the check and the write."""
+        reopened = _make_todo_doc(todo_id="b", completed=True)
+        reopened.external_ref = _THREAD
+        holder = _make_todo_doc(title="Reply to Sam")
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[reopened])
+        mock_todo_repo.find_open_by_external_ref = AsyncMock(side_effect=[None, holder])
+        mock_todo_repo.bulk_update = AsyncMock(
+            side_effect=BulkWriteError({"writeErrors": [{"code": 11000}]})
+        )
+
+        created: list[TriggerSubscription] = []
+
+        async def register(**kwargs: object) -> tuple[TriggerSubscription, None]:
+            subscription, outcome = await _registered(**kwargs)
+            created.append(subscription)
+            return subscription, outcome
+
+        with (
+            patch(_REGISTER, new_callable=AsyncMock, side_effect=register),
+            patch(_UNREGISTER, new_callable=AsyncMock) as unregister,
+            pytest.raises(ExternalRefTakenError) as raised,
+        ):
+            await TodoService.bulk_update_todos(
+                BulkUpdateRequest(todo_ids=["b"], updates=TodoUpdateRequest(completed=False)),
+                FAKE_USER_ID,
+            )
+
+        assert raised.value.existing is holder
+        assert mock_todo_repo.find_by_ids.await_args_list == [call(FAKE_USER_ID, ["b"])] * 3
+        assert len(created) == 2
+        assert unregister.await_args_list == [call("b", FAKE_USER_ID, sub.id) for sub in created]
+        assert mock_todo_repo.find_open_by_external_ref.await_args_list == [
+            call(FAKE_USER_ID, _THREAD),
+            call(FAKE_USER_ID, _THREAD),
+        ]
+
+    async def test_a_bulk_write_that_fails_for_another_reason_propagates(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        failure = BulkWriteError({"writeErrors": [{"code": 2}]})
+        mock_todo_repo.bulk_update = AsyncMock(side_effect=failure)
+
+        with pytest.raises(BulkWriteError) as raised:
+            await TodoService.bulk_update_todos(
+                BulkUpdateRequest(todo_ids=["b"], updates=TodoUpdateRequest(completed=False)),
+                FAKE_USER_ID,
+            )
+
+        assert raised.value is failure
+
+
+class TestReopenWatchesTheRefAgain:
+    """Completion tore the watches down, so reopening a thread todo must set them back up."""
+
+    async def test_reopening_a_thread_todo_watches_its_thread_both_ways_again(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[_completed_thread_todo()])
+        mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=None)
+        mock_todo_repo.update = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
+
+        with patch(_REGISTER, new_callable=AsyncMock, side_effect=_registered) as register:
+            await TodoService.update_todo(
+                FAKE_TODO_ID, TodoUpdateRequest(completed=False), FAKE_USER_ID
+            )
+
+        assert sorted(c.kwargs["trigger_name"] for c in register.await_args_list) == sorted(
+            [GMAIL_NEW_MESSAGE_TRIGGER_NAME, GMAIL_EMAIL_SENT_TRIGGER_NAME]
+        )
+        for c in register.await_args_list:
+            assert c.kwargs["todo_id"] == FAKE_TODO_ID
+            assert c.kwargs["user_id"] == FAKE_USER_ID
+            assert c.kwargs["conditions"] == [_ON_THREAD]
+            assert c.kwargs["action"] is SubscriptionAction.EXECUTE
+        mock_todo_repo.find_by_ids.assert_awaited_once_with(FAKE_USER_ID, [FAKE_TODO_ID])
+        mock_todo_repo.find_open_by_external_ref.assert_awaited_once_with(FAKE_USER_ID, _THREAD)
+
+    async def test_a_reopen_adds_only_the_watch_the_todo_lost(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        """A bulk completion skips teardown, so its todo can come back still watching."""
+        done = _completed_thread_todo(watching=(GMAIL_NEW_MESSAGE_TRIGGER_NAME,))
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[done])
+        mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=None)
+        mock_todo_repo.update = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
+
+        with patch(_REGISTER, new_callable=AsyncMock, side_effect=_registered) as register:
+            await TodoService.update_todo(
+                FAKE_TODO_ID, TodoUpdateRequest(completed=False), FAKE_USER_ID
+            )
+
+        register.assert_awaited_once()
+        assert register.await_args.kwargs["trigger_name"] == GMAIL_EMAIL_SENT_TRIGGER_NAME
+
+    async def test_a_reopen_that_does_not_land_removes_only_the_watch_it_added(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        done = _completed_thread_todo(watching=(GMAIL_NEW_MESSAGE_TRIGGER_NAME,))
+        kept_watch = done.trigger_subscriptions[0]
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[done])
+        mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=None)
+        mock_todo_repo.update = AsyncMock(side_effect=RuntimeError("mongo down"))
+        created: list[TriggerSubscription] = []
+
+        async def register(**kwargs: object) -> tuple[TriggerSubscription, None]:
+            subscription, outcome = await _registered(**kwargs)
+            created.append(subscription)
+            return subscription, outcome
+
+        with (
+            patch(_REGISTER, new_callable=AsyncMock, side_effect=register),
+            patch(_UNREGISTER, new_callable=AsyncMock) as unregister,
+            pytest.raises(RuntimeError),
+        ):
+            await TodoService.update_todo(
+                FAKE_TODO_ID, TodoUpdateRequest(completed=False), FAKE_USER_ID
+            )
+
+        (added,) = created
+        unregister.assert_awaited_once_with(FAKE_TODO_ID, FAKE_USER_ID, added.id)
+        assert added.id != kept_watch.id
+
+    async def test_a_watch_on_another_thread_is_not_this_threads_watch(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        done = _completed_thread_todo()
+        done.trigger_subscriptions = [
+            TriggerSubscription(
+                trigger_name=GMAIL_NEW_MESSAGE_TRIGGER_NAME,
+                conditions=[_ON_THREAD.model_copy(update={"value": "other-thread"})],
+                action=SubscriptionAction.EXECUTE,
+                resolution=SubscriptionResolution.ACCOUNT,
+            )
+        ]
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[done])
+        mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=None)
+        mock_todo_repo.update = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
+
+        with patch(_REGISTER, new_callable=AsyncMock, side_effect=_registered) as register:
+            await TodoService.update_todo(
+                FAKE_TODO_ID, TodoUpdateRequest(completed=False), FAKE_USER_ID
+            )
+
+        assert register.await_count == 2
+
+    async def test_a_watch_that_cannot_be_set_leaves_the_todo_completed(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[_completed_thread_todo()])
+        mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=None)
+
+        with (
+            patch(_REGISTER, new_callable=AsyncMock, side_effect=SubscriptionError("down")),
+            pytest.raises(SubscriptionError),
+        ):
+            await TodoService.update_todo(
+                FAKE_TODO_ID, TodoUpdateRequest(completed=False), FAKE_USER_ID
+            )
+
+        mock_todo_repo.update.assert_not_awaited()
+
+    async def test_a_reopen_refused_for_a_taken_thread_sets_no_watch(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        holder = _make_todo_doc(title="Reply to Sam")
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[_completed_thread_todo()])
+        mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=holder)
+
+        with (
+            patch(_REGISTER, new_callable=AsyncMock, side_effect=_registered) as register,
+            pytest.raises(ExternalRefTakenError) as raised,
+        ):
+            await TodoService.update_todo(
+                FAKE_TODO_ID, TodoUpdateRequest(completed=False), FAKE_USER_ID
+            )
+
+        assert raised.value.existing is holder
+        register.assert_not_awaited()
+        mock_todo_repo.update.assert_not_awaited()
+
+    async def test_an_edit_that_does_not_reopen_touches_no_watch(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[_completed_thread_todo()])
+        mock_todo_repo.update = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
+
+        with patch(_REGISTER, new_callable=AsyncMock, side_effect=_registered) as register:
+            await TodoService.update_todo(FAKE_TODO_ID, TodoUpdateRequest(title="x"), FAKE_USER_ID)
+
+        register.assert_not_awaited()
+        mock_todo_repo.find_by_ids.assert_not_awaited()
+
+    async def test_a_bulk_reopen_watches_each_thread_again(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_todo_repo.find_by_ids = AsyncMock(return_value=[_completed_thread_todo("b")])
+        mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=None)
+        mock_todo_repo.bulk_update = AsyncMock(return_value=1)
+
+        with patch(_REGISTER, new_callable=AsyncMock, side_effect=_registered) as register:
+            await TodoService.bulk_update_todos(
+                BulkUpdateRequest(todo_ids=["b"], updates=TodoUpdateRequest(completed=False)),
+                FAKE_USER_ID,
+            )
+
+        assert {c.kwargs["todo_id"] for c in register.await_args_list} == {"b"}
+        assert register.await_count == 2
+
+    async def test_a_bulk_reopen_of_two_todos_about_one_thread_writes_nothing(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        """Neither is open, so each passes the holder check; the ordered write would half-land."""
+        mock_todo_repo.find_by_ids = AsyncMock(
+            return_value=[
+                _completed_thread_todo("a"),
+                _make_todo_doc(todo_id="c", completed=True),
+                _completed_thread_todo("b"),
+            ]
+        )
+        mock_todo_repo.find_open_by_external_ref = AsyncMock(return_value=None)
+
+        with (
+            patch(_REGISTER, new_callable=AsyncMock, side_effect=_registered) as register,
+            pytest.raises(ExternalRefReopenedTwiceError) as raised,
+        ):
+            await TodoService.bulk_update_todos(
+                BulkUpdateRequest(
+                    todo_ids=["a", "c", "b"], updates=TodoUpdateRequest(completed=False)
+                ),
+                FAKE_USER_ID,
+            )
+
+        assert raised.value.status_code == 409
+        assert raised.value.code == "external_ref_reopened_twice"
+        assert raised.value.public == {"todo_ids": ["a", "b"]}
+        assert raised.value.message == (
+            "Two of the selected todos track the same thing; only one can be reopened"
+        )
+        mock_todo_repo.bulk_update.assert_not_awaited()
+        register.assert_not_awaited()

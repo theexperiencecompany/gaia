@@ -4,6 +4,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.config.oauth_config import get_integration_by_id
+from app.constants.integrations import GMAIL_INTEGRATION_ID
+
 # ---------------------------------------------------------------------------
 # ComposioService tests
 # ---------------------------------------------------------------------------
@@ -661,6 +664,28 @@ class TestHandleSubscribeTrigger:
         result = await svc.handle_subscribe_trigger("user1", [trigger])
         # gather will raise and be caught by the except block
         assert result is None
+
+
+class TestGmailConnectTriggers:
+    @pytest.mark.asyncio
+    async def test_connecting_gmail_arms_the_inbox_and_the_sent_mail_triggers(self):
+        # Without the sent-mail instance a thread todo never sees the user's own
+        # replies, which Gmail labels SENT, not INBOX.
+        svc = _make_service()
+        svc.composio.triggers.create = MagicMock(return_value={"id": "t"})
+        gmail = get_integration_by_id(GMAIL_INTEGRATION_ID)
+        assert gmail is not None
+
+        await svc.handle_subscribe_trigger("user1", gmail.associated_triggers)
+
+        created = sorted(
+            (c.kwargs["slug"], c.kwargs["trigger_config"])
+            for c in svc.composio.triggers.create.call_args_list
+        )
+        assert created == [
+            ("GMAIL_EMAIL_SENT_TRIGGER", {"interval": 1}),
+            ("GMAIL_NEW_GMAIL_MESSAGE", {"labelIds": "INBOX", "user_id": "me", "interval": 1}),
+        ]
 
 
 class TestGetComposioService:

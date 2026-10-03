@@ -242,6 +242,12 @@ class ComposioWebhookEvent(BaseModel):
         return v
 
 
+class ComposioTriggerEventIds(BaseModel):
+    """The ids Composio stamps into a trigger event's data beside the provider payload."""
+
+    user_id: str | None = None
+
+
 class ComposioConnectionToolkit(BaseModel):
     """Toolkit reference on a connection-lifecycle event."""
 
