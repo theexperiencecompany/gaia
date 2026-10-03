@@ -620,6 +620,46 @@ class TestConnectIntegration:
         )
         assert "already connected" in result
 
+    @pytest.mark.regression
+    @patch(f"{MODULE}.get_stream_writer")
+    @patch(
+        f"{MODULE}.check_single_integration_status",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    @patch(
+        f"{MODULE}.OAUTH_INTEGRATIONS",
+        [_make_integration("posthog", "PostHog", short_name="posthog")],
+    )
+    async def test_force_reconnect_bypasses_connected_status_and_renders_reconnect_card(
+        self, mock_check: AsyncMock, mock_gsw: MagicMock
+    ) -> None:
+        writer = _writer()
+        mock_gsw.return_value = writer
+
+        from app.agents.tools.integration_tool import connect_integration
+
+        with (
+            patch(
+                "app.utils.integration_checker.get_config",
+                return_value={"configurable": {"source_category": "ui"}},
+            ),
+            patch("app.utils.integration_checker.get_stream_writer", return_value=writer),
+        ):
+            result = await connect_integration.ainvoke(
+                {"integration_ids": ["posthog"], "force_reconnect": True}, config=_cfg()
+            )
+
+        assert "reconnect button" in result
+        mock_check.assert_not_awaited()
+        card = next(
+            call.args[0]["integration_connection_required"]
+            for call in writer.call_args_list
+            if "integration_connection_required" in call.args[0]
+        )
+        assert card["integration_id"] == "posthog"
+        assert card["expired"] is True
+
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
     async def test_not_found(self, mock_gsw: MagicMock) -> None:

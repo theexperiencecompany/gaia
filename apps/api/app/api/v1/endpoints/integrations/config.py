@@ -21,7 +21,7 @@ from app.schemas.integrations.responses import (
     IntegrationToolsResponse,
     MyIntegrationsResponse,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import AnalyticsEvents, capture_context_event, capture_event
 from app.services.connect_link_service import resolve_and_consume_connect_code
 from app.services.integrations.integration_connection_service import (
     build_integrations_config,
@@ -247,6 +247,11 @@ async def connect_integration_endpoint(
             error=str(e),
         )
     log.set(outcome="success")
+    if result.status == "redirect":
+        capture_context_event(
+            AnalyticsEvents.INTEGRATION_CONNECT_INITIATED,
+            {"integration_id": integration_id, "managed_by": resolved.managed_by},
+        )
     return result
 
 
@@ -335,6 +340,11 @@ async def connect_link_endpoint(request: Request, code: str) -> RedirectResponse
         redirect_path="/integrations",
     )
     if result and result.status == "redirect" and result.redirect_url:
+        capture_event(
+            user_id,
+            AnalyticsEvents.INTEGRATION_CONNECT_INITIATED,
+            {"integration_id": integration_id, "source": "connect_link"},
+        )
         log.set(outcome="redirect")
         return RedirectResponse(url=result.redirect_url)
 

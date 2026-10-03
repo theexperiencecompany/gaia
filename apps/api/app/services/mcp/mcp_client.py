@@ -203,6 +203,16 @@ class StepUpAuthRequiredError(Exception):
         super().__init__(f"Step-up authorization required for {integration_id}: {required_scopes}")
 
 
+class MCPAuthorizationRequiredError(ValueError):
+    """Raised when an authenticated MCP has no usable access token."""
+
+    def __init__(self, integration_id: str) -> None:
+        super().__init__(
+            f"No valid token for {integration_id}. "
+            "OAuth authorization required - user must complete the OAuth flow."
+        )
+
+
 # OAuth 2.0 error codes (RFC 6749 §5.2) that mean the grant is permanently dead.
 _TERMINAL_OAUTH_ERROR_CODES: frozenset[str] = frozenset(
     {"invalid_grant", "invalid_token", "revoked_token", "expired_token"}
@@ -465,10 +475,7 @@ class MCPClient:
                 integration_id=integration_id,
                 user_id=self.user_id,
             )
-            raise ValueError(
-                f"No valid token for {integration_id}. "
-                "OAuth authorization required - user must complete the OAuth flow."
-            )
+            raise MCPAuthorizationRequiredError(integration_id)
         else:
             # No auth required and no bearer token - set auth to None
             log.info(
@@ -933,8 +940,9 @@ class MCPClient:
 
         Raises :class:StepUpAuthRequiredError for 403 insufficient_scope, retries
         once via token refresh on auth-related failures (returning the retried
-        connection's tools), and resets MongoDB status only on demonstrably dead
-        credentials. Returns None when the caller should re-raise.
+        connection's tools), marks missing access credentials as needing OAuth,
+        and tears down only demonstrably dead credentials. Returns None when the
+        caller should re-raise.
         """
         error_str = str(e).lower()
 
@@ -945,6 +953,15 @@ class MCPClient:
             success=False,
             error_type=type(e).__name__,
         )
+        if isinstance(e, MCPAuthorizationRequiredError):
+            await update_user_integration_status(self.user_id, integration_id, "created")
+            log.warning(
+                f"{LogTag.MCP} OAuth authorization required for",
+                integration_id=integration_id,
+                user_id=self.user_id,
+            )
+            return None
+
         # Log comprehensive error details for debugging
         log.error(
             f"{LogTag.MCP} Connection failed with exception",

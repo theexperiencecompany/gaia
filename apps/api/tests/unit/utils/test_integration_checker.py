@@ -169,6 +169,28 @@ class TestExpiredConnectionPrompt:
             "To use Gmail features, please connect your account first."
         )
 
+    @pytest.mark.regression
+    async def test_forced_reauthorization_is_presented_as_reconnect_and_mints_a_fresh_link(
+        self,
+    ) -> None:
+        with _graph_run("ui") as writer:
+            ui_message = await request_integration_connection(
+                "posthog", "PostHog", "user1", force_reconnect=True
+            )
+
+        assert "reconnect button" in ui_message
+        card = self._card(writer)
+        assert card["expired"] is True
+        assert "reauthorize" in str(card["message"]).lower()
+
+        with _graph_run("bot"):
+            bot_message = await request_integration_connection(
+                "posthog", "PostHog", "user1", force_reconnect=True
+            )
+
+        assert _MAGIC_LINK in bot_message
+        assert "reconnect" in bot_message.lower()
+
 
 class TestBackgroundRunPrompt:
     """A background run has nobody to click a card or a link, so it must not wait to retry."""

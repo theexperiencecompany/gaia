@@ -4253,6 +4253,32 @@ class TestRunPostConnectTasksExact:
 
 
 class TestHandleConnectFailureExact:
+    @pytest.mark.regression
+    async def test_missing_oauth_token_marks_the_integration_unconnected_without_deleting_credentials(
+        self,
+    ) -> None:
+        client = MCPClient(user_id=USER_ID)
+        client.token_store.get_bearer_token = AsyncMock(return_value=None)
+        client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
+        client.token_store.get_oauth_token = AsyncMock(return_value=None)
+        mcp_config = _make_mcp_config(requires_auth=True)
+
+        with (
+            patch(
+                "app.services.mcp.mcp_client.update_user_integration_status",
+                new_callable=AsyncMock,
+            ) as update_status,
+            patch.object(client, "_reset_to_disconnected", new_callable=AsyncMock) as reset,
+            patch("app.services.mcp.mcp_client.log"),
+        ):
+            with pytest.raises(ValueError, match="OAuth authorization required") as exc_info:
+                await client._build_config(INTEGRATION_ID, mcp_config)
+
+            await client._handle_connect_failure(exc_info.value, INTEGRATION_ID, mcp_config)
+
+        update_status.assert_awaited_once_with(USER_ID, INTEGRATION_ID, "created")
+        reset.assert_not_awaited()
+
     async def test_step_up_raises_with_parsed_scopes_and_original_cause(self):
         client = MCPClient(user_id=USER_ID)
         err = ValueError('403 insufficient_scope scope="read write"')

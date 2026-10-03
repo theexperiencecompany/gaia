@@ -310,8 +310,10 @@ class TestConnectIntegration:
             is_platform=False,
             bearer_token="tok-1",
         )
-        # OAuth-managed connects complete at their callback, not here.
-        mock_capture.assert_not_called()
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.INTEGRATION_CONNECT_INITIATED,
+            {"integration_id": "my-mcp", "managed_by": "mcp"},
+        )
         mock_log.set.assert_any_call(
             integration_name="TestInt",
             integration={
@@ -359,8 +361,10 @@ class TestConnectIntegration:
             provider="GITHUB",
             redirect_path="/integrations",
         )
-        # OAuth-managed connects complete at their callback, not here.
-        mock_capture.assert_not_called()
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.INTEGRATION_CONNECT_INITIATED,
+            {"integration_id": "github", "managed_by": "composio"},
+        )
         mock_log.set.assert_any_call(
             integration_name="GitHub",
             integration={
@@ -385,6 +389,7 @@ class TestConnectIntegration:
                 new_callable=AsyncMock,
                 return_value=_redirect("gcal", "Google Calendar"),
             ) as mock_connect,
+            patch(f"{_MODULE}.capture_context_event") as mock_capture,
             patch(f"{_MODULE}.log") as mock_log,
         ):
             resp = await client.post(
@@ -400,6 +405,10 @@ class TestConnectIntegration:
             integration_name="Google Calendar",
             provider="GCAL",
             redirect_path="/integrations",
+        )
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.INTEGRATION_CONNECT_INITIATED,
+            {"integration_id": "gcal", "managed_by": "self"},
         )
         mock_log.set.assert_any_call(
             integration_name="Google Calendar",
@@ -605,10 +614,16 @@ class TestConnectLinkEndpoint:
                 new_callable=AsyncMock,
                 return_value=result,
             ),
+            patch(f"{_MODULE}.capture_event") as mock_capture,
         ):
             resp = await client.get(f"{API}/connect-link?code=somecode", follow_redirects=False)
         assert resp.status_code in (302, 307)
         assert resp.headers["location"] == "https://oauth.example/go"
+        mock_capture.assert_called_once_with(
+            _VALID_UID,
+            AnalyticsEvents.INTEGRATION_CONNECT_INITIATED,
+            {"integration_id": "notion", "source": "connect_link"},
+        )
 
     async def test_invalid_token_redirects_to_error(self, client: AsyncClient) -> None:
         with patch(

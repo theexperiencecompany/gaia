@@ -38,40 +38,59 @@ def _current_run() -> AgentConfigurableView | None:
 
 
 async def request_integration_connection(
-    integration_id: str, integration_name: str, user_id: str
+    integration_id: str,
+    integration_name: str,
+    user_id: str,
+    *,
+    force_reconnect: bool = False,
 ) -> str:
     """Show the (re)connect card for an unusable integration and return the agent's instruction.
 
     UI clients get a URL-free text; text-only clients relay the single-use
     link (valid 1 hour) or the integrations page. A background run gets the
     integrations page, read after any single-use link has died, and carries on.
+    ``force_reconnect`` presents reauthorization even when stored status is connected.
     """
     # Only Composio grants ever reach the ``expired`` status, so MCP integrations
     # fall through to the never-connected wording without needing a special case.
     expired = await user_integration_repository.is_expired(user_id, integration_id)
+    reconnect = expired or force_reconnect
     run = _current_run()
     source_category = run.source_category if run is not None else None
 
     # None means no runnable context at all (e.g. the dev direct-invocation
     # endpoints), so there is no stream for a card to travel on.
     if source_category is not None:
-        card_message = (
-            f"Your {integration_name} connection expired. Sign in again to keep using it."
-            if expired
-            else f"To use {integration_name} features, please connect your account first."
-        )
+        if force_reconnect and not expired:
+            card_message = (
+                f"Your {integration_name} connection needs fresh authorization. "
+                "Reauthorize to keep using it."
+            )
+        elif expired:
+            card_message = (
+                f"Your {integration_name} connection expired. Sign in again to keep using it."
+            )
+        else:
+            card_message = f"To use {integration_name} features, please connect your account first."
         get_stream_writer()(
             {
                 "integration_connection_required": {
                     "integration_id": integration_id,
                     "integration_name": integration_name,
-                    "expired": expired,
+                    "expired": reconnect,
                     "message": card_message,
                 }
             }
         )
 
-    if expired:
+    if force_reconnect and not expired:
+        lead = (
+            f"The user's {integration_name} connection needs fresh authorization; they need to "
+            "reconnect to refresh access."
+        )
+        verb = "reconnect"
+        gap = f"the {integration_name} connection needs a refresh"
+    elif expired:
         lead = (
             f"The user's {integration_name} connection EXPIRED — they had it connected and the "
             f"access has since died, so they must sign in again. Do NOT tell them to connect "
