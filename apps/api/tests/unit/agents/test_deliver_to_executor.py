@@ -29,7 +29,12 @@ from app.agents.core.background.executor_queue import (
 )
 from app.agents.core.background.session import ExecutorRun, RunKind
 from app.constants.agents import AgentTag
-from app.constants.cache import EXECUTOR_BUSY_PREFIX
+from app.constants.cache import (
+    EXECUTOR_ALIVE_PREFIX,
+    EXECUTOR_BUSY_PREFIX,
+    EXECUTOR_BUSY_TTL,
+    EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
+)
 from app.constants.executor import EXECUTOR_CARRY_TASK
 from app.constants.log_tags import LogTag
 from app.models.agent_models import InboxEntry
@@ -43,20 +48,17 @@ TASK = "summarize the thread"
 
 
 def _seams(*, busy: list[bool], started: bool):
-    """Patch deliver_to_executor's seams: the busy fast-path, run start, inbox.
+    """Patch deliver_to_executor's seams: the free-or-freed lock check, run start, inbox.
 
     busy answers successive checks of THIS conversation; any other id reads free.
     """
     answers = iter(busy)
 
-    async def _is_busy(conversation_id: str) -> bool:
-        return next(answers) if conversation_id == CONVERSATION else False
-
     async def _free_after_reclaim(conversation_id: str) -> bool:
-        # The post-append check reclaims a dead holder first: free means no run holds it.
-        return not await _is_busy(conversation_id)
+        # Each check reclaims a dead holder first: free means no live run holds it.
+        return not next(answers) if conversation_id == CONVERSATION else True
 
-    stack = patch.multiple(er, is_executor_busy=_is_busy, reclaim_dead_lock=_free_after_reclaim)
+    stack = patch.object(er, "reclaim_dead_lock", _free_after_reclaim)
     start = patch.object(er, "_start_executor_run", new_callable=AsyncMock, return_value=started)
     append = patch.object(er.ExecutorInbox, "append", new_callable=AsyncMock)
     return stack, start, append
@@ -131,6 +133,13 @@ class _FakeRedisClient:
 
     async def delete(self, key: str) -> None:
         self.store.pop(key, None)
+
+    async def exists(self, key: str) -> int:
+        return int(key in self.store)
+
+    async def ttl(self, key: str) -> int:
+        # Every lock here was just taken: too young to be judged dead.
+        return EXECUTOR_BUSY_TTL
 
     async def rpush(self, key: str, value: str) -> int:
         self.lists.setdefault(key, []).append(value)
@@ -213,6 +222,8 @@ class TestTheRealLockAndInbox:
 
 USER = AuthenticatedUser(user_id="u1", email="u1@x.com", name="Uno", timezone="Asia/Kolkata")
 OTHER_RUN_LOCK = build_lock_value("other-stream", "task-9")
+#: A lock taken long enough ago that its holder has had time to start renewing.
+_OLD_LOCK_SECONDS = EXECUTOR_BUSY_TTL - EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS
 
 
 @contextmanager
@@ -284,7 +295,7 @@ class TestTheRunAnIdleConversationGets:
 
         with (
             _real_lifecycle() as h,
-            patch.object(er, "is_executor_busy", AsyncMock(return_value=False)),
+            patch.object(er, "reclaim_dead_lock", AsyncMock(return_value=True)),
         ):
             await er.deliver_to_executor(CONVERSATION, USER, TASK)
 
@@ -303,6 +314,34 @@ class TestTheRunAnIdleConversationGets:
         entries = await ExecutorInbox(CONVERSATION).read()
         assert [e.text for e in entries] == ["first", "second"]
         assert len({UUID(e.id) for e in entries}) == 2
+
+    async def test_a_dead_holders_lock_is_reclaimed_and_the_task_gets_its_own_run(
+        self, fake_redis
+    ) -> None:
+        """A run that died with its process stopped renewing: its lock must not hold the work back."""
+        await fake_redis.set(
+            f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION}", OTHER_RUN_LOCK, ex=_OLD_LOCK_SECONDS
+        )
+
+        with _real_lifecycle() as h:
+            await er.deliver_to_executor(CONVERSATION, USER, TASK)
+
+        assert h.spawn.call_args.args[0].task == TASK
+        assert await ExecutorInbox(CONVERSATION).read() == []
+
+    async def test_a_holder_that_renews_keeps_the_conversation(self, fake_redis) -> None:
+        """A live run, a parked one or a workflow's reservation: each renews, and keeps its lock."""
+        await fake_redis.set(
+            f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION}", OTHER_RUN_LOCK, ex=_OLD_LOCK_SECONDS
+        )
+        await fake_redis.set(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}:{OTHER_RUN_LOCK}", "1")
+
+        with _real_lifecycle() as h:
+            await er.deliver_to_executor(CONVERSATION, USER, TASK)
+
+        h.spawn.assert_not_called()
+        assert [e.text for e in await ExecutorInbox(CONVERSATION).read()] == [TASK]
+        assert await get_lock_holder(CONVERSATION) == OTHER_RUN_LOCK
 
 
 class TestCarryingPendingWork:

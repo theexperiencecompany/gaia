@@ -18,7 +18,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from prometheus_client import REGISTRY
 import pytest
 
-from app.agents.core.background import executor_runner as er, session as sess
+from app.agents.core.background import (
+    executor_queue as eq,
+    executor_runner as er,
+    session as sess,
+)
 from app.agents.core.background.executor_runner import _ExecutorResult, run_executor_background
 from app.agents.core.background.session import ExecutorRun, RunKind, get_session, teardown_session
 from app.agents.tools import executor_tool as et
@@ -558,8 +562,8 @@ class TestBackgroundRunExactWiring:
         with (
             self._env(run, perf_values=[1000.0, 1000.0, 1000.5]),
             patch.object(er, "_execute_executor", _execute),
-            patch.object(er, "hold_run_alive", _hold),
-            patch.object(er, "EXECUTOR_ALIVE_BEAT_SECONDS", 0),
+            patch.object(eq, "hold_run_alive", _hold),
+            patch.object(eq, "EXECUTOR_ALIVE_BEAT_SECONDS", 0),
         ):
             await run_executor_background(run=run, task="t", configurable={"user_id": "u1"})
 

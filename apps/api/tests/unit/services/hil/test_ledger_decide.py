@@ -9,20 +9,24 @@ from uuid import UUID
 
 import pytest
 
+from app.agents.core.background.executor_channel import ExecutorInbox
+from app.agents.core.background.executor_queue import hold_run_alive
 from app.agents.tools.execute.dispatch import DispatchErrorKind
 from app.constants.agents import AgentTag
-from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_BUSY_TTL
+from app.constants.cache import (
+    EXECUTOR_BUSY_PREFIX,
+    EXECUTOR_BUSY_TTL,
+    EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
+)
 from app.constants.log_tags import LogTag
 from app.models.hil_models import ApprovalLedgerDocument, LedgerState
 from app.models.user_models import AuthenticatedUser
 from app.schemas.hil_schemas import BatchDecisionItem, BatchDecisionOutcome
 from app.services.analytics_service import AnalyticsEvents
 from app.services.hil.ledger_decide import (
-    STALE_HOLDER_MIN_AGE_SECONDS,
     STALLED_EXECUTING_MINUTES,
     LedgerDecision,
     RedeemResult,
-    _reclaim_dead_holder,
     cancel_ledger_approvals,
     decide_ledger,
     decide_ledger_batch,
@@ -1216,86 +1220,6 @@ class TestRedeemSettlesTerminalFrame:
         assert broadcast.await_args.args[1] == "failed"
 
 
-@pytest.mark.unit
-class TestReclaimDeadHolder:
-    async def test_free_lock_means_proceed(self) -> None:
-        from app.services.hil import ledger_decide
-
-        with patch.object(ledger_decide, "get_lock_holder", new=AsyncMock(return_value=None)):
-            assert await ledger_decide._reclaim_dead_holder("conv-1") is True
-
-    async def test_live_session_means_hold(self) -> None:
-        from app.services.hil import ledger_decide
-
-        with (
-            patch.object(ledger_decide, "get_lock_holder", new=AsyncMock(return_value="s1:t1")),
-            patch.object(ledger_decide, "get_session", return_value=MagicMock()),
-        ):
-            assert await ledger_decide._reclaim_dead_holder("conv-1") is False
-
-    async def test_fresh_lock_means_hold(self) -> None:
-        from types import SimpleNamespace
-
-        from app.constants.cache import EXECUTOR_BUSY_TTL
-        from app.services.hil import ledger_decide
-
-        client = SimpleNamespace(ttl=AsyncMock(return_value=EXECUTOR_BUSY_TTL - 10))
-        with (
-            patch.object(ledger_decide, "get_lock_holder", new=AsyncMock(return_value="s1:t1")),
-            patch.object(ledger_decide, "get_session", return_value=None),
-            patch.object(ledger_decide, "redis_cache", new=SimpleNamespace(client=client)),
-            patch.object(
-                ledger_decide,
-                "list_pending_for_conversation",
-                new=AsyncMock(return_value=[]),
-            ),
-        ):
-            assert await ledger_decide._reclaim_dead_holder("conv-1") is False
-
-    async def test_paused_records_mean_hold(self) -> None:
-        from types import SimpleNamespace
-
-        from app.services.hil import ledger_decide
-
-        parked = SimpleNamespace(resume_item={"task": "x"}, subagent_thread_id=None)
-        client = SimpleNamespace(ttl=AsyncMock(return_value=100))
-        with (
-            patch.object(ledger_decide, "get_lock_holder", new=AsyncMock(return_value="s1:t1")),
-            patch.object(ledger_decide, "get_session", return_value=None),
-            patch.object(ledger_decide, "redis_cache", new=SimpleNamespace(client=client)),
-            patch.object(
-                ledger_decide,
-                "list_pending_for_conversation",
-                new=AsyncMock(return_value=[parked]),
-            ),
-            patch.object(ledger_decide, "break_holder_lock", new=AsyncMock()) as breaker,
-        ):
-            assert await ledger_decide._reclaim_dead_holder("conv-1") is False
-        breaker.assert_not_awaited()
-
-    async def test_dead_holder_is_released(self) -> None:
-        from types import SimpleNamespace
-
-        from app.services.hil import ledger_decide
-
-        client = SimpleNamespace(ttl=AsyncMock(return_value=100))
-        with (
-            patch.object(ledger_decide, "get_lock_holder", new=AsyncMock(return_value="s1:t1")),
-            patch.object(ledger_decide, "get_session", return_value=None),
-            patch.object(ledger_decide, "redis_cache", new=SimpleNamespace(client=client)),
-            patch.object(
-                ledger_decide,
-                "list_pending_for_conversation",
-                new=AsyncMock(return_value=[]),
-            ),
-            patch.object(
-                ledger_decide, "break_holder_lock", new=AsyncMock(return_value=True)
-            ) as breaker,
-        ):
-            assert await ledger_decide._reclaim_dead_holder("conv-1") is True
-        breaker.assert_awaited_once_with("conv-1", "s1:t1")
-
-
 def _doc(**overrides: Any) -> ApprovalLedgerDocument:
     fields: dict[str, Any] = {
         "approval_id": "ap_1",
@@ -1330,10 +1254,6 @@ class LedgerSeams:
     resume_owner: AsyncMock
     record_deny: AsyncMock
     deliver: AsyncMock
-    lock_holder: AsyncMock
-    break_lock: AsyncMock
-    get_session: MagicMock
-    barrier_pending: AsyncMock
     dispatch: AsyncMock
 
 
@@ -1353,7 +1273,6 @@ def seams() -> Iterator[LedgerSeams]:
     inbox = MagicMock()
     inbox.return_value.append = AsyncMock()
     redis = MagicMock()
-    redis.client.ttl = AsyncMock(return_value=100)
     conversations = MagicMock()
     conversations.set_message_approval_status = AsyncMock()
     websocket = MagicMock()
@@ -1372,12 +1291,6 @@ def seams() -> Iterator[LedgerSeams]:
         patch(f"{MODULE}.resume_owner_after_approval", new=AsyncMock()) as resume_owner,
         patch(f"{MODULE}.record_owner_deny", new=AsyncMock()) as record_deny,
         patch(f"{RUNNER}.deliver_to_executor", new=AsyncMock()) as deliver,
-        patch(f"{MODULE}.get_lock_holder", new=AsyncMock(return_value=None)) as lock_holder,
-        patch(f"{MODULE}.break_holder_lock", new=AsyncMock(return_value=True)) as break_lock,
-        patch(f"{MODULE}.get_session", return_value=None) as get_session,
-        patch(
-            f"{MODULE}.list_pending_for_conversation", new=AsyncMock(return_value=[])
-        ) as barrier_pending,
         patch(f"{MODULE}.dispatch_tool", new=AsyncMock()) as dispatch,
         patch(f"{MODULE}.dispatch_config_for", side_effect=lambda uid: {"user": uid}),
     ):
@@ -1396,10 +1309,6 @@ def seams() -> Iterator[LedgerSeams]:
             resume_owner=resume_owner,
             record_deny=record_deny,
             deliver=deliver,
-            lock_holder=lock_holder,
-            break_lock=break_lock,
-            get_session=get_session,
-            barrier_pending=barrier_pending,
             dispatch=dispatch,
         )
 
@@ -1517,7 +1426,6 @@ class TestDecideLedgerOutcomes:
             'execute(tool_name="approve", data={"id": "ap_1"}) and continue with its result. '
             "If it is no longer needed, say so instead of running it.",
         )
-        seams.lock_holder.assert_awaited_once_with("conv-1")
 
     async def test_a_ticket_with_no_birth_time_says_so(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc(created_at=None)
@@ -1559,7 +1467,6 @@ class TestDecideLedgerOutcomes:
             f"DECISION ap_1=DENIED Send it :: nope{_DENY_TAIL}",
         )
         seams.record_deny.assert_awaited_once_with(row, "nope")
-        seams.lock_holder.assert_awaited_once_with("conv-1")
         seams.settle_frame.assert_called_once_with("stream-1", "ap_1", "denied", "nope")
         seams.persist.assert_awaited_once_with(
             "conv-1", user_id="u1", approval_id="ap_1", status="denied"
@@ -1806,72 +1713,6 @@ class TestDecideLedgerBatchOutcomes:
                 "error": "mongo down",
                 "error_type": "RuntimeError",
                 "user_id": "u1",
-            }
-        }
-
-
-@pytest.mark.unit
-class TestReclaimDeadHolderEdges:
-    async def test_the_lock_is_read_for_this_conversation(self, seams: LedgerSeams) -> None:
-        await _reclaim_dead_holder("conv-1")
-
-        seams.lock_holder.assert_awaited_once_with("conv-1")
-
-    async def test_only_the_holders_own_live_session_holds_the_lock(
-        self, seams: LedgerSeams
-    ) -> None:
-        seams.lock_holder.return_value = "s1:t1"
-        seams.get_session.side_effect = lambda stream: MagicMock() if stream == "s1" else None
-
-        assert await _reclaim_dead_holder("conv-1") is False
-        seams.break_lock.assert_not_awaited()
-
-    async def test_no_redis_client_means_free(self, seams: LedgerSeams) -> None:
-        seams.lock_holder.return_value = "s1:t1"
-        seams.redis.client = None
-
-        assert await _reclaim_dead_holder("conv-1") is True
-        seams.break_lock.assert_not_awaited()
-
-    @pytest.mark.parametrize("ttl", [None, -1], ids=["gone", "no-expiry"])
-    async def test_a_lock_without_a_live_ttl_is_free(
-        self, seams: LedgerSeams, ttl: int | None
-    ) -> None:
-        seams.lock_holder.return_value = "s1:t1"
-        seams.redis.client.ttl.return_value = ttl
-
-        assert await _reclaim_dead_holder("conv-1") is True
-        seams.break_lock.assert_not_awaited()
-        seams.redis.client.ttl.assert_awaited_once_with(f"{EXECUTOR_BUSY_PREFIX}conv-1")
-
-    @pytest.mark.parametrize(
-        "ttl",
-        [0, EXECUTOR_BUSY_TTL - STALE_HOLDER_MIN_AGE_SECONDS],
-        ids=["expiring-now", "exactly-min-age"],
-    )
-    async def test_an_old_enough_lock_is_broken(self, seams: LedgerSeams, ttl: int) -> None:
-        seams.lock_holder.return_value = "s1:t1"
-        seams.redis.client.ttl.return_value = ttl
-
-        assert await _reclaim_dead_holder("conv-1") is True
-        seams.break_lock.assert_awaited_once_with("conv-1", "s1:t1")
-        seams.barrier_pending.assert_awaited_once_with("conv-1")
-
-    async def test_a_young_lock_holds(self, seams: LedgerSeams) -> None:
-        seams.lock_holder.return_value = "s1:t1"
-        seams.redis.client.ttl.return_value = EXECUTOR_BUSY_TTL - STALE_HOLDER_MIN_AGE_SECONDS + 1
-
-        assert await _reclaim_dead_holder("conv-1") is False
-        seams.break_lock.assert_not_awaited()
-
-    async def test_a_failed_check_keeps_the_lock_and_says_so(self, seams: LedgerSeams) -> None:
-        seams.lock_holder.side_effect = ConnectionError("redis down")
-
-        assert await _reclaim_dead_holder("conv-1") is False
-        assert _warned(seams.log.warning) == {
-            f"{LogTag.HIL} Holder reclaim check failed; keeping the lock": {
-                "conversation_id": "conv-1",
-                "error_type": "ConnectionError",
             }
         }
 
@@ -2132,3 +1973,48 @@ class TestReconcileStalled:
             )
         ]
         seams.sync_flag.assert_awaited_once_with("conv-1", "u9")
+
+
+@pytest.mark.unit
+class TestTheTicketReachesARunWhateverHeldTheConversation:
+    """The ledger's delivery over the real lock: a dead holder never strands an approval."""
+
+    _LOCK_KEY = f"{EXECUTOR_BUSY_PREFIX}conv-1"
+    _HOLDER = "dead-stream:dead-task"
+    _OLD = EXECUTOR_BUSY_TTL - EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS
+
+    async def _approve(self) -> MagicMock:
+        from app.agents.core.background import executor_queue as eq, executor_runner as er
+        from app.services.hil.ledger_decide import _deliver_ticket
+
+        with (
+            patch.object(eq, "StreamManager", AsyncMock()),
+            patch.object(eq, "websocket_manager", AsyncMock()),
+            patch.object(er, "_spawn_detached_run") as spawn,
+        ):
+            await _deliver_ticket(_doc())
+        return spawn
+
+    async def test_a_ticket_for_a_conversation_whose_run_died_starts_a_run(
+        self, fake_redis
+    ) -> None:
+        await fake_redis.set(self._LOCK_KEY, self._HOLDER, ex=self._OLD)
+
+        spawn = await self._approve()
+
+        assert spawn.call_args.args[0].task.startswith("APPROVAL_READY ap_1:")
+        assert await fake_redis.get(self._LOCK_KEY) != self._HOLDER
+
+    async def test_a_ticket_for_a_run_that_lives_steers_it_through_the_inbox(
+        self, fake_redis
+    ) -> None:
+        """A live or parked run renews its liveness: the ticket joins it, never a second run."""
+        await fake_redis.set(self._LOCK_KEY, self._HOLDER, ex=self._OLD)
+        await hold_run_alive("conv-1", self._HOLDER)
+
+        spawn = await self._approve()
+
+        spawn.assert_not_called()
+        [entry] = await ExecutorInbox("conv-1").read()
+        assert entry.text.startswith("APPROVAL_READY ap_1:")
+        assert await fake_redis.get(self._LOCK_KEY) == self._HOLDER

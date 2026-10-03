@@ -147,6 +147,9 @@ class _Harness:
         self.acquire = AsyncMock(return_value=True)
         self.release = AsyncMock()
         self.holder = AsyncMock(return_value=None)
+        #: The reservation's liveness renewal, and whether it still ran when the agent did.
+        self.alive_task = MagicMock()
+        self.alive = AsyncMock(return_value=self.alive_task)
         self.pending_approvals = AsyncMock(return_value=[])
         self.drain = AsyncMock(return_value=[{"id": "evt_1"}])
         #: Seams a single test needs on top of the shared set, entered last so
@@ -206,6 +209,7 @@ class _Harness:
             patch(f"{MODULE}.try_acquire_lock", self.acquire),
             patch(f"{MODULE}.release_lock_if_owned", self.release),
             patch(f"{MODULE}.get_lock_holder", self.holder),
+            patch(f"{MODULE}.keep_alive", self.alive),
             patch(f"{MODULE}.list_pending_for_conversation", self.pending_approvals),
             patch(f"{MODULE}.drain_trigger_batch", self.drain),
             patch(f"{MODULE}.reschedule_if_refilled", AsyncMock()),
@@ -2640,6 +2644,23 @@ class TestAnAgentFireOverlapsToo:
         await _fire(harness)
 
         assert harness.chat.await_args.kwargs["reservation"] == harness.reservation()
+
+    async def test_the_reservation_says_it_lives_for_as_long_as_the_fire_holds_it(self) -> None:
+        """A reservation that never renewed would read as a dead holder, and its conversation be taken mid-fire."""
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        cancelled_while_the_agent_ran: list[bool] = []
+
+        async def _agent(*_args: object, **_kwargs: object) -> object:
+            cancelled_while_the_agent_ran.append(harness.alive_task.cancel.called)
+            return ("conv_1", [RecordedCall(tool_name="agent_tool")])
+
+        harness.chat.side_effect = _agent
+        await _fire(harness)
+
+        harness.alive.assert_awaited_once_with("conv_1", harness.reservation())
+        assert cancelled_while_the_agent_ran == [False]
+        harness.alive_task.cancel.assert_called_once_with()
 
     async def test_an_overlapped_fire_is_not_charged_a_plan_execution(self) -> None:
         """It ran nothing, so it must cost nothing: a workflow that overlaps itself repeatedly would otherwise eat the user's monthly quota on runs whose own record says they were skipped."""

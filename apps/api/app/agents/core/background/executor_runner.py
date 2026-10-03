@@ -13,7 +13,6 @@ The executor:busy Redis key prevents concurrent executor spawns per
 conversation. TTL of 30 minutes is a safety net — released explicitly.
 """
 
-import asyncio
 from dataclasses import dataclass, replace
 import time
 from typing import NamedTuple
@@ -37,7 +36,7 @@ from app.agents.core.background.executor_queue import (
     close_detached_stream,
     extend_lock_if_owned,
     hold_run_alive,
-    is_executor_busy,
+    keep_alive,
     prepare_run_from_item,
     reclaim_dead_lock,
     release_lock_if_owned,
@@ -59,7 +58,6 @@ from app.agents.core.subagents.subagent_runner import (
     thread_messages,
 )
 from app.constants.agents import NON_WAKING_TAGS, AgentTag
-from app.constants.cache import EXECUTOR_ALIVE_BEAT_SECONDS
 from app.constants.executor import (
     EXECUTOR_APPROVAL_LOST_MESSAGE,
     EXECUTOR_CARRY_TASK,
@@ -154,10 +152,8 @@ async def run_executor_background(
         if executor_user_id:
             capture_event(executor_user_id, AnalyticsEvents.AGENT_RUN_STARTED, run_props)
 
-        lock_value = build_lock_value(run.stream_id, run.task_id or "")
-        await hold_run_alive(run.conversation_id, lock_value)
-        alive = spawn_background_task(
-            _beat_alive(run.conversation_id, lock_value), name="executor_alive_beat"
+        alive = await keep_alive(
+            run.conversation_id, build_lock_value(run.stream_id, run.task_id or "")
         )
         try:
             with span() as elapsed_active:
@@ -204,13 +200,6 @@ async def run_executor_background(
                 # Freeing it AFTER finalize means the next decision can dispatch only
                 # once this run's pause/completion bookkeeping is fully written.
                 await release_resume_dispatch(run.conversation_id)
-
-
-async def _beat_alive(conversation_id: str, lock_value: str) -> None:
-    """Renew the run's liveness while its process lives: a run that died stops, and its lock can be reclaimed."""
-    while True:
-        await asyncio.sleep(EXECUTOR_ALIVE_BEAT_SECONDS)
-        await hold_run_alive(conversation_id, lock_value)
 
 
 def _run_props(run: ExecutorRun) -> dict[str, str]:
@@ -722,12 +711,12 @@ async def deliver_to_executor(
 
     A live run absorbs the task through its inbox, an idle one gets a run started
     to carry it; never a second parallel answer. Tagged work (a subagent result)
-    always travels through the inbox so it arrives framed. The busy check is a
-    fast path — the claim inside _start_executor_run is the atomic decision.
+    always travels through the inbox so it arrives framed. A free (or freed) lock is
+    a fast path — the claim inside _start_executor_run is the atomic decision.
     """
     if (
         tag is None
-        and not await is_executor_busy(conversation_id)
+        and await reclaim_dead_lock(conversation_id)
         and await _start_executor_run(
             conversation_id, user, task, workflow_execution_id=workflow_execution_id
         )

@@ -34,7 +34,7 @@ import psutil
 import pytest
 from redis.asyncio import Redis
 
-from app.agents.core.background.executor_queue import is_executor_busy
+from app.agents.core.background.executor_queue import get_lock_holder
 from app.config.feature_flags import FeatureFlag
 from app.config.settings import settings
 from app.constants.browser import BrowserEngine, JobEnding
@@ -393,7 +393,7 @@ class BrowserStack:
         while time.monotonic() < deadline:
             job_id = await get_latest_job(conversation_id)
             running = job_id is not None and await done_state(job_id) is None
-            idle = not running and not await is_executor_busy(conversation_id)
+            idle = not running and await get_lock_holder(conversation_id) is None
             quiet = quiet + 1 if idle and await self.observer.drained() else 0
             if quiet >= 2:
                 return

@@ -11,6 +11,7 @@ turn's. HIL approval resume and deliver_to_executor are its consumers.
 Preparing is this module's job, spawning the runner's — the one-way dependency (runner -> queue) that keeps the import graph acyclic.
 """
 
+import asyncio
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, TypedDict, cast
@@ -27,7 +28,9 @@ from app.agents.core.background.session import (
     teardown_session,
 )
 from app.constants.cache import (
+    EXECUTOR_ALIVE_BEAT_SECONDS,
     EXECUTOR_ALIVE_PREFIX,
+    EXECUTOR_ALIVE_TASK_NAME,
     EXECUTOR_ALIVE_TTL,
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_BUSY_TTL,
@@ -43,6 +46,7 @@ from app.models.agent_models import (
     CONFIGURABLE_RUN_SCOPED_KEYS,
     AgentConfigurable,
 )
+from app.utils.background_tasks import spawn_background_task
 from app.utils.general_utils import is_json_safe
 from shared.py.wide_events import current_workflow_execution_id, log
 
@@ -217,27 +221,47 @@ async def get_lock_holder(conversation_id: str) -> str | None:
     return None if raw is None else decode_raw_item(raw)
 
 
+def _alive_key(conversation_id: str, lock_value: str) -> str:
+    return f"{EXECUTOR_ALIVE_PREFIX}{conversation_id}:{lock_value}"
+
+
 async def hold_run_alive(
     conversation_id: str, lock_value: str, ttl_seconds: int = EXECUTOR_ALIVE_TTL
 ) -> None:
-    """Say the run holding lock_value lives, for ttl_seconds: what tells a busy lock from a dead one."""
-    if redis_cache.client:
-        await redis_cache.client.set(
-            f"{EXECUTOR_ALIVE_PREFIX}{conversation_id}", lock_value, ex=ttl_seconds
-        )
+    """Say the holder named lock_value lives, for ttl_seconds: what tells a busy lock from a dead one."""
+    await redis_cache.client.set(
+        _alive_key(conversation_id, lock_value), lock_value, ex=ttl_seconds
+    )
+
+
+async def keep_alive(conversation_id: str, lock_value: str) -> asyncio.Task[None]:
+    """Hold lock_value's liveness now and renew it until the returned task is cancelled.
+
+    The one liveness contract: whatever holds the busy lock keeps this running for
+    as long as it holds it, so a holder whose process died stops renewing.
+    """
+    await hold_run_alive(conversation_id, lock_value)
+    return spawn_background_task(
+        _renew_alive(conversation_id, lock_value), name=EXECUTOR_ALIVE_TASK_NAME
+    )
+
+
+async def _renew_alive(conversation_id: str, lock_value: str) -> None:
+    while True:
+        await asyncio.sleep(EXECUTOR_ALIVE_BEAT_SECONDS)
+        await hold_run_alive(conversation_id, lock_value)
 
 
 async def reclaim_dead_lock(conversation_id: str) -> bool:
-    """Free a busy lock whose run died with its process; return whether no run holds the lock now.
+    """Free a busy lock whose holder died with its process; return whether no run holds the lock now.
 
     Dead takes evidence: the holder's liveness lapsed, and the lock is older than
-    a run takes to start beating. Compare-and-delete, so a live re-acquire stands.
+    a holder takes to start renewing it. Compare-and-delete, so a live re-acquire stands.
     """
     holder = await get_lock_holder(conversation_id)
     if holder is None:
         return True
-    alive = await redis_cache.client.get(f"{EXECUTOR_ALIVE_PREFIX}{conversation_id}")
-    if alive is not None and decode_raw_item(alive) == holder:
+    if await redis_cache.client.exists(_alive_key(conversation_id, holder)):
         return False
     remaining = await redis_cache.client.ttl(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
     # Every lock this code takes expires: one without a TTL has no age to judge it by.
@@ -249,17 +273,6 @@ async def reclaim_dead_lock(conversation_id: str) -> bool:
         holder=holder,
     )
     return await break_holder_lock(conversation_id, holder)
-
-
-async def is_executor_busy(conversation_id: str) -> bool:
-    """Whether ANY executor run (running or parked) holds this conversation's lock.
-
-    Redis-unavailable degrades to False, so deliver_to_executor attempts a run
-    start, whose own claim then decides.
-    """
-    if not redis_cache.client:
-        return False
-    return await redis_cache.client.get(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}") is not None
 
 
 async def release_lock_if_owned(conversation_id: str, stream_id: str, task_id: str | None) -> None:
