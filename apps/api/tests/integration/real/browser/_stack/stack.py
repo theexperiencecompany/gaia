@@ -1,9 +1,8 @@
 """One whole browser stack, and the handles a scenario drives it by.
 
-The API runs in this process on a real port (the production app and
-middleware, booted as boot.py says); the ARQ browser worker and two browser
-hosts (Chrome, and Obscura behind it) are child processes; the models and the
-two-origin fixture site are local servers; the outbound Telegram queue is read
+The API, the ARQ browser worker and two browser hosts (Chrome, and Obscura
+behind it) are child processes; the models and the two-origin fixture site are
+local servers in this process; the outbound Telegram queue is read
 as transcripts. A scenario talks to it the way the Telegram bot does: messages
 to /api/v1/bot/chat-stream, /stop to /api/v1/bot/reset-session, and the live
 view's own decision endpoint for a handoff's Done and Cancel.
@@ -22,7 +21,7 @@ import secrets
 import shutil
 import socket
 import time
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlsplit
 import uuid
 
@@ -40,8 +39,9 @@ from app.config.settings import settings
 from app.constants.browser import BrowserEngine, JobEnding
 from app.constants.cache import SUBSCRIPTION_PLAN_CACHE_PREFIX, SUBSCRIPTION_PLAN_CACHE_TTL
 from app.constants.llm import LLMProviderName
-from app.db.mongodb.mongodb import MONGO_DATABASE_NAME
-from app.db.redis import _new_client, redis_cache
+from app.db.mongodb import collections
+from app.db.mongodb.mongodb import MONGO_DATABASE_NAME, MongoDB
+from app.db.redis import AsyncRedisCommands, redis_cache
 from app.db.repositories.subscriptions import subscription_repository
 from app.models.payment_models import PlanType, SubscriptionDocument
 from app.schemas.browser import BrowserResultSnapshot
@@ -131,6 +131,7 @@ class BrowserStack:
         self.worker: BrowserWorker | None = None
         self.api: StackProcess | None = None
         self.redis: Redis | None = None
+        self.mongo: MongoDB | None = None
         self._patches: pytest.MonkeyPatch = pytest.MonkeyPatch()
         self._claim: asyncio.Task[None] | None = None
 
@@ -176,7 +177,7 @@ class BrowserStack:
             self._phase("browser worker serves its queue", self.worker.start()),
             self._phase("API serves", self.api.wait_for_line(API_READY_LINE)),
         )
-        self._read_the_stacks_redis()
+        self._lend_the_app_this_loops_clients()
         await self.observer.start()
         say("ready")
 
@@ -226,10 +227,12 @@ class BrowserStack:
         if self._claim is not None:
             self._claim.cancel()
             await asyncio.gather(self._claim, return_exceptions=True)
+        self._patches.undo()
+        if self.mongo is not None:
+            self.mongo.client.close()
         if self.redis is not None:
             await self.redis.flushdb()
             await self.redis.aclose()
-        self._patches.undo()
         self.progress.say("stopped")
 
     def logs(self) -> str:
@@ -270,9 +273,18 @@ class BrowserStack:
             "BROWSER_STATE_ENCRYPTION_KEY": self.state_key,
         }
 
-    def _read_the_stacks_redis(self) -> None:
-        """Point this process's Redis helpers (job state, handoffs, the plan cache) at the stack's database."""
-        self._patches.setattr(redis_cache, "redis", _new_client(self.redis_url))
+    def _lend_the_app_this_loops_clients(self) -> None:
+        """Point the app helpers this process calls (users, job state, handoffs, the plan cache) at the stack's own clients.
+
+        The app's Mongo and Redis clients are module globals that bind to the first
+        event loop using them; a stack lives on its own loop and closes its clients
+        in stop(), so a second stack in this process never reaches a closed loop.
+        """
+        if self.redis is None:
+            raise RuntimeError("the stack's Redis client is made when it claims its database")
+        self.mongo = MongoDB(uri=settings.MONGO_DB, db_name=MONGO_DATABASE_NAME)
+        self._patches.setattr(collections, "_get_collection", self.mongo.get_collection)
+        self._patches.setattr(redis_cache, "redis", cast(AsyncRedisCommands, self.redis))
 
     # --- users and chats ------------------------------------------------------
 
