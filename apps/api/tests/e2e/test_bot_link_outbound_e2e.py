@@ -65,9 +65,7 @@ class TestOneTapLinkDeliversFirstContact:
             ),
             patch(
                 "app.services.outbound_delivery.PlatformLinkService.get_linked_platforms",
-                new=AsyncMock(
-                    return_value={"telegram": {"platformUserId": PLATFORM_USER_ID}}
-                ),
+                new=AsyncMock(return_value={"telegram": {"platformUserId": PLATFORM_USER_ID}}),
             ),
             patch(
                 "app.services.outbound_delivery.get_rabbitmq_publisher",
