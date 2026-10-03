@@ -333,6 +333,8 @@ class TestTaskErrorHandling:
 
 
 @pytest.mark.integration
+# The fire's reservation renews its liveness in Redis: a per-test one, never the ambient client.
+@pytest.mark.usefixtures("fake_redis")
 class TestWorkflowTaskExecution:
     """Verify workflow execution tracks success/failure and sends notifications."""
 
