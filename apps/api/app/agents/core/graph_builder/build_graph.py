@@ -95,6 +95,12 @@ EXECUTOR_INITIAL_TOOL_IDS = [
     "approve_device_pairing",
     "list_devices",
     "run_on_device",
+    # Agent-lab orchestration is statically bound like the playbook tools (prompts
+    # name the flow directly) but stays per-user gated: retrieve_tools hides the
+    # names when the AGENT_LAB flag is off, and each body refuses when off.
+    "lab_start",
+    "lab_message",
+    "lab_stop",
 ]
 
 
