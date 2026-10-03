@@ -25,9 +25,15 @@ from app.constants.todos import (
 )
 from app.db.repositories.todos import todo_repository
 from app.models.chat_models import ConversationSource
+from app.models.notification.notification_models import (
+    NotificationContent,
+    NotificationRequest,
+    NotificationSourceEnum,
+)
 from app.models.todo_models import TodoDocument
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.canvas_markdown import section_body
+from app.services.notification_service import notification_service
 from app.services.todo_activity import record_activity
 from shared.py.wide_events import log
 
@@ -105,6 +111,28 @@ def _canvas_section(todo: TodoDocument, heading: str, max_chars: int) -> str | N
     return body[:max_chars] if body else None
 
 
+async def _send_in_app(todo: TodoDocument, text: str) -> _Resolution:
+    """Deliver a result as an in-app notification, for a user with no chat app linked."""
+    try:
+        await notification_service.create_notification(
+            NotificationRequest(
+                user_id=todo.user_id,
+                source=NotificationSourceEnum.BACKGROUND_JOB,
+                content=NotificationContent(title=todo.title, body=text),
+                metadata={"todo_id": todo.id},
+            )
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.AGENT} todo run result could not be sent in the app",
+            todo_id=todo.id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return _not_sent(TodoRunDeliveryOutcome.UNDELIVERED)
+    return _Resolution(TodoRunDeliveryOutcome.DELIVERED, "result sent as an in-app notification")
+
+
 async def _narrate_and_send(run: ExecutorRun, todo: TodoDocument, result_text: str) -> _Resolution:
     """Have comms write the result up (or decline to), then send it to the chat app."""
     text = await narrate_executor_result(
@@ -142,7 +170,7 @@ async def _narrate_and_send(run: ExecutorRun, todo: TodoDocument, result_text: s
         origin=f'tracked todo "{todo.title}" (id {todo.id})',
     )
     if platform is None:
-        return _not_sent(TodoRunDeliveryOutcome.UNDELIVERED)
+        return await _send_in_app(todo, directive.payload)
     return _Resolution(
         TodoRunDeliveryOutcome.DELIVERED, f"result sent on {platform.value}", platform
     )

@@ -13,6 +13,7 @@ import {
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
 import { TodoSidebar } from "@/components/layout/sidebar/right-variants/TodoSidebar";
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import type { CardAction } from "@/features/chat/components/interface/BaseCardView";
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
 import TodoItem from "@/features/todo/components/TodoItem";
@@ -28,6 +29,7 @@ interface InboxTodosViewProps {
 const InboxTodosView: React.FC<InboxTodosViewProps> = memo(({ onRefresh }) => {
   const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null);
   const appendToInput = useAppendToInput();
+  const user = useCurrentUser();
 
   // initialLoading is true only before the very first fetch completes.
   // After that it stays false even on background refetches — avoids skeleton flash on navigation.
@@ -131,10 +133,10 @@ const InboxTodosView: React.FC<InboxTodosViewProps> = memo(({ onRefresh }) => {
         key: "break-down",
         icon: <Flowchart01Icon className="size-4 text-zinc-400" />,
         label: "Break down big tasks",
-        description: "Decompose complex todos into ordered subtasks",
+        description: "Decompose complex todos into ordered checklists",
         onPress: () =>
           appendToInput(
-            "Look at my inbox todos and identify any that are too large or vague to action directly. For each one, break it down into clear, ordered subtasks I can actually complete.",
+            "Look at my inbox todos and identify any that are too large or vague to action directly. For each one, break it down into a clear, ordered checklist I can actually complete.",
           ),
       },
       {
@@ -202,6 +204,7 @@ const InboxTodosView: React.FC<InboxTodosViewProps> = memo(({ onRefresh }) => {
                 isSelected={selectedTodoId === todo.id}
                 onUpdate={handleTodoUpdate}
                 onClick={handleTodoClick}
+                timezone={user?.timezone}
               />
             ))}
           </div>

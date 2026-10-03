@@ -15,10 +15,12 @@ app/services/todo_canvas_storage.py for the storage primitives. No
 JuiceFS / FUSE mount is required, so tracked todos work in every dev mode.
 """
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from app.constants.todos import (
     ACTIVE_TRACKED_SUMMARY_LIMIT,
+    CANVAS_STANDING_RULES_SECTION,
     EXECUTE_TRACKED_TODO_TASK,
     GAIA_TRACKED_LABEL,
     TodoActivityEvent,
@@ -79,6 +81,18 @@ CANVAS_TEMPLATE = """# {title}
 """
 
 
+def starting_canvas(title: str, standing_rules: Sequence[str] = ()) -> str:
+    """Render the template canvas with standing rules the todo starts out obeying."""
+    canvas = CANVAS_TEMPLATE.format(title=title)
+    if not standing_rules:
+        return canvas
+    heading = f"## {CANVAS_STANDING_RULES_SECTION}\n"
+    # Rules go under the section's comment line; it is the last such heading, as a title can read like it.
+    after_comment = canvas.index("\n", canvas.rindex(heading) + len(heading)) + 1
+    rules = "".join(f"- {rule}\n" for rule in standing_rules)
+    return canvas[:after_comment] + rules + canvas[after_comment:]
+
+
 async def _discard_unwatched_todo(todo_id: str, user_id: str, watch_error: Exception) -> None:
     """Delete a todo whose watch failed; UnwatchedTodoKeptError names it when the delete fails too."""
     try:
@@ -128,8 +142,28 @@ async def require_sub_todo_parent(
         raise SubTodoParentError(
             f"{child_id} is completed; only an open todo can become a sub-todo."
         )
+    if child is not None and GAIA_TRACKED_LABEL not in child.labels:
+        raise SubTodoParentError(
+            f"{child_id} is not a tracked todo, so it cannot become a sub-todo."
+        )
     if await todo_repository.find_sub_todos(user_id, [child_id]):
         raise SubTodoParentError(f"{child_id} has sub-todos of its own, so it cannot become one.")
+
+
+async def _reconcile_parent_completion(user_id: str, parent_todo_id: str, child_id: str) -> None:
+    """Complete a newborn sub-todo whose parent closed while it was being created.
+
+    Re-running the link check here catches the insert the completion's sweeps
+    missed. Only a newborn is completed; a moved todo keeps its work.
+    """
+    try:
+        await require_sub_todo_parent(user_id, parent_todo_id)
+    except SubTodoParentError:
+        await TrackedTodoService.complete_tracked_todo(
+            child_id,
+            user_id,
+            summary="Parent completed while this sub-todo was being created.",
+        )
 
 
 async def _active_todo_first(
@@ -294,6 +328,8 @@ class TrackedTodoService:
             title=title,
             vfs_path=vfs_path,
         )
+        if parent_todo_id is not None:
+            await _reconcile_parent_completion(user_id, parent_todo_id, todo_id)
         schedule_gaia_tasks_sync(user_id)
         return result
 

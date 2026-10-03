@@ -94,6 +94,14 @@ class DodoPaymentData(BaseModel):
     error_message: str | None = None
 
 
+class DodoCheckoutMetadata(BaseModel):
+    """What GAIA stamps on a Dodo checkout: the user the subscription belongs to."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    user_id: str | None = None
+
+
 class DodoSubscriptionData(BaseModel):
     """Subscription data from subscription webhook."""
 

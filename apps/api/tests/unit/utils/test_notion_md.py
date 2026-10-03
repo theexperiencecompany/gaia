@@ -135,9 +135,9 @@ class TestInlineEquation:
     @pytest.mark.parametrize(
         "text, expected",
         [
-            ("x^2", "$x^2$"),
-            ("", "$$"),
-            ("a + b = c", "$a + b = c$"),
+            ("x^2", "$$x^2$$"),
+            ("", "$$$$"),
+            ("a + b = c", "$$a + b = c$$"),
         ],
     )
     def test_inline_equation(self, text: str, expected: str) -> None:
@@ -423,11 +423,11 @@ class TestRichTextToMarkdown:
 
     def test_equation_type(self) -> None:
         rich_text = [{"type": "equation", "equation": {"expression": "x^2 + y^2 = z^2"}}]
-        assert rich_text_to_markdown(_rich_text(rich_text)) == "$x^2 + y^2 = z^2$"
+        assert rich_text_to_markdown(_rich_text(rich_text)) == "$$x^2 + y^2 = z^2$$"
 
     def test_equation_missing_expression(self) -> None:
         rich_text = [{"type": "equation", "equation": {}}]
-        assert rich_text_to_markdown(_rich_text(rich_text)) == "$$"
+        assert rich_text_to_markdown(_rich_text(rich_text)) == "$$$$"
 
     def test_text_with_bold_annotation(self) -> None:
         rich_text = [
@@ -477,7 +477,7 @@ class TestRichTextToMarkdown:
             {"type": "text", "plain_text": "The formula is ", "annotations": {}},
             {"type": "equation", "equation": {"expression": "E=mc^2"}},
         ]
-        assert rich_text_to_markdown(_rich_text(rich_text)) == "The formula is $E=mc^2$"
+        assert rich_text_to_markdown(_rich_text(rich_text)) == "The formula is $$E=mc^2$$"
 
     def test_missing_plain_text_key(self) -> None:
         """When plain_text key is missing, defaults to empty string."""

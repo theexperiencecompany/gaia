@@ -32,6 +32,8 @@ NEEDS_FOLLOW_UP_LABEL: Final[str] = "needs-follow-up"
 # reads them to judge whether an overdue todo is genuinely stuck, and
 # trigger-subscription paths set/clear them, so they live here, not a consumer.
 WAITING_FOR_REPLY_LABEL: Final[str] = "waiting-for-reply"
+# A thread todo's other state: the user owes the reply. Not blocking, the next move is theirs.
+NEEDS_REPLY_LABEL: Final[str] = "needs-reply"
 WAITING_FOR_APPROVAL_LABEL: Final[str] = "waiting-for-approval"
 BLOCKING_LABEL: Final[str] = "blocked"
 
@@ -57,6 +59,8 @@ EXECUTE_TRACKED_TODO_TASK: Final[str] = "execute_tracked_todo"
 # How far past its stored scheduled_at an unstamped fire (queued before jobs
 # carried their occurrence) may land and still run; outside it, it is dropped.
 TODO_SCHEDULE_FIRE_GRACE: Final[timedelta] = timedelta(minutes=2)
+# How long a one-time run that came due on a paused account waits before it checks again.
+PAUSED_RUN_RECHECK: Final[timedelta] = timedelta(days=1)
 
 # How much of a run's final report is kept in its activity.md entry.
 RUN_SUMMARY_ACTIVITY_CHARS: Final[int] = 200
@@ -137,3 +141,10 @@ EXISTING_TODO_STATE_EXCERPT_CHARS: Final[int] = 400
 
 # Most todos list_tracked_todos returns, filtered or not; the freshest win.
 LIST_TRACKED_TODOS_LIMIT: Final[int] = 50
+
+# The one tracked todo per user that triages mail, owns its threads and briefs each morning.
+INBOX_DESK_TITLE: Final[str] = "Inbox desk"
+INBOX_DESK_RECURRENCE: Final[str] = "0 8 * * *"
+PROVISION_INBOX_DESK_TASK: Final[str] = "provision_inbox_desk"
+# First retry delay of a failed provisioning; each further try doubles it.
+INBOX_DESK_PROVISION_RETRY_DELAY: Final[timedelta] = timedelta(minutes=2)

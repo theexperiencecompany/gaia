@@ -1007,10 +1007,10 @@ Exact tool names for todo-related tasks. Use retrieve_tools exact_names param to
 - get_all_labels: List all labels used across todos
 - get_todos_summary: Get comprehensive productivity snapshot (today, overdue, upcoming, high priority, stats, by project) - BEST FOR BRIEFINGS
 
-## Subtask Tools
-- add_subtask: Add subtasks to existing todos
-- update_subtask: Update subtask properties
-- delete_subtask: Remove subtasks from todos
+## Checklist Tools
+- add_checklist_item: Add a checklist item (a line to tick off) to a todo
+- update_checklist_item: Rename or tick off a checklist item
+- delete_checklist_item: Remove a checklist item from a todo
 
 ## CRITICAL WORKFLOW RULES
 
@@ -1043,8 +1043,8 @@ Exact tool names for todo-related tasks. Use retrieve_tools exact_names param to
    → Present organized view with overdue/upcoming/priorities
 
 2. "Create vacation project with tasks"
-   → list_projects (check duplicates) → create_project → create_todo ×N → add_subtask ×N
-   → Confirm project + tasks + subtasks created
+   → list_projects (check duplicates) → create_project → create_todo ×N → add_checklist_item ×N
+   → Confirm project + tasks + checklist items created
 
 3. "Delete completed tasks from Marketing"
    → list_projects → list_todos(project_id, completed=True)

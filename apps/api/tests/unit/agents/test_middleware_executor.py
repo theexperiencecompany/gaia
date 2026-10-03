@@ -26,6 +26,7 @@ from app.agents.middleware.executor import (
     _apply_state_update,
     _has_override,
 )
+from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.override.langgraph_bigtool.utils import State
 from app.services.analytics_service import AnalyticsEvents
 
@@ -237,6 +238,14 @@ class TestMiddlewareExecutorInit:
     def test_none_middleware(self) -> None:
         executor = MiddlewareExecutor(None)
         assert executor.middleware == []
+
+    def test_the_stacks_loop_guard_is_exposed_for_select_tools(self) -> None:
+        guard = LoopGuardMiddleware()
+        executor = MiddlewareExecutor([_NoOpMiddleware(), guard, _BeforeModelMiddleware()])
+        assert executor.loop_guard is guard
+
+    def test_a_stack_without_a_loop_guard_exposes_none(self) -> None:
+        assert MiddlewareExecutor([_NoOpMiddleware()]).loop_guard is None
 
 
 # ---------------------------------------------------------------------------

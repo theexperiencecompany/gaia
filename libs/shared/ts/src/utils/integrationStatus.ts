@@ -1,4 +1,26 @@
-import type { IntegrationStatusValue } from "../types";
+import type { IntegrationManagedBy, IntegrationStatusValue } from "../types";
+
+/** Overlay a separately-fetched server status on the catalog's last-known status. */
+export function reconcileIntegrationStatus(
+  snapshotStatus: IntegrationStatusValue,
+  connected: boolean | undefined,
+  managedBy: IntegrationManagedBy | undefined,
+  requiresAuth: boolean | undefined,
+): IntegrationStatusValue {
+  if (connected === undefined) return snapshotStatus;
+  if (connected && snapshotStatus !== "connected") {
+    return "connected";
+  }
+  if (
+    !connected &&
+    snapshotStatus === "connected" &&
+    managedBy === "mcp" &&
+    requiresAuth
+  ) {
+    return "created";
+  }
+  return snapshotStatus;
+}
 
 /**
  * How the integrations UI presents one integration's connection state.

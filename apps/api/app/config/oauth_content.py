@@ -144,7 +144,7 @@ GOOGLEDRIVE_CONTENT = IntegrationContent(
 GMAIL_CONTENT = IntegrationContent(
     use_cases=[
         "Send emails by describing who you're writing to and what you want to say — GAIA drafts and sends it",
-        "Get a daily digest of your most important unread emails every morning",
+        "Get a briefing every morning of what needs your reply, what you're waiting on, and today's events",
         "Search your inbox by topic, sender, or keyword instantly from chat",
         'Reply to emails with a quick instruction like "reply and say I\'ll join at 3 PM"',
         "Trigger workflows when specific emails arrive — like logging leads from contact form submissions",
@@ -170,7 +170,7 @@ GMAIL_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Can GAIA read all my emails?",
-            answer="GAIA requests Gmail read access to search and summarise emails when you ask. It does not proactively read your inbox unless you set up a trigger or explicitly ask.",
+            answer="GAIA requests Gmail read access to search and summarise emails when you ask, and to read new mail once a day for your morning inbox briefing. You can change when that briefing runs, or stop it, by telling GAIA.",
         ),
         IntegrationFAQ(
             question="Can I set up email-based triggers for workflows?",
