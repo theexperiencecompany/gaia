@@ -203,8 +203,9 @@ def found_in_history(history: AgentHistoryList[BaseModel]) -> list[str]:
         result.extracted_content[:BROWSER_RUN_FOUND_MAX_CHARS]
         for item in history.history
         if item.model_output is not None
-        for action, result in zip(item.model_output.action, item.result, strict=False)
-        if _READ_ACTION in action.model_dump(exclude_none=True)
+        # One result per action run, in order; a step cut short has fewer.
+        for position, result in enumerate(item.result)
+        if _READ_ACTION in item.model_output.action[position].model_dump(exclude_none=True)
         and result.extracted_content
         and not result.error
     ]

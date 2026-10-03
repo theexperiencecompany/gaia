@@ -79,11 +79,20 @@ async def test_the_input_action_gets_the_secret_values_on_its_site(
     browser_use: _BrowserUse,
 ) -> None:
     page = _Page("https://example.test/login")
+    action = _Actions(input={"index": 3, "text": "<secret>password</secret>"})
+    context: dict[str, Any] = {
+        "page_extraction_llm": object(),
+        "available_file_paths": ["a.pdf"],
+        "file_system": object(),
+        "extraction_schema": {"type": "object"},
+    }
 
-    await _act("input", {"index": 3, "text": "<secret>password</secret>"}, page)
+    await GaiaTools().act(action, page, sensitive_data=SECRETS, **context)
 
-    [call] = browser_use.calls
-    assert (call["browser_session"], call["sensitive_data"]) == (page, SECRETS)
+    # Everything else reaches Browser-Use as it was given.
+    assert browser_use.calls == [
+        {"action": action, "browser_session": page, "sensitive_data": SECRETS, **context}
+    ]
 
 
 async def test_a_typing_action_naming_a_secret_it_cannot_fill_fails_and_types_nothing(
