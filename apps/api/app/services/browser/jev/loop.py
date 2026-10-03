@@ -404,6 +404,7 @@ class JevRunner:
         try:
             value = await self._value_for(state, action)
         except SecretWithheld as exc:
+            log.warning(f"{LogTag.BROWSER} Jev withheld a secret", reason=str(exc))
             return JevStop.SECRET_WITHHELD, str(exc)
         if value is None:
             return (
@@ -498,12 +499,14 @@ class JevRunner:
         self._record_call(evaluation, _elapsed_ms(started))
         if choice == NONE_VALUE:
             return None
-        if choice == GENERATE:
-            written = await self._write_value(situation, action)
-            return (written, written) if written else None
         if is_placeholder(choice):
             return choice, self._secrets.value_for(choice, state.current.url)
-        return choice, choice
+        typed = await self._write_value(situation, action) if choice == GENERATE else choice
+        if not typed:
+            return None
+        # A secret's name typed as text ("password") would submit the name, not the secret.
+        self._secrets.refuse_a_name(typed)
+        return typed, typed
 
     async def _write_value(self, situation: Situation, action: PageAction) -> str | None:
         """Ask the tiny model for a value the goal implies but does not spell out.

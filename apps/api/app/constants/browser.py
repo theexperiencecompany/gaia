@@ -489,6 +489,11 @@ JEV_SECRET_MASK = "[hidden]"  # nosec B105 -- the placeholder shown in place of 
 JEV_SECRET_DIFFERS = "a value other than the secret"  # nosec B105 -- report wording, not a credential
 #: Why a written value is not typed when it names a secret.
 JEV_SECRET_WRITTEN = "The written value names a secret; nothing was typed."  # nosec B105 -- report wording, not a credential
+#: Why a value Jev chose or wrote for a field is not typed when it is a secret's name, not its value.
+JEV_SECRET_NAME_TYPED = (  # nosec B105 -- report wording, not a credential
+    "The value chosen for this field was {name}, the name of a secret this task was given, not its "
+    "value; nothing was typed. A secret is typed only from its <secret>name</secret> placeholder."
+)
 #: Why a jev goal that quotes a secret's name is refused: Jev would type the name itself.
 JEV_GOAL_QUOTES_A_NAME = (
     "The goal quotes {names}, the name of a secret this task was given, not its value. "

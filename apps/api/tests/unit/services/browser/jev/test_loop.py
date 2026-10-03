@@ -19,6 +19,7 @@ from app.constants.browser import (
     JEV_BURST_MAX_ACTIONS,
     JEV_SECRET_DIFFERS,
     JEV_SECRET_MASK,
+    JEV_SECRET_NAME_TYPED,
     JEV_SECRET_WRITTEN,
     JEV_STALE_LIMIT,
     JEV_UNCHANGED_LIMIT,
@@ -57,6 +58,7 @@ from app.services.browser.jev.page import (
 )
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.ledger import CallComponent, ExecutedAction, ModelCall, RunLedger
+from tests.helpers import captured_wide_event
 from tests.unit.services.browser.jev.conftest import (
     BUTTON,
     ENTER,
@@ -1006,6 +1008,38 @@ async def test_a_secret_is_never_typed_off_its_own_site_and_the_agent_is_told_so
     assert result.stop is JevStop.SECRET_WITHHELD
     assert "bank.test" in result.detail
     assert page.typed == []
+
+
+@pytest.mark.parametrize(
+    ("value", "written"), [(GENERATE, "password"), (GENERATE, " password "), ("password", None)]
+)
+async def test_a_secrets_name_is_never_typed_as_its_value(
+    monkeypatch: pytest.MonkeyPatch, value: str, written: str | None
+) -> None:
+    """browser-form: my-password=password, the secret's name where its value belonged."""
+    page = FakePage(page_state())
+    run = _run(
+        monkeypatch,
+        page,
+        decision(JevOperation.TYPE_TEXT, FIELD),
+        value=value,
+        text_model=_TextModel(written),
+        secrets=_secrets(),
+    )
+
+    async with captured_wide_event() as event:
+        result = await run.burst(f"log in with {MASKED}")
+
+    assert (result.stop, result.detail) == (
+        JevStop.SECRET_WITHHELD,
+        JEV_SECRET_NAME_TYPED.format(name="password"),
+    )
+    assert (page.typed, result.steps) == ([], [])
+    [warning] = event["warnings"]
+    assert (warning["msg"], warning["reason"]) == (
+        "[BROWSER] Jev withheld a secret",
+        result.detail,
+    )
 
 
 async def test_a_password_field_with_no_stored_secret_is_left_to_the_agent(

@@ -11,7 +11,7 @@ from collections.abc import Iterable
 import re
 from urllib.parse import quote, quote_plus, urlsplit
 
-from app.constants.browser import JEV_SECRET_MASK
+from app.constants.browser import JEV_SECRET_MASK, JEV_SECRET_NAME_TYPED
 from app.schemas.browser import BrowserTaskSecret
 from app.services.browser.exceptions import BrowserAutomationError
 from app.utils.sites import PLACEHOLDER, on_site
@@ -92,6 +92,12 @@ class RunSecrets:
     def sites(self) -> list[str]:
         """The site each secret is typed on: sites the user named for the task."""
         return [secret.site for secret in self._secrets.values()]
+
+    def refuse_a_name(self, typed: str) -> None:
+        """Raise SecretWithheld when typed is a secret's name: its value comes only from its placeholder."""
+        name = typed.strip()
+        if name in self._values:
+            raise SecretWithheld(JEV_SECRET_NAME_TYPED.format(name=name))
 
     def value_for(self, placeholder: str, url: str) -> str:
         """Return the value placeholder stands for on url's page; raise SecretWithheld off its site."""

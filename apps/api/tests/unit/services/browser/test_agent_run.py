@@ -32,6 +32,7 @@ from app.constants.browser import (
     BROWSER_AGENT_FAST_ENGINE_NOTE,
     BROWSER_ENGINE_RESUMED_NOTE,
     BROWSER_TAKEOVER_DONE_NOTE,
+    JEV_SECRET_NAME_TYPED,
     BrowserEngine,
     BrowserHandoffAction,
     BrowserRunFailure,
@@ -1147,6 +1148,29 @@ class TestJevInTheRun:
 
         assert "the name of a secret" in str(result.error)
         assert decisions == []
+
+    async def test_the_first_burst_never_types_a_secrets_name_as_its_value(
+        self,
+        harness: _Harness,
+        page: FakePage,
+        decisions: list[object],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """browser-form: the product's own first burst, before any agent step, sent my-password=password."""
+
+        async def _writes_the_name(messages: list[object], output_format: object) -> object:
+            return SimpleNamespace(completion=SimpleNamespace(text="password"))
+
+        monkeypatch.setattr(_TEXT_MODEL, "ainvoke", _writes_the_name)
+        harness.run._config = replace(CONFIG, start_url="https://site.test/a")
+        await harness.run.execute('fill the form: password "<secret>password</secret>"')
+        agent = _Agent.built[-1]
+        [first] = agent.options["initial_actions"]
+
+        result = await agent.act(JEV_ACTION, first[JEV_ACTION])
+
+        assert page.typed == []
+        assert JEV_SECRET_NAME_TYPED.format(name="password") in str(result.extracted_content)
 
     async def test_a_burst_types_clicks_and_reports_through_the_run(
         self, harness: _Harness, page: FakePage, decisions: list[object]

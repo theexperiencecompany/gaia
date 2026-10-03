@@ -78,8 +78,8 @@ _STOP_MEANING = {
     JevStop.BLOCKED: "Jev found nothing on this page that advances the goal.",
     JevStop.NEEDS_INPUT: "The goal gives no value for a field: ask the user, or hand the step over.",
     JevStop.SECRET_WITHHELD: (
-        "A secret is typed only on the site it was given for, and this page is on another; "
-        "nothing was typed."
+        "Nothing was typed: a secret is typed only from its <secret>name</secret> placeholder, "
+        "and only on the site it was given for."
     ),
     JevStop.UNFINISHED: (
         "Jev stopped before done_when held and may be partway. Do not hand it the same goal "
