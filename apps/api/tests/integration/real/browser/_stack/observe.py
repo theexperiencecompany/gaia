@@ -25,12 +25,17 @@ import aiormq.exceptions
 
 from app.constants.chat import ConversationSource
 from app.constants.outbound import OUTBOUND_QUEUES, work_queue_arguments
+from tests.integration.real.browser._stack.progress import Progress
 
 _OUTBOUND = OUTBOUND_QUEUES[ConversationSource.TELEGRAM]
 _TRANSCRIPT_PREFIX = "browser-stack.transcript."
 #: How long the relay waits before asking again for a consumer another stack holds.
 _RELAY_RETRY_SECONDS = 0.5
 _POLL_SECONDS = 0.2
+#: How long connecting to the broker may take.
+_CONNECT_SECONDS = 30.0
+#: How often a relay kept off the outbound queue says so.
+_RELAY_REPORT_SECONDS = 30.0
 
 
 @dataclass(frozen=True)
@@ -85,15 +90,17 @@ def _delivery(envelope: dict[str, Any]) -> Delivery:
 class OutboundObserver:
     """Reads the stack's outbound Telegram messages into one transcript per registered chat."""
 
-    def __init__(self, rabbitmq_url: str) -> None:
+    def __init__(self, rabbitmq_url: str, progress: Progress) -> None:
         self._url = rabbitmq_url
+        self._progress = progress
         self._connection: AbstractRobustConnection | None = None
         self._channel: AbstractChannel | None = None
         self._relay: asyncio.Task[None] | None = None
         self.transcripts: dict[str, Transcript] = {}
 
     async def start(self) -> None:
-        self._connection = await aio_pika.connect_robust(self._url)
+        async with asyncio.timeout(_CONNECT_SECONDS):
+            self._connection = await aio_pika.connect_robust(self._url)
         self._channel = await self._connection.channel()
         # Declared as the API declares it, so the relay can consume before the API published anything.
         await self._channel.declare_queue(
@@ -142,6 +149,7 @@ class OutboundObserver:
     async def _relay_forever(self) -> None:
         if self._connection is None:
             raise RuntimeError("the observer is not started")
+        refused_since: float | None = None
         while True:
             channel = await self._connection.channel()
             try:
@@ -149,13 +157,23 @@ class OutboundObserver:
                     _OUTBOUND, durable=True, arguments=work_queue_arguments(_OUTBOUND)
                 )
                 async with queue.iterator(exclusive=True) as messages:
+                    refused_since = None
                     async for message in messages:
                         await self._copy(channel, message)
             except (
                 aiormq.exceptions.ChannelAccessRefused,
                 aiormq.exceptions.ChannelLockedResource,
             ):
-                # Another stack's relay holds the queue; take over once it lets go.
+                # Another stack's relay holds the queue; take over once it lets go. A holder
+                # that never does (a bot consuming this vhost) is said, not waited on in silence.
+                now = time.monotonic()
+                refused_since = refused_since or now
+                if now - refused_since >= _RELAY_REPORT_SECONDS:
+                    self._progress.say(
+                        f"{_OUTBOUND} has been held by another consumer for "
+                        f"{now - refused_since:.0f}s: another stack's relay, or a bot on this vhost"
+                    )
+                    refused_since = now
                 await asyncio.sleep(_RELAY_RETRY_SECONDS)
             finally:
                 if not channel.is_closed:
