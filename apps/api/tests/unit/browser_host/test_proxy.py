@@ -183,6 +183,31 @@ async def test_a_public_target_is_forwarded(monkeypatch) -> None:
     guard.assert_awaited_once_with("https://example.com")
 
 
+async def test_only_an_allowed_private_origin_skips_the_resolver(monkeypatch) -> None:
+    """The test stack's fixture site is reachable on its exact origin; its host on another port is not."""
+    guard = AsyncMock(side_effect=ValueError("refusing to connect to non-public address 127.0.0.1"))
+    monkeypatch.setattr(proxy, "assert_public_http_url", guard)
+    monkeypatch.setattr(
+        proxy.browser_host_settings,
+        "BROWSER_HOST_ALLOW_PRIVATE_ORIGINS",
+        frozenset({"http://localhost:8123"}),
+    )
+
+    allowed = await _refused_private_target(
+        {"id": 1, "method": "Page.navigate", "params": {"url": "HTTP://LocalHost:8123/form?x=1"}}
+    )
+    other_port = await _refused_private_target(
+        {"id": 2, "method": "Page.navigate", "params": {"url": "http://localhost:8124/form"}}
+    )
+
+    assert allowed is None
+    assert other_port == (
+        "navigation to http://localhost:8124/form refused: "
+        "refusing to connect to non-public address 127.0.0.1"
+    )
+    guard.assert_awaited_once_with("http://localhost:8124/form")
+
+
 async def test_non_navigations_and_the_blank_page_skip_the_resolver(monkeypatch) -> None:
     guard = AsyncMock()
     monkeypatch.setattr(proxy, "assert_public_http_url", guard)

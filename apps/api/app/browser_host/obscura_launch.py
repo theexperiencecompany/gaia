@@ -23,7 +23,7 @@ import httpx
 import psutil
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from app.config.browser_host_settings import browser_host_settings
+from app.config.browser_host_settings import OBSCURA_PRIVATE_NETWORK_ENV, browser_host_settings
 
 # Budget for an engine to publish its DevTools endpoint after launch.
 _CDP_READY_TIMEOUT_SECONDS = 30.0
@@ -82,13 +82,19 @@ def obscura_serve_argv(port: int) -> list[str]:
 
 
 def obscura_serve_env() -> dict[str, str]:
-    """Return the environment an Obscura process runs with: ours plus its script deadline."""
-    return {
-        **os.environ,
-        "OBSCURA_SCRIPT_DEADLINE_MS": str(
-            browser_host_settings.OBSCURA_SCRIPT_DEADLINE_SECONDS * 1000
-        ),
-    }
+    """Return the environment an Obscura process runs with: ours plus its script deadline.
+
+    Obscura refuses private addresses on its own unless told otherwise, and is told
+    only while the host allows private origins (a test stack); the proxy keeps
+    explicit navigations to exactly those origins.
+    """
+    env = {key: value for key, value in os.environ.items() if key != OBSCURA_PRIVATE_NETWORK_ENV}
+    env["OBSCURA_SCRIPT_DEADLINE_MS"] = str(
+        browser_host_settings.OBSCURA_SCRIPT_DEADLINE_SECONDS * 1000
+    )
+    if browser_host_settings.BROWSER_HOST_ALLOW_PRIVATE_ORIGINS:
+        env[OBSCURA_PRIVATE_NETWORK_ENV] = "1"
+    return env
 
 
 async def spawn_engine(argv: list[str], env: dict[str, str] | None) -> asyncio.subprocess.Process:

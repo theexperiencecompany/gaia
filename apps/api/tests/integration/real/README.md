@@ -13,6 +13,7 @@ The shared DB connection fixtures (`mongodb_url`, `redis_url`, `postgres_url`, `
 Sub-suites:
 
 - **`memory/`** — Memory engine suite (real Postgres/ChromaDB/Redis, mocked LLM only). Own conftest keeps its autouse guards scoped to its own tests. Run as part of the directory above.
+- **`browser/`** — The browser stack: the whole browser path as real processes (API and ARQ browser worker booted like production minus the embedding-dependent providers, Chrome and Obscura hosts), scripted models (`_stack/fake_models.py`), a two-origin fixture site, and the outbound Telegram queue read as transcripts. Its own CI slice (`browser`); excluded from `test:real`. Needs Chrome (`CHROMIUM_BIN` or `google-chrome`) and `OBSCURA_BIN`, plus `RABBITMQ_URL` on a vhost no running bot consumes. Run it with `mise test:python:browser`.
 
 Notable files:
 
