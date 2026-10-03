@@ -251,17 +251,19 @@ async def test_a_link_to_a_page_this_burst_left_is_not_offered_to_click() -> Non
     """Jev clicked one story, went back and clicked it again, eight times in a burst, to the action cap."""
     story = _action("e5", 15, "click", "Clef", role="link", href="https://blog.test/clef")
     other = _action("e6", 16, "click", "Frog", role="link", href="https://blog.test/frog")
+    # The blog's front page, written without its path and with a fragment: the same page.
+    front = _action("e7", 17, "click", "Blog", role="link", href="https://blog.test#top")
     jev = _Jev(operation="DONE")
 
     await decide(
         jev,
         Situation(
-            _page(story, other),
+            _page(story, other, front),
             "open each",
             "done",
             [],
             _unmasked,
-            left=frozenset({"https://blog.test/clef"}),
+            left=frozenset({"https://blog.test/clef", "https://blog.test/"}),
         ),
     )
 
