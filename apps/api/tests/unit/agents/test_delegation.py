@@ -11,7 +11,7 @@ from contextlib import contextmanager
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import fakeredis.aioredis
 from langchain_core.messages import AIMessage, ToolMessage
@@ -56,6 +56,18 @@ pytestmark = pytest.mark.unit
 
 MODULE = "app.agents.core.subagents.delegation"
 FOLDED = "app.agents.core.background.folded_stream"
+
+
+class _OwnStream:
+    """Equal to any id of a background run's own stream: the one its frames were collected on."""
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, str) and other.startswith(SUBAGENT_STREAM_ID_PREFIX)
+
+    def __hash__(self) -> int:
+        return hash(SUBAGENT_STREAM_ID_PREFIX)
+
+
 CONVERSATION = "conv-d"
 THREAD = f"spawn_{CONVERSATION}_call-1"
 
@@ -1047,7 +1059,7 @@ class TestSavingABackgroundRunsFrames:
             {
                 "msg": f"{LogTag.AGENT} Detached stream has no message to save its cards into",
                 "conversation_id": CONVERSATION,
-                "stream_id": ANY,
+                "stream_id": _OwnStream(),
                 "entries": 2,
             }
         ]
@@ -1097,7 +1109,7 @@ class TestSavingABackgroundRunsFrames:
             {
                 "msg": f"{LogTag.AGENT} Could not save a detached stream's cards",
                 "conversation_id": CONVERSATION,
-                "stream_id": ANY,
+                "stream_id": _OwnStream(),
                 "error_type": "RuntimeError",
                 "error": "mongo down",
             }

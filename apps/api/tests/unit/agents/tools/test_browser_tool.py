@@ -9,6 +9,7 @@ from langchain_core.runnables.config import RunnableConfig
 import pytest
 
 from app.agents.core.background.executor_channel import ExecutorInbox
+from app.agents.core.background.session import RunKind, create_session, teardown_session
 from app.agents.tools import browser_tool as tool_mod
 from app.agents.tools.browser_tool import browser_task
 from app.constants.browser import (
@@ -36,6 +37,10 @@ from tests.helpers import captured_wide_event
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("fake_redis")]
 
 TOOL_CALL_ID = "call-browser-1"
+#: One card a run publishes to its feed.
+CARD: dict[str, object] = {
+    "tool_data": {"tool_name": "browser_task_data", "data": {"kind": "step"}}
+}
 
 
 async def _start(args: dict[str, Any], config: RunnableConfig) -> str:
@@ -86,8 +91,8 @@ class Recorder:
         self.released: list[tuple[str, str]] = []
         #: Each background relay: (job, the message its cards fold into).
         self.relays: list[tuple[str, str | None]] = []
-        #: Each job a headless call followed to its end.
-        self.followed: list[str] = []
+        #: Each job a headless call followed to its end: (job, conversation, shown on a stream).
+        self.followed: list[tuple[str, str, bool]] = []
         self.spawned: list[str] = []
         self.queues: list[str | None] = []
         self.pools: list[object] = []
@@ -154,7 +159,7 @@ def _install(
         return _relayed()
 
     async def _follow(job_id: str, conversation_id: str, sink: object) -> None:
-        recorder.followed.append(job_id)
+        recorder.followed.append((job_id, conversation_id, sink is not tool_mod._ignore))
 
     def _spawn(operation: str, coro: Any, **_context: Any) -> MagicMock:
         recorder.spawned.append(operation)
@@ -493,7 +498,7 @@ async def test_a_dropped_enqueue_frees_the_slot_and_says_so(
     # Already findable by a stop, so its ending is recorded: over, not queued forever.
     ending = await jobs.done_state(recorder.request.job_id)
     assert isinstance(ending, BrowserJobFinished)
-    assert ending.result.status is BrowserSessionStatus.FAILED
+    assert (ending.result.status, ending.result.success) == (BrowserSessionStatus.FAILED, False)
 
     assert out == "I couldn't start the browser task right now. Try again in a moment."
     assert recorder.released == [("c1", recorder.request.job_id)]
@@ -615,6 +620,7 @@ async def _run_headless_until(
             await stop_browser_job("c1")
         else:
             await end_job(_job_id, ending)
+        await publish_job_event(_job_id, CARD)
         await publish_job_event(_job_id, JOB_TERMINAL_FRAME)
         return object()
 
@@ -633,9 +639,17 @@ async def test_a_headless_task_blocks_until_the_job_ends_and_returns_its_result(
         )
     )
 
-    out, recorder = await _run_headless_until(monkeypatch, fake_redis, done)
+    session = create_session("s1", RunKind.LIVE)
+    try:
+        async with captured_wide_event() as event:
+            out, recorder = await _run_headless_until(monkeypatch, fake_redis, done)
+    finally:
+        teardown_session("s1")
 
     assert recorder.request.in_background is False
+    # The run's cards reach the run's own stream while it waits, as a workflow saves them.
+    assert session.tool_events == [CARD]
+    assert event["browser"]["ending"] == "finished"
     assert out.startswith(
         f"The browser task you started (job {recorder.request.job_id}) has ended."
     )
@@ -669,3 +683,29 @@ async def test_the_job_runs_the_executors_task_never_the_users_raw_message(
     await _start({"task": "Log into the bank"}, config=config)
 
     assert recorder.request.task == "Log into the bank"
+
+
+async def test_a_feed_that_closed_with_no_ending_is_reported_as_a_run_that_could_not_finish(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorder = _install(monkeypatch)
+
+    async with captured_wide_event() as event:
+        out = await _start({"task": "x"}, config=HEADLESS_CONFIG)
+
+    job_id = recorder.request.job_id
+    assert recorder.followed == [(job_id, "c1", True)]
+    assert out == tool_mod._NO_ENDING.format(job_id=job_id)
+    [error] = event["errors"]
+    assert error["msg"] == f"{LogTag.BROWSER} Browser job feed closed with no ending recorded"
+    assert error["browser"] == {"job_id": job_id}
+
+
+async def test_a_headless_run_with_no_stream_follows_the_feed_without_showing_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorder = _install(monkeypatch)
+
+    await _start({"task": "x"}, config={"configurable": {"user_id": "u1", "thread_id": "c9"}})
+
+    assert recorder.followed == [(recorder.request.job_id, "c9", False)]

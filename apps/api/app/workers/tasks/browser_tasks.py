@@ -9,6 +9,7 @@ job nobody is left to end.
 import asyncio
 from collections.abc import Mapping
 
+from arq.connections import ArqRedis
 from arq.jobs import Job, JobStatus
 
 from app.agents.core.background.executor_runner import wake_executor_for_inbox
@@ -135,22 +136,23 @@ async def reap_browser_jobs(_ctx: Mapping[str, object]) -> str:
     to end it: its card would spin, its relay wait, and a headless caller block.
     """
     pool = await RedisPoolManager.get_pool()
-    reaped: list[str] = []
-    for job_id in await live_job_ids():
-        state = await get_job_state(job_id)
-        if state is None or await done_state(job_id) is not None:
-            await forget_live_job(job_id)
-            continue
-        status = await Job(job_id, pool, _queue_name=BROWSER_JOB_QUEUE).status()
-        if status in _WAITING_FOR_A_WORKER:
-            continue
-        # A worker heartbeats the slot for as long as it runs the job.
-        if await get_conversation_slot(state.conversation_id) == job_id:
-            continue
-        if await _end_lost_job(state):
-            reaped.append(job_id)
+    reaped = [job_id for job_id in await live_job_ids() if await _reap(pool, job_id)]
     log.set_ns("browser", reaped_jobs=reaped)
     return f"reaped={len(reaped)}"
+
+
+async def _reap(pool: ArqRedis, job_id: str) -> bool:
+    """End job_id when its worker died before it ended; whether this call ended it."""
+    state = await get_job_state(job_id)
+    if state is None or await done_state(job_id) is not None:
+        await forget_live_job(job_id)
+        return False
+    if await Job(job_id, pool, _queue_name=BROWSER_JOB_QUEUE).status() in _WAITING_FOR_A_WORKER:
+        return False
+    # A worker heartbeats the slot for as long as it runs the job.
+    if await get_conversation_slot(state.conversation_id) == job_id:
+        return False
+    return await _end_lost_job(state)
 
 
 async def _end_lost_job(state: BrowserJobState) -> bool:
@@ -168,7 +170,6 @@ async def _end_lost_job(state: BrowserJobState) -> bool:
     )
     await publish_frame_to_job(state.job_id, card_frame(result))
     await close_job_feed(state.job_id)
-    await release_conversation_slot(state.conversation_id, state.job_id)
     if state.in_background:
         await _wake_executor(state.conversation_id, state.user_id)
     return True

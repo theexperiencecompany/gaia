@@ -45,7 +45,9 @@ from app.schemas.browser import (
     NewHandoff,
 )
 from app.schemas.browser_job import BrowserJobStopped
+from app.services.analytics_service import AnalyticsEvents
 from app.services.browser import handoff_buttons, job_stop
+from app.services.browser.exceptions import BrowserHandoffNotOwned
 from app.services.browser.handoff import cancel_handoff, create_pending_handoff, get_handoff
 from app.services.browser.jobs import done_state
 from app.services.browser.live_code import mint_live_code
@@ -271,6 +273,50 @@ class TestDecideBrowserHandoff:
                 BROWSER_HANDOFF_ACK_CANCEL,
             )
         ]
+
+    async def test_a_cancel_tap_is_counted_once_as_the_users_cancel(
+        self, button_world: list[tuple[str, str, str]], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: list[tuple[object, ...]] = []
+        monkeypatch.setattr(handoff_buttons, "capture_event", lambda *args: captured.append(args))
+
+        await handoff_buttons.decide_handoff_by_button("h1", HandoffDecision.CANCEL, "u1", None)
+
+        assert captured == [
+            (
+                "u1",
+                AnalyticsEvents.BROWSER_HANDOFF_RESOLVED,
+                {"decision": "cancel", "with_note": False},
+            )
+        ]
+
+    async def test_another_users_cancel_stops_nothing(
+        self, button_world: list[tuple[str, str, str]]
+    ) -> None:
+        with pytest.raises(
+            BrowserHandoffNotOwned, match="^Not authorized to resolve this handoff$"
+        ):
+            await handoff_buttons.decide_handoff_by_button(
+                "h1", HandoffDecision.CANCEL, "intruder", None
+            )
+
+        assert await done_state("job-1") is None
+        assert button_world == []
+
+    async def test_a_tap_another_decision_beat_is_not_written_as_the_users(
+        self, button_world: list[tuple[str, str, str]], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The wait timed out between the read and the tap: the tap decided nothing."""
+        monkeypatch.setattr(
+            handoff_buttons, "resolve_handoff", AsyncMock(return_value=HandoffStatus.TIMEOUT)
+        )
+
+        resolved = await handoff_buttons.decide_handoff_by_button(
+            "h1", HandoffDecision.CONTINUE, "u1", None
+        )
+
+        assert resolved is HandoffStatus.TIMEOUT
+        assert button_world == []
 
     async def test_a_live_page_whose_handoff_expired_says_it_is_gone(
         self, button_world: list[tuple[str, str, str]]

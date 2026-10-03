@@ -131,6 +131,11 @@ async def test_a_finished_background_run_is_told_once_by_the_executor_run_it_wak
     assert world.heartbeat_alive == [True]
     assert event["user"] == {"id": "u1"}
     assert event["platform"] == "telegram"
+    assert event["browser"] == {
+        "job_id": "job-1",
+        "conversation_id": "conv-9",
+        "source_category": None,
+    }
 
 
 async def test_a_stopped_run_wakes_nobody_and_leaves_only_the_stops_notice(world: World) -> None:
@@ -166,7 +171,10 @@ async def test_a_job_whose_user_is_gone_lands_its_result_but_wakes_nobody(world:
     assert await _inbox_tags() == [AgentTag.BROWSER_RESULT]
     assert world.woken == []
     [warning] = event["warnings"]
-    assert "user not found" in warning["msg"]
+    assert warning["msg"] == (
+        f"{LogTag.BROWSER} Browser job result landed but nobody was woken: user not found"
+    )
+    assert warning["browser"] == {"conversation_id": "conv-9"}
 
 
 async def test_the_running_job_beats_on_its_own_slot(
@@ -286,14 +294,20 @@ async def test_a_job_whose_worker_died_is_ended_and_told_once(
 
     ending = await done_state("job-1")
     assert isinstance(ending, BrowserJobFinished)
-    assert ending.result.summary == BROWSER_JOB_WORKER_LOST_SUMMARY
+    assert (ending.result.summary, ending.result.success) == (
+        BROWSER_JOB_WORKER_LOST_SUMMARY,
+        False,
+    )
     assert await _inbox_tags() == [AgentTag.BROWSER_RESULT]
     assert world.woken == [("conv-9", world.users["u1"])]
     feed = await _feed()
     assert feed[-1] == JOB_TERMINAL_FRAME
     assert BROWSER_JOB_WORKER_LOST_SUMMARY in json.dumps(feed[-2])
     [warning] = event["warnings"]
+    assert warning["msg"] == f"{LogTag.BROWSER} Browser job ended by the reaper: its worker died"
     assert warning["reason"] == BrowserRunFailure.WORKER_LOST.value
+    assert warning["browser"] == {"job_id": "job-1", "status": "running"}
+    assert event["browser"] == {"reaped_jobs": []}
     assert await live_job_ids() == []
 
 
@@ -308,7 +322,10 @@ async def test_a_job_still_waiting_for_a_worker_or_still_beating_is_left_alone(
     await fake_redis.set(f"{in_progress_key_prefix}job-2", "1")
     await claim_conversation_slot("conv-8", "job-2")
 
-    assert await tasks_mod.reap_browser_jobs({}) == "reaped=0"
+    async with captured_wide_event() as event:
+        assert await tasks_mod.reap_browser_jobs({}) == "reaped=0"
+
+    assert event["browser"] == {"reaped_jobs": []}
 
     assert await done_state("job-1") is None
     assert await done_state("job-2") is None
@@ -339,7 +356,47 @@ async def test_a_job_that_ended_or_expired_is_forgotten_by_the_reaper(
     # A job whose state expired leaves its id behind with nothing to read.
     await fake_redis.sadd(BROWSER_JOB_LIVE_KEY, "job-gone")
 
-    assert await tasks_mod.reap_browser_jobs({}) == "reaped=0"
+    async with captured_wide_event() as event:
+        assert await tasks_mod.reap_browser_jobs({}) == "reaped=0"
+
+    assert event["browser"] == {"reaped_jobs": []}
 
     assert await live_job_ids() == []
+    assert world.woken == []
+
+
+async def test_every_dead_job_is_reaped_whatever_comes_before_it_in_the_walk(
+    world: World, fake_redis: fakeredis.aioredis.FakeRedis
+) -> None:
+    """A live or ended job ahead of a dead one in the walk must not end the sweep early."""
+    await fake_redis.sadd(BROWSER_JOB_LIVE_KEY, "job-gone")
+    waiting = await _queued(PAYLOAD | {"job_id": "job-0", "conversation_id": "conv-0"})
+    await fake_redis.zadd(BROWSER_JOB_QUEUE, {waiting.job_id: 1})
+    await _queued(PAYLOAD | {"in_background": False})
+
+    async with captured_wide_event() as event:
+        assert await tasks_mod.reap_browser_jobs({}) == "reaped=1"
+
+    assert event["browser"] == {"reaped_jobs": ["job-1"]}
+    assert await done_state("job-0") is None
+    assert isinstance(await done_state("job-1"), BrowserJobFinished)
+
+
+async def test_a_job_that_ended_while_the_reaper_judged_it_is_not_told_again(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The stop landed between the reaper's read and its write: the stop's ending stands, told once."""
+    await _queued()
+    real_end = tasks_mod.end_job
+
+    async def _stopped_first(job_id: str, ending: Any) -> Any:
+        await real_end(job_id, BrowserJobStopped())
+        return await real_end(job_id, ending)
+
+    monkeypatch.setattr(tasks_mod, "end_job", _stopped_first)
+
+    assert await tasks_mod.reap_browser_jobs({}) == "reaped=0"
+
+    assert await _inbox_tags() == [AgentTag.BROWSER_STOPPED]
+    assert await _feed() == []
     assert world.woken == []
