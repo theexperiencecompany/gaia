@@ -148,9 +148,6 @@ class CommonSettings(BaseAppSettings):
     # per-user E2B sandbox, controllable from chat. Off by default; PostHog
     # targeting enables it for specific users.
     ENABLE_AGENT_LAB: bool = False
-    # Static gate while PostHog targeting is unavailable: comma-separated
-    # emails allowlisted for the agent lab without a dashboard change.
-    AGENT_LAB_USER_EMAILS: str = ""
 
     @field_validator("HOST", "FRONTEND_URL", mode="after")
     @classmethod
