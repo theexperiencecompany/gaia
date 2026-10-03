@@ -781,7 +781,7 @@ async def test_a_cancelled_run_emits_the_failed_card_and_still_propagates(
     ending = await done_state("job-1")
     assert isinstance(ending, BrowserJobFinished)
     assert ending.result.summary == BROWSER_JOB_WORKER_STOPPED_SUMMARY
-    assert h.feed_signals == [JOB_TERMINAL_FRAME]
+    assert (h.feed_jobs, h.feed_signals) == (["job-1"], [JOB_TERMINAL_FRAME])
 
 
 async def test_a_run_a_stop_aborted_ends_on_a_stopped_card_and_settles_the_job(
