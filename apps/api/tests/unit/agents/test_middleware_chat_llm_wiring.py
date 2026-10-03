@@ -461,10 +461,9 @@ class TestLoopGuardWiring:
         assert isinstance(guard, LoopGuardMiddleware)
         return guard
 
-    def test_hard_stop_is_off_unless_asked_for(self) -> None:
-        """Warn-only is the default; a hard stop abandons a tool call, only safe on an unattended run."""
-        assert self._guard().hard_stop is False
-        assert self._guard(loop_guard=LoopGuardOptions(hard_stop=True)).hard_stop is True
+    def test_the_default_stack_carries_the_loop_guard(self) -> None:
+        """No build-time mode: whether it may block is read per call from the run's execution_mode."""
+        assert self._guard()
 
     def test_disabling_the_loop_guard_leaves_it_out(self) -> None:
         stack = create_middleware_stack(

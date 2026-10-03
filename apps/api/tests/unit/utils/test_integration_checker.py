@@ -26,6 +26,8 @@ def _graph_run(
     connect_url: str | None = _MAGIC_LINK,
     *,
     expired: bool = False,
+    execution_mode: str | None = None,
+    frontend: str = _FAKE_FRONTEND,
 ) -> Iterator[MagicMock]:
     """Run the prompt inside a graph run of category, yielding its stream writer.
 
@@ -38,6 +40,9 @@ def _graph_run(
         return expired and (user_id, integration_id) == (_USER, _INTEGRATION_ID)
 
     writer = MagicMock()
+    configurable = {"source_category": category}
+    if execution_mode is not None:
+        configurable["execution_mode"] = execution_mode
     config_patch = (
         patch(
             "app.utils.integration_checker.get_config",
@@ -46,7 +51,7 @@ def _graph_run(
         if category is None
         else patch(
             "app.utils.integration_checker.get_config",
-            return_value={"configurable": {"source_category": category}},
+            return_value={"configurable": configurable},
         )
     )
     with (
@@ -59,7 +64,7 @@ def _graph_run(
         patch("app.utils.integration_checker.settings") as mock_settings,
         patch.object(user_integration_repository, "is_expired", AsyncMock(side_effect=_is_expired)),
     ):
-        mock_settings.FRONTEND_URL = _FAKE_FRONTEND
+        mock_settings.FRONTEND_URL = frontend
         yield writer
 
 
@@ -162,4 +167,54 @@ class TestExpiredConnectionPrompt:
             await request_integration_connection("gmail", "Gmail", "user1")
         assert self._card(writer)["message"] == (
             "To use Gmail features, please connect your account first."
+        )
+
+
+class TestBackgroundRunPrompt:
+    """A background run has nobody to click a card or a link, so it must not wait to retry."""
+
+    @pytest.mark.regression
+    async def test_background_copy_says_carry_on_and_never_asks_to_retry(self) -> None:
+        with _graph_run("bg", execution_mode="background"):
+            msg = await request_integration_connection("gmail", "Gmail", "user1")
+
+        assert "Gmail needs to be connected" in msg
+        assert "no user is present" in msg
+        assert "carry on with the rest of the task" in msg
+        assert "try again" not in msg
+        # The single-use link dies within the hour; the result is read later.
+        assert _MAGIC_LINK not in msg
+        assert f"{_FAKE_FRONTEND}/integrations" in msg
+
+    @pytest.mark.regression
+    async def test_background_copy_for_an_expired_grant_says_sign_in_again(self) -> None:
+        with _graph_run("bg", execution_mode="background", expired=True):
+            msg = await request_integration_connection("gmail", "Gmail", "user1")
+
+        assert "EXPIRED" in msg
+        assert "carry on with the rest of the task" in msg
+
+    async def test_background_copy_names_the_gap_and_where_to_connect(self) -> None:
+        # A host ending in X shows only the trailing slash is stripped.
+        with _graph_run("bg", execution_mode="background", frontend="https://GAIA.BOX/"):
+            msg = await request_integration_connection("gmail", "Gmail", "user1")
+
+        assert msg == (
+            "Gmail needs to be connected. This is a background run and no user is present to "
+            "connect it, so retrying Gmail this run cannot succeed. Record in your result that "
+            "Gmail is not connected (the user can connect it at "
+            "https://GAIA.BOX/integrations), then carry on with the rest of the task."
+        )
+
+    async def test_background_copy_for_an_expired_grant_names_the_expired_connection(
+        self,
+    ) -> None:
+        with _graph_run("bg", execution_mode="background", expired=True):
+            msg = await request_integration_connection("gmail", "Gmail", "user1")
+
+        assert msg.endswith(
+            "This is a background run and no user is present to reconnect it, so retrying "
+            "Gmail this run cannot succeed. Record in your result that the Gmail connection "
+            "expired (the user can reconnect it at https://app.example.com/integrations), then "
+            "carry on with the rest of the task."
         )
