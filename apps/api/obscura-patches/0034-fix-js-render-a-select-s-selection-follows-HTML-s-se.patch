@@ -1,0 +1,459 @@
+From 9ad35ee70bf8b96149b7ad72fcf05e62b4d43724 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 03:39:40 +0530
+Subject: [PATCH] fix(js,render): a select's selection follows HTML's
+ selectedness rules everywhere
+
+Assigning option.selected only wrote the `selected` content attribute (which
+is defaultSelected) and never deselected the other options, selectedIndex
+wrote a private flag its own getter ignored, and paint, :checked, FormData,
+form submission and DOMSnapshot each read a different source. A page that
+set option.selected saw two options flagged and the old index and value, and
+Browser-Use reported a reverted selection a real browser would have made.
+
+Selectedness is now native form state (an option's dirty selectedness, else
+its attribute), and DomTree::selected_options applies HTML's selectedness
+setting algorithm (a single select shows its last selected option, else its
+first enabled one; a multiple select or list box shows every selected one).
+option.selected, selectedIndex, value, selectedOptions, FormData, form
+submission, the painted select label and DOMSnapshot's optionSelected all
+read it. Selecting an option of a single select deselects the others, as
+Chrome does; setting selectedness leaves the markup alone.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-cdp/src/domains/domsnapshot.rs |   9 +-
+ crates/obscura-dom/src/tree.rs                |  78 ++++++++++
+ crates/obscura-js/js/bootstrap.js             | 133 +++++++++++-------
+ crates/obscura-js/src/ops.rs                  |  18 +++
+ crates/obscura-js/src/runtime.rs              |   4 +-
+ crates/obscura-render/src/paint.rs            |  27 +---
+ 6 files changed, 196 insertions(+), 73 deletions(-)
+
+diff --git a/crates/obscura-cdp/src/domains/domsnapshot.rs b/crates/obscura-cdp/src/domains/domsnapshot.rs
+index 3c59b54..ea784da 100644
+--- a/crates/obscura-cdp/src/domains/domsnapshot.rs
++++ b/crates/obscura-cdp/src/domains/domsnapshot.rs
+@@ -135,6 +135,13 @@ fn build_capture_snapshot(dom: &DomTree, url: &str, title: &str) -> Value {
+     let mut input_value: Vec<i64> = Vec::new();
+     let mut input_checked: Vec<i64> = Vec::new();
+     let mut option_selected: Vec<i64> = Vec::new();
++    // What each <select> has selected now, by HTML's selectedness rules.
++    let selected_options: std::collections::HashSet<NodeId> = dom
++        .query_selector_all("select")
++        .unwrap_or_default()
++        .into_iter()
++        .flat_map(|select| dom.selected_options(select))
++        .collect();
+ 
+     // Layout arrays are 1:1 with nodes (nodeIndex[i] == i).
+     let mut layout_node_index: Vec<i64> = Vec::with_capacity(n);
+@@ -210,7 +217,7 @@ fn build_capture_snapshot(dom: &DomTree, url: &str, title: &str) -> Value {
+         {
+             input_checked.push(i as i64);
+         }
+-        if tag == "option" && has_attr(&attrs, "selected") {
++        if tag == "option" && selected_options.contains(&nid) {
+             option_selected.push(i as i64);
+         }
+ 
+diff --git a/crates/obscura-dom/src/tree.rs b/crates/obscura-dom/src/tree.rs
+index 6ce4f4a..228e984 100644
+--- a/crates/obscura-dom/src/tree.rs
++++ b/crates/obscura-dom/src/tree.rs
+@@ -252,6 +252,9 @@ pub struct DomTree {
+ #[derive(Clone, Debug, Default, PartialEq, Eq)]
+ pub struct FormControlState {
+     pub value: Option<String>,
++    /// A checkbox's or radio's checkedness, or an option's selectedness, once
++    /// script or input set it (HTML's dirty state); `None` defers to the
++    /// `checked` / `selected` content attribute.
+     pub checked: Option<bool>,
+     pub indeterminate: bool,
+ }
+@@ -327,6 +330,81 @@ impl DomTree {
+             .and_then(|control| control.checked)
+     }
+ 
++    /// An option's selectedness: its dirty state, else its `selected`
++    /// attribute.
++    pub fn option_selectedness(&self, option: NodeId) -> bool {
++        self.form_control_checked(option).unwrap_or_else(|| {
++            self.with_node(option, |node| node.get_attribute("selected").is_some())
++                .unwrap_or(false)
++        })
++    }
++
++    /// A `<select>`'s list of options (HTML): its option children and the
++    /// option children of its optgroup children, in tree order.
++    pub fn select_options(&self, select: NodeId) -> Vec<NodeId> {
++        let local = |id: NodeId| {
++            self.with_node(id, |node| node.as_element().map(|name| name.local.to_string()))
++                .flatten()
++        };
++        let mut options = Vec::new();
++        for child in self.children(select) {
++            match local(child).as_deref() {
++                Some("option") => options.push(child),
++                Some("optgroup") => options.extend(
++                    self.children(child)
++                        .into_iter()
++                        .filter(|grandchild| local(*grandchild).as_deref() == Some("option")),
++                ),
++                _ => {}
++            }
++        }
++        options
++    }
++
++    /// The options a `<select>` has selected, as HTML's selectedness setting
++    /// algorithm leaves them: every selected option for a multiple select or
++    /// one shown as a list box (size > 1); otherwise exactly one, the last
++    /// selected option, or with none the first option that is not disabled.
++    pub fn selected_options(&self, select: NodeId) -> Vec<NodeId> {
++        let options = self.select_options(select);
++        let mut selected: Vec<NodeId> = options
++            .iter()
++            .copied()
++            .filter(|option| self.option_selectedness(*option))
++            .collect();
++        let (multiple, size) = self
++            .with_node(select, |node| {
++                (
++                    node.get_attribute("multiple").is_some(),
++                    node.get_attribute("size")
++                        .and_then(|size| size.trim().parse::<u32>().ok())
++                        .unwrap_or(1),
++                )
++            })
++            .unwrap_or((false, 1));
++        if multiple || size > 1 {
++            return selected;
++        }
++        if let Some(last) = selected.pop() {
++            return vec![last];
++        }
++        let disabled = |id: NodeId| {
++            self.with_node(id, |node| node.get_attribute("disabled").is_some())
++                .unwrap_or(false)
++        };
++        options
++            .into_iter()
++            .find(|option| {
++                !disabled(*option)
++                    && self
++                        .get_node(*option)
++                        .and_then(|node| node.parent)
++                        .is_none_or(|parent| parent == select || !disabled(parent))
++            })
++            .into_iter()
++            .collect()
++    }
++
+     pub fn form_control_indeterminate(&self, node: NodeId) -> bool {
+         self.inner
+             .borrow()
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index a88179e..eda0d40 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -3166,6 +3166,30 @@ globalThis.__obscura_activateLabel = function(label, control, trusted) {
+ };
+ // The CDP click path runs its own JS snippet, so it reaches the same rules
+ // through these helpers rather than restating the selectors.
++// <select>/<option> selectedness lives in the native form state (an option's
++// dirty selectedness, else its `selected` attribute), so script, layout,
++// paint, :checked and DOMSnapshot all read one value.
++function _optionSelectedness(option) {
++  if (_formChecked[option._nid] === undefined) _loadFormState(option._nid);
++  return _formChecked[option._nid] !== undefined ? _formChecked[option._nid] : option.hasAttribute('selected');
++}
++function _setOptionSelectedness(option, selected) {
++  _formChecked[option._nid] = !!selected;
++  _dom("set_form_checked", option._nid, String(!!selected));
++}
++// A select's list of options: its option children and those of its optgroups.
++function _selectOptions(select) {
++  return (_domParse("select_options", select._nid) || []).map(_wrap).filter(Boolean);
++}
++// The options a select has selected, by HTML's selectedness setting algorithm.
++function _selectedOptionsOf(select) {
++  return (_domParse("selected_options", select._nid) || []).map(_wrap).filter(Boolean);
++}
++function _optionOwnerSelect(option) {
++  let parent = option.parentElement;
++  if (parent && parent.localName === 'optgroup') parent = parent.parentElement;
++  return parent && parent.localName === 'select' ? parent : null;
++}
+ globalThis.__obscura_isDisabled = function(el) { return _isActuallyDisabled(el); };
+ globalThis.__obscura_labeledControl = function(label) { return _labeledControl(label); };
+ globalThis.__obscura_interactiveHost = function(el) {
+@@ -4482,15 +4506,8 @@ class Element extends Node {
+   get value() {
+     const tag = this.localName;
+     if (tag === 'select') {
+-      // Selected option wins; otherwise first option (HTML default).
+-      const opts = this.querySelectorAll('option');
+-      for (let i = 0; i < opts.length; i++) {
+-        if (opts[i].selected) {
+-          return opts[i].getAttribute('value') !== null ? opts[i].getAttribute('value') : opts[i].textContent;
+-        }
+-      }
+-      if (opts.length) return opts[0].getAttribute('value') !== null ? opts[0].getAttribute('value') : opts[0].textContent;
+-      return '';
++      const selected = _selectedOptionsOf(this);
++      return selected.length ? selected[0].value : '';
+     }
+     if (_formValues[this._nid] === undefined) _loadFormState(this._nid);
+     if (_formValues[this._nid] !== undefined) return _formValues[this._nid];
+@@ -4529,18 +4546,17 @@ class Element extends Node {
+       return;
+     }
+     if (tag === 'select') {
+-      // Set selected on matching option, clear on others. Puppeteer's
+-      // page.select(selector, value) round-trips through this setter and
+-      // dispatches its own input/change events in-page afterwards, like a
+-      // real browser: a programmatic value assignment never fires change
+-      // itself. Dispatching here fed pages that assign inside a change
+-      // handler back into that handler in an infinite loop.
++      // HTML: the first option whose value matches is selected and every
++      // other option deselected. A programmatic assignment never fires
++      // input/change itself (Puppeteer's page.select dispatches its own);
++      // dispatching here fed pages that assign inside a change handler back
++      // into that handler in an infinite loop.
+       const wanted = String(v);
+-      const opts = this.querySelectorAll('option');
+-      for (let i = 0; i < opts.length; i++) {
+-        const attrV = opts[i].getAttribute('value');
+-        const optVal = attrV !== null ? attrV : opts[i].textContent;
+-        opts[i].selected = optVal === wanted;
++      let found = false;
++      for (const option of this.options) {
++        const match = !found && option.value === wanted;
++        if (match) found = true;
++        _setOptionSelectedness(option, match);
+       }
+       return;
+     }
+@@ -4646,9 +4662,12 @@ class Element extends Node {
+     _formIndeterminate[this._nid] = indeterminate;
+     _dom("set_form_indeterminate", this._nid, String(indeterminate));
+   }
++  // <option>.selected: its selectedness, as its select's selectedness
++  // setting algorithm leaves it (a lone single select option is selected
++  // without the attribute).
+   get selected() {
+-    if (this._selected !== undefined) return this._selected;
+-    return this.hasAttribute("selected");
++    const select = _optionOwnerSelect(this);
++    return select ? _selectedOptionsOf(select).includes(this) : _optionSelectedness(this);
+   }
+   // <option>.label: the label attribute when non-empty, else its text with
+   // whitespace stripped and collapsed. <optgroup>.label reflects the attribute.
+@@ -4665,6 +4684,24 @@ class Element extends Node {
+     if (['option', 'optgroup', 'track'].includes(this.localName)) this.setAttribute('label', String(v));
+     else Object.defineProperty(this, 'label', { value: v, writable: true, enumerable: true, configurable: true });
+   }
++  // <option>.index: its position in its select's list of options (0 when it
++  // has no select). <option>.defaultSelected reflects the selected attribute.
++  get index() {
++    if (this.localName !== 'option') return undefined;
++    const select = _optionOwnerSelect(this);
++    return select ? Math.max(0, Array.prototype.indexOf.call(select.options, this)) : 0;
++  }
++  set index(v) {
++    if (this.localName !== 'option') Object.defineProperty(this, 'index', { value: v, writable: true, enumerable: true, configurable: true });
++  }
++  get defaultSelected() {
++    if (this.localName !== 'option') return undefined;
++    return this.hasAttribute('selected');
++  }
++  set defaultSelected(v) {
++    if (this.localName !== 'option') { Object.defineProperty(this, 'defaultSelected', { value: v, writable: true, enumerable: true, configurable: true }); return; }
++    if (v) this.setAttribute('selected', ''); else this.removeAttribute('selected');
++  }
+   // <input>/<textarea>.readOnly reflects the readonly attribute.
+   get readOnly() {
+     if (this.localName !== 'input' && this.localName !== 'textarea') return undefined;
+@@ -4691,26 +4728,23 @@ class Element extends Node {
+   // order. A single select with none marked has its selectedIndex option.
+   get selectedOptions() {
+     if (this.localName !== 'select') return undefined;
+-    const opts = this.options;
+-    const picked = [];
+-    for (let i = 0; i < opts.length; i++) if (opts[i].selected) picked.push(opts[i]);
+-    if (!picked.length && !this.hasAttribute('multiple')) {
+-      const index = this.selectedIndex;
+-      if (index >= 0 && opts[index]) picked.push(opts[index]);
+-    }
+-    return HTMLCollection._from(picked);
++    return HTMLCollection._from(_selectedOptionsOf(this));
+   }
+   set selectedOptions(v) {
+     if (this.localName !== 'select') Object.defineProperty(this, 'selectedOptions', { value: v, writable: true, enumerable: true, configurable: true });
+   }
++  // Setting selectedness marks the option dirty (its `selected` attribute
++  // no longer decides). Selecting an option of a single select deselects the
++  // others, as Chrome does.
+   set selected(v) {
+-    this._selected = !!v;
+-    // Keep the native DOM tree in sync so layout/paint observes live form
+-    // state after scripts construct or change an option.
+-    if (this.localName === 'option') {
+-      if (this._selected) this.setAttribute('selected', '');
+-      else this.removeAttribute('selected');
++    if (this.localName !== 'option') return;
++    const select = _optionOwnerSelect(this);
++    if (v && select && !select.multiple) {
++      for (const option of select.options) {
++        if (option !== this) _setOptionSelectedness(option, false);
++      }
+     }
++    _setOptionSelectedness(this, !!v);
+   }
+   get text() {
+     if (['option', 'script', 'title', 'a'].includes(this.localName)) {
+@@ -4983,7 +5017,7 @@ class Element extends Node {
+   }
+   get options() {
+     if (this.localName !== 'select') return [];
+-    return HTMLCollection._from(this.querySelectorAll('option'));
++    return HTMLCollection._from(_selectOptions(this));
+   }
+   add(item, before = null) {
+     if (this.localName !== 'select') {
+@@ -5003,19 +5037,13 @@ class Element extends Node {
+     }
+   }
+   get selectedIndex() {
+-    const opts = this.options;
+-    for (let i = 0; i < opts.length; i++) {
+-      if (opts[i].selected || opts[i].hasAttribute('selected')) return i;
+-    }
+-    // Only a single select implicitly selects its first option; a multiple
+-    // select with nothing chosen idles at -1 like a real browser.
+-    return opts.length && !this.hasAttribute('multiple') ? 0 : -1;
++    const selected = _selectedOptionsOf(this);
++    return selected.length ? Array.prototype.indexOf.call(this.options, selected[0]) : -1;
+   }
+   set selectedIndex(v) {
+-    const opts = this.options;
+-    for (let i = 0; i < opts.length; i++) {
+-      opts[i]._selected = (i === v);
+-    }
++    const index = Number(v);
++    const options = this.options;
++    for (let i = 0; i < options.length; i++) _setOptionSelectedness(options[i], i === index);
+   }
+   // Per the HTML spec, the submit() METHOD submits the form WITHOUT firing a
+   // cancelable `submit` event — a page's submit listener cannot veto it. Only
+@@ -5067,8 +5095,9 @@ class Element extends Node {
+ 
+       let val;
+       if (tag === 'select') {
+-        const opt = f.querySelector('option[selected]') || f.querySelector('option');
+-        val = opt ? (opt.getAttribute('value') !== null ? opt.getAttribute('value') : opt.textContent) : '';
++        const enc = (s) => encodeURIComponent(s).replace(/%20/g, '+').replace(/!/g, '%21');
++        for (const option of _selectedOptionsOf(f)) pairs.push(enc(name) + '=' + enc(option.value));
++        continue;
+       } else if (tag === 'textarea') {
+         val = f.value || f.textContent || '';
+       } else {
+@@ -10903,6 +10932,10 @@ if (typeof FormData === "undefined") globalThis.FormData = class FormData {
+           continue;
+         }
+         if (type === "submit" || type === "reset" || type === "button" || type === "image" || type === "file") continue;
++        if (tag === "select") {
++          for (const option of _selectedOptionsOf(el)) this._d.push([name, option.value]);
++          continue;
++        }
+         this._d.push([name, el.value != null ? String(el.value) : ""]);
+       }
+     }
+diff --git a/crates/obscura-js/src/ops.rs b/crates/obscura-js/src/ops.rs
+index 729a6c8..3e569e3 100644
+--- a/crates/obscura-js/src/ops.rs
++++ b/crates/obscura-js/src/ops.rs
+@@ -2102,6 +2102,24 @@ fn op_dom_inner(shared: SharedState, cmd: String, arg1: String, arg2: String) ->
+         // first same-name slot in the shadow tree wins). `null` when the node is
+         // not an HTML slot inside a shadow tree, so JS can tell "no slot" from
+         // "slot without assignments" and fall back to the slot's own children.
++        "select_options" => {
++            let nid = arg1.parse::<u32>().unwrap_or(0);
++            let ids: Vec<u32> = dom
++                .select_options(NodeId::new(nid))
++                .into_iter()
++                .map(|id| id.index() as u32)
++                .collect();
++            serde_json::to_string(&ids).unwrap_or_else(|_| "[]".into())
++        }
++        "selected_options" => {
++            let nid = arg1.parse::<u32>().unwrap_or(0);
++            let ids: Vec<u32> = dom
++                .selected_options(NodeId::new(nid))
++                .into_iter()
++                .map(|id| id.index() as u32)
++                .collect();
++            serde_json::to_string(&ids).unwrap_or_else(|_| "[]".into())
++        }
+         "assigned_slot" => {
+             let nid = arg1.parse::<u32>().unwrap_or(0);
+             dom.assigned_slot(NodeId::new(nid))
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index 7ca7d27..8533525 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -14615,10 +14615,12 @@ mod tests {
+         assert_eq!(value["labels"], serde_json::json!(["Greek", "English"]));
+         assert_eq!(value["selectedIndex"], 1);
+         assert_eq!(value["value"], "en");
++        // Selectedness is state, not markup: as in Chrome, setting it leaves
++        // the `selected` attribute (defaultSelected) alone.
+         assert!(value["html"]
+             .as_str()
+             .unwrap()
+-            .contains(r#"<option value="en" selected="">English</option>"#));
++            .contains(r#"<option value="en">English</option>"#));
+     }
+ 
+     /// Regression for #105: `element.querySelector` and `querySelectorAll`
+diff --git a/crates/obscura-render/src/paint.rs b/crates/obscura-render/src/paint.rs
+index 4750cf6..e3a59c5 100644
+--- a/crates/obscura-render/src/paint.rs
++++ b/crates/obscura-render/src/paint.rs
+@@ -6775,29 +6775,14 @@ fn list_marker_text(
+ }
+ 
+ fn selected_option_label(tree: &DomTree, select: obscura_dom::tree::NodeId) -> Option<String> {
+-    let mut first = None;
+-    for option_id in tree.descendants(select) {
+-        let Some(option) = tree.get_node(option_id) else {
+-            continue;
+-        };
+-        if option
+-            .as_element()
+-            .map_or(true, |name| name.local.as_ref() != "option")
+-        {
+-            continue;
+-        }
+-        let label = option
++    let option_id = *tree.selected_options(select).first()?;
++    let option = tree.get_node(option_id)?;
++    Some(
++        option
+             .get_attribute("label")
+             .map(str::to_owned)
+-            .unwrap_or_else(|| tree.text_content(option_id).trim().to_string());
+-        if first.is_none() {
+-            first = Some(label.clone());
+-        }
+-        if option.get_attribute("selected").is_some() {
+-            return Some(label);
+-        }
+-    }
+-    first
++            .unwrap_or_else(|| tree.text_content(option_id).trim().to_string()),
++    )
+ }
+ 
+ /// Render `tree` at `viewport` to PNG bytes (RGBA 8-bit). Returns None if the

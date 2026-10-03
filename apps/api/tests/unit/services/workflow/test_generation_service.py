@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 import pytest
 
 from app.agents.prompts.workflow_prompts import WORKFLOW_PROMPT_GENERATION_SYSTEM
@@ -40,7 +40,6 @@ from app.services.workflow.generation_service import (
     _collect_subagent_categories,
     _failure_reason,
     _run_generation_attempt,
-    _structured_one_shot,
     _validated_steps,
 )
 
@@ -95,90 +94,6 @@ class TestFailureReason:
         assert _failure_reason(ValueError(message)) == (
             "ValueError: " + "a" * (_MAX_REASON_CHARS - 2) + "…"
         )
-
-
-# ---------------------------------------------------------------------------
-# _structured_one_shot
-# ---------------------------------------------------------------------------
-
-
-class _Draft(BaseModel):
-    title: str = ""
-
-
-class TestStructuredOneShot:
-    """The lane a workflow draft is actually asked for."""
-
-    async def test_it_meters_the_user_and_runs_the_schema_on_this_deployments_lane(self):
-        """metered_config bills the user and must reach both runnable and invoke: a lost config sends the call to the OpenRouter lane, which a custom-endpoint deployment doesn't have."""
-        prompt = [HumanMessage(content="make me a workflow")]
-        config = {"metadata": {"user_id": "user-1"}}
-        runnable = MagicMock(name="structured_runnable")
-        drafted = _Draft(title="Daily digest")
-
-        with (
-            patch(f"{MODULE}.metered_config", return_value=config) as mock_metered,
-            patch(
-                f"{MODULE}.background_structured_runnable", return_value=runnable
-            ) as mock_runnable,
-            patch(
-                f"{MODULE}.ainvoke_llm", new_callable=AsyncMock, return_value=drafted
-            ) as mock_llm,
-        ):
-            result = await _structured_one_shot(
-                _Draft, prompt, label="workflow_steps", user_id="user-1"
-            )
-
-        assert result is drafted
-        mock_metered.assert_called_once_with("user-1")
-        mock_runnable.assert_called_once_with(_Draft, config=config)
-        mock_llm.assert_awaited_once_with(runnable, prompt, label="workflow_steps", config=config)
-
-    async def test_the_label_reaches_the_call_verbatim(self):
-        """The label is how a generation shows up in the model-cost ledger; two call sites sharing one label make spend unattributable."""
-        with (
-            patch(f"{MODULE}.metered_config", return_value={}),
-            patch(f"{MODULE}.background_structured_runnable", return_value=MagicMock()),
-            patch(
-                f"{MODULE}.ainvoke_llm", new_callable=AsyncMock, return_value=_Draft()
-            ) as mock_llm,
-        ):
-            await _structured_one_shot(
-                _Draft, [HumanMessage(content="x")], label="workflow_prompt", user_id="user-1"
-            )
-
-        assert mock_llm.await_args.kwargs["label"] == "workflow_prompt"
-
-    async def test_an_empty_draft_is_returned_as_is_rather_than_repaired(self):
-        """The one-shot doesn't validate or substitute — the caller's retry loop owns the empty draft; a silent fallback here would hide it."""
-        empty = _Draft()
-
-        with (
-            patch(f"{MODULE}.metered_config", return_value={}),
-            patch(f"{MODULE}.background_structured_runnable", return_value=MagicMock()),
-            patch(f"{MODULE}.ainvoke_llm", new_callable=AsyncMock, return_value=empty),
-        ):
-            result = await _structured_one_shot(
-                _Draft, [HumanMessage(content="x")], label="workflow_steps", user_id="user-1"
-            )
-
-        assert result is empty
-        assert result.title == ""
-
-    async def test_a_provider_error_propagates_instead_of_becoming_a_blank_draft(self):
-        with (
-            patch(f"{MODULE}.metered_config", return_value={}),
-            patch(f"{MODULE}.background_structured_runnable", return_value=MagicMock()),
-            patch(
-                f"{MODULE}.ainvoke_llm",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("402 credits"),
-            ),
-        ):
-            with pytest.raises(RuntimeError, match="402 credits"):
-                await _structured_one_shot(
-                    _Draft, [HumanMessage(content="x")], label="workflow_steps", user_id="user-1"
-                )
 
 
 # ---------------------------------------------------------------------------
@@ -702,15 +617,12 @@ class TestCollectCustomIntegrationCategories:
 
 
 def _llm(**kwargs):
-    """Patch the LLM seam _structured_one_shot actually calls."""
-    return patch(f"{MODULE}.ainvoke_llm", new_callable=AsyncMock, **kwargs)
+    """Patch the structured one-shot the generation calls."""
+    return patch(f"{MODULE}.ainvoke_structured", new_callable=AsyncMock, **kwargs)
 
 
 def _llm_plumbing():
-    return (
-        patch(f"{MODULE}.metered_config", return_value={"cfg": 1}),
-        patch(f"{MODULE}.background_structured_runnable", return_value=MagicMock()),
-    )
+    return patch(f"{MODULE}.metered_config", return_value={"cfg": 1})
 
 
 def _draft(*steps: tuple[str, str, str]) -> GeneratedWorkflow:
@@ -734,10 +646,9 @@ class TestRunGenerationAttempt:
     """One attempt at a draft, and how its outcome is classified."""
 
     async def test_a_usable_draft_comes_back_as_enriched_steps_and_no_error(self):
-        metered, runnable = _llm_plumbing()
+        metered = _llm_plumbing()
         with (
             metered,
-            runnable,
             _llm(return_value=_draft(("Fetch mail", "gmail", "read the inbox"))),
         ):
             steps, error = await _run_generation_attempt("the prompt", user_id="user-1", attempt=0)
@@ -751,24 +662,21 @@ class TestRunGenerationAttempt:
 
     async def test_the_draft_is_asked_for_with_the_workflow_schema_and_prompt(self):
         """The schema makes the output structured; the label is how this generation is billed and found."""
-        metered, runnable = _llm_plumbing()
+        metered = _llm_plumbing()
         with (
             metered,
-            runnable,
-            patch(f"{MODULE}.background_structured_runnable") as mock_runnable,
             _llm(return_value=_draft(("Step", "gaia", "do it"))) as mock_llm,
         ):
             await _run_generation_attempt("the prompt", user_id="user-42", attempt=0)
 
-        mock_runnable.assert_called_once_with(GeneratedWorkflow, config={"cfg": 1})
+        assert mock_llm.await_args.args[0] is GeneratedWorkflow
+        assert mock_llm.await_args.kwargs["config"] == {"cfg": 1}
         assert mock_llm.await_args.args[1] == "the prompt"
         assert mock_llm.await_args.kwargs["label"] == "workflow_generation"
 
     async def test_the_attempt_is_metered_to_the_user_who_asked_for_it(self):
-        metered, runnable = _llm_plumbing()
         with (
             patch(f"{MODULE}.metered_config", return_value={"cfg": 1}) as mock_metered,
-            runnable,
             _llm(return_value=_draft(("Step", "gaia", "do it"))),
         ):
             await _run_generation_attempt("the prompt", user_id="user-42", attempt=0)
@@ -776,10 +684,9 @@ class TestRunGenerationAttempt:
         mock_metered.assert_called_once_with("user-42")
 
     async def test_a_success_logs_how_many_steps_came_back(self):
-        metered, runnable = _llm_plumbing()
+        metered = _llm_plumbing()
         with (
             metered,
-            runnable,
             _llm(return_value=_draft(("A", "gaia", "a"), ("B", "gaia", "b"))),
             patch(f"{MODULE}.log") as mock_log,
         ):
@@ -790,8 +697,8 @@ class TestRunGenerationAttempt:
 
     async def test_an_empty_draft_is_regenerable_and_says_why(self):
         """Empty output means the model misunderstood, not the provider failing — the caller gets a reason to retry, not an exception."""
-        metered, runnable = _llm_plumbing()
-        with metered, runnable, _llm(return_value=_draft()):
+        metered = _llm_plumbing()
+        with metered, _llm(return_value=_draft()):
             steps, error = await _run_generation_attempt("the prompt", user_id="user-1", attempt=0)
 
         assert steps is None
@@ -801,8 +708,8 @@ class TestRunGenerationAttempt:
         )
 
     async def test_a_missing_draft_is_treated_the_same_as_an_empty_one(self):
-        metered, runnable = _llm_plumbing()
-        with metered, runnable, _llm(return_value=None):
+        metered = _llm_plumbing()
+        with metered, _llm(return_value=None):
             steps, error = await _run_generation_attempt("the prompt", user_id="user-1", attempt=0)
 
         assert steps is None
@@ -810,8 +717,8 @@ class TestRunGenerationAttempt:
 
     async def test_an_empty_draft_logs_the_attempt_number_one_based(self):
         """Attempt is a zero-based loop index; logging it raw would make the first attempt read as attempt 0."""
-        metered, runnable = _llm_plumbing()
-        with metered, runnable, _llm(return_value=_draft()), patch(f"{MODULE}.log") as mock_log:
+        metered = _llm_plumbing()
+        with metered, _llm(return_value=_draft()), patch(f"{MODULE}.log") as mock_log:
             await _run_generation_attempt("the prompt", user_id="user-1", attempt=1)
 
         assert mock_log.warning.call_args.args == (f"{LogTag.WORKFLOW} No steps; regenerating",)
@@ -823,8 +730,8 @@ class TestRunGenerationAttempt:
     async def test_schema_invalid_output_is_returned_for_a_retry_not_raised(self):
         """The provider's own retry already ran inside ainvoke_llm; a malformed structured payload is worth asking the model again."""
         invalid = _invalid_output_error()
-        metered, runnable = _llm_plumbing()
-        with metered, runnable, _llm(side_effect=invalid):
+        metered = _llm_plumbing()
+        with metered, _llm(side_effect=invalid):
             steps, error = await _run_generation_attempt("the prompt", user_id="user-1", attempt=0)
 
         assert steps is None
@@ -832,18 +739,17 @@ class TestRunGenerationAttempt:
 
     async def test_an_unparseable_response_is_regenerable_too(self):
         parser_error = OutputParserException("could not parse")
-        metered, runnable = _llm_plumbing()
-        with metered, runnable, _llm(side_effect=parser_error):
+        metered = _llm_plumbing()
+        with metered, _llm(side_effect=parser_error):
             steps, error = await _run_generation_attempt("the prompt", user_id="user-1", attempt=0)
 
         assert steps is None
         assert error is parser_error
 
     async def test_schema_invalid_output_logs_the_attempt_and_the_error_type(self):
-        metered, runnable = _llm_plumbing()
+        metered = _llm_plumbing()
         with (
             metered,
-            runnable,
             _llm(side_effect=OutputParserException("nope")),
             patch(f"{MODULE}.log") as mock_log,
         ):
@@ -862,8 +768,8 @@ class TestRunGenerationAttempt:
     async def test_a_provider_failure_becomes_the_typed_error_with_a_showable_reason(self):
         """Not regenerable — retrying a 402 burns the second attempt on the same refusal; the reason turns a blank 500 into a message."""
         provider_error = RuntimeError("This request requires more credits")
-        metered, runnable = _llm_plumbing()
-        with metered, runnable, _llm(side_effect=provider_error):
+        metered = _llm_plumbing()
+        with metered, _llm(side_effect=provider_error):
             with pytest.raises(WorkflowStepGenerationError) as caught:
                 await _run_generation_attempt("the prompt", user_id="user-1", attempt=0)
 
@@ -872,10 +778,9 @@ class TestRunGenerationAttempt:
 
     async def test_a_provider_failure_is_logged_as_an_error_with_the_user_and_attempt(self):
         """Ends the generation, so it must be findable in the wide event by user — a warning would be filtered from the error list."""
-        metered, runnable = _llm_plumbing()
+        metered = _llm_plumbing()
         with (
             metered,
-            runnable,
             _llm(side_effect=RuntimeError("402")),
             patch(f"{MODULE}.log") as mock_log,
         ):
@@ -923,13 +828,12 @@ class TestGenerateStepsWithLlm:
     """The whole step-generation flow, from catalog to steps."""
 
     async def test_it_returns_the_enriched_steps_the_model_drafted(self):
-        metered, runnable = _llm_plumbing()
+        metered = _llm_plumbing()
         with (
             _tool_registry(),
             _catalog(),
             _no_custom_integrations(),
             metered,
-            runnable,
             _llm(return_value=_draft(("Fetch", "gmail", "read"), ("Write", "gaia", "draft"))),
         ):
             steps = await _generate_steps(
@@ -943,24 +847,25 @@ class TestGenerateStepsWithLlm:
 
     async def test_gaia_is_always_a_category_so_pure_reasoning_steps_are_legal(self):
         """Without it, "summarize this" would have to route through some integration's tools — a step that cannot run."""
-        metered, runnable = _llm_plumbing()
+        metered = _llm_plumbing()
         with (
             _tool_registry(),
             _catalog(),
             _no_custom_integrations(),
             metered,
-            runnable,
             _llm(return_value=_draft(("Step", "gaia", "do"))) as mock_llm,
         ):
             await _generate_steps(prompt="p", title="t", user_id="user-1")
 
         prompt = mock_llm.await_args.args[1]
-        assert "gaia: GAIA reasoning" in prompt
-        assert "No external tool call." in prompt
+        assert (
+            "gaia: GAIA reasoning — summarize content, draft text, classify items, "
+            "generate outlines, extract key points, write briefs. No external tool call."
+        ) in prompt
 
     async def test_the_registry_the_subagents_and_gaia_all_reach_the_prompt_in_order(self):
         """Categories are a comma-separated list the model picks from; a lost section is a whole class of steps it can never produce."""
-        metered, runnable = _llm_plumbing()
+        metered = _llm_plumbing()
         with (
             _tool_registry(
                 categories={"productivity": _FakeCategory([_FakeTool("create_todo")])},
@@ -973,7 +878,6 @@ class TestGenerateStepsWithLlm:
             ),
             _no_custom_integrations(),
             metered,
-            runnable,
             _llm(return_value=_draft(("Step", "gaia", "do"))) as mock_llm,
         ):
             await _generate_steps(
@@ -989,13 +893,12 @@ class TestGenerateStepsWithLlm:
         assert "Always Available: web_search" in prompt
 
     async def test_a_core_tool_without_a_name_is_still_offered_by_its_string_form(self):
-        metered, runnable = _llm_plumbing()
+        metered = _llm_plumbing()
         with (
             _tool_registry(core_tools=["raw_core_tool"]),
             _catalog(),
             _no_custom_integrations(),
             metered,
-            runnable,
             _llm(return_value=_draft(("Step", "gaia", "do"))) as mock_llm,
         ):
             await _generate_steps(prompt="p", title="t", user_id="user-1")
@@ -1003,14 +906,13 @@ class TestGenerateStepsWithLlm:
         assert "Always Available: raw_core_tool" in mock_llm.await_args.args[1]
 
     async def test_the_title_and_the_trigger_context_reach_the_prompt(self):
-        metered, runnable = _llm_plumbing()
+        metered = _llm_plumbing()
         trigger = TriggerConfig(type="manual")
         with (
             _tool_registry(),
             _catalog(),
             _no_custom_integrations(),
             metered,
-            runnable,
             _llm(return_value=_draft(("Step", "gaia", "do"))) as mock_llm,
             patch(
                 f"{MODULE}.generate_trigger_context", return_value="TRIGGER-CONTEXT"
@@ -1027,13 +929,12 @@ class TestGenerateStepsWithLlm:
 
     async def test_the_description_is_appended_to_the_prompt_as_extra_context(self):
         """The description is a display summary, not the instruction — it must not replace the prompt the user wrote."""
-        metered, runnable = _llm_plumbing()
+        metered = _llm_plumbing()
         with (
             _tool_registry(),
             _catalog(),
             _no_custom_integrations(),
             metered,
-            runnable,
             _llm(return_value=_draft(("Step", "gaia", "do"))) as mock_llm,
         ):
             await _generate_steps(
@@ -1049,13 +950,12 @@ class TestGenerateStepsWithLlm:
         )
 
     async def test_without_a_description_no_summary_line_is_invented(self):
-        metered, runnable = _llm_plumbing()
+        metered = _llm_plumbing()
         with (
             _tool_registry(),
             _catalog(),
             _no_custom_integrations(),
             metered,
-            runnable,
             _llm(return_value=_draft(("Step", "gaia", "do"))) as mock_llm,
         ):
             await _generate_steps(prompt="summarize my inbox", title="t", user_id="user-1")
@@ -1064,7 +964,7 @@ class TestGenerateStepsWithLlm:
 
     async def test_preferred_integrations_are_normalized_and_hinted(self):
         """Ids arrive from the frontend with whatever casing/whitespace the form had; the hint and the category gate both key on the slug."""
-        metered, runnable = _llm_plumbing()
+        metered = _llm_plumbing()
         with (
             _tool_registry(
                 categories={"gmail": _FakeCategory([_FakeTool("send")], require_integration=True)}
@@ -1072,7 +972,6 @@ class TestGenerateStepsWithLlm:
             _catalog(_FakeIntegration("gmail", name="Gmail")),
             _no_custom_integrations(),
             metered,
-            runnable,
             _llm(return_value=_draft(("Step", "gaia", "do"))) as mock_llm,
         ):
             await _generate_steps(
@@ -1088,7 +987,7 @@ class TestGenerateStepsWithLlm:
 
     async def test_an_integration_named_in_the_prompt_is_a_hard_requirement(self):
         """An explicit mention unlocks the integration's category even when the user never ticked it in the picker."""
-        metered, runnable = _llm_plumbing()
+        metered = _llm_plumbing()
         with (
             _tool_registry(
                 categories={
@@ -1098,7 +997,6 @@ class TestGenerateStepsWithLlm:
             _catalog(_FakeIntegration("notion", name="Notion")),
             _no_custom_integrations(),
             metered,
-            runnable,
             _llm(return_value=_draft(("Step", "gaia", "do"))) as mock_llm,
         ):
             await _generate_steps(prompt="save it to notion", title="t", user_id="user-1")
@@ -1111,13 +1009,12 @@ class TestGenerateStepsWithLlm:
         assert "notion: search" in prompt
 
     async def test_with_no_integrations_at_all_no_hint_block_is_appended(self):
-        metered, runnable = _llm_plumbing()
+        metered = _llm_plumbing()
         with (
             _tool_registry(),
             _catalog(),
             _no_custom_integrations(),
             metered,
-            runnable,
             _llm(return_value=_draft(("Step", "gaia", "do"))) as mock_llm,
         ):
             await _generate_steps(prompt="p", title="t", user_id="user-1")
@@ -1127,7 +1024,7 @@ class TestGenerateStepsWithLlm:
         assert "explicitly named" not in prompt
 
     async def test_a_selected_custom_integration_becomes_a_category_and_a_named_hint(self):
-        metered, runnable = _llm_plumbing()
+        metered = _llm_plumbing()
         payload = MagicMock()
         payload.integrations = [_FakeCustomIntegration("abc-123", "My CRM")]
         with (
@@ -1139,7 +1036,6 @@ class TestGenerateStepsWithLlm:
                 return_value=payload,
             ) as mock_custom,
             metered,
-            runnable,
             _llm(return_value=_draft(("Step", "gaia", "do"))) as mock_llm,
         ):
             await _generate_steps(
@@ -1154,7 +1050,7 @@ class TestGenerateStepsWithLlm:
 
     async def test_without_a_user_id_the_custom_catalog_is_not_consulted(self):
         """There is nobody to look integrations up for; calling anyway would be a lookup for the empty string."""
-        metered, runnable = _llm_plumbing()
+        metered = _llm_plumbing()
         with (
             _tool_registry(),
             _catalog(_FakeIntegration("gmail", name="Gmail")),
@@ -1163,7 +1059,6 @@ class TestGenerateStepsWithLlm:
                 new_callable=AsyncMock,
             ) as mock_custom,
             metered,
-            runnable,
             _llm(return_value=_draft(("Step", "gaia", "do"))) as mock_llm,
         ):
             await _generate_steps(prompt="p", title="t", integration_ids=["gmail"], user_id="")
@@ -1173,13 +1068,12 @@ class TestGenerateStepsWithLlm:
 
     async def test_an_empty_first_draft_is_regenerated_and_the_second_one_is_returned(self):
         """Two attempts is the whole point of the loop — giving up on the first empty draft would fail a request that succeeds on retry."""
-        metered, runnable = _llm_plumbing()
+        metered = _llm_plumbing()
         with (
             _tool_registry(),
             _catalog(),
             _no_custom_integrations(),
             metered,
-            runnable,
             _llm(side_effect=[_draft(), _draft(("Step", "gaia", "do"))]) as mock_llm,
         ):
             steps = await _generate_steps(prompt="p", title="t", user_id="user-1")
@@ -1188,13 +1082,12 @@ class TestGenerateStepsWithLlm:
         assert mock_llm.await_count == 2
 
     async def test_a_first_attempt_that_works_is_not_retried(self):
-        metered, runnable = _llm_plumbing()
+        metered = _llm_plumbing()
         with (
             _tool_registry(),
             _catalog(),
             _no_custom_integrations(),
             metered,
-            runnable,
             _llm(return_value=_draft(("Step", "gaia", "do"))) as mock_llm,
         ):
             await _generate_steps(prompt="p", title="t", user_id="user-1")
@@ -1203,13 +1096,11 @@ class TestGenerateStepsWithLlm:
 
     async def test_the_attempt_is_billed_to_the_user_who_asked_for_it(self):
         """The generation is metered per user; losing the id on the way in bills it to nobody and the spend stops being attributable."""
-        _, runnable = _llm_plumbing()
         with (
             _tool_registry(),
             _catalog(),
             _no_custom_integrations(),
             patch(f"{MODULE}.metered_config", return_value={"cfg": 1}) as mock_metered,
-            runnable,
             _llm(return_value=_draft(("Step", "gaia", "do"))),
         ):
             await _generate_steps(prompt="p", title="t", user_id="user-42")
@@ -1218,13 +1109,12 @@ class TestGenerateStepsWithLlm:
 
     async def test_every_attempt_empty_raises_the_typed_error_naming_the_attempt_count(self):
         """The modal renders this string; "generation failed" with no count reads as a bug, not as the model not cooperating."""
-        metered, runnable = _llm_plumbing()
+        metered = _llm_plumbing()
         with (
             _tool_registry(),
             _catalog(),
             _no_custom_integrations(),
             metered,
-            runnable,
             _llm(return_value=_draft()) as mock_llm,
         ):
             with pytest.raises(WorkflowStepGenerationError) as caught:
@@ -1239,13 +1129,12 @@ class TestGenerateStepsWithLlm:
 
     async def test_the_last_error_is_the_cause_of_the_raised_failure(self):
         invalid = _invalid_output_error()
-        metered, runnable = _llm_plumbing()
+        metered = _llm_plumbing()
         with (
             _tool_registry(),
             _catalog(),
             _no_custom_integrations(),
             metered,
-            runnable,
             _llm(side_effect=invalid),
         ):
             with pytest.raises(WorkflowStepGenerationError) as caught:
@@ -1255,13 +1144,12 @@ class TestGenerateStepsWithLlm:
         assert "ValidationError" in caught.value.reason
 
     async def test_a_provider_failure_stops_the_loop_instead_of_burning_the_retry(self):
-        metered, runnable = _llm_plumbing()
+        metered = _llm_plumbing()
         with (
             _tool_registry(),
             _catalog(),
             _no_custom_integrations(),
             metered,
-            runnable,
             _llm(side_effect=RuntimeError("402 credits")) as mock_llm,
         ):
             with pytest.raises(WorkflowStepGenerationError) as caught:
@@ -1292,8 +1180,8 @@ class TestGenerateWorkflowPrompt:
         )
 
     async def _run(self, request, output, user_id="user-1"):
-        metered, runnable = _llm_plumbing()
-        with metered, runnable, _llm(return_value=output) as mock_llm:
+        metered = _llm_plumbing()
+        with metered, _llm(return_value=output) as mock_llm:
             result = await WorkflowGenerationService.generate_workflow_prompt(
                 request, user_id=user_id
             )
@@ -1416,10 +1304,7 @@ class TestGenerateWorkflowPrompt:
 
     async def test_the_generation_is_metered_to_the_requesting_user(self):
         with patch(f"{MODULE}.metered_config", return_value={}) as mock_metered:
-            with (
-                patch(f"{MODULE}.background_structured_runnable", return_value=MagicMock()),
-                _llm(return_value=self._output()),
-            ):
+            with _llm(return_value=self._output()):
                 await WorkflowGenerationService.generate_workflow_prompt(
                     WorkflowPromptRequest(), user_id="user-42"
                 )
@@ -1429,11 +1314,11 @@ class TestGenerateWorkflowPrompt:
     async def test_the_prompt_output_schema_is_what_the_model_is_asked_for(self):
         with (
             patch(f"{MODULE}.metered_config", return_value={"cfg": 2}),
-            patch(f"{MODULE}.background_structured_runnable") as mock_runnable,
-            _llm(return_value=self._output()),
+            _llm(return_value=self._output()) as mock_llm,
         ):
             await WorkflowGenerationService.generate_workflow_prompt(
                 WorkflowPromptRequest(), user_id="user-1"
             )
 
-        mock_runnable.assert_called_once_with(GeneratedPromptOutput, config={"cfg": 2})
+        assert mock_llm.await_args.args[0] is GeneratedPromptOutput
+        assert mock_llm.await_args.kwargs["config"] == {"cfg": 2}

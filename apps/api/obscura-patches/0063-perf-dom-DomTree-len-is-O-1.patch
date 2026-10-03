@@ -1,0 +1,34 @@
+From 483ed4a0bdd82e9c3e2ffbd5ab4d86711ffffd30 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 10:00:20 +0530
+Subject: [PATCH] perf(dom): DomTree::len is O(1)
+
+len() counted live nodes by scanning the whole arena, and the cascade
+bounds its slot-chain walk with `for _ in 0..tree.len()`, evaluated once
+per node: every style recalculation was O(nodes^2). len() is now derived
+from the arena and free-list lengths. With the in-place node reads of the
+next change, a full cascade of Wikipedia's Transformer article (25,000
+nodes) went from 535 ms to 140 ms.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-dom/src/tree.rs | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/crates/obscura-dom/src/tree.rs b/crates/obscura-dom/src/tree.rs
+index 81ac5a4..ac78dd2 100644
+--- a/crates/obscura-dom/src/tree.rs
++++ b/crates/obscura-dom/src/tree.rs
+@@ -1701,8 +1701,11 @@ impl DomTree {
+         imported_root
+     }
+ 
++    /// The number of live nodes. Every slot is either live or on the free
++    /// list, so this is O(1); render code bounds per-node walks by it.
+     pub fn len(&self) -> usize {
+-        self.inner.borrow().nodes.iter().filter(|n| n.is_some()).count()
++        let inner = self.inner.borrow();
++        inner.nodes.len() - inner.free_list.len()
+     }
+ 
+     // Number of node slots (live plus freed), i.e. the same upper bound

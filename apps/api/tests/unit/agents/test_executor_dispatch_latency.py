@@ -16,14 +16,22 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from prometheus_client import REGISTRY
+import pytest
 
-from app.agents.core.background import executor_runner as er, session as sess
+from app.agents.core.background import (
+    executor_queue as eq,
+    executor_runner as er,
+    session as sess,
+)
 from app.agents.core.background.executor_runner import _ExecutorResult, run_executor_background
 from app.agents.core.background.session import ExecutorRun, RunKind, get_session, teardown_session
 from app.agents.tools import executor_tool as et
 from app.constants.executor import EXECUTOR_PAUSED
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents
+
+# A run says it lives in Redis while it runs: give it a per-test Redis, never the ambient one.
+pytestmark = pytest.mark.usefixtures("fake_redis")
 
 
 def _count(name: str, labels: dict[str, str]) -> float:
@@ -527,6 +535,41 @@ class TestBackgroundRunExactWiring:
             await run_executor_background(run=run, task="the task", configurable=configurable)
 
         env.execute.assert_awaited_once_with("the task", configurable, run, None)
+
+    @pytest.mark.parametrize(
+        ("task_id", "lock_value"), [("task-1", "exec-alive:task-1"), (None, "exec-alive:")]
+    )
+    async def test_a_running_run_beats_with_its_lock_value_until_it_ends(
+        self, task_id: str | None, lock_value: str
+    ) -> None:
+        """A run whose process died stops beating, and only then can its lock be reclaimed."""
+        run = _run("exec-alive", task_id=task_id)
+        held: list[tuple[str, str]] = []
+        beats_while_running: list[asyncio.Task[Any]] = []
+
+        async def _hold(conversation_id: str, value: str) -> None:
+            held.append((conversation_id, value))
+
+        async def _execute(*_args: Any) -> _ExecutorResult:
+            for _ in range(100):
+                await asyncio.sleep(0)
+            assert len(held) >= 3, "the run's beat never renewed its liveness"
+            beats_while_running.extend(
+                t for t in asyncio.all_tasks() if t.get_name() == "executor_alive_beat"
+            )
+            return _ExecutorResult("done", "final")
+
+        with (
+            self._env(run, perf_values=[1000.0, 1000.0, 1000.5]),
+            patch.object(er, "_execute_executor", _execute),
+            patch.object(eq, "hold_run_alive", _hold),
+            patch.object(eq, "EXECUTOR_ALIVE_BEAT_SECONDS", 0),
+        ):
+            await run_executor_background(run=run, task="t", configurable={"user_id": "u1"})
+
+        assert set(held) == {("conv-1", lock_value)}
+        [beat] = beats_while_running
+        assert beat.cancelled()
 
     async def test_ttft_helper_receives_the_run_and_its_start(self) -> None:
         run = _run("exec-ttft-args")

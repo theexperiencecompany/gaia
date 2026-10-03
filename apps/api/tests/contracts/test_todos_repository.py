@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+import time
 
 import pytest
 
@@ -525,6 +526,46 @@ class TestAppendTextField:
 
         assert updated is not None
         assert updated.activity_content == "- a\n- b"
+
+    async def test_a_keyed_append_retried_after_a_lost_ack_lands_once(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1"))
+
+        for _ in range(2):
+            updated = await repo.append_text_field(
+                created.id, "u1", field="activity_content", suffix="\nrun r1: b", once="run r1:"
+            )
+
+        assert updated is not None
+        assert updated.activity_content == "run r1: b"
+
+    async def test_an_append_trims_only_leading_newlines(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1"))
+
+        updated = await repo.append_text_field(
+            created.id, "u1", field="log_content", suffix="\n\nXmas list"
+        )
+
+        assert updated is not None
+        assert updated.log_content == "Xmas list"
+
+    async def test_an_append_stamps_updated_at_in_utc_whatever_the_host_zone(
+        self, repo, make_doc, monkeypatch
+    ):
+        """Writers compare-and-set on updated_at, so an append must move it, in UTC."""
+        created = await repo.create(make_doc(user_id="u1"))
+        monkeypatch.setenv("TZ", "Asia/Kolkata")
+        time.tzset()
+        try:
+            updated = await repo.append_text_field(
+                created.id, "u1", field="activity_content", suffix="\n- a"
+            )
+        finally:
+            monkeypatch.undo()
+            time.tzset()
+
+        assert updated is not None
+        assert abs(updated.updated_at - datetime.now(UTC)) < timedelta(minutes=1)
+        assert updated.updated_at > created.updated_at
 
     async def test_append_missing_todo_returns_none(self, repo):
         assert (

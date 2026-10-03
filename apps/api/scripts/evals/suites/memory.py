@@ -10,11 +10,8 @@ Reuses scripts.memory_benchmark wholesale instead of reimplementing it:
   replicated here because the benchmark's copy references a removed
   chroma_store attribute (see _bootstrap_dbs)
 
-LLM lane: the memory write path (extraction / reconcile / episode summary)
-always calls ainvoke_structured -> client.get_default_llm, which is
-hardcoded to Gemini. The harness pins the custom_llm lane per case via
-pin_settings instead, so this suite swaps that seam for the pinned
-provider (see _patch_default_llm_to_pinned_provider).
+LLM lane: the harness pins the custom_llm lane per case via pin_settings, and
+this suite forces every memory LLM call onto it (see _force_the_pinned_lane).
 
 Scoring is the benchmark's deterministic substring checks — no LLM judge, so
 Opik finalize adds no judge cost.
@@ -24,22 +21,14 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable
-from typing import ClassVar, TypedDict, TypeVar, cast
+from typing import ClassVar, TypedDict, cast
 from urllib.parse import urlsplit
-
-from langchain_core.messages import BaseMessage
-from langchain_core.runnables import RunnableConfig
-from pydantic import BaseModel
 
 from scripts.evals.core.cost import EvalCostTracker
 from scripts.evals.core.gates import SELF_SCORED, ExtraGates, validate_gates
 from scripts.evals.core.providers import EvalConfig, ProviderConfig
 from scripts.evals.core.runner import Suite, register_suite
 from scripts.evals.core.types import Case, CaseRun
-
-#: The memory module's structured-output seam is generic over the schema it is
-#: handed and returns an instance of exactly that model.
-SchemaT = TypeVar("SchemaT", bound=BaseModel)
 
 
 class Turn(TypedDict):
@@ -187,104 +176,17 @@ async def _bootstrap_dbs() -> None:
     print("  [bootstrap] fastembed models ready", flush=True)
 
 
-def _patch_default_llm_to_pinned_provider() -> None:
-    """Route the default-model seam (memory's only LLM entry) to the pinned lane.
+def _force_the_pinned_lane() -> None:
+    """Send every memory LLM call to the pinned custom_llm lane.
 
-    ainvoke_structured builds its model via client.get_default_llm,
-    hardcoded to Gemini. The harness instead pins the custom_llm provider
-    (DEV_LLM_* settings) before each transport call, so this factory swaps the
-    seam: every memory LLM call lands on the pinned provider. The lazy
-    registry caches the instance, and pin_settings resets it on rotation,
-    so the build always reflects the active provider.
+    DEV_DEFAULT_MODEL=custom is the app's own switch for that: resolve_model
+    then builds every one-shot on the DEV_LLM_* endpoint pin_settings points
+    at, with no Gemini fallback.
     """
+    from app.config.settings import settings
+    from app.constants.llm import DEV_CUSTOM_MODEL_OPTION
 
-    from langchain_core.language_models.chat_models import BaseChatModel
-
-    import app.agents.llm.client as llm_client
-    from app.agents.llm.exceptions import LLMNotConfiguredError
-    from app.constants.llm import DEFAULT_LLM_TEMPERATURE
-    from app.core.lazy_loader import providers
-
-    def pinned_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
-        del temperature  # the custom lane is built at the default temperature
-        custom = providers.get("custom_llm")
-        if custom is None:
-            raise LLMNotConfiguredError(
-                "custom_llm not available — DEV_LLM_BASE_URL / DEV_LLM_API_KEY / DEV_LLM_MODEL must be set"
-            )
-        return custom
-
-    llm_client.get_default_llm = pinned_default_llm
-
-
-def _patch_structured_output_for_pinned_lane() -> None:
-    """Swap the memory module's structured-output seam to json-object mode.
-
-    with_structured_output defaults to the function-calling method
-    (tool_choice) on OpenAI-wire clients; the opencode-go lane runs in
-    "thinking mode" and rejects tool_choice — and also
-    response_format: json_schema — with a 400, so extraction would
-    silently degrade to empty batches. Plain response_format:
-    json_object is accepted, but requires the prompt to mention json and
-    does not carry the schema, so this seam appends the schema as a system
-    message and parses the content back into it. The app-level fix belongs
-    in client.ainvoke_structured (lane-aware method choice); this patch
-    targets the memory module's import-time binding, its only consumer here.
-    """
-
-    import json as json_module
-
-    from langchain_core.messages import SystemMessage
-    from langchain_core.output_parsers import JsonOutputParser
-
-    from app.agents.llm.client import (
-        LLMInvokeOptions,
-        StructuredCallOptions,
-        ainvoke_llm,
-        get_default_llm,
-    )
-    import app.memory.extraction as extraction_mod
-
-    async def json_object_ainvoke_structured(
-        schema: type[SchemaT],
-        prompt: BaseMessage | list[BaseMessage],
-        *,
-        label: str,
-        config: RunnableConfig | None = None,
-        options: StructuredCallOptions = StructuredCallOptions(),
-    ) -> SchemaT:
-        temperature = options.temperature
-        timeout = options.timeout
-        schema_hint = SystemMessage(
-            content=(
-                "Reply with a single JSON object that conforms exactly to this JSON "
-                f"schema, no markdown fences and no commentary:\n{json_module.dumps(schema.model_json_schema())}"
-            )
-        )
-        messages = [*prompt, schema_hint] if isinstance(prompt, list) else [schema_hint, prompt]
-        invoke_config = cast(
-            RunnableConfig,
-            {
-                **(config or {}),
-                "configurable": {
-                    **(config or {}).get("configurable", {}),
-                    "model_kwargs": {"response_format": {"type": "json_object"}},
-                },
-            },
-        )
-        message = await ainvoke_llm(
-            get_default_llm(temperature=temperature),
-            messages,
-            config=invoke_config,
-            label=label,
-            options=LLMInvokeOptions(timeout=timeout),
-        )
-        content = message.content
-        if isinstance(content, list):
-            content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
-        return schema.model_validate(JsonOutputParser().parse(str(content)))
-
-    extraction_mod.ainvoke_structured = json_object_ainvoke_structured
+    settings.DEV_DEFAULT_MODEL = DEV_CUSTOM_MODEL_OPTION
 
 
 async def _ensure_ready(tracker: EvalCostTracker) -> None:
@@ -297,8 +199,7 @@ async def _ensure_ready(tracker: EvalCostTracker) -> None:
         from app.agents.llm.client import register_llm_providers
 
         register_llm_providers()
-        _patch_default_llm_to_pinned_provider()
-        _patch_structured_output_for_pinned_lane()
+        _force_the_pinned_lane()
         _LLM_PATCHED = True
     import app.memory.extraction as extraction_mod
 

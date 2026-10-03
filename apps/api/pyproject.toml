@@ -176,6 +176,7 @@ backend = [
   "standardwebhooks>=1.0.0",
   "mcp-use>=1.5.1",
   "arq>=0.26.0",
+  "tenacity>=9.1.2",
   "aio-pika>=9.5.5",
   "e2b-code-interpreter>=1.2.0",
   "jinja2==3.1.6",
@@ -198,6 +199,14 @@ backend = [
   "litellm>=1.83.4,<1.90",
   "prometheus-fastapi-instrumentator>=7.0.0",
   "prometheus-client>=0.20.0",
+  # Browser automation: Browser-Use agent layer over gaia-browser-host.
+  # Pinned to 0.11.13 — later releases exact-pin openai==2.16, which conflicts
+  # with litellm's openai>=2.20 requirement. The tool imports it lazily.
+  "browser-use==0.11.13",
+  # Pinned beside browser-use, which patches here reach into: run_lock rebinds
+  # bubus's event-bus lock, and the stalled-load watcher registers cdp-use events.
+  "bubus==1.5.6",
+  "cdp-use==1.4.5",
   "pyarrow>=25.0.0",
 ]
 

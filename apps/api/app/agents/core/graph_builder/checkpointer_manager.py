@@ -11,6 +11,7 @@ Add/change config
 - To alter pool size, adjust CheckpointerManager init params.
 """
 
+import asyncio
 from typing import cast
 
 from langgraph.checkpoint.postgres.aio import (
@@ -22,7 +23,11 @@ from psycopg.rows import DictRow, TupleRow
 from psycopg_pool import AsyncConnectionPool
 
 from app.config.settings import settings
-from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
+from app.constants.db import (
+    LANGGRAPH_SETUP_LOCK_ATTEMPTS,
+    LANGGRAPH_SETUP_LOCK_ID,
+    LANGGRAPH_SETUP_LOCK_POLL_SECONDS,
+)
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 
 
@@ -72,7 +77,7 @@ class CheckpointerManager:
         # Session-level lock on an autocommit connection, held across both setups so
         # concurrent starters (API replicas, xdist workers) run the DDL one at a time.
         async with self.pool.connection() as conn:
-            await conn.execute("SELECT pg_advisory_lock(%s)", (LANGGRAPH_SETUP_LOCK_ID,))
+            await _take_setup_lock(conn)
             try:
                 await self.checkpointer.setup()
                 async with AsyncPostgresStore.from_conn_string(self.conninfo) as store:
@@ -92,6 +97,20 @@ class CheckpointerManager:
         if not self.checkpointer:
             raise RuntimeError("Checkpointer has not been initialized. Call setup() first.")
         return self.checkpointer
+
+
+async def _take_setup_lock(conn: AsyncConnection[TupleRow]) -> None:
+    """Take the setup lock without waiting inside a statement, which the holder's concurrent index build would wait on."""
+    for _ in range(LANGGRAPH_SETUP_LOCK_ATTEMPTS):
+        cursor = await conn.execute("SELECT pg_try_advisory_lock(%s)", (LANGGRAPH_SETUP_LOCK_ID,))
+        row = await cursor.fetchone()
+        if row is not None and row[0]:
+            return
+        await asyncio.sleep(LANGGRAPH_SETUP_LOCK_POLL_SECONDS)
+    raise RuntimeError(
+        f"LangGraph setup lock {LANGGRAPH_SETUP_LOCK_ID} still held by another starter "
+        f"after {LANGGRAPH_SETUP_LOCK_ATTEMPTS} attempts"
+    )
 
 
 @lazy_provider(

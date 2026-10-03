@@ -204,3 +204,15 @@ class TestBackfillIdempotency:
 
     async def test_an_empty_batch_is_not_a_write(self, repo):
         assert await repo.insert_backfilled([]) == 0
+
+
+class TestTokenTotalsForUser:
+    async def test_a_users_calls_add_up_and_nobody_elses_count(self, repo):
+        await repo.create(_doc(user_id="u1", input_tokens=1200, output_tokens=90))
+        await repo.create(_doc(user_id="u1", input_tokens=800, output_tokens=10))
+        await repo.create(_doc(user_id="u2", input_tokens=5000, output_tokens=500))
+
+        assert await repo.token_totals_for_user("u1") == (2000, 100)
+
+    async def test_a_user_with_no_calls_spent_nothing(self, repo):
+        assert await repo.token_totals_for_user("nobody") == (0, 0)

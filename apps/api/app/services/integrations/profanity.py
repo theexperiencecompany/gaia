@@ -23,7 +23,7 @@ import re
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import LLMInvokeOptions, ainvoke_llm, get_helper_llm
+from app.agents.llm.client import LLMInvokeOptions, ainvoke_llm, resolve_model
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
@@ -136,7 +136,7 @@ async def contains_profanity(**fields: str | None) -> bool:
 
     try:
         try:
-            llm = get_helper_llm()
+            llm = resolve_model()
         except LLMNotConfiguredError:
             return _wordlist_any(non_empty.values())
 

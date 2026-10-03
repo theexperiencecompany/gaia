@@ -37,7 +37,7 @@ from app.agents.prompts.workflow_prompts import (
     WORKFLOW_AUTO_NOTIFY_SECTION,
     WORKFLOW_SILENT_NOTIFY_SECTION,
 )
-from app.constants.agents import AgentTag, wrap_agent_payload
+from app.constants.agents import DONE_EVIDENCE_RULE, AgentTag, wrap_agent_payload
 from app.constants.general import (
     EXECUTOR_INTEGRATION_ID,
     EXECUTOR_THREAD_PREFIX,
@@ -794,7 +794,10 @@ def compose_executor_brief(
         parts.append(last_run.strip())
     if criteria:
         lines = "\n".join(f"- {c}" for c in criteria)
-        parts.append(f"Definition of done (every item must be true before you finish):\n{lines}")
+        parts.append(
+            "Definition of done (every item must be true before you finish):\n"
+            f"{lines}\n{DONE_EVIDENCE_RULE}"
+        )
     if playbook_check:
         parts.append(playbook_check.strip())
     return "\n\n".join(parts)

@@ -61,6 +61,12 @@ BOUNDARY_MODULES: dict[str, str] = {
     "apps/api/app/db/repositories/base.py": "the Mongo document -> model boundary",
     "apps/api/app/override/": "vendored overrides of third-party library internals",
     "apps/api/app/patches/": "monkeypatches of third-party library internals",
+    "apps/api/app/browser_host/cdp_mux.py": "the CDP wire: Chrome owns every command and result shape",
+    "apps/api/app/browser_host/host.py": "the CDP wire: Chrome owns every command and result shape",
+    "apps/api/app/browser_host/engine.py": "the CDP wire: Chrome owns every command and result shape",
+    "apps/api/app/browser_host/storage.py": "the CDP wire: Chrome owns every command and result shape",
+    "apps/api/app/browser_host/proxy.py": "the CDP wire: Chrome owns every command and result shape",
+    "apps/api/app/browser_host/screencast.py": "the CDP wire: Chrome owns every command and result shape",
 }
 
 # Maps keyed by a protocol, not a shape: the key IS the contract (an HTTP
@@ -74,6 +80,7 @@ PROTOCOL_MAP_ATTRIBUTES = ("headers", "query_params", "path_params", "cookies")
 EXTERNAL_TYPEDDICTS = (
     "ErrorDetails",
     "ToolCall",
+    "InvalidToolCall",
     "RunnableConfig",
     "UsageMetadata",
     "InputTokenDetails",
@@ -96,6 +103,31 @@ EXTERNAL_TYPEDDICT_PATHS = frozenset(
         "langchain_core.messages.ReasoningContentBlock",
         "langchain_core.messages.content.ReasoningContentBlock",
         "composio.core.models.tools.ToolExecutionResponse",
+        "playwright.sync_api.StorageState",
+        "playwright.sync_api.StorageStateCookie",
+        "cdp_use.cdp.dom.commands.ResolveNodeReturns",
+        "cdp_use.cdp.domsnapshot.commands.CaptureSnapshotReturns",
+        "cdp_use.cdp.domsnapshot.types.DocumentSnapshot",
+        "cdp_use.cdp.domsnapshot.types.NodeTreeSnapshot",
+        "cdp_use.cdp.domsnapshot.types.RareBooleanData",
+        "cdp_use.cdp.domsnapshot.types.RareStringData",
+        "cdp_use.cdp.network.events.LoadingFailedEvent",
+        "cdp_use.cdp.network.events.LoadingFinishedEvent",
+        "cdp_use.cdp.network.events.RequestWillBeSentEvent",
+        "cdp_use.cdp.page.commands.CaptureScreenshotReturns",
+        "cdp_use.cdp.page.commands.GetNavigationHistoryReturns",
+        "cdp_use.cdp.page.events.FrameNavigatedEvent",
+        "cdp_use.cdp.page.events.FrameRequestedNavigationEvent",
+        "cdp_use.cdp.page.events.FrameStartedNavigatingEvent",
+        "cdp_use.cdp.page.events.FrameStoppedLoadingEvent",
+        "cdp_use.cdp.page.types.Frame",
+        "cdp_use.cdp.page.types.NavigationEntry",
+        "cdp_use.cdp.runtime.commands.CallFunctionOnReturns",
+        "cdp_use.cdp.runtime.commands.EvaluateReturns",
+        "cdp_use.cdp.runtime.types.ExceptionDetails",
+        "cdp_use.cdp.runtime.types.RemoteObject",
+        "cdp_use.cdp.target.events.TargetCreatedEvent",
+        "cdp_use.cdp.target.types.TargetInfo",
     }
 )
 # Collections whose one type argument is the element a loop over them yields.

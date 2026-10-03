@@ -472,7 +472,9 @@ class TestClientDisconnect:
                 reads += 1
                 yield chunk
 
-        monkeypatch.setattr(stream_manager, "subscribe_stream", counting_subscribe)
+        monkeypatch.setattr(
+            type(stream_manager), "subscribe_stream", staticmethod(counting_subscribe)
+        )
 
         disconnected = asyncio.Event()
         await stream_manager.publish_chunk(stream_id, TURN_FRAMES[0])

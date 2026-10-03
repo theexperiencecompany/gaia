@@ -342,6 +342,17 @@ class BotContext(TypedDict, total=False):
     operation: str
 
 
+class BrowserContext(TypedDict, total=False):
+    """Browser-automation operation context (the browser_task tool + host)."""
+
+    operation: str
+    session_id: str
+    handoff_id: str
+    domain: str
+    task_id: str
+    snapshot_type: str
+
+
 class FileContext(TypedDict, total=False):
     """User-uploaded file operation context."""
 
@@ -520,6 +531,9 @@ class DevContext(TypedDict, total=False):
     subagent_id: str
 
 
+OUTCOME_FAILED = "failed"
+
+
 class WideEventFields(TypedDict, total=False):
     """Canonical schema for wide event fields set via log.set().
 
@@ -546,6 +560,7 @@ class WideEventFields(TypedDict, total=False):
     integration: IntegrationContext
     image: ImageContext
     bot: BotContext
+    browser: BrowserContext
     file: FileContext
     sandbox: SandboxContext
     mcp: McpContext
@@ -562,7 +577,11 @@ class WideEventFields(TypedDict, total=False):
     # Top-level convenience fields used across endpoints
     operation: str
     outcome: str
+    # Why the unit of work failed or was refused — a closed code set per domain.
+    reason: str
     platform: str
+    # A hashed platform user id (hash_log_identifier), the bots' user_hash.
+    user_hash: str
     # Which module/service-layer function produced the context. Named to match
     # the bots' `component` field so one query reads both surfaces; distinct
     # from the reserved `service`, which is the process's Promtail identity.
@@ -652,6 +671,14 @@ class WideEventLogger:
                 fields[key] = {**existing, **value}
             else:
                 fields[key] = value
+
+    def fail(self, reason: str, /, **kwargs: Any) -> None:
+        """Mark the event failed with a reason, for a failure the body caught and answered.
+
+        wide_task/log_context keep it instead of stamping success on a normal
+        return. Same method as wideLog.fail in the bots' wide-events.ts.
+        """
+        self.set(**kwargs, outcome=OUTCOME_FAILED, reason=reason)
 
     def set_ns(self, namespace: str, **kwargs: Any) -> None:
         """Merge kwargs into a nested namespace dict on the wide event.
@@ -823,7 +850,8 @@ async def _wide_event_boundary(
     failure: Exception | None = None
     try:
         yield log
-        log.set(outcome="success")
+        if log.get().get("outcome") != OUTCOME_FAILED:
+            log.set(outcome="success")
     except asyncio.CancelledError:
         # Shutdown and client disconnects cancel long-lived work: a clean exit,
         # not a failure. Record it (an outcome-less event reads as "still
@@ -832,7 +860,7 @@ async def _wide_event_boundary(
         raise
     except Exception as exc:
         failure = exc
-        log.set(outcome="failed")
+        log.set(outcome=OUTCOME_FAILED)
         raise
     finally:
         if failure is not None:
@@ -950,6 +978,31 @@ def spawn_logged_task(
     return task
 
 
+#: A detached task's exception that reached the top of the task with nobody awaiting it.
+REASON_UNHANDLED_EXCEPTION = "unhandled_exception"
+
+
+def emit_unobserved_task_failure(task_name: str, exc: BaseException, *, trace_id: str) -> None:
+    """Emit one failed background_task event for a detached task that died with nobody awaiting it.
+
+    Called from a done-callback, which is synchronous and runs after the task's
+    own frames are gone, so it cannot open a boundary; it writes the same event
+    log_context would have flushed for the failure: same message, logger, task
+    and outcome, the exception as error/error_type, and the spawner's trace id.
+    """
+    fields: dict[str, Any] = {
+        "task": task_name,
+        "outcome": OUTCOME_FAILED,
+        "reason": REASON_UNHANDLED_EXCEPTION,
+        "error": str(exc),
+        "error_type": type(exc).__name__,
+        "final_level": "ERROR",
+    }
+    if trace_id:
+        fields["trace_id"] = trace_id
+    _loguru.bind(logger_name="BG", **fields).log("ERROR", "background_task")
+
+
 def get_trace_id() -> str:
     """Return the trace_id for the current request or worker task."""
     return log.get_trace_id()
@@ -960,6 +1013,8 @@ __all__ = [
     "wide_task",
     "log_context",
     "spawn_logged_task",
+    "emit_unobserved_task_failure",
+    "REASON_UNHANDLED_EXCEPTION",
     "WideEventLogger",
     "WideEventFields",
     "UserContext",

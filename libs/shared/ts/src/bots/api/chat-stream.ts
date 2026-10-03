@@ -347,7 +347,12 @@ async function streamChatOnce(
         try {
           return await handleFrame(JSON.parse(raw) as SseFrame);
         } catch (parseErr) {
-          if (parseErr instanceof SyntaxError) return false;
+          if (parseErr instanceof SyntaxError) {
+            wideLog.warning("chat_stream_frame_unparseable", {
+              bytes: raw.length,
+            });
+            return false;
+          }
           finish();
           await onError(
             parseErr instanceof Error
@@ -378,8 +383,13 @@ async function streamChatOnce(
               return;
             }
           }
-        } catch {
-          // Prevent unhandled rejection if a callback throws
+        } catch (callbackError) {
+          // A throwing callback must not become an unhandled rejection — but it is recorded.
+          wideLog.error(
+            "chat_stream_callback_failed",
+            undefined,
+            callbackError,
+          );
           if (!finished) {
             finish();
             resolve();
@@ -417,8 +427,13 @@ async function streamChatOnce(
               );
             }
           }
-        } catch {
-          // Prevent unhandled rejection if a callback throws
+        } catch (callbackError) {
+          // A throwing callback must not become an unhandled rejection — but it is recorded.
+          wideLog.error(
+            "chat_stream_callback_failed",
+            undefined,
+            callbackError,
+          );
         } finally {
           resolve();
         }
@@ -446,8 +461,13 @@ async function streamChatOnce(
               await onError(new Error(toStreamErrorMessage(err.message)));
             }
           }
-        } catch {
-          // Prevent unhandled rejection if callback throws
+        } catch (callbackError) {
+          // A throwing callback must not become an unhandled rejection — but it is recorded.
+          wideLog.error(
+            "chat_stream_callback_failed",
+            undefined,
+            callbackError,
+          );
         } finally {
           resolve();
         }

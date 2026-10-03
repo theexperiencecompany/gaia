@@ -15,7 +15,7 @@ async function captureEvent(
   body: () => Promise<void>,
 ): Promise<Record<string, unknown>> {
   const lines: string[] = [];
-  const spies = (["log", "warn", "error", "debug"] as const).map((level) =>
+  const spies = (["info", "warn", "error", "debug"] as const).map((level) =>
     vi.spyOn(console, level).mockImplementation((line: unknown) => {
       if (typeof line === "string") lines.push(line);
     }),
@@ -120,5 +120,17 @@ describe("wideLog.set namespace merging", () => {
 
     expect(event.stage).toBe("done");
     expect(event.todo).toBe("replaced-by-scalar");
+  });
+});
+
+describe("a failure the handler caught", () => {
+  it("stays failed with its reason instead of being stamped success", async () => {
+    const event = await captureEvent(async () => {
+      wideLog.fail("account_not_linked", { http_status: 401 });
+    });
+
+    expect(event.outcome).toBe("failed");
+    expect(event.reason).toBe("account_not_linked");
+    expect(event.http_status).toBe(401);
   });
 });

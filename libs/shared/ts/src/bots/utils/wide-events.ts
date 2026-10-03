@@ -68,6 +68,12 @@ import {
 /** The `message` value of every emitted wide-event line. */
 export const WIDE_EVENT_MESSAGE = "bot_event";
 
+/** The boundary `outcome` values, shared with `wide_task()` in libs/shared/py/wide_events.py. */
+const WIDE_EVENT_OUTCOME = {
+  SUCCESS: "success",
+  FAILED: "failed",
+} as const;
+
 /** One warnings[]/errors[]/audit[] entry: the message plus structured fields. */
 export interface WideEventEntry {
   msg: string;
@@ -105,6 +111,11 @@ export interface BotWideEventFields {
   envelope_id?: string;
   queue?: string;
   http_status?: number;
+  /** Why the unit of work failed — a closed code set per surface (`BOT_FAILURE_REASON`). */
+  reason?: string;
+  /** The API's machine-readable error code, and its message, on a refused call. */
+  error_code?: string;
+  error_detail?: string;
   event_type?: string;
   event_count?: number;
   delivered_count?: number;
@@ -268,6 +279,15 @@ export const wideLog = {
     record("audit", "audit", message, fields);
   },
 
+  /**
+   * Marks the active event failed with a reason, for a failure the handler
+   * caught and answered itself. The boundary keeps it instead of stamping
+   * `outcome: "success"` because the handler returned normally.
+   */
+  fail(reason: string, fields?: BotLogFields): void {
+    this.set({ ...fields, outcome: WIDE_EVENT_OUTCOME.FAILED, reason });
+  },
+
   /** The active boundary's trace_id, or undefined outside a boundary. */
   getTraceId(): string | undefined {
     return storage.getStore()?.traceId;
@@ -305,9 +325,9 @@ function emitWideEvent(state: WideEventState, durationMs: number): void {
 
 /**
  * Binds a fresh wide event for `fn` and flushes ONE canonical `bot_event` JSON line when it
- * completes — the bots' `wide_task()`. Every `wideLog.set()` inside `fn` (however deep in the
- * async call tree) lands on this event; on throw, the error is appended to errors[], `outcome`
- * is "failed", and the error is re-raised after the event is emitted.
+ * completes — the bots' `wide_task()`. Every `wideLog.set()` inside `fn` lands on this event;
+ * on throw, the error goes to errors[], `outcome` is "failed", and the error is re-raised.
+ * A failure the handler caught and recorded with `wideLog.fail()` stays "failed".
  *
  * `task` names the unit of work ("command", "chat", "webhook"), matching `wide_task("<name>")`
  * in libs/shared/py/wide_events.py.
@@ -334,11 +354,13 @@ export async function withWideEvent<T>(
   return storage.run(state, async () => {
     try {
       const result = await fn();
-      state.fields.outcome = "success";
+      if (state.fields.outcome !== WIDE_EVENT_OUTCOME.FAILED) {
+        state.fields.outcome = WIDE_EVENT_OUTCOME.SUCCESS;
+      }
       return result;
     } catch (error) {
       record("error", "errors", "task failed", undefined, error);
-      state.fields.outcome = "failed";
+      state.fields.outcome = WIDE_EVENT_OUTCOME.FAILED;
       throw error;
     } finally {
       emitWideEvent(state, Math.round((performance.now() - start) * 100) / 100);

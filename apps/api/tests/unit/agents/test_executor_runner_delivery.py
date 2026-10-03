@@ -45,6 +45,9 @@ from app.services.analytics_service import AnalyticsEvents
 from shared.py.wide_events import log
 from tests.helpers import captured_wide_event
 
+# A run says it lives in Redis while it runs: give it a per-test Redis, never the ambient one.
+pytestmark = pytest.mark.usefixtures("fake_redis")
+
 
 def _run(
     kind: RunKind = RunKind.LIVE,

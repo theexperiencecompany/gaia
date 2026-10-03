@@ -1,10 +1,18 @@
 from collections.abc import Mapping
 from datetime import datetime
 from enum import Enum, StrEnum
-from typing import Any, TypedDict
+from typing import Annotated, Any, TypedDict
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
+from app.config.feature_flags import FeatureFlag
 from app.db.repositories.base import MongoDocument
 from app.models.first_steps_models import FirstStepsState
 from app.schemas.common import ResponseModel
@@ -22,6 +30,19 @@ NEEDS_MAX_SELECTION = 3
 #: not a "job title" one. Mirrored by PROFESSION_MAX_LENGTH in the web
 #: onboarding constants — the field's maxLength must match or typing goes dead.
 PROFESSION_MAX_LENGTH = 80
+
+_KNOWN_FEATURE_FLAGS = frozenset(FeatureFlag)
+
+
+def _drop_retired_flags(value: object) -> object:
+    # Choices outlive their flag; a retired key must not fail the auth read of the user.
+    if isinstance(value, Mapping):
+        return {flag: enabled for flag, enabled in value.items() if flag in _KNOWN_FEATURE_FLAGS}
+    return value
+
+
+#: A user's own on/off choices for user-facing flags (see app/config/feature_flags.py).
+FeatureFlagChoices = Annotated[dict[FeatureFlag, bool], BeforeValidator(_drop_retired_flags)]
 
 
 def clean_profession(value: str) -> str:
@@ -545,6 +566,7 @@ class UserDocument(MongoDocument):
     # which the repository/sweep key on; dev-minted users are pre-stamped to skip the sweep.
     welcome_email_sent_at: datetime | None = None
     marketing_contact_added_at: datetime | None = None
+    feature_flags: FeatureFlagChoices | None = None
 
 
 class AuthenticatedUser(BaseModel):
@@ -609,6 +631,7 @@ class AuthenticatedUser(BaseModel):
     first_steps: FirstStepsState | None = None
     welcome_email_sent_at: datetime | None = None
     marketing_contact_added_at: datetime | None = None
+    feature_flags: FeatureFlagChoices | None = None
 
     def with_timezone(self, timezone: str) -> "AuthenticatedUser":
         """A copy carrying the resolved home timezone (the model is frozen)."""

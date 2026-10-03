@@ -287,6 +287,9 @@ class TestWorkerRejectsStaleFire:
                 AsyncMock(return_value=True),
             ),
             patch("app.workers.tasks.workflow_tasks.release_lock_if_owned", AsyncMock()),
+            patch(
+                "app.workers.tasks.workflow_tasks.keep_alive", AsyncMock(return_value=MagicMock())
+            ),
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
             result = await execute_workflow_by_id({}, workflow.id, context)

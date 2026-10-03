@@ -1,0 +1,537 @@
+From 82717b3379f439603de6b0c19c6294ca3097f2e3 Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 01:18:12 +0530
+Subject: [PATCH] fix(input): a CDP press goes to the element under the pointer
+ and focuses as Chrome does
+
+Mouse events went to document.elementFromPoint, which page script can
+replace, falling back to whatever element was last scrolled to, focused or
+measured (__obscura_click_target, set as a side effect of
+getBoundingClientRect). A press then focused the nearest ancestor matching a
+hard-coded selector list, so a click often focused the outer container.
+
+Mouse events now go to the renderer's hit target (__obscura_hitTarget), the
+click to the nearest flat-tree common ancestor of press and release, and a
+press nobody cancelled runs the HTML mouse-focus rule. Keys and inserted text
+go to the focused element even inside a shadow tree, with composed
+InputEvents. The click-target fallback is gone, and DOM.scrollIntoViewIfNeeded
+scrolls only when the element is not fully in view, centring it, as Chrome
+does. Tests that steered input by overriding elementFromPoint now press where
+the element is laid out.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-cdp/src/domains/dom.rs         | 24 ++++----
+ crates/obscura-cdp/src/domains/input.rs       | 53 +++++++----------
+ .../form_submit_method_bypasses_listener.rs   | 34 +++++++----
+ .../tests/input_mouse_event_parity.rs         | 16 +++---
+ crates/obscura-cdp/tests/input_mouse_focus.rs | 57 ++++++++++++++++++-
+ .../obscura-cdp/tests/page_frame_contract.rs  |  6 +-
+ crates/obscura-js/js/bootstrap.js             | 12 +++-
+ 7 files changed, 135 insertions(+), 67 deletions(-)
+
+diff --git a/crates/obscura-cdp/src/domains/dom.rs b/crates/obscura-cdp/src/domains/dom.rs
+index 7caf0db..e210edb 100644
+--- a/crates/obscura-cdp/src/domains/dom.rs
++++ b/crates/obscura-cdp/src/domains/dom.rs
+@@ -234,12 +234,16 @@ pub async fn handle(
+         "scrollIntoViewIfNeeded" => {
+             let page = ctx.get_session_page_mut(session_id).ok_or("No page")?;
+             let node_id = resolve_node_id(page, params)?;
+-            // Obscura has no layout viewport to move, but the JS shim records
+-            // this element for the hit testing used by subsequent input events.
++            // Chrome scrolls only when the element is not already fully in
++            // the viewport, and then centres it.
+             let code = format!(
+                 "(function() {{ var el = globalThis._wrap && globalThis._wrap({0}); \
+                  if (!el || typeof el.scrollIntoView !== 'function') return false; \
+-                 el.scrollIntoView(); return true; }})()",
++                 var r = el.getBoundingClientRect(); \
++                 var vw = globalThis.innerWidth || 1280, vh = globalThis.innerHeight || 720; \
++                 if (r.top < 0 || r.left < 0 || r.bottom > vh || r.right > vw) \
++                     el.scrollIntoView({{block: 'center', inline: 'center'}}); \
++                 return true; }})()",
+                 node_id
+             );
+             let did_scroll = page.evaluate(&code).as_bool().unwrap_or(false);
+@@ -710,7 +714,7 @@ mod tests {
+         crate::domains::page::handle(
+             "navigate",
+             &json!({
+-                "url": "data:text/html,<main><button id=target>Go</button></main>",
++                "url": "data:text/html,<main><div style='height:3000px'></div><button id=target>Go</button></main>",
+                 "waitUntil": "load"
+             }),
+             &mut ctx,
+@@ -749,17 +753,17 @@ mod tests {
+         ] {
+             ctx.get_session_page_mut(&session)
+                 .unwrap()
+-                .evaluate("globalThis.__obscura_click_target = null");
++                .evaluate("window.scrollTo(0, 0)");
+ 
+             handle("scrollIntoViewIfNeeded", &params, &mut ctx, &session)
+                 .await
+                 .expect("scrollIntoViewIfNeeded should succeed");
+ 
+-            let target_id = ctx
+-                .get_session_page_mut(&session)
+-                .unwrap()
+-                .evaluate("globalThis.__obscura_click_target && globalThis.__obscura_click_target.id");
+-            assert_eq!(target_id, json!("target"));
++            let in_view = ctx.get_session_page_mut(&session).unwrap().evaluate(
++                "(() => { const r = document.getElementById('target').getBoundingClientRect(); \
++                 return window.scrollY > 0 && r.top >= 0 && r.bottom <= innerHeight; })()",
++            );
++            assert_eq!(in_view, json!(true));
+         }
+     }
+ 
+diff --git a/crates/obscura-cdp/src/domains/input.rs b/crates/obscura-cdp/src/domains/input.rs
+index 5b72a6e..29fa02e 100644
+--- a/crates/obscura-cdp/src/domains/input.rs
++++ b/crates/obscura-cdp/src/domains/input.rs
+@@ -25,7 +25,7 @@ fn insert_text_js(text: &str) -> String {
+     let literal = serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_string());
+     format!(
+         "(function() {{\
+-            var t = document.activeElement;\
++            var t = globalThis.__obscura_focusedElement();\
+             if (!t || (t.localName !== 'input' && t.localName !== 'textarea')) return;\
+             var ins = {text};\
+             var v = t.value || '';\
+@@ -40,7 +40,7 @@ fn insert_text_js(text: &str) -> String {
+                 var caret = lo + ins.length;\
+                 t.setSelectionRange(caret, caret);\
+             }}\
+-            t.dispatchEvent(globalThis.__obscura_markTrusted(new Event('input', {{bubbles:true}})));\
++            t.dispatchEvent(globalThis.__obscura_markTrusted(new InputEvent('input', {{bubbles:true,composed:true,inputType:'insertText',data:ins}})));\
+         }})()",
+         text = literal,
+     )
+@@ -51,7 +51,7 @@ fn insert_text_js(text: &str) -> String {
+ // collapsed caret it removes the character before the caret, and with no
+ // selection tracked it falls back to trimming the last character (legacy).
+ const BACKSPACE_JS: &str = "(function() {\
+-    var t = document.activeElement;\
++    var t = globalThis.__obscura_focusedElement();\
+     if (!t || (t.localName !== 'input' && t.localName !== 'textarea')) return;\
+     var v = t.value || '';\
+     var s = t.selectionStart, e = t.selectionEnd;\
+@@ -78,7 +78,7 @@ const BACKSPACE_JS: &str = "(function() {\
+             t.setSelectionRange(s - d, s - d);\
+         }\
+     }\
+-    t.dispatchEvent(globalThis.__obscura_markTrusted(new Event('input', {bubbles:true})));\
++    t.dispatchEvent(globalThis.__obscura_markTrusted(new InputEvent('input', {bubbles:true,composed:true,inputType:'deleteContentBackward'})));\
+ })()";
+ 
+ fn mouse_button_code(button: &str) -> u8 {
+@@ -134,22 +134,14 @@ pub async fn handle(
+             let (alt_key, ctrl_key, meta_key, shift_key) = modifier_flags(modifiers);
+ 
+             if event_type == "mousePressed" {
+-                // Chrome's default action for a mousedown nobody cancelled: focus the
+-                // nearest focusable ancestor of the target, or blur when there is none.
+                 if let Some(page) = ctx.get_session_page_mut(session_id) {
+                     let code = format!(
+                         "(function() {{\
+-                            var target = (document.elementFromPoint && document.elementFromPoint({x},{y})) || globalThis.__obscura_click_target || document.activeElement || document.body;\
++                            var target = globalThis.__obscura_hitTarget({x},{y}) || document.documentElement;\
+                             if (!target) return;\
+-                            globalThis.__obscura_click_target = target;\
+                             globalThis.__obscura_mouse_down = {{target:target,button:{button_code},clickCount:{click_count}}};\
+-                            var evt = globalThis.__obscura_markTrusted(new MouseEvent('mousedown', {{bubbles:true,cancelable:true,view:globalThis,clientX:{x},clientY:{y},button:{button_code},buttons:{buttons},detail:{click_count},altKey:{alt_key},ctrlKey:{ctrl_key},metaKey:{meta_key},shiftKey:{shift_key}}}));\
+-                            if (!target.dispatchEvent(evt)) return;\
+-                            var focusable = target;\
+-                            while (focusable && !(focusable.matches && (focusable.matches('input:not([type=hidden]),textarea,select,button,a[href],area[href],summary,iframe,[tabindex]') || focusable.isContentEditable))) focusable = focusable.parentElement;\
+-                            var active = document.activeElement;\
+-                            if (focusable && !globalThis.__obscura_isDisabled(focusable)) {{ if (active !== focusable) focusable.focus(); }}\
+-                            else if (active && active !== document.body && active.blur) active.blur();\
++                            var evt = globalThis.__obscura_markTrusted(new MouseEvent('mousedown', {{bubbles:true,cancelable:true,composed:true,view:globalThis,clientX:{x},clientY:{y},button:{button_code},buttons:{buttons},detail:{click_count},altKey:{alt_key},ctrlKey:{ctrl_key},metaKey:{meta_key},shiftKey:{shift_key}}}));\
++                            if (target.dispatchEvent(evt)) globalThis.__obscura_focusOnPress(target);\
+                         }})()",
+                         x = x,
+                         y = y,
+@@ -167,17 +159,14 @@ pub async fn handle(
+                 let moved_frame = if let Some(page) = ctx.get_session_page_mut(session_id) {
+                     let code = format!(
+                         "(function() {{\
+-                            var target = (document.elementFromPoint && document.elementFromPoint({x},{y})) || globalThis.__obscura_click_target || document.activeElement || document.body;\
++                            var target = globalThis.__obscura_hitTarget({x},{y}) || document.documentElement;\
+                             if (!target) return;\
+                             var down = globalThis.__obscura_mouse_down;\
+                             globalThis.__obscura_mouse_down = null;\
+-                            var evt = globalThis.__obscura_markTrusted(new MouseEvent('mouseup', {{bubbles:true,cancelable:true,view:globalThis,clientX:{x},clientY:{y},button:{button_code},buttons:0,detail:{click_count},altKey:{alt_key},ctrlKey:{ctrl_key},metaKey:{meta_key},shiftKey:{shift_key}}}));\
++                            var evt = globalThis.__obscura_markTrusted(new MouseEvent('mouseup', {{bubbles:true,cancelable:true,composed:true,view:globalThis,clientX:{x},clientY:{y},button:{button_code},buttons:0,detail:{click_count},altKey:{alt_key},ctrlKey:{ctrl_key},metaKey:{meta_key},shiftKey:{shift_key}}}));\
+                             target.dispatchEvent(evt);\
+                             if (!down || down.button !== {button_code} || {button_code} !== 0) return;\
+-                            var clickTarget = down.target;\
+-                            while (clickTarget && clickTarget !== target && !(clickTarget.contains && clickTarget.contains(target))) {{\
+-                                clickTarget = clickTarget.parentElement;\
+-                            }}\
++                            var clickTarget = globalThis.__obscura_clickTarget(down.target, target);\
+                             if (!clickTarget) return;\
+                             var tag = clickTarget.tagName;\
+                             var type = (clickTarget.getAttribute && clickTarget.getAttribute('type') || '').toLowerCase();\
+@@ -203,7 +192,7 @@ pub async fn handle(
+                                 clickTarget.checked = !oldChecked;\
+                                 clickTarget.indeterminate = false;\
+                             }}\
+-                            var click = globalThis.__obscura_markTrusted(new MouseEvent('click', {{bubbles:true,cancelable:true,view:globalThis,clientX:{x},clientY:{y},button:0,buttons:0,detail:{click_count},altKey:{alt_key},ctrlKey:{ctrl_key},metaKey:{meta_key},shiftKey:{shift_key}}}));\
++                            var click = globalThis.__obscura_markTrusted(new MouseEvent('click', {{bubbles:true,cancelable:true,composed:true,view:globalThis,clientX:{x},clientY:{y},button:0,buttons:0,detail:{click_count},altKey:{alt_key},ctrlKey:{ctrl_key},metaKey:{meta_key},shiftKey:{shift_key}}}));\
+                             var cancelled = !clickTarget.dispatchEvent(click);\
+                             if (cancelled) {{\
+                                 if (radioStates) {{\
+@@ -212,7 +201,7 @@ pub async fn handle(
+                                 return;\
+                             }}\
+                             if (checkable && clickTarget.checked !== oldChecked) {{\
+-                                try {{ clickTarget.dispatchEvent(globalThis.__obscura_markTrusted(new Event('input', {{bubbles:true}}))); }} catch(e) {{}}\
++                                try {{ clickTarget.dispatchEvent(globalThis.__obscura_markTrusted(new Event('input', {{bubbles:true,composed:true}}))); }} catch(e) {{}}\
+                                 try {{ clickTarget.dispatchEvent(globalThis.__obscura_markTrusted(new Event('change', {{bubbles:true}}))); }} catch(e) {{}}\
+                                 return;\
+                             }}\
+@@ -291,9 +280,9 @@ pub async fn handle(
+                 if let Some(page) = ctx.get_session_page_mut(session_id) {
+                     let code = format!(
+                         "(function() {{\
+-                            var target = (document.elementFromPoint && document.elementFromPoint({x},{y})) || document.body || document.documentElement;\
++                            var target = globalThis.__obscura_hitTarget({x},{y}) || document.documentElement;\
+                             if (!target) return;\
+-                            var wheel = globalThis.__obscura_markTrusted(new WheelEvent('wheel', {{bubbles:true,cancelable:true,view:globalThis,clientX:{x},clientY:{y},deltaX:{delta_x},deltaY:{delta_y},deltaMode:0,altKey:{alt_key},ctrlKey:{ctrl_key},metaKey:{meta_key},shiftKey:{shift_key}}}));\
++                            var wheel = globalThis.__obscura_markTrusted(new WheelEvent('wheel', {{bubbles:true,cancelable:true,composed:true,view:globalThis,clientX:{x},clientY:{y},deltaX:{delta_x},deltaY:{delta_y},deltaMode:0,altKey:{alt_key},ctrlKey:{ctrl_key},metaKey:{meta_key},shiftKey:{shift_key}}}));\
+                             if (!target.dispatchEvent(wheel)) return;\
+                             var dx = {delta_x}, dy = {delta_y};\
+                             var root = document.scrollingElement || document.documentElement || document.body;\
+@@ -357,8 +346,8 @@ pub async fn handle(
+                     "keyDown" | "rawKeyDown" => {
+                         let js = format!(
+                             "(function() {{\
+-                                var target = document.activeElement || document.body;\
+-                                var evt = globalThis.__obscura_markTrusted(new KeyboardEvent('keydown', {{bubbles:true,cancelable:true,key:{key},code:{code}}}));\
++                                var target = globalThis.__obscura_focusedElement() || document.body;\
++                                var evt = globalThis.__obscura_markTrusted(new KeyboardEvent('keydown', {{bubbles:true,cancelable:true,composed:true,key:{key},code:{code}}}));\
+                                 target.dispatchEvent(evt);\
+                             }})()",
+                             // Escape backslash BEFORE single-quote (as the text
+@@ -380,9 +369,9 @@ pub async fn handle(
+                             // these two and we should too: previously every Enter tried
+                             // to submit the nearest form even from a textarea.
+                             let js = "(function() {\
+-                                var target = document.activeElement;\
++                                var target = globalThis.__obscura_focusedElement();\
+                                 if (!target) return;\
+-                                target.dispatchEvent(globalThis.__obscura_markTrusted(new KeyboardEvent('keypress', {bubbles:true,key:'Enter',code:'Enter'})));\
++                                target.dispatchEvent(globalThis.__obscura_markTrusted(new KeyboardEvent('keypress', {bubbles:true,cancelable:true,composed:true,key:'Enter',code:'Enter'})));\
+                                 if (target.localName === 'textarea') {\
+                                     var value = target.value || '';\
+                                     var start = target.selectionStart, end = target.selectionEnd;\
+@@ -391,7 +380,7 @@ pub async fn handle(
+                                     var lower = Math.min(start, end), upper = Math.max(start, end);\
+                                     globalThis.__obscura_setFieldValue(target, 'value', value.slice(0, lower) + '\\n' + value.slice(upper));\
+                                     target.setSelectionRange(lower + 1, lower + 1);\
+-                                    target.dispatchEvent(globalThis.__obscura_markTrusted(new Event('input', {bubbles:true})));\
++                                    target.dispatchEvent(globalThis.__obscura_markTrusted(new InputEvent('input', {bubbles:true,composed:true,inputType:'insertLineBreak'})));\
+                                 } else {\
+                                     var form = target.form || (target.closest && target.closest('form'));\
+                                     if (form) {{ try {{ if (typeof form.requestSubmit === 'function') {{ form.requestSubmit(); }} else {{ form.submit(); }} }} catch(e) {{}} }}\
+@@ -407,8 +396,8 @@ pub async fn handle(
+                     "keyUp" => {
+                         let js = format!(
+                             "(function() {{\
+-                                var target = document.activeElement || document.body;\
+-                                var evt = globalThis.__obscura_markTrusted(new KeyboardEvent('keyup', {{bubbles:true,key:{key},code:{code}}}));\
++                                var target = globalThis.__obscura_focusedElement() || document.body;\
++                                var evt = globalThis.__obscura_markTrusted(new KeyboardEvent('keyup', {{bubbles:true,cancelable:true,composed:true,key:{key},code:{code}}}));\
+                                 target.dispatchEvent(evt);\
+                             }})()",
+                             key = js_str(key),
+diff --git a/crates/obscura-cdp/tests/form_submit_method_bypasses_listener.rs b/crates/obscura-cdp/tests/form_submit_method_bypasses_listener.rs
+index 7e7506f..9cfd12d 100644
+--- a/crates/obscura-cdp/tests/form_submit_method_bypasses_listener.rs
++++ b/crates/obscura-cdp/tests/form_submit_method_bypasses_listener.rs
+@@ -33,7 +33,7 @@ async fn serve_form() -> String {
+   <button id="b" type="submit">Go</button>
+ </form>
+ <script>
+-document.getElementById('f').addEventListener('submit', function(e) { e.preventDefault(); });
++document.getElementById('f').addEventListener('submit', function(e) { window.__submitFired = true; e.preventDefault(); });
+ </script>
+ </body></html>"#,
+                     )
+@@ -164,25 +164,39 @@ async fn cdp_click_submit_button_is_vetoed_by_prevent_default_listener() {
+ 
+     navigate(&mut ctx, &url, session_id).await;
+ 
+-    // Point the CDP click resolver at the submit button explicitly so the test
+-    // does not depend on layout coordinates.
+-    cdp(
++    // Press and release on the submit button where it is laid out.
++    let center = cdp(
+         &mut ctx,
+         2,
+         "Runtime.evaluate",
+-        json!({"expression": "globalThis.__obscura_click_target = document.getElementById('b')"}),
++        json!({
++            "expression": "(() => { const r = document.getElementById('b').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()",
++            "returnByValue": true
++        }),
+         session_id,
+     )
+     .await;
+-
+-    cdp(
++    let x = center["result"]["value"][0].as_f64().unwrap();
++    let y = center["result"]["value"][1].as_f64().unwrap();
++    for (id, kind) in [(3, "mousePressed"), (4, "mouseReleased")] {
++        cdp(
++            &mut ctx,
++            id,
++            "Input.dispatchMouseEvent",
++            json!({"type": kind, "x": x, "y": y, "button": "left", "clickCount": 1}),
++            session_id,
++        )
++        .await;
++    }
++    let fired = cdp(
+         &mut ctx,
+-        3,
+-        "Input.dispatchMouseEvent",
+-        json!({"type": "mousePressed", "x": 0.0, "y": 0.0, "button": "left", "clickCount": 1}),
++        5,
++        "Runtime.evaluate",
++        json!({"expression": "window.__submitFired === true", "returnByValue": true}),
+         session_id,
+     )
+     .await;
++    assert_eq!(fired["result"]["value"], true, "the click fires the cancelable submit event");
+ 
+     let page = ctx.get_page_mut(&page_id).unwrap();
+     assert_ne!(
+diff --git a/crates/obscura-cdp/tests/input_mouse_event_parity.rs b/crates/obscura-cdp/tests/input_mouse_event_parity.rs
+index 08ce1b2..4acbe93 100644
+--- a/crates/obscura-cdp/tests/input_mouse_event_parity.rs
++++ b/crates/obscura-cdp/tests/input_mouse_event_parity.rs
+@@ -182,7 +182,6 @@ async fn canceling_wheel_prevents_its_scroll_default() {
+         r#"(() => {
+             globalThis.wheelProbe = null;
+             const page = document.getElementById('page');
+-            document.elementFromPoint = () => page;
+             page.addEventListener('wheel', event => {
+                 wheelProbe = {
+                     x: event.clientX, y: event.clientY,
+@@ -253,7 +252,8 @@ async fn press_release_orders_events_and_defers_click_activation() {
+         2,
+         r#"(() => {
+             const target = document.getElementById('check');
+-            document.elementFromPoint = () => target;
++            // Pressed where it is laid out, as a pointer would press it.
++            target.style.cssText = 'position:fixed; left:300px; top:300px; width:20px; height:20px; margin:0';
+             globalThis.mouseLog = [];
+             for (const type of ['mousedown', 'mouseup', 'click', 'input', 'change']) {
+                 target.addEventListener(type, event => mouseLog.push({
+@@ -271,7 +271,7 @@ async fn press_release_orders_events_and_defers_click_activation() {
+         3,
+         "Input.dispatchMouseEvent",
+         json!({
+-            "type": "mousePressed", "x": 31.0, "y": 42.0,
++            "type": "mousePressed", "x": 310.0, "y": 310.0,
+             "button": "left", "clickCount": 1, "modifiers": 10
+         }),
+         &sid,
+@@ -294,7 +294,7 @@ async fn press_release_orders_events_and_defers_click_activation() {
+         5,
+         "Input.dispatchMouseEvent",
+         json!({
+-            "type": "mouseReleased", "x": 31.0, "y": 42.0,
++            "type": "mouseReleased", "x": 310.0, "y": 310.0,
+             "button": "left", "clickCount": 1, "modifiers": 10
+         }),
+         &sid,
+@@ -317,7 +317,7 @@ async fn press_release_orders_events_and_defers_click_activation() {
+     assert_eq!(types, ["mousedown", "mouseup", "click", "input", "change"]);
+     assert_eq!(released["checked"], true);
+     assert_eq!(released["log"][2]["checked"], true, "click sees checkbox pre-activation");
+-    assert_eq!(released["log"][2]["x"], 31.0);
++    assert_eq!(released["log"][2]["x"], 310.0);
+     assert_eq!(released["log"][2]["ctrl"], true);
+     assert_eq!(released["log"][2]["shift"], true);
+     assert_eq!(released["log"][2]["trusted"], true);
+@@ -332,7 +332,7 @@ async fn radio_release_selects_only_the_target_in_its_group() {
+         r#"(() => {
+             const a = document.getElementById('radio-a');
+             const b = document.getElementById('radio-b');
+-            document.elementFromPoint = () => b;
++            b.style.cssText = 'position:fixed; left:300px; top:300px; width:20px; height:20px; margin:0';
+             globalThis.radioEvents = [];
+             for (const radio of [a, b]) {
+                 for (const type of ['mousedown', 'mouseup', 'click', 'input', 'change']) {
+@@ -347,7 +347,7 @@ async fn radio_release_selects_only_the_target_in_its_group() {
+         &mut ctx,
+         3,
+         "Input.dispatchMouseEvent",
+-        json!({"type": "mousePressed", "x": 10.0, "y": 10.0, "button": "left"}),
++        json!({"type": "mousePressed", "x": 310.0, "y": 310.0, "button": "left"}),
+         &sid,
+     )
+     .await;
+@@ -355,7 +355,7 @@ async fn radio_release_selects_only_the_target_in_its_group() {
+         &mut ctx,
+         4,
+         "Input.dispatchMouseEvent",
+-        json!({"type": "mouseReleased", "x": 10.0, "y": 10.0, "button": "left"}),
++        json!({"type": "mouseReleased", "x": 310.0, "y": 310.0, "button": "left"}),
+         &sid,
+     )
+     .await;
+diff --git a/crates/obscura-cdp/tests/input_mouse_focus.rs b/crates/obscura-cdp/tests/input_mouse_focus.rs
+index 2e535e4..c912534 100644
+--- a/crates/obscura-cdp/tests/input_mouse_focus.rs
++++ b/crates/obscura-cdp/tests/input_mouse_focus.rs
+@@ -14,7 +14,7 @@ async fn serve_fixture() -> String {
+         let (mut socket, _) = listener.accept().await.unwrap();
+         let mut buf = [0u8; 2048];
+         let _ = socket.read(&mut buf).await.unwrap();
+-        let body = r#"<!doctype html><html><head><style>
++        let body = r##"<!doctype html><html><head><style>
+             html, body { margin: 0; font: 16px monospace }
+             input, textarea, div, button { display: block; width: 200px; height: 30px; margin: 4px 0 }
+         </style></head><body>
+@@ -25,10 +25,31 @@ async fn serve_fixture() -> String {
+           <button id="wrapped"><span id="inner">go</span></button>
+           <input id="guarded">
+           <input id="off" disabled>
++          <div id="menu" style="position:absolute; left:300px; top:0; width:200px; height:120px">
++            <a id="item" href="#item" style="display:block; height:120px">item</a>
++          </div>
++          <div style="position:absolute; left:300px; top:130px; width:200px; height:40px; z-index:2"><input id="over" style="margin:0"></div>
++          <div style="position:absolute; left:300px; top:130px; width:200px; height:40px; z-index:1"><input id="under" style="margin:0"></div>
++          <div style="position:absolute; left:300px; top:180px; width:200px; height:40px"><input id="covered" style="margin:0"></div>
++          <div id="glass" style="position:absolute; left:300px; top:180px; width:200px; height:40px; pointer-events:none"></div>
++          <x-field id="host" style="display:block; position:absolute; left:300px; top:230px; width:200px; height:40px"></x-field>
++          <div id="later" style="position:relative; left:300px; width:200px; height:300px"></div>
+           <script>
+             document.getElementById('guarded').addEventListener('mousedown', e => e.preventDefault());
++            customElements.define('x-field', class extends HTMLElement {
++              constructor() {
++                super();
++                const root = this.attachShadow({mode: 'closed'});
++                root.innerHTML = '<input id="deep" style="margin:0">';
++                window.deepField = root.firstChild;
++              }
++            });
++            window.seen = [];
++            for (const type of ['blur', 'focusout', 'focus', 'focusin']) {
++              document.addEventListener(type, e => seen.push(type + ':' + e.target.id), true);
++            }
+           </script>
+-        </body></html>"#;
++        </body></html>"##;
+         let response = format!(
+             "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+             body.len()
+@@ -132,3 +153,35 @@ async fn a_press_on_nothing_focusable_blurs_and_a_cancelled_press_or_disabled_fi
+     click_element(&mut ctx, 60, &sid, "#off").await;
+     assert_eq!(active(&mut ctx, 70, &sid).await, "body");
+ }
++
++#[tokio::test(flavor = "current_thread")]
++async fn a_press_lands_on_what_paints_on_top() {
++    let (mut ctx, sid) = setup().await;
++    // An absolutely positioned menu paints over the in-flow box after it.
++    click_element(&mut ctx, 10, &sid, "#item").await;
++    assert_eq!(active(&mut ctx, 20, &sid).await, "item");
++    // z-index decides between overlapping fields, not tree order.
++    click_element(&mut ctx, 30, &sid, "#under").await;
++    assert_eq!(active(&mut ctx, 40, &sid).await, "over");
++    // A pointer-events:none overlay lets the press through.
++    click_element(&mut ctx, 50, &sid, "#covered").await;
++    assert_eq!(active(&mut ctx, 60, &sid).await, "covered");
++    let hit = evaluate(&mut ctx, 70, "(() => { const r = document.getElementById('covered').getBoundingClientRect(); return document.elementsFromPoint(r.x + 5, r.y + 5).map(e => e.id || e.localName).join(); })()", &sid).await;
++    assert_eq!(hit["result"]["value"], "covered,div,body,html", "the overlay is not in the list");
++}
++
++#[tokio::test(flavor = "current_thread")]
++async fn a_press_inside_a_closed_shadow_tree_focuses_the_inner_field_behind_its_host() {
++    let (mut ctx, sid) = setup().await;
++    click_element(&mut ctx, 10, &sid, "#name").await;
++    evaluate(&mut ctx, 20, "seen.length = 0", &sid).await;
++    click_element(&mut ctx, 30, &sid, "#host").await;
++    assert_eq!(active(&mut ctx, 40, &sid).await, "host", "document.activeElement is retargeted to the host");
++    let seen = evaluate(&mut ctx, 50, "seen.join()", &sid).await;
++    assert_eq!(seen["result"]["value"], "blur:name,focusout:name,focus:host,focusin:host");
++    let from_point = evaluate(&mut ctx, 60, "(() => { const r = document.getElementById('host').getBoundingClientRect(); return document.elementFromPoint(r.x + 5, r.y + 5).id; })()", &sid).await;
++    assert_eq!(from_point["result"]["value"], "host", "elementFromPoint never reaches into a shadow tree");
++    cdp(&mut ctx, 70, "Input.insertText", json!({"text": "deep"}), &sid).await;
++    let typed = evaluate(&mut ctx, 80, "deepField.value", &sid).await;
++    assert_eq!(typed["result"]["value"], "deep", "typing lands in the focused inner field");
++}
+diff --git a/crates/obscura-cdp/tests/page_frame_contract.rs b/crates/obscura-cdp/tests/page_frame_contract.rs
+index e7f3982..6a2e60a 100644
+--- a/crates/obscura-cdp/tests/page_frame_contract.rs
++++ b/crates/obscura-cdp/tests/page_frame_contract.rs
+@@ -194,7 +194,7 @@ async fn every_page_frame_path_uses_the_current_cdp_contract() {
+         7,
+         "Runtime.evaluate",
+         json!({
+-            "expression": "document.elementFromPoint = () => document.getElementById('route')"
++            "expression": "document.getElementById('route').style.cssText = 'position:fixed; left:0; top:0; width:40px; height:20px'"
+         }),
+         Some(&session_id),
+     )
+@@ -203,7 +203,7 @@ async fn every_page_frame_path_uses_the_current_cdp_contract() {
+         &mut ctx,
+         8,
+         "Input.dispatchMouseEvent",
+-        json!({"type": "mousePressed", "x": 0, "y": 0, "button": "left"}),
++        json!({"type": "mousePressed", "x": 10, "y": 10, "button": "left"}),
+         Some(&session_id),
+     )
+     .await;
+@@ -212,7 +212,7 @@ async fn every_page_frame_path_uses_the_current_cdp_contract() {
+         &mut ctx,
+         9,
+         "Input.dispatchMouseEvent",
+-        json!({"type": "mouseReleased", "x": 0, "y": 0, "button": "left"}),
++        json!({"type": "mouseReleased", "x": 10, "y": 10, "button": "left"}),
+         Some(&session_id),
+     )
+     .await;
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index 7e61a71..4fc267f 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -3275,6 +3275,16 @@ function _focusingSteps(next) {
+   _fireFocusEvent(next, 'focus', previous);
+   _fireFocusEvent(next, 'focusin', previous);
+ }
++// A click goes to the nearest flat-tree inclusive ancestor of the element the
++// button went down on and the one it came up on (UI Events).
++globalThis.__obscura_clickTarget = function(down, up) {
++  const upChain = new Set();
++  for (let n = up; n; n = _flatTreeParent(n)) upChain.add(n);
++  for (let n = down; n; n = _flatTreeParent(n)) {
++    if (upChain.has(n)) return n.nodeType === 1 ? n : null;
++  }
++  return null;
++};
+ // The default action of a mousedown nobody cancelled (Chrome's mouse focus):
+ // focus the nearest flat-tree inclusive ancestor of the pressed node that is
+ // a focusable area (an editing host for content inside contenteditable), or
+@@ -5334,7 +5344,6 @@ class Element extends Node {
+     }
+   }
+   getBoundingClientRect() {
+-    globalThis.__obscura_click_target = this;
+     // Real layout when the render feature is compiled in: ask the Rust layout
+     // cache for this element's border box. The op is absent in the default
+     // build, so probe with typeof and fall through to the synthetic rect below.
+@@ -5429,7 +5438,6 @@ class Element extends Node {
+   get ariaSelected() { return this.getAttribute('aria-selected'); }
+   set ariaSelected(v) { if (v == null) this.removeAttribute('aria-selected'); else this.setAttribute('aria-selected', String(v)); }
+   scrollIntoView(arg) {
+-    globalThis.__obscura_click_target = this;
+     const rect = this.getBoundingClientRect();
+     // A viewport-fixed subtree is already expressed in the viewport's
+     // coordinate space and cannot be brought closer by moving the document.

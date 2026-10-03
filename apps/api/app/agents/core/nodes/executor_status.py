@@ -18,12 +18,12 @@ from langchain_core.messages import SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 
-from app.agents.context.slots import BACKGROUND_EXECUTOR_NAME, EXECUTOR_STATUS_MARKER
+from app.agents.context.slots import EXECUTOR_STATUS_MARKER
 from app.agents.core.background.executor_queue import decode_raw_item, parse_lock_value
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.override.langgraph_bigtool.utils import State
 from shared.py.wide_events import log
 
@@ -31,17 +31,17 @@ from shared.py.wide_events import log
 async def executor_status_hook(state: State, config: RunnableConfig, store: BaseStore) -> State:  # noqa: ARG001 -- execute_hooks() passes state/config/store positionally
     """Append a live-executor status frame when the busy lock is held."""
     try:
-        configurable = agent_configurable(config)
+        configurable: AgentConfigurable = agent_configurable(config)
         thread_id = configurable.get("thread_id")
         if not thread_id or not redis_cache.client:
             return state
 
-        messages = state.get("messages", [])
-        # Skip during result narration: the busy lock is still held while comms
-        # re-voices a finished result, and injecting "STILL RUNNING" here can
-        # make the model return an empty narration that leaks the raw text.
-        if messages and messages[-1].name == BACKGROUND_EXECUTOR_NAME:
+        # The narrated run still holds the busy lock. Its flag decides, never a message
+        # name: narration triggers persist in the thread, and a scan for one silences
+        # every later turn of the conversation.
+        if configurable.get("is_result_narration"):
             return state
+        messages = state.get("messages", [])
 
         raw = await redis_cache.client.get(f"{EXECUTOR_BUSY_PREFIX}{thread_id}")
         if raw is None:

@@ -936,7 +936,7 @@ importers:
         specifier: ^3.0.2
         version: 3.0.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       axios:
-        specifier: 1.20.0
+        specifier: ^1.20.0
         version: 1.20.0
       canvas-confetti:
         specifier: ^1.9.4
@@ -1213,7 +1213,7 @@ importers:
         specifier: ^0.10.9
         version: 0.10.9
       axios:
-        specifier: 1.20.0
+        specifier: ^1.20.0
         version: 1.20.0
       dotenv:
         specifier: ^16.6.1

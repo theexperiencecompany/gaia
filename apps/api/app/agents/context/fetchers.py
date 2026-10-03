@@ -25,6 +25,7 @@ from app.agents.context.text import (
     BUILTIN_OVERLAP_LINE,
     CORE_MEMORY_HEADER,
     GAIA_KNOWLEDGE_HEADER,
+    MEMORY_IS_PAST_NOTE,
     MEMORY_RECALL_HEADER,
 )
 from app.agents.prompts.new_user_prompts import build_new_user_guidance
@@ -162,7 +163,8 @@ async def build_agenda_and_activity_block(ctx: SectionContext) -> str:
     if agenda:
         parts.append(f"{AGENDA_HEADING}{agenda}")
     if activity:
-        parts.append(f"{RECENT_ACTIVITY_HEADING}{activity}")
+        # The journal is where a finished task shows up, so it says what it is.
+        parts.append(f"{RECENT_ACTIVITY_HEADING}\n{MEMORY_IS_PAST_NOTE}{activity}")
     return "\n\n".join(parts)
 
 

@@ -13,15 +13,11 @@
 # warns instead). Past the date it fails again: fix it, or renew the deferral
 # with a fresh reason. --update keeps the field.
 apps/api/app/agents/context/assemble.py	TB002
-apps/api/app/agents/core/background/redis_writer.py	TB001
-apps/api/app/agents/core/background/redis_writer.py	TB002
 apps/api/app/agents/core/integration_capabilities.py	TB001
 apps/api/app/agents/core/interruption.py	TB002
 apps/api/app/agents/core/nodes/adapt_media.py	TB002
-apps/api/app/agents/core/nodes/executor_status.py	TB002
 apps/api/app/agents/core/nodes/filter_messages.py	TB002
 apps/api/app/agents/core/nodes/follow_up_actions_node.py	TB002
-apps/api/app/agents/core/nodes/manage_system_prompts.py	TB002
 apps/api/app/agents/core/nodes/memory_node.py	TB002
 apps/api/app/agents/core/subagents/call_record.py	TB002
 apps/api/app/agents/llm/client.py	TB001	deferred-until=2026-12-31; the 4 remaining Any are LangChain's own contract — two ainvoke/invoke returns and **_kwargs overriding Runnable/BaseCallbackHandler signatures typed Any upstream, plus _requested_model taking any Runnable shape (CLAUDE.md Type Safety item 14). Every TB002 in the file was fixed in #1194 (decided 2026-09-20)
@@ -93,7 +89,6 @@ apps/api/app/config/token_repository.py	TB002
 apps/api/app/constants/outbound.py	TB001
 apps/api/app/constants/profession_bios.py	TB002
 apps/api/app/core/lazy_loader.py	TB001
-apps/api/app/core/lifespan.py	TB002
 apps/api/app/core/websocket_broadcast_listener.py	TB002
 apps/api/app/core/websocket_manager.py	TB001
 apps/api/app/core/websocket_manager.py	TB002
@@ -205,8 +200,6 @@ apps/api/app/services/onboarding/inbox_triage_service.py	TB001
 apps/api/app/services/onboarding/inbox_triage_service.py	TB002
 apps/api/app/services/onboarding/intelligence_service.py	TB002
 apps/api/app/services/onboarding/onboarding_service.py	TB001
-apps/api/app/services/onboarding/social_profile_service.py	TB001
-apps/api/app/services/onboarding/social_profile_service.py	TB002
 apps/api/app/services/onboarding/writing_style_service.py	TB002
 apps/api/app/services/payments/payment_webhook_service.py	TB001
 apps/api/app/services/payments/payment_webhook_service.py	TB002
@@ -252,8 +245,6 @@ apps/api/app/services/workflow/playbook/check.py	TB002
 apps/api/app/services/workflow/playbook/evaluator.py	TB001
 apps/api/app/services/workflow/playbook/parser.py	TB001
 apps/api/app/services/workflow/playbook/parser.py	TB002
-apps/api/app/services/workflow/playbook/runner.py	TB001
-apps/api/app/services/workflow/playbook/runner.py	TB002
 apps/api/app/services/workflow/playbook/scripted_model.py	TB001
 apps/api/app/services/workflow/queue_service.py	TB001
 apps/api/app/services/workflow/scheduler.py	TB001
@@ -264,11 +255,7 @@ apps/api/app/services/workflow/trigger_search.py	TB001
 apps/api/app/services/workflow/trigger_search.py	TB002
 apps/api/app/utils/device_onboarding.py	TB002
 apps/api/app/workers/config/log_config.py	TB002
-apps/api/app/workers/lifecycle/shutdown.py	TB001
-apps/api/app/workers/lifecycle/shutdown.py	TB002
-apps/api/app/workers/lifecycle/startup.py	TB001
 apps/api/app/workers/queue.py	TB001
-apps/api/app/workers/task_envelope.py	TB001
 apps/api/app/workers/tasks/checkpoint_retention_tasks.py	TB001
 apps/api/app/workers/tasks/checkpoint_retention_tasks.py	TB002
 apps/api/app/workers/tasks/cleanup_tasks.py	TB001

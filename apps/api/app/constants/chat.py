@@ -123,3 +123,8 @@ ARTIFACT_REF_RE = re.compile(
 WORKSPACE_ARTIFACT_RE = re.compile(
     r"/workspace/sessions/[A-Za-z0-9._-]+/artifacts/(?P<path>[A-Za-z0-9._\-/]+)"
 )
+
+# Cards whose message is not saved yet wait on the conversation under this field, by message
+# id; a turn saves within itself, so ones a day old are dropped by the next append.
+FOLDED_CARDS_FIELD = "folded_cards"
+FOLDED_CARDS_KEEP_SECONDS = 86_400

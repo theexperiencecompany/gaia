@@ -33,6 +33,7 @@ DYNAMIC_CONTEXT_MARKER = "dynamic_context"
 MEMORY_RECALL_MARKER = "memory_recall"
 TODO_CONTEXT_MARKER = "todo_context"
 EXECUTOR_STATUS_MARKER = "executor_status"
+BROWSER_TASK_MARKER = "browser_task"
 TIME_CONTEXT_MARKER = "time_context"
 ONBOARDING_MARKER = "onboarding_context"
 
@@ -55,9 +56,10 @@ class PromptSlot(IntEnum):
     TODO_CONTEXT = 3
     BACKGROUND_EXECUTOR = 4
     EXECUTOR_STATUS = 5
-    MEMORY_RECALL = 6
-    CONVERSATION = 7
-    TIME = 8
+    BROWSER_TASK = 6
+    MEMORY_RECALL = 7
+    CONVERSATION = 8
+    TIME = 9
 
 
 #: Slots holding exactly one message, so a long thread doesn't stack copies
@@ -72,6 +74,7 @@ TAIL_VOLATILE_SLOTS: frozenset[PromptSlot] = frozenset(
         PromptSlot.TODO_CONTEXT,
         PromptSlot.BACKGROUND_EXECUTOR,
         PromptSlot.EXECUTOR_STATUS,
+        PromptSlot.BROWSER_TASK,
         PromptSlot.MEMORY_RECALL,
     }
 )
@@ -127,6 +130,18 @@ def mark(message: M, *names: str) -> M:
     return message
 
 
+#: A system message's slot by the first marker it carries, in this order.
+_SLOT_BY_MARKER: tuple[tuple[str, PromptSlot], ...] = (
+    (EXECUTOR_STATUS_MARKER, PromptSlot.EXECUTOR_STATUS),
+    (BROWSER_TASK_MARKER, PromptSlot.BROWSER_TASK),
+    (MEMORY_RECALL_MARKER, PromptSlot.MEMORY_RECALL),
+    (TODO_CONTEXT_MARKER, PromptSlot.TODO_CONTEXT),
+    (ONBOARDING_MARKER, PromptSlot.ONBOARDING),
+    (DYNAMIC_CONTEXT_MARKER, PromptSlot.DYNAMIC_STABLE),
+    (LEGACY_DYNAMIC_MARKER, PromptSlot.DYNAMIC_STABLE),
+)
+
+
 def slot_of(message: AnyMessage) -> PromptSlot:
     """Which slot message belongs in.
 
@@ -141,14 +156,7 @@ def slot_of(message: AnyMessage) -> PromptSlot:
         )
     if message.name == BACKGROUND_EXECUTOR_NAME:
         return PromptSlot.BACKGROUND_EXECUTOR
-    if has_marker(message, EXECUTOR_STATUS_MARKER):
-        return PromptSlot.EXECUTOR_STATUS
-    if has_marker(message, MEMORY_RECALL_MARKER):
-        return PromptSlot.MEMORY_RECALL
-    if has_marker(message, TODO_CONTEXT_MARKER):
-        return PromptSlot.TODO_CONTEXT
-    if has_marker(message, ONBOARDING_MARKER):
-        return PromptSlot.ONBOARDING
-    if has_marker(message, DYNAMIC_CONTEXT_MARKER) or has_marker(message, LEGACY_DYNAMIC_MARKER):
-        return PromptSlot.DYNAMIC_STABLE
-    return PromptSlot.STATIC
+    return next(
+        (slot for marker, slot in _SLOT_BY_MARKER if has_marker(message, marker)),
+        PromptSlot.STATIC,
+    )

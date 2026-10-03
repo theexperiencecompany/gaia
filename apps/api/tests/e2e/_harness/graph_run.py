@@ -469,11 +469,14 @@ async def run_graph(
     user_id: str = "u-1",
     recursion_limit: int = 25,
     state: dict[str, Any] | None = None,
+    **configurable: Any,
 ) -> GraphRun:
     """Drive one turn and record every node update.
 
     A GraphRecursionError is captured on the run rather than raised: an
     agent spinning to its limit is a behaviour worth asserting, not a test error.
+    Any further keyword is a configurable key, for the identity a tool reads
+    beyond thread and user (stream_id, conversation_id, the run's provenance).
     """
     from langgraph.errors import GraphRecursionError
 
@@ -482,7 +485,7 @@ async def run_graph(
     # `configurable` but every @tool reads `metadata["user_id"]`, so setting
     # only one makes tools silently return "user_id not found" as if they ran.
     config = {
-        "configurable": {"thread_id": thread_id, "user_id": user_id},
+        "configurable": {"thread_id": thread_id, "user_id": user_id, **configurable},
         "metadata": {"user_id": user_id},
         "recursion_limit": recursion_limit,
     }

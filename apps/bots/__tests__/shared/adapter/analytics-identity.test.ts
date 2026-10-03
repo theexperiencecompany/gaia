@@ -40,6 +40,9 @@ class TestAdapter extends BaseBotAdapter {
   protected async deliverOutbound(): Promise<void> {
     /* no outbound delivery under test */
   }
+  protected async sendOutboundFile(): Promise<void> {
+    /* no file delivery under test */
+  }
   buildContext() {
     return {} as never;
   }

@@ -10,8 +10,8 @@ same PR (its header says so too).
 
 - **`workflows/main.yml` ("Quality Checks") — correctness.** Build + tests
   only. Its `quality-gate` job is a branch-protection target.
-- **`workflows/code-quality.yml` ("Code Quality") — hygiene.** Twenty
-  lanes (Biome, tsc, `python-static` = ruff + custom AST lints + complexity +
+- **`workflows/code-quality.yml` ("Code Quality") — hygiene.** Twenty-one
+  lanes (Biome, tsc, the Go tool `tools/gaia-connect`, `python-static` = ruff + custom AST lints + complexity +
   docstrings + security in one job, mypy, dead code, evlog-map observability
   score, wide-event cross-runtime conformance, semgrep, sharded mutation
   testing, …) behind the
@@ -140,7 +140,17 @@ ephemeral runner cost ~5 min per run, its exit code needed a session-cleanup
 workaround (grep for a `GAIA_PYTEST_EXIT` sentinel), and its engine-image pull
 was flaky enough to need a retry loop. **The Dagger module (`.dagger/`) is the
 local harness** — `dagger call test-python` gives you the identical topology
-on a dev machine; keep the two in sync (images, credentials, env vars).
+on a dev machine; keep the two in sync (images, credentials, env vars). The
+browser slice (`engines: true` in `test-slices.json`) is the one slice a bare
+`dagger call test-python` leaves out: it needs Chromium and an Obscura build, so
+it runs only by name, `dagger call test-python --slice-name browser`, which
+builds Obscura from the Dockerfile's `obscura-bin` stage and installs Chromium.
+In CI the engine slices run as their own job, `test-python-engines` (test-python's
+steps by YAML alias), which needs `obscura-bin`: that job builds Obscura through
+`.github/actions/build-obscura` (the composite obscura-compat uses, one GHA cache
+scope) under a 60-minute cap, so a cold build never spends the slice's 15. The
+slice finds both engines through `scripts/ci/browser.sh locate` and fails, never
+skips, when either is missing.
 
 Gotcha that will bite conversions: the repo has no `.npmrc` any more — pnpm's
 default isolated linker is what runners, dev machines and the Dagger env all
