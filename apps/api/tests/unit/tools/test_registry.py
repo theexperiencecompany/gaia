@@ -501,11 +501,7 @@ def expected_category_tool_names() -> dict[str, set[str]]:
         "execute": {execute_tool.execute.name, schema_tool.get_tool_schema.name},
         "creative": {image_tool.generate_image.name, flowchart_tool.create_flowchart.name},
         "weather": {weather_tool.get_weather.name},
-        "browser": {
-            browser_tool.browser_task.name,
-            browser_tool.wait_for_browser_task.name,
-            browser_tool.guide_browser_task.name,
-        },
+        "browser": {browser_tool.browser_task.name},
         "context": {context_tool.gather_context.name},
         "desktop": {t.name for t in desktop_tools.tools},
     }

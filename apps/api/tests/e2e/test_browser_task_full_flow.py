@@ -40,7 +40,6 @@ USER = "user-full-flow"
 
 RETRIEVE = call("retrieve_tools", {"exact_tool_names": ["browser_task"]}, "r1")
 START = call("browser_task", {"task": "book a table for two at 7pm"}, "b1")
-JOIN = call("wait_for_browser_task", {}, "w1")
 
 NOTE = "skip the login, just tell me the opening hours"
 SUMMARY = " ".join(["The table is booked for 7pm on Friday."] * 10)
@@ -64,6 +63,7 @@ def _configurable(**extra: Any) -> dict[str, Any]:
     return {
         "conversation_id": CONVERSATION,
         "stream_id": STREAM,
+        "bot_message_id": "bot-msg-full-flow",
         "source_category": SourceCategory.BOT.value,
         "conversation_source": ConversationSource.DISCORD.value,
         **extra,
@@ -99,7 +99,7 @@ async def test_a_full_run_screenshots_hands_off_and_reports() -> None:
             "app.services.browser.runner.publish_step_screenshot",
             side_effect=_record_upload,
         ):
-            async with executor_graph([RETRIEVE, START, JOIN, "Done."]) as graph:
+            async with executor_graph([RETRIEVE, START, "Started."]) as graph:
                 run_task = asyncio.create_task(
                     run_graph(
                         graph,
@@ -113,7 +113,7 @@ async def test_a_full_run_screenshots_hands_off_and_reports() -> None:
                 assert await resolve_handoff(handoff_id, HandoffDecision.CONTINUE, USER, NOTE) == (
                     HandoffStatus.COMPLETED
                 )
-                run = await run_task
+                await run_task
                 await world.settle()
         # The conversation can browse again.
         assert await get_conversation_slot(CONVERSATION) is None
@@ -143,11 +143,12 @@ async def test_a_full_run_screenshots_hands_off_and_reports() -> None:
     assert [card["status"] for card in handoffs] == ["pending", "completed"]
     assert world.browser.takeover_notes == [NOTE]
 
-    # The closing result leads with what the user said and keeps the whole summary.
-    joined = run.result_for("wait_for_browser_task") or ""
-    assert joined.startswith(f'While it ran, the user said: "{NOTE}"')
-    assert NOTE in joined
-    assert SUMMARY in joined
+    # The closing result leads with what the user said and keeps the whole summary,
+    # told once, by the executor run its landing woke.
+    told = world.result_told()
+    assert told.startswith(f'While it ran, the user said: "{NOTE}"')
+    assert SUMMARY in told
+    assert world.woken == [CONVERSATION]
 
     results = [card for card in world.cards() if card["kind"] == "result"]
     assert [card["status"] for card in results] == [BrowserSessionStatus.COMPLETED.value]
@@ -158,7 +159,7 @@ async def test_a_full_run_screenshots_hands_off_and_reports() -> None:
 async def test_every_frame_on_the_stream_is_a_shaped_browser_card() -> None:
     """The frontend renders tool_data by tool_name; a frame without that envelope is a card the stream cannot show."""
     async with browser_job_world(STREAM, steps=STEPS[:2]) as world:
-        async with executor_graph([RETRIEVE, START, JOIN, "Done."]) as graph:
+        async with executor_graph([RETRIEVE, START, "Started."]) as graph:
             await run_graph(
                 graph,
                 "book me a table",
@@ -174,7 +175,7 @@ async def test_every_frame_on_the_stream_is_a_shaped_browser_card() -> None:
         for frame in frames
         if frame.get("tool_data", {}).get("tool_name") == "browser_task_data"
     ]
-    assert card_frames, "the run put no cards on the turn's stream"
+    assert card_frames, "the run put no cards on its stream"
     for frame in card_frames:
         assert frame["tool_data"]["data"]["kind"] in {
             "session",

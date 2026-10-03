@@ -12,7 +12,7 @@ import pytest
 from app.constants.browser import HandoffStatus
 from app.constants.chat import ConversationSource
 from app.schemas.browser import NewHandoff
-from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
+from app.schemas.browser_job import BrowserJobState, BrowserJobStatus, BrowserJobStopped
 from app.services.analytics_service import AnalyticsEvents
 from app.services.browser import job_stop, resolution as res_mod
 from app.services.browser.handoff import await_handoff, create_pending_handoff, get_handoff
@@ -20,6 +20,7 @@ from app.services.browser.job_stop import RequesterChat
 from app.services.browser.jobs import (
     job_cancel_requested,
     put_job_state,
+    record_ending,
     set_job_wait,
     set_latest_job,
 )
@@ -41,7 +42,16 @@ async def pending(
     """Start a job in c1 paused on handoff h1, with ARQ's pool on the same fake Redis."""
     monkeypatch.setattr(job_stop.RedisPoolManager, "get_pool", AsyncMock(return_value=fake_redis))
     await set_latest_job("c1", "job-1")
-    await put_job_state(BrowserJobState(job_id="job-1", status=BrowserJobStatus.RUNNING, task="t"))
+    await put_job_state(
+        BrowserJobState(
+            job_id="job-1",
+            status=BrowserJobStatus.RUNNING,
+            task="t",
+            conversation_id="conv-of-the-job",
+            user_id="u1",
+            in_background=True,
+        )
+    )
     await create_pending_handoff(
         "h1",
         NewHandoff(
@@ -186,7 +196,17 @@ async def test_a_message_is_read_for_a_stop_only_while_a_task_runs(
     # No job in the chat, then one that has ended: nothing to stop, nothing read.
     assert await stop_running_job_from_message("c2", None, "stop") is False
     await set_latest_job("c2", "job-2")
-    await put_job_state(BrowserJobState(job_id="job-2", status=BrowserJobStatus.DONE, task="t"))
+    await put_job_state(
+        BrowserJobState(
+            job_id="job-2",
+            status=BrowserJobStatus.RUNNING,
+            task="t",
+            conversation_id="c2",
+            user_id="u1",
+            in_background=True,
+        )
+    )
+    await record_ending("job-2", BrowserJobStopped())
     assert await stop_running_job_from_message("c2", None, "stop") is False
     classify.assert_not_awaited()
 
@@ -211,12 +231,26 @@ async def test_a_plain_stop_in_the_dm_stops_the_task_the_user_started_in_a_group
     )
     classify = res_mod.ainvoke_structured_gemini
     await put_job_state(
-        BrowserJobState(job_id="job-g", status=BrowserJobStatus.RUNNING, task="book")
+        BrowserJobState(
+            job_id="job-g",
+            status=BrowserJobStatus.RUNNING,
+            task="book",
+            conversation_id="conv-of-the-job",
+            user_id="u1",
+            in_background=True,
+        )
     )
     await set_latest_job("conv-group", "job-g")
     await set_latest_job("telegram:u1", "job-g")
     await put_job_state(
-        BrowserJobState(job_id="job-d", status=BrowserJobStatus.RUNNING, task="read")
+        BrowserJobState(
+            job_id="job-d",
+            status=BrowserJobStatus.RUNNING,
+            task="read",
+            conversation_id="conv-of-the-job",
+            user_id="u1",
+            in_background=True,
+        )
     )
     await set_latest_job("conv-dm", "job-d")
 
@@ -236,7 +270,16 @@ async def test_a_stop_said_to_one_handoff_stops_its_own_job_not_the_newest_at_th
 ) -> None:
     """Two of the user's runs answer at one bot chat: "stop" to job-1's prompt once stopped job-2."""
     _reads(monkeypatch, "cancel")
-    await put_job_state(BrowserJobState(job_id="job-2", status=BrowserJobStatus.RUNNING, task="t"))
+    await put_job_state(
+        BrowserJobState(
+            job_id="job-2",
+            status=BrowserJobStatus.RUNNING,
+            task="t",
+            conversation_id="conv-of-the-job",
+            user_id="u1",
+            in_background=True,
+        )
+    )
     await set_latest_job("c1", "job-2")
 
     await resolve_handoff_from_message("c1", "u1", "stop")

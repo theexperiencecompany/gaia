@@ -169,6 +169,10 @@ class AsyncRedisCommands(Protocol):
         """SMEMBERS — empty set for a missing key."""
         ...
 
+    async def srem(self, name: str, *values: str) -> int:
+        """SREM — returns how many members were removed."""
+        ...
+
     async def publish(self, channel: str, message: str) -> int:
         """PUBLISH — returns the number of subscribers that received it."""
         ...

@@ -13,14 +13,14 @@ a dedicated integration (Gmail, Calendar, etc.) when one exists.
 The browser runs on isolated, self-hosted infrastructure. The user sees every
 step live (goal + screenshot).
 
-This tool STARTS the run and returns immediately. It does NOT return a result.
-Call it once per turn: never a second time to retry or to also check something
-else. The run continues in the background even after your turn ends. When you
-need the outcome in this turn, call wait_for_browser_task() and report what IT
-returns; if you finish the turn without joining, the result is delivered to the
-user as a follow-up message and you must not claim an outcome you never saw.
-Never claim the browser is unavailable, busy or rate limited unless a browser
-tool result said so.
+In a live conversation this tool STARTS the run and returns at once, without a
+result: the run goes on in the background, and its result arrives in your inbox
+as a <browser_result> message when it ends (waking you if you have finished).
+Never claim an outcome before that message. In a workflow or scheduled run it
+instead returns only once the run has ended, with its result. Call it once per
+turn: never a second time to retry or to also check something else. Never claim
+the browser is unavailable, busy or rate limited unless a browser tool result
+said so.
 
 This tool CAN handle logins and CAPTCHAs: it hands the step to the user, it does
 not fail. When it reaches a login/password, a one-time code / 2FA, a payment
@@ -72,56 +72,6 @@ Args:
         to each as <secret>name</secret>.
 
 Returns:
-    str: Confirmation that the run has STARTED, with its job id. Never a result.
-"""
-
-WAIT_FOR_BROWSER_TASK = """
-Wait for this conversation's background browser task and return its outcome.
-
-Call this after browser_task when you need the run's answer in this turn. It
-returns the run's own guidance text: what it accomplished, that the user stopped
-it, or why it could not be finished. Report that and stop; never re-run the
-browser on the strength of it.
-
-Returns immediately when no browser task is running in this conversation. If the
-run outlasts the wait, it says so: the result is then delivered to the user as a
-follow-up message, so do not claim an outcome and do not start the task again.
-
-It can also come back saying the browser is STUCK and asking you for one
-instruction, with the page it is on. That is not a result: answer it with
-guide_browser_task(...) and then call this again.
-
-Args:
-    timeout (int, optional): Maximum seconds to wait. Default 600.
-
-Returns:
-    str: The run's outcome guidance, a request for one instruction, or a note
-        that it is still running.
-"""
-
-GUIDE_BROWSER_TASK = """
-Answer a stuck browser task with ONE concrete instruction, so it can continue.
-
-Call this only when wait_for_browser_task() came back saying the browser is
-stuck and asked for guidance, then call wait_for_browser_task() again.
-
-Give one next step the browser operator can carry out on the page it described:
-what to click, what to type, where to navigate, or the fact it is missing. Not a
-plan, not several steps. Draw only on the user's request, this conversation and
-your memory; never invent a value, an address, a date or an account detail, and
-never pass a password, a one-time code or a card number (the run hands those to
-the user itself through a live view).
-
-Prefer a different route over repeating what already failed: the request lists
-what the run just tried. If there is no honest way forward, say so with
-give_up=True rather than sending a guess.
-
-Args:
-    instruction (str): The single concrete next step. Required unless giving up.
-    give_up (bool, optional): True when the task cannot honestly be done.
-    reason (str, optional): Why it cannot be done. Only with give_up.
-
-Returns:
-    str: Confirmation that the instruction reached the run, or that nothing was
-        waiting for one.
+    str: Confirmation that the run has STARTED, with its job id; in a workflow or
+        scheduled run, how the run ended.
 """

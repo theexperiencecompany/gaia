@@ -24,7 +24,6 @@ from app.agents.core.background.executor_capture import (
     drain_executor_tool_data,
     register_executor_capture,
     teardown_executor_capture,
-    tool_data_from_events,
 )
 from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.background.session import (
@@ -36,6 +35,7 @@ from app.agents.core.background.session import (
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.browser import BROWSER_TASK_EVENT, BROWSER_TOOL_CATEGORY
 from app.constants.log_tags import LogTag
+from app.models.chat_models import ToolDataEntry
 from app.models.stream_events import ToolOutputPayload
 from app.services.chat.chunks import normalize_custom_event
 from app.utils.agent_utils import (
@@ -514,12 +514,18 @@ class TestAnExecutorThatNeverFinishes:
         assert BACKGROUND_EXECUTOR_WAIT_TIMEOUT < WORKER_JOB_TIMEOUT_SECONDS
 
 
-class TestToolDataFromEvents:
-    """The grouping half of the drain, run on a feed that no StreamSession ever held.
+def _drained(events: list[dict]) -> list[ToolDataEntry]:
+    """Drain events as a detached stream's session collected them, as its close saves them."""
+    session = create_session("stream-browser-feed", RunKind.QUEUED)
+    session.tool_events.extend(events)
+    try:
+        return drain_executor_tool_data("stream-browser-feed")
+    finally:
+        sess.teardown_session("stream-browser-feed")
 
-    A detached browser job's cards live in Redis, not in this process's session,
-    so a delivery from the worker has to reconstruct them from the raw frames.
-    """
+
+class TestDrainingABrowserJobsFeed:
+    """A background browser job's cards, relayed onto its own stream, saved into the turn's message."""
 
     @staticmethod
     def _browser_feed() -> list[dict]:
@@ -562,18 +568,18 @@ class TestToolDataFromEvents:
         return [normalize_custom_event(frame) for frame in raw]
 
     def test_an_empty_feed_reconstructs_nothing(self) -> None:
-        assert tool_data_from_events([]) == []
+        assert _drained([]) == []
 
     def test_the_cards_come_back_in_the_order_the_run_published_them(self) -> None:
-        entries = tool_data_from_events(self._browser_feed())
+        entries = _drained(self._browser_feed())
 
         cards = [e for e in entries if e["tool_name"] == BROWSER_TASK_EVENT]
         assert [c["data"]["kind"] for c in cards] == ["session", "step"]
 
     def test_the_actions_are_grouped_under_the_runs_browser_row(self) -> None:
         # Ungrouped, every action would render as its own top-level card in the
-        # delivered message instead of one collapsible "Browser" row.
-        entries = tool_data_from_events(self._browser_feed())
+        # saved message instead of one collapsible "Browser" row.
+        entries = _drained(self._browser_feed())
 
         (group,) = [e for e in entries if e["tool_name"] == "subagent_group"]
         assert group["data"]["subagent_name"] == "Browser"
@@ -581,7 +587,7 @@ class TestToolDataFromEvents:
         assert [call["tool_name"] for call in group["data"]["tool_calls"]] == ["click"]
 
     def test_each_actions_result_is_carried_on_its_row(self) -> None:
-        entries = tool_data_from_events(self._browser_feed())
+        entries = _drained(self._browser_feed())
 
         (group,) = [e for e in entries if e["tool_name"] == "subagent_group"]
         assert group["data"]["tool_calls"][0]["output"] == "clicked Menu"

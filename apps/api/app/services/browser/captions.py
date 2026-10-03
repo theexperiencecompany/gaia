@@ -13,7 +13,6 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, ConfigDict
 
 from app.constants.browser import (
-    BROWSER_AGENT_GUIDANCE_CAPTION,
     BrowserHandoffAction,
 )
 from app.schemas.browser import BrowserAction
@@ -114,9 +113,6 @@ _STATIC_CAPTIONS: dict[str, str] = {
     "wait": "Waiting for the page",
     BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER: _HANDING_OVER,
     BrowserHandoffAction.SOLVE_CAPTCHA_WITH_HELP: _HANDING_OVER,
-    # The agent round trip is not the user's business; they see only that the
-    # run is looking for another route.
-    BrowserHandoffAction.REQUEST_AGENT_GUIDANCE: BROWSER_AGENT_GUIDANCE_CAPTION,
 }
 
 

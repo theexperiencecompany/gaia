@@ -1,15 +1,17 @@
-"""The executor-facing browser-automation tools: start a run, collect it, unstick it.
+"""The executor-facing browser-automation tool: start a run, told its ending once.
 
-The executor sees a start, a join and an answer, not the internals. The "do you want me to
-use a browser?" confirmation is handled by the shared HIL system (``browser_task``
-is registered destructive). This file owns only the turn's half of a run: the
-settings and URL gates, the identity read off the run's config, the enqueue, and
-the relay that replays the run's cards onto this turn. The run itself belongs to
-the ARQ worker, through ``app/services/browser/job_runner.py``.
+The "do you want me to use a browser?" confirmation is handled by the shared HIL
+system (browser_task is registered destructive). This file owns only the turn's
+half of a run: the settings and URL gates, the identity read off the run's
+config, the enqueue, and how the ending reaches the executor. A run in a live
+conversation runs in the background: the tool acks at once, its cards fold into
+this turn's message, and its ending lands in the executor inbox (job_teller). A
+headless run (a workflow's, a todo's) blocks here until the ending and returns it.
+The run itself belongs to the ARQ worker, through app/services/browser/job_runner.py.
 """
 
 from dataclasses import dataclass
-from time import monotonic
+from functools import partial
 from typing import Annotated
 import uuid
 
@@ -18,106 +20,59 @@ from langchain_core.tools import InjectedToolCallId, tool
 from pydantic import BaseModel, ConfigDict
 
 from app.agents.core.background.redis_writer import publish_to_stream
-from app.agents.core.background.session import mark_browser_job_told, note_browser_job_call
+from app.agents.core.subagents.delegation import runs_in_background
 from app.constants.browser import (
-    BROWSER_JOB_JOIN_DEFAULT_WAIT_SECONDS,
     BROWSER_JOB_QUEUE,
     BROWSER_JOB_TASK,
     BrowserSessionStatus,
-    HandoffDecision,
-    JobEnding,
-    ResultSpeaker,
 )
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc, with_rate_limiting
+from app.models.agent_models import agent_configurable
 from app.models.chat_models import ConversationSource
 from app.schemas.browser import BrowserResultSnapshot, BrowserTaskSecret
-from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJobStatus
-from app.services.browser.agent_guidance import (
-    clear_guidance_request,
-    get_guidance_request,
-    guidance_message,
+from app.schemas.browser_job import (
+    BrowserJobFinished,
+    BrowserJobRequest,
+    BrowserJobState,
+    BrowserJobStatus,
 )
-from app.services.browser.handoff import reply_address, resolve_handoff
+from app.services.browser.handoff import reply_address
 from app.services.browser.jev.secrets import RunSecrets
-from app.services.browser.job_events import read_finished_cards, read_job_events
-from app.services.browser.job_relay import hold_collected_result, live_run, relay_job_events
-from app.services.browser.job_runner import agent_result_message
+from app.services.browser.job_relay import follow_job_cards, relay_job_cards
+from app.services.browser.job_teller import ending_message
 from app.services.browser.jobs import (
     claim_conversation_slot,
-    claim_result_delivery,
-    drop_joiner_lease,
-    get_conversation_slot,
-    get_job_state,
-    get_latest_job,
-    job_cancel_requested,
+    done_state,
     put_job_state,
     record_ending,
-    refresh_joiner_lease,
     release_conversation_slot,
     restore_latest_job,
     set_latest_job,
-    settle_result_claim,
-    take_joiner_lease,
 )
-from app.templates.docstrings.browser_tool_docs import (
-    BROWSER_TASK,
-    GUIDE_BROWSER_TASK,
-    WAIT_FOR_BROWSER_TASK,
-)
+from app.templates.docstrings.browser_tool_docs import BROWSER_TASK
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.url_safety import assert_safe_url_shape
 from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log, spawn_logged_task
 
-#: Handed back when the worker is gone: the run cannot be resumed and must not be
-#: silently retried, so the executor is told the same thing a failed run tells it.
-_WORKER_LOST = agent_result_message(
-    BrowserResultSnapshot(
-        status=BrowserSessionStatus.FAILED,
-        success=False,
-        summary="the browser worker stopped unexpectedly",
-    )
-)
-
-# What each tool tells the model, one name per outcome: the reply is how the model
-# learns which branch it landed in and which tool to call next.
+# What the tool tells the model, one name per outcome: the reply is how the model
+# learns which branch it landed in and what to do next.
 _UNSAFE_START_URL = "I can't open {url}: {error}. Only public http(s) sites are reachable."
 _SLOT_HELD = (
-    "A browser task is already running in this conversation (job {holder}). "
-    "Call wait_for_browser_task() to collect it before starting another."
+    "A browser task is already running in this conversation (job {holder}). Its result "
+    "arrives on its own when it ends; do not start another browser task until then."
 )
 _NOT_QUEUED = "I couldn't start the browser task right now. Try again in a moment."
 _STARTED = (
-    "Browser task started in the background (job {job_id}). Call "
-    "wait_for_browser_task() when you need the outcome; if you end the turn first, "
-    "the result is delivered to the user as a follow-up."
+    "Browser task started in the background (job {job_id}). It has NOT finished: do not "
+    "report an outcome, and do not wait for one. Its result arrives in your inbox as a "
+    "<browser_result> message when it ends, and wakes you if you have already finished."
 )
-_NOTHING_RUNNING = "No browser task is running."
-_ALREADY_TOLD = (
-    "The browser task already finished, and the user was told its outcome in a follow-up "
-    "message. Do not tell them again. What the run reported:\n\n{outcome}"
+_NO_ENDING = (
+    "The browser task (job {job_id}) stopped reporting before it recorded how it ended. "
+    "Tell the user it could not be finished; do not claim any result."
 )
-_STOPPED_BY_USER = (
-    "The user stopped the browser task, and the stop already answered them. "
-    "Say nothing more about it."
-)
-_STILL_RUNNING = (
-    "The browser task is still running; it will be delivered to the user when it finishes."
-)
-_NOTHING_WAITING = (
-    "No browser task is waiting for guidance. Call wait_for_browser_task() to see "
-    "where the run actually is."
-)
-_TOLD_TO_STOP = "Told the browser to stop. Call wait_for_browser_task() for its final result."
-_INSTRUCTION_REQUIRED = (
-    "An instruction is required. Call guide_browser_task with ONE concrete next "
-    "step, or guide_browser_task(give_up=True, reason=...)."
-)
-_INSTRUCTION_SENT = (
-    "Sent that to the browser. Call wait_for_browser_task() again to collect the outcome."
-)
-_STOPPED_WAITING = "The browser task stopped waiting for guidance; call wait_for_browser_task()."
 
 
 @dataclass(frozen=True)
@@ -130,6 +85,9 @@ class _RunParams:
     root_request_id: str | None
     source_category: str | None
     conversation_source: ConversationSource | None
+    #: The message this turn renders into, which a background run's cards fold into.
+    message_id: str | None
+    in_background: bool
 
 
 class _RunConfigurable(BaseModel):
@@ -144,6 +102,7 @@ class _RunConfigurable(BaseModel):
     root_request_id: str | None = None
     source_category: str | None = None
     conversation_source: str | None = None
+    bot_message_id: str | None = None
 
 
 def _run_params(config: RunnableConfig) -> _RunParams:
@@ -159,6 +118,8 @@ def _run_params(config: RunnableConfig) -> _RunParams:
         root_request_id=configurable.root_request_id,
         source_category=configurable.source_category,
         conversation_source=conv_source,
+        message_id=configurable.bot_message_id,
+        in_background=runs_in_background(True, agent_configurable(config)),
     )
 
 
@@ -177,6 +138,7 @@ def _job_request(
         user_id=params.user_id,
         conversation_id=params.conversation_id,
         task=task,
+        in_background=params.in_background,
         start_url=start_url,
         stream_id=params.stream_id,
         root_request_id=params.root_request_id,
@@ -205,13 +167,18 @@ async def browser_task(
         "wherever one is used, never the value.",
     ] = None,
 ) -> str:
-    """Start a browser run as a background job and return immediately.
+    """Start a browser run as a background job: ack at once, or block until it ends when headless.
 
-    Claims the conversation's one browser slot, hands the run to the worker, and
-    starts the relay that puts the run's cards on this turn's stream.
+    Claims the conversation's one browser slot and hands the run to the worker.
     """
     params = _run_params(config)
-    log.set(browser={"operation": "task", "source_category": params.source_category})
+    log.set(
+        browser={
+            "operation": "task",
+            "source_category": params.source_category,
+            "in_background": params.in_background,
+        }
+    )
 
     if start_url:
         try:
@@ -233,14 +200,7 @@ async def browser_task(
     # The task is the executor's own; a secret value it wrote is put back as its placeholder.
     task = RunSecrets(given).mask(task)
     request = _job_request(params, job_id, tool_call_id, task, start_url, given)
-    await put_job_state(
-        BrowserJobState(
-            job_id=job_id,
-            status=BrowserJobStatus.QUEUED,
-            task=task,
-            relay_stream_id=params.stream_id,
-        )
-    )
+    await put_job_state(BrowserJobState.of(request, BrowserJobStatus.QUEUED))
     # Findable before a worker can take it, so a stop from the moment it is queued reaches it.
     # A bot run is also reached from the requester's bot chat: its handoffs are answered,
     # and a /stop lands, there.
@@ -253,24 +213,23 @@ async def browser_task(
         # A job that never ran must not hide the one before it from a /stop at the same chat.
         for key, previous in replaced.items():
             await restore_latest_job(key, job_id, previous)
-        ended = BrowserJobState(
-            job_id=job_id,
-            status=BrowserJobStatus.DONE,
-            task=task,
-            relay_stream_id=params.stream_id,
-            agent_message=_NOT_QUEUED,
+        # Ended without running, told by this reply alone: nothing lands in the inbox.
+        await record_ending(
+            job_id,
+            BrowserJobFinished(
+                result=BrowserResultSnapshot(
+                    status=BrowserSessionStatus.FAILED, success=False, summary=_NOT_QUEUED
+                )
+            ),
         )
-        # Ended without running, so neither a join nor a stop waits on it; the
-        # record carries the DONE state a join reads.
-        await record_ending(job_id, JobEnding.FINISHED, ended)
         await release_conversation_slot(params.conversation_id, job_id)
         return _NOT_QUEUED
 
     log.set_ns("browser", job_id=job_id)
-    if params.stream_id:
-        note_browser_job_call(params.stream_id, job_id, tool_call_id)
-        spawn_logged_task("browser_job_relay", relay_job_events(job_id, params.stream_id))
-    return _STARTED.format(job_id=job_id)
+    if params.in_background:
+        spawn_logged_task("browser_job_relay", relay_job_cards(request, params.message_id))
+        return _STARTED.format(job_id=job_id)
+    return await _await_ending(request)
 
 
 async def _enqueue(request: BrowserJobRequest) -> bool:
@@ -306,178 +265,20 @@ async def _enqueue(request: BrowserJobRequest) -> bool:
     return True
 
 
-@tool
-@with_doc(WAIT_FOR_BROWSER_TASK)
-async def wait_for_browser_task(
-    config: RunnableConfig,
-    tool_call_id: Annotated[str, InjectedToolCallId],
-    # NOSONAR python:S7483 — `timeout` is part of this tool's LLM-facing input
-    # schema (the model chooses how long to wait); it is not an internal call
-    # timeout that an asyncio.timeout() context manager could replace.
-    timeout: Annotated[  # NOSONAR python:S7483
-        int,
-        f"Most seconds to wait for the browser task. Default {BROWSER_JOB_JOIN_DEFAULT_WAIT_SECONDS}.",
-    ] = BROWSER_JOB_JOIN_DEFAULT_WAIT_SECONDS,
-) -> str:
-    """Wait for this conversation's background browser task and return its outcome."""
-    params = _run_params(config)
-    job_id = await get_latest_job(params.conversation_id)
-    if job_id is None:
-        return _NOTHING_RUNNING
-
-    stream_id = params.stream_id or ""
-    await take_joiner_lease(job_id, stream_id)
-    keep_lease = False
-    try:
-        outcome = await _join(job_id, params.conversation_id, stream_id, tool_call_id, timeout)
-        keep_lease = outcome.keep_lease
-        return outcome.message
-    finally:
-        # The worker stays silent while this lease is held, so a leaked one loses
-        # the result entirely -- except on a guidance request, where this same
-        # turn is coming straight back, or a collected result, held until its run ends.
-        if not keep_lease:
-            await drop_joiner_lease(job_id, stream_id)
-
-
-@dataclass(frozen=True)
-class _JoinOutcome:
-    """What a join returns, and whether this turn is still on the hook for the result."""
-
-    message: str
-    keep_lease: bool = False
-
-
-async def _join(
-    job_id: str, conversation_id: str, stream_id: str, tool_call_id: str, timeout: int
-) -> _JoinOutcome:
-    """Wait on the job's feed for its ending or a guidance ask, keeping this turn's claim on the result alive.
-
-    Parks on the feed, so it wakes on the frame that ends the run or asks for
-    guidance; between frames, a beat re-arms the lease and checks the run still
-    has a worker on it.
-    """
-    # From the top, so a frame landing between a state check and the read still wakes it.
-    cursor = "0-0"
-    deadline = monotonic() + timeout
-    while True:
-        state = await get_job_state(job_id)
-        if state is not None and state.status is BrowserJobStatus.DONE:
-            return await _collect(job_id, state, stream_id, tool_call_id)
-        pending = await get_guidance_request(job_id)
-        if pending is not None:
-            return _JoinOutcome(guidance_message(pending.request), keep_lease=True)
-        # A QUEUED job has never had a worker, so the enqueuer's un-heartbeaten
-        # lease expiring says nothing about liveness: a worker still busy booting
-        # will run it. From RUNNING on, a slot it no longer holds means a dead run.
-        running = state is not None and state.status is BrowserJobStatus.RUNNING
-        if state is None or (running and await get_conversation_slot(conversation_id) != job_id):
-            log.warning(f"{LogTag.BROWSER} Browser job lost its worker", browser={"job_id": job_id})
-            return _JoinOutcome(_WORKER_LOST)
-        if monotonic() >= deadline:
-            log.set_ns("browser", job_id=job_id, join="timed_out_still_running")
-            return _JoinOutcome(_STILL_RUNNING)
-        for entry_id, _payload in await read_job_events(job_id, cursor):
-            cursor = entry_id
-        await refresh_joiner_lease(job_id, stream_id)
-
-
-async def _collect(
-    job_id: str, state: BrowserJobState, stream_id: str, tool_call_id: str
-) -> _JoinOutcome:
-    """Take the finished job's result to speak, unless the worker's follow-up or a stop already told the user.
-
-    A job a stop ended was told by the stop: this join, and the call that
-    started the job, are marked told, so a run that did nothing else delivers
-    no message of its own, and nothing of the turn is cancelled. The message that speaks a result carries the run's cards: a join
-    on a turn other than the one that relayed them puts them on this turn's stream.
-    """
-    if await job_cancel_requested(job_id):
-        log.set_ns("browser", join="stopped")
-        run = live_run(stream_id)
-        if run is not None:
-            # The stop told the user: what this run says of the job adds nothing.
-            mark_browser_job_told(run, job_id, tool_call_id)
-        return _JoinOutcome(_STOPPED_BY_USER)
-    if await claim_result_delivery(job_id, ResultSpeaker.JOINER) is not ResultSpeaker.JOINER:
-        return _JoinOutcome(_ALREADY_TOLD.format(outcome=state.agent_message))
-    if stream_id and state.relay_stream_id != stream_id:
-        for card in await read_finished_cards(job_id, state.result):
-            await publish_to_stream(stream_id, card)
-    run = live_run(stream_id)
-    if run is None:
-        # No run goes on past this answer: returning it is the telling.
-        await settle_result_claim(job_id, told=True)
-        return _JoinOutcome(state.agent_message)
-    # Told only once this turn's run has finished; until then the worker waits on it.
-    spawn_logged_task("browser_result_hold", hold_collected_result(job_id, stream_id, run))
-    return _JoinOutcome(state.agent_message, keep_lease=True)
-
-
-@tool
-@with_doc(GUIDE_BROWSER_TASK)
-async def guide_browser_task(
-    config: RunnableConfig,
-    instruction: Annotated[
-        str, "ONE concrete next step for the browser operator, or empty when giving up."
-    ] = "",
-    give_up: Annotated[bool, "True when the task cannot honestly be done."] = False,
-    reason: Annotated[str, "Why it cannot be done. Only with give_up."] = "",
-) -> str:
-    """Answer this conversation's stuck browser task with one instruction, or tell it to stop."""
-    params = _run_params(config)
-    log.set(browser={"operation": "guide"})
-
-    job_id = await get_latest_job(params.conversation_id)
-    pending = await get_guidance_request(job_id) if job_id else None
-    if job_id is None or pending is None:
-        return _NOTHING_WAITING
-    # Still this turn's join: the round trip cost a model call, and an expired
-    # lease would have the worker narrate the run behind the executor's back.
-    await refresh_joiner_lease(job_id, params.stream_id or "")
-
-    text = instruction.strip()
-    if give_up:
-        log.set_ns("browser", gave_up=reason.strip())
-        return await _resolve_guidance(
-            job_id,
-            pending.handoff_id,
-            params.user_id,
-            HandoffDecision.CANCEL,
-            reason.strip(),
-            _TOLD_TO_STOP,
+async def _await_ending(request: BrowserJobRequest) -> str:
+    """Block a headless run until its job ends, its cards on the run's own stream; return how it ended."""
+    sink = partial(publish_to_stream, request.stream_id) if request.stream_id else _ignore
+    await follow_job_cards(request.job_id, request.conversation_id, sink)
+    ending = await done_state(request.job_id)
+    if ending is None:
+        log.error(
+            f"{LogTag.BROWSER} Browser job feed closed with no ending recorded",
+            browser={"job_id": request.job_id},
         )
-    if not text:
-        return _INSTRUCTION_REQUIRED
-    return await _resolve_guidance(
-        job_id,
-        pending.handoff_id,
-        params.user_id,
-        HandoffDecision.CONTINUE,
-        text,
-        _INSTRUCTION_SENT,
-    )
+        return _NO_ENDING.format(job_id=request.job_id)
+    log.set_ns("browser", ending=ending.ending.value)
+    return ending_message(request.job_id, ending)
 
 
-async def _resolve_guidance(
-    job_id: str,
-    handoff_id: str,
-    user_id: str,
-    decision: HandoffDecision,
-    message: str,
-    confirmation: str,
-) -> str:
-    """Answer the request and withdraw it here, not only in the worker.
-
-    The run clears it too, but a join landing in that window would be handed the
-    same stuck page again and spend another instruction answering nothing.
-    """
-    status = await resolve_handoff(handoff_id, decision, user_id, message)
-    await clear_guidance_request(job_id)
-    if status is None:
-        log.warning(
-            f"{LogTag.BROWSER} Guidance arrived after the browser task stopped waiting",
-            browser={"job_id": job_id, "handoff_id": handoff_id},
-        )
-        return _STOPPED_WAITING
-    return confirmation
+async def _ignore(_card: dict[str, object]) -> None:
+    """Drop a card: a headless run with no stream has nowhere to show it."""

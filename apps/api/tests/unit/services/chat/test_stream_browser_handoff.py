@@ -74,7 +74,16 @@ async def _running(job_id: str, *addresses: str) -> None:
     await claim_conversation_slot(CONVERSATION_ID, job_id)
     for address in addresses:
         await set_latest_job(address, job_id)
-    await put_job_state(BrowserJobState(job_id=job_id, status=BrowserJobStatus.RUNNING, task="t"))
+    await put_job_state(
+        BrowserJobState(
+            job_id=job_id,
+            status=BrowserJobStatus.RUNNING,
+            task="t",
+            conversation_id="conv-of-the-job",
+            user_id="u1",
+            in_background=True,
+        )
+    )
 
 
 async def test_a_reply_that_finishes_the_step_resolves_it_and_tells_the_turn_so() -> None:
@@ -228,7 +237,16 @@ async def test_a_failed_read_for_a_stop_still_delivers_the_message_to_the_task()
 async def test_a_stop_said_in_the_dm_stops_the_task_the_user_started_in_a_group() -> None:
     """Its updates and handoffs come to the requester's DM, so a plain "stop" there reaches it."""
     await set_latest_job(f"telegram:{USER_ID}", "job-g")
-    await put_job_state(BrowserJobState(job_id="job-g", status=BrowserJobStatus.RUNNING, task="t"))
+    await put_job_state(
+        BrowserJobState(
+            job_id="job-g",
+            status=BrowserJobStatus.RUNNING,
+            task="t",
+            conversation_id="conv-of-the-job",
+            user_id="u1",
+            in_background=True,
+        )
+    )
 
     with patch.object(resolution, "ainvoke_structured_gemini", _reads_running("stop")):
         note = await _browser_turn_note(_body("stop"), USER_ID, "conv-dm", "telegram")

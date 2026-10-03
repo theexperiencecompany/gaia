@@ -14,7 +14,6 @@ import asyncio
 import base64
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
-from functools import partial
 from hashlib import sha256
 from time import perf_counter
 from typing import Any
@@ -23,14 +22,12 @@ from urllib.parse import urlsplit
 from browser_use.agent.views import AgentState
 
 from app.constants.browser import (
-    BROWSER_AGENT_GUIDANCE_MAX,
     BROWSER_CDP_ATTACH_FAILED,
     BROWSER_CDP_ATTACH_HINT,
     BROWSER_ENGINE_FALLBACK_NOTE,
     BROWSER_ENGINE_FALLBACK_WITHOUT_STATE_NOTE,
     BROWSER_ENGINE_SWITCH_ACK,
     BROWSER_ENGINE_UNRESPONSIVE_SUMMARY,
-    BROWSER_RUN_BLOCKED_SUMMARY,
     BROWSER_RUN_CANCELLED_SUMMARY,
     BROWSER_RUN_CRASHED_SUMMARY,
     BROWSER_RUN_DONE_SUMMARY,
@@ -54,7 +51,6 @@ from app.constants.browser import (
 )
 from app.constants.log_tags import LogTag
 from app.schemas.browser import (
-    AgentGuidanceRequest,
     BrowserCardSnapshot,
     BrowserResultSnapshot,
     BrowserSessionSnapshot,
@@ -100,9 +96,7 @@ OpenFallbackSessionFn = Callable[
     [str | None, LiveSessionState | None], Awaitable[BrowserHostSession]
 ]
 IsCancelledFn = Callable[[], Awaitable[bool]]
-RequestGuidanceFn = Callable[[AgentGuidanceRequest], Awaitable[HandoffOutcome]]
 NoteFn = Callable[[str], Awaitable[None]]
-AgentJoinedFn = Callable[[], Awaitable[bool]]
 
 __all__ = [
     "ActionResultsFn",
@@ -131,10 +125,6 @@ class BrowserRunnerCallbacks:
     user_waiting: FlagFn
     take_user_messages: TakeMessagesFn
     action_results: ActionResultsFn | None = None
-    #: Whether an agent is still joined on this run, one process away, and how to
-    #: ask it. Absent on a run nothing can reach back to, which then ends blocked.
-    agent_joined: AgentJoinedFn | None = None
-    request_guidance: RequestGuidanceFn | None = None
     #: One plain line to the user when a step has shown nothing for a while.
     note: NoteFn | None = None
     #: Opens a fallback-engine session at a url (none when no page was read),
@@ -163,9 +153,7 @@ class BrowserTaskRunner:
         self._request_handoff = callbacks.request_handoff
         self._is_cancelled = callbacks.is_cancelled
         self._action_results = callbacks.action_results
-        self._agent_joined = callbacks.agent_joined
         self._note = callbacks.note
-        self._request_guidance = callbacks.request_guidance
         self._open_fallback_session = callbacks.open_fallback_session
         #: Whether the run moved to the fallback engine, for a page it could not pass
         #: or an engine that failed under it.
@@ -177,8 +165,8 @@ class BrowserTaskRunner:
         self._engine_switch: EngineSwitchReason | None = None
         self._config = config
         self._task_timeout = config.task_timeout_seconds
-        # Every permitted handoff and guidance wait on top of the active-work
-        # budget, so waiting on someone is never starved by a timeout.
+        # Every permitted handoff wait on top of the active-work budget, so
+        # waiting on the user is never starved by a timeout.
         self._wall_clock_timeout = run_wall_clock_seconds(
             config.task_timeout_seconds, config.handoff_timeout_seconds
         )
@@ -187,7 +175,7 @@ class BrowserTaskRunner:
         #: Every model call of the run; each one is metered the moment it lands.
         self.ledger = RunLedger(on_call=self._meter)
         self._started_at = perf_counter()
-        #: Seconds spent waiting on the user or the agent: the task budget does not run then.
+        #: Seconds spent waiting on the user: the task budget does not run then.
         self._waited = 0.0
         #: The bound that ended the run, when one did.
         self._budget_stop: _BudgetStop | None = None
@@ -204,11 +192,6 @@ class BrowserTaskRunner:
         #: How the browser a handoff sent the user to was lost while they were in it.
         self._handoff_failure: EngineFailure | None = None
         self._handoffs = 0
-        self._guidances = 0
-        #: Set when a blocked run asked for guidance and got none; the summary the
-        #: user reads, which is the give-up reason when the agent wrote one.
-        # "" reads as falsy exactly like None.
-        self._blocked_summary: str | None = None  # pragma: no mutate
         self._last_step = 0
         # CDN URLs that really uploaded, in step order — the recap's frames.
         self._shots: list[str] = []
@@ -219,7 +202,7 @@ class BrowserTaskRunner:
         self._last_frame_at = perf_counter()
         # None reads as falsy exactly like False.
         self._stall_noted = False  # pragma: no mutate
-        # Waiting on the user or the agent is not a stall; the watcher stands down.
+        # Waiting on the user is not a stall; the watcher stands down.
         self._waiting_on_someone = False  # pragma: no mutate
         self._agent_run = self._build_agent_run()
 
@@ -236,13 +219,6 @@ class BrowserTaskRunner:
             user_waiting=self._callbacks.user_waiting,
             take_user_messages=self._take_user_messages,
             action_results=self._action_results,
-            # Both or neither: a run nothing can reach back to is never offered guidance.
-            guidance_allowed=self._guidance_allowed if self._request_guidance else None,
-            guidance=(
-                partial(self._handle_guidance, self._request_guidance)
-                if self._request_guidance
-                else None
-            ),
             # Only on the fast engine: a run already on the fallback has nowhere to move.
             switch_engine=(
                 self._handle_engine_switch
@@ -467,10 +443,6 @@ class BrowserTaskRunner:
                 BROWSER_RUN_SESSION_LOST_SUMMARY,
                 BrowserRunFailure.SESSION_LOST,
             )
-        if self._blocked_summary:
-            return await self._finish(
-                BrowserSessionStatus.FAILED, self._blocked_summary, BrowserRunFailure.BLOCKED
-            )
         if self._handoff_timed_out:
             return await self._finish(
                 BrowserSessionStatus.FAILED,
@@ -578,48 +550,6 @@ class BrowserTaskRunner:
         """Raise before asking anyone anything once the run must end: nobody is to wait on a run that is over."""
         if await self._should_stop():
             raise BrowserHandoffCancelled(BROWSER_RUN_STOPPED_SUMMARY)
-
-    async def _guidance_allowed(self) -> bool:
-        """Whether a blocked step may still ask the agent that started this run."""
-        if self._agent_joined is None or self._guidances >= BROWSER_AGENT_GUIDANCE_MAX:
-            return False
-        return await self._agent_joined()
-
-    async def _handle_guidance(
-        self, request_guidance: RequestGuidanceFn, request: AgentGuidanceRequest
-    ) -> str:
-        """Ask the joined agent for one instruction; raise to end the run blocked when none comes back."""
-        await self._refuse_wait_when_stopping()
-        self._guidances += 1
-        self._waiting_on_someone = True
-        waiting_since = perf_counter()
-        try:
-            # What the user told the run since it started: without it the agent is
-            # guided back to a step the user already declined.
-            outcome = await request_guidance(
-                request.model_copy(
-                    update={
-                        "user_notes": list(self._user_notes),
-                        "redirects": list(self._redirects),
-                    }
-                )
-            )
-        finally:
-            # None reads as falsy exactly like False.
-            self._waiting_on_someone = False  # pragma: no mutate
-            self._last_frame_at = perf_counter()
-            self._waited += self._last_frame_at - waiting_since
-        instruction = (outcome.message or "").strip()
-        if outcome.status == HandoffStatus.COMPLETED and instruction:
-            log.info(f"{LogTag.BROWSER} Browser run guided by the agent that started it")
-            return instruction
-        self._stopped = True
-        # The executor that gave up writes the closing reply itself; its reason is
-        # model prose, and clipped onto the card it once read as internal reasoning.
-        self._blocked_summary = BROWSER_RUN_BLOCKED_SUMMARY
-        log.set_ns("browser", blocked=BrowserRunFailure.BLOCKED.value)
-        log.info(f"{LogTag.BROWSER} Browser guidance ended the run", status=outcome.status.value)
-        raise BrowserHandoffCancelled(outcome.status.value)
 
     async def _watch_for_stalls(self) -> None:
         """Say once, per silence, how long no frame has shown."""

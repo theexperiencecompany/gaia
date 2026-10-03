@@ -25,7 +25,7 @@ from app.agents.core.background.session import get_session, teardown_session
 from app.agents.tools import executor_tool
 from app.agents.tools.executor_tool import call_executor, cancel_executor, tools
 from app.constants.agents import DONE_EVIDENCE_RULE, AgentTag
-from app.constants.browser import BrowserSessionStatus, JobEnding
+from app.constants.browser import BrowserSessionStatus
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_BUSY_TTL,
@@ -40,7 +40,7 @@ from app.db.repositories.playbooks import playbook_repository
 from app.models.agent_models import InboxEntry, RunningSubagent
 from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus, ToolStep
 from app.schemas.browser import BrowserResultSnapshot
-from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
+from app.schemas.browser_job import BrowserJobFinished, BrowserJobState, BrowserJobStatus
 from app.services.browser import job_stop
 from app.services.browser.job_events import JOB_TERMINAL_FRAME, publish_job_event
 from app.services.browser.jobs import (
@@ -554,17 +554,20 @@ class TestCallExecutorFailures:
 async def _a_running_browser_job(job_id: str = "job-1") -> None:
     await set_latest_job(CONVERSATION_ID, job_id)
     await claim_conversation_slot(CONVERSATION_ID, job_id)
-    await put_job_state(BrowserJobState(job_id=job_id, status=BrowserJobStatus.RUNNING, task="t"))
+    await put_job_state(
+        BrowserJobState(
+            job_id=job_id,
+            status=BrowserJobStatus.RUNNING,
+            task="t",
+            conversation_id="conv-of-the-job",
+            user_id="u1",
+            in_background=True,
+        )
+    )
 
 
 async def _abort_ends_the_job(job_id: str) -> bool:
     """Stand in for ARQ's abort: the run's task is cancelled and ends on its stopped card."""
-    stopped = BrowserResultSnapshot(
-        status=BrowserSessionStatus.CANCELLED, success=False, summary="x"
-    )
-    await put_job_state(
-        BrowserJobState(job_id=job_id, status=BrowserJobStatus.DONE, task="t", result=stopped)
-    )
     await publish_job_event(job_id, JOB_TERMINAL_FRAME)
     return True
 
@@ -610,7 +613,14 @@ class TestCancelExecutorStopsTheBrowser:
         monkeypatch.setattr(job_stop, "_abort_if_started", AsyncMock(return_value=False))
         await set_latest_job("telegram:user-1", "job-g")
         await put_job_state(
-            BrowserJobState(job_id="job-g", status=BrowserJobStatus.RUNNING, task="t")
+            BrowserJobState(
+                job_id="job-g",
+                status=BrowserJobStatus.RUNNING,
+                task="t",
+                conversation_id="conv-of-the-job",
+                user_id="u1",
+                in_background=True,
+            )
         )
 
         response = await run_cancel_executor(
@@ -626,7 +636,21 @@ class TestCancelExecutorStopsTheBrowser:
         """The run recorded its ending first: the stop lost, and the agent is told its answer is told."""
         monkeypatch.setattr(job_stop, "_abort_if_started", AsyncMock(return_value=False))
         await _a_running_browser_job()
-        await record_ending("job-1", JobEnding.FINISHED)
+        found_running = job_stop.running_chat_jobs
+
+        async def _the_run_ends_as_the_stop_finds_it(*args: Any) -> list[BrowserJobState]:
+            running = await found_running(*args)
+            await record_ending(
+                "job-1",
+                BrowserJobFinished(
+                    result=BrowserResultSnapshot(
+                        status=BrowserSessionStatus.COMPLETED, success=True, summary="ok"
+                    )
+                ),
+            )
+            return running
+
+        monkeypatch.setattr(job_stop, "running_chat_jobs", _the_run_ends_as_the_stop_finds_it)
 
         response = await run_cancel_executor(config=config_for(), task_ids=[])
 

@@ -14,7 +14,6 @@ from app.constants.browser import (
     HANDOFF_DECISION_STATUS,
     EngineFailure,
     HandoffDecision,
-    HandoffKind,
     HandoffStatus,
 )
 from app.constants.chat import ConversationSource, SourceCategory
@@ -61,27 +60,22 @@ def reply_address(conversation_id: str, user_id: str, source: ConversationSource
 
 
 async def create_pending_handoff(handoff_id: str, new: NewHandoff) -> None:
-    """Persist a new pending handoff of this kind.
-
-    Only a USER handoff takes a reply address (see reply_address): that key is
-    what makes a plain chat reply resolve it, and an agent-guidance pause is not
-    something the user was ever asked about.
-    """
-    address = new.reply_to if new.kind is HandoffKind.USER else ""
+    """Persist a new pending handoff, answerable by a chat reply at its reply address."""
     record = HandoffRecord(
         status=HandoffStatus.PENDING,
         user_id=new.user_id,
         conversation_id=new.conversation_id,
         job_id=new.job_id,
-        kind=new.kind,
         reason=new.reason,
-        reply_address=address,
+        reply_address=new.reply_to,
     )
     stored = await redis_cache.set(_key(handoff_id), record, ttl=browser_job_ttl_seconds())
     if not stored:
         raise _storage_unavailable(handoff_id)
-    if address:
-        await redis_cache.client.set(_reply_key(address), handoff_id, ex=browser_job_ttl_seconds())
+    if new.reply_to:
+        await redis_cache.client.set(
+            _reply_key(new.reply_to), handoff_id, ex=browser_job_ttl_seconds()
+        )
 
 
 def _storage_unavailable(handoff_id: str) -> BrowserUnavailableError:

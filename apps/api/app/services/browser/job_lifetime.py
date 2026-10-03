@@ -7,8 +7,6 @@ settings that bound a run.
 
 from app.config.settings import settings
 from app.constants.browser import (
-    BROWSER_AGENT_GUIDANCE_MAX,
-    BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS,
     BROWSER_JOB_OVERHEAD_SECONDS,
     BROWSER_JOB_RETENTION_SECONDS,
     MAX_HANDOFFS_PER_TASK,
@@ -16,12 +14,8 @@ from app.constants.browser import (
 
 
 def run_wall_clock_seconds(task_budget: int, handoff_window: int) -> int:
-    """Return the longest a run may take: its active-work budget plus every handoff and guidance round waiting its full window."""
-    return (
-        task_budget
-        + MAX_HANDOFFS_PER_TASK * handoff_window
-        + BROWSER_AGENT_GUIDANCE_MAX * BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS
-    )
+    """Return the longest a run may take: its active-work budget plus every handoff waiting its full window."""
+    return task_budget + MAX_HANDOFFS_PER_TASK * handoff_window
 
 
 def browser_job_deadline_seconds() -> int:

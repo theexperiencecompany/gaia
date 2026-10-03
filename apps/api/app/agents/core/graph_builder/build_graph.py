@@ -84,12 +84,6 @@ EXECUTOR_INITIAL_TOOL_IDS = [
     # Bound, not retrieved: fetching it cost two retrieve_tools rounds
     # and two model calls (about 8s) before the browser even started.
     "browser_task",
-    # The join that collects its answer must not be retrieved either: a
-    # retrieval miss here would strand a started run with nobody to report it.
-    "wait_for_browser_task",
-    # Same reason: the run pauses on this one, and a retrieval miss
-    # would leave it waiting out its guidance timeout for nothing.
-    "guide_browser_task",
     # Bound statically, not left to retrieve_tools: prompts name these
     # directly, so a run whose semantic retrieval misses them could read
     # the instruction and silently never act on it.

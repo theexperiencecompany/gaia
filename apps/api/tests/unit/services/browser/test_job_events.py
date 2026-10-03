@@ -1,4 +1,4 @@
-"""The job's replayable card feed: ordered replay, resume from a cursor, a poisoned frame that must not kill a reader, and the wait for its end.
+"""The job's replayable card feed: ordered replay, resume from a cursor, and a poisoned frame that must not kill a reader.
 
 Real code over fakeredis.
 """
@@ -13,7 +13,6 @@ import pytest
 from app.constants.browser import BROWSER_JOB_EVENTS_PREFIX
 from app.constants.log_tags import LogTag
 from app.services.browser import job_events as job_events_mod
-from app.services.browser.job_events import JOB_GUIDANCE_FRAME, JOB_TERMINAL_FRAME
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
@@ -44,17 +43,6 @@ async def test_frames_replay_in_order_and_a_cursor_resumes_after_itself(
     assert await redis.ttl(KEY) > 0
 
 
-async def test_the_whole_feed_reads_back_as_its_cards_alone() -> None:
-    await job_events_mod.publish_job_event("job-1", _frame(1))
-    await job_events_mod.publish_job_event("job-1", JOB_GUIDANCE_FRAME)
-    await job_events_mod.publish_job_event("job-1", _frame(2))
-    await job_events_mod.publish_job_event("job-1", JOB_TERMINAL_FRAME)
-
-    assert await job_events_mod.read_cards("job-1") == [_frame(1), _frame(2)]
-    # A job that ended without running has no result card to add.
-    assert await job_events_mod.read_finished_cards("job-1", None) == [_frame(1), _frame(2)]
-
-
 async def test_a_poisoned_frame_is_dropped_and_logged_not_raised(
     redis: fakeredis.aioredis.FakeRedis,
 ) -> None:
@@ -66,19 +54,13 @@ async def test_a_poisoned_frame_is_dropped_and_logged_not_raised(
 
     async with captured_wide_event() as event:
         events = await job_events_mod.read_job_events("job-1", "0-0")
-        cards = await job_events_mod.read_cards("job-1")
 
     assert [payload for _, payload in events] == [_frame(1), _frame(5)]
-    assert cards == [_frame(1), _frame(5)]
     errors = [(error["msg"], error["entry_id"]) for error in event["errors"]]
-    assert (
-        errors
-        == [
-            (f"{LogTag.BROWSER} Dropping malformed browser job frame", malformed),
-            (f"{LogTag.BROWSER} Dropping non-object browser job frame", not_an_object),
-        ]
-        * 2
-    )
+    assert errors == [
+        (f"{LogTag.BROWSER} Dropping malformed browser job frame", malformed),
+        (f"{LogTag.BROWSER} Dropping non-object browser job frame", not_an_object),
+    ]
 
 
 async def test_a_read_waits_for_the_next_frame_and_the_feed_is_capped(

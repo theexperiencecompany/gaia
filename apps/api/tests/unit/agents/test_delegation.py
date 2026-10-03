@@ -11,7 +11,7 @@ from contextlib import contextmanager
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import fakeredis.aioredis
 from langchain_core.messages import AIMessage, ToolMessage
@@ -55,6 +55,7 @@ from tests.unit.services.hil.conftest import make_record
 pytestmark = pytest.mark.unit
 
 MODULE = "app.agents.core.subagents.delegation"
+FOLDED = "app.agents.core.background.folded_stream"
 CONVERSATION = "conv-d"
 THREAD = f"spawn_{CONVERSATION}_call-1"
 
@@ -118,8 +119,9 @@ def client_edges() -> Iterator[SimpleNamespace]:
     with (
         patch.object(executor_queue, "StreamManager", AsyncMock()) as stream_manager,
         patch.object(executor_queue.websocket_manager, "broadcast_to_user", new=_broadcast),
-        patch(f"{MODULE}.conversation_repository") as conversations,
+        patch(f"{FOLDED}.conversation_repository") as conversations,
         patch(f"{MODULE}.stream_manager") as streams,
+        patch(f"{FOLDED}.stream_manager", new=streams),
         patch(f"{MODULE}.deliver_to_executor", new=AsyncMock()) as deliver,
     ):
         conversations.append_message_tool_data = AsyncMock(return_value=True)
@@ -972,7 +974,7 @@ class TestABackgroundRunsStreamLifecycle:
                 f"{MODULE}.execute_subagent_stream",
                 new=AsyncMock(return_value=SubagentOutcome(text="done")),
             ),
-            patch(f"{MODULE}.drain_executor_tool_data", return_value=entries),
+            patch(f"{FOLDED}.drain_executor_tool_data", return_value=entries),
         ):
             await delegate(run, background=True, probe_parked=False)
             await _drain()
@@ -997,7 +999,7 @@ class TestSavingABackgroundRunsFrames:
                 f"{MODULE}.execute_subagent_stream",
                 new=AsyncMock(return_value=SubagentOutcome(text="done")),
             ),
-            patch(f"{MODULE}.drain_executor_tool_data", return_value=entries),
+            patch(f"{FOLDED}.drain_executor_tool_data", return_value=entries),
         ):
             await delegate(_delegation(parent), background=True, probe_parked=False)
             await _drain()
@@ -1043,8 +1045,9 @@ class TestSavingABackgroundRunsFrames:
         client_edges.conversations.append_message_tool_data.assert_not_awaited()
         assert recorder.event("subagent_run")["warnings"] == [
             {
-                "msg": f"{LogTag.AGENT} Background subagent has no message to save its cards into",
+                "msg": f"{LogTag.AGENT} Detached stream has no message to save its cards into",
                 "conversation_id": CONVERSATION,
+                "stream_id": ANY,
                 "entries": 2,
             }
         ]
@@ -1059,7 +1062,7 @@ class TestSavingABackgroundRunsFrames:
         client_edges.conversations.append_message_tool_data.assert_not_awaited()
         assert recorder.event("subagent_run")["errors"] == [
             {
-                "msg": f"{LogTag.AGENT} Background subagent cards matched no message; not saved",
+                "msg": f"{LogTag.AGENT} Detached stream cards matched no message; not saved",
                 "conversation_id": CONVERSATION,
                 "message_id": "bot-msg-1",
                 "entries": 2,
@@ -1075,7 +1078,7 @@ class TestSavingABackgroundRunsFrames:
 
         assert recorder.event("subagent_run")["errors"] == [
             {
-                "msg": f"{LogTag.AGENT} Background subagent cards matched no message; not saved",
+                "msg": f"{LogTag.AGENT} Detached stream cards matched no message; not saved",
                 "conversation_id": CONVERSATION,
                 "message_id": "bot-msg-1",
                 "entries": 3,
@@ -1092,9 +1095,9 @@ class TestSavingABackgroundRunsFrames:
         assert _landings(client_edges.deliver) == [_landing("done")]
         assert recorder.event("subagent_run")["errors"] == [
             {
-                "msg": f"{LogTag.AGENT} Could not save a background subagent's cards",
+                "msg": f"{LogTag.AGENT} Could not save a detached stream's cards",
                 "conversation_id": CONVERSATION,
-                "subagent_id": "row-1",
+                "stream_id": ANY,
                 "error_type": "RuntimeError",
                 "error": "mongo down",
             }

@@ -357,7 +357,14 @@ class TestCancelStream:
         await stream_manager.start_stream(TURN, CONVERSATION, FAKE_USER.user_id)
         await set_latest_job(CONVERSATION, "job-1")
         await put_job_state(
-            BrowserJobState(job_id="job-1", status=BrowserJobStatus.RUNNING, task="t")
+            BrowserJobState(
+                job_id="job-1",
+                status=BrowserJobStatus.RUNNING,
+                task="t",
+                conversation_id="conv-of-the-job",
+                user_id="u1",
+                in_background=True,
+            )
         )
 
         await client.post(f"/api/v1/cancel-stream/{TURN}")

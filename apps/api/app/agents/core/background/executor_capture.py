@@ -11,7 +11,6 @@ implementation so chat and workflow runs render identically.
 """
 
 import asyncio
-from collections.abc import Sequence
 from pathlib import Path
 from types import CoroutineType, FrameType
 
@@ -131,29 +130,21 @@ def _innermost_frames(task: asyncio.Task[object]) -> str:
 def drain_executor_tool_data(stream_id: str) -> list[ToolDataEntry]:
     """Drain the session's tool events into reconstructed tool_data.
 
-    Non-destructive read: single ownership, not source-emptying, is what keeps
-    a second drain from duplicating cards.
+    Non-destructive read. Mirrors the comms-graph accumulation path:
+    tool_calls_data outputs are merged in, and subagent start/end pairs are
+    grouped via reconstruct_subagent_groups. Only tool_calls_data entries
+    get their output backfilled.
     """
     session = get_session(stream_id)
     if session is None or not session.tool_events:
         return []
-    return tool_data_from_events(session.tool_events)
-
-
-def tool_data_from_events(events: Sequence[dict[str, object]]) -> list[ToolDataEntry]:
-    """Reconstruct grouped tool_data from a sequence of raw collector events.
-
-    Only tool_calls_data entries get their output backfilled. The events need
-    not come from this process: a detached job's feed is replayed through here
-    to put its cards on a delivered message.
-    """
     entries: list[ToolDataEntry] = []
     # The accumulator envelope is an open bag; only "tool_data" has a fixed
     # shape, and it's this list object throughout, rebound by
     # reconstruct_subagent_groups, hence the re-read at the end.
     accumulated: dict[str, object] = {"tool_data": entries}
     outputs: dict[str, str] = {}
-    for evt in events:
+    for evt in session.tool_events:
         # Hooks emit raw field payloads like {"email_fetch_data": [...]};
         # normalize to {"tool_data": {...}} or absorb_collector_event drops
         # them and the list card never persists.

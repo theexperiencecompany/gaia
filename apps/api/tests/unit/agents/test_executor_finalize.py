@@ -193,39 +193,6 @@ class TestCancelledRouting:
         boundaries.note.assert_not_called()
 
 
-class TestToldRouting:
-    async def test_a_run_that_only_joined_a_job_a_stop_told_delivers_nothing(
-        self, boundaries
-    ) -> None:
-        """Job bb92ce38: the run joined a job the user stopped and narrated it on top of "Stopped."."""
-        run = _run(RunKind.QUEUED)
-        session = create_session("s1", RunKind.QUEUED)
-        session.ran_tool_calls = ("start", "wait")
-        session.told_tool_calls.update({"start", "wait"})
-
-        await er._finalize_executor_run(run, TASK, "The browser run stopped before ...", "final")
-
-        boundaries.deliver.assert_not_awaited()
-        boundaries.record_cancel.assert_awaited_once_with(run.conversation_id, run.task_id, TASK)
-        # Told is not cancelled: the turn's stream closes as a finished one.
-        boundaries.stream_manager.publish_chunk.assert_awaited_once_with("s1", "data: [DONE]\n\n")
-
-    @pytest.mark.parametrize("tool_calls", [("wait", "send_email"), ()])
-    async def test_a_run_that_did_more_than_the_told_join_delivers_it(
-        self, boundaries, tool_calls: tuple[str, ...]
-    ) -> None:
-        """Greptile: told for the whole run dropped the answer to the turn's other work."""
-        run = _run(RunKind.QUEUED)
-        session = create_session("s1", RunKind.QUEUED)
-        session.ran_tool_calls = tool_calls
-        session.told_tool_calls.add("wait")
-
-        await er._finalize_executor_run(run, TASK, "Sent the email.", "final")
-
-        boundaries.deliver.assert_awaited_once()
-        boundaries.record_cancel.assert_not_awaited()
-
-
 class TestCompletedRouting:
     async def test_completed_queued_run_delivers_and_closes_stream(self, boundaries) -> None:
         run = _run(RunKind.QUEUED)
@@ -774,6 +741,24 @@ class TestFinalizeCarriesOnlyWorkTheThreadNeverTook:
 
         prepare.assert_not_awaited()
         assert still_pending == [ec.INTERRUPTION_NOTICE]
+
+    async def test_a_stopped_browser_jobs_notice_starts_no_run(self) -> None:
+        """The stop already answered the user: a run woken for its notice would answer them again."""
+        cache = _FakeInboxCache()
+
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(ec, "redis_cache", cache))
+            inbox = ec.ExecutorInbox("conv-1")
+            await inbox.append("n1", "job-1 was stopped", AgentTag.BROWSER_STOPPED)
+            prepare = stack.enter_context(
+                patch.object(er, "prepare_run_from_item", new_callable=AsyncMock, return_value=None)
+            )
+
+            await er._carry_pending_into_new_run(_run(RunKind.QUEUED), None)
+            still_pending = [entry.id for entry in await inbox.read()]
+
+        prepare.assert_not_awaited()
+        assert still_pending == ["n1"]
 
     async def test_a_redirect_starts_a_run_and_leaves_the_entries_for_its_drain(self) -> None:
         cache = _FakeInboxCache()

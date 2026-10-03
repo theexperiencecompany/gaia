@@ -1,12 +1,12 @@
 """Stop a browser job: what a chat controls, and the one decision a stop makes.
 
-A job ends once, recorded by jobs.record_ending: a stop records STOPPED, the
-run's own result card records FINISHED, and whoever records first wins. A
-stop that won settles the handoff the run is paused on as cancelled and
-aborts its ARQ task, whose cancellation path ends the run on a stopped card;
-a stop that lost reports the job already ended, and its result is told. A job
-still queued is not aborted (ARQ would drop it unrun, leaving no ending): it
-reads its ending at its start and ends there.
+A job ends once (jobs.record_ending): a stop records STOPPED, the run's own
+result card or the reaper records FINISHED, and whoever records first wins. A
+stop that won lands a notice in the executor inbox that wakes nobody (the stop
+answered the user), settles the handoff the run is paused on as cancelled and
+aborts its ARQ task, whose cancellation path ends the run on a stopped card; a
+stop that lost reports the job already ended. A job still queued is not
+aborted (ARQ would drop it unrun): it reads its ending at its start and ends there.
 
 Which jobs a user's stop reaches is chat_job_keys: the conversation's job, and
 the job that answers to the requester's own chat, where a bot run started in
@@ -21,14 +21,10 @@ from arq.utils import timestamp_ms
 
 from app.constants.browser import BrowserStopOutcome, JobEnding
 from app.constants.chat import ConversationSource, SourceCategory
-from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
+from app.schemas.browser_job import BrowserJobState, BrowserJobStopped
 from app.services.browser.handoff import bot_chat_address, cancel_handoff
-from app.services.browser.jobs import (
-    get_job_state,
-    get_job_wait,
-    get_latest_job,
-    record_ending,
-)
+from app.services.browser.job_teller import end_job
+from app.services.browser.jobs import done_state, get_job_state, get_job_wait, get_latest_job
 from app.utils.redis_utils import RedisPoolManager
 from shared.py.wide_events import log
 
@@ -70,7 +66,7 @@ async def running_chat_jobs(
         state = await get_job_state(job_id) if job_id is not None else None
         if (
             state is not None
-            and state.status is not BrowserJobStatus.DONE
+            and await done_state(state.job_id) is None
             and state.job_id not in {job.job_id for job in running}
         ):
             running.append(state)
@@ -95,7 +91,7 @@ async def stop_browser_job(key: str) -> str | None:
 
 async def stop_job(job_id: str) -> BrowserStopOutcome:
     """Record this job's ending as stopped unless it ended already; when the stop won, settle its handoff and abort its task."""
-    if await record_ending(job_id, JobEnding.STOPPED) is not JobEnding.STOPPED:
+    if (await end_job(job_id, BrowserJobStopped())).ending is not JobEnding.STOPPED:
         log.set_ns("browser", stopped_job=job_id, stop_lost="finished")
         return BrowserStopOutcome.ALREADY_ENDED
     paused_on = await get_job_wait(job_id)

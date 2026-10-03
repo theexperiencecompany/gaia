@@ -3,11 +3,7 @@
 import pytest
 
 from app.config.settings import settings
-from app.constants.browser import (
-    BROWSER_AGENT_GUIDANCE_MAX,
-    BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS,
-    MAX_HANDOFFS_PER_TASK,
-)
+from app.constants.browser import MAX_HANDOFFS_PER_TASK
 from app.services.browser.job_lifetime import (
     browser_job_deadline_seconds,
     browser_job_ttl_seconds,
@@ -21,7 +17,6 @@ def test_the_deadline_outlasts_every_window_a_run_may_legitimately_wait_in() -> 
     longest_legitimate_run = (
         settings.BROWSER_USE_TASK_TIMEOUT_SECONDS
         + MAX_HANDOFFS_PER_TASK * settings.BROWSER_USE_HANDOFF_TIMEOUT_SECONDS
-        + BROWSER_AGENT_GUIDANCE_MAX * BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS
     )
 
     assert browser_job_deadline_seconds() > longest_legitimate_run

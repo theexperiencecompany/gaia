@@ -9,10 +9,12 @@ from arq.constants import abort_jobs_ss, in_progress_key_prefix
 import fakeredis.aioredis
 import pytest
 
-from app.constants.browser import BrowserStopOutcome, HandoffStatus, JobEnding
+from app.agents.core.background.executor_channel import ExecutorInbox
+from app.constants.agents import NON_WAKING_TAGS, AgentTag
+from app.constants.browser import BrowserSessionStatus, BrowserStopOutcome, HandoffStatus
 from app.constants.chat import ConversationSource
 from app.schemas.browser import BrowserResultSnapshot, NewHandoff
-from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
+from app.schemas.browser_job import BrowserJobFinished, BrowserJobState, BrowserJobStatus
 from app.services.browser import job_stop
 from app.services.browser.handoff import create_pending_handoff, get_handoff
 from app.services.browser.jobs import (
@@ -36,9 +38,27 @@ def arq(
     return fake_redis
 
 
-async def _job(status: BrowserJobStatus, result: BrowserResultSnapshot | None = None) -> None:
+def _state(
+    status: BrowserJobStatus, *, job_id: str = "job-1", in_background: bool = True
+) -> BrowserJobState:
+    return BrowserJobState(
+        job_id=job_id,
+        status=status,
+        task="t",
+        conversation_id="conv-1",
+        user_id="u1",
+        in_background=in_background,
+    )
+
+
+async def _job(status: BrowserJobStatus, *, in_background: bool = True) -> None:
     await set_latest_job("conv-1", "job-1")
-    await put_job_state(BrowserJobState(job_id="job-1", status=status, task="t", result=result))
+    await put_job_state(_state(status, in_background=in_background))
+
+
+_FINISHED = BrowserJobFinished(
+    result=BrowserResultSnapshot(status=BrowserSessionStatus.COMPLETED, success=True, summary="ok")
+)
 
 
 async def test_a_stop_settles_the_handoff_the_run_waits_on_and_aborts_the_running_task(
@@ -86,8 +106,8 @@ async def test_a_finished_or_unknown_job_is_not_stopped() -> None:
     # A pointer outliving its job's state names nothing to stop.
     await set_latest_job("conv-1", "job-gone")
     assert await job_stop.stop_browser_job("conv-1") is None
-    await _job(BrowserJobStatus.DONE)
-    await record_ending("job-1", JobEnding.FINISHED)
+    await _job(BrowserJobStatus.RUNNING)
+    await record_ending("job-1", _FINISHED)
 
     assert await job_stop.stop_browser_job("conv-1") is None
     assert not await job_cancel_requested("job-1")
@@ -98,7 +118,7 @@ async def test_a_stop_that_comes_after_the_runs_own_end_reports_it_ended_and_cha
 ) -> None:
     """The run recorded its result first: that answer is told, and the stop says so."""
     await _job(BrowserJobStatus.RUNNING)
-    await record_ending("job-1", JobEnding.FINISHED)
+    await record_ending("job-1", _FINISHED)
     await arq.set(f"{in_progress_key_prefix}job-1", "1")
 
     async with captured_wide_event() as event:
@@ -111,8 +131,7 @@ async def test_a_stop_that_comes_after_the_runs_own_end_reports_it_ended_and_cha
 
 async def test_a_stop_in_the_requesters_dm_reaches_the_task_they_started_in_a_group() -> None:
     """Its updates and handoffs come to the DM, so a plain "stop" there must reach it (Greptile)."""
-    group_job = BrowserJobState(job_id="job-g", status=BrowserJobStatus.RUNNING, task="book")
-    await put_job_state(group_job)
+    await put_job_state(_state(BrowserJobStatus.RUNNING, job_id="job-g"))
     await set_latest_job("conv-group", "job-g")
     await set_latest_job("telegram:u1", "job-g")
 
@@ -128,3 +147,43 @@ async def test_a_stop_in_the_requesters_dm_reaches_the_task_they_started_in_a_gr
     # A turn that names no user has no chat of the user's to reach.
     assert job_stop.requester_chat(None, ConversationSource.TELEGRAM) is None
     assert job_stop.chat_job_keys("conv-web", None) == ["conv-web"]
+
+
+async def test_a_stopped_background_job_tells_its_thread_without_waking_anyone() -> None:
+    """The stop answered the user; the thread still has to learn the job ended, or a later run reports it."""
+    await _job(BrowserJobStatus.RUNNING)
+
+    await job_stop.stop_job("job-1")
+
+    [notice] = await ExecutorInbox("conv-1").read()
+    assert notice.tag is AgentTag.BROWSER_STOPPED
+    assert notice.tag in NON_WAKING_TAGS
+    assert "job-1" in notice.text
+
+
+async def test_a_stopped_headless_job_lands_nothing_in_the_inbox() -> None:
+    """Its blocked tool call reads the stop itself; an inbox entry would tell it a second time."""
+    await _job(BrowserJobStatus.RUNNING, in_background=False)
+
+    await job_stop.stop_job("job-1")
+
+    assert await job_cancel_requested("job-1")
+    assert await ExecutorInbox("conv-1").read() == []
+
+
+async def test_a_stop_that_lost_lands_nothing_either() -> None:
+    await _job(BrowserJobStatus.RUNNING)
+    await record_ending("job-1", _FINISHED)
+
+    await job_stop.stop_job("job-1")
+
+    assert await ExecutorInbox("conv-1").read() == []
+
+
+async def test_a_job_that_ended_is_not_one_the_chat_still_controls() -> None:
+    await _job(BrowserJobStatus.RUNNING)
+    assert [job.job_id for job in await job_stop.running_chat_jobs("conv-1", None)] == ["job-1"]
+
+    await record_ending("job-1", _FINISHED)
+
+    assert await job_stop.running_chat_jobs("conv-1", None) == []

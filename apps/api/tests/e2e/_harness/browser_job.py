@@ -1,4 +1,4 @@
-"""Drive a whole background browser job offline, from the executor's tool call to the worker's delivery.
+"""Drive a whole background browser job offline, from the executor's tool call to its ending in the executor inbox.
 
 Three things stand in for the world: Browser-Use (a scripted agent installed at
 the one seam the run constructs it), the browser host (no session is allocated),
@@ -23,15 +23,20 @@ from browser_use.agent.views import ActionResult, AgentState
 from browser_use.browser.events import BrowserConnectedEvent
 import fakeredis.aioredis
 
-from app.agents.core.background.session import RunKind, create_session, signal_executor_done
+from app.agents.core.background.executor_channel import ExecutorInbox
+from app.agents.core.background.session import RunKind, create_session
 from app.config.settings import settings
+from app.constants.agents import AgentTag
 from app.constants.browser import (
     BROWSER_ANSWER_AFTER_STEP,
+    BROWSER_JOB_STREAM_ID_PREFIX,
     BrowserEngine,
     EngineSwitchReason,
     SensitiveCategory,
 )
 from app.core.stream_manager import StreamManager
+from app.models.agent_models import InboxEntry
+from app.models.chat_models import MessageModel
 from app.models.hil_models import HILPreferences
 from app.schemas.browser_job import BrowserJobRequest
 from app.services.browser.exceptions import BrowserSessionGone
@@ -71,13 +76,8 @@ class ScriptedStep:
     await_stop: bool = False
     #: The agent's request_human_takeover action as the step: (reason, category).
     takeover: tuple[str, str] | None = None
-    #: The agent's request_agent_guidance action as the step: its reason.
-    guidance: str | None = None
     #: The agent's continue_in_full_browser action as the step: why the fast engine failed.
     switch: EngineSwitchReason | None = None
-    #: Wait until an executor has joined the job before stepping, so a journey
-    #: about what a joined executor sees is not a race with the turn's own poll.
-    await_joiner: bool = False
     #: The engine under the run dies here: the host loses the session and the run
     #: ends the way Browser-Use ends one, on step failures, with nothing raised.
     engine_dies: bool = False
@@ -163,13 +163,6 @@ class BrowserDouble:
         #: What each takeover handed back to the agent — the user's note.
         self.takeover_notes: list[str | None] = []
         self.takeover: Callable[[str, SensitiveCategory], Any] | None = None
-        #: The reason each blocked step gave when it asked the agent for guidance.
-        self.guidance_reasons: list[str] = []
-        #: What each of those asks handed back — the executor's instruction.
-        self.guidance_notes: list[str] = []
-        self.guidance: Callable[[str], Any] | None = None
-        #: Set once the job reaches the worker; the await_joiner step needs it.
-        self.job_id: str = ""
         #: The next step to play: a run moved to the fallback engine picks up
         #: where the run on the dead engine stopped.
         self.next_step = 0
@@ -270,12 +263,10 @@ class _ScriptedAgent:
         if self._stopped or await self._should_stop():
             self._double.stop_observed = True
             return True
-        if step.await_joiner:
-            await self._wait_for_joiner()
         return False
 
     async def _perform(self, step: ScriptedStep, index: int, on_step_end: Any) -> _History | None:
-        """Report the step as Browser-Use does, run its takeover or guidance action, and return the history a done action ends the run with."""
+        """Report the step as Browser-Use does, run its takeover action, and return the history a done action ends the run with."""
         step_actions = _reported_actions(step)
         self._double.url = step.url
         actions = [_Action(name, params) for name, params in step_actions]
@@ -293,17 +284,13 @@ class _ScriptedAgent:
                 asked = answer.long_term_memory
             if step.takeover is not None:
                 self._double.takeover_notes.append(asked)
-            elif step.guidance is not None:
-                self._double.guidance_notes.append(asked)
         # A done action ends the run where Browser-Use ends it, with its own text and verdict.
         return _ended_by(step_actions)
 
     async def _act(self, step: ScriptedStep) -> object:
-        """Run the step's takeover, guidance or switch; return what a takeover or guidance answered."""
+        """Run the step's takeover or switch; return what a takeover answered."""
         if step.takeover is not None:
             return await self._hand_over(*step.takeover)
-        if step.guidance is not None:
-            return await self._ask_the_agent(step.guidance)
         if step.switch is not None:
             assert self._double.switch is not None, "the run was not offered the full browser"
             await self._double.switch(step.switch)
@@ -313,20 +300,6 @@ class _ScriptedAgent:
         assert self._double.takeover is not None, "the takeover action was never built"
         # Browser-Use validates the action's arguments into its param model first.
         return await self._double.takeover(reason, SensitiveCategory(category))
-
-    async def _wait_for_joiner(self) -> None:
-        from app.services.browser.jobs import joiner_lease_held
-
-        for _ in range(500):
-            if await joiner_lease_held(self._double.job_id):
-                return
-            await asyncio.sleep(0.01)
-        raise AssertionError("no executor ever joined the job")
-
-    async def _ask_the_agent(self, reason: str) -> object:
-        assert self._double.guidance is not None, "the guidance action was never built"
-        self._double.guidance_reasons.append(reason)
-        return await self._double.guidance(reason)
 
     async def _wait_for_stop(self) -> None:
         """Sit on the page until the user's stop reaches the agent, as a real run would."""
@@ -339,12 +312,10 @@ class _ScriptedAgent:
 
 
 def _reported_actions(step: ScriptedStep) -> list[tuple[str, dict[str, Any]]]:
-    """Return the actions the step reports; a takeover, guidance or switch replaces the scripted ones."""
+    """Return the actions the step reports; a takeover or switch replaces the scripted ones."""
     if step.takeover is not None:
         reason, category = step.takeover
         return [("request_human_takeover", {"reason": reason, "category": category})]
-    if step.guidance is not None:
-        return [("request_agent_guidance", {"reason": step.guidance})]
     if step.switch is not None:
         return [("continue_in_full_browser", {"category": step.switch.value})]
     return list(step.actions)
@@ -366,11 +337,18 @@ class JobWorld:
         self.stream_id = stream_id
         self.enqueued: list[BrowserJobRequest] = []
         self.chunks: list[str] = []
+        #: What reached the job's own stream, folded into the turn's message.
+        self.job_chunks: list[str] = []
         #: What reached any other turn's stream, by stream id.
         self.other_streams: dict[str, list[str]] = {}
         self.bot_messages: list[str] = []
         self.bot_photos: list[str] = []
-        self.deliveries: list[dict[str, Any]] = []
+        #: Each executor run woken to tell an ending landed in its inbox, by conversation.
+        self.woken: list[str] = []
+        #: What the job's stream saved into the turn's message: (message id, entries).
+        self.saved: list[tuple[str, list[dict[str, Any]]]] = []
+        #: The conversation's executor inbox once the job settled: how its ending was told.
+        self.told: list[InboxEntry] = []
         self.jobs: list[asyncio.Task[Any]] = []
         self.host_sessions = 0
         #: Sessions whose engine died; the host answers 404 for them.
@@ -385,9 +363,19 @@ class JobWorld:
         self.aborted: list[str] = []
 
     def frames(self, stream_id: str | None = None) -> list[dict[str, Any]]:
-        """Return each SSE chunk the turn's stream (or another one) carried, decoded."""
-        chunks = self.chunks if stream_id is None else self.other_streams.get(stream_id, [])
-        return [json.loads(chunk.removeprefix("data: ").strip()) for chunk in chunks]
+        """Return each SSE chunk the job's own stream (or a named one) carried, decoded."""
+        if stream_id is None:
+            chunks = self.job_chunks
+        elif stream_id == self.stream_id:
+            chunks = self.chunks
+        else:
+            chunks = self.other_streams.get(stream_id, [])
+        # The stream's close is a sentinel, not a frame.
+        return [
+            json.loads(chunk.removeprefix("data: ").strip())
+            for chunk in chunks
+            if chunk != "data: [DONE]\n\n"
+        ]
 
     def cards(self, stream_id: str | None = None) -> list[dict[str, Any]]:
         """Return the browser card payloads a stream carried, in publish order."""
@@ -408,13 +396,16 @@ class JobWorld:
             await asyncio.sleep(0.01)
         return len(self.lease_renewals)
 
+    def result_told(self) -> str:
+        """Return what the one BROWSER_RESULT entry told the executor, past its job line."""
+        [entry] = [entry for entry in self.told if entry.tag is AgentTag.BROWSER_RESULT]
+        return entry.text.split("\n\n", 1)[1]
+
     async def settle(self) -> None:
-        """End the turn's executor run, then wait out the worker task and the publishes it left behind."""
-        # What executor_runner does when the run ends: the relay stops holding the result for it.
-        signal_executor_done(self.stream_id)
+        """Wait out the worker task, the relay following its feed and the publishes they left behind."""
         if self.jobs:
             await asyncio.gather(*self.jobs, return_exceptions=True)
-        # The relays, which end on the job's terminal frame and the run's end.
+        # The relays, which end on the job's terminal frame.
         relays = [task for task in wide_events._spawned_tasks if not task.done()]
         await asyncio.gather(*relays, return_exceptions=True)
         from app.utils import background_tasks
@@ -424,6 +415,8 @@ class JobWorld:
             if not pending:
                 break
             await asyncio.gather(*pending, return_exceptions=True)
+        if self.enqueued:
+            self.told = await ExecutorInbox(self.enqueued[0].conversation_id).read()
 
 
 class _RunHalted(Exception):
@@ -470,7 +463,6 @@ async def browser_job_world(
         pool: Any, name: str, payload: dict[str, Any], *, _queue_name: str, _job_id: str
     ) -> object:
         world.enqueued.append(BrowserJobRequest.model_validate(payload))
-        double.job_id = world.enqueued[-1].job_id
         world.jobs.append(asyncio.create_task(browser_tasks.run_browser_job({}, payload)))
         return object()
 
@@ -485,9 +477,6 @@ async def browser_job_world(
     patches = [
         patch("app.db.redis.redis_cache.redis", redis),
         patch("app.services.browser.job_stop._abort_if_started", _abort),
-        # A guidance request nobody answers must fail the journey in seconds, not
-        # sit out the real two-minute budget.
-        patch("app.services.browser.job_runner.BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS", 2),
         patch("app.services.browser.agent_run.Agent", double.agent),
         patch("app.services.browser.agent_run.Browser", lambda **kwargs: browser),
         patch("app.agents.tools.browser_tool.enqueue_worker_job", _enqueue),
@@ -620,11 +609,13 @@ def long_waits_pass_quickly() -> Iterator[None]:
 
 
 def _delivery_patches(world: JobWorld, stream_id: str) -> list[AbstractContextManager[object]]:
-    """Record what reaches the user: the turn's stream, bot messages and photos, and the conversation."""
+    """Record what reaches the user: the turn's and the job's streams, bot messages and photos, the message the cards fold into, and the executor run woken to tell the ending."""
 
     async def _publish_chunk(chunk_stream_id: str, chunk: str) -> None:
         if chunk_stream_id == stream_id:
             world.chunks.append(chunk)
+        elif chunk_stream_id.startswith(BROWSER_JOB_STREAM_ID_PREFIX):
+            world.job_chunks.append(chunk)
         else:
             world.other_streams.setdefault(chunk_stream_id, []).append(chunk)
 
@@ -636,8 +627,18 @@ def _delivery_patches(world: JobWorld, stream_id: str) -> list[AbstractContextMa
         world.bot_photos.append(url)
         return True
 
-    async def _deliver(**kwargs: Any) -> None:
-        world.deliveries.append(kwargs)
+    async def _wake(conversation_id: str, user: object) -> None:
+        world.woken.append(conversation_id)
+
+    async def _save(conversation_id: str, **kwargs: Any) -> bool:
+        world.saved.append((kwargs["message_id"], list(kwargs["entries"])))
+        return True
+
+    conversations = MagicMock()
+    conversations.get_message = AsyncMock(
+        return_value=MessageModel(type="bot", response="", tool_data=[])
+    )
+    conversations.append_message_tool_data = _save
 
     return [
         patch(
@@ -650,26 +651,22 @@ def _delivery_patches(world: JobWorld, stream_id: str) -> list[AbstractContextMa
             "app.services.browser.bot_delivery.create_live_view_link",
             AsyncMock(return_value=LIVE_VIEW_LINK),
         ),
-        patch(
-            "app.workers.tasks.browser_tasks.narrate_executor_result",
-            AsyncMock(side_effect=_narrate),
-        ),
-        patch("app.workers.tasks.browser_tasks.deliver_message_to_conversation", _deliver),
+        # A woken executor run is a graph run of its own; that it was woken is the telling.
+        patch("app.workers.tasks.browser_tasks.wake_executor_for_inbox", _wake),
+        patch("app.agents.core.background.folded_stream.conversation_repository", conversations),
     ]
 
 
 def _tools_of(double: BrowserDouble) -> Callable[..., object]:
-    """Hand the double the takeover and guidance actions, which Browser-Use would otherwise own."""
+    """Hand the double the takeover and switch actions, which Browser-Use would otherwise own."""
 
     def _build(
         *,
         solve_captcha: bool,
         handle_takeover: Callable[[str, SensitiveCategory], Any],
-        handle_guidance: Callable[[str], Any],
         handle_engine_switch: Callable[[EngineSwitchReason], Any] | None = None,
     ) -> object:
         double.takeover = handle_takeover
-        double.guidance = handle_guidance
         double.switch = handle_engine_switch
         return _Tools()
 
@@ -684,7 +681,7 @@ class _Tools:
 
 
 class _Page:
-    """Jev's view of the tab, as far as a step card's photo and a guidance ask read it."""
+    """Jev's view of the tab, as far as a step card's photo reads it."""
 
     def __init__(self, browser: _BrowserSession) -> None:
         self._browser = browser
@@ -705,13 +702,6 @@ async def _shot_url(index: int) -> str:
 async def _unused_jev_client() -> AsyncIterator[object]:
     """Jev's gateway, never called: the bursts are scripted."""
     yield object()
-
-
-async def _narrate(
-    result_text: str, msg_type: str, conversation_id: str, user: Any, *, preamble: str
-) -> str:
-    """Stand in for the comms re-voicing, which is an LLM call; the run's own text is what matters here."""
-    return f"NARRATED: {result_text}"
 
 
 def _user() -> Any:

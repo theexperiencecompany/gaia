@@ -28,7 +28,7 @@ from app.services.browser.run_contract import RunOutcome
 from app.services.browser.session import BrowserHostSession, engine_failure
 from shared.py.wide_events import log
 
-#: Whether the run is waiting on someone (a handoff, a guidance ask) and must not be judged.
+#: Whether the run is waiting on the user (a handoff) and must not be judged.
 PausedFn = Callable[[], bool]
 
 

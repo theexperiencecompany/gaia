@@ -65,13 +65,6 @@ class StreamSession:
     # tool_call_id -> the subagent_id of the run that ANNOUNCED it (None for
     # the executor's own calls) — the one fact that survives the echo above.
     tool_output_owners: dict[str, str | None] = field(default_factory=dict)
-    #: The tool calls that ran in the executor's run, from its own messages; set as it finishes.
-    ran_tool_calls: tuple[str, ...] = ()
-    #: The browser_task call that started each browser job in this run, by job id.
-    browser_job_calls: dict[str, str] = field(default_factory=dict)
-    #: The run's tool calls whose outcome a stop already told the user: the joins
-    #: of a browser job a stop ended, and the call that started it.
-    told_tool_calls: set[str] = field(default_factory=set)
 
 
 @dataclass(frozen=True)
@@ -370,34 +363,3 @@ def claim_tool_output(stream_id: str, tool_call_id: str, subagent_id: str | None
         return False
     session.streamed_tool_outputs.add(tool_call_id)
     return True
-
-
-def note_browser_job_call(stream_id: str, job_id: str, tool_call_id: str) -> None:
-    """Record that this run's tool call started the browser job."""
-    session = _sessions.get(stream_id)
-    if session is not None:
-        session.browser_job_calls[job_id] = tool_call_id
-
-
-def mark_browser_job_told(session: StreamSession, job_id: str, tool_call_id: str) -> None:
-    """Record that a stop told the user how the job ended: the call that joined it and the one that started it say nothing more."""
-    session.told_tool_calls.add(tool_call_id)
-    if started_by := session.browser_job_calls.get(job_id):
-        session.told_tool_calls.add(started_by)
-
-
-def note_run_tool_calls(stream_id: str, tool_calls: tuple[str, ...]) -> None:
-    """Record the tool calls that ran in the executor's run, as its own messages name them."""
-    session = _sessions.get(stream_id)
-    if session is not None:
-        session.ran_tool_calls = tool_calls
-
-
-def only_told(stream_id: str) -> bool:
-    """Whether the run did nothing but tool calls whose outcome a stop already told: its answer has nothing left to say."""
-    session = _sessions.get(stream_id)
-    return (
-        session is not None
-        and bool(session.ran_tool_calls)
-        and set(session.ran_tool_calls) <= session.told_tool_calls
-    )

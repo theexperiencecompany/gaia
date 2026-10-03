@@ -40,6 +40,7 @@ from app.workers.tasks import (
     sweep_idle_sandboxes,
     sweep_undelivered_signup_emails,
 )
+from app.workers.tasks.browser_tasks import reap_browser_jobs
 from app.workers.tasks.device_tasks import warm_device_servers
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
 from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
@@ -106,6 +107,7 @@ _deliver_signup_emails = func(
 )
 _sweep_undelivered_signup_emails = arq_task(sweep_undelivered_signup_emails)
 _warm_device_servers = arq_task(warm_device_servers)
+_reap_browser_jobs = arq_task(reap_browser_jobs)
 # Named from the constant delivery enqueues by; finish_tracked_todo_run bounds its own tries.
 _finish_tracked_todo_run = func(
     arq_task(finish_tracked_todo_run),
@@ -150,6 +152,7 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _sweep_undelivered_signup_emails,
     _warm_device_servers,
     _sync_workflows_for_subscription_state,
+    _reap_browser_jobs,
 ]
 WorkerSettings.functions = TASK_FUNCTIONS
 
@@ -161,6 +164,9 @@ WorkerSettings.cron_jobs = [
         _sweep_hil_approvals,
         second=0,
     ),
+    # Every minute: a browser job whose worker died is ended within a slot lease
+    # (BROWSER_JOB_LOCK_TTL_SECONDS) of it, not left spinning for hours.
+    cron(cast(WorkerCoroutine, _reap_browser_jobs), second=30),
     cron(
         _cleanup_expired_reminders,
         hour=0,  # At midnight

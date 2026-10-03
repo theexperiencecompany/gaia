@@ -1,15 +1,15 @@
 """The job's replayable card feed — one Redis stream per background browser job.
 
-The worker publishes every already-normalized card frame here; the API-side
-relay replays it into the conversation's live stream. A stream rather than a
-pub/sub channel so a relay that starts late, or restarts, still reads from 0-0
-and shows the run from step 1.
+The worker publishes every already-normalized card frame here; whoever follows
+the job (job_relay) replays it onto a stream the user sees. A stream rather than
+a pub/sub channel so a follower that starts late, or restarts, still reads from
+0-0 and shows the run from step 1.
 """
 
 import json
 from typing import TypedDict
 
-from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter
+from pydantic import TypeAdapter
 
 from app.constants.browser import (
     BROWSER_JOB_EVENTS_MAXLEN,
@@ -19,22 +19,13 @@ from app.constants.browser import (
 )
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
-from app.schemas.browser import BrowserCardSnapshot, BrowserResultSnapshot
+from app.schemas.browser import BrowserCardSnapshot
 from app.services.browser.job_lifetime import browser_job_ttl_seconds
-from app.services.chat.chunks import normalize_custom_event
 from shared.py.wide_events import log
 
-#: Closes a job's feed. Not a card: the relay stops on it without having to
-#: re-read the job state on every frame, and the worker is the only publisher.
+#: Closes a job's feed; every other frame is a card. Not a card itself: a reader
+#: stops on it without re-reading the job's ending on every frame.
 JOB_TERMINAL_FRAME: dict[str, object] = {"browser_job_done": True}
-#: Says the run has just asked its joined agent for guidance. Not a card either:
-#: it wakes a join, which then reads the request itself (agent_guidance).
-JOB_GUIDANCE_FRAME: dict[str, object] = {"browser_job_guidance": True}
-
-
-def is_card_frame(payload: dict[str, object]) -> bool:
-    """Whether a feed frame is something the user sees, rather than a signal to whoever reads the feed."""
-    return payload not in (JOB_TERMINAL_FRAME, JOB_GUIDANCE_FRAME)
 
 
 class _StreamFields(TypedDict, total=False):
@@ -89,65 +80,6 @@ def _decode(entry_id: str, raw: str | None) -> dict[str, object] | None:
     return payload
 
 
-async def read_cards(job_id: str) -> list[dict[str, object]]:
-    """Return every card the feed holds now, oldest first, without waiting for more."""
-    cards: list[dict[str, object]] = []
-    for entry_id, fields in await redis_cache.client.xrange(_key(job_id)):
-        typed_fields: _StreamFields = _STREAM_FIELDS.validate_python(fields)
-        payload = _decode(entry_id, typed_fields.get("payload"))
-        if payload is not None and is_card_frame(payload):
-            cards.append(payload)
-    return cards
-
-
 def card_frame(snapshot: BrowserCardSnapshot) -> dict[str, object]:
     """Return the frame that shows snapshot as the run's card, before the feed normalizes it."""
-    return {BROWSER_TASK_EVENT: _card_data(snapshot)}
-
-
-def _card_data(snapshot: BrowserCardSnapshot) -> JsonValue:
-    return snapshot.model_dump(mode="json")
-
-
-class _FeedEntry(BaseModel):
-    """One tool_data entry of a normalized card frame, read only for what it shows."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    tool_name: str
-    data: JsonValue = None
-
-
-class _FeedFrame(BaseModel):
-    """A normalized card frame: one tool_data entry, or several."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    tool_data: _FeedEntry | list[_FeedEntry] = []
-
-
-async def read_finished_cards(
-    job_id: str, result: BrowserResultSnapshot | None
-) -> list[dict[str, object]]:
-    """Return every card of a job that finished on result: the feed's, and the result card when the feed does not carry it yet.
-
-    The run records how it finished, result included, before it publishes the
-    result card, so a join in between reads a feed whose last card still says
-    running. The record is the one source of that card either way. A job that
-    ended without running has no result card.
-    """
-    cards = await read_cards(job_id)
-    if result is None:
-        return cards
-    shown = _card_data(result)
-    if not any(_shows(card, shown) for card in cards):
-        cards.append(normalize_custom_event(card_frame(result)))
-    return cards
-
-
-def _shows(card: dict[str, object], shown: JsonValue) -> bool:
-    entries = _FeedFrame.model_validate(card).tool_data
-    for entry in entries if isinstance(entries, list) else [entries]:
-        if entry.tool_name == BROWSER_TASK_EVENT and entry.data == shown:
-            return True
-    return False
+    return {BROWSER_TASK_EVENT: snapshot.model_dump(mode="json")}

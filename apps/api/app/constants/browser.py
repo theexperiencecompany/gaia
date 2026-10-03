@@ -134,18 +134,6 @@ HANDOFF_DECISION_STATUS: dict[HandoffDecision, HandoffStatus] = {
 }
 
 
-class HandoffKind(StrEnum):
-    """Who a paused run is waiting on: the user in live view, or the executor that started it.
-
-    USER is the default so records written before agent guidance existed parse.
-    An AGENT record never takes the conversation's pending-handoff key, which is
-    what makes a chat reply resolve a handoff.
-    """
-
-    USER = "user"
-    AGENT = "agent"
-
-
 class BrowserLoginSource(StrEnum):
     """Where a saved login came from.
 
@@ -158,11 +146,10 @@ class BrowserLoginSource(StrEnum):
 # Defined here rather than beside JevOperation because BROWSER_TAKEOVER_PREAMBLE
 # below interpolates it at import time.
 class BrowserHandoffAction(StrEnum):
-    """The actions GAIA registers with Browser-Use to hand a step off: two to the human, one to the agent that started the run."""
+    """The actions GAIA registers with Browser-Use to hand a step to the human."""
 
     REQUEST_HUMAN_TAKEOVER = "request_human_takeover"
     SOLVE_CAPTCHA_WITH_HELP = "solve_captcha_with_help"
-    REQUEST_AGENT_GUIDANCE = "request_agent_guidance"
 
 
 # --- Redis handoff bridge ---
@@ -257,10 +244,6 @@ BROWSER_RUN_HANDOFF_LIMIT_SUMMARY = (
     "Stopped: the task needed you to take over more than {limit} times, the most one task may."
 )
 
-# Reaches the user verbatim on the failure card of a run that ended because no
-# guidance arrived, so it reads like a person.
-BROWSER_RUN_BLOCKED_SUMMARY = "I couldn't find a way to move forward on this page."
-
 # Fixed copy, no exception text: many exceptions stringify to "", which left
 # "...stopped unexpectedly:" dangling in front of the user.
 BROWSER_JOB_CRASHED_SUMMARY = (
@@ -270,6 +253,8 @@ BROWSER_JOB_CRASHED_SUMMARY = (
 BROWSER_JOB_WORKER_STOPPED_SUMMARY = (
     "the browser task was cut off because its worker shut down; you can ask me to try again"
 )
+# A run whose worker died before it ended, as the reaper ends it.
+BROWSER_JOB_WORKER_LOST_SUMMARY = "the browser task stopped unexpectedly because its worker went away; you can ask me to try again"
 # A queued run whose conversation slot another run took while it waited.
 BROWSER_JOB_SLOT_TAKEN_SUMMARY = (
     "another browser task started in this conversation while this one waited, so it never ran"
@@ -279,32 +264,6 @@ BROWSER_JOB_SLOT_TAKEN_SUMMARY = (
 # misbehaving agent can't loop the user forever.
 MAX_HANDOFFS_PER_TASK = 5
 
-# --- Agent guidance ---
-
-# Asked of the joined executor instead of failing; bounded so a run that cannot
-# be unstuck does not ping-pong with it.
-BROWSER_AGENT_GUIDANCE_MAX = 3
-BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS = 120
-# The only thing the user sees of the round trip: the step frame's caption.
-BROWSER_AGENT_GUIDANCE_CAPTION = "Working out another way"
-# The pending request a joined executor reads, keyed by job. Not a card frame:
-# the relay would put it on the user's stream, and a replayed feed would fire it twice.
-BROWSER_JOB_GUIDANCE_PREFIX = "browser:job:guidance:"
-# Tighter than a Jev observation's text: this rides inside one executor tool result.
-BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS = 1500
-BROWSER_GUIDANCE_MAX_ELEMENTS = 40
-BROWSER_GUIDANCE_RECENT_ACTIONS = 6
-# The fixed copy of the request a joined executor reads (agent_guidance.guidance_message).
-# Named here so the render is tested for where each part lands, not for its wording.
-BROWSER_GUIDANCE_HEADER = "THE BROWSER TASK IS STUCK and is waiting for one instruction from you."
-BROWSER_GUIDANCE_CHANGED_INSTRUCTION = (
-    "MID-RUN THE USER CHANGED THE INSTRUCTION to {notes}. That is what your guidance "
-    "must serve. Where the task below conflicts with it, the task is no longer wanted, "
-    "and you must never send the run back to a step the user declined."
-)
-BROWSER_GUIDANCE_USER_SAID = (
-    "While it ran, the user said: {notes}. Judge yourself what that changes about the task."
-)
 # What the user said mid-run, leading what the assistant reads about the run's
 # result: a trailing sentence lost to the original request still in its context.
 BROWSER_RESULT_REPLACED_REQUEST = (
@@ -315,16 +274,6 @@ BROWSER_RESULT_REPLACED_REQUEST = (
 BROWSER_RESULT_USER_SAID = (
     "While it ran, the user said: {notes}. Judge yourself what that changes about the "
     "request and the reply."
-)
-BROWSER_GUIDANCE_ANSWER = (
-    "Answer with exactly one of these, then call wait_for_browser_task() again:\n"
-    '  guide_browser_task("<one concrete instruction>") -- what to click, what to '
-    "type, where to navigate, or the fact to use. One step, not a plan. Use only "
-    "facts from this conversation, the user's request and your memory; never invent "
-    "one. Prefer a different route over repeating what already failed: a wall on "
-    "one page rarely blocks the site's direct address for the same content.\n"
-    '  guide_browser_task(give_up=True, reason="<why it cannot be done>") -- only '
-    "when no route is left, never because a step the user already declined is blocked."
 )
 
 # The browser agent's reasoning effort on any lane: it steers and signs off, Jev does the stepping.
@@ -464,11 +413,6 @@ BROWSER_CDP_ATTACH_FAILED = "Could not connect to the browser."
 BROWSER_RUN_CRASHED_SUMMARY = "The browser task stopped on an unexpected error."
 #: Why a run cannot start when no Chromium host is configured for it.
 BROWSER_NO_CHROME_HOST = "No Chrome browser host is configured (BROWSER_FALLBACK_HOST_URL)."
-#: Said to the agent when it asks for guidance and none can be asked: no assistant joined, or none left.
-BROWSER_NO_GUIDANCE_AVAILABLE = (
-    "No guidance is available. Decide yourself: act, re-delegate to jev, or finish "
-    "with an honest account of what could not be done."
-)
 
 # Desktop viewport (the ~800x600 CDP default collapses sites to mobile layout). The live
 # view caps its stream at this same size (screencast.py imports it): wider only buys a
@@ -644,12 +588,12 @@ BROWSER_JOB_LOCK_PREFIX = "browser:job:lock:"
 BROWSER_JOB_LOCK_TTL_SECONDS = 120
 BROWSER_JOB_HEARTBEAT_SECONDS = 30
 
-# The job's durable state: what the joiner reads and what a restarted API needs
-# to answer "is it still running?". Outlives the turn; its TTL is
+# The job's state while it has not ended (queued, running): who started it, and
+# where its ending is told. Its TTL is
 # app.services.browser.job_lifetime.browser_job_ttl_seconds.
 BROWSER_JOB_STATE_PREFIX = "browser:job:"
 # A job's time outside the run's own clock: opening the session (and the fallback
-# engine's), the terminal writes, the wait for a joiner and narrating the result.
+# engine's) and the terminal writes.
 BROWSER_JOB_OVERHEAD_SECONDS = 300
 # How long a finished job's state, feed and flags stay readable after the latest
 # the job could have ended.
@@ -660,36 +604,21 @@ BROWSER_JOB_RETENTION_SECONDS = 3600
 BROWSER_JOB_EVENTS_PREFIX = "browser:job:events:"
 BROWSER_JOB_EVENTS_MAXLEN = 2000
 
-# A conversation's latest browser job, finished or not: how a join and a stop
-# find it once the slot lease is gone (a queued job's lease is never heartbeated).
+# A conversation's latest browser job, finished or not: how a stop finds it once
+# the slot lease is gone (a queued job's lease is never heartbeated).
 BROWSER_JOB_LATEST_PREFIX = "browser:job:latest:"
 
-# A live executor holding this lease owns speaking the result; the worker skips
-# its own delivery while it is held. Refreshed by the joiner, so an API crash
-# releases it within one TTL and the worker delivers instead.
-BROWSER_JOB_JOINER_PREFIX = "browser:job:joiner:"
-BROWSER_JOB_JOINER_LEASE_SECONDS = 15
-BROWSER_JOB_JOINER_REFRESH_SECONDS = 5
-#: How long the executor waits on a browser job when the model names no limit.
-BROWSER_JOB_JOIN_DEFAULT_WAIT_SECONDS = 600
-# The one telling of a job's result: whoever claims it first speaks, the other stays quiet.
-BROWSER_JOB_DELIVERED_PREFIX = "browser:job:delivered:"
-
-
-class ResultSpeaker(StrEnum):
-    """Who told the user a browser job's result: the executor joined on it, or the worker's follow-up."""
-
-    JOINER = "joiner"
-    WORKER = "worker"
-
-
-# How a job ended (JobEnding), recorded once by the stop or the run, whichever comes
-# first; the run reads it at its start, between steps and before every wait.
+# How a job ended, its result with it: the one terminal record, written once by
+# the stop, the run or the reaper, whichever comes first.
 BROWSER_JOB_ENDING_PREFIX = "browser:job:ending:"
+# Every job not yet ended, which the reaper walks for one whose worker died.
+BROWSER_JOB_LIVE_KEY = "browser:jobs:live"
 # The handoff a paused run is waiting on, so a stop can settle it.
 BROWSER_JOB_WAIT_PREFIX = "browser:job:wait:"
 # What the user said while a job runs, oldest first: the run reads it between steps.
 BROWSER_JOB_INBOX_PREFIX = "browser:job:inbox:"
+# A detached stream's id: cosmetic, for log greppability only.
+BROWSER_JOB_STREAM_ID_PREFIX = "browser_"
 
 
 class JobEnding(StrEnum):
@@ -709,8 +638,16 @@ class BrowserStopOutcome(StrEnum):
     ALREADY_ENDED = "already_ended"
 
 
+# The executor inbox entries that tell a job's ending (job_teller); never shown to the user.
+BROWSER_JOB_RESULT_ENTRY = "The browser task you started (job {job_id}) has ended.\n\n{outcome}"
+BROWSER_JOB_STOPPED_NOTICE = (
+    "The browser task (job {job_id}) was STOPPED before it finished, and whoever stopped it "
+    "was already told. It has no result: never report one, and do not start it again unless "
+    "the user asks."
+)
+
 # How long a read of a job's feed parks on it for the next frame: the beat the
-# relay re-checks its turn, and a join re-arms its lease and checks the worker.
+# relay checks whether the job ended with no worker left to close its feed.
 BROWSER_JOB_FEED_WAIT_MS = 1000
 
 # The ARQ function name, shared by the enqueue site and the worker registration.
@@ -727,7 +664,6 @@ BROWSER_JOB_QUEUE = "arq:queue:browser"
 class BrowserRunFailure(StrEnum):
     """Why a browser run did not succeed; the worker event's reason field."""
 
-    BLOCKED = "blocked"
     #: The agent finished and said the task was not achieved.
     GOAL_NOT_ACHIEVED = "goal_not_achieved"
     #: The agent never finished: its last step ended in an error.
@@ -744,6 +680,8 @@ class BrowserRunFailure(StrEnum):
     HOST_UNAVAILABLE = "host_unavailable"
     HOST_AT_CAPACITY = "host_at_capacity"
     RUN_CRASHED = "run_crashed"
+    #: Its worker died before the run ended; the reaper ended it.
+    WORKER_LOST = "worker_lost"
 
 
 class HostRequestFailure(StrEnum):

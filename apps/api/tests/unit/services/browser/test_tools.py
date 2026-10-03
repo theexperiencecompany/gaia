@@ -9,17 +9,6 @@ from app.constants.browser import EngineSwitchReason, SensitiveCategory
 from app.services.browser.tools import build_browser_tools
 
 
-class _FakeGuidance:
-    """Records every call to the agent-guidance seam and returns a canned instruction."""
-
-    def __init__(self) -> None:
-        self.calls: list[str] = []
-
-    async def __call__(self, reason: str) -> str:
-        self.calls.append(reason)
-        return f"guided:{reason}"
-
-
 class _FakeTakeover:
     """Records every call to the takeover seam and returns a canned result."""
 
@@ -43,10 +32,9 @@ async def _call_action(tools, name: str, **kwargs) -> str:
 
 def test_registers_takeover_action_only_when_captcha_disabled() -> None:
     takeover: Callable[[str, SensitiveCategory], Awaitable[str]] = _FakeTakeover()
-    guidance = _FakeGuidance()
 
     tools = build_browser_tools(
-        solve_captcha=False, handle_takeover=takeover, handle_guidance=guidance
+        solve_captcha=False, handle_takeover=takeover
     )
 
     actions = tools.registry.registry.actions
@@ -56,10 +44,9 @@ def test_registers_takeover_action_only_when_captcha_disabled() -> None:
 
 def test_registers_both_actions_when_captcha_enabled() -> None:
     takeover: Callable[[str, SensitiveCategory], Awaitable[str]] = _FakeTakeover()
-    guidance = _FakeGuidance()
 
     tools = build_browser_tools(
-        solve_captcha=True, handle_takeover=takeover, handle_guidance=guidance
+        solve_captcha=True, handle_takeover=takeover
     )
 
     actions = tools.registry.registry.actions
@@ -70,7 +57,7 @@ def test_registers_both_actions_when_captcha_enabled() -> None:
 @pytest.mark.parametrize("arguments", [{}, {"category": "shipping"}])
 def test_a_takeover_needs_one_of_the_known_categories(arguments: dict[str, str]) -> None:
     tools = build_browser_tools(
-        solve_captcha=False, handle_takeover=_FakeTakeover(), handle_guidance=_FakeGuidance()
+        solve_captcha=False, handle_takeover=_FakeTakeover()
     )
 
     with pytest.raises(ValidationError):
@@ -81,9 +68,8 @@ def test_a_takeover_needs_one_of_the_known_categories(arguments: dict[str, str])
 
 async def test_takeover_passes_explicit_category_through_unchanged() -> None:
     takeover = _FakeTakeover()
-    guidance = _FakeGuidance()
     tools = build_browser_tools(
-        solve_captcha=False, handle_takeover=takeover, handle_guidance=guidance
+        solve_captcha=False, handle_takeover=takeover
     )
 
     result = await _call_action(
@@ -102,7 +88,7 @@ async def test_takeover_propagates_cancellation_from_seam() -> None:
         raise _Cancelled("user cancelled")
 
     tools = build_browser_tools(
-        solve_captcha=False, handle_takeover=raising_takeover, handle_guidance=_FakeGuidance()
+        solve_captcha=False, handle_takeover=raising_takeover
     )
 
     with pytest.raises(_Cancelled):
@@ -113,9 +99,8 @@ async def test_takeover_propagates_cancellation_from_seam() -> None:
 
 async def test_captcha_action_always_uses_none_category() -> None:
     takeover = _FakeTakeover()
-    guidance = _FakeGuidance()
     tools = build_browser_tools(
-        solve_captcha=True, handle_takeover=takeover, handle_guidance=guidance
+        solve_captcha=True, handle_takeover=takeover
     )
 
     result = await _call_action(
@@ -133,7 +118,6 @@ async def test_a_captcha_on_the_fast_engine_is_tried_in_the_full_browser_before_
     tools = build_browser_tools(
         solve_captcha=True,
         handle_takeover=takeover,
-        handle_guidance=_FakeGuidance(),
         handle_engine_switch=switch,
     )
 
@@ -141,34 +125,6 @@ async def test_a_captcha_on_the_fast_engine_is_tried_in_the_full_browser_before_
 
     assert (switch.calls, result) == ([EngineSwitchReason.BOT_CHALLENGE], "moving")
     assert takeover.calls == []
-
-
-async def test_the_guidance_action_hands_the_reason_to_the_agent_seam() -> None:
-    takeover = _FakeTakeover()
-    guidance = _FakeGuidance()
-    tools = build_browser_tools(
-        solve_captcha=False, handle_takeover=takeover, handle_guidance=guidance
-    )
-
-    result = await _call_action(
-        tools, "request_agent_guidance", reason="The date picker never opens"
-    )
-
-    assert guidance.calls == ["The date picker never opens"]
-    assert result == "guided:The date picker never opens"
-    assert takeover.calls == []
-
-
-def test_the_guidance_action_is_registered_even_with_captcha_off() -> None:
-    """It is not a human handoff, so the captcha switch must not decide whether the run can ask the agent."""
-    takeover = _FakeTakeover()
-    guidance = _FakeGuidance()
-
-    tools = build_browser_tools(
-        solve_captcha=False, handle_takeover=takeover, handle_guidance=guidance
-    )
-
-    assert "request_agent_guidance" in tools.registry.registry.actions
 
 
 class _FakeSwitch:
@@ -184,7 +140,7 @@ class _FakeSwitch:
 
 def test_a_run_on_chrome_is_never_offered_the_full_browser() -> None:
     tools = build_browser_tools(
-        solve_captcha=False, handle_takeover=_FakeTakeover(), handle_guidance=_FakeGuidance()
+        solve_captcha=False, handle_takeover=_FakeTakeover()
     )
 
     assert "continue_in_full_browser" not in tools.registry.registry.actions
@@ -195,7 +151,6 @@ async def test_a_run_on_the_fast_engine_can_move_to_the_full_browser_naming_why(
     tools = build_browser_tools(
         solve_captcha=False,
         handle_takeover=_FakeTakeover(),
-        handle_guidance=_FakeGuidance(),
         handle_engine_switch=switch,
     )
 

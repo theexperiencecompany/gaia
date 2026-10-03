@@ -23,10 +23,6 @@ import pytest
 from app.constants.browser import (
     BROWSER_AGENT_FAST_ENGINE_NOTE,
     BROWSER_ENGINE_RESUMED_NOTE,
-    BROWSER_GUIDANCE_MAX_ELEMENTS,
-    BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS,
-    BROWSER_GUIDANCE_RECENT_ACTIONS,
-    BROWSER_NO_GUIDANCE_AVAILABLE,
     BROWSER_TAKEOVER_DONE_NOTE,
     BrowserEngine,
     BrowserHandoffAction,
@@ -38,10 +34,8 @@ from app.constants.browser import (
 from app.constants.log_tags import LogTag
 from app.patches.obscura_sessions import on_obscura
 from app.schemas.browser import (
-    AgentGuidanceRequest,
     BrowserAction,
     BrowserTaskSecret,
-    GuidanceElement,
 )
 from app.services.browser import agent_run as agent_run_mod
 from app.services.browser.agent_run import STEP_ERROR_CAPTION, AgentRunSetup, BrowserAgentRun
@@ -49,10 +43,10 @@ from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserUnav
 from app.services.browser.jev import loop as loop_mod
 from app.services.browser.jev.decision import GENERATE
 from app.services.browser.jev.gateway import JevEvaluation
-from app.services.browser.jev.page import EngineScriptError, PageAction, PageUnresponsive
+from app.services.browser.jev.page import EngineScriptError, PageUnresponsive
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.jev.tool import JEV_ACTION
-from app.services.browser.ledger import CallComponent, ExecutedAction, RunLedger
+from app.services.browser.ledger import CallComponent, RunLedger
 from app.services.browser.run_contract import BrowserRunConfig, RunHooks, StepFrame
 from app.services.browser.session import BrowserHostSession
 from app.services.browser.stalled_loads import StalledLoads
@@ -997,47 +991,15 @@ class TestTools:
 
         assert "cancelled" in agent.state.last_result[-1].error
 
-    async def test_guidance_is_asked_with_the_task_the_run_was_given(
-        self, harness: _Harness
-    ) -> None:
-        asked: list[AgentGuidanceRequest] = []
-
-        async def _guidance(request: AgentGuidanceRequest) -> str:
-            asked.append(request)
-            return "Click Next."
-
-        async def _allowed() -> bool:
-            return True
-
-        harness.run._hooks = replace(
-            harness.run._hooks, guidance=_guidance, guidance_allowed=_allowed
-        )
-        _Agent.steps = [_Action("click", {"index": 1})]
-        await harness.run.execute("buy the ticket")
-        agent = _Agent.built[-1]
-
-        await agent.act("request_agent_guidance", {"reason": "stuck"})
-        await harness.run._on_step_end(agent)
-
-        [request] = asked
-        assert request.task == "buy the ticket"
-
-    async def test_the_agent_asking_for_guidance_hears_that_none_is_available(
-        self, harness: _Harness
-    ) -> None:
-        await harness.run.execute("buy the ticket")
-
-        result = await _Agent.built[-1].act("request_agent_guidance", {"reason": "stuck"})
-
-        assert BROWSER_NO_GUIDANCE_AVAILABLE in str(result)
-
     async def test_only_a_run_that_can_move_engines_offers_it_or_a_captcha_tool_when_asked(
         self, harness: _Harness
     ) -> None:
         await harness.run.execute("buy the ticket")
 
         offered = set(_Agent.built[-1].options["tools"].registry.registry.actions)
-        assert {JEV_ACTION, "request_human_takeover", "request_agent_guidance"} <= offered
+        assert {JEV_ACTION, "request_human_takeover"} <= offered
+        # A stuck run ends with what it found: nobody is left to ask how to go on.
+        assert "request_agent_guidance" not in offered
         assert "continue_in_full_browser" not in offered
         assert BrowserHandoffAction.SOLVE_CAPTCHA_WITH_HELP not in offered
         assert (
@@ -1171,88 +1133,3 @@ class TestJevInTheRun:
         report = await self._burst(harness)
 
         assert f"Stopped: {JevStop.USER_MESSAGE.value}." in report
-
-
-class TestGuidance:
-    """A stuck agent asks the agent that started the run, with the page as it stands, secrets hidden."""
-
-    @pytest.fixture
-    def asked(self, harness: _Harness) -> list[AgentGuidanceRequest]:
-        asked: list[AgentGuidanceRequest] = []
-
-        async def _guidance(request: AgentGuidanceRequest) -> str:
-            asked.append(request)
-            return "Click Next."
-
-        async def _allowed() -> bool:
-            return True
-
-        harness.run._hooks = replace(
-            harness.run._hooks, guidance=_guidance, guidance_allowed=_allowed
-        )
-        harness.run._task = "buy the ticket"
-        # An inner area to scroll is on the page, but is no control to name.
-        scroll = PageAction(
-            id="scroll_down_99", node=99, kind="scroll", label="Scroll down in List", delta=240
-        )
-        links = [
-            PageAction(id=f"e{n}", node=n, kind="click", label=f"Link {n}", role="link")
-            for n in range(BROWSER_GUIDANCE_MAX_ELEMENTS + 5)
-        ]
-        links[1] = PageAction(id="e1", node=1, kind="fill", label="Name")
-        page = replace(
-            page_state(url=f"https://example.test/?pw={SECRET}", text=SECRET + "x" * 2000),
-            actions=[scroll, *links],
-        )
-        harness.run._page = FakePage(page)  # type: ignore[assignment]  # the page the run observes
-        for n in range(BROWSER_GUIDANCE_RECENT_ACTIONS + 2):
-            harness.ledger.executed(
-                ExecutedAction(
-                    component=CallComponent.AGENT, description=f"step {n}", duration_ms=1
-                )
-            )
-        return asked
-
-    async def test_the_agent_that_started_the_run_answers_with_the_page_in_view(
-        self, harness: _Harness, asked: list[AgentGuidanceRequest]
-    ) -> None:
-        await harness.run._guidance("nothing moves the task forward")
-        await harness.run._on_step_end(harness.run._agent)
-
-        assert harness.run._agent.state.last_result[-1].long_term_memory == "Click Next."
-        [request] = asked
-        assert (request.reason, request.task, request.title) == (
-            "nothing moves the task forward",
-            "buy the ticket",
-            "Site",
-        )
-        assert SECRET not in request.url
-        assert request.url.startswith("https://example.test/")
-        assert SECRET not in request.page_text
-        assert len(request.page_text) == BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS
-        # Controls only, numbered as listed; a control with no role goes by its kind.
-        assert request.elements[:2] == [
-            GuidanceElement(label="Link 0", role="link"),
-            GuidanceElement(label="Name", role="fill"),
-        ]
-        assert len(request.elements) == BROWSER_GUIDANCE_MAX_ELEMENTS - 1
-        assert [a.action for a in request.recent_actions] == [
-            f"step {n}" for n in range(2, BROWSER_GUIDANCE_RECENT_ACTIONS + 2)
-        ]
-
-    @pytest.mark.parametrize("missing", ["guidance", "guidance_allowed", "page", "refused"])
-    async def test_with_no_one_to_ask_the_agent_hears_none_is_available(
-        self, harness: _Harness, asked: list[AgentGuidanceRequest], missing: str
-    ) -> None:
-        async def _refused() -> bool:
-            return False
-
-        if missing == "page":
-            harness.run._page = None
-        elif missing == "refused":
-            harness.run._hooks = replace(harness.run._hooks, guidance_allowed=_refused)
-        else:
-            harness.run._hooks = replace(harness.run._hooks, **{missing: None})
-
-        assert await harness.run._guidance("stuck") == BROWSER_NO_GUIDANCE_AVAILABLE
-        assert asked == []

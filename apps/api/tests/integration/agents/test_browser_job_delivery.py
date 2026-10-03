@@ -1,8 +1,8 @@
 """One worker-side browser run reaches both audiences: the web turn's stream and the bot platform.
 
 Real code under test: execute_browser_job with its ProgressEmitter and
-BrowserThreadMirror, the job event feed, relay_job_events, make_redis_stream_writer
-and BotProgressDelivery. Faked: the browser itself (a scripted stand-in for
+BrowserThreadMirror, the job event feed, follow_job_cards, publish_to_stream and
+BotProgressDelivery. Faked: the browser itself (a scripted stand-in for
 BrowserTaskRunner), the browser host session, Redis, and the outbound bot queue.
 So this proves the wiring from one card snapshot to every surface that renders
 it; it does not prove Browser-Use produces those snapshots.
@@ -10,6 +10,7 @@ it; it does not prove Browser-Use produces those snapshots.
 
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from functools import partial
 import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -19,12 +20,7 @@ import pytest
 
 from app.agents.core.background import redis_writer as rw
 from app.agents.core.background.executor_capture import drain_executor_tool_data
-from app.agents.core.background.session import (
-    RunKind,
-    create_session,
-    signal_executor_done,
-    teardown_session,
-)
+from app.agents.core.background.session import RunKind, create_session, teardown_session
 from app.constants.browser import (
     BROWSER_TASK_EVENT,
     BrowserEngine,
@@ -43,14 +39,15 @@ from app.schemas.browser import (
     BrowserSessionSnapshot,
     BrowserStepSnapshot,
 )
-from app.schemas.browser_job import BrowserJobRequest
+from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJobStatus
 from app.services import outbound_delivery as outbound_mod, platform_message_service
 from app.services.browser import (
     bot_delivery as bot_mod,
     job_runner as jr,
 )
-from app.services.browser.job_relay import relay_job_events
+from app.services.browser.job_relay import follow_job_cards
 from app.services.browser.job_runner import execute_browser_job
+from app.services.browser.jobs import put_job_state
 from app.services.browser.ledger import RunLedger
 
 pytestmark = pytest.mark.integration
@@ -196,16 +193,19 @@ def _request(**overrides: Any) -> BrowserJobRequest:
         user_id="user-7",
         conversation_id="conv-7",
         task="book a table for two at 7pm",
+        in_background=False,
         stream_id=STREAM_ID,
         **overrides,
     )
 
 
 async def _run_and_relay(request: BrowserJobRequest) -> None:
-    """Run the job, which closes its own feed, then replay it onto a turn whose executor run has ended."""
+    """Run the job, which closes its own feed, then follow the feed onto the turn's stream."""
+    await put_job_state(BrowserJobState.of(request, BrowserJobStatus.QUEUED))
     await execute_browser_job(request)
-    signal_executor_done(STREAM_ID)
-    await relay_job_events(request.job_id, STREAM_ID)
+    await follow_job_cards(
+        request.job_id, request.conversation_id, partial(rw.publish_to_stream, STREAM_ID)
+    )
 
 
 def _frames(chunks: list[str]) -> list[dict[str, Any]]:

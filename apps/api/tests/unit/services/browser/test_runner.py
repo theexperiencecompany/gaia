@@ -1,7 +1,7 @@
 """The runner's invariants: budgets, handoff limits, the stall note, the recap, metering and engine moves.
 
 The journeys through the whole job (cards on the stream, bot photos, handoff
-notes, guidance, a dead engine's fallback, a login carried across engines) are
+notes, a dead engine's fallback, a login carried across engines) are
 proven in tests/e2e/test_browser_task_background.py and are not repeated here.
 Each test drives the real BrowserTaskRunner over a scripted agent run standing
 in at the one seam the runner builds it.
@@ -19,13 +19,11 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.constants.browser import (
-    BROWSER_AGENT_GUIDANCE_MAX,
     BROWSER_CDP_ATTACH_FAILED,
     BROWSER_CDP_ATTACH_HINT,
     BROWSER_ENGINE_FALLBACK_NOTE,
     BROWSER_ENGINE_FALLBACK_WITHOUT_STATE_NOTE,
     BROWSER_ENGINE_SWITCH_ACK,
-    BROWSER_RUN_BLOCKED_SUMMARY,
     BROWSER_RUN_CANCELLED_SUMMARY,
     BROWSER_RUN_CRASHED_SUMMARY,
     BROWSER_RUN_DONE_SUMMARY,
@@ -47,7 +45,6 @@ from app.constants.browser import (
     StateCarry,
 )
 from app.schemas.browser import (
-    AgentGuidanceRequest,
     BrowserAction,
     BrowserResultSnapshot,
     BrowserSessionSnapshot,
@@ -306,28 +303,23 @@ async def test_the_handoff_past_the_limit_never_reaches_the_user() -> None:
     assert len(seen["handoffs"]) == MAX_HANDOFFS_PER_TASK
 
 
-async def test_a_run_past_its_budget_asks_neither_the_user_nor_the_agent(
+async def test_a_run_past_its_budget_does_not_ask_the_user(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     stop = BudgetCheck("You've reached today's AI usage limit.", None, None)
     monkeypatch.setattr(runner_mod, "get_budget_stop_reason", AsyncMock(return_value=stop))
-    guided = _guided(HandoffOutcome(status=HandoffStatus.COMPLETED, message="Use search"))
-    asked = guided.pop("asked")
 
     async def _asks_after_the_budget(run: _ScriptedRun) -> RunOutcome:
-        assert run.hooks.guidance is not None
         # What the agent reads back: the run is over, not that someone declined.
         with pytest.raises(BrowserHandoffCancelled, match="^Browser task stopped.$"):
             await run.hooks.takeover("Sign in", "credentials")
-        with pytest.raises(BrowserHandoffCancelled, match="^Browser task stopped.$"):
-            await run.hooks.guidance(AgentGuidanceRequest(reason="stuck", task="t"))
         return RunOutcome(success=False, summary="")
 
-    runner, seen = _runner(_asks_after_the_budget, **guided)
+    runner, seen = _runner(_asks_after_the_budget)
 
     result = await _run(runner)
 
-    assert (seen["handoffs"], asked) == ([], [])
+    assert seen["handoffs"] == []
     assert (result.status, result.summary) == (
         BrowserSessionStatus.FAILED,
         "You've reached today's AI usage limit.",
@@ -1115,61 +1107,17 @@ async def test_a_run_past_its_cost_budget_after_it_finished_still_fails(
     )
 
 
-# ---------------------------------------------------------------------------
-# Guidance from the agent that started the run
-# ---------------------------------------------------------------------------
-
-
-def _guided(*answers: HandoffOutcome, joined: bool = True) -> dict[str, Any]:
-    asked: list[AgentGuidanceRequest] = []
-    replies = iter(answers)
-
-    async def _request_guidance(request: AgentGuidanceRequest) -> HandoffOutcome:
-        asked.append(request)
-        return next(replies)
-
-    return {
-        "request_guidance": _request_guidance,
-        "agent_joined": AsyncMock(return_value=joined),
-        "asked": asked,
-    }
-
-
-async def test_a_blocked_run_is_guided_with_what_the_user_said_so_far() -> None:
-    guided = _guided(HandoffOutcome(status=HandoffStatus.COMPLETED, message="  Use search  "))
-    asked = guided.pop("asked")
-
-    async def _blocked(run: _ScriptedRun) -> RunOutcome:
-        await run.hooks.take_user_messages()
-        assert run.hooks.guidance_allowed is not None and run.hooks.guidance is not None
-        run.allowed = await run.hooks.guidance_allowed()
-        run.instruction = await run.hooks.guidance(AgentGuidanceRequest(reason="stuck", task="t"))
-        return RunOutcome(True, "booked")
-
-    runner, _ = _runner(
-        _blocked, take_user_messages=AsyncMock(return_value=["not the red one"]), **guided
-    )
-
-    await _run(runner)
-
-    [run] = _ScriptedRun.made
-    assert (run.allowed, run.instruction) == (True, "Use search")
-    assert [request.user_notes for request in asked] == [["not the red one"]]
-
-
-async def test_a_reply_that_changed_the_task_reaches_the_guidance_and_the_result_as_one() -> None:
+async def test_what_the_user_said_mid_run_reaches_the_result_and_only_a_redirect_replaces_the_task() -> (
+    None
+):
     """A note sent with a done is something the user said; only a redirect replaces what the run was asked."""
-    guided = _guided(HandoffOutcome(status=HandoffStatus.COMPLETED, message="read me the total"))
-    asked = guided.pop("asked")
 
     async def _redirected(run: _ScriptedRun) -> RunOutcome:
         await run.hooks.takeover("Pay the deposit", "payment")
         await run.hooks.takeover("Confirm", "payment")
-        assert run.hooks.guidance is not None
-        await run.hooks.guidance(AgentGuidanceRequest(reason="stuck", task="t"))
         return RunOutcome(True, "booked")
 
-    runner, _ = _runner(_redirected, **guided)
+    runner, _ = _runner(_redirected)
     answers = iter(
         [
             HandoffOutcome(status=HandoffStatus.COMPLETED, message="skip the tip", redirect=False),
@@ -1184,153 +1132,10 @@ async def test_a_reply_that_changed_the_task_reaches_the_guidance_and_the_result
 
     result = await _run(runner)
 
-    assert [(r.user_notes, r.redirects) for r in asked] == [
-        (["skip the tip", "just the total"], ["just the total"])
-    ]
     assert (result.user_notes, result.redirects) == (
         ["skip the tip", "just the total"],
         ["just the total"],
     )
-
-
-@pytest.mark.parametrize(
-    "reply",
-    [
-        HandoffOutcome(status=HandoffStatus.COMPLETED, message="   "),
-        HandoffOutcome(status=HandoffStatus.COMPLETED, message=None),
-        HandoffOutcome(status=HandoffStatus.TIMEOUT, message="use search"),
-    ],
-)
-async def test_a_blocked_run_with_no_instruction_ends_blocked_even_if_the_agent_carries_on(
-    reply: HandoffOutcome,
-) -> None:
-    guided = _guided(reply)
-    guided.pop("asked")
-
-    async def _blocked(run: _ScriptedRun) -> RunOutcome:
-        assert run.hooks.guidance is not None
-        try:
-            await run.hooks.guidance(AgentGuidanceRequest(reason="stuck", task="t"))
-        except BrowserHandoffCancelled as exc:
-            run.why = str(exc)
-        # The agent's next check stops it.
-        run.stops = await run.hooks.should_stop()
-        return RunOutcome(True, "booked anyway")
-
-    runner, _ = _runner(_blocked, **guided)
-
-    async with captured_wide_event() as event:
-        result = await _run(runner)
-
-    assert (result.status, result.success, result.summary) == (
-        BrowserSessionStatus.FAILED,
-        False,
-        BROWSER_RUN_BLOCKED_SUMMARY,
-    )
-    assert event["browser"]["blocked"] == BrowserRunFailure.BLOCKED.value
-    [run] = _ScriptedRun.made
-    assert (run.why, run.stops) == (reply.status.value, True)
-
-
-async def test_a_run_may_ask_for_guidance_only_so_often_and_only_while_an_agent_is_joined() -> None:
-    answers = [HandoffOutcome(status=HandoffStatus.COMPLETED, message="try again")] * (
-        BROWSER_AGENT_GUIDANCE_MAX
-    )
-    guided = _guided(*answers)
-    guided.pop("asked")
-
-    async def _asks(run: _ScriptedRun) -> RunOutcome:
-        assert run.hooks.guidance_allowed is not None and run.hooks.guidance is not None
-        run.allowed = []
-        for _ in range(BROWSER_AGENT_GUIDANCE_MAX + 1):
-            run.allowed.append(await run.hooks.guidance_allowed())
-            if run.allowed[-1]:
-                await run.hooks.guidance(AgentGuidanceRequest(reason="stuck", task="t"))
-        return RunOutcome(True, "booked")
-
-    await _run(_runner(_asks, **guided)[0])
-
-    assert _ScriptedRun.made[0].allowed == [True] * BROWSER_AGENT_GUIDANCE_MAX + [False]
-
-
-@pytest.mark.parametrize("missing", ["request_guidance", "agent_joined", "gone"])
-async def test_with_no_agent_to_ask_guidance_is_not_offered(missing: str) -> None:
-    guided = _guided(joined=missing != "gone")
-    guided.pop("asked")
-    if missing != "gone":
-        guided.pop(missing)
-
-    async def _asks(run: _ScriptedRun) -> RunOutcome:
-        allowed = run.hooks.guidance_allowed
-        run.allowed = await allowed() if allowed is not None else False
-        return RunOutcome(True, "booked")
-
-    await _run(_runner(_asks, **guided)[0])
-
-    assert _ScriptedRun.made[0].allowed is False
-
-
-async def test_a_run_with_no_guidance_channel_is_given_no_guidance_hooks() -> None:
-    await _run(_runner(_done)[0])
-
-    hooks = _ScriptedRun.made[0].hooks
-    assert (hooks.guidance_allowed, hooks.guidance) == (None, None)
-
-
-async def test_waiting_on_the_agent_twice_is_not_counted_as_work(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    clock = [0.0]
-    monkeypatch.setattr(runner_mod, "perf_counter", lambda: clock[0])
-    guided = _guided(*[HandoffOutcome(status=HandoffStatus.COMPLETED, message="go on")] * 2)
-    guided.pop("asked")
-
-    async def _slow_agent(request: AgentGuidanceRequest) -> HandoffOutcome:
-        clock[0] += 600
-        return HandoffOutcome(status=HandoffStatus.COMPLETED, message="go on")
-
-    guided["request_guidance"] = _slow_agent
-
-    async def _two_asks(run: _ScriptedRun) -> RunOutcome:
-        assert run.hooks.guidance is not None
-        clock[0] += 5
-        await run.hooks.guidance(AgentGuidanceRequest(reason="stuck", task="t"))
-        clock[0] += 5
-        await run.hooks.guidance(AgentGuidanceRequest(reason="stuck", task="t"))
-        run.after_waits = await run.hooks.should_stop()
-        clock[0] += 15
-        run.after_work = await run.hooks.should_stop()
-        return RunOutcome(True, "booked")
-
-    await _run(_runner(_two_asks, task_timeout=20, **guided)[0])
-
-    [run] = _ScriptedRun.made
-    assert (run.after_waits, run.after_work) == (False, True)
-
-
-async def test_waiting_on_the_agent_pauses_the_watchdog() -> None:
-    guided = _guided()
-    guided.pop("asked")
-
-    async def _slow_agent(request: AgentGuidanceRequest) -> HandoffOutcome:
-        await asyncio.sleep(0.2)
-        return HandoffOutcome(status=HandoffStatus.COMPLETED, message="go on")
-
-    guided["request_guidance"] = _slow_agent
-
-    async def _asks(run: _ScriptedRun) -> RunOutcome:
-        assert run.hooks.guidance is not None
-        run.answers = False
-        await run.hooks.guidance(AgentGuidanceRequest(reason="stuck", task="t"))
-        run.answers = True
-        return RunOutcome(True, "booked")
-
-    runner, seen = _runner(_asks, _done, fallback=True, **guided)
-
-    result = await _run(runner)
-
-    seen["open_fallback"].assert_not_awaited()
-    assert result.summary == "booked"
 
 
 async def test_a_run_that_saw_no_page_resumes_at_the_page_it_was_asked_to_start_on() -> None:

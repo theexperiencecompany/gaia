@@ -32,10 +32,6 @@ from pydantic import BaseModel, TypeAdapter
 from app.constants.browser import (
     BROWSER_ANSWER_AFTER_STEP,
     BROWSER_ENGINE_PROBE_TIMEOUT_SECONDS,
-    BROWSER_GUIDANCE_MAX_ELEMENTS,
-    BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS,
-    BROWSER_GUIDANCE_RECENT_ACTIONS,
-    BROWSER_NO_GUIDANCE_AVAILABLE,
     BROWSER_TAKEOVER_DONE_NOTE,
     BrowserRunFailure,
     EngineSwitchReason,
@@ -44,13 +40,7 @@ from app.constants.browser import (
 from app.constants.log_tags import LogTag
 from app.patches.browser_use_run_lock_patch import isolate_run_events
 from app.patches.obscura_sessions import driving
-from app.schemas.browser import (
-    AgentGuidanceRequest,
-    BrowserAction,
-    BrowserActionOutput,
-    GuidanceAction,
-    GuidanceElement,
-)
+from app.schemas.browser import BrowserAction, BrowserActionOutput
 from app.services.browser.agent_options import agent_options, browser_options
 from app.services.browser.captions import burst_caption, caption_from_action_list, step_caption
 from app.services.browser.exceptions import (
@@ -60,7 +50,7 @@ from app.services.browser.exceptions import (
 )
 from app.services.browser.jev.gateway import open_jev_client
 from app.services.browser.jev.loop import BurstContext, JevRunner
-from app.services.browser.jev.page import JevPage, PageAction
+from app.services.browser.jev.page import JevPage
 from app.services.browser.jev.secrets import RunSecrets
 from app.services.browser.jev.tool import JEV_ACTION, JevDelegate, register_jev
 from app.services.browser.ledger import CallComponent, ExecutedAction, RunLedger
@@ -173,19 +163,6 @@ def _summarize_action_result(result: ActionResult) -> str | None:
     return collapsed[: _OUTPUT_MAX_CHARS - 1].rstrip() + "…"
 
 
-#: The controls a guidance ask lists: what a person clicks, fills or picks, not scrolls or keys.
-_GUIDANCE_KINDS = frozenset({"click", "fill", "secret", "select"})
-
-
-def _is_control(action: PageAction) -> bool:
-    return action["kind"] in _GUIDANCE_KINDS
-
-
-def _guidance_element(action: PageAction) -> GuidanceElement:
-    """Return one control as a guidance ask lists it: its label and role."""
-    return GuidanceElement(label=action["label"], role=action.get("role", action["kind"]))
-
-
 def outcome_from_history(history: AgentHistoryList[BaseModel]) -> tuple[bool, str | None]:
     """Return whether the agent finished successfully, and the answer it wrote."""
     final = history.final_result()
@@ -263,8 +240,6 @@ class BrowserAgentRun:
         self._ledger = setup.ledger
         self._user_id = setup.user_id
         self._resumed_from = setup.resumed_from
-        #: The task as the runner gave it, without the rules the agent is told alongside.
-        self._task: str
         self._agent: Any = None
         self._page: JevPage | None = None
         self._stalls: StalledLoads | None = None
@@ -293,7 +268,6 @@ class BrowserAgentRun:
             return await self._execute(task)
 
     async def _execute(self, task: str) -> RunOutcome:
-        self._task = task
         # Before any Browser-Use object exists, so every event bus this run
         # starts takes the run's lock, not the process-wide one.
         isolate_run_events()
@@ -343,7 +317,6 @@ class BrowserAgentRun:
             tools = build_browser_tools(
                 solve_captcha=self._config.solve_captcha,
                 handle_takeover=self._takeover,
-                handle_guidance=self._guidance,
                 handle_engine_switch=switch_engine,
             )
             register_jev(tools, delegate)
@@ -452,36 +425,6 @@ class BrowserAgentRun:
     async def _user_note(self, reason: str, category: SensitiveCategory) -> str:
         note = await self._hooks.takeover(reason, category)
         return note or BROWSER_TAKEOVER_DONE_NOTE
-
-    async def _guidance(self, reason: str) -> str:
-        """Ask the agent that started this run how to proceed, once this step ends; the hook raises when none answers."""
-        allowed = self._hooks.guidance_allowed
-        if (
-            self._hooks.guidance is None
-            or allowed is None
-            or self._page is None
-            or not await allowed()
-        ):
-            return BROWSER_NO_GUIDANCE_AVAILABLE
-        page = await self._page.observe()
-        request = AgentGuidanceRequest(
-            reason=reason,
-            task=self._task,
-            url=self._secrets.redact(page.url),
-            title=page.title,
-            page_text=self._secrets.redact(page.text)[:BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS],
-            elements=[
-                _guidance_element(action)
-                for action in page.actions[:BROWSER_GUIDANCE_MAX_ELEMENTS]
-                if _is_control(action)
-            ],
-            recent_actions=[
-                GuidanceAction(action=a.description)
-                for a in self._ledger.actions[-BROWSER_GUIDANCE_RECENT_ACTIONS:]
-            ],
-        )
-        self._wait = partial(self._hooks.guidance, request)
-        return BROWSER_ANSWER_AFTER_STEP
 
     async def _photo(self) -> str | None:
         """Photograph the page as it is now, or None when photos are off or it does not answer: a card never fails its step."""

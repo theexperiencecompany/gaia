@@ -1,4 +1,4 @@
-"""The browser_task tool: the gates, the slot it claims, the job it enqueues, and the relay it leaves behind."""
+"""The browser_task tool: the gates, the slot it claims, the job it enqueues, and how its ending comes back."""
 
 from collections.abc import Coroutine
 from typing import Any
@@ -8,16 +8,28 @@ import fakeredis.aioredis
 from langchain_core.runnables.config import RunnableConfig
 import pytest
 
-from app.agents.core.background.session import get_or_create_session, teardown_session
+from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.tools import browser_tool as tool_mod
 from app.agents.tools.browser_tool import browser_task
-from app.constants.browser import BROWSER_JOB_QUEUE, BROWSER_JOB_TASK, JobEnding
+from app.constants.browser import (
+    BROWSER_JOB_QUEUE,
+    BROWSER_JOB_STOPPED_NOTICE,
+    BROWSER_JOB_TASK,
+    BrowserSessionStatus,
+)
 from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationSource
-from app.schemas.browser import BrowserTaskSecret
-from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJobStatus
-from app.services.browser import jobs
+from app.schemas.browser import BrowserResultSnapshot, BrowserTaskSecret
+from app.schemas.browser_job import (
+    BrowserJobFinished,
+    BrowserJobRequest,
+    BrowserJobState,
+    BrowserJobStatus,
+)
+from app.services.browser import job_relay, jobs
+from app.services.browser.job_events import JOB_TERMINAL_FRAME, publish_job_event
 from app.services.browser.job_stop import stop_browser_job
+from app.services.browser.job_teller import end_job
 from tests.helpers import captured_wide_event
 
 # A job that never runs records its ending in Redis (jobs.record_ending), so each test gets its own fakeredis.
@@ -36,7 +48,22 @@ async def _start(args: dict[str, Any], config: RunnableConfig) -> str:
 
 
 UI_CONFIG: RunnableConfig = {
-    "configurable": {"user_id": "u1", "thread_id": "c1", "stream_id": "s1", "source_category": "ui"}
+    "configurable": {
+        "user_id": "u1",
+        "conversation_id": "c1",
+        "stream_id": "s1",
+        "source_category": "ui",
+        "bot_message_id": "bot-msg-1",
+    }
+}
+#: A workflow's run: no live conversation to collect a background result, so the call blocks.
+HEADLESS_CONFIG: RunnableConfig = {
+    "configurable": {
+        "user_id": "u1",
+        "conversation_id": "c1",
+        "stream_id": "s1",
+        "execution_mode": "background",
+    }
 }
 BOT_CONFIG: RunnableConfig = {
     "configurable": {
@@ -57,7 +84,10 @@ class Recorder:
         self.states: list[BrowserJobState] = []
         self.enqueued: list[tuple[str, dict[str, Any]]] = []
         self.released: list[tuple[str, str]] = []
-        self.relays: list[tuple[str, str]] = []
+        #: Each background relay: (job, the message its cards fold into).
+        self.relays: list[tuple[str, str | None]] = []
+        #: Each job a headless call followed to its end.
+        self.followed: list[str] = []
         self.spawned: list[str] = []
         self.queues: list[str | None] = []
         self.pools: list[object] = []
@@ -117,11 +147,14 @@ def _install(
     async def _relayed() -> None:
         return None
 
-    def _relay(job_id: str, stream_id: str) -> Coroutine[Any, Any, None]:
+    def _relay(request: BrowserJobRequest, message_id: str | None) -> Coroutine[Any, Any, None]:
         # Recorded on the call, not in the body: the tool spawns this coroutine
         # rather than awaiting it, so a body-side record would never run.
-        recorder.relays.append((job_id, stream_id))
+        recorder.relays.append((request.job_id, message_id))
         return _relayed()
+
+    async def _follow(job_id: str, conversation_id: str, sink: object) -> None:
+        recorder.followed.append(job_id)
 
     def _spawn(operation: str, coro: Any, **_context: Any) -> MagicMock:
         recorder.spawned.append(operation)
@@ -143,7 +176,8 @@ def _install(
 
     monkeypatch.setattr(tool_mod, "set_latest_job", _latest)
     monkeypatch.setattr(tool_mod, "enqueue_worker_job", _enqueue)
-    monkeypatch.setattr(tool_mod, "relay_job_events", _relay)
+    monkeypatch.setattr(tool_mod, "relay_job_cards", _relay)
+    monkeypatch.setattr(tool_mod, "follow_job_cards", _follow)
     monkeypatch.setattr(tool_mod, "spawn_logged_task", _spawn)
     monkeypatch.setattr(
         tool_mod.RedisPoolManager, "get_pool", AsyncMock(return_value=recorder.pool)
@@ -191,7 +225,7 @@ async def test_a_refused_start_url_is_reported_on_the_wide_event_with_its_reason
     (warning,) = [w for w in event["warnings"] if "error" in w]
     assert warning["msg"].startswith(LogTag.BROWSER)
     assert warning["error"] == "refusing to connect to non-public address 169.254.169.254"
-    assert event["browser"] == {"operation": "task", "source_category": "ui"}
+    assert event["browser"] == {"operation": "task", "source_category": "ui", "in_background": True}
 
 
 # ---------------------------------------------------------------------------
@@ -235,6 +269,7 @@ async def test_the_job_carries_the_turns_identity_and_provenance(
         "user_id": "u1",
         "conversation_id": "conv-9",
         "task": "book a table",
+        "in_background": True,
         "start_url": "https://resy.com",
         "stream_id": "s1",
         "root_request_id": "req-42",
@@ -270,7 +305,7 @@ async def test_a_credential_reaches_the_job_and_never_the_task_anyone_reads(
 async def test_the_claimed_slot_the_queued_state_and_the_job_all_name_one_job(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Three keys are minted from this id; a mismatch orphans the state a joiner reads or the slot the worker releases."""
+    """Three keys are minted from this id; a mismatch orphans the state a stop reads or the slot the worker releases."""
     recorder = _install(monkeypatch)
 
     await _start({"task": "book a table"}, config=UI_CONFIG)
@@ -279,10 +314,15 @@ async def test_the_claimed_slot_the_queued_state_and_the_job_all_name_one_job(
     assert recorder.claims == [("c1", job_id)]
     assert recorder.states == [
         BrowserJobState(
-            job_id=job_id, status=BrowserJobStatus.QUEUED, task="book a table", relay_stream_id="s1"
+            job_id=job_id,
+            status=BrowserJobStatus.QUEUED,
+            task="book a table",
+            conversation_id="c1",
+            user_id="u1",
+            in_background=True,
         )
     ]
-    # The ARQ job a stop aborts, and the job a join or a stop finds once the slot lapses.
+    # The ARQ job a stop aborts, and the job a stop finds once the slot lapses.
     assert recorder.job_ids == [job_id]
     assert recorder.latest == [("c1", job_id)]
 
@@ -408,6 +448,7 @@ async def test_a_second_task_is_pointed_at_the_run_already_holding_the_slot(
     assert event["browser"] == {
         "operation": "task",
         "source_category": "ui",
+        "in_background": True,
         "refused": "slot_held",
         "slot_holder": "job-already-running",
     }
@@ -449,20 +490,16 @@ async def test_a_dropped_enqueue_frees_the_slot_and_says_so(
 
     out = await _start({"task": "x"}, config=UI_CONFIG)
 
-    # Its ending is recorded as its own: a stop that comes for it later finds it over.
-    assert await jobs.job_ending(recorder.request.job_id) is JobEnding.FINISHED
+    # Already findable by a stop, so its ending is recorded: over, not queued forever.
+    ending = await jobs.done_state(recorder.request.job_id)
+    assert isinstance(ending, BrowserJobFinished)
+    assert ending.result.status is BrowserSessionStatus.FAILED
 
     assert out == "I couldn't start the browser task right now. Try again in a moment."
     assert recorder.released == [("c1", recorder.request.job_id)]
     assert recorder.spawned == []
-    # Already findable by a join or a stop, so its record says it is over, not queued forever.
-    assert await jobs.get_job_state(recorder.request.job_id) == BrowserJobState(
-        job_id=recorder.request.job_id,
-        status=BrowserJobStatus.DONE,
-        task="x",
-        relay_stream_id="s1",
-        agent_message=out,
-    )
+    # This reply told it: nothing lands in the inbox to tell it again.
+    assert await ExecutorInbox("c1").read() == []
 
 
 async def test_a_job_the_queue_did_not_take_leaves_the_chats_latest_job_where_it_was(
@@ -534,40 +571,86 @@ async def test_the_job_is_queued_on_the_shared_worker_pool(
 # ---------------------------------------------------------------------------
 
 
-async def test_a_started_task_keeps_its_slot_and_relays_its_cards_onto_this_turn(
+async def test_a_started_task_acks_at_once_and_folds_its_cards_into_this_turns_message(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The model is told the run started under its job id, and the run's cards follow on this turn's stream."""
+    """The model is told the run started and its result arrives on its own; the cards fold into the turn's message."""
     recorder = _install(monkeypatch)
-    session = get_or_create_session("s1")
 
-    try:
-        async with captured_wide_event() as event:
-            out = await _start({"task": "x"}, config=UI_CONFIG)
-    finally:
-        teardown_session("s1")
+    async with captured_wide_event() as event:
+        out = await _start({"task": "x"}, config=UI_CONFIG)
 
     job_id = recorder.request.job_id
-    # The run knows which of its calls started the job, should a stop tell its ending.
-    assert session.browser_job_calls == {job_id: TOOL_CALL_ID}
     assert out == tool_mod._STARTED.format(job_id=job_id)
     assert recorder.released == []
-    assert recorder.relays == [(job_id, "s1")]
+    assert recorder.relays == [(job_id, "bot-msg-1")]
+    assert recorder.followed == []
     # The spawned task's wide event is named by this operation.
     assert recorder.spawned == ["browser_job_relay"]
-    assert event["browser"] == {"operation": "task", "source_category": "ui", "job_id": job_id}
+    assert event["browser"] == {
+        "operation": "task",
+        "source_category": "ui",
+        "in_background": True,
+        "job_id": job_id,
+    }
 
 
-async def test_no_stream_means_no_relay_but_the_job_still_runs(
+async def _run_headless_until(
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A turn with no stream has nowhere to replay to; the worker still runs the job and delivers the result itself."""
+    fake_redis: fakeredis.aioredis.FakeRedis,
+    ending: BrowserJobFinished | None,
+) -> tuple[str, Recorder]:
+    """Start a headless task whose worker ends the job as it is queued: on ending, or on a stop."""
     recorder = _install(monkeypatch)
+    # A stop reads ARQ's keys on the same fake Redis.
+    monkeypatch.setattr(tool_mod.RedisPoolManager, "get_pool", AsyncMock(return_value=fake_redis))
+    monkeypatch.setattr(tool_mod, "put_job_state", jobs.put_job_state)
+    monkeypatch.setattr(tool_mod, "follow_job_cards", job_relay.follow_job_cards)
 
-    await _start({"task": "x"}, config={"configurable": {"user_id": "u1", "thread_id": "c1"}})
+    async def _worker_ends_it(
+        _pool: object, function: str, payload: dict[str, Any], *, _job_id: str, **_kwargs: object
+    ) -> object:
+        recorder.enqueued.append((function, payload))
+        if ending is None:
+            await stop_browser_job("c1")
+        else:
+            await end_job(_job_id, ending)
+        await publish_job_event(_job_id, JOB_TERMINAL_FRAME)
+        return object()
 
+    monkeypatch.setattr(tool_mod, "enqueue_worker_job", _worker_ends_it)
+    monkeypatch.setattr(tool_mod, "set_latest_job", jobs.set_latest_job)
+    return await _start({"task": "book a table"}, config=HEADLESS_CONFIG), recorder
+
+
+async def test_a_headless_task_blocks_until_the_job_ends_and_returns_its_result(
+    monkeypatch: pytest.MonkeyPatch, fake_redis: fakeredis.aioredis.FakeRedis
+) -> None:
+    """A workflow has no inbox to be woken by: the result must come back on the call itself, told once."""
+    done = BrowserJobFinished(
+        result=BrowserResultSnapshot(
+            status=BrowserSessionStatus.COMPLETED, success=True, summary="Booked for 7pm."
+        )
+    )
+
+    out, recorder = await _run_headless_until(monkeypatch, fake_redis, done)
+
+    assert recorder.request.in_background is False
+    assert out.startswith(
+        f"The browser task you started (job {recorder.request.job_id}) has ended."
+    )
+    assert "Booked for 7pm." in out
     assert recorder.relays == []
-    assert len(recorder.enqueued) == 1
+    assert await ExecutorInbox("c1").read() == []
+
+
+async def test_a_stopped_headless_task_returns_the_stop(
+    monkeypatch: pytest.MonkeyPatch, fake_redis: fakeredis.aioredis.FakeRedis
+) -> None:
+    out, recorder = await _run_headless_until(monkeypatch, fake_redis, None)
+
+    assert out == BROWSER_JOB_STOPPED_NOTICE.format(job_id=recorder.request.job_id)
+    assert await ExecutorInbox("c1").read() == []
 
 
 async def test_the_job_runs_the_executors_task_never_the_users_raw_message(

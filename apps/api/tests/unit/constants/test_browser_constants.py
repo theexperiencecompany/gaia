@@ -31,8 +31,10 @@ def test_background_job_keys_live_in_the_browser_namespace() -> None:
         browser_constants.BROWSER_JOB_LOCK_PREFIX,
         browser_constants.BROWSER_JOB_STATE_PREFIX,
         browser_constants.BROWSER_JOB_EVENTS_PREFIX,
-        browser_constants.BROWSER_JOB_JOINER_PREFIX,
         browser_constants.BROWSER_JOB_ENDING_PREFIX,
+        browser_constants.BROWSER_JOB_LATEST_PREFIX,
+        browser_constants.BROWSER_JOB_WAIT_PREFIX,
+        browser_constants.BROWSER_JOB_INBOX_PREFIX,
     ]
     assert all(prefix.startswith("browser:") for prefix in prefixes)
     assert all(prefix.endswith(":") for prefix in prefixes)
@@ -45,12 +47,4 @@ def test_the_slot_lease_outlives_two_missed_heartbeats() -> None:
     assert (
         browser_constants.BROWSER_JOB_LOCK_TTL_SECONDS
         > 2 * browser_constants.BROWSER_JOB_HEARTBEAT_SECONDS
-    )
-
-
-@pytest.mark.unit
-def test_the_joiner_refreshes_faster_than_its_lease_expires() -> None:
-    assert (
-        browser_constants.BROWSER_JOB_JOINER_REFRESH_SECONDS
-        < browser_constants.BROWSER_JOB_JOINER_LEASE_SECONDS
     )

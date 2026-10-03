@@ -5,7 +5,7 @@ import asyncio
 import fakeredis.aioredis
 import pytest
 
-from app.constants.browser import EngineFailure, HandoffDecision, HandoffKind, HandoffStatus
+from app.constants.browser import EngineFailure, HandoffDecision, HandoffStatus
 from app.constants.chat import ConversationSource
 from app.schemas.browser import HandoffRecord, NewHandoff
 from app.services.analytics_service import AnalyticsEvents
@@ -194,26 +194,6 @@ async def test_everything_a_handoff_writes_lapses_with_the_job(
     assert all([await redis.ttl(key) > 3600 for key in keys])
 
 
-async def test_an_agent_pause_never_takes_a_reply_address(
-    redis: fakeredis.aioredis.FakeRedis,
-) -> None:
-    """A reply address makes the user's next chat message resolve the handoff; they were never asked about an agent pause."""
-    await handoff_mod.create_pending_handoff(
-        "h7",
-        NewHandoff(
-            job_id="job-1",
-            user_id="user-1",
-            conversation_id="conv-7",
-            reason="stuck",
-            kind=HandoffKind.AGENT,
-            reply_to="conv-7",
-        ),
-    )
-
-    assert await handoff_mod.get_pending_handoff_for_reply("conv-7") is None
-    assert await redis.keys("browser:handoff:reply:*") == []
-
-
 def test_a_bot_runs_reply_comes_from_the_users_chat_on_that_platform() -> None:
     """The prompt goes to the requester's DM whichever chat started the run, so a group's run is answered from there."""
     assert (
@@ -260,4 +240,4 @@ def test_a_record_written_before_reply_addresses_still_parses() -> None:
     record = HandoffRecord.model_validate(
         {"status": "pending", "user_id": "user-1", "conversation_id": "conv-old", "job_id": "job-1"}
     )
-    assert (record.kind, record.reply_address) == (HandoffKind.USER, "")
+    assert record.reply_address == ""

@@ -13,13 +13,11 @@ The executor:busy Redis key prevents concurrent executor spawns per
 conversation. TTL of 30 minutes is a safety net — released explicitly.
 """
 
-from collections.abc import Sequence
 from dataclasses import dataclass, replace
 import time
 from typing import NamedTuple
 from uuid import uuid4
 
-from langchain_core.messages import AnyMessage, ToolMessage
 from langgraph.errors import GraphRecursionError
 from langgraph.types import Command
 from langsmith import traceable
@@ -47,8 +45,6 @@ from app.agents.core.background.session import (
     RunIdentity,
     executor_abandoned,
     get_session,
-    note_run_tool_calls,
-    only_told,
     signal_executor_done,
 )
 from app.agents.core.subagents.subagent_runner import (
@@ -58,7 +54,7 @@ from app.agents.core.subagents.subagent_runner import (
     prepare_executor_execution,
     thread_messages,
 )
-from app.constants.agents import AgentTag
+from app.constants.agents import NON_WAKING_TAGS, AgentTag
 from app.constants.executor import (
     EXECUTOR_APPROVAL_LOST_MESSAGE,
     EXECUTOR_CARRY_TASK,
@@ -344,16 +340,11 @@ class _ExecutorResult(NamedTuple):
     ctx: SubagentExecutionContext | None = None
 
 
-def _tool_call_ids(messages: Sequence[AnyMessage]) -> tuple[str, ...]:
-    """Return the ids of the tool calls that ran in the executor's own messages: the ones a result answered."""
-    return tuple(message.tool_call_id for message in messages if isinstance(message, ToolMessage))
-
-
 async def _cancel_orphaned_browser_job(conversation_id: str, stream_id: str) -> None:
     """Stop the browser job a failed run left in flight, so it cannot speak a second ending.
 
-    The job outlives the turn and nobody will join it now, so without this the
-    worker narrates its own conclusion minutes after comms said the run failed.
+    The job outlives the turn, so without this its result wakes a new run
+    minutes after comms said this one failed.
     """
     try:
         job_id = await stop_browser_job(conversation_id)
@@ -420,7 +411,6 @@ async def _execute_executor(
                 log.error(f"{LogTag.HIL} Executor paused with no approval_id", stream_id=stream_id)
                 return _ExecutorResult("Approval request was malformed", "error", ctx=ctx)
             return _ExecutorResult("", EXECUTOR_PAUSED, approval_ids, ctx=ctx)
-        note_run_tool_calls(stream_id, _tool_call_ids(outcome.run_messages))
         return _ExecutorResult(outcome.text, "final", ctx=ctx)
     except GraphRecursionError as e:
         # The executor exhausted its recursion budget. Log the real cause loudly,
@@ -449,23 +439,17 @@ async def _finalize_executor_run(
     result_type: str,
     ctx: SubagentExecutionContext | None = None,
 ) -> None:
-    """Post-run cleanup, in order: signal done → deliver → free the lock → hand it on.
-
-    A run whose every tool call's outcome a stop already told has nothing to
-    deliver; one that did more delivers it.
-    """
+    """Post-run cleanup, in order: signal done → deliver → free the lock → hand it on."""
     if result_type == EXECUTOR_PAUSED:
         await _finalize_paused_run(run)
         return
 
     was_cancelled = bool(run.stream_id) and await StreamManager.is_cancelled(run.stream_id)
-    # Read before the done signal tears the session down, like everything below.
-    told = was_cancelled or only_told(run.stream_id)
 
     # Snapshot returned-cards BEFORE signalling done: live streams tear down the
     # session in parallel once done_event fires, so reading after would race it.
     # Only meaningful where cards render — a bot/workflow delivery has no card to fall back on.
-    build_note = not told and run.renders_native_cards
+    build_note = not was_cancelled and run.renders_native_cards
     returned_note = build_returned_to_frontend_note(run.stream_id) if build_note else ""
 
     # Snapshot cards delivery will persist, same reason: every comms consumer
@@ -520,7 +504,7 @@ async def _finalize_executor_run(
                 TerminalOutcome(
                     result_text=result_text,
                     result_type=result_type,
-                    was_cancelled=told,
+                    was_cancelled=was_cancelled,
                     returned_note=returned_note,
                     tool_data=tool_data,
                 ),
@@ -611,7 +595,6 @@ class TerminalOutcome:
 
     result_text: str
     result_type: str
-    #: Stopped, or all it did a stop already told: recorded as cancelled, never narrated.
     was_cancelled: bool
     returned_note: str
     tool_data: list[ToolDataEntry] | None
@@ -731,8 +714,22 @@ async def deliver_to_executor(
         f"{LogTag.AGENT} Work handed to the live executor run",
         conversation_id=conversation_id,
     )
-    # Recheck AFTER appending: only a free lock needs a rescue, and the rescue
-    # carries EXECUTOR_CARRY_TASK because the entry already holds the real work.
+    await wake_executor_for_inbox(
+        conversation_id, user, workflow_execution_id=workflow_execution_id
+    )
+
+
+async def wake_executor_for_inbox(
+    conversation_id: str,
+    user: AuthenticatedUser,
+    *,
+    workflow_execution_id: str | None = None,
+) -> None:
+    """Start a run to read work already in the inbox when no live run will drain it.
+
+    Checked after the append: only a free lock needs a rescue, and the rescue
+    carries EXECUTOR_CARRY_TASK because the entry already holds the real work.
+    """
     if not await is_executor_busy(conversation_id) and await _start_executor_run(
         conversation_id,
         user,
@@ -821,7 +818,7 @@ async def _carry_pending_into_new_run(
         for entry in drain.retire:
             await inbox.retire(entry)
         carry = drain.inject
-        if not any(entry.tag is not AgentTag.EXECUTOR_INTERRUPTED for entry in carry):
+        if all(entry.tag in NON_WAKING_TAGS for entry in carry):
             return
 
         # Leave the carried entries in the inbox: the new run's drain hook injects

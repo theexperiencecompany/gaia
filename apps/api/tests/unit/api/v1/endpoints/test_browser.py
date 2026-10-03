@@ -34,7 +34,6 @@ from app.constants.browser import (
     BROWSER_LIVE_VIEW_NOT_WAITING_DETAIL,
     BrowserSessionStatus,
     HandoffDecision,
-    HandoffKind,
     HandoffStatus,
 )
 from app.constants.log_tags import LogTag
@@ -45,8 +44,10 @@ from app.schemas.browser import (
     HandoffRecord,
     NewHandoff,
 )
-from app.services.browser import handoff_buttons
+from app.schemas.browser_job import BrowserJobStopped
+from app.services.browser import handoff_buttons, job_stop
 from app.services.browser.handoff import cancel_handoff, create_pending_handoff, get_handoff
+from app.services.browser.jobs import done_state
 from app.services.browser.live_code import mint_live_code
 
 pytestmark = pytest.mark.unit
@@ -144,6 +145,8 @@ async def button_world(
         recorded.append((conversation_id, user_message, reply))
 
     monkeypatch.setattr(handoff_buttons, "record_exchange_in_thread", _record)
+    # A cancel is a real stop, which reads ARQ's keys: its pool is the same fake Redis.
+    monkeypatch.setattr(job_stop.RedisPoolManager, "get_pool", AsyncMock(return_value=fake_redis))
     await create_pending_handoff(
         "h1",
         NewHandoff(
@@ -192,25 +195,6 @@ class TestDecideBrowserHandoff:
         assert resp.status is HandoffStatus.CANCELLED
         assert button_world == []
 
-    async def test_a_pause_for_the_agent_is_never_written_as_the_users_words(
-        self, button_world: list[tuple[str, str, str]]
-    ) -> None:
-        await create_pending_handoff(
-            "h-agent",
-            NewHandoff(
-                job_id="job-1",
-                user_id="u1",
-                conversation_id="c1",
-                reason="stuck",
-                kind=HandoffKind.AGENT,
-            ),
-        )
-        payload = HandoffDecisionRequest(decision=HandoffDecision.CONTINUE, message="go")
-
-        await browser_ep.decide_browser_handoff("h-agent", payload, "u1")
-
-        assert button_world == []
-
     @pytest.mark.parametrize(
         ("handoff_id", "user_id", "code", "detail"),
         [
@@ -251,6 +235,10 @@ class TestDecideBrowserHandoff:
             "decision": "cancel",
             "handoff_id": "h1",
             "handoff_status": "cancelled",
+            # A real stop: the job's ending is recorded as stopped, not just the handoff.
+            "stopped_job": "job-1",
+            "stop_settled": None,
+            "stop_aborted": False,
         }
         record = await get_handoff("h1")
         assert record is not None
@@ -266,18 +254,16 @@ class TestDecideBrowserHandoff:
             BROWSER_LIVE_VIEW_NOT_WAITING_DETAIL,
         )
 
-    async def test_the_live_pages_note_reaches_the_handoff_and_the_thread(
+    async def test_cancel_stops_the_job_and_its_note_reaches_the_thread(
         self, button_world: list[tuple[str, str, str]]
     ) -> None:
-        """What the user types on the live page travels with the decision, as a chat reply's note does."""
+        """A cancel the run merely heard would end it on its own and report a result the user declined."""
         code = await mint_live_code("sess-1", "u1", "h1")
         payload = HandoffDecisionRequest(decision=HandoffDecision.CANCEL, message="wrong account")
 
         await live_view_ep.decide_live_view_handoff(code, payload)
 
-        record = await get_handoff("h1")
-        assert record is not None
-        assert record.message == "wrong account"
+        assert isinstance(await done_state("job-1"), BrowserJobStopped)
         assert button_world == [
             (
                 "c1",

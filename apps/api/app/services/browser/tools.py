@@ -3,8 +3,7 @@
 Seams the agent reaches for itself: request_human_takeover is the agent's own
 way to pause for the human at a sensitive step (payment, credentials,
 irreversible); solve_captcha_with_help hands a CAPTCHA to the human since there
-is no automatic solver; request_agent_guidance asks the agent that started the
-run, not the user; continue_in_full_browser moves the run to Chrome. On the
+is no automatic solver; continue_in_full_browser moves the run to Chrome. On the
 fast engine a CAPTCHA or bot check is first tried in Chrome, which most such
 checks do not stop: only there does it become the user's to pass. Each ends
 its step's action sequence: the page is about to change hands, so an action
@@ -21,7 +20,6 @@ from pydantic import BaseModel
 from app.constants.browser import EngineSwitchReason, SensitiveCategory
 
 TakeoverFn = Callable[[str, SensitiveCategory], Awaitable[str]]
-AgentGuidanceFn = Callable[[str], Awaitable[str]]
 EngineSwitchFn = Callable[[EngineSwitchReason], Awaitable[str]]
 
 
@@ -42,7 +40,6 @@ def build_browser_tools(
     *,
     solve_captcha: bool,
     handle_takeover: TakeoverFn,
-    handle_guidance: AgentGuidanceFn,
     handle_engine_switch: EngineSwitchFn | None = None,
 ) -> Tools[None]:
     """Build the Browser-Use Tools the agent can call during a run.
@@ -52,21 +49,6 @@ def build_browser_tools(
     full browser.
     """
     tools: Tools[None] = Tools()
-
-    # Registered by function name; BrowserHandoffAction.REQUEST_AGENT_GUIDANCE must spell it the same.
-    @tools.action(
-        description=(
-            "Ask the assistant that gave you this task what to do, when no action on "
-            "this page moves the task forward and no human step is what is missing. "
-            "It answers with ONE concrete instruction and you then continue. `reason` "
-            "says what you tried and what the page does instead; it is read by an "
-            "assistant, not by the user, so write it as a plain statement of fact."
-        ),
-        terminates_sequence=True,
-    )
-    async def request_agent_guidance(reason: str) -> str:
-        """Return the guidance tool that asks the agent that started the run how to proceed."""
-        return await handle_guidance(reason)
 
     # Registered by function name; BrowserHandoffAction.REQUEST_HUMAN_TAKEOVER must spell it the same.
     @tools.action(

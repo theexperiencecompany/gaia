@@ -2,29 +2,30 @@
 
 All cross-process because the run lives in an ARQ worker while the turn that
 asked for it lives in the API: the one-task-per-conversation slot lease, the
-conversation's latest job, the job's durable state, the joiner lease and the
-delivery claim that decide who speaks the result, the stop flag, the handoff
-the run is waiting on, and the inbox of what the user said while it runs.
+conversation's latest job, the state of a job that has not ended, the one
+record of how it ended, the handoff the run is waiting on, and the inbox of
+what the user said while it runs.
 """
+
+from dataclasses import dataclass
 
 from redis.exceptions import WatchError
 
+from app.agents.core.background.executor_channel import RedisInbox
 from app.constants.browser import (
-    BROWSER_JOB_DELIVERED_PREFIX,
     BROWSER_JOB_ENDING_PREFIX,
     BROWSER_JOB_INBOX_PREFIX,
-    BROWSER_JOB_JOINER_LEASE_SECONDS,
-    BROWSER_JOB_JOINER_PREFIX,
     BROWSER_JOB_LATEST_PREFIX,
+    BROWSER_JOB_LIVE_KEY,
     BROWSER_JOB_LOCK_PREFIX,
     BROWSER_JOB_LOCK_TTL_SECONDS,
     BROWSER_JOB_STATE_PREFIX,
     BROWSER_JOB_WAIT_PREFIX,
     JobEnding,
-    ResultSpeaker,
 )
 from app.db.redis import redis_cache
-from app.schemas.browser_job import BrowserJobEnding, BrowserJobState
+from app.models.agent_models import InboxEntry
+from app.schemas.browser_job import BROWSER_JOB_ENDING, BrowserJobEnding, BrowserJobState
 from app.services.browser.job_lifetime import browser_job_ttl_seconds
 
 
@@ -38,22 +39,6 @@ def _latest_key(key: str) -> str:
 
 def _state_key(job_id: str) -> str:
     return f"{BROWSER_JOB_STATE_PREFIX}{job_id}"
-
-
-def _joiner_key(job_id: str) -> str:
-    return f"{BROWSER_JOB_JOINER_PREFIX}{job_id}"
-
-
-def _hold_key(job_id: str) -> str:
-    return f"{BROWSER_JOB_JOINER_PREFIX}{job_id}:hold"
-
-
-def _released_key(job_id: str) -> str:
-    return f"{BROWSER_JOB_JOINER_PREFIX}{job_id}:released"
-
-
-def _delivered_key(job_id: str) -> str:
-    return f"{BROWSER_JOB_DELIVERED_PREFIX}{job_id}"
 
 
 def _ending_key(job_id: str) -> str:
@@ -145,143 +130,74 @@ async def get_latest_job(key: str) -> str | None:
 
 
 async def put_job_state(state: BrowserJobState) -> None:
-    """Write the job's durable state, replacing whatever the last transition left."""
+    """Write the state of a job that has not ended, and keep it where the reaper looks."""
     await redis_cache.set(_state_key(state.job_id), state, ttl=browser_job_ttl_seconds())
+    await redis_cache.client.sadd(BROWSER_JOB_LIVE_KEY, state.job_id)
 
 
 async def get_job_state(job_id: str) -> BrowserJobState | None:
-    """Load a job's state, or None when it is unknown or has expired.
-
-    A finished run's ending of record carries its DONE state: that is the
-    job's state from the moment it was recorded, whether or not the worker
-    lived to write it here too.
-    """
-    recorded = await _ending_record(job_id)
-    if recorded is not None and recorded.state is not None:
-        return recorded.state
+    """Load the state a job was queued or run with, or None when it is unknown or has expired."""
     return await redis_cache.get(_state_key(job_id), model=BrowserJobState)
 
 
-async def take_joiner_lease(job_id: str, stream_id: str) -> None:
-    """Announce that this turn is waiting on the job: it reads a guidance ask at once and speaks the result."""
-    await redis_cache.client.set(
-        _joiner_key(job_id), stream_id, ex=BROWSER_JOB_JOINER_LEASE_SECONDS
-    )
+async def live_job_ids() -> list[str]:
+    """Return every job recorded as not ended, as the reaper walks them."""
+    return [str(job_id) for job_id in await redis_cache.client.smembers(BROWSER_JOB_LIVE_KEY)]
 
 
-async def refresh_joiner_lease(job_id: str, stream_id: str) -> None:
-    """Re-arm this turn's lease; a no-op for a stream that does not hold it."""
-    await if_held(_joiner_key(job_id), stream_id, refresh=BROWSER_JOB_JOINER_LEASE_SECONDS)
+async def forget_live_job(job_id: str) -> None:
+    """Stop looking at a job the reaper found ended or expired."""
+    await redis_cache.client.srem(BROWSER_JOB_LIVE_KEY, job_id)
 
 
-async def drop_joiner_lease(job_id: str, stream_id: str) -> None:
-    """End this turn's wait on the job, only while its lease is the one held."""
-    await _drop(job_id, _joiner_key(job_id), stream_id)
+@dataclass(frozen=True)
+class InboxLanding:
+    """An executor inbox entry written with the ending it tells, or not at all."""
 
-
-async def joiner_lease_held(job_id: str) -> bool:
-    """Whether a live turn is waiting on this job right now."""
-    return bool(await redis_cache.client.exists(_joiner_key(job_id)))
-
-
-async def hold_result_for_run(job_id: str, stream_id: str) -> None:
-    """Keep the result for the executor run that started the job, which may still join and speak it."""
-    await redis_cache.client.set(_hold_key(job_id), stream_id, ex=BROWSER_JOB_JOINER_LEASE_SECONDS)
-
-
-async def release_result_hold(job_id: str, stream_id: str) -> None:
-    """Give the result up once that run has ended, only while its hold is the one held."""
-    await _drop(job_id, _hold_key(job_id), stream_id)
-
-
-async def _drop(job_id: str, key: str, holder: str) -> None:
-    """Delete a claim on the result while holder holds it, and wake a worker waiting for it to go."""
-    if await if_held(key, holder, refresh=None):
-        released = _released_key(job_id)
-        await redis_cache.client.rpush(released, holder)
-        await redis_cache.client.expire(released, BROWSER_JOB_JOINER_LEASE_SECONDS)
-
-
-async def await_result_unclaimed(job_id: str) -> None:
-    """Return once no turn may still speak the result: neither a join nor the starting run holds it.
-
-    Wakes when one is dropped; one whose API died has lapsed within a lease window.
-    """
-    while await redis_cache.client.exists(_joiner_key(job_id), _hold_key(job_id)):
-        await redis_cache.client.blpop(
-            [_released_key(job_id)], timeout=BROWSER_JOB_JOINER_LEASE_SECONDS
-        )
-
-
-async def claim_result_delivery(job_id: str, speaker: ResultSpeaker) -> ResultSpeaker:
-    """Claim the one telling of the job's result for speaker; return who holds it, speaker when this call won.
-
-    A joiner's claim lapses within a lease window until settle_result_claim keeps
-    it: a turn that collected the result has told nobody until its run finishes.
-    """
-    ttl = (
-        BROWSER_JOB_JOINER_LEASE_SECONDS
-        if speaker is ResultSpeaker.JOINER
-        else browser_job_ttl_seconds()
-    )
-    holder: str | None = await redis_cache.client.set(
-        _delivered_key(job_id), speaker.value, ex=ttl, nx=True, get=True
-    )
-    return speaker if holder is None else ResultSpeaker(holder)
-
-
-async def keep_result_claim(job_id: str) -> None:
-    """Re-arm a joiner's claim for another lease window while its run goes on."""
-    await if_held(
-        _delivered_key(job_id),
-        ResultSpeaker.JOINER.value,
-        refresh=BROWSER_JOB_JOINER_LEASE_SECONDS,
-    )
-
-
-async def settle_result_claim(job_id: str, *, told: bool) -> None:
-    """Keep a joiner's claim for good once its run told the user, or give it back to the worker when it did not."""
-    await if_held(
-        _delivered_key(job_id),
-        ResultSpeaker.JOINER.value,
-        refresh=browser_job_ttl_seconds() if told else None,
-    )
+    inbox: RedisInbox
+    entry: InboxEntry
 
 
 async def record_ending(
-    job_id: str, ending: JobEnding, state: BrowserJobState | None = None
-) -> JobEnding:
+    job_id: str, ending: BrowserJobEnding, landing: InboxLanding | None = None
+) -> BrowserJobEnding:
     """Record how the job ends unless an ending is recorded already; return the ending of record.
 
-    The one decision point between a stop and the run's own end: SET NX, so
-    whoever records first wins, and every reader follows the record. A run that
-    finishes records its DONE state with it, so the result is kept in the same write.
+    The one decision point between a stop, the run's own end and the reaper:
+    whoever records first wins, and gets its own ending object back. The landing
+    is written in the same transaction, so an ending is never told unrecorded.
     """
-    record = BrowserJobEnding(ending=ending, state=state)
-    held: str | None = await redis_cache.client.set(
-        _ending_key(job_id),
-        record.model_dump_json(),
-        nx=True,
-        get=True,
-        ex=browser_job_ttl_seconds(),
-    )
-    return ending if held is None else BrowserJobEnding.model_validate_json(held).ending
+    key = _ending_key(job_id)
+    async with redis_cache.client.pipeline() as pipe:
+        while True:
+            await pipe.watch(key)
+            held = await pipe.get(key)
+            if held is not None:
+                await pipe.unwatch()
+                return BROWSER_JOB_ENDING.validate_json(held)
+            pipe.multi()
+            pipe.set(key, BROWSER_JOB_ENDING.dump_json(ending), ex=browser_job_ttl_seconds())
+            pipe.srem(BROWSER_JOB_LIVE_KEY, job_id)
+            if landing is not None:
+                landing.inbox.stage_append(pipe, landing.entry)
+            try:
+                await pipe.execute()
+            except WatchError:
+                # Another ending landed between the read and the write: read it instead.
+                continue
+            return ending
 
 
-async def _ending_record(job_id: str) -> BrowserJobEnding | None:
+async def done_state(job_id: str) -> BrowserJobEnding | None:
+    """Return how the job ended, its result with it, or None while it has not ended."""
     recorded = await redis_cache.client.get(_ending_key(job_id))
-    return BrowserJobEnding.model_validate_json(recorded) if recorded else None
-
-
-async def job_ending(job_id: str) -> JobEnding | None:
-    """Return how the job ended, or None while no ending is recorded."""
-    recorded = await _ending_record(job_id)
-    return recorded.ending if recorded is not None else None
+    return BROWSER_JOB_ENDING.validate_json(recorded) if recorded else None
 
 
 async def job_cancel_requested(job_id: str) -> bool:
     """Whether a stop won the job's ending: the run is to stop, and nothing tells its result."""
-    return await job_ending(job_id) is JobEnding.STOPPED
+    ended = await done_state(job_id)
+    return ended is not None and ended.ending is JobEnding.STOPPED
 
 
 async def set_job_wait(job_id: str, handoff_id: str) -> None:

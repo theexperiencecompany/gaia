@@ -15,7 +15,6 @@ import pytest
 
 from app.config.feature_flags import FeatureFlag
 from app.constants.browser import (
-    BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS,
     BROWSER_JOB_WORKER_STOPPED_SUMMARY,
     BROWSER_NO_CHROME_HOST,
     BROWSER_RESULT_REPLACED_REQUEST,
@@ -27,15 +26,12 @@ from app.constants.browser import (
     BrowserRunFailure,
     BrowserSessionStatus,
     EngineFailure,
-    HandoffKind,
     HandoffStatus,
-    JobEnding,
     SensitiveCategory,
 )
 from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationSource
 from app.schemas.browser import (
-    AgentGuidanceRequest,
     BrowserAction,
     BrowserActionOutput,
     BrowserResultSnapshot,
@@ -44,11 +40,16 @@ from app.schemas.browser import (
     HandoffOutcome,
     HandoffRequest,
     NewHandoff,
-    PendingAgentGuidance,
 )
-from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJobStatus
+from app.schemas.browser_job import (
+    BrowserJobFinished,
+    BrowserJobRequest,
+    BrowserJobState,
+    BrowserJobStatus,
+    BrowserJobStopped,
+)
 from app.services.analytics_service import AnalyticsEvents
-from app.services.browser import job_runner as jr
+from app.services.browser import job_runner as jr, job_teller as teller
 from app.services.browser.exceptions import (
     BrowserConcurrencyLimit,
     BrowserSessionGone,
@@ -56,8 +57,8 @@ from app.services.browser.exceptions import (
 )
 from app.services.browser.fingerprint import current_fingerprint_seed, seed_for_user
 from app.services.browser.jev.secrets import RunSecrets, SecretWithheld
-from app.services.browser.job_events import JOB_GUIDANCE_FRAME, JOB_TERMINAL_FRAME
-from app.services.browser.jobs import get_job_state, job_ending
+from app.services.browser.job_events import JOB_TERMINAL_FRAME
+from app.services.browser.jobs import done_state, put_job_state
 from app.services.browser.ledger import CallComponent, ExecutedAction, RunLedger
 from app.services.browser.runner import BrowserRunConfig, BrowserRunnerCallbacks
 from app.services.browser.tasks import BrowserTaskRecord
@@ -65,7 +66,14 @@ from shared.py.wide_events import log, wide_task
 from tests.helpers import captured_wide_event
 
 # Every run writes its ending to Redis (jobs.record_ending), so each test gets its own fakeredis.
-pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("fake_redis")]
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("fake_redis", "queued_jobs")]
+
+
+@pytest.fixture
+async def queued_jobs() -> None:
+    """Queue the jobs these cases run, as browser_task does before any run starts."""
+    for job_id in ("job-1", "job-7", "job-9"):
+        await put_job_state(BrowserJobState.of(_request(job_id=job_id), BrowserJobStatus.QUEUED))
 
 
 def _request(**overrides: Any) -> BrowserJobRequest:
@@ -76,6 +84,7 @@ def _request(**overrides: Any) -> BrowserJobRequest:
         "user_id": "u1",
         "conversation_id": "c1",
         "task": "x",
+        "in_background": False,
         "stream_id": "s1",
         "source_category": "ui",
     }
@@ -97,7 +106,7 @@ _REAL_PUBLISH_FRAME = jr.publish_frame_to_job
 
 async def _run(h: "Harness", request: BrowserJobRequest) -> str:
     """Run the job body and read its outcome the way the worker and the join tool do."""
-    return jr.agent_result_message(await jr.execute_browser_job(request))
+    return teller.agent_result_message(await jr.execute_browser_job(request))
 
 
 def _failed_card(summary: str) -> dict[str, Any]:
@@ -125,7 +134,7 @@ NO_META = (
 )
 
 
-ONLY_THE_SUMMARY = jr._ONLY_THE_SUMMARY
+ONLY_THE_SUMMARY = teller._ONLY_THE_SUMMARY
 
 
 def _completed_message(summary: str) -> str:
@@ -139,7 +148,7 @@ def _completed_message(summary: str) -> str:
 
 def _failed_message(summary: str) -> str:
     """Return the failed run's message as the builder writes it; the builder has its own tests."""
-    return jr.agent_result_message(_result(BrowserSessionStatus.FAILED, False, summary))
+    return teller.agent_result_message(_result(BrowserSessionStatus.FAILED, False, summary))
 
 
 def _result(
@@ -167,7 +176,9 @@ def test_a_done_runs_own_answer_is_what_the_executor_hears() -> None:
         usage = None
 
     success, summary = outcome_from_history(_History())  # type: ignore[arg-type]  # a duck-typed history
-    out = jr.agent_result_message(_result(BrowserSessionStatus.COMPLETED, success, summary or ""))
+    out = teller.agent_result_message(
+        _result(BrowserSessionStatus.COMPLETED, success, summary or "")
+    )
 
     assert answer in out
     assert out.startswith(answer)
@@ -185,7 +196,7 @@ def test_every_result_forbids_claiming_an_action_the_summary_does_not_report(
     result: BrowserResultSnapshot,
 ) -> None:
     """Regression: after the user cancelled the upvote, the reply said the browser signed in and upvoted."""
-    out = jr.agent_result_message(result)
+    out = teller.agent_result_message(result)
 
     assert "Never claim an action" in out
     assert "a login, a purchase, a vote" in out
@@ -197,7 +208,7 @@ def test_a_mid_run_instruction_change_is_what_the_assistant_is_told_to_answer() 
     result.user_notes = [note]
     result.redirects = [note]
 
-    out = jr.agent_result_message(result)
+    out = teller.agent_result_message(result)
 
     assert note in out
     assert "not carried out" in out.lower()
@@ -218,7 +229,7 @@ def test_the_changed_instruction_leads_the_text_the_assistant_reads(
     result.user_notes = [note]
     result.redirects = [note]
 
-    out = jr.agent_result_message(result)
+    out = teller.agent_result_message(result)
 
     assert out.startswith(BROWSER_RESULT_REPLACED_REQUEST.format(notes=f'"{note}"'))
 
@@ -229,14 +240,14 @@ def test_a_failed_run_never_blames_the_user_for_the_step_they_cancelled() -> Non
     result.user_notes = ["skip the login, just tell me the title"]
     result.redirects = list(result.user_notes)
 
-    out = jr.agent_result_message(result)
+    out = teller.agent_result_message(result)
 
     replaced = BROWSER_RESULT_REPLACED_REQUEST.format(notes=f'"{result.redirects[0]}"')
     assert out.index(replaced) < out.index("DID NOT COMPLETE")
 
 
 def test_a_run_nobody_redirected_is_told_nothing_about_a_changed_instruction() -> None:
-    out = jr.agent_result_message(_result(BrowserSessionStatus.COMPLETED, True, "Done"))
+    out = teller.agent_result_message(_result(BrowserSessionStatus.COMPLETED, True, "Done"))
 
     assert "NOT carried out" not in out
 
@@ -246,7 +257,7 @@ def test_what_the_user_said_mid_run_is_passed_on_as_said_not_as_a_replaced_reque
     result = _result(BrowserSessionStatus.COMPLETED, True, "Booked.")
     result.user_notes = ["make it 8pm if you can"]
 
-    out = jr.agent_result_message(result)
+    out = teller.agent_result_message(result)
 
     assert out.startswith(BROWSER_RESULT_USER_SAID.format(notes='"make it 8pm if you can"'))
     assert "REPLACED" not in out
@@ -256,7 +267,7 @@ def test_every_mid_run_instruction_reaches_the_closing_reply() -> None:
     result = _result(BrowserSessionStatus.FAILED, False, "Could not finish.")
     result.user_notes = ["skip the login", "just read the headline"]
 
-    out = jr.agent_result_message(result)
+    out = teller.agent_result_message(result)
 
     assert "skip the login" in out
     assert "just read the headline" in out
@@ -264,32 +275,36 @@ def test_every_mid_run_instruction_reaches_the_closing_reply() -> None:
 
 def test_result_message_completed_without_success_reports_failure() -> None:
     """Status == COMPLETED and success: a completed-but-unsuccessful run must never be reported as an accomplishment."""
-    out = jr.agent_result_message(_result(BrowserSessionStatus.COMPLETED, False, "Login wall"))
+    out = teller.agent_result_message(_result(BrowserSessionStatus.COMPLETED, False, "Login wall"))
     assert out == _failed_message("Login wall")
 
 
 def test_result_message_success_flag_alone_is_not_completion() -> None:
-    out = jr.agent_result_message(_result(BrowserSessionStatus.FAILED, True, "Crashed"))
+    out = teller.agent_result_message(_result(BrowserSessionStatus.FAILED, True, "Crashed"))
     assert out == _failed_message("Crashed")
 
 
 def test_result_message_completed_with_blank_summary_uses_fallback() -> None:
-    out = jr.agent_result_message(_result(BrowserSessionStatus.COMPLETED, True, "   "))
+    out = teller.agent_result_message(_result(BrowserSessionStatus.COMPLETED, True, "   "))
     assert out == _completed_message("The task finished.")
 
 
 def test_result_message_failure_with_blank_summary_uses_fallback() -> None:
-    out = jr.agent_result_message(_result(BrowserSessionStatus.FAILED, False, ""))
+    out = teller.agent_result_message(_result(BrowserSessionStatus.FAILED, False, ""))
     assert out == _failed_message("the task could not be finished")
 
 
 def test_a_cancelled_run_reports_no_result_whatever_the_run_left_behind() -> None:
-    stopped = jr.agent_result_message(_result(BrowserSessionStatus.CANCELLED, False, "half done"))
-    claimed_success = jr.agent_result_message(_result(BrowserSessionStatus.CANCELLED, True, "x"))
+    stopped = teller.agent_result_message(
+        _result(BrowserSessionStatus.CANCELLED, False, "half done")
+    )
+    claimed_success = teller.agent_result_message(
+        _result(BrowserSessionStatus.CANCELLED, True, "x")
+    )
 
     assert "half done" not in stopped
     assert claimed_success == stopped.replace("half done", "x")
-    assert stopped != jr.agent_result_message(
+    assert stopped != teller.agent_result_message(
         _result(BrowserSessionStatus.FAILED, False, "half done")
     )
 
@@ -652,7 +667,7 @@ async def test_a_finished_run_records_its_status_steps_and_engine_on_the_event(
     }
 
 
-async def test_a_users_handoff_records_its_kind_category_and_result(
+async def test_a_users_handoff_records_its_category_and_result(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def _handoff(h: Harness) -> BrowserResultSnapshot:
@@ -669,7 +684,6 @@ async def test_a_users_handoff_records_its_kind_category_and_result(
 
     event = await _run_event(h, _request())
 
-    assert event["browser"]["handoff_kind"] == "user"
     assert event["browser"]["handoff_category"] == "credentials"
     assert event["browser"]["handoff_result"] == "timeout"
 
@@ -764,14 +778,16 @@ async def test_a_cancelled_run_emits_the_failed_card_and_still_propagates(
     assert [c for c in h.cards if c["kind"] == "result"] == [
         _failed_card(BROWSER_JOB_WORKER_STOPPED_SUMMARY)
     ]
-    assert h.states[-1].status is BrowserJobStatus.DONE
+    ending = await done_state("job-1")
+    assert isinstance(ending, BrowserJobFinished)
+    assert ending.result.summary == BROWSER_JOB_WORKER_STOPPED_SUMMARY
     assert h.feed_signals == [JOB_TERMINAL_FRAME]
 
 
 async def test_a_run_a_stop_aborted_ends_on_a_stopped_card_and_settles_the_job(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A stop aborts the ARQ task: the run still ends on its card and the DONE state a join reads."""
+    """A stop aborts the ARQ task: the run still ends on its card, as its ending of record."""
     started = False
 
     async def _aborted(h: Harness) -> BrowserResultSnapshot:
@@ -796,8 +812,9 @@ async def test_a_run_a_stop_aborted_ends_on_a_stopped_card_and_settles_the_job(
     assert [(c["status"], c["summary"]) for c in results] == [
         (BrowserSessionStatus.CANCELLED.value, BROWSER_RUN_CANCELLED_SUMMARY)
     ]
-    assert h.states[-1].result is not None
-    assert h.states[-1].result.status is BrowserSessionStatus.CANCELLED
+    ending = await done_state("job-1")
+    assert isinstance(ending, BrowserJobFinished)
+    assert ending.result.status is BrowserSessionStatus.CANCELLED
     # The run's own stop, read for this job and no other.
     assert asked == {"job-1"}
 
@@ -823,14 +840,16 @@ async def test_a_run_that_ended_on_its_own_card_gets_no_second_one(
 async def test_a_run_whose_history_could_not_be_recorded_still_ends_on_its_result(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    h = _install(monkeypatch)
+    _install(monkeypatch)
     monkeypatch.setattr(jr, "persist_run_outcome", AsyncMock(side_effect=RuntimeError("db down")))
 
     async with captured_wide_event() as event:
         result = await jr.execute_browser_job(_request(task="x"))
 
     assert result.status is BrowserSessionStatus.COMPLETED
-    assert h.states[-1].result == result
+    ending = await done_state("job-1")
+    assert isinstance(ending, BrowserJobFinished)
+    assert ending.result == result
     [error] = event["errors"]
     assert error["msg"] == f"{LogTag.BROWSER} Browser run finished but its history was not recorded"
     assert (error["error_type"], error["error"], error["browser"]) == (
@@ -1362,6 +1381,9 @@ async def test_failed_mirror_is_logged_with_the_snapshot_that_failed(
         async def step(self, snapshot: object) -> None:
             raise RuntimeError("rabbitmq down")
 
+        async def result(self, snapshot: object) -> None:
+            return None
+
     async def body(h: Harness) -> BrowserResultSnapshot:
         await h.emit(BrowserStepSnapshot(index=1, goal="g"))
         return _result(BrowserSessionStatus.COMPLETED, True, "done")
@@ -1374,7 +1396,7 @@ async def test_failed_mirror_is_logged_with_the_snapshot_that_failed(
     out = await _run(h, _bot_request(task="x"))
 
     assert out == _completed_message("done")
-    assert len(h.cards) == 1
+    assert [card["kind"] for card in h.cards] == ["step", "result"]
     (error_call,) = fake_log.error.call_args_list
     assert error_call.args == (f"{LogTag.BROWSER} Bot delivery failed; continuing browser task",)
     assert error_call.kwargs == {
@@ -1793,18 +1815,18 @@ async def test_an_already_normalized_mirror_frame_is_published_unchanged(
 # ---------------------------------------------------------------------------
 
 
-async def test_the_job_ends_on_a_done_state_carrying_its_result_then_closes_its_feed(
+async def test_the_job_ends_on_its_ending_record_carrying_its_result_then_closes_its_feed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A join reads the DONE state and the relay stops on the feed's end, so the state is written first."""
+    """A follower stops on the feed's end and then reads the ending, so the ending is written first."""
     h = _install(monkeypatch)
 
     result = await jr.execute_browser_job(_request(task="book a table"))
 
-    running, done = h.states
-    assert (running.status, done.status) == (BrowserJobStatus.RUNNING, BrowserJobStatus.DONE)
-    assert (done.result, done.agent_message) == (result, jr.agent_result_message(result))
-    assert done.relay_stream_id == running.relay_stream_id == "s1"
+    assert [state.status for state in h.states] == [BrowserJobStatus.RUNNING]
+    ending = await done_state("job-1")
+    assert isinstance(ending, BrowserJobFinished)
+    assert ending.result == result
     assert h.feed_signals == [JOB_TERMINAL_FRAME]
 
 
@@ -1818,13 +1840,15 @@ async def test_a_job_stopped_while_it_queued_ends_stopped_without_opening_a_brow
 
     assert result.status is BrowserSessionStatus.CANCELLED
     assert h.session_kwargs == {}
-    assert [state.status for state in h.states] == [BrowserJobStatus.DONE]
+    # Never running: its ending was all it wrote.
+    assert h.states == []
+    assert await done_state("job-1") is not None
     assert set(h.job_cancel_checks) == {"job-1"}
 
 
 def test_a_failed_run_forbids_an_answer_from_memory() -> None:
     """A failed run once resurfaced an earlier run's wrong figure as a reference answer."""
-    out = jr.agent_result_message(_result(BrowserSessionStatus.FAILED, False, "blocked"))
+    out = teller.agent_result_message(_result(BrowserSessionStatus.FAILED, False, "blocked"))
 
     assert "from memory" in out
 
@@ -1850,7 +1874,7 @@ def test_a_stopped_run_the_user_redirected_is_told_both_verbatim() -> None:
     result.user_notes = ["skip the login", "just read the headline"]
     result.redirects = list(result.user_notes)
 
-    out = jr.agent_result_message(result)
+    out = teller.agent_result_message(result)
 
     assert out == (
         BROWSER_RESULT_REPLACED_REQUEST.format(
@@ -2062,80 +2086,6 @@ async def test_a_stall_note_reaches_the_bot_user(monkeypatch: pytest.MonkeyPatch
     await _run(h, _bot_request())
 
     assert ("note", "Still loading the page.") in h.delivered
-
-
-async def test_the_run_asks_whether_an_agent_is_still_joined_on_this_job(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    asked: list[str] = []
-    answers: list[bool] = []
-
-    async def _lease_held(job_id: str) -> bool:
-        asked.append(job_id)
-        return True
-
-    async def body(h: Harness) -> BrowserResultSnapshot:
-        assert h.callbacks.agent_joined is not None
-        answers.append(await h.callbacks.agent_joined())
-        return _result(BrowserSessionStatus.COMPLETED, True, "done")
-
-    h = _install(monkeypatch, run_body=body)
-    monkeypatch.setattr(jr, "joiner_lease_held", _lease_held)
-
-    await _run(h, _request(job_id="job-7"))
-
-    assert (asked, answers) == (["job-7"], [True])
-
-
-async def test_a_guidance_ask_is_filed_as_an_agent_handoff_and_withdrawn_once_answered(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    published: list[tuple[str, PendingAgentGuidance]] = []
-    cleared: list[str] = []
-    outcomes: list[HandoffOutcome] = []
-    ask = AgentGuidanceRequest(reason="the button is gone", task="x")
-
-    async def _put(job_id: str, pending: PendingAgentGuidance) -> None:
-        published.append((job_id, pending))
-
-    async def _clear(job_id: str) -> None:
-        cleared.append(job_id)
-
-    async def body(h: Harness) -> BrowserResultSnapshot:
-        assert h.callbacks.request_guidance is not None
-        outcomes.append(await h.callbacks.request_guidance(ask))
-        return _result(BrowserSessionStatus.COMPLETED, True, "done")
-
-    h = _install(
-        monkeypatch,
-        run_body=body,
-        handoff_outcome=HandoffOutcome(status=HandoffStatus.COMPLETED, message="use search"),
-    )
-    monkeypatch.setattr(jr, "put_guidance_request", _put)
-    monkeypatch.setattr(jr, "clear_guidance_request", _clear)
-
-    event = await _run_event(h, _request(job_id="job-7", conversation_id="conv-9"))
-
-    (created,) = h.handoffs_created
-    handoff_id = created[0]
-    assert created == (
-        handoff_id,
-        NewHandoff(
-            job_id="job-7",
-            user_id="u1",
-            conversation_id="conv-9",
-            reason="the button is gone",
-            kind=HandoffKind.AGENT,
-        ),
-    )
-    assert h.handoffs_awaited == [(handoff_id, BROWSER_AGENT_GUIDANCE_TIMEOUT_SECONDS)]
-    assert published == [("job-7", PendingAgentGuidance(handoff_id=handoff_id, request=ask))]
-    assert cleared == ["job-7"]
-    assert [o.message for o in outcomes] == ["use search"]
-    assert event["browser"]["guidance_result"] == "completed"
-    # The ask wakes a join parked on this job's feed, and a stop finds the wait it settles.
-    assert (h.feed_jobs[0], h.feed_signals[0]) == ("job-7", JOB_GUIDANCE_FRAME)
-    assert h.waits == [("job-7", handoff_id)]
 
 
 async def test_an_obscura_runs_fallback_session_opens_on_the_chrome_host_for_this_user(
@@ -2442,12 +2392,12 @@ async def test_the_actions_a_run_executed_reach_the_event_the_capture_and_the_hi
 @pytest.mark.parametrize(
     ("recorded", "ended_on"),
     [
-        (JobEnding.FINISHED, BrowserSessionStatus.COMPLETED),
-        (JobEnding.STOPPED, BrowserSessionStatus.CANCELLED),
+        (BrowserJobFinished, BrowserSessionStatus.COMPLETED),
+        (BrowserJobStopped, BrowserSessionStatus.CANCELLED),
     ],
 )
 async def test_the_card_a_run_ends_on_is_its_ending_of_record(
-    recorded: JobEnding, ended_on: BrowserSessionStatus
+    recorded: type[BrowserJobFinished] | type[BrowserJobStopped], ended_on: BrowserSessionStatus
 ) -> None:
     """A stop and the run's end race to one record: a run that lost ends on the stop's card, which told the user."""
     published: list[dict[str, object]] = []
@@ -2456,9 +2406,13 @@ async def test_the_card_a_run_ends_on_is_its_ending_of_record(
     async def _publish(frame: dict[str, object]) -> None:
         published.append(frame)
 
-    async def _record(result: BrowserResultSnapshot) -> JobEnding:
+    async def _record(result: BrowserResultSnapshot) -> BrowserJobFinished | BrowserJobStopped:
         asked.append(result)
-        return recorded
+        return (
+            BrowserJobFinished(result=result)
+            if recorded is BrowserJobFinished
+            else BrowserJobStopped()
+        )
 
     emitter = jr.ProgressEmitter(_publish, jr.BrowserThreadMirror(_publish, "tc-1"), None, _record)
     answer = BrowserResultSnapshot(
@@ -2467,17 +2421,16 @@ async def test_the_card_a_run_ends_on_is_its_ending_of_record(
 
     await emitter.emit(answer)
 
+    finished = recorded is BrowserJobFinished
     assert asked == [answer]
     assert emitter.result is not None
     assert (emitter.result.status, emitter.result.replay_url) == (ended_on, "r")
-    assert (emitter.result.summary == "Booked.") is (recorded is JobEnding.FINISHED)
-    assert emitter.result.success is (recorded is JobEnding.FINISHED)
+    assert (emitter.result.summary == "Booked.") is finished
+    assert emitter.result.success is finished
 
 
-async def test_a_jobs_result_card_records_its_ending_with_the_result_to_tell(
-    fake_redis: Any,
-) -> None:
-    """Greptile: a worker dying between the record and settle_job left joiners nothing to tell."""
+async def test_a_jobs_result_card_records_its_ending_with_the_result_to_tell() -> None:
+    """A worker dying between the record and the end of its feed must still leave the result to tell."""
     request = _request(job_id="job-9")
     answer = BrowserResultSnapshot(
         status=BrowserSessionStatus.COMPLETED, success=True, summary="ok"
@@ -2485,13 +2438,5 @@ async def test_a_jobs_result_card_records_its_ending_with_the_result_to_tell(
 
     await jr._emitter_for(request).emit(answer)
 
-    # No settle_job ran: the record alone gives every reader the result.
-    assert await job_ending("job-9") is JobEnding.FINISHED
-    assert await get_job_state("job-9") == BrowserJobState(
-        job_id="job-9",
-        status=BrowserJobStatus.DONE,
-        task=request.task,
-        relay_stream_id=request.stream_id,
-        agent_message=jr.agent_result_message(answer),
-        result=answer,
-    )
+    # The feed was never closed: the record alone gives every reader the result.
+    assert await done_state("job-9") == BrowserJobFinished(result=answer)

@@ -22,6 +22,7 @@ from uuid import uuid4
 from langchain_core.messages import AnyMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
+from redis.asyncio.client import Pipeline
 from redis.exceptions import ResponseError
 
 from app.agents.core.background.executor_queue import decode_raw_item
@@ -101,6 +102,11 @@ class RedisInbox:
             await redis_cache.client.rpush(self._key, self._encode(entry))
             await redis_cache.client.expire(self._key, self.ttl)
         return entry
+
+    def stage_append(self, pipe: Pipeline, entry: InboxEntry) -> None:
+        """Queue the same append on pipe, for a write the entry must land with or not at all."""
+        pipe.rpush(self._key, self._encode(entry))
+        pipe.expire(self._key, self.ttl)
 
     async def read(self) -> list[InboxEntry]:
         """Every pending entry, oldest first. Does not remove anything."""

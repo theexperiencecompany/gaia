@@ -1,13 +1,14 @@
-"""Payload and durable state for a browser task running as a background ARQ job.
+"""Payload, live state and terminal record of a browser task running as a background ARQ job.
 
-The request crosses the ARQ queue as JSON and is re-validated in the worker; the
-state crosses Redis and is what a joiner (or a restarted API) reads to answer
-"is it still running, and what did it say?".
+The request crosses the ARQ queue as JSON and is re-validated in the worker. The
+state says a job is queued or running and who it answers to; the ending record
+is the one place a job's end lives, its result with it.
 """
 
 from enum import StrEnum
+from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, TypeAdapter
 
 from app.constants.browser import JobEnding
 from app.models.chat_models import ConversationSource
@@ -23,6 +24,9 @@ class BrowserJobRequest(BaseModel):
     user_id: str
     conversation_id: str
     task: str
+    #: Decided at enqueue: True lands the ending in the executor inbox, False has
+    #: the starting tool call (a workflow's, a todo's) block until the ending.
+    in_background: bool
     start_url: str | None = None
     stream_id: str | None = None
     root_request_id: str | None = None
@@ -33,33 +37,48 @@ class BrowserJobRequest(BaseModel):
 
 
 class BrowserJobStatus(StrEnum):
-    """Where the job is: queued, running in the worker, or finished."""
+    """Where a job that has not ended is: waiting for a worker, or running in one."""
 
     QUEUED = "queued"
     RUNNING = "running"
-    DONE = "done"
 
 
 class BrowserJobState(BaseModel):
-    """The job's durable state: what a joiner reads and what a restart recovers."""
+    """A job that has not ended: where it is, and who its ending is told to."""
 
     job_id: str
     status: BrowserJobStatus
     task: str
-    #: The stream the turn that started the job relays its cards to.
-    relay_stream_id: str | None = None
-    #: The executor-facing guidance string (agent_result_message), set at terminal.
-    agent_message: str = ""
-    result: BrowserResultSnapshot | None = None
+    conversation_id: str
+    user_id: str
+    in_background: bool
+
+    @classmethod
+    def of(cls, request: BrowserJobRequest, status: BrowserJobStatus) -> Self:
+        """Return the state of the job request asks for, at status."""
+        return cls(
+            job_id=request.job_id,
+            status=status,
+            task=request.task,
+            conversation_id=request.conversation_id,
+            user_id=request.user_id,
+            in_background=request.in_background,
+        )
 
 
-class BrowserJobEnding(BaseModel):
-    """The job's one ending of record, and for a run that finished, the state that tells its result.
+class BrowserJobFinished(BaseModel):
+    """The run ended first, on result: that result is the one the user hears."""
 
-    Recorded in one write, so a result can never be decided without being kept:
-    a worker that dies right after its run finished still left the answer here.
-    """
+    ending: Literal[JobEnding.FINISHED] = JobEnding.FINISHED
+    result: BrowserResultSnapshot
 
-    ending: JobEnding
-    #: The DONE state the run finished on; None for a stop, which told the user itself.
-    state: BrowserJobState | None = None
+
+class BrowserJobStopped(BaseModel):
+    """A stop was recorded first: the stop told the user, and the run's result is dropped."""
+
+    ending: Literal[JobEnding.STOPPED] = JobEnding.STOPPED
+
+
+#: The job's one terminal record: written once, by whoever ends it first.
+BrowserJobEnding = Annotated[BrowserJobFinished | BrowserJobStopped, Field(discriminator="ending")]
+BROWSER_JOB_ENDING: TypeAdapter[BrowserJobEnding] = TypeAdapter(BrowserJobEnding)

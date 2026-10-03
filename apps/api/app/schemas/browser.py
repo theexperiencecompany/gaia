@@ -17,7 +17,6 @@ from app.constants.browser import (
     BrowserSessionStatus,
     EngineFailure,
     HandoffDecision,
-    HandoffKind,
     HandoffStatus,
     SensitiveCategory,
 )
@@ -131,13 +130,11 @@ class HandoffRecord(BaseModel):
     conversation_id: str
     #: The browser job paused on it: a stop said in reply stops this job, never another at the address.
     job_id: str
-    #: Defaulted so records written before agent guidance existed still parse.
-    kind: HandoffKind = HandoffKind.USER
     reason: str = ""
     # Optional free-text note the user sends back when continuing ("just grab the
     # photo, skip the login"). Delivered to the agent as guidance on resume.
     message: str | None = None
-    #: Where a chat reply resolves it (handoff.reply_address); empty for an AGENT pause.
+    #: Where a chat reply resolves it (handoff.reply_address).
     reply_address: str = ""
 
 
@@ -150,8 +147,7 @@ class NewHandoff(BaseModel):
     user_id: str
     conversation_id: str
     reason: str = ""
-    kind: HandoffKind = HandoffKind.USER
-    #: The reply address (handoff.reply_address); only a USER handoff takes one.
+    #: The reply address (handoff.reply_address).
     reply_to: str = ""
 
 
@@ -199,47 +195,6 @@ class HandoffRequest(BaseModel):
 
     category: SensitiveCategory = SensitiveCategory.NONE
     reason: str
-
-
-class GuidanceElement(BaseModel):
-    """One visible control, exactly as the browser policy saw it when it got stuck."""
-
-    label: str
-    role: str
-
-
-class GuidanceAction(BaseModel):
-    """One recent step, captioned with what it acted on."""
-
-    action: str
-
-
-class AgentGuidanceRequest(BaseModel):
-    """What a blocked run shows the executor that started it, so it can answer with one instruction.
-
-    Bounded on the producing side (see constants BROWSER_GUIDANCE_*) because it
-    is rendered into a single executor tool result.
-    """
-
-    reason: str
-    task: str
-    url: str = ""
-    title: str = ""
-    page_text: str = ""
-    elements: list[GuidanceElement] = Field(default_factory=list)
-    recent_actions: list[GuidanceAction] = Field(default_factory=list)
-    # What the user said mid-run. Without it the executor guides toward the
-    # original task and sends the run back to a step they declined.
-    user_notes: list[str] = Field(default_factory=list)
-    # The notes among them the reply classifier read as replacing the task.
-    redirects: list[str] = Field(default_factory=list)
-
-
-class PendingAgentGuidance(BaseModel):
-    """The in-flight guidance request a joined executor can answer, and the handoff answering it resolves."""
-
-    handoff_id: str
-    request: AgentGuidanceRequest
 
 
 class HandoffDecisionRequest(BaseModel):

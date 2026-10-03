@@ -14,22 +14,12 @@ from dataclasses import dataclass
 from time import perf_counter
 
 from app.constants.browser import BrowserRunFailure, EngineSwitchReason, SensitiveCategory
-from app.schemas.browser import (
-    AgentGuidanceRequest,
-    BrowserAction,
-    BrowserActionOutput,
-    BrowserResultSnapshot,
-)
+from app.schemas.browser import BrowserAction, BrowserActionOutput, BrowserResultSnapshot
 
 # Per-action results, keyed to the step whose rows the thread mirror emitted.
 # Awaitable: the mirror publishes them, and a publish crosses a process boundary.
 ActionResultsFn = Callable[[int, list[BrowserActionOutput]], Awaitable[None]]
 
-# Whether a blocked step may ask the agent that started the run for guidance:
-# budget left here, a joined agent to answer one process away. Asked per step,
-# never cached — an agent that ended its turn stops being reachable mid-run.
-GuidanceGate = Callable[[], Awaitable[bool]]
-GuidanceFn = Callable[[AgentGuidanceRequest], Awaitable[str]]
 #: Whether something is waiting (a stop, a user message); asked between Jev decisions.
 FlagFn = Callable[[], Awaitable[bool]]
 #: The messages the user sent since the last read, oldest first; reading takes them.
@@ -110,10 +100,6 @@ class RunHooks:
     user_waiting: FlagFn
     take_user_messages: TakeMessagesFn
     action_results: ActionResultsFn | None = None
-    #: Both or neither: without a gate nothing ever asks, so a run with no agent
-    #: to reach back to ends blocked exactly as it did before guidance existed.
-    guidance_allowed: GuidanceGate | None = None
-    guidance: GuidanceFn | None = None
     #: Present only while the run is on Obscura with Chrome behind it.
     switch_engine: SwitchEngineFn | None = None
 

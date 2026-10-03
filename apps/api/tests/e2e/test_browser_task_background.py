@@ -15,10 +15,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.agents.core.background.session import signal_executor_done
+from app.constants.agents import AgentTag
 from app.constants.browser import (
-    BROWSER_NO_GUIDANCE_AVAILABLE,
-    BROWSER_RUN_BLOCKED_SUMMARY,
     BROWSER_RUN_SESSION_LOST_SUMMARY,
     BROWSER_TAKEOVER_DONE_NOTE,
     BrowserSessionStatus,
@@ -50,7 +48,6 @@ USER = "user-e2e"
 
 RETRIEVE = call("retrieve_tools", {"exact_tool_names": ["browser_task"]}, "r1")
 START = call("browser_task", {"task": "book a table for two at 7pm"}, "b1")
-JOIN = call("wait_for_browser_task", {}, "w1")
 
 TWO_STEPS = [
     ScriptedStep(
@@ -65,8 +62,17 @@ TWO_STEPS = [
 ]
 
 
+#: The message the turn renders into, which the job's cards fold into.
+TURN_MESSAGE = "bot-msg-e2e"
+
+
 def _configurable(**extra: Any) -> dict[str, Any]:
-    return {"conversation_id": CONVERSATION, "stream_id": STREAM, **extra}
+    return {
+        "conversation_id": CONVERSATION,
+        "stream_id": STREAM,
+        "bot_message_id": TURN_MESSAGE,
+        **extra,
+    }
 
 
 async def _drive(graph: Any, world: JobWorld, prompt: str = "book me a table") -> Any:
@@ -81,17 +87,19 @@ async def _drive(graph: Any, world: JobWorld, prompt: str = "book me a table") -
     return run
 
 
-async def test_the_run_answers_the_question_and_the_executor_reports_that_answer() -> None:
-    """The tool call no longer carries the result, so the turn only has an answer if the join really collects one out of the worker's terminal state."""
+async def test_the_runs_answer_is_told_once_by_the_executor_run_it_wakes() -> None:
+    """The tool call acks at once and carries no result: the answer has to land in the executor inbox, once, and wake a run to tell it."""
     async with browser_job_world(STREAM, steps=TWO_STEPS) as world:
-        async with executor_graph([RETRIEVE, START, JOIN, "Booked."]) as graph:
+        async with executor_graph([RETRIEVE, START, "I've started on it."]) as graph:
             run = await _drive(graph, world)
 
     assert run.ran("browser_task")
     assert "started in the background" in (run.result_for("browser_task") or "")
-    joined = run.result_for("wait_for_browser_task") or ""
-    assert joined.startswith("The table is booked for 7pm on Friday.")
     assert len(world.enqueued) == 1
+    assert world.enqueued[0].in_background is True
+    assert [entry.tag for entry in world.told] == [AgentTag.BROWSER_RESULT]
+    assert world.result_told().startswith("The table is booked for 7pm on Friday.")
+    assert world.woken == [CONVERSATION]
     # The run's thread group is keyed by the call that started it, injected by the tool node.
     assert world.enqueued[0].tool_call_id == "b1"
     groups = {
@@ -102,41 +110,60 @@ async def test_the_run_answers_the_question_and_the_executor_reports_that_answer
     assert groups == {"browser:b1"}
 
 
-async def test_the_join_is_bound_from_the_first_model_call() -> None:
-    """A started run with no reachable join is a run whose answer nobody can collect, so the join must never depend on a retrieval hit."""
+async def test_the_browser_tool_is_bound_from_the_first_model_call_and_there_is_no_join() -> None:
+    """The result arrives on its own: a join tool would only give the model a second way to tell it."""
     async with browser_job_world(STREAM, steps=TWO_STEPS) as world:
-        async with executor_graph([RETRIEVE, START, JOIN, "Booked."]) as graph:
+        async with executor_graph([RETRIEVE, START, "Started."]) as graph:
             run = await _drive(graph, world)
 
-    assert "wait_for_browser_task" in run.bound[0]
-    assert "wait_for_browser_task" not in run.bound_tools()
+    assert "browser_task" in run.bound[0]
+    assert all("wait_for_browser_task" not in bound for bound in run.bound)
 
 
-async def test_every_step_card_reaches_the_turns_stream_and_its_message() -> None:
-    """The cards are produced in a worker with no stream of its own; without the relay the user watches nothing and reloads to nothing."""
-    from app.agents.core.background.executor_capture import drain_executor_tool_data
-
+async def test_a_workflow_run_blocks_for_the_ending_and_tells_it_itself() -> None:
+    """A headless run has no live conversation to be woken in: the call returns the ending, and nothing else tells it."""
     async with browser_job_world(STREAM, steps=TWO_STEPS) as world:
-        async with executor_graph([RETRIEVE, START, JOIN, "Booked."]) as graph:
+        async with executor_graph([RETRIEVE, START, "Booked."]) as graph:
+            run = await run_graph(
+                graph,
+                "book me a table",
+                thread_id=CONVERSATION,
+                user_id=USER,
+                **_configurable(execution_mode="background"),
+            )
+            await world.settle()
+
+    assert world.enqueued[0].in_background is False
+    told = run.result_for("browser_task") or ""
+    assert told.startswith(
+        f"The browser task you started (job {world.enqueued[0].job_id}) has ended."
+    )
+    assert "The table is booked for 7pm on Friday." in told
+    assert world.told == []
+    assert world.woken == []
+
+
+async def test_every_step_card_reaches_the_jobs_stream_and_the_turns_message() -> None:
+    """The cards are produced in a worker with no stream of its own; without the relay the user watches nothing and reloads to nothing."""
+    async with browser_job_world(STREAM, steps=TWO_STEPS) as world:
+        async with executor_graph([RETRIEVE, START, "Started."]) as graph:
             await _drive(graph, world)
 
-        cards = world.cards()
-        assert [card["kind"] for card in cards] == ["session", "step", "step", "result"]
-        assert [card["index"] for card in cards if card["kind"] == "step"] == [1, 2]
-        assert cards[3]["status"] == BrowserSessionStatus.COMPLETED.value
-
-        persisted = drain_executor_tool_data(STREAM)
-        assert [
-            entry["data"]["kind"]
-            for entry in persisted
-            if entry["tool_name"] == "browser_task_data"
-        ] == ["session", "step", "step", "result"]
+    cards = world.cards()
+    assert [card["kind"] for card in cards] == ["session", "step", "step", "result"]
+    assert [card["index"] for card in cards if card["kind"] == "step"] == [1, 2]
+    assert cards[3]["status"] == BrowserSessionStatus.COMPLETED.value
+    [(message_id, saved)] = world.saved
+    assert message_id == TURN_MESSAGE
+    assert [
+        entry["data"]["kind"] for entry in saved if entry["tool_name"] == "browser_task_data"
+    ] == ["session", "step", "step", "result"]
 
 
 async def test_a_bot_conversation_gets_one_photo_per_step_and_only_the_recap_line() -> None:
     """Bots never see the SSE stream: a run the worker does not mirror to the platform is a run a Discord user watches in silence."""
     async with browser_job_world(STREAM, steps=TWO_STEPS) as world:
-        async with executor_graph([RETRIEVE, START, JOIN, "Booked."]) as graph:
+        async with executor_graph([RETRIEVE, START, "Started."]) as graph:
             await run_graph(
                 graph,
                 "book me a table",
@@ -158,28 +185,11 @@ async def test_a_bot_conversation_gets_one_photo_per_step_and_only_the_recap_lin
     assert world.bot_messages == [f"📽 Here's a recap of the run: {REPLAY_URL}"]
 
 
-async def test_a_turn_that_ends_without_joining_has_the_result_delivered_to_the_user() -> None:
-    """Nothing is holding the tool call open any more, so a run that outlives its turn has to speak for itself or the user is left with a started notice and no outcome."""
-    async with browser_job_world(STREAM, steps=TWO_STEPS) as world:
-        async with executor_graph([RETRIEVE, START, "I've started on it."]) as graph:
-            await _drive(graph, world)
-
-    assert len(world.deliveries) == 1
-    delivery = world.deliveries[0]
-    assert "The table is booked for 7pm on Friday." in delivery["text"]
-    assert delivery["conversation_id"] == CONVERSATION
-    assert [
-        entry["data"]["kind"]
-        for entry in delivery["tool_data"]
-        if entry["tool_name"] == "browser_task_data"
-    ] == ["session", "step", "step", "result"]
-
-
 async def test_a_second_browser_task_in_one_turn_is_refused_by_name() -> None:
     """One browser per conversation: a second run would fight the first for the same live view, and the model would narrate whichever finished last."""
     second = call("browser_task", {"task": "also check the menu"}, "b2")
     async with browser_job_world(STREAM, steps=TWO_STEPS) as world:
-        async with executor_graph([RETRIEVE, START, second, JOIN, "Booked."]) as graph:
+        async with executor_graph([RETRIEVE, START, second, "Started."]) as graph:
             run = await _drive(graph, world)
 
     assert len(world.enqueued) == 1
@@ -215,8 +225,9 @@ async def test_a_stop_reaches_the_browser_and_releases_the_conversation() -> Non
     assert world.aborted == [world.enqueued[0].job_id]
     assert reply == "Stopped the browser task."
     assert world.cards()[-1]["status"] == BrowserSessionStatus.CANCELLED.value
-    # The stop already told the user; the worker does not narrate it a second time.
-    assert world.deliveries == []
+    # The stop already told the user: nobody is woken, and the thread only learns it ended.
+    assert [entry.tag for entry in world.told] == [AgentTag.BROWSER_STOPPED]
+    assert world.woken == []
 
 
 async def test_a_worker_crash_still_reports_a_failure_and_frees_the_conversation() -> None:
@@ -225,11 +236,16 @@ async def test_a_worker_crash_still_reports_a_failure_and_frees_the_conversation
         STREAM, host=ScriptedHost(error=RuntimeError("the browser host fell over"))
     ) as world:
         async with executor_graph([RETRIEVE, START, "Started."]) as graph:
-            await _drive(graph, world)
+            run = await _drive(graph, world)
         assert await get_conversation_slot(CONVERSATION) is None
 
-    assert len(world.deliveries) == 1
-    assert "DID NOT COMPLETE" in world.deliveries[0]["text"]
+    # It failed before the executor's next model call: the live run drained it from its inbox.
+    landed = [
+        str(m.content) for m in run.prompts[-1] if str(m.content).startswith("<browser_result>")
+    ]
+    assert len(landed) == 1
+    assert "DID NOT COMPLETE" in landed[0]
+    assert world.told == []
 
 
 async def test_a_handoff_note_reaches_the_run_and_the_agent_deciding_it() -> None:
@@ -244,7 +260,7 @@ async def test_a_handoff_note_reaches_the_run_and_the_agent_deciding_it() -> Non
     ]
 
     async with browser_job_world(STREAM, steps=steps) as world:
-        async with executor_graph([RETRIEVE, START, JOIN, "Done."]) as graph:
+        async with executor_graph([RETRIEVE, START, "Started."]) as graph:
             run_task = asyncio.create_task(
                 run_graph(
                     graph,
@@ -258,19 +274,19 @@ async def test_a_handoff_note_reaches_the_run_and_the_agent_deciding_it() -> Non
             assert await resolve_handoff(handoff_id, HandoffDecision.CONTINUE, USER, note) == (
                 HandoffStatus.COMPLETED
             )
-            run = await run_task
+            await run_task
             await world.settle()
 
     assert world.browser.takeover_notes == [note]
     handoffs = [card for card in world.cards() if card["kind"] == "handoff"]
     assert [card["status"] for card in handoffs] == ["pending", "completed"]
-    joined = run.result_for("wait_for_browser_task") or ""
+    told = world.result_told()
     # The closing reply is written against the original booking otherwise, and
     # confirms a table nobody booked, so what the user said leads; a note is what
     # they said, not a replaced request, until the reply classifier calls it one.
-    assert joined.startswith(f'While it ran, the user said: "{note}"')
-    assert "REPLACED THE REQUEST" not in joined
-    assert "The table is booked for 7pm on Friday." in joined
+    assert told.startswith(f'While it ran, the user said: "{note}"')
+    assert "REPLACED THE REQUEST" not in told
+    assert "The table is booked for 7pm on Friday." in told
 
 
 async def test_a_chat_redirect_makes_the_changed_instruction_lead_the_executors_result(
@@ -291,7 +307,7 @@ async def test_a_chat_redirect_makes_the_changed_instruction_lead_the_executors_
     ]
 
     async with browser_job_world(STREAM, steps=steps) as world:
-        async with executor_graph([RETRIEVE, START, JOIN, "Done."]) as graph:
+        async with executor_graph([RETRIEVE, START, "Started."]) as graph:
             run_task = asyncio.create_task(
                 run_graph(
                     graph,
@@ -305,14 +321,14 @@ async def test_a_chat_redirect_makes_the_changed_instruction_lead_the_executors_
             reply = await resolution.resolve_handoff_from_message(CONVERSATION, USER, note)
             assert reply is not None
             assert reply.action == "redirect"
-            run = await run_task
+            await run_task
             await world.settle()
 
     assert world.browser.takeover_notes == [note]
-    joined = run.result_for("wait_for_browser_task") or ""
-    assert joined.startswith("THE USER REPLACED THE REQUEST MID-RUN")
-    assert note in joined.splitlines()[0]
-    assert joined.index(note) < joined.index("The table is booked for 7pm on Friday.")
+    told = world.result_told()
+    assert told.startswith("THE USER REPLACED THE REQUEST MID-RUN")
+    assert note in told.splitlines()[0]
+    assert told.index(note) < told.index("The table is booked for 7pm on Friday.")
 
 
 async def _wait_for_pending_handoff(world: JobWorld, count: int = 1) -> str:
@@ -373,7 +389,7 @@ async def test_a_signed_in_page_does_not_end_a_login_handoff_until_the_user_says
 
     async with browser_job_world(STREAM, steps=[SIGN_IN, BOOK_SIGNED_IN]) as world:
         with long_waits_pass_quickly():
-            async with executor_graph([RETRIEVE, START, JOIN, "Booked."]) as graph:
+            async with executor_graph([RETRIEVE, START, "Started."]) as graph:
                 run_task = asyncio.create_task(_drive(graph, world))
                 handoff_id = await _wait_for_pending_handoff(world)
                 await world.sit_through_lease_renewals(1)
@@ -416,7 +432,7 @@ async def test_a_done_that_left_the_user_signed_out_is_asked_again_and_saves_not
     )
 
     async with browser_job_world(STREAM, steps=[SIGN_IN, SIGN_IN, BOOK_SIGNED_IN]) as world:
-        async with executor_graph([RETRIEVE, START, JOIN, "Stopped."]) as graph:
+        async with executor_graph([RETRIEVE, START, "Started."]) as graph:
             run_task = asyncio.create_task(_drive(graph, world))
             await _wait_for_pending_handoff(world)
             # Said while the page is still the sign-in form: the login did not take.
@@ -436,138 +452,26 @@ async def test_a_done_that_left_the_user_signed_out_is_asked_again_and_saves_not
 
 
 # ---------------------------------------------------------------------------
-# A blocked run asks the executor that started it
+# A stuck run ends with what it found
 # ---------------------------------------------------------------------------
 
-GUIDE = call(
-    "guide_browser_task", {"instruction": "open the Contact tab, the hours are there"}, "g1"
-)
-JOIN_AGAIN = call("wait_for_browser_task", {}, "w2")
 
-STUCK = "The opening hours are not on this page."
-BLOCK_THEN_ACT = [
-    ScriptedStep(actions=[], guidance=STUCK, await_joiner=True),
-    ScriptedStep(actions=[("click", {"index": 3})]),
-]
-
-
-async def test_a_blocked_run_is_unstuck_by_the_executor_that_started_it() -> None:
-    """A run that ends when stuck throws away everything the executor knows; the whole point is that the instruction reaches the agent deciding the next step."""
-    async with browser_job_world(STREAM, steps=BLOCK_THEN_ACT) as world:
-        async with executor_graph([RETRIEVE, START, JOIN, GUIDE, JOIN_AGAIN, "Done."]) as graph:
-            run = await _drive(graph, world)
-
-    asked = run.result_for("wait_for_browser_task") or ""
-    assert "THE BROWSER TASK IS STUCK" in asked
-    assert "The opening hours are not on this page." in asked
-    assert "guide_browser_task" in asked
-    assert world.browser.guidance_notes == ["open the Contact tab, the hours are there"]
-    assert (run.results_from("tools") or [])[-1].startswith(
-        "The table is booked for 7pm on Friday."
-    )
-
-
-async def test_guidance_after_a_note_never_asks_the_user_for_the_step_they_declined() -> None:
-    """Regression: the note was resolved, the next step blocked, and the guidance sent the run back to the login, which then timed out blaming the user."""
-    from app.constants.browser import HandoffDecision, HandoffStatus
-    from app.services.browser.handoff import resolve_handoff
-
-    note = "skip the login, just tell me the opening hours"
-    steps = [
-        ScriptedStep(actions=[], takeover=("Sign in and come back", "credentials")),
-        ScriptedStep(actions=[], guidance=STUCK, await_joiner=True),
-        ScriptedStep(actions=[("click", {"index": 3})]),
-    ]
-
-    async with browser_job_world(STREAM, steps=steps) as world:
-        async with executor_graph([RETRIEVE, START, JOIN, GUIDE, JOIN_AGAIN, "Done."]) as graph:
-            run_task = asyncio.create_task(
-                run_graph(
-                    graph,
-                    "book me a table",
-                    thread_id=CONVERSATION,
-                    user_id=USER,
-                    **_configurable(),
-                )
-            )
-            handoff_id = await _wait_for_pending_handoff(world)
-            assert await resolve_handoff(handoff_id, HandoffDecision.CONTINUE, USER, note) == (
-                HandoffStatus.COMPLETED
-            )
-            run = await run_task
-            await world.settle()
-
-    asked = run.result_for("wait_for_browser_task") or ""
-    assert "THE BROWSER TASK IS STUCK" in asked
-    assert note in asked
-    assert asked.index(note) < asked.index("book a table for two at 7pm")
-    # One handoff for the whole run: the second was the regression.
-    handoffs = [card for card in world.cards() if card["kind"] == "handoff"]
-    assert [card["status"] for card in handoffs] == ["pending", "completed"]
-    assert world.browser.takeover_notes == [note]
-
-
-async def test_the_user_is_never_shown_a_handoff_for_a_question_asked_of_the_executor() -> None:
-    """A handoff card and the conversation's pending key would ask the user to answer something they were never told about, and swallow their next chat message."""
-    from app.services.browser.handoff import get_pending_handoff_for_reply
-
-    async with browser_job_world(STREAM, steps=BLOCK_THEN_ACT) as world:
-        async with executor_graph([RETRIEVE, START, JOIN, GUIDE, JOIN_AGAIN, "Done."]) as graph:
-            await _drive(graph, world)
-
-        assert [card["kind"] for card in world.cards() if card["kind"] == "handoff"] == []
-        assert await get_pending_handoff_for_reply(CONVERSATION) is None
-
-
-async def test_the_join_keeps_its_claim_on_the_result_while_the_executor_answers() -> None:
-    """Dropping the lease on the way out would tell the worker nobody is joined, and it would narrate the run to the user behind the executor's back."""
-    from app.services.browser.jobs import joiner_lease_held
-
-    held: list[bool] = []
-    guide_and_check = call("guide_browser_task", {"instruction": "click Search"}, "g1")
-
-    async with browser_job_world(STREAM, steps=BLOCK_THEN_ACT) as world:
-        async with executor_graph(
-            [RETRIEVE, START, JOIN, guide_and_check, JOIN_AGAIN, "Done."]
-        ) as graph:
-            run_task = asyncio.create_task(
-                run_graph(
-                    graph,
-                    "book me a table",
-                    thread_id=CONVERSATION,
-                    user_id=USER,
-                    **_configurable(),
-                )
-            )
-            for _ in range(500):
-                if world.browser.guidance_reasons:
-                    held.append(await joiner_lease_held(world.enqueued[0].job_id))
-                    break
-                await asyncio.sleep(0.01)
-            await run_task
-            await world.settle()
-
-    assert held == [True]
-
-
-async def test_a_blocked_run_with_no_executor_joined_ends_failed_with_what_it_read() -> None:
-    """Asking when nobody is listening would stall the run for the whole guidance timeout; ending on "no way forward" would throw away the pages already read."""
+async def test_a_stuck_run_ends_failed_with_what_it_read_and_why() -> None:
+    """Nobody is asked how to go on: a run that cannot finish says what it found, and that is what the executor tells."""
     closing = "The booking page lists tables at 6pm and 8pm; I could not reserve one."
-    steps = [
-        ScriptedStep(actions=[], guidance=STUCK),
-        ScriptedStep(actions=[("done", {"text": closing, "success": False})]),
-    ]
+    steps = [ScriptedStep(actions=[("done", {"text": closing, "success": False})])]
 
     async with browser_job_world(STREAM, steps=steps, successful=False, summary=closing) as world:
         async with executor_graph([RETRIEVE, START, "I've started on it."]) as graph:
             await _drive(graph, world)
 
-    # Nobody is joined to ask: the agent is told so at once and ends with what it read.
-    assert world.browser.guidance_notes == [BROWSER_NO_GUIDANCE_AVAILABLE]
-    assert _step_actions(world)[-1] == {"done": {"text": closing, "success": False}}
     results = [card for card in world.cards() if card["kind"] == "result"]
-    assert [card["status"] for card in results] == [BrowserSessionStatus.FAILED.value]
-    assert results[0]["success"] is False
+    assert [(card["status"], card["summary"]) for card in results] == [
+        (BrowserSessionStatus.FAILED.value, closing)
+    ]
+    told = world.result_told()
+    assert "DID NOT COMPLETE" in told
+    assert closing in told
 
 
 def _step_actions(world: JobWorld) -> list[dict[str, Any]]:
@@ -577,65 +481,6 @@ def _step_actions(world: JobWorld) -> list[dict[str, Any]]:
         for card in world.cards()
         if card["kind"] == "step" and card["actions"]
     ]
-
-
-async def test_the_fourth_blocked_step_ends_the_run_instead_of_asking_again() -> None:
-    """Without a budget a run that cannot be unstuck bounces off the executor forever, burning a model call each time."""
-    from app.constants.browser import BROWSER_AGENT_GUIDANCE_MAX, BROWSER_RUN_BLOCKED_SUMMARY
-
-    rounds = BROWSER_AGENT_GUIDANCE_MAX
-    guides = [
-        call("guide_browser_task", {"instruction": f"try route {n}"}, f"g{n}")
-        for n in range(1, rounds + 1)
-    ]
-    joins = [call("wait_for_browser_task", {}, f"w{n}") for n in range(2, rounds + 2)]
-    # Every answer is followed by one real attempt before the agent asks again.
-    steps: list[ScriptedStep] = []
-    for _ in range(rounds + 1):
-        steps += [
-            ScriptedStep(actions=[], guidance="still stuck", await_joiner=True),
-            ScriptedStep(actions=[("click", {"index": 1})]),
-        ]
-    plan: list[Any] = [RETRIEVE, START, JOIN]
-    for guide, join in zip(guides, joins, strict=True):
-        plan += [guide, join]
-    plan.append("Could not do it.")
-
-    async with browser_job_world(
-        STREAM, steps=steps, successful=False, summary=BROWSER_RUN_BLOCKED_SUMMARY
-    ) as world:
-        async with executor_graph(plan) as graph:
-            run = await _drive(graph, world)
-        assert await get_conversation_slot(CONVERSATION) is None
-
-    # The ask past the limit never reaches the executor, and the run ends there.
-    assert len(world.browser.guidance_reasons) == BROWSER_AGENT_GUIDANCE_MAX + 1
-    results = [card for card in world.cards() if card["kind"] == "result"]
-    assert [(card["status"], card["summary"]) for card in results] == [
-        (BrowserSessionStatus.FAILED.value, BROWSER_RUN_BLOCKED_SUMMARY)
-    ]
-    assert "DID NOT COMPLETE" in ((run.results_from("tools") or [])[-1])
-
-
-async def test_giving_up_ends_the_run_failed_and_frees_the_conversation() -> None:
-    """An executor that honestly cannot answer must end the run, not leave it waiting out a two-minute timeout on a browser nobody is watching."""
-    give_up = call(
-        "guide_browser_task",
-        {"give_up": True, "reason": "the site needs an account the user does not have"},
-        "g1",
-    )
-    async with browser_job_world(STREAM, steps=BLOCK_THEN_ACT) as world:
-        async with executor_graph([RETRIEVE, START, JOIN, give_up, JOIN_AGAIN, "Sorry."]) as graph:
-            run = await _drive(graph, world)
-        assert await get_conversation_slot(CONVERSATION) is None
-
-    results = [card for card in world.cards() if card["kind"] == "result"]
-    assert [card["status"] for card in results] == [BrowserSessionStatus.FAILED.value]
-    # The executor that gave up writes the closing reply itself; its reason is model
-    # prose and never reaches the card.
-    assert results[0]["summary"] == BROWSER_RUN_BLOCKED_SUMMARY
-    assert "the site needs an account" not in results[0]["summary"]
-    assert "DID NOT COMPLETE" in ((run.results_from("tools") or [])[-1])
 
 
 async def test_a_run_whose_engine_dies_mid_task_finishes_on_the_fallback_engine() -> None:
@@ -657,8 +502,8 @@ async def test_a_run_whose_engine_dies_mid_task_finishes_on_the_fallback_engine(
     async with browser_job_world(
         STREAM, steps=steps, host=ScriptedHost(fallback_url="http://fallback.test")
     ) as world:
-        async with executor_graph([RETRIEVE, START, JOIN, "Booked."]) as graph:
-            run = await _drive(graph, world)
+        async with executor_graph([RETRIEVE, START, "Started."]) as graph:
+            await _drive(graph, world)
         history = job_runner.record_browser_task.await_args.kwargs
 
     sessions = [card["session_id"] for card in world.cards() if card["kind"] == "session"]
@@ -679,8 +524,7 @@ async def test_a_run_whose_engine_dies_mid_task_finishes_on_the_fallback_engine(
     assert [(card["status"], card["success"], card["steps"]) for card in results] == [
         (BrowserSessionStatus.COMPLETED.value, True, 3)
     ]
-    joined = run.result_for("wait_for_browser_task") or ""
-    assert joined.startswith("The table is booked for 7pm on Friday.")
+    assert world.result_told().startswith("The table is booked for 7pm on Friday.")
     # A dead engine has no state to give: the fallback opens with saved logins.
     assert world.storage_reads == []
     assert world.seeded_states == [None, None]
@@ -705,7 +549,7 @@ async def test_a_login_the_user_made_is_still_signed_in_after_the_run_moves_engi
     async with browser_job_world(
         STREAM, steps=steps, host=ScriptedHost(fallback_url="http://fallback.test")
     ) as world:
-        async with executor_graph([RETRIEVE, START, JOIN, "Booked."]) as graph:
+        async with executor_graph([RETRIEVE, START, "Started."]) as graph:
             run_task = asyncio.create_task(_drive(graph, world))
             handoff_id = await _wait_for_pending_handoff(world)
             assert await resolve_handoff(handoff_id, HandoffDecision.CONTINUE, USER) == (
@@ -797,7 +641,7 @@ async def test_a_browser_request_the_executor_remembers_doing_still_runs_the_bro
     answer_from_memory = "You are already logged in; the earlier run did it."
 
     async with browser_job_world(STREAM, steps=TWO_STEPS) as world:
-        async with executor_graph([answer_from_memory, START, JOIN, "Logged in."]) as graph:
+        async with executor_graph([answer_from_memory, START, "Started."]) as graph:
             run = await run_graph(
                 graph,
                 brief,
@@ -850,15 +694,15 @@ async def test_a_password_the_run_typed_never_reaches_a_card_or_the_answer() -> 
     answer = f"Signed in with {_SECRET}; landed on {landed}."
 
     async with browser_job_world(STREAM, steps=steps, summary=answer) as world:
-        async with executor_graph([RETRIEVE, START, JOIN, "Done."]) as graph:
-            run = await _drive(graph, world)
+        async with executor_graph([RETRIEVE, START, "Started."]) as graph:
+            await _drive(graph, world)
 
     assert _SECRET not in json.dumps(world.cards())
-    assert _SECRET not in (run.result_for("wait_for_browser_task") or "")
+    assert _SECRET not in world.result_told()
 
 
 # ---------------------------------------------------------------------------
-# A stop, a lost browser and a later join end the run where they should
+# A stop and a lost browser end the run where they should
 # ---------------------------------------------------------------------------
 
 
@@ -901,13 +745,15 @@ async def test_a_stop_while_the_user_is_asked_to_sign_in_ends_the_run_stopped_at
     assert results == [BrowserSessionStatus.CANCELLED.value]
     assert world.browser.next_step == 1
     assert slot is None
+    assert [entry.tag for entry in world.told] == [AgentTag.BROWSER_STOPPED]
+    assert world.woken == []
 
 
 async def test_a_browser_lost_while_the_user_signs_in_ends_the_handoff_and_the_run() -> None:
     """The host reaped the paused browser: nobody can finish the step there, so the run ends failed instead of asking until its window runs out."""
     async with browser_job_world(STREAM, steps=[SIGN_IN, BOOK_SIGNED_IN]) as world:
         with long_waits_pass_quickly():
-            async with executor_graph([RETRIEVE, START, JOIN, "Sorry."]) as graph:
+            async with executor_graph([RETRIEVE, START, "Started."]) as graph:
                 run_task = asyncio.create_task(_drive(graph, world))
                 await _wait_for_pending_handoff(world)
                 world.dead_sessions.add("sess-1")
@@ -920,31 +766,3 @@ async def test_a_browser_lost_while_the_user_signs_in_ends_the_handoff_and_the_r
     ]
     assert results == [(BrowserSessionStatus.FAILED.value, BROWSER_RUN_SESSION_LOST_SUMMARY)]
     assert world.browser.next_step == 1
-
-
-async def test_a_later_turn_that_joins_speaks_the_result_with_the_runs_cards() -> None:
-    """The turn that started the run ended without its result: the turn that collects it carries the run's cards, and the worker does not tell it a second time."""
-    later = "stream-later-turn"
-    steps = [ScriptedStep(actions=[], await_joiner=True), *TWO_STEPS]
-    async with browser_job_world(STREAM, steps=steps) as world:
-        async with executor_graph([RETRIEVE, START, "I've started on it."]) as graph:
-            await run_graph(
-                graph, "book me a table", thread_id=CONVERSATION, user_id=USER, **_configurable()
-            )
-        signal_executor_done(STREAM)
-        async with executor_graph([JOIN, "Booked."]) as graph:
-            run = await run_graph(
-                graph,
-                "is it booked?",
-                thread_id=CONVERSATION,
-                user_id=USER,
-                conversation_id=CONVERSATION,
-                stream_id=later,
-            )
-        await world.settle()
-
-    assert (run.result_for("wait_for_browser_task") or "").startswith(
-        "The table is booked for 7pm on Friday."
-    )
-    assert world.deliveries == []
-    assert [card["kind"] for card in world.cards(later)][-1] == "result"

@@ -655,8 +655,6 @@ class TestBuildExecutorGraph:
                 "unsubscribe_todo_from_trigger",
                 "save_learned_skill",
                 "browser_task",
-                "wait_for_browser_task",
-                "guide_browser_task",
                 "write_playbook",
                 "decline_playbook",
                 "read_playbook",

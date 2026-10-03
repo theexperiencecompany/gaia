@@ -40,6 +40,16 @@ class AgentTag(StrEnum):
     SUBAGENT_INTERJECTION = "subagent_interjection"
     #: A subagent the executor force-stopped, told in its returned result.
     SUBAGENT_CANCELLED = "subagent_cancelled"
+    #: A background browser job's ending, told to the run that owns the conversation.
+    BROWSER_RESULT = "browser_result"
+    #: A browser job a stop ended: the thread learns it ended, and no run wakes for it.
+    BROWSER_STOPPED = "browser_stopped"
+
+
+#: Entries that only inform: they wait for the next run's drain and never start one.
+NON_WAKING_TAGS: frozenset[AgentTag] = frozenset(
+    {AgentTag.EXECUTOR_INTERRUPTED, AgentTag.BROWSER_STOPPED}
+)
 
 
 def wrap_agent_payload(tag: AgentTag, body: str, agent: str | None = None) -> str:
