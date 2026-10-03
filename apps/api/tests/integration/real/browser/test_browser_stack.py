@@ -559,8 +559,11 @@ async def test_a_stop_said_in_chat_stops_the_run(stack: BrowserStack) -> None:
     _, conversation_id, job_id = await _a_run_that_waits(stack, user)
     told_before = len(_told(dm))
 
+    stops_before = stack.models.tool_calls.count("stop_browser_task")
+
     # reader: comms answers a stop by calling stop_browser_task on the chat's own job.
     await stack.say(user, "stop that [[tool:stop_browser_task {}]]")
+    assert stack.models.tool_calls.count("stop_browser_task") == stops_before + 1
     state = await stack.finished(job_id)
     await stack.settled(conversation_id)
 
@@ -592,10 +595,13 @@ async def test_what_the_user_adds_mid_run_reaches_the_run(stack: BrowserStack) -
     )
     await _until(lambda: _asked(stack, marker, 2), "the agent waiting on the page")
 
+    tells_before = stack.models.tool_calls.count("tell_browser_task")
+
     # reader: comms passes what the user added to the running job with tell_browser_task.
     await stack.say(
         user, f"and note {token} [[tool:tell_browser_task {json.dumps({'text': token})}]]"
     )
+    assert stack.models.tool_calls.count("tell_browser_task") == tells_before + 1
     state = await stack.finished(job_id)
     await wait_for(dm, token, timeout=RUN_SECONDS)
     await stack.settled(conversation_id)
