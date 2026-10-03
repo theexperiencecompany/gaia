@@ -68,7 +68,7 @@ async def _take_waiting(conversation_id: str, user_id: str, message_id: str) -> 
 
     RENAME moves the list out in one step, so of two takers only one gets it.
     """
-    taken = f"{_waiting_key(conversation_id, message_id)}:taken:{uuid4().hex}"
+    taken = f"{FOLDED_CARDS_PREFIX}taken:{uuid4().hex}"
     try:
         await redis_cache.client.rename(_waiting_key(conversation_id, message_id), taken)
     except ResponseError:

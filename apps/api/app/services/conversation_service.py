@@ -262,9 +262,9 @@ async def update_messages(
             detail="Conversation not found or does not belong to the user",
         )
     # A background run's cards that ended before this message was saved land on it now.
-    for message, message_id in zip(request.messages, message_ids, strict=True):
+    for index, message in enumerate(request.messages):
         if message.type == "bot":
-            await fold_waiting_cards(request.conversation_id, user_id, message_id)
+            await fold_waiting_cards(request.conversation_id, user_id, message_ids[index])
 
     return UpdateMessagesResponse(
         conversation_id=request.conversation_id,

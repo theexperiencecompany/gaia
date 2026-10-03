@@ -31,11 +31,12 @@ class _Conversation:
 
     def __init__(self) -> None:
         self.tool_data: dict[str, list[dict[str, Any]]] = {}
+        self.owner: dict[str, str] = {}
 
     async def get_message(
         self, conversation_id: str, message_id: str, *, user_id: str
     ) -> MessageModel | None:
-        if message_id not in self.tool_data:
+        if self.owner.get(message_id) != user_id:
             return None
         return MessageModel(type="bot", response="", tool_data=list(self.tool_data[message_id]))
 
@@ -47,7 +48,7 @@ class _Conversation:
         message_id: str,
         entries: Sequence[Mapping[str, object]],
     ) -> bool:
-        if message_id not in self.tool_data:
+        if self.owner.get(message_id) != user_id:
             return False
         self.tool_data[message_id].extend(dict(entry) for entry in entries)
         return True
@@ -67,6 +68,7 @@ class _Conversation:
     ) -> list[str]:
         for message in messages:
             self.tool_data[str(message.message_id)] = list(message.tool_data or [])
+            self.owner[str(message.message_id)] = user_id
         return [str(message.message_id) for message in messages]
 
 
