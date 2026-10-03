@@ -146,6 +146,7 @@ class TestDecideLedger:
             patch(f"{MODULE}.approval_ledger_repository", new=repo),
             patch(f"{MODULE}.publish_ledger_decision", new=AsyncMock()),
             patch(f"{MODULE}._deliver_ticket", new=AsyncMock()) as deliver,
+            patch(f"{MODULE}._deliver_verdict", new=AsyncMock()),
         ):
             outcome = await decide_ledger("ap_abc", user_id="u1", kind="deny", feedback="nope", v=3)
 
@@ -238,6 +239,7 @@ class TestDecisionSubmittedEvent:
         with (
             patch.object(ledger_decide, "approval_ledger_repository", new=repo),
             patch.object(ledger_decide, "publish_ledger_decision", new=AsyncMock()),
+            patch.object(ledger_decide, "_deliver_verdict", new=AsyncMock()),
             patch.object(ledger_decide, "capture_event") as capture,
         ):
             await decide_ledger("ap_abc", user_id="u1", kind="deny", v=3)
@@ -1058,6 +1060,7 @@ class TestTicketCarriesAge:
             patch.object(ledger_decide, "approval_ledger_repository", new=repo),
             patch.object(ledger_decide, "publish_ledger_decision", new=AsyncMock()),
             patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()),
+            patch.object(ledger_decide, "_deliver_verdict", new=AsyncMock()),
         ):
             outcome = await decide_ledger("ap_abc", user_id="u1", kind="deny", feedback="nope", v=3)
 

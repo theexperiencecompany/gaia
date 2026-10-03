@@ -482,6 +482,8 @@ def _make_multi_step_workflow(user_id: str) -> Workflow:
 
 
 @pytest.mark.e2e
+# The fire's reservation renews its liveness in Redis: a per-test one, never the ambient client.
+@pytest.mark.usefixtures("fake_redis")
 class TestWorkflowExecutionFailurePropagation:
     """E2E tests for the real workflow-execution path.
 
