@@ -655,7 +655,7 @@ def _delivery_patches(world: JobWorld, stream_id: str) -> list[AbstractContextMa
         ),
         # A woken executor run is a graph run of its own; that it was woken is the telling.
         patch("app.workers.tasks.browser_tasks.wake_executor_for_inbox", _wake),
-        patch("app.agents.core.background.folded_stream.conversation_repository", conversations),
+        patch("app.services.folded_cards.conversation_repository", conversations),
     ]
 
 

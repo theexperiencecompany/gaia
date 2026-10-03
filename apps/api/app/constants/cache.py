@@ -210,6 +210,10 @@ EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS = 30
 # Pending messages for a conversation's executor (see executor_channel). Not a
 # queue of runs: an entry is text some executor run will read into its history.
 EXECUTOR_INBOX_PREFIX = "executor:inbox:"
+# Cards a detached run closed before the turn it folds into saved its message, and the
+# mark that the message is saved: whichever write comes second merges the cards.
+FOLDED_CARDS_PREFIX = "conversation:folded:"
+FOLDED_CARDS_TTL = ONE_DAY_TTL
 # Per-subagent mailbox (see subagent_channel). Keyed by the subagent's own
 # thread_id, written ONLY by the executor's message_subagent tool, drained by
 # that subagent's own pre-model hook — never a broadcast, never read by peers.

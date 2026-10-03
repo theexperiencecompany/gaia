@@ -33,6 +33,7 @@ from app.models.conversation_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.folded_cards import fold_waiting_cards
 from app.services.storage import JuiceFSUnavailable, delete_session_dir
 from shared.py.wide_events import log
 
@@ -260,6 +261,10 @@ async def update_messages(
             status_code=404,
             detail="Conversation not found or does not belong to the user",
         )
+    # A background run's cards that ended before this message was saved land on it now.
+    for message, message_id in zip(request.messages, message_ids, strict=True):
+        if message.type == "bot":
+            await fold_waiting_cards(request.conversation_id, user_id, message_id)
 
     return UpdateMessagesResponse(
         conversation_id=request.conversation_id,
