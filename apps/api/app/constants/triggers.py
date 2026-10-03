@@ -14,3 +14,7 @@ GMAIL_NEW_MESSAGE_TRIGGER_NAME: Final = "gmail_new_message"
 PER_EMAIL_TRIGGER_NAMES: Final = frozenset(
     {GMAIL_NEW_MESSAGE_TRIGGER_NAME, GMAIL_EMAIL_SENT_TRIGGER_NAME}
 )
+
+# Retries for a subscription append that loses its compare-and-set: the Inbox desk
+# is provisioned once per Gmail connect, and two connects race on that one append.
+SUBSCRIPTION_WRITE_ATTEMPTS: Final = 3

@@ -46,7 +46,7 @@ from app.services.todo_activity import (
 from app.services.todo_canvas_storage import (
     append_log,
     build_vfs_label,
-    repair_canvas_and_activity,
+    repair_notes,
 )
 from app.services.todos.errors import (
     CanvasShapeError,
@@ -84,8 +84,6 @@ CANVAS_TEMPLATE = """# {title}
 def starting_canvas(title: str, standing_rules: Sequence[str] = ()) -> str:
     """Render the template canvas with standing rules the todo starts out obeying."""
     canvas = CANVAS_TEMPLATE.format(title=title)
-    if not standing_rules:
-        return canvas
     heading = f"## {CANVAS_STANDING_RULES_SECTION}\n"
     # Rules go under the section's comment line; it is the last such heading, as a title can read like it.
     after_comment = canvas.index("\n", canvas.rindex(heading) + len(heading)) + 1
@@ -420,13 +418,8 @@ class TrackedTodoService:
         if canvas == doc.canvas_content:
             return False
         parts = [p for p in (moved, doc.activity_content) if p]
-        if await repair_canvas_and_activity(
-            doc.id,
-            doc.user_id,
-            canvas=canvas,
-            activity="\n\n".join(parts),
-            expected_updated_at=doc.updated_at,
-        ):
+        notes = TodoUpdate(canvas_content=canvas, activity_content="\n\n".join(parts))
+        if await repair_notes(doc.id, doc.user_id, notes, expected_updated_at=doc.updated_at):
             return True
         # Lost a revision race (or the snapshot went stale): re-read once and
         # retry against fresh content. A concurrent agent write wins over the
@@ -438,13 +431,11 @@ class TrackedTodoService:
         if canvas == fresh.canvas_content:
             return False
         parts = [p for p in (moved, fresh.activity_content) if p]
-        return await repair_canvas_and_activity(
-            fresh.id,
-            fresh.user_id,
-            canvas=canvas,
-            activity="\n\n".join(parts),
-            expected_updated_at=fresh.updated_at,
+        notes = TodoUpdate(canvas_content=canvas, activity_content="\n\n".join(parts))
+        repaired = await repair_notes(
+            fresh.id, fresh.user_id, notes, expected_updated_at=fresh.updated_at
         )
+        return repaired is not None
 
     @staticmethod
     async def schedule_execution(

@@ -5,14 +5,22 @@ raw httpx. Tests patch that helper and assert on the request shape.
 """
 
 import base64
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+import json
+from pathlib import Path
 import re
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+import time_machine
 
+from app.agents.prompts import todo_prompts
+from app.agents.tools.coding.query_json_tool import _apply_query
 from app.models.common_models import GatherContextInput
-from app.models.composio_schemas.gmail import FetchMessagesInput
+from app.models.composio_schemas.gmail import BodyProcessingLiteral, FetchMessagesInput
+from app.services.composio.custom_tools.gmail_constants import OFFLOAD_MIN_MESSAGES
 from app.services.composio.custom_tools.gmail_tools import (
     ArchiveEmailInput,
     GetContactListInput,
@@ -26,6 +34,7 @@ from app.services.composio.custom_tools.gmail_tools import (
     register_gmail_custom_tools,
 )
 from app.services.composio.proxy_client import ProxyRequest
+from app.utils.errors import AppError
 from app.utils.timezone import Timezone
 
 AUTH_CREDS: dict[str, Any] = {"user_id": "user_test_123"}
@@ -696,3 +705,229 @@ class TestPartialFetchResult:
             "call again NOW, or answer with what you have and state plainly that "
             "the rest failed and why."
         )
+
+
+FETCH_STARTED = datetime(2026, 10, 1, 17, 24, 5, tzinfo=UTC)
+
+
+def _gmail_taking_a_minute_per_call(
+    traveller: time_machine.Traveller, *, body: str = "", fail_second_page: bool = False
+) -> Callable[[ProxyRequest], dict[str, Any]]:
+    """Serve one list page of three messages, moving the clock a minute on every call."""
+    list_calls = [0]
+    message = {
+        "id": "m",
+        "threadId": "t",
+        "labelIds": ["INBOX"],
+        "payload": {
+            "headers": [{"name": "From", "value": "a@b.com"}],
+            "body": {"data": base64.urlsafe_b64encode(body.encode()).decode()},
+        },
+    }
+
+    def serve(request: ProxyRequest) -> dict[str, Any]:
+        traveller.shift(timedelta(minutes=1))
+        if not re.match(r".+/users/me/messages/?$", request.endpoint):
+            return message
+        list_calls[0] += 1
+        if list_calls[0] > 1:
+            raise RuntimeError("Gmail 503")
+        page: dict[str, Any] = {"messages": [{"id": f"m{i}"} for i in range(3)]}
+        if fail_second_page:
+            page["nextPageToken"] = "t1"
+        return page
+
+    return serve
+
+
+class TestFetchedAt:
+    """The Inbox desk's cursor: every result says when its query ran, before Gmail was asked."""
+
+    def _fetch(self, request: FetchMessagesInput) -> dict[str, Any]:
+        return _register_and_get_tools()["FETCH_MESSAGES"](
+            request=request, execute_request=MagicMock(), auth_credentials=AUTH_CREDS
+        )
+
+    @pytest.mark.regression
+    def test_an_inline_result_carries_the_moment_before_the_query(self, mock_proxy) -> None:
+        with time_machine.travel(FETCH_STARTED, tick=False) as traveller:
+            mock_proxy.side_effect = _gmail_taking_a_minute_per_call(traveller)
+            result = self._fetch(FetchMessagesInput(query="newer_than:1d", per_page=10))
+
+        assert result["fetched_count"] == 3
+        assert result["fetched_at"] == int(FETCH_STARTED.timestamp())
+
+    @pytest.mark.regression
+    def test_an_offloaded_result_carries_it_beside_its_read_plan(
+        self, mock_proxy, tmp_path
+    ) -> None:
+        with (
+            time_machine.travel(FETCH_STARTED, tick=False) as traveller,
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.write_session_file_sync",
+                return_value=(tmp_path / "f.jsonl", "/workspace/sessions/run/f.jsonl"),
+            ),
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.current_run_config",
+                return_value={"configurable": {"vfs_session_id": "run"}},
+            ),
+        ):
+            mock_proxy.side_effect = _gmail_taking_a_minute_per_call(traveller, body="x" * 50_000)
+            result = self._fetch(
+                FetchMessagesInput(
+                    query="newer_than:1d",
+                    per_page=10,
+                    fields=[*FetchMessagesInput.model_fields["fields"].default_factory(), "body"],
+                    body_processing="raw",
+                )
+            )
+
+        assert result["offloaded_to"] == "/workspace/sessions/run/f.jsonl"
+        assert "read_plan" in result
+        assert result["fetched_at"] == int(FETCH_STARTED.timestamp())
+
+    @pytest.mark.regression
+    def test_a_partial_result_carries_it_too(self, mock_proxy) -> None:
+        with time_machine.travel(FETCH_STARTED, tick=False) as traveller:
+            mock_proxy.side_effect = _gmail_taking_a_minute_per_call(
+                traveller, fail_second_page=True
+            )
+            result = self._fetch(FetchMessagesInput(query="newer_than:1d", per_page=3))
+
+        assert result["partial"] is True
+        assert result["fetched_at"] == int(FETCH_STARTED.timestamp())
+
+
+class TestTheDesksSweep:
+    """The Inbox desk's whole-window sweep: headers only, always to a file, counted per address."""
+
+    @staticmethod
+    def _sweep(
+        mock_proxy: MagicMock,
+        tmp_path: Path,
+        senders: list[str],
+        size: int,
+        body_processing: BodyProcessingLiteral = "none",
+    ) -> tuple[dict[str, Any], list[dict[str, Any]], list[str]]:
+        formats: list[str] = []
+
+        def gmail(request: ProxyRequest) -> dict[str, Any]:
+            if re.match(r".+/users/me/messages/?$", request.endpoint):
+                refs = [{"id": f"m{i}"} for i in range(size)]
+                return {"messages": refs, "resultSizeEstimate": size}
+            formats.append(request.query["format"])
+            n = int(request.endpoint.rsplit("/m", 1)[1])
+            headers = [
+                {"name": "From", "value": senders[n % len(senders)]},
+                {"name": "Subject", "value": f"[repo] PR #{n}"},
+            ]
+            body = {"data": base64.urlsafe_b64encode(b"never read").decode()}
+            return {
+                "id": f"m{n}",
+                "threadId": f"t{n}",
+                "payload": {"headers": headers, "body": body},
+            }
+
+        mock_proxy.side_effect = gmail
+        with (
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.write_session_file_sync",
+                return_value=(tmp_path / "f.jsonl", "/workspace/sessions/run/f.jsonl"),
+            ) as write,
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.current_run_config",
+                return_value={"configurable": {"vfs_session_id": "run"}},
+            ),
+        ):
+            result = _register_and_get_tools()["FETCH_MESSAGES"](
+                request=FetchMessagesInput(
+                    query="after:1790000000",
+                    max_messages=1000,
+                    fields=list(todo_prompts.INBOX_DESK_SWEEP_FIELDS),
+                    body_processing=body_processing,
+                    offload=True,
+                ),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+        records = [json.loads(line) for line in write.call_args.kwargs["content"].splitlines()]
+        return result, records, formats
+
+    def test_a_window_past_the_offload_size_is_fetched_as_metadata_and_written_bodiless(
+        self, mock_proxy, tmp_path
+    ) -> None:
+        size = OFFLOAD_MIN_MESSAGES + 10
+        senders = ["Ann <notifications@github.com>", "Bob <notifications@github.com>"]
+
+        result, records, formats = self._sweep(mock_proxy, tmp_path, senders, size)
+
+        assert result["offloaded_to"] == "/workspace/sessions/run/f.jsonl"
+        assert result["total_messages"] == size
+        assert formats == ["metadata"] * size
+        assert [r["from"] for r in records] == [senders[n % 2] for n in range(size)]
+        assert all("body" not in r for r in records)
+
+    @pytest.mark.regression
+    def test_a_window_under_the_offload_size_still_never_reaches_the_conversation(
+        self, mock_proxy, tmp_path
+    ) -> None:
+        result, records, _ = self._sweep(mock_proxy, tmp_path, ["a@example.com"], 3)
+
+        assert result["offloaded_to"] == "/workspace/sessions/run/f.jsonl"
+        assert "messages" not in result
+        assert len(records) == result["total_messages"] == 3
+
+    def test_a_requested_file_carries_the_bodies_unless_none_were_asked_for(
+        self, mock_proxy, tmp_path
+    ) -> None:
+        _, records, formats = self._sweep(
+            mock_proxy, tmp_path, ["a@example.com"], 3, body_processing="normalize"
+        )
+
+        assert formats == ["full"] * 3
+        assert [r["body"] for r in records] == ["never read"] * 3
+
+    @pytest.mark.regression
+    def test_a_sender_counts_once_per_address_whatever_its_display_name(
+        self, mock_proxy, tmp_path
+    ) -> None:
+        senders = [
+            "Ann <notifications@github.com>",
+            '"GitHub" <Notifications@GitHub.com>',
+            "notifications@github.com",
+            "Bob Lee <bob@example.com>",
+        ]
+
+        _, records, _ = self._sweep(mock_proxy, tmp_path, senders, 8)
+
+        counts = _apply_query(
+            records,
+            where=[],
+            match="all",
+            fields=None,
+            sort_by=None,
+            order="desc",
+            limit=50,
+            count_only=False,
+            unique_by=None,
+            group_count_by="from_address",
+        )
+        assert counts == [
+            {"value": "notifications@github.com", "count": 6},
+            {"value": "bob@example.com", "count": 2},
+        ]
+
+    def test_a_requested_file_with_no_session_to_hold_it_fails_the_call(self, mock_proxy) -> None:
+        mock_proxy.return_value = {"messages": [], "resultSizeEstimate": 0}
+        with (
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.current_run_config",
+                return_value={"configurable": {}},
+            ),
+            pytest.raises(AppError, match="no session"),
+        ):
+            _register_and_get_tools()["FETCH_MESSAGES"](
+                request=FetchMessagesInput(query="after:1790000000", offload=True),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )

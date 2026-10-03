@@ -19,8 +19,9 @@ from pydantic import ValidationError
 from pydantic_core import ErrorDetails
 
 from app.constants.todos import BLOCKING_LABEL, TodoActivityEvent
+from app.constants.triggers import SUBSCRIPTION_WRITE_ATTEMPTS
 from app.db.repositories.todos import todo_repository
-from app.models.todo_models import TodoUpdate
+from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import (
     ConditionMatch,
     SubscriptionAction,
@@ -160,11 +161,18 @@ async def register_subscription(
         trigger_data=dict(trigger_data or {}),
     )
 
-    await todo_repository.update(
-        todo_id,
-        user_id=user_id,
-        update=TodoUpdate(trigger_subscriptions=[*todo.trigger_subscriptions, subscription]),
-    )
+    stored = await _append_subscription(todo_id, user_id, todo, subscription)
+    if stored is None:
+        raise _fail(
+            "write_conflict",
+            f"The watches on {todo_id} changed while this one was being added, "
+            f"{SUBSCRIPTION_WRITE_ATTEMPTS} times over. Try again.",
+        )
+    if stored.id != subscription.id:
+        # A concurrent registration of the same watch landed first: its row is the
+        # one on the todo, and the trigger instance registered for ours is redundant.
+        await _release_duplicate_registration(todo_id, user_id, subscription)
+        return stored, outcome
     capture_event(
         user_id,
         AnalyticsEvents.TODO_SUBSCRIPTION_REGISTERED,
@@ -193,7 +201,69 @@ async def register_subscription(
         condition_count=len(outcome.conditions),
         repair_count=len(outcome.repairs),
     )
-    return subscription, outcome
+    return stored, outcome
+
+
+def _same_watch(left: TriggerSubscription, right: TriggerSubscription) -> bool:
+    """Whether two watches would fire on exactly the same events."""
+    return (
+        left.trigger_name == right.trigger_name
+        and left.action == right.action
+        and left.match == right.match
+        and set(left.conditions) == set(right.conditions)
+    )
+
+
+async def _append_subscription(
+    todo_id: str, user_id: str, todo: TodoDocument, subscription: TriggerSubscription
+) -> TriggerSubscription | None:
+    """Add the watch compare-and-set on updated_at, and return the row now on the todo.
+
+    The watch list is read, extended and written back, so two Gmail connects
+    provisioning one desk at once would overwrite each other without the gate: the
+    second write loses the desk's watch, or (as an unconditional append) doubles it.
+    A lost write re-reads and asks again, returning the row the winner stored.
+    """
+    current = todo
+    for _ in range(SUBSCRIPTION_WRITE_ATTEMPTS):
+        duplicate = next(
+            (sub for sub in current.trigger_subscriptions if _same_watch(sub, subscription)),
+            None,
+        )
+        if duplicate is not None:
+            return duplicate
+        written = await todo_repository.set_trigger_subscriptions(
+            todo_id,
+            user_id,
+            subscriptions=[*current.trigger_subscriptions, subscription],
+            expected_updated_at=current.updated_at,
+        )
+        if written is not None:
+            return subscription
+        current = await todo_repository.get(todo_id, user_id=user_id)
+        if current is None:
+            return None
+    return None
+
+
+async def _release_duplicate_registration(
+    todo_id: str, user_id: str, subscription: TriggerSubscription
+) -> None:
+    """Drop the Composio instance registered for a watch whose row lost the race."""
+    if not subscription.composio_trigger_ids:
+        return
+    try:
+        await TriggerService.unregister_triggers(
+            user_id, subscription.trigger_name, subscription.composio_trigger_ids, todo_id=todo_id
+        )
+    except Exception as e:
+        log.error(
+            "todo_subscription.unregister_failed",
+            todo_id=todo_id,
+            subscription_id=subscription.id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 async def unregister_subscription(

@@ -100,6 +100,7 @@ class TodoActivityEvent(StrEnum):
     RUN_SKIPPED = "run_skipped"
     RETRY_SCHEDULED = "retry_scheduled"
     MARKED_FAILED = "marked_failed"
+    OCCURRENCE_GIVEN_UP = "occurrence_given_up"
     APPROVAL_GRANTED = "approval_granted"
     APPROVAL_DENIED = "approval_denied"
     MAINTENANCE = "maintenance"
@@ -119,10 +120,31 @@ CANVAS_SECTIONS: Final[tuple[str, ...]] = (
     "Context",
     CANVAS_LEARNINGS_SECTION,
 )
+# The Inbox desk's canvas section from before observations.md; its run moves it there.
+CANVAS_OBSERVATIONS_SECTION: Final[str] = "Observations"
 
 # Most a Standing rules section may hold. Every prompt carries it whole, never
 # trimmed, so a canvas write that grows it past this is refused instead.
 STANDING_RULES_MAX_CHARS: Final[int] = 2_000
+
+# observations.md: one block per pattern, its evidence kept across runs.
+OBSERVATIONS_SENDERS_SECTION: Final[str] = "Senders"
+OBSERVATIONS_RECURRING_SECTION: Final[str] = "Recurring"
+OBSERVATIONS_PEOPLE_SECTION: Final[str] = "People"
+OBSERVATION_CONCLUSION: Final[str] = "conclusion"
+OBSERVATION_CONFIDENCE: Final[str] = "confidence"
+OBSERVATION_FIRST_SEEN: Final[str] = "first seen"
+OBSERVATION_LAST_SEEN: Final[str] = "last seen"
+OBSERVATION_DAILY_COUNTS: Final[str] = "daily counts"
+OBSERVATION_EARLIER: Final[str] = "earlier"
+# Days of per-day counts an entry keeps; older days fold into its "earlier" average.
+OBSERVATION_DAILY_COUNT_DAYS: Final[int] = 14
+# Messages from one sender in a run before it gets an entry: a one-off is not a pattern.
+OBSERVATION_MIN_MESSAGES: Final[int] = 3
+# Most observations.md may hold; a write past it is refused.
+OBSERVATIONS_MAX_CHARS: Final[int] = 12_000
+# Most of observations.md a run prompt carries; past it, the conclusions alone.
+OBSERVATIONS_PROMPT_MAX_CHARS: Final[int] = 6_000
 # Most of a todo's Key Details its delivery decision reads.
 DELIVERY_KEY_DETAILS_MAX_CHARS: Final[int] = 1500
 
@@ -142,9 +164,34 @@ EXISTING_TODO_STATE_EXCERPT_CHARS: Final[int] = 400
 # Most todos list_tracked_todos returns, filtered or not; the freshest win.
 LIST_TRACKED_TODOS_LIMIT: Final[int] = 50
 
-# The one tracked todo per user that triages mail, owns its threads and briefs each morning.
+# The one tracked todo per user that triages mail, owns its threads, briefs each morning and alerts on new mail.
 INBOX_DESK_TITLE: Final[str] = "Inbox desk"
 INBOX_DESK_RECURRENCE: Final[str] = "0 8 * * *"
 PROVISION_INBOX_DESK_TASK: Final[str] = "provision_inbox_desk"
+# Automated senders the desk's fetch and its mail watch both leave out: GitHub and other
+# notifications land in Primary, and this cut a live 24h window from 224 messages to 10 people.
+INBOX_DESK_AUTOMATED_SENDERS: Final[tuple[str, ...]] = (
+    "noreply",
+    "no-reply",
+    "notifications",
+    "notification",
+    "mailer-daemon",
+    "donotreply",
+)
+# Gmail terms the desk's fetch adds to its window.
+INBOX_DESK_MAIL_FILTER: Final[str] = "category:primary " + " ".join(
+    f"-from:{sender}" for sender in INBOX_DESK_AUTOMATED_SENDERS
+)
+# Gmail labels new mail needs to wake the desk: in the inbox, in Primary.
+INBOX_DESK_WATCH_LABELS: Final[tuple[str, ...]] = ("INBOX", "CATEGORY_PERSONAL")
+# New mail wakes the desk at once; more mail within the hour rides one run at its end.
+INBOX_DESK_WATCH_WINDOW_SECONDS: Final[int] = 3600
+# Local hours in which mail-woken desk runs send no alert; the morning briefing carries it.
+INBOX_DESK_QUIET_HOURS_START: Final[int] = 22
+INBOX_DESK_QUIET_HOURS_END: Final[int] = 8
+# The desk's briefing is read in seconds: words per item, and lines per capped section.
+INBOX_DESK_BRIEFING_ITEM_MAX_WORDS: Final[int] = 12
+INBOX_DESK_NEEDS_YOU_MAX_ITEMS: Final[int] = 5
+INBOX_DESK_FYI_MAX_LINES: Final[int] = 3
 # First retry delay of a failed provisioning; each further try doubles it.
 INBOX_DESK_PROVISION_RETRY_DELAY: Final[timedelta] = timedelta(minutes=2)

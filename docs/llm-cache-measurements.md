@@ -175,6 +175,13 @@ layout:
 
 - `openrouter` / `custom` (OpenAI-wire): volatile slots move after the
   conversation → tail layout.
+- `openai` (direct): every singleton slot, the clock included, leads the
+  conversation. OpenAI reuses an earlier request only whole: replaying one
+  executor run on gpt-5.6-luna, any message trailing the conversation held
+  every call at 23,814 cached tokens (the tools and first system message),
+  while with nothing trailing each call read the previous one in full
+  (38,262 of 38,329). A change to the bound tool set still costs one fully
+  cold call.
 - `gemini`: unchanged leading-block layout (its API silently drops
   non-leading system messages).
 - Missing provider: defaults to the leading layout (today's behavior).

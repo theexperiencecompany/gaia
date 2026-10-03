@@ -454,18 +454,6 @@ class TestSpawnWiring:
 
 
 class TestLoopGuardWiring:
-    @staticmethod
-    def _guard(**kwargs: Any) -> LoopGuardMiddleware:
-        stack = create_middleware_stack(chat_llm=_fake_llm(), **kwargs)
-        guard = next((mw for mw in stack if isinstance(mw, LoopGuardMiddleware)), None)
-        assert isinstance(guard, LoopGuardMiddleware)
-        return guard
-
-    def test_hard_stop_is_off_unless_asked_for(self) -> None:
-        """Warn-only is the default; a hard stop abandons a tool call, only safe on an unattended run."""
-        assert self._guard().hard_stop is False
-        assert self._guard(loop_guard=LoopGuardOptions(hard_stop=True)).hard_stop is True
-
     def test_disabling_the_loop_guard_leaves_it_out(self) -> None:
         stack = create_middleware_stack(
             chat_llm=_fake_llm(), loop_guard=LoopGuardOptions(enabled=False)

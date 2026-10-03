@@ -625,6 +625,122 @@ def _unobservable_header_case(
     return False
 
 
+def _unobservable_case_insensitive_heading(
+    path: str, line_no: int, col: int, orig_line: str, mut_line: str
+) -> bool:
+    """Return True when the mutation only re-cased a heading passed to this module's own matcher.
+
+    ``canvas_markdown._section_span`` compiles its heading pattern with
+    ``re.IGNORECASE``, so ``remove_section(text, "Activity Log")`` and
+    ``... "activity log"`` select the same span for every canvas — the four
+    re-cased survivors on ``split_legacy_canvas`` cannot be killed by any test.
+
+    Narrow on purpose: the call must be a positional string literal, and it must
+    resolve to a function in the SAME module that passes the parameter into an
+    ``re.compile`` carrying ``re.IGNORECASE``. A literal handed to anything else
+    (a dict key, a comparison, a name that reaches a file) is a real survivor,
+    and mutmut's ``"XXheadingXX"`` rewrite is exactly as observable as any other
+    wrong value, so only a case-ONLY rewrite passes here.
+    """
+    try:
+        tree = ast.parse(Path(path).read_text())
+    except SyntaxError:
+        return False
+    module = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+            continue
+        callee = module.get(node.func.id)
+        if callee is None:
+            continue
+        for literal in node.args:
+            if not isinstance(literal, ast.Constant) or not isinstance(literal.value, str):
+                continue
+            if _recased_literal_is_equivalent(callee, module, literal, line_no, col, orig_line, mut_line):
+                return True
+    return False
+
+
+def _recased_literal_is_equivalent(
+    callee: ast.FunctionDef,
+    module: dict[str, ast.FunctionDef],
+    literal: ast.Constant,
+    line_no: int,
+    col: int,
+    orig_line: str,
+    mut_line: str,
+) -> bool:
+    """Whether the mutation re-cased THIS literal into an IGNORECASE-matched heading."""
+    # A case-only rewrite is usually a different LENGTH ("Activity Log" is 12
+    # characters, "activity log" is 11), so the slice has to end where the
+    # mutant's literal ends, not where the original's did.
+    mut_span = (
+        literal.lineno,
+        literal.col_offset,
+        literal.end_lineno or literal.lineno,
+        literal.end_col_offset + len(mut_line) - len(orig_line),
+    )
+    if not _within(mut_span, line_no, col):
+        return False
+    replacement = _mutated_token(mut_span, line_no, orig_line, mut_line)
+    if replacement is None:
+        return False
+    try:
+        mutated = ast.literal_eval(replacement.strip())
+    except (ValueError, SyntaxError):
+        return False
+    if not (
+        isinstance(mutated, str)
+        and mutated != literal.value
+        and mutated.lower() == literal.value.lower()
+    ):
+        return False
+    return _heading_matched_case_insensitively(callee, module, {callee.name})
+
+
+def _heading_matched_case_insensitively(
+    callee: ast.FunctionDef, module: dict[str, ast.FunctionDef], seen: set[str]
+) -> bool:
+    """Whether the callee feeds the argument it received into an ``re.compile(..., re.IGNORECASE)``.
+
+    Follows the module's own calls, because the matcher is usually a helper:
+    ``remove_section`` hands its heading to ``_section_span``, which compiles it.
+    The walk is bounded to functions already visited, so a cycle terminates.
+    """
+    for node in ast.walk(callee):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Name):
+            called = module.get(node.func.id)
+            if called is not None and called.name not in seen:
+                seen.add(called.name)
+                if _heading_matched_case_insensitively(called, module, seen):
+                    return True
+        if not (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "compile"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "re"
+            and node.args
+        ):
+            continue
+        if not any(_mentions(node.args[0], arg.arg) for arg in callee.args.args):
+            continue
+        # re.compile(pattern, flags) takes flags positionally as often as by keyword.
+        flags = [keyword.value for keyword in node.keywords if keyword.arg == "flags"]
+        if len(node.args) > 1:
+            flags.append(node.args[1])
+        if any(
+            isinstance(flag, ast.Attribute) and flag.attr in ("IGNORECASE", "I") for flag in flags
+        ):
+            return True
+    return False
+
+
+def _mentions(node: ast.AST, name: str) -> bool:
+    return any(isinstance(child, ast.Name) and child.id == name for child in ast.walk(node))
+
+
 def _unobservable_response_header_case(
     path: str, line_no: int, col: int, orig_line: str, mut_line: str
 ) -> bool:
@@ -816,6 +932,9 @@ for i, (a, b) in enumerate(zip(orig_lines, mut_lines)):
             or _unobservable_ensure_ascii(real_path, line_no, col, orig_raw[i], mut_raw[i])
             or _unobservable_header_case(real_path, line_no, col, orig_raw[i], mut_raw[i])
             or _unobservable_response_header_case(real_path, line_no, col, orig_raw[i], mut_raw[i])
+            or _unobservable_case_insensitive_heading(
+                real_path, line_no, col, orig_raw[i], mut_raw[i]
+            )
             or _unreachable_match_arm(real_path, line_no)
         ):
             print("EQUIV")

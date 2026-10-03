@@ -30,7 +30,7 @@ _ACTIVITY_HEADING_RE = re.compile(
 )
 _ANY_DATED_BLOCK_RE = re.compile(r"^### \d{4}-\d{2}-\d{2}", re.MULTILINE)
 # The template's "<!-- ... -->" guidance for whoever writes the section.
-_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 _TEMPLATE_HEADINGS = {section.casefold(): section for section in CANVAS_SECTIONS}
 
 
@@ -43,7 +43,7 @@ def bounded_canvas(canvas: str) -> str:
     """
     if len(canvas) <= CANVAS_PROMPT_MAX_CHARS:
         return canvas
-    rest, rules = _remove_section(canvas, CANVAS_STANDING_RULES_SECTION)
+    rest, rules = remove_section(canvas, CANVAS_STANDING_RULES_SECTION)
     head = f"## {CANVAS_STANDING_RULES_SECTION}\n{rules}\n\n" if rules else ""
     limit = CANVAS_PROMPT_MAX_CHARS - len(head)
     if len(rest) <= limit:
@@ -74,10 +74,27 @@ def section_body(text: str | None, heading: str) -> str | None:
     if span is None:
         return None
     _, body_start, section_end = span
-    return _HTML_COMMENT_RE.sub("", text[body_start:section_end]).strip()
+    return HTML_COMMENT_RE.sub("", text[body_start:section_end]).strip()
 
 
-def _remove_section(text: str, heading: str) -> tuple[str, str | None]:
+def with_section_appended(text: str, heading: str, addition: str) -> str:
+    """Add addition at the end of "## {heading}", which goes at the end of text when absent."""
+    span = _section_span(text, heading)
+    if span is None:
+        return text.rstrip("\n") + f"\n\n## {heading}\n{addition}\n"
+    section_end = span[2]
+    return text[:section_end].rstrip("\n") + f"\n\n{addition}\n" + text[section_end:]
+
+
+def remove_section(text: str | None, heading: str) -> tuple[str, str | None]:
+    """Cut "## {heading}" out of text; return the rest and its stripped body, None when absent.
+
+    A todo with no canvas at all is an empty canvas, not a missing one, so a None text
+    comes back as "" with no body: callers write the rest back and neither has to invent
+    a placeholder of its own.
+    """
+    if text is None:
+        return "", None
     span = _section_span(text, heading)
     if span is None:
         return text, None
@@ -162,9 +179,9 @@ def split_legacy_canvas(canvas: str) -> tuple[str, str | None]:
     merge oldest-first; undated lines follow in original order. Idempotent: nothing
     to move comes back unchanged.
     """
-    text, activity = _remove_section(canvas, "Activity Log")
+    text, activity = remove_section(canvas, "Activity Log")
     text, rescued = _rescue_dated_blocks(text)
-    text, timeline = _remove_section(text, "Timeline")
+    text, timeline = remove_section(text, "Timeline")
     if text == canvas:
         return canvas, None
     dated: list[tuple[datetime, str]] = []
@@ -282,7 +299,7 @@ def normalize_canvas(canvas: str) -> tuple[str, str | None]:
     for heading in dict.fromkeys(_headings(text)):
         if _ACTIVITY_HEADING_RE.match(heading):
             while _section_span(text, heading) is not None:
-                text, body = _remove_section(text, heading)
+                text, body = remove_section(text, heading)
                 if body:
                     moved_parts.append(body)
     text = with_missing_sections(_merge_duplicate_sections(text))

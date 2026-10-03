@@ -1054,6 +1054,20 @@ class TestActiveTodoBanner:
             "   - To work on a different todo, you must reference it explicitly by id."
         )
 
+    def test_a_todo_keeping_observations_names_that_file_too(self) -> None:
+        todo = TodoDocument(
+            id="66f838cc8829054e5f10e407",
+            user_id="user1",
+            title="Inbox desk",
+            observations_content="# Observations\n",
+        )
+
+        assert (
+            "   files: /workspace/gaia-tasks/inbox-desk-5f10e407/canvas.md, "
+            "/workspace/gaia-tasks/inbox-desk-5f10e407/activity.md, "
+            "/workspace/gaia-tasks/inbox-desk-5f10e407/observations.md\n"
+        ) in format_active_todo_banner(todo)
+
     def test_an_untitled_todo_still_renders_a_usable_banner(self) -> None:
         """A blank title would leave the line dangling; the agent still needs the id, the part it acts on."""
         banner = format_active_todo_banner(TodoDocument(id="todo-9", user_id="user1", title=""))

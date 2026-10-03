@@ -33,6 +33,9 @@ from shared.py.wide_events import log
 TODO_TRIGGER_BATCH_KEY = "trigger_batch:todo:{todo_id}"
 # Holds the open window's end (unix seconds) and expires with it.
 TODO_TRIGGER_WINDOW_KEY = "todo_trigger_window:{todo_id}"
+# What the first event of a window writes to claim its run: the window has no end
+# until that run starts, so events held meanwhile wait only for the lock, not the window.
+TODO_TRIGGER_WINDOW_CLAIMED = "claimed"
 TODO_TRIGGER_DRAIN_JOB_ID = "trigger_batch:todo:{todo_id}:{window_end}"
 
 
@@ -86,12 +89,14 @@ async def open_trigger_window(window: TriggerWindow) -> None:
 
 
 async def trigger_window_end(todo_id: str) -> int | None:
-    """Return the end of the todo's open window, or None when none is open."""
+    """Return the end of the window a started run opened, or None when no run has opened one."""
     client = redis_cache.redis
     if client is None:
         return None
     raw = await client.get(TODO_TRIGGER_WINDOW_KEY.format(todo_id=todo_id))
-    return int(raw) if raw is not None else None
+    if raw is None or raw == TODO_TRIGGER_WINDOW_CLAIMED:
+        return None
+    return int(raw)
 
 
 async def _drain_slot(todo_id: str) -> tuple[int, int]:

@@ -18,11 +18,15 @@ from types import MappingProxyType
 from typing import NamedTuple, cast
 from uuid import uuid4
 
+from arq.connections import ArqRedis
+
 from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import TodoRunRequest, run_todo_on_executor
 from app.agents.prompts.todo_prompts import (
     DELIVERED_RESULT_GUIDANCE,
+    DELIVERED_RESULT_RULES,
     GMAIL_THREAD_RUN_GUIDANCE,
+    INBOX_DESK_MAIL_WAKE_OPENING,
     INBOX_DESK_RUN_GUIDANCE,
     PARENT_STANDING_RULES_LABEL,
     SILENT_RUN_GUIDANCE,
@@ -67,6 +71,8 @@ from app.services.hil.utils import untrusted_fence
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.notification_service import notification_service
 from app.services.todo_activity import record_activity
+from app.services.todo_observations import bounded_observations
+from app.services.todos.inbox_desk import with_desk_notes
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.triggers.todo_trigger_window import (
@@ -89,6 +95,8 @@ from shared.py.wide_events import log
 MAX_RETRY_ATTEMPTS = 3
 RETRY_BACKOFF = [timedelta(hours=1), timedelta(hours=4)]
 LOCK_TTL_SECONDS = 1800
+# Held by whichever run of a todo is going: a scheduled or triggered run, or an approval resume.
+RUN_LOCK_KEY = "gaia_todo_exec:{todo_id}"
 
 # An approval resume that lands mid-execution waits for the lock instead of vanishing.
 # Bounded, because a todo stuck under the 30-minute lock TTL must eventually give
@@ -103,6 +111,11 @@ _EXTERNAL_REF_RUN_GUIDANCE: Mapping[ExternalRefSource, str] = MappingProxyType(
         ExternalRefSource.GMAIL_THREAD: GMAIL_THREAD_RUN_GUIDANCE,
         ExternalRefSource.INBOX_DESK: INBOX_DESK_RUN_GUIDANCE,
     }
+)
+
+# Kinds whose watch only says when to run: the run's own steps read what changed.
+_WAKE_OPENINGS: Mapping[ExternalRefSource, str] = MappingProxyType(
+    {ExternalRefSource.INBOX_DESK: INBOX_DESK_MAIL_WAKE_OPENING}
 )
 
 
@@ -155,9 +168,9 @@ async def execute_tracked_todo(
             return f"deferred:{todo_id} (trigger window open until {later_window})"
 
     pool = await RedisPoolManager.get_pool()
-    lock_key = f"gaia_todo_exec:{todo_id}"
-
-    acquired = await pool.set(lock_key, "1", nx=True, ex=LOCK_TTL_SECONDS)
+    acquired = await pool.set(
+        RUN_LOCK_KEY.format(todo_id=todo_id), "1", nx=True, ex=LOCK_TTL_SECONDS
+    )
     if not acquired:
         return await _handle_held_lock(todo_id, origin, coalesced or [])
 
@@ -173,9 +186,14 @@ async def execute_tracked_todo(
         first, *rest = events
         return await _execute_todo_with_retry(todo_id, first, coalesced=rest)
     finally:
-        await pool.delete(lock_key)
-        # After the release, so a drain scheduled for now cannot find this run's lock.
-        await reschedule_todo_trigger_drain(todo_id)
+        await _release_run_lock(pool, todo_id)
+
+
+async def _release_run_lock(pool: ArqRedis, todo_id: str) -> None:
+    """Release a todo's run lock, whoever held it, then drain the events held meanwhile."""
+    await pool.delete(RUN_LOCK_KEY.format(todo_id=todo_id))
+    # After the release, so a drain scheduled for now cannot find this run's lock.
+    await reschedule_todo_trigger_drain(todo_id)
 
 
 async def _take_trigger_events(
@@ -267,55 +285,16 @@ async def _execute_todo_with_retry(
     except Exception as exc:
         log.exception("tracked_todo.execution_failed", todo_id=todo_id, error=str(exc))
         new_retry_count = retry_count + 1
-
-        if new_retry_count >= MAX_RETRY_ATTEMPTS:
-            await todo_repository.update(
-                todo_id, user_id=user_id, update=TodoUpdate(gaia_retry_count=new_retry_count)
-            )
-            await _mark_todo_failed(todo_id, user_id, doc)
-            return f"failed:{todo_id} (max retries reached)"
-
-        # Compute backoff delay
-        backoff_index = min(new_retry_count - 1, len(RETRY_BACKOFF) - 1)
-        backoff = RETRY_BACKOFF[backoff_index]
-        next_attempt = datetime.now(UTC) + backoff
-        if origin is None:
-            # Parked on the backoff target: left in the past, scheduled_at matches
-            # the safety net's due-query, which fires it on the next 30-minute scan.
-            await todo_repository.update(
-                todo_id,
-                user_id=user_id,
-                update=TodoUpdate(gaia_retry_count=new_retry_count, scheduled_at=next_attempt),
-            )
-            await tracked_todo_service.schedule_execution(todo_id, next_attempt)
-        else:
-            await todo_repository.update(
-                todo_id, user_id=user_id, update=TodoUpdate(gaia_retry_count=new_retry_count)
-            )
-            # Carries origin and every event it coalesced, or the retry loses the payloads
-            # it was woken for; no occurrence job id, which would fold it into a scheduled run.
-            await enqueue_worker_job(
-                await RedisPoolManager.get_pool(),
-                EXECUTE_TRACKED_TODO_TASK,
-                todo_id,
-                origin,
-                coalesced=list(coalesced),
-                _defer_until=next_attempt,
-            )
-        await record_activity(
-            todo_id,
-            user_id,
-            TodoActivityEvent.RETRY_SCHEDULED,
-            f"attempt {new_retry_count + 1} of {MAX_RETRY_ATTEMPTS} at {next_attempt.isoformat()}",
+        if new_retry_count < MAX_RETRY_ATTEMPTS:
+            return await _schedule_retry(doc, new_retry_count, origin, coalesced)
+        if doc.recurrence:
+            await _give_up_occurrence(doc, user_tz.value, origin)
+            return f"gave_up:{todo_id} (max retries reached; the next occurrence is armed)"
+        await todo_repository.update(
+            todo_id, user_id=user_id, update=TodoUpdate(gaia_retry_count=new_retry_count)
         )
-        log.info(
-            "tracked_todo.retry_enqueued",
-            todo_id=todo_id,
-            next_attempt=next_attempt.isoformat(),
-            attempt=new_retry_count,
-            max_attempts=MAX_RETRY_ATTEMPTS,
-        )
-        return f"retry:{todo_id} (attempt {new_retry_count})"
+        await _mark_todo_failed(todo_id, user_id, doc)
+        return f"failed:{todo_id} (max retries reached)"
 
     # The run is delivered: a failure queueing what follows must not run it again.
     # A watch firing is not the todo's schedule, so only a scheduled run moves it on.
@@ -325,6 +304,87 @@ async def _execute_todo_with_retry(
             todo_id, user_id=user_id, update=TodoUpdate(gaia_retry_count=0)
         )
     return f"success:{todo_id}"
+
+
+async def _schedule_retry(
+    doc: TodoDocument,
+    attempt: int,
+    origin: TriggerOrigin | None,
+    coalesced: Sequence[TriggerOrigin],
+) -> str:
+    """Queue the next attempt of a failed run on the backoff ladder."""
+    if not 1 <= attempt <= len(RETRY_BACKOFF):
+        raise ValueError(
+            f"retry attempt {attempt} has no rung on the {len(RETRY_BACKOFF)}-rung ladder"
+        )
+    backoff = RETRY_BACKOFF[attempt - 1]
+    next_attempt = datetime.now(UTC) + backoff
+    if origin is None:
+        # Parked on the backoff target: left in the past, scheduled_at matches
+        # the safety net's due-query, which fires it on the next 30-minute scan.
+        await todo_repository.update(
+            doc.id,
+            user_id=doc.user_id,
+            update=TodoUpdate(gaia_retry_count=attempt, scheduled_at=next_attempt),
+        )
+        await tracked_todo_service.schedule_execution(doc.id, next_attempt)
+    else:
+        await todo_repository.update(
+            doc.id, user_id=doc.user_id, update=TodoUpdate(gaia_retry_count=attempt)
+        )
+        # Carries origin and every event it coalesced, or the retry loses the payloads
+        # it was woken for; no occurrence job id, which would fold it into a scheduled run.
+        await enqueue_worker_job(
+            await RedisPoolManager.get_pool(),
+            EXECUTE_TRACKED_TODO_TASK,
+            doc.id,
+            origin,
+            coalesced=list(coalesced),
+            _defer_until=next_attempt,
+        )
+    await record_activity(
+        doc.id,
+        doc.user_id,
+        TodoActivityEvent.RETRY_SCHEDULED,
+        f"attempt {attempt + 1} of {MAX_RETRY_ATTEMPTS} at {next_attempt.isoformat()}",
+    )
+    log.info(
+        "tracked_todo.retry_enqueued",
+        todo_id=doc.id,
+        next_attempt=next_attempt.isoformat(),
+        attempt=attempt,
+        max_attempts=MAX_RETRY_ATTEMPTS,
+    )
+    return f"retry:{doc.id} (attempt {attempt})"
+
+
+async def _give_up_occurrence(
+    doc: TodoDocument, user_tz: str, origin: TriggerOrigin | None
+) -> None:
+    """Record and report a recurring todo's failed occurrence, then arm its next one.
+
+    Labelling it failed would stop every later run until a human noticed, for an
+    outage that is usually gone by the next occurrence.
+    """
+    await record_activity(
+        doc.id,
+        doc.user_id,
+        TodoActivityEvent.OCCURRENCE_GIVEN_UP,
+        f"gave up after {MAX_RETRY_ATTEMPTS} failed attempts; the next occurrence runs as "
+        "scheduled",
+    )
+    await _notify_run_failed(
+        doc,
+        f"This run of '{doc.title}' failed after {MAX_RETRY_ATTEMPTS} attempts. "
+        "It runs again at its next scheduled time.",
+    )
+    # A watch's run is not the schedule's occurrence: only the retry count is its to clear.
+    advanced = origin is None and await _advance_schedule(doc, user_tz)
+    if not advanced:
+        await todo_repository.update(
+            doc.id, user_id=doc.user_id, update=TodoUpdate(gaia_retry_count=0)
+        )
+    log.info("tracked_todo.occurrence_given_up", todo_id=doc.id)
 
 
 async def _advance_schedule(
@@ -551,12 +611,25 @@ def _external_ref_guidance(doc: TodoDocument) -> str | None:
     return guidance.format(ref_id=doc.external_ref.id) if guidance else None
 
 
+def _delivery_guidance(doc: TodoDocument) -> str:
+    """State where the run's final report goes; a kind that sets its own report form gets no second one."""
+    if not doc.notify_on_run:
+        return SILENT_RUN_GUIDANCE
+    if doc.external_ref is not None and doc.external_ref.source.owns_report_form:
+        return DELIVERED_RESULT_RULES
+    return DELIVERED_RESULT_GUIDANCE
+
+
 def _opening_parts(
-    title: str, origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
+    doc: TodoDocument, origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
 ) -> list[str]:
     """Open the run prompt with what woke it; trigger payloads share one untrusted fence."""
+    title = doc.title
     if origin is None:
         return [f"Execute the following scheduled task: {title}"]
+    wake = _WAKE_OPENINGS.get(doc.external_ref.source) if doc.external_ref else None
+    if wake is not None:
+        return [wake.format(title=title)]
     fence = untrusted_fence()
     if coalesced:
         opening = f"Events you were watching fired. Execute this task: {title}"
@@ -603,7 +676,7 @@ def _build_execution_prompt(
     model. They are attacker-influenceable, so all of them share one fence
     labelled untrusted. doc.notify_on_run decides which delivery contract is stated.
     """
-    prompt_parts = _opening_parts(doc.title, origin, coalesced)
+    prompt_parts = _opening_parts(doc, origin, coalesced)
     prompt_parts.append(TODO_ID_LINE.format(todo_id=doc.id))
     if doc.description:
         prompt_parts.append(f"Details: {doc.description}")
@@ -611,6 +684,9 @@ def _build_execution_prompt(
         prompt_parts.append(ref_guidance)
     if doc.canvas_content:
         prompt_parts.append(f"Canvas (canvas.md):\n{bounded_canvas(doc.canvas_content)}")
+    if doc.observations_content:
+        observations = bounded_observations(doc.observations_content)
+        prompt_parts.append(f"Observations (observations.md):\n{observations}")
     # Next to the canvas: rules the run obeys and the sub-todos it answers for.
     prompt_parts.extend(part for part in (context.parent_rules, context.sub_todos) if part)
     if activity_content := doc.activity_content:
@@ -622,7 +698,7 @@ def _build_execution_prompt(
         prompt_parts.append(f"{label}:\n{tail}")
     if context.learnings:
         prompt_parts.append(context.learnings)
-    prompt_parts.append(DELIVERED_RESULT_GUIDANCE if doc.notify_on_run else SILENT_RUN_GUIDANCE)
+    prompt_parts.append(_delivery_guidance(doc))
     return "\n\n".join(prompt_parts)
 
 
@@ -634,6 +710,7 @@ async def _execute_on_executor(
     coalesced: Sequence[TriggerOrigin] = (),
 ) -> None:
     """Run the todo on the executor; its delivery step writes the finish entry and any message."""
+    doc = await with_desk_notes(doc)
     todo_id = doc.id
     user_id = doc.user_id
     prompt = _build_execution_prompt(
@@ -690,9 +767,9 @@ async def resume_tracked_todo(
     """
     log.set(todo_id=todo_id, approval_id=approval_id)
     pool = await RedisPoolManager.get_pool()
-    lock_key = f"gaia_todo_exec:{todo_id}"
-
-    acquired = await pool.set(lock_key, "1", nx=True, ex=LOCK_TTL_SECONDS)
+    acquired = await pool.set(
+        RUN_LOCK_KEY.format(todo_id=todo_id), "1", nx=True, ex=LOCK_TTL_SECONDS
+    )
     if not acquired:
         if attempt >= len(LOCK_DEFER_BACKOFF):
             log.warning("tracked_todo.resume_lock_held", todo_id=todo_id)
@@ -710,6 +787,16 @@ async def resume_tracked_todo(
         )
         return f"resume_deferred:{todo_id} (lock held)"
 
+    try:
+        return await _resume_holding_lock(todo_id, conversation_id, approval_id, receipt)
+    finally:
+        await _release_run_lock(pool, todo_id)
+
+
+async def _resume_holding_lock(
+    todo_id: str, conversation_id: str, approval_id: str, receipt: str
+) -> str:
+    """Continue the parked run under the lock its caller holds; a failure is recorded and raised."""
     doc = await todo_repository.get_by_id(todo_id)
     if not doc:
         return f"not_found:{todo_id}"
@@ -754,8 +841,6 @@ async def resume_tracked_todo(
             f"approval resume failed ({type(exc).__name__}: {str(exc)[:160]})",
         )
         raise
-    finally:
-        await pool.delete(lock_key)
 
 
 async def _mark_todo_failed(todo_id: str, user_id: str, doc: TodoDocument) -> None:
@@ -772,31 +857,29 @@ async def _mark_todo_failed(todo_id: str, user_id: str, doc: TodoDocument) -> No
         "label is removed",
     )
     log.info("tracked_todo.marked_failed", todo_id=todo_id)
+    await _notify_run_failed(
+        doc,
+        f"Your scheduled task '{doc.title}' could not be completed after "
+        f"{MAX_RETRY_ATTEMPTS} attempts. Please check the task and try again.",
+    )
 
-    title: str = doc.title
+
+async def _notify_run_failed(doc: TodoDocument, body: str) -> None:
+    """Tell the user in-app that a run used up its attempts; a failed send is only logged."""
     try:
         await notification_service.create_notification(
             NotificationRequest(
-                user_id=user_id,
+                user_id=doc.user_id,
                 source=NotificationSourceEnum.BACKGROUND_JOB,
                 type=NotificationType.ERROR,
-                content=NotificationContent(
-                    title=f"Scheduled Task Failed: {title}",
-                    body=(
-                        f"Your scheduled task '{title}' could not be completed after "
-                        f"{MAX_RETRY_ATTEMPTS} attempts. Please check the task and try again."
-                    ),
-                ),
-                metadata={
-                    "todo_id": todo_id,
-                    "retry_count": MAX_RETRY_ATTEMPTS,
-                },
+                content=NotificationContent(title=f"Scheduled Task Failed: {doc.title}", body=body),
+                metadata={"todo_id": doc.id, "retry_count": MAX_RETRY_ATTEMPTS},
             )
         )
     except Exception as notify_exc:
         log.warning(
             "tracked_todo.failure_notification_failed",
-            todo_id=todo_id,
+            todo_id=doc.id,
             error=str(notify_exc),
         )
 
@@ -876,9 +959,7 @@ async def safety_net_check_orphaned_todos(_ctx: Mapping[str, object]) -> str:
 
     for doc in candidates:
         todo_id = doc.id
-        lock_key = f"gaia_todo_exec:{todo_id}"
-
-        lock_exists = await pool.exists(lock_key)
+        lock_exists = await pool.exists(RUN_LOCK_KEY.format(todo_id=todo_id))
         if lock_exists:
             skipped += 1
             continue

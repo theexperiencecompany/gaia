@@ -25,6 +25,11 @@ class ExternalRefSource(StrEnum):
     # A mailbox the Inbox desk triages, keyed by its integration id.
     INBOX_DESK = "inbox_desk"
 
+    @property
+    def owns_report_form(self) -> bool:
+        """Whether this kind's run guidance sets its final report's form, so it reaches the user as written."""
+        return self is ExternalRefSource.INBOX_DESK
+
 
 class ExternalRef(BaseModel):
     """The outside object a todo is about; at most one open todo per user holds a given ref."""
@@ -490,9 +495,10 @@ class TodoDocument(UserScopedDocument):
     parent_todo_id: str | None = None
     notify_on_run: bool = True
     completed_at: datetime | None = None
-    # Canvas + activity + log bodies for tracked todos live on the document itself.
+    # Canvas, activity, observations and log bodies for tracked todos live on the document itself.
     canvas_content: str | None = None
     activity_content: str | None = None
+    observations_content: str | None = None
     log_content: str | None = None
     trigger_subscriptions: list[TriggerSubscription] = Field(default_factory=list)
     # Sender of the email an onboarding-seeded todo was extracted from.
@@ -532,6 +538,7 @@ class TodoUpdate(BaseModel):
     completed_at: datetime | None = None
     canvas_content: str | None = None
     activity_content: str | None = None
+    observations_content: str | None = None
     log_content: str | None = None
     source_conversation_id: str | None = None
     trigger_subscriptions: list[TriggerSubscription] | None = None

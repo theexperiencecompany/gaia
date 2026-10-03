@@ -30,9 +30,16 @@ SHORT = TODO_ID[-8:]
 FOLDER = f"fix-the-thing-{SHORT}"
 
 
+RUN_STARTED = "- 2026-10-01T08:00:03+00:00 [run_started] scheduled run (conversation ab12cd34)"
+RUN_FINISHED = "- 2026-10-01T08:04:10+00:00 [run_finished] result sent on telegram"
+
 VALID_CANVAS = (
     "# Fix the thing\n\n## Standing rules\n\n## Key Details\nk\n\n## Current State\nopen\n\n"
     "## Context\n\n## Learnings\n"
+)
+OBSERVATIONS = (
+    "# Observations\n\n## Senders\n### notifications@github.com\n"
+    "- conclusion: GitHub notifications — low priority\n- confidence: medium\n"
 )
 
 
@@ -175,7 +182,17 @@ class TestReadFile:
 
         assert await read_file(TaskFile(doc, GaiaTaskFile.CANVAS), USER_ID) == ""
         assert await read_file(TaskFile(doc, GaiaTaskFile.ACTIVITY), USER_ID) == ""
+        assert await read_file(TaskFile(doc, GaiaTaskFile.OBSERVATIONS), USER_ID) == ""
         assert await read_file(TaskFile(doc, GaiaTaskFile.LOG), USER_ID) == ""
+
+    async def test_observations_md_resolves_and_reads_its_own_body(self, mock_repo):
+        doc = _doc(observations_content=OBSERVATIONS)
+        mock_repo.find_tracked_by_short_id = AsyncMock(return_value=[doc])
+
+        ref = await resolve(f"gaia-tasks/{FOLDER}/observations.md", USER_ID)
+
+        assert ref == TaskFile(doc, GaiaTaskFile.OBSERVATIONS)
+        assert await read_file(ref, USER_ID) == OBSERVATIONS
 
     async def test_meta_json_matches_the_disk_projection(self, mock_repo):
         body = await read_file(TaskFile(_doc(), GaiaTaskFile.META), USER_ID)
@@ -295,6 +312,18 @@ class TestWriteFile:
         assert await write_file(TaskFile(doc, GaiaTaskFile.ACTIVITY), USER_ID, appended) is None
         activity.assert_awaited_once()
 
+    async def test_an_append_to_a_log_that_opens_on_a_blank_line_keeps_it(self, writers):
+        # Only the trailing edge of the stored log is normalized away, so the append
+        # cannot swallow the blank line a todo's first entry sits under.
+        _canvas, activity, _syslog = writers
+        doc = _doc(activity_content="\n- 2026-09-01T09:00:00+00:00 started\n")
+        appended = "\n- 2026-09-01T09:00:00+00:00 started\n- 2026-09-02T10:00:00+00:00 replied"
+
+        assert await write_file(TaskFile(doc, GaiaTaskFile.ACTIVITY), USER_ID, appended) is None
+        activity.assert_awaited_once_with(
+            TODO_ID, USER_ID, appended, expected_updated_at=doc.updated_at
+        )
+
     async def test_activity_write_goes_to_mongo(self, writers):
         canvas, activity, syslog = writers
         doc = _doc()
@@ -317,6 +346,56 @@ class TestWriteFile:
             TODO_ID, USER_ID, first, expected_updated_at=doc.updated_at
         )
 
+    @pytest.mark.regression
+    async def test_an_entry_already_in_the_log_is_not_appended_again(self, writers):
+        """Regression: desk runs copied GAIA's own run lines back into their appends, 2-4 times each."""
+        _canvas, activity, _syslog = writers
+        doc = _doc(activity_content=f"{RUN_STARTED}\n{RUN_FINISHED}")
+        mine = "- 2026-10-01T08:04:12+00:00 [run] triaged 10 threads"
+
+        await write_file(
+            TaskFile(doc, GaiaTaskFile.ACTIVITY),
+            USER_ID,
+            f"{RUN_STARTED}\n{RUN_FINISHED}\n{RUN_STARTED}\n{RUN_FINISHED}\n{mine}",
+        )
+
+        assert activity.await_args.args[2] == f"{RUN_STARTED}\n{RUN_FINISHED}\n{mine}"
+
+    @pytest.mark.regression
+    async def test_an_append_of_nothing_but_repeats_writes_nothing(self, writers):
+        _canvas, activity, syslog = writers
+        doc = _doc(activity_content=f"{RUN_STARTED}\n{RUN_FINISHED}")
+
+        result = await write_file(
+            TaskFile(doc, GaiaTaskFile.ACTIVITY), USER_ID, f"{doc.activity_content}\n{RUN_FINISHED}"
+        )
+
+        assert result is None
+        activity.assert_not_awaited()
+        syslog.assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_a_new_entry_repeated_within_one_append_is_written_once(self, writers):
+        _canvas, activity, _syslog = writers
+        doc = _doc(activity_content=RUN_STARTED)
+        mine = "- 2026-10-01T08:04:12+00:00 [run] triaged 10 threads"
+
+        await write_file(
+            TaskFile(doc, GaiaTaskFile.ACTIVITY), USER_ID, f"{RUN_STARTED}\n{mine}\n{mine}"
+        )
+
+        assert activity.await_args.args[2] == f"{RUN_STARTED}\n{mine}"
+
+    async def test_an_undated_line_may_repeat(self, writers):
+        """Only a timestamped entry is one record; "- nothing new" on two days is two entries."""
+        _canvas, activity, _syslog = writers
+        doc = _doc(activity_content="### 2026-09-30\n- nothing new")
+        appended = f"{doc.activity_content}\n### 2026-10-01\n- nothing new"
+
+        await write_file(TaskFile(doc, GaiaTaskFile.ACTIVITY), USER_ID, appended)
+
+        assert activity.await_args.args[2] == appended
+
     @pytest.mark.parametrize(
         "rewrite",
         [
@@ -335,6 +414,44 @@ class TestWriteFile:
         assert refusal is not None and "append-only" in refusal
         activity.assert_not_awaited()
 
+    async def test_observations_are_saved_whole_to_their_own_field(self, writers):
+        canvas, activity, syslog = writers
+        doc = _doc()
+        with patch(
+            f"{_MOD}.write_observations", new_callable=AsyncMock, return_value=True
+        ) as observations:
+            result = await write_file(
+                TaskFile(doc, GaiaTaskFile.OBSERVATIONS), USER_ID, OBSERVATIONS
+            )
+
+        assert result is None
+        observations.assert_awaited_once_with(
+            TODO_ID, USER_ID, OBSERVATIONS, expected_updated_at=doc.updated_at
+        )
+        canvas.assert_not_awaited()
+        activity.assert_not_awaited()
+        assert syslog.await_args.kwargs["details"] == (
+            f"Agent wrote observations.md ({len(OBSERVATIONS)} chars)"
+        )
+
+    async def test_observations_past_their_cap_are_refused_unwritten(self, writers):
+        from app.constants.todos import OBSERVATIONS_MAX_CHARS
+
+        body = "o" * (OBSERVATIONS_MAX_CHARS + 1)
+        with patch(f"{_MOD}.write_observations", new_callable=AsyncMock) as observations:
+            refusal = await write_file(TaskFile(_doc(), GaiaTaskFile.OBSERVATIONS), USER_ID, body)
+            at_cap = await write_file(
+                TaskFile(_doc(), GaiaTaskFile.OBSERVATIONS), USER_ID, body[:-1]
+            )
+
+        assert refusal == (
+            f"Error: observations.md was not saved: {OBSERVATIONS_MAX_CHARS + 1} characters, "
+            f"over its {OBSERVATIONS_MAX_CHARS}. Fold the oldest daily counts into earlier and "
+            "drop the entries seen least recently."
+        )
+        assert at_cap is None
+        observations.assert_awaited_once()
+
     @pytest.mark.parametrize("filename", [GaiaTaskFile.LOG, GaiaTaskFile.META])
     async def test_system_files_are_refused(self, writers, filename):
         canvas, activity, syslog = writers
@@ -343,7 +460,10 @@ class TestWriteFile:
 
         assert refusal is not None
         assert filename.value in refusal
-        assert "Only canvas.md and activity.md are editable under gaia-tasks/." in refusal
+        assert (
+            "Only canvas.md, activity.md, observations.md are editable under gaia-tasks/."
+            in refusal
+        )
         canvas.assert_not_awaited()
         activity.assert_not_awaited()
         syslog.assert_not_awaited()
@@ -411,6 +531,7 @@ class TestProjectGaiaTask:
             title="Ship it",
             canvas_content="# c",
             activity_content="- a",
+            observations_content="## o",
             log_content="## l",
             labels=[GAIA_TRACKED_LABEL],
             priority=Priority.HIGH,
@@ -422,6 +543,7 @@ class TestProjectGaiaTask:
         assert projection["id"] == "t1"
         assert projection["canvas"] == "# c"
         assert projection["activity"] == "- a"
+        assert projection["observations"] == "## o"
         assert projection["log"] == "## l"
         assert projection["meta"]["title"] == "Ship it"
         assert projection["meta"]["completed"] is True
@@ -433,3 +555,4 @@ class TestProjectGaiaTask:
 
         assert projection["canvas"] == ""
         assert projection["activity"] == ""
+        assert projection["observations"] == ""

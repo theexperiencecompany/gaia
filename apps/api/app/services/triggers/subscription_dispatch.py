@@ -37,7 +37,11 @@ from app.services.todo_activity import record_activity
 from app.services.todos.todo_notifications import todo_redirect_action
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.condition_matching import conditions_match
-from app.services.triggers.todo_trigger_window import buffer_todo_trigger_event, trigger_window
+from app.services.triggers.todo_trigger_window import (
+    TODO_TRIGGER_WINDOW_CLAIMED,
+    buffer_todo_trigger_event,
+    trigger_window,
+)
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log
@@ -123,7 +127,9 @@ async def _fire_if_matching(
         # A run costs an agent turn, so the todo runs once per window and an event
         # inside it rides the next run instead of being dropped.
         window = trigger_window(todo)
-        coalesced = not await _claim_slot(subscription, window.key, window.seconds, str(window.end))
+        coalesced = not await _claim_slot(
+            subscription, window.key, window.seconds, TODO_TRIGGER_WINDOW_CLAIMED
+        )
     elif await _claim_slot(
         subscription,
         COOLDOWN_KEY.format(subscription_id=subscription.id),

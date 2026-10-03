@@ -26,7 +26,9 @@ from app.agents.core.nodes.manage_system_prompts import (
     _KeptPrompts,
     manage_system_prompts_node,
 )
+from app.constants.llm import LLMProviderName
 from app.override.langgraph_bigtool.utils import State
+from tests._harness.context_chain import bound_for
 
 
 def _static(content: str) -> SystemMessage:
@@ -40,7 +42,7 @@ def _dynamic(content: str, marker: str = "dynamic_context") -> SystemMessage:
 def _config(provider: str | None = None) -> RunnableConfig:
     cfg: dict[str, Any] = {"user_id": "u1", "thread_id": "t1"}
     if provider is not None:
-        cfg["provider"] = provider
+        cfg.update(bound_for(LLMProviderName(provider)))
     return cast(RunnableConfig, {"configurable": cfg})
 
 
@@ -150,6 +152,44 @@ class TestManageSystemPrompts:
             ("system", "mem"),
             ("human", "time"),
         ]
+
+    def test_nothing_trails_the_conversation_for_openai(self) -> None:
+        """OpenAI reuses only a whole earlier request, so the clock and per-turn slots lead the conversation."""
+        msgs = [
+            _static("prompt"),
+            _dynamic("ctx"),
+            SystemMessage(content="todo", additional_kwargs={"todo_context": True}),
+            SystemMessage(content="mem", additional_kwargs={"memory_recall": True}),
+            HumanMessage(content="hello"),
+            AIMessage(content="reply"),
+            HumanMessage(content="time", additional_kwargs={"time_context": True}),
+        ]
+        result = manage_system_prompts_node(
+            cast(State, {"messages": msgs}), _config("openai"), _store()
+        )
+        actual = [(m.type, m.content) for m in result["messages"]]
+        assert actual == [
+            ("system", "prompt"),
+            ("system", "ctx"),
+            ("system", "todo"),
+            ("system", "mem"),
+            ("human", "time"),
+            ("human", "hello"),
+            ("ai", "reply"),
+        ]
+
+    def test_the_order_follows_the_lane_not_langchains_binding_key(self) -> None:
+        """The lane is the one model key GAIA reads; provider is LangChain's binding copy."""
+        msgs = [_static("prompt"), HumanMessage(content="hello"), AIMessage(content="reply")]
+        msgs.append(HumanMessage(content="time", additional_kwargs={"time_context": True}))
+        lane_only = cast(
+            RunnableConfig,
+            {"configurable": {"user_id": "u1", "lane": bound_for(LLMProviderName.OPENAI)["lane"]}},
+        )
+
+        result = manage_system_prompts_node(cast(State, {"messages": msgs}), lane_only, _store())
+
+        assert [m.content for m in result["messages"]] == ["prompt", "time", "hello", "reply"]
 
     def test_leading_layout_preserved_for_gemini(self) -> None:
         """Gemini only promotes a leading contiguous run of SystemMessages, so volatile slots must stay in that leading block."""
@@ -265,6 +305,9 @@ class TestPromptPruningWideEvent:
     def test_gemini_request_is_reported_as_the_leading_layout(self) -> None:
         assert self._prompt_pruning("gemini")["tail_layout"] is False
 
+    def test_openai_request_is_not_reported_as_the_tail_layout(self) -> None:
+        assert self._prompt_pruning("openai")["tail_layout"] is False
+
     def test_slot_sizes_report_each_slot_s_real_length(self) -> None:
         """slot_chars ranks slots by how many bytes they cost on every call, so it must be the slot's real length."""
         pruning = self._pruning_for(
@@ -288,6 +331,18 @@ class TestPromptPruningWideEvent:
 
         assert before["slot_digests"]["static"] == after["slot_digests"]["static"]
         assert before["slot_digests"]["dynamic_stable"] != after["slot_digests"]["dynamic_stable"]
+
+    def test_a_kept_slot_is_reported_kept_and_an_absent_one_not(self) -> None:
+        """One field per slot says what actually survived, keyed by the slot held.
+
+        A run that keeps one slot and never saw another must say so both ways.
+        """
+        pruning = self._pruning_for([_static("prompt"), _dynamic("ctx")])
+
+        assert pruning["kept_static"] is True
+        assert pruning["kept_dynamic"] is True
+        assert pruning["kept_onboarding"] is False
+        assert pruning["kept_time"] is False
 
     def test_a_slot_holding_several_messages_reports_their_combined_size(self) -> None:
         """The conversation slot's size must account for every message plus the separator between them, not just the first."""

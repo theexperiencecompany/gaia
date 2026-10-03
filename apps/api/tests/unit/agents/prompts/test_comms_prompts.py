@@ -28,7 +28,10 @@ class TestTrackedTodoDeliveryNote:
                 "blocker only they can settle that they have not already been asked about, or a "
                 "result they asked to hear every time (always send that one). Anything else is "
                 "not worth a message: a routine check, a no-op, nothing new, a question they "
-                "already have, a run that only kept notes. Then reply with exactly one line and "
+                "already have, a run that only kept notes. A report that says only that nothing is "
+                "new is that too: a mail-woken run with nothing to escalate, or a run held for "
+                "quiet hours, says exactly that, and the next briefing carries the rest. Then reply "
+                "with exactly one line and "
                 f"nothing else: {SILENCE_DIRECTIVE}. "
                 "There is no message of theirs to react to, so never answer with a reaction. When "
                 "you do write, it reaches their chat app as plain text with no cards: lead with "
@@ -57,20 +60,32 @@ class TestTrackedTodoDeliveryNote:
         assert "a question they already have" in _note()
         assert "never promise to follow up later" in _note()
 
-    def test_the_todos_standing_rules_sit_before_the_defaults(self) -> None:
-        """Regression: "tell me every time" lived only in the canvas, and a real model silenced every run."""
+    def test_the_todos_standing_rules_close_the_note_and_bind_it(self) -> None:
+        """Regression: an Inbox desk briefing with content was silenced as routine under a rule to deliver every one."""
         note = tracked_todo_delivery_note("Word count", "- Tell me the result every time.", None)
 
         assert (
-            "kept in the todo. Its Standing rules, the user's own instructions for this todo, "
-            "which win over the defaults below:\n"
-            "- Tell me the result every time.\nMessage the user when"
+            "only when there is more than one beat.\n"
+            "Its Standing rules, the user's own instructions for this todo. They bind this "
+            "decision above every default here and in your instructions, the SILENCE rule "
+            "included: when one asks to hear this todo's results, a report with content is "
+            "sent whole, as a long-form deliverable: its headings and line items as written, "
+            "in its order, with at most one line of your own before it, never retold as prose "
+            "and never shortened. SILENCE is only for a report with nothing in it.\n"
+            "- Tell me the result every time.\n"
         ) in note
+
+    def test_a_quiet_hours_nothing_new_is_silence_not_an_alert(self) -> None:
+        note = tracked_todo_delivery_note("Inbox desk", None, None)
+
+        assert "A report that says only that nothing is new is that too" in note
+        assert "the next briefing carries the rest" in note
 
     def test_key_details_follow_the_rules_as_details_of_their_own(self) -> None:
         note = tracked_todo_delivery_note("Word count", "- Be brief.", "- tell me every time")
 
         assert (
             "- Be brief.\nIts Key Details, which can also hold a request of theirs:\n"
-            "- tell me every time\nMessage the user when"
+            "- tell me every time\n"
         ) in note
+        assert note.index("Message the user when") < note.index("- Be brief.")

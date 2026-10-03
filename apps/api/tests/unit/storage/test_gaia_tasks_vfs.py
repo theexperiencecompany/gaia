@@ -48,6 +48,7 @@ def task(
     *,
     canvas: str = "# canvas\n",
     activity: str = "- 2026-01-01T00:00:00+00:00 started\n",
+    observations: str = "## Senders\n",
     log: str = "- did a thing\n",
     **meta: Any,
 ) -> GaiaTaskProjection:
@@ -55,6 +56,7 @@ def task(
         "id": doc_id,
         "canvas": canvas,
         "activity": activity,
+        "observations": observations,
         "log": log,
         "meta": {"title": title, **meta},
     }
@@ -147,7 +149,7 @@ def test_a_task_is_projected_as_canvas_activity_log_and_meta_in_a_slug_shortid_f
 ) -> None:
     materialize_gaia_tasks(
         tmp_path,
-        [task(ID_A, "Ship the release", canvas="C", activity="A", log="L")],
+        [task(ID_A, "Ship the release", canvas="C", activity="A", observations="O", log="L")],
         GUIDE,
     )
 
@@ -155,6 +157,7 @@ def test_a_task_is_projected_as_canvas_activity_log_and_meta_in_a_slug_shortid_f
     assert folder.is_dir()
     assert folder.joinpath("canvas.md").read_text() == "C"
     assert folder.joinpath("activity.md").read_text() == "A"
+    assert folder.joinpath("observations.md").read_text() == "O"
     assert folder.joinpath("log.md").read_text() == "L"
     assert '"title": "Ship the release"' in folder.joinpath("meta.json").read_text()
 
@@ -345,6 +348,7 @@ def test_re_running_a_sync_with_unchanged_tasks_rewrites_nothing(tmp_path: Path)
     [
         ("canvas", "# rewritten\n"),
         ("activity", "- 2026-01-02T00:00:00+00:00 finished\n"),
+        ("observations", "## Senders\n### a@example.com\n"),
         ("log", "- newer entry\n"),
     ],
 )

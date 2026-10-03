@@ -1,9 +1,13 @@
 """Keep an open todo about an outside object watching that object for changes."""
 
-from collections.abc import Mapping, Sequence
-from types import MappingProxyType
+from collections.abc import Sequence
 from typing import NamedTuple
 
+from app.constants.todos import (
+    INBOX_DESK_AUTOMATED_SENDERS,
+    INBOX_DESK_WATCH_LABELS,
+    INBOX_DESK_WATCH_WINDOW_SECONDS,
+)
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.models.todo_models import ExternalRef, ExternalRefSource
 from app.models.trigger_subscription_models import (
@@ -13,27 +17,53 @@ from app.models.trigger_subscription_models import (
     TriggerSubscription,
 )
 from app.services.triggers.subscription_service import (
+    DEFAULT_COOLDOWN_SECONDS,
     register_subscription,
     unregister_subscription,
 )
 
 
 class _RefWatch(NamedTuple):
-    """How to see an outside object change: the payload field naming it, and its triggers."""
+    """How to see an outside object change: what an event must match, its triggers, its window."""
 
-    field_name: str
+    conditions: tuple[SubscriptionCondition, ...]
     trigger_names: tuple[str, ...]
+    window_seconds: int
 
 
-# A Gmail thread moves both ways: mail arrives on it, and the user replies from Gmail.
-# The inbox desk's ref is identity only: it runs on its schedule, not on mail.
-_REF_WATCHES: Mapping[ExternalRefSource, _RefWatch] = MappingProxyType(
-    {
-        ExternalRefSource.GMAIL_THREAD: _RefWatch(
-            "thread_id", (GMAIL_NEW_MESSAGE_TRIGGER_NAME, GMAIL_EMAIL_SENT_TRIGGER_NAME)
-        ),
-    }
+# A person's new mail in the Primary inbox; the desk's fetch skips the same senders.
+_DESK_MAIL = (
+    *(
+        SubscriptionCondition(
+            field_name="label_ids", operator=ConditionOperator.CONTAINS, value=label
+        )
+        for label in INBOX_DESK_WATCH_LABELS
+    ),
+    *(
+        SubscriptionCondition(
+            field_name="sender", operator=ConditionOperator.NOT_CONTAINS, value=sender
+        )
+        for sender in INBOX_DESK_AUTOMATED_SENDERS
+    ),
 )
+
+
+def _ref_watch(ref: ExternalRef) -> _RefWatch:
+    """Say what to watch for ref: a thread both ways, or the desk's mailbox for new mail."""
+    match ref.source:
+        case ExternalRefSource.GMAIL_THREAD:
+            on_thread = SubscriptionCondition(
+                field_name="thread_id", operator=ConditionOperator.EQUALS, value=ref.id
+            )
+            return _RefWatch(
+                (on_thread,),
+                (GMAIL_NEW_MESSAGE_TRIGGER_NAME, GMAIL_EMAIL_SENT_TRIGGER_NAME),
+                DEFAULT_COOLDOWN_SECONDS,
+            )
+        case ExternalRefSource.INBOX_DESK:
+            return _RefWatch(
+                _DESK_MAIL, (GMAIL_NEW_MESSAGE_TRIGGER_NAME,), INBOX_DESK_WATCH_WINDOW_SECONDS
+            )
 
 
 async def watch_external_ref(
@@ -41,16 +71,12 @@ async def watch_external_ref(
 ) -> list[TriggerSubscription]:
     """Run the todo whenever ref changes, adding only the watches subscriptions lacks.
 
-    Returns the watches it added (none for a ref with nothing to watch); when one fails,
-    the ones it added are removed again.
+    Returns the watches it added; when one fails, the ones it added are removed again.
     """
-    watch = _REF_WATCHES.get(ref.source)
-    if watch is None:
-        return []
-    on_ref = SubscriptionCondition(
-        field_name=watch.field_name, operator=ConditionOperator.EQUALS, value=ref.id
-    )
-    watched = {sub.trigger_name for sub in subscriptions if on_ref in sub.conditions}
+    watch = _ref_watch(ref)
+    watched = {
+        sub.trigger_name for sub in subscriptions if set(watch.conditions) <= set(sub.conditions)
+    }
     added: list[TriggerSubscription] = []
     try:
         for trigger_name in watch.trigger_names:
@@ -60,8 +86,9 @@ async def watch_external_ref(
                 todo_id=todo_id,
                 user_id=user_id,
                 trigger_name=trigger_name,
-                conditions=[on_ref],
+                conditions=list(watch.conditions),
                 action=SubscriptionAction.EXECUTE,
+                cooldown_seconds=watch.window_seconds,
             )
             added.append(subscription)
     except Exception:

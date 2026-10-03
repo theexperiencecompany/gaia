@@ -1,7 +1,7 @@
 """The sent-mail trigger backfill: --dry-run never writes, and --execute arms only the unarmed.
 
-Composio is the seam: the two listings are faked page by page, and trigger
-creation is the live connect path (handle_subscribe_trigger) on a stand-in service.
+Composio is the seam: the two listings are faked page by page, and the trigger
+is created on the account the ACTIVE listing returned.
 """
 
 from types import SimpleNamespace
@@ -22,20 +22,27 @@ def _page(items: list[SimpleNamespace], next_cursor: str | None = None) -> Simpl
 def _service(
     account_pages: list[SimpleNamespace],
     trigger_pages: list[SimpleNamespace],
-    subscribe_results: dict[str, object] | None = None,
+    refused: frozenset[str] = frozenset(),
 ) -> MagicMock:
     service = MagicMock()
     service.composio.connected_accounts.list = MagicMock(side_effect=account_pages)
     service.composio.triggers.list_active = MagicMock(side_effect=trigger_pages)
-    results = subscribe_results or {}
-    service.handle_subscribe_trigger = AsyncMock(
-        side_effect=lambda user_id, _triggers: results.get(user_id, [SimpleNamespace()])
-    )
+
+    def create(_slug: str, *, connected_account_id: str, trigger_config: object) -> object:
+        if connected_account_id in refused:
+            raise RuntimeError("Composio refused the create")
+        return SimpleNamespace(trigger_id=f"ti_{connected_account_id}")
+
+    service.composio.triggers.create = MagicMock(side_effect=create)
     return service
 
 
+def _account(user_id: str, created_at: str = "2026-09-01T00:00:00Z") -> SimpleNamespace:
+    return SimpleNamespace(user_id=user_id, id=f"ca_{user_id}", created_at=created_at)
+
+
 def _accounts(*user_ids: str) -> list[SimpleNamespace]:
-    return [SimpleNamespace(user_id=user_id) for user_id in user_ids]
+    return [_account(user_id) for user_id in user_ids]
 
 
 class TestRunBackfill:
@@ -49,9 +56,11 @@ class TestRunBackfill:
 
         assert result.pending_user_ids == ["u1", "u3"]
         assert result.already_armed == 1
-        service.handle_subscribe_trigger.assert_not_awaited()
+        service.composio.triggers.create.assert_not_called()
 
-    async def test_execute_arms_each_unarmed_user_through_the_connect_path(self) -> None:
+    @pytest.mark.regression
+    async def test_execute_arms_each_unarmed_user_on_their_active_account(self) -> None:
+        """Regression: create(user_id=...) armed the SDK's newest account, expired or not."""
         service = _service(
             [_page(_accounts("u1", "u2"))],
             [_page(_accounts("u2"))],
@@ -61,12 +70,31 @@ class TestRunBackfill:
 
         assert result.armed_user_ids == ["u1"]
         assert result.failed_user_ids == []
-        service.handle_subscribe_trigger.assert_awaited_once()
-        user_id, (trigger,) = service.handle_subscribe_trigger.await_args.args
-        assert user_id == "u1"
-        assert trigger.slug == "GMAIL_EMAIL_SENT_TRIGGER"
-        assert trigger.config == {"interval": 1}
-        assert trigger.auto_activate is True
+        service.composio.triggers.create.assert_called_once_with(
+            "GMAIL_EMAIL_SENT_TRIGGER", connected_account_id="ca_u1", trigger_config={"interval": 1}
+        )
+
+    @pytest.mark.regression
+    async def test_a_user_with_two_active_accounts_is_armed_on_the_newest(self) -> None:
+        service = _service(
+            [
+                _page(
+                    [
+                        SimpleNamespace(
+                            user_id="u1", id="ca_new", created_at="2026-09-20T00:00:00Z"
+                        ),
+                        SimpleNamespace(
+                            user_id="u1", id="ca_old", created_at="2026-03-01T00:00:00Z"
+                        ),
+                    ]
+                )
+            ],
+            [_page([])],
+        )
+
+        await run_backfill(service, dry_run=False)
+
+        assert service.composio.triggers.create.call_args.kwargs["connected_account_id"] == "ca_new"
 
     async def test_a_rerun_after_everyone_is_armed_creates_nothing(self) -> None:
         service = _service(
@@ -78,7 +106,7 @@ class TestRunBackfill:
 
         assert result.pending_user_ids == []
         assert result.already_armed == 2
-        service.handle_subscribe_trigger.assert_not_awaited()
+        service.composio.triggers.create.assert_not_called()
 
     async def test_both_listings_are_scoped_to_gaias_gmail_auth_config(self) -> None:
         # Another auth config in the same Composio project is not GAIA's Gmail;
@@ -108,18 +136,20 @@ class TestRunBackfill:
         assert service.composio.connected_accounts.list.call_args.kwargs["cursor"] == "a2"
         assert service.composio.triggers.list_active.call_args.kwargs["cursor"] == "t2"
 
-    async def test_a_failed_create_is_reported_and_does_not_stop_the_rest(self) -> None:
-        # handle_subscribe_trigger answers None when Composio refused the create.
+    async def test_a_failed_create_is_reported_and_does_not_stop_the_rest(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         service = _service(
             [_page(_accounts("u1", "u2"))],
             [_page([])],
-            subscribe_results={"u1": None},
+            refused=frozenset({"ca_u1"}),
         )
 
         result = await run_backfill(service, dry_run=False)
 
         assert result.failed_user_ids == ["u1"]
         assert result.armed_user_ids == ["u2"]
+        assert "u1: RuntimeError: Composio refused the create" in capsys.readouterr().err
 
 
 async def _main_with(monkeypatch: pytest.MonkeyPatch, failed_user_ids: list[str]) -> None:

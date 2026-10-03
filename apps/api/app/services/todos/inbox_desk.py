@@ -1,15 +1,21 @@
-"""The Inbox desk: one tracked todo per user that triages mail, owns its threads and briefs each morning.
+"""The Inbox desk: one tracked todo per user that triages mail, owns its threads, briefs and alerts.
 
-Its operating contract rides on every run (INBOX_DESK_RUN_GUIDANCE), its canvas is its
-memory, and the briefing is its run's final report. Nothing here runs mail.
+Its operating contract rides on every run (INBOX_DESK_RUN_GUIDANCE), its canvas and
+observations.md are its memory, and the briefing is its run's final report. Nothing here
+runs mail.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import NamedTuple
 
-from app.agents.prompts.todo_prompts import INBOX_DESK_DELIVERY_RULE, INBOX_DESK_DESCRIPTION
+from app.agents.prompts.todo_prompts import (
+    INBOX_DESK_DELIVERY_RULE,
+    INBOX_DESK_DESCRIPTION,
+    INBOX_DESK_OBSERVATIONS_FILE,
+)
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.todos import (
+    CANVAS_OBSERVATIONS_SECTION,
     INBOX_DESK_RECURRENCE,
     INBOX_DESK_TITLE,
     PROVISION_INBOX_DESK_TASK,
@@ -20,9 +26,13 @@ from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators.entitlements import is_paid
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument, TodoUpdate
 from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.canvas_markdown import remove_section
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.todo_activity import record_field_changes
+from app.services.todo_canvas_storage import repair_notes
+from app.services.todo_observations import with_carried_lines
 from app.services.todos.errors import ExternalRefTakenError
+from app.services.todos.external_ref_watch import watch_external_ref
 from app.services.tracked_todo_service import starting_canvas, tracked_todo_service
 from app.services.user_service import get_profile_timezone
 from app.utils.cron_utils import get_next_run_time
@@ -55,6 +65,7 @@ async def provision_inbox_desk(user_id: str) -> None:
     desk = existing or await _open_desk(user_id, await _next_morning(user_id))
     if desk.scheduled_at is None:
         desk = await _rearm(desk, await _next_morning(user_id))
+    await watch_external_ref(desk.id, user_id, INBOX_DESK_REF, desk.trigger_subscriptions)
     next_run = desk.scheduled_at
     if next_run is None:
         raise LookupError(f"Inbox desk {desk.id} has no next run after it was armed")
@@ -98,6 +109,33 @@ async def reconcile_inbox_desks() -> DeskReconcile:
             )
             failures += 1
     return DeskReconcile(users=len(paying), failures=failures)
+
+
+async def with_desk_notes(doc: TodoDocument) -> TodoDocument:
+    """Return the todo as its run reads it: an Inbox desk gets its observations.md first.
+
+    A desk without one is seeded, and the Observations section older desks kept in
+    canvas.md moves into it. Written as a repair, which keeps updated_at; any other
+    todo comes back as is.
+    """
+    if doc.external_ref is None or doc.external_ref.source is not ExternalRefSource.INBOX_DESK:
+        return doc
+    canvas, carried = remove_section(doc.canvas_content, CANVAS_OBSERVATIONS_SECTION)
+    if carried is None and doc.observations_content:
+        return doc
+    observations = doc.observations_content or INBOX_DESK_OBSERVATIONS_FILE
+    if carried is None:
+        notes = TodoUpdate(observations_content=observations)
+    else:
+        today = datetime.now(UTC).date()
+        notes = TodoUpdate(
+            canvas_content=canvas,
+            observations_content=with_carried_lines(observations, carried, today),
+        )
+    repaired = await repair_notes(doc.id, doc.user_id, notes, expected_updated_at=doc.updated_at)
+    if repaired is None:
+        raise LookupError(f"Inbox desk {doc.id} changed or vanished while its notes were repaired")
+    return repaired
 
 
 async def queue_inbox_desk_provision(user_id: str) -> None:
