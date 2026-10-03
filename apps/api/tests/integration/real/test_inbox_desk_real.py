@@ -17,7 +17,13 @@ import pytest
 
 from app.agents.prompts.todo_prompts import INBOX_DESK_DESCRIPTION
 from app.constants.integrations import GMAIL_INTEGRATION_ID
-from app.constants.todos import GAIA_TRACKED_LABEL, INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
+from app.constants.todos import (
+    GAIA_TRACKED_LABEL,
+    INBOX_DESK_RECURRENCE,
+    INBOX_DESK_TITLE,
+    INBOX_DESK_WATCH_WINDOW_SECONDS,
+)
+from app.constants.triggers import GMAIL_NEW_MESSAGE_TRIGGER_NAME
 from app.db.mongodb.indexes import TODO_OPEN_EXTERNAL_REF_KEYS, TODO_OPEN_EXTERNAL_REF_OPTIONS
 from app.models.todo_models import TodoDocument
 from app.services.todos.inbox_desk import INBOX_DESK_REF, provision_inbox_desk
@@ -76,7 +82,11 @@ async def test_connecting_gmail_twice_at_once_makes_one_armed_desk(
     assert desk.recurrence == INBOX_DESK_RECURRENCE
     assert desk.scheduled_at is not None
     assert before < desk.scheduled_at.replace(tzinfo=UTC) <= before + timedelta(days=1)
-    assert desk.trigger_subscriptions == []
+    # The desk also watches the mailbox: one hourly mail-wake subscription, not two.
+    assert len(desk.trigger_subscriptions) == 1
+    (watch,) = desk.trigger_subscriptions
+    assert watch.trigger_name == GMAIL_NEW_MESSAGE_TRIGGER_NAME
+    assert watch.cooldown_seconds == INBOX_DESK_WATCH_WINDOW_SECONDS
     _offline_seams.assert_called_once()
 
 
@@ -90,4 +100,5 @@ async def test_a_later_reconnect_leaves_the_desk_as_it_is(
 
     (again,) = await _desks(mongo_db, user_id)
     assert again.id == first.id and again.scheduled_at == first.scheduled_at
+    assert again.trigger_subscriptions == first.trigger_subscriptions
     _offline_seams.assert_called_once()

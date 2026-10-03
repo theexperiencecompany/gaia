@@ -35,11 +35,8 @@ from redis.exceptions import ConnectionError as RedisConnectionError, RedisError
 from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import TodoRunRequest
 from app.agents.prompts.todo_prompts import (
-    DELIVERED_REPORT_FORM,
     DELIVERED_RESULT_GUIDANCE,
-    DELIVERED_RESULT_RULES,
     GMAIL_THREAD_RUN_GUIDANCE,
-    INBOX_DESK_MAIL_WAKE_OPENING,
     PARENT_STANDING_RULES_LABEL,
     SILENT_RUN_GUIDANCE,
     SUB_TODOS_LABEL,
@@ -51,7 +48,6 @@ from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
     CANVAS_PROMPT_MAX_CHARS,
     FAILED_LABEL,
-    OBSERVATIONS_PROMPT_MAX_CHARS,
     REFERENCED_TODOS_PROMPT_LIMIT,
     STANDING_RULES_MAX_CHARS,
     SUB_TODO_STATE_EXCERPT_CHARS,
@@ -594,9 +590,13 @@ class TestDeliveryContractInThePrompt:
         assert SILENT_RUN_GUIDANCE in prompt
         assert DELIVERED_RESULT_GUIDANCE not in prompt
 
-    @pytest.mark.regression
     def test_the_inbox_desks_briefing_is_its_only_report_form(self):
-        """Regression: the default "what you checked" report came last and the desk wrote a run log, not its briefing."""
+        """The default "what you checked" report comes last; the desk writes its briefing, not a run log."""
+        from app.agents.prompts.todo_prompts import (
+            DELIVERED_REPORT_FORM,
+            DELIVERED_RESULT_RULES,
+        )
+
         desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
 
         prompt = _build_execution_prompt(_doc(notify_on_run=True, external_ref=desk))
@@ -604,9 +604,10 @@ class TestDeliveryContractInThePrompt:
         assert prompt.endswith(f"\n\n{DELIVERED_RESULT_RULES}")
         assert DELIVERED_REPORT_FORM not in prompt
 
-    @pytest.mark.regression
     def test_new_mail_wakes_the_desk_into_its_own_steps_not_an_event_check(self):
-        """Regression: a mail-woken desk only verified the event, drafted nothing and kept its cursor."""
+        """A mail-woken desk opens its own steps, never just the event check."""
+        from app.agents.prompts.todo_prompts import INBOX_DESK_MAIL_WAKE_OPENING
+
         desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
         origin = TriggerOrigin(
             subscription_id="sub-1",
@@ -639,6 +640,11 @@ class TestDeliveryContractInThePrompt:
         assert '"thread_id": "t-1"' in prompt
 
     def test_a_thread_todo_keeps_the_default_report_form(self):
+        from app.agents.prompts.todo_prompts import (
+            DELIVERED_REPORT_FORM,
+            DELIVERED_RESULT_RULES,
+        )
+
         thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611")
 
         prompt = _build_execution_prompt(_doc(notify_on_run=True, external_ref=thread))
@@ -1693,6 +1699,8 @@ class TestTheDeskRunReadsItsObservations:
         assert "### github\n- conclusion: ~140/day\n" in observations
 
     def test_observations_past_their_prompt_cap_bring_only_their_conclusions(self):
+        from app.constants.todos import OBSERVATIONS_PROMPT_MAX_CHARS
+
         evidence = "- daily counts: " + ", ".join(f"2026-09-{d:02}:140" for d in range(1, 15))
         entry = "### a@example.com\n- conclusion: alerts — low priority\n- confidence: high\n"
         observations = "# Observations\n\n## Senders\n" + (entry + evidence + "\n\n") * 40
