@@ -145,7 +145,11 @@ browser slice (`engines: true` in `test-slices.json`) is the one slice a bare
 `dagger call test-python` leaves out: it needs Chromium and an Obscura build, so
 it runs only by name, `dagger call test-python --slice-name browser`, which
 builds Obscura from the Dockerfile's `obscura-bin` stage and installs Chromium.
-In CI the lane finds both through `scripts/ci/browser.sh locate` and fails, never
+In CI the engine slices run as their own job, `test-python-engines` (test-python's
+steps by YAML alias), which needs `obscura-bin`: that job builds Obscura through
+`.github/actions/build-obscura` (the composite obscura-compat uses, one GHA cache
+scope) under a 60-minute cap, so a cold build never spends the slice's 15. The
+slice finds both engines through `scripts/ci/browser.sh locate` and fails, never
 skips, when either is missing.
 
 Gotcha that will bite conversions: the repo has no `.npmrc` any more — pnpm's

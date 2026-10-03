@@ -35,8 +35,10 @@ RESOLVER = "scripts/ci/changes.sh base"
 BASE_ENV = "GAIA_PR_BASE"
 
 # Jobs that legitimately never scope a diff: runner routing, the resolver
-# itself, the gate that only reads results, and the master-only publish path.
+# itself, the engine build, the gate that only reads results, and the
+# master-only publish path.
 UNSCOPED = {
+    "obscura-bin",
     "select-runner",
     "select-runner-services",
     "runner-watchdog",

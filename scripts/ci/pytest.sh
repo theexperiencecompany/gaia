@@ -2,8 +2,10 @@
 # pytest.sh — everything about RUNNING the Python suite in CI.
 #
 # Subcommands:
-#   slices                   Print the test-python slice matrix (lib/test-slices.json)
-#                            as a `python_slices=<json>` GITHUB_OUTPUT line.
+#   slices                   Print the test-python slice matrices (lib/test-slices.json)
+#                            as GITHUB_OUTPUT lines: `python_slices=<json>` for the
+#                            slices that need no browser engine, `engine_slices=<json>`
+#                            for those that do (they wait on the obscura-bin build).
 #   slice                    Run one test-python slice, either whole or on the
 #                            test-impact selection this job's `test_impact.py
 #                            select` wrote. Reads its inputs from the env.
@@ -33,8 +35,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # ── slices ────────────────────────────────────────────────────────────────
-# lib/test-slices.json is the ONE definition of the four slices: main.yml's
-# test-python matrix reads it through this subcommand and the Dagger module
+# lib/test-slices.json is the ONE definition of the slices: main.yml's
+# test-python matrices read it through this subcommand and the Dagger module
 # (.dagger, `test-python --slice`) reads the file directly, so a local run
 # cannot drift from CI. Why the shares look the way they do:
 #   * workers sum to the box (16 threads): the lanes start together, so a
@@ -49,12 +51,16 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 #   * browser runs 2 workers, each booting a whole stack (API, worker, two hosts):
 #     measured on 4 pinned cores against a fresh Postgres, Chroma and Mongo,
 #     2:40 for the 13 scenarios; 15 min leaves the GitHub VM a slow boot and a
-#     flake-gate rerun.
+#     flake-gate rerun. Building Obscura is not in it: main.yml's obscura-bin job
+#     builds it (cold: tens of minutes) and the engine slices wait on that job.
 SLICES_FILE="$SCRIPT_DIR/lib/test-slices.json"
 
 cmd_slices() {
-  printf 'python_slices=%s\n' "$(python3 -c 'import json, sys
-print(json.dumps(json.load(open(sys.argv[1]))["slices"], separators=(",", ":")))' "$SLICES_FILE")"
+  python3 -c 'import json, sys
+slices = json.load(open(sys.argv[1]))["slices"]
+for key, engines in (("python_slices", "false"), ("engine_slices", "true")):
+    chosen = [s for s in slices if s["engines"] == engines]
+    print(key + "=" + json.dumps(chosen, separators=(",", ":")))' "$SLICES_FILE"
 }
 
 # ── slice ─────────────────────────────────────────────────────────────────
