@@ -202,12 +202,18 @@ EXECUTOR_ALIVE_PREFIX = "executor:alive:"
 EXECUTOR_ALIVE_TTL = 60
 EXECUTOR_ALIVE_BEAT_SECONDS = 20
 EXECUTOR_ALIVE_TASK_NAME = "executor_alive_beat"
+# A holder that has not proven it lives for this long could lapse before its next
+# renewal lands, so it stops rather than run beside whoever reclaims its lock.
+EXECUTOR_ALIVE_GIVE_UP_SECONDS = EXECUTOR_ALIVE_TTL - EXECUTOR_ALIVE_BEAT_SECONDS
 # A lock this young may be a run between taking it and its first beat: never reclaimed.
 EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS = 30
 # Pending messages for a conversation's executor (see executor_channel). Not a
 # queue of runs: an entry is text some executor run will read into its history.
 EXECUTOR_INBOX_PREFIX = "executor:inbox:"
-EXECUTOR_INBOX_TTL = ONE_HOUR_TTL  # Unread work expires after an hour
+# Cards a detached run closed before the turn it folds into saved its message, and the
+# mark that the message is saved: whichever write comes second merges the cards.
+FOLDED_CARDS_PREFIX = "conversation:folded:"
+FOLDED_CARDS_TTL = ONE_DAY_TTL
 # Per-subagent mailbox (see subagent_channel). Keyed by the subagent's own
 # thread_id, written ONLY by the executor's message_subagent tool, drained by
 # that subagent's own pre-model hook — never a broadcast, never read by peers.

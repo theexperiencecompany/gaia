@@ -27,8 +27,9 @@ from redis.exceptions import ResponseError
 
 from app.agents.core.background.executor_queue import decode_raw_item
 from app.constants.agents import AgentTag, wrap_agent_payload
-from app.constants.cache import EXECUTOR_INBOX_PREFIX, EXECUTOR_INBOX_TTL
+from app.constants.cache import EXECUTOR_INBOX_PREFIX
 from app.constants.executor import INBOX_ENTRY_ID, INTERRUPTION_NOTICE
+from app.constants.hil import EXECUTOR_INBOX_TTL
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, InboxDrain, InboxEntry, agent_configurable
@@ -123,6 +124,10 @@ class RedisInbox:
     async def count(self) -> int:
         """How much work is waiting. Cheap enough to ask before every decision."""
         return await redis_cache.client.llen(self._key) if redis_cache.client else 0
+
+    async def keep_for(self, seconds: int) -> None:
+        """Keep what is waiting for at least seconds from now: a hold that long may keep its reader away."""
+        await redis_cache.client.expire(self._key, seconds)
 
 
 class ExecutorInbox(RedisInbox):

@@ -21,6 +21,7 @@ from app.constants.log_tags import LogTag
 from app.models.chat_models import MessageModel
 from app.schemas.browser import BrowserResultSnapshot, BrowserSessionSnapshot, BrowserStepSnapshot
 from app.schemas.browser_job import BrowserJobFinished, BrowserJobRequest, BrowserJobStopped
+from app.services import folded_cards
 from app.services.browser.job_events import JOB_TERMINAL_FRAME, publish_job_event
 from app.services.browser.job_relay import follow_job_cards, relay_job_cards
 from app.services.browser.job_runner import publish_frame_to_job
@@ -89,7 +90,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Client:
         return_value=MessageModel(type="bot", response="", tool_data=[])
     )
     conversations.append_message_tool_data = _append
-    monkeypatch.setattr(folded_stream, "conversation_repository", conversations)
+    monkeypatch.setattr(folded_cards, "conversation_repository", conversations)
     streams = MagicMock()
     streams.is_cancelled = AsyncMock(return_value=False)
     monkeypatch.setattr(folded_stream, "stream_manager", streams)

@@ -17,6 +17,7 @@ import fakeredis.aioredis
 import pytest
 
 from app.agents.core.background.executor_channel import ExecutorInbox
+from app.agents.core.background.executor_queue import hold_run_alive
 from app.constants.agents import NON_WAKING_TAGS, AgentTag
 from app.constants.browser import (
     BROWSER_JOB_DEATH_CONFIRM_SECONDS,
@@ -25,10 +26,13 @@ from app.constants.browser import (
     BROWSER_JOB_SLOT_TAKEN_SUMMARY,
     BROWSER_JOB_SUSPECT_KEY,
     BROWSER_JOB_WAKE_GRACE_SECONDS,
+    BROWSER_JOB_WAKE_KEY,
     BROWSER_JOB_WORKER_LOST_SUMMARY,
     BrowserRunFailure,
     BrowserSessionStatus,
 )
+from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_INBOX_PREFIX
+from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.schemas.browser import BrowserResultSnapshot
 from app.schemas.browser_job import (
@@ -320,6 +324,25 @@ async def _suspected_long_ago(fake_redis: fakeredis.aioredis.FakeRedis, job_id: 
     await fake_redis.hset(
         BROWSER_JOB_SUSPECT_KEY, job_id, str(time() - BROWSER_JOB_DEATH_CONFIRM_SECONDS - 1)
     )
+
+
+async def test_a_result_landed_during_a_park_is_still_there_to_tell_when_it_ends(
+    world: World, fake_redis: fakeredis.aioredis.FakeRedis
+) -> None:
+    """An approval can wait hours: neither the answer nor the record that wakes a reader for it may lapse first."""
+    await _queued()
+    await fake_redis.set(f"{EXECUTOR_BUSY_PREFIX}conv-9", "s1:t1", ex=HIL_PAUSED_LOCK_TTL_SECONDS)
+    await hold_run_alive("conv-9", "s1:t1", HIL_PAUSED_LOCK_TTL_SECONDS)
+
+    await end_job("job-1", BrowserJobFinished(result=DONE))
+    inbox_ttl = await fake_redis.ttl(f"{EXECUTOR_INBOX_PREFIX}conv-9")
+    await fake_redis.expire(BROWSER_JOB_WAKE_KEY, 60)
+    await tasks_mod.reap_browser_jobs({})
+
+    assert inbox_ttl > HIL_PAUSED_LOCK_TTL_SECONDS - 5
+    assert await landed_wake("job-1") is not None
+    assert await fake_redis.ttl(BROWSER_JOB_WAKE_KEY) >= inbox_ttl - 5
+    assert world.woken == []
 
 
 async def test_a_job_whose_worker_died_is_ended_on_its_card_and_told_once(

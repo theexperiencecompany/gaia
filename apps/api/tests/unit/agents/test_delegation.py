@@ -46,6 +46,7 @@ from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, RunningSubagent, SubagentKind
 from app.models.chat_models import MessageModel, ToolDataEntry
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
+from app.services.folded_cards import fold_waiting_cards
 from app.utils import background_tasks
 from app.utils.agent_utils import IntegrationMetadata
 from shared.py.wide_events import log
@@ -56,6 +57,7 @@ pytestmark = pytest.mark.unit
 
 MODULE = "app.agents.core.subagents.delegation"
 FOLDED = "app.agents.core.background.folded_stream"
+FOLDED_CARDS = "app.services.folded_cards"
 
 
 class _OwnStream:
@@ -131,7 +133,7 @@ def client_edges() -> Iterator[SimpleNamespace]:
     with (
         patch.object(executor_queue, "StreamManager", AsyncMock()) as stream_manager,
         patch.object(executor_queue.websocket_manager, "broadcast_to_user", new=_broadcast),
-        patch(f"{FOLDED}.conversation_repository") as conversations,
+        patch(f"{FOLDED_CARDS}.conversation_repository") as conversations,
         patch(f"{MODULE}.stream_manager") as streams,
         patch(f"{FOLDED}.stream_manager", new=streams),
         patch(f"{MODULE}.deliver_to_executor", new=AsyncMock()) as deliver,
@@ -1064,22 +1066,22 @@ class TestSavingABackgroundRunsFrames:
             }
         ]
 
-    async def test_a_missing_message_saves_nothing_and_says_so(
+    async def test_frames_for_a_message_not_saved_yet_wait_for_its_save(
         self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder
     ) -> None:
-        client_edges.conversations.get_message.return_value = None
+        """A fast run can end before its turn saved the message: its cards land when it is."""
+        conversations = client_edges.conversations
+        conversations.get_message.return_value = None
 
         await self._run([GROUP, SEARCH])
 
-        client_edges.conversations.append_message_tool_data.assert_not_awaited()
-        assert recorder.event("subagent_run")["errors"] == [
-            {
-                "msg": f"{LogTag.AGENT} Detached stream cards matched no message; not saved",
-                "conversation_id": CONVERSATION,
-                "message_id": "bot-msg-1",
-                "entries": 2,
-            }
-        ]
+        conversations.append_message_tool_data.assert_not_awaited()
+        assert "errors" not in recorder.event("subagent_run")
+        conversations.get_message.return_value = MessageModel(type="bot", response="")
+        await fold_waiting_cards(CONVERSATION, "u1", "bot-msg-1")
+        conversations.append_message_tool_data.assert_awaited_once_with(
+            CONVERSATION, user_id="u1", message_id="bot-msg-1", entries=[GROUP, SEARCH]
+        )
 
     async def test_an_append_that_matched_nothing_is_recorded(
         self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder

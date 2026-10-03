@@ -30,8 +30,8 @@ from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_BUSY_TTL,
     EXECUTOR_INBOX_PREFIX,
-    EXECUTOR_INBOX_TTL,
 )
+from app.constants.hil import EXECUTOR_INBOX_TTL
 from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager

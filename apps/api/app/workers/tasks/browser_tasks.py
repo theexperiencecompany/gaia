@@ -37,6 +37,7 @@ from app.services.browser.jobs import (
     heartbeat_conversation_slot,
     hold_job_alive,
     job_alive,
+    keep_wakes,
     landed_wake,
     landed_wakes,
     live_job_ids,
@@ -158,6 +159,7 @@ async def reap_browser_jobs(_ctx: Mapping[str, object]) -> str:
     wakes = [w for w in await landed_wakes() if now - w.landed_at >= BROWSER_JOB_WAKE_GRACE_SECONDS]
     for wake in wakes:
         await _wake(wake)
+    await keep_wakes()
     log.set_ns("browser", reaped_jobs=reaped, results_to_tell=[wake.job_id for wake in wakes])
     return f"reaped={len(reaped)} results_to_tell={len(wakes)}"
 
