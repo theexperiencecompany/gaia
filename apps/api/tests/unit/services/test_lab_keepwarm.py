@@ -151,37 +151,6 @@ class TestRefreshScope:
         assert result == "Refreshed 1 lab sandboxes"
 
 
-class TestLabBridge:
-    async def test_bridge_mints_and_stages_for_flagged_user(self) -> None:
-        sbx, _ = _make_entry()
-        with (
-            patch.object(
-                lifecycle, "is_agent_lab_enabled", AsyncMock(return_value=True)
-            ),
-            patch.object(
-                lifecycle, "mint_sandbox_bridge_token", return_value=("tok", 900)
-            ) as mint,
-        ):
-            token = await lifecycle._ensure_lab_bridge("lab", sbx)
-        assert token == "tok"
-        mint.assert_called_once_with("lab", "sbx-1")
-        assert sbx.files.write.await_count == 2
-
-    async def test_bridge_noop_for_unflagged_user(self) -> None:
-        sbx, _ = _make_entry()
-        with (
-            patch.object(
-                lifecycle, "is_agent_lab_enabled", AsyncMock(return_value=False)
-            ),
-            patch.object(
-                lifecycle, "mint_sandbox_bridge_token", return_value=("tok", 900)
-            ) as mint,
-        ):
-            assert await lifecycle._ensure_lab_bridge("plain", sbx) is None
-        mint.assert_not_called()
-        sbx.files.write.assert_not_awaited()
-
-
 class TestRefreshTimeout:
     async def test_refreshes_when_window_elapsed(self) -> None:
         sbx, entry = _make_entry()

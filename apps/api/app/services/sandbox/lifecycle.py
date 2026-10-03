@@ -41,7 +41,6 @@ from app.decorators import enforce_rate_limit
 from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
 from app.services.feature_flags import is_agent_lab_enabled
 from app.services.sandbox.artifact_watcher import start_watcher_for
-from app.services.sandbox.bridge_token import mint_sandbox_bridge_token
 from app.services.sandbox.errors import SandboxAcquisitionError, SandboxRateLimitError
 from app.services.sandbox.pool import (
     PooledSandbox,
@@ -59,12 +58,6 @@ from app.services.storage import (
 from shared.py.wide_events import log
 
 CANARY_PATH = "/workspace/.gaia/canary.txt"
-# Allowlist path mirrors BRIDGE_CONFIG_PATH in scripts/sandbox_bridge.py — the
-# in-sandbox client reads it on (re)start, so it must live under /workspace to
-# survive pause/resume and template recreate via JuiceFS.
-BRIDGE_CONFIG_PATH = "/workspace/.gaia/bridge.json"
-BRIDGE_TOKEN_PATH = "/workspace/.gaia/bridge-token"
-BRIDGE_CLIENT_PATH = "/etc/gaia/sandbox_bridge.py"
 MOUNT_SCRIPT_PATH = "/etc/gaia/mount.sh"  # template-baked copy (runtime-ship fallback)
 # The API ships its own copy of mount_juicefs.sh at acquire time (see
 # _run_mount_script), so script changes need no template rebuild. Timeout
@@ -481,38 +474,6 @@ async def _resume_existing_sandbox(
     return sbx
 
 
-async def _ensure_lab_bridge(user_id: str, sbx: AsyncSandbox) -> str | None:
-    """Mint a fresh bridge token and stage it for flagged users; None otherwise."""
-    if not await is_agent_lab_enabled(user_id):
-        return None
-    sandbox_id = getattr(sbx, "sandbox_id", None) or ""
-    if not sandbox_id:
-        log.warning(f"{LogTag.SANDBOX} skipping bridge staging; no sandbox id")
-        return None
-    token, _ = mint_sandbox_bridge_token(user_id, sandbox_id)
-    try:
-        # files.write, never shell argv: the token must not land in a command
-        # line readable via /proc. Staged under /workspace so JuiceFS persists
-        # it across pause/resume and recreate.
-        await sbx.files.write(BRIDGE_TOKEN_PATH, token)
-        await sbx.files.write(BRIDGE_CONFIG_PATH, '{"allowed_servers": ["splitwise"]}')
-    except Exception as e:
-        log.warning(
-            f"{LogTag.SANDBOX} bridge staging failed",
-            user_id=user_id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return None
-    # SEAM (agent-lab driver work): actually (re)starting the bridge client is
-    # not wired here yet. scripts/sandbox_bridge.py is stdio-only — it has no
-    # WS dial loop — and there is no API dial-host setting for the sandbox to
-    # dial back to. The driver task adds the dial transport + host config and
-    # background-starts BRIDGE_CLIENT_PATH with this token on this path.
-    _record(bridge_token_staged=True)
-    return token
-
-
 async def _acquire_or_create(user_id: str) -> PooledSandbox:
     """Return a PooledSandbox for the user, creating/resuming as needed."""
     pool = get_sandbox_pool()
@@ -590,9 +551,6 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
     )
     pool.put(user_id, entry)
     await _ensure_watcher(user_id, entry)
-    # Best-effort like the watcher: bridge staging is additive, so a staging
-    # failure must never break acquisition (the helper already warns).
-    await _ensure_lab_bridge(user_id, sbx)
     return entry
 
 

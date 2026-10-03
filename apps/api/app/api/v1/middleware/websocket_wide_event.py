@@ -51,6 +51,4 @@ def _task_name(path: str) -> str:
     """
     if path.rstrip("/") == "/api/v1/ws/device":
         return "device_ws_connection"
-    if path.rstrip("/") == "/api/v1/ws/sandbox":
-        return "sandbox_ws_connection"
     return "ws_connection"

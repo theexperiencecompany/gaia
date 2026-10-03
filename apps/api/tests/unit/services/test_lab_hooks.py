@@ -9,8 +9,6 @@ from unittest.mock import patch
 import pytest
 
 from app.services.agent_lab import sandbox_setup
-from app.services.agent_lab.claude_driver import ClaudeDriver
-from app.services.agent_lab.driver import AgentDriver
 from app.services.agent_lab.sandbox_setup import (
     CREDENTIAL_LINKS,
     MERGE_SETTINGS_SCRIPT,
@@ -191,16 +189,3 @@ class TestLabHooksToken:
             assert lab_events_enabled() is True
         with patch.object(execute_token.settings, "SANDBOX_EXECUTE_TOKEN_SECRET", None):
             assert lab_events_enabled() is False
-
-
-@pytest.mark.unit
-class TestDriverWiring:
-    def test_only_claude_opts_into_hook_seeding(self) -> None:
-        assert ClaudeDriver.lab_hooks_enabled is True
-        assert AgentDriver.build_seed_command(EVENTS_URL, "tok") is None
-        assert AgentDriver.lab_hooks_enabled is False
-
-    def test_claude_seed_delegates_to_the_rendered_command(self) -> None:
-        assert ClaudeDriver.build_seed_command(EVENTS_URL, "tok-1") == build_seed_command(
-            EVENTS_URL, "tok-1"
-        )

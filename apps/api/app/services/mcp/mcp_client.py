@@ -39,7 +39,6 @@ from app.constants.mcp import (
     MAX_OAUTH_INVALID_SCOPE_DROPS,
     MCP_RENAMED_TOOL_NOTE,
 )
-from app.constants.sandbox import SANDBOX_TRANSPORT
 from app.core.lazy_loader import providers
 from app.db.chroma.chroma_tools_store import index_tools_to_store
 from app.db.redis import delete_cache
@@ -76,13 +75,11 @@ from app.services.mcp.oauth_discovery import (
     probe_mcp_connection,
 )
 from app.services.mcp.resilient_adapter import ResilientLangChainAdapter
-from app.services.mcp.sandbox_connector import SandboxConnector
 from app.services.mcp.token_management import (
     resolve_client_credentials,
     revoke_tokens,
     try_refresh_token,
 )
-from app.services.sandbox.bridge_registry import get_online_sandbox_id
 from app.utils.background_tasks import spawn_background_task
 from app.utils.mcp_oauth_utils import (
     MCP_PROTOCOL_VERSION,
@@ -314,18 +311,6 @@ def _parse_device_server_url(server_url: str) -> tuple[str, str]:
     if not device_id or not server_key:
         raise ValueError(f"Malformed device server URL: {server_url}")
     return device_id, server_key
-
-
-def _parse_sandbox_server_url(server_url: str) -> tuple[str, str]:
-    """Split a sandbox://<user_id>/<server_key> URL into its parts."""
-    prefix = f"{SANDBOX_TRANSPORT}://"
-    if not server_url.startswith(prefix):
-        raise ValueError(f"Not a sandbox server URL: {server_url}")
-    remainder = server_url[len(prefix) :]
-    user_id, _, server_key = remainder.partition("/")
-    if not user_id or not server_key:
-        raise ValueError(f"Malformed sandbox server URL: {server_url}")
-    return user_id, server_key
 
 
 class MCPClient:
@@ -695,9 +680,8 @@ class MCPClient:
     ) -> BaseMCPClient:
         """Build an mcp_use client around one tunnel connector session.
 
-        Shared by the device and sandbox transports: both speak MCP over the
-        same frames, so everything downstream (adapter, tool conversion) reads
-        from get_all_active_sessions(), which this populates.
+        Everything downstream (adapter, tool conversion) reads from
+        get_all_active_sessions(), which this populates.
         """
         session = MCPSession(connector, auto_connect=True)
         await session.initialize()
@@ -737,50 +721,12 @@ class MCPClient:
             integration_id, DeviceConnector(device_id, server_key)
         )
 
-    async def _build_sandbox_client(
-        self, integration_id: str, mcp_config: MCPConfig
-    ) -> BaseMCPClient:
-        """Build an mcp_use client whose only session tunnels to the user's sandbox.
-
-        The sandbox MCP server has no outbound URL, so like the device tunnel
-        we inject a :class:SandboxConnector-backed session directly. The
-        sandbox:// URL names a user, not a sandbox: it resolves to that user's
-        live sandbox_id, surviving E2B kill/recreate churn.
-        """
-        sandbox_user_id, server_key = _parse_sandbox_server_url(mcp_config.server_url)
-
-        # Hard gate: the URL's user must be the caller — a leaked or stale id
-        # can't cross the user boundary.
-        if sandbox_user_id != self.user_id:
-            raise ValueError(
-                f"Sandbox {sandbox_user_id} is not an active sandbox owned by user {self.user_id}"
-            )
-
-        sandbox_id = await get_online_sandbox_id(sandbox_user_id)
-        if sandbox_id is None:
-            raise ValueError(
-                f"Sandbox for user {sandbox_user_id} is offline. "
-                "Re-run the task so a fresh sandbox is acquired."
-            )
-
-        return await self._wrap_tunnel_connector(
-            integration_id, SandboxConnector(sandbox_id, sandbox_user_id, server_key)
-        )
-
     async def _open_session(self, integration_id: str, mcp_config: MCPConfig) -> BaseMCPClient:
         """Create the MCP client and its session for one integration.
 
-        Tunnel servers have no outbound URL (device://..., sandbox://...) and
-        are reached over their bridge, so the SSRF re-check below doesn't
-        apply to them.
+        Device servers have no outbound URL (device://...) and are reached over
+        the tunnel, so the SSRF re-check below doesn't apply to them.
         """
-        if mcp_config.transport == SANDBOX_TRANSPORT:
-            log.info(
-                f"{LogTag.MCP} Opening sandbox-tunnel MCP session",
-                integration_id=integration_id,
-            )
-            return await self._build_sandbox_client(integration_id, mcp_config)
-
         if mcp_config.transport == DEVICE_TRANSPORT:
             log.info(
                 f"{LogTag.MCP} Opening device-tunnel MCP session", integration_id=integration_id
