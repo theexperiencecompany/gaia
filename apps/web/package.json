@@ -173,7 +173,7 @@
     "mdast-util-to-string": "^4.0.0",
     "mermaid": "^11.16.0",
     "motion": "^12.42.2",
-    "next": "16.3.3",
+    "next": "16.3.6",
     "next-intl": "^4.13.2",
     "next-llms-txt": "^1.0.2",
     "onnxruntime-web": "^1.27.0",

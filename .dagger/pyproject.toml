@@ -3,7 +3,8 @@ name = "gaia-ci"
 version = "0.1.0"
 description = "Dagger CI/CD pipeline for the GAIA monorepo"
 requires-python = ">=3.12"
-dependencies = ["dagger-io"]
+# graphql-core 3.2.13 rejects the v0.20.3 engine schema (Changeset.withChangeset onConflict default)
+dependencies = ["dagger-io", "graphql-core<3.2.13"]
 
 [build-system]
 requires = ["hatchling"]

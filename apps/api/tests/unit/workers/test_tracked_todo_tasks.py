@@ -1258,7 +1258,7 @@ class TestBuildExecutionPrompt:
         prompt = _build_execution_prompt(
             _doc(title="Ship it", canvas_content="", activity_content="")
         )
-        assert "canvas.md" not in prompt and "activity.md" not in prompt
+        assert "Canvas (canvas.md):" not in prompt and "Recent activity" not in prompt
 
     def test_long_activity_is_tail_truncated_and_says_so(self):
         """A recurring todo's activity grows forever; the prompt must not."""
