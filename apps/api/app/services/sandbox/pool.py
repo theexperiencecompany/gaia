@@ -17,16 +17,19 @@ import asyncio
 from collections.abc import AsyncIterator
 import contextlib
 from dataclasses import dataclass, field
+import time
 
 from e2b import AsyncSandbox
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.sandbox import (
+    SANDBOX_LIFETIME_SECONDS,
     SANDBOX_LOCK_ACQUIRE_TIMEOUT_SECONDS,
     SANDBOX_LOCK_LEASE_SECONDS,
     SANDBOX_LOCK_MAX_HOLD_SECONDS,
     SANDBOX_LOCK_RENEW_SECONDS,
+    SANDBOX_TIMEOUT_REFRESH_SECONDS,
 )
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.services.sandbox.artifact_watcher import ArtifactWatcher
@@ -199,3 +202,26 @@ def get_sandbox_pool() -> SandboxPool:
         log.info(f"{LogTag.SANDBOX} initializing pool")
         _pool_singleton = SandboxPool()
     return _pool_singleton
+
+
+async def refresh_sandbox_timeout(entry: PooledSandbox) -> bool:
+    """Refresh the sandbox kill timer once the refresh window has elapsed.
+
+    Keep-warm is resume-on-demand plus this refresh, not immortality: E2B
+    kills every sandbox at SANDBOX_LIFETIME_SECONDS (3600 hobby / 86400 pro)
+    no matter how often it is refreshed. Past that ceiling acquire_sandbox
+    recreates, and credentials survive via the JuiceFS symlinks from Task 3.
+    """
+    if time.monotonic() - entry.timeout_refreshed_at <= SANDBOX_TIMEOUT_REFRESH_SECONDS:
+        return False
+    try:
+        await entry.sandbox.set_timeout(SANDBOX_LIFETIME_SECONDS)
+    except Exception as e:
+        log.warning(
+            f"{LogTag.SANDBOX} timeout refresh failed",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return False
+    entry.timeout_refreshed_at = time.monotonic()
+    return True

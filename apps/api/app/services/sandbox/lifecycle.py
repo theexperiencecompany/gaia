@@ -35,14 +35,19 @@ from app.constants.sandbox import (
     HEALTH_PROBE_WAIT_TIMEOUT_SECONDS,
     SANDBOX_CONNECT_TIMEOUT_SECONDS,
     SANDBOX_LIFETIME_SECONDS,
-    SANDBOX_TIMEOUT_REFRESH_SECONDS,
 )
 from app.db.repositories.e2b_sandboxes import e2b_sandbox_repository
 from app.decorators import enforce_rate_limit
 from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
+from app.services.feature_flags import is_agent_lab_enabled
 from app.services.sandbox.artifact_watcher import start_watcher_for
+from app.services.sandbox.bridge_token import mint_sandbox_bridge_token
 from app.services.sandbox.errors import SandboxAcquisitionError, SandboxRateLimitError
-from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
+from app.services.sandbox.pool import (
+    PooledSandbox,
+    get_sandbox_pool,
+    refresh_sandbox_timeout,
+)
 from app.services.sandbox.shard_router import shard_for, shard_meta_url
 from app.services.storage import (
     FsOps,
@@ -54,6 +59,12 @@ from app.services.storage import (
 from shared.py.wide_events import log
 
 CANARY_PATH = "/workspace/.gaia/canary.txt"
+# Allowlist path mirrors BRIDGE_CONFIG_PATH in scripts/sandbox_bridge.py — the
+# in-sandbox client reads it on (re)start, so it must live under /workspace to
+# survive pause/resume and template recreate via JuiceFS.
+BRIDGE_CONFIG_PATH = "/workspace/.gaia/bridge.json"
+BRIDGE_TOKEN_PATH = "/workspace/.gaia/bridge-token"
+BRIDGE_CLIENT_PATH = "/etc/gaia/sandbox_bridge.py"
 MOUNT_SCRIPT_PATH = "/etc/gaia/mount.sh"  # template-baked copy (runtime-ship fallback)
 # The API ships its own copy of mount_juicefs.sh at acquire time (see
 # _run_mount_script), so script changes need no template rebuild. Timeout
@@ -430,12 +441,9 @@ async def _reuse_cached_entry(user_id: str, mount_env: dict[str, str]) -> Pooled
         return None
 
     # Running commands does NOT reset E2B's kill timer — only connect()/
-    # set_timeout() do, so refresh it here (once per window, not every call,
-    # or a rapid multi-tool turn pays a round-trip per call for no benefit).
-    if time.monotonic() - entry.timeout_refreshed_at > SANDBOX_TIMEOUT_REFRESH_SECONDS:
-        with contextlib.suppress(Exception):
-            await entry.sandbox.set_timeout(SANDBOX_LIFETIME_SECONDS)
-            entry.timeout_refreshed_at = time.monotonic()
+    # set_timeout() do, so refresh it here (window-gated inside, so a rapid
+    # multi-tool turn pays no round-trip per call for no benefit).
+    await refresh_sandbox_timeout(entry)
 
     await _ensure_mounted(entry.sandbox, mount_env)
     if not await _verify_canary_or_die(entry):
@@ -471,6 +479,38 @@ async def _resume_existing_sandbox(
     await _ensure_mounted(sbx, mount_env)
     log.info(f"{LogTag.SANDBOX} resumed sandbox", sandbox_id=sandbox_id)
     return sbx
+
+
+async def _ensure_lab_bridge(user_id: str, sbx: AsyncSandbox) -> str | None:
+    """Mint a fresh bridge token and stage it for flagged users; None otherwise."""
+    if not await is_agent_lab_enabled(user_id):
+        return None
+    sandbox_id = getattr(sbx, "sandbox_id", None) or ""
+    if not sandbox_id:
+        log.warning(f"{LogTag.SANDBOX} skipping bridge staging; no sandbox id")
+        return None
+    token, _ = mint_sandbox_bridge_token(user_id, sandbox_id)
+    try:
+        # files.write, never shell argv: the token must not land in a command
+        # line readable via /proc. Staged under /workspace so JuiceFS persists
+        # it across pause/resume and recreate.
+        await sbx.files.write(BRIDGE_TOKEN_PATH, token)
+        await sbx.files.write(BRIDGE_CONFIG_PATH, '{"allowed_servers": ["splitwise"]}')
+    except Exception as e:
+        log.warning(
+            f"{LogTag.SANDBOX} bridge staging failed",
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return None
+    # SEAM (agent-lab driver work): actually (re)starting the bridge client is
+    # not wired here yet. scripts/sandbox_bridge.py is stdio-only — it has no
+    # WS dial loop — and there is no API dial-host setting for the sandbox to
+    # dial back to. The driver task adds the dial transport + host config and
+    # background-starts BRIDGE_CLIENT_PATH with this token on this path.
+    _record(bridge_token_staged=True)
+    return token
 
 
 async def _acquire_or_create(user_id: str) -> PooledSandbox:
@@ -550,6 +590,9 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
     )
     pool.put(user_id, entry)
     await _ensure_watcher(user_id, entry)
+    # Best-effort like the watcher: bridge staging is additive, so a staging
+    # failure must never break acquisition (the helper already warns).
+    await _ensure_lab_bridge(user_id, sbx)
     return entry
 
 
@@ -614,6 +657,10 @@ def _schedule_pause(user_id: str, entry: PooledSandbox) -> None:
         # inner ``except Exception`` never catches it — so the idle-pause task
         # cancels cleanly when work arrives.
         await asyncio.sleep(settings.E2B_SANDBOX_IDLE_PAUSE_SECONDS)
+        # Evaluated at fire time, not schedule time, so a flag flip during the
+        # idle window takes effect on the next pause decision either way.
+        if await is_agent_lab_enabled(user_id):
+            return
         if entry.refcount > 0:
             return
         if not await _idle_on_every_replica(user_id):

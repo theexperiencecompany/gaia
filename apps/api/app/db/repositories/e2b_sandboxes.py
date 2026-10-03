@@ -83,5 +83,9 @@ class E2bSandboxesRepository(MongoRepository[E2bSandboxDocument, E2bSandboxUpdat
             "user_id", {"last_used_at": {"$lt": cutoff}, "state": {"$ne": "dead"}}
         )
 
+    async def find_live_user_ids(self) -> list[str]:
+        """User ids with a non-dead sandbox record (the keep-warm candidates)."""
+        return await self._distinct("user_id", {"state": {"$ne": "dead"}})
+
 
 e2b_sandbox_repository = E2bSandboxesRepository()

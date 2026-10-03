@@ -32,6 +32,7 @@ from app.workers.tasks import (
     promote_usage_badges,
     prune_checkpoint_versions,
     prune_inactive_sessions,
+    refresh_lab_sandboxes,
     regenerate_workflow_steps,
     run_nurture_sequence_task,
     sweep_abandoned_imessage_registrations,
@@ -81,6 +82,7 @@ _cleanup_stuck_personalization = arq_task(cleanup_stuck_personalization)
 _backfill_active_users = arq_task(backfill_active_users)
 _backfill_user_memories = arq_task(backfill_user_memories)
 _sweep_idle_sandboxes = arq_task(sweep_idle_sandboxes)
+_refresh_lab_sandboxes = arq_task(refresh_lab_sandboxes)
 _prune_inactive_sessions = arq_task(prune_inactive_sessions)
 _prune_checkpoint_versions = arq_task(prune_checkpoint_versions)
 _execute_tracked_todo = arq_task(execute_tracked_todo)
@@ -124,6 +126,7 @@ WorkerSettings.functions = [
     _process_onboarding_intelligence_task,
     _cleanup_stuck_personalization,
     _sweep_idle_sandboxes,
+    _refresh_lab_sandboxes,
     _prune_inactive_sessions,
     _prune_checkpoint_versions,
     _execute_tracked_todo,
@@ -176,6 +179,13 @@ WorkerSettings.cron_jobs = [
     cron(
         cast(WorkerCoroutine, _sweep_idle_sandboxes),
         minute=0,  # Hourly
+        second=0,
+    ),
+    # Keep-warm for AGENT_LAB users: re-acquire refreshes the E2B kill timer
+    # well inside the hourly lifetime ceiling, so flagged sandboxes stay warm.
+    cron(
+        cast(WorkerCoroutine, _refresh_lab_sandboxes),
+        minute={0, 30},  # Every 30 minutes
         second=0,
     ),
     # Hourly, off the top of the hour so it does not pile onto the other sweeps.
