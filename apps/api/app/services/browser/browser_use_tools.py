@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from typing import TypedDict
 from urllib.parse import urlsplit
 
 from browser_use.agent.views import ActionResult
@@ -24,6 +24,8 @@ from browser_use.llm.base import BaseChatModel
 from browser_use.tools.registry.views import ActionModel
 from browser_use.tools.service import Tools
 from browser_use.utils import match_url_with_domain_pattern
+from pydantic import TypeAdapter
+from typing_extensions import override
 
 from app.services.browser.browser_use_session import GaiaBrowserSession
 
@@ -61,12 +63,22 @@ def _names(sensitive_data: SensitiveData, url: str | None = None) -> set[str]:
     }
 
 
+class _Typed(TypedDict, total=False):
+    """Browser-Use's input action, read for the text it types."""
+
+    text: str
+
+
+_TYPED: TypeAdapter[_Typed] = TypeAdapter(_Typed)
+
+
 def _refusal(
-    name: str, params: dict[str, Any], sensitive_data: SensitiveData, url: str | None
+    name: str, params: object, sensitive_data: SensitiveData, url: str | None
 ) -> str | None:
     """Return why the action may not type the secrets it names on url's page, or None when it may."""
-    text = params.get("text")
-    if name == _SECRET_TYPING_ACTION and isinstance(text, str) and text in _names(sensitive_data):
+    typed: _Typed = _TYPED.validate_python(params) if name == _SECRET_TYPING_ACTION else {}
+    text = typed.get("text")
+    if text is not None and text in _names(sensitive_data):
         return (
             f"{text} is the name of a secret, not its value: type <secret>{text}</secret>; "
             "nothing was typed."
@@ -87,6 +99,7 @@ def _refusal(
 class GaiaTools(Tools[None]):
     """The run's actions: secrets only where they are typed, and reads shown in full."""
 
+    @override
     async def act(
         self,
         action: ActionModel,
@@ -95,12 +108,12 @@ class GaiaTools(Tools[None]):
         sensitive_data: SensitiveData | None = None,
         available_file_paths: list[str] | None = None,
         file_system: FileSystem | None = None,
-        extraction_schema: dict[str, Any] | None = None,
+        extraction_schema: dict[str, object] | None = None,
     ) -> ActionResult:
         """Run the action with secret values only where they are typed; a read's result is shown in full."""
         [(name, params)] = action.model_dump(exclude_unset=True).items()
         url = _focused_url(browser_session)
-        if refused := _refusal(name, params or {}, sensitive_data or {}, url):
+        if refused := _refusal(name, params, sensitive_data or {}, url):
             return ActionResult(error=refused)
         result = await super().act(
             action=action,

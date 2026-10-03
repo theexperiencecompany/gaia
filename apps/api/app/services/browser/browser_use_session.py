@@ -14,6 +14,7 @@ from browser_use.browser.views import TabInfo
 from cdp_use.cdp.runtime.commands import EvaluateReturns
 from cdp_use.cdp.runtime.types import RemoteObject
 from pydantic import PrivateAttr
+from typing_extensions import override
 
 from app.browser_host.stealth import build_stealth_script
 from app.constants.browser import (
@@ -55,6 +56,7 @@ class GaiaBrowserSession(BrowserSession):
         )
         self._fingerprint_seed = seed_for_user(user_id)
 
+    @override
     async def get_or_create_cdp_session(
         self, target_id: str | None = None, focus: bool = True
     ) -> CDPSession:
@@ -85,6 +87,7 @@ class GaiaBrowserSession(BrowserSession):
             )
         return cdp_session
 
+    @override
     async def _navigate_and_wait(
         self, url: str, target_id: str, timeout: float | None = None, wait_until: str = "load"
     ) -> None:
@@ -96,6 +99,7 @@ class GaiaBrowserSession(BrowserSession):
             wait_until=wait_until,
         )
 
+    @override
     async def get_tabs(self) -> list[TabInfo]:
         """List the tabs, the agent's own titled from its document.
 
