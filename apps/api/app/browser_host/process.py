@@ -101,15 +101,18 @@ class ProcessSampler:
     """Samples an engine process tree's RSS and CPU%.
 
     cpu_percent() is used in its non-blocking form: the first call on a
-    process seeds the counter and reports 0.0, every later call reports the
-    average since the previous one. A sample is a couple of syscalls with no
-    sleep, which is what lets the host sample on events.
+    process seeds the counter and reports 0.0, every later call on the same
+    object reports the average since the previous one. A sample is a couple of
+    syscalls with no sleep, which is what lets the host sample on events.
     """
 
     def __init__(self, pid: int) -> None:
         self._pid = pid
         self._root = psutil.Process(pid)
         self._root.cpu_percent()
+        #: The tree as last sampled. A process's CPU% is measured since the last call on
+        #: that same object, and children() builds new ones, so each is kept across samples.
+        self._known: dict[psutil.Process, psutil.Process] = {self._root: self._root}
 
     @classmethod
     def for_pid(cls, pid: int) -> ProcessSampler | None:
@@ -129,7 +132,10 @@ class ProcessSampler:
     def sample(self) -> tuple[float, float] | None:
         """(rss_mb, cpu_percent) for the tree, or None when it cannot be read: the metric goes missing, not the session."""
         try:
-            procs = _tree(self._root)
+            # Equal Process objects are the same process (pid and start time), so a reused
+            # pid is a new process; one that exited drops out with the tree it left.
+            procs = [self._known.get(proc, proc) for proc in _tree(self._root)]
+            self._known = {proc: proc for proc in procs}
             cpu = 0.0
             for proc in procs:
                 with contextlib.suppress(psutil.NoSuchProcess):
