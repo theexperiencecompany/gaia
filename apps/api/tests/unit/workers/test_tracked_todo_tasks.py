@@ -85,6 +85,7 @@ from app.workers.tasks.tracked_todo_tasks import (
     TRIGGER_TODO_FEATURE_KEY,
     _build_execution_prompt,
     _collect_reference_learnings,
+    _collect_run_context,
     _compute_next_run,
     _execute_on_executor,
     _execute_todo_with_retry,
@@ -777,6 +778,59 @@ class TestARunWaitsForItsAccount:
         assert result == "success:todo-1"
         via_agent.assert_awaited_once()
 
+    async def test_a_paused_trigger_run_holds_its_events_for_the_catch_up_drain(
+        self, account, activity
+    ):
+        """Drained events are held, not dropped, while the account is ineligible."""
+        account.paid.return_value = False
+        first = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
+        rest = TriggerOrigin(subscription_id="sub-2", trigger_name="gmail_new_message")
+        doc = _doc(external_ref=ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="t-1"))
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=doc)
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}._execute_on_executor", AsyncMock()),
+            patch(
+                f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
+            ),
+            patch(f"{MODULE}.buffer_todo_trigger_event", AsyncMock(return_value=True)) as held,
+            _serving(_pool()),
+        ):
+            result = await _execute_todo_with_retry("todo-1", first, coalesced=[rest])
+
+        assert result == "paused:todo-1"
+        assert [c.args[1] for c in held.await_args_list] == [first, rest]
+        assert (TodoActivityEvent.RUN_SKIPPED, "skipped: the user's plan is not active") in (
+            _recorded(activity)
+        )
+
+    async def test_an_unholdable_event_is_logged_not_silently_dropped(self, account, activity):
+        first = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
+        doc = _doc(external_ref=ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="t-1"))
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=doc)
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}._execute_on_executor", AsyncMock()),
+            patch(
+                f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
+            ),
+            patch(f"{MODULE}.buffer_todo_trigger_event", AsyncMock(return_value=False)),
+            patch(f"{MODULE}.log") as mock_log,
+            _serving(_pool()),
+        ):
+            account.paid.return_value = False
+            result = await _execute_todo_with_retry("todo-1", first)
+
+        assert result == "paused:todo-1"
+        mock_log.error.assert_called_once_with(
+            "tracked_todo.trigger_event_lost_paused",
+            todo_id="todo-1",
+            trigger_name="gmail_new_message",
+            subscription_id="sub-1",
+        )
+
 
 class TestExecuteTodoWithRetryEarlyExits:
     @pytest.fixture(autouse=True)
@@ -1129,18 +1183,18 @@ def _ref_id(n: int) -> str:
 
 
 class TestCollectReferenceLearnings:
-    async def _run(self, ref_ids: list[str], owned: list[TodoDocument]):
+    async def _run(self, ref_ids: list[str], owned: list[TodoDocument]) -> None:
         find = AsyncMock(return_value=owned)
         with patch.object(todo_repository, "find_by_ids", find):
             return await _collect_reference_learnings(ref_ids, "user-1"), find
 
-    async def test_no_references_short_circuits_without_touching_mongo(self):
+    async def test_no_references_short_circuits_without_touching_mongo(self) -> None:
         result, find = await self._run([], [])
 
         assert result == ""
         find.assert_not_awaited()
 
-    async def test_includes_the_referenced_todo_title_and_its_learnings(self):
+    async def test_includes_the_referenced_todo_title_and_its_learnings(self) -> None:
         owned = [
             _doc(
                 id=_ref_id(1),
@@ -1155,7 +1209,7 @@ class TestCollectReferenceLearnings:
             'From past todo "Last quarter\'s rollout":\n## Learnings\n- ship on Tuesdays'
         )
 
-    async def test_reads_only_the_first_five_references(self):
+    async def test_reads_only_the_first_five_references(self) -> None:
         ids = [_ref_id(i) for i in range(9)]
         owned = [_doc(id=i, title=i, canvas_content=f"## Learnings\n- lesson {i}") for i in ids]
         result, find = await self._run(ids, owned)
@@ -1164,14 +1218,14 @@ class TestCollectReferenceLearnings:
         assert f"- lesson {ids[4]}" in result
         assert f"- lesson {ids[5]}" not in result
 
-    async def test_a_reference_that_names_no_todo_of_the_owner_is_skipped(self):
+    async def test_a_reference_that_names_no_todo_of_the_owner_is_skipped(self) -> None:
         owned = [_doc(id=_ref_id(2), title="Kept", canvas_content="## Learnings\n- kept lesson")]
         result, find = await self._run(["not-an-id", _ref_id(1), _ref_id(2)], owned)
 
         find.assert_awaited_once_with("user-1", [_ref_id(1), _ref_id(2)])
         assert result.endswith('From past todo "Kept":\n## Learnings\n- kept lesson')
 
-    async def test_learnings_keep_the_order_the_todo_lists_them_in(self):
+    async def test_learnings_keep_the_order_the_todo_lists_them_in(self) -> None:
         owned = [
             _doc(id=_ref_id(2), title="Second", canvas_content="## Learnings\n- b"),
             _doc(id=_ref_id(1), title="First", canvas_content="## Learnings\n- a"),
@@ -1180,7 +1234,7 @@ class TestCollectReferenceLearnings:
 
         assert result.index('"First"') < result.index('"Second"')
 
-    async def test_a_referenced_todos_standing_rules_are_not_inherited(self):
+    async def test_a_referenced_todos_standing_rules_are_not_inherited(self) -> None:
         """Rules come from a sub-todo's parent only; a reference is past experience."""
         owned = [
             _doc(
@@ -1194,7 +1248,7 @@ class TestCollectReferenceLearnings:
         assert "skip newsletters" not in result
         assert "- a" in result
 
-    async def test_empty_sections_and_a_missing_canvas_add_nothing(self):
+    async def test_empty_sections_and_a_missing_canvas_add_nothing(self) -> None:
         owned = [
             _doc(id=_ref_id(1), title="Empty", canvas_content="## Learnings\n"),
             _doc(id=_ref_id(2), title="No canvas", canvas_content=None),
@@ -1258,7 +1312,7 @@ class TestBuildExecutionPrompt:
         prompt = _build_execution_prompt(
             _doc(title="Ship it", canvas_content="", activity_content="")
         )
-        assert "canvas.md" not in prompt and "activity.md" not in prompt
+        assert "Canvas (canvas.md):" not in prompt and "Recent activity" not in prompt
 
     def test_long_activity_is_tail_truncated_and_says_so(self):
         """A recurring todo's activity grows forever; the prompt must not."""
@@ -1364,7 +1418,7 @@ async def _run_task(
 class TestStandingRulesReachTheRun:
     """The user's instructions bind every run: its own, and its parent's when it is a sub-todo."""
 
-    async def test_the_parents_rules_reach_a_sub_todos_run_as_rules_to_obey(self):
+    async def test_the_parents_rules_reach_a_sub_todos_run_as_rules_to_obey(self) -> None:
         task, _ = await _run_task(_doc(parent_todo_id=_DESK_ID), _desk())
 
         assert (
@@ -1372,7 +1426,7 @@ class TestStandingRulesReachTheRun:
             "- 2026-09-28: stop showing me newsletters"
         ) in task
 
-    async def test_a_referenced_todo_lends_its_learnings_but_not_its_rules(self):
+    async def test_a_referenced_todo_lends_its_learnings_but_not_its_rules(self) -> None:
         task, find = await _run_task(_doc(references=[_DESK_ID]), _desk())
 
         assert "stop showing me newsletters" not in task
@@ -1382,7 +1436,7 @@ class TestStandingRulesReachTheRun:
         ) in task
         find.assert_awaited_once_with("user-1", [_DESK_ID])
 
-    async def test_the_parent_is_read_only_from_the_runs_owner(self):
+    async def test_the_parent_is_read_only_from_the_runs_owner(self) -> None:
         other = _desk().model_copy(update={"user_id": "someone-else"})
         get = AsyncMock(side_effect=lambda i, user_id: other if user_id == "someone-else" else None)
         run = AsyncMock()
@@ -1399,7 +1453,7 @@ class TestStandingRulesReachTheRun:
         get.assert_awaited_once_with(_DESK_ID, user_id="user-1")
         assert "stop showing me newsletters" not in run.await_args.args[0].task
 
-    async def test_inherited_rules_are_bounded(self):
+    async def test_inherited_rules_are_bounded(self) -> None:
         rules = "r" * (STANDING_RULES_MAX_CHARS * 2)
 
         task, _ = await _run_task(_doc(parent_todo_id=_DESK_ID), _desk(rules))
@@ -1407,7 +1461,7 @@ class TestStandingRulesReachTheRun:
         assert f'From "Inbox desk":\n{rules[:STANDING_RULES_MAX_CHARS]}\n' in task
         assert rules[: STANDING_RULES_MAX_CHARS + 1] not in task
 
-    async def test_the_runs_own_rules_survive_an_oversized_canvas(self):
+    async def test_the_runs_own_rules_survive_an_oversized_canvas(self) -> None:
         canvas = (
             "## Key Details\n" + "k" * CANVAS_PROMPT_MAX_CHARS + "\n\n"
             "## Standing rules\n- 2026-09-28: brief me in bullets\n\n"
@@ -1432,7 +1486,7 @@ def _thread(n: int, state: str = "Waiting on Sarah to confirm Friday") -> TodoDo
 class TestSubTodosReachTheParentRun:
     """A sub-todo reports to its parent, so the parent's run reads each open one's state."""
 
-    async def test_each_open_sub_todo_is_listed_with_its_labels_id_and_current_state(self):
+    async def test_each_open_sub_todo_is_listed_with_its_labels_id_and_current_state(self) -> None:
         task, _ = await _run_task(_doc(), _desk(), [_thread(1)])
 
         assert (
@@ -1442,7 +1496,7 @@ class TestSubTodosReachTheParentRun:
         ) in task
         assert "old notes" not in task
 
-    async def test_a_long_current_state_is_clipped(self):
+    async def test_a_long_current_state_is_clipped(self) -> None:
         state = "s" * (SUB_TODO_STATE_EXCERPT_CHARS * 2)
 
         task, _ = await _run_task(_doc(), _desk(), [_thread(1, state)])
@@ -1450,7 +1504,7 @@ class TestSubTodosReachTheParentRun:
         assert state not in task
         assert state[: SUB_TODO_STATE_EXCERPT_CHARS // 2] in task
 
-    async def test_a_cut_list_says_so_and_how_to_list_the_rest(self):
+    async def test_a_cut_list_says_so_and_how_to_list_the_rest(self) -> None:
         children = [_thread(n) for n in range(SUB_TODOS_PROMPT_LIMIT + 5)]
 
         task, _ = await _run_task(_doc(), _desk(), children)
@@ -1461,7 +1515,7 @@ class TestSubTodosReachTheParentRun:
             f'list_tracked_todos(parent_todo_id="{_doc().id}") lists them.)'
         ) in task
 
-    async def test_a_full_list_that_is_whole_carries_no_note(self):
+    async def test_a_full_list_that_is_whole_carries_no_note(self) -> None:
         children = [_thread(n) for n in range(SUB_TODOS_PROMPT_LIMIT)]
 
         task, _ = await _run_task(_doc(), _desk(), children)
@@ -1469,12 +1523,14 @@ class TestSubTodosReachTheParentRun:
         assert task.count("  Current State: ") == SUB_TODOS_PROMPT_LIMIT
         assert "more are open" not in task
 
-    async def test_a_todo_without_sub_todos_gets_no_section(self):
+    async def test_a_todo_without_sub_todos_gets_no_section(self) -> None:
         task, _ = await _run_task(_doc(), _desk())
 
         assert SUB_TODOS_LABEL not in task
 
-    async def test_sub_todos_are_one_line_apart_and_an_unlabelled_stateless_one_says_so(self):
+    async def test_sub_todos_are_one_line_apart_and_an_unlabelled_stateless_one_says_so(
+        self,
+    ) -> None:
         tagged = _thread(1).model_copy(
             update={"labels": ["gaia-tracked", "waiting-for-reply", "vip"]}
         )
@@ -1513,7 +1569,7 @@ class TestARunWithNothingToReadElsewhere:
             ),
         ],
     )
-    async def test_the_prompt_is_the_todos_own(self, doc: TodoDocument, desk: TodoDocument):
+    async def test_the_prompt_is_the_todos_own(self, doc: TodoDocument, desk: TodoDocument) -> None:
         task, _ = await _run_task(doc, desk)
 
         assert task == _build_execution_prompt(doc)
@@ -2192,7 +2248,7 @@ class TestExecuteOnExecutor:
         assert "Canvas (canvas.md):\n## Current State\nall good" in request.task
         assert "Recent activity (activity.md):\n- earlier run" in request.task
 
-    async def test_the_runs_inherited_context_is_gathered_for_this_todo(self):
+    async def test_the_runs_inherited_context_is_gathered_for_this_todo(self) -> None:
         doc = _doc(references=["todo-0", "todo-00"])
 
         await self._execute(doc)
@@ -2641,3 +2697,65 @@ class TestResumeTrackedTodo:
         assert run.result == "resume_dropped:todo-1 (lock held)"
         run.enqueue.assert_not_awaited()
         run.log.warning.assert_called_once_with("tracked_todo.resume_lock_held", todo_id="todo-1")
+
+
+class TestCollectRunContext:
+    """Prompt enrichment degrades; it never spends the run's retries."""
+
+    async def test_a_failed_section_degrades_to_empty_and_is_logged(self) -> None:
+        doc = _doc(references=["507f1f77bcf86cd799439011"])
+        with (
+            patch(
+                f"{MODULE}.todo_repository.list_active_tracked",
+                AsyncMock(side_effect=RuntimeError("mongo down")),
+            ),
+            patch(
+                f"{MODULE}.todo_repository.find_by_ids",
+                AsyncMock(side_effect=RuntimeError("mongo down")),
+            ),
+            patch(f"{MODULE}.log") as mock_log,
+        ):
+            context = await _collect_run_context(doc)
+
+        assert context == _RunContext()
+        assert mock_log.warning.call_count == 2
+        assert {c.kwargs["section"] for c in mock_log.warning.call_args_list} == {
+            "sub_todos",
+            "learnings",
+        }
+
+    async def test_a_healthy_section_survives_a_failed_sibling(self) -> None:
+        parent = _doc(id="parent-1", canvas_content="## Standing rules\nBe kind.\n")
+        doc = _doc(parent_todo_id="parent-1")
+
+        async def _get(todo_id: str, *, user_id: str) -> TodoDocument | None:
+            if todo_id == "parent-1":
+                return parent
+            raise RuntimeError("mongo down")
+
+        with (
+            patch(f"{MODULE}.todo_repository.get", AsyncMock(side_effect=_get)),
+            patch(
+                f"{MODULE}.todo_repository.list_active_tracked",
+                AsyncMock(side_effect=RuntimeError("mongo down")),
+            ),
+            patch(f"{MODULE}.log"),
+        ):
+            context = await _collect_run_context(doc)
+
+        assert "Be kind." in context.parent_rules
+        assert context.sub_todos == ""
+
+    async def test_a_parent_rules_read_failure_raises_for_a_retry(self) -> None:
+        """Governing rules are not enrichment: the run retries rather than acting blind."""
+        doc = _doc(parent_todo_id="parent-1")
+        with (
+            patch(
+                f"{MODULE}.todo_repository.get", AsyncMock(side_effect=RuntimeError("mongo down"))
+            ),
+            patch(f"{MODULE}.log") as mock_log,
+            pytest.raises(RuntimeError, match="mongo down"),
+        ):
+            await _collect_run_context(doc)
+
+        mock_log.warning.assert_not_called()

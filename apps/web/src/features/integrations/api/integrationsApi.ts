@@ -33,6 +33,13 @@ export const integrationsApi = {
    */
   getMyIntegrations: () => api.get("/api/v1/integrations/me"),
 
+  /** Fast Mongo-backed catalog snapshot; status refresh is a separate request. */
+  getMyIntegrationsSnapshot: () => api.get("/api/v1/integrations/me/snapshot"),
+
+  /** Status refresh can be slow for legacy provider connections; keep it off the catalog request. */
+  getIntegrationStatuses: () =>
+    api.get("/api/v1/integrations/status", { silent: true }),
+
   /**
    * Get the full tool list for a single integration, on demand.
    */

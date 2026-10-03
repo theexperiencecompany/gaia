@@ -32,6 +32,7 @@ from langgraph.graph.message import Messages
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
 
+from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.agents.middleware.runtime_adapter import (
     BigtoolRuntime,
     BigtoolToolRuntime,
@@ -113,6 +114,12 @@ class MiddlewareExecutor:
     def __init__(self, middleware: AgentMiddlewareStack | None = None) -> None:
         """Initialize with a list of middleware instances to execute."""
         self.middleware = middleware or []
+        #: The stack's loop guard, for the one tool call that never reaches the
+        #: tool node: retrieve_tools runs in the select_tools node, which
+        #: consults this guard directly instead of the full tool-call chain.
+        self.loop_guard: LoopGuardMiddleware | None = next(
+            (mw for mw in self.middleware if isinstance(mw, LoopGuardMiddleware)), None
+        )
 
     def _create_runtime(
         self,

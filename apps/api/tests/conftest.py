@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager
 import importlib
 import os
 import re
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fakeredis.aioredis
@@ -358,6 +359,12 @@ def _rate_limiting_fence() -> Iterator[None]:
             p.stop()
 
 
+def _apply_tz() -> None:
+    """Make the process clock follow os.environ["TZ"] now (tzset is Unix-only)."""
+    if hasattr(time, "tzset"):
+        time.tzset()
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _hermetic_environment() -> Iterator[None]:
     """Fence every test run from real-credential env vars.
@@ -378,6 +385,9 @@ def _hermetic_environment() -> Iterator[None]:
         for key, fake in _HERMETIC_FAKE_KEYS.items():
             os.environ[key] = fake
         os.environ["TZ"] = "UTC"
+        # glibc reads TZ once and caches it; without tzset the box's own zone
+        # (IST) stays in force and every naive datetime.now() is hours off UTC.
+        _apply_tz()
         os.environ["LANG"] = "C.UTF-8"
         os.environ["LC_ALL"] = "C.UTF-8"
         os.environ["PYTHONHASHSEED"] = "0"
@@ -389,6 +399,7 @@ def _hermetic_environment() -> Iterator[None]:
     finally:
         os.environ.clear()
         os.environ.update(snapshot)
+        _apply_tz()
 
 
 @pytest.fixture(scope="session", autouse=True)

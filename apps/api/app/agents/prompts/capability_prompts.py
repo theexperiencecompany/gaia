@@ -25,7 +25,7 @@ CAPABILITY_SECTION_HEADER = "## What GAIA can do (written from the code, so it i
 _TODOS = (
     "TODOS: a todo is a structured object GAIA can act on. Each one carries a title, a "
     "description, up to ten labels, a project, a priority (high, medium, low or none), a due "
-    "date in the user's timezone and subtasks. The strong part: a todo can be TRACKED, which "
+    "date in the user's timezone and a checklist. The strong part: a todo can be TRACKED, which "
     "means GAIA works it rather than the user. A tracked todo has a scheduled time or a "
     "recurrence (daily, weekly, every few hours, or a cron expression, always in the user's "
     "timezone), and GAIA runs it then, keeping a canvas of the work product and a log of what "
@@ -152,6 +152,7 @@ def _inbox_desk_line() -> str:
 
 
 def build_capability_block() -> str:
+    """Return the prompt section describing what GAIA can do, ending with the built-in workflows."""
     trigger_kinds = "; ".join(_TRIGGER_TEXT[kind] for kind in TriggerType)
     triggers = f"TRIGGERS: a run starts one of these ways: {trigger_kinds}."
     workflows = "\n".join(
