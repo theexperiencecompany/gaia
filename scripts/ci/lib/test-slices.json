@@ -20,9 +20,7 @@
       "services": "false",
       "workers": "7",
       "serial": "false",
-      "after": [
-        "shared-suite"
-      ],
+      "after": ["shared-suite"],
       "timeout_minutes": "45",
       "engines": "false"
     },
@@ -34,9 +32,7 @@
       "services": "true",
       "workers": "4",
       "serial": "false",
-      "after": [
-        "contract-fuzz"
-      ],
+      "after": ["contract-fuzz"],
       "timeout_minutes": "45",
       "engines": "false"
     },
