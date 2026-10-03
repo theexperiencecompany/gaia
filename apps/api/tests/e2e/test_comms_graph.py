@@ -33,7 +33,7 @@ from app.agents.context.slots import BROWSER_TASK_MARKER
 from app.constants.browser import HandoffStatus
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.schemas.browser import NewHandoff
-from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
+from app.schemas.browser_job import BrowserJobStatus
 from app.services.browser.handoff import create_pending_handoff, get_handoff
 from app.services.browser.jobs import put_job_state, set_latest_job
 from app.utils.multimodal import extract_text_content
@@ -47,6 +47,7 @@ from tests.e2e._harness.graph_run import (
     memory_engine_of,
     run_graph,
 )
+from tests.factories import make_browser_job_state
 
 pytestmark = pytest.mark.e2e
 
@@ -134,8 +135,8 @@ class TestBrowserTaskReply:
         ) as graph:
             await set_latest_job("conv-browser", "job-1")
             await put_job_state(
-                BrowserJobState(
-                    job_id="job-1", status=BrowserJobStatus.RUNNING, task="book a table"
+                make_browser_job_state(
+                    "job-1", status=BrowserJobStatus.RUNNING, task="book a table"
                 )
             )
             await create_pending_handoff(

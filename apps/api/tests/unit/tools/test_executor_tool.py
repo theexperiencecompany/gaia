@@ -51,6 +51,7 @@ from app.services.browser.jobs import (
     set_latest_job,
 )
 from app.utils import background_tasks
+from tests.factories import make_browser_job_state
 
 
 def tool_function(tool_obj: BaseTool) -> Callable[..., Awaitable[str]]:
@@ -555,8 +556,8 @@ async def _a_running_browser_job(job_id: str = "job-1") -> None:
     await set_latest_job(CONVERSATION_ID, job_id)
     await claim_conversation_slot(CONVERSATION_ID, job_id)
     await put_job_state(
-        BrowserJobState(
-            job_id=job_id,
+        make_browser_job_state(
+            job_id,
             status=BrowserJobStatus.RUNNING,
             task="t",
             conversation_id="conv-of-the-job",
@@ -613,8 +614,8 @@ class TestCancelExecutorStopsTheBrowser:
         monkeypatch.setattr(job_stop, "_abort_if_started", AsyncMock(return_value=False))
         await set_latest_job("telegram:user-1", "job-g")
         await put_job_state(
-            BrowserJobState(
-                job_id="job-g",
+            make_browser_job_state(
+                "job-g",
                 status=BrowserJobStatus.RUNNING,
                 task="t",
                 conversation_id="conv-of-the-job",

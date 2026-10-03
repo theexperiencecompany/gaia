@@ -48,6 +48,7 @@ from app.services.browser.jobs import (
     set_latest_job,
     take_job_messages,
 )
+from tests.factories import make_browser_job_state
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
@@ -82,8 +83,8 @@ async def _running(job_id: str, *keys: str) -> None:
     for key in keys:
         await set_latest_job(key, job_id)
     await put_job_state(
-        BrowserJobState(
-            job_id=job_id,
+        make_browser_job_state(
+            job_id,
             status=BrowserJobStatus.RUNNING,
             task=f"task of {job_id}",
             conversation_id=keys[0],

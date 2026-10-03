@@ -22,10 +22,11 @@ from app.agents.core.background.running_registry import RunningSubagents
 from app.api.v1.endpoints.chat import _stream_from_redis
 from app.core.stream_manager import stream_manager
 from app.models.agent_models import RunningSubagent
-from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
+from app.schemas.browser_job import BrowserJobStatus
 from app.services.browser import job_stop
 from app.services.browser.jobs import job_cancel_requested, put_job_state, set_latest_job
 from tests.conftest import FAKE_USER, FAKE_USER_2
+from tests.factories import make_browser_job_state
 
 pytestmark = pytest.mark.unit
 
@@ -357,8 +358,8 @@ class TestCancelStream:
         await stream_manager.start_stream(TURN, CONVERSATION, FAKE_USER.user_id)
         await set_latest_job(CONVERSATION, "job-1")
         await put_job_state(
-            BrowserJobState(
-                job_id="job-1",
+            make_browser_job_state(
+                "job-1",
                 status=BrowserJobStatus.RUNNING,
                 task="t",
                 conversation_id="conv-of-the-job",

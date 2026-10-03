@@ -8,6 +8,7 @@ graph run) is recorded rather than started.
 
 import asyncio
 import json
+from time import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -18,9 +19,12 @@ import pytest
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.constants.agents import NON_WAKING_TAGS, AgentTag
 from app.constants.browser import (
+    BROWSER_JOB_DEATH_CONFIRM_SECONDS,
     BROWSER_JOB_LIVE_KEY,
     BROWSER_JOB_QUEUE,
     BROWSER_JOB_SLOT_TAKEN_SUMMARY,
+    BROWSER_JOB_SUSPECT_KEY,
+    BROWSER_JOB_WAKE_GRACE_SECONDS,
     BROWSER_JOB_WORKER_LOST_SUMMARY,
     BrowserRunFailure,
     BrowserSessionStatus,
@@ -40,6 +44,10 @@ from app.services.browser.jobs import (
     claim_conversation_slot,
     done_state,
     get_conversation_slot,
+    hold_job_alive,
+    job_alive,
+    landed_wake,
+    landed_wakes,
     live_job_ids,
     put_job_state,
     record_ending,
@@ -71,6 +79,8 @@ class World:
         self.users: dict[str, object] = {"u1": MagicMock(user_id="u1")}
         #: Whether the heartbeat that holds the slot was alive while the run ran.
         self.heartbeat_alive: list[bool] = []
+        #: Whether the job's worker lease was held while the run ran.
+        self.leased: list[bool] = []
 
 
 @pytest.fixture
@@ -83,6 +93,7 @@ def world(fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPa
         w.heartbeat_alive.append(
             any(task.get_name() == "browser_job_heartbeat" for task in asyncio.all_tasks())
         )
+        w.leased.append(await job_alive(request.job_id))
         await end_job(request.job_id, BrowserJobFinished(result=DONE))
         return DONE
 
@@ -129,6 +140,9 @@ async def test_a_finished_background_run_is_told_once_by_the_executor_run_it_wak
     assert world.woken == [("conv-9", world.users["u1"])]
     assert await get_conversation_slot("conv-9") is None
     assert world.heartbeat_alive == [True]
+    # Held while it ran, the evidence the reaper reads; given back once it ended.
+    assert world.leased == [True]
+    assert await job_alive("job-1") is False
     assert event["user"] == {"id": "u1"}
     assert event["platform"] == "telegram"
     assert event["browser"] == {
@@ -172,9 +186,11 @@ async def test_a_job_whose_user_is_gone_lands_its_result_but_wakes_nobody(world:
     assert world.woken == []
     [warning] = event["warnings"]
     assert warning["msg"] == (
-        f"{LogTag.BROWSER} Browser job result landed but nobody was woken: user not found"
+        f"{LogTag.BROWSER} Browser job result landed but nobody can be woken: user not found"
     )
-    assert warning["browser"] == {"conversation_id": "conv-9"}
+    assert warning["browser"] == {"job_id": "job-1", "conversation_id": "conv-9"}
+    # Nobody ever can be: the sweep is not asked to try again.
+    assert await landed_wakes() == []
 
 
 async def test_the_running_job_beats_on_its_own_slot(
@@ -279,18 +295,32 @@ async def _feed(job_id: str = "job-1") -> list[dict[str, object]]:
     return [payload for _, payload in await read_job_events(job_id, "0-0")]
 
 
-async def test_a_job_whose_worker_died_is_ended_and_told_once(
+async def _running_with_no_worker(
+    fake_redis: fakeredis.aioredis.FakeRedis, payload: dict[str, Any] = PAYLOAD
+) -> BrowserJobRequest:
+    """Queue and start a job whose worker then died: ARQ still marks it in progress for hours."""
+    request = await _queued(payload)
+    await put_job_state(BrowserJobState.of(request, BrowserJobStatus.RUNNING, time() - 60))
+    await fake_redis.set(f"{in_progress_key_prefix}{request.job_id}", "1")
+    return request
+
+
+async def _suspected_long_ago(fake_redis: fakeredis.aioredis.FakeRedis, job_id: str) -> None:
+    """Record that an earlier sweep found it without a worker, a full confirm window ago."""
+    await fake_redis.hset(
+        BROWSER_JOB_SUSPECT_KEY, job_id, str(time() - BROWSER_JOB_DEATH_CONFIRM_SECONDS - 1)
+    )
+
+
+async def test_a_job_whose_worker_died_is_ended_on_its_card_and_told_once(
     world: World, fake_redis: fakeredis.aioredis.FakeRedis
 ) -> None:
     """ARQ never retries a browser job: with its worker gone the card spun and the user heard nothing, forever."""
-    request = await _queued()
-    await put_job_state(BrowserJobState.of(request, BrowserJobStatus.RUNNING))
-    # ARQ still marks it in progress for hours; its heartbeat stopped with the worker.
-    await fake_redis.set(f"{in_progress_key_prefix}job-1", "1")
+    await _running_with_no_worker(fake_redis)
+    await _suspected_long_ago(fake_redis, "job-1")
 
     async with captured_wide_event() as event:
-        assert await tasks_mod.reap_browser_jobs({}) == "reaped=1"
-        assert await tasks_mod.reap_browser_jobs({}) == "reaped=0"
+        assert await tasks_mod.reap_browser_jobs({}) == "reaped=1 results_to_tell=0"
 
     ending = await done_state("job-1")
     assert isinstance(ending, BrowserJobFinished)
@@ -302,43 +332,60 @@ async def test_a_job_whose_worker_died_is_ended_and_told_once(
     assert world.woken == [("conv-9", world.users["u1"])]
     feed = await _feed()
     assert feed[-1] == JOB_TERMINAL_FRAME
-    assert BROWSER_JOB_WORKER_LOST_SUMMARY in json.dumps(feed[-2])
+    assert BROWSER_JOB_WORKER_LOST_SUMMARY in json.dumps(feed)
+    # The run's "Browser" row closes as its own end would close it, never left spinning.
+    [closed] = [frame for frame in feed if "subagent_end" in frame]
+    assert '"subagent_id": "browser:call-1"' in json.dumps(closed)
     [warning] = event["warnings"]
     assert warning["msg"] == f"{LogTag.BROWSER} Browser job ended by the reaper: its worker died"
     assert warning["reason"] == BrowserRunFailure.WORKER_LOST.value
     assert warning["browser"] == {"job_id": "job-1", "status": "running"}
-    assert event["browser"] == {"reaped_jobs": []}
+    assert event["browser"] == {"reaped_jobs": ["job-1"], "results_to_tell": []}
     assert await live_job_ids() == []
 
 
-async def test_a_job_still_waiting_for_a_worker_or_still_beating_is_left_alone(
+async def test_one_sweep_without_a_worker_is_no_evidence_of_death(
     world: World, fake_redis: fakeredis.aioredis.FakeRedis
 ) -> None:
+    """ARQ hands a job over before its worker's first write: a sweep in that instant sees no lease."""
+    await _running_with_no_worker(fake_redis)
+
+    assert await tasks_mod.reap_browser_jobs({}) == "reaped=0 results_to_tell=0"
+    assert await done_state("job-1") is None
+
+    await _suspected_long_ago(fake_redis, "job-1")
+    assert await tasks_mod.reap_browser_jobs({}) == "reaped=1 results_to_tell=0"
+
+
+@pytest.mark.parametrize("evidence", ["queued", "leased"])
+async def test_a_job_waiting_for_a_worker_or_held_by_one_is_left_alone_and_unsuspected(
+    world: World, fake_redis: fakeredis.aioredis.FakeRedis, evidence: str
+) -> None:
     """A long queue wait and a long handoff are both a live job: reaping either would end a run the user is in."""
-    await _queued()
-    await fake_redis.zadd(BROWSER_JOB_QUEUE, {"job-1": 1})
-    beating = await _queued(PAYLOAD | {"job_id": "job-2", "conversation_id": "conv-8"})
-    await put_job_state(BrowserJobState.of(beating, BrowserJobStatus.RUNNING))
-    await fake_redis.set(f"{in_progress_key_prefix}job-2", "1")
-    await claim_conversation_slot("conv-8", "job-2")
+    request = await _running_with_no_worker(fake_redis)
+    await _suspected_long_ago(fake_redis, "job-1")
+    if evidence == "queued":
+        await fake_redis.delete(f"{in_progress_key_prefix}job-1")
+        await fake_redis.zadd(BROWSER_JOB_QUEUE, {request.job_id: 1})
+    else:
+        await hold_job_alive("job-1")
 
     async with captured_wide_event() as event:
-        assert await tasks_mod.reap_browser_jobs({}) == "reaped=0"
+        assert await tasks_mod.reap_browser_jobs({}) == "reaped=0 results_to_tell=0"
 
-    assert event["browser"] == {"reaped_jobs": []}
-
+    assert event["browser"] == {"reaped_jobs": [], "results_to_tell": []}
     assert await done_state("job-1") is None
-    assert await done_state("job-2") is None
-    assert sorted(await live_job_ids()) == ["job-1", "job-2"]
+    assert await fake_redis.hget(BROWSER_JOB_SUSPECT_KEY, "job-1") is None
 
 
 async def test_a_headless_job_whose_worker_died_unblocks_its_caller_without_an_inbox_entry(
-    world: World,
+    world: World, fake_redis: fakeredis.aioredis.FakeRedis
 ) -> None:
     """Its tool call follows the feed: closing it is what lets a workflow go on."""
-    await _queued(PAYLOAD | {"in_background": False})
+    await _running_with_no_worker(fake_redis, PAYLOAD | {"in_background": False})
+    await _suspected_long_ago(fake_redis, "job-1")
 
-    assert await tasks_mod.reap_browser_jobs({}) == "reaped=1"
+    assert await tasks_mod.reap_browser_jobs({}) == "reaped=1 results_to_tell=0"
 
     assert isinstance(await done_state("job-1"), BrowserJobFinished)
     assert (await _feed())[-1] == JOB_TERMINAL_FRAME
@@ -357,10 +404,9 @@ async def test_a_job_that_ended_or_expired_is_forgotten_by_the_reaper(
     await fake_redis.sadd(BROWSER_JOB_LIVE_KEY, "job-gone")
 
     async with captured_wide_event() as event:
-        assert await tasks_mod.reap_browser_jobs({}) == "reaped=0"
+        assert await tasks_mod.reap_browser_jobs({}) == "reaped=0 results_to_tell=0"
 
-    assert event["browser"] == {"reaped_jobs": []}
-
+    assert event["browser"] == {"reaped_jobs": [], "results_to_tell": []}
     assert await live_job_ids() == []
     assert world.woken == []
 
@@ -372,31 +418,41 @@ async def test_every_dead_job_is_reaped_whatever_comes_before_it_in_the_walk(
     await fake_redis.sadd(BROWSER_JOB_LIVE_KEY, "job-gone")
     waiting = await _queued(PAYLOAD | {"job_id": "job-0", "conversation_id": "conv-0"})
     await fake_redis.zadd(BROWSER_JOB_QUEUE, {waiting.job_id: 1})
-    await _queued(PAYLOAD | {"in_background": False})
+    await _running_with_no_worker(fake_redis, PAYLOAD | {"in_background": False})
+    await _suspected_long_ago(fake_redis, "job-1")
 
     async with captured_wide_event() as event:
-        assert await tasks_mod.reap_browser_jobs({}) == "reaped=1"
+        await tasks_mod.reap_browser_jobs({})
 
-    assert event["browser"] == {"reaped_jobs": ["job-1"]}
+    assert event["browser"]["reaped_jobs"] == ["job-1"]
     assert await done_state("job-0") is None
-    assert isinstance(await done_state("job-1"), BrowserJobFinished)
 
 
-async def test_a_job_that_ended_while_the_reaper_judged_it_is_not_told_again(
+async def test_a_result_whose_worker_died_before_waking_anyone_is_woken_until_it_is_read(
     world: World, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The stop landed between the reaper's read and its write: the stop's ending stands, told once."""
+    """The landing outlived the worker that made it: without the sweep it waits for the user's next message."""
     await _queued()
-    real_end = tasks_mod.end_job
-
-    async def _stopped_first(job_id: str, ending: Any) -> Any:
-        await real_end(job_id, BrowserJobStopped())
-        return await real_end(job_id, ending)
-
-    monkeypatch.setattr(tasks_mod, "end_job", _stopped_first)
-
-    assert await tasks_mod.reap_browser_jobs({}) == "reaped=0"
-
-    assert await _inbox_tags() == [AgentTag.BROWSER_STOPPED]
-    assert await _feed() == []
+    await end_job("job-1", BrowserJobFinished(result=DONE))
+    [wake] = await landed_wakes()
+    assert wake.job_id == "job-1"
+    # Fresh, it is left to a run that may be reading the inbox right now.
+    await tasks_mod.reap_browser_jobs({})
     assert world.woken == []
+
+    later = wake.landed_at + BROWSER_JOB_WAKE_GRACE_SECONDS
+    monkeypatch.setattr(tasks_mod, "time", lambda: later)
+    await tasks_mod.reap_browser_jobs({})
+    await tasks_mod.reap_browser_jobs({})
+    assert world.woken == [("conv-9", world.users["u1"])] * 2
+
+    # The woken run read it: nobody is woken for it again, and nothing is left to sweep.
+    [entry] = await ExecutorInbox("conv-9").read()
+    await ExecutorInbox("conv-9").retire(entry)
+    async with captured_wide_event() as event:
+        await tasks_mod.reap_browser_jobs({})
+
+    assert world.woken == [("conv-9", world.users["u1"])] * 2
+    assert event["browser"] == {"reaped_jobs": [], "results_to_tell": ["job-1"]}
+    assert await landed_wakes() == []
+    assert await landed_wake("job-1") is None

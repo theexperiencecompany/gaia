@@ -7,6 +7,7 @@ answered. A headless job (a workflow's, a todo's) lands nothing: the tool call
 that started it blocks for the ending and returns it.
 """
 
+from time import time
 from uuid import uuid4
 
 from app.agents.core.background.executor_channel import ExecutorInbox
@@ -21,7 +22,12 @@ from app.constants.browser import (
 from app.constants.log_tags import LogTag
 from app.models.agent_models import InboxEntry
 from app.schemas.browser import BrowserResultSnapshot
-from app.schemas.browser_job import BrowserJobEnding, BrowserJobStopped
+from app.schemas.browser_job import (
+    BrowserJobEnding,
+    BrowserJobState,
+    BrowserJobStopped,
+    BrowserJobWake,
+)
 from app.services.browser.jobs import InboxLanding, get_job_state, record_ending
 from app.services.browser.user_notes import what_the_user_said
 from shared.py.wide_events import log
@@ -102,18 +108,24 @@ async def end_job(job_id: str, ending: BrowserJobEnding) -> BrowserJobEnding:
             f"{LogTag.BROWSER} Browser job ending recorded for a job with no state; nothing told",
             browser={"job_id": job_id, "ending": ending.ending.value},
         )
-    landing = (
-        InboxLanding(ExecutorInbox(state.conversation_id), _entry(job_id, ending))
-        if state is not None and state.in_background
-        else None
-    )
+    landing = _landing(state, ending) if state is not None and state.in_background else None
     return await record_ending(job_id, ending, landing)
 
 
-def _entry(job_id: str, ending: BrowserJobEnding) -> InboxEntry:
-    tag = (
-        AgentTag.BROWSER_STOPPED
-        if isinstance(ending, BrowserJobStopped)
-        else AgentTag.BROWSER_RESULT
+def _landing(state: BrowserJobState, ending: BrowserJobEnding) -> InboxLanding:
+    """Return the inbox entry that tells ending; a result also wakes a run until it is read."""
+    inbox = ExecutorInbox(state.conversation_id)
+    text = ending_message(state.job_id, ending)
+    if isinstance(ending, BrowserJobStopped):
+        return InboxLanding(
+            inbox, InboxEntry(id=str(uuid4()), text=text, tag=AgentTag.BROWSER_STOPPED)
+        )
+    entry = InboxEntry(id=str(uuid4()), text=text, tag=AgentTag.BROWSER_RESULT)
+    wake = BrowserJobWake(
+        job_id=state.job_id,
+        conversation_id=state.conversation_id,
+        user_id=state.user_id,
+        entry_id=entry.id,
+        landed_at=time(),
     )
-    return InboxEntry(id=str(uuid4()), text=ending_message(job_id, ending), tag=tag)
+    return InboxLanding(inbox, entry, wake)

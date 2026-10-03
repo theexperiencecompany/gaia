@@ -13,6 +13,7 @@ from redis.exceptions import WatchError
 
 from app.agents.core.background.executor_channel import RedisInbox
 from app.constants.browser import (
+    BROWSER_JOB_ALIVE_PREFIX,
     BROWSER_JOB_ENDING_PREFIX,
     BROWSER_JOB_INBOX_PREFIX,
     BROWSER_JOB_LATEST_PREFIX,
@@ -20,12 +21,19 @@ from app.constants.browser import (
     BROWSER_JOB_LOCK_PREFIX,
     BROWSER_JOB_LOCK_TTL_SECONDS,
     BROWSER_JOB_STATE_PREFIX,
+    BROWSER_JOB_SUSPECT_KEY,
     BROWSER_JOB_WAIT_PREFIX,
+    BROWSER_JOB_WAKE_KEY,
     JobEnding,
 )
 from app.db.redis import redis_cache
 from app.models.agent_models import InboxEntry
-from app.schemas.browser_job import BROWSER_JOB_ENDING, BrowserJobEnding, BrowserJobState
+from app.schemas.browser_job import (
+    BROWSER_JOB_ENDING,
+    BrowserJobEnding,
+    BrowserJobState,
+    BrowserJobWake,
+)
 from app.services.browser.job_lifetime import browser_job_ttl_seconds
 
 
@@ -43,6 +51,10 @@ def _state_key(job_id: str) -> str:
 
 def _ending_key(job_id: str) -> str:
     return f"{BROWSER_JOB_ENDING_PREFIX}{job_id}"
+
+
+def _alive_key(job_id: str) -> str:
+    return f"{BROWSER_JOB_ALIVE_PREFIX}{job_id}"
 
 
 def _wait_key(job_id: str) -> str:
@@ -150,12 +162,43 @@ async def forget_live_job(job_id: str) -> None:
     await redis_cache.client.srem(BROWSER_JOB_LIVE_KEY, job_id)
 
 
+async def hold_job_alive(job_id: str) -> None:
+    """Take or renew the worker's lease on the job it runs: the evidence the reaper needs that it lives."""
+    await redis_cache.client.set(_alive_key(job_id), "1", ex=BROWSER_JOB_LOCK_TTL_SECONDS)
+
+
+async def release_job_alive(job_id: str) -> None:
+    await redis_cache.client.delete(_alive_key(job_id))
+
+
+async def job_alive(job_id: str) -> bool:
+    """Whether a worker holds a live lease on the job."""
+    return bool(await redis_cache.client.exists(_alive_key(job_id)))
+
+
+async def suspect_since(job_id: str, now: float) -> float:
+    """Return when the job was first found with no worker on it, recording now when this is the first time."""
+    await redis_cache.client.hsetnx(BROWSER_JOB_SUSPECT_KEY, job_id, str(now))
+    first = await redis_cache.client.hget(BROWSER_JOB_SUSPECT_KEY, job_id)
+    return float(first) if first is not None else now
+
+
+async def clear_suspect(job_id: str) -> None:
+    """Forget a suspicion the job's worker has since disproved."""
+    await redis_cache.client.hdel(BROWSER_JOB_SUSPECT_KEY, job_id)
+
+
 @dataclass(frozen=True)
 class InboxLanding:
-    """An executor inbox entry written with the ending it tells, or not at all."""
+    """An executor inbox entry written with the ending it tells, or not at all.
+
+    wake, for a result, is kept with it until the entry is read, so the result
+    is told even when the worker that landed it died before waking anyone.
+    """
 
     inbox: RedisInbox
     entry: InboxEntry
+    wake: BrowserJobWake | None = None
 
 
 async def record_ending(
@@ -178,8 +221,12 @@ async def record_ending(
             pipe.multi()
             pipe.set(key, BROWSER_JOB_ENDING.dump_json(ending), ex=browser_job_ttl_seconds())
             pipe.srem(BROWSER_JOB_LIVE_KEY, job_id)
+            pipe.hdel(BROWSER_JOB_SUSPECT_KEY, job_id)
             if landing is not None:
                 landing.inbox.stage_append(pipe, landing.entry)
+            if landing is not None and landing.wake is not None:
+                pipe.hset(BROWSER_JOB_WAKE_KEY, job_id, landing.wake.model_dump_json())
+                pipe.expire(BROWSER_JOB_WAKE_KEY, browser_job_ttl_seconds())
             try:
                 await pipe.execute()
             except WatchError:
@@ -192,6 +239,23 @@ async def done_state(job_id: str) -> BrowserJobEnding | None:
     """Return how the job ended, its result with it, or None while it has not ended."""
     recorded = await redis_cache.client.get(_ending_key(job_id))
     return BROWSER_JOB_ENDING.validate_json(recorded) if recorded else None
+
+
+async def landed_wakes() -> list[BrowserJobWake]:
+    """Return every finished result recorded as waiting in an executor inbox to be told."""
+    held = await redis_cache.client.hgetall(BROWSER_JOB_WAKE_KEY)
+    return [BrowserJobWake.model_validate_json(raw) for raw in held.values()]
+
+
+async def landed_wake(job_id: str) -> BrowserJobWake | None:
+    """Return the job's result waiting to be told, or None when there is none."""
+    raw = await redis_cache.client.hget(BROWSER_JOB_WAKE_KEY, job_id)
+    return BrowserJobWake.model_validate_json(raw) if raw is not None else None
+
+
+async def forget_wake(job_id: str) -> None:
+    """Stop waking anyone for the job's result: it was read."""
+    await redis_cache.client.hdel(BROWSER_JOB_WAKE_KEY, job_id)
 
 
 async def job_cancel_requested(job_id: str) -> bool:

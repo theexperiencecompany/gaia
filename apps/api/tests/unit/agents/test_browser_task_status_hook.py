@@ -15,6 +15,7 @@ from app.schemas.browser import NewHandoff
 from app.schemas.browser_job import BrowserJobState, BrowserJobStatus, BrowserJobStopped
 from app.services.browser.handoff import bot_chat_address, create_pending_handoff
 from app.services.browser.jobs import put_job_state, record_ending, set_latest_job
+from tests.factories import make_browser_job_state
 
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("fake_redis")]
 
@@ -27,8 +28,8 @@ def _config(**extra: Any) -> dict[str, Any]:
 
 
 def _state(job_id: str, task: str) -> BrowserJobState:
-    return BrowserJobState(
-        job_id=job_id,
+    return make_browser_job_state(
+        job_id,
         status=BrowserJobStatus.RUNNING,
         task=task,
         conversation_id=CONVERSATION,

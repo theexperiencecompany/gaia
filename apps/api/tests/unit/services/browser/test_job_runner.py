@@ -2104,6 +2104,8 @@ async def test_the_run_time_reaches_the_event_and_the_analytics_capture(
 
     h = _install(monkeypatch, run_body=body)
     monkeypatch.setattr(jr, "perf_counter", lambda: now[0])
+    # The card's group is timed on the wall clock, which a reaper in another process shares.
+    monkeypatch.setattr(jr, "time", lambda: now[0])
 
     event = await _run_event(h, _request())
 
@@ -2189,11 +2191,26 @@ async def test_mirror_opens_a_spawned_browser_group_in_the_browser_category() ->
     )
 
 
+async def test_a_group_a_dead_worker_opened_is_closed_by_whoever_ends_its_job(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The reaper ends a job in another process: the row the run opened must not spin forever."""
+    monkeypatch.setattr(jr, "time", lambda: 80.0)
+    mirror, writes = _mirror()
+
+    mirror.reopen(started_at=50.0)
+    await mirror.mirror(_result(BrowserSessionStatus.FAILED, False, "lost"))
+
+    assert [w for w in writes if "subagent_start" in w] == []
+    (end,) = [w["subagent_end"] for w in writes if "subagent_end" in w]
+    assert (end["subagent_id"], end["duration_ms"]) == ("browser:call-1", 30000)
+
+
 async def test_mirror_closes_the_group_with_how_long_the_run_took(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     now = [50.0]
-    monkeypatch.setattr(jr, "perf_counter", lambda: now[0])
+    monkeypatch.setattr(jr, "time", lambda: now[0])
     mirror, writes = _mirror()
 
     await mirror.mirror(_session_snapshot())

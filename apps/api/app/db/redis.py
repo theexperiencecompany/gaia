@@ -161,6 +161,14 @@ class AsyncRedisCommands(Protocol):
         """HDEL — returns how many named fields were removed."""
         ...
 
+    async def hsetnx(self, name: str, key: str, value: str) -> int:
+        """HSETNX — 1 when the field was set, 0 when it already held a value."""
+        ...
+
+    async def hget(self, name: str, key: str) -> str | None:
+        """HGET — None for a missing key or field."""
+        ...
+
     async def sadd(self, name: str, *values: str) -> int:
         """SADD — returns how many members were newly added."""
         ...

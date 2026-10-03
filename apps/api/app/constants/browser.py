@@ -583,6 +583,20 @@ BROWSER_JOB_LATEST_PREFIX = "browser:job:latest:"
 BROWSER_JOB_ENDING_PREFIX = "browser:job:ending:"
 # Every job not yet ended, which the reaper walks for one whose worker died.
 BROWSER_JOB_LIVE_KEY = "browser:jobs:live"
+# A worker's own lease on the job it runs, renewed by its heartbeat: the evidence a job lives.
+BROWSER_JOB_ALIVE_PREFIX = "browser:job:alive:"
+# When the reaper first found a job with no worker lease, by job id: one sweep is no evidence.
+BROWSER_JOB_SUSPECT_KEY = "browser:jobs:suspect"
+# How long a job must stay without a worker lease before it is ended as lost: far past
+# the instant between ARQ handing a job over and its worker's first write of the lease.
+BROWSER_JOB_DEATH_CONFIRM_SECONDS = 30
+# Each finished background job's result waiting in the executor inbox, by job id, until read.
+BROWSER_JOB_WAKE_KEY = "browser:jobs:to_wake"
+# How long a landed result is left to the run already reading the inbox before a sweep wakes
+# one: a live run retires what it read within one model call.
+BROWSER_JOB_WAKE_GRACE_SECONDS = 30
+# How often the reaper sweeps: a dead job is ended, and a stranded result told, this soon.
+BROWSER_JOB_REAP_EVERY_SECONDS = 15
 # The handoff a paused run is waiting on, so a stop can settle it.
 BROWSER_JOB_WAIT_PREFIX = "browser:job:wait:"
 # What the user said while a job runs, oldest first: the run reads it between steps.

@@ -1,46 +1,48 @@
-"""The ARQ tasks of a browser job: the one that runs it, and the reaper of jobs whose worker died.
+"""The ARQ tasks of a browser job: the one that runs it, and the reaper that makes good a worker that died.
 
 The run itself is the job runner's, and the telling of its ending job_teller's;
-this owns what only a worker can own: the slot the run holds while it really
-runs, the executor run woken to tell a landed result, and the sweep that ends a
-job nobody is left to end.
+this owns what only a worker can own: the slot and the lease the run holds while
+it really runs, the executor run woken to tell a landed result, and the sweep
+that ends a job nobody is left to end and wakes a result nobody was woken for.
 """
 
 import asyncio
 from collections.abc import Mapping
+from time import time
 
 from arq.connections import ArqRedis
 from arq.jobs import Job, JobStatus
 
+from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_runner import wake_executor_for_inbox
 from app.constants.browser import (
+    BROWSER_JOB_DEATH_CONFIRM_SECONDS,
     BROWSER_JOB_HEARTBEAT_SECONDS,
     BROWSER_JOB_QUEUE,
     BROWSER_JOB_SLOT_TAKEN_SUMMARY,
+    BROWSER_JOB_WAKE_GRACE_SECONDS,
     BROWSER_JOB_WORKER_LOST_SUMMARY,
     BrowserRunFailure,
-    BrowserSessionStatus,
 )
 from app.constants.log_tags import LogTag
-from app.schemas.browser import BrowserResultSnapshot
-from app.schemas.browser_job import BrowserJobFinished, BrowserJobRequest, BrowserJobState
-from app.services.browser.job_events import card_frame
-from app.services.browser.job_runner import (
-    close_job_feed,
-    execute_browser_job,
-    publish_frame_to_job,
-    refuse_browser_job,
-)
-from app.services.browser.job_teller import end_job
+from app.schemas.browser_job import BrowserJobRequest, BrowserJobWake
+from app.services.browser.job_runner import end_lost_job, execute_browser_job, refuse_browser_job
 from app.services.browser.jobs import (
     claim_conversation_slot,
+    clear_suspect,
     done_state,
     forget_live_job,
-    get_conversation_slot,
+    forget_wake,
     get_job_state,
     heartbeat_conversation_slot,
+    hold_job_alive,
+    job_alive,
+    landed_wake,
+    landed_wakes,
     live_job_ids,
     release_conversation_slot,
+    release_job_alive,
+    suspect_since,
 )
 from app.utils.auth_utils import load_user_context
 from app.utils.background_tasks import spawn_background_task
@@ -57,11 +59,14 @@ async def run_browser_job(
 ) -> str:
     """Run one browser task to completion off the request path, then wake the executor its result landed for.
 
-    Owns the slot heartbeat. The ending was told as it was recorded (job_teller):
-    a finished background run's result is in the executor inbox, a stop's notice
-    wakes nobody, and a headless run's caller reads the ending itself.
+    Holds the job's lease and the conversation's slot while it runs. The ending
+    was told as it was recorded (job_teller): a finished background run's result
+    is in the executor inbox, a stop's notice wakes nobody, and a headless run's
+    caller reads the ending itself.
     """
     request = BrowserJobRequest.model_validate(payload)
+    # First: from here on the reaper reads this job as alive.
+    await hold_job_alive(request.job_id)
     log.set(
         user={"id": request.user_id},
         platform=request.conversation_source.value if request.conversation_source else None,
@@ -87,13 +92,15 @@ async def run_browser_job(
         finally:
             heartbeat.cancel()
             await release_conversation_slot(request.conversation_id, request.job_id)
-    if request.in_background and isinstance(await done_state(request.job_id), BrowserJobFinished):
-        await _wake_executor(request.conversation_id, request.user_id)
+    await release_job_alive(request.job_id)
+    wake = await landed_wake(request.job_id)
+    if wake is not None:
+        await _wake(wake)
     return result.status.value
 
 
 async def _heartbeat(request: BrowserJobRequest) -> None:
-    """Hold the conversation's browser slot for as long as this run is really running.
+    """Hold the job's lease and the conversation's browser slot for as long as this run is really running.
 
     One Redis error costs one beat, not the lease: a heartbeat that died on it
     would let the slot lapse under a live run.
@@ -101,6 +108,7 @@ async def _heartbeat(request: BrowserJobRequest) -> None:
     while True:
         await asyncio.sleep(BROWSER_JOB_HEARTBEAT_SECONDS)
         try:
+            await hold_job_alive(request.job_id)
             held = await heartbeat_conversation_slot(request.conversation_id, request.job_id)
         except Exception as exc:
             log.error(
@@ -117,59 +125,69 @@ async def _heartbeat(request: BrowserJobRequest) -> None:
             )
 
 
-async def _wake_executor(conversation_id: str, user_id: str) -> None:
-    """Start an executor run to tell the result landed in its inbox, unless one is live to drain it."""
-    user = await load_user_context(user_id)
+async def _wake(wake: BrowserJobWake) -> None:
+    """Start an executor run to tell a landed result, unless it was read already or a live run will read it.
+
+    The wake is kept until its entry leaves the inbox, so a run that never came
+    is asked for again; a live run, or one that just started, makes this a no-op.
+    """
+    pending = {entry.id for entry in await ExecutorInbox(wake.conversation_id).read()}
+    if wake.entry_id not in pending:
+        await forget_wake(wake.job_id)
+        return
+    user = await load_user_context(wake.user_id)
     if user is None:
         log.warning(
-            f"{LogTag.BROWSER} Browser job result landed but nobody was woken: user not found",
-            browser={"conversation_id": conversation_id},
+            f"{LogTag.BROWSER} Browser job result landed but nobody can be woken: user not found",
+            browser={"job_id": wake.job_id, "conversation_id": wake.conversation_id},
         )
+        await forget_wake(wake.job_id)
         return
-    await wake_executor_for_inbox(conversation_id, user)
+    await wake_executor_for_inbox(wake.conversation_id, user)
 
 
 async def reap_browser_jobs(_ctx: Mapping[str, object]) -> str:
-    """End every job whose worker died before it ended, told like any other ending; return how many.
+    """End every job whose worker died before it ended, and wake every result nobody was woken for.
 
     ARQ never retries a browser job, so one whose worker died has no one left
     to end it: its card would spin, its relay wait, and a headless caller block.
     """
     pool = await RedisPoolManager.get_pool()
     reaped = [job_id for job_id in await live_job_ids() if await _reap(pool, job_id)]
-    log.set_ns("browser", reaped_jobs=reaped)
-    return f"reaped={len(reaped)}"
+    now = time()
+    wakes = [w for w in await landed_wakes() if now - w.landed_at >= BROWSER_JOB_WAKE_GRACE_SECONDS]
+    for wake in wakes:
+        await _wake(wake)
+    log.set_ns("browser", reaped_jobs=reaped, results_to_tell=[wake.job_id for wake in wakes])
+    return f"reaped={len(reaped)} results_to_tell={len(wakes)}"
 
 
 async def _reap(pool: ArqRedis, job_id: str) -> bool:
-    """End job_id when its worker died before it ended; whether this call ended it."""
+    """End job_id when its worker is gone for good; whether this sweep ended it.
+
+    Gone takes positive evidence: not held by ARQ for a worker to take, no
+    worker lease on it, and both for a full confirm window, never one sweep.
+    """
     state = await get_job_state(job_id)
     if state is None or await done_state(job_id) is not None:
         await forget_live_job(job_id)
         return False
-    if await Job(job_id, pool, _queue_name=BROWSER_JOB_QUEUE).status() in _WAITING_FOR_A_WORKER:
-        return False
-    # A worker heartbeats the slot for as long as it runs the job.
-    if await get_conversation_slot(state.conversation_id) == job_id:
-        return False
-    return await _end_lost_job(state)
-
-
-async def _end_lost_job(state: BrowserJobState) -> bool:
-    """End a job whose worker died on a worker-lost result card; False when another ending won first."""
-    result = BrowserResultSnapshot(
-        status=BrowserSessionStatus.FAILED, success=False, summary=BROWSER_JOB_WORKER_LOST_SUMMARY
+    waiting = (
+        await Job(job_id, pool, _queue_name=BROWSER_JOB_QUEUE).status() in _WAITING_FOR_A_WORKER
     )
-    lost = BrowserJobFinished(result=result)
-    if await end_job(state.job_id, lost) is not lost:
+    if waiting or await job_alive(job_id):
+        await clear_suspect(job_id)
+        return False
+    now = time()
+    if now - await suspect_since(job_id, now) < BROWSER_JOB_DEATH_CONFIRM_SECONDS:
         return False
     log.warning(
         f"{LogTag.BROWSER} Browser job ended by the reaper: its worker died",
         reason=BrowserRunFailure.WORKER_LOST.value,
-        browser={"job_id": state.job_id, "status": state.status.value},
+        browser={"job_id": job_id, "status": state.status.value},
     )
-    await publish_frame_to_job(state.job_id, card_frame(result))
-    await close_job_feed(state.job_id)
-    if state.in_background:
-        await _wake_executor(state.conversation_id, state.user_id)
+    await end_lost_job(state, BROWSER_JOB_WORKER_LOST_SUMMARY)
+    wake = await landed_wake(job_id)
+    if wake is not None:
+        await _wake(wake)
     return True

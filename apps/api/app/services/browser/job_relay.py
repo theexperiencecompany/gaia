@@ -56,8 +56,8 @@ async def follow_job_cards(job_id: str, conversation_id: str, sink: CardSink) ->
             return
 
 
-async def relay_job_cards(request: BrowserJobRequest, message_id: str | None) -> None:
-    """Replay a background job's cards onto a stream folded into message_id, then save them there.
+async def relay_job_cards(request: BrowserJobRequest) -> None:
+    """Replay a background job's cards onto a stream folded into its starting turn's message, then save them there.
 
     Runs as a logged background task beside the turn that started the job, and
     outlives it: a crash here costs the cards, never the job.
@@ -69,7 +69,7 @@ async def relay_job_cards(request: BrowserJobRequest, message_id: str | None) ->
         conversation_id=request.conversation_id,
         user_id=request.user_id,
         task_id=request.job_id,
-        bot_message_id=message_id,
+        bot_message_id=request.message_id,
         kind=DetachedStreamKind.SUBAGENT,
     )
     try:
@@ -95,5 +95,5 @@ async def relay_job_cards(request: BrowserJobRequest, message_id: str | None) ->
             stream_id,
             conversation_id=request.conversation_id,
             user_id=request.user_id,
-            message_id=message_id,
+            message_id=request.message_id,
         )

@@ -240,13 +240,17 @@ async def test_a_worker_crash_still_reports_a_failure_and_frees_the_conversation
             run = await _drive(graph, world)
         assert await get_conversation_slot(CONVERSATION) is None
 
-    # It failed before the executor's next model call: the live run drained it from its inbox.
-    landed = [
-        str(m.content) for m in run.prompts[-1] if str(m.content).startswith("<browser_result>")
+    # Told once, by whichever run reads the inbox: the live one if the run failed before its
+    # next model call, else the one its landing woke.
+    drained = [
+        str(m.content)
+        for prompt in run.prompts
+        for m in prompt
+        if str(m.content).startswith("<browser_result>")
     ]
-    assert len(landed) == 1
-    assert "DID NOT COMPLETE" in landed[0]
-    assert world.told == []
+    told = [entry.text for entry in world.told if entry.tag is AgentTag.BROWSER_RESULT]
+    [said] = drained + told
+    assert "DID NOT COMPLETE" in said
 
 
 async def test_a_handoff_note_reaches_the_run_and_the_agent_deciding_it() -> None:

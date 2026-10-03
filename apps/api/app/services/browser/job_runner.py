@@ -10,7 +10,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 import contextlib
 from functools import partial
-from time import perf_counter
+from time import perf_counter, time
 import uuid
 
 from app.config.feature_flags import FeatureFlag
@@ -136,6 +136,11 @@ class BrowserThreadMirror:
         # arrive synchronously. Buffer early outputs and flush on row arrival.
         self._pending_outputs: dict[str, str] = {}
 
+    def reopen(self, started_at: float) -> None:
+        """Take over the group a worker that died opened at started_at (epoch), so its end closes it."""
+        self._group_id = self._group
+        self._started_at = started_at
+
     async def mirror(self, snapshot: BrowserCardSnapshot) -> None:
         if isinstance(snapshot, BrowserSessionSnapshot):
             await self._open()
@@ -148,7 +153,7 @@ class BrowserThreadMirror:
         if self._group_id:
             return
         self._group_id = self._group
-        self._started_at = perf_counter()
+        self._started_at = time()
         await self._publish(
             {
                 "subagent_start": format_subagent_start_event(
@@ -213,7 +218,7 @@ class BrowserThreadMirror:
             {
                 "subagent_end": format_subagent_end_event(
                     subagent_id=self._group_id,
-                    duration_ms=int((perf_counter() - self._started_at) * 1000),
+                    duration_ms=int((time() - self._started_at) * 1000),
                 )
             }
         )
@@ -614,6 +619,16 @@ def _emitter_for(request: BrowserJobRequest) -> ProgressEmitter:
     )
 
 
+async def end_lost_job(state: BrowserJobState, summary: str) -> BrowserResultSnapshot:
+    """End a job whose worker died on a failed card, as its own run would have: told, its group closed, its feed ended."""
+    emitter = _emitter_for(state.request)
+    if state.running_since is not None:
+        emitter.thread_mirror.reopen(state.running_since)
+    result = await _end_on(emitter, BrowserSessionStatus.FAILED, summary)
+    await close_job_feed(state.job_id)
+    return result
+
+
 async def refuse_browser_job(request: BrowserJobRequest, summary: str) -> BrowserResultSnapshot:
     """End a job that must not run at all on a failure card, told like any ending."""
     result = await _end_on(_emitter_for(request), BrowserSessionStatus.FAILED, summary)
@@ -684,7 +699,7 @@ async def _run_job(request: BrowserJobRequest, emitter: ProgressEmitter) -> Brow
             if engine is BrowserEngine.CHROMIUM and session.engine is not BrowserEngine.CHROMIUM:
                 # The host says it is not Chrome: a user who never chose Obscura is not run on it.
                 raise BrowserUnavailableError(BROWSER_NO_CHROME_HOST)
-            await put_job_state(BrowserJobState.of(request, BrowserJobStatus.RUNNING))
+            await put_job_state(BrowserJobState.of(request, BrowserJobStatus.RUNNING, time()))
 
             runner = BrowserTaskRunner(
                 session=session,

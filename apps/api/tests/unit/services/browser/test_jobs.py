@@ -16,8 +16,10 @@ from app.schemas.browser_job import (
     BrowserJobState,
     BrowserJobStatus,
     BrowserJobStopped,
+    BrowserJobWake,
 )
 from app.services.browser import jobs as jobs_mod
+from tests.factories import make_browser_job_state
 
 pytestmark = pytest.mark.unit
 
@@ -95,8 +97,8 @@ _FINISHED = BrowserJobFinished(
 
 
 def _state(job_id: str = "job-1") -> BrowserJobState:
-    return BrowserJobState(
-        job_id=job_id,
+    return make_browser_job_state(
+        job_id,
         status=BrowserJobStatus.RUNNING,
         task="t",
         conversation_id="conv-1",
@@ -148,7 +150,10 @@ async def test_a_job_ends_once_whoever_records_first(
 
 def _landing(text: str) -> jobs_mod.InboxLanding:
     entry = InboxEntry(id=str(uuid4()), text=text, tag=AgentTag.BROWSER_RESULT)
-    return jobs_mod.InboxLanding(ExecutorInbox("conv-1"), entry)
+    wake = BrowserJobWake(
+        job_id="job-1", conversation_id="conv-1", user_id="u1", entry_id=entry.id, landed_at=1.0
+    )
+    return jobs_mod.InboxLanding(ExecutorInbox("conv-1"), entry, wake)
 
 
 async def test_an_ending_lands_in_the_inbox_once_and_only_with_the_record_that_won() -> None:
@@ -156,7 +161,10 @@ async def test_an_ending_lands_in_the_inbox_once_and_only_with_the_record_that_w
     await jobs_mod.record_ending("job-1", _FINISHED, _landing("first"))
     await jobs_mod.record_ending("job-1", BrowserJobStopped(), _landing("second"))
 
-    assert [entry.text for entry in await ExecutorInbox("conv-1").read()] == ["first"]
+    [first] = await ExecutorInbox("conv-1").read()
+    assert first.text == "first"
+    # The wake goes with the landing that won, and only with it.
+    assert [wake.entry_id for wake in await jobs_mod.landed_wakes()] == [first.id]
 
 
 async def test_an_ending_is_recorded_and_landed_in_one_transaction(
@@ -180,6 +188,7 @@ async def test_an_ending_is_recorded_and_landed_in_one_transaction(
         await jobs_mod.record_ending("job-1", _FINISHED, _landing("told"))
 
     assert await jobs_mod.done_state("job-1") is None
+    assert await jobs_mod.landed_wakes() == []
 
 
 async def test_an_ending_recorded_between_the_read_and_the_write_wins(

@@ -39,6 +39,7 @@ REQUEST = BrowserJobRequest(
     conversation_id=CONVERSATION,
     task="book",
     in_background=True,
+    message_id=MESSAGE_ID,
 )
 RESULT = BrowserResultSnapshot(status=BrowserSessionStatus.COMPLETED, success=True, summary="ok")
 
@@ -121,7 +122,7 @@ async def test_the_cards_fold_into_the_starting_turns_message_and_are_saved_ther
     """Live on a stream of the job's own, folded into the turn's message; saved there when the job ends, so a reload shows them."""
     await _publish_cards(end=True)
 
-    await relay_job_cards(REQUEST, MESSAGE_ID)
+    await relay_job_cards(REQUEST)
 
     [announce] = client.announced
     assert (announce["bot_message_id"], announce["kind"], announce["task_id"]) == (
@@ -142,7 +143,7 @@ async def test_a_job_still_running_is_followed_until_its_feed_closes(client: Cli
     """A run sits minutes on a handoff with nothing new on its feed: the relay must not give up on it."""
     await claim_conversation_slot(CONVERSATION, JOB_ID)
     await _publish_cards(end=False)
-    relaying = asyncio.create_task(relay_job_cards(REQUEST, MESSAGE_ID))
+    relaying = asyncio.create_task(relay_job_cards(REQUEST))
     for _ in range(50):
         await asyncio.sleep(0)
     assert not relaying.done()

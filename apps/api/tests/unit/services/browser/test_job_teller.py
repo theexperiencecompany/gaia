@@ -18,7 +18,7 @@ from app.schemas.browser_job import (
     BrowserJobStopped,
 )
 from app.services.browser.job_teller import end_job, ending_message
-from app.services.browser.jobs import done_state, put_job_state
+from app.services.browser.jobs import done_state, landed_wake, landed_wakes, put_job_state
 from tests.helpers import captured_wide_event
 
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("fake_redis")]
@@ -71,3 +71,31 @@ async def test_an_ending_for_a_job_nobody_queued_is_recorded_told_to_nobody_and_
         f"{LogTag.BROWSER} Browser job ending recorded for a job with no state; nothing told"
     )
     assert warning["browser"] == {"job_id": "job-x", "ending": "finished"}
+
+
+async def test_a_result_is_recorded_to_be_woken_for_and_a_stop_is_not() -> None:
+    """A worker that dies between landing a result and waking a run must not strand it."""
+    await _queued("job-1", "conv-1")
+    await _queued("job-2", "conv-1")
+
+    await end_job("job-1", FINISHED)
+    await end_job("job-2", BrowserJobStopped())
+
+    [entry, _notice] = await ExecutorInbox("conv-1").read()
+    [wake] = await landed_wakes()
+    assert (wake.job_id, wake.conversation_id, wake.user_id, wake.entry_id) == (
+        "job-1",
+        "conv-1",
+        "u1",
+        entry.id,
+    )
+    assert wake.landed_at > 0
+    assert await landed_wake("job-2") is None
+
+
+async def test_a_headless_result_is_never_woken_for() -> None:
+    await _queued("job-1", "conv-1", in_background=False)
+
+    await end_job("job-1", FINISHED)
+
+    assert await landed_wakes() == []

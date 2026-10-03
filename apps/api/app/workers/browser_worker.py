@@ -13,17 +13,23 @@ from collections.abc import MutableMapping
 from dataclasses import dataclass
 import signal
 import socket
-from typing import TypedDict
+from typing import TypedDict, cast
 
+from arq import cron
+from arq.typing import WorkerCoroutine
 from arq.worker import Worker
 
-from app.constants.browser import BROWSER_JOB_QUEUE, BROWSER_JOB_TASK
+from app.constants.browser import (
+    BROWSER_JOB_QUEUE,
+    BROWSER_JOB_REAP_EVERY_SECONDS,
+    BROWSER_JOB_TASK,
+)
 from app.constants.log_tags import LogTag
 from app.services.browser.job_lifetime import browser_job_deadline_seconds
 from app.utils.background_tasks import spawn_background_task
 from app.workers.config.worker_settings import WorkerSettings
-from app.workers.task_envelope import arq_function
-from app.workers.tasks.browser_tasks import run_browser_job
+from app.workers.task_envelope import arq_function, arq_task
+from app.workers.tasks.browser_tasks import reap_browser_jobs, run_browser_job
 from shared.py.wide_events import log
 
 #: Where the running browser worker and its task live in the main worker's ctx.
@@ -62,6 +68,13 @@ def build_browser_worker() -> Worker:
     )
     return Worker(
         functions=[browser_job],
+        # Beside the jobs it makes good, so any deployment that runs browser jobs reaps them.
+        cron_jobs=[
+            cron(
+                cast(WorkerCoroutine, arq_task(reap_browser_jobs)),
+                second=set(range(0, 60, BROWSER_JOB_REAP_EVERY_SECONDS)),
+            )
+        ],
         queue_name=BROWSER_JOB_QUEUE,
         redis_settings=WorkerSettings.redis_settings,
         **_SIGNALS_STAY_WITH_MAIN_WORKER,

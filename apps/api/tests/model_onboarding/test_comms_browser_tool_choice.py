@@ -34,8 +34,9 @@ from app.constants.llm import (
     LLMProviderName,
     ReasoningLevel,
 )
-from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
+from app.schemas.browser_job import BrowserJobStatus
 from app.services.browser.chat_task import ChatBrowserTasks, PausedStep
+from tests.factories import make_browser_job_state
 
 # One loop for the module: the custom lane's client is cached, and its pool is bound to the first loop.
 pytestmark = [pytest.mark.model_onboarding, pytest.mark.asyncio(loop_scope="module")]
@@ -117,7 +118,7 @@ def _started_turn() -> list[AnyMessage]:
 
 
 def _frame(paused: bool) -> SystemMessage:
-    job = BrowserJobState(job_id="job-1", status=BrowserJobStatus.RUNNING, task=TASK)
+    job = make_browser_job_state("job-1", status=BrowserJobStatus.RUNNING, task=TASK)
     step = PausedStep(handoff_id="h1", job_id="job-1", reason=REASON) if paused else None
     text = describe_browser_tasks(ChatBrowserTasks(running=[job], paused=step))
     return SystemMessage(

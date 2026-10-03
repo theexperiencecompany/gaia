@@ -141,6 +141,7 @@ def _job_request(
         in_background=params.in_background,
         start_url=start_url,
         stream_id=params.stream_id,
+        message_id=params.message_id,
         root_request_id=params.root_request_id,
         source_category=params.source_category,
         conversation_source=params.conversation_source,
@@ -227,7 +228,7 @@ async def browser_task(
 
     log.set_ns("browser", job_id=job_id)
     if params.in_background:
-        spawn_logged_task("browser_job_relay", relay_job_cards(request, params.message_id))
+        spawn_logged_task("browser_job_relay", relay_job_cards(request))
         return _STARTED.format(job_id=job_id)
     return await _await_ending(request)
 

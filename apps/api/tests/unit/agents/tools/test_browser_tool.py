@@ -152,10 +152,10 @@ def _install(
     async def _relayed() -> None:
         return None
 
-    def _relay(request: BrowserJobRequest, message_id: str | None) -> Coroutine[Any, Any, None]:
+    def _relay(request: BrowserJobRequest) -> Coroutine[Any, Any, None]:
         # Recorded on the call, not in the body: the tool spawns this coroutine
         # rather than awaiting it, so a body-side record would never run.
-        recorder.relays.append((request.job_id, message_id))
+        recorder.relays.append((request.job_id, request.message_id))
         return _relayed()
 
     async def _follow(job_id: str, conversation_id: str, sink: object) -> None:
@@ -280,6 +280,7 @@ async def test_the_job_carries_the_turns_identity_and_provenance(
         "root_request_id": "req-42",
         "source_category": "bot",
         "conversation_source": ConversationSource.DISCORD,
+        "message_id": None,
         "secrets": {},
     }
 
@@ -305,6 +306,8 @@ async def test_a_credential_reaches_the_job_and_never_the_task_anyone_reads(
     }
     assert "hunter2-secret" not in recorder.request.task
     assert "hunter2-secret" not in recorder.states[0].task
+    # The state a stop and the reaper read never holds the credential itself.
+    assert recorder.states[0].request.secrets == {}
 
 
 async def test_the_claimed_slot_the_queued_state_and_the_job_all_name_one_job(
@@ -317,16 +320,7 @@ async def test_the_claimed_slot_the_queued_state_and_the_job_all_name_one_job(
 
     job_id = recorder.request.job_id
     assert recorder.claims == [("c1", job_id)]
-    assert recorder.states == [
-        BrowserJobState(
-            job_id=job_id,
-            status=BrowserJobStatus.QUEUED,
-            task="book a table",
-            conversation_id="c1",
-            user_id="u1",
-            in_background=True,
-        )
-    ]
+    assert recorder.states == [BrowserJobState.of(recorder.request, BrowserJobStatus.QUEUED)]
     # The ARQ job a stop aborts, and the job a stop finds once the slot lapses.
     assert recorder.job_ids == [job_id]
     assert recorder.latest == [("c1", job_id)]

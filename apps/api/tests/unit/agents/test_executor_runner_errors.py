@@ -20,8 +20,9 @@ from app.agents.core.background.session import ExecutorRun, RunKind
 from app.agents.core.subagents.subagent_runner import SubagentOutcome
 from app.constants.executor import EXECUTOR_STEP_LIMIT_MESSAGE
 from app.models.user_models import AuthenticatedUser
-from app.schemas.browser_job import BrowserJobState, BrowserJobStatus
+from app.schemas.browser_job import BrowserJobStatus
 from app.services.browser import job_stop, jobs as jobs_mod
+from tests.factories import make_browser_job_state
 
 
 async def _run_with(
@@ -64,8 +65,8 @@ async def fake_cache(
 async def _running_job(conversation_id: str, job_id: str) -> None:
     await jobs_mod.set_latest_job(conversation_id, job_id)
     await jobs_mod.put_job_state(
-        BrowserJobState(
-            job_id=job_id,
+        make_browser_job_state(
+            job_id,
             status=BrowserJobStatus.RUNNING,
             task="t",
             conversation_id=conversation_id,

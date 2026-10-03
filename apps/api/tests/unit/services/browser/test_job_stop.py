@@ -24,6 +24,7 @@ from app.services.browser.jobs import (
     set_job_wait,
     set_latest_job,
 )
+from tests.factories import make_browser_job_state
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
@@ -41,8 +42,8 @@ def arq(
 def _state(
     status: BrowserJobStatus, *, job_id: str = "job-1", in_background: bool = True
 ) -> BrowserJobState:
-    return BrowserJobState(
-        job_id=job_id,
+    return make_browser_job_state(
+        job_id,
         status=status,
         task="t",
         conversation_id="conv-1",

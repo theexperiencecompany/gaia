@@ -25,6 +25,7 @@ from app.services.browser.chat_task import (
 from app.services.browser.handoff import bot_chat_address, create_pending_handoff, resolve_handoff
 from app.services.browser.job_stop import RequesterChat
 from app.services.browser.jobs import put_job_state, set_latest_job
+from tests.factories import make_browser_job_state
 from tests.helpers import captured_wide_event
 
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("fake_redis")]
@@ -36,8 +37,8 @@ DM_TURN = ChatTurn(conversation_id="conv-dm", user_id=USER, source=ConversationS
 
 
 def _state(job_id: str) -> BrowserJobState:
-    return BrowserJobState(
-        job_id=job_id,
+    return make_browser_job_state(
+        job_id,
         status=BrowserJobStatus.RUNNING,
         task="t",
         conversation_id="conv-web",
