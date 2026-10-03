@@ -372,9 +372,14 @@ def test_a_new_or_changed_conclusion_is_announced_once_in_the_briefing() -> None
     assert "write observations.md only in step 9" in INBOX_DESK_RUN_GUIDANCE
 
 
-def test_observations_steer_the_query_and_the_classification() -> None:
-    assert "-from:<address>" in "\n".join(_step(FETCH_STEP))
-    assert "observations.md names as recurring is FYI" in "\n".join(_step(CLASSIFY_STEP))
+def test_observations_steer_the_triage_never_the_fetch() -> None:
+    fetch = "\n".join(_step(FETCH_STEP))
+    assert "Never add a -from:<address> exclusion for a sender address" in fetch
+    assert "learned priority steers step 4, never the fetch" in fetch
+    assert "skip only what asks nothing of the user" in "\n".join(_step(SKIP_STEP))
+    classify = "\n".join(_step(CLASSIFY_STEP))
+    assert "observations.md names as recurring is still read" in classify
+    assert "is FYI only when its ask matches the known pattern" in classify
 
 
 @pytest.mark.regression

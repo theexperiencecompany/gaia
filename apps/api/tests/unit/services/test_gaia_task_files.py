@@ -9,11 +9,7 @@ from unittest.mock import AsyncMock, patch
 from bson import ObjectId
 import pytest
 
-from app.constants.todos import (
-    GAIA_TRACKED_LABEL,
-    OBSERVATIONS_MAX_CHARS,
-    STANDING_RULES_MAX_CHARS,
-)
+from app.constants.todos import GAIA_TRACKED_LABEL, STANDING_RULES_MAX_CHARS
 from app.models.todo_models import Priority, TodoDocument
 from app.services.gaia_task_files import (
     GaiaTaskFile,
@@ -427,6 +423,8 @@ class TestWriteFile:
         )
 
     async def test_observations_past_their_cap_are_refused_unwritten(self, writers):
+        from app.constants.todos import OBSERVATIONS_MAX_CHARS
+
         body = "o" * (OBSERVATIONS_MAX_CHARS + 1)
         with patch(f"{_MOD}.write_observations", new_callable=AsyncMock) as observations:
             refusal = await write_file(TaskFile(_doc(), GaiaTaskFile.OBSERVATIONS), USER_ID, body)
