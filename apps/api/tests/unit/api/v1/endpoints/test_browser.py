@@ -47,6 +47,12 @@ from app.schemas.browser import (
 from app.services.browser import handoff_buttons
 from app.services.browser.handoff import cancel_handoff, create_pending_handoff, get_handoff
 from app.services.browser.live_code import mint_live_code
+from app.services.browser.registry import register_session
+from app.services.browser.takeover_token import (
+    TAKEOVER_TOKEN_TTL_SECONDS,
+    takeover_token_ttl_seconds,
+    verify_takeover_token,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -298,6 +304,54 @@ class TestDecideBrowserHandoff:
             )
 
         assert (exc.value.status_code, exc.value.detail) == (410, BROWSER_HANDOFF_GONE_DETAIL)
+
+
+# ---------------------------------------------------------------------------
+# GET /browser/sessions/{session_id}/live-view-token
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def takeover_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        browser_ep.settings, "BROWSER_TAKEOVER_TOKEN_SECRET", "x" * 40, raising=False
+    )
+
+
+@pytest.mark.usefixtures("takeover_secret")
+class TestGetLiveViewToken:
+    async def test_the_owner_gets_a_token_for_that_session_alone(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        await register_session("sess-1", "user-1")
+
+        async with captured_wide_event() as event:
+            resp = await browser_ep.get_live_view_token("sess-1", "user-1")
+
+        claims = verify_takeover_token(resp.token)
+        assert (claims.session_id, claims.user_id) == ("sess-1", "user-1")
+        # The lifetime the card renews by is the one the token was minted with.
+        assert resp.expires_in == TAKEOVER_TOKEN_TTL_SECONDS
+        assert takeover_token_ttl_seconds(claims) > TAKEOVER_TOKEN_TTL_SECONDS - 5
+        assert event["user"] == {"id": "user-1"}
+        assert event["browser"] == {"session_id": "sess-1", "operation": "live_view_token"}
+
+    @pytest.mark.parametrize("owner", ["someone-else", None])
+    async def test_no_token_for_a_session_the_caller_does_not_own(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, owner: str | None
+    ) -> None:
+        # Owned by user-1, but not the session asked about: ownership is of the requested one.
+        await register_session("sess-other", "user-1")
+        if owner is not None:
+            await register_session("sess-1", owner)
+
+        with pytest.raises(HTTPException) as refused:
+            await browser_ep.get_live_view_token("sess-1", "user-1")
+
+        assert (refused.value.status_code, refused.value.detail) == (
+            403,
+            "Not authorized for this session",
+        )
 
 
 # ---------------------------------------------------------------------------
