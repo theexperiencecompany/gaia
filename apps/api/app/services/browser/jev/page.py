@@ -26,9 +26,8 @@ from cdp_use.cdp.network.events import (
     LoadingFinishedEvent,
     RequestWillBeSentEvent,
 )
-from cdp_use.cdp.page.commands import CaptureScreenshotReturns, GetNavigationHistoryReturns
+from cdp_use.cdp.page.commands import CaptureScreenshotReturns
 from cdp_use.cdp.page.events import DomContentEventFiredEvent
-from cdp_use.cdp.page.types import NavigationEntry
 from cdp_use.cdp.runtime.commands import EvaluateReturns
 from cdp_use.cdp.runtime.types import ExceptionDetails, RemoteObject
 from cdp_use.cdp.target.events import TargetCreatedEvent
@@ -104,7 +103,7 @@ _SESSION_CALL = "the page's CDP session"
 
 _T = TypeVar("_T")
 
-ActionKind = Literal["click", "fill", "secret", "select", "scroll", "wait", "enter", "back"]
+ActionKind = Literal["click", "fill", "secret", "select", "scroll", "wait", "enter"]
 
 
 class StalePage(BrowserAutomationError):
@@ -191,8 +190,6 @@ class PageAction(TypedDict):
     rect: NotRequired[Rect]
     #: A dropdown's choices; the action that picks one carries its value instead.
     options: NotRequired[list[SelectOption]]
-    #: The tab's history entry GO_BACK returns to.
-    entry: NotRequired[int]
 
 
 class Frame(TypedDict):
@@ -259,6 +256,21 @@ def _fingerprint(snapshot: _Snapshot) -> str:
     """
     content = [snapshot["page_key"], controls(snapshot["actions"]), snapshot["text"]]
     return hashlib.sha256(json.dumps(content).encode()).hexdigest()
+
+
+def _page_state(snapshot: _Snapshot) -> PageState:
+    return PageState(
+        url=snapshot["url"],
+        title=snapshot["title"],
+        text=snapshot["text"],
+        text_cut=snapshot["text_cut"],
+        actions=snapshot["actions"],
+        page_key=snapshot["page_key"],
+        guards=snapshot["guards"],
+        frames=snapshot["frames"],
+        fingerprint=_fingerprint(snapshot),
+        omitted_actions=snapshot["omitted_actions"],
+    )
 
 
 def _key_events(char: str) -> tuple[DispatchKeyEventParameters, DispatchKeyEventParameters]:
@@ -491,47 +503,13 @@ class JevPage:
                 # The next read waits for the new document: Chrome holds it until that commits.
                 continue
             if "loading" not in snapshot:
-                return await self._state(snapshot)
+                return _page_state(snapshot)
             try:
                 async with asyncio.timeout_at(parse_deadline):
                     await parsed.wait()
             except TimeoutError:
                 raise PageLoading(f"The page is still loading: {snapshot['url']}") from None
         raise StalePage(_NOT_SETTLED)
-
-    async def _state(self, snapshot: _Snapshot) -> PageState:
-        actions = snapshot["actions"]
-        back = await self._previous_entry()
-        if back is not None:
-            actions = [*actions, back]
-        return PageState(
-            url=snapshot["url"],
-            title=snapshot["title"],
-            text=snapshot["text"],
-            text_cut=snapshot["text_cut"],
-            actions=actions,
-            page_key=snapshot["page_key"],
-            guards=snapshot["guards"],
-            frames=snapshot["frames"],
-            fingerprint=_fingerprint(snapshot),
-            omitted_actions=snapshot["omitted_actions"],
-        )
-
-    async def _previous_entry(self) -> PageAction | None:
-        """Return going back as an action when the tab's history has a page before this one."""
-        session = await self._session()
-        history: GetNavigationHistoryReturns = await _bounded(
-            session.cdp_client.send.Page.getNavigationHistory(session_id=session.session_id),
-            "Page.getNavigationHistory",
-        )
-        index = history["currentIndex"]
-        if index <= 0:
-            return None
-        previous: NavigationEntry = history["entries"][index - 1]
-        title = previous["title"] or previous["url"]
-        return PageAction(
-            id="go_back", kind="back", label=f"Go back to {title}", entry=previous["id"]
-        )
 
     async def fresh(self, page: PageState, action: PageAction | None = None) -> bool:
         """Whether a decision made on page still holds.
@@ -557,9 +535,7 @@ class JevPage:
             raise StalePage(_MOVED_ON)
         session = await self._session()
         self._watch(session)
-        if action["kind"] in ("wait", "back") or (
-            action["kind"] == "scroll" and "node" not in action
-        ):
+        if action["kind"] == "wait" or (action["kind"] == "scroll" and "node" not in action):
             await self._on_page(session, action)
             return None
         if text is not None and action.get("input_type") in _SET_IN_PAGE:
@@ -571,16 +547,9 @@ class JevPage:
         return await self._on_target(session, action, target, text)
 
     async def _on_page(self, session: CDPSession, action: PageAction) -> None:
-        """Act on the page as a whole: wait for it, go back in its history, or scroll it."""
+        """Act on the page as a whole: wait for it, or scroll it."""
         self._after_input = action
-        if action["kind"] == "back":
-            await _bounded(
-                session.cdp_client.send.Page.navigateToHistoryEntry(
-                    params={"entryId": action["entry"]}, session_id=session.session_id
-                ),
-                "Page.navigateToHistoryEntry",
-            )
-        elif action["kind"] == "scroll":
+        if action["kind"] == "scroll":
             await self._mouse(session, self._wheel(action, None))
 
     async def _set(self, action: PageAction, text: str) -> str:
@@ -669,14 +638,6 @@ class JevPage:
                 params=params, session_id=session.session_id
             ),
             "Input.dispatchMouseEvent",
-        )
-
-    async def body_text(self, limit: int) -> str:
-        """Return the start of the whole page's rendered text, not only what the viewport shows."""
-        return str(
-            await self._evaluate(
-                f"(document.body ? document.body.innerText : '').slice(0, {limit})"
-            )
         )
 
     async def navigate(self, url: str) -> None:

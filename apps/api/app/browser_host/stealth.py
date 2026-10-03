@@ -5,7 +5,7 @@ CHROME_DEFAULT_ARGS ships --disable-blink-features=AutomationControlled and
 no --enable-automation). What flags cannot fix is the JS-visible fingerprint of
 a bare headless browser — a missing window.chrome, empty navigator.plugins,
 a truthy navigator.webdriver, headless WebGL vendor strings. This script patches
-those; app/patches/browser_use_stealth_patch.py registers it on every page
+those; GaiaBrowserSession (services/browser/browser_use_session.py) registers it on every page
 browser-use drives, so it runs before the page's own scripts on every navigation.
 
 The per-user values (hardware, GPU, canvas and audio noise) come from one seed,

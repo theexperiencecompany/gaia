@@ -6,7 +6,6 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 import json
-import re
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -46,7 +45,6 @@ LIST = PageAction(
 )
 WAIT = PageAction(id="wait", kind="wait", label="Wait for the page to update")
 ENTER = PageAction(id="enter", node=7, kind="enter", label="Press Enter in Name")
-BACK = PageAction(id="go_back", kind="back", label="Go back to Home", entry=41)
 PAGE_KEY = ["key"]
 GUARDS = {str(n): [f"guard-of-{n}"] for n in (7, 8, 9, 10, 11)}
 #: What Runtime.evaluate answers for a script that threw in the page.
@@ -117,8 +115,6 @@ class _Tab:
     set: object = "2026-10-01"
     settle: list[object] = field(default_factory=lambda: [True])
     wait: object = True
-    history: dict[str, Any] = field(default_factory=lambda: {"currentIndex": 0, "entries": []})
-    body: object = ""
     hangs: str | None = None
     #: Whether a document still parsing goes on to fire DOMContentLoaded.
     parses: bool = True
@@ -132,7 +128,6 @@ class _Tab:
     calls: list[tuple[str, object]] = field(default_factory=list, init=False)
     mouse: list[dict[str, Any]] = field(default_factory=list, init=False)
     keys: list[dict[str, Any]] = field(default_factory=list, init=False)
-    entries: list[int] = field(default_factory=list, init=False)
     shots: list[dict[str, Any]] = field(default_factory=list, init=False)
     handlers: dict[str, Callable[..., None]] = field(default_factory=dict, init=False)
 
@@ -146,8 +141,6 @@ class _Tab:
             Page=SimpleNamespace(
                 enable=self._page_enable,
                 captureScreenshot=self._screenshot,
-                getNavigationHistory=self._history,
-                navigateToHistoryEntry=self._go_to_entry,
             ),
         )
         self.register = SimpleNamespace(
@@ -256,11 +249,7 @@ class _Tab:
                 if name == "settle":
                     return self._next(self.settle)
                 return getattr(self, name)
-        body = re.fullmatch(
-            r"\(document\.body \? document\.body\.innerText : ''\)\.slice\(0, (\d+)\)", expression
-        )
-        assert body is not None, f"the tab was sent a script it does not know: {expression[:80]}"
-        return self.body if self.body is GONE else str(self.body)[: int(body.group(1))]
+        raise AssertionError(f"the tab was sent a script it does not know: {expression[:80]}")
 
     async def _mouse(self, params: dict[str, Any], session_id: str | None) -> dict[str, Any]:
         await self._command("Input.dispatchMouseEvent", session_id)
@@ -270,15 +259,6 @@ class _Tab:
     async def _key(self, params: dict[str, Any], session_id: str | None) -> dict[str, Any]:
         await self._command("Input.dispatchKeyEvent", session_id)
         self.keys.append(params)
-        return {}
-
-    async def _history(self, session_id: str | None) -> dict[str, Any]:
-        await self._command("Page.getNavigationHistory", session_id)
-        return self.history
-
-    async def _go_to_entry(self, params: dict[str, Any], session_id: str | None) -> dict[str, Any]:
-        await self._command("Page.navigateToHistoryEntry", session_id)
-        self.entries.append(params["entryId"])
         return {}
 
     async def _screenshot(self, params: dict[str, Any], session_id: str | None) -> dict[str, Any]:
@@ -323,30 +303,12 @@ def _page(tab: _Tab, **browser: Any) -> tuple[JevPage, _Browser]:
 # --- reading the page --------------------------------------------------------------------
 
 
-async def test_a_snapshot_is_read_into_the_page_state_with_going_back_when_the_tab_has_history() -> (
-    None
-):
-    tab = _Tab(
-        history={
-            "currentIndex": 1,
-            "entries": [{"id": 41, "url": "https://h.test/", "title": "Home"}, {}],
-        }
-    )
-    page, _ = _page(tab)
+async def test_a_snapshot_is_read_into_the_page_state() -> None:
+    page, _ = _page(_Tab())
 
     state = await page.observe()
 
-    assert state == _state(
-        actions=[*SNAPSHOT["actions"], BACK], fingerprint=state.fingerprint, omitted_actions=3
-    )
-    # An entry with no title is named by its address.
-    tab.history = {
-        "currentIndex": 1,
-        "entries": [{"id": 5, "url": "https://h.test/", "title": ""}, {}],
-    }
-    assert (await page.observe()).actions[-1]["label"] == "Go back to https://h.test/"
-    tab.history = {"currentIndex": 0, "entries": [{}]}
-    assert BACK not in (await page.observe()).actions
+    assert state == _state(fingerprint=state.fingerprint, omitted_actions=3)
 
 
 @pytest.mark.parametrize(
@@ -627,15 +589,6 @@ async def test_enter_is_pressed_only_in_the_field_that_still_holds_focus() -> No
         await page.act(ENTER, _state())
 
 
-async def test_going_back_returns_to_the_history_entry_observed() -> None:
-    tab = _Tab()
-    page, _ = _page(tab)
-
-    await page.act(BACK, _state())
-
-    assert tab.entries == [41]
-
-
 async def test_the_page_scrolls_over_its_column_and_an_inner_area_where_the_page_says_it_is() -> (
     None
 ):
@@ -713,8 +666,6 @@ async def test_a_failed_navigation_says_whether_the_site_or_the_browser_failed(
         ("Runtime.evaluate", LINK),
         ("Input.dispatchMouseEvent", LINK),
         ("Input.dispatchKeyEvent", ENTER),
-        ("Page.navigateToHistoryEntry", BACK),
-        ("Page.getNavigationHistory", None),
         ("Emulation.setFocusEmulationEnabled", None),
         ("Page.enable", None),
     ],

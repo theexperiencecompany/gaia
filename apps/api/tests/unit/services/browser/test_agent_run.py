@@ -17,7 +17,15 @@ from types import SimpleNamespace
 from typing import Any, ClassVar
 from unittest.mock import MagicMock
 
-from browser_use.agent.views import AgentState
+from browser_use.agent.views import (
+    ActionResult,
+    AgentHistory,
+    AgentHistoryList,
+    AgentOutput,
+    AgentState,
+)
+from browser_use.browser.views import BrowserStateHistory
+from browser_use.tools.registry.views import ActionModel
 import pytest
 
 from app.constants.browser import (
@@ -44,7 +52,12 @@ from app.schemas.browser import (
     GuidanceElement,
 )
 from app.services.browser import agent_run as agent_run_mod
-from app.services.browser.agent_run import STEP_ERROR_CAPTION, AgentRunSetup, BrowserAgentRun
+from app.services.browser.agent_run import (
+    STEP_ERROR_CAPTION,
+    AgentRunSetup,
+    BrowserAgentRun,
+    found_in_history,
+)
 from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserUnavailableError
 from app.services.browser.jev import loop as loop_mod
 from app.services.browser.jev.decision import GENERATE
@@ -586,7 +599,7 @@ class TestConnectionProbe:
 async def test_a_model_that_cannot_be_built_is_named_on_the_runs_event(
     harness: _Harness, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    async def _no_model(user_id: str | None, ledger: RunLedger) -> None:
+    def _no_model(ledger: RunLedger) -> None:
         raise BrowserUnavailableError("OPENROUTER_API_KEY is not set")
 
     monkeypatch.setattr(agent_run_mod, "build_agent_llm", _no_model)
@@ -631,7 +644,7 @@ class _History:
 
 
 class _Browser:
-    """Browser-Use's Browser: records what listens on its event bus and its CDP connection."""
+    """The run's GaiaBrowserSession: records what listens on its event bus and its CDP connection."""
 
     def __init__(self, **options: Any) -> None:
         self.options = options
@@ -754,8 +767,8 @@ def built_with(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[tuple[st
     """Stand Browser-Use, the models and the stall watcher in for a run; record what each model was built for."""
     built: list[tuple[str, object]] = []
 
-    async def _llm(user_id: str | None, ledger: RunLedger) -> object:
-        built.append(("agent", (user_id, ledger)))
+    def _llm(ledger: RunLedger) -> object:
+        built.append(("agent", ledger))
         return _LLM
 
     def _text_model(ledger: RunLedger) -> _TextModel:
@@ -763,7 +776,7 @@ def built_with(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[tuple[st
         return _TEXT_MODEL
 
     monkeypatch.setattr(agent_run_mod, "Agent", _Agent)
-    monkeypatch.setattr(agent_run_mod, "Browser", _Browser)
+    monkeypatch.setattr(agent_run_mod, "GaiaBrowserSession", _Browser)
     monkeypatch.setattr(agent_run_mod, "build_agent_llm", _llm)
     monkeypatch.setattr(agent_run_mod, "build_text_model", _text_model)
     monkeypatch.setattr(agent_run_mod, "open_jev_client", _JevGateway.opened)
@@ -827,7 +840,7 @@ class TestExecute:
 
         assert outcome.failure == failure
 
-    async def test_the_agent_runs_on_the_users_models_and_this_runs_browser(
+    async def test_the_agent_runs_on_the_browser_models_and_this_runs_browser(
         self, harness: _Harness, built_with: list[tuple[str, object]]
     ) -> None:
         await harness.run.execute("read my orders")
@@ -835,9 +848,10 @@ class TestExecute:
         agent = _Agent.built[-1]
         assert agent.options["task"].startswith("read my orders")
         assert (agent.options["llm"], agent.options["page_extraction_llm"]) == (_LLM, _TEXT_MODEL)
-        assert built_with == [("agent", ("user-1", harness.ledger)), ("text", harness.ledger)]
+        assert built_with == [("agent", harness.ledger), ("text", harness.ledger)]
         browser = agent.options["browser"]
-        assert browser.options["cdp_url"] == "ws://browser.test/cdp"
+        # The run's own session, fingerprinted for the run's user.
+        assert browser.options == {"cdp_url": "ws://browser.test/cdp", "user_id": "user-1"}
 
     async def test_the_stall_watcher_listens_on_every_connect_of_this_browser(
         self, harness: _Harness
@@ -1043,6 +1057,35 @@ class TestTools:
             BROWSER_AGENT_FAST_ENGINE_NOTE not in _Agent.built[-1].options["extend_system_message"]
         )
 
+    @pytest.mark.parametrize(
+        ("page", "handed"), [("https://shop.test/cart", True), ("https://ads.test/x", False)]
+    )
+    async def test_a_bot_check_goes_to_the_user_only_on_a_site_the_task_named(
+        self, harness: _Harness, page: str, handed: bool
+    ) -> None:
+        asked: list[str] = []
+
+        async def _takeover(reason: str, category: str) -> str | None:
+            asked.append(reason)
+            return None
+
+        harness.run._hooks = replace(harness.run._hooks, takeover=_takeover)
+        harness.run._config = replace(CONFIG, solve_captcha=True, start_url="https://shop.test/")
+        await harness.run.execute("buy the ticket")
+        agent = _Agent.built[-1]
+
+        async def _on_page() -> str:
+            return page
+
+        captcha = agent.options["tools"].registry.registry.actions["solve_captcha_with_help"]
+        await captcha.function(
+            params=captcha.param_model(challenge="Tick the box."),
+            browser_session=SimpleNamespace(get_current_page_url=_on_page),
+        )
+        await harness.run._on_step_end(agent)
+
+        assert asked == (["Tick the box."] if handed else [])
+
     async def test_the_agent_on_the_fast_engine_can_move_the_run_to_chrome(
         self, harness: _Harness
     ) -> None:
@@ -1099,7 +1142,9 @@ class TestJevInTheRun:
 
     async def _burst(self, harness: _Harness) -> str:
         await harness.run.execute("fill the form")
-        result = await _Agent.built[-1].act(JEV_ACTION, {"goal": "fill the form"})
+        result = await _Agent.built[-1].act(
+            JEV_ACTION, {"goal": "fill the form", "done_when": "the form is sent"}
+        )
         return str(result.extracted_content)
 
     async def test_a_script_the_fast_engine_cannot_run_moves_the_run_to_chrome(
@@ -1129,7 +1174,9 @@ class TestJevInTheRun:
         """The run's secrets are the delegate's: the agent's untagged "password" is refused."""
         await harness.run.execute("log in")
 
-        result = await _Agent.built[-1].act(JEV_ACTION, {"goal": 'type "password" and sign in'})
+        result = await _Agent.built[-1].act(
+            JEV_ACTION, {"goal": 'type "password" and sign in', "done_when": "signed in"}
+        )
 
         assert "the name of a secret" in str(result.error)
         assert decisions == []
@@ -1255,3 +1302,36 @@ class TestGuidance:
 
         assert await harness.run._guidance("stuck") == BROWSER_NO_GUIDANCE_AVAILABLE
         assert asked == []
+
+
+class _Actions(ActionModel):
+    """Two of Browser-Use's actions, as an agent step names them."""
+
+    extract: dict[str, str] | None = None
+    click: dict[str, int] | None = None
+
+
+def _did(memory: str | None, *acts: tuple[str, dict[str, Any], ActionResult]) -> AgentHistory:
+    return AgentHistory(
+        model_output=AgentOutput(
+            memory=memory, action=[_Actions(**{name: params}) for name, params, _ in acts]
+        ),
+        result=[result for _, _, result in acts],
+        state=BrowserStateHistory(url="", title="", tabs=[], interacted_element=[]),
+    )
+
+
+def test_what_a_run_found_is_each_page_it_read_and_its_last_note() -> None:
+    read = ("extract", {"query": "price"}, ActionResult(extracted_content="Price: $12"))
+    failed = ("extract", {"query": "x"}, ActionResult(error="no page", extracted_content="?"))
+    clicked = ("click", {"index": 3}, ActionResult(extracted_content="Clicked Next"))
+    # A step cut short ran fewer actions than it chose.
+    cut_short = _did("Opened the shop.", read, clicked)
+    cut_short.result.pop()
+    history = AgentHistoryList(
+        history=[cut_short, _did("Price is $12; reviews next.", failed), _did(None, clicked)]
+    )
+
+    assert found_in_history(history) == ["Price: $12", "Price is $12; reviews next."]
+    # With no note at all, only what it read.
+    assert found_in_history(AgentHistoryList(history=[_did(None, read)])) == ["Price: $12"]

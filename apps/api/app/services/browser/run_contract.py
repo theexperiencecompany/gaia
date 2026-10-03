@@ -13,6 +13,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from time import perf_counter
 
+from app.config.settings import settings
 from app.constants.browser import BrowserRunFailure, EngineSwitchReason, SensitiveCategory
 from app.schemas.browser import (
     AgentGuidanceRequest,
@@ -53,6 +54,20 @@ class BrowserRunConfig:
     #: Opened before the first decision; Browser-Use's own find of a URL in the
     #: task gives up when the task names more than one.
     start_url: str | None = None
+
+    @classmethod
+    def from_settings(cls, start_url: str | None) -> BrowserRunConfig:
+        """Return the deployment's run settings for a run starting at start_url."""
+        return cls(
+            max_steps=settings.BROWSER_USE_MAX_STEPS,
+            max_actions_per_step=settings.BROWSER_USE_MAX_ACTIONS_PER_STEP,
+            task_timeout_seconds=settings.BROWSER_USE_TASK_TIMEOUT_SECONDS,
+            step_timeout_seconds=settings.BROWSER_USE_STEP_TIMEOUT_SECONDS,
+            handoff_timeout_seconds=settings.BROWSER_USE_HANDOFF_TIMEOUT_SECONDS,
+            stream_screenshots=settings.BROWSER_USE_STREAM_SCREENSHOTS,
+            solve_captcha=settings.BROWSER_USE_SOLVE_CAPTCHA,
+            start_url=start_url,
+        )
 
 
 @dataclass(frozen=True)

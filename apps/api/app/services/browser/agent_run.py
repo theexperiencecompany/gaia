@@ -1,11 +1,10 @@
-"""Drive one browser task: Jev first on the whole task, then the Browser-Use agent steers and finishes.
+"""Drive one browser task: Jev first on the start page, then the Browser-Use agent steers and finishes.
 
-One long-lived Browser-Use Agent runs on the reasoning model with Jev registered
-as its jev action. On a run with a page to start on, the Agent's initial action
-is a Jev burst on the whole task, so the first model call the agent makes
-already reads what Jev did; on a blank tab the agent moves first. The agent
-then writes the answer, hands Jev a sharper goal, or acts itself; it is
-the only finisher and the only answer writer. Every agent step and every Jev
+One long-lived Browser-Use Agent runs with Jev registered as its jev action
+(jev/tool.py JEV_DESCRIPTION says what Jev does). On a run with a page to
+start on, the Agent's initial action is a Jev burst there, so the first model
+call the agent makes already reads what Jev did; on a blank tab the agent
+moves first. The agent is the only finisher and the only answer writer. Every agent step and every Jev
 burst reaches the runner as one frame through RunHooks. A run resumed on the
 fallback engine carries the primary agent's state instead of a new Jev burst.
 """
@@ -22,7 +21,7 @@ import shutil
 from time import perf_counter
 from typing import Any, TypedDict, cast
 
-from browser_use import Agent, Browser
+from browser_use import Agent
 from browser_use.agent.views import ActionResult, AgentHistoryList, AgentOutput, AgentState
 from browser_use.browser.events import BrowserConnectedEvent, NavigationCompleteEvent
 from browser_use.browser.session import BrowserSession
@@ -36,6 +35,7 @@ from app.constants.browser import (
     BROWSER_GUIDANCE_PAGE_TEXT_MAX_CHARS,
     BROWSER_GUIDANCE_RECENT_ACTIONS,
     BROWSER_NO_GUIDANCE_AVAILABLE,
+    BROWSER_RUN_FOUND_MAX_CHARS,
     BROWSER_TAKEOVER_DONE_NOTE,
     BrowserRunFailure,
     EngineSwitchReason,
@@ -51,7 +51,8 @@ from app.schemas.browser import (
     GuidanceAction,
     GuidanceElement,
 )
-from app.services.browser.agent_options import agent_options, browser_options
+from app.services.browser.agent_options import agent_options
+from app.services.browser.browser_use_session import GaiaBrowserSession
 from app.services.browser.captions import burst_caption, caption_from_action_list, step_caption
 from app.services.browser.exceptions import (
     BrowserAutomationError,
@@ -76,6 +77,7 @@ from app.services.browser.run_contract import (
 from app.services.browser.session import BrowserHostSession
 from app.services.browser.stalled_loads import StalledLoads
 from app.services.browser.tools import build_browser_tools
+from app.services.browser.user_sites import UserSites
 from shared.py.wide_events import log
 
 # Attributes worth naming an otherwise-unlabelled control by, in the order a
@@ -85,6 +87,8 @@ _LABEL_ATTRIBUTES = ("aria-label", "value", "title", "placeholder", "alt", "name
 _OUTPUT_MAX_CHARS = 1000
 #: Browser-Use's typing action.
 _INPUT_ACTION = "input"
+#: The action whose results are what the agent read off pages: what a stopped run had found.
+_READ_ACTION = "extract"
 
 #: Caption for a step that failed before it picked an action to describe.
 STEP_ERROR_CAPTION = "That step failed"
@@ -193,6 +197,23 @@ def outcome_from_history(history: AgentHistoryList[BaseModel]) -> tuple[bool, st
     return success, final
 
 
+def found_in_history(history: AgentHistoryList[BaseModel]) -> list[str]:
+    """Return what the agent gathered: each page it read, and its last note on its progress."""
+    reads = [
+        result.extracted_content[:BROWSER_RUN_FOUND_MAX_CHARS]
+        for item in history.history
+        if item.model_output is not None
+        # One result per action run, in order; a step cut short has fewer.
+        for position, result in enumerate(item.result)
+        if _READ_ACTION in item.model_output.action[position].model_dump(exclude_none=True)
+        and result.extracted_content
+        and not result.error
+    ]
+    notes = [item.model_output.memory for item in history.history if item.model_output]
+    last = next((note for note in reversed(notes) if note), None)
+    return [*reads, last[:BROWSER_RUN_FOUND_MAX_CHARS]] if last else reads
+
+
 def failure_from_history(
     history: AgentHistoryList[BaseModel], max_steps: int
 ) -> BrowserRunFailure | None:
@@ -298,14 +319,14 @@ class BrowserAgentRun:
         # starts takes the run's lock, not the process-wide one.
         isolate_run_events()
         try:
-            llm = await build_agent_llm(self._user_id, self._ledger)
+            llm = build_agent_llm(self._ledger)
             text_model = build_text_model(self._ledger)
         except BrowserUnavailableError as exc:
             # The run's event says the model, not the browser, was unusable.
             log.set_ns("browser", llm_error=type(exc).__name__)
             raise
         async with open_jev_client() as client:
-            browser = Browser(**browser_options(self._session.cdp_url))
+            browser = GaiaBrowserSession(cdp_url=self._session.cdp_url, user_id=self._user_id)
             stalls = self._stalls = StalledLoads(browser)
             browser.event_bus.on(BrowserConnectedEvent, self._on_connected)
             browser.event_bus.on(BrowserConnectedEvent, stalls.attach)
@@ -342,6 +363,7 @@ class BrowserAgentRun:
             )
             tools = build_browser_tools(
                 solve_captcha=self._config.solve_captcha,
+                user_sites=UserSites(task, self._config.start_url, self._secrets.sites),
                 handle_takeover=self._takeover,
                 handle_guidance=self._guidance,
                 handle_engine_switch=switch_engine,
@@ -383,6 +405,12 @@ class BrowserAgentRun:
     def stop(self) -> None:
         if self._agent is not None:
             self._agent.stop()
+
+    def found(self) -> list[str]:
+        """Return what the agent gathered so far, redacted; empty before it is built."""
+        if self._agent is None:
+            return []
+        return [self._secrets.redact(text) for text in found_in_history(self._agent.history)]
 
     async def connection_answers(self) -> bool:
         """Whether the run's own CDP connection answers a bounded read; True before it opens."""

@@ -62,7 +62,6 @@ from app.services.browser.exceptions import (
     BrowserSessionGone,
     BrowserUnavailableError,
 )
-from app.services.browser.fingerprint import reset_fingerprint_seed, set_fingerprint_seed
 from app.services.browser.handoff import (
     await_handoff,
     cancel_handoff,
@@ -747,9 +746,6 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
     included (a stop's abort, or the worker shutting down), which then propagates.
     """
     emitter = _emitter_for(request)
-    # Pin this run's canvas/audio fingerprint to the user, so the same person
-    # always presents the same device rather than a new one per task.
-    seed_token = set_fingerprint_seed(request.user_id)
     try:
         result = _ended_on(emitter, await _run_job(request, emitter))
     except asyncio.CancelledError:
@@ -757,8 +753,6 @@ async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapsh
         # Nobody holds a tool call to hear this; without it the card stays RUNNING forever.
         await asyncio.shield(_end_cancelled(request, emitter))
         raise
-    finally:
-        reset_fingerprint_seed(seed_token)
     await settle_job(request, result)
     return result
 
@@ -847,16 +841,7 @@ async def _run_job(request: BrowserJobRequest, emitter: ProgressEmitter) -> Brow
                     note=emitter.note,
                     request_guidance=partial(_run_guidance, job=request),
                 ),
-                config=BrowserRunConfig(
-                    max_steps=settings.BROWSER_USE_MAX_STEPS,
-                    max_actions_per_step=settings.BROWSER_USE_MAX_ACTIONS_PER_STEP,
-                    task_timeout_seconds=settings.BROWSER_USE_TASK_TIMEOUT_SECONDS,
-                    step_timeout_seconds=settings.BROWSER_USE_STEP_TIMEOUT_SECONDS,
-                    handoff_timeout_seconds=settings.BROWSER_USE_HANDOFF_TIMEOUT_SECONDS,
-                    stream_screenshots=settings.BROWSER_USE_STREAM_SCREENSHOTS,
-                    solve_captcha=settings.BROWSER_USE_SOLVE_CAPTCHA,
-                    start_url=request.start_url or None,
-                ),
+                config=BrowserRunConfig.from_settings(start_url=request.start_url or None),
                 user_id=request.user_id or None,
                 root_request_id=request.root_request_id,
             )

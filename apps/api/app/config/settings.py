@@ -25,6 +25,7 @@ from pydantic_settings import SettingsConfigDict
 from app.config.browser_host_settings import BrowserHostSettings
 from app.config.secrets import inject_infisical_secrets
 from app.config.settings_validator import settings_validator
+from app.constants.browser import BrowserAgentEffort
 from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
 from app.constants.llm import DevLLMApi
 from app.constants.log_tags import LogTag
@@ -229,6 +230,12 @@ class CommonSettings(BaseAppSettings):
     # deepseek-v4-flash answers a URL/value prompt in ~1.5-5s with minimal
     # reasoning (measured 2026-09-22); forcing reasoning off made it return null.
     BROWSER_USE_JEV_TEXT_MODEL: str = "deepseek/deepseek-v4-flash-0731"
+    # The browser agent's model, the same for every user whatever their chat lane: it
+    # steers and signs off while Jev does the stepping. Served by OpenRouter.
+    BROWSER_AGENT_MODEL: str = "deepseek/deepseek-v4-flash-0731"
+    BROWSER_AGENT_REASONING_EFFORT: BrowserAgentEffort = "low"
+    # Browser-Use's flash mode: the agent writes only its memory and actions, no thinking.
+    BROWSER_AGENT_FLASH_MODE: bool = True
 
     # Hard limits — everything is bounded so no browser task can run away. The
     # agent's step count is only Browser-Use's required backstop: a run ends on
