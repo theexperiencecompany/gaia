@@ -24,6 +24,7 @@ from app.models.todo_models import (
     ExternalRef,
     SearchMode,
     SubTask,
+    SubTodoCount,
     TodoCounts,
     TodoDocument,
     TodoLabelCount,
@@ -148,7 +149,11 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         if params.project_id is not None:
             query["project_id"] = params.project_id
         elif inbox_project_id is not None and not (
-            params.q or params.completed is not None or params.priority or params.labels
+            params.q
+            or params.completed is not None
+            or params.priority
+            or params.labels
+            or params.parent_todo_id
         ):
             query["project_id"] = inbox_project_id
 
@@ -158,6 +163,8 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             query["priority"] = params.priority.value
         if params.labels:
             query["labels"] = {"$in": params.labels}
+        if params.parent_todo_id:
+            query["parent_todo_id"] = params.parent_todo_id
 
         if params.has_due_date is True:
             query["due_date"] = {"$ne": None}
@@ -318,10 +325,13 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         limit: int,
         labels: list[str] | None = None,
         external_ref: ExternalRef | None = None,
+        parent_todo_id: str | None = None,
+        top_level: bool = False,
     ) -> list[TodoDocument]:
         """Return a user's open tracked todos, most-recently-updated first.
 
-        labels keeps todos carrying all of them; external_ref keeps the one owning that object.
+        labels keeps todos carrying all of them; external_ref keeps the one owning that object;
+        parent_todo_id keeps that todo's sub-todos; top_level drops every sub-todo.
         Cached under the user's generation, so context assembly reads Mongo once per write.
         """
         query: dict[str, object] = {
@@ -332,7 +342,33 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         }
         if external_ref is not None:
             query.update(_external_ref_filter(external_ref))
+        if parent_todo_id is not None:
+            query["parent_todo_id"] = parent_todo_id
+        elif top_level:
+            query["parent_todo_id"] = None
         return await self._find(query, sort=[("updated_at", -1)], limit=limit)
+
+    async def find_sub_todos(self, user_id: str, parent_ids: list[str]) -> list[TodoDocument]:
+        """Every sub-todo, open or completed, of the given parents; uncached, for cascades."""
+        return await self._find({"user_id": user_id, "parent_todo_id": {"$in": parent_ids}})
+
+    @cached_query(dict[str, int])
+    async def count_open_sub_todos(self, user_id: str, parent_ids: list[str]) -> dict[str, int]:
+        """Open sub-todos per parent, for the parents that have any."""
+        if not parent_ids:
+            return {}
+        pipeline: list[dict[str, object]] = [
+            {
+                "$match": {
+                    "user_id": user_id,
+                    "parent_todo_id": {"$in": parent_ids},
+                    "completed": False,
+                }
+            },
+            {"$group": {"_id": "$parent_todo_id", "count": {"$sum": 1}}},
+        ]
+        counts = await self._aggregate(pipeline, SubTodoCount)
+        return {row.parent_todo_id: row.count for row in counts}
 
     async def list_active_gaia_tracked_since(
         self, user_id: str, *, completed_since: datetime
@@ -621,15 +657,17 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         *,
         update: TodoUpdate,
         expected_updated_at: datetime | None,
+        touch: bool = True,
     ) -> TodoDocument | None:
         """Replace note bodies, optionally gated by expected_updated_at (compare-and-set).
 
-        Returns None on mismatch.
+        Returns None on mismatch. touch=False keeps updated_at, for a system repair
+        that is not activity on the todo.
         """
         extra: dict[str, object] = {"user_id": user_id}
         if expected_updated_at is not None:
             extra["updated_at"] = expected_updated_at
-        return await self._apply_update(todo_id, user_id, extra, update)
+        return await self._apply_update(todo_id, user_id, extra, update, touch=touch)
 
     async def update_if_scheduled_at(
         self, todo_id: str, user_id: str, *, expected: datetime | None, update: TodoUpdate

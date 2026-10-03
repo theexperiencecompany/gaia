@@ -322,6 +322,12 @@ async def create_todo_indexes() -> None:
             todos_collection.create_index(
                 TODO_OPEN_EXTERNAL_REF_KEYS, **TODO_OPEN_EXTERNAL_REF_OPTIONS
             ),
+            # A parent's sub-todos: listing, open counts, and completion/deletion cascades.
+            todos_collection.create_index(
+                [("user_id", 1), ("parent_todo_id", 1), ("completed", 1)],
+                name="user_parent_todo",
+                partialFilterExpression={"parent_todo_id": {"$type": "string"}},
+            ),
         )
 
     except Exception as e:

@@ -517,6 +517,8 @@ def repo_reads() -> AsyncMock:
 
     with (
         patch.object(todo_repository, "_find", find),
+        # The open sub-todo counts are an aggregation: no sub-todos here.
+        patch.object(todo_repository, "_aggregate", AsyncMock(return_value=[])),
         patch("app.db.repositories.base.read_generation", _read_generation),
         patch("app.db.repositories.base.get_cache", _get),
         patch("app.db.repositories.base.set_cache", _set),
@@ -1043,7 +1045,9 @@ class TestActiveTodoBanner:
             "/workspace/gaia-tasks/ship-the-refactor-5f10e407/activity.md\n"
             "\n"
             "   Default write target for this turn: this todo's files.\n"
-            "   - Read canvas.md first. Record progress and outcomes as a dated entry at the end "
+            "   - Read canvas.md first. Its Standing rules are the user's instructions for this "
+            "todo: obey every one over your own defaults.\n"
+            "   - Record progress and outcomes as a dated entry at the end "
             "of activity.md; keep Current State in canvas.md true; learnings go in canvas.md.\n"
             "   - Use `add_memory(...)` ONLY for durable cross-cutting facts unrelated to this "
             "todo (rare).\n"

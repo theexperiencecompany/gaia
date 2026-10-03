@@ -47,6 +47,8 @@ class CaseRun:
     case_id: str
     messages: list[dict[str, str]] = field(default_factory=list)
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    # The last user turn's calls only; tool_calls spans every turn of a session.
+    final_turn_tool_calls: list[dict[str, Any]] = field(default_factory=list)
     end_state: dict[str, Any] | None = None
     text: str = ""
     raw: list[dict[str, Any]] = field(default_factory=list)

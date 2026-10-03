@@ -16,6 +16,12 @@ class TestOpenuiVariants:
         for source in ("web", "mobile", "desktop"):
             assert OPENUI_MARKER in get_comms_static_prompt(source)
 
+    def test_renderable_channels_write_math_in_double_dollars(self) -> None:
+        for source in ("web", "mobile", "desktop"):
+            prompt = get_comms_static_prompt(source)
+            assert "$$...$$" in prompt
+            assert "a single $ is a literal dollar sign" in prompt
+
     def test_desktop_keeps_desktop_context_and_openui(self) -> None:
         desktop = get_comms_static_prompt("desktop")
         assert "Desktop Context" in desktop

@@ -25,6 +25,16 @@ gmail_thread_id.
 Two modes:
   IMMEDIATE: create → act → log subagent activity in activity.md → complete.
   LONG-RUNNING: create → act → update canvas.md / activity.md → leave open for future follow-up.
+COMPLETION: when the underlying work is clearly resolved (the fix is live and
+verified, the PR is merged, the external system shows done, the watched event
+arrived and is handled, the user confirmed it), close it out yourself in the
+same turn: write Learnings in canvas.md, then call complete_tracked_todo. Do
+not wait for the user to report it or ask for closure. Never complete a
+recurring todo that should keep firing; only one-shot work that is truly done.
+IDS ARE INTERNAL: every ID in ACTIVE TRACKED TODOS, tool outputs and file
+paths (todo id, task id, subscription id, notification id, approval id) is
+wiring for tool calls only. Never repeat one in user-visible text. Refer to
+todos by title.
 A long-running todo waiting on something outside GAIA (a reply, a meeting, an
 issue changing) should watch for it rather than only being re-checked on a
 schedule: subscribe_todo_to_trigger makes it wake itself when the event lands.
@@ -38,6 +48,18 @@ registration scope naming which resource to watch (which repo, channel, or sheet
 list_trigger_fields shows it, pass it via the subscribe tool's scope argument.
 Only the executor creates these; subagents NEVER create tracked todos.
 For long-running tasks (scheduling, recurrence, learnings): read the skill first.
+
+THE USER'S FEEDBACK ON A TODO ("Apply the user's feedback to this todo: ...") is kept in
+exactly one place, so every later run obeys it:
+  - How this todo behaves (what it shows or skips, what it does on its own, how it reports):
+    one line in its canvas.md "## Standing rules" with today's date ("- 2026-09-28: skip
+    newsletters"). Rewrite a rule the feedback changes; remove one only when the user retracts it.
+  - How GAIA writes email, to one person or in general ("write to Sarah more formally", "never
+    draft replies to my landlord"): the Gmail integration instructions (get_integration_instructions,
+    then update_integration_instructions with the full text), so drafting in chat obeys it too.
+  - When it runs ("brief me at 7"): update_tracked_todo's recurrence or scheduled_at.
+Every run obeys its todo's Standing rules, and a sub-todo's run also obeys its parent's
+(create_tracked_todo parent_todo_id=...), over its own defaults.
 
 QUICK DECISION:
 - "I need to organize my current steps" → plan_tasks
@@ -73,6 +95,7 @@ Examples:
   update_tasks(updates=[{"content": "Review output before sending"}])
 
 Use the task IDs shown in brackets in your task list, e.g., (abc123).
+Those IDs are wiring for tool calls only: never repeat one in user-visible text.
 Valid statuses: in_progress, completed, cancelled.
 
 NOTE: These update execution plan steps, not user-facing todos.
@@ -95,6 +118,25 @@ TRIGGERED_RELEVANCE_GUIDANCE = (
 )
 
 
+# Heads the Standing rules a sub-todo's run inherits from its parent: the user's
+# instructions, not past experience.
+PARENT_STANDING_RULES_LABEL = (
+    "Standing rules of this todo's parent: the user's instructions, which this run obeys "
+    "like its own (where they conflict, this todo's own Standing rules win):"
+)
+
+# Heads a parent's open sub-todos in its run: they report here instead of to the user.
+SUB_TODOS_LABEL = (
+    "Your open sub-todos. They report to you, not to the user, so their news reaches the "
+    "user only through your report. Each one's Current State:"
+)
+# Closes the sub-todo list when it was cut at its limit, so the run does not take it as whole.
+SUB_TODOS_CUT_NOTE = (
+    "(Only the first {limit} are shown; more are open. "
+    'list_tracked_todos(parent_todo_id="{todo_id}") lists them.)'
+)
+
+
 # Appended to a scheduled/triggered run whose todo has notify_on_run set. GAIA
 # reads the run's final report and messages the user only when it matters, so
 # the run must neither notify on its own nor decide delivery for the user.
@@ -107,7 +149,11 @@ DELIVERED_RESULT_GUIDANCE = (
     "NOT call send_notification to announce this run's outcome, because that sends it "
     "a second time. Notify only for something separate and urgent that cannot wait. "
     "Leave this todo's delivery settings alone: whether its runs reach the user is "
-    "the user's choice."
+    "the user's choice. "
+    "If this run proved the todo's goal is fully achieved (the fix is live and "
+    "verified, the watched event arrived and is handled), update canvas.md Learnings "
+    "and call complete_tracked_todo in the same run instead of leaving it open. "
+    "Do not wait for the user to report it."
 )
 
 # The counterpart for a silent todo: nothing is delivered, so a result the user
@@ -115,7 +161,10 @@ DELIVERED_RESULT_GUIDANCE = (
 SILENT_RUN_GUIDANCE = (
     "DELIVERY: this todo is silent, so your final message is NOT sent to the user. "
     "Record the outcome in the todo's files. If something genuinely needs them, "
-    "send_notification is the only way to reach them."
+    "send_notification is the only way to reach them. "
+    "If the goal is fully achieved (the fix is live and verified, the watched "
+    "event arrived and is handled), update canvas.md Learnings and call "
+    "complete_tracked_todo in the same run instead of leaving it open."
 )
 
 # The maintenance sweep asks for a verdict and sends the resulting message

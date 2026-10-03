@@ -10,9 +10,11 @@ import {
   Flag02Icon,
   Folder02Icon,
   Tag01Icon,
+  TaskDone01Icon,
 } from "@icons";
 import { isTrackedTodo } from "@shared/todos";
 import { formatDistanceToNow } from "date-fns";
+import { memo } from "react";
 import { Priority, type Project, type Todo } from "@/types/features/todoTypes";
 import { formatDate } from "@/utils/date/dateUtils";
 
@@ -37,6 +39,7 @@ const todoHasMeta = (todo: Todo): boolean =>
   !!todo.scheduled_at ||
   !!todo.expires_at ||
   isTrackedTodo(todo) ||
+  todo.sub_todo_count > 0 ||
   todo.labels.length > 0;
 
 const dueChipColor = (isToday: boolean, isOverdue: boolean) => {
@@ -65,13 +68,22 @@ function TodoPriorityChip({ priority }: { priority: Todo["priority"] }) {
 }
 
 // Chips describing a todo's due date, schedule, project, labels and priority.
-export function TodoItemMeta({
+export const TodoItemMeta = memo(function TodoItemMeta({
   todo,
   todoProject,
   scheduledLabel,
   isToday,
   isOverdue,
 }: TodoItemMetaProps) {
+  // Computed at render, not memoized: formatDistanceToNow reads the current
+  // time, so caching it on expires_at alone freezes the label while the page
+  // stays open.
+  const expiresLabel = todo.expires_at
+    ? formatDistanceToNow(new Date(todo.expires_at), {
+        addSuffix: true,
+      })
+    : null;
+
   if (!todoHasMeta(todo)) return null;
 
   return (
@@ -115,10 +127,7 @@ export function TodoItemMeta({
             <AlertCircleIcon width={16} height={16} className="mx-1" />
           }
         >
-          Expires{" "}
-          {formatDistanceToNow(new Date(todo.expires_at), {
-            addSuffix: true,
-          })}
+          Expires {expiresLabel}
         </Chip>
       )}
 
@@ -132,6 +141,20 @@ export function TodoItemMeta({
           startContent={<AiBrainIcon width={14} height={14} className="mx-1" />}
         >
           Tracked
+        </Chip>
+      )}
+
+      {todo.sub_todo_count > 0 && (
+        <Chip
+          className="flex items-center text-zinc-400 px-1"
+          size="sm"
+          radius="sm"
+          variant="flat"
+          startContent={
+            <TaskDone01Icon width={15} height={15} className="mx-1" />
+          }
+        >
+          {todo.sub_todo_count} sub-todos
         </Chip>
       )}
 
@@ -184,4 +207,4 @@ export function TodoItemMeta({
       )}
     </div>
   );
-}
+});

@@ -91,6 +91,23 @@ def _third_party_name_matchers() -> tuple[tuple[Subagent, re.Pattern[str]], ...]
 _COMMON_WORD_PROVIDER_IDS: frozenset[str] = frozenset({"slack", "linear", "notion"})
 
 
+def providers_named_in(text: str) -> list[Subagent]:
+    """Every third-party provider text names, in manifest order.
+
+    Ids in _COMMON_WORD_PROVIDER_IDS count only when capitalized, since their
+    lowercase form reads as ordinary prose.
+    """
+    named: list[Subagent] = []
+    for sa, pattern in _third_party_name_matchers():
+        match = pattern.search(text)
+        if match is None:
+            continue
+        if sa.id in _COMMON_WORD_PROVIDER_IDS and match.group(0).islower():
+            continue
+        named.append(sa)
+    return named
+
+
 def foreign_provider_named_in(text: str, target_id: str) -> Subagent | None:
     """Return the third-party provider text names that is not target_id, if any.
 
@@ -98,16 +115,7 @@ def foreign_provider_named_in(text: str, target_id: str) -> Subagent | None:
     with work it never did (eight GAIA todos once reached the user as "8 tasks
     created (Todoist)"). Ids in _COMMON_WORD_PROVIDER_IDS flag only when capitalized.
     """
-    for sa, pattern in _third_party_name_matchers():
-        if sa.id == target_id:
-            continue
-        match = pattern.search(text)
-        if match is None:
-            continue
-        if sa.id in _COMMON_WORD_PROVIDER_IDS and match.group(0).islower():
-            continue
-        return sa
-    return None
+    return next((sa for sa in providers_named_in(text) if sa.id != target_id), None)
 
 
 @cache

@@ -15,12 +15,14 @@ from app.agents.core.background import todo_run_delivery as trd
 from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
 from app.agents.core.background.todo_run_delivery import deliver_todo_run_result
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
+from app.constants import todos as todo_constants
 from app.constants.log_tags import LogTag
-from app.constants.todos import DELIVERY_KEY_DETAILS_MAX_CHARS, TodoActivityEvent
+from app.constants.todos import TodoActivityEvent
 from app.models.chat_models import ConversationSource
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
+from app.services.tracked_todo_service import CANVAS_TEMPLATE
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
@@ -187,29 +189,77 @@ class TestTheWideEventSaysWhatHappened:
         assert (error["todo_id"], error["emoji"]) == ("todo-1", "👍")
 
 
-class TestTheDecisionSeesTheStandingRequests:
-    async def test_key_details_reach_the_write_up_bounded(self) -> None:
-        long_details = "- Tell me every time.\n" + "x" * DELIVERY_KEY_DETAILS_MAX_CHARS
-        todo = _todo(canvas_content=f"## Key Details\n{long_details}\n\n## Current State\n- ok\n")
+class TestTheDecisionSeesTheStandingRules:
+    async def test_the_standing_rules_reach_the_write_up_bounded(self) -> None:
+        long_rules = (
+            "- 2026-09-28: tell me every time.\n" + "x" * todo_constants.STANDING_RULES_MAX_CHARS
+        )
+        todo = _todo(
+            canvas_content=f"## Standing rules\n{long_rules}\n\n## Key Details\n- thread abc\n"
+        )
         with _seams(todo=todo) as seams:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", long_details[:DELIVERY_KEY_DETAILS_MAX_CHARS]
+            "Watch the deploy",
+            long_rules[: todo_constants.STANDING_RULES_MAX_CHARS],
+            "- thread abc",
         )
 
-    async def test_a_todo_without_key_details_gets_the_rules_alone(self) -> None:
+    async def test_key_details_reach_the_write_up_as_details_not_rules(self) -> None:
+        todo = _todo(canvas_content="## Standing rules\n\n## Key Details\n- thread abc\n")
+        with _seams(todo=todo) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
+            "Watch the deploy", None, "- thread abc"
+        )
+
+    @pytest.mark.regression
+    async def test_a_request_an_older_todo_kept_in_key_details_still_reaches_the_write_up(
+        self,
+    ) -> None:
+        details = "- tell me every time.\n" + "x" * todo_constants.DELIVERY_KEY_DETAILS_MAX_CHARS
+        todo = _todo(canvas_content=f"## Key Details\n{details}\n\n## Current State\n- ok\n")
+        with _seams(todo=todo) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
+            "Watch the deploy", None, details[: todo_constants.DELIVERY_KEY_DETAILS_MAX_CHARS]
+        )
+
+    @pytest.mark.regression
+    async def test_a_new_todo_template_carries_no_rules(self) -> None:
+        todo = _todo(canvas_content=CANVAS_TEMPLATE.format(title="Watch the deploy"))
+        with _seams(todo=todo) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
+            "Watch the deploy", None, None
+        )
+
+    @pytest.mark.regression
+    async def test_a_title_cased_heading_still_reaches_the_write_up(self) -> None:
+        todo = _todo(canvas_content="## Standing Rules\n- 2026-09-28: tell me every time.\n")
+        with _seams(todo=todo) as seams:
+            await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
+
+        assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
+            "Watch the deploy", "- 2026-09-28: tell me every time.", None
+        )
+
+    async def test_a_todo_without_standing_rules_gets_the_defaults_alone(self) -> None:
         with _seams(todo=_todo(canvas_content="## Current State\n- ok\n")) as seams:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", None
+            "Watch the deploy", None, None
         )
 
-    async def test_a_todo_with_no_canvas_gets_the_rules_alone(self) -> None:
+    async def test_a_todo_with_no_canvas_gets_the_defaults_alone(self) -> None:
         with _seams(todo=_todo(canvas_content=None)) as seams:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy", None
+            "Watch the deploy", None, None
         )

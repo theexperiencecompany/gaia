@@ -4,6 +4,7 @@ Integration tools (Composio require_integration categories, MCP tools, catalog
 slugs) come back as schema docs and are NOT bound; internal tools still bind.
 """
 
+from collections.abc import Iterator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -27,6 +28,15 @@ pytestmark = pytest.mark.usefixtures("no_observed_tool_shapes")
 
 MODULE = "app.agents.tools.core.retrieval"
 CONFIG: dict[str, Any] = {"configurable": {"user_id": "u1"}}
+# The connection-status seam every integration check reads through.
+STATUS = "app.services.oauth.oauth_service.get_all_integrations_status"
+
+
+@pytest.fixture(autouse=True)
+def _integrations_connected() -> Iterator[AsyncMock]:
+    """Every integration these tests name is connected unless a test says otherwise."""
+    with patch(STATUS, new=AsyncMock(return_value={"gmail": True, "asana": True})) as status:
+        yield status
 
 
 class _GmailSendArgs(BaseModel):
@@ -295,6 +305,7 @@ class TestProxiedResolutionIsPerUser:
             "tools_bound": 1,
             "tools_proxied": 1,
             "tools_filtered": 1,
+            "tools_not_connected": 0,
         }
 
 
@@ -382,3 +393,93 @@ class TestRenderPreloadBlockContract:
             "retrieve_tools: proxied tool vanished between validation and doc rendering"
         )
         assert warning["tool_name"] == "GMAIL_GHOST"
+
+
+def _calendar_tool() -> StructuredTool:
+    return StructuredTool.from_function(
+        func=lambda **kwargs: None,
+        name="GOOGLECALENDAR_EVENTS_LIST",
+        description="List events.",
+        args_schema=_GmailSendArgs,
+    )
+
+
+@pytest.mark.unit
+class TestUnconnectedIntegrationBinding:
+    """An unconnected integration's tools come back as one definitive not-connected line.
+
+    Live, retrieve_tools rescued an unconnected Google Calendar's catalog schemas
+    as runnable (or reported them "Not found" and sent the model back to query
+    search), and the executor looped exact -> query -> exact through 21 calls
+    until the recursion limit.
+    """
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("tool_name", "integration_id", "integration_name", "tool"),
+        [
+            # A catalog slug the registry never materialized: rescued before the fix.
+            ("GOOGLECALENDAR_EVENTS_LIST", "googlecalendar", "Google Calendar", _calendar_tool()),
+            # A registered integration tool: rendered as a runnable schema before the fix.
+            ("GMAIL_SEND_EMAIL", "gmail", "Gmail", _gmail_tool()),
+        ],
+    )
+    async def test_an_unconnected_integration_offers_no_schema_and_names_the_next_step(
+        self,
+        _integrations_connected: AsyncMock,
+        tool_name: str,
+        integration_id: str,
+        integration_name: str,
+        tool: StructuredTool,
+    ) -> None:
+        _integrations_connected.return_value = {integration_id: False}
+        resolver = AsyncMock(return_value=ResolvedTool(tool_name, tool, True))
+
+        result = await _bind([tool_name], resolver)
+
+        text = result["response_text"]
+        assert result["tools_to_bind"] == []
+        assert tool_name not in result["response"]
+        assert f"## {tool_name}" not in text
+        assert "execute(" not in text
+        assert f"{integration_name} needs to be connected" in text
+        assert f'activate_integration(integration_id="{integration_id}")' in text
+        # The redirect to query search is what kept the loop going.
+        assert "retrieve_tools(query=" not in text
+        resolver.assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_a_background_run_is_told_to_report_it_and_carry_on(
+        self, _integrations_connected: AsyncMock
+    ) -> None:
+        _integrations_connected.return_value = {"googlecalendar": False}
+        resolver = AsyncMock(return_value=None)
+        config = {"configurable": {"user_id": "u1", "execution_mode": "background"}}
+
+        text = (await _bind(["GOOGLECALENDAR_EVENTS_LIST"], resolver, config))["response_text"]
+
+        assert "Google Calendar needs to be connected" in text
+        assert "no user is present" in text
+        assert "carry on with the rest of the task" in text
+        assert "activate_integration" not in text
+        assert "retrieve_tools(query=" not in text
+
+    async def test_one_line_names_every_requested_tool_of_the_unconnected_integration(
+        self, _integrations_connected: AsyncMock
+    ) -> None:
+        _integrations_connected.return_value = {"googlecalendar": False}
+        names = ["GOOGLECALENDAR_EVENTS_LIST", "GOOGLECALENDAR_CREATE_EVENT"]
+
+        text = (await _bind(names, AsyncMock(return_value=None)))["response_text"]
+
+        assert (
+            "Google Calendar needs to be connected: none of its tools "
+            "(GOOGLECALENDAR_EVENTS_LIST, GOOGLECALENDAR_CREATE_EVENT) can run" in text
+        )
+        assert text.count("Google Calendar needs to be connected") == 1
+
+    async def test_a_connected_integration_still_renders_its_schema(self) -> None:
+        resolver = AsyncMock(return_value=ResolvedTool("GMAIL_SEND_EMAIL", _gmail_tool(), True))
+        text = (await _bind(["GMAIL_SEND_EMAIL"], resolver))["response_text"]
+        assert "## GMAIL_SEND_EMAIL" in text
+        assert "needs to be connected" not in text

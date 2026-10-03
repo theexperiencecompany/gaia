@@ -18,6 +18,7 @@ from langchain.agents.middleware.types import ToolCallRequest
 from langchain.tools import ToolRuntime
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
+import pytest
 
 from app.agents.middleware.loop_guard import _UNKNOWN_RUN, LoopGuardMiddleware, _RunCounters
 from app.constants.agents import TOOL_RESULT_NOTE_SEPARATOR
@@ -30,6 +31,7 @@ from app.constants.llm import (
     LOOP_GUARD_WARN_SAME_TOOL,
 )
 from app.constants.log_tags import LogTag
+from app.models.agent_models import runtime_configurable
 from shared.py.wide_events import log
 
 
@@ -51,8 +53,16 @@ def _request(
     args: dict[str, Any] | None = None,
     call_id: str = "call-1",
     thread_id: str | None = "thread-1",
+    root_request_id: str | None = None,
+    execution_mode: str | None = None,
 ) -> ToolCallRequest:
-    configurable = {"thread_id": thread_id} if thread_id is not None else {}
+    configurable: dict[str, str] = {}
+    if thread_id is not None:
+        configurable["thread_id"] = thread_id
+    if root_request_id is not None:
+        configurable["root_request_id"] = root_request_id
+    if execution_mode is not None:
+        configurable["execution_mode"] = execution_mode
     return ToolCallRequest(
         tool_call={"name": name, "args": args if args is not None else {"q": "x"}, "id": call_id},
         tool=None,
@@ -215,7 +225,7 @@ async def test_a_successful_tool_message_never_feeds_the_counters() -> None:
     for _ in range(LOOP_GUARD_STOP_SAME_TOOL + 5):
         await _wrap(mw, _request(), _succeeding())
 
-    counters = mw._runs["thread-1"]
+    counters = mw._runs[("thread-1", _UNKNOWN_RUN)]
     assert counters.per_tool == {} and counters.identical == {}
 
 
@@ -230,7 +240,7 @@ async def test_warn_only_mode_never_blocks_execution() -> None:
         executed += 1
         return ToolMessage(content="boom", tool_call_id="call-1", name="search", status="error")
 
-    mw = LoopGuardMiddleware(hard_stop=False)
+    mw = LoopGuardMiddleware()
     total = LOOP_GUARD_STOP_IDENTICAL + LOOP_GUARD_STOP_SAME_TOOL + 3
     for _ in range(total):
         result = await _wrap(mw, _request(), handler)
@@ -246,8 +256,11 @@ async def test_hard_stop_blocks_the_call_after_the_identical_limit() -> None:
         executed += 1
         return ToolMessage(content="boom", tool_call_id="call-1", name="search", status="error")
 
-    mw = LoopGuardMiddleware(hard_stop=True)
-    results = [await _wrap(mw, _request(), handler) for _ in range(LOOP_GUARD_STOP_IDENTICAL + 1)]
+    mw = LoopGuardMiddleware()
+    results = [
+        await _wrap(mw, _request(execution_mode="background"), handler)
+        for _ in range(LOOP_GUARD_STOP_IDENTICAL + 1)
+    ]
 
     assert executed == LOOP_GUARD_STOP_IDENTICAL  # the last call never reached the tool
     for result in results[:-1]:
@@ -268,11 +281,11 @@ async def test_hard_stop_blocks_the_call_after_the_same_tool_limit() -> None:
         executed += 1
         return ToolMessage(content="boom", tool_call_id="call-1", name="search", status="error")
 
-    mw = LoopGuardMiddleware(hard_stop=True)
+    mw = LoopGuardMiddleware()
     # Fresh args each call keeps the identical tally at 1 so only the same-tool
     # limit can be the thing that trips.
     results = [
-        await _wrap(mw, _request(args={"q": str(i)}), handler)
+        await _wrap(mw, _request(execution_mode="background", args={"q": str(i)}), handler)
         for i in range(LOOP_GUARD_STOP_SAME_TOOL + 1)
     ]
 
@@ -284,46 +297,64 @@ async def test_hard_stop_blocks_the_call_after_the_same_tool_limit() -> None:
 
 
 async def test_hard_stop_leaves_a_healthy_tool_alone() -> None:
-    mw = LoopGuardMiddleware(hard_stop=True)
+    mw = LoopGuardMiddleware()
     # Fresh arguments each call: a tool doing real work is never blocked, however
     # often it runs. Re-issuing the SAME call is the loop the repeat guard exists
     # to catch, and is covered separately.
     for i in range(LOOP_GUARD_STOP_SAME_TOOL + 5):
-        result = await _wrap(mw, _request(args={"q": str(i)}), _succeeding())
+        result = await _wrap(
+            mw, _request(execution_mode="background", args={"q": str(i)}), _succeeding()
+        )
         assert result.content == "ok"
 
 
 async def test_hard_stop_keeps_blocking_while_the_model_retries() -> None:
-    mw = LoopGuardMiddleware(hard_stop=True)
+    mw = LoopGuardMiddleware()
     for _ in range(LOOP_GUARD_STOP_IDENTICAL):
-        await _wrap(mw, _request(), _failing())
+        await _wrap(mw, _request(execution_mode="background"), _failing())
 
     for _ in range(3):
-        blocked = await _wrap(mw, _request(), _failing())
+        blocked = await _wrap(mw, _request(execution_mode="background"), _failing())
         assert blocked.additional_kwargs["loop_guard_stopped"] is True
 
 
 async def test_hard_stop_never_blocks_a_different_tool() -> None:
-    mw = LoopGuardMiddleware(hard_stop=True)
+    mw = LoopGuardMiddleware()
     for _ in range(LOOP_GUARD_STOP_IDENTICAL):
-        await _wrap(mw, _request(name="broken"), _failing(name="broken"))
+        await _wrap(
+            mw, _request(execution_mode="background", name="broken"), _failing(name="broken")
+        )
 
-    healthy = await _wrap(mw, _request(name="healthy"), _succeeding(name="healthy"))
+    healthy = await _wrap(
+        mw, _request(execution_mode="background", name="healthy"), _succeeding(name="healthy")
+    )
     assert healthy.content == "ok"
 
 
-async def test_a_success_elsewhere_reopens_a_hard_stopped_tool() -> None:
-    # The consecutive streak is global, not per tool: any successful call clears
-    # it, so the identical hard stop lifts even for an unrelated tool. Only the
-    # same-tool tally survives, and it is the thing that eventually stops it.
-    mw = LoopGuardMiddleware(hard_stop=True)
-    for _ in range(LOOP_GUARD_STOP_IDENTICAL):
-        await _wrap(mw, _request(name="broken"), _failing(name="broken"))
-    await _wrap(mw, _request(name="healthy"), _succeeding(name="healthy"))
+async def test_a_success_elsewhere_lifts_the_failure_stop_but_not_the_repeat_stop() -> None:
+    # Any success clears the consecutive failure streak, so the identical-failure
+    # stop lifts; the per-run repeat count, which interleaving cannot reset, stops it.
+    executed = 0
 
-    reopened = await _wrap(mw, _request(name="broken"), _failing(name="broken"))
-    assert "loop_guard_stopped" not in reopened.additional_kwargs
-    assert mw._runs["thread-1"].per_tool["broken"] == LOOP_GUARD_STOP_IDENTICAL + 1
+    async def broken(_request: ToolCallRequest) -> ToolMessage:
+        nonlocal executed
+        executed += 1
+        return ToolMessage(content="boom", tool_call_id="call-1", name="broken", status="error")
+
+    mw = LoopGuardMiddleware()
+    for _ in range(LOOP_GUARD_STOP_IDENTICAL):
+        await _wrap(mw, _request(execution_mode="background", name="broken"), broken)
+    await _wrap(
+        mw, _request(execution_mode="background", name="healthy"), _succeeding(name="healthy")
+    )
+    for _ in range(LOOP_GUARD_STOP_IDENTICAL + 1, LOOP_GUARD_STOP_REPEAT):
+        reopened = await _wrap(mw, _request(execution_mode="background", name="broken"), broken)
+        assert "loop_guard_stopped" not in reopened.additional_kwargs
+
+    blocked = await _wrap(mw, _request(execution_mode="background", name="broken"), broken)
+    assert blocked.additional_kwargs["loop_guard_stopped"] is True
+    assert f"called {LOOP_GUARD_STOP_REPEAT} times this run" in blocked.content
+    assert executed == LOOP_GUARD_STOP_REPEAT - 1
 
 
 # --- per-run isolation -------------------------------------------------------- #
@@ -335,33 +366,39 @@ async def test_counters_do_not_leak_between_threads() -> None:
     result = await _wrap(mw, _request(thread_id="thread-b"), _failing())
 
     assert "loop_guard_warned" not in result.additional_kwargs
-    assert set(mw._runs) == {"thread-a", "thread-b"}
+    assert set(mw._runs) == {("thread-a", _UNKNOWN_RUN), ("thread-b", _UNKNOWN_RUN)}
 
 
 async def test_missing_thread_id_falls_back_to_a_single_bucket() -> None:
     mw = LoopGuardMiddleware()
     await _wrap(mw, _request(thread_id=None), _failing())
-    assert list(mw._runs) == [_UNKNOWN_RUN]
+    assert list(mw._runs) == [(_UNKNOWN_RUN, _UNKNOWN_RUN)]
 
 
-async def test_thread_id_survives_a_request_without_a_runtime() -> None:
+async def test_run_key_survives_a_request_without_a_runtime() -> None:
     request = ToolCallRequest(
         tool_call={"name": "search", "args": {}, "id": "call-1"},
         tool=None,
         state={},
         runtime=None,
     )
-    assert LoopGuardMiddleware._thread_id(request) == _UNKNOWN_RUN
+    assert LoopGuardMiddleware._run_key(runtime_configurable(request)) == (
+        _UNKNOWN_RUN,
+        _UNKNOWN_RUN,
+    )
 
 
-async def test_thread_id_survives_a_non_mapping_config() -> None:
+async def test_run_key_survives_a_non_mapping_config() -> None:
     request = ToolCallRequest(
         tool_call={"name": "search", "args": {}, "id": "call-1"},
         tool=None,
         state={},
         runtime=_runtime(SimpleNamespace(configurable={"thread_id": "t"})),
     )
-    assert LoopGuardMiddleware._thread_id(request) == _UNKNOWN_RUN
+    assert LoopGuardMiddleware._run_key(runtime_configurable(request)) == (
+        _UNKNOWN_RUN,
+        _UNKNOWN_RUN,
+    )
 
 
 async def test_oldest_run_is_evicted_once_the_cap_is_passed() -> None:
@@ -369,7 +406,7 @@ async def test_oldest_run_is_evicted_once_the_cap_is_passed() -> None:
     for thread_id in ("a", "b", "c"):
         await _wrap(mw, _request(thread_id=thread_id), _failing())
 
-    assert list(mw._runs) == ["b", "c"]
+    assert list(mw._runs) == [("b", _UNKNOWN_RUN), ("c", _UNKNOWN_RUN)]
 
 
 async def test_touching_a_run_protects_it_from_eviction() -> None:
@@ -379,7 +416,10 @@ async def test_touching_a_run_protects_it_from_eviction() -> None:
     await _wrap(mw, _request(thread_id="a"), _failing())  # refreshes "a"
     await _wrap(mw, _request(thread_id="c"), _failing())
 
-    assert list(mw._runs) == ["a", "c"]  # "b" was the least recently used
+    assert list(mw._runs) == [
+        ("a", _UNKNOWN_RUN),
+        ("c", _UNKNOWN_RUN),
+    ]  # "b" was least recently used
 
 
 async def test_evicting_a_run_forgets_its_tally() -> None:
@@ -400,9 +440,9 @@ async def test_attribute_style_tool_call_is_read_correctly() -> None:
         tool_call=cast(Any, tool_call),
         tool=None,
         state={},
-        runtime=_runtime({"configurable": {"thread_id": "t"}}),
+        runtime=_runtime({"configurable": {"thread_id": "t", "execution_mode": "background"}}),
     )
-    mw = LoopGuardMiddleware(hard_stop=True)
+    mw = LoopGuardMiddleware()
     for _ in range(LOOP_GUARD_STOP_IDENTICAL):
         await _wrap(mw, request, _failing(name="objtool"))
     blocked = await _wrap(mw, request, _failing(name="objtool"))
@@ -477,7 +517,7 @@ def test_note_appending_stringifies_unexpected_content() -> None:
 
 
 def test_no_hard_stop_message_below_both_limits() -> None:
-    mw = LoopGuardMiddleware(hard_stop=True)
+    mw = LoopGuardMiddleware()
     assert (
         mw._hard_stop_message(
             "search", "1", LOOP_GUARD_STOP_IDENTICAL - 1, LOOP_GUARD_STOP_SAME_TOOL - 1
@@ -501,8 +541,7 @@ def test_fresh_run_counters_start_empty() -> None:
     assert counters.identical == {}
     assert counters.per_tool == {}
     assert counters.last_failure_key is None
-    assert counters.last_call_key is None
-    assert counters.repeat == 0
+    assert counters.calls == {}
 
 
 # --- repeat detection: identical calls regardless of outcome ------------------ #
@@ -514,7 +553,7 @@ async def test_identical_successful_calls_are_warned_at_the_repeat_threshold() -
     results = [await _wrap(mw, _request(), _succeeding()) for _ in range(LOOP_GUARD_WARN_REPEAT)]
 
     assert "[Loop guard:" not in results[0].content
-    assert f"called {LOOP_GUARD_WARN_REPEAT} times in a row" in results[-1].content
+    assert f"called {LOOP_GUARD_WARN_REPEAT} times this run" in results[-1].content
     # The note rides after the separator the record reads through, so the
     # result stays a JSON document to everything that parses it.
     assert results[-1].content.startswith("ok" + TOOL_RESULT_NOTE_SEPARATOR)
@@ -536,8 +575,11 @@ async def test_hard_stop_blocks_a_repeated_successful_call_without_executing() -
         executed += 1
         return ToolMessage(content="ok", tool_call_id="call-1", name="search")
 
-    mw = LoopGuardMiddleware(hard_stop=True)
-    results = [await _wrap(mw, _request(), handler) for _ in range(LOOP_GUARD_STOP_REPEAT)]
+    mw = LoopGuardMiddleware()
+    results = [
+        await _wrap(mw, _request(execution_mode="background"), handler)
+        for _ in range(LOOP_GUARD_STOP_REPEAT)
+    ]
 
     assert executed == LOOP_GUARD_STOP_REPEAT - 1  # the last call never reached the tool
     blocked = results[-1]
@@ -559,14 +601,15 @@ async def test_the_repeat_streak_is_per_thread() -> None:
 async def test_the_repeat_block_spells_out_the_count_the_limit_and_the_way_out() -> None:
     """Asserted verbatim: a message could still contain "Loop guard" while dropping the count, limit, or instruction the model needs."""
     log.reset()
-    mw = LoopGuardMiddleware(hard_stop=True)
-    blocked = [await _wrap(mw, _request(), _succeeding()) for _ in range(LOOP_GUARD_STOP_REPEAT)][
-        -1
-    ]
+    mw = LoopGuardMiddleware()
+    blocked = [
+        await _wrap(mw, _request(execution_mode="background"), _succeeding())
+        for _ in range(LOOP_GUARD_STOP_REPEAT)
+    ][-1]
 
     assert blocked.content == (
         "[Loop guard] Blocked without executing: `search` has already been "
-        f"called {LOOP_GUARD_STOP_REPEAT} times in a row with identical arguments (limit "
+        f"called {LOOP_GUARD_STOP_REPEAT} times this run with identical arguments (limit "
         f"{LOOP_GUARD_STOP_REPEAT}). Re-running it will return the same result — "
         "reuse the earlier result, or if the task is done, stop and report it."
     )
@@ -577,9 +620,9 @@ async def test_a_repeat_block_is_reported_with_the_tool_and_the_streak() -> None
     # The wide event is the only trace a call was refused; without the tool name
     # and the streak an operator cannot tell which tool the guard is capping.
     log.reset()
-    mw = LoopGuardMiddleware(hard_stop=True)
+    mw = LoopGuardMiddleware()
     for _ in range(LOOP_GUARD_STOP_REPEAT):
-        await _wrap(mw, _request(), _succeeding())
+        await _wrap(mw, _request(execution_mode="background"), _succeeding())
 
     blocks = _warnings("Loop guard hard-stopped tool — redundant duplicate call not executed")
     assert len(blocks) == 1
@@ -594,7 +637,7 @@ async def test_the_repeat_warning_note_is_appended_verbatim() -> None:
 
     assert warned.content == (
         "ok"
-        f"\n\n[Loop guard: `search` has now been called {LOOP_GUARD_WARN_REPEAT} times in a row "
+        f"\n\n[Loop guard: `search` has now been called {LOOP_GUARD_WARN_REPEAT} times this run "
         "with identical arguments. The result won't change — reuse the earlier result "
         "and move on instead of repeating this call.]"
     )
@@ -607,10 +650,88 @@ async def test_the_repeat_warning_note_is_appended_verbatim() -> None:
 
 async def test_an_identical_failing_run_reports_the_failure_stop_not_the_repeat_one() -> None:
     """Both counters trip on the same call; the specific diagnosis has to win."""
-    mw = LoopGuardMiddleware(hard_stop=True)
+    mw = LoopGuardMiddleware()
     results = [
-        await _wrap(mw, _request(), _failing()) for _ in range(LOOP_GUARD_STOP_IDENTICAL + 1)
+        await _wrap(mw, _request(execution_mode="background"), _failing())
+        for _ in range(LOOP_GUARD_STOP_IDENTICAL + 1)
     ]
 
     blocked = results[-1]
     assert f"already failed {LOOP_GUARD_STOP_IDENTICAL} times" in blocked.content
+
+
+# --- per-run repeat counting and per-call hard stop ----------------------------- #
+# Live: one retrieve_tools query 14 times, interleaved, to the recursion limit — a
+# consecutive-only count reset each time, and the build-time hard stop was off.
+
+
+@pytest.mark.regression
+async def test_interleaved_identical_calls_still_trip_the_repeat_warning() -> None:
+    mw = LoopGuardMiddleware()
+    results: list[ToolMessage] = []
+    for _ in range(LOOP_GUARD_WARN_REPEAT):
+        results.append(await _wrap(mw, _request(args={"q": "same"}), _succeeding()))
+        await _wrap(mw, _request(args={"q": "other"}), _succeeding())
+
+    assert "[Loop guard:" not in results[-2].content
+    assert f"called {LOOP_GUARD_WARN_REPEAT} times this run" in results[-1].content
+
+
+@pytest.mark.regression
+async def test_a_background_run_hard_stops_an_interleaved_repeat() -> None:
+    executed = 0
+
+    async def handler(_request: ToolCallRequest) -> ToolMessage:
+        nonlocal executed
+        executed += 1
+        return ToolMessage(content="ok", tool_call_id="call-1", name="search")
+
+    mw = LoopGuardMiddleware()
+    results: list[ToolMessage] = []
+    for _ in range(LOOP_GUARD_STOP_REPEAT):
+        results.append(
+            await _wrap(mw, _request(args={"q": "same"}, execution_mode="background"), handler)
+        )
+        await _wrap(mw, _request(args={"q": "other"}), _succeeding())
+
+    assert executed == LOOP_GUARD_STOP_REPEAT - 1  # the last repeat never reached the tool
+    assert results[-1].additional_kwargs["loop_guard_stopped"] is True
+    assert f"limit {LOOP_GUARD_STOP_REPEAT}" in results[-1].content
+
+
+@pytest.mark.regression
+async def test_a_background_run_hard_stops_identical_failures() -> None:
+    mw = LoopGuardMiddleware()
+    results = await _run(mw, LOOP_GUARD_STOP_IDENTICAL + 1, execution_mode="background")
+
+    assert results[-1].additional_kwargs["loop_guard_stopped"] is True
+    assert f"already failed {LOOP_GUARD_STOP_IDENTICAL} times" in results[-1].content
+
+
+async def test_an_interactive_run_only_ever_warns() -> None:
+    executed = 0
+
+    async def handler(_request: ToolCallRequest) -> ToolMessage:
+        nonlocal executed
+        executed += 1
+        return ToolMessage(content="ok", tool_call_id="call-1", name="search")
+
+    mw = LoopGuardMiddleware()
+    total = LOOP_GUARD_STOP_REPEAT + 3
+    for _ in range(total):
+        result = await _wrap(mw, _request(execution_mode="interactive"), handler)
+        assert "loop_guard_stopped" not in result.additional_kwargs
+    assert executed == total
+    assert result.additional_kwargs["loop_guard_warned"] is True
+
+
+@pytest.mark.regression
+async def test_repeats_do_not_carry_over_between_runs_of_one_thread() -> None:
+    # The executor keeps one thread per conversation, so each turn (and each
+    # scheduled run) is a new root request on the same thread. Counting across
+    # them would warn — and in the background, block — a call made once per run.
+    mw = LoopGuardMiddleware()
+    for run in ("turn-1", "turn-2"):
+        for _ in range(LOOP_GUARD_WARN_REPEAT - 1):
+            result = await _wrap(mw, _request(root_request_id=run), _succeeding())
+            assert "[Loop guard:" not in result.content
