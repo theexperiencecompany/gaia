@@ -15,6 +15,7 @@ token crypto + budget enforcement + dispatch + audit. Doubled: Cloudinary
 from __future__ import annotations
 
 from pathlib import Path
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from urllib.parse import parse_qs, urlsplit
@@ -26,6 +27,7 @@ import pytest
 from app.agents.tools.execute.dispatch import ToolExecutionResult
 from app.api.v1.endpoints.sandbox_execute import SandboxExecuteRequest, sandbox_execute
 from app.config.settings import settings
+from app.constants.execute import SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN
 from app.services.sandbox import execute_token
 from app.services.sandbox.execute_token import mint_execute_token
 from app.services.share_service import mint_share_url, redeem_share_grant
@@ -139,8 +141,6 @@ class TestShareMintRedeemRoundtrip:
     async def test_expired_grant_is_none(
         self, _share_secret: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import time as _time
-
         host = tmp_path / "a.txt"
         host.write_bytes(b"x")
         with patch(f"{SHARE_MODULE}.resolve_user_file_sync", return_value=host):
@@ -148,7 +148,7 @@ class TestShareMintRedeemRoundtrip:
         token = _token_of(url)
         with (
             patch(f"{SHARE_MODULE}.read_user_file_bytes", AsyncMock(return_value=b"x")),
-            patch(f"{SHARE_MODULE}.time.time", return_value=_time.time() + 3600),
+            patch(f"{SHARE_MODULE}.time.time", return_value=time.time() + 3600),
         ):
             assert await redeem_share_grant(token) is None
 
@@ -171,7 +171,6 @@ class TestSandboxTokenBudgetChain:
         """Unit tests faked the counts; here a key mismatch between increment and limit would show."""
         token = mint_execute_token("u1", "run-1", scoped_tool_names=None, ttl_seconds=600)
         auth = f"Bearer {token}"
-        from app.constants.execute import SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN
 
         with patch(f"{SANDBOX_MODULE}.dispatch_tool", new=self._ok_dispatch()):
             response = await sandbox_execute(self._payload(), authorization=auth)
@@ -194,8 +193,6 @@ class TestSandboxTokenBudgetChain:
         _frozen_minute: None,
         fake_redis: fakeredis.aioredis.FakeRedis,
     ) -> None:
-        from app.constants.execute import SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN
-
         good = mint_execute_token("u1", "run-1", scoped_tool_names=None, ttl_seconds=600)
         other = mint_execute_token("u1", "run-2", scoped_tool_names=None, ttl_seconds=600)
         await fake_redis.set("sandbox_execute:calls:run-1", SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN)

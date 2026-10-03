@@ -24,6 +24,7 @@ import pytest
 from app.api.v1.endpoints import mcp as mcp_endpoint
 from app.models.chat_models import MessageModel
 from app.models.conversation_models import ConversationDescriptionHit
+from app.models.integration_models import Integration
 from app.services.integrations import marketplace
 from app.services.search_service import search_messages
 from app.utils.search.engine import SearchEngine
@@ -239,11 +240,19 @@ class TestMcpConnectionMatrix:
 
 class TestMarketplaceCatalog:
     async def test_static_catalog_lists_with_custom_merged(self) -> None:
+        custom = Integration(
+            integration_id="custom-acme",
+            name="Acme",
+            description="Custom acme integration",
+            category="developer",
+            managed_by="mcp",
+            is_public=True,
+        )
         with (
             patch(f"{MARKETPLACE}.get_all_mcp_tools", AsyncMock(return_value={})),
             patch(
                 f"{MARKETPLACE}.integration_repository.list_public_custom",
-                AsyncMock(return_value=[]),
+                AsyncMock(return_value=[custom]),
             ),
         ):
             listing = await marketplace.get_all_integrations()
@@ -251,6 +260,7 @@ class TestMarketplaceCatalog:
         assert listing.total > 0
         assert listing.total == len(listing.integrations)
         assert all(i.integration_id and i.name for i in listing.integrations)
+        assert "custom-acme" in {i.integration_id for i in listing.integrations}
 
     async def test_details_roundtrip_for_a_listed_id(self) -> None:
         with (

@@ -166,9 +166,9 @@ class TestStaticReminderFiresEndToEnd:
 
 
 class TestLapsedSubscriptionSkipsButRearms:
-    async def test_unpaid_fire_skips_delivery_and_stays_completed(self) -> None:
+    async def test_unpaid_recurring_fire_skips_delivery_and_rearms(self) -> None:
         """The gate skips without writing PAUSED, so recurring reminders re-arm on resume."""
-        reminder = _make_reminder()
+        reminder = _make_reminder(repeat="0 9 * * *")
         store = _MemoryReminderStore(reminder)
         repo_patchers, _ = _patch_repo(store)
         edge_patchers, (_, _, conv_m, plat_m) = _patch_delivery_edges(paid=False)
@@ -188,5 +188,6 @@ class TestLapsedSubscriptionSkipsButRearms:
         create_notification.assert_not_awaited()
         conv_m.assert_not_awaited()
         plat_m.assert_not_awaited()
-        assert store.statuses == [ScheduledTaskStatus.COMPLETED]
+        # Re-armed for the next occurrence, not completed away.
+        assert store.statuses == [ScheduledTaskStatus.SCHEDULED]
         assert capture.call_count >= 1

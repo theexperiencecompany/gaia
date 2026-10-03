@@ -149,10 +149,16 @@ class TestLapsedUserSeesThePaywallContract:
                 new_callable=AsyncMock,
                 return_value=_free_status(),
             ),
+            patch(
+                "app.services.payments.payment_service.payment_service.get_plans",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
         ):
             response = await gated_client.get("/api/v1/payments/plans")
 
-        assert response.status_code != 402, response.json()
+        assert response.status_code == 200
+        assert response.json() == []
 
 
 class TestUnreadablePlanIsRetryableNotRefusal:

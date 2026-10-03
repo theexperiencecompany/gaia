@@ -13,9 +13,10 @@ test.describe("todos", () => {
     await page.goto("/todos");
 
     for (let i = 1; i <= SEED_TODOS; i += 1) {
-      await expect(
-        page.getByText(`Sample todo ${i}`, { exact: true }).first(),
-      ).toBeVisible();
+      const item = page.getByText(`Sample todo ${i}`, { exact: true }).first();
+      // The list virtualizes: items beyond the viewport only mount on scroll.
+      await item.scrollIntoViewIfNeeded();
+      await expect(item).toBeVisible();
     }
     // Smoke already covers the anchor; this pins the count.
     expect(FIRST_SEEDED_TODO).toBe("Sample todo 1");

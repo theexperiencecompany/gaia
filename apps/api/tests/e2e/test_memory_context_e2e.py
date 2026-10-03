@@ -14,6 +14,7 @@ Postgres / the reconcile LLM behind reconcile.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 import uuid
@@ -92,8 +93,6 @@ class TestMemoryReachesThePrompt:
 
     async def test_core_is_fetched_once_for_both_sections(self) -> None:
         """Without the singleflight every concurrent section pays its own core read."""
-        import asyncio
-
         engine = _engine_double()
         with patch(FETCHERS_ENGINE, engine):
             ctx = _ctx()

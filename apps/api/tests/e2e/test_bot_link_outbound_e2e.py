@@ -16,11 +16,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 import json
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.constants.outbound import OUTBOUND_TTL_SECONDS_GREETING
 from app.models.chat_models import ConversationSource
 from app.models.platform_models import PlatformLinkResult
 from app.services.outbound_delivery import OutboundResult, publish_outbound_message
@@ -49,14 +49,30 @@ def _link_result(*, is_new_link: bool = True) -> PlatformLinkResult:
 
 class TestOneTapLinkDeliversFirstContact:
     async def test_first_contact_goes_out_on_the_queue(self) -> None:
-        publish = AsyncMock(return_value=OutboundResult.PUBLISHED)
+        """Only the DB write and the broker are doubled, so a broken queue name or lost destination fails."""
+        sent: list[bytes] = []
+
+        async def _capture(queue: str, body: bytes, **kwargs: Any) -> None:
+            sent.append(body)
+
+        publisher = AsyncMock()
+        publisher.publish_outbound = AsyncMock(side_effect=_capture)
         with (
             patch.object(
                 PlatformLinkService,
                 "link_account",
                 new=AsyncMock(return_value=_link_result(is_new_link=True)),
             ),
-            patch(f"{COMPLETION}.publish_outbound_message", new=publish),
+            patch(
+                "app.services.outbound_delivery.PlatformLinkService.get_linked_platforms",
+                new=AsyncMock(
+                    return_value={"telegram": {"platformUserId": PLATFORM_USER_ID}}
+                ),
+            ),
+            patch(
+                "app.services.outbound_delivery.get_rabbitmq_publisher",
+                new=AsyncMock(return_value=publisher),
+            ),
             patch(f"{COMPLETION}.notify_account_linked", new=AsyncMock()) as notify,
             patch(f"{COMPLETION}.schedule_account_sync") as sync,
             patch(f"{COMPLETION}.capture_event") as capture,
@@ -66,9 +82,10 @@ class TestOneTapLinkDeliversFirstContact:
             )
 
         assert completion.first_contact_delivered is True
-        publish.assert_awaited_once()
-        assert publish.await_args.args[2] == ["Welcome!"]
-        assert publish.await_args.kwargs["ttl_seconds"] == OUTBOUND_TTL_SECONDS_GREETING
+        assert len(sent) == 1
+        envelope = json.loads(sent[0].decode())
+        assert envelope["destination_id"] == PLATFORM_USER_ID
+        assert "Welcome!" in json.dumps(envelope)
         # First contact replaces the greeting — never both.
         notify.assert_not_awaited()
         sync.assert_called_once_with(USER_ID)

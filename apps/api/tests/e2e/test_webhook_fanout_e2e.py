@@ -16,6 +16,10 @@ downstream queues and stores the fanned-out work lands in.
 from __future__ import annotations
 
 import asyncio
+import importlib
+import inspect
+import pkgutil
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -32,6 +36,7 @@ from app.services.triggers import (
     get_handler_by_name,
     trigger_registry,
 )
+from app.services.triggers.base import TriggerHandler
 
 pytestmark = pytest.mark.e2e
 
@@ -39,7 +44,7 @@ MODULE = "app.api.v1.endpoints.webhook_composio"
 USER_ID = "user-1"
 
 
-def _event(**overrides) -> ComposioWebhookEvent:
+def _event(**overrides: Any) -> ComposioWebhookEvent:
     data = {
         "type": "GMAIL_NEW_GMAIL_MESSAGE",
         "timestamp": "2026-08-10T05:44:33Z",
@@ -62,6 +67,33 @@ class TestEveryShippedHandlerIsReachable:
             assert handler.event_types, type(handler).__name__
             for event_type in handler.event_types:
                 assert get_handler_by_event(event_type) is handler, event_type
+
+    def test_no_shipped_handler_is_missing_from_the_registry(self) -> None:
+        """A handler file that is never registered is acked into the void, so enumerate classes independently of the registry."""
+        handlers_pkg = importlib.import_module("app.services.triggers.handlers")
+
+        shipped: list[type] = []
+        for module_info in pkgutil.iter_modules(handlers_pkg.__path__):
+            module = __import__(f"{handlers_pkg.__name__}.{module_info.name}", fromlist=["*"])
+            for obj in vars(module).values():
+                if (
+                    isinstance(obj, type)
+                    and issubclass(obj, TriggerHandler)
+                    and obj is not TriggerHandler
+                    and not inspect.isabstract(obj)
+                ):
+                    shipped.append(obj)
+
+        assert shipped, "no handler classes found under handlers/"
+        for cls in shipped:
+            # Names are mandatory; events are optional (the poll strategy
+            # matches by trigger id and declares none).
+            names = getattr(cls, "SUPPORTED_TRIGGERS", [])
+            assert names, f"{cls.__name__} declares no trigger names"
+            for name in names:
+                assert get_handler_by_name(name) is not None, name
+            for event_type in getattr(cls, "SUPPORTED_EVENTS", set()):
+                assert get_handler_by_event(event_type) is not None, event_type
 
     def test_each_declared_trigger_name_resolves_to_its_handler(self) -> None:
         handlers = list({id(h): h for h in trigger_registry._name_handlers.values()}.values())
@@ -141,7 +173,7 @@ class TestExpireConnection:
     async def test_real_sleeping_handler_hits_the_real_timeout(self) -> None:
         """Without the timeout a hung queue blocks the expiry task forever."""
 
-        async def _hang(*args, **kwargs) -> None:
+        async def _hang(*args: Any, **kwargs: Any) -> None:
             await asyncio.sleep(3600)
 
         with (

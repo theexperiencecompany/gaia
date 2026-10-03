@@ -40,7 +40,7 @@ VOICE_MOD = "app.services.voice_service"
 USER_ID = "507f1f77bcf86cd799439011"
 
 
-def _account_voice(**overrides) -> ElevenLabsAccountVoice:
+def _account_voice(**overrides: object) -> ElevenLabsAccountVoice:
     data: dict[str, object] = {
         "voice_id": "v-9",
         "name": "Rachel",
@@ -52,7 +52,7 @@ def _account_voice(**overrides) -> ElevenLabsAccountVoice:
     return ElevenLabsAccountVoice(**data)
 
 
-def _shared_voice(**overrides) -> ElevenLabsSharedVoice:
+def _shared_voice(**overrides: object) -> ElevenLabsSharedVoice:
     data: dict[str, object] = {
         "voice_id": "lib-1",
         "name": "Library Voice",

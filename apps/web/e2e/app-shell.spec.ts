@@ -24,8 +24,10 @@ test.describe("app shell", () => {
     test(`${route} renders inside the authenticated shell`, async ({
       page,
     }) => {
-      await page.goto(route);
+      const response = await page.goto(route);
 
+      // HTTP-level proof: no 404/500 page can pass, regardless of content.
+      expect(response?.status(), `${route} HTTP status`).toBeLessThan(400);
       await expect(page).not.toHaveURL(/login/);
       await expect(page).not.toHaveURL(/onboarding/);
       await expect(page.locator("body")).toBeVisible();
