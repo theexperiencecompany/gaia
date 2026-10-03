@@ -26,6 +26,7 @@ import pytest
 
 from app.agents.core.background.executor_queue import is_executor_busy
 from app.constants.browser import BROWSER_HANDOFF_REPLY_PROMPT, BrowserSessionStatus, JobEnding
+from app.db.repositories.browser_tasks import browser_task_repository
 from tests.integration.real.browser._stack.fake_models import PAGE_URL, AgentStep, JevMove
 from tests.integration.real.browser._stack.fixture_site import (
     CAPTCHA_HEADING,
@@ -172,6 +173,8 @@ async def test_a_form_is_filled_with_a_secret_and_the_answer_reaches_the_user_on
     assert "/submitted-form.html?" in answer.said
     assert all(_PASSWORD not in delivery.said for delivery in dm.deliveries)
     assert dm.photos, "no step photo reached the chat"
+    # One message started one run.
+    assert len(await browser_task_repository.list_recent_for_user(user.user_id)) == 1
     # teller: the answer is told once, by the one teller.
     assert len(dm.matching(FORM_RECEIVED)) == 1, [d.said for d in dm.deliveries]
 

@@ -1,10 +1,10 @@
 """The websites a browser-stack scenario visits: two origins on loopback, every page known in advance.
 
-Origin A (``http://localhost:<port>``) holds what a task starts on: a form, a
+Origin A (http://localhost:<port>) holds what a task starts on: a form, a
 page that loads late, a link that opens a new window, nested frames and an
 iframe, a login with a cookie-checked secure page, a CAPTCHA wall, a page that
 never answers, and a signup form whose posts are logged. Origin B
-(``http://127.0.0.1:<port>``) is the other site: the iframe's document, and a
+(http://127.0.0.1:<port>) is the other site: the iframe's document, and a
 form that asks for a password the run was given for A. The two are different
 hosts, so cookies and secrets stay apart as they would on the web.
 

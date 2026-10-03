@@ -118,5 +118,8 @@ cap, a refusal that never enqueues, a note that reaches the goal, the handoff ti
 message. What a journey proves end to end gets no second unit copy, and a test pinning a
 call sequence, a poll count or a line of copy is deleted rather than maintained.
 
-A green suite is not the finish line for a browser change: the battery is. Cards, shots
-and handoffs only prove themselves against a real browser on a real platform.
+A green suite is not the finish line for a browser change: the browser stack proves the
+product's promises with scripted models, and the browser eval (`mise eval:browser`) shows
+what real models make of real sites. Run the eval for any change to what the agent or Jev
+is told or decides; a real chat on a real platform is still the last word on how cards,
+shots and handoffs read to a person.

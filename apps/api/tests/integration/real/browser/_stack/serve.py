@@ -1,7 +1,7 @@
 """Entry point of the browser stack's API and worker processes.
 
-Run as ``python -m tests.integration.real.browser._stack.serve api <port>`` or
-``... serve worker`` from apps/api, with the stack's environment. Every setting
+Run as python -m tests.integration.real.browser._stack.serve api <port> or
+... serve worker from apps/api, with the stack's environment. Every setting
 comes from that environment at import, as in production; the worker serves only
 the browser queue, since the main worker's other tasks are not on a browser
 task's path.

@@ -1,6 +1,6 @@
 """The browser stack's processes: the API, the ARQ browser worker and two browser hosts, each a real OS process.
 
-The hosts run ``python -m app.browser_host`` (one Chrome, one Obscura); the API
+The hosts run python -m app.browser_host (one Chrome, one Obscura); the API
 and the worker run serve.py. All of them run on this interpreter with the
 stack's environment: this test process's own credential-fenced environment plus
 what wires them to each other, the fake models and the fixture site. Each takes

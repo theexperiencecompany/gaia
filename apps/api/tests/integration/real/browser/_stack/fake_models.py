@@ -1,31 +1,15 @@
 """Every model a browser run calls, served by one local server and scripted per run.
 
-Four callers reach it, told apart by the request alone:
-
-* GAIA's comms and executor agents (LangChain over the custom dev lane: a
-  streamed chat-completions request with tools). They follow the inline
-  ``[[tool:...]]`` / ``[[say:...]]`` directives of tools/llm-stub, and re-voice
-  an executor or browser result handed to them verbatim, so the answer a run
-  read is the answer the user is told.
-* The Browser-Use agent (a strict json_schema request named agent_output whose
-  schema is {memory, action}).
-* Jev's text model (the same request shape whose schema is {text}), plus
-  Browser-Use's own extract call, which is answered with the page it was given.
-* GAIA's structured one-shots (memory extraction and the like: one tool, not
-  streamed), answered with the emptiest value their schema accepts: nothing to
-  remember, nothing decided.
-* Jev's decisions endpoint (/api/alpha/decisions, beside /api/v1).
-* Gemini's embeddings endpoint (GOOGLE_GEMINI_BASE_URL), which seeds the
-  ChromaDB tools store every agent graph is built on: a stable vector per text,
-  so the store fills and searches without reaching Google.
-
-The agent and Jev are scripted per run: a run is found by a marker string its
-task carries. Targets are named by their visible text and resolved to the
-element index the request itself offers, so a script can only act on what the
-real page really shows. An agent's done text can require strings it must have
-seen in the page state; a script that runs out, a target the page does not
-offer, or a required string never seen is recorded in errors and answered with
-a failure, never with a made-up success.
+Comms and the executor (streamed, with tools) follow tools/llm-stub's inline
+directives and re-voice a result handed to them word for word; a structured
+one-shot (one tool, unstreamed) gets the emptiest value its schema accepts. The
+Browser-Use agent ({memory, action}) and Jev's text model ({text}) are told apart
+by their json_schema; Jev's decisions and Gemini's embeddings (which seed the
+tools store) have their own routes. The agent and Jev are scripted per run, found
+by a marker the task carries; targets are named by visible text and resolved to
+the index the request itself offers, so a script acts only on what the real page
+shows. A script that runs out, a target the page lacks, or a required string never
+seen is recorded in errors and answered with a failure, never a made-up success.
 """
 
 from __future__ import annotations

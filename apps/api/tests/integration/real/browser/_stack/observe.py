@@ -1,6 +1,6 @@
 """What a Telegram user of the browser stack would receive: the outbound queue, read as transcripts.
 
-The API and the worker publish every bot message to ``outbound.telegram`` on
+The API and the worker publish every bot message to outbound.telegram on
 the stack's RabbitMQ vhost, as in production. The real bot is not running; this
 reads the queue in its place, without competing for it: one relay at a time
 holds an exclusive consumer and copies each message to a per-chat transcript
