@@ -1058,6 +1058,35 @@ class TestTools:
             BROWSER_AGENT_FAST_ENGINE_NOTE not in _Agent.built[-1].options["extend_system_message"]
         )
 
+    @pytest.mark.parametrize(
+        ("page", "handed"), [("https://shop.test/cart", True), ("https://ads.test/x", False)]
+    )
+    async def test_a_bot_check_goes_to_the_user_only_on_a_site_the_task_named(
+        self, harness: _Harness, page: str, handed: bool
+    ) -> None:
+        asked: list[str] = []
+
+        async def _takeover(reason: str, category: str) -> str | None:
+            asked.append(reason)
+            return None
+
+        harness.run._hooks = replace(harness.run._hooks, takeover=_takeover)
+        harness.run._config = replace(CONFIG, solve_captcha=True, start_url="https://shop.test/")
+        await harness.run.execute("buy the ticket")
+        agent = _Agent.built[-1]
+
+        async def _on_page() -> str:
+            return page
+
+        captcha = agent.options["tools"].registry.registry.actions["solve_captcha_with_help"]
+        await captcha.function(
+            params=captcha.param_model(challenge="Tick the box."),
+            browser_session=SimpleNamespace(get_current_page_url=_on_page),
+        )
+        await harness.run._on_step_end(agent)
+
+        assert asked == (["Tick the box."] if handed else [])
+
     async def test_the_agent_on_the_fast_engine_can_move_the_run_to_chrome(
         self, harness: _Harness
     ) -> None:
@@ -1297,12 +1326,13 @@ def test_what_a_run_found_is_each_page_it_read_and_its_last_note() -> None:
     read = ("extract", {"query": "price"}, ActionResult(extracted_content="Price: $12"))
     failed = ("extract", {"query": "x"}, ActionResult(error="no page", extracted_content="?"))
     clicked = ("click", {"index": 3}, ActionResult(extracted_content="Clicked Next"))
+    # A step cut short ran fewer actions than it chose.
+    cut_short = _did("Opened the shop.", read, clicked)
+    cut_short.result.pop()
     history = AgentHistoryList(
-        history=[
-            _did("Opened the shop.", read, clicked),
-            _did("Price is $12; reviews next.", failed),
-            _did(None, clicked),
-        ]
+        history=[cut_short, _did("Price is $12; reviews next.", failed), _did(None, clicked)]
     )
 
     assert found_in_history(history) == ["Price: $12", "Price is $12; reviews next."]
+    # With no note at all, only what it read.
+    assert found_in_history(AgentHistoryList(history=[_did(None, read)])) == ["Price: $12"]
