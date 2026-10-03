@@ -393,12 +393,7 @@ jobs:
           cache-to: type=gha,scope=obscura-bin,mode=min
       - name: Locate the browser binaries
         if: matrix.slice.name == 'browser'
-        run: |
-          set -euo pipefail
-          chrome="$(command -v google-chrome)" || { echo "::error::google-chrome is not on this runner"; exit 1; }
-          echo "OBSCURA_BIN=$RUNNER_TEMP/obscura/obscura" >> "$GITHUB_ENV"
-          echo "CHROMIUM_BIN=$chrome" >> "$GITHUB_ENV"
-          "$chrome" --version
+        run: bash scripts/ci/browser.sh locate
       # Only the GitHub-hosted fallback uses this: the static shares below are
       # sized for the 16-thread box and would put 7 workers on a 4-vCPU VM.
       - name: Detect parallelism

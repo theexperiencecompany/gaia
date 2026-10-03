@@ -194,5 +194,22 @@ class LLMCallsRepository(MongoRepository[LLMCallDocument, LLMCallUpdate]):
         result = await self._raw_collection().bulk_write(operations, ordered=False)
         return int(result.upserted_count)
 
+    async def token_totals_for_user(self, user_id: str) -> tuple[int, int]:
+        """Return the input and output tokens every call made for one user adds up to."""
+        cursor = self._raw_collection().aggregate(
+            [
+                {"$match": {"user_id": user_id}},
+                {
+                    "$group": {
+                        "_id": None,
+                        "input": {"$sum": "$input_tokens"},
+                        "output": {"$sum": "$output_tokens"},
+                    }
+                },
+            ]
+        )
+        totals = await cursor.to_list(length=1)
+        return (int(totals[0]["input"]), int(totals[0]["output"])) if totals else (0, 0)
+
 
 llm_calls_repository = LLMCallsRepository()

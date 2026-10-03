@@ -643,6 +643,10 @@ run = "docker compose -f apps/api/scripts/evals/infra/compose.opik.yml down -v"
 description = "Run the eval-harness smoke suite (3 toy cases; verifies rotation, journal, report)"
 run = "cd apps/api && uv run --group backend python -m scripts.evals run --suite smoke"
 
+[tasks."eval:browser"]
+description = "Run the browser quality eval: real models drive the hosts BROWSER_HOST_URL / BROWSER_FALLBACK_HOST_URL through 22 real-site tasks (bills model calls; not a CI gate; OPENROUTER_MODEL names the browser agent's model for the record)"
+run = "bash scripts/ci/browser.sh eval"
+
 [tasks."eval:gate"]
 description = "Stub-driven regression gate (free) — run before pushing agent/LLM/tool changes"
 run = "cd apps/api && uv run --group backend python -m scripts.evals run --suite regression --sim"

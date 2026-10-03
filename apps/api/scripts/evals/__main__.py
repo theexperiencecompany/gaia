@@ -49,6 +49,7 @@ def _load_suites() -> None:
         "hil_reply",
         "longmemeval",
         "regression",
+        "browser",
     ):
         with suppress(ImportError):
             import_module(f".suites.{_suite_module}", __package__)
