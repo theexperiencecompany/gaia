@@ -142,6 +142,8 @@ _HANDOFF_ENDS = {
 class BrowserRunnerCallbacks:
     """The runner's injected seams — how it streams progress, pauses for the human, checks cancellation, and mirrors per-action results into the thread."""
 
+    #: Where the run records its model calls, actions and Jev bursts, for the job to read back.
+    ledger: RunLedger
     emit: EmitFn
     request_handoff: RequestHandoffFn
     is_cancelled: IsCancelledFn
@@ -196,8 +198,9 @@ class BrowserTaskRunner:
         )
         self._user_id = user_id
         self._root_request_id = root_request_id
-        #: Every model call of the run; each one is metered the moment it lands.
-        self.ledger = RunLedger(on_call=self._meter)
+        #: Every model call, action and Jev burst of the run; each call is metered the moment it lands.
+        self.ledger = callbacks.ledger
+        self.ledger.on_call = self._meter
         self._started_at = perf_counter()
         #: Seconds spent waiting on the user: the task budget does not run then.
         self._waited = 0.0

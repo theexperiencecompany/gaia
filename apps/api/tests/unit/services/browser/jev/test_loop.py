@@ -57,7 +57,13 @@ from app.services.browser.jev.page import (
     TabUnavailable,
 )
 from app.services.browser.jev.secrets import RunSecrets
-from app.services.browser.ledger import CallComponent, ExecutedAction, ModelCall, RunLedger
+from app.services.browser.ledger import (
+    BurstRecord,
+    CallComponent,
+    ExecutedAction,
+    ModelCall,
+    RunLedger,
+)
 from tests.helpers import captured_wide_event
 from tests.unit.services.browser.jev.conftest import (
     BUTTON,
@@ -949,6 +955,35 @@ async def test_a_secret_is_typed_into_the_page_and_never_into_what_the_agent_rea
     assert SECRET not in repr(result)
     assert result.steps[0].text == MASKED
     assert (result.url, result.text) == (f"https://site.test/b?pw={MASKED}", f"welcome {MASKED}")
+
+
+async def test_each_burst_lands_in_the_run_ledger_as_the_agent_reads_it_with_secrets_masked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    landed = page_state(url=f"https://site.test/b?pw={SECRET}")
+    run = _run(
+        monkeypatch,
+        FakePage(page_state(), landed),
+        decision(JevOperation.TYPE_TEXT, PASSWORD),
+        decision(JevOperation.DONE),
+        value=MASKED,
+        secrets=_secrets(),
+    )
+
+    result = await run.burst(f"log in with {MASKED}", done_when="the account page shows")
+
+    assert run.ledger.bursts == [
+        BurstRecord(
+            goal=f"log in with {MASKED}",
+            done_when="the account page shows",
+            stop=JevStop.DONE.value,
+            detail=result.detail,
+            actions=(result.steps[0].describe(),),
+            url=f"https://site.test/b?pw={MASKED}",
+        )
+    ]
+    assert f'= "{MASKED}"' in run.ledger.bursts[0].actions[0]
+    assert SECRET not in repr(run.ledger.bursts)
 
 
 async def test_a_password_field_holding_something_else_never_shows_what(

@@ -469,7 +469,7 @@ def _install(
             h.runner = self
             self.session = kwargs["session"]
             self.used_fallback = False
-            self.ledger = RunLedger()
+            self.ledger = kwargs["callbacks"].ledger
             self.failure: BrowserRunFailure | None = None
 
         async def run(self, task: str) -> BrowserResultSnapshot:
@@ -955,6 +955,17 @@ async def test_blank_start_url_is_not_appended(monkeypatch: pytest.MonkeyPatch) 
 # ---------------------------------------------------------------------------
 # execute_browser_job — runner wiring
 # ---------------------------------------------------------------------------
+
+
+async def test_a_caller_that_passes_a_ledger_reads_the_runs_record_from_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    h = _install(monkeypatch)
+    ledger = RunLedger()
+
+    await jr.execute_browser_job(_request(task="x"), ledger)
+
+    assert h.runner_kwargs["callbacks"].ledger is ledger
 
 
 async def test_runner_is_configured_from_settings_and_config(

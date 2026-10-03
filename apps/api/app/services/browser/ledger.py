@@ -1,4 +1,4 @@
-"""Every model call one browser run makes: which component, which provider, how long, what it cost.
+"""Every model call one browser run makes, and every action and Jev burst: which component, how long, what it cost.
 
 The runner meters the run's spend from it and the eval reads it; nothing here
 decides anything.
@@ -46,6 +46,20 @@ class ExecutedAction:
     count: int = 1
 
 
+@dataclass(frozen=True)
+class BurstRecord:
+    """One Jev burst as the agent was told of it, secrets masked: its goal, its actions and how it ended."""
+
+    goal: str
+    done_when: str
+    stop: str
+    detail: str
+    #: Each action as the agent's report lists it, with what was typed or set.
+    actions: tuple[str, ...]
+    #: The page the burst ended on.
+    url: str
+
+
 @dataclass
 class RunLedger:
     """The run's model calls and executed actions, in the order they finished."""
@@ -54,6 +68,7 @@ class RunLedger:
     on_call: Callable[[ModelCall], None] | None = None
     calls: list[ModelCall] = field(default_factory=list)
     actions: list[ExecutedAction] = field(default_factory=list)
+    bursts: list[BurstRecord] = field(default_factory=list)
 
     def add(self, call: ModelCall) -> None:
         self.calls.append(call)
@@ -62,6 +77,9 @@ class RunLedger:
 
     def executed(self, action: ExecutedAction) -> None:
         self.actions.append(action)
+
+    def burst_ended(self, burst: BurstRecord) -> None:
+        self.bursts.append(burst)
 
     @property
     def action_count(self) -> int:

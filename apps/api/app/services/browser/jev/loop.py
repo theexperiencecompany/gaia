@@ -74,7 +74,13 @@ from app.services.browser.jev.secrets import (
     holds_placeholder,
     is_placeholder,
 )
-from app.services.browser.ledger import CallComponent, ExecutedAction, ModelCall, RunLedger
+from app.services.browser.ledger import (
+    BurstRecord,
+    CallComponent,
+    ExecutedAction,
+    ModelCall,
+    RunLedger,
+)
 from app.services.browser.run_contract import FlagFn
 from app.utils.url_safety import HTTP_SCHEMES
 from shared.py.wide_events import log
@@ -150,6 +156,10 @@ class LoadStalls(Protocol):
     def take(self) -> list[str]: ...
 
 
+#: Whether an action changed the page, as its report line says.
+_CHANGED = {True: " (page changed)", False: " (no change)"}
+
+
 @dataclass(frozen=True)
 class JevStep:
     """One executed action of a burst, as the agent and the card read it."""
@@ -168,6 +178,16 @@ class JevStep:
     option: str | None = None
     #: What the field held after typing, quoted, when that is not what was typed.
     held: str | None = None
+
+    def describe(self) -> str:
+        """Return the action as the agent's report lists it: what it targeted, set or typed, and what changed."""
+        ident = f" [#{self.ident}]" if self.ident else ""
+        link = f" -> {self.href}" if self.href else ""
+        chosen = f' -> "{self.option}"' if self.option is not None else ""
+        typed = f' = "{self.text}"' if self.text is not None else ""
+        held = f" (the field holds {self.held})" if self.held is not None else ""
+        changed = "" if self.page_changed is None else _CHANGED[self.page_changed]
+        return f"{self.operation.value} {self.label}{ident}{link}{chosen}{typed}{held}{changed}"
 
 
 @dataclass(frozen=True)
@@ -281,7 +301,18 @@ class JevRunner:
         except PageScriptError as exc:
             stop, detail = JevStop.PAGE_SCRIPT_ERROR, str(exc)
         log.info(f"{LogTag.BROWSER} Jev burst ended", stop=stop.value, actions=len(state.steps))
-        return self._result(state, stop, detail)
+        result = self._result(state, stop, detail)
+        self._ledger.burst_ended(
+            BurstRecord(
+                goal=result.goal,
+                done_when=result.done_when,
+                stop=result.stop.value,
+                detail=result.detail,
+                actions=tuple(step.describe() for step in result.steps),
+                url=result.url,
+            )
+        )
+        return result
 
     def _result(self, state: _Burst, stop: JevStop, detail: str) -> BurstResult:
         final = state.page

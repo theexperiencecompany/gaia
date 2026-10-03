@@ -103,10 +103,6 @@ _STOP_MEANING = {
 }
 
 
-#: Whether an action changed the page, as its report line says.
-_CHANGED = {True: " (page changed)", False: " (no change)"}
-
-
 class JevParams(BaseModel):
     goal: str = Field(
         description="What Jev should achieve on one page, self-contained, with every value quoted."
@@ -131,17 +127,6 @@ def _step_action(step: JevStep) -> BrowserAction:
         inputs["keys"] = "Enter"
     target = step.label if step.operation in (JevOperation.CLICK, JevOperation.TYPE_TEXT) else None
     return BrowserAction(name=name, inputs=inputs, target=target)
-
-
-def _step_line(n: int, step: JevStep) -> str:
-    """Return one action as the report lists it: what it targeted, set or typed, and what changed."""
-    ident = f" [#{step.ident}]" if step.ident else ""
-    link = f" -> {step.href}" if step.href else ""
-    chosen = f' -> "{step.option}"' if step.option is not None else ""
-    typed = f' = "{step.text}"' if step.text is not None else ""
-    held = f" (the field holds {step.held})" if step.held is not None else ""
-    changed = "" if step.page_changed is None else _CHANGED[step.page_changed]
-    return f"  {n}. {step.operation.value} {step.label}{ident}{link}{chosen}{typed}{held}{changed}"
 
 
 def _page_lines(result: BurstResult) -> list[str]:
@@ -176,7 +161,7 @@ def report(result: BurstResult) -> str:
     ]
     if result.steps:
         lines.append(f"Actions ({len(result.steps)}):")
-        lines.extend(_step_line(n, step) for n, step in enumerate(result.steps, 1))
+        lines.extend(f"  {n}. {step.describe()}" for n, step in enumerate(result.steps, 1))
     else:
         lines.append("Actions: none.")
     return "\n".join([*lines, *_page_lines(result)])

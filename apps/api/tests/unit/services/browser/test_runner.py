@@ -59,7 +59,7 @@ from app.services.browser import engine_watchdog, runner as runner_mod
 from app.services.browser.agent_run import AgentRunSetup
 from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserUnavailableError
 from app.services.browser.jev.secrets import RunSecrets
-from app.services.browser.ledger import CallComponent, ModelCall
+from app.services.browser.ledger import CallComponent, ModelCall, RunLedger
 from app.services.browser.run_contract import BrowserRunConfig, RunHooks, RunOutcome, StepFrame
 from app.services.browser.runner import BrowserRunnerCallbacks, BrowserTaskRunner
 from app.services.browser.session import BrowserHostSession
@@ -204,6 +204,7 @@ def _runner(
         session=_session(),
         callbacks=BrowserRunnerCallbacks(
             **{
+                "ledger": RunLedger(),
                 "emit": _emit,
                 "request_handoff": _request_handoff,
                 "is_cancelled": AsyncMock(return_value=False),

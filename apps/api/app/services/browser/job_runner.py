@@ -75,6 +75,7 @@ from app.services.browser.jobs import (
     set_job_wait,
     take_job_messages,
 )
+from app.services.browser.ledger import RunLedger
 from app.services.browser.replay import create_replay_link
 from app.services.browser.run_contract import FinishedRun
 from app.services.browser.run_failure import record_run_result
@@ -636,15 +637,18 @@ async def refuse_browser_job(request: BrowserJobRequest, summary: str) -> Browse
     return result
 
 
-async def execute_browser_job(request: BrowserJobRequest) -> BrowserResultSnapshot:
+async def execute_browser_job(
+    request: BrowserJobRequest, ledger: RunLedger | None = None
+) -> BrowserResultSnapshot:
     """Run one browser task end to end: its last card, its ending told, the end of its feed.
 
     Every ending publishes a terminal card and closes the feed, a cancellation
     included (a stop's abort, or the worker shutting down), which then propagates.
+    A caller that reads the run's ledger (the browser eval) passes its own.
     """
     emitter = _emitter_for(request)
     try:
-        result = await _run_job(request, emitter)
+        result = await _run_job(request, emitter, ledger or RunLedger())
     except asyncio.CancelledError:
         log.fail(BrowserRunFailure.CANCELLED)
         # Nobody holds a tool call to hear this; without it the card stays RUNNING forever.
@@ -663,7 +667,9 @@ async def _end_cancelled(request: BrowserJobRequest, emitter: ProgressEmitter) -
     await close_job_feed(request.job_id)
 
 
-async def _run_job(request: BrowserJobRequest, emitter: ProgressEmitter) -> BrowserResultSnapshot:
+async def _run_job(
+    request: BrowserJobRequest, emitter: ProgressEmitter, ledger: RunLedger
+) -> BrowserResultSnapshot:
     """Open the browser and run the task; every failure becomes a terminal result card here."""
     if await job_cancel_requested(request.job_id):
         # Stopped while it queued: ARQ is never asked to drop a queued job, so it ends here.
@@ -705,6 +711,7 @@ async def _run_job(request: BrowserJobRequest, emitter: ProgressEmitter) -> Brow
                 session=session,
                 secrets=secrets,
                 callbacks=BrowserRunnerCallbacks(
+                    ledger=ledger,
                     emit=emitter.emit,
                     request_handoff=partial(_run_handoff, emit=emitter.emit, request=request),
                     # Only a run the host put on Obscura has anywhere to move to.
