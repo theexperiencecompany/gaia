@@ -31,6 +31,7 @@ from app.constants.llm import (
     LLMProviderName,
 )
 from app.models.agent_models import AgentConfigurable
+from app.override.langgraph_bigtool import create_agent as create_agent_module
 from app.override.langgraph_bigtool.agent_config import (
     AgentConfig,
     HookConfig,
@@ -53,9 +54,7 @@ from app.override.langgraph_bigtool.create_agent import (
     _prepare_fallback,
     _resolve_retrieval_result,
     _retrieval_call_kwargs,
-    _retrieval_request,
     _select_tools_node,
-    _through_loop_guard,
     _tool_node,
     _tools_to_bind,
     _wire_edges,
@@ -1028,7 +1027,7 @@ class TestRetrievalThroughTheLoopGuard:
         store = MagicMock()
         config = _make_config(thread_id="t1")
 
-        request = _retrieval_request(
+        request = create_agent_module._retrieval_request(
             {"id": "c1", "args": {"query": "calendar"}}, retrieve_tools, config, store
         )
 
@@ -1044,17 +1043,17 @@ class TestRetrievalThroughTheLoopGuard:
         assert request.runtime.tool_name == "retrieve_tools"
 
     async def test_without_a_guard_the_call_runs_directly(self) -> None:
-        request = _retrieval_request(
+        request = create_agent_module._retrieval_request(
             {"id": "c1", "args": {}}, self._retrieve_tools(), _make_config(), MagicMock()
         )
         answer = ToolMessage(content="found", tool_call_id="c1")
         retrieve = AsyncMock(return_value=answer)
 
-        assert await _through_loop_guard(None, request, retrieve) is answer
+        assert await create_agent_module._through_loop_guard(None, request, retrieve) is answer
         retrieve.assert_awaited_once_with(request)
 
     async def test_the_guard_wraps_the_call(self) -> None:
-        request = _retrieval_request(
+        request = create_agent_module._retrieval_request(
             {"id": "c1", "args": {}}, self._retrieve_tools(), _make_config(), MagicMock()
         )
         guarded = ToolMessage(content="warned", tool_call_id="c1")
@@ -1062,18 +1061,18 @@ class TestRetrievalThroughTheLoopGuard:
         guard.awrap_tool_call = AsyncMock(return_value=guarded)
         retrieve = AsyncMock()
 
-        assert await _through_loop_guard(guard, request, retrieve) is guarded
+        assert await create_agent_module._through_loop_guard(guard, request, retrieve) is guarded
         guard.awrap_tool_call.assert_awaited_once_with(request, retrieve)
 
     async def test_a_guard_answer_that_is_not_a_tool_message_is_refused(self) -> None:
-        request = _retrieval_request(
+        request = create_agent_module._retrieval_request(
             {"id": "c1", "args": {}}, self._retrieve_tools(), _make_config(), MagicMock()
         )
         guard = MagicMock(spec=LoopGuardMiddleware)
         guard.awrap_tool_call = AsyncMock(return_value=Command(update={}))
 
         with pytest.raises(TypeError) as raised:
-            await _through_loop_guard(guard, request, AsyncMock())
+            await create_agent_module._through_loop_guard(guard, request, AsyncMock())
 
         assert str(raised.value) == (
             "loop guard returned Command for retrieve_tools call c1; "
@@ -2109,7 +2108,8 @@ class TestSelectToolsTwinWiring:
         store = MagicMock()
 
         with patch(
-            f"{_CREATE_AGENT_MODULE}._retrieval_request", wraps=_retrieval_request
+            f"{_CREATE_AGENT_MODULE}._retrieval_request",
+            wraps=create_agent_module._retrieval_request,
         ) as build_request:
             await node.afunc([tool_call], config, store=store)
 

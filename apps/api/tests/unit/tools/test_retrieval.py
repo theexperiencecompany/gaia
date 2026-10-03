@@ -1254,8 +1254,12 @@ class TestDiscoveryNamesAnUnconnectedIntegration:
         assert "needs to be connected" not in body["next"]
 
 
-_CALENDAR = retrieval._UnconnectedIntegration("googlecalendar", "Google Calendar")
-_GMAIL = retrieval._UnconnectedIntegration("gmail", "Gmail")
+def _calendar() -> "retrieval._UnconnectedIntegration":
+    return retrieval._UnconnectedIntegration("googlecalendar", "Google Calendar")
+
+
+def _gmail() -> "retrieval._UnconnectedIntegration":
+    return retrieval._UnconnectedIntegration("gmail", "Gmail")
 
 
 def _provider(provider_id: str, name: str, managed_by: str = "composio") -> SimpleNamespace:
@@ -1265,7 +1269,7 @@ def _provider(provider_id: str, name: str, managed_by: str = "composio") -> Simp
 @pytest.mark.unit
 class TestNotConnectedLine:
     def test_an_interactive_run_is_sent_to_activate_it_once(self) -> None:
-        assert retrieval._not_connected_line(_CALENDAR, False) == (
+        assert retrieval._not_connected_line(_calendar(), False) == (
             "Google Calendar needs to be connected: none of its tools can run until the user "
             "connects it, so do not search for or re-request them. Call "
             'activate_integration(integration_id="googlecalendar") once: that shows the user '
@@ -1274,7 +1278,7 @@ class TestNotConnectedLine:
 
     def test_a_background_run_names_the_requested_tools_and_carries_on(self) -> None:
         line = retrieval._not_connected_line(
-            _CALENDAR, True, ["GOOGLECALENDAR_EVENTS_LIST", "GOOGLECALENDAR_CREATE_EVENT"]
+            _calendar(), True, ["GOOGLECALENDAR_EVENTS_LIST", "GOOGLECALENDAR_CREATE_EVENT"]
         )
 
         assert line == (
@@ -1296,7 +1300,7 @@ class TestUnconnectedForTools:
                 ["web_search", "GMAIL_SEND_EMAIL", "GOOGLECALENDAR_EVENTS_LIST", "GMAIL_FETCH"],
             )
 
-        assert unconnected == {"GMAIL_SEND_EMAIL": _GMAIL, "GMAIL_FETCH": _GMAIL}
+        assert unconnected == {"GMAIL_SEND_EMAIL": _gmail(), "GMAIL_FETCH": _gmail()}
         status.assert_awaited_once()
         ids, user_id = status.await_args.args
         assert sorted(ids) == ["gmail", "googlecalendar"]
@@ -1330,7 +1334,7 @@ class TestUnconnectedNamedIn:
         ):
             unconnected = await retrieval._unconnected_named_in("u1", "calendar and gmail")
 
-        assert unconnected == [_CALENDAR]
+        assert unconnected == [_calendar()]
         status.assert_awaited_once_with(["googlecalendar", "gmail"], "u1")
 
     @pytest.mark.parametrize(("user_id", "query"), [(None, "Google Calendar"), ("u1", None)])
@@ -1374,13 +1378,13 @@ class TestDiscoveryWithUnconnectedIntegrations:
                 "calendar and mail",
                 0,
                 25,
-                not_connected=[_CALENDAR, _GMAIL],
+                not_connected=[_calendar(), _gmail()],
                 background=False,
             )
         )
 
         assert body["next"] == (
-            f"{retrieval._not_connected_line(_CALENDAR, False)} "
-            f"{retrieval._not_connected_line(_GMAIL, False)}"
+            f"{retrieval._not_connected_line(_calendar(), False)} "
+            f"{retrieval._not_connected_line(_gmail(), False)}"
         )
         assert "search_matched_nothing" not in body
