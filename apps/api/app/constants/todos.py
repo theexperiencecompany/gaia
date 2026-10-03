@@ -32,6 +32,8 @@ NEEDS_FOLLOW_UP_LABEL: Final[str] = "needs-follow-up"
 # reads them to judge whether an overdue todo is genuinely stuck, and
 # trigger-subscription paths set/clear them, so they live here, not a consumer.
 WAITING_FOR_REPLY_LABEL: Final[str] = "waiting-for-reply"
+# A thread todo's other state: the user owes the reply. Not blocking, the next move is theirs.
+NEEDS_REPLY_LABEL: Final[str] = "needs-reply"
 WAITING_FOR_APPROVAL_LABEL: Final[str] = "waiting-for-approval"
 BLOCKING_LABEL: Final[str] = "blocked"
 
@@ -57,11 +59,11 @@ EXECUTE_TRACKED_TODO_TASK: Final[str] = "execute_tracked_todo"
 # How far past its stored scheduled_at an unstamped fire (queued before jobs
 # carried their occurrence) may land and still run; outside it, it is dropped.
 TODO_SCHEDULE_FIRE_GRACE: Final[timedelta] = timedelta(minutes=2)
+# How long a one-time run that came due on a paused account waits before it checks again.
+PAUSED_RUN_RECHECK: Final[timedelta] = timedelta(days=1)
 
 # How much of a run's final report is kept in its activity.md entry.
 RUN_SUMMARY_ACTIVITY_CHARS: Final[int] = 200
-# Bounds the Key Details a run's delivery decision reads next to the report.
-DELIVERY_KEY_DETAILS_MAX_CHARS: Final[int] = 1500
 
 
 class TodoRunDeliveryOutcome(StrEnum):
@@ -91,6 +93,7 @@ class TodoActivityEvent(StrEnum):
     WATCH_RESUMED = "watch_resumed"
     TRIGGER_FIRED = "trigger_fired"
     TRIGGER_ACTION_FAILED = "trigger_action_failed"
+    SUB_TODO_COMPLETED = "sub_todo_completed"
     RUN_STARTED = "run_started"
     RUN_FINISHED = "run_finished"
     RUN_FAILED = "run_failed"
@@ -104,17 +107,44 @@ class TodoActivityEvent(StrEnum):
 
 
 # The sections every canvas.md carries exactly once, in this order. Activity
-# (anything dated, any run log) belongs in activity.md, never here.
+# (dated "### YYYY-MM-DD" entries, any run log) belongs in activity.md, never here.
+CANVAS_STANDING_RULES_SECTION: Final[str] = "Standing rules"
+CANVAS_KEY_DETAILS_SECTION: Final[str] = "Key Details"
 CANVAS_CURRENT_STATE_SECTION: Final[str] = "Current State"
+CANVAS_LEARNINGS_SECTION: Final[str] = "Learnings"
 CANVAS_SECTIONS: Final[tuple[str, ...]] = (
-    "Key Details",
+    CANVAS_STANDING_RULES_SECTION,
+    CANVAS_KEY_DETAILS_SECTION,
     CANVAS_CURRENT_STATE_SECTION,
     "Context",
-    "Learnings",
+    CANVAS_LEARNINGS_SECTION,
 )
+
+# Most a Standing rules section may hold. Every prompt carries it whole, never
+# trimmed, so a canvas write that grows it past this is refused instead.
+STANDING_RULES_MAX_CHARS: Final[int] = 2_000
+# Most of a todo's Key Details its delivery decision reads.
+DELIVERY_KEY_DETAILS_MAX_CHARS: Final[int] = 1500
+
+# How many referenced todos a run reads Learnings from.
+REFERENCED_TODOS_PROMPT_LIMIT: Final[int] = 5
+
+# Top-level tracked todos in every agent's ACTIVE TRACKED TODOS block; sub-todos fold into a count.
+ACTIVE_TRACKED_SUMMARY_LIMIT: Final[int] = 15
+
+# Open sub-todos a parent's run reads, and how much of each one's Current State.
+SUB_TODOS_PROMPT_LIMIT: Final[int] = 50
+SUB_TODO_STATE_EXCERPT_CHARS: Final[int] = 300
 
 # How much of an existing todo's Current State a refused duplicate create shows.
 EXISTING_TODO_STATE_EXCERPT_CHARS: Final[int] = 400
 
 # Most todos list_tracked_todos returns, filtered or not; the freshest win.
 LIST_TRACKED_TODOS_LIMIT: Final[int] = 50
+
+# The one tracked todo per user that triages mail, owns its threads and briefs each morning.
+INBOX_DESK_TITLE: Final[str] = "Inbox desk"
+INBOX_DESK_RECURRENCE: Final[str] = "0 8 * * *"
+PROVISION_INBOX_DESK_TASK: Final[str] = "provision_inbox_desk"
+# First retry delay of a failed provisioning; each further try doubles it.
+INBOX_DESK_PROVISION_RETRY_DELAY: Final[timedelta] = timedelta(minutes=2)

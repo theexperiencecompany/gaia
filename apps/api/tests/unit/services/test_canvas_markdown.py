@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from app.constants import todos as todo_constants
 from app.constants.todos import CANVAS_PROMPT_MAX_CHARS
 from app.services.canvas_markdown import (
     _extract_entries,
@@ -47,6 +48,9 @@ class TestSectionBody:
 
     def test_none_when_missing(self):
         assert section_body(LEGACY, "Nope") is None
+
+    def test_a_todo_without_a_canvas_has_no_section(self):
+        assert section_body(None, "Current State") is None
 
     def test_exact_heading_only(self):
         """'Current' must not match inside '## Current State'."""
@@ -308,6 +312,21 @@ class TestBoundedCanvas:
             "h" * half + "\n[middle of canvas trimmed: 100 characters]\n" + "t" * half
         )
 
+    def test_the_rest_that_fits_beside_the_rules_comes_back_whole(self) -> None:
+        head = "## Standing rules\n- r\n\n"
+        rest = "## Key Details\n" + "k" * (CANVAS_PROMPT_MAX_CHARS - len(head) - 15)
+        canvas = f"{rest}\n\n## Standing rules\n- r\n"
+
+        assert bounded_canvas(canvas) == head + rest
+
+    def test_rules_past_the_whole_budget_leave_only_the_rules(self) -> None:
+        rules = "r" * (CANVAS_PROMPT_MAX_CHARS + 1)
+        rest = "## Key Details\nk"
+
+        assert bounded_canvas(f"{rest}\n\n## Standing rules\n{rules}\n") == (
+            f"## Standing rules\n{rules}\n\n\n[middle of canvas trimmed: {len(rest)} characters]\n"
+        )
+
 
 # The shape of the pitch-prep canvas from 2026-09-26: the removed append-mode tool
 # left a "## Activity Log (append)" section, a dated block and a doubled Learnings.
@@ -353,16 +372,20 @@ class TestCanvasProblems:
 
 
 class TestWithMissingSections:
-    def test_only_the_missing_sections_are_added_in_template_order(self) -> None:
+    def test_each_missing_section_goes_to_its_place_in_the_template_order(self) -> None:
         canvas = "# T\n\n## Key Details\nk\n\n## Learnings\n"
 
         assert with_missing_sections(canvas) == (
-            "# T\n\n## Key Details\nk\n\n## Learnings\n\n## Current State\n\n## Context\n"
+            "# T\n\n## Standing rules\n\n## Key Details\nk\n\n## Current State\n\n"
+            "## Context\n\n## Learnings\n"
         )
 
     def test_a_complete_canvas_is_returned_as_is(self) -> None:
-        canvas = "## Key Details\n\n## Current State\n\n## Context\n\n## Learnings\n"
-        assert with_missing_sections(canvas) is canvas
+        canvas = (
+            "## Standing rules\n\n## Key Details\n\n## Current State\n\n## Context\n\n"
+            "## Learnings\n"
+        )
+        assert with_missing_sections(canvas) == canvas
 
 
 class TestNormalizeCanvas:
@@ -413,7 +436,8 @@ class TestNormalizeCanvas:
 
         assert moved is None
         assert canvas == (
-            "## Key Details\na\nb\n\n## Current State\ns\n\n## Context\n\n## Learnings\nx\ny\n"
+            "## Standing rules\n\n## Key Details\na\nb\n\n## Current State\ns\n\n## Context\n\n"
+            "## Learnings\nx\ny\n"
         )
 
     def test_a_heading_with_trailing_spaces_is_the_same_section(self) -> None:
@@ -432,14 +456,20 @@ class TestNormalizeCanvas:
         )
 
         assert moved == "- a\n\n- b"
-        assert canvas == "## Key Details\n\n## Current State\n\n## Context\n\n## Learnings\n"
+        assert canvas == (
+            "## Standing rules\n\n## Key Details\n\n## Current State\n\n## Context\n\n"
+            "## Learnings\n"
+        )
 
     def test_the_result_ends_in_exactly_one_newline(self) -> None:
         canvas, _ = normalize_canvas(
             "## Key Details\nk\n\n## Current State\n\n## Context\n\n## Learnings\nl"
         )
 
-        assert canvas == "## Key Details\nk\n\n## Current State\n\n## Context\n\n## Learnings\nl\n"
+        assert canvas == (
+            "## Standing rules\n\n## Key Details\nk\n\n## Current State\n\n## Context\n\n"
+            "## Learnings\nl\n"
+        )
 
     @pytest.mark.parametrize(
         "preamble",
@@ -455,7 +485,7 @@ class TestNormalizeCanvas:
         )
 
         assert canvas == (
-            f"{preamble}\n\n## Key Details\n  - owner: MAX\n  - due: Friday X\n\n"
+            f"{preamble}\n\n## Standing rules\n\n## Key Details\n  - owner: MAX\n  - due: Friday X\n\n"
             "## Current State\n\n## Context\n\n## Learnings\n"
         )
 
@@ -468,5 +498,128 @@ class TestWithMissingSectionsKeepsTheLastLine:
         canvas = with_missing_sections(f"## Key Details\n{last_line}\n")
 
         assert canvas == (
-            f"## Key Details\n{last_line}\n\n## Current State\n\n## Context\n\n## Learnings\n"
+            f"## Standing rules\n\n## Key Details\n{last_line}\n\n## Current State\n\n"
+            "## Context\n\n## Learnings\n"
         )
+
+
+class TestStandingRules:
+    """The user's instructions for a todo: first in the canvas, never trimmed, bounded at write."""
+
+    def test_a_canvas_from_before_the_section_gains_it_first(self) -> None:
+        canvas = "# T\n\n## Key Details\nk\n\n## Current State\n\n## Context\n\n## Learnings\n"
+
+        assert normalize_canvas(canvas) == (
+            "# T\n\n## Standing rules\n\n## Key Details\nk\n\n## Current State\n\n"
+            "## Context\n\n## Learnings\n",
+            None,
+        )
+
+    def test_an_oversized_canvas_keeps_every_rule_and_stays_within_the_cap(self) -> None:
+        rules = "- 2026-09-28: skip newsletters\n- 2026-09-29: never draft to the landlord"
+        canvas = (
+            "## Key Details\n" + "k" * CANVAS_PROMPT_MAX_CHARS + "\n\n"
+            f"## Standing rules\n{rules}\n\n"
+            "## Context\n" + "c" * CANVAS_PROMPT_MAX_CHARS + "\n\n## Learnings\nlast"
+        )
+
+        bounded = bounded_canvas(canvas)
+
+        assert bounded.startswith(f"## Standing rules\n{rules}\n\n## Key Details\n")
+        assert bounded.endswith("## Learnings\nlast")
+        assert "[middle of canvas trimmed:" in bounded
+        assert len(bounded) <= CANVAS_PROMPT_MAX_CHARS + len(
+            "\n[middle of canvas trimmed: 00000 characters]\n"
+        )
+
+    def test_rules_longer_than_the_cap_are_refused_at_write(self) -> None:
+        canvas = f"## Standing rules\n{'r' * (todo_constants.STANDING_RULES_MAX_CHARS + 1)}\n\n## Key Details\n"
+
+        assert canvas_problems(canvas) == [
+            f'shorten "## Standing rules" to {todo_constants.STANDING_RULES_MAX_CHARS} characters: '
+            "one line per rule, merged where they overlap"
+        ]
+
+    def test_rules_at_the_cap_are_accepted(self) -> None:
+        canvas = f"## Standing rules\n{'r' * todo_constants.STANDING_RULES_MAX_CHARS}\n\n## Key Details\n"
+
+        assert canvas_problems(canvas) == []
+
+
+class TestSectionHeadingCase:
+    """One Standing rules section whatever its casing: "## Standing Rules" is the same section."""
+
+    @pytest.mark.regression
+    def test_a_title_cased_heading_is_read_as_the_section(self) -> None:
+        canvas = "## Standing Rules\n- 2026-09-28: tell me every time\n\n## Key Details\n"
+
+        assert section_body(canvas, "Standing rules") == "- 2026-09-28: tell me every time"
+
+    @pytest.mark.regression
+    def test_a_title_cased_heading_is_not_added_twice(self) -> None:
+        canvas = (
+            "# T\n\n## Standing Rules\n- 2026-09-28: tell me every time\n\n## Key Details\nk\n\n"
+            "## Current State\n\n## Context\n\n## Learnings\n"
+        )
+
+        assert normalize_canvas(canvas) == (
+            "# T\n\n## Standing rules\n- 2026-09-28: tell me every time\n\n## Key Details\nk\n\n"
+            "## Current State\n\n## Context\n\n## Learnings\n",
+            None,
+        )
+
+    @pytest.mark.regression
+    def test_a_write_canonicalizes_the_heading(self) -> None:
+        canvas = "## STANDING RULES\n- r\n\n## key details\nk\n"
+
+        assert with_missing_sections(canvas) == (
+            "## Standing rules\n- r\n\n## Key Details\nk\n\n## Current State\n\n## Context\n\n"
+            "## Learnings\n"
+        )
+
+    @pytest.mark.regression
+    def test_the_cap_holds_for_a_title_cased_heading(self) -> None:
+        canvas = f"## Standing Rules\n{'r' * (todo_constants.STANDING_RULES_MAX_CHARS + 1)}\n\n## Key Details\n"
+
+        assert canvas_problems(canvas) == [
+            f'shorten "## Standing rules" to {todo_constants.STANDING_RULES_MAX_CHARS} characters: '
+            "one line per rule, merged where they overlap"
+        ]
+
+    @pytest.mark.regression
+    def test_two_casings_of_one_section_are_a_repeat(self) -> None:
+        canvas = "## Standing rules\n- a\n\n## Standing Rules\n- b\n"
+
+        assert canvas_problems(canvas) == ['merge the 2 "## Standing rules" sections into one']
+
+    @pytest.mark.regression
+    def test_the_prompt_trim_keeps_title_cased_rules_whole(self) -> None:
+        canvas = (
+            "## Key Details\n" + "k" * CANVAS_PROMPT_MAX_CHARS + "\n\n"
+            "## Standing Rules\n- keep me\n\n## Learnings\nlast"
+        )
+
+        assert bounded_canvas(canvas).startswith("## Standing rules\n- keep me\n\n## Key Details\n")
+
+
+class TestTemplateComments:
+    """The template's HTML comments are guidance for the writer, never section content."""
+
+    @pytest.mark.regression
+    def test_an_all_comment_section_reads_as_empty(self) -> None:
+        canvas = "## Standing rules\n<!-- the user's rules,\none line each -->\n\n## Key Details\n"
+
+        assert section_body(canvas, "Standing rules") == ""
+
+    @pytest.mark.regression
+    def test_a_comment_beside_real_rules_is_dropped(self) -> None:
+        canvas = "## Standing rules\n<!-- guidance -->\n- 2026-09-28: skip newsletters\n"
+
+        assert section_body(canvas, "Standing rules") == "- 2026-09-28: skip newsletters"
+
+    @pytest.mark.regression
+    def test_template_comments_do_not_count_toward_the_cap(self) -> None:
+        rules = "r" * todo_constants.STANDING_RULES_MAX_CHARS
+        canvas = f"## Standing rules\n<!-- guidance for the writer -->\n{rules}\n\n## Key Details\n"
+
+        assert canvas_problems(canvas) == []

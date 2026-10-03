@@ -1815,20 +1815,19 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        get?: never;
+        put?: never;
         /**
          * Connect Link Endpoint
-         * @description Login-free entry point for bot / non-UI users.
+         * @description Login-free entry point for bot / non-UI users: spend the code, 303 into OAuth.
          *
-         *     Resolves the single-use connect code to its bound ``(user, integration)``
-         *     (no session required — the code is the credential) and bounces the user
-         *     straight into the provider OAuth flow. Invalid/expired/used codes redirect
-         *     to a friendly page. Excluded from auth in WorkOSAuthMiddleware; it
-         *     self-authenticates. Per-IP rate limited so the short code can't be brute
-         *     forced online.
+         *     POST-only because spending the code is a state change: link-preview
+         *     crawlers (Telegram, Slack) GET every link in a message and would burn it
+         *     before the user taps. The web /connect/<code> page posts here from a button.
+         *     Excluded from auth (the code is the credential) and per-IP rate limited
+         *     so the short code can't be brute forced online.
          */
-        get: operations["integrations_connect_link_endpoint"];
-        put?: never;
-        post?: never;
+        post: operations["integrations_connect_link_endpoint"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1980,6 +1979,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/integrations/me/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get My Integrations Snapshot Endpoint
+         * @description Return the workspace catalog without waiting for connection checks.
+         */
+        get: operations["integrations_get_my_integrations_snapshot_endpoint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/integrations/public/{identifier}": {
         parameters: {
             query?: never;
@@ -2052,6 +2071,26 @@ export interface paths {
          * @description Search public integrations using semantic search.
          */
         get: operations["integrations_search_integrations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Integration Statuses Endpoint
+         * @description Refresh connection state independently from the fast catalog snapshot.
+         */
+        get: operations["integrations_get_integration_statuses_endpoint"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5991,6 +6030,11 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** Body_integrations_connect_link_endpoint */
+        Body_integrations_connect_link_endpoint: {
+            /** Code */
+            code: string;
+        };
         /** Body_notification_unregister_device_token */
         Body_notification_unregister_device_token: {
             /** Token */
@@ -8844,6 +8888,19 @@ export interface components {
         IntegrationsConfigResponse: {
             /** Integrations */
             integrations: components["schemas"]["IntegrationConfigItem"][];
+        };
+        /**
+         * IntegrationStatusesResponse
+         * @description Current connection status map, fetched independently of the catalog.
+         */
+        IntegrationStatusesResponse: {
+            /**
+             * Statuses
+             * @description Connection state keyed by integration id
+             */
+            statuses: {
+                [key: string]: boolean;
+            };
         };
         /** IntegrationSuccessResponse */
         IntegrationSuccessResponse: {
@@ -13106,6 +13163,11 @@ export interface components {
              * @default true
              */
             notify_on_run: boolean;
+            /**
+             * Parent Todo Id
+             * @description Read-only; the tracked todo this one is a sub-todo of, set by GAIA
+             */
+            parent_todo_id: string | null;
             /** @description Oldest live approval parked against this todo, if any — the UI's jump link to the card's conversation */
             pending_approval: components["schemas"]["PendingApprovalRef"] | null;
             /**
@@ -13133,6 +13195,12 @@ export interface components {
              * @description When GAIA should execute this tracked todo
              */
             scheduled_at: string | null;
+            /**
+             * Sub Todo Count
+             * @description Open sub-todos of this tracked todo
+             * @default 0
+             */
+            sub_todo_count: number;
             /**
              * Subtasks
              * @description List of subtasks
@@ -14797,6 +14865,7 @@ export type BlogPost = components['schemas']['BlogPost'];
 export type Body_bot_transcribe_bot_audio = components['schemas']['Body_bot_transcribe_bot_audio'];
 export type Body_file_upload_file_endpoint = components['schemas']['Body_file_upload_file_endpoint'];
 export type Body_image_image_to_text = components['schemas']['Body_image_image_to_text'];
+export type Body_integrations_connect_link_endpoint = components['schemas']['Body_integrations_connect_link_endpoint'];
 export type Body_notification_unregister_device_token = components['schemas']['Body_notification_unregister_device_token'];
 export type Body_support_submit_support_request_with_attachments = components['schemas']['Body_support_submit_support_request_with_attachments'];
 export type Body_user_update_holo_card_colors = components['schemas']['Body_user_update_holo_card_colors'];
@@ -14957,6 +15026,7 @@ export type IntegrationInstructionsResponse = components['schemas']['Integration
 export type IntegrationRef = components['schemas']['IntegrationRef'];
 export type IntegrationResponse = components['schemas']['IntegrationResponse'];
 export type IntegrationsConfigResponse = components['schemas']['IntegrationsConfigResponse'];
+export type IntegrationStatusesResponse = components['schemas']['IntegrationStatusesResponse'];
 export type IntegrationSuccessResponse = components['schemas']['IntegrationSuccessResponse'];
 export type IntegrationTool = components['schemas']['IntegrationTool'];
 export type IntegrationToolsResponse = components['schemas']['IntegrationToolsResponse'];
@@ -20086,14 +20156,16 @@ export interface operations {
     };
     integrations_connect_link_endpoint: {
         parameters: {
-            query: {
-                code: string;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["Body_integrations_connect_link_endpoint"];
+            };
+        };
         responses: {
             /** @description Client Error */
             "4XX": {
@@ -20114,7 +20186,7 @@ export interface operations {
                 };
             };
             /** @description Successful Response */
-            307: {
+            303: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -20580,6 +20652,53 @@ export interface operations {
             };
         };
     };
+    integrations_get_my_integrations_snapshot_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyIntegrationsResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     integrations_get_public_integration: {
         parameters: {
             query?: never;
@@ -20779,6 +20898,53 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SearchIntegrationsResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    integrations_get_integration_statuses_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationStatusesResponse"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -26649,6 +26815,7 @@ export interface operations {
                 mode?: components["schemas"]["SearchMode"];
                 overdue?: boolean | null;
                 page?: number;
+                parent_todo_id?: string | null;
                 per_page?: number;
                 priority?: components["schemas"]["Priority"] | null;
                 project_id?: string | null;

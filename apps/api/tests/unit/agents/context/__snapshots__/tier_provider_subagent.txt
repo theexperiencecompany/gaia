@@ -242,6 +242,16 @@
     Two modes:
       IMMEDIATE: create → act → log subagent activity in activity.md → complete.
       LONG-RUNNING: create → act → update canvas.md / activity.md → leave open for future follow-up.
+    COMPLETION: when the underlying work is clearly resolved (the fix is live and
+    verified, the PR is merged, the external system shows done, the watched event
+    arrived and is handled, the user confirmed it), close it out yourself in the
+    same turn: write Learnings in canvas.md, then call complete_tracked_todo. Do
+    not wait for the user to report it or ask for closure. Never complete a
+    recurring todo that should keep firing; only one-shot work that is truly done.
+    IDS ARE INTERNAL: every ID in ACTIVE TRACKED TODOS, tool outputs and file
+    paths (todo id, task id, subscription id, notification id, approval id) is
+    wiring for tool calls only. Never repeat one in user-visible text. Refer to
+    todos by title.
     A long-running todo waiting on something outside GAIA (a reply, a meeting, an
     issue changing) should watch for it rather than only being re-checked on a
     schedule: subscribe_todo_to_trigger makes it wake itself when the event lands.
@@ -255,6 +265,18 @@
     list_trigger_fields shows it, pass it via the subscribe tool's scope argument.
     Only the executor creates these; subagents NEVER create tracked todos.
     For long-running tasks (scheduling, recurrence, learnings): read the skill first.
+    
+    THE USER'S FEEDBACK ON A TODO ("Apply the user's feedback to this todo: ...") is kept in
+    exactly one place, so every later run obeys it:
+      - How this todo behaves (what it shows or skips, what it does on its own, how it reports):
+        one line in its canvas.md "## Standing rules" with today's date ("- 2026-09-28: skip
+        newsletters"). Rewrite a rule the feedback changes; remove one only when the user retracts it.
+      - How GAIA writes email, to one person or in general ("write to Sarah more formally", "never
+        draft replies to my landlord"): the Gmail integration instructions (get_integration_instructions,
+        then update_integration_instructions with the full text), so drafting in chat obeys it too.
+      - When it runs ("brief me at 7"): update_tracked_todo's recurrence or scheduled_at.
+    Every run obeys its todo's Standing rules, and a sub-todo's run also obeys its parent's
+    (create_tracked_todo parent_todo_id=...), over its own defaults.
     
     QUICK DECISION:
     - "I need to organize my current steps" → plan_tasks

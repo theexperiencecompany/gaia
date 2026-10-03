@@ -26,6 +26,7 @@ class _RefWatch(NamedTuple):
 
 
 # A Gmail thread moves both ways: mail arrives on it, and the user replies from Gmail.
+# The inbox desk's ref is identity only: it runs on its schedule, not on mail.
 _REF_WATCHES: Mapping[ExternalRefSource, _RefWatch] = MappingProxyType(
     {
         ExternalRefSource.GMAIL_THREAD: _RefWatch(
@@ -40,9 +41,12 @@ async def watch_external_ref(
 ) -> list[TriggerSubscription]:
     """Run the todo whenever ref changes, adding only the watches subscriptions lacks.
 
-    Returns the watches it added; when one fails, the ones it added are removed again.
+    Returns the watches it added (none for a ref with nothing to watch); when one fails,
+    the ones it added are removed again.
     """
-    watch = _REF_WATCHES[ref.source]
+    watch = _REF_WATCHES.get(ref.source)
+    if watch is None:
+        return []
     on_ref = SubscriptionCondition(
         field_name=watch.field_name, operator=ConditionOperator.EQUALS, value=ref.id
     )

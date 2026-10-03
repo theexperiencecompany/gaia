@@ -12,11 +12,13 @@ from composio_client.types.connected_account_list_response import Item
 from composio_client.types.trigger_instance_upsert_response import (
     TriggerInstanceUpsertResponse,
 )
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.config.oauth_config import get_composio_social_configs
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
+from app.models.integrations.composio import ComposioConnectLink
 from app.models.trigger_config import TriggerConfig
 
 # Defensive: guarantees Composio's CustomTool monkey-patches run in any process
@@ -39,9 +41,33 @@ from app.utils.query_utils import add_query_param
 from shared.py.wide_events import log
 
 COMPOSIO_SOCIAL_CONFIGS = get_composio_social_configs()
+COMPOSIO_SERVICE_PROVIDER = "composio_service"
+
+
+class _ComposioEventTotals(BaseModel):
+    """The totals this service accumulates on the wide event's composio namespace."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    toolkits: list[str] = Field(default_factory=list)
+    tools_loaded: int = 0
+
+
+class _WideEventComposio(BaseModel):
+    """The accumulated wide event, read only for its composio namespace."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    composio: _ComposioEventTotals = Field(default_factory=_ComposioEventTotals)
+
+
+def _composio_event_totals() -> _ComposioEventTotals:
+    return _WideEventComposio.model_validate(log.get()).composio
 
 
 class ComposioService:
+    """GAIA's Composio client: connect links, connected accounts, toolkits and triggers."""
+
     def __init__(self, api_key: str):
         from app.config.oauth_config import OAUTH_INTEGRATIONS
 
@@ -61,7 +87,8 @@ class ComposioService:
 
     async def connect_account(
         self, provider: str, user_id: str, state_token: str | None = None
-    ) -> dict:
+    ) -> ComposioConnectLink:
+        """Mint a hosted Connect Link for this user; the account stays pending until they authorize it."""
         if provider not in COMPOSIO_SOCIAL_CONFIGS:
             raise ValueError(f"Provider '{provider}' not supported")
 
@@ -158,12 +185,11 @@ class ComposioService:
 
         result = [tool for tool in tools if tool.name not in exclude_tools]
         await self._store_tool_metadata(tool_kit, result)
-        existing = log.get().get("composio", {})
+        totals = _composio_event_totals()
         log.set(
             composio={
-                **existing,
-                "toolkits": existing.get("toolkits", []) + [tool_kit],
-                "tools_loaded": existing.get("tools_loaded", 0) + len(result),
+                "toolkits": [*totals.toolkits, tool_kit],
+                "tools_loaded": totals.tools_loaded + len(result),
             }
         )
         return result
@@ -230,13 +256,7 @@ class ComposioService:
             result_count=len(result),
             tools_time=tools_time,
         )
-        existing = log.get().get("composio", {})
-        log.set(
-            composio={
-                **existing,
-                "tools_loaded": existing.get("tools_loaded", 0) + len(result),
-            }
-        )
+        log.set(composio={"tools_loaded": _composio_event_totals().tools_loaded + len(result)})
         return result
 
     async def get_raw_tools_metadata(
@@ -351,6 +371,7 @@ class ComposioService:
     def get_connected_account_by_id(
         self, connected_account_id: str
     ) -> ConnectedAccountRetrieveResponse | None:
+        """Fetch one connected account by its nanoid, or None when Composio cannot return it."""
         try:
             connected_account = self.composio.connected_accounts.get(
                 nanoid=connected_account_id,
@@ -366,6 +387,7 @@ class ComposioService:
             return None
 
     async def delete_connected_account(self, user_id: str, provider: str) -> dict[str, str]:
+        """Delete every active connected account this user holds for the provider."""
         log.set(composio_user_id=user_id, composio_provider=provider)
         if provider not in COMPOSIO_SOCIAL_CONFIGS:
             raise ValueError(f"Provider '{provider}' not supported")
@@ -461,6 +483,7 @@ class ComposioService:
         try:
 
             def create_trigger(trigger: TriggerConfig) -> TriggerInstanceUpsertResponse:
+                """Create one trigger instance for this user."""
                 return self.composio.triggers.create(
                     user_id=user_id,
                     slug=trigger.slug,
@@ -484,18 +507,20 @@ class ComposioService:
 
 
 @lazy_provider(
-    name="composio_service",
+    name=COMPOSIO_SERVICE_PROVIDER,
     required_keys=[settings.COMPOSIO_KEY],
     strategy=MissingKeyStrategy.WARN,
 )
 def init_composio_service() -> ComposioService:
+    """Build the ComposioService the lazy provider registry hands out."""
     if settings.COMPOSIO_KEY is None:
         raise RuntimeError("COMPOSIO_KEY is not set in settings")
     return ComposioService(settings.COMPOSIO_KEY)
 
 
 def get_composio_service() -> ComposioService:
-    service = providers.get("composio_service")
+    """Return the registered ComposioService; raise when it is not available."""
+    service = providers.get(COMPOSIO_SERVICE_PROVIDER)
     if service is None:
         raise RuntimeError("ComposioService is not available")
     # providers.get() is typed Any | None; "composio_service" is always

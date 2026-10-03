@@ -66,6 +66,7 @@ interface TodoActions {
   deleteProject: (projectId: string) => Promise<void>;
   loadLabels: () => Promise<void>;
   loadCounts: () => Promise<void>;
+  refreshCounts: () => Promise<void>;
   refreshAll: (filters?: TodoFilters) => Promise<void>;
   prefetchWorkflowStatus: (todoId: string) => Promise<void>;
   setWorkflowStatusEntry: (
@@ -118,251 +119,315 @@ export function createTodoStore(
 
   return create<TodoStore>()(
     devtools(
-      (set, get) => ({
-        ...INITIAL_STATE,
+      (set, get) => {
+        // Monotonic id so a stale list response (slow first load, fast filter
+        // change) never overwrites the newer one — last writer wins.
+        let loadTodosSeq = 0;
+        // Same guard for the totals: a counts read that started before a
+        // write must not overwrite the post-write refresh.
+        let loadCountsSeq = 0;
+        // One in-flight promise per key so components mounting together
+        // (list page + sidebar) share a single network request.
+        const inFlight = new Map<string, Promise<unknown>>();
 
-        setTodos: (todos) => set({ todos }, false, "setTodos"),
-        setProjects: (projects) => set({ projects }, false, "setProjects"),
-        setLabels: (labels) => set({ labels }, false, "setLabels"),
-        setCounts: (counts) => set({ counts }, false, "setCounts"),
-        setLoading: (loading) => set({ loading }, false, "setLoading"),
-        setError: (error) => set({ error }, false, "setError"),
+        function dedupe<T>(key: string, fn: () => Promise<T>): Promise<T> {
+          const existing = inFlight.get(key);
+          if (existing) return existing as Promise<T>;
+          const p = fn().finally(() => {
+            if (inFlight.get(key) === p) inFlight.delete(key);
+          });
+          inFlight.set(key, p);
+          return p;
+        }
 
-        addTodo: (todo) =>
-          set((state) => ({ todos: [todo, ...state.todos] }), false, "addTodo"),
+        return {
+          ...INITIAL_STATE,
 
-        replaceTodo: (tempId, todo) =>
-          set(
-            (state) => ({
-              todos: state.todos.map((t) => (t.id === tempId ? todo : t)),
-            }),
-            false,
-            "replaceTodo",
-          ),
+          setTodos: (todos) => set({ todos }, false, "setTodos"),
+          setProjects: (projects) => set({ projects }, false, "setProjects"),
+          setLabels: (labels) => set({ labels }, false, "setLabels"),
+          setCounts: (counts) => set({ counts }, false, "setCounts"),
+          setLoading: (loading) => set({ loading }, false, "setLoading"),
+          setError: (error) => set({ error }, false, "setError"),
 
-        updateTodoOptimistic: (todoId, updates) =>
-          set(
-            (state) => ({
-              todos: state.todos.map((todo) =>
-                todo.id === todoId ? { ...todo, ...updates } : todo,
-              ),
-            }),
-            false,
-            "updateTodoOptimistic",
-          ),
-
-        removeTodo: (todoId) =>
-          set(
-            (state) => ({
-              todos: state.todos.filter((todo) => todo.id !== todoId),
-            }),
-            false,
-            "removeTodo",
-          ),
-
-        loadTodos: async (filters) => {
-          set({ loading: true, error: null }, false, "loadTodos/start");
-          try {
-            const todos = await api.getAllTodos(filters);
+          addTodo: (todo) =>
             set(
-              { todos, loading: false, initialLoading: false },
+              (state) => ({ todos: [todo, ...state.todos] }),
               false,
-              "loadTodos/success",
-            );
-          } catch (err) {
-            const error =
-              err instanceof Error ? err.message : "Failed to load todos";
+              "addTodo",
+            ),
+
+          replaceTodo: (tempId, todo) =>
             set(
-              { error, loading: false, initialLoading: false },
+              (state) => ({
+                todos: state.todos.map((t) => (t.id === tempId ? todo : t)),
+              }),
               false,
-              "loadTodos/error",
-            );
-          }
-        },
+              "replaceTodo",
+            ),
 
-        createTodo: async (todoData) => {
-          set({ error: null });
-          const tempId = `optimistic-${Date.now()}`;
-          const now = new Date().toISOString();
-          const optimisticTodo: Todo = {
-            id: tempId,
-            user_id: "",
-            title: todoData.title,
-            description: todoData.description ?? null,
-            labels: todoData.labels ?? [],
-            due_date: todoData.due_date ?? null,
-            due_date_timezone: todoData.due_date_timezone ?? null,
-            priority: todoData.priority ?? "none",
-            project_id: todoData.project_id ?? "",
-            completed: false,
-            completed_at: null,
-            notify_on_run: todoData.notify_on_run ?? true,
-            subtasks: (todoData.subtasks ?? []).map((subtask) => ({
-              id: subtask.id ?? "",
-              title: subtask.title,
-              completed: subtask.completed ?? false,
-              created_at: subtask.created_at ?? now,
-            })),
-            workflow_id: null,
-            vfs_path: null,
-            scheduled_at: todoData.scheduled_at ?? null,
-            recurrence: todoData.recurrence ?? null,
-            expires_at: null,
-            references: [],
-            workflow_categories: [],
-            trigger_subscriptions: [],
-            gaia_retry_count: 0,
-            pending_approval: null,
-            created_at: now,
-            updated_at: now,
-          };
+          updateTodoOptimistic: (todoId, updates) =>
+            set(
+              (state) => ({
+                todos: state.todos.map((todo) =>
+                  todo.id === todoId ? { ...todo, ...updates } : todo,
+                ),
+              }),
+              false,
+              "updateTodoOptimistic",
+            ),
 
-          get().addTodo(optimisticTodo);
+          removeTodo: (todoId) =>
+            set(
+              (state) => ({
+                todos: state.todos.filter((todo) => todo.id !== todoId),
+              }),
+              false,
+              "removeTodo",
+            ),
 
-          api
-            .createTodo(todoData)
-            .then((newTodo) => {
-              get().replaceTodo(tempId, newTodo);
-              get()
-                .loadCounts()
-                .catch(() => undefined);
-              notify?.info?.("Generating workflow...");
-              onTodoCreated?.(newTodo.id);
-            })
-            .catch((err) => {
-              get().removeTodo(tempId);
+          loadTodos: async (filters) => {
+            const seq = ++loadTodosSeq;
+            set({ loading: true, error: null }, false, "loadTodos/start");
+            try {
+              const key = `todos:${JSON.stringify(filters ?? null)}`;
+              const todos = await dedupe(key, () => api.getAllTodos(filters));
+              if (seq !== loadTodosSeq) return;
+              set(
+                { todos, loading: false, initialLoading: false },
+                false,
+                "loadTodos/success",
+              );
+            } catch (err) {
+              if (seq !== loadTodosSeq) return;
               const error =
-                err instanceof Error ? err.message : "Failed to create task";
-              set({ error });
-              notify?.error?.(error);
-            });
+                err instanceof Error ? err.message : "Failed to load todos";
+              set(
+                { error, loading: false, initialLoading: false },
+                false,
+                "loadTodos/error",
+              );
+            }
+          },
 
-          return optimisticTodo;
-        },
+          createTodo: async (todoData) => {
+            set({ error: null });
+            const tempId = `optimistic-${Date.now()}`;
+            const now = new Date().toISOString();
+            const optimisticTodo: Todo = {
+              id: tempId,
+              user_id: "",
+              title: todoData.title,
+              description: todoData.description ?? null,
+              labels: todoData.labels ?? [],
+              due_date: todoData.due_date ?? null,
+              due_date_timezone: todoData.due_date_timezone ?? null,
+              priority: todoData.priority ?? "none",
+              project_id: todoData.project_id ?? "",
+              completed: false,
+              completed_at: null,
+              notify_on_run: todoData.notify_on_run ?? true,
+              subtasks: (todoData.subtasks ?? []).map((subtask) => ({
+                id: subtask.id ?? "",
+                title: subtask.title,
+                completed: subtask.completed ?? false,
+                created_at: subtask.created_at ?? now,
+              })),
+              workflow_id: null,
+              vfs_path: null,
+              scheduled_at: todoData.scheduled_at ?? null,
+              recurrence: todoData.recurrence ?? null,
+              expires_at: null,
+              references: [],
+              workflow_categories: [],
+              trigger_subscriptions: [],
+              gaia_retry_count: 0,
+              pending_approval: null,
+              parent_todo_id: null,
+              sub_todo_count: 0,
+              created_at: now,
+              updated_at: now,
+            };
 
-        updateTodo: async (todoId, updates) => {
-          set({ error: null });
-          const current = get().todos.find((t) => t.id === todoId);
-          if (!current) throw new Error("Todo not found");
+            get().addTodo(optimisticTodo);
 
-          get().updateTodoOptimistic(todoId, updates as Partial<Todo>);
+            api
+              .createTodo(todoData)
+              .then((newTodo) => {
+                get().replaceTodo(tempId, newTodo);
+                get()
+                  .refreshCounts()
+                  .catch(() => undefined);
+                notify?.info?.("Generating workflow...");
+                onTodoCreated?.(newTodo.id);
+              })
+              .catch((err) => {
+                get().removeTodo(tempId);
+                // Write failures toast but never touch the shared error:
+                // that belongs to list loads, whose screen this is not.
+                const error =
+                  err instanceof Error ? err.message : "Failed to create task";
+                notify?.error?.(error);
+              });
 
-          try {
-            const updated = await api.updateTodo(todoId, updates);
-            get().updateTodoOptimistic(todoId, updated);
-            get()
-              .loadCounts()
-              .catch(() => undefined);
+            return optimisticTodo;
+          },
+
+          updateTodo: async (todoId, updates) => {
+            set({ error: null });
+            const current = get().todos.find((t) => t.id === todoId);
+            if (!current) throw new Error("Todo not found");
+
+            get().updateTodoOptimistic(todoId, updates as Partial<Todo>);
+
+            try {
+              const updated = await api.updateTodo(todoId, updates);
+              get().updateTodoOptimistic(todoId, updated);
+              get()
+                .refreshCounts()
+                .catch(() => undefined);
+              return updated;
+            } catch (err) {
+              get().updateTodoOptimistic(todoId, current);
+              // Rolls back and rethrows; the shared error stays a list-load
+              // signal so a failed edit never renders as a failed load.
+              throw err;
+            }
+          },
+
+          deleteTodo: async (todoId) => {
+            set({ error: null });
+            const current = get().todos.find((t) => t.id === todoId);
+            if (!current) throw new Error("Todo not found");
+
+            get().removeTodo(todoId);
+
+            try {
+              await api.deleteTodo(todoId);
+              get()
+                .refreshCounts()
+                .catch(() => undefined);
+            } catch (err) {
+              get().addTodo(current);
+              // Rolls back and rethrows; the shared error stays a list-load
+              // signal so a failed delete never renders as a failed load.
+              throw err;
+            }
+          },
+
+          loadProjects: async () => {
+            try {
+              const projects = await dedupe("projects", () =>
+                api.getAllProjects(),
+              );
+              set({ projects }, false, "loadProjects");
+            } catch {
+              // surface via list error UI; project load failures are non-fatal
+            }
+          },
+
+          createProject: async (data) => {
+            const project = await api.createProject(data);
+            set(
+              (state) => ({ projects: [...state.projects, project] }),
+              false,
+              "createProject",
+            );
+            return project;
+          },
+
+          updateProject: async (projectId, data) => {
+            const updated = await api.updateProject(projectId, data);
+            set(
+              (state) => ({
+                projects: state.projects.map((p) =>
+                  p.id === projectId ? updated : p,
+                ),
+              }),
+              false,
+              "updateProject",
+            );
             return updated;
-          } catch (err) {
-            get().updateTodoOptimistic(todoId, current);
-            const error =
-              err instanceof Error ? err.message : "Failed to update todo";
-            set({ error });
-            throw err;
-          }
-        },
+          },
 
-        deleteTodo: async (todoId) => {
-          set({ error: null });
-          const current = get().todos.find((t) => t.id === todoId);
-          if (!current) throw new Error("Todo not found");
+          deleteProject: async (projectId) => {
+            await api.deleteProject(projectId);
+            set(
+              (state) => ({
+                projects: state.projects.filter((p) => p.id !== projectId),
+              }),
+              false,
+              "deleteProject",
+            );
+          },
 
-          get().removeTodo(todoId);
+          loadLabels: async () => {
+            try {
+              const labels = await dedupe("labels", () => api.getAllLabels());
+              set({ labels }, false, "loadLabels");
+            } catch {
+              // non-fatal
+            }
+          },
 
-          try {
-            await api.deleteTodo(todoId);
-            get()
-              .loadCounts()
-              .catch(() => undefined);
-          } catch (err) {
-            get().addTodo(current);
-            const error =
-              err instanceof Error ? err.message : "Failed to delete todo";
-            set({ error });
-            throw err;
-          }
-        },
+          loadCounts: async () => {
+            const seq = loadCountsSeq;
+            try {
+              const counts = await dedupe("counts", () => api.getTodoCounts());
+              if (seq !== loadCountsSeq) return;
+              set({ counts }, false, "loadCounts");
+            } catch {
+              // non-fatal
+            }
+          },
 
-        loadProjects: async () => {
-          try {
-            const projects = await api.getAllProjects();
-            set({ projects }, false, "loadProjects");
-          } catch {
-            // surface via list error UI; project load failures are non-fatal
-          }
-        },
+          refreshCounts: async () => {
+            // Post-write refresh: bypass dedupe so it never joins a read
+            // that started before the write, and retire any such read still
+            // in flight by moving the generation forward.
+            const seq = ++loadCountsSeq;
+            try {
+              const counts = await api.getTodoCounts();
+              if (seq !== loadCountsSeq) return;
+              set({ counts }, false, "refreshCounts");
+            } catch {
+              // non-fatal
+            }
+          },
 
-        createProject: async (data) => {
-          const project = await api.createProject(data);
-          set(
-            (state) => ({ projects: [...state.projects, project] }),
-            false,
-            "createProject",
-          );
-          return project;
-        },
+          refreshAll: async (filters) => {
+            const actions = get();
+            await Promise.allSettled([
+              actions.loadTodos(filters),
+              actions.loadProjects(),
+              actions.loadLabels(),
+              actions.loadCounts(),
+            ]);
+          },
 
-        updateProject: async (projectId, data) => {
-          const updated = await api.updateProject(projectId, data);
-          set(
-            (state) => ({
-              projects: state.projects.map((p) =>
-                p.id === projectId ? updated : p,
-              ),
-            }),
-            false,
-            "updateProject",
-          );
-          return updated;
-        },
+          prefetchWorkflowStatus: async (todoId) => {
+            if (todoId.startsWith("optimistic-")) return;
+            const existing = get().workflowStatusCache[todoId];
+            if (isWorkflowStatusFresh(existing)) return;
+            try {
+              const status = await api.getWorkflowStatus(todoId);
+              const entry = buildWorkflowStatusEntry(status);
+              set(
+                (state) => ({
+                  workflowStatusCache: {
+                    ...state.workflowStatusCache,
+                    [todoId]: entry,
+                  },
+                }),
+                false,
+                "prefetchWorkflowStatus",
+              );
+            } catch {
+              // non-fatal
+            }
+          },
 
-        deleteProject: async (projectId) => {
-          await api.deleteProject(projectId);
-          set(
-            (state) => ({
-              projects: state.projects.filter((p) => p.id !== projectId),
-            }),
-            false,
-            "deleteProject",
-          );
-        },
-
-        loadLabels: async () => {
-          try {
-            const labels = await api.getAllLabels();
-            set({ labels }, false, "loadLabels");
-          } catch {
-            // non-fatal
-          }
-        },
-
-        loadCounts: async () => {
-          try {
-            const counts = await api.getTodoCounts();
-            set({ counts }, false, "loadCounts");
-          } catch {
-            // non-fatal
-          }
-        },
-
-        refreshAll: async (filters) => {
-          const actions = get();
-          await Promise.allSettled([
-            actions.loadTodos(filters),
-            actions.loadProjects(),
-            actions.loadLabels(),
-            actions.loadCounts(),
-          ]);
-        },
-
-        prefetchWorkflowStatus: async (todoId) => {
-          if (todoId.startsWith("optimistic-")) return;
-          const existing = get().workflowStatusCache[todoId];
-          if (isWorkflowStatusFresh(existing)) return;
-          try {
-            const status = await api.getWorkflowStatus(todoId);
-            const entry = buildWorkflowStatusEntry(status);
+          setWorkflowStatusEntry: (todoId, entry) =>
             set(
               (state) => ({
                 workflowStatusCache: {
@@ -371,86 +436,71 @@ export function createTodoStore(
                 },
               }),
               false,
-              "prefetchWorkflowStatus",
+              "setWorkflowStatusEntry",
+            ),
+
+          bulkComplete: async (todoIds) => {
+            const updated = await api.bulkCompleteTodos(todoIds);
+            const map = new Map(updated.map((t) => [t.id, t]));
+            set(
+              (state) => ({
+                todos: state.todos.map((t) => map.get(t.id) ?? t),
+              }),
+              false,
+              "bulkComplete",
             );
-          } catch {
-            // non-fatal
-          }
-        },
+            get()
+              .refreshCounts()
+              .catch(() => undefined);
+          },
 
-        setWorkflowStatusEntry: (todoId, entry) =>
-          set(
-            (state) => ({
-              workflowStatusCache: {
-                ...state.workflowStatusCache,
-                [todoId]: entry,
-              },
-            }),
-            false,
-            "setWorkflowStatusEntry",
-          ),
+          bulkDelete: async (todoIds) => {
+            await api.bulkDeleteTodos(todoIds);
+            const idSet = new Set(todoIds);
+            set(
+              (state) => ({
+                todos: state.todos.filter((t) => !idSet.has(t.id)),
+              }),
+              false,
+              "bulkDelete",
+            );
+            get()
+              .refreshCounts()
+              .catch(() => undefined);
+          },
 
-        bulkComplete: async (todoIds) => {
-          const updated = await api.bulkCompleteTodos(todoIds);
-          const map = new Map(updated.map((t) => [t.id, t]));
-          set(
-            (state) => ({
-              todos: state.todos.map((t) => map.get(t.id) ?? t),
-            }),
-            false,
-            "bulkComplete",
-          );
-          get()
-            .loadCounts()
-            .catch(() => undefined);
-        },
+          bulkUpdatePriority: async (todoIds, priority) => {
+            await api.bulkUpdatePriority(todoIds, priority);
+            const idSet = new Set(todoIds);
+            set(
+              (state) => ({
+                todos: state.todos.map((t) =>
+                  idSet.has(t.id) ? { ...t, priority } : t,
+                ),
+              }),
+              false,
+              "bulkUpdatePriority",
+            );
+          },
 
-        bulkDelete: async (todoIds) => {
-          await api.bulkDeleteTodos(todoIds);
-          const idSet = new Set(todoIds);
-          set(
-            (state) => ({
-              todos: state.todos.filter((t) => !idSet.has(t.id)),
-            }),
-            false,
-            "bulkDelete",
-          );
-          get()
-            .loadCounts()
-            .catch(() => undefined);
-        },
-
-        bulkUpdatePriority: async (todoIds, priority) => {
-          await api.bulkUpdatePriority(todoIds, priority);
-          const idSet = new Set(todoIds);
-          set(
-            (state) => ({
-              todos: state.todos.map((t) =>
-                idSet.has(t.id) ? { ...t, priority } : t,
-              ),
-            }),
-            false,
-            "bulkUpdatePriority",
-          );
-        },
-
-        bulkMoveToProject: async (todoIds, projectId) => {
-          await api.bulkMoveToProject(todoIds, projectId);
-          const idSet = new Set(todoIds);
-          set(
-            (state) => ({
-              todos: state.todos.map((t) =>
-                idSet.has(t.id) ? { ...t, project_id: projectId ?? "" } : t,
-              ),
-            }),
-            false,
-            "bulkMoveToProject",
-          );
-          get()
-            .loadCounts()
-            .catch(() => undefined);
-        },
-      }),
+          bulkMoveToProject: async (todoIds, projectId) => {
+            await api.bulkMoveToProject(todoIds, projectId);
+            const idSet = new Set(todoIds);
+            set(
+              (state) => ({
+                todos: state.todos.map((t) =>
+                  idSet.has(t.id) ? { ...t, project_id: projectId ?? "" } : t,
+                ),
+              }),
+              false,
+              "bulkMoveToProject",
+            );
+            get()
+              .refreshCounts()
+              .catch(() => undefined);
+          },
+        };
+      },
       { name: devtoolsName },
     ),
   );

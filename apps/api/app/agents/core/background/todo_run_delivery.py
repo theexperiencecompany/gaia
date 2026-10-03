@@ -15,16 +15,25 @@ from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
 from app.constants.comms import CommsDirectiveKind
 from app.constants.log_tags import LogTag
 from app.constants.todos import (
+    CANVAS_KEY_DETAILS_SECTION,
+    CANVAS_STANDING_RULES_SECTION,
     DELIVERY_KEY_DETAILS_MAX_CHARS,
     RUN_SUMMARY_ACTIVITY_CHARS,
+    STANDING_RULES_MAX_CHARS,
     TodoActivityEvent,
     TodoRunDeliveryOutcome,
 )
 from app.db.repositories.todos import todo_repository
 from app.models.chat_models import ConversationSource
+from app.models.notification.notification_models import (
+    NotificationContent,
+    NotificationRequest,
+    NotificationSourceEnum,
+)
 from app.models.todo_models import TodoDocument
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.canvas_markdown import section_body
+from app.services.notification_service import notification_service
 from app.services.todo_activity import record_activity
 from shared.py.wide_events import log
 
@@ -96,11 +105,32 @@ async def deliver_todo_run_result(
     )
 
 
-def _standing_requests(todo: TodoDocument) -> str | None:
-    """Return the todo's Key Details, bounded, or None when it has none."""
-    canvas = todo.canvas_content
-    key_details = section_body(canvas, "Key Details") if canvas else None
-    return key_details[:DELIVERY_KEY_DETAILS_MAX_CHARS] if key_details else None
+def _canvas_section(todo: TodoDocument, heading: str, max_chars: int) -> str | None:
+    """Return one canvas section's body, bounded, or None when it is missing or empty."""
+    body = section_body(todo.canvas_content, heading)
+    return body[:max_chars] if body else None
+
+
+async def _send_in_app(todo: TodoDocument, text: str) -> _Resolution:
+    """Deliver a result as an in-app notification, for a user with no chat app linked."""
+    try:
+        await notification_service.create_notification(
+            NotificationRequest(
+                user_id=todo.user_id,
+                source=NotificationSourceEnum.BACKGROUND_JOB,
+                content=NotificationContent(title=todo.title, body=text),
+                metadata={"todo_id": todo.id},
+            )
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.AGENT} todo run result could not be sent in the app",
+            todo_id=todo.id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return _not_sent(TodoRunDeliveryOutcome.UNDELIVERED)
+    return _Resolution(TodoRunDeliveryOutcome.DELIVERED, "result sent as an in-app notification")
 
 
 async def _narrate_and_send(run: ExecutorRun, todo: TodoDocument, result_text: str) -> _Resolution:
@@ -110,7 +140,11 @@ async def _narrate_and_send(run: ExecutorRun, todo: TodoDocument, result_text: s
         "result",
         run.conversation_id,
         run.user,
-        preamble=tracked_todo_delivery_note(todo.title, _standing_requests(todo)),
+        preamble=tracked_todo_delivery_note(
+            todo.title,
+            _canvas_section(todo, CANVAS_STANDING_RULES_SECTION, STANDING_RULES_MAX_CHARS),
+            _canvas_section(todo, CANVAS_KEY_DETAILS_SECTION, DELIVERY_KEY_DETAILS_MAX_CHARS),
+        ),
     )
     if not text:
         log.error(f"{LogTag.AGENT} todo run result narration failed", todo_id=todo.id)
@@ -136,7 +170,7 @@ async def _narrate_and_send(run: ExecutorRun, todo: TodoDocument, result_text: s
         origin=f'tracked todo "{todo.title}" (id {todo.id})',
     )
     if platform is None:
-        return _not_sent(TodoRunDeliveryOutcome.UNDELIVERED)
+        return await _send_in_app(todo, directive.payload)
     return _Resolution(
         TodoRunDeliveryOutcome.DELIVERED, f"result sent on {platform.value}", platform
     )

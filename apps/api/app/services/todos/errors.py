@@ -39,6 +39,17 @@ class ExternalRefTakenError(AppError):
         self.existing = existing
 
 
+class SubTodoParentError(AppError):
+    """Raised (400) when a todo cannot go under the named parent; the message says why."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(
+            message=reason,
+            status_code=HTTPStatus.BAD_REQUEST,
+            code="sub_todo_parent_invalid",
+        )
+
+
 class ExternalRefReopenedTwiceError(AppError):
     """Raised (409) when one reopen names two completed todos about the same outside object."""
 
@@ -48,6 +59,17 @@ class ExternalRefReopenedTwiceError(AppError):
             status_code=HTTPStatus.CONFLICT,
             code="external_ref_reopened_twice",
             public={"todo_ids": todo_ids},
+        )
+
+
+class CanvasShapeError(AppError):
+    """Raised (400) when a new todo's canvas breaks a rule that normalizing cannot repair."""
+
+    def __init__(self, problems: list[str]) -> None:
+        super().__init__(
+            message=f"initial_canvas breaks the canvas shape: {'; '.join(problems)}.",
+            status_code=HTTPStatus.BAD_REQUEST,
+            code="canvas_shape_invalid",
         )
 
 
