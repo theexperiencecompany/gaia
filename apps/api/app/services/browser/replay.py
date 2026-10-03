@@ -1,7 +1,7 @@
 """Short replay codes + the recap slideshow page.
 
-When a browser task finishes (success or failure), its step screenshots already
-live in R2. A short code maps to that session + its step count, so the delivered
+When a browser task finishes (success or failure), its step screenshots are already
+uploaded. A short code maps to the URLs they were served at, so the delivered
 recap link (browser.heygaia.io/replays/{code}) opens a self-contained
 slideshow that plays every step back — a scrubber, a filmstrip of thumbnails, and
 arrow-key navigation. The code is the secret, and the images are whatever URLs
@@ -11,74 +11,57 @@ the run produced, whether an object store or this API served them.
 from __future__ import annotations
 
 import json
-import secrets
 from time import perf_counter
 
-from app.config.settings import settings
 from app.constants.browser import (
     BROWSER_LIVE_CODE_ENTROPY_BYTES,
     BROWSER_REPLAY_CODE_KEY_PREFIX,
     BROWSER_REPLAY_CODE_TTL_SECONDS,
 )
 from app.constants.log_tags import LogTag
-from app.db.redis import redis_cache
 from app.schemas.browser import ReplayRecord
+from app.services.browser.capability_code import CapabilityCodes
+from app.services.browser.exceptions import BrowserUnavailableError
 from app.services.browser.links import browser_link_base
 from shared.py.wide_events import log
 
-
-def _key(code: str) -> str:
-    return f"{BROWSER_REPLAY_CODE_KEY_PREFIX}{code}"
-
-
-async def mint_replay_code(session_id: str, steps: int, shots: list[str] | None = None) -> str:
-    """Create a short code resolving to a finished session's screenshot set."""
-    started = perf_counter()
-    code = secrets.token_urlsafe(BROWSER_LIVE_CODE_ENTROPY_BYTES)
-    shot_count = len(shots or [])
-    await redis_cache.set(
-        _key(code),
-        ReplayRecord(session_id=session_id, steps=steps, shots=shots or []),
-        ttl=BROWSER_REPLAY_CODE_TTL_SECONDS,
-        model=ReplayRecord,
-    )
-    mint_ms = round((perf_counter() - started) * 1000)
-    log.set_ns("browser", session_id=session_id, replay_shots=shot_count, replay_mint_ms=mint_ms)
-    log.info(
-        f"{LogTag.BROWSER} Browser replay code minted",
-        steps=steps,
-        shot_count=shot_count,
-        mint_ms=mint_ms,
-    )
-    return code
+_CODES = CapabilityCodes(
+    BROWSER_REPLAY_CODE_KEY_PREFIX, ReplayRecord, entropy_bytes=BROWSER_LIVE_CODE_ENTROPY_BYTES
+)
 
 
 async def resolve_replay_code(code: str) -> ReplayRecord | None:
     """Return the finished session a replay code opens, or None if unknown or expired."""
-    return await redis_cache.get(_key(code), model=ReplayRecord)
+    return await _CODES.resolve(code)
 
 
 async def create_replay_link(session_id: str, shots: list[str]) -> str | None:
-    """Return a recap slideshow link, or None when no screenshot was actually uploaded.
+    """Return a recap slideshow link, or None when there is nothing to replay or the code was not kept.
 
     Takes the URLs the run really produced rather than a step count: an upload is
     best-effort, so a count would promise frames the slideshow cannot show.
     """
     if not shots:
         return None
-    code = await mint_replay_code(session_id, len(shots), shots)
+    started = perf_counter()
+    try:
+        code = await _CODES.mint(
+            ReplayRecord(session_id=session_id, shots=shots), ttl=BROWSER_REPLAY_CODE_TTL_SECONDS
+        )
+    except BrowserUnavailableError as exc:
+        # The run's result still goes out, only without a recap link that would open nothing.
+        log.error(f"{LogTag.BROWSER} Browser replay code not stored", error_type=type(exc).__name__)
+        return None
+    mint_ms = round((perf_counter() - started) * 1000)
+    log.set_ns("browser", session_id=session_id, replay_shots=len(shots), replay_mint_ms=mint_ms)
+    log.info(f"{LogTag.BROWSER} Browser replay code minted", shot_count=len(shots), mint_ms=mint_ms)
     return f"{browser_link_base()}/replays/{code}"
 
 
 def render_replay_page(record: ReplayRecord) -> str:
     """Return the self-contained slideshow HTML for one finished session."""
-    r2_base = (settings.R2_PUBLIC_BASE_URL or "").rstrip("/")
-    shots = record.shots or [
-        f"{r2_base}/browser_steps/{record.session_id}/step_{i}.png"
-        for i in range(1, record.steps + 1)
-    ]
     # Inlined into a <script>, so close any tag sequence the encoder would leave intact.
-    urls = json.dumps(shots).replace("</", "<\\/")
+    urls = json.dumps(record.shots).replace("</", "<\\/")
     return _REPLAY_TEMPLATE.replace("__URLS__", urls)
 
 

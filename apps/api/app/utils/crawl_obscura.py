@@ -16,12 +16,8 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
-from app.browser_host.obscura_launch import (
-    LaunchedEngine,
-    launch_obscura,
-    process_tree_rss_mb,
-    stop_process,
-)
+from app.browser_host.obscura_launch import LaunchedEngine, launch_obscura
+from app.browser_host.process import process_tree_rss_mb, stop_process
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log

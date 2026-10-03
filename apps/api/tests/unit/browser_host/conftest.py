@@ -19,11 +19,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.browser_host import chromium, proxy, storage
+from app.browser_host import host as host_mod, proxy, storage
 from app.browser_host.cdp_mux import CdpCommandError, CdpMux, sinks_for
-from app.browser_host.chromium import ChromiumHost, HostSession
-from app.browser_host.engine import Engine, EngineFailure
-from app.constants.browser import BrowserEngine
+from app.browser_host.engine import Engine
+from app.browser_host.host import BrowserHost, HostSession, LaunchEngine, MemoryProbe
+from app.constants.browser import BrowserEngine, EngineExit
 
 FAKE_ROOT_WS_URL = "ws://127.0.0.1:9222/devtools/browser/fake"
 # The browser's own context, where CDP puts anything that names no browserContextId.
@@ -40,9 +40,29 @@ def _no_dns(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _ample_memory(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(chromium, "memory_usage_mb", lambda: (100.0, 100_000.0))
-    monkeypatch.setattr(chromium, "_ADMISSION_WAIT_SECONDS", 0.0)
+def _no_admission_wait(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(host_mod, "_ADMISSION_WAIT_SECONDS", 0.0)
+
+
+class AdmissionProbe:
+    """A memory probe with headroom for any number of sessions, counting how often admission asks it."""
+
+    def __init__(self, used_mb: float = 100.0, limit_mb: float = 100_000.0) -> None:
+        self.reading = (used_mb, limit_mb)
+        self.asked = 0
+        self._asked = asyncio.Event()
+
+    def __call__(self) -> tuple[float, float]:
+        self.asked += 1
+        self._asked.set()
+        return self.reading
+
+    async def until_asked(self, times: int) -> None:
+        """Return once admission has asked times times; a create that asked is then queued or admitted."""
+        async with asyncio.timeout(2):
+            while self.asked < times:
+                self._asked.clear()
+                await self._asked.wait()
 
 
 class FakeMux:
@@ -74,6 +94,7 @@ class FakeMux:
         }
         self.hang_on = hang_on
         self.hang_started = asyncio.Event()
+        self.hanging = 0
         # Raised by every call once set: an engine that has stopped answering.
         self.send_error: Exception | None = None
         self.calls: list[tuple[str, dict[str, Any] | None, str | None]] = []
@@ -86,6 +107,19 @@ class FakeMux:
         self.close_count = 0
         self.close_signal = asyncio.Event()
         self._attach_ids = 0
+
+    async def _hang(self) -> None:
+        """Never answer, counting the calls left hanging."""
+        self.hanging += 1
+        self.hang_started.set()
+        await asyncio.Event().wait()
+
+    async def until_hanging(self, calls: int) -> None:
+        """Return once calls are left hanging at once."""
+        async with asyncio.timeout(2):
+            while self.hanging < calls:
+                self.hang_started.clear()
+                await self.hang_started.wait()
 
     def build(self, url: str) -> FakeMux:
         """Stand in for the CdpMux constructor: one fake, however many times it is built."""
@@ -144,8 +178,7 @@ class FakeMux:
         if self.send_error is not None:
             raise self.send_error
         if method == self.hang_on:
-            self.hang_started.set()
-            await asyncio.Event().wait()
+            await self._hang()
         queue = self.queues.get(method)
         if queue:
             return queue.pop(0)
@@ -218,8 +251,7 @@ class FakeEngine(FakeMux):
         if self.send_error is not None:
             raise self.send_error
         if method == self.hang_on:
-            self.hang_started.set()
-            await asyncio.Event().wait()
+            await self._hang()
         handler = getattr(self, "_" + method.replace(".", "_"), None)
         if handler is None:
             raise CdpCommandError({"message": f"'{method}' wasn't found"})
@@ -374,14 +406,14 @@ class StubEngine:
     def rss_mb(self) -> float | None:
         return self.current_rss_mb
 
-    async def wait_failed(self) -> EngineFailure:
-        reason: EngineFailure = await self.failure
+    async def wait_failed(self) -> EngineExit:
+        reason: EngineExit = await self.failure
         return reason
 
-    def fail(self, reason: str = "process exited") -> None:
+    def fail(self, reason: EngineExit = EngineExit.PROCESS_EXITED) -> None:
         """Make the engine fail the way its supervisor watches for."""
         self.is_alive = False
-        self.failure.set_result(EngineFailure(reason))
+        self.failure.set_result(reason)
 
     async def shutdown(self, *, graceful: bool = True) -> None:
         self.is_alive = False
@@ -392,39 +424,49 @@ def as_engine(stub: StubEngine) -> Engine:
     return cast(Engine, stub)
 
 
-@pytest.fixture
-def mux(monkeypatch: pytest.MonkeyPatch) -> FakeMux:
-    """Hand back the fake connection every create_context in this test builds."""
-    return install_mux(monkeypatch)
+class Launcher:
+    """Hands each engine launch the next stub, recording the launch; one past the last raises IndexError."""
 
+    def __init__(self, *engines: StubEngine) -> None:
+        self._queue = list(engines)
+        self.launched: list[StubEngine] = []
+        self._changed = asyncio.Condition()
 
-def install_mux(monkeypatch: pytest.MonkeyPatch, fake: FakeMux | None = None) -> FakeMux:
-    """Make create_context build this fake instead of dialing a real engine connection."""
-    fake = fake if fake is not None else FakeMux()
-    monkeypatch.setattr(chromium, "CdpMux", fake.build)
-    return fake
-
-
-def install_launcher(monkeypatch: pytest.MonkeyPatch, *engines: StubEngine) -> list[StubEngine]:
-    """Make every engine launch hand back the next stub, recording each launch."""
-    queue = list(engines)
-    launched: list[StubEngine] = []
-
-    async def _launch(
-        kind: BrowserEngine, chromium_path: str | None, user_agent: str | None
+    async def __call__(
+        self, kind: BrowserEngine, chromium_path: str | None, user_agent: str | None
     ) -> tuple[Engine, str | None]:
-        stub = queue.pop(0)
-        launched.append(stub)
+        stub = self._queue.pop(0)
+        self.launched.append(stub)
+        async with self._changed:
+            self._changed.notify_all()
         return as_engine(stub), user_agent
 
-    monkeypatch.setattr(chromium, "launch_engine", _launch)
-    return launched
+    async def until_launched(self, count: int) -> None:
+        """Return once count engines have launched."""
+        async with asyncio.timeout(2), self._changed:
+            await self._changed.wait_for(lambda: len(self.launched) >= count)
 
 
-def make_host(engine: StubEngine | None = None) -> ChromiumHost:
-    """Build a host already serving on engine (a fresh stub by default), without its supervisor."""
-    host = ChromiumHost(on_fatal=MagicMock())
-    host._engine = as_engine(engine if engine is not None else StubEngine())
+def make_host(
+    engine: StubEngine | None = None,
+    *,
+    mux: FakeMux | None = None,
+    launch: LaunchEngine | None = None,
+    memory: MemoryProbe | None = None,
+    on_fatal: Callable[[], None] | None = None,
+) -> BrowserHost:
+    """Build a host on fakes: serving on engine (a fresh stub) unless it is to launch its own.
+
+    Every connection dials mux when one is given, else a FakeEngine of its own.
+    """
+    host = BrowserHost(
+        on_fatal=on_fatal if on_fatal is not None else MagicMock(),
+        launch=launch if launch is not None else Launcher(),
+        connect=mux.build if mux is not None else (lambda _url: cast(CdpMux, FakeEngine())),
+        memory=memory if memory is not None else AdmissionProbe(),
+    )
+    if launch is None:
+        host._engine = as_engine(engine if engine is not None else StubEngine())
     return host
 
 

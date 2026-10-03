@@ -14,24 +14,26 @@ from unittest.mock import AsyncMock, MagicMock
 from playwright.sync_api import StorageState
 import pytest
 
-from app.browser_host import chromium
+from app.browser_host import host as host_mod
 from app.browser_host.cdp_mux import CdpCommandError
-from app.browser_host.chromium import (
+from app.browser_host.host import (
     AtCapacityError,
-    ChromiumHost,
+    BrowserHost,
     EngineUnresponsiveError,
+    HostSession,
     SessionNotFoundError,
 )
+from app.browser_host.wire import HealthResponse, SessionInfo
 from app.config.browser_host_settings import browser_host_settings
-from app.constants.browser import BrowserEngine, HostAdmissionRefusal
+from app.constants.browser import BrowserEngine, EngineExit, HostAdmissionRefusal
 from tests.unit.browser_host.conftest import (
     FAKE_ROOT_WS_URL,
+    AdmissionProbe,
     FakeEngine,
     FakeMux,
+    Launcher,
     StubEngine,
     as_engine,
-    install_launcher,
-    install_mux,
     make_host,
 )
 
@@ -54,13 +56,8 @@ _LOGIN: StorageState = {
 
 
 @pytest.fixture
-def engine(monkeypatch: pytest.MonkeyPatch) -> FakeEngine:
-    return cast(FakeEngine, install_mux(monkeypatch, FakeEngine()))
-
-
-async def _settle() -> None:
-    for _ in range(5):
-        await asyncio.sleep(0)
+def engine() -> FakeEngine:
+    return FakeEngine()
 
 
 # --- a session: its context, its seeded login, its dump ---
@@ -70,7 +67,7 @@ async def _settle() -> None:
 async def test_a_new_session_is_its_own_context_with_one_page_the_host_holds(
     engine: FakeEngine,
 ) -> None:
-    host = make_host()
+    host = make_host(mux=engine)
 
     session = await host.create_context(None)
 
@@ -88,7 +85,7 @@ async def test_a_new_session_is_its_own_context_with_one_page_the_host_holds(
 
 @pytest.mark.unit
 async def test_a_saved_login_is_seeded_into_its_context_and_its_page(engine: FakeEngine) -> None:
-    host = make_host()
+    host = make_host(mux=engine)
 
     session = await host.create_context(_LOGIN)
 
@@ -102,7 +99,7 @@ async def test_a_saved_login_is_seeded_into_its_context_and_its_page(engine: Fak
 
 @pytest.mark.unit
 async def test_a_login_survives_the_round_trip_through_a_session(engine: FakeEngine) -> None:
-    host = make_host()
+    host = make_host(mux=engine)
     session = await host.create_context(_LOGIN)
     page = engine.pages[session.target_id]
     page["url"], page["storage"] = f"{_ORIGIN}/home", {"token": "t-2"}
@@ -124,7 +121,7 @@ async def test_a_login_survives_the_round_trip_through_a_session(engine: FakeEng
 
 @pytest.mark.unit
 async def test_the_dump_reports_a_cleared_store_but_no_opaque_origin(engine: FakeEngine) -> None:
-    host = make_host()
+    host = make_host(mux=engine)
     session = await host.create_context(None)
     engine.pages[session.target_id]["url"] = f"{_ORIGIN}/signed-out"
     engine.open_page(session.context_id, url="about:blank")
@@ -138,7 +135,7 @@ async def test_the_dump_reports_a_cleared_store_but_no_opaque_origin(engine: Fak
 
 @pytest.mark.unit
 async def test_a_page_that_cannot_be_read_is_left_out_not_the_dump(engine: FakeEngine) -> None:
-    host = make_host()
+    host = make_host(mux=engine)
     session = await host.create_context(None)
     engine.pages[session.target_id].update(url=f"{_ORIGIN}/", storage={"a": "1"})
     broken = engine.open_page(session.context_id, url="https://broken.example/", storage={"b": "2"})
@@ -153,7 +150,7 @@ async def test_a_page_that_cannot_be_read_is_left_out_not_the_dump(engine: FakeE
 
 @pytest.mark.unit
 async def test_a_dump_that_fails_still_ends_the_session(engine: FakeEngine) -> None:
-    host = make_host()
+    host = make_host(mux=engine)
     session = await host.create_context(None)
     engine.hang_on = "Storage.getCookies"
     engine.send_error = None
@@ -167,7 +164,6 @@ async def test_a_dump_that_fails_still_ends_the_session(engine: FakeEngine) -> N
         await asyncio.gather(
             asyncio.wait_for(host.dispose_context(session.session_id), 0.05), _dump_then_fail()
         )
-    await _settle()
 
     assert host.get(session.session_id) is None
     assert engine.close_count == 1
@@ -176,7 +172,7 @@ async def test_a_dump_that_fails_still_ends_the_session(engine: FakeEngine) -> N
 @pytest.mark.unit
 async def test_a_session_on_a_down_engine_refuses_its_dump(engine: FakeEngine) -> None:
     stub = StubEngine()
-    host = make_host(stub)
+    host = make_host(stub, mux=engine)
     session = await host.create_context(None)
     stub.is_alive = False
 
@@ -208,12 +204,11 @@ async def test_an_unknown_session_is_not_found_everywhere() -> None:
 async def test_a_session_whose_lease_is_not_renewed_is_disposed(
     engine: FakeEngine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(chromium, "BROWSER_SESSION_LEASE_SECONDS", 0.02)
-    host = make_host()
+    monkeypatch.setattr(host_mod, "BROWSER_SESSION_LEASE_SECONDS", 0.02)
+    host = make_host(mux=engine)
     session = await host.create_context(None)
 
     await asyncio.wait_for(engine.wait_closed(), 1.0)
-    await _settle()
 
     assert host.get(session.session_id) is None
     assert session.context_id not in engine.contexts
@@ -221,7 +216,7 @@ async def test_a_session_whose_lease_is_not_renewed_is_disposed(
 
 @pytest.mark.unit
 async def test_a_renewed_lease_replaces_the_one_it_renews(engine: FakeEngine) -> None:
-    host = make_host()
+    host = make_host(mux=engine)
     session = await host.create_context(None)
     first = cast(asyncio.TimerHandle, session.lease)
 
@@ -232,13 +227,13 @@ async def test_a_renewed_lease_replaces_the_one_it_renews(engine: FakeEngine) ->
     assert not renewed.cancelled()
     assert renewed.when() >= first.when()
     assert renewed.when() - asyncio.get_running_loop().time() == pytest.approx(
-        chromium.BROWSER_SESSION_LEASE_SECONDS, abs=1.0
+        host_mod.BROWSER_SESSION_LEASE_SECONDS, abs=1.0
     )
 
 
 @pytest.mark.unit
 async def test_a_disposed_session_holds_no_lease_to_run_out(engine: FakeEngine) -> None:
-    host = make_host()
+    host = make_host(mux=engine)
     session = await host.create_context(None)
     lease = cast(asyncio.TimerHandle, session.lease)
 
@@ -250,12 +245,14 @@ async def test_a_disposed_session_holds_no_lease_to_run_out(engine: FakeEngine) 
 
 
 @pytest.mark.unit
-async def test_a_session_whose_connection_drops_is_gone(engine: FakeEngine) -> None:
-    host = make_host()
+async def test_a_session_whose_connection_drops_is_gone(
+    engine: FakeEngine, spawned: _Spawned
+) -> None:
+    host = make_host(mux=engine)
     session = await host.create_context(None)
 
     await engine.close()
-    await _settle()
+    await spawned.settled(session)
 
     assert host.get(session.session_id) is None
     assert session.lease is None
@@ -263,7 +260,7 @@ async def test_a_session_whose_connection_drops_is_gone(engine: FakeEngine) -> N
 
 @pytest.mark.unit
 async def test_a_failed_create_frees_its_slot_and_its_connection(engine: FakeEngine) -> None:
-    host = make_host()
+    host = make_host(mux=engine)
     engine.send_error = CdpCommandError({"message": "boom"})
 
     with pytest.raises(CdpCommandError):
@@ -276,7 +273,7 @@ async def test_a_failed_create_frees_its_slot_and_its_connection(engine: FakeEng
 
 @pytest.mark.unit
 async def test_a_create_with_no_engine_serving_says_so_and_frees_its_slot() -> None:
-    host = ChromiumHost(on_fatal=MagicMock())
+    host = BrowserHost(on_fatal=MagicMock())
 
     with pytest.raises(EngineUnresponsiveError):
         await host.create_context(None)
@@ -297,17 +294,12 @@ async def test_a_create_refused_by_a_dead_engine_leaves_it_counted_idle() -> Non
 # --- admission ---
 
 
-def _memory(monkeypatch: pytest.MonkeyPatch, used: float, limit: float) -> None:
-    monkeypatch.setattr(chromium, "memory_usage_mb", lambda: (used, limit))
-
-
 @pytest.mark.unit
 async def test_a_create_is_admitted_up_to_the_watermark_exactly(
     engine: FakeEngine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_MEMORY_HIGH_WATERMARK", 0.5)
-    _memory(monkeypatch, 450.0, 1000.0)
-    host = make_host()
+    host = make_host(mux=engine, memory=AdmissionProbe(450.0, 1000.0))
 
     await host.create_context(None)
     with pytest.raises(AtCapacityError) as refused:
@@ -326,7 +318,7 @@ async def test_the_session_ceiling_is_a_backstop_that_zero_turns_off(
     engine: FakeEngine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_MAX_SESSIONS", 1)
-    host = make_host()
+    host = make_host(mux=engine)
     await host.create_context(None)
     with pytest.raises(AtCapacityError) as refused:
         await host.create_context(None)
@@ -342,12 +334,13 @@ async def test_a_refused_create_waits_for_a_session_to_end_before_its_429(
     engine: FakeEngine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_MAX_SESSIONS", 1)
-    monkeypatch.setattr(chromium, "_ADMISSION_WAIT_SECONDS", 5.0)
-    host = make_host()
+    monkeypatch.setattr(host_mod, "_ADMISSION_WAIT_SECONDS", 5.0)
+    probe = AdmissionProbe()
+    host = make_host(mux=engine, memory=probe)
     first = await host.create_context(None)
 
     waiting = asyncio.create_task(host.create_context(None))
-    await _settle()
+    await probe.until_asked(2)
     assert not waiting.done()
     await host.dispose_context(first.session_id)
     second = await asyncio.wait_for(waiting, 1.0)
@@ -360,8 +353,7 @@ async def test_every_create_in_flight_reserves_its_cost(
     engine: FakeEngine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_MEMORY_HIGH_WATERMARK", 1.0)
-    _memory(monkeypatch, 0.0, 90.0)
-    host = make_host()
+    host = make_host(mux=engine, memory=AdmissionProbe(0.0, 90.0))
     engine.hang_on = "Target.createBrowserContext"
     first = asyncio.create_task(host.create_context(None))
     await engine.hang_started.wait()
@@ -382,19 +374,19 @@ async def test_the_next_sessions_cost_is_the_serving_engines_measured_average_fl
 ) -> None:
     stub = StubEngine(rss_mb=500.0)
     stub.base_rss_mb = 100.0
-    host = make_host(stub)
-    assert host._estimate_session_cost_mb() == chromium._SESSION_COST_FLOOR_MB
+    host = make_host(stub, mux=engine)
+    assert host._estimate_session_cost_mb() == host_mod._SESSION_COST_FLOOR_MB
 
     await host.create_context(None)
     await host.create_context(None)
     assert host._estimate_session_cost_mb() == 200.0
 
     stub.current_rss_mb = 110.0
-    assert host._estimate_session_cost_mb() == chromium._SESSION_COST_FLOOR_MB
+    assert host._estimate_session_cost_mb() == host_mod._SESSION_COST_FLOOR_MB
     stub.current_rss_mb = None
-    assert host._estimate_session_cost_mb() == chromium._SESSION_COST_FLOOR_MB
+    assert host._estimate_session_cost_mb() == host_mod._SESSION_COST_FLOOR_MB
     host._engine = None
-    assert host._estimate_session_cost_mb() == chromium._SESSION_COST_FLOOR_MB
+    assert host._estimate_session_cost_mb() == host_mod._SESSION_COST_FLOOR_MB
 
 
 # --- engines: supervision, failure, recycling ---
@@ -405,10 +397,10 @@ async def test_start_launches_the_configured_engine_and_watches_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(browser_host_settings, "BROWSER_ENGINE", BrowserEngine.CHROMIUM)
-    monkeypatch.setattr(chromium, "resolve_chromium_path", lambda: "/opt/chrome")
+    monkeypatch.setattr(host_mod, "resolve_chromium_path", lambda: "/opt/chrome")
     stub = StubEngine()
-    install_launcher(monkeypatch, stub)
-    host = ChromiumHost(on_fatal=MagicMock())
+    launcher = Launcher(stub)
+    host = make_host(launch=launcher)
 
     await host.start()
 
@@ -426,9 +418,9 @@ async def test_an_obscura_host_never_resolves_a_chromium_binary(
 ) -> None:
     monkeypatch.setattr(browser_host_settings, "BROWSER_ENGINE", BrowserEngine.OBSCURA)
     resolve = MagicMock()
-    monkeypatch.setattr(chromium, "resolve_chromium_path", resolve)
-    install_launcher(monkeypatch, StubEngine())
-    host = ChromiumHost(on_fatal=MagicMock())
+    monkeypatch.setattr(host_mod, "resolve_chromium_path", resolve)
+    launcher = Launcher(StubEngine())
+    host = make_host(launch=launcher)
 
     await host.start()
 
@@ -441,17 +433,15 @@ async def test_a_failed_engine_takes_its_sessions_with_it_and_is_replaced(
     engine: FakeEngine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     first, second = StubEngine(), StubEngine()
-    install_launcher(monkeypatch, first, second)
+    launcher = Launcher(first, second)
     on_fatal = MagicMock()
-    host = ChromiumHost(on_fatal=on_fatal)
+    host = make_host(on_fatal=on_fatal, launch=launcher, mux=engine)
     await host.start()
     session = await host.create_context(None)
 
-    first.fail("stopped answering")
-    for _ in range(20):
-        await asyncio.sleep(0)
-        if host._engine is as_engine(second):
-            break
+    supervisor = host._supervisors[as_engine(first)]
+    first.fail(EngineExit.STOPPED_ANSWERING)
+    await supervisor
 
     assert host.get(session.session_id) is None
     assert engine.closed
@@ -466,17 +456,16 @@ async def test_a_host_that_cannot_relaunch_its_engine_gives_up_for_a_restart(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     first = StubEngine()
-    launched = install_launcher(monkeypatch, first)
+    launcher = Launcher(first)
+    launched = launcher.launched
     on_fatal = MagicMock()
-    host = ChromiumHost(on_fatal=on_fatal)
+    host = make_host(on_fatal=on_fatal, launch=launcher)
     await host.start()
     assert launched == [first]
 
+    supervisor = host._supervisors[as_engine(first)]
     first.fail()
-    for _ in range(20):
-        await asyncio.sleep(0)
-        if on_fatal.called:
-            break
+    await supervisor
 
     on_fatal.assert_called_once_with()
     assert host.failed
@@ -488,8 +477,8 @@ async def test_a_stopping_host_does_not_relaunch_a_failed_engine(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     first = StubEngine()
-    install_launcher(monkeypatch, first, StubEngine())
-    host = ChromiumHost(on_fatal=MagicMock())
+    launcher = Launcher(first, StubEngine())
+    host = make_host(launch=launcher)
     await host.start()
     host._stopping.set()
 
@@ -498,8 +487,7 @@ async def test_a_stopping_host_does_not_relaunch_a_failed_engine(
     assert host._engine is as_engine(first)
 
 
-async def _session_on(host: ChromiumHost, monkeypatch: pytest.MonkeyPatch) -> str:
-    install_mux(monkeypatch, FakeEngine())
+async def _session_on(host: BrowserHost) -> str:
     return (await host.create_context(None)).session_id
 
 
@@ -509,11 +497,11 @@ async def test_an_engine_over_its_limit_drains_while_a_fresh_one_takes_new_sessi
 ) -> None:
     monkeypatch.setattr(browser_host_settings, "BROWSER_ENGINE_RECYCLE_MB", 1000)
     old, fresh = StubEngine(rss_mb=900.0), StubEngine(rss_mb=100.0)
-    install_launcher(monkeypatch, old, fresh)
-    host = ChromiumHost(on_fatal=MagicMock())
+    launcher = Launcher(old, fresh)
+    host = make_host(launch=launcher)
     await host.start()
-    leaving = await _session_on(host, monkeypatch)
-    staying = await _session_on(host, monkeypatch)
+    leaving = await _session_on(host)
+    staying = await _session_on(host)
 
     old.current_rss_mb = 1200.0
     await host.dispose_context(leaving)
@@ -521,7 +509,7 @@ async def test_an_engine_over_its_limit_drains_while_a_fresh_one_takes_new_sessi
     assert host._engine is as_engine(fresh)
     assert as_engine(old) in host._retiring
     assert old.shutdowns == []
-    newcomer = await _session_on(host, monkeypatch)
+    newcomer = await _session_on(host)
     assert host._sessions[newcomer].engine is as_engine(fresh)
 
     await host.dispose_context(staying)
@@ -536,11 +524,11 @@ async def test_an_idle_engine_over_its_limit_is_replaced_at_once(
 ) -> None:
     monkeypatch.setattr(browser_host_settings, "BROWSER_ENGINE_RECYCLE_MB", 1000)
     old, fresh = StubEngine(rss_mb=1200.0), StubEngine()
-    install_launcher(monkeypatch, old, fresh)
-    host = ChromiumHost(on_fatal=MagicMock())
+    launcher = Launcher(old, fresh)
+    host = make_host(launch=launcher)
     await host.start()
 
-    await host.dispose_context(await _session_on(host, monkeypatch))
+    await host.dispose_context(await _session_on(host))
 
     assert host._engine is as_engine(fresh)
     assert old.shutdowns == [True]
@@ -556,11 +544,12 @@ async def test_an_engine_within_its_limit_or_unmeasured_keeps_serving(
     monkeypatch.setattr(browser_host_settings, "BROWSER_ENGINE_RECYCLE_MB", limit)
     stub = StubEngine()
     stub.current_rss_mb = rss
-    launched = install_launcher(monkeypatch, stub, StubEngine())
-    host = ChromiumHost(on_fatal=MagicMock())
+    launcher = Launcher(stub, StubEngine())
+    launched = launcher.launched
+    host = make_host(launch=launcher)
     await host.start()
 
-    await host.dispose_context(await _session_on(host, monkeypatch))
+    await host.dispose_context(await _session_on(host))
 
     assert launched == [stub]
     await host.stop()
@@ -572,11 +561,11 @@ async def test_a_replacement_that_fails_to_launch_leaves_the_old_engine_serving(
 ) -> None:
     monkeypatch.setattr(browser_host_settings, "BROWSER_ENGINE_RECYCLE_MB", 1000)
     old = StubEngine(rss_mb=2000.0)
-    install_launcher(monkeypatch, old)
-    host = ChromiumHost(on_fatal=MagicMock())
+    launcher = Launcher(old)
+    host = make_host(launch=launcher)
     await host.start()
 
-    await host.dispose_context(await _session_on(host, monkeypatch))
+    await host.dispose_context(await _session_on(host))
 
     assert host._engine is as_engine(old)
     assert old.shutdowns == []
@@ -591,15 +580,15 @@ async def test_session_info_reads_the_focused_page_and_answers_on_the_root(
     engine: FakeEngine,
 ) -> None:
     stub = StubEngine()
-    host = make_host(stub)
+    host = make_host(stub, mux=engine)
     session = await host.create_context(None)
     second = engine.open_page(session.context_id, url="https://second.example/")
     host.note_focus(session.session_id, second)
 
     info = await host.session_info(session.session_id)
 
-    assert info["live"] is True
-    assert info["url"] == "https://second.example/"
+    assert info.live is True
+    assert info.url == "https://second.example/"
     stub.answers = False
     with pytest.raises(EngineUnresponsiveError):
         await host.session_info(session.session_id)
@@ -607,20 +596,20 @@ async def test_session_info_reads_the_focused_page_and_answers_on_the_root(
 
 @pytest.mark.unit
 async def test_session_info_on_a_closed_focused_tab_has_no_page(engine: FakeEngine) -> None:
-    host = make_host()
+    host = make_host(mux=engine)
     session = await host.create_context(None)
     host.note_focus(session.session_id, "closed-tab")
 
     info = await host.session_info(session.session_id)
 
-    assert (info["url"], info["title"]) == (None, None)
+    assert (info.url, info.title) == (None, None)
 
 
 @pytest.mark.unit
 async def test_the_streamed_page_is_the_focused_then_the_sessions_own_then_the_newest(
     engine: FakeEngine,
 ) -> None:
-    host = make_host()
+    host = make_host(mux=engine)
     session = await host.create_context(None)
     newest = engine.open_page(session.context_id, url="https://n.example/")
 
@@ -637,7 +626,7 @@ async def test_the_streamed_page_is_the_focused_then_the_sessions_own_then_the_n
 
 @pytest.mark.unit
 async def test_a_focus_move_wakes_whoever_watches_once(engine: FakeEngine) -> None:
-    host = make_host()
+    host = make_host(mux=engine)
     session = await host.create_context(None)
     watched = session.focus_moved
 
@@ -654,28 +643,22 @@ async def test_a_focus_move_wakes_whoever_watches_once(engine: FakeEngine) -> No
 async def test_healthz_is_a_round_trip_on_the_serving_engine() -> None:
     stub = StubEngine()
     host = make_host(stub)
-    assert await host.healthz() == {
-        "ok": True,
-        "sessions": 0,
-        "engine_up": True,
-        "cdp_responsive": True,
-    }
+    assert await host.healthz() == HealthResponse(
+        ok=True, sessions=0, engine_up=True, cdp_responsive=True
+    )
     stub.answers = False
-    assert (await host.healthz())["ok"] is False
+    assert (await host.healthz()).ok is False
     host._engine = None
-    assert await host.healthz() == {
-        "ok": False,
-        "sessions": 0,
-        "engine_up": False,
-        "cdp_responsive": False,
-    }
+    assert await host.healthz() == HealthResponse(
+        ok=False, sessions=0, engine_up=False, cdp_responsive=False
+    )
 
 
 @pytest.mark.unit
 async def test_a_navigation_is_timed_and_sampled_only_when_one_was_started(
     engine: FakeEngine,
 ) -> None:
-    host = make_host()
+    host = make_host(mux=engine)
     session = await host.create_context(None)
     samples = session.metrics.rss_mb.count
 
@@ -700,7 +683,7 @@ async def test_a_navigation_is_timed_and_sampled_only_when_one_was_started(
 @pytest.mark.unit
 async def test_stop_releases_every_session_timer_and_engine(engine: FakeEngine) -> None:
     stub = StubEngine()
-    host = make_host(stub)
+    host = make_host(stub, mux=engine)
     session = await host.create_context(None)
     lease = cast(Any, session.lease)
 
@@ -715,11 +698,11 @@ async def test_stop_releases_every_session_timer_and_engine(engine: FakeEngine) 
 async def test_a_dispose_logs_the_lost_login_when_the_dump_fails(
     engine: FakeEngine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    host = make_host()
+    host = make_host(mux=engine)
     session = await host.create_context(None)
     engine.send_error = CdpCommandError({"message": "gone"})
     error = MagicMock()
-    monkeypatch.setattr(chromium.log, "error", error)
+    monkeypatch.setattr(host_mod.log, "error", error)
 
     with pytest.raises(CdpCommandError):
         await host.dispose_context(session.session_id)
@@ -731,17 +714,14 @@ async def test_a_dispose_logs_the_lost_login_when_the_dump_fails(
 async def test_a_failed_context_dispose_is_warned_about_and_the_connection_still_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    mux = install_mux(
-        monkeypatch,
-        FakeMux({"Target.attachToTarget": {}, "Target.createTarget": {"targetId": "t"}}),
-    )
-    host = make_host()
+    mux = FakeMux({"Target.attachToTarget": {}, "Target.createTarget": {"targetId": "t"}})
+    host = make_host(mux=mux)
     session = await host.create_context(None)
     mux.send_error = CdpCommandError({"message": "no such context"})
     warning = MagicMock()
-    monkeypatch.setattr(chromium.log, "warning", warning)
+    monkeypatch.setattr(host_mod.log, "warning", warning)
 
-    await host._end_session(session, chromium.HostSessionEnd.DISPOSED)
+    await host._end_session(session, host_mod.HostSessionEnd.DISPOSED)
 
     assert warning.call_args.kwargs["error_type"] == "CdpCommandError"
     assert mux.closed
@@ -752,13 +732,13 @@ async def test_an_engine_that_launches_for_the_host_is_supervised_until_stopped(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     stub = StubEngine()
-    install_launcher(monkeypatch, stub)
-    host = ChromiumHost(on_fatal=MagicMock())
+    launcher = Launcher(stub)
+    host = make_host(launch=launcher)
     await host.start()
     supervisor = host._supervisors[as_engine(stub)]
 
     await host._stop_engine(as_engine(stub))
-    await asyncio.sleep(0)
+    await asyncio.gather(supervisor, return_exceptions=True)
 
     assert supervisor.cancelled()
     assert as_engine(stub) not in host._supervisors
@@ -767,7 +747,7 @@ async def test_an_engine_that_launches_for_the_host_is_supervised_until_stopped(
 @pytest.mark.unit
 async def test_resource_sampling_needs_a_session_and_a_sampler(engine: FakeEngine) -> None:
     stub = StubEngine()
-    host = make_host(stub)
+    host = make_host(stub, mux=engine)
     session = await host.create_context(None)
     taken = session.metrics.rss_mb.count
 
@@ -784,12 +764,12 @@ async def test_resource_sampling_needs_a_session_and_a_sampler(engine: FakeEngin
 async def test_a_create_through_an_attach_the_engine_never_answers_fails_as_unresponsive(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    mux = install_mux(monkeypatch, FakeMux({"Target.createTarget": {"targetId": "t"}}))
+    mux = FakeMux({"Target.createTarget": {"targetId": "t"}})
     mux.hang_on = "Target.attachToTarget"
-    monkeypatch.setattr(chromium, "BROWSER_HOST_LIVENESS_TIMEOUT_SECONDS", 0.01)
-    host = make_host()
+    monkeypatch.setattr(host_mod, "BROWSER_HOST_LIVENESS_TIMEOUT_SECONDS", 0.01)
+    host = make_host(mux=mux)
 
-    with pytest.raises(chromium.CDPTimeoutError):
+    with pytest.raises(host_mod.CDPTimeoutError):
         await host.create_context(None)
     assert host._pending_slots == 0
 
@@ -799,8 +779,7 @@ async def test_the_launch_hands_the_learned_user_agent_to_the_next_launch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     launch = AsyncMock(return_value=(as_engine(StubEngine()), "Mozilla Chrome/1"))
-    monkeypatch.setattr(chromium, "launch_engine", launch)
-    host = ChromiumHost(on_fatal=MagicMock())
+    host = make_host(launch=launch)
 
     await host._launch()
     await host._launch()
@@ -831,21 +810,38 @@ class _Log:
 @pytest.fixture
 def host_log(monkeypatch: pytest.MonkeyPatch) -> _Log:
     recorder = _Log()
-    monkeypatch.setattr(chromium, "log", recorder)
+    monkeypatch.setattr(host_mod, "log", recorder)
     return recorder
 
 
+class _Spawned(list[str]):
+    """The background work the host spawned, by name, and the tasks running it."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.tasks: list[asyncio.Task[None]] = []
+
+    async def settled(self, session: HostSession) -> None:
+        """Return once the session's connection watch and everything it spawned have run."""
+        await asyncio.gather(
+            cast(asyncio.Task[None], session.connection_watch), return_exceptions=True
+        )
+        await asyncio.gather(*self.tasks)
+
+
 @pytest.fixture
-def spawned(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    names: list[str] = []
-    real = chromium.spawn_logged_task
+def spawned(monkeypatch: pytest.MonkeyPatch) -> _Spawned:
+    record = _Spawned()
+    real = host_mod.spawn_logged_task
 
     def _spawn(operation: str, coro: Any) -> Any:
-        names.append(operation)
-        return real(operation, coro)
+        record.append(operation)
+        task = real(operation, coro)
+        record.tasks.append(task)
+        return task
 
-    monkeypatch.setattr(chromium, "spawn_logged_task", _spawn)
-    return names
+    monkeypatch.setattr(host_mod, "spawn_logged_task", _spawn)
+    return record
 
 
 @pytest.mark.unit
@@ -853,8 +849,7 @@ async def test_a_fresh_host_has_not_failed_and_launches_with_nothing_learned(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     launch = AsyncMock(return_value=(as_engine(StubEngine()), None))
-    monkeypatch.setattr(chromium, "launch_engine", launch)
-    host = ChromiumHost(on_fatal=MagicMock())
+    host = make_host(launch=launch)
 
     await host._launch()
 
@@ -867,7 +862,7 @@ async def test_a_fresh_host_has_not_failed_and_launches_with_nothing_learned(
 async def test_a_create_opens_its_context_on_the_serving_engine_and_says_so(
     engine: FakeEngine, host_log: _Log
 ) -> None:
-    host = make_host()
+    host = make_host(mux=engine)
 
     session = await host.create_context(None)
 
@@ -884,7 +879,7 @@ async def test_a_create_opens_its_context_on_the_serving_engine_and_says_so(
 
 @pytest.mark.unit
 async def test_a_create_with_no_engine_says_which_way_it_failed() -> None:
-    host = ChromiumHost(on_fatal=MagicMock())
+    host = BrowserHost(on_fatal=MagicMock())
 
     with pytest.raises(EngineUnresponsiveError) as refused:
         await host.create_context(None)
@@ -897,11 +892,11 @@ async def test_two_creates_in_flight_keep_their_engine_busy_until_both_are_done(
     engine: FakeEngine,
 ) -> None:
     stub = StubEngine()
-    host = make_host(stub)
+    host = make_host(stub, mux=engine)
     engine.hang_on = "Target.createBrowserContext"
     first = asyncio.create_task(host.create_context(None))
     second = asyncio.create_task(host.create_context(None))
-    await _settle()
+    await engine.until_hanging(2)
 
     first.cancel()
     await asyncio.gather(first, return_exceptions=True)
@@ -914,13 +909,13 @@ async def test_two_creates_in_flight_keep_their_engine_busy_until_both_are_done(
 
 @pytest.mark.unit
 async def test_a_session_ending_reports_how_with_its_metrics(
-    engine: FakeEngine, host_log: _Log, monkeypatch: pytest.MonkeyPatch, spawned: list[str]
+    engine: FakeEngine, host_log: _Log, monkeypatch: pytest.MonkeyPatch, spawned: _Spawned
 ) -> None:
-    monkeypatch.setattr(chromium, "BROWSER_SESSION_LEASE_SECONDS", 0.0)
-    host = make_host()
+    monkeypatch.setattr(host_mod, "BROWSER_SESSION_LEASE_SECONDS", 0.0)
+    host = make_host(mux=engine)
     session = await host.create_context(None)
     await asyncio.wait_for(engine.wait_closed(), 1.0)
-    await _settle()
+    await spawned.settled(session)
 
     assert spawned == ["browser_session_lease_expired"]
     assert {"browser": {"session_id": session.session_id, "operation": "lease_expired"}} in [
@@ -933,26 +928,26 @@ async def test_a_session_ending_reports_how_with_its_metrics(
 
 @pytest.mark.unit
 async def test_a_dispose_is_not_mistaken_for_a_lost_connection(
-    engine: FakeEngine, spawned: list[str]
+    engine: FakeEngine, spawned: _Spawned
 ) -> None:
-    host = make_host()
+    host = make_host(mux=engine)
     session = await host.create_context(None)
 
     await host.dispose_context(session.session_id)
-    await _settle()
+    await spawned.settled(session)
 
     assert spawned == []
 
 
 @pytest.mark.unit
 async def test_a_dropped_connection_ends_its_session_as_lost(
-    engine: FakeEngine, host_log: _Log, spawned: list[str]
+    engine: FakeEngine, host_log: _Log, spawned: _Spawned
 ) -> None:
-    host = make_host()
+    host = make_host(mux=engine)
     session = await host.create_context(None)
 
     await engine.close()
-    await _settle()
+    await spawned.settled(session)
 
     assert spawned == ["browser_session_connection_lost"]
     assert {"browser": {"session_id": session.session_id, "operation": "connection_lost"}} in [
@@ -962,15 +957,15 @@ async def test_a_dropped_connection_ends_its_session_as_lost(
 
 @pytest.mark.unit
 async def test_a_stopping_host_does_not_treat_its_closing_connections_as_lost(
-    engine: FakeEngine, spawned: list[str]
+    engine: FakeEngine, spawned: _Spawned
 ) -> None:
-    host = make_host()
+    host = make_host(mux=engine)
     session = await host.create_context(None)
     watch = cast(asyncio.Task[None], session.connection_watch)
 
     host._stopping.set()
     await engine.close()
-    await _settle()
+    await spawned.settled(session)
 
     assert spawned == []
     assert watch.done()
@@ -978,12 +973,12 @@ async def test_a_stopping_host_does_not_treat_its_closing_connections_as_lost(
 
 @pytest.mark.unit
 async def test_stop_cancels_every_sessions_connection_watch(engine: FakeEngine) -> None:
-    host = make_host()
+    host = make_host(mux=engine)
     session = await host.create_context(None)
     watch = cast(asyncio.Task[None], session.connection_watch)
 
     await host.stop()
-    await _settle()
+    await asyncio.gather(watch, return_exceptions=True)
 
     assert watch.cancelled()
 
@@ -993,20 +988,20 @@ async def test_a_failed_engine_is_reported_with_why_and_how_many_sessions_it_too
     engine: FakeEngine, monkeypatch: pytest.MonkeyPatch, host_log: _Log
 ) -> None:
     first, second = StubEngine(), StubEngine()
-    install_launcher(monkeypatch, first, second)
-    host = ChromiumHost(on_fatal=MagicMock())
+    launcher = Launcher(first, second)
+    host = make_host(launch=launcher, mux=engine)
     await host.start()
     await host.create_context(None)
 
-    first.fail("stopped answering")
-    for _ in range(20):
-        await asyncio.sleep(0)
+    supervisor = host._supervisors[as_engine(first)]
+    first.fail(EngineExit.STOPPED_ANSWERING)
+    await supervisor
 
     [(args, kwargs)] = host_log.of("error")
     assert "engine failed" in args[0]
     assert kwargs == {
-        "error_type": "EngineFailure",
-        "browser": {"operation": "engine_failed", "reason": "stopped answering"},
+        "error_type": "EngineExit",
+        "browser": {"operation": "engine_failed", "reason": "stopped_answering"},
     }
     assert {"browser": {"operation": "engine_relaunched", "dead_sessions": 1}} in [
         kwargs for _, kwargs in host_log.of("set")
@@ -1019,13 +1014,13 @@ async def test_a_relaunch_that_fails_is_reported_before_the_host_gives_up(
     monkeypatch: pytest.MonkeyPatch, host_log: _Log
 ) -> None:
     first = StubEngine()
-    install_launcher(monkeypatch, first)
-    host = ChromiumHost(on_fatal=MagicMock())
+    launcher = Launcher(first)
+    host = make_host(launch=launcher)
     await host.start()
 
+    supervisor = host._supervisors[as_engine(first)]
     first.fail()
-    for _ in range(20):
-        await asyncio.sleep(0)
+    await supervisor
 
     relaunch = host_log.of("error")[-1]
     assert "could not be relaunched" in relaunch[0][0]
@@ -1050,11 +1045,8 @@ async def test_a_retiring_engine_keeps_running_while_any_of_its_sessions_remain(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     retiring = StubEngine()
-    host = make_host(StubEngine())
-    install_mux(monkeypatch, FakeEngine())
-    host._engine = as_engine(retiring)
+    host = make_host(retiring)
     one = await host.create_context(None)
-    install_mux(monkeypatch, FakeEngine())
     two = await host.create_context(None)
     host._engine = as_engine(StubEngine())
     host._retiring.add(as_engine(retiring))
@@ -1072,11 +1064,11 @@ async def test_a_replacement_and_its_failure_are_each_reported(
 ) -> None:
     monkeypatch.setattr(browser_host_settings, "BROWSER_ENGINE_RECYCLE_MB", 1000)
     old = StubEngine(rss_mb=1600.4)
-    install_launcher(monkeypatch, old, StubEngine())
-    host = ChromiumHost(on_fatal=MagicMock())
+    launcher = Launcher(old, StubEngine())
+    host = make_host(launch=launcher)
     await host.start()
 
-    await host.dispose_context(await _session_on(host, monkeypatch))
+    await host.dispose_context(await _session_on(host))
 
     [(args, kwargs)] = host_log.of("warning")
     assert "replaced over its memory limit" in args[0]
@@ -1084,8 +1076,7 @@ async def test_a_replacement_and_its_failure_are_each_reported(
 
     host_log.calls.clear()
     host._engine = as_engine(StubEngine(rss_mb=2000.0))
-    install_launcher(monkeypatch)
-    await host.dispose_context(await _session_on(host, monkeypatch))
+    await host.dispose_context(await _session_on(host))
     [(args, kwargs)] = host_log.of("error")
     assert "replacement failed to launch" in args[0]
     assert kwargs == {"error_type": "IndexError"}
@@ -1097,8 +1088,7 @@ async def test_the_launch_names_the_configured_engine_and_the_resolved_binary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     launch = AsyncMock(return_value=(as_engine(StubEngine()), "UA"))
-    monkeypatch.setattr(chromium, "launch_engine", launch)
-    host = ChromiumHost(on_fatal=MagicMock())
+    host = make_host(launch=launch)
     host._chromium_path = "/opt/chrome"
     host._user_agent = "Earlier UA"
 
@@ -1117,11 +1107,11 @@ async def test_the_ceiling_counts_creates_still_in_flight(
     engine: FakeEngine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_MAX_SESSIONS", 3)
-    host = make_host()
+    host = make_host(mux=engine)
     await host.create_context(None)
     engine.hang_on = "Target.createBrowserContext"
     in_flight = [asyncio.create_task(host.create_context(None)) for _ in range(2)]
-    await _settle()
+    await engine.until_hanging(2)
 
     with pytest.raises(AtCapacityError) as refused:
         await host.create_context(None)
@@ -1137,11 +1127,12 @@ async def test_a_short_admission_wait_still_admits_once_a_session_ends(
     engine: FakeEngine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_MAX_SESSIONS", 1)
-    monkeypatch.setattr(chromium, "_ADMISSION_WAIT_SECONDS", 0.9)
-    host = make_host()
+    monkeypatch.setattr(host_mod, "_ADMISSION_WAIT_SECONDS", 0.9)
+    probe = AdmissionProbe()
+    host = make_host(mux=engine, memory=probe)
     first = await host.create_context(None)
     waiting = asyncio.create_task(host.create_context(None))
-    await _settle()
+    await probe.until_asked(2)
 
     await host.dispose_context(first.session_id)
 
@@ -1150,7 +1141,7 @@ async def test_a_short_admission_wait_still_admits_once_a_session_ends(
 
 @pytest.mark.unit
 async def test_only_this_contexts_pages_are_ever_streamed(engine: FakeEngine) -> None:
-    host = make_host()
+    host = make_host(mux=engine)
     session = await host.create_context(None)
     foreign = engine.open_page("someone-else", url="https://theirs.example/")
     host.note_focus(session.session_id, foreign)
@@ -1164,33 +1155,27 @@ async def test_session_info_is_its_whole_view_inside_the_liveness_budget(
     engine: FakeEngine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     stub = StubEngine()
-    host = make_host(stub)
+    host = make_host(stub, mux=engine)
     session = await host.create_context(None)
     engine.pages[session.target_id].update(url="https://x.example/", title="X")
 
     info = await host.session_info(session.session_id)
 
-    assert set(info) == {"session_id", "live", "url", "title", "metrics"}
-    assert (info["session_id"], info["url"], info["title"]) == (
-        session.session_id,
-        "https://x.example/",
-        "X",
+    assert info == SessionInfo(
+        session_id=session.session_id, live=True, url="https://x.example/", title="X"
     )
-    assert info["metrics"] == session.metrics.snapshot() | {
-        "session_lifetime_seconds": info["metrics"]["session_lifetime_seconds"]
-    }
-    assert stub.asked_within == [chromium.BROWSER_HOST_LIVENESS_TIMEOUT_SECONDS]
+    assert stub.asked_within == [host_mod.BROWSER_HOST_LIVENESS_TIMEOUT_SECONDS]
     getinfo = [c for c in engine.calls if c[0] == "Target.getTargetInfo"]
     assert getinfo[-1][1] == {"targetId": session.target_id}
 
     await engine.close()
-    assert (await host.session_info(session.session_id))["live"] is False
+    assert (await host.session_info(session.session_id)).live is False
 
 
 @pytest.mark.unit
 async def test_an_unresponsive_engine_names_the_session_asked_about(engine: FakeEngine) -> None:
     stub = StubEngine()
-    host = make_host(stub)
+    host = make_host(stub, mux=engine)
     session = await host.create_context(None)
     stub.answers = False
 
@@ -1220,8 +1205,8 @@ async def test_healthz_asks_within_its_own_budget() -> None:
 async def test_a_page_whose_meta_cannot_be_read_is_reported_without_one(
     monkeypatch: pytest.MonkeyPatch, host_log: _Log
 ) -> None:
-    mux = install_mux(monkeypatch, FakeMux({"Target.createTarget": {"targetId": "t"}}))
-    host = make_host()
+    mux = FakeMux({"Target.createTarget": {"targetId": "t"}})
+    host = make_host(mux=mux)
     session = await host.create_context(None)
     assert await host._focused_page_meta(session) == (None, None)
 
@@ -1239,7 +1224,7 @@ async def test_a_page_whose_meta_cannot_be_read_is_reported_without_one(
 async def test_a_lost_login_and_a_failed_context_dispose_are_each_reported(
     engine: FakeEngine, host_log: _Log
 ) -> None:
-    host = make_host()
+    host = make_host(mux=engine)
     session = await host.create_context(None)
     engine.send_error = CdpCommandError({"message": "gone"})
 
@@ -1257,10 +1242,10 @@ async def test_a_lost_login_and_a_failed_context_dispose_are_each_reported(
 async def test_a_page_too_busy_to_say_where_it_is_reads_as_nowhere_inside_the_budget(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    mux = install_mux(monkeypatch, FakeMux({"Target.createTarget": {"targetId": "t"}}))
-    host = make_host()
+    mux = FakeMux({"Target.createTarget": {"targetId": "t"}})
+    host = make_host(mux=mux)
     session = await host.create_context(None)
     mux.hang_on = "Target.getTargetInfo"
-    monkeypatch.setattr(chromium, "BROWSER_HOST_LIVENESS_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(host_mod, "BROWSER_HOST_LIVENESS_TIMEOUT_SECONDS", 0.01)
 
     assert await asyncio.wait_for(host._focused_page_meta(session), 1.0) == (None, None)

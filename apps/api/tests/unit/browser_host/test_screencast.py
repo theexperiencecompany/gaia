@@ -17,7 +17,7 @@ from starlette.websockets import WebSocketState
 
 from app.browser_host import screencast
 from app.browser_host.cdp_mux import CdpCommandError
-from app.browser_host.chromium import HostSession
+from app.browser_host.host import HostSession
 from app.constants.browser import BROWSER_VIEWPORT_HEIGHT, BROWSER_VIEWPORT_WIDTH
 from tests.unit.browser_host.conftest import FakeMux, make_session
 

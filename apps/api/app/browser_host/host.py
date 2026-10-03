@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 import secrets
 from typing import Any
@@ -33,6 +33,7 @@ from app.browser_host.engine import Engine, launch_engine, resolve_chromium_path
 from app.browser_host.memory import memory_usage_mb
 from app.browser_host.metrics import SessionMetrics
 from app.browser_host.storage import dump_storage_state, seed_storage_state
+from app.browser_host.wire import HealthResponse, SessionInfo
 from app.config.browser_host_settings import browser_host_settings
 from app.constants.browser import (
     BROWSER_HOST_LIVENESS_TIMEOUT_SECONDS,
@@ -111,16 +112,32 @@ class EngineUnresponsiveError(RuntimeError):
     """Raised when no engine serves, or it does not answer on its root connection in time."""
 
 
-class ChromiumHost:
-    """Owns the engines and every live session on them.
+#: Starts an engine of a kind on a binary with a User-Agent, returning it and the UA it learned.
+LaunchEngine = Callable[
+    [BrowserEngine, str | None, str | None], Awaitable[tuple[Engine, str | None]]
+]
+#: Opens a connection to an engine's root websocket URL.
+ConnectEngine = Callable[[str], CdpMux]
+#: Reads (used_mb, limit_mb), what admission measures a new session against.
+MemoryProbe = Callable[[], tuple[float, float]]
 
-    Named for its first engine; fronts Obscura or Chromium alike, selected by
-    BROWSER_ENGINE, since everything past launch speaks plain CDP.
-    """
 
-    def __init__(self, on_fatal: Callable[[], None]) -> None:
+class BrowserHost:
+    """Owns the engines and every live session on them, Obscura or Chromium alike (BROWSER_ENGINE)."""
+
+    def __init__(
+        self,
+        on_fatal: Callable[[], None],
+        *,
+        launch: LaunchEngine = launch_engine,
+        connect: ConnectEngine = CdpMux,
+        memory: MemoryProbe = memory_usage_mb,
+    ) -> None:
         # Called once when no engine can be brought back, so the process exits and is restarted.
         self._on_fatal = on_fatal
+        self._launch_engine = launch
+        self._connect = connect
+        self._memory = memory
         self.failed = False
         self._chromium_path: str | None = None
         # Chromium's own User-Agent without the headless marker, learned on its first launch.
@@ -185,7 +202,7 @@ class ChromiumHost:
                 raise EngineUnresponsiveError("no browser engine is serving")
             self._creating[engine] += 1
             try:
-                mux = CdpMux(engine.root_ws_url)
+                mux = self._connect(engine.root_ws_url)
                 await mux.start()
                 session = await self._open_session(mux, engine, storage_state)
                 async with self._lock:
@@ -329,7 +346,7 @@ class ChromiumHost:
                 return preferred
         return pages[-1] if pages else None
 
-    async def session_info(self, session_id: str) -> dict[str, Any]:
+    async def session_info(self, session_id: str) -> SessionInfo:
         """Build the GET /sessions/{id} view: liveness and the page url/title.
 
         Liveness is read on the engine's root connection, which no page's work can
@@ -342,24 +359,23 @@ class ChromiumHost:
         )
         if not responsive:
             raise EngineUnresponsiveError(session_id)
-        return {
-            "session_id": session.session_id,
-            "live": session.engine.alive and not session.mux.closed,
-            "url": url,
-            "title": title,
-            "metrics": session.metrics.snapshot(),
-        }
+        return SessionInfo(
+            session_id=session.session_id,
+            live=session.engine.alive and not session.mux.closed,
+            url=url,
+            title=title,
+        )
 
-    async def healthz(self) -> dict[str, Any]:
+    async def healthz(self) -> HealthResponse:
         """Readiness for /healthz: a bounded CDP round-trip on the serving engine, not just liveness."""
         engine = self._engine
         responsive = engine is not None and await engine.responsive(_CDP_HEALTH_TIMEOUT_SECONDS)
-        return {
-            "ok": responsive,
-            "sessions": len(self._sessions),
-            "engine_up": self.engine_up,
-            "cdp_responsive": responsive,
-        }
+        return HealthResponse(
+            ok=responsive,
+            sessions=len(self._sessions),
+            engine_up=self.engine_up,
+            cdp_responsive=responsive,
+        )
 
     # --- internals ---
 
@@ -480,7 +496,7 @@ class ChromiumHost:
                 self._retiring.add(engine)
 
     async def _launch(self) -> Engine:
-        engine, self._user_agent = await launch_engine(
+        engine, self._user_agent = await self._launch_engine(
             browser_host_settings.BROWSER_ENGINE, self._chromium_path, self._user_agent
         )
         self._supervisors[engine] = asyncio.create_task(self._supervise(engine))
@@ -494,13 +510,13 @@ class ChromiumHost:
         await engine.shutdown(graceful=graceful)
 
     async def _supervise(self, engine: Engine) -> None:
-        failure = await engine.wait_failed()
+        exit_reason = await engine.wait_failed()
         if self._stopping.is_set():
             return
         log.error(
             f"{LogTag.BROWSER} browser engine failed; its sessions are gone",
-            error_type="EngineFailure",
-            browser={"operation": "engine_failed", "reason": str(failure)},
+            error_type="EngineExit",
+            browser={"operation": "engine_failed", "reason": exit_reason.value},
         )
         await self._engine_lost(engine)
 
@@ -570,7 +586,7 @@ class ChromiumHost:
 
     def _admission_refusal(self) -> AtCapacityError | None:
         """Why one more session cannot be admitted right now, or None when it can."""
-        used, limit = memory_usage_mb()
+        used, limit = self._memory()
         ceiling = browser_host_settings.BROWSER_HOST_MAX_SESSIONS
         sessions, pending = len(self._sessions), self._pending_slots
         over_ceiling = ceiling > 0 and sessions + pending >= ceiling

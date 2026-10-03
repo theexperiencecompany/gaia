@@ -22,16 +22,15 @@ def _takeover_secret(monkeypatch):
 async def test_round_trip_returns_session_and_user():
     token = tt.create_takeover_token("sess-1", "user-1")
     claims = tt.verify_takeover_token(token)
-    assert claims["session_id"] == "sess-1"
-    assert claims["user_id"] == "user-1"
-    assert "exp" in claims
+    assert claims.session_id == "sess-1"
+    assert claims.user_id == "user-1"
 
 
 async def test_ttl_is_positive_for_fresh_token():
     token = tt.create_takeover_token("sess-1", "user-1")
     claims = tt.verify_takeover_token(token)
     ttl = tt.takeover_token_ttl_seconds(claims)
-    assert 0 < ttl <= tt._TAKEOVER_TOKEN_EXPIRY_MINUTES * 60
+    assert 0 < ttl <= tt.TAKEOVER_TOKEN_TTL_SECONDS
 
 
 async def test_tampered_token_fails():
@@ -49,7 +48,7 @@ async def test_token_signed_with_other_secret_fails(monkeypatch):
 
 
 async def test_expired_token_fails(monkeypatch):
-    monkeypatch.setattr(tt, "_TAKEOVER_TOKEN_EXPIRY_MINUTES", -1)
+    monkeypatch.setattr(tt, "TAKEOVER_TOKEN_TTL_SECONDS", -60)
     token = tt.create_takeover_token("sess-1", "user-1")
     with pytest.raises(JWTError):
         tt.verify_takeover_token(token)
@@ -87,7 +86,7 @@ def test_secret_exactly_at_minimum_length_is_accepted(monkeypatch):
     monkeypatch.setattr(settings, "BROWSER_TAKEOVER_TOKEN_SECRET", "z" * 32, raising=False)
     # Must not raise: 32 is the inclusive minimum, not an exclusive boundary.
     token = tt.create_takeover_token("sess-1", "user-1")
-    assert tt.verify_takeover_token(token)["session_id"] == "sess-1"
+    assert tt.verify_takeover_token(token).session_id == "sess-1"
 
 
 def test_secret_one_below_minimum_length_raises(monkeypatch):
@@ -109,7 +108,7 @@ def test_create_takeover_token_claims_have_exact_shape():
 def test_create_takeover_token_expiry_matches_configured_minutes():
     token = tt.create_takeover_token("sess-1", "user-1")
     payload = jwt.decode(token, _SECRET, algorithms=[JWT_ALGORITHM])
-    expected_seconds = tt._TAKEOVER_TOKEN_EXPIRY_MINUTES * 60
+    expected_seconds = tt.TAKEOVER_TOKEN_TTL_SECONDS
     assert payload["exp"] - payload["iat"] == pytest.approx(expected_seconds, abs=2)
 
 
@@ -120,7 +119,7 @@ def test_a_token_minted_on_a_host_outside_utc_expires_fifteen_minutes_from_now()
         token = tt.create_takeover_token("sess-1", "user-1")
 
     claims = jwt.get_unverified_claims(token)
-    expiry = minted_at + timedelta(minutes=tt._TAKEOVER_TOKEN_EXPIRY_MINUTES)
+    expiry = minted_at + timedelta(seconds=tt.TAKEOVER_TOKEN_TTL_SECONDS)
     assert claims["exp"] == int(expiry.timestamp())
 
 
@@ -186,20 +185,15 @@ def test_verify_missing_role_key_is_rejected():
 def test_verify_returns_exact_claims_values():
     token = tt.create_takeover_token("sess-42", "user-99")
     claims = tt.verify_takeover_token(token)
-    assert claims == {
-        "session_id": "sess-42",
-        "user_id": "user-99",
-        "exp": claims["exp"],
-    }
-    assert set(claims.keys()) == {"session_id", "user_id", "exp"}
+    assert claims == tt.TakeoverTokenClaims(session_id="sess-42", user_id="user-99", exp=claims.exp)
 
 
 def test_ttl_seconds_negative_once_past_expiry():
-    past_claims: tt.TakeoverTokenClaims = {
-        "session_id": "sess-1",
-        "user_id": "user-1",
-        "exp": (datetime.now(UTC) - timedelta(seconds=1000)).timestamp(),
-    }
+    past_claims = tt.TakeoverTokenClaims(
+        session_id="sess-1",
+        user_id="user-1",
+        exp=(datetime.now(UTC) - timedelta(seconds=1000)).timestamp(),
+    )
     ttl = tt.takeover_token_ttl_seconds(past_claims)
     assert ttl == pytest.approx(-1000, abs=2)
 
@@ -210,7 +204,7 @@ def test_a_token_is_signed_with_the_configured_algorithm_not_the_library_default
     token = tt.create_takeover_token("sess-1", "user-1")
 
     assert jwt.get_unverified_header(token)["alg"] == "HS512"
-    assert tt.verify_takeover_token(token)["session_id"] == "sess-1"
+    assert tt.verify_takeover_token(token).session_id == "sess-1"
 
 
 def test_a_token_signed_with_the_right_secret_under_another_algorithm_is_rejected():

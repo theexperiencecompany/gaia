@@ -13,7 +13,6 @@ Pinned to browser-use==0.11.13.
 from __future__ import annotations
 
 import json
-import re
 from typing import TypedDict
 from urllib.parse import urlsplit
 
@@ -28,13 +27,12 @@ from pydantic import TypeAdapter
 from typing_extensions import override
 
 from app.services.browser.browser_use_session import GaiaBrowserSession
+from app.utils.sites import PLACEHOLDER
 
 #: The one action whose typed text Browser-Use logs only by its placeholder name.
 _SECRET_TYPING_ACTION = "input"  # nosec B105 -- a Browser-Use action name, not a credential
 #: Types text as keys; Browser-Use logs those keys, so it never gets a secret's value.
 _KEYS_ACTION = "send_keys"
-#: Browser-Use's own placeholder pattern (Registry._replace_sensitive_data).
-_PLACEHOLDER = re.compile(r"<secret>(.*?)</secret>")
 #: The actions whose matches are otherwise summarised away.
 _READ_ACTIONS = frozenset({"find_elements", "search_page"})
 #: The action that reads a page's content without its title.
@@ -83,7 +81,7 @@ def _refusal(
             f"{text} is the name of a secret, not its value: type <secret>{text}</secret>; "
             "nothing was typed."
         )
-    named = sorted(set(_PLACEHOLDER.findall(json.dumps(params))))
+    named = sorted(set(PLACEHOLDER.findall(json.dumps(params))))
     if name == _KEYS_ACTION:
         # Keys never carry a value, so a placeholder there would be typed as it is.
         refused = [f"{secret} is typed only into its field, never as keys" for secret in named]

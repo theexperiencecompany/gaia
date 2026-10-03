@@ -8,7 +8,6 @@ counts and the domain.
 """
 
 import json
-from urllib.parse import urlparse
 
 from cryptography.fernet import Fernet, InvalidToken
 from playwright.sync_api import StorageState, StorageStateCookie
@@ -19,20 +18,10 @@ from app.constants.log_tags import LogTag
 from app.db.repositories.browser_profiles import browser_profile_repository
 from app.models.browser_models import BrowserLoginProvenance, BrowserProfileDocument
 from app.services.browser.storage_state_types import OriginState
+from app.utils.sites import host_of, on_site
 from shared.py.wide_events import log
 
 _cipher: Fernet | None = None
-
-
-def domain_of(url: str | None) -> str | None:
-    """Lowercased hostname of a URL, used as the profile key. None if not a URL."""
-    if not url:
-        return None
-    try:
-        host = urlparse(url if "://" in url else f"https://{url}").hostname
-    except ValueError:
-        return None
-    return host.lower() if host else None
 
 
 def _get_cipher() -> Fernet:
@@ -190,8 +179,7 @@ def _cookie_applies_to_host(cookie_domain: str, host: str) -> bool:
     cookie_domain = cookie_domain.lower()
     host = host.lower()
     if cookie_domain.startswith("."):
-        suffix = cookie_domain[1:]
-        return host == suffix or host.endswith(f".{suffix}")
+        return on_site(host, cookie_domain[1:])
     return cookie_domain == host
 
 
@@ -205,7 +193,7 @@ def _cookie_host(cookie: StorageStateCookie) -> str | None:
 
 def _origin_host(origin: OriginState) -> str | None:
     """Lowercased host of an origin entry, or None when it has no usable URL."""
-    return domain_of(origin.get("origin"))
+    return host_of(origin.get("origin"))
 
 
 def _cookie_scopes_to(cookie: StorageStateCookie, host: str) -> bool:
@@ -253,7 +241,7 @@ def storage_state_for_host(state: StorageState, host: str) -> StorageState:
 def split_storage_state_by_host(state: StorageState) -> dict[str, StorageState]:
     """Split one browser export into per-host slices keyed the way reuse loads them.
 
-    The store keys on the exact hostname a task starts at (domain_of), so each
+    The store keys on the exact hostname a task starts at (host_of), so each
     host gets every cookie that applies to it (a leading-dot cookie lands in
     the registrable host and each subdomain) plus its own localStorage.
     """

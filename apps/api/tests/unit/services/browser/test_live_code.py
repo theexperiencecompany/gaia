@@ -41,6 +41,20 @@ async def test_a_code_opens_its_session_for_the_handoffs_window_until_revoked(
     await asyncio.wait_for(live_code.live_code_ended(code), timeout=1)
 
 
+async def test_a_socket_a_code_opened_ends_the_moment_its_handoff_settles(
+    fake_redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    code = await live_code.mint_live_code("sess-abc", "user-1", "h1")
+    ended = asyncio.create_task(live_code.live_code_ended(code))
+
+    # Still open while the handoff waits: nothing but the settle (or the code lapsing) ends it.
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(asyncio.shield(ended), 0.05)
+    await live_code.revoke_handoff_live_code("h1")
+
+    await asyncio.wait_for(ended, 1)
+
+
 async def test_a_socket_a_code_opened_ends_when_the_code_lapses(
     fake_redis: fakeredis.aioredis.FakeRedis,
 ) -> None:
