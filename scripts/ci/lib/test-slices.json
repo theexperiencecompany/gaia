@@ -20,7 +20,9 @@
       "services": "false",
       "workers": "7",
       "serial": "false",
-      "after": ["shared-suite"],
+      "after": [
+        "shared-suite"
+      ],
       "timeout_minutes": "45",
       "engines": "false"
     },
@@ -32,7 +34,9 @@
       "services": "true",
       "workers": "4",
       "serial": "false",
-      "after": ["contract-fuzz"],
+      "after": [
+        "contract-fuzz"
+      ],
       "timeout_minutes": "45",
       "engines": "false"
     },
@@ -56,7 +60,7 @@
       "services": "true",
       "workers": "2",
       "serial": "false",
-      "timeout_minutes": "30",
+      "timeout_minutes": "15",
       "after": [],
       "engines": "true"
     }

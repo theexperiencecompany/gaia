@@ -47,10 +47,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 #     Postgres table, which another xdist worker's fixture would wipe mid-test.
 #   * node: only bridge drives the real `gaia bridge` CLI via tsx.
 #   * browser runs 2 workers, each booting a whole stack (API, worker, two hosts):
-#     measured on 4 pinned cores with a fresh Chroma, ~2:50 for the 13 scenarios
-#     and ~6 min with the flake gate's rerun; 30 min leaves the GitHub VM 5x.
-#   * after: the extra suites a slice runs once its own run is done — see
-#     cmd_shared_suite / cmd_contract_fuzz for why each is its own invocation.
+#     measured on 4 pinned cores against a fresh Postgres, Chroma and Mongo,
+#     2:40 for the 13 scenarios; 15 min leaves the GitHub VM a slow boot and a
+#     flake-gate rerun.
 SLICES_FILE="$SCRIPT_DIR/lib/test-slices.json"
 
 cmd_slices() {

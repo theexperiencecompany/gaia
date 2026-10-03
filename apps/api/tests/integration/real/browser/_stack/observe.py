@@ -34,8 +34,6 @@ _RELAY_RETRY_SECONDS = 0.5
 _POLL_SECONDS = 0.2
 #: How long connecting to the broker may take.
 _CONNECT_SECONDS = 30.0
-#: How often a relay kept off the outbound queue says so.
-_RELAY_REPORT_SECONDS = 30.0
 
 
 @dataclass(frozen=True)
@@ -149,7 +147,7 @@ class OutboundObserver:
     async def _relay_forever(self) -> None:
         if self._connection is None:
             raise RuntimeError("the observer is not started")
-        refused_since: float | None = None
+        relaying: bool | None = None
         while True:
             channel = await self._connection.channel()
             try:
@@ -157,23 +155,23 @@ class OutboundObserver:
                     _OUTBOUND, durable=True, arguments=work_queue_arguments(_OUTBOUND)
                 )
                 async with queue.iterator(exclusive=True) as messages:
-                    refused_since = None
+                    if relaying is not True:
+                        self._progress.say(f"this stack relays {_OUTBOUND}")
+                    relaying = True
                     async for message in messages:
                         await self._copy(channel, message)
             except (
                 aiormq.exceptions.ChannelAccessRefused,
                 aiormq.exceptions.ChannelLockedResource,
             ):
-                # Another stack's relay holds the queue; take over once it lets go. A holder
-                # that never does (a bot consuming this vhost) is said, not waited on in silence.
-                now = time.monotonic()
-                refused_since = refused_since or now
-                if now - refused_since >= _RELAY_REPORT_SECONDS:
+                # Another consumer holds the queue: another stack's relay, which copies this
+                # stack's chats too, or a bot on this vhost, which would starve them. Said once.
+                if relaying is not False:
                     self._progress.say(
-                        f"{_OUTBOUND} has been held by another consumer for "
-                        f"{now - refused_since:.0f}s: another stack's relay, or a bot on this vhost"
+                        f"another consumer relays {_OUTBOUND} (another stack in this run "
+                        "copies these chats too; a bot on this vhost would swallow them)"
                     )
-                    refused_since = now
+                relaying = False
                 await asyncio.sleep(_RELAY_RETRY_SECONDS)
             finally:
                 if not channel.is_closed:
