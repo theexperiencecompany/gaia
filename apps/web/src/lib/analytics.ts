@@ -69,6 +69,10 @@ export const ANALYTICS_EVENTS = {
 
   CHAT_VOICE_MODE_TOGGLED: "chat:voice_mode_toggled",
 
+  // Client-only by necessity: an edge rejection (body too large) never reaches
+  // the API. Carries `status` (0 = no response) and `size_bytes`.
+  CHAT_FILE_UPLOAD_FAILED: "chat:file_upload_failed",
+
   // Chat – interaction detail events (all client-owned composer UI)
   CHAT_SLASH_COMMAND_SELECTED: "chat:slash_command_selected",
   CHAT_SLASH_COMMAND_CATEGORY_CHANGED: "chat:slash_command_category_changed",
