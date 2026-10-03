@@ -3,14 +3,17 @@
 A background subagent or browser job can end before the turn that started it has
 saved its message. The cards then wait in Redis under that message's id, and the
 second of the two writes merges them: a card close finding the turn's mark saves
-them itself, the turn's save takes whatever is waiting. Each side records its
-arrival and reads the other's in one transaction, so neither order loses a card.
+them itself, the turn's save takes whatever is waiting. Each side writes its own
+record before it reads the other's, so in any interleaving at least one of them
+sees both, and the take is atomic, so a card is saved once.
 """
 
 import json
 from typing import cast
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict
+from redis.exceptions import ResponseError
 
 from app.constants.cache import FOLDED_CARDS_PREFIX, FOLDED_CARDS_TTL
 from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME
@@ -45,29 +48,33 @@ async def save_folded_cards(
         entries=len(entries),
     )
     waiting = _waiting_key(conversation_id, message_id)
-    async with redis_cache.client.pipeline(transaction=True) as pipe:
-        pipe.rpush(waiting, *[json.dumps(entry) for entry in entries])
-        pipe.expire(waiting, FOLDED_CARDS_TTL)
-        pipe.exists(_saved_key(conversation_id, message_id))
-        _, _, saved = await pipe.execute()
-    if saved:
+    client = redis_cache.client
+    await client.rpush(waiting, *[json.dumps(entry) for entry in entries])
+    await client.expire(waiting, FOLDED_CARDS_TTL)
+    if await client.exists(_saved_key(conversation_id, message_id)):
         await _take_waiting(conversation_id, user_id, message_id)
 
 
 async def fold_waiting_cards(conversation_id: str, user_id: str, message_id: str) -> None:
-    """Mark message_id saved, then save onto it the cards that ended before it was."""
-    await redis_cache.client.set(_saved_key(conversation_id, message_id), "1", ex=FOLDED_CARDS_TTL)
+    """Mark message_id saved (by user_id), then save onto it the cards that ended before it was."""
+    await redis_cache.client.set(
+        _saved_key(conversation_id, message_id), user_id, ex=FOLDED_CARDS_TTL
+    )
     await _take_waiting(conversation_id, user_id, message_id)
 
 
 async def _take_waiting(conversation_id: str, user_id: str, message_id: str) -> None:
-    waiting = _waiting_key(conversation_id, message_id)
-    async with redis_cache.client.pipeline(transaction=True) as pipe:
-        pipe.lrange(waiting, 0, -1)
-        pipe.delete(waiting)
-        raw, _ = await pipe.execute()
-    if not raw:
-        return
+    """Take every card waiting for message_id, at most once, and save it there.
+
+    RENAME moves the list out in one step, so of two takers only one gets it.
+    """
+    taken = f"{_waiting_key(conversation_id, message_id)}:taken:{uuid4().hex}"
+    try:
+        await redis_cache.client.rename(_waiting_key(conversation_id, message_id), taken)
+    except ResponseError:
+        return  # RENAME raises "no such key" only when nothing waits
+    raw = await redis_cache.client.lrange(taken, 0, -1)
+    await redis_cache.client.delete(taken)
     entries = [cast(ToolDataEntry, json.loads(item)) for item in raw]
     saved = await conversation_repository.get_message(conversation_id, message_id, user_id=user_id)
     if saved is None:

@@ -12,11 +12,14 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.agents.core.background import folded_stream
+from app.constants.cache import FOLDED_CARDS_PREFIX, FOLDED_CARDS_TTL
+from app.constants.log_tags import LogTag
 from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import MessageModel, SavedSubagentGroup, UpdateMessagesRequest
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import update_messages
 from app.services.folded_cards import fold_waiting_cards
+from tests.helpers import captured_wide_event
 
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("fake_redis")]
 
@@ -121,3 +124,62 @@ async def test_cards_waiting_for_their_message_are_saved_once(
     await fold_waiting_cards("conv-1", "u1", "msg-1")
 
     assert conversation.tool_data["msg-1"] == [CARD]
+
+
+async def test_a_close_that_read_before_the_save_still_lands_its_cards(
+    conversation: _Conversation,
+) -> None:
+    """The close reads "not saved", the turn saves and looks for cards before the close leaves any."""
+    real_get = conversation.get_message
+    reads: list[str] = []
+
+    async def _read_then_the_turn_saves(
+        conversation_id: str, message_id: str, *, user_id: str
+    ) -> MessageModel | None:
+        reads.append(message_id)
+        if len(reads) == 1:
+            await _save_the_turns_message()
+            return None
+        return await real_get(conversation_id, message_id, user_id=user_id)
+
+    with patch.object(conversation_repository, "get_message", _read_then_the_turn_saves):
+        await _close_with_cards()
+
+    assert conversation.tool_data["msg-1"] == [CARD]
+
+
+async def test_every_waiting_card_is_kept_a_day_and_saved_in_order(
+    conversation: _Conversation, fake_redis: Any
+) -> None:
+    cards = [{"tool_name": "step", "data": {"n": n}} for n in range(3)]
+    with patch.object(folded_stream, "drain_executor_tool_data", return_value=cards):
+        await folded_stream.close_folded_stream(
+            "stream-1", conversation_id="conv-1", user_id="u1", message_id="msg-1"
+        )
+    waiting = f"{FOLDED_CARDS_PREFIX}conv-1:msg-1:cards"
+    assert FOLDED_CARDS_TTL - 5 < await fake_redis.ttl(waiting) <= FOLDED_CARDS_TTL
+
+    await _save_the_turns_message()
+
+    assert conversation.tool_data["msg-1"] == cards
+    saved_mark = f"{FOLDED_CARDS_PREFIX}conv-1:msg-1:saved"
+    assert FOLDED_CARDS_TTL - 5 < await fake_redis.ttl(saved_mark) <= FOLDED_CARDS_TTL
+    assert await fake_redis.exists(waiting) == 0
+
+
+async def test_cards_whose_message_is_gone_when_taken_are_dropped_and_said(
+    conversation: _Conversation,
+) -> None:
+    await _close_with_cards()
+
+    async with captured_wide_event() as event:
+        await fold_waiting_cards("conv-1", "u1", "msg-1")
+
+    assert "msg-1" not in conversation.tool_data
+    [error] = event["errors"]
+    assert error["msg"] == f"{LogTag.AGENT} Detached stream cards matched no message; not saved"
+    assert (error["conversation_id"], error["message_id"], error["entries"]) == (
+        "conv-1",
+        "msg-1",
+        1,
+    )

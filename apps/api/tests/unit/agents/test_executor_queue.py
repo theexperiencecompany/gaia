@@ -46,11 +46,13 @@ from app.agents.core.background.executor_queue import (
 )
 from app.agents.core.background.session import RunIdentity, RunKind, get_session
 from app.constants.cache import (
+    EXECUTOR_ALIVE_GIVE_UP_SECONDS,
     EXECUTOR_ALIVE_PREFIX,
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_BUSY_TTL,
     EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
 )
+from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable
 from app.models.user_models import AuthenticatedUser
@@ -751,7 +753,7 @@ class TestLivenessRenewal:
 
         async def _hold(conversation_id: str, lock_value: str, ttl_seconds: int = 0) -> None:
             writes.append(lock_value)
-            if len(writes) == 2:
+            if len(writes) in (2, 4):
                 raise ConnectionError("redis blip")
 
         with (
@@ -766,11 +768,14 @@ class TestLivenessRenewal:
             await asyncio.gather(alive, return_exceptions=True)
 
         assert renewing
-        assert len(writes) > 3
+        assert len(writes) > 5
 
-    async def test_a_holder_that_cannot_prove_it_lives_is_cancelled(self, redis) -> None:
+    async def test_a_holder_that_cannot_prove_it_lives_is_cancelled_and_says_why(
+        self, redis
+    ) -> None:
         """Past the point its liveness could lapse, another run may take over: this one must stop."""
         writes: list[str] = []
+        clock = iter([100.0, 112.345, 100.0 + EXECUTOR_ALIVE_GIVE_UP_SECONDS])
 
         async def _hold(conversation_id: str, lock_value: str, ttl_seconds: int = 0) -> None:
             writes.append(lock_value)
@@ -783,11 +788,23 @@ class TestLivenessRenewal:
 
         with (
             patch.object(eq, "EXECUTOR_ALIVE_BEAT_SECONDS", 0),
-            patch.object(eq, "EXECUTOR_ALIVE_GIVE_UP_SECONDS", 0),
             patch.object(eq, "hold_run_alive", _hold),
+            patch.object(eq, "time", SimpleNamespace(monotonic=lambda: next(clock))),
         ):
-            holder = asyncio.create_task(_holder())
-            for _ in range(50):
-                await asyncio.sleep(0)
+            async with captured_wide_event() as event:
+                holder = asyncio.create_task(_holder())
+                with pytest.raises(asyncio.CancelledError, match="executor liveness lost"):
+                    await holder
 
-        assert holder.cancelled()
+        assert len(writes) == 3
+        failures = [e for e in event["errors"] if e["msg"].endswith("holder's liveness")]
+        assert [(e["unproven_seconds"], e["stopping_holder"]) for e in failures] == [
+            (12.3, False),
+            (float(EXECUTOR_ALIVE_GIVE_UP_SECONDS), True),
+        ]
+        assert failures[0]["msg"] == (
+            f"{LogTag.AGENT} Could not renew an executor lock holder's liveness"
+        )
+        assert {
+            (e["conversation_id"], e["holder"], e["error_type"], e["error"]) for e in failures
+        } == {(CONVERSATION, "s1:t1", "ConnectionError", "redis down")}
