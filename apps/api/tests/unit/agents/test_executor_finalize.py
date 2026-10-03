@@ -496,6 +496,7 @@ class TestLockThenInboxHandoff:
         spawn.assert_not_awaited()
 
 
+@pytest.mark.usefixtures("fake_redis")
 class TestThePausedRunKeepsItsLock:
     """A run parked on a HIL approval is NOT over: its thread is checkpointed with pending work, so no other run may take it.
 
@@ -1023,6 +1024,28 @@ class TestFinalizePausedRun:
         # A successful extend is not a warning: the orphan warning is for the
         # losing branch only.
         mock_log.warning.assert_not_called()
+
+    async def test_a_pause_that_lost_its_lock_says_the_approval_may_be_orphaned(self) -> None:
+        run = _run(RunKind.QUEUED)
+        with (
+            patch.object(er, "hold_run_alive", AsyncMock()),
+            patch.object(er, "extend_lock_if_owned", AsyncMock(return_value=False)),
+            patch.object(er, "signal_executor_done"),
+            patch.object(er, "_close_queued_stream", AsyncMock()),
+        ):
+            async with captured_wide_event() as event:
+                await er._finalize_paused_run(run)
+
+        [warning] = event["warnings"]
+        assert warning["msg"] == (
+            f"{LogTag.HIL} Could not extend busy lock for paused run; the approval "
+            "may be orphaned if the lock lapses"
+        )
+        assert (warning["task_id"], warning["conversation_id"], warning["stream_id"]) == (
+            "task-1",
+            "conv-1",
+            "s1",
+        )
 
     async def test_a_pause_without_a_task_id_beats_with_the_locks_value(self) -> None:
         run = replace(_run(RunKind.QUEUED), task_id=None)

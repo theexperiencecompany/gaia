@@ -55,7 +55,8 @@ from app.utils.background_tasks import spawn_background_task
 from app.workers.tasks import tracked_todo_tasks
 from tests.helpers import WideEventRecorder, captured_wide_event
 
-pytestmark = pytest.mark.unit
+# A run says it lives in Redis while it runs: give it a per-test Redis, never the ambient one.
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("fake_redis")]
 
 USER = AuthenticatedUser(user_id="507f1f77bcf86cd799439011", email="d@gaia.local")
 TODO_ID = "6ab51f1ba7a1fcf0f00ab49a"

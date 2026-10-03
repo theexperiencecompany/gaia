@@ -12,6 +12,7 @@ encoding bug this file pins: a lock written through the JSON-encoding wrapper
 comes back quoted, so the run that wrote it reads its own lock as FOREIGN.
 """
 
+import asyncio
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from types import SimpleNamespace
@@ -35,7 +36,7 @@ from app.agents.core.background.executor_queue import (
     get_lock_holder,
     get_lock_state,
     hold_run_alive,
-    is_executor_busy,
+    keep_alive,
     parse_lock_value,
     prepare_run_from_item,
     reclaim_dead_lock,
@@ -294,13 +295,6 @@ class TestLockOwnership:
         assert await extend_lock_if_owned(CONVERSATION, "s1", "t1", 900) is False
         assert await redis.ttl(BUSY_KEY) == 5
 
-    async def test_busy_reports_any_holder_not_just_ours(self, redis) -> None:
-        assert await is_executor_busy(CONVERSATION) is False
-
-        await redis.set(BUSY_KEY, build_lock_value("other", "t9"))
-
-        assert await is_executor_busy(CONVERSATION) is True
-
 
 class TestWithoutRedis:
     """How each answer degrades when Redis cannot be reached.
@@ -316,11 +310,6 @@ class TestWithoutRedis:
     async def test_lock_state_degrades_to_ours(self) -> None:
         with _no_redis():
             assert await get_lock_state(CONVERSATION, "s1", "t1") is LockState.OURS
-
-    async def test_busy_fails_closed(self) -> None:
-        """The HIL early decision reads this: "cannot tell" must mean "no collector is alive", or a decision is recorded that nobody will act on."""
-        with _no_redis():
-            assert await is_executor_busy(CONVERSATION) is False
 
     async def test_extend_reports_that_it_did_not_re_arm(self) -> None:
         with _no_redis():
@@ -709,7 +698,24 @@ class TestReclaimDeadLock:
     async def test_a_parked_runs_liveness_lasts_its_park(self, redis) -> None:
         await hold_run_alive(CONVERSATION, "s1:t1", 9000)
 
-        assert 8990 < await redis.ttl(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}") <= 9000
+        assert 8990 < await redis.ttl(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}:s1:t1") <= 9000
+
+    async def test_a_holder_kept_alive_keeps_its_lock_until_it_lets_go(self, redis) -> None:
+        """Every holder, a run or a workflow's reservation, stays live only while it renews."""
+        await redis.set(BUSY_KEY, "s1:t1", ex=self._OLD)
+
+        with patch.object(eq, "EXECUTOR_ALIVE_BEAT_SECONDS", 0):
+            alive = await keep_alive(CONVERSATION, "s1:t1")
+            assert alive.get_name() == "executor_alive_beat"
+            await redis.delete(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}:s1:t1")
+            for _ in range(20):
+                await asyncio.sleep(0)
+            assert await reclaim_dead_lock(CONVERSATION) is False
+            alive.cancel()
+            await asyncio.gather(alive, return_exceptions=True)
+
+        await redis.delete(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}:s1:t1")
+        assert await reclaim_dead_lock(CONVERSATION) is True
 
 
 class TestBreakHolderLock:

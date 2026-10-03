@@ -24,7 +24,7 @@ import uuid
 
 import pytest
 
-from app.agents.core.background.executor_queue import is_executor_busy
+from app.agents.core.background.executor_queue import get_lock_holder
 from app.constants.browser import BROWSER_HANDOFF_REPLY_PROMPT, BrowserSessionStatus, JobEnding
 from app.db.repositories.browser_tasks import browser_task_repository
 from tests.integration.real.browser._stack.fake_models import PAGE_URL, AgentStep, JevMove
@@ -518,7 +518,7 @@ async def _asked(stack: BrowserStack, marker: str, times: int) -> bool:
 
 
 async def _executor_idle(conversation_id: str) -> bool:
-    return not await is_executor_busy(conversation_id)
+    return await get_lock_holder(conversation_id) is None
 
 
 async def _ended(stack: BrowserStack, job_id: str) -> bool:
