@@ -62,67 +62,73 @@ vi.mock("@tanstack/react-virtual", async () => {
   };
 });
 
-vi.mock("@/features/integrations/api/integrationsApi", () => ({
-  integrationsApi: {
-    getMyIntegrations: vi.fn(async () => ({
-      integrations: [
-        {
-          id: "github",
-          name: "GitHub",
-          description: "Code hosting",
-          category: "developer",
-          source: "platform",
-          managedBy: "composio",
-          status: "connected",
-          requiresAuth: true,
-          authType: "oauth",
-          isFeatured: false,
-          displayPriority: 1,
-          available: true,
-          toolCount: 3,
-          cloneCount: 0,
-          creator: null,
-        },
-        {
-          id: "notion",
-          name: "Notion",
-          description: "Notes and docs",
-          category: "productivity",
-          source: "platform",
-          managedBy: "composio",
-          status: "created",
-          requiresAuth: true,
-          authType: "oauth",
-          isFeatured: false,
-          displayPriority: 1,
-          available: true,
-          toolCount: 2,
-          cloneCount: 0,
-          creator: null,
-        },
-        {
-          id: "gmailcalendar",
-          name: "Gmail / Calendar",
-          description: "Email and calendar",
-          category: "productivity",
-          source: "platform",
-          managedBy: "composio",
-          status: "expired",
-          expiredAt: "2026-08-01T00:00:00Z",
-          requiresAuth: true,
-          authType: "oauth",
-          isFeatured: false,
-          displayPriority: 1,
-          available: true,
-          toolCount: 4,
-          cloneCount: 0,
-          creator: null,
-        },
-      ],
-      total: 3,
-    })),
-  },
-}));
+vi.mock("@/features/integrations/api/integrationsApi", () => {
+  const getMyIntegrations = vi.fn(async () => ({
+    integrations: [
+      {
+        id: "github",
+        name: "GitHub",
+        description: "Code hosting",
+        category: "developer",
+        source: "platform",
+        managedBy: "composio",
+        status: "connected",
+        requiresAuth: true,
+        authType: "oauth",
+        isFeatured: false,
+        displayPriority: 1,
+        available: true,
+        toolCount: 3,
+        cloneCount: 0,
+        creator: null,
+      },
+      {
+        id: "notion",
+        name: "Notion",
+        description: "Notes and docs",
+        category: "productivity",
+        source: "platform",
+        managedBy: "composio",
+        status: "created",
+        requiresAuth: true,
+        authType: "oauth",
+        isFeatured: false,
+        displayPriority: 1,
+        available: true,
+        toolCount: 2,
+        cloneCount: 0,
+        creator: null,
+      },
+      {
+        id: "gmailcalendar",
+        name: "Gmail / Calendar",
+        description: "Email and calendar",
+        category: "productivity",
+        source: "platform",
+        managedBy: "composio",
+        status: "expired",
+        expiredAt: "2026-08-01T00:00:00Z",
+        requiresAuth: true,
+        authType: "oauth",
+        isFeatured: false,
+        displayPriority: 1,
+        available: true,
+        toolCount: 4,
+        cloneCount: 0,
+        creator: null,
+      },
+    ],
+    total: 3,
+  }));
+
+  return {
+    integrationsApi: {
+      getMyIntegrations,
+      getMyIntegrationsSnapshot: getMyIntegrations,
+      getIntegrationStatuses: vi.fn(async () => ({ statuses: {} })),
+    },
+  };
+});
 
 import { LockedCategorySection } from "@/features/chat/components/composer/LockedCategorySection";
 import SlashCommandDropdown from "@/features/chat/components/composer/SlashCommandDropdown";

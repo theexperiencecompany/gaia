@@ -450,6 +450,7 @@ export {
   parseQuickAdd,
   parseRelativeDateLabel,
   parseThinkingFromText,
+  reconcileIntegrationStatus,
   settleApprovalToolData,
   shouldRefreshToken,
   splitMessageByBreaks,

@@ -1,4 +1,4 @@
-import { buildQueryString } from "../api/queryBuilder";
+import { buildQueryString, type QueryValue } from "../api/queryBuilder";
 import { normalizeListResponse } from "../api/responseNormalizer";
 import { TODO_ENDPOINTS } from "../api/todosApi";
 import type {
@@ -54,15 +54,6 @@ export interface HttpAdapter {
   ) => Promise<T>;
 }
 
-/** The list endpoint pages by page and per_page; callers count by skip and limit. */
-function listPage(
-  skip: number | undefined,
-  limit: number | undefined,
-): { page?: number; per_page?: number } {
-  if (limit === undefined) return {};
-  return { page: Math.floor((skip ?? 0) / limit) + 1, per_page: limit };
-}
-
 function unwrapBulkResponse(response: { updated: Todo[] } | Todo[]): Todo[] {
   if (
     typeof response === "object" &&
@@ -84,11 +75,7 @@ function unwrapBulkResponse(response: { updated: Todo[] } | Todo[]): Todo[] {
 export function createTodoApi(http: HttpAdapter): TodoApiClient {
   return {
     getAllTodos: async (filters) => {
-      const { skip, limit, ...rest } = filters ?? {};
-      const qs = buildQueryString({
-        ...rest,
-        ...listPage(skip, limit),
-      } as Record<string, string | number | boolean | null | undefined>);
+      const qs = buildQueryString(filters as Record<string, QueryValue>);
       const response = await http.get<TodoListResponse | Todo[]>(
         `${TODO_ENDPOINTS.list}${qs}`,
         { silent: true },
@@ -129,12 +116,8 @@ export function createTodoApi(http: HttpAdapter): TodoApiClient {
     },
 
     getTodosByLabel: async (label, skip, limit) => {
-      const params: Record<string, string | number> = {
-        labels: label,
-        ...listPage(skip, limit),
-      };
       const response = await http.get<TodoListResponse | Todo[]>(
-        `${TODO_ENDPOINTS.list}${buildQueryString(params)}`,
+        `${TODO_ENDPOINTS.list}${buildQueryString({ labels: label, skip, limit })}`,
         { silent: true },
       );
       return normalizeListResponse(response);
