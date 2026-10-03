@@ -25,14 +25,16 @@ test.describe("todos", () => {
   test("completed view mounts without a login redirect", async ({ page }) => {
     await page.goto("/todos/completed");
 
-    await expect(page).not.toHaveURL(/login/);
+    // toHaveURL retries: a delayed client-side redirect fails this instead
+    // of slipping past an immediate assertion.
+    await expect(page).toHaveURL(/\/todos\/completed/);
     await expect(page.locator("body")).toBeVisible();
   });
 
   test("today view mounts without a login redirect", async ({ page }) => {
     await page.goto("/todos/today");
 
-    await expect(page).not.toHaveURL(/login/);
+    await expect(page).toHaveURL(/\/todos\/today/);
     await expect(page.locator("body")).toBeVisible();
   });
 });
