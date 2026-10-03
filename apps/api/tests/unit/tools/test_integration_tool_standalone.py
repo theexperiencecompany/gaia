@@ -6,6 +6,13 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
+from app.agents.tools.integration_tool import (
+    build_search_patterns,
+    check_integrations_status,
+    connect_integration,
+    list_integrations,
+    suggest_integrations,
+)
 from app.constants.integrations import MAX_SUGGESTED_FOR_LLM
 from app.db.repositories.user_integrations import user_integration_repository
 from tests.helpers import captured_wide_event
@@ -66,15 +73,11 @@ def _make_integration(
 
 class TestBuildSearchPatterns:
     def test_basic_split(self) -> None:
-        from app.agents.tools.integration_tool import build_search_patterns
-
         result = build_search_patterns("Render deployment")
         assert "render" in result
         assert "deployment" in result
 
     def test_stopwords_removed(self) -> None:
-        from app.agents.tools.integration_tool import build_search_patterns
-
         result = build_search_patterns("a tool for the web")
         assert "a" not in result
         assert "the" not in result
@@ -83,15 +86,11 @@ class TestBuildSearchPatterns:
         assert "web" in result
 
     def test_short_words_removed(self) -> None:
-        from app.agents.tools.integration_tool import build_search_patterns
-
         result = build_search_patterns("I go to school")
         # "I" (len 1) should be removed
         assert "i" not in result
 
     def test_empty_query(self) -> None:
-        from app.agents.tools.integration_tool import build_search_patterns
-
         result = build_search_patterns("")
         assert result == []
 
@@ -116,8 +115,6 @@ def _custom_doc(
 
 
 async def _list(config: dict[str, Any], search: str | None = None):
-    from app.agents.tools.integration_tool import list_integrations
-
     return await list_integrations.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
         config=config, search_public_query=search
     )
@@ -470,8 +467,6 @@ class TestConnectIntegration:
         w = _writer()
         mock_gsw.return_value = w
 
-        from app.agents.tools.integration_tool import connect_integration
-
         # The card and the copy that promises it now live together in
         # request_integration_connection, so the writer to watch is that
         # module's — and a source category has to exist for a card to be sent.
@@ -506,8 +501,6 @@ class TestConnectIntegration:
     ) -> None:
         """On a bot platform the agent reply must carry the connect URL inline."""
         mock_gsw.return_value = _writer()
-
-        from app.agents.tools.integration_tool import connect_integration
 
         with (
             patch(
@@ -548,8 +541,6 @@ class TestConnectIntegration:
                 return "https://app.example.com/connect/for-this-user"
             return None
 
-        from app.agents.tools.integration_tool import connect_integration
-
         with (
             patch(
                 "app.utils.integration_checker.get_config",
@@ -584,8 +575,6 @@ class TestConnectIntegration:
         """On UI the reply points at the rendered card, never a raw URL."""
         mock_gsw.return_value = _writer()
 
-        from app.agents.tools.integration_tool import connect_integration
-
         with (
             patch(
                 "app.utils.integration_checker.get_config",
@@ -613,19 +602,105 @@ class TestConnectIntegration:
     async def test_already_connected(self, mock_check: AsyncMock, mock_gsw: MagicMock) -> None:
         mock_gsw.return_value = _writer()
 
-        from app.agents.tools.integration_tool import connect_integration
-
         result = await connect_integration.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg(), integration_ids=["gmail"]
         )
         assert "already connected" in result
 
+    @pytest.mark.regression
+    @patch(f"{MODULE}.get_stream_writer")
+    @patch(
+        f"{MODULE}.check_single_integration_status",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    @patch(
+        f"{MODULE}.OAUTH_INTEGRATIONS",
+        [_make_integration("posthog", "PostHog", short_name="posthog")],
+    )
+    async def test_force_reconnect_bypasses_connected_status_and_renders_reconnect_card(
+        self, mock_check: AsyncMock, mock_gsw: MagicMock
+    ) -> None:
+        writer = _writer()
+        mock_gsw.return_value = writer
+
+        with (
+            patch(
+                "app.utils.integration_checker.get_config",
+                return_value={"configurable": {"source_category": "ui"}},
+            ),
+            patch("app.utils.integration_checker.get_stream_writer", return_value=writer),
+        ):
+            result = await connect_integration.ainvoke(
+                {"integration_ids": ["posthog"], "force_reconnect": True}, config=_cfg()
+            )
+
+        assert "reconnect button" in result
+        mock_check.assert_not_awaited()
+        card = next(
+            call.args[0]["integration_connection_required"]
+            for call in writer.call_args_list
+            if "integration_connection_required" in call.args[0]
+        )
+        assert card["integration_id"] == "posthog"
+        assert card["expired"] is True
+
+    @pytest.mark.regression
+    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.check_single_integration_status", new_callable=AsyncMock)
+    @patch(f"{MODULE}.request_integration_connection", new_callable=AsyncMock)
+    @patch(
+        f"{MODULE}.OAUTH_INTEGRATIONS",
+        [
+            _make_integration("gmail", "Gmail", short_name="gmail"),
+            _make_integration("posthog", "PostHog", short_name="posthog"),
+        ],
+    )
+    async def test_connected_first_does_not_skip_the_rest(
+        self, mock_request: AsyncMock, mock_check: AsyncMock, mock_gsw: MagicMock
+    ) -> None:
+        """Skipping one integration continues the loop instead of ending it."""
+        mock_gsw.return_value = _writer()
+        mock_check.side_effect = lambda iid, _uid: iid == "gmail"
+        mock_request.return_value = "connect posthog"
+
+        result = await connect_integration.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
+            config=_cfg(), integration_ids=["gmail", "posthog"]
+        )
+
+        assert "already connected" in result
+        mock_check.assert_any_call("gmail", FAKE_USER_ID)
+        mock_request.assert_awaited_once_with(
+            "posthog", "PostHog", FAKE_USER_ID, force_reconnect=False
+        )
+
+    @pytest.mark.regression
+    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.check_single_integration_status", new_callable=AsyncMock)
+    @patch(f"{MODULE}.request_integration_connection", new_callable=AsyncMock)
+    @patch(
+        f"{MODULE}.OAUTH_INTEGRATIONS",
+        [_make_integration("gmail", "Gmail", short_name="gmail")],
+    )
+    async def test_unknown_id_does_not_skip_the_rest(
+        self, mock_request: AsyncMock, mock_check: AsyncMock, mock_gsw: MagicMock
+    ) -> None:
+        mock_gsw.return_value = _writer()
+        mock_check.return_value = False
+        mock_request.return_value = "connect gmail"
+
+        result = await connect_integration.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
+            config=_cfg(), integration_ids=["nope", "gmail"]
+        )
+
+        assert "not found" in result
+        mock_check.assert_awaited_once_with("gmail", FAKE_USER_ID)
+        mock_request.assert_awaited_once_with("gmail", "Gmail", FAKE_USER_ID, force_reconnect=False)
+
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
     async def test_not_found(self, mock_gsw: MagicMock) -> None:
         mock_gsw.return_value = _writer()
-
-        from app.agents.tools.integration_tool import connect_integration
 
         result = await connect_integration.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg(), integration_ids=["nonexistent"]
@@ -640,16 +715,12 @@ class TestConnectIntegration:
     async def test_unavailable(self, mock_gsw: MagicMock) -> None:
         mock_gsw.return_value = _writer()
 
-        from app.agents.tools.integration_tool import connect_integration
-
         result = await connect_integration.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg(), integration_ids=["gmail"]
         )
         assert "not available yet" in result
 
     async def test_no_user_id(self) -> None:
-        from app.agents.tools.integration_tool import connect_integration
-
         result = await connect_integration.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg_no_user(), integration_ids=["gmail"]
         )
@@ -659,8 +730,6 @@ class TestConnectIntegration:
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
     async def test_empty_list(self, mock_gsw: MagicMock) -> None:
         mock_gsw.return_value = _writer()
-
-        from app.agents.tools.integration_tool import connect_integration
 
         result = await connect_integration.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg(), integration_ids=[]
@@ -679,8 +748,6 @@ class TestConnectIntegration:
     )
     async def test_service_error(self, mock_check: AsyncMock, mock_gsw: MagicMock) -> None:
         mock_gsw.return_value = _writer()
-
-        from app.agents.tools.integration_tool import connect_integration
 
         result = await connect_integration.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg(), integration_ids=["gmail"]
@@ -704,8 +771,6 @@ class TestCheckIntegrationsStatus:
         [_make_integration("gmail", "Gmail", short_name="gmail")],
     )
     async def test_connected(self, mock_check: AsyncMock) -> None:
-        from app.agents.tools.integration_tool import check_integrations_status
-
         result = await check_integrations_status.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg(), integration_names=["gmail"]
         )
@@ -721,8 +786,6 @@ class TestCheckIntegrationsStatus:
         [_make_integration("gmail", "Gmail", short_name="gmail")],
     )
     async def test_not_connected(self, mock_check: AsyncMock) -> None:
-        from app.agents.tools.integration_tool import check_integrations_status
-
         result = await check_integrations_status.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg(), integration_names=["gmail"]
         )
@@ -730,16 +793,12 @@ class TestCheckIntegrationsStatus:
 
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
     async def test_not_found(self) -> None:
-        from app.agents.tools.integration_tool import check_integrations_status
-
         result = await check_integrations_status.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg(), integration_names=["nonexistent"]
         )
         assert "Not found" in result
 
     async def test_no_user_id(self) -> None:
-        from app.agents.tools.integration_tool import check_integrations_status
-
         result = await check_integrations_status.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg_no_user(), integration_names=["gmail"]
         )
@@ -755,8 +814,6 @@ class TestCheckIntegrationsStatus:
         [_make_integration("gmail", "Gmail", short_name="gmail")],
     )
     async def test_service_error(self, mock_check: AsyncMock) -> None:
-        from app.agents.tools.integration_tool import check_integrations_status
-
         result = await check_integrations_status.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool.coroutine exists only at runtime; stubs omit it
             config=_cfg(), integration_names=["gmail"]
         )
@@ -774,8 +831,6 @@ class TestSuggestIntegrations:
         mock_list.ainvoke = AsyncMock(
             return_value={"connected": [], "available": [], "suggested": []}
         )
-
-        from app.agents.tools.integration_tool import suggest_integrations
 
         await suggest_integrations.ainvoke({"query": "email tools"}, config=_cfg())
         mock_list.ainvoke.assert_awaited_once()
