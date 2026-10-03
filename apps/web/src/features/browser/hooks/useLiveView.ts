@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback } from "react";
-import { browserApi, livePagePath, liveViewSocketUrl } from "../api/browserApi";
+import { browserApi, livePagePath, liveSocketUrl } from "../api/browserApi";
 
 // The API ends a live-view socket when its token lapses, so a fresh token is
 // minted this long before that, while the old socket is still up.
@@ -9,17 +9,13 @@ const TOKEN_RENEW_LEAD_SECONDS = 60;
 /**
  * The tokened socket and full-page URLs for a session's live view.
  *
- * The live view's vhost never sees the session cookie, so every connection
- * carries a takeover token. One token per session is shared by every surface
+ * Every connection carries a takeover token. One token per session is shared by every surface
  * showing it (card, handoff prompt, side panel), re-minted before it expires,
  * and re-minted on demand by `renew` when a socket drops, so a reconnect never
  * redials with a dead token.
  */
-export function useLiveView(
-  sessionId: string | null | undefined,
-  liveViewUrl: string | null | undefined,
-) {
-  const enabled = !!sessionId && !!liveViewUrl;
+export function useLiveView(sessionId: string | null | undefined) {
+  const enabled = !!sessionId;
   const { data, refetch } = useQuery({
     queryKey: ["browser-live-view-token", sessionId],
     queryFn: () => browserApi.getLiveViewToken(sessionId as string),
@@ -43,8 +39,7 @@ export function useLiveView(
 
   const token = enabled ? data?.token : undefined;
   return {
-    socketUrl:
-      token && liveViewUrl ? liveViewSocketUrl(liveViewUrl, token) : null,
+    socketUrl: token && sessionId ? liveSocketUrl(sessionId, token) : null,
     pageUrl: token && sessionId ? livePagePath(sessionId, token) : null,
     renew,
   };

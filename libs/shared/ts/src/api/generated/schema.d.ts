@@ -499,8 +499,8 @@ export interface paths {
         };
         /**
          * Get Live View Token
-         * @description Mint a short-lived takeover token so the web card can open the cross-origin
-         *     live view (the host-only session cookie is not sent to the live-view vhost).
+         * @description Mint a short-lived takeover token the web card carries on its live-view
+         *     socket and full-page link, so neither depends on the session cookie.
          */
         get: operations["browser_get_live_view_token"];
         put?: never;

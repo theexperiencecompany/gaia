@@ -270,7 +270,6 @@ class BrowserTaskRunner:
                 task=task,
                 status=BrowserSessionStatus.RUNNING,
                 session_id=self._session.session_id,
-                live_view_url=self._session.live_view_url,
             )
         )
 
@@ -411,7 +410,6 @@ class BrowserTaskRunner:
                 task=task,
                 status=BrowserSessionStatus.RUNNING,
                 session_id=self._session.session_id,
-                live_view_url=self._session.live_view_url,
             )
         )
         if self._note is not None:

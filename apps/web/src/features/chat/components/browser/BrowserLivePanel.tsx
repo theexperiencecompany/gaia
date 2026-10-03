@@ -62,7 +62,6 @@ function TabCove({ side }: { side: "left" | "right" }) {
 interface BrowserLivePanelProps {
   /** The session the run is on now: it changes when the run falls back to another engine. */
   sessionId: string | null;
-  liveViewUrl: string | null;
   phase: BrowserCardPhase;
   currentTask: string | null;
   pendingHandoff: BrowserHandoffSnapshot | null;
@@ -78,7 +77,6 @@ interface BrowserLivePanelProps {
  */
 export function BrowserLivePanel({
   sessionId,
-  liveViewUrl,
   phase,
   currentTask,
   pendingHandoff,
@@ -95,10 +93,7 @@ export function BrowserLivePanel({
   }, [ended, onClose]);
 
   const interactive = !!pendingHandoff;
-  const { socketUrl, pageUrl, renew } = useLiveView(
-    ended ? null : sessionId,
-    liveViewUrl,
-  );
+  const { socketUrl, pageUrl, renew } = useLiveView(ended ? null : sessionId);
   const live = useLiveBrowser(socketUrl, interactive, renew);
 
   return (

@@ -1,8 +1,8 @@
-"""Short-lived signed tokens that let a bot user open a browser live view.
+"""Short-lived signed tokens that let the web card open a browser live view.
 
 A takeover token authorizes one user to watch (and, during a handoff, drive) one
-browser session over the live-view WebSocket without a web login; it is embedded
-in the link a bot delivers to that user's own channel. Same JWT shape as
+browser session over the live-view WebSocket without the session cookie; the
+web card mints one and carries it on its socket and full-page link. Same JWT shape as
 bot_token_service (jose HS256, dedicated secret, role claim, 15-min exp); the
 secret never overlaps with the bot-session secret so a leak is contained.
 """

@@ -23,7 +23,6 @@ def _handle(session_id: str = "sess-1") -> BrowserHostSession:
     return BrowserHostSession(
         session_id=session_id,
         cdp_url="ws://cdp",  # NOSONAR
-        live_view_url="https://live",
         host_url=_HOST,
         engine=BrowserEngine.CHROMIUM,
     )
@@ -154,7 +153,7 @@ async def test_create_session_receives_the_loaded_storage_state(
 async def test_session_fields_are_mapped_from_the_host_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Map each BrowserHostSession field from the matching host attribute, not a swapped one, and derive the live-view URL from the session id."""
+    """Map each BrowserHostSession field from the matching host attribute, not a swapped one."""
     _make_session_fakes(monkeypatch)
     host = MagicMock(
         session_id="sid-x",
@@ -163,24 +162,16 @@ async def test_session_fields_are_mapped_from_the_host_response(
         engine=BrowserEngine.OBSCURA,
     )
     monkeypatch.setattr(session_mod.host_client, "create_session", AsyncMock(return_value=host))
-    live_view_calls: list[str] = []
-    monkeypatch.setattr(
-        session_mod,
-        "live_view_url",
-        lambda session_id: live_view_calls.append(session_id) or f"LV:{session_id}",
-    )
 
     async with session_mod.browser_session(
         host_url=_HOST, user_id="u1", start_url="https://x"
     ) as s:
         assert s.session_id == "sid-x"
         assert s.cdp_url == "ws://cdp-endpoint"
-        assert s.live_view_url == "LV:sid-x"
         assert s.host_url == _HOST
         assert s.engine is BrowserEngine.OBSCURA
         # A later handover protects this site's login by it.
         assert s.start_domain == "x"
-    assert live_view_calls == ["sid-x"]
 
 
 async def test_the_wide_event_names_the_session_this_request_created(
