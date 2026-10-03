@@ -39,13 +39,15 @@ async def stack(tmp_path_factory: pytest.TempPathFactory) -> AsyncIterator[Brows
         await browser_stack.stop()
 
 
-@pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]) -> Generator[None]:
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_makereport(
+    item: pytest.Item, call: pytest.CallInfo[None]
+) -> Generator[None, pytest.TestReport, pytest.TestReport]:
     """Attach every stack process's log tail and the fake models' refusals to a failed scenario's report."""
-    outcome = yield
-    report = outcome.get_result()
+    report = yield
     stack = getattr(item, "funcargs", {}).get("stack")
     if report.when == "call" and report.failed and isinstance(stack, BrowserStack):
         report.sections.append(
             ("browser stack", f"{stack.logs()}\nfake model errors: {stack.models.errors}")
         )
+    return report

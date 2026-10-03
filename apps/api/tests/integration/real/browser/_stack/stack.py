@@ -62,6 +62,7 @@ from tests.integration.real.browser._stack.processes import (
     browser_host,
     child_environment,
 )
+from tests.integration.real.browser._stack.tls import FixtureTls, issue
 
 _TELEGRAM = "telegram"
 _BOT_KEY = "browser-stack-bot-key-" + "x" * 16
@@ -112,6 +113,7 @@ class BrowserStack:
         #: Encrypts the logins a run saves, as production's key does.
         self.state_key = Fernet.generate_key().decode()
         self.observer = OutboundObserver(settings.RABBITMQ_URL)
+        self.tls: FixtureTls | None = None
         self.chrome: BrowserHost | None = None
         self.obscura: BrowserHost | None = None
         self.worker: BrowserWorker | None = None
@@ -126,20 +128,21 @@ class BrowserStack:
     # --- lifecycle ----------------------------------------------------------
 
     async def start(self) -> None:
-        await self.site.start()
+        tls = self.tls = issue(self.log_dir)
+        await self.site.start(tls)
         await self.models.start()
         self.chrome = browser_host(
             BrowserEngine.CHROMIUM,
             required_binary("CHROMIUM_BIN", "google-chrome"),
             self.host_key,
-            self.site.origins,
+            (self.site.origins, tls.ca_file),
             self.log_dir,
         )
         self.obscura = browser_host(
             BrowserEngine.OBSCURA,
             required_binary("OBSCURA_BIN"),
             self.host_key,
-            self.site.origins,
+            (self.site.origins, tls.ca_file),
             self.log_dir,
         )
         env = child_environment(self._app_environment())
@@ -416,9 +419,13 @@ class BrowserStack:
             engine.kill()
 
     async def decide_on_live_page(self, live_url: str, decision: str) -> int:
-        """Press the live view page's Done ("continue") or Cancel, as its buttons do."""
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(f"{live_url}/decision", json={"decision": decision})
+        """Press the live view page's Done ("continue") or Cancel, as its buttons do.
+
+        The link opens the web app's page; its buttons answer on this API's /live/{code}/decision.
+        """
+        code = urlsplit(live_url).path.rstrip("/").rsplit("/", 1)[-1]
+        async with httpx.AsyncClient(base_url=self.api_url, timeout=30) as client:
+            response = await client.post(f"/live/{code}/decision", json={"decision": decision})
         return response.status_code
 
 

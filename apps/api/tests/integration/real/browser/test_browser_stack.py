@@ -485,7 +485,7 @@ async def test_a_captcha_on_a_site_the_user_never_named_is_skipped_not_handed_ov
 
 
 async def _a_run_that_waits(
-    stack: BrowserStack, user: BotUser, **start: str
+    stack: BrowserStack, user: BotUser, *, channel_id: str | None = None
 ) -> tuple[str, str, str]:
     """Start a run whose agent waits until it is stopped; return its marker, conversation and job."""
     marker = _marker()
@@ -502,7 +502,7 @@ async def _a_run_that_waits(
         ],
     )
     conversation_id, job_id = await _start(
-        stack, user, f"Open {home} and keep watching it. {marker}", home, **start
+        stack, user, f"Open {home} and keep watching it. {marker}", home, channel_id=channel_id
     )
     await _until(lambda: _asked(stack, marker, 2), "the agent waiting on the page")
     return marker, conversation_id, job_id
