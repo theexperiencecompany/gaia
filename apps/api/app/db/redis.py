@@ -198,10 +198,6 @@ class AsyncRedisCommands(Protocol):
         """XREAD — [(stream, [(entry_id, fields)])] for streams with new entries."""
         ...
 
-    async def xrange(self, name: str) -> list[tuple[str, dict[str, str]]]:
-        """XRANGE over the whole stream — [(entry_id, fields)], oldest first."""
-        ...
-
     async def eval(self, script: str, numkeys: int, *keys_and_args: str) -> LuaReply:
         """EVAL — runs a Lua script; the caller narrows the dynamic result."""
         ...

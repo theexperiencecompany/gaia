@@ -33,9 +33,7 @@ async def _call_action(tools, name: str, **kwargs) -> str:
 def test_registers_takeover_action_only_when_captcha_disabled() -> None:
     takeover: Callable[[str, SensitiveCategory], Awaitable[str]] = _FakeTakeover()
 
-    tools = build_browser_tools(
-        solve_captcha=False, handle_takeover=takeover
-    )
+    tools = build_browser_tools(solve_captcha=False, handle_takeover=takeover)
 
     actions = tools.registry.registry.actions
     assert "request_human_takeover" in actions
@@ -45,9 +43,7 @@ def test_registers_takeover_action_only_when_captcha_disabled() -> None:
 def test_registers_both_actions_when_captcha_enabled() -> None:
     takeover: Callable[[str, SensitiveCategory], Awaitable[str]] = _FakeTakeover()
 
-    tools = build_browser_tools(
-        solve_captcha=True, handle_takeover=takeover
-    )
+    tools = build_browser_tools(solve_captcha=True, handle_takeover=takeover)
 
     actions = tools.registry.registry.actions
     assert "request_human_takeover" in actions
@@ -56,9 +52,7 @@ def test_registers_both_actions_when_captcha_enabled() -> None:
 
 @pytest.mark.parametrize("arguments", [{}, {"category": "shipping"}])
 def test_a_takeover_needs_one_of_the_known_categories(arguments: dict[str, str]) -> None:
-    tools = build_browser_tools(
-        solve_captcha=False, handle_takeover=_FakeTakeover()
-    )
+    tools = build_browser_tools(solve_captcha=False, handle_takeover=_FakeTakeover())
 
     with pytest.raises(ValidationError):
         _get_action(tools, "request_human_takeover").param_model(
@@ -68,9 +62,7 @@ def test_a_takeover_needs_one_of_the_known_categories(arguments: dict[str, str])
 
 async def test_takeover_passes_explicit_category_through_unchanged() -> None:
     takeover = _FakeTakeover()
-    tools = build_browser_tools(
-        solve_captcha=False, handle_takeover=takeover
-    )
+    tools = build_browser_tools(solve_captcha=False, handle_takeover=takeover)
 
     result = await _call_action(
         tools, "request_human_takeover", reason="Enter your card number", category="payment"
@@ -87,9 +79,7 @@ async def test_takeover_propagates_cancellation_from_seam() -> None:
     async def raising_takeover(reason: str, category: str) -> str:
         raise _Cancelled("user cancelled")
 
-    tools = build_browser_tools(
-        solve_captcha=False, handle_takeover=raising_takeover
-    )
+    tools = build_browser_tools(solve_captcha=False, handle_takeover=raising_takeover)
 
     with pytest.raises(_Cancelled):
         await _call_action(
@@ -99,9 +89,7 @@ async def test_takeover_propagates_cancellation_from_seam() -> None:
 
 async def test_captcha_action_always_uses_none_category() -> None:
     takeover = _FakeTakeover()
-    tools = build_browser_tools(
-        solve_captcha=True, handle_takeover=takeover
-    )
+    tools = build_browser_tools(solve_captcha=True, handle_takeover=takeover)
 
     result = await _call_action(
         tools, "solve_captcha_with_help", challenge="Select all squares with motorcycles"
@@ -139,9 +127,7 @@ class _FakeSwitch:
 
 
 def test_a_run_on_chrome_is_never_offered_the_full_browser() -> None:
-    tools = build_browser_tools(
-        solve_captcha=False, handle_takeover=_FakeTakeover()
-    )
+    tools = build_browser_tools(solve_captcha=False, handle_takeover=_FakeTakeover())
 
     assert "continue_in_full_browser" not in tools.registry.registry.actions
 

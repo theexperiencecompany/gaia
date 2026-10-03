@@ -119,9 +119,9 @@ class BotProgressDelivery:
     async def result(self, snapshot: BrowserResultSnapshot) -> None:
         """Close out the progress with the run's recap link, and nothing else.
 
-        The outcome itself is the assistant's to say, once: the joined turn
-        narrates it, or the worker's follow-up does when nobody is joined. A
-        canned "Done"/"Stopped" line here made every outcome arrive twice.
+        The outcome itself is the assistant's to say, once: the executor run
+        its ending lands in tells it. A canned "Done"/"Stopped" line here made
+        every outcome arrive twice.
         """
         if snapshot.replay_url:
             await self.note(f"📽 Here's a recap of the run: {snapshot.replay_url}")
