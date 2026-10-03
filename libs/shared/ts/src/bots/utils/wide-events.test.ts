@@ -15,7 +15,7 @@ async function captureEvent(
   body: () => Promise<void>,
 ): Promise<Record<string, unknown>> {
   const lines: string[] = [];
-  const spies = (["log", "warn", "error", "debug"] as const).map((level) =>
+  const spies = (["info", "warn", "error", "debug"] as const).map((level) =>
     vi.spyOn(console, level).mockImplementation((line: unknown) => {
       if (typeof line === "string") lines.push(line);
     }),

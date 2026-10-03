@@ -46,6 +46,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 #   * bridge is serial (workers 0): the device-bridge e2e TRUNCATEs a shared
 #     Postgres table, which another xdist worker's fixture would wipe mid-test.
 #   * node: only bridge drives the real `gaia bridge` CLI via tsx.
+#   * browser runs 2 workers, each booting a whole stack (API, worker, two hosts):
+#     measured on 4 pinned cores with a fresh Chroma, ~2:50 for the 13 scenarios
+#     and ~6 min with the flake gate's rerun; 30 min leaves the GitHub VM 5x.
 #   * after: the extra suites a slice runs once its own run is done — see
 #     cmd_shared_suite / cmd_contract_fuzz for why each is its own invocation.
 SLICES_FILE="$SCRIPT_DIR/lib/test-slices.json"
@@ -144,13 +147,15 @@ cmd_slice() {
     -m 'not composio and not model_onboarding and not schemathesis' \
     --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
     --junitxml="test-results/pytest-$SLICE.xml" --durations=30 2>&1 \
-    | cut -c-20000 | tee "${SCRATCH}/pytest-${SLICE}.time"
+    | stdbuf -oL cut -c-20000 | tee "${SCRATCH}/pytest-${SLICE}.time"
   rc=${PIPESTATUS[0]}
   set -e
   # cut: the Actions runner handles step output line by line (regex matchers,
   # console upload); a single multi-MB line — a parametrize id carrying a 2 MB
   # string in --durations, measured 2026-08-29 — spun Runner.Worker at 100 %
   # CPU until the job timeout. 20k chars keeps every real traceback intact.
+  # stdbuf -oL: writing to a pipe, cut holds 4 KB before passing anything on, so a
+  # lane cancelled at its cap lost everything it had said (the browser slice, 19 min, blank).
   cpu_slots_release "$N_SLOTS"
 
   # The verdict, from the JUnit the run already wrote: every failed test at its

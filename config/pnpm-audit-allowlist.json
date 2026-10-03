@@ -5,6 +5,11 @@
       "id": "GHSA-86w9-cpqp-85rv",
       "reason": "node-forge (CVE-2026-85393, RSA PKCS#1 v1.5 signature verification accepts extra nested DigestAlgorithm elements, high): NO upstream fix exists - the advisory's vulnerable range is <=1.4.0 with no first_patched_version, and 1.4.0 is the latest release on the registry (the root override already pins it there). Transitive through apps/mobile only (expo, @expo/vector-icons, @react-native-community/datetimepicker -> Expo CLI tooling); not a dependency of the API, web app or bots, and not on any request path. Re-check when node-forge ships a fixed release.",
       "expires": "2026-10-31"
+    },
+    {
+      "id": "GHSA-vfj7-8cjw-p6xm",
+      "reason": "braces (CVE-2026-93687, stack exhaustion on deeply nested brace patterns, high): NO upstream fix exists - the advisory's vulnerable range is <=3.0.3 with no first_patched_version, and 3.0.3 is the latest release on the registry. Reached only through build and CLI tooling (micromatch/fast-glob under @expo/cli, @react-native-community/cli, @nx/next, jscpd, style-dictionary); never on a request path, and the patterns it expands come from our own config, not from users. Re-check when braces ships a fixed release.",
+      "expires": "2026-10-31"
     }
   ]
 }

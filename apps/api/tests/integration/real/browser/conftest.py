@@ -10,11 +10,13 @@ google-chrome on PATH) and so is OBSCURA_BIN: a missing binary fails the tier.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Generator
+from collections.abc import AsyncIterator, Generator, Iterator
+import time
 
 import pytest
 import pytest_asyncio
 
+from tests.integration.real.browser._stack.progress import Progress
 from tests.integration.real.browser._stack.stack import BrowserStack
 
 
@@ -28,15 +30,31 @@ def _autouse_hil_approvals_collection() -> None:
     """
 
 
+@pytest.fixture(scope="session")
+def progress(pytestconfig: pytest.Config) -> Progress:
+    return Progress(pytestconfig)
+
+
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
-async def stack(tmp_path_factory: pytest.TempPathFactory) -> AsyncIterator[BrowserStack]:
+async def stack(
+    tmp_path_factory: pytest.TempPathFactory, progress: Progress
+) -> AsyncIterator[BrowserStack]:
     """Boot the whole browser stack once for the module, and tear every process down after it."""
-    browser_stack = BrowserStack(tmp_path_factory.mktemp("browser-stack"))
+    browser_stack = BrowserStack(tmp_path_factory.mktemp("browser-stack"), progress)
     try:
         await browser_stack.start()
         yield browser_stack
     finally:
         await browser_stack.stop()
+
+
+@pytest.fixture(autouse=True)
+def _said(request: pytest.FixtureRequest, progress: Progress) -> Iterator[None]:
+    """Say when each scenario starts and how long it took, past the output capture."""
+    started = time.monotonic()
+    progress.say(f"{request.node.name} started")
+    yield
+    progress.say(f"{request.node.name} ended after {time.monotonic() - started:.0f}s")
 
 
 @pytest.hookimpl(wrapper=True)
