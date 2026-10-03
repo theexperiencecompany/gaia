@@ -50,6 +50,14 @@ class TestSectionBody:
     def test_none_when_missing(self):
         assert section_body(LEGACY, "Nope") is None
 
+    def test_a_canvas_that_is_not_there_yet_is_an_empty_one_not_a_missing_one(self):
+        """A todo written before the canvas existed has an empty canvas, not no canvas.
+
+        Returning "" for None lets every caller write the rest back without inventing a
+        placeholder; returning None would have each of them decide for itself.
+        """
+        assert remove_section(None, "Activity Log") == ("", None)
+
     def test_a_todo_without_a_canvas_has_no_section(self):
         assert section_body(None, "Current State") is None
 

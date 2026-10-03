@@ -120,7 +120,7 @@ async def with_desk_notes(doc: TodoDocument) -> TodoDocument:
     """
     if doc.external_ref is None or doc.external_ref.source is not ExternalRefSource.INBOX_DESK:
         return doc
-    canvas, carried = remove_section(doc.canvas_content or "", CANVAS_OBSERVATIONS_SECTION)
+    canvas, carried = remove_section(doc.canvas_content, CANVAS_OBSERVATIONS_SECTION)
     if carried is None and doc.observations_content:
         return doc
     observations = doc.observations_content or INBOX_DESK_OBSERVATIONS_FILE
