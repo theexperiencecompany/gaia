@@ -109,7 +109,7 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
         icon: <BookOpen01Icon className="size-4 text-zinc-400" />,
         onPress: () =>
           appendToInput(
-            "Summarise each of my unread email threads in 1–2 sentences so I can quickly understand what's going on without reading every message.",
+            "Summarise each of my unread email threads in 1 to 2 sentences so I can quickly understand what's going on without reading every message.",
           ),
       },
       {

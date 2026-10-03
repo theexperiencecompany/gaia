@@ -257,7 +257,7 @@ class TestCreateServerIntegration:
         # The description names the device and states the tools run locally — the
         # subagent's discovery text inherits it verbatim.
         assert integration.description == (
-            'MCP server hosted on your device "My Laptop" — its tools run '
+            'MCP server hosted on your device "My Laptop". Its tools run '
             "locally on that machine, not the cloud sandbox."
         )
         assert integration.mcp_config.server_url == "device://dev1/fs"

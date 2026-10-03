@@ -264,13 +264,10 @@ async function _handleStream(
   };
 
   /**
-   * The messages a finished assistant message should be sent as: segmented into
-   * bubbles the way a person texts, then chunked to the platform's limit.
-   *
-   * Segmentation is not optional politeness. The model is asked to split its
-   * own replies with the sentinel and across 42 consecutive production replies
-   * never once did, so "one sentinel-free reply" is the normal case, not the
-   * edge case — and it arrived as a single 4,358-character Telegram message.
+   * The messages a finished assistant message should be sent as: the model's
+   * own sentinel-separated bubbles, then chunked to the platform's limit.
+   * A reply with no sentinel ships as one message: the model owns the splits
+   * (see Bubbles in the comms prompt), and nothing here invents them.
    */
   const bubblesFor = (message: string): string[] =>
     segmentIntoBubbles(message).flatMap((bubble) =>

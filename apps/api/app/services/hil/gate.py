@@ -47,6 +47,7 @@ from app.services.feature_flags import is_hil_ledger_enabled, is_jev_judge_enabl
 from app.services.hil.approvals_store import approval_id_for, get_approval
 from app.services.hil.bridge import (
     ApprovalOutcome,
+    GatedApproval,
     build_summary,
     publish_approval_request,
     publish_auto_approval,
@@ -287,13 +288,15 @@ async def _decide_ledger(
             tool_name=call.name,
         )
         await publish_ledger_request(
-            approval_id=ap_id,
-            stream_id=context.stream_id,
-            user_id=context.user_id,
-            conversation_id=context.conversation_id,
-            tool_call=call,
-            summary=summary,
-            integration_name=integration_name,
+            GatedApproval(
+                approval_id=ap_id,
+                stream_id=context.stream_id,
+                user_id=context.user_id,
+                conversation_id=context.conversation_id,
+                tool_call=call,
+                summary=summary,
+                integration_name=integration_name,
+            ),
             auto_reason=auto_note.strip() or None,
             owner_run_type=context.owner_run_type,
             owner_id=context.owner_id,
@@ -417,6 +420,15 @@ async def _decide(
         if policy == "auto":
             decision = await _judge(request, context, call, record, summary)
 
+        approval = GatedApproval(
+            approval_id=approval_id,
+            stream_id=context.stream_id,
+            user_id=context.user_id,
+            conversation_id=context.conversation_id,
+            tool_call=call,
+            summary=summary,
+            integration_name=integration_name,
+        )
         if decision is not None and decision.outcome == "accept":
             log.info(
                 f"{LogTag.HIL} auto-approved",
@@ -425,16 +437,7 @@ async def _decide(
             )
             # The receipt says GAIA decided to act, and why. It is not a claim that the
             # action happened — the tool node runs it afterwards, like any other call.
-            await publish_auto_approval(
-                approval_id=approval_id,
-                stream_id=context.stream_id,
-                user_id=context.user_id,
-                conversation_id=context.conversation_id,
-                tool_call=call,
-                summary=summary,
-                integration_name=integration_name,
-                reason=decision.reason,
-            )
+            await publish_auto_approval(approval, reason=decision.reason)
             return None
 
         if decision is not None and decision.outcome == "reject":
@@ -451,13 +454,7 @@ async def _decide(
             else None
         )
         await publish_approval_request(
-            approval_id=approval_id,
-            stream_id=context.stream_id,
-            user_id=context.user_id,
-            conversation_id=context.conversation_id,
-            tool_call=call,
-            summary=summary,
-            integration_name=integration_name,
+            approval,
             auto_reason=auto_reason,
             subagent_resume=context.subagent_resume,
             subagent_thread_id=context.subagent_thread_id,

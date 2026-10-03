@@ -480,7 +480,7 @@ async def apply_workflow_edit(
     message = f"Workflow '{updated.title}' updated."
     if needs_editor:
         message += (
-            " The integration trigger itself was left unchanged — its config is set "
+            " The integration trigger itself was left unchanged. Its config is set "
             "in the workflow editor in the app."
         )
     return success_response({"status": "updated", "workflow_id": updated.id}, message)

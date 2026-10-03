@@ -187,7 +187,7 @@ async def _notify_workflows_provisioned(
     else:
         title = f"I set up {len(created)} workflows for your {integration_name}"
 
-    workflow_lines = "\n".join(f"• {r.title} — {r.description}" for r in created)
+    workflow_lines = "\n".join(f"• {r.title}: {r.description}" for r in created)
     body = f"Here's what I've got running for you:\n\n{workflow_lines}\n\nYou can adjust or turn them off anytime."
 
     try:

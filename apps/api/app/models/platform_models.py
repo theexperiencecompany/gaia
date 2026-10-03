@@ -106,7 +106,7 @@ class MintPlatformLinkCodeResponse(BaseModel):
     handoff_text: str = Field(
         ...,
         description=(
-            "first_message with ' #<code>' appended — the exact text a WhatsApp or "
+            "first_message with ' #<code>' appended, the exact text a WhatsApp or "
             "iMessage user sends. Used to build the iMessage sms: link, whose number "
             "is only known after the phone is registered on Photon's pool."
         ),
@@ -115,7 +115,7 @@ class MintPlatformLinkCodeResponse(BaseModel):
         ...,
         description=(
             "Deep link per platform that carries the code. iMessage is absent by "
-            "construction — its number is assigned per user."
+            "construction; its number is assigned per user."
         ),
     )
 

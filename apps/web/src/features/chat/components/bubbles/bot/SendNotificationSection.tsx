@@ -56,7 +56,7 @@ export default function SendNotificationSection({
           </p>
           {!isDelivered && (
             <p className="mt-1 text-[11px] text-zinc-500">
-              Queued — waiting for a channel to confirm delivery
+              Queued, waiting for a channel to confirm delivery
             </p>
           )}
         </div>

@@ -73,7 +73,7 @@ async def request_integration_connection(
 
     if expired:
         lead = (
-            f"The user's {integration_name} connection EXPIRED — they had it connected and the "
+            f"The user's {integration_name} connection EXPIRED. They had it connected and the "
             f"access has since died, so they must sign in again. Do NOT tell them to connect "
             f"{integration_name} for the first time."
         )
@@ -84,7 +84,7 @@ async def request_integration_connection(
 
     if source_category == SourceCategory.UI.value:
         return (
-            f"{lead} A {verb} button has been shown to the user — do NOT include any URL in "
+            f"{lead} A {verb} button has been shown to the user, so do NOT include any URL in "
             f"your reply, the UI card handles it. Ask the user to click it, then try again."
         )
 

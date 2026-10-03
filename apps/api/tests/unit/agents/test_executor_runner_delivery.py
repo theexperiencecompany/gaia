@@ -118,6 +118,70 @@ async def _deliver(
     return save, platform, ws
 
 
+class TestABotReplyGeneratesNoFollowUps:
+    """No bot renders follow-up chips, so a bot reply never pays for the second LLM call."""
+
+    async def _deliver_to_telegram(self, *, delivered: bool):
+        with (
+            patch.object(
+                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="voiced"
+            ),
+            patch.object(
+                rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]
+            ) as inline,
+            patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
+            patch.object(
+                rd,
+                "_get_conversation_source",
+                new_callable=AsyncMock,
+                return_value=ConversationSource.TELEGRAM,
+            ),
+            patch.object(
+                rd, "deliver_message_to_platform", new_callable=AsyncMock, return_value=delivered
+            ) as platform,
+            patch.object(rd, "_spawn_deferred_follow_ups") as deferred,
+        ):
+            await rd.deliver_result(_run(), result_text="raw", result_type="final", tool_data=None)
+        return inline, platform, deferred, save
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("delivered", [True, False])
+    async def test_neither_inline_nor_deferred_follow_ups_run(self, delivered: bool) -> None:
+        inline, platform, deferred, save = await self._deliver_to_telegram(delivered=delivered)
+
+        platform.assert_awaited_once()
+        inline.assert_not_awaited()
+        deferred.assert_not_called()
+        assert save.await_args.args[0].messages[0].follow_up_actions is None
+
+
+class TestAWorkflowAnswerCarriesItsFollowUpsInline:
+    """A workflow run has no one waiting on a live stream, so suggestions ride on the saved message."""
+
+    async def test_the_saved_message_holds_the_generated_follow_ups(self) -> None:
+        with (
+            patch.object(
+                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="voiced"
+            ),
+            patch.object(
+                rd,
+                "_safe_inline_follow_ups",
+                new_callable=AsyncMock,
+                return_value=["Run it again tomorrow"],
+            ),
+            patch.object(rd, "update_messages", new_callable=AsyncMock) as save,
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock),
+            patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock),
+        ):
+            await rd.deliver_result(
+                _run(workflow=True), result_text="done", result_type="final", tool_data=None
+            )
+
+        saved = save.await_args.args[0].messages[0]
+        assert saved.follow_up_actions == ["Run it again tomorrow"]
+
+
 class TestDeliverResultRouting:
     @pytest.mark.parametrize(
         "src",
@@ -2650,20 +2714,7 @@ class TestResolutionAnalyticsIsOnePerUpdate:
 
 
 class TestInlineFollowUpsOnlyWhereNothingWaits:
-    """Bot and workflow paths attach follow-ups inline; the web path defers them; a reaction gets none."""
-
-    async def test_a_bot_reply_carries_its_follow_ups_inline(self) -> None:
-        delivered = await _deliver_run(
-            _run(),
-            _Seams(
-                comms_text="Booked your flight.",
-                source=ConversationSource.WHATSAPP,
-                follow_ups=["Add it to my calendar"],
-            ),
-        )
-
-        assert delivered.follow_ups.await_args.args[0] == "Booked your flight."
-        assert _saved(delivered).follow_up_actions == ["Add it to my calendar"]
+    """Only a workflow attaches follow-ups inline; web defers them; bots and reactions get none."""
 
     async def test_a_bot_reaction_generates_no_follow_ups(self) -> None:
         delivered = await _deliver_run(

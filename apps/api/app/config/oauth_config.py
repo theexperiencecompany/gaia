@@ -498,7 +498,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                     slug="gmail_poll_inbox",
                     composio_slug="GMAIL_NEW_GMAIL_MESSAGE",
                     name="Poll Inbox",
-                    description="Polls your inbox every N minutes — ideal for periodic email triage",
+                    description="Polls your inbox every N minutes, ideal for periodic email triage",
                     config_schema={
                         "interval": TriggerConfigFieldSchema(
                             type="integer",
