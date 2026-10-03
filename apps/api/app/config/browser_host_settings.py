@@ -75,12 +75,10 @@ class BrowserHostSettings(BaseSettings):
 
     @field_validator("BROWSER_HOST_ALLOW_PRIVATE_ORIGINS", mode="before")
     @classmethod
-    def _exact_origins(cls, v: object) -> frozenset[str]:
+    def _exact_origins(cls, v: str | frozenset[str]) -> frozenset[str]:
         """Read the list as exact origins: an entry with a path or query, or without its port, is refused."""
         entries = v.split(",") if isinstance(v, str) else v
-        if not isinstance(entries, (list, tuple, set, frozenset)):
-            raise ValueError("BROWSER_HOST_ALLOW_PRIVATE_ORIGINS must be comma-separated origins")
-        origins = {str(entry).strip() for entry in entries} - {""}
+        origins = {entry.strip() for entry in entries} - {""}
         for origin in origins:
             # Written exactly as http_origin writes it, or a path or a missing port slipped in.
             if http_origin(origin) != origin:

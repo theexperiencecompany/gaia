@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 from pydantic import computed_field, field_validator
 from pydantic_settings import SettingsConfigDict
 
-from app.config.browser_host_settings import OBSCURA_PRIVATE_NETWORK_ENV, BrowserHostSettings
+from app.config.browser_host_settings import BrowserHostSettings
 from app.config.secrets import inject_infisical_secrets
 from app.config.settings_validator import settings_validator
 from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
@@ -814,62 +814,6 @@ def _ensure_infisical_loaded() -> None:
         _infisical_secrets_loaded = True
 
 
-def _refuse_dev_overrides_in_production() -> None:
-    """Raise when a development-only override is set under ENV=production.
-
-    A hard block, not a warning: checked via os.getenv because from_env()
-    downgrades pydantic validation errors to warnings.
-    """
-    if os.getenv("DEV_AUTH_BYPASS_EMAIL"):
-        raise RuntimeError(
-            "DEV_AUTH_BYPASS_EMAIL is set but ENV=production — "
-            "the dev auth bypass must never be enabled in production."
-        )
-    if os.getenv("DEV_UNLIMITED_RATE_LIMITS", "").strip().lower() not in (
-        "",
-        "0",
-        "false",
-        "no",
-        "off",
-    ):
-        raise RuntimeError(
-            "DEV_UNLIMITED_RATE_LIMITS is set but ENV=production — "
-            "lifting rate limits in production is never allowed."
-        )
-    # Same policy as the auth bypass: OPENROUTER_BASE_URL redirects the
-    # model to a local scripted stub, which must never run in production.
-    if os.getenv("OPENROUTER_BASE_URL"):
-        raise RuntimeError(
-            "OPENROUTER_BASE_URL is set but ENV=production — "
-            "the OpenRouter base-URL override is a development-only stub hook."
-        )
-    # The browser test stack's reach into private addresses; the host process,
-    # which never loads these settings, refuses the same in BrowserHostSettings.
-    for private_reach in (
-        "BROWSER_HOST_ALLOW_PRIVATE_ORIGINS",
-        OBSCURA_PRIVATE_NETWORK_ENV,
-    ):
-        if os.getenv(private_reach):
-            raise RuntimeError(
-                f"{private_reach} is set but ENV=production — "
-                "browsing to private addresses is a test-stack-only switch."
-            )
-    # Boolean-semantic var: an explicit "false"/"0"/"no"/"off" is a
-    # legitimate way to DISABLE sim mode and must not trip the guard
-    # (unlike the string-valued overrides above, where set == enabled).
-    if os.getenv("GAIA_SIM_MODE", "").strip().lower() not in (
-        "",
-        "0",
-        "false",
-        "no",
-        "off",
-    ):
-        raise RuntimeError(
-            "GAIA_SIM_MODE is set but ENV=production — "
-            "sim mode routes every model call to a local scripted stub."
-        )
-
-
 @lru_cache(maxsize=1)
 def get_settings() -> ProductionSettings | DevelopmentSettings:
     """Return the cached settings instance for the current environment."""
@@ -885,7 +829,45 @@ def get_settings() -> ProductionSettings | DevelopmentSettings:
         if env == "development":
             settings_obj = DevelopmentSettings.from_env()
         else:
-            _refuse_dev_overrides_in_production()
+            # Hard block, not a warning — checked via os.getenv because
+            # from_env() downgrades pydantic validation errors to warnings.
+            if os.getenv("DEV_AUTH_BYPASS_EMAIL"):
+                raise RuntimeError(
+                    "DEV_AUTH_BYPASS_EMAIL is set but ENV=production — "
+                    "the dev auth bypass must never be enabled in production."
+                )
+            if os.getenv("DEV_UNLIMITED_RATE_LIMITS", "").strip().lower() not in (
+                "",
+                "0",
+                "false",
+                "no",
+                "off",
+            ):
+                raise RuntimeError(
+                    "DEV_UNLIMITED_RATE_LIMITS is set but ENV=production — "
+                    "lifting rate limits in production is never allowed."
+                )
+            # Same policy as the auth bypass: OPENROUTER_BASE_URL redirects the
+            # model to a local scripted stub, which must never run in production.
+            if os.getenv("OPENROUTER_BASE_URL"):
+                raise RuntimeError(
+                    "OPENROUTER_BASE_URL is set but ENV=production — "
+                    "the OpenRouter base-URL override is a development-only stub hook."
+                )
+            # Boolean-semantic var: an explicit "false"/"0"/"no"/"off" is a
+            # legitimate way to DISABLE sim mode and must not trip the guard
+            # (unlike the string-valued overrides above, where set == enabled).
+            if os.getenv("GAIA_SIM_MODE", "").strip().lower() not in (
+                "",
+                "0",
+                "false",
+                "no",
+                "off",
+            ):
+                raise RuntimeError(
+                    "GAIA_SIM_MODE is set but ENV=production — "
+                    "sim mode routes every model call to a local scripted stub."
+                )
             settings_obj = ProductionSettings.from_env()
             log.info(f"{LogTag.STARTUP} Production settings initialized")
 

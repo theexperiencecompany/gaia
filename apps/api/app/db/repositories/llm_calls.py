@@ -203,21 +203,21 @@ class LLMCallsRepository(MongoRepository[LLMCallDocument, LLMCallUpdate]):
 
     async def token_totals_for_user(self, user_id: str) -> tuple[int, int]:
         """Return the input and output tokens every call made for one user adds up to."""
-        cursor = self._raw_collection().aggregate(
-            [
-                {"$match": {"user_id": user_id}},
-                {
-                    "$group": {
-                        "_id": None,
-                        "input": {"$sum": "$input_tokens"},
-                        "output": {"$sum": "$output_tokens"},
-                    }
-                },
-            ]
-        )
-        rows = await cursor.to_list(length=1)
-        totals = _TokenTotals.model_validate(rows[0]) if rows else _TokenTotals()
-        return totals.input, totals.output
+        pipeline: list[dict[str, object]] = [
+            {"$match": {"user_id": user_id}},
+            {
+                "$group": {
+                    "_id": None,
+                    "input": {"$sum": "$input_tokens"},
+                    "output": {"$sum": "$output_tokens"},
+                }
+            },
+        ]
+        # One group, so one row at most: the first is the whole answer.
+        async for row in self._raw_collection().aggregate(pipeline):
+            totals = _TokenTotals.model_validate(row)
+            return totals.input, totals.output
+        return 0, 0
 
 
 llm_calls_repository = LLMCallsRepository()

@@ -79,8 +79,6 @@ def _fake_chat_openrouter(captured: dict[str, object]) -> type:
         ("DEV_AUTH_BYPASS_EMAIL", "dev@gaia.local"),
         ("OPENROUTER_BASE_URL", "http://localhost:9797"),
         ("GAIA_SIM_MODE", "1"),
-        ("BROWSER_HOST_ALLOW_PRIVATE_ORIGINS", "http://localhost:8123"),
-        ("OBSCURA_ALLOW_PRIVATE_NETWORK", "1"),
     ],
 )
 def test_dev_overrides_block_production_boot(monkeypatch, env_var, value):
@@ -102,21 +100,41 @@ def test_dev_overrides_block_production_boot(monkeypatch, env_var, value):
         ("OBSCURA_ALLOW_PRIVATE_NETWORK", "1"),
     ],
 )
-def test_private_browsing_blocks_production_boot_of_the_browser_host(monkeypatch, env_var, value):
-    """The host never loads the API's settings, so its own settings refuse the test stack's private reach."""
+def test_private_browsing_blocks_production_boot_of_the_host_and_the_api(
+    monkeypatch, env_var, value
+):
+    """One validator on the host's settings, which the API's production settings inherit, refuses both."""
     monkeypatch.setenv("ENV", "production")
     for var in DEV_OVERRIDE_VARS:
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv(env_var, value)
+    refusal = f"Value error, {env_var} is set but ENV=production"
 
-    with pytest.raises(ValidationError, match=env_var):
+    with pytest.raises(ValidationError) as host_refused:
         BrowserHostSettings()
+    with pytest.raises(ValidationError) as api_refused:
+        _prod_settings()
+    assert host_refused.value.errors()[0]["msg"] == refusal
+    assert [e["msg"] for e in api_refused.value.errors()] == [refusal]
+
+
+def test_a_host_with_no_private_reach_boots_in_production_and_one_with_it_in_development(
+    monkeypatch,
+):
+    monkeypatch.setenv("ENV", "production")
+    for var in DEV_OVERRIDE_VARS:
+        monkeypatch.delenv(var, raising=False)
+    assert BrowserHostSettings().BROWSER_HOST_ALLOW_PRIVATE_ORIGINS == frozenset()
+
+    monkeypatch.setenv("ENV", "development")
+    monkeypatch.setenv("OBSCURA_ALLOW_PRIVATE_NETWORK", "1")
+    assert BrowserHostSettings().ENV == "development"
 
 
 def test_private_origins_are_read_as_exact_origins_in_development(monkeypatch):
     monkeypatch.setenv("ENV", "development")
     monkeypatch.setenv(
-        "BROWSER_HOST_ALLOW_PRIVATE_ORIGINS", "http://localhost:8123, http://127.0.0.1:8124"
+        "BROWSER_HOST_ALLOW_PRIVATE_ORIGINS", "http://localhost:8123, http://127.0.0.1:8124,"
     )
 
     assert {

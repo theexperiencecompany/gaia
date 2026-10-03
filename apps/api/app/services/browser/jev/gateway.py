@@ -243,7 +243,8 @@ def _openrouter_decisions_url() -> str:
     the rest of OpenRouter; production refuses to boot with that override set.
     """
     base = settings.OPENROUTER_BASE_URL or _OPENROUTER_API_URL
-    return urljoin(f"{base.rstrip('/')}/", "../alpha/decisions")
+    # A base given with its trailing slash resolves the same: "v1//" + "../" still lands on /api.
+    return urljoin(f"{base}/", "../alpha/decisions")
 
 
 def _build_jev_client(http: httpx.AsyncClient) -> JevGatewayClient:
