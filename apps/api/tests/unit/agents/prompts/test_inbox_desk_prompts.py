@@ -258,6 +258,16 @@ def test_a_desk_run_never_writes_a_standing_rule_of_its_own() -> None:
     ) in INBOX_DESK_RUN_GUIDANCE
 
 
+@pytest.mark.regression
+def test_a_thread_with_a_todo_is_left_to_it_and_the_desk_drafts_only_for_new_ones() -> None:
+    """Regression: the desk drafted Arjun's reply again after his thread todo already had."""
+    assert (
+        "If the thread already has a todo, that todo comes back: it watches the thread and owns "
+        "it, so leave the thread to it."
+    ) in "\n".join(_step(THREAD_TODO_STEP))
+    assert _step(DRAFT_STEP)[0].startswith("For each todo you created this run, ")
+
+
 def test_standing_rules_beat_observations_and_both_beat_the_defaults() -> None:
     assert (
         "canvas.md's Standing rules (the user's instructions) beat the conclusions in "
