@@ -15,6 +15,7 @@ from app.models.agent_lab_models import (
     AgentSessionUpdate,
 )
 from app.services.agent_lab.codex_driver import (
+    INSTALL_VERSION,
     CodexDriver,
     CodexStreamKind,
     parse_stream_line,
@@ -117,13 +118,37 @@ class TestAgentKind:
 
 
 @pytest.mark.unit
+class TestInstallCommand:
+    def test_pins_probed_version(self) -> None:
+        assert INSTALL_VERSION == "0.160.0"
+        assert f"@openai/codex@{INSTALL_VERSION}" in CodexDriver.install_command()
+
+    def test_installs_to_user_writable_prefix(self) -> None:
+        command = CodexDriver.install_command()
+
+        assert "--prefix /workspace/.local" in command
+        assert "-g" in command.split()
+
+    def test_install_never_uses_sudo(self) -> None:
+        assert "sudo" not in CodexDriver.install_command()
+        assert "sudo" not in CodexDriver.ensure_installed_command()
+
+    def test_ensure_probes_before_installing(self) -> None:
+        ensure = CodexDriver.ensure_installed_command()
+
+        assert "command -v codex" in ensure
+        assert CodexDriver.install_command() in ensure
+
+
+@pytest.mark.unit
 class TestStartCommand:
     def test_uses_exec_json_with_env_stripped(self) -> None:
         command = CodexDriver.build_start_command("do the thing")
 
         assert "codex exec" in command
         assert "--json" in command
-        assert command.startswith("env -u CODEX_API_KEY")
+        assert "env -u CODEX_API_KEY" in command
+        assert 'PATH="/workspace/.local/bin:$PATH"' in command
 
     def test_defaults_to_workspace_write_sandbox(self) -> None:
         command = CodexDriver.build_start_command("do the thing")
@@ -148,7 +173,7 @@ class TestMessageCommand:
         assert "resume --last" in command
         assert "--json" in command
         assert "--sandbox workspace-write" in command
-        assert command.startswith("env -u CODEX_API_KEY")
+        assert "env -u CODEX_API_KEY" in command
 
     def test_resume_targets_explicit_session(self) -> None:
         command = CodexDriver.build_resume_command("sess-123", "keep going")
@@ -253,4 +278,7 @@ class TestStartLifecycle:
 
         assert result.state is AgentSessionState.RUNNING
         assert result.agent is AgentKind.CODEX
-        assert fake_sandbox.commands.ran == [CodexDriver.build_start_command("do the thing")]
+        assert fake_sandbox.commands.ran == [
+            CodexDriver.ensure_installed_command(),
+            CodexDriver.build_start_command("do the thing"),
+        ]

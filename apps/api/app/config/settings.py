@@ -286,6 +286,11 @@ class CommonSettings(BaseAppSettings):
     # URL must be reachable FROM the E2B sandbox (public API base in prod).
     SANDBOX_EXECUTE_TOKEN_SECRET: str | None = None
     SANDBOX_EXECUTE_CALLBACK_URL: str | None = None
+    # Lab lifecycle pushes (Claude hooks POSTing to /api/v1/lab/events). Same
+    # reachability rule as above: the hooks run inside the E2B sandbox, so this
+    # must be the public API base in prod. Unset = hooks seed dark (sessions
+    # still run; no push events until it is set).
+    SANDBOX_LAB_EVENTS_CALLBACK_URL: str | None = None
 
     # Rejected at startup rather than at mint time: the token's user_id is a
     # claim nothing else binds, so a guessable secret means running any user's

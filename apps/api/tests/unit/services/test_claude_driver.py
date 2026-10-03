@@ -15,6 +15,7 @@ from app.models.agent_lab_models import (
     AgentSessionUpdate,
 )
 from app.services.agent_lab.claude_driver import (
+    INSTALL_VERSION,
     ClaudeDriver,
     ClaudeStreamKind,
     parse_stream_line,
@@ -113,13 +114,37 @@ class TestAgentKind:
 
 
 @pytest.mark.unit
+class TestInstallCommand:
+    def test_pins_probed_version(self) -> None:
+        assert INSTALL_VERSION == "2.1.286"
+        assert f"@anthropic-ai/claude-code@{INSTALL_VERSION}" in ClaudeDriver.install_command()
+
+    def test_installs_to_user_writable_prefix(self) -> None:
+        command = ClaudeDriver.install_command()
+
+        assert "--prefix /workspace/.local" in command
+        assert "-g" in command.split()
+
+    def test_install_never_uses_sudo(self) -> None:
+        assert "sudo" not in ClaudeDriver.install_command()
+        assert "sudo" not in ClaudeDriver.ensure_installed_command()
+
+    def test_ensure_probes_before_installing(self) -> None:
+        ensure = ClaudeDriver.ensure_installed_command()
+
+        assert "command -v claude" in ensure
+        assert ClaudeDriver.install_command() in ensure
+
+
+@pytest.mark.unit
 class TestStartCommand:
     def test_uses_print_stream_json_with_env_stripped(self) -> None:
         command = ClaudeDriver.build_start_command("do the thing")
 
         assert "claude -p" in command
         assert "--output-format stream-json" in command
-        assert command.startswith("env -u ANTHROPIC_API_KEY")
+        assert "env -u ANTHROPIC_API_KEY" in command
+        assert 'PATH="/workspace/.local/bin:$PATH"' in command
 
     def test_never_uses_bare_flag(self) -> None:
         assert "--bare" not in ClaudeDriver.build_start_command("do the thing").split()
@@ -138,7 +163,7 @@ class TestMessageCommand:
         assert "--continue" in command
         assert "--output-format stream-json" in command
         assert "--bare" not in command.split()
-        assert command.startswith("env -u ANTHROPIC_API_KEY")
+        assert "env -u ANTHROPIC_API_KEY" in command
 
     def test_resume_targets_explicit_session(self) -> None:
         command = ClaudeDriver.build_resume_command("sess-123", "keep going")
@@ -159,7 +184,10 @@ class TestStopCommand:
     def test_background_stop_keeps_conversation(self) -> None:
         command = ClaudeDriver.build_stop_session_command("sess-123")
 
-        assert command == "env -u ANTHROPIC_API_KEY claude stop sess-123"
+        assert (
+            command
+            == 'PATH="/workspace/.local/bin:$PATH" env -u ANTHROPIC_API_KEY claude stop sess-123'
+        )
 
 
 @pytest.mark.unit
@@ -234,4 +262,7 @@ class TestStartLifecycle:
 
         assert result.state is AgentSessionState.RUNNING
         assert result.agent is AgentKind.CLAUDE
-        assert fake_sandbox.commands.ran == [ClaudeDriver.build_start_command("do the thing")]
+        assert fake_sandbox.commands.ran == [
+            ClaudeDriver.ensure_installed_command(),
+            ClaudeDriver.build_start_command("do the thing"),
+        ]

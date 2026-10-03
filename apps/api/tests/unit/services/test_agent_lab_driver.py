@@ -25,9 +25,13 @@ class _FakeCommands:
     def __init__(self) -> None:
         self.ran: list[str] = []
         self.exit_code: int = 0
+        self.exit_codes: list[int] | None = None
 
     async def run(self, command: str, **kwargs: object) -> SimpleNamespace:
         self.ran.append(command)
+        if self.exit_codes is not None:
+            code = self.exit_codes.pop(0) if self.exit_codes else 0
+            return SimpleNamespace(exit_code=code, stdout="", stderr="")
         return SimpleNamespace(exit_code=self.exit_code, stdout="", stderr="")
 
 
@@ -71,6 +75,9 @@ class _FakeSessionStore:
 
 class _FakeDriver(AgentDriver):
     agent_kind = AgentKind.CLAUDE
+    install_bin = "fake"
+    install_package = "@fake/cli"
+    install_version = "0.0.1"
 
     @classmethod
     def build_start_command(cls, prompt: str) -> str:
@@ -106,6 +113,27 @@ def fake_sandbox() -> Iterator[SimpleNamespace]:
         yield SimpleNamespace(commands=commands, entered=entered)
 
 
+class _SeededDriver(_FakeDriver):
+    lab_hooks_enabled = True
+
+    @classmethod
+    def build_seed_command(cls, events_url: str, token: str) -> str | None:
+        return f"seed {events_url} {token}"
+
+
+@pytest.fixture
+def _seed_env() -> Iterator[None]:
+    with (
+        patch("app.services.agent_lab.driver.lab_events_enabled", return_value=True),
+        patch(
+            "app.services.agent_lab.driver.lab_events_url",
+            return_value="https://gaia.test/api/v1/lab/events",
+        ),
+        patch("app.services.agent_lab.driver.mint_lab_hooks_token", return_value="tok-1"),
+    ):
+        yield
+
+
 def _seed(store: _FakeSessionStore, state: AgentSessionState) -> AgentSessionDocument:
     doc = AgentSessionDocument(
         id="lab-9",
@@ -119,8 +147,25 @@ def _seed(store: _FakeSessionStore, state: AgentSessionState) -> AgentSessionDoc
 
 
 @pytest.mark.unit
+class TestInstallCommands:
+    def test_install_pins_package_at_version_under_prefix(self) -> None:
+        command = _FakeDriver.install_command()
+
+        assert "@fake/cli@0.0.1" in command
+        assert "--prefix /workspace/.local" in command
+        assert "sudo" not in command
+
+    def test_ensure_probes_before_installing(self) -> None:
+        ensure = _FakeDriver.ensure_installed_command()
+
+        assert "command -v fake" in ensure
+        assert _FakeDriver.install_command() in ensure
+        assert "sudo" not in ensure
+
+
+@pytest.mark.unit
 class TestStart:
-    async def test_runs_launch_and_marks_running(
+    async def test_runs_ensure_then_launch_and_marks_running(
         self, fake_store: _FakeSessionStore, fake_sandbox: SimpleNamespace
     ):
         result = await _FakeDriver.start(USER_ID, "do the thing", "todo-1")
@@ -129,7 +174,10 @@ class TestStart:
         assert result.todo_id == "todo-1"
         assert result.agent is AgentKind.CLAUDE
         assert result.sandbox_session_ref == "sbx-test"
-        assert fake_sandbox.commands.ran == ["launch do the thing"]
+        assert fake_sandbox.commands.ran == [
+            _FakeDriver.ensure_installed_command(),
+            "launch do the thing",
+        ]
 
     @pytest.mark.parametrize("todo_id", ["", "   "])
     async def test_rejects_missing_todo_id_without_side_effects(
@@ -141,16 +189,81 @@ class TestStart:
         assert fake_store.docs == {}
         assert fake_sandbox.entered == []
 
-    async def test_marks_failed_when_launch_exits_nonzero(
+    async def test_marks_failed_when_install_exits_nonzero(
         self, fake_store: _FakeSessionStore, fake_sandbox: SimpleNamespace
     ):
         fake_sandbox.commands.exit_code = 1
+
+        with pytest.raises(AppError, match="failed to install"):
+            await _FakeDriver.start(USER_ID, "do the thing", "todo-1")
+
+        (doc,) = fake_store.docs.values()
+        assert doc.state is AgentSessionState.FAILED
+        assert fake_sandbox.commands.ran == [_FakeDriver.ensure_installed_command()]
+
+    async def test_marks_failed_when_launch_exits_nonzero(
+        self, fake_store: _FakeSessionStore, fake_sandbox: SimpleNamespace
+    ):
+        fake_sandbox.commands.exit_codes = [0, 1]
 
         with pytest.raises(AppError, match="failed to start"):
             await _FakeDriver.start(USER_ID, "do the thing", "todo-1")
 
         (doc,) = fake_store.docs.values()
         assert doc.state is AgentSessionState.FAILED
+
+
+@pytest.mark.unit
+class TestSeedHooks:
+    async def test_runs_ensure_then_seed_then_launch(
+        self, fake_store: _FakeSessionStore, fake_sandbox: SimpleNamespace, _seed_env: None
+    ):
+        result = await _SeededDriver.start(USER_ID, "do the thing", "todo-1")
+
+        assert result.state is AgentSessionState.RUNNING
+        assert fake_sandbox.commands.ran == [
+            _SeededDriver.ensure_installed_command(),
+            "seed https://gaia.test/api/v1/lab/events tok-1",
+            "launch do the thing",
+        ]
+
+    async def test_marks_failed_when_seed_exits_nonzero(
+        self, fake_store: _FakeSessionStore, fake_sandbox: SimpleNamespace, _seed_env: None
+    ):
+        fake_sandbox.commands.exit_codes = [0, 1]
+
+        with pytest.raises(AppError, match="failed to seed"):
+            await _SeededDriver.start(USER_ID, "do the thing", "todo-1")
+
+        (doc,) = fake_store.docs.values()
+        assert doc.state is AgentSessionState.FAILED
+        assert fake_sandbox.commands.ran == [
+            _SeededDriver.ensure_installed_command(),
+            "seed https://gaia.test/api/v1/lab/events tok-1",
+        ]
+
+    async def test_skips_seeding_when_receiver_unconfigured(
+        self, fake_store: _FakeSessionStore, fake_sandbox: SimpleNamespace
+    ):
+        with patch("app.services.agent_lab.driver.lab_events_enabled", return_value=False):
+            result = await _SeededDriver.start(USER_ID, "do the thing", "todo-1")
+
+        assert result.state is AgentSessionState.RUNNING
+        assert fake_sandbox.commands.ran == [
+            _SeededDriver.ensure_installed_command(),
+            "launch do the thing",
+        ]
+
+    async def test_unseeded_driver_starts_without_hooks(
+        self, fake_store: _FakeSessionStore, fake_sandbox: SimpleNamespace
+    ):
+        result = await _FakeDriver.start(USER_ID, "do the thing", "todo-1")
+
+        assert result.state is AgentSessionState.RUNNING
+        assert fake_sandbox.commands.ran == [
+            _FakeDriver.ensure_installed_command(),
+            "launch do the thing",
+        ]
 
 
 @pytest.mark.unit

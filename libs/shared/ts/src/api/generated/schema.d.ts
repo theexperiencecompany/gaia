@@ -2127,6 +2127,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lab/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Report Lab Event */
+        post: operations["lab_report_lab_event"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mail/ai/compose": {
         parameters: {
             query?: never;
@@ -8902,6 +8919,30 @@ export interface components {
             text_color?: string | null;
         };
         /**
+         * LabEventRequest
+         * @description One lifecycle push; kind is free-form, raw is the untouched agent payload.
+         */
+        LabEventRequest: {
+            /** Kind */
+            kind: string;
+            /** Raw */
+            raw?: {
+                [key: string]: unknown;
+            };
+            /** Session Id */
+            session_id: string;
+        };
+        /**
+         * LabEventResponse
+         * @description Accepted for storage; the payload itself is never echoed back.
+         */
+        LabEventResponse: {
+            /** Ok */
+            ok: boolean;
+            /** Session Id */
+            session_id: string;
+        };
+        /**
          * LinearCommentAddedConfig
          * @description Config for linear_comment_added trigger.
          */
@@ -14949,6 +14990,8 @@ export type IntegrationSuccessResponse = components['schemas']['IntegrationSucce
 export type IntegrationTool = components['schemas']['IntegrationTool'];
 export type IntegrationToolsResponse = components['schemas']['IntegrationToolsResponse'];
 export type LabelRequest = components['schemas']['LabelRequest'];
+export type LabEventRequest = components['schemas']['LabEventRequest'];
+export type LabEventResponse = components['schemas']['LabEventResponse'];
 export type LinearCommentAddedConfig = components['schemas']['LinearCommentAddedConfig'];
 export type LinearIssueCreatedConfig = components['schemas']['LinearIssueCreatedConfig'];
 export type LinearIssueUpdatedConfig = components['schemas']['LinearIssueUpdatedConfig'];
@@ -21009,6 +21052,59 @@ export interface operations {
             };
             /** @description Failed to update integration instructions */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    lab_report_lab_event: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LabEventRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabEventResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -49,6 +49,11 @@ SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS = 32
 # a runaway or injected script hits a hard wall instead of unlimited calls.
 SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN = 300
 SANDBOX_EXECUTE_MAX_CALLS_PER_MINUTE = 60
+# Lab lifecycle pushes (POST /api/v1/lab/events) ride the same HMAC token
+# scheme, minted per lab session with an empty tool scope so the token is
+# useless on /sandbox/execute. TTL covers one E2B max lifetime; a session that
+# outlives its token re-seeds on its next start (no refresh loop in MVP).
+SANDBOX_LAB_EVENTS_TOKEN_TTL_SECONDS = 86400
 # Budget counters must outlive any legal token; bash caps command timeouts well
 # under this, so a counter can never expire while its token is still valid.
 SANDBOX_EXECUTE_BUDGET_WINDOW_SECONDS = 3600

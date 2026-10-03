@@ -15,6 +15,8 @@ _ENV_STRIP_PREFIX = "env -u CODEX_API_KEY -u OPENAI_API_KEY"
 
 CREDENTIAL_PATH = "~/.codex/auth.json"
 
+INSTALL_VERSION = "0.160.0"
+
 
 class CodexStreamKind(StrEnum):
     """Known exec --json event types; everything else is passthrough."""
@@ -110,10 +112,14 @@ class CodexDriver(AgentDriver):
 
     credential_path: ClassVar[str] = CREDENTIAL_PATH
 
+    install_bin: ClassVar[str] = "codex"
+    install_package: ClassVar[str] = "@openai/codex"
+    install_version: ClassVar[str] = INSTALL_VERSION
+
     @classmethod
     def _base(cls) -> str:
         """Codex invocation with key env removed so saved file auth applies."""
-        return f"{_ENV_STRIP_PREFIX} codex"
+        return f'PATH="{cls.install_prefix}/bin:$PATH" {_ENV_STRIP_PREFIX} codex'
 
     @classmethod
     def _flags(cls) -> str:

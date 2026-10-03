@@ -25,7 +25,7 @@ from app.constants.execute import (
     SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN,
 )
 from app.db.redis import redis_cache
-from app.services.sandbox.execute_token import SandboxExecuteClaims, verify_execute_token
+from app.services.sandbox.execute_token import SandboxExecuteClaims, claims_from_authorization
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
@@ -88,26 +88,13 @@ def _audit(claims: SandboxExecuteClaims, tool_name: str, ok: bool) -> None:
     )
 
 
-def _claims_from_authorization(authorization: str) -> SandboxExecuteClaims:
-    scheme, _, token = authorization.partition(" ")
-    if scheme.lower() != "bearer" or not token:
-        raise AppError(
-            message="Missing sandbox execute token",
-            why="the route is token-authenticated; there is no session here",
-            fix="Tokens are injected into bash runs as GAIA_EXECUTE_TOKEN; send "
-            "'Authorization: Bearer <token>'",
-            status_code=401,
-        )
-    return verify_execute_token(token)
-
-
 @router.post("/execute")
 async def sandbox_execute(
     payload: SandboxExecuteRequest,
     authorization: Annotated[str, Header()] = "",  # pragma: no mutate — no scheme, same 401
 ) -> SandboxExecuteResponse:
     log.set(sandbox_execute={"tool_name": payload.tool_name})
-    claims = _claims_from_authorization(authorization)
+    claims = claims_from_authorization(authorization)
     log.set(user={"id": claims.user_id}, sandbox_execute={"run_id": claims.run_id})
     await _enforce_budget(claims.run_id)
 
@@ -153,7 +140,7 @@ async def sandbox_tool_schema(
     token cannot use it as an unmetered probe of the catalog.
     """
     log.set(sandbox_tool_schema={"tool_name": payload.tool_name})
-    claims = _claims_from_authorization(authorization)
+    claims = claims_from_authorization(authorization)
     log.set(user={"id": claims.user_id}, sandbox_tool_schema={"run_id": claims.run_id})
     await _enforce_budget(claims.run_id)
 

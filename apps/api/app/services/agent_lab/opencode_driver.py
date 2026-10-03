@@ -15,6 +15,8 @@ CREDENTIAL_PATH = "~/.local/share/opencode/auth.json"
 
 DEFAULT_MODEL = "opencode/muse-spark-1.3-contributor-free"
 
+INSTALL_VERSION = "2.0.2"
+
 
 class OpenCodeStreamKind(StrEnum):
     """Known run --format json event types; everything else is passthrough."""
@@ -93,10 +95,14 @@ class OpenCodeDriver(AgentDriver):
 
     default_model: ClassVar[str] = DEFAULT_MODEL
 
+    install_bin: ClassVar[str] = "opencode"
+    install_package: ClassVar[str] = "@opencode/cli"
+    install_version: ClassVar[str] = INSTALL_VERSION
+
     @classmethod
     def _base(cls) -> str:
         """Plain opencode invocation; no env shadow var verified, so none stripped."""
-        return "opencode"
+        return f'PATH="{cls.install_prefix}/bin:$PATH" opencode'
 
     @classmethod
     def _model_flag(cls, model: str | None) -> str:

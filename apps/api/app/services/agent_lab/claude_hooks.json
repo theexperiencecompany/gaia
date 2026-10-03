@@ -1,0 +1,35 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "{{GAIA_LAB_EVENTS_URL}}",
+            "timeout": 15,
+            "headers": {
+              "Authorization": "Bearer {{GAIA_LAB_TOKEN}}"
+            },
+            "allowedEnvVars": []
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "agent_needs_input|agent_completed",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "{{GAIA_LAB_EVENTS_URL}}",
+            "timeout": 15,
+            "headers": {
+              "Authorization": "Bearer {{GAIA_LAB_TOKEN}}"
+            },
+            "allowedEnvVars": []
+          }
+        ]
+      }
+    ]
+  }
+}

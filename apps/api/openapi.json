@@ -7475,6 +7475,51 @@
         "title": "IntegrationsConfigResponse",
         "type": "object"
       },
+      "LabEventRequest": {
+        "description": "One lifecycle push; kind is free-form, raw is the untouched agent payload.",
+        "properties": {
+          "kind": {
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          },
+          "raw": {
+            "additionalProperties": true,
+            "title": "Raw",
+            "type": "object"
+          },
+          "session_id": {
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "kind"
+        ],
+        "title": "LabEventRequest",
+        "type": "object"
+      },
+      "LabEventResponse": {
+        "description": "Accepted for storage; the payload itself is never echoed back.",
+        "properties": {
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "session_id"
+        ],
+        "title": "LabEventResponse",
+        "type": "object"
+      },
       "LabelRequest": {
         "description": "Request model for creating or updating Gmail labels.",
         "properties": {
@@ -27208,6 +27253,79 @@
         "summary": "Get Integration Tools Endpoint",
         "tags": [
           "Integrations"
+        ]
+      }
+    },
+    "/api/v1/lab/events": {
+      "post": {
+        "operationId": "lab_report_lab_event",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabEventRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabEventResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Report Lab Event",
+        "tags": [
+          "Lab"
         ]
       }
     },

@@ -99,3 +99,17 @@ def verify_execute_token(token: str) -> SandboxExecuteClaims:
     if claims.exp < _epoch_now():
         raise invalid
     return claims
+
+
+def claims_from_authorization(authorization: str) -> SandboxExecuteClaims:
+    """Bearer claims for a sandbox-held token; raises 401 AppError without one."""
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise AppError(
+            message="Missing sandbox execute token",
+            why="the route is token-authenticated; there is no session here",
+            fix="Tokens are injected into bash runs as GAIA_EXECUTE_TOKEN; send "
+            "'Authorization: Bearer <token>'",
+            status_code=401,
+        )
+    return verify_execute_token(token)

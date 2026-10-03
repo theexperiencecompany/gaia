@@ -10,10 +10,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.agent_lab_models import AgentKind
 from app.services.agent_lab.driver import AgentDriver
+from app.services.agent_lab.sandbox_setup import build_seed_command as build_lab_seed_command
 
 _ENV_STRIP_PREFIX = "env -u ANTHROPIC_API_KEY"
 
 CREDENTIAL_PATH = "~/.claude/.credentials.json"
+
+INSTALL_VERSION = "2.1.286"
 
 
 class ClaudeStreamKind(StrEnum):
@@ -121,10 +124,21 @@ class ClaudeDriver(AgentDriver):
 
     credential_path: ClassVar[str] = CREDENTIAL_PATH
 
+    install_bin: ClassVar[str] = "claude"
+    install_package: ClassVar[str] = "@anthropic-ai/claude-code"
+    install_version: ClassVar[str] = INSTALL_VERSION
+
+    lab_hooks_enabled: ClassVar[bool] = True
+
+    @classmethod
+    def build_seed_command(cls, events_url: str, token: str) -> str | None:
+        """Seed the lifecycle-push hooks fragment into the sandbox (additive to start)."""
+        return build_lab_seed_command(events_url, token)
+
     @classmethod
     def _base(cls) -> str:
         """Claude invocation with the API-key shadow removed so OAuth applies."""
-        return f"{_ENV_STRIP_PREFIX} claude"
+        return f'PATH="{cls.install_prefix}/bin:$PATH" {_ENV_STRIP_PREFIX} claude'
 
     @classmethod
     def build_start_command(cls, prompt: str) -> str:

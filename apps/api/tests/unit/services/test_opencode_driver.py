@@ -16,6 +16,7 @@ from app.models.agent_lab_models import (
 )
 from app.services.agent_lab.opencode_driver import (
     DEFAULT_MODEL,
+    INSTALL_VERSION,
     OpenCodeDriver,
     OpenCodeStreamKind,
     parse_stream_line,
@@ -111,6 +112,29 @@ def fake_sandbox() -> Iterator[SimpleNamespace]:
 class TestAgentKind:
     def test_drives_opencode(self) -> None:
         assert OpenCodeDriver.agent_kind is AgentKind.OPENCODE
+
+
+@pytest.mark.unit
+class TestInstallCommand:
+    def test_pins_probed_version(self) -> None:
+        assert INSTALL_VERSION == "2.0.2"
+        assert f"@opencode/cli@{INSTALL_VERSION}" in OpenCodeDriver.install_command()
+
+    def test_installs_to_user_writable_prefix(self) -> None:
+        command = OpenCodeDriver.install_command()
+
+        assert "--prefix /workspace/.local" in command
+        assert "-g" in command.split()
+
+    def test_install_never_uses_sudo(self) -> None:
+        assert "sudo" not in OpenCodeDriver.install_command()
+        assert "sudo" not in OpenCodeDriver.ensure_installed_command()
+
+    def test_ensure_probes_before_installing(self) -> None:
+        ensure = OpenCodeDriver.ensure_installed_command()
+
+        assert "command -v opencode" in ensure
+        assert OpenCodeDriver.install_command() in ensure
 
 
 @pytest.mark.unit
@@ -240,7 +264,10 @@ class TestLifecycle:
 
         assert result.state is AgentSessionState.RUNNING
         assert result.agent is AgentKind.OPENCODE
-        assert fake_sandbox.commands.ran == [OpenCodeDriver.build_start_command("do the thing")]
+        assert fake_sandbox.commands.ran == [
+            OpenCodeDriver.ensure_installed_command(),
+            OpenCodeDriver.build_start_command("do the thing"),
+        ]
 
     async def test_stop_runs_constructed_command(
         self, fake_store: _FakeSessionStore, fake_sandbox: SimpleNamespace
@@ -251,6 +278,7 @@ class TestLifecycle:
 
         assert result.state is AgentSessionState.STOPPED
         assert fake_sandbox.commands.ran == [
+            OpenCodeDriver.ensure_installed_command(),
             OpenCodeDriver.build_start_command("do the thing"),
             OpenCodeDriver.build_stop_command(),
         ]

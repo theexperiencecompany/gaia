@@ -1,0 +1,48 @@
+---
+name: lab-opencode-drive
+description: Install, authenticate, and drive the OpenCode CLI headlessly inside the sandbox (Zen/API-key auth, run --format json, resume/stop). Read before any bash that touches the opencode CLI.
+target: executor
+---
+
+# OpenCode in the Sandbox
+
+Drive the CLI directly via bash. Do not invent flags; confirm with `opencode --help` when unsure.
+
+## Install (pinned, user-writable prefix)
+
+```bash
+export PATH="/workspace/.local/bin:$PATH"
+command -v opencode >/dev/null 2>&1 || curl -fsSL https://opencode.ai/install | bash
+```
+
+UNVERIFIED: pinning method and v1/v2 package naming (`opencode-ai` vs `@opencode/cli`; probed local version is v2.0.2 via `@opencode/cli@2.0.2`). Resolve with `--help` / docs before pinning in automation. `opencode upgrade [target]` exists for updates.
+
+## Auth (Zen key paste-back)
+
+```bash
+opencode auth login [target] [--method <label>]
+```
+
+Zen flow: `/connect` in the TUI (or the login command) signs in at `opencode.ai/auth`, then paste the API key back into the terminal. This paste-back is headless-friendly by design.
+Credential lands at `~/.local/share/opencode/auth.json` (i.e. `$XDG_DATA_HOME/opencode/auth.json`). Symlink it for persistence:
+
+```bash
+mkdir -p /workspace/.credentials/opencode
+ln -sfn /workspace/.credentials/opencode/auth.json ~/.local/share/opencode/auth.json
+```
+
+UNVERIFIED: exact per-provider entry schema inside `auth.json` (never dumped; secret-adjacent) and whether Zen auth has a browser-callback step or is pure key-paste. Probe with `auth login --method` and a real account before scripting it. `opencode auth list|logout|switch` and `opencode mcp auth [name]` (MCP-server OAuth, separate surface) also exist.
+
+## Drive
+
+```bash
+opencode run --format json -m opencode/muse-spark-1.3-contributor-free "<message>"
+```
+
+`--format json` emits line-delimited JSON events; observed types include `{"type":"text","part":{"text":"..."}}` and `{"type":"step_finish",...}`. Full event taxonomy UNVERIFIED (anything else needs a live capture).
+Useful flags: `-m/--model provider/model`, `--agent`, `-c/--continue`, `-s/--session <id>`, `--fork`, `--share`, `-f/--file`, `--title`, `--dir`, `--auto` (auto-approve non-denied permissions). Resume via `run -c` / `run -s <id>` / `--fork`; `opencode session list|delete|export|import` manages saved sessions.
+Optional long-running mode: `opencode serve` (headless HTTP API; `OPENCODE_SERVER_PASSWORD` for basic auth) plus `opencode run --attach <url>` per message to avoid MCP cold-boot per run.
+
+## Stop
+
+`opencode run` is one-shot: process exit is the stop. A `serve` backend stops via SIGTERM to the server process. UNVERIFIED: never signal-tested here; confirm exit codes and partial-output guarantees in a live probe.

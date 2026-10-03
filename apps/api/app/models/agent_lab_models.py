@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -41,6 +42,14 @@ class AgentSessionDocument(UserScopedDocument):
     transcript_cursor: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    # Tail of the dumb-pipe lifecycle feed (POST /api/v1/lab/events): the latest
+    # raw agent payload verbatim, never classified. History lives in the CLI
+    # transcript stream; the record keeps only the tail so it cannot grow
+    # without bound. A future supervisor reads this tail to wake; it must not
+    # trust kind/raw beyond what the sandbox claimed.
+    last_event_kind: str | None = None
+    last_event_at: datetime | None = None
+    last_event_raw: dict[str, Any] | None = None
 
 
 class AgentSessionUpdate(BaseModel):
@@ -51,3 +60,6 @@ class AgentSessionUpdate(BaseModel):
     state: AgentSessionState | None = None
     sandbox_session_ref: str | None = None
     transcript_cursor: str | None = None
+    last_event_kind: str | None = None
+    last_event_at: datetime | None = None
+    last_event_raw: dict[str, Any] | None = None
