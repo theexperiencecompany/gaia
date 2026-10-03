@@ -203,6 +203,16 @@ class StepUpAuthRequiredError(Exception):
         super().__init__(f"Step-up authorization required for {integration_id}: {required_scopes}")
 
 
+class MCPAuthorizationRequiredError(ValueError):
+    """Raised when an authenticated MCP has no usable access token."""
+
+    def __init__(self, integration_id: str) -> None:
+        super().__init__(
+            f"No valid token for {integration_id}. "
+            "OAuth authorization required - user must complete the OAuth flow."
+        )
+
+
 # OAuth 2.0 error codes (RFC 6749 §5.2) that mean the grant is permanently dead.
 _TERMINAL_OAUTH_ERROR_CODES: frozenset[str] = frozenset(
     {"invalid_grant", "invalid_token", "revoked_token", "expired_token"}
@@ -239,8 +249,8 @@ def _is_terminal_auth_failure(exception: Exception, refresh_attempted: bool = Fa
     """Return True only when credentials are demonstrably dead.
 
     Treating every exception as terminal wipes integrations on transient
-    errors (5xx, network blip, transport mismatch). Be conservative: require
-    a spec'd OAuth error code, or a 401/403 after a refresh attempt.
+    errors (5xx, network blip, transport mismatch). Require a spec'd OAuth error
+    code or a 401/403 signal after a refresh attempt.
     """
     status, error_code = _extract_response_signal(exception)
 
@@ -250,10 +260,13 @@ def _is_terminal_auth_failure(exception: Exception, refresh_attempted: bool = Fa
     if refresh_attempted and status in (401, 403):
         return True
 
-    # No response attached (network-layer error): word-boundary string match
-    # avoids false positives like "401k" or "invalid_grants_table".
+    # No response attached (network-layer error): match a standalone status
+    # token, not a port or path inside a URL (https://host:403/ must not read
+    # as an authorization signal) and not a longer token like "401k".
     if getattr(exception, "response", None) is None:
         msg = str(exception).lower()
+        if refresh_attempted and re.search(r"(?<![:\w/])(?:401|403)(?![\w/])", msg):
+            return True
         for code in _TERMINAL_OAUTH_ERROR_CODES:
             if re.search(rf"\b{re.escape(code)}\b", msg):
                 return True
@@ -465,10 +478,7 @@ class MCPClient:
                 integration_id=integration_id,
                 user_id=self.user_id,
             )
-            raise ValueError(
-                f"No valid token for {integration_id}. "
-                "OAuth authorization required - user must complete the OAuth flow."
-            )
+            raise MCPAuthorizationRequiredError(integration_id)
         else:
             # No auth required and no bearer token - set auth to None
             log.info(
@@ -931,10 +941,9 @@ class MCPClient:
     ) -> list[BaseTool] | None:
         """Shared connect-failure handling.
 
-        Raises :class:StepUpAuthRequiredError for 403 insufficient_scope, retries
-        once via token refresh on auth-related failures (returning the retried
-        connection's tools), and resets MongoDB status only on demonstrably dead
-        credentials. Returns None when the caller should re-raise.
+        Raises StepUpAuthRequiredError for 403 insufficient_scope, retries once
+        via token refresh, marks missing credentials as needing OAuth, and tears
+        down only demonstrably dead credentials. Returns None to re-raise.
         """
         error_str = str(e).lower()
 
@@ -945,6 +954,24 @@ class MCPClient:
             success=False,
             error_type=type(e).__name__,
         )
+        if isinstance(e, MCPAuthorizationRequiredError):
+            if await self.token_store.get_refresh_token(integration_id) is not None:
+                # Refresh retained: the grant may still recover, so keep the
+                # saved status (a dead refresh is cleared separately).
+                log.warning(
+                    f"{LogTag.MCP} OAuth token unavailable but refresh retained for",
+                    integration_id=integration_id,
+                    user_id=self.user_id,
+                )
+                return None
+            await update_user_integration_status(self.user_id, integration_id, "created")
+            log.warning(
+                f"{LogTag.MCP} OAuth authorization required for",
+                integration_id=integration_id,
+                user_id=self.user_id,
+            )
+            return None
+
         # Log comprehensive error details for debugging
         log.error(
             f"{LogTag.MCP} Connection failed with exception",
@@ -1013,6 +1040,18 @@ class MCPClient:
         # Only reset on demonstrably dead credentials — transient errors
         # (5xx, network blip, transport mismatch) keep the existing tokens.
         if _is_terminal_auth_failure(e, refresh_attempted=refresh_attempted):
+            # error_str is already lowered; the pattern is digits-only so case
+            # cannot matter, but matching against it (not a fresh .lower())
+            # keeps the normalization in exactly one place.
+            if getattr(e, "response", None) is None and re.search(
+                r"(?<![:\w/])(?:401|403)(?![\w/])", error_str
+            ):
+                log.warning(
+                    f"{LogTag.MCP} Resetting on message-only status signal after refresh",
+                    integration_id=integration_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
             await self._reset_to_disconnected(integration_id)
         else:
             log.warning(

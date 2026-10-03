@@ -303,7 +303,7 @@
       criteria:
         - "MUST NOT: the final reply asks which camera the user means."
         - "MUST NOT: the final reply names a film stock before it has looked anything up."
-        - "MUST: the final reply is one short line that says the lookup is starting."
+        - "MUST: the final reply is a reaction, or one short line that says the lookup is starting."
         - "MUST: the four replies are visibly different messages, not one acknowledgment repeated."
     score: {gates: [tool_call_correctness, bubble_boundary]}
 

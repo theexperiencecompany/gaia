@@ -18,6 +18,9 @@ on:
       # regressions live in these paths.
       - "apps/desktop/**"
       - "libs/shared/ts/**"
+      # Generated API types are `export type` only: erased at compile time, so
+      # they cannot change a packaged binary, and every API model edit touches them.
+      - "!libs/shared/ts/src/api/generated/**"
       - ".github/workflows/desktop-pr-build.yml"
   workflow_dispatch:
 

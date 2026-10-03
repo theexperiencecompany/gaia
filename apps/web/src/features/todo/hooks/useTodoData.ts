@@ -16,39 +16,34 @@ export function useTodoData(options: UseTodoDataOptions = {}) {
   // Use JSON.stringify to create a stable reference for filters
   const filtersString = useMemo(() => JSON.stringify(filters || {}), [filters]);
 
-  const {
-    todos: allTodos,
-    projects,
-    labels,
-    counts,
-    loading,
-    error,
-    loadTodos,
-    createTodo,
-    updateTodo,
-    deleteTodo,
-    loadProjects,
-    loadLabels,
-    loadCounts,
-    refreshAll,
-  } = useTodoStore();
+  const allTodos = useTodoStore((state) => state.todos);
+  const projects = useTodoStore((state) => state.projects);
+  const labels = useTodoStore((state) => state.labels);
+  const counts = useTodoStore((state) => state.counts);
+  const loading = useTodoStore((state) => state.loading);
+  const error = useTodoStore((state) => state.error);
+  const loadTodos = useTodoStore((state) => state.loadTodos);
+  const createTodo = useTodoStore((state) => state.createTodo);
+  const updateTodo = useTodoStore((state) => state.updateTodo);
+  const deleteTodo = useTodoStore((state) => state.deleteTodo);
+  const loadProjects = useTodoStore((state) => state.loadProjects);
+  const loadLabels = useTodoStore((state) => state.loadLabels);
+  const loadCounts = useTodoStore((state) => state.loadCounts);
+  const refreshAll = useTodoStore((state) => state.refreshAll);
 
   // Track last loaded filters to avoid redundant fetches while still reloading on filter changes
   const prevFiltersRef = useRef<string | null>(null);
 
-  // Load data on mount and whenever filters change — fire all three in parallel
+  // Load data on mount and whenever filters change. One unified refresh
+  // covers todos + projects + labels + counts; the store dedupes requests
+  // shared with other mounted consumers (e.g. the sidebar).
   useEffect(() => {
     if (autoLoad && prevFiltersRef.current !== filtersString) {
       prevFiltersRef.current = filtersString;
       const parsedFilters = JSON.parse(filtersString) as TodoFilters;
-      const todosPromise = loadTodos(parsedFilters);
-      const projectsPromise = loadProjects();
-      const countsPromise = loadCounts();
-      Promise.all([todosPromise, projectsPromise, countsPromise]).catch(
-        console.error,
-      );
+      refreshAll(parsedFilters).catch(console.error);
     }
-  }, [autoLoad, filtersString, loadTodos, loadCounts, loadProjects]);
+  }, [autoLoad, filtersString, refreshAll]);
 
   // Refresh function that reloads current filter
   const refresh = useCallback(() => {

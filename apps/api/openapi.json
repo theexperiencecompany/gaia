@@ -1518,6 +1518,19 @@
         "title": "Body_image_image_to_text",
         "type": "object"
       },
+      "Body_integrations_connect_link_endpoint": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "Body_integrations_connect_link_endpoint",
+        "type": "object"
+      },
       "Body_notification_unregister_device_token": {
         "properties": {
           "token": {
@@ -7388,6 +7401,24 @@
           "displayPriority"
         ],
         "title": "IntegrationResponse",
+        "type": "object"
+      },
+      "IntegrationStatusesResponse": {
+        "description": "Current connection status map, fetched independently of the catalog.",
+        "properties": {
+          "statuses": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "description": "Connection state keyed by integration id",
+            "title": "Statuses",
+            "type": "object"
+          }
+        },
+        "required": [
+          "statuses"
+        ],
+        "title": "IntegrationStatusesResponse",
         "type": "object"
       },
       "IntegrationSuccessResponse": {
@@ -25883,22 +25914,21 @@
       }
     },
     "/api/v1/integrations/connect-link": {
-      "get": {
-        "description": "Login-free entry point for bot / non-UI users.\n\nResolves the single-use connect code to its bound ``(user, integration)``\n(no session required \u2014 the code is the credential) and bounces the user\nstraight into the provider OAuth flow. Invalid/expired/used codes redirect\nto a friendly page. Excluded from auth in WorkOSAuthMiddleware; it\nself-authenticates. Per-IP rate limited so the short code can't be brute\nforced online.",
+      "post": {
+        "description": "Login-free entry point for bot / non-UI users: spend the code, 303 into OAuth.\n\nPOST-only because spending the code is a state change: link-preview\ncrawlers (Telegram, Slack) GET every link in a message and would burn it\nbefore the user taps. The web /connect/<code> page posts here from a button.\nExcluded from auth (the code is the credential) and per-IP rate limited\nso the short code can't be brute forced online.",
         "operationId": "integrations_connect_link_endpoint",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "code",
-            "required": true,
-            "schema": {
-              "title": "Code",
-              "type": "string"
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_integrations_connect_link_endpoint"
+              }
             }
-          }
-        ],
+          },
+          "required": true
+        },
         "responses": {
-          "307": {
+          "303": {
             "description": "Successful Response"
           },
           "422": {
@@ -26511,6 +26541,58 @@
         ]
       }
     },
+    "/api/v1/integrations/me/snapshot": {
+      "get": {
+        "description": "Return the workspace catalog without waiting for connection checks.",
+        "operationId": "integrations_get_my_integrations_snapshot_endpoint",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyIntegrationsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get My Integrations Snapshot Endpoint",
+        "tags": [
+          "Integrations"
+        ]
+      }
+    },
     "/api/v1/integrations/public/{identifier}": {
       "get": {
         "description": "Get public integration details by slug or native integration ID.",
@@ -26798,6 +26880,58 @@
           }
         },
         "summary": "Search Integrations",
+        "tags": [
+          "Integrations"
+        ]
+      }
+    },
+    "/api/v1/integrations/status": {
+      "get": {
+        "description": "Refresh connection state independently from the fast catalog snapshot.",
+        "operationId": "integrations_get_integration_statuses_endpoint",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationStatusesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Integration Statuses Endpoint",
         "tags": [
           "Integrations"
         ]
