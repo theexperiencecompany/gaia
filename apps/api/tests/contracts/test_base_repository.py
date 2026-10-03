@@ -241,6 +241,23 @@ class TestPipelineUpdate:
         assert await redis.get(repo.cache_policy.entity_key("u", created.id)) is not None
         assert int(await redis.get(gen_key)) == gen_before
 
+    async def test_it_writes_to_its_own_collection(
+        self, repo, make_doc, raw_collection, monkeypatch
+    ):
+        created = await repo.create(make_doc(user_id="u", count=4))
+        named: list[str] = []
+
+        def _named(name: str) -> object:
+            named.append(name)
+            return raw_collection
+
+        monkeypatch.setattr("app.db.repositories.base.get_async_collection", _named)
+        await repo._apply_pipeline_update_unfetched(
+            {"_id": repo._id_value(created.id)}, _DOUBLE_COUNT, scope=None
+        )
+
+        assert named == [repo.collection_name]
+
     async def test_a_gate_that_misses_writes_nothing(self, repo, make_doc, redis, raw_collection):
         created = await repo.create(make_doc(user_id="u", count=4))
         gen_key = repo.cache_policy.generation_key("u")

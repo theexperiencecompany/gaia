@@ -232,3 +232,19 @@ async def test_cards_never_wait_on_another_users_conversation(
     assert FOLDED_CARDS_FIELD not in await _raw(raw_collection, conversation)
     [error] = event["errors"]
     assert error["msg"].endswith("found no conversation to fold into; not saved")
+
+
+async def test_cards_added_to_a_day_old_wait_keep_its_age(
+    conversation: ConversationDocument, raw_collection: Any
+) -> None:
+    """A message still unsaved after a day belongs to a turn that never saved: a late card does not revive it."""
+    stale = datetime.now(UTC) - timedelta(seconds=FOLDED_CARDS_KEEP_SECONDS + 60)
+    await raw_collection.update_one(
+        {"conversation_id": conversation.conversation_id},
+        {"$set": {FOLDED_CARDS_FIELD: {"m1": {"since": stale, "cards": [CARD]}}}},
+    )
+    await save_folded_cards(conversation.conversation_id, conversation.user_id, "m1", [CARD])
+
+    await _append(conversation, _bot("other"))
+
+    assert FOLDED_CARDS_FIELD not in await _raw(raw_collection, conversation)
