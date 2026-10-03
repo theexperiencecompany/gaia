@@ -209,3 +209,26 @@ async def test_readers_never_see_the_waiting_room(
     assert "m1" in fetched.folded_cards
     assert FOLDED_CARDS_FIELD not in fetched.model_dump()
     assert FOLDED_CARDS_FIELD not in fetched.model_dump(mode="json")
+
+
+async def test_two_runs_ending_before_the_message_both_land_on_it(
+    conversation: ConversationDocument,
+) -> None:
+    other = {"tool_name": "subagent_group", "data": {"subagent_id": "row-2"}}
+    await save_folded_cards(conversation.conversation_id, conversation.user_id, "m1", [CARD])
+    await save_folded_cards(conversation.conversation_id, conversation.user_id, "m1", [other])
+
+    await _append(conversation, _bot("m1"))
+
+    assert await _tool_data(conversation, "m1") == [CARD, other]
+
+
+async def test_cards_never_wait_on_another_users_conversation(
+    conversation: ConversationDocument, raw_collection: Any
+) -> None:
+    async with captured_wide_event() as event:
+        await save_folded_cards(conversation.conversation_id, "someone-else", "m1", [CARD])
+
+    assert FOLDED_CARDS_FIELD not in await _raw(raw_collection, conversation)
+    [error] = event["errors"]
+    assert error["msg"].endswith("found no conversation to fold into; not saved")

@@ -20,7 +20,6 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime
 
 from bson import ObjectId
-from pydantic import TypeAdapter
 
 from app.constants.chat import (
     FOLDED_CARDS_FIELD,
@@ -275,14 +274,11 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         stored: list[dict[str, object]] = []
         message_ids: list[str] = []
         for message in messages:
-            data = {
-                k: v for k, v in message.model_dump(exclude={"tool_data"}).items() if v is not None
-            }
+            data = {k: v for k, v in message.model_dump().items() if v is not None}
             message_id = message.message_id if message.message_id is not None else str(ObjectId())
             data["message_id"] = message_id
             message_ids.append(message_id)
-            own = _TOOL_DATA.dump_python(message.tool_data or [])
-            stored.append(_absorbing(message_id, data, own))
+            stored.append(_absorbing(message_id, data))
 
         history: dict[str, object] = {"$concatArrays": [{"$ifNull": ["$messages", []]}, stored]}
         if max_messages is not None:
@@ -356,8 +352,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                     }
                 }
             ],
-            scope=user_id,
-            doc_id=conversation_id,
+            # The waiting room is write-side only: no cached read shows it.
+            scope=None,
             extra_filter={"user_id": user_id},
         )
         return matched > 0
@@ -773,10 +769,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 conversation_repository = ConversationRepository()
 
 
-#: Serializes tool_data exactly as MessageModel.model_dump does (nested models to dicts).
-_TOOL_DATA = TypeAdapter(list[ToolDataEntry])
-
-
 def _waiting_for(message_id: str) -> dict[str, object]:
     """Read the waiting-room entry for message_id, taking the id as a literal, never a path."""
     return {
@@ -787,20 +779,25 @@ def _waiting_for(message_id: str) -> dict[str, object]:
     }
 
 
-def _absorbing(
-    message_id: str, message: Mapping[str, object], own: Sequence[ToolDataEntry]
-) -> dict[str, object]:
+def _absorbing(message_id: str, message: Mapping[str, object]) -> dict[str, object]:
     """Build the message as stored, with the cards waiting for its id after its own tool_data.
 
     The message itself is a $literal, so text that starts with "$" is never read as a path.
     """
     waiting = {"$getField": {"field": "cards", "input": _waiting_for(message_id)}}
-    tool_data = {"$concatArrays": [{"$literal": list(own)}, {"$ifNull": [waiting, []]}]}
+    tool_data = {
+        "$concatArrays": [{"$ifNull": ["$$message.tool_data", []]}, {"$ifNull": [waiting, []]}]
+    }
     return {
-        "$mergeObjects": [
-            {"$literal": message},
-            {"tool_data": {"$cond": [{"$eq": [tool_data, []]}, "$$REMOVE", tool_data]}},
-        ]
+        "$let": {
+            "vars": {"message": {"$literal": dict(message)}},
+            "in": {
+                "$mergeObjects": [
+                    "$$message",
+                    {"tool_data": {"$cond": [{"$eq": [tool_data, []]}, "$$REMOVE", tool_data]}},
+                ]
+            },
+        }
     }
 
 
