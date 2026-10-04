@@ -1,0 +1,103 @@
+{
+  "$schema": "seo-facts ledger — every company/pricing/integration-count claim used in marketing copy must have a sourceUrl + lastChecked date, or stay unverified and unpublishable as fact",
+  "rules": "no company/pricing claim without sourceUrl + date",
+  "competitors": [
+    {
+      "slug": "poke",
+      "name": "Poke",
+      "claim": "iMessage-native proactive assistant; ~20 services; no web app; WhatsApp in select markets",
+      "sourceUrl": null,
+      "lastChecked": null,
+      "status": "unverified"
+    },
+    {
+      "slug": "dots",
+      "name": "Dots",
+      "claim": "No comparison entry exists yet; no claims published",
+      "sourceUrl": null,
+      "lastChecked": null,
+      "status": "unverified"
+    },
+    {
+      "slug": "muse",
+      "name": "Muse",
+      "claim": "No comparison entry exists yet; no claims published",
+      "sourceUrl": null,
+      "lastChecked": null,
+      "status": "unverified"
+    },
+    {
+      "slug": "instinct",
+      "name": "Instinct",
+      "claim": "No comparison entry exists yet; no claims published",
+      "sourceUrl": null,
+      "lastChecked": null,
+      "status": "unverified"
+    },
+    {
+      "slug": "openclaw",
+      "name": "OpenClaw",
+      "claim": "50+ documented integrations plus 100+ community AgentSkills (competitor-subject; preserved verbatim in openclaw.ts, not a GAIA claim)",
+      "sourceUrl": null,
+      "lastChecked": null,
+      "status": "unverified"
+    },
+    {
+      "slug": "zoho",
+      "name": "Zoho One",
+      "claim": "Bundles 50+ business applications; $15/user/month and $299/month flat-team pricing cited in zoho.ts",
+      "sourceUrl": null,
+      "lastChecked": null,
+      "status": "unverified"
+    },
+    {
+      "slug": "akiflow",
+      "name": "Akiflow",
+      "claim": "30+ app integrations; $19/month monthly / $15/month annual, no free plan (competitor-subject; preserved verbatim)",
+      "sourceUrl": null,
+      "lastChecked": null,
+      "status": "unverified"
+    },
+    {
+      "slug": "zapier",
+      "name": "Zapier",
+      "claim": "6,000+ app integrations",
+      "sourceUrl": null,
+      "lastChecked": null,
+      "status": "unverified"
+    },
+    {
+      "slug": "lark",
+      "name": "Lark",
+      "claim": "250+ app integrations within the Lark ecosystem",
+      "sourceUrl": null,
+      "lastChecked": null,
+      "status": "unverified"
+    },
+    {
+      "slug": "miro",
+      "name": "Miro",
+      "claim": "150+ app integrations",
+      "sourceUrl": null,
+      "lastChecked": null,
+      "status": "unverified"
+    },
+    {
+      "slug": "chatgpt-enterprise",
+      "name": "ChatGPT Enterprise",
+      "claim": "Typically $30+/user/month with minimum seat requirements",
+      "sourceUrl": null,
+      "lastChecked": null,
+      "status": "unverified"
+    },
+    {
+      "slug": "grok",
+      "name": "Grok",
+      "claim": "Bundled with X Premium ($8/month); SuperGrok subscription for advanced models; real-time X/Twitter data access",
+      "sourceUrl": null,
+      "lastChecked": null,
+      "status": "unverified"
+    }
+  ],
+  "notes": "GAIA's own integration/capability counts were scrubbed from marketing copy (Oct 2026) and replaced with qualitative wording — see Batch 1 content truth fixes. Competitor pricing/counts above are preserved verbatim where load-bearing to the comparison but MUST NOT be treated as verified facts until each gains a sourceUrl + lastChecked date. Broader per-entry pricing claims (Airtable, HubSpot, Notion, Tana, Basecamp, Cal.com, Limitless pendant, etc.) still await a full audit pass."
+}

@@ -4,7 +4,7 @@ import { FeaturesGrid } from "@/features/landing/components/features/FeaturesGri
 export const metadata: Metadata = {
   title: "Features",
   description:
-    "Everything GAIA can do. 30 capabilities across AI intelligence, productivity, automation, integrations, and multi-platform.",
+    "Everything GAIA can do, across AI intelligence, productivity, automation, integrations, and multi-platform.",
 };
 
 export default function FeaturesPage() {

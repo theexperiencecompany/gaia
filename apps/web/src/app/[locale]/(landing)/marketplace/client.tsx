@@ -160,7 +160,8 @@ export function IntegrationsPageClient() {
           <p className="text-lg text-foreground-500 font-light max-w-2xl">
             Discover and automate your favorite tools with AI. Browse
             community-built MCP integrations to connect Gmail, Slack, Notion,
-            GitHub, and 50+ services to your AI assistant.
+            GitHub, and many services to your AI assistant. I connect my whole
+            stack here.
           </p>
         </div>
 

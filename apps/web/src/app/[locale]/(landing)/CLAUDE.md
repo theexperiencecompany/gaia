@@ -5,7 +5,7 @@ This directory is the `(landing)` route group: public marketing pages that are c
 Full reference infrastructure lives in:
 - `apps/web/src/lib/seo.ts` — siteConfig, 19 schema generators, `generatePageMetadata()`
 - `apps/web/src/utils/seoUtils.ts` — blog/use-case metadata helpers
-- `apps/web/src/lib/sitemapData.ts` — 11-part sitemap architecture
+- `apps/web/src/lib/sitemapData.ts` — 12-part sitemap architecture
 - `apps/web/src/i18n/getAlternates.ts` — hreflang helpers
 
 ---
@@ -170,7 +170,7 @@ export async function generateMetadata({ params }) {
 // getLocalizedAlternates(`/learn/${term}`, locale, `/learn/${primarySlug}`)
 ```
 
-**Translated (needs hreflang):** `/compare`, `/alternative-to`, `/automate`, `/for`, `/learn`, `/use-cases`
+**Translated (needs hreflang):** `/compare`, `/alternative-to`, `/automate`, `/for`, `/learn`
 
 **Untranslated (English only — no hreflang):** `/marketplace`, `/blog`, `/download`, `/login`, `/signup`, `/terms`, `/privacy`
 
@@ -178,7 +178,7 @@ export async function generateMetadata({ params }) {
 
 ## Sitemaps
 
-The sitemap system has 11 named segments (`lib/sitemapData.ts`). When adding new content types:
+The sitemap system has 12 named segments (`lib/sitemapData.ts`). When adding new content types:
 
 1. Add a new sitemap ID and handler in `sitemapData.ts`
 2. Add the route to `app/sitemap/[id]/route.ts`
@@ -226,3 +226,14 @@ Use `generatePageMetadata({ noIndex: true })` for:
 - Any page with `?q=` or pagination query params that duplicate content
 
 Never set `noIndex` on public marketing or programmatic SEO pages.
+
+---
+
+## Content Truth (seo-facts ledger)
+
+`apps/web/src/lib/seo-facts.json` is the ledger for every company, pricing, or
+integration-count claim used in marketing copy. Rule: **no company/pricing claim
+without a `sourceUrl` + `lastChecked` date** — unsourced claims stay
+`unverified` and must not be stated as fact. GAIA's own counts use qualitative
+wording ("many integrations", "your tools"); competitor counts stay verbatim
+only when load-bearing to a comparison, and stay `unverified` until sourced.
