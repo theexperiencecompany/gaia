@@ -17,3 +17,12 @@ export const CONNECT_LINK_ERROR_MESSAGES = {
   could_not_start:
     "Couldn't start that connection. Ask GAIA for a new link and try again.",
 } as const;
+
+/**
+ * Carries a bot connect link's code from /connect/<code> to the /connect page,
+ * so the live code never sits in a page URL that analytics and replay record.
+ * Lives as long as the code itself (CONNECT_LINK_TTL_MINUTES in the API).
+ */
+export const CONNECT_LINK_COOKIE = "gaia_connect_code";
+export const CONNECT_LINK_COOKIE_MAX_AGE_SECONDS = 60 * 60;
+export const CONNECT_LINK_PATH = "/connect";

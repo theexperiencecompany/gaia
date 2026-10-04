@@ -48,5 +48,7 @@ export default function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|_next|_vercel|sitemap|ingest|.*\\..*).*)", "/"],
+  // `connect` (src/app/connect) is a locale-invariant page with its own
+  // analytics-free layout; next-intl must not rewrite it into the [locale] tree.
+  matcher: ["/((?!api|connect|_next|_vercel|sitemap|ingest|.*\\..*).*)", "/"],
 };
