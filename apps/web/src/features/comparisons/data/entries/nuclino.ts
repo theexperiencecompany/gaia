@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "nuclino.com",
   tagline: "Lightweight team wiki and knowledge base",
   description:
-    "Nuclino is a clean, fast team wiki and knowledge base tool that organizes shared documentation in a graph, list, or board view. GAIA is a proactive AI assistant that connects knowledge management to email, calendar, tasks, and 50+ integrations — automating the capture and application of knowledge across your workflow.",
+    "Nuclino is a clean, fast team wiki and knowledge base tool that organizes shared documentation in a graph, list, or board view. GAIA is a proactive AI assistant that connects knowledge management to email, calendar, tasks, and many integrations — automating the capture and application of knowledge across your workflow.",
   metaTitle:
     "Nuclino Alternative with AI-Powered Knowledge Management & Workflow Automation — GAIA vs Nuclino",
   metaDescription:
-    "Nuclino is a great wiki but passive and isolated from your workflow. GAIA is a free, open-source Nuclino alternative with AI email management, proactive task creation, and knowledge automation across 50+ integrations.",
+    "Nuclino is a great wiki but passive and isolated from your workflow. GAIA is a free, open-source Nuclino alternative with AI email management, proactive task creation, and knowledge automation across many integrations.",
   keywords: [
     "nuclino alternative",
     "gaia vs nuclino",
@@ -29,11 +29,11 @@ Where Nuclino genuinely excels is in reducing friction. New hires can get orient
 
 But Nuclino is inherently a passive repository. Knowledge flows into it when someone manually writes a page, and knowledge flows out of it when someone manually searches for it. The tool has no awareness of your email inbox, your calendar, your GitHub activity, or the conversations happening in Slack. When a decision gets made in a meeting, someone has to remember to document it. When a client sends an email with important context, someone has to manually create the knowledge entry. When a deadline changes in your calendar, the project page in Nuclino does not update itself.
 
-GAIA brings proactive AI to the knowledge management problem. Its graph-based memory automatically links related context — emails, tasks, meetings, decisions, and conversations — without requiring manual documentation. It reads your Gmail inbox and captures action items and context as tasks and notes. It integrates with Notion, GitHub, Slack, Jira, Todoist, and 45+ other tools, pulling knowledge from where it already lives rather than requiring you to re-enter it somewhere new. Where Nuclino is a beautifully simple destination for documentation, GAIA is an actively maintained, AI-driven knowledge graph that populates itself. For teams who want their knowledge base to stay current without relying entirely on human discipline to maintain it, GAIA offers a meaningfully different model.`,
+GAIA brings proactive AI to the knowledge management problem. Its graph-based memory automatically links related context — emails, tasks, meetings, decisions, and conversations — without requiring manual documentation. It reads your Gmail inbox and captures action items and context as tasks and notes. It integrates with Notion, GitHub, Slack, Jira, Todoist, and many other tools, pulling knowledge from where it already lives rather than requiring you to re-enter it somewhere new. Where Nuclino is a beautifully simple destination for documentation, GAIA is an actively maintained, AI-driven knowledge graph that populates itself. For teams who want their knowledge base to stay current without relying entirely on human discipline to maintain it, GAIA offers a meaningfully different model.`,
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI assistant managing email, calendar, tasks, and workflows across 50+ connected tools with AI-driven knowledge graph",
+      gaia: "Proactive AI assistant managing email, calendar, tasks, and workflows across your connected tools with AI-driven knowledge graph",
       competitor:
         "Clean, fast team wiki and knowledge base with graph, list, board, and table views for documentation",
     },
@@ -69,7 +69,7 @@ GAIA brings proactive AI to the knowledge management problem. Its graph-based me
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira, and more via MCP",
+      gaia: "many integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira, and more via MCP",
       competitor:
         "Slack, GitHub, Figma, Lucidchart, and Typeform integrations for embedding content; limited workflow connections",
     },
@@ -107,7 +107,7 @@ GAIA brings proactive AI to the knowledge management problem. Its graph-based me
     "Automatically captures knowledge from email, meetings, and connected tools — no manual documentation discipline required",
     "AI-driven knowledge graph builds contextual links between emails, tasks, meetings, and documents without explicit wiki-linking",
     "Proactively surfaces relevant context before meetings and during task work without manual search",
-    "50+ integrations pull knowledge from tools where it already lives rather than requiring re-entry",
+    "many integrations pull knowledge from tools where it already lives rather than requiring re-entry",
     "Open source and self-hostable — complete data ownership with no per-seat pricing when self-hosted",
     "Natural language querying retrieves synthesized answers across all connected knowledge sources",
   ],
@@ -127,7 +127,7 @@ GAIA brings proactive AI to the knowledge management problem. Its graph-based me
     {
       question: "Does GAIA integrate with Nuclino?",
       answer:
-        "GAIA does not have a native Nuclino integration currently. Its 50+ integrations cover Gmail, Slack, GitHub, Notion, Jira, Linear, and Todoist, among others. Teams using Nuclino as their primary documentation tool would need to evaluate whether GAIA's integrations cover their other workflow tools.",
+        "GAIA does not have a native Nuclino integration currently. Its many integrations cover Gmail, Slack, GitHub, Notion, Jira, Linear, and Todoist, among others. Teams using Nuclino as their primary documentation tool would need to evaluate whether GAIA's integrations cover their other workflow tools.",
     },
     {
       question:

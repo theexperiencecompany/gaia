@@ -5,11 +5,11 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
     slug: "integrations",
     category: "Integrations",
     icon: "ConnectIcon",
-    title: "50+ Integrations",
-    tagline: "Connect Gmail, Slack, GitHub, Notion, and 47 more",
+    title: "Many Integrations",
+    tagline: "Connect Gmail, Slack, GitHub, Notion, and more",
     headline: "All your tools. One assistant.",
     subheadline:
-      "GAIA connects to Gmail, Slack, GitHub, Notion, Linear, HubSpot, Google Workspace, and 44+ more, with OAuth in one click, no API keys required.",
+      "GAIA connects to Gmail, Slack, GitHub, Notion, Linear, HubSpot, Google Workspace, and many more, with OAuth in one click, no API keys required. I wanted setup to take seconds, not an afternoon.",
     benefits: [
       {
         icon: "LinkSquare02Icon",

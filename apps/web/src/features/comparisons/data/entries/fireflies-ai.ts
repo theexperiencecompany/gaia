@@ -10,7 +10,7 @@ export const entry: ComparisonData = {
   metaTitle:
     "Fireflies.ai Alternative for Full Workflow Automation — GAIA vs Fireflies",
   metaDescription:
-    "Fireflies records and searches meetings but stops at the transcript. GAIA is an open-source alternative that automates task creation, follow-up emails, and workflows across 50+ tools after every meeting.",
+    "Fireflies records and searches meetings but stops at the transcript. GAIA is an open-source alternative that automates task creation, follow-up emails, and workflows across many tools after every meeting.",
   keywords: [
     "fireflies ai alternative",
     "gaia vs fireflies ai",
@@ -76,7 +76,7 @@ For teams that specifically need a searchable archive of all meeting recordings 
     },
     {
       feature: "Workflow automation",
-      gaia: "Multi-step automations triggered by meetings, emails, or task events across 50+ integrations",
+      gaia: "Multi-step automations triggered by meetings, emails, or task events across many integrations",
       competitor: "Zapier and Make integrations; no native automation engine",
     },
     {
@@ -101,7 +101,7 @@ For teams that specifically need a searchable archive of all meeting recordings 
     "Creates real tasks in Todoist, Linear, Jira, and Asana from meetings — no manual transfer",
     "Pre-meeting briefing generation saves manual research before every call",
     "Full email management and follow-up automation beyond meeting boundaries",
-    "50+ cross-tool integrations for complete workflow orchestration",
+    "many cross-tool integrations for complete workflow orchestration",
     "Open source and self-hostable for teams with recording privacy requirements",
     "Manages the full productivity workflow: tasks, calendar, email, and meetings together",
   ],

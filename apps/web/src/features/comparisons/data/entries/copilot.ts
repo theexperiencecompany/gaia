@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "copilot.microsoft.com",
   tagline: "AI embedded in the Microsoft 365 suite",
   description:
-    "Microsoft Copilot is an AI assistant deeply embedded in the Microsoft 365 ecosystem — Word, Excel, PowerPoint, Outlook, and Teams. GAIA takes a cross-platform, open-source approach that works across Gmail, Google Calendar, Slack, Notion, GitHub, and 50+ other tools regardless of your existing stack.",
+    "Microsoft Copilot is an AI assistant deeply embedded in the Microsoft 365 ecosystem — Word, Excel, PowerPoint, Outlook, and Teams. GAIA takes a cross-platform, open-source approach that works across Gmail, Google Calendar, Slack, Notion, GitHub, and many other tools regardless of your existing stack.",
   metaTitle:
     "Microsoft Copilot Alternative with Proactive AI — GAIA vs Copilot",
   metaDescription:
-    "Microsoft Copilot is locked to Microsoft 365 and stays reactive. GAIA is an open-source Copilot alternative that works across Gmail, Slack, Notion, and 50+ tools — proactively managing email, calendar, and tasks with a free tier.",
+    "Microsoft Copilot is locked to Microsoft 365 and stays reactive. GAIA is an open-source Copilot alternative that works across Gmail, Slack, Notion, and many tools — proactively managing email, calendar, and tasks with a free tier.",
   keywords: [
     "GAIA vs Copilot",
     "Microsoft Copilot alternative",
@@ -25,17 +25,17 @@ export const entry: ComparisonData = {
     "Microsoft Copilot vs GAIA",
   ],
   intro:
-    "Microsoft Copilot is a powerful AI layer built directly into Microsoft 365, offering deep assistance within Outlook, Word, Excel, PowerPoint, and Teams. For organizations already fully committed to the Microsoft stack, it delivers genuine value. However, Copilot's capabilities are gated behind costly Microsoft 365 licenses and work exclusively with Microsoft-hosted accounts — Gmail, Google Calendar, Slack, and other non-Microsoft tools are not supported. GAIA takes the opposite approach: an open-source, cross-platform AI assistant that connects your entire digital life — email, calendar, tasks, workflows, and 50+ integrations — regardless of which tools you already use.",
+    "Microsoft Copilot is a powerful AI layer built directly into Microsoft 365, offering deep assistance within Outlook, Word, Excel, PowerPoint, and Teams. For organizations already fully committed to the Microsoft stack, it delivers genuine value. However, Copilot's capabilities are gated behind costly Microsoft 365 licenses and work exclusively with Microsoft-hosted accounts — Gmail, Google Calendar, Slack, and other non-Microsoft tools are not supported. GAIA takes the opposite approach: an open-source, cross-platform AI assistant that connects your entire digital life — email, calendar, tasks, workflows, and many integrations — regardless of which tools you already use.",
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive, cross-platform AI assistant that manages email, calendar, tasks, and workflows across 50+ tools from any stack",
+      gaia: "Proactive, cross-platform AI assistant that manages email, calendar, tasks, and workflows across many tools from any stack",
       competitor:
         "AI layer embedded inside Microsoft 365 apps (Outlook, Word, Excel, PowerPoint, Teams), optimized for the Microsoft ecosystem",
     },
     {
       feature: "Ecosystem",
-      gaia: "Works with Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and 50+ tools via MCP",
+      gaia: "Works with Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and many tools via MCP",
       competitor:
         "Works exclusively with Microsoft-hosted accounts and Microsoft 365 services; Gmail, Google Calendar, and iCloud accounts are not supported",
     },
@@ -65,7 +65,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and more",
+      gaia: "many integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and more",
       competitor:
         "Deep integration with Microsoft 365 apps and SharePoint; third-party connectors available via Copilot Studio at additional cost and complexity",
     },
@@ -89,7 +89,7 @@ export const entry: ComparisonData = {
     },
   ],
   gaiaAdvantages: [
-    "Works with Gmail, Google Calendar, Slack, and 50+ non-Microsoft tools — no ecosystem lock-in",
+    "Works with Gmail, Google Calendar, Slack, and many non-Microsoft tools — no ecosystem lock-in",
     "Proactively monitors your digital life and acts before you ask, rather than waiting for prompts",
     "Open source and self-hostable — full data control with no vendor dependency",
     "Graph-based persistent memory connects tasks, projects, meetings, and people across tools",
@@ -122,7 +122,7 @@ export const entry: ComparisonData = {
       question:
         "What is the main difference between GAIA and Microsoft Copilot?",
       answer:
-        "The core difference is ecosystem philosophy. Microsoft Copilot is a deeply integrated AI layer within the Microsoft 365 suite — it excels inside Outlook, Word, Excel, and Teams, but cannot work with tools outside that ecosystem. GAIA is a cross-platform, open-source AI assistant that works across Gmail, Google Calendar, Slack, Notion, GitHub, and 50+ other tools. GAIA also takes a proactive stance — monitoring your digital life and acting before you ask — whereas Copilot is primarily reactive, responding to prompts within individual Microsoft apps.",
+        "The core difference is ecosystem philosophy. Microsoft Copilot is a deeply integrated AI layer within the Microsoft 365 suite — it excels inside Outlook, Word, Excel, and Teams, but cannot work with tools outside that ecosystem. GAIA is a cross-platform, open-source AI assistant that works across Gmail, Google Calendar, Slack, Notion, GitHub, and many other tools. GAIA also takes a proactive stance — monitoring your digital life and acting before you ask — whereas Copilot is primarily reactive, responding to prompts within individual Microsoft apps.",
     },
   ],
 };

@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "bear.app",
   tagline: "Beautiful markdown notes for Mac and iOS",
   description:
-    "Bear is a focused markdown note-taking app for Apple devices with a beautiful UI and tagging system. GAIA is a proactive AI assistant that manages your tasks, email, calendar, and notes across 50+ integrations — available on every platform.",
+    "Bear is a focused markdown note-taking app for Apple devices with a beautiful UI and tagging system. GAIA is a proactive AI assistant that manages your tasks, email, calendar, and notes across many integrations — available on every platform.",
   metaTitle:
     "Bear App Alternative with AI & Cross-Platform Support — GAIA vs Bear",
   metaDescription:
-    "Bear is a gorgeous notes app but lives only on Apple devices. GAIA is a free, open-source alternative with AI email management, task automation, and cross-platform support across 50+ integrations.",
+    "Bear is a gorgeous notes app but lives only on Apple devices. GAIA is a free, open-source alternative with AI email management, task automation, and cross-platform support across many integrations.",
   keywords: [
     "bear app alternative",
     "gaia vs bear",
@@ -27,13 +27,13 @@ export const entry: ComparisonData = {
 
 But Bear's tight focus on beautiful writing on Apple devices is also its biggest constraint. There is no official web app, no Windows client, and no Android version. If you step outside the Apple ecosystem — even briefly — your notes become inaccessible. The app is also essentially passive: Bear stores what you write, but it has no awareness of your email, your calendar, your tasks, or the rest of your digital life. Every note you capture has to be captured manually.
 
-GAIA takes a different philosophy. Rather than building a pristine environment for writing, GAIA acts as an AI layer across your entire workflow. It reads your Gmail inbox and surfaces the information worth capturing. It connects to your Google Calendar and prepares briefings before meetings. It integrates with Todoist, Linear, GitHub, Slack, Notion, and 45 other tools — and it can create, update, and retrieve content across all of them from a single interface. Notes and knowledge are part of the picture, but so is action: GAIA creates tasks from emails, drafts replies, triggers automations, and maintains a graph-based memory of your projects, people, and decisions over time.
+GAIA takes a different philosophy. Rather than building a pristine environment for writing, GAIA acts as an AI layer across your entire workflow. It reads your Gmail inbox and surfaces the information worth capturing. It connects to your Google Calendar and prepares briefings before meetings. It integrates with Todoist, Linear, GitHub, Slack, Notion, and many other tools — and it can create, update, and retrieve content across all of them from a single interface. Notes and knowledge are part of the picture, but so is action: GAIA creates tasks from emails, drafts replies, triggers automations, and maintains a graph-based memory of your projects, people, and decisions over time.
 
 For Apple-centric writers who want nothing but a clean writing environment, Bear is excellent. But for professionals who need their note-taking layer to connect with the rest of their tools — and who want an AI assistant that proactively keeps information flowing rather than waiting for them to manually open an app — GAIA offers a fundamentally broader and more automated approach. It is also open source and self-hostable, which means your data stays under your control, on any platform you choose.`,
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI assistant that manages email, calendar, tasks, notes, and workflows across 50+ tools",
+      gaia: "Proactive AI assistant that manages email, calendar, tasks, notes, and workflows across many tools",
       competitor:
         "Beautiful markdown note editor with a nested tagging system, focused on writing and capturing ideas",
     },
@@ -67,7 +67,7 @@ For Apple-centric writers who want nothing but a clean writing environment, Bear
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira, and more via MCP",
+      gaia: "many integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira, and more via MCP",
       competitor:
         "Limited external integrations; syncs with iCloud, supports x-callback URLs, and Bear-specific API for automation",
     },
@@ -105,7 +105,7 @@ For Apple-centric writers who want nothing but a clean writing environment, Bear
   gaiaAdvantages: [
     "Works on every platform including Windows, Android, and the web — not locked to Apple devices",
     "Proactively captures notes, tasks, and action items from your email and calendar automatically",
-    "50+ integrations connect your knowledge base to the tools where work actually happens",
+    "many integrations connect your knowledge base to the tools where work actually happens",
     "AI-driven memory builds contextual links between your notes, tasks, meetings, and people",
     "Open source and self-hostable — full data ownership with no vendor lock-in",
     "Manages your entire workflow, not just a writing environment",
@@ -116,7 +116,7 @@ For Apple-centric writers who want nothing but a clean writing environment, Bear
     "Lightweight and fast — designed purely for note-taking without the overhead of a broader platform",
   ],
   verdict:
-    "Choose Bear if you are an Apple-only user who wants a beautiful, focused writing environment for personal notes and knowledge capture. Choose GAIA if you need your notes layer to connect with your email, calendar, and 50+ other tools — and want an AI assistant that proactively populates your knowledge base rather than waiting for manual input.",
+    "Choose Bear if you are an Apple-only user who wants a beautiful, focused writing environment for personal notes and knowledge capture. Choose GAIA if you need your notes layer to connect with your email, calendar, and many other tools — and want an AI assistant that proactively populates your knowledge base rather than waiting for manual input.",
   faqs: [
     {
       question: "Can GAIA replace Bear for everyday note-taking?",

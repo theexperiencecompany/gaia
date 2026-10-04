@@ -35,7 +35,7 @@ export const entry: ComparisonData = {
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI assistant that manages your full calendar and email intelligently — preparing meeting briefings, responding to scheduling requests, and orchestrating your schedule across 50+ tools",
+      gaia: "Proactive AI assistant that manages your full calendar and email intelligently — preparing meeting briefings, responding to scheduling requests, and orchestrating your schedule across many tools",
       competitor:
         "Open-source scheduling infrastructure for inbound meeting booking — shareable links, availability rules, automated confirmations, and calendar sync",
     },
@@ -77,7 +77,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP including Gmail, Google Calendar, Slack, GitHub, Linear, Jira, Todoist, and more — all orchestrated by AI",
+      gaia: "many integrations via MCP including Gmail, Google Calendar, Slack, GitHub, Linear, Jira, Todoist, and more — all orchestrated by AI",
       competitor:
         "Integrations with Google Calendar, Outlook, Zoom, Google Meet, Stripe for payments, Salesforce, HubSpot, Slack, and Zapier — focused on scheduling workflow automation",
     },
@@ -97,7 +97,7 @@ export const entry: ComparisonData = {
   gaiaAdvantages: [
     "Proactively reads email to detect scheduling requests and handle them automatically — eliminating the inbox back-and-forth that Cal.com's booking links still require people to initiate",
     "Prepares proactive meeting briefings before calls — surfacing relevant email history, past interactions, and context from across your tool stack without manual lookup",
-    "50+ MCP integrations orchestrate the full context around a meeting: tasks assigned, emails sent, documents shared, and follow-up actions created automatically",
+    "many MCP integrations orchestrate the full context around a meeting: tasks assigned, emails sent, documents shared, and follow-up actions created automatically",
     "Graph-based persistent memory links people, meetings, and email threads across time — building contextual understanding of every relationship and project",
     "Open source and self-hostable with flat pricing — GAIA Pro at $20/month flat works for teams of any size without per-seat escalation",
   ],

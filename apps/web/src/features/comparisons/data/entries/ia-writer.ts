@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "ia.net/writer",
   tagline: "Minimalist markdown writing with focus mode",
   description:
-    "iA Writer is a minimalist markdown writing app focused on pure distraction-free writing with a distinctive Focus Mode that highlights only the sentence or paragraph you're currently writing. GAIA is a proactive AI assistant that connects writing tasks to email, calendar, and 50+ integrations.",
+    "iA Writer is a minimalist markdown writing app focused on pure distraction-free writing with a distinctive Focus Mode that highlights only the sentence or paragraph you're currently writing. GAIA is a proactive AI assistant that connects writing tasks to email, calendar, and many integrations.",
   metaTitle:
     "iA Writer Alternative with AI Automation & Workflow Integration — GAIA vs iA Writer",
   metaDescription:
-    "iA Writer is minimalist but isolated from your workflow. GAIA is a free, open-source iA Writer alternative with AI email management, calendar automation, and cross-platform workflow orchestration across 50+ integrations.",
+    "iA Writer is minimalist but isolated from your workflow. GAIA is a free, open-source iA Writer alternative with AI email management, calendar automation, and cross-platform workflow orchestration across many integrations.",
   keywords: [
     "ia writer alternative",
     "gaia vs ia writer",
@@ -29,11 +29,11 @@ iA Writer is available across Mac, iPad, iPhone, Windows, and Android — one of
 
 But iA Writer is, by deliberate design, a tool for writing. It does not have a task manager, an email integration, or an awareness of your calendar. The app's philosophy is about removing everything except writing, which means the surrounding infrastructure of a professional's work — the emails requesting content, the deadlines in the calendar, the project context in GitHub or Jira — is entirely invisible to it.
 
-GAIA complements this kind of focused writing tool by managing the surrounding workflow. It reads your Gmail inbox and creates tasks and reminders from editorial requests. It monitors your calendar and surfaces upcoming content deadlines. It integrates with Notion, GitHub, Slack, and 45+ other tools to keep project context connected to your work. Where iA Writer helps you write better during the writing session, GAIA helps you manage everything before and after — so you can get to the writing in the first place.`,
+GAIA complements this kind of focused writing tool by managing the surrounding workflow. It reads your Gmail inbox and creates tasks and reminders from editorial requests. It monitors your calendar and surfaces upcoming content deadlines. It integrates with Notion, GitHub, Slack, and many other tools to keep project context connected to your work. Where iA Writer helps you write better during the writing session, GAIA helps you manage everything before and after — so you can get to the writing in the first place.`,
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI assistant managing email, calendar, tasks, and workflows across 50+ connected tools",
+      gaia: "Proactive AI assistant managing email, calendar, tasks, and workflows across your connected tools",
       competitor:
         "Minimalist markdown writing app focused entirely on distraction-free prose composition with Focus Mode",
     },
@@ -79,7 +79,7 @@ GAIA complements this kind of focused writing tool by managing the surrounding w
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira, and more via MCP",
+      gaia: "many integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira, and more via MCP",
       competitor:
         "iCloud sync; WordPress and Medium publishing; Working Copy for GitHub on iOS; limited ecosystem",
     },
@@ -104,7 +104,7 @@ GAIA complements this kind of focused writing tool by managing the surrounding w
   ],
   gaiaAdvantages: [
     "Manages the email, task, and calendar workflow surrounding writing automatically",
-    "50+ integrations connect writing projects to the broader tool ecosystem",
+    "many integrations connect writing projects to the broader tool ecosystem",
     "Proactively surfaces writing-related action items from email without manual checking",
     "Open source and self-hostable — complete data ownership",
     "AI-driven workflow automation beyond the writing session itself",

@@ -62,7 +62,7 @@ export const entry: AlternativeData = {
     {
       question: "Is GAIA cheaper than Evernote in 2026?",
       answer:
-        "Evernote's Starter plan is $100/year ($8.33/month) and Advanced is $250/year ($20.83/month). GAIA Pro is $20/month with email management, task automation, calendar integration, and 50+ tool connections. Self-hosted GAIA is completely free.",
+        "Evernote's Starter plan is $100/year ($8.33/month) and Advanced is $250/year ($20.83/month). GAIA Pro is $20/month with email management, task automation, calendar integration, and many tool connections. Self-hosted GAIA is completely free.",
     },
     {
       question: "Does GAIA have notebooks and tags like Evernote?",

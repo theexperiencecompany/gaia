@@ -6,7 +6,7 @@ export const entry: ComparisonData = {
   domain: "assistant.google.com",
   tagline: "Google's voice-first virtual assistant",
   description:
-    "Google Assistant handles quick voice commands and smart home control. GAIA provides deep workflow automation, email management, and proactive productivity across 50+ tools.",
+    "Google Assistant handles quick voice commands and smart home control. GAIA provides deep workflow automation, email management, and proactive productivity across many tools.",
   metaTitle: "GAIA vs Google Assistant: Workflow Automation vs Voice Assistant",
   metaDescription:
     "Compare GAIA and Google Assistant for productivity. Google Assistant handles voice commands and smart home, while GAIA automates email, tasks, and workflows with AI intelligence.",
@@ -22,7 +22,7 @@ export const entry: ComparisonData = {
   rows: [
     {
       feature: "Core approach",
-      gaia: "AI productivity OS that automates email, tasks, and workflows across 50+ tools",
+      gaia: "AI productivity OS that automates email, tasks, and workflows across many tools",
       competitor:
         "Voice-first virtual assistant for quick commands, smart home, and Google services",
     },
@@ -46,7 +46,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ productivity integrations: Slack, Notion, GitHub, Linear, Todoist, etc.",
+      gaia: "many productivity integrations: Slack, Notion, GitHub, Linear, Todoist, etc.",
       competitor:
         "Google ecosystem, smart home devices, and select third-party actions",
     },
@@ -71,7 +71,7 @@ export const entry: ComparisonData = {
   gaiaAdvantages: [
     "Purpose-built for deep productivity automation, not just quick commands",
     "Full email management with intelligent triage and response drafting",
-    "Cross-tool workflow automation across 50+ productivity apps",
+    "Cross-tool workflow automation across many productivity apps",
     "Graph-based memory that builds a deep understanding of your work",
     "Open source with self-hosting for complete privacy",
   ],

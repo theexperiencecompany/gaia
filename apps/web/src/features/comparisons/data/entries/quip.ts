@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "quip.com",
   tagline: "Salesforce's collaborative docs and spreadsheets platform",
   description:
-    "Quip is Salesforce's collaborative documents and spreadsheets platform, designed to bring live CRM data into team documents. GAIA is a proactive AI assistant that connects email, calendar, tasks, and 50+ integrations with autonomous action — beyond the Salesforce ecosystem.",
+    "Quip is Salesforce's collaborative documents and spreadsheets platform, designed to bring live CRM data into team documents. GAIA is a proactive AI assistant that connects email, calendar, tasks, and many integrations with autonomous action — beyond the Salesforce ecosystem.",
   metaTitle:
     "Quip Alternative with AI Automation Beyond Salesforce — GAIA vs Quip",
   metaDescription:
-    "Quip is powerful within Salesforce but limited outside it. GAIA is a free, open-source Quip alternative with proactive AI email management, calendar automation, and workflow orchestration across 50+ integrations.",
+    "Quip is powerful within Salesforce but limited outside it. GAIA is a free, open-source Quip alternative with proactive AI email management, calendar automation, and workflow orchestration across many integrations.",
   keywords: [
     "quip alternative",
     "gaia vs quip",
@@ -27,13 +27,13 @@ export const entry: ComparisonData = {
 
 That deep Salesforce integration is Quip's primary value proposition — and also its greatest constraint. For teams not using Salesforce, Quip offers relatively little differentiation from other collaborative doc tools, and its development and innovation have slowed noticeably since the acquisition. The app feels like it is maintained rather than actively advanced, and its ecosystem outside Salesforce is limited compared to competitors.
 
-GAIA is built for a fundamentally different model of productivity. Rather than providing a collaborative document layer within a specific ecosystem, GAIA acts as a proactive AI assistant across your entire digital workflow. It reads your Gmail inbox and creates tasks, calendar events, and action items automatically. It integrates with Slack, GitHub, Linear, Jira, Notion, Todoist, and 45+ other tools — not just one CRM vendor's ecosystem. Its graph-based memory builds a persistent understanding of your projects, people, and decisions across every connected tool.
+GAIA is built for a fundamentally different model of productivity. Rather than providing a collaborative document layer within a specific ecosystem, GAIA acts as a proactive AI assistant across your entire digital workflow. It reads your Gmail inbox and creates tasks, calendar events, and action items automatically. It integrates with Slack, GitHub, Linear, Jira, Notion, Todoist, and many other tools — not just one CRM vendor's ecosystem. Its graph-based memory builds a persistent understanding of your projects, people, and decisions across every connected tool.
 
 For sales organizations running on Salesforce who need CRM data embedded in their account planning documents, Quip serves a specific and real purpose. But for teams looking for a general-purpose productivity platform that connects documents and actions to a broad tool ecosystem — with proactive AI that works for them rather than waiting to be opened — GAIA offers a significantly more modern and autonomous approach.`,
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI assistant managing email, calendar, tasks, and workflows across 50+ connected tools autonomously",
+      gaia: "Proactive AI assistant managing email, calendar, tasks, and workflows across your connected tools autonomously",
       competitor:
         "Collaborative documents and spreadsheets platform with embedded Salesforce CRM data and real-time co-editing",
     },
@@ -69,7 +69,7 @@ For sales organizations running on Salesforce who need CRM data embedded in thei
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira, and more via MCP",
+      gaia: "many integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira, and more via MCP",
       competitor:
         "Tight Salesforce ecosystem integration; limited third-party connections outside the Salesforce platform",
     },
@@ -104,7 +104,7 @@ For sales organizations running on Salesforce who need CRM data embedded in thei
     },
   ],
   gaiaAdvantages: [
-    "Works across 50+ tools beyond a single CRM vendor's ecosystem",
+    "Works across many tools beyond a single CRM vendor's ecosystem",
     "Proactively reads email and calendar to surface action items and create tasks without manual input",
     "Modern AI-first design rather than a legacy acquisition being maintained within a larger platform",
     "Open source and self-hostable — full data ownership with no enterprise licensing dependency",
@@ -122,12 +122,12 @@ For sales organizations running on Salesforce who need CRM data embedded in thei
     {
       question: "Is GAIA a good Quip alternative for non-Salesforce teams?",
       answer:
-        "Yes. Quip's primary value is its Salesforce integration, which makes it less compelling for teams not on Salesforce. GAIA offers proactive AI automation, email management, and 50+ integrations across common developer and productivity tools — providing a much richer feature set for teams outside the Salesforce ecosystem.",
+        "Yes. Quip's primary value is its Salesforce integration, which makes it less compelling for teams not on Salesforce. GAIA offers proactive AI automation, email management, and many integrations across common developer and productivity tools — providing a much richer feature set for teams outside the Salesforce ecosystem.",
     },
     {
       question: "Does GAIA integrate with Salesforce?",
       answer:
-        "GAIA does not have a native Salesforce CRM integration currently. Its integrations focus on Gmail, Google Calendar, Slack, GitHub, Linear, Jira, Notion, and Todoist, among 50+ others. Organizations whose core workflow centers on Salesforce records would need to evaluate whether these integrations cover their requirements.",
+        "GAIA does not have a native Salesforce CRM integration currently. Its integrations focus on Gmail, Google Calendar, Slack, GitHub, Linear, Jira, Notion, and Todoist, among many others. Organizations whose core workflow centers on Salesforce records would need to evaluate whether these integrations cover their requirements.",
     },
     {
       question:

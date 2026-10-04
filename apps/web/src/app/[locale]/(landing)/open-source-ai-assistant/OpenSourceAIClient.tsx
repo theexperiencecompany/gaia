@@ -97,7 +97,7 @@ const comparisonRows = [
   },
   {
     feature: "Integrations",
-    gaia: "50+ via MCP",
+    gaia: "Your tools via MCP",
     chatgpt: "GPT plugins / limited",
     copilot: "M365 ecosystem",
     notionAI: "Notion only",
@@ -132,7 +132,7 @@ const checklistItems = [
   "Manages your calendar — schedules meetings, handles conflicts, sends invites",
   "Tracks your tasks — syncs with Todoist, Linear, GitHub Issues, and more",
   "Sends proactive briefings — your day's priorities at 7am, without asking",
-  "Connects 50+ tools via MCP — Slack, Notion, HubSpot, GitHub, Google Workspace",
+  "Connects your tools via MCP — Slack, Notion, HubSpot, GitHub, Google Workspace. I run my own setup this way.",
   "Runs automated workflows — recurring tasks, follow-ups, reports, on a schedule",
 ];
 
@@ -355,7 +355,7 @@ export default function OpenSourceAIClient() {
         stats={[
           { value: "MIT", label: "open source license" },
           { value: "1 cmd", label: "docker compose up" },
-          { value: "50+", label: "integrations" },
+          { value: "many", label: "integrations" },
           { value: "free", label: "to self-host" },
         ]}
         painPoints={[

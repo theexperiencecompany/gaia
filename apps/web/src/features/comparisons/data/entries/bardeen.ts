@@ -6,10 +6,10 @@ export const entry: ComparisonData = {
   domain: "bardeen.ai",
   tagline: "Automate your browser with AI",
   description:
-    "Bardeen is a Chrome extension that automates browser-based tasks through AI-generated playbooks and point-and-click web scraping. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows across 50+ apps via deep API integrations — no browser required.",
+    "Bardeen is a Chrome extension that automates browser-based tasks through AI-generated playbooks and point-and-click web scraping. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows across many apps via deep API integrations — no browser required.",
   metaTitle: "Bardeen Alternative with Proactive AI — GAIA vs Bardeen",
   metaDescription:
-    "Bardeen automates browser tasks but relies on screen scraping and needs manual triggers. GAIA is an open-source Bardeen alternative with proactive AI that uses real API connections to manage email, calendar, and workflows across 50+ tools.",
+    "Bardeen automates browser tasks but relies on screen scraping and needs manual triggers. GAIA is an open-source Bardeen alternative with proactive AI that uses real API connections to manage email, calendar, and workflows across many tools.",
   keywords: [
     "GAIA vs Bardeen",
     "Bardeen alternative",
@@ -21,11 +21,11 @@ export const entry: ComparisonData = {
     "AI productivity comparison",
   ],
   intro:
-    "Bardeen built its reputation as the go-to Chrome extension for automating repetitive browser work. Its Magic Box lets you describe a task in plain English — 'scrape leads from this page and add them to my CRM' — and it generates a playbook that runs inside your browser. For browser-centric automation and web scraping, it is genuinely useful. But Bardeen's architecture is fundamentally browser-bound: it requires a running Chrome instance, works by controlling the browser UI rather than calling APIs, and is primarily reactive — you still have to trigger it. GAIA takes a different approach entirely. It integrates directly with Gmail, Google Calendar, Slack, Notion, GitHub, and 50+ other tools through official APIs, acts proactively on your behalf, and runs continuously in the background across web, desktop, and mobile — without a browser in sight.",
+    "Bardeen built its reputation as the go-to Chrome extension for automating repetitive browser work. Its Magic Box lets you describe a task in plain English — 'scrape leads from this page and add them to my CRM' — and it generates a playbook that runs inside your browser. For browser-centric automation and web scraping, it is genuinely useful. But Bardeen's architecture is fundamentally browser-bound: it requires a running Chrome instance, works by controlling the browser UI rather than calling APIs, and is primarily reactive — you still have to trigger it. GAIA takes a different approach entirely. It integrates directly with Gmail, Google Calendar, Slack, Notion, GitHub, and many other tools through official APIs, acts proactively on your behalf, and runs continuously in the background across web, desktop, and mobile — without a browser in sight.",
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive personal AI assistant that manages your email, calendar, tasks, and workflows across 50+ tools via official API integrations",
+      gaia: "Proactive personal AI assistant that manages your email, calendar, tasks, and workflows across many tools via official API integrations",
       competitor:
         "Chrome extension that automates browser-based tasks and scrapes web data using AI-generated playbooks running inside the browser",
     },
@@ -55,7 +55,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ deep integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Salesforce, HubSpot, and more with bi-directional API actions",
+      gaia: "many deep integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Salesforce, HubSpot, and more with bi-directional API actions",
       competitor:
         "Connects to 100+ apps (Airtable, HubSpot, Salesforce, Notion, and more) primarily through browser automation and web scraping; some native API integrations on paid plans",
     },
@@ -103,7 +103,7 @@ export const entry: ComparisonData = {
     "Effective for browser-specific automation scenarios — form filling, LinkedIn prospecting, and web research — that API-only tools cannot handle",
   ],
   verdict:
-    "Bardeen is a strong tool for teams that need browser-based automation and no-code web scraping, particularly for sales and lead enrichment workflows. But its Chrome-extension architecture makes it inherently reactive, browser-bound, and dependent on page layouts staying stable. GAIA is built for people who want an AI assistant that proactively manages their entire digital workflow — triaging email, running calendar actions, creating tasks, and orchestrating multi-step automations across 50+ tools through official APIs, on every platform they use.",
+    "Bardeen is a strong tool for teams that need browser-based automation and no-code web scraping, particularly for sales and lead enrichment workflows. But its Chrome-extension architecture makes it inherently reactive, browser-bound, and dependent on page layouts staying stable. GAIA is built for people who want an AI assistant that proactively manages their entire digital workflow — triaging email, running calendar actions, creating tasks, and orchestrating multi-step automations across many tools through official APIs, on every platform they use.",
   faqs: [
     {
       question: "Can GAIA replace Bardeen for web scraping?",

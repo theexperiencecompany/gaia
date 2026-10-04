@@ -30,7 +30,7 @@ export const entry: ComparisonData = {
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI productivity OS that manages email, calendar, tasks, and 50+ connected tools autonomously on your behalf",
+      gaia: "Proactive AI productivity OS that manages email, calendar, tasks, and your connected tools autonomously on your behalf",
       competitor:
         "Premium keyboard-driven email client focused on helping you personally process email faster through shortcuts, split inboxes, and polished UX",
     },
@@ -60,7 +60,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Workflow automation",
-      gaia: "Multi-step automations described in natural language with email-triggered actions spanning inbox, calendar, Slack, Notion, GitHub, Linear, and 50+ other tools",
+      gaia: "Multi-step automations described in natural language with email-triggered actions spanning inbox, calendar, Slack, Notion, GitHub, Linear, and many other tools",
       competitor:
         "No workflow automation engine; email processing remains a manual, user-driven activity even with AI writing assistance",
     },
@@ -72,7 +72,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and Jira with deep bi-directional actions",
+      gaia: "many integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and Jira with deep bi-directional actions",
       competitor:
         "Connects to Gmail and Outlook for email; integrates with HubSpot and Salesforce CRM on Business plan; no broad third-party integration ecosystem",
     },
@@ -108,7 +108,7 @@ export const entry: ComparisonData = {
     "CRM integrations with HubSpot and Salesforce on the Business plan make it a strong fit for sales teams tracking pipeline activity through email",
   ],
   verdict:
-    "Superhuman is the right choice if you want to be personally faster at email — a beautifully designed client that rewards keyboard discipline and helps committed users reach inbox zero through manual speed. GAIA is the right choice if you want email handled for you — an AI that reads, triages, replies, and acts on your inbox autonomously, then connects those actions to your tasks, calendar, and 50+ other tools. If you are paying $30/month to process email faster yourself, GAIA offers a fundamentally different outcome for less.",
+    "Superhuman is the right choice if you want to be personally faster at email — a beautifully designed client that rewards keyboard discipline and helps committed users reach inbox zero through manual speed. GAIA is the right choice if you want email handled for you — an AI that reads, triages, replies, and acts on your inbox autonomously, then connects those actions to your tasks, calendar, and many other tools. If you are paying $30/month to process email faster yourself, GAIA offers a fundamentally different outcome for less.",
   faqs: [
     {
       question: "Is GAIA a direct replacement for Superhuman?",

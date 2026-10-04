@@ -52,7 +52,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ native integrations via MCP including Gmail, Slack, Notion, GitHub, Linear, Todoist, Asana, and Jira",
+      gaia: "many native integrations via MCP including Gmail, Slack, Notion, GitHub, Linear, Todoist, Asana, and Jira",
       competitor:
         "50+ documented integrations (WhatsApp, Telegram, Gmail, Calendar, Notion, Obsidian, GitHub, and more) plus 100+ community AgentSkills",
     },

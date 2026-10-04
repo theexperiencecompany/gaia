@@ -9,7 +9,7 @@ export const entry: ComparisonData = {
     "Lindy AI offers AI agents for specific tasks. GAIA provides a unified productivity OS with persistent memory, proactive automation, and full open-source transparency.",
   metaTitle: "GAIA vs Lindy AI: Open-Source Productivity OS vs AI Task Agents",
   metaDescription:
-    "Compare GAIA and Lindy AI for AI-powered productivity. Lindy offers task-specific agents, while GAIA provides a unified open-source assistant with 50+ integrations and persistent memory.",
+    "Compare GAIA and Lindy AI for AI-powered productivity. Lindy offers task-specific agents, while GAIA provides a unified open-source assistant with many integrations and persistent memory.",
   keywords: [
     "GAIA vs Lindy AI",
     "Lindy AI alternative",
@@ -56,7 +56,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations with MCP for extensibility and community contributions",
+      gaia: "many integrations with MCP for extensibility and community contributions",
       competitor: "Growing integration list focused on common business tools",
     },
     {

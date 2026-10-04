@@ -67,7 +67,7 @@ export const entry: AlternativeData = {
     {
       question: "Is GAIA cheaper than Tana Plus?",
       answer:
-        "Tana Plus is $10/month. GAIA Pro is $20/month but includes email management, calendar integration, task management, workflow automation, and 50+ tool connections alongside knowledge management. Self-hosted GAIA is free.",
+        "Tana Plus is $10/month. GAIA Pro is $20/month but includes email management, calendar integration, task management, workflow automation, and many tool connections alongside knowledge management. Self-hosted GAIA is free.",
     },
     {
       question: "Can GAIA connect to Gmail like Tana cannot?",

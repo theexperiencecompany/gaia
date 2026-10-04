@@ -57,7 +57,7 @@ export const entry: AlternativeData = {
     {
       question: "Does GAIA do browser automation like Bardeen?",
       answer:
-        "GAIA does not perform browser automation or web scraping. Its strength is deep integration with specific tools (Gmail, Google Calendar, Todoist, and 50+ others) rather than generic browser control.",
+        "GAIA does not perform browser automation or web scraping. Its strength is deep integration with specific tools (Gmail, Google Calendar, Todoist, and many others) rather than generic browser control.",
     },
     {
       question: "Can GAIA and Bardeen be used together?",

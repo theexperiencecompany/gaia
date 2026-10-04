@@ -10,7 +10,7 @@ export const entry: ComparisonData = {
   metaTitle:
     "Motion Alternative with Email & Workflow Automation — GAIA vs Motion",
   metaDescription:
-    "Motion focuses on calendar scheduling, but lacks email management and workflow automation. GAIA is an open-source alternative that proactively manages your inbox, calendar, and tasks across 50+ integrations.",
+    "Motion focuses on calendar scheduling, but lacks email management and workflow automation. GAIA is an open-source alternative that proactively manages your inbox, calendar, and tasks across many integrations.",
   keywords: [
     "GAIA vs Motion",
     "Motion alternative",
@@ -29,7 +29,7 @@ export const entry: ComparisonData = {
   rows: [
     {
       feature: "Core approach",
-      gaia: "Full productivity OS that proactively manages email, calendar, tasks, and workflows across 50+ tools",
+      gaia: "Full productivity OS that proactively manages email, calendar, tasks, and workflows across many tools",
       competitor:
         "AI-powered calendar that auto-schedules tasks into available time slots",
     },
@@ -45,7 +45,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations including Gmail, Slack, Notion, GitHub, Linear, and more via MCP",
+      gaia: "many integrations including Gmail, Slack, Notion, GitHub, Linear, and more via MCP",
       competitor: "Google Calendar, project management tools",
     },
     {
@@ -71,7 +71,7 @@ export const entry: ComparisonData = {
   ],
   gaiaAdvantages: [
     "Manages your entire digital workflow, not just calendar",
-    "50+ integrations vs limited tool support",
+    "many integrations vs limited tool support",
     "Proactive email management and task creation",
     "Open source with self-hosting option",
     "Graph-based memory for deep context understanding",

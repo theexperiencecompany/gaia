@@ -235,7 +235,7 @@ export function InstallPageClient() {
           </Button>
           <Button
             as={Link}
-            href="https://github.com/heygaia/gaia"
+            href="https://github.com/theexperiencecompany/gaia"
             variant="bordered"
             target="_blank"
             rel="noopener noreferrer"

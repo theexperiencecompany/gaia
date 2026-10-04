@@ -9,7 +9,7 @@ export const entry: ComparisonData = {
     "Figma is the industry-standard collaborative design tool featuring Figma AI for UI generation and design suggestions. GAIA is a proactive AI productivity assistant that manages the project workflows, tasks, and communications surrounding design work.",
   metaTitle: "Figma Alternative for Design Workflow Automation — GAIA vs Figma",
   metaDescription:
-    "Figma AI handles UI design but not the project management around it. GAIA is an open-source alternative that automates tasks, emails, and workflows across design and engineering teams with 50+ integrations.",
+    "Figma AI handles UI design but not the project management around it. GAIA is an open-source alternative that automates tasks, emails, and workflows across design and engineering teams with many integrations.",
   keywords: [
     "figma alternative",
     "gaia vs figma",
@@ -38,7 +38,7 @@ These tools serve fundamentally different jobs. Figma AI accelerates the creatio
     },
     {
       feature: "AI capabilities",
-      gaia: "Task management, email triage, workflow automation, and cross-tool coordination across 50+ integrations",
+      gaia: "Task management, email triage, workflow automation, and cross-tool coordination across many integrations",
       competitor:
         "Figma AI: UI layout generation from text prompts, design component suggestions, and auto-layout assistance",
     },
@@ -98,7 +98,7 @@ These tools serve fundamentally different jobs. Figma AI accelerates the creatio
     "Manages the coordination overhead around design work: tasks, feedback emails, and review scheduling",
     "Creates Linear and Jira tickets from design review action items automatically",
     "Proactively triages design feedback in Gmail and creates corresponding tasks",
-    "50+ integrations connect design workflows to engineering and product management tools",
+    "many integrations connect design workflows to engineering and product management tools",
     "Open source and self-hostable for design teams with IP sensitivity",
     "Calendar coordination for design sprints, reviews, and stakeholder meetings",
   ],

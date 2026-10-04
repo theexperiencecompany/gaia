@@ -15,7 +15,7 @@ export const entry: AlternativeData = {
   ],
   metaTitle: "Best Notion AI Alternative in 2026",
   metaDescription:
-    "Notion AI only helps inside Notion. GAIA is a proactive AI assistant that manages email, calendar, tasks, and 50+ tools automatically. Free tier + self-hosting.",
+    "Notion AI only helps inside Notion. GAIA is a proactive AI assistant that manages email, calendar, tasks, and many tools automatically. Free tier + self-hosting.",
   keywords: [
     "notion ai alternative",
     "best notion ai alternative",
@@ -40,7 +40,7 @@ export const entry: AlternativeData = {
     "Workflow automation beyond Notion's database triggers",
   ],
   gaiaAdvantages: [
-    "Works across Gmail, Google Calendar, Todoist, and 50+ tools, not just one app",
+    "Works across Gmail, Google Calendar, Todoist, and many tools, not just one app",
     "Proactive by design: surfaces what needs attention without prompting",
     "Open-source and self-hostable; Notion AI is a closed, proprietary feature",
     "Free tier available; no per-seat Business plan required",
@@ -61,7 +61,7 @@ export const entry: AlternativeData = {
     {
       question: "Is GAIA cheaper than getting Notion AI via the Business plan?",
       answer:
-        "Notion's Business plan, which includes unlimited AI, costs $20/user/month. GAIA Pro is also $20/month for an individual but includes email management, calendar integration, 50+ tool connections, and workflow automation, not just AI writing inside one app. Self-hosted GAIA is free.",
+        "Notion's Business plan, which includes unlimited AI, costs $20/user/month. GAIA Pro is also $20/month for an individual but includes email management, calendar integration, many tool connections, and workflow automation, not just AI writing inside one app. Self-hosted GAIA is free.",
     },
     {
       question:

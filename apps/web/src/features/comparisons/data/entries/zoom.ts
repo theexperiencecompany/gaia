@@ -69,7 +69,7 @@ GAIA also provides the privacy-conscious with a meaningful alternative. As a ful
     },
     {
       feature: "Workflow automation",
-      gaia: "Multi-step automations triggered by calendar events, emails, or task updates across 50+ integrations",
+      gaia: "Multi-step automations triggered by calendar events, emails, or task updates across many integrations",
       competitor:
         "Zapier/Make integrations available but no native automation engine",
     },
@@ -81,7 +81,7 @@ GAIA also provides the privacy-conscious with a meaningful alternative. As a ful
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira, Google Calendar via MCP",
+      gaia: "many integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira, Google Calendar via MCP",
       competitor:
         "Deep video/audio integrations; limited productivity integrations beyond calendar and Slack notifications",
     },
@@ -102,7 +102,7 @@ GAIA also provides the privacy-conscious with a meaningful alternative. As a ful
     "Prepares meeting briefings automatically before calendar events fire",
     "Converts meeting action items into real tasks in Todoist, Linear, or Jira — no copy-paste",
     "Manages the full email and calendar workflow surrounding meetings",
-    "50+ integrations create a connected loop from meeting to outcome",
+    "many integrations create a connected loop from meeting to outcome",
     "Open source and self-hostable for privacy-sensitive teams",
     "Free tier with proactive AI capabilities that Zoom's paid tier does not match",
   ],

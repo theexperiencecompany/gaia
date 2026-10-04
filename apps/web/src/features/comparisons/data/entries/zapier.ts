@@ -58,7 +58,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations with AI-powered orchestration via MCP",
+      gaia: "many integrations with AI-powered orchestration via MCP",
       competitor: "6,000+ integrations with broad but shallow connectivity",
     },
     {
@@ -97,7 +97,7 @@ export const entry: ComparisonData = {
     {
       question: "Does GAIA have as many integrations as Zapier?",
       answer:
-        "No. Zapier supports 6,000+ apps while GAIA has 50+ with AI-powered orchestration via MCP. GAIA focuses on intelligent automation with deeper integrations, plus custom MCP support for adding your own connections.",
+        "No. Zapier supports 6,000+ apps while GAIA offers many with AI-powered orchestration via MCP. GAIA focuses on intelligent automation with deeper integrations, plus custom MCP support for adding your own connections.",
     },
     {
       question: "Can I use GAIA and Zapier together?",

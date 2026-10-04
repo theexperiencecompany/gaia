@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "gemini.google.com",
   tagline: "Google's AI assistant and Workspace intelligence layer",
   description:
-    "Gemini deeply integrates with Google Workspace and is rolling out Proactive Assistance, but stays Google-centric. GAIA proactively manages your entire digital workflow across 50+ tools, not just Google products.",
+    "Gemini deeply integrates with Google Workspace and is rolling out Proactive Assistance, but stays Google-centric. GAIA proactively manages your entire digital workflow across many tools, not just Google products.",
   metaTitle:
     "Google Gemini Alternative for Proactive Productivity — GAIA vs Gemini",
   metaDescription:
-    "Google Gemini enhances Workspace apps and is adding proactive features, but remains Google-only. GAIA is an open-source Gemini alternative that works across Gmail, Slack, Notion, GitHub, and 50+ tools — proactively managing your email, calendar, and tasks.",
+    "Google Gemini enhances Workspace apps and is adding proactive features, but remains Google-only. GAIA is an open-source Gemini alternative that works across Gmail, Slack, Notion, GitHub, and many tools — proactively managing your email, calendar, and tasks.",
   keywords: [
     "GAIA vs Gemini",
     "Gemini alternative",
@@ -24,7 +24,7 @@ export const entry: ComparisonData = {
     "Gemini vs GAIA",
   ],
   intro:
-    "Google Gemini is the AI layer built into Google Workspace — it drafts emails in Gmail, summarises documents in Docs, analyses data in Sheets, and generates slides. Proactive Assistance is rolling out in 2026, letting Gemini monitor your calendar and Gmail and surface timely suggestions. But Gemini is still fundamentally Google-centric: it enhances products you are already in rather than orchestrating your workflow across all your tools. GAIA connects Gmail, Slack, Notion, GitHub, Linear, and 50+ other services in one proactive assistant that acts before you ask — regardless of which app the action belongs to.",
+    "Google Gemini is the AI layer built into Google Workspace — it drafts emails in Gmail, summarises documents in Docs, analyses data in Sheets, and generates slides. Proactive Assistance is rolling out in 2026, letting Gemini monitor your calendar and Gmail and surface timely suggestions. But Gemini is still fundamentally Google-centric: it enhances products you are already in rather than orchestrating your workflow across all your tools. GAIA connects Gmail, Slack, Notion, GitHub, Linear, and many other services in one proactive assistant that acts before you ask — regardless of which app the action belongs to.",
   rows: [
     {
       feature: "Core approach",
@@ -34,13 +34,13 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Proactive behavior",
-      gaia: "Monitors inbox, calendar, and 50+ connected tools 24/7 and acts before you ask",
+      gaia: "Monitors inbox, calendar, and your connected tools 24/7 and acts before you ask",
       competitor:
         "Proactive Assistance rolling out in 2026 — monitors Gmail and Calendar; limited to Google ecosystem",
     },
     {
       feature: "Scope",
-      gaia: "50+ integrations spanning all your productivity tools",
+      gaia: "many integrations spanning all your productivity tools",
       competitor:
         "Native across Google Workspace; limited third-party reach via Workspace MCP (enterprise only)",
     },
@@ -64,7 +64,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Third-party tools",
-      gaia: "Slack, GitHub, Linear, Notion, Todoist, Asana, ClickUp, Trello, and 40+ more",
+      gaia: "Slack, GitHub, Linear, Notion, Todoist, Asana, ClickUp, Trello, and many more",
       competitor:
         "Google ecosystem natively; third-party tools via Workspace MCP on enterprise plans only",
     },
@@ -83,7 +83,7 @@ export const entry: ComparisonData = {
   ],
   gaiaAdvantages: [
     "Works across all your tools — not limited to Google products",
-    "Proactive monitoring and action across 50+ services today, not in preview",
+    "Proactive monitoring and action across many services today, not in preview",
     "Multi-step workflow automation available to all users without enterprise gating",
     "Unified dashboard combining tasks, email, calendar, and workflows in one view",
     "Open source and self-hostable — complete data ownership with no Google dependency",
@@ -112,7 +112,7 @@ export const entry: ComparisonData = {
       question:
         "Gemini is adding Proactive Assistance — does that close the gap with GAIA?",
       answer:
-        "Gemini's Proactive Assistance focuses on Gmail and Calendar within the Google ecosystem and is still rolling out. GAIA's proactive monitoring spans 50+ services — Slack messages, GitHub issues, Linear tickets, Notion pages — today, without any enterprise gating.",
+        "Gemini's Proactive Assistance focuses on Gmail and Calendar within the Google ecosystem and is still rolling out. GAIA's proactive monitoring spans many services — Slack messages, GitHub issues, Linear tickets, Notion pages — today, without any enterprise gating.",
     },
   ],
 };

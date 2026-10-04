@@ -1,0 +1,152 @@
+{
+  "meta": {
+    "sample": true,
+    "note": "SAMPLE DATA — generated with --dry-run, not real GSC numbers.",
+    "property": "sc-domain:heygaia.io",
+    "startDate": "2026-09-04",
+    "endDate": "2026-10-02",
+    "generatedAt": "2026-10-04T01:14:41.069Z"
+  },
+  "rows": [
+    {
+      "query": "gaia vs motion",
+      "clicks": 42,
+      "impressions": 1800,
+      "ctr": 0.0233,
+      "position": 8.2
+    },
+    {
+      "query": "sunsama alternative",
+      "clicks": 18,
+      "impressions": 1100,
+      "ctr": 0.0164,
+      "position": 12.9
+    },
+    {
+      "query": "open source ai assistant",
+      "clicks": 88,
+      "impressions": 5400,
+      "ctr": 0.0163,
+      "position": 6.1
+    },
+    {
+      "query": "inbox zero ai tool",
+      "clicks": 22,
+      "impressions": 1300,
+      "ctr": 0.0169,
+      "position": 10.2
+    },
+    {
+      "query": "what is agentic ai",
+      "clicks": 15,
+      "impressions": 2100,
+      "ctr": 0.0071,
+      "position": 22.5
+    },
+    {
+      "query": "ai meeting assistant open source",
+      "clicks": 11,
+      "impressions": 760,
+      "ctr": 0.0145,
+      "position": 16.6
+    },
+    {
+      "query": "gaia vs routine",
+      "clicks": 21,
+      "impressions": 880,
+      "ctr": 0.0239,
+      "position": 11.5
+    },
+    {
+      "query": "todoist vs timehero",
+      "clicks": 6,
+      "impressions": 390,
+      "ctr": 0.0154,
+      "position": 16.2
+    },
+    {
+      "query": "timehero alternative",
+      "clicks": 9,
+      "impressions": 640,
+      "ctr": 0.0141,
+      "position": 14.8
+    },
+    {
+      "query": "routine alternative ai",
+      "clicks": 4,
+      "impressions": 310,
+      "ctr": 0.0129,
+      "position": 19.4
+    },
+    {
+      "query": "connect superhuman to gmail automatically",
+      "clicks": 5,
+      "impressions": 450,
+      "ctr": 0.0111,
+      "position": 22.6
+    },
+    {
+      "query": "sync stripe with google drive automatically",
+      "clicks": 4,
+      "impressions": 380,
+      "ctr": 0.0105,
+      "position": 21.4
+    },
+    {
+      "query": "what is timeboxing",
+      "clicks": 17,
+      "impressions": 1900,
+      "ctr": 0.0089,
+      "position": 20.3
+    },
+    {
+      "query": "vibe coding setup guide",
+      "clicks": 7,
+      "impressions": 720,
+      "ctr": 0.0097,
+      "position": 23.7
+    },
+    {
+      "query": "ai calendar management tool",
+      "clicks": 12,
+      "impressions": 900,
+      "ctr": 0.0133,
+      "position": 14.7
+    },
+    {
+      "query": "superhuman alternative ai email",
+      "clicks": 14,
+      "impressions": 890,
+      "ctr": 0.0157,
+      "position": 9.1
+    },
+    {
+      "query": "notion calendar sync todoist automation",
+      "clicks": 3,
+      "impressions": 310,
+      "ctr": 0.0097,
+      "position": 24.1
+    },
+    {
+      "query": "ai chief of staff app",
+      "clicks": 25,
+      "impressions": 1200,
+      "ctr": 0.0208,
+      "position": 11.3
+    },
+    {
+      "query": "heygaia pricing",
+      "clicks": 65,
+      "impressions": 900,
+      "ctr": 0.0722,
+      "position": 2.1
+    },
+    {
+      "query": "gaia ai assistant download",
+      "clicks": 54,
+      "impressions": 700,
+      "ctr": 0.0771,
+      "position": 3.4
+    }
+  ]
+}

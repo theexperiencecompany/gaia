@@ -25,7 +25,7 @@ export const entry: ComparisonData = {
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive personal AI assistant that monitors your digital workflow continuously and acts autonomously across email, calendar, tasks, and 50+ tools via official API integrations",
+      gaia: "Proactive personal AI assistant that monitors your digital workflow continuously and acts autonomously across email, calendar, tasks, and many tools via official API integrations",
       competitor:
         "Open-source no-code automation platform where users define triggers and actions through a visual flow builder; executes rule-based workflows exactly as configured",
     },
@@ -67,7 +67,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ deep integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, and more — bi-directional API actions available to the AI agent at runtime",
+      gaia: "many deep integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, and more — bi-directional API actions available to the AI agent at runtime",
       competitor:
         "440+ app integrations (pieces) covering popular SaaS tools across CRM, productivity, marketing, and developer categories; community continuously adds new pieces",
     },
@@ -98,7 +98,7 @@ export const entry: ComparisonData = {
     "Full Gmail management including inbox triage, AI-drafted replies, auto-labeling, and task creation — capabilities that go beyond what a trigger-action automation platform can provide",
   ],
   competitorAdvantages: [
-    "440+ app integrations contributed by a large open-source community — a far broader connector ecosystem than GAIA's current 50+ MCP integrations",
+    "440+ app integrations contributed by a large open-source community — a far broader connector ecosystem than GAIA's current MCP integrations",
     "Visual flow builder makes it easy for non-technical users to define, test, and manage automations without writing code or prompting an AI",
     "Unlimited task runs on all paid plans and the self-hosted Community Edition means costs stay fully predictable as automation volume scales — no per-execution pricing",
   ],

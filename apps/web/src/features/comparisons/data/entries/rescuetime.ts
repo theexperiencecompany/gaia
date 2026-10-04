@@ -27,11 +27,11 @@ export const entry: ComparisonData = {
 
 But awareness alone rarely changes behavior. RescueTime shows you that you spent three hours on social media, yet it cannot block those distractions in context, reschedule the tasks you missed, or coordinate with the rest of your workflow to prevent the same pattern tomorrow. The data stays inside RescueTime's dashboard while your actual work happens across Slack, Gmail, Notion, GitHub, and a dozen other tools.
 
-GAIA takes the next step. Rather than reporting on what already happened, GAIA proactively manages your digital environment — scheduling focused work blocks on your calendar, surfacing urgent tasks from your inbox, and automating the routine actions that eat into productive time. It connects to 50+ tools so the intelligence it gathers can actually move things forward, not just chart them. For knowledge workers who want to reclaim their time rather than just measure it, GAIA offers a fundamentally more active approach to productivity.`,
+GAIA takes the next step. Rather than reporting on what already happened, GAIA proactively manages your digital environment — scheduling focused work blocks on your calendar, surfacing urgent tasks from your inbox, and automating the routine actions that eat into productive time. It connects to many tools so the intelligence it gathers can actually move things forward, not just chart them. For knowledge workers who want to reclaim their time rather than just measure it, GAIA offers a fundamentally more active approach to productivity.`,
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI assistant that manages tasks, calendar, email, and workflows across 50+ tools",
+      gaia: "Proactive AI assistant that manages tasks, calendar, email, and workflows across many tools",
       competitor:
         "Passive time tracking that records app and website usage in the background",
     },
@@ -59,7 +59,7 @@ GAIA takes the next step. Rather than reporting on what already happened, GAIA p
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations including Gmail, Slack, GitHub, Notion, Linear, and more via MCP",
+      gaia: "many integrations including Gmail, Slack, GitHub, Notion, Linear, and more via MCP",
       competitor:
         "Integrates with Slack and calendar apps for activity logging",
     },
@@ -87,7 +87,7 @@ GAIA takes the next step. Rather than reporting on what already happened, GAIA p
   gaiaAdvantages: [
     "Acts on productivity insights instead of just reporting them",
     "Manages email, calendar, and tasks — not just tracks time",
-    "50+ integrations for cross-tool workflow orchestration",
+    "many integrations for cross-tool workflow orchestration",
     "Proactive focus scheduling and task prioritization",
     "Open source with self-hosting for full data ownership",
     "Unified workspace replacing multiple single-purpose apps",
@@ -119,7 +119,7 @@ GAIA takes the next step. Rather than reporting on what already happened, GAIA p
     {
       question: "Does GAIA integrate with RescueTime?",
       answer:
-        "GAIA's 50+ integrations cover the tools that feed into your workflow. While a direct RescueTime integration is not currently listed, GAIA connects to Gmail, Slack, Google Calendar, and the project management tools where your actual work happens.",
+        "GAIA's many integrations cover the tools that feed into your workflow. While a direct RescueTime integration is not currently listed, GAIA connects to Gmail, Slack, Google Calendar, and the project management tools where your actual work happens.",
     },
     {
       question: "Which is better for remote workers — GAIA or RescueTime?",

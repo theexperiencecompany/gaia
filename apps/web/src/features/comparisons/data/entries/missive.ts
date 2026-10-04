@@ -6,7 +6,7 @@ export const entry: ComparisonData = {
   domain: "missiveapp.com",
   tagline: "Team inbox and collaborative email client for shared communication",
   description:
-    "Missive is a collaborative email client that turns your inbox into a shared workspace — with shared inboxes, in-thread team chat, assignment rules, and integrations with CRMs and project tools. GAIA is a proactive AI productivity OS that manages email, calendar, tasks, and 50+ integrations autonomously, built for individuals and teams who want an AI to handle the administrative layer, not just a better place to read email together.",
+    "Missive is a collaborative email client that turns your inbox into a shared workspace — with shared inboxes, in-thread team chat, assignment rules, and integrations with CRMs and project tools. GAIA is a proactive AI productivity OS that manages email, calendar, tasks, and many integrations autonomously, built for individuals and teams who want an AI to handle the administrative layer, not just a better place to read email together.",
   metaTitle: "Missive Alternative for Personal Productivity — GAIA vs Missive",
   metaDescription:
     "Compare GAIA and Missive. Missive excels at team inbox collaboration, but GAIA manages email, calendar, tasks, and cross-tool workflows proactively — acting before you ask.",
@@ -30,11 +30,11 @@ export const entry: ComparisonData = {
     "Missive vs GAIA",
   ],
   intro:
-    "Missive has built one of the most capable collaborative email products on the market. Teams that run on email — support teams, client-facing agencies, operations teams — love it because it turns the inbox from a solo experience into a shared workspace. Every email thread can have internal chat comments alongside it, be assigned to a specific teammate, or be routed automatically by rules. Shared inboxes mean multiple people can work the same email queue without stepping on each other. The Productive plan adds deep CRM and project tool integrations (Asana, Pipedrive, Trello), automation rules, and API access. For a team that needs to collaborate inside email, Missive is genuinely excellent.\n\nThe gap Missive does not address is autonomy. Its rules engine can route, label, and assign emails, but it does not have an AI layer that reads email content, understands context, and takes action based on meaning. An email from a client saying 'let's meet next Thursday' will sit in the inbox until a human reads it — Missive will not propose a time, check your calendar, or draft a scheduling reply. The tool excels at helping teams divide the email workload; it does not reduce the workload itself.\n\nGAIA approaches the problem from the opposite direction. Rather than making the inbox a better collaborative interface, GAIA makes the inbox a source of triggers for autonomous action. When a priority email arrives, GAIA triages it by urgency, drafts a contextual reply using knowledge of your past interactions and current projects, and can convert the email into a task, a calendar event, or a Slack notification — all without human intervention. GAIA's graph-based memory means it understands that this email is from a client who had a meeting with you two weeks ago and a task that was due yesterday, so the reply it drafts acknowledges that context.\n\nGAIA also extends well beyond email. It manages Google Calendar — finding slots, creating events, and generating pre-meeting briefing documents. It syncs with Todoist and its own native task system. It runs multi-step automations described in plain language across 50+ integrations via MCP. The mental model is less 'better inbox' and more 'delegate your inbox to an AI chief of staff.'\n\nFor teams with high-volume shared email queues and human agents who need to collaborate on replies, Missive remains the superior specialized tool. For individuals and small teams who want to spend dramatically less time in email by having an AI handle triage, drafting, and downstream actions, GAIA is built for that outcome. The two products are rarely direct substitutes — Missive reduces friction inside the inbox; GAIA reduces time in the inbox altogether.",
+    "Missive has built one of the most capable collaborative email products on the market. Teams that run on email — support teams, client-facing agencies, operations teams — love it because it turns the inbox from a solo experience into a shared workspace. Every email thread can have internal chat comments alongside it, be assigned to a specific teammate, or be routed automatically by rules. Shared inboxes mean multiple people can work the same email queue without stepping on each other. The Productive plan adds deep CRM and project tool integrations (Asana, Pipedrive, Trello), automation rules, and API access. For a team that needs to collaborate inside email, Missive is genuinely excellent.\n\nThe gap Missive does not address is autonomy. Its rules engine can route, label, and assign emails, but it does not have an AI layer that reads email content, understands context, and takes action based on meaning. An email from a client saying 'let's meet next Thursday' will sit in the inbox until a human reads it — Missive will not propose a time, check your calendar, or draft a scheduling reply. The tool excels at helping teams divide the email workload; it does not reduce the workload itself.\n\nGAIA approaches the problem from the opposite direction. Rather than making the inbox a better collaborative interface, GAIA makes the inbox a source of triggers for autonomous action. When a priority email arrives, GAIA triages it by urgency, drafts a contextual reply using knowledge of your past interactions and current projects, and can convert the email into a task, a calendar event, or a Slack notification — all without human intervention. GAIA's graph-based memory means it understands that this email is from a client who had a meeting with you two weeks ago and a task that was due yesterday, so the reply it drafts acknowledges that context.\n\nGAIA also extends well beyond email. It manages Google Calendar — finding slots, creating events, and generating pre-meeting briefing documents. It syncs with Todoist and its own native task system. It runs multi-step automations described in plain language across many integrations via MCP. The mental model is less 'better inbox' and more 'delegate your inbox to an AI chief of staff.'\n\nFor teams with high-volume shared email queues and human agents who need to collaborate on replies, Missive remains the superior specialized tool. For individuals and small teams who want to spend dramatically less time in email by having an AI handle triage, drafting, and downstream actions, GAIA is built for that outcome. The two products are rarely direct substitutes — Missive reduces friction inside the inbox; GAIA reduces time in the inbox altogether.",
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI productivity OS — monitors email, calendar, tasks, and 50+ tools and acts autonomously on your behalf",
+      gaia: "Proactive AI productivity OS — monitors email, calendar, tasks, and many tools and acts autonomously on your behalf",
       competitor:
         "Collaborative email client — turns the inbox into a shared team workspace with assignments, internal chat, and shared queues",
     },
@@ -52,7 +52,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Automation",
-      gaia: "Natural-language multi-step automations with triggers, conditions, and cross-tool actions spanning 50+ integrations via MCP",
+      gaia: "Natural-language multi-step automations with triggers, conditions, and cross-tool actions spanning many integrations via MCP",
       competitor:
         "Rules engine for routing, assigning, and labeling email; Productive plan adds Zapier and native integrations; no AI-driven automation based on email content meaning",
     },
@@ -76,7 +76,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ deep bi-directional integrations via MCP — Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, Jira, and more",
+      gaia: "many deep bi-directional integrations via MCP — Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, Jira, and more",
       competitor:
         "Integrations with Asana, Pipedrive, Trello, and others on Productive plan; API access; Zapier available; focused primarily on CRM and support workflows",
     },
@@ -97,7 +97,7 @@ export const entry: ComparisonData = {
     "AI reads email content and acts on meaning — triaging by urgency, drafting context-aware replies, and converting emails to tasks or calendar events autonomously",
     "Graph-based memory connects email threads to people, meetings, projects, and tasks so every automated reply has full context, not just the current thread",
     "Calendar scheduling built in — finds slots, creates events, and generates pre-meeting briefings triggered directly from email without manual intervention",
-    "Natural-language multi-step automations across 50+ tools that go beyond routing to executing actions in Slack, Notion, GitHub, Linear, and more",
+    "Natural-language multi-step automations across many tools that go beyond routing to executing actions in Slack, Notion, GitHub, Linear, and more",
     "Open source and self-hostable — complete data ownership with no per-seat cost and no data used for AI training",
   ],
   competitorAdvantages: [
@@ -117,7 +117,7 @@ export const entry: ComparisonData = {
     {
       question: "Does GAIA have automation rules like Missive?",
       answer:
-        "GAIA goes beyond rule-based automation. Missive's rules engine fires on predefined conditions like sender or subject line. GAIA uses an AI layer that reads the content and context of each email and acts based on meaning — so it can triage a message as urgent because of what it says, not just who sent it. GAIA also supports natural-language multi-step automations that chain actions across 50+ connected tools, not just actions inside the inbox.",
+        "GAIA goes beyond rule-based automation. Missive's rules engine fires on predefined conditions like sender or subject line. GAIA uses an AI layer that reads the content and context of each email and acts based on meaning — so it can triage a message as urgent because of what it says, not just who sent it. GAIA also supports natural-language multi-step automations that chain actions across your connected tools, not just actions inside the inbox.",
     },
     {
       question: "How does GAIA's pricing compare to Missive for a small team?",

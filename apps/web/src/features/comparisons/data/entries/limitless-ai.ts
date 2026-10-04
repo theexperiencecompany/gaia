@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "limitless.ai",
   tagline: "Personalized AI memory via wearable and desktop",
   description:
-    "Limitless AI is a memory-capture platform built around a wearable pendant and desktop app that transcribes and summarizes conversations and meetings. GAIA is a proactive productivity OS that manages your email, calendar, tasks, and workflows across 50+ integrations — no hardware required.",
+    "Limitless AI is a memory-capture platform built around a wearable pendant and desktop app that transcribes and summarizes conversations and meetings. GAIA is a proactive productivity OS that manages your email, calendar, tasks, and workflows across many integrations — no hardware required.",
   metaTitle:
     "Limitless Alternative with Full Productivity AI — GAIA vs Limitless",
   metaDescription:
-    "Limitless captures conversations via a wearable but doesn't manage your inbox or automate workflows. GAIA is an open-source Limitless alternative with full productivity AI — managing email, calendar, tasks, and 50+ tool workflows entirely in software.",
+    "Limitless captures conversations via a wearable but doesn't manage your inbox or automate workflows. GAIA is an open-source Limitless alternative with full productivity AI — managing email, calendar, tasks, and many tool workflows entirely in software.",
   keywords: [
     "GAIA vs Limitless",
     "Limitless AI alternative",
@@ -22,7 +22,7 @@ export const entry: ComparisonData = {
     "open source AI assistant",
   ],
   intro:
-    "Limitless AI built its reputation on a compelling idea: a wearable pendant that passively records and transcribes everything you say throughout the day, giving you a searchable memory of every meeting and conversation. For professionals who lose important context between calls, it solves a real pain point. But memory capture is only the starting line. GAIA operates at a different layer entirely — it does not just remember your conversations, it acts on them. GAIA reads your inbox, triages emails by urgency, drafts replies, creates tasks from context, prepares meeting briefings, and executes multi-step automations across 50+ tools. Where Limitless augments your recall, GAIA augments your output. And it does all of this without requiring you to buy, charge, or wear any hardware.",
+    "Limitless AI built its reputation on a compelling idea: a wearable pendant that passively records and transcribes everything you say throughout the day, giving you a searchable memory of every meeting and conversation. For professionals who lose important context between calls, it solves a real pain point. But memory capture is only the starting line. GAIA operates at a different layer entirely — it does not just remember your conversations, it acts on them. GAIA reads your inbox, triages emails by urgency, drafts replies, creates tasks from context, prepares meeting briefings, and executes multi-step automations across many tools. Where Limitless augments your recall, GAIA augments your output. And it does all of this without requiring you to buy, charge, or wear any hardware.",
   rows: [
     {
       feature: "Core approach",
@@ -62,7 +62,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and Jira with deep bi-directional actions",
+      gaia: "many integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and Jira with deep bi-directional actions",
       competitor:
         "Integrates with Zoom, Google Meet, and other video conferencing tools for virtual meeting capture; limited broader tool ecosystem",
     },
@@ -83,7 +83,7 @@ export const entry: ComparisonData = {
     "Proactively acts on your behalf — triages email, prepares meeting briefings, and executes workflows without a prompt",
     "No hardware required — runs entirely in software across web, desktop, mobile, and CLI on any operating system",
     "Full Gmail automation including urgency triage, context-aware reply drafting, and automatic task creation from emails",
-    "Multi-step workflow automation with natural-language triggers spanning 50+ integrated tools",
+    "Multi-step workflow automation with natural-language triggers spanning many integrated tools",
     "Open source and self-hostable — full data ownership, no training on your data, and no dependency on a hardware device or third-party acquisition",
   ],
   competitorAdvantages: [
@@ -92,7 +92,7 @@ export const entry: ComparisonData = {
     "Searchable conversation archive lets you query everything you have said and heard across months of recorded history",
   ],
   verdict:
-    "Limitless AI excels at one thing — giving you a searchable memory of your spoken conversations through a wearable device. If passive capture of in-person meetings is your primary need, it delivers. But Limitless does not act: it does not manage your inbox, build tasks, automate workflows, or connect your tools. GAIA is built for people who want an AI that runs their digital life end-to-end — triaging email, executing calendar actions, automating multi-step workflows across 50+ integrations, and doing all of it in software, on any device, with full data ownership.",
+    "Limitless AI excels at one thing — giving you a searchable memory of your spoken conversations through a wearable device. If passive capture of in-person meetings is your primary need, it delivers. But Limitless does not act: it does not manage your inbox, build tasks, automate workflows, or connect your tools. GAIA is built for people who want an AI that runs their digital life end-to-end — triaging email, executing calendar actions, automating multi-step workflows across many integrations, and doing all of it in software, on any device, with full data ownership.",
   faqs: [
     {
       question: "Can GAIA replace the Limitless pendant for meeting capture?",

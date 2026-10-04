@@ -72,7 +72,7 @@ export const entry: AlternativeData = {
     {
       question: "Is GAIA cheaper than Fantastical Premium?",
       answer:
-        "Fantastical Premium is $4.75/month ($57/year) for just a calendar app. GAIA Pro is $20/month but includes email management, task management, 50+ integrations, and workflow automation. Self-hosted GAIA is free.",
+        "Fantastical Premium is $4.75/month ($57/year) for just a calendar app. GAIA Pro is $20/month but includes email management, task management, many integrations, and workflow automation. Self-hosted GAIA is free.",
     },
   ],
 };

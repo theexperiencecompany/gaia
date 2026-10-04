@@ -43,7 +43,7 @@ export const entry: AlternativeData = {
   gaiaAdvantages: [
     "Email integration closes the loop from inbox to calendar to task",
     "Proactive intelligence surfaces issues before they become conflicts",
-    "50+ tool integrations beyond calendar management",
+    "many tool integrations beyond calendar management",
     "Open-source with self-hosting option",
     "Free tier available; no per-seat enterprise pricing",
   ],
@@ -72,7 +72,7 @@ export const entry: AlternativeData = {
     {
       question: "How does GAIA's pricing compare to Reclaim?",
       answer:
-        "Reclaim Pro starts at $8/month per user. GAIA Pro is $20/month but includes email management, 50+ integrations, memory, and workflow automation. Self-hosted GAIA is free.",
+        "Reclaim Pro starts at $8/month per user. GAIA Pro is $20/month but includes email management, many integrations, memory, and workflow automation. Self-hosted GAIA is free.",
     },
   ],
 };

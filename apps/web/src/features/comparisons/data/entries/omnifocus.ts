@@ -9,7 +9,7 @@ export const entry: ComparisonData = {
     "OmniFocus is a feature-rich GTD task manager built exclusively for Apple devices. GAIA goes further by layering proactive AI intelligence on top of tasks, email, and calendar — and running on every platform your team actually uses.",
   metaTitle: "OmniFocus Alternative with AI Email — GAIA vs OmniFocus",
   metaDescription:
-    "OmniFocus is a powerful GTD system but is Apple-only and requires manual task entry. GAIA is an open-source OmniFocus alternative with AI email integration, cross-platform support, and workflow automation across 50+ tools — free to self-host.",
+    "OmniFocus is a powerful GTD system but is Apple-only and requires manual task entry. GAIA is an open-source OmniFocus alternative with AI email integration, cross-platform support, and workflow automation across many tools — free to self-host.",
   keywords: [
     "GAIA vs OmniFocus",
     "OmniFocus alternative",
@@ -57,7 +57,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Cross-tool integrations",
-      gaia: "50+ integrations via MCP including Gmail, Slack, Notion, GitHub, Linear, and more",
+      gaia: "many integrations via MCP including Gmail, Slack, Notion, GitHub, Linear, and more",
       competitor:
         "Limited to Apple ecosystem integrations — Calendar, Reminders, Siri, Shortcuts, and third-party automation tools like Zapier",
     },
@@ -76,7 +76,7 @@ export const entry: ComparisonData = {
   gaiaAdvantages: [
     "Works on every platform including Windows, Linux, Android, and the web — OmniFocus is locked to Apple hardware",
     "AI proactively captures tasks from emails, calendar events, and messages so nothing requires manual entry",
-    "50+ integrations allow GAIA to orchestrate work across your entire tool stack, not just a standalone task store",
+    "many integrations allow GAIA to orchestrate work across your entire tool stack, not just a standalone task store",
     "Natural language automations remove repetitive manual steps without needing AppleScript or JavaScript",
     "Open source and self-hostable for individuals and teams who require full data sovereignty",
     "Graph-based persistent memory connects tasks to context — projects, meetings, people, and deadlines — automatically",

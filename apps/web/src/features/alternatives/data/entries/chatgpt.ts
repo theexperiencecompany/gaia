@@ -40,11 +40,11 @@ export const entry: AlternativeData = {
     "Email drafting and inbox triage with full context from your Gmail",
     "Calendar management including scheduling, rescheduling, and conflict detection",
     "Task creation and prioritization directly from conversation",
-    "Workflow automation that executes across 50+ connected tools",
+    "Workflow automation that executes across your connected tools",
   ],
   gaiaAdvantages: [
     "Persistent graph-based memory remembers context across all sessions",
-    "Directly connected to Gmail, Google Calendar, Todoist, and 50+ tools",
+    "Directly connected to Gmail, Google Calendar, Todoist, and many tools",
     "Takes real action: schedules meetings, sends emails, creates tasks",
     "Proactive: surfaces important information before you ask",
     "Open-source and self-hostable; no OpenAI data retention concerns",
@@ -80,7 +80,7 @@ export const entry: AlternativeData = {
   comparisonRows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI agent embedded in your workflow: reads email, manages calendar, creates tasks, and takes action across 50+ tools autonomously",
+      gaia: "Proactive AI agent embedded in your workflow: reads email, manages calendar, creates tasks, and takes action across many tools autonomously",
       competitor:
         "Reactive conversational AI in a chat window: answers questions and generates text when prompted, with no tool access by default",
     },
@@ -92,7 +92,7 @@ export const entry: AlternativeData = {
     },
     {
       feature: "Tool integrations",
-      gaia: "50+ integrations via MCP including Gmail, Google Calendar, Todoist, Slack, GitHub, Notion, and more, all natively orchestrated",
+      gaia: "many integrations via MCP including Gmail, Google Calendar, Todoist, Slack, GitHub, Notion, and more, all natively orchestrated",
       competitor:
         "Web browsing and code execution built in; external tool access requires custom GPTs or API integrations you build yourself",
     },

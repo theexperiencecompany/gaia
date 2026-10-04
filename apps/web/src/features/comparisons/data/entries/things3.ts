@@ -10,7 +10,7 @@ export const entry: ComparisonData = {
   metaTitle:
     "Things 3 Alternative with AI Email Integration — GAIA vs Things 3",
   metaDescription:
-    "Things 3 is beautifully designed but Apple-only and can't read your email. GAIA is an open-source Things 3 alternative with AI email integration, cross-platform support, and workflow automation across 50+ tools — free to self-host.",
+    "Things 3 is beautifully designed but Apple-only and can't read your email. GAIA is an open-source Things 3 alternative with AI email integration, cross-platform support, and workflow automation across many tools — free to self-host.",
   keywords: [
     "GAIA vs Things 3",
     "Things 3 alternative",
@@ -56,7 +56,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Cross-tool integrations",
-      gaia: "50+ integrations via MCP including Gmail, Slack, Notion, GitHub, Linear, and more",
+      gaia: "many integrations via MCP including Gmail, Slack, Notion, GitHub, Linear, and more",
       competitor:
         "Limited to Apple Reminders, Calendar import, mail-to capture, and community-built Shortcuts",
     },
@@ -81,7 +81,7 @@ export const entry: ComparisonData = {
   gaiaAdvantages: [
     "Works on every platform including Windows, Linux, Android, and the web — not limited to Apple devices",
     "AI proactively creates tasks from emails, calendar events, and messages so nothing falls through the cracks",
-    "50+ integrations allow GAIA to orchestrate work across your entire tool stack, not just a standalone app",
+    "many integrations allow GAIA to orchestrate work across your entire tool stack, not just a standalone app",
     "Natural language automations eliminate repetitive manual workflows without scripting or Shortcuts setup",
     "Open source and self-hostable for teams and individuals who require data sovereignty",
     "Graph-based persistent memory connects tasks to context — projects, meetings, people, and deadlines",

@@ -10,7 +10,7 @@ export const entry: ComparisonData = {
   metaTitle:
     "Microsoft Teams Alternative with Open Integrations — GAIA vs Teams",
   metaDescription:
-    "Microsoft Teams locks your AI into the Office 365 ecosystem. GAIA is an open-source alternative connecting Gmail, Slack, Notion, GitHub, and 50+ tools with proactive AI that manages tasks and workflows.",
+    "Microsoft Teams locks your AI into the Office 365 ecosystem. GAIA is an open-source alternative connecting Gmail, Slack, Notion, GitHub, and many tools with proactive AI that manages tasks and workflows.",
   keywords: [
     "microsoft teams alternative",
     "gaia vs microsoft teams",
@@ -33,7 +33,7 @@ The pricing and access model is also fundamentally different. Microsoft Copilot 
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI OS connecting 50+ tools across your entire stack with autonomous task management and workflow automation",
+      gaia: "Proactive AI OS connecting many tools across your entire stack with autonomous task management and workflow automation",
       competitor:
         "Unified communication platform (chat + meetings) with AI Copilot focused on the Office 365 ecosystem",
     },
@@ -103,7 +103,7 @@ The pricing and access model is also fundamentally different. Microsoft Copilot 
     "No per-seat AI premium — free tier and affordable Pro plan vs $30/user/month Copilot add-on",
     "Open source and self-hostable for organizations with data sovereignty requirements",
     "Graph-based memory with cross-tool context — connects emails, meetings, tasks, and documents",
-    "Natural-language workflow automation across 50+ integrations",
+    "Natural-language workflow automation across many integrations",
   ],
   competitorAdvantages: [
     "Deeply integrated with Office 365 — Excel, Word, PowerPoint, SharePoint, and Outlook all in one subscription",
@@ -116,7 +116,7 @@ The pricing and access model is also fundamentally different. Microsoft Copilot 
     {
       question: "Can GAIA replace Microsoft Teams for team communication?",
       answer:
-        "GAIA is not a team chat or video conferencing tool — it does not replace Teams for communication. GAIA replaces the productivity AI layer that Copilot provides, but extends it far beyond the Microsoft ecosystem to connect Gmail, Slack, GitHub, Notion, and 50+ more tools.",
+        "GAIA is not a team chat or video conferencing tool — it does not replace Teams for communication. GAIA replaces the productivity AI layer that Copilot provides, but extends it far beyond the Microsoft ecosystem to connect Gmail, Slack, GitHub, Notion, and many more tools.",
     },
     {
       question: "How does GAIA compare to Microsoft Copilot in Teams?",

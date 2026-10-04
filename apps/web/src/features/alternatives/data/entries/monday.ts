@@ -43,7 +43,7 @@ export const entry: AlternativeData = {
   gaiaAdvantages: [
     "No per-seat pricing: GAIA's cost doesn't scale with team size for individuals",
     "Proactive AI surfaces urgent tasks and deadlines without manual flagging",
-    "50+ integrations via MCP connect GAIA to tools Monday.com cannot reach",
+    "many integrations via MCP connect GAIA to tools Monday.com cannot reach",
     "Self-hostable for teams with strict data sovereignty requirements",
     "Conversational interface means no learning curve for new users",
   ],

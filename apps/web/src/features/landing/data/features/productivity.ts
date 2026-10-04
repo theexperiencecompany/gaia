@@ -145,7 +145,7 @@ export const PRODUCTIVITY_FEATURES: FeatureData[] = [
       {
         question: "Does it support Google Calendar only?",
         answer:
-          "Google Calendar is fully supported with two-way sync. Outlook and Apple Calendar support is on the roadmap.",
+          "Google Calendar is fully supported with two-way sync — Gmail-first for now. Outlook and Apple Calendar support is on the roadmap, vote here; coming soon.",
       },
       {
         question: "Can GAIA find a time that works for multiple people?",

@@ -64,7 +64,7 @@ export const entry: AlternativeData = {
     {
       question: "Is GAIA more expensive than SaneBox?",
       answer:
-        "SaneBox starts at $7/month for basic filtering. GAIA Pro is $20/month but includes active email management, calendar, tasks, memory, and 50+ integrations. Self-hosted GAIA is free.",
+        "SaneBox starts at $7/month for basic filtering. GAIA Pro is $20/month but includes active email management, calendar, tasks, memory, and many integrations. Self-hosted GAIA is free.",
     },
     {
       question: "Can GAIA train on my email patterns like SaneBox?",

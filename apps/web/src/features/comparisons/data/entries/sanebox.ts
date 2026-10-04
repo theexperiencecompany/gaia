@@ -9,7 +9,7 @@ export const entry: ComparisonData = {
     "SaneBox is an email filtering service that moves non-urgent messages out of your inbox into smart folders so you focus on what matters. GAIA goes further by reading, triaging, drafting replies, creating tasks, and automating cross-tool workflows — replacing a passive filter with an active AI assistant.",
   metaTitle: "SaneBox Alternative with Proactive AI — GAIA vs SaneBox",
   metaDescription:
-    "SaneBox filters email passively but can't draft replies or create tasks. GAIA is an open-source SaneBox alternative with proactive AI that reads, triages, and acts on email — while automating workflows across 50+ tools with a free tier.",
+    "SaneBox filters email passively but can't draft replies or create tasks. GAIA is an open-source SaneBox alternative with proactive AI that reads, triages, and acts on email — while automating workflows across many tools with a free tier.",
   keywords: [
     "GAIA vs SaneBox",
     "SaneBox alternative",
@@ -25,11 +25,11 @@ export const entry: ComparisonData = {
     "SaneBox vs GAIA",
   ],
   intro:
-    "SaneBox has helped people reclaim their inboxes for over a decade by automatically sorting low-priority email into smart folders like SaneLater and SaneNews. It works with any email client, requires no plugins, and stays quietly in the background. But filtering is all it does — it never reads your email to understand context, never drafts a reply, never creates a task, and never touches anything outside your inbox. GAIA approaches email as one node in a connected productivity graph. It triages messages by urgency, drafts context-aware replies, auto-labels threads, creates tasks and calendar events from email content, and chains those actions into cross-tool workflows spanning Slack, Notion, GitHub, and 50+ other integrations. Where SaneBox is a smart filter, GAIA is a proactive assistant.",
+    "SaneBox has helped people reclaim their inboxes for over a decade by automatically sorting low-priority email into smart folders like SaneLater and SaneNews. It works with any email client, requires no plugins, and stays quietly in the background. But filtering is all it does — it never reads your email to understand context, never drafts a reply, never creates a task, and never touches anything outside your inbox. GAIA approaches email as one node in a connected productivity graph. It triages messages by urgency, drafts context-aware replies, auto-labels threads, creates tasks and calendar events from email content, and chains those actions into cross-tool workflows spanning Slack, Notion, GitHub, and many other integrations. Where SaneBox is a smart filter, GAIA is a proactive assistant.",
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI assistant that monitors your inbox, understands content, and executes actions across email, tasks, calendar, and 50+ connected tools automatically",
+      gaia: "Proactive AI assistant that monitors your inbox, understands content, and executes actions across email, tasks, calendar, and your connected tools automatically",
       competitor:
         "Passive email filtering service — moves non-urgent messages into smart folders using machine-learning classification; never reads email body content",
     },
@@ -59,7 +59,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Cross-tool workflows",
-      gaia: "Natural-language automations that span email, calendar, Slack, Notion, GitHub, Linear, and 50+ tools — for example, auto-create a Linear ticket from a bug-report email and post a Slack summary",
+      gaia: "Natural-language automations that span email, calendar, Slack, Notion, GitHub, Linear, and many tools — for example, auto-create a Linear ticket from a bug-report email and post a Slack summary",
       competitor:
         "No workflow automation — SaneBox does not connect to tools outside email and has no automation engine",
     },
@@ -79,7 +79,7 @@ export const entry: ComparisonData = {
   gaiaAdvantages: [
     "Reads and understands email content to draft context-aware replies, removing the most time-consuming part of inbox management entirely",
     "Automatically converts emails into structured tasks and calendar events — closing the loop from inbox to action without manual copy-paste",
-    "Multi-step workflow automation connects email to Slack, Notion, GitHub, Linear, and 50+ other tools in a single natural-language instruction",
+    "Multi-step workflow automation connects email to Slack, Notion, GitHub, Linear, and many other tools in a single natural-language instruction",
     "Open source and self-hostable — your emails stay on your infrastructure and are never processed by a third-party filtering service",
     "Graph-based persistent memory links emails to the people, projects, and tasks they belong to, enabling context that persists across every interaction",
   ],
@@ -89,7 +89,7 @@ export const entry: ComparisonData = {
     "Very low setup friction — connects in minutes and operates passively without requiring the user to change habits or learn new interfaces",
   ],
   verdict:
-    "SaneBox is a well-proven, low-friction email filter that keeps your inbox manageable by routing noise out of the way. If sorting is your only problem, it solves it cleanly. But if you also need your email read for context, replies drafted, action items extracted, meetings scheduled, and everything connected to the rest of your digital workflow, SaneBox stops well short. GAIA handles all of that — proactively, across 50+ integrations, and without giving a third-party service access to your email content.",
+    "SaneBox is a well-proven, low-friction email filter that keeps your inbox manageable by routing noise out of the way. If sorting is your only problem, it solves it cleanly. But if you also need your email read for context, replies drafted, action items extracted, meetings scheduled, and everything connected to the rest of your digital workflow, SaneBox stops well short. GAIA handles all of that — proactively, across many integrations, and without giving a third-party service access to your email content.",
   faqs: [
     {
       question: "Can GAIA replace SaneBox for inbox organization?",

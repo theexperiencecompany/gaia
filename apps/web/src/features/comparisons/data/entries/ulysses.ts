@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "ulysses.app",
   tagline: "Premium distraction-free writing app for Mac and iOS",
   description:
-    "Ulysses is a premium writing app for macOS and iOS built for long-form writers, offering a distraction-free editor, manuscript management, and direct publishing to WordPress and Medium. GAIA is a proactive AI assistant that connects writing tasks to email, calendar, and 50+ integrations.",
+    "Ulysses is a premium writing app for macOS and iOS built for long-form writers, offering a distraction-free editor, manuscript management, and direct publishing to WordPress and Medium. GAIA is a proactive AI assistant that connects writing tasks to email, calendar, and many integrations.",
   metaTitle:
     "Ulysses Alternative with AI Workflow Automation & Cross-Platform Support — GAIA vs Ulysses",
   metaDescription:
-    "Ulysses is a premium writing app but Apple-only and focused on writing alone. GAIA is a free, open-source Ulysses alternative with AI automation, email management, and cross-platform support across 50+ integrations.",
+    "Ulysses is a premium writing app but Apple-only and focused on writing alone. GAIA is a free, open-source Ulysses alternative with AI automation, email management, and cross-platform support across many integrations.",
   keywords: [
     "ulysses alternative",
     "gaia vs ulysses",
@@ -27,13 +27,13 @@ export const entry: ComparisonData = {
 
 Ulysses earns its premium positioning through the quality of its writing experience. But it is an app built for one purpose — writing — on one platform ecosystem — Apple. There is no Windows version, no Android app, and no web interface. If you work on a Windows machine, pick up a PC at a coffee shop, or collaborate with someone outside the Apple world, Ulysses is simply not available.
 
-GAIA occupies a different part of the productivity space. Rather than providing a refined environment for long-form prose, GAIA acts as an AI layer across your entire digital workflow. It connects to your Gmail inbox, monitors your calendar, integrates with Slack, GitHub, Notion, Todoist, and 45+ other tools, and orchestrates actions across all of them automatically. For writers who also manage client communications, content calendars, project deadlines, and publishing workflows, GAIA handles the surrounding work infrastructure so more time can be spent writing.
+GAIA occupies a different part of the productivity space. Rather than providing a refined environment for long-form prose, GAIA acts as an AI layer across your entire digital workflow. It connects to your Gmail inbox, monitors your calendar, integrates with Slack, GitHub, Notion, Todoist, and many other tools, and orchestrates actions across all of them automatically. For writers who also manage client communications, content calendars, project deadlines, and publishing workflows, GAIA handles the surrounding work infrastructure so more time can be spent writing.
 
 The two tools serve fundamentally different needs. Where Ulysses is the best possible environment for the act of writing, GAIA manages everything else that surrounds the writing process — the emails requesting drafts, the calendar deadlines, the project tracking, the research tasks — proactively and automatically. For professionals whose workflow extends beyond manuscript creation, GAIA fills gaps that Ulysses was never designed to address.`,
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI assistant managing email, calendar, tasks, and workflows across 50+ connected tools",
+      gaia: "Proactive AI assistant managing email, calendar, tasks, and workflows across your connected tools",
       competitor:
         "Premium long-form writing environment focused entirely on distraction-free manuscript creation and editing",
     },
@@ -80,7 +80,7 @@ The two tools serve fundamentally different needs. Where Ulysses is the best pos
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira, and more via MCP",
+      gaia: "many integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira, and more via MCP",
       competitor:
         "WordPress and Medium publishing; iCloud sync; limited third-party integrations",
     },
@@ -107,7 +107,7 @@ The two tools serve fundamentally different needs. Where Ulysses is the best pos
     "Works on every platform — no Apple hardware dependency",
     "Manages email, calendar, and tasks surrounding the writing process automatically",
     "Proactively creates tasks and reminders from emails about writing projects without manual input",
-    "50+ integrations connect writing workflows to the broader tool ecosystem",
+    "many integrations connect writing workflows to the broader tool ecosystem",
     "Open source and self-hostable — complete data ownership",
     "Free tier available — no subscription required to start",
   ],

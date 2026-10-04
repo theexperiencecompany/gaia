@@ -6,7 +6,7 @@ export const entry: ComparisonData = {
   domain: "smartsheet.com",
   tagline: "Spreadsheet-based project management for enterprise teams",
   description:
-    "Smartsheet is an enterprise-grade work management platform that blends the familiarity of spreadsheets with project management features like Gantt charts, resource management, and automated workflows. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows autonomously across 50+ integrations — acting on your behalf rather than waiting for you to update a grid.",
+    "Smartsheet is an enterprise-grade work management platform that blends the familiarity of spreadsheets with project management features like Gantt charts, resource management, and automated workflows. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows autonomously across many integrations — acting on your behalf rather than waiting for you to update a grid.",
   metaTitle: "Smartsheet Alternative with AI Automation — GAIA vs Smartsheet",
   metaDescription:
     "Smartsheet requires manual grid updates and per-seat pricing. GAIA is an open-source Smartsheet alternative with AI email triage, autonomous task creation, and free self-hosting.",
@@ -28,13 +28,13 @@ export const entry: ComparisonData = {
 
 But Smartsheet has a fundamental characteristic that defines how it must be used: it is a passive record-keeping system. Information gets into Smartsheet because someone puts it there. A task row does not appear because an important email arrived; it appears because a project manager or team member manually creates it. A Gantt timeline does not update itself when a client emails to say a deliverable date has shifted; someone has to open Smartsheet and change the date. Automations exist within Smartsheet — you can trigger notifications or move rows based on status changes — but those automations operate on data already inside the platform, not on the broader context of your digital work environment. The gap between what is happening in your communication tools and what is recorded in Smartsheet is always filled by human effort.
 
-GAIA operates in the opposite direction. Rather than being a destination your team maintains, GAIA is an ambient AI layer that continuously monitors your Gmail inbox, reads your Google Calendar, and connects to 50+ tools via MCP. When an important email arrives that implies a project needs updating, GAIA detects it. When a meeting is 15 minutes away, GAIA prepares a briefing from your calendar context and relevant email threads without being asked. When you describe a multi-step workflow in natural language — "whenever I receive an email from a client marked urgent, create a high-priority task and send me a Slack summary" — GAIA executes it across tools rather than requiring you to configure it within a single platform's automation engine.
+GAIA operates in the opposite direction. Rather than being a destination your team maintains, GAIA is an ambient AI layer that continuously monitors your Gmail inbox, reads your Google Calendar, and connects to many tools via MCP. When an important email arrives that implies a project needs updating, GAIA detects it. When a meeting is 15 minutes away, GAIA prepares a briefing from your calendar context and relevant email threads without being asked. When you describe a multi-step workflow in natural language — "whenever I receive an email from a client marked urgent, create a high-priority task and send me a Slack summary" — GAIA executes it across tools rather than requiring you to configure it within a single platform's automation engine.
 
 The pricing model also diverges significantly. Smartsheet's pricing is per-seat and designed for enterprise contracts — meaningful features like resource management, advanced automations, and SSO require the Business or Enterprise tiers, which are substantially more expensive at scale. A team of 10 on the Business plan pays $320/month just for the project management layer. GAIA's hosted Pro plan is $20 per month regardless of how many people are on your team, and self-hosting GAIA is entirely free for teams comfortable managing their own infrastructure. For individuals and teams who want AI-powered productivity management rather than enterprise grid tooling, GAIA delivers a fundamentally different and more cost-effective approach to getting work done.`,
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI productivity OS that monitors email, calendar, and 50+ tools continuously, taking autonomous action on your behalf",
+      gaia: "Proactive AI productivity OS that monitors email, calendar, and many tools continuously, taking autonomous action on your behalf",
       competitor:
         "Spreadsheet-style enterprise work management platform where teams manually create and update rows, Gantt charts, and project records",
     },
@@ -58,7 +58,7 @@ The pricing model also diverges significantly. Smartsheet's pricing is per-seat 
     },
     {
       feature: "Workflow automation",
-      gaia: "Natural language multi-step automations spanning any connected tool — described in plain English and executed across email, calendar, and 50+ integrations",
+      gaia: "Natural language multi-step automations spanning any connected tool — described in plain English and executed across email, calendar, and many integrations",
       competitor:
         "Rules-based automation within Smartsheet (alerts, row moves, approval requests, recurring tasks); cross-tool automation requires Zapier or Smartsheet Bridge",
     },
@@ -88,7 +88,7 @@ The pricing model also diverges significantly. Smartsheet's pricing is per-seat 
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Jira, Todoist, and more",
+      gaia: "many integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Jira, Todoist, and more",
       competitor:
         "100+ native connectors including Microsoft 365, Google Workspace, Salesforce, Jira, ServiceNow, and Slack; Smartsheet Bridge for advanced cross-system automation",
     },
@@ -120,7 +120,7 @@ The pricing model also diverges significantly. Smartsheet's pricing is per-seat 
     "Robust approval workflows and governance controls suited for structured enterprise processes with multiple stakeholders",
   ],
   verdict:
-    "Choose Smartsheet if your organisation needs enterprise-grade project management with resource tracking, compliance controls, approval workflows, and executive portfolio dashboards — especially in regulated industries where governance and audit trails matter. Choose GAIA if you want an AI assistant that removes the manual overhead of keeping every system updated: reading your email, building tasks from context, managing your calendar, and orchestrating workflows across 50+ tools proactively — without per-seat pricing and without requiring someone to maintain a grid.",
+    "Choose Smartsheet if your organisation needs enterprise-grade project management with resource tracking, compliance controls, approval workflows, and executive portfolio dashboards — especially in regulated industries where governance and audit trails matter. Choose GAIA if you want an AI assistant that removes the manual overhead of keeping every system updated: reading your email, building tasks from context, managing your calendar, and orchestrating workflows across many tools proactively — without per-seat pricing and without requiring someone to maintain a grid.",
   faqs: [
     {
       question: "Can GAIA replace Smartsheet for project management?",
@@ -177,7 +177,7 @@ The pricing model also diverges significantly. Smartsheet's pricing is per-seat 
       question:
         "Does GAIA support the integrations my team already uses with Smartsheet?",
       answer:
-        "GAIA connects to 50+ tools via MCP including Gmail, Slack, Google Calendar, Notion, GitHub, Linear, Jira, Asana, and Todoist. If your team connects Smartsheet to Microsoft Teams or Salesforce, those ecosystems are partially covered by GAIA's integration layer. GAIA's open source architecture also allows custom integrations to be built for tools not yet in the default catalogue.",
+        "GAIA connects to many tools via MCP including Gmail, Slack, Google Calendar, Notion, GitHub, Linear, Jira, Asana, and Todoist. If your team connects Smartsheet to Microsoft Teams or Salesforce, those ecosystems are partially covered by GAIA's integration layer. GAIA's open source architecture also allows custom integrations to be built for tools not yet in the default catalogue.",
     },
     {
       question:

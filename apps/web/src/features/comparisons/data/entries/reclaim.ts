@@ -9,7 +9,7 @@ export const entry: ComparisonData = {
     "Reclaim optimizes your calendar with smart scheduling. GAIA orchestrates your entire digital workflow beyond just time management.",
   metaTitle: "Reclaim.ai Alternative with Proactive Email AI — GAIA vs Reclaim",
   metaDescription:
-    "Reclaim.ai optimizes your calendar but doesn't touch your inbox or automate cross-tool workflows. GAIA is a free-tier, open-source alternative with proactive email AI and workflow automation across 50+ tools.",
+    "Reclaim.ai optimizes your calendar but doesn't touch your inbox or automate cross-tool workflows. GAIA is a free-tier, open-source alternative with proactive email AI and workflow automation across many tools.",
   keywords: [
     "GAIA vs Reclaim",
     "Reclaim alternative",
@@ -28,7 +28,7 @@ export const entry: ComparisonData = {
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI assistant that manages email, calendar, tasks, and workflows across 50+ tools",
+      gaia: "Proactive AI assistant that manages email, calendar, tasks, and workflows across many tools",
       competitor:
         "AI scheduling layer that optimizes calendar time for tasks, habits, and meetings",
     },
@@ -49,7 +49,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations including Gmail, Slack, Notion, GitHub, Linear via MCP",
+      gaia: "many integrations including Gmail, Slack, Notion, GitHub, Linear via MCP",
       competitor: "Google Calendar, Todoist, Asana, Jira, Linear, Slack",
     },
     {
@@ -71,7 +71,7 @@ export const entry: ComparisonData = {
   gaiaAdvantages: [
     "Full workflow automation beyond calendar scheduling",
     "Email management and auto-triage",
-    "50+ integrations with deep tool orchestration",
+    "many integrations with deep tool orchestration",
     "Open source and self-hostable",
     "Graph-based memory for persistent context",
   ],

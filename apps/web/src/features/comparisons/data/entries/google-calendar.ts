@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "calendar.google.com",
   tagline: "Google's free calendar for scheduling and time management",
   description:
-    "Google Calendar is the world's most widely used digital calendar — free, reliable, and deeply integrated with Gmail and Google Workspace for scheduling events, managing reminders, and sharing availability. GAIA is a proactive AI assistant that wraps around Google Calendar with intelligent automation: preparing meeting briefings, detecting scheduling conflicts, creating events from email, and orchestrating your time across 50+ connected tools.",
+    "Google Calendar is the world's most widely used digital calendar — free, reliable, and deeply integrated with Gmail and Google Workspace for scheduling events, managing reminders, and sharing availability. GAIA is a proactive AI assistant that wraps around Google Calendar with intelligent automation: preparing meeting briefings, detecting scheduling conflicts, creating events from email, and orchestrating your time across your connected tools.",
   metaTitle:
     "Google Calendar AI: GAIA vs Google Calendar Standalone | Smart Calendar Assistant",
   metaDescription:
-    "Compare GAIA and Google Calendar standalone. Google Calendar is a reliable free scheduling tool. GAIA adds proactive AI to your calendar: briefings, email-to-event, conflict detection, and 50+ integrations.",
+    "Compare GAIA and Google Calendar standalone. Google Calendar is a reliable free scheduling tool. GAIA adds proactive AI to your calendar: briefings, email-to-event, conflict detection, and many integrations.",
   keywords: [
     "Google Calendar AI",
     "AI Google Calendar alternative",
@@ -34,7 +34,7 @@ export const entry: ComparisonData = {
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI assistant that reads Google Calendar and email simultaneously, preparing briefings, creating events from email, and orchestrating schedule-related actions across 50+ tools",
+      gaia: "Proactive AI assistant that reads Google Calendar and email simultaneously, preparing briefings, creating events from email, and orchestrating schedule-related actions across many tools",
       competitor:
         "Reliable free calendar application for scheduling events, managing reminders, and sharing availability — the world's most widely used digital calendar",
     },
@@ -70,7 +70,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP including Gmail, Slack, GitHub, Linear, Jira, Todoist, and more — all orchestrated by the AI agent with full calendar context",
+      gaia: "many integrations via MCP including Gmail, Slack, GitHub, Linear, Jira, Todoist, and more — all orchestrated by the AI agent with full calendar context",
       competitor:
         "Integrates natively with Gmail, Google Meet, and Google Workspace; third-party integrations available via API but require separate tools or Zapier for automation",
     },
@@ -97,7 +97,7 @@ export const entry: ComparisonData = {
     "Prepares proactive meeting briefings automatically — pulling email history, past interactions, and open action items before each call without manual lookup",
     "Reads Gmail and creates calendar events from informal scheduling requests in email — not just formal calendar invitations",
     "Natural language calendar management: create, update, reschedule, and cancel events by describing what you want in plain English",
-    "50+ MCP integrations connect calendar activity to tasks, projects, email, Slack, and developer tools — building a complete picture of what each meeting is about",
+    "many MCP integrations connect calendar activity to tasks, projects, email, Slack, and developer tools — building a complete picture of what each meeting is about",
     "Open source and self-hostable — full data ownership with no dependency on Google infrastructure for sensitive scheduling data",
   ],
   competitorAdvantages: [
@@ -111,7 +111,7 @@ export const entry: ComparisonData = {
     {
       question: "Does GAIA work with Google Calendar or replace it?",
       answer:
-        "GAIA integrates directly with Google Calendar — it does not replace it. Your events stay in Google Calendar and sync across all your devices as normal. GAIA reads your calendar to prepare meeting briefings, detects scheduling requests in your Gmail inbox, creates events on your behalf through natural language, and connects your calendar activity to the broader context of your work across 50+ integrated tools. Think of GAIA as the intelligent layer on top of Google Calendar, not a substitute for it.",
+        "GAIA integrates directly with Google Calendar — it does not replace it. Your events stay in Google Calendar and sync across all your devices as normal. GAIA reads your calendar to prepare meeting briefings, detects scheduling requests in your Gmail inbox, creates events on your behalf through natural language, and connects your calendar activity to the broader context of your work across many integrated tools. Think of GAIA as the intelligent layer on top of Google Calendar, not a substitute for it.",
     },
     {
       question:

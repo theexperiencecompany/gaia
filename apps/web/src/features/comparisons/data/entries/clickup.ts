@@ -9,7 +9,7 @@ export const entry: ComparisonData = {
     "ClickUp is a feature-rich project management tool. GAIA adds AI intelligence to automate work proactively rather than requiring manual project management.",
   metaTitle: "ClickUp Alternative with Proactive AI — GAIA vs ClickUp",
   metaDescription:
-    "ClickUp is powerful but still requires manual management. GAIA is an open-source ClickUp alternative with proactive AI that auto-creates tasks from email, manages your calendar, and automates workflows across 50+ tools — with a free tier.",
+    "ClickUp is powerful but still requires manual management. GAIA is an open-source ClickUp alternative with proactive AI that auto-creates tasks from email, manages your calendar, and automates workflows across many tools — with a free tier.",
   keywords: [
     "GAIA vs ClickUp",
     "ClickUp alternative",
@@ -28,7 +28,7 @@ export const entry: ComparisonData = {
   rows: [
     {
       feature: "Core approach",
-      gaia: "AI assistant that proactively manages your work across 50+ tools",
+      gaia: "AI assistant that proactively manages your work across many tools",
       competitor:
         "All-in-one project management platform with tasks, docs, goals, and dashboards",
     },
@@ -58,7 +58,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations with AI-powered cross-tool orchestration",
+      gaia: "many integrations with AI-powered cross-tool orchestration",
       competitor: "1,000+ integrations focused on syncing data into ClickUp",
     },
     {
@@ -98,7 +98,7 @@ export const entry: ComparisonData = {
     {
       question: "Does GAIA integrate with ClickUp?",
       answer:
-        "Yes. GAIA connects with ClickUp as one of its 50+ integrations, allowing you to sync tasks and add AI-powered automation on top of your existing ClickUp workflow.",
+        "Yes. GAIA connects with ClickUp as one of its many integrations, allowing you to sync tasks and add AI-powered automation on top of your existing ClickUp workflow.",
     },
     {
       question: "How does GAIA AI compare to ClickUp AI?",

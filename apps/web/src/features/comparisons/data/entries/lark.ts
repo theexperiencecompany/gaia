@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "larksuite.com",
   tagline: "All-in-one collaboration suite by ByteDance",
   description:
-    "Lark (by ByteDance) is a unified team collaboration suite combining instant messaging, docs, spreadsheets, calendar, and video meetings. GAIA is a proactive AI assistant that layers autonomous intelligence on top of similar productivity capabilities — with open-source flexibility and 50+ integrations.",
+    "Lark (by ByteDance) is a unified team collaboration suite combining instant messaging, docs, spreadsheets, calendar, and video meetings. GAIA is a proactive AI assistant that layers autonomous intelligence on top of similar productivity capabilities — with open-source flexibility and many integrations.",
   metaTitle:
     "Lark Alternative with Proactive AI Automation & Open-Source Flexibility — GAIA vs Lark",
   metaDescription:
-    "Lark combines chat, docs, and calendar but relies on manual workflows. GAIA is a free, open-source Lark alternative with proactive AI email management, task automation, and workflow orchestration across 50+ integrations.",
+    "Lark combines chat, docs, and calendar but relies on manual workflows. GAIA is a free, open-source Lark alternative with proactive AI email management, task automation, and workflow orchestration across many integrations.",
   keywords: [
     "lark alternative",
     "gaia vs lark",
@@ -29,11 +29,11 @@ Lark's depth is real, particularly for teams based in Asia-Pacific markets where
 
 The challenge with Lark, like all productivity suites, is that the value is proportional to full adoption. If only part of your team uses Lark, you lose the deep integration benefits. And even for fully committed Lark teams, the platform's automation layer — like most workflow tools — requires manual configuration, explicit trigger definitions, and ongoing maintenance. The automation runs when you define it; it does not proactively read your context and surface what needs to happen next.
 
-GAIA addresses that gap. Rather than providing another suite of tools to manage, GAIA acts as an AI layer that monitors and acts on your workflow autonomously. It reads your Gmail inbox and creates tasks without requiring you to set up automation rules. It integrates with 50+ tools — including Slack, GitHub, Jira, Linear, Notion, and Todoist — and orchestrates multi-step workflows through natural language. It prepares meeting briefings from your Google Calendar before you open the meeting invite. For teams who want their productivity tools to work for them proactively rather than waiting for manual configuration, GAIA offers a meaningfully different model. It is also fully open source and self-hostable, which matters significantly for organizations with data residency or privacy requirements that ByteDance's ownership of Lark may complicate.`,
+GAIA addresses that gap. Rather than providing another suite of tools to manage, GAIA acts as an AI layer that monitors and acts on your workflow autonomously. It reads your Gmail inbox and creates tasks without requiring you to set up automation rules. It integrates with many tools — including Slack, GitHub, Jira, Linear, Notion, and Todoist — and orchestrates multi-step workflows through natural language. It prepares meeting briefings from your Google Calendar before you open the meeting invite. For teams who want their productivity tools to work for them proactively rather than waiting for manual configuration, GAIA offers a meaningfully different model. It is also fully open source and self-hostable, which matters significantly for organizations with data residency or privacy requirements that ByteDance's ownership of Lark may complicate.`,
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI assistant managing email, calendar, tasks, and workflows across 50+ connected tools autonomously",
+      gaia: "Proactive AI assistant managing email, calendar, tasks, and workflows across your connected tools autonomously",
       competitor:
         "Unified team collaboration suite combining chat, docs, spreadsheets, calendar, video, and project management",
     },
@@ -69,7 +69,7 @@ GAIA addresses that gap. Rather than providing another suite of tools to manage,
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira, and more via MCP",
+      gaia: "many integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira, and more via MCP",
       competitor:
         "250+ app integrations within the Lark ecosystem; strong within its own suite but external integrations require configuration",
     },
@@ -109,7 +109,7 @@ GAIA addresses that gap. Rather than providing another suite of tools to manage,
     "Open source and self-hostable — complete data sovereignty with no ByteDance data exposure concerns",
     "Works across any tool ecosystem rather than requiring team-wide adoption of a single platform",
     "Natural language workflow automation that doesn't require learning a rule builder or trigger system",
-    "50+ integrations with the specific developer and productivity tools most teams already use",
+    "many integrations with the specific developer and productivity tools most teams already use",
     "Free tier and self-hosting offer accessible entry points without enterprise licensing requirements",
   ],
   competitorAdvantages: [
@@ -140,7 +140,7 @@ GAIA addresses that gap. Rather than providing another suite of tools to manage,
     {
       question: "Does GAIA work alongside Lark?",
       answer:
-        "GAIA does not have a native Lark integration. Its 50+ integrations cover Gmail, Slack, GitHub, Notion, Jira, Linear, and Todoist, among others. Teams using Lark as their primary platform would need to evaluate whether GAIA's integrations cover the external tools in their workflow rather than Lark's internal tools.",
+        "GAIA does not have a native Lark integration. Its many integrations cover Gmail, Slack, GitHub, Notion, Jira, Linear, and Todoist, among others. Teams using Lark as their primary platform would need to evaluate whether GAIA's integrations cover the external tools in their workflow rather than Lark's internal tools.",
     },
     {
       question: "Is GAIA cheaper than Lark for mid-sized teams?",

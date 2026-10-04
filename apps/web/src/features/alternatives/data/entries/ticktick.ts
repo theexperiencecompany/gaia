@@ -45,7 +45,7 @@ export const entry: AlternativeData = {
     "Email-to-task automation eliminates manual task entry from inbox",
     "Calendar integration sets realistic deadlines automatically",
     "Proactive surfacing means you don't have to review a task list to know what matters",
-    "Broader productivity scope including email, calendar, and 50+ tool integrations",
+    "Broader productivity scope including email, calendar, and many tool integrations",
     "Open-source with self-hosting option",
   ],
   migrationSteps: [
@@ -73,7 +73,7 @@ export const entry: AlternativeData = {
     {
       question: "Is GAIA cheaper than TickTick Premium?",
       answer:
-        "TickTick Premium is $2.99/month (or $27.99/year). GAIA Pro is $20/month but includes email management, calendar integration, 50+ tool connections, and AI workflow automation. Self-hosted GAIA is free.",
+        "TickTick Premium is $2.99/month (or $27.99/year). GAIA Pro is $20/month but includes email management, calendar integration, many tool connections, and AI workflow automation. Self-hosted GAIA is free.",
     },
   ],
 };

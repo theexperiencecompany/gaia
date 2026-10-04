@@ -10,7 +10,7 @@ export const entry: ComparisonData = {
   metaTitle:
     "Discord Alternative for Team Productivity Automation — GAIA vs Discord",
   metaDescription:
-    "Discord is great for community chat but not task management or workflow automation. GAIA is an open-source alternative that connects team communications to tasks, email, and workflows across 50+ integrations.",
+    "Discord is great for community chat but not task management or workflow automation. GAIA is an open-source alternative that connects team communications to tasks, email, and workflows across many integrations.",
   keywords: [
     "discord alternative",
     "gaia vs discord",
@@ -29,7 +29,7 @@ For developer communities, open-source projects, and creator ecosystems, Discord
 
 GAIA addresses the gap between communication and execution. It connects the conversations your team has — whether in Discord, Slack, email, or meetings — to the actual tasks and workflows that need to happen. When a bug is reported in a channel, GAIA can create the corresponding GitHub issue or Jira ticket. When a decision is made about a feature, GAIA can update the Notion page and create the Linear task. When an email lands with an important request, GAIA triages it and creates the appropriate action.
 
-For teams using Discord for community or team communication, GAIA provides the productivity automation layer that Discord does not offer. Rather than replacing Discord as a communication platform, GAIA complements it by ensuring that communication leads to action — managing the tasks, email workflows, calendar coordination, and cross-tool automation that convert team discussions into shipped work. With 50+ integrations, GAIA operates as the connective tissue between Discord conversations and the broader tool stack where work actually happens.`,
+For teams using Discord for community or team communication, GAIA provides the productivity automation layer that Discord does not offer. Rather than replacing Discord as a communication platform, GAIA complements it by ensuring that communication leads to action — managing the tasks, email workflows, calendar coordination, and cross-tool automation that convert team discussions into shipped work. With many integrations, GAIA operates as the connective tissue between Discord conversations and the broader tool stack where work actually happens.`,
   rows: [
     {
       feature: "Core approach",
@@ -39,7 +39,7 @@ For teams using Discord for community or team communication, GAIA provides the p
     },
     {
       feature: "AI capabilities",
-      gaia: "Proactive task management, email triage, workflow automation, and cross-tool orchestration across 50+ integrations",
+      gaia: "Proactive task management, email triage, workflow automation, and cross-tool orchestration across many integrations",
       competitor:
         "Clyde AI for inline chat Q&A; bot ecosystem for custom automations within Discord",
     },
@@ -61,7 +61,7 @@ For teams using Discord for community or team communication, GAIA provides the p
     },
     {
       feature: "Workflow automation",
-      gaia: "Multi-step automations with natural-language triggers across 50+ integrations",
+      gaia: "Multi-step automations with natural-language triggers across many integrations",
       competitor:
         "Bot-based automations within Discord; external Zapier/Make integrations for cross-tool workflows",
     },
@@ -98,7 +98,7 @@ For teams using Discord for community or team communication, GAIA provides the p
   gaiaAdvantages: [
     "Converts community discussions and communications into real tasks in Jira, Linear, and Todoist",
     "Manages the full productivity workflow — email, calendar, and tasks — that Discord does not touch",
-    "50+ integrations connect communication outcomes to execution across all work tools",
+    "many integrations connect communication outcomes to execution across all work tools",
     "Proactive email triage ensures communications outside Discord get properly actioned",
     "Open source and self-hostable for communities with data sovereignty requirements",
     "Workflow automation turns conversation triggers into cross-tool actions",
@@ -119,7 +119,7 @@ For teams using Discord for community or team communication, GAIA provides the p
     {
       question: "How does GAIA's AI compare to Discord's Clyde AI?",
       answer:
-        "Clyde AI is a conversational assistant within Discord chats — useful for quick questions inside a server. GAIA is a proactive productivity AI that monitors your email, calendar, and connected tools, executes workflows autonomously, and manages tasks across Todoist, Linear, Jira, and 45+ other integrations.",
+        "Clyde AI is a conversational assistant within Discord chats — useful for quick questions inside a server. GAIA is a proactive productivity AI that monitors your email, calendar, and connected tools, executes workflows autonomously, and manages tasks across Todoist, Linear, Jira, and many other integrations.",
     },
     {
       question: "Can GAIA create GitHub issues from Discord conversations?",

@@ -7,11 +7,11 @@ export const entry: ComparisonData = {
   tagline:
     "Online collaborative whiteboard for visual brainstorming and planning",
   description:
-    "Miro is a leading online collaborative whiteboard platform used by teams for brainstorming, sprint planning, journey mapping, and workshop facilitation. GAIA is a proactive AI assistant that manages email, calendar, tasks, and 50+ integrations — turning plans into automated action.",
+    "Miro is a leading online collaborative whiteboard platform used by teams for brainstorming, sprint planning, journey mapping, and workshop facilitation. GAIA is a proactive AI assistant that manages email, calendar, tasks, and many integrations — turning plans into automated action.",
   metaTitle:
     "Miro Alternative with AI Task Management & Workflow Automation — GAIA vs Miro",
   metaDescription:
-    "Miro is the gold standard for visual collaboration but doesn't manage your workflow. GAIA is a free, open-source Miro alternative with proactive AI email management, calendar automation, and task orchestration across 50+ integrations.",
+    "Miro is the gold standard for visual collaboration but doesn't manage your workflow. GAIA is a free, open-source Miro alternative with proactive AI email management, calendar automation, and task orchestration across many integrations.",
   keywords: [
     "miro alternative",
     "gaia vs miro",
@@ -30,11 +30,11 @@ What makes Miro genuinely powerful is its depth for workshop facilitation and co
 
 But Miro is a canvas for thinking and communicating, not a system that takes action. When a board session ends — when the sticky notes have been clustered, the user stories have been written, and the priorities have been marked — Miro's involvement effectively stops. Someone still needs to open Jira and create the tickets. Someone still needs to email stakeholders the summary. Someone still needs to update the project roadmap in Notion or add the action items to Todoist. The gap between insight and execution is entirely manual.
 
-GAIA operates in that execution gap. As a proactive AI assistant, GAIA reads your Gmail inbox and creates tasks automatically from the emails that result from those planning sessions. It monitors your Google Calendar and prepares briefings before the follow-up meetings that planning sessions generate. It integrates with Jira, Linear, GitHub, Notion, Slack, Todoist, and 45+ other tools, allowing it to orchestrate the post-workshop action items through natural language rather than manual entry across six different apps. Where Miro is unmatched for collaborative visual thinking, GAIA is purpose-built for the automated execution that follows.`,
+GAIA operates in that execution gap. As a proactive AI assistant, GAIA reads your Gmail inbox and creates tasks automatically from the emails that result from those planning sessions. It monitors your Google Calendar and prepares briefings before the follow-up meetings that planning sessions generate. It integrates with Jira, Linear, GitHub, Notion, Slack, Todoist, and many other tools, allowing it to orchestrate the post-workshop action items through natural language rather than manual entry across six different apps. Where Miro is unmatched for collaborative visual thinking, GAIA is purpose-built for the automated execution that follows.`,
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI assistant managing email, calendar, tasks, and workflows across 50+ connected tools autonomously",
+      gaia: "Proactive AI assistant managing email, calendar, tasks, and workflows across your connected tools autonomously",
       competitor:
         "Infinite collaborative whiteboard for visual brainstorming, sprint planning, workshops, and team alignment",
     },
@@ -70,7 +70,7 @@ GAIA operates in that execution gap. As a proactive AI assistant, GAIA reads you
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira, and more via MCP",
+      gaia: "many integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira, and more via MCP",
       competitor:
         "150+ app integrations including Jira, Confluence, Slack, GitHub, Figma, Zoom, and Google Workspace for embedding live data",
     },
@@ -108,7 +108,7 @@ GAIA operates in that execution gap. As a proactive AI assistant, GAIA reads you
   gaiaAdvantages: [
     "Handles the execution layer after planning — creating tasks, sending summaries, and updating project tools automatically",
     "Proactively reads post-meeting emails and creates action items without manual entry across six apps",
-    "50+ integrations orchestrated by AI rather than requiring manual data transfer between boards and tools",
+    "many integrations orchestrated by AI rather than requiring manual data transfer between boards and tools",
     "Open source and self-hostable — full data ownership with no per-seat pricing when self-hosted",
     "Meeting briefings prepared automatically before the follow-up sessions that planning generates",
     "Free tier and self-hosting eliminate the per-seat cost that compounds with team size in Miro",

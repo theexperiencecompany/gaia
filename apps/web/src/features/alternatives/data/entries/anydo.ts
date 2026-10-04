@@ -46,7 +46,7 @@ export const entry: AlternativeData = {
     "Email-native task creation requires zero manual task entry",
     "Persistent memory connects context across sessions and tools",
     "Open-source and self-hostable for data privacy",
-    "50+ tool integrations far beyond Any.do's limited connector set",
+    "many tool integrations far beyond Any.do's limited connector set",
   ],
   migrationSteps: [
     "Export tasks from Any.do via account settings",
@@ -74,7 +74,7 @@ export const entry: AlternativeData = {
     {
       question: "Is GAIA cheaper than Any.do Premium?",
       answer:
-        "Any.do Premium is $5.99/month. GAIA Pro is $20/month but includes email management, calendar integration, memory, 50+ integrations, and workflow automation. Self-hosted GAIA is completely free.",
+        "Any.do Premium is $5.99/month. GAIA Pro is $20/month but includes email management, calendar integration, memory, many integrations, and workflow automation. Self-hosted GAIA is completely free.",
     },
   ],
 };

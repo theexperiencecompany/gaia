@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "basecamp.com",
   tagline: "All-in-one team project management and communication",
   description:
-    "Basecamp is an opinionated all-in-one platform for team project management, combining to-do lists, message boards, group chats, file storage, and schedules into a single calm workspace. GAIA is a proactive AI assistant that manages your email, calendar, and tasks across 50+ integrations — bringing intelligent automation to the coordination that Basecamp handles manually.",
+    "Basecamp is an opinionated all-in-one platform for team project management, combining to-do lists, message boards, group chats, file storage, and schedules into a single calm workspace. GAIA is a proactive AI assistant that manages your email, calendar, and tasks across many integrations — bringing intelligent automation to the coordination that Basecamp handles manually.",
   metaTitle:
     "GAIA vs Basecamp: Proactive AI Assistant vs Team Collaboration Platform",
   metaDescription:
-    "Compare GAIA and Basecamp. Basecamp brings team projects into one calm workspace. GAIA reads your email, manages your calendar, and automates workflows proactively across 50+ tools.",
+    "Compare GAIA and Basecamp. Basecamp brings team projects into one calm workspace. GAIA reads your email, manages your calendar, and automates workflows proactively across many tools.",
   keywords: [
     "GAIA vs Basecamp",
     "Basecamp alternative",
@@ -26,11 +26,11 @@ export const entry: ComparisonData = {
     "team collaboration AI tool",
   ],
   intro:
-    "Basecamp has been a fixture in team collaboration software for over two decades. Its philosophy has always been to give teams one calm, organised place to work instead of fragmenting communication across many tools. A Basecamp project brings together message boards, to-do lists, a group chat (Campfire), file storage, a schedule view, and automatic check-ins into a single space. The pricing model — $299 per month flat for unlimited teams, or $15 per user per month — is deliberately transparent and predictable, which many teams appreciate after dealing with per-seat pricing that balloons as headcount grows.\n\nWhat Basecamp does not do is participate in the work on your behalf. It is a well-designed place to organise and communicate about work, but the work of keeping it current falls entirely on the people using it. To-do items do not appear because an email arrived — someone has to create them. Meeting schedules are not automatically populated from Google Calendar — someone has to enter them. When an email thread with a client produces three action items, someone has to open Basecamp and type them in. For teams whose work primarily flows through email and external tools, this manual overhead compounds over time.\n\nGAIA addresses this gap directly. It monitors your Gmail inbox continuously and can convert email threads into tasks, calendar events, or structured notes without manual entry. It integrates with Google Calendar to read your schedule and prepare proactive briefings before meetings begin. It connects to 50+ tools via MCP and can orchestrate multi-step workflows in natural language — so when you receive an important client email, GAIA can draft a reply, create a follow-up task, and log the relevant context, all without you switching to a separate app.\n\nBasecamp's commitment to simplicity is also a deliberate trade-off. It has no native AI features beyond what's been added through third-party integrations. It does not offer advanced automation, real-time AI assistance, or proactive alerts based on external context. Teams that have outgrown the manual coordination model — or that work heavily through email and want AI to manage that flow — often find they need to layer additional tools on top of Basecamp to fill the gaps.\n\nFor teams that love Basecamp's calm, structured philosophy, GAIA can act as the intelligent intake layer that feeds information into Basecamp automatically: creating to-do items from emails, surfacing scheduling conflicts from calendar data, and reducing the manual data entry that slows down even the best-organised teams. The two tools are not competitors in the traditional sense — they operate at different layers of the productivity stack.",
+    "Basecamp has been a fixture in team collaboration software for over two decades. Its philosophy has always been to give teams one calm, organised place to work instead of fragmenting communication across many tools. A Basecamp project brings together message boards, to-do lists, a group chat (Campfire), file storage, a schedule view, and automatic check-ins into a single space. The pricing model — $299 per month flat for unlimited teams, or $15 per user per month — is deliberately transparent and predictable, which many teams appreciate after dealing with per-seat pricing that balloons as headcount grows.\n\nWhat Basecamp does not do is participate in the work on your behalf. It is a well-designed place to organise and communicate about work, but the work of keeping it current falls entirely on the people using it. To-do items do not appear because an email arrived — someone has to create them. Meeting schedules are not automatically populated from Google Calendar — someone has to enter them. When an email thread with a client produces three action items, someone has to open Basecamp and type them in. For teams whose work primarily flows through email and external tools, this manual overhead compounds over time.\n\nGAIA addresses this gap directly. It monitors your Gmail inbox continuously and can convert email threads into tasks, calendar events, or structured notes without manual entry. It integrates with Google Calendar to read your schedule and prepare proactive briefings before meetings begin. It connects to many tools via MCP and can orchestrate multi-step workflows in natural language — so when you receive an important client email, GAIA can draft a reply, create a follow-up task, and log the relevant context, all without you switching to a separate app.\n\nBasecamp's commitment to simplicity is also a deliberate trade-off. It has no native AI features beyond what's been added through third-party integrations. It does not offer advanced automation, real-time AI assistance, or proactive alerts based on external context. Teams that have outgrown the manual coordination model — or that work heavily through email and want AI to manage that flow — often find they need to layer additional tools on top of Basecamp to fill the gaps.\n\nFor teams that love Basecamp's calm, structured philosophy, GAIA can act as the intelligent intake layer that feeds information into Basecamp automatically: creating to-do items from emails, surfacing scheduling conflicts from calendar data, and reducing the manual data entry that slows down even the best-organised teams. The two tools are not competitors in the traditional sense — they operate at different layers of the productivity stack.",
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI assistant that monitors email, calendar, and 50+ tools continuously, creating tasks and triggering workflows on your behalf",
+      gaia: "Proactive AI assistant that monitors email, calendar, and many tools continuously, creating tasks and triggering workflows on your behalf",
       competitor:
         "Opinionated all-in-one team collaboration hub combining message boards, to-do lists, chat, file storage, and schedules in one structured workspace",
     },
@@ -78,7 +78,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP including Gmail, Google Calendar, Slack, GitHub, Linear, Jira, Todoist, and more",
+      gaia: "many integrations via MCP including Gmail, Google Calendar, Slack, GitHub, Linear, Jira, Todoist, and more",
       competitor:
         "Limited native integrations; works with Zapier and Make for third-party connections; API available for custom integrations",
     },
@@ -92,7 +92,7 @@ export const entry: ComparisonData = {
   gaiaAdvantages: [
     "Reads Gmail and converts email threads into tasks, meeting notes, or calendar events automatically — eliminating the manual data entry Basecamp requires",
     "Proactively prepares meeting briefings from Google Calendar and surfaces priority alerts from email without being prompted",
-    "50+ MCP integrations orchestrate actions across Gmail, Slack, GitHub, Todoist, and more in a single natural language workflow",
+    "many MCP integrations orchestrate actions across Gmail, Slack, GitHub, Todoist, and more in a single natural language workflow",
     "Persistent graph-based memory links emails, tasks, meetings, and people across tools — building contextual awareness that grows over time",
     "Open source and self-hostable with flat pricing — GAIA Pro at $20/month flat is significantly cheaper than Basecamp's $15/user/month for teams beyond one or two people",
   ],

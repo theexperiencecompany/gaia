@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "shortwave.com",
   tagline: "AI-powered email client built on Gmail",
   description:
-    "Shortwave is an AI email client that layers intelligent writing assistance, thread summarization, and inbox automation on top of Gmail. GAIA is a proactive productivity OS that manages your email alongside your calendar, tasks, workflows, and 50+ integrations — all from a single assistant.",
+    "Shortwave is an AI email client that layers intelligent writing assistance, thread summarization, and inbox automation on top of Gmail. GAIA is a proactive productivity OS that manages your email alongside your calendar, tasks, workflows, and many integrations — all from a single assistant.",
   metaTitle:
     "Shortwave Alternative with AI Task Management — GAIA vs Shortwave",
   metaDescription:
-    "Shortwave enhances Gmail but is still email-only. GAIA is an open-source Shortwave alternative that manages email alongside calendar, tasks, and 50+ tool workflows — proactively acting before you ask, with a free tier.",
+    "Shortwave enhances Gmail but is still email-only. GAIA is an open-source Shortwave alternative that manages email alongside calendar, tasks, and many tool workflows — proactively acting before you ask, with a free tier.",
   keywords: [
     "GAIA vs Shortwave",
     "Shortwave alternative",
@@ -32,7 +32,7 @@ export const entry: ComparisonData = {
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive productivity OS that monitors and acts across email, calendar, tasks, and 50+ tools — without waiting to be asked",
+      gaia: "Proactive productivity OS that monitors and acts across email, calendar, tasks, and many tools — without waiting to be asked",
       competitor:
         "AI-enhanced email client built on Gmail — adds intelligent writing, summarization, and inbox automation to your existing email workflow",
     },
@@ -62,7 +62,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Cross-tool automation",
-      gaia: "Multi-step natural-language workflows with triggers, conditions, and actions spanning email, calendar, Slack, Notion, GitHub, Linear, Todoist, and 50+ other tools",
+      gaia: "Multi-step natural-language workflows with triggers, conditions, and actions spanning email, calendar, Slack, Notion, GitHub, Linear, Todoist, and many other tools",
       competitor:
         "Integrates with Slack, Notion, Asana, HubSpot, and Linear for contextual actions from within email threads; no general-purpose workflow automation engine",
     },
@@ -74,7 +74,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and Jira with deep bi-directional actions",
+      gaia: "many integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and Jira with deep bi-directional actions",
       competitor:
         "Connects with Slack, Notion, Asana, HubSpot, Linear, and others for contextual email actions; integrations are email-centric rather than broadly bi-directional",
     },
@@ -98,7 +98,7 @@ export const entry: ComparisonData = {
     },
   ],
   gaiaAdvantages: [
-    "Operates across your entire workflow — not just email, but calendar, tasks, automations, and 50+ integrations from a single assistant",
+    "Operates across your entire workflow — not just email, but calendar, tasks, automations, and many integrations from a single assistant",
     "Proactively triages your inbox by urgency and executes actions without requiring you to open a chat or click a button",
     "Graph-based memory models structured relationships between emails, tasks, meetings, and people for deep contextual reasoning",
     "Multi-step workflow automation with natural-language triggers and cross-tool execution far beyond what an email client can offer",
@@ -110,7 +110,7 @@ export const entry: ComparisonData = {
     "More affordable entry price with a free plan and Personal tier at $7/month for users whose primary bottleneck is email rather than their broader workflow",
   ],
   verdict:
-    "Shortwave is an excellent choice if your primary productivity challenge is your Gmail inbox — its AI writing assistance, thread summarization, and inbox automation are best-in-class for an email client. GAIA is built for people who need an assistant that goes further: one that proactively manages email alongside calendar, tasks, and multi-step automations across 50+ tools, learns from everything it sees, and can be self-hosted for full data control.",
+    "Shortwave is an excellent choice if your primary productivity challenge is your Gmail inbox — its AI writing assistance, thread summarization, and inbox automation are best-in-class for an email client. GAIA is built for people who need an assistant that goes further: one that proactively manages email alongside calendar, tasks, and multi-step automations across many tools, learns from everything it sees, and can be self-hosted for full data control.",
   faqs: [
     {
       question: "Can GAIA do everything Shortwave does for email?",

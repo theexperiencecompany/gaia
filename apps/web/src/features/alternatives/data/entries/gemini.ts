@@ -46,7 +46,7 @@ export const entry: AlternativeData = {
     "Proactive by default: surfaces important information without prompting",
     "Graph-based memory retains context across months, not just sessions",
     "Open-source with no Google data retention concerns",
-    "Extends beyond Google tools to 50+ third-party integrations via MCP",
+    "Extends beyond Google tools to many third-party integrations via MCP",
     "Self-hostable for complete data control",
   ],
   migrationSteps: [
@@ -64,7 +64,7 @@ export const entry: AlternativeData = {
     {
       question: "Does GAIA integrate with Google services like Gemini does?",
       answer:
-        "Yes. GAIA integrates natively with Gmail and Google Calendar. It extends beyond Google's ecosystem with 50+ additional tool integrations that Gemini does not support.",
+        "Yes. GAIA integrates natively with Gmail and Google Calendar. It extends beyond Google's ecosystem with many additional tool integrations that Gemini does not support.",
     },
     {
       question: "Is GAIA open-source while Gemini is not?",

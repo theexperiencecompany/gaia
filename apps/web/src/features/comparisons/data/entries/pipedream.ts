@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline:
     "Developer-focused workflow automation with serverless code execution",
   description:
-    "Pipedream is a developer-centric automation platform that combines a 2,800+ app integration library with full Node.js code execution in serverless workflow steps — ideal for engineers building production-grade integrations. GAIA is a proactive AI assistant that manages email, calendar, tasks, and 50+ integrations through natural language and autonomous action, built for knowledge workers who want AI to handle their digital life rather than an iPaaS platform to program.",
+    "Pipedream is a developer-centric automation platform that combines a 2,800+ app integration library with full Node.js code execution in serverless workflow steps — ideal for engineers building production-grade integrations. GAIA is a proactive AI assistant that manages email, calendar, tasks, and many integrations through natural language and autonomous action, built for knowledge workers who want AI to handle their digital life rather than an iPaaS platform to program.",
   metaTitle:
     "Pipedream Alternative with AI-Native Automation — GAIA vs Pipedream",
   metaDescription:
@@ -67,7 +67,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Workflow automation",
-      gaia: "Natural-language automations with triggers, conditions, and cross-tool actions; 50+ integrations via MCP with AI-interpreted intent",
+      gaia: "Natural-language automations with triggers, conditions, and cross-tool actions; many integrations via MCP with AI-interpreted intent",
       competitor:
         "Core strength — 2,800+ integrations, HTTP/cron/app triggers, full code execution, and serverless scaling for production-grade engineering workflows",
     },
@@ -119,7 +119,7 @@ export const entry: ComparisonData = {
     {
       question: "How does GAIA compare to Pipedream on integrations?",
       answer:
-        "Pipedream's 2,800+ app library is significantly broader than GAIA's 50+ MCP integrations. For connecting niche or specialized services — Stripe webhooks, custom AWS Lambda steps, or proprietary APIs — Pipedream's coverage is unmatched. GAIA's integrations are focused on the tools that drive daily productivity: Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, and similar tools, with deep bi-directional AI-interpreted actions rather than generic module connections.",
+        "Pipedream's 2,800+ app library is significantly broader than GAIA's many MCP integrations. For connecting niche or specialized services — Stripe webhooks, custom AWS Lambda steps, or proprietary APIs — Pipedream's coverage is unmatched. GAIA's integrations are focused on the tools that drive daily productivity: Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, and similar tools, with deep bi-directional AI-interpreted actions rather than generic module connections.",
     },
   ],
 };

@@ -10,7 +10,7 @@ export const entry: ComparisonData = {
   metaTitle:
     "Granola Alternative with Full Workflow Automation — GAIA vs Granola",
   metaDescription:
-    "Granola is a private local Mac meeting notepad. GAIA is an open-source alternative that goes beyond notes to automate tasks, emails, and workflows across 50+ integrations — with self-hosting for the same privacy.",
+    "Granola is a private local Mac meeting notepad. GAIA is an open-source alternative that goes beyond notes to automate tasks, emails, and workflows across many integrations — with self-hosting for the same privacy.",
   keywords: [
     "granola alternative",
     "gaia vs granola",
@@ -79,7 +79,7 @@ For teams that specifically value local privacy with local processing, GAIA also
     },
     {
       feature: "Workflow automation",
-      gaia: "Multi-step automations with natural-language triggers across 50+ integrations",
+      gaia: "Multi-step automations with natural-language triggers across many integrations",
       competitor: "No workflow automation engine",
     },
     {
@@ -104,7 +104,7 @@ For teams that specifically value local privacy with local processing, GAIA also
     "Cross-platform availability including Windows, web, and mobile — not Mac-only",
     "Self-hosting for privacy matching Granola's local approach, plus full workflow automation",
     "Pre-meeting briefings and post-meeting email automation beyond the note boundary",
-    "50+ integrations connecting meeting context to your entire tool stack",
+    "many integrations connecting meeting context to your entire tool stack",
     "Open source with transparent code and community development",
   ],
   competitorAdvantages: [

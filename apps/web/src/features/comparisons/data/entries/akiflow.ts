@@ -6,7 +6,7 @@ export const entry: ComparisonData = {
   domain: "akiflow.com",
   tagline: "Unified task inbox and calendar time-blocking tool for power users",
   description:
-    "Akiflow is a keyboard-driven productivity app that aggregates tasks from 30+ tools (Asana, Todoist, Jira, Gmail, Slack) into a unified inbox and lets you time-block them directly onto a synced calendar — designed for power users who juggle multiple task systems and want a single planning hub. GAIA is a proactive AI productivity OS that creates tasks autonomously from your email and conversations, manages your calendar, and runs cross-tool workflows — reducing the administrative layer that Akiflow helps you organize.",
+    "Akiflow is a keyboard-driven productivity app that aggregates tasks from your tools (Asana, Todoist, Jira, Gmail, Slack) into a unified inbox and lets you time-block them directly onto a synced calendar — designed for power users who juggle multiple task systems and want a single planning hub. GAIA is a proactive AI productivity OS that creates tasks autonomously from your email and conversations, manages your calendar, and runs cross-tool workflows — reducing the administrative layer that Akiflow helps you organize.",
   metaTitle: "Akiflow Alternative with Proactive AI — GAIA vs Akiflow",
   metaDescription:
     "Compare GAIA and Akiflow. Akiflow unifies tasks from 30+ apps for calendar time-blocking, but GAIA creates tasks autonomously from email, manages your calendar, and automates cross-tool workflows.",
@@ -35,7 +35,7 @@ export const entry: ComparisonData = {
       feature: "Core approach",
       gaia: "Proactive AI productivity OS — creates tasks from email automatically, manages calendar, runs cross-tool automations, and maintains a knowledge graph of your work context",
       competitor:
-        "Unified task inbox and calendar time-blocker — aggregates tasks from 30+ tools into one prioritized view and lets you time-block them with drag-and-drop",
+        "Unified task inbox and calendar time-blocker — aggregates tasks from your tools into one prioritized view and lets you time-block them with drag-and-drop",
     },
     {
       feature: "Task creation",
@@ -59,7 +59,7 @@ export const entry: ComparisonData = {
       feature: "Unified task view",
       gaia: "AI-powered task list with semantic search, priorities, labels, projects, and deadlines; integrated with Todoist and native task system",
       competitor:
-        "Core strength — aggregates tasks from 30+ tools (Asana, Jira, Linear, Notion, GitHub, Todoist, Slack) into one prioritized inbox with full keyboard control",
+        "Core strength — aggregates tasks from your tools (Asana, Jira, Linear, Notion, GitHub, Todoist, Slack) into one prioritized inbox with full keyboard control",
     },
     {
       feature: "AI capabilities",
@@ -69,7 +69,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Workflow automation",
-      gaia: "Natural-language multi-step automations across 50+ integrations — triggers, conditions, and cross-tool actions via MCP",
+      gaia: "Natural-language multi-step automations across many integrations — triggers, conditions, and cross-tool actions via MCP",
       competitor:
         "No native automation engine; relies on connected tools for task creation; Zapier integration for additional workflows",
     },
@@ -96,11 +96,11 @@ export const entry: ComparisonData = {
     "Creates tasks automatically from email and conversation content — no manual capture, no opening Gmail to create tasks, no relying on other tools to push tasks first",
     "Manages the calendar layer autonomously — finds available slots, schedules meetings, and generates pre-meeting briefings without drag-and-drop planning sessions",
     "Graph-based memory connects tasks to the emails, meetings, and people that generated them, providing full context for every automated action",
-    "Natural-language multi-step automations across 50+ tools go far beyond task aggregation to executing actions across your entire productivity stack",
+    "Natural-language multi-step automations across many tools go far beyond task aggregation to executing actions across your entire productivity stack",
     "Free tier available and fully self-hostable — complete data ownership with no usage caps and no forced commitment before evaluating",
   ],
   competitorAdvantages: [
-    "Unmatched unified task inbox — aggregating tasks from 30+ tools (Asana, Jira, Linear, Notion, GitHub, Todoist, Slack) into one keyboard-driven view is Akiflow's defining advantage",
+    "Unmatched unified task inbox — aggregating tasks from your tools (Asana, Jira, Linear, Notion, GitHub, Todoist, Slack) into one keyboard-driven view is Akiflow's defining advantage",
     "Calendar time-blocking UX with drag-and-drop task scheduling gives power users precise visual control over their day that GAIA's autonomous scheduling cannot fully replicate",
     "Keyboard-first interface with natural language date parsing and rich shortcut support makes Akiflow exceptionally fast for developers and operators who prefer a CLI-style interaction model",
   ],
@@ -110,7 +110,7 @@ export const entry: ComparisonData = {
     {
       question: "Can GAIA replace Akiflow for unified task management?",
       answer:
-        "GAIA's native task system and Todoist integration cover task creation, prioritization, and deadline management, but GAIA does not replicate Akiflow's multi-source task aggregation from 30+ tools or its calendar time-blocking interface. If you need to pull tasks from Asana, Linear, Jira, and Notion into a single drag-and-drop calendar view, Akiflow is the stronger dedicated tool. GAIA is more valuable if you want an AI to create and manage tasks upstream — before you even open a planning tool — by monitoring your email and conversations automatically.",
+        "GAIA's native task system and Todoist integration cover task creation, prioritization, and deadline management, but GAIA does not replicate Akiflow's multi-source task aggregation from your tools or its calendar time-blocking interface. If you need to pull tasks from Asana, Linear, Jira, and Notion into a single drag-and-drop calendar view, Akiflow is the stronger dedicated tool. GAIA is more valuable if you want an AI to create and manage tasks upstream — before you even open a planning tool — by monitoring your email and conversations automatically.",
     },
     {
       question: "Does GAIA have Akiflow's keyboard shortcuts and speed?",
@@ -120,7 +120,7 @@ export const entry: ComparisonData = {
     {
       question: "Is GAIA more affordable than Akiflow?",
       answer:
-        "Akiflow costs $19/month (monthly) or $15/month (annual) with no free plan — only a 7-day trial. GAIA's Pro plan is $20/month with a free tier available and full self-hosting at no cost. For users willing to self-host, GAIA is significantly more affordable than Akiflow. For users on hosted plans, the prices are comparable, but GAIA covers a much broader scope — email management, calendar scheduling, cross-tool automations, and 50+ integrations — compared to Akiflow's focused task aggregation and time-blocking use case.",
+        "Akiflow costs $19/month (monthly) or $15/month (annual) with no free plan — only a 7-day trial. GAIA's Pro plan is $20/month with a free tier available and full self-hosting at no cost. For users willing to self-host, GAIA is significantly more affordable than Akiflow. For users on hosted plans, the prices are comparable, but GAIA covers a much broader scope — email management, calendar scheduling, cross-tool automations, and many integrations — compared to Akiflow's focused task aggregation and time-blocking use case.",
     },
   ],
 };

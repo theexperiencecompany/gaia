@@ -58,7 +58,7 @@ export const faqData: FAQItem[] = [
   {
     question: "How is GAIA different from OpenClaw?",
     answer:
-      "OpenClaw is a kit. You run your own agent on your own machine with your own credentials, then figure out what to build. Fun for developers, a security headache for everyone else. GAIA is the finished product: cloud hosted, with 50+ integrations wired up and workflows that work from day one.",
+      "OpenClaw is a kit. You run your own agent on your own machine with your own credentials, then figure out what to build. Fun for developers, a security headache for everyone else. GAIA is the finished product: cloud hosted, with your tools wired up and workflows that work from day one. I wanted something my non-technical friends could actually use.",
   },
   {
     question: "Who is GAIA for?",

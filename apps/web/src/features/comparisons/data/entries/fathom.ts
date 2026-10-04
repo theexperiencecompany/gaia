@@ -10,7 +10,7 @@ export const entry: ComparisonData = {
   metaTitle:
     "Fathom Alternative for Full Productivity Automation — GAIA vs Fathom",
   metaDescription:
-    "Fathom's free notetaker is excellent but limited to meetings. GAIA is an open-source alternative that connects meeting outcomes to tasks, email follow-ups, and 50+ integrations automatically.",
+    "Fathom's free notetaker is excellent but limited to meetings. GAIA is an open-source alternative that connects meeting outcomes to tasks, email follow-ups, and many integrations automatically.",
   keywords: [
     "fathom alternative",
     "gaia vs fathom",
@@ -74,7 +74,7 @@ For users who love Fathom's free meeting notes and want nothing more, it remains
     },
     {
       feature: "Workflow automation",
-      gaia: "Multi-step automations with natural-language triggers across 50+ integrations",
+      gaia: "Multi-step automations with natural-language triggers across many integrations",
       competitor: "Zapier integration; no native workflow engine",
     },
     {
@@ -100,7 +100,7 @@ For users who love Fathom's free meeting notes and want nothing more, it remains
     "Converts meeting action items into real tasks in Todoist, Linear, and Jira — not just a list in the meeting tool",
     "Pre-meeting briefings eliminate manual research before calls",
     "Full email management and follow-up automation extending beyond meetings",
-    "50+ integrations for complete tool-stack connectivity",
+    "many integrations for complete tool-stack connectivity",
     "Open source and self-hostable for privacy-conscious teams",
     "Unified AI layer connecting meetings, tasks, email, and calendar context",
   ],
@@ -120,7 +120,7 @@ For users who love Fathom's free meeting notes and want nothing more, it remains
     {
       question: "Can GAIA sync meeting notes to Salesforce like Fathom?",
       answer:
-        "GAIA's workflow automation can push meeting-derived data to CRM tools, though Fathom's native Salesforce and HubSpot integration is more mature for sales-specific note formats. GAIA's advantage is breadth — it can also push to Notion, Jira, Todoist, Linear, and 45+ other tools beyond CRM.",
+        "GAIA's workflow automation can push meeting-derived data to CRM tools, though Fathom's native Salesforce and HubSpot integration is more mature for sales-specific note formats. GAIA's advantage is breadth — it can also push to Notion, Jira, Todoist, Linear, and many other tools beyond CRM.",
     },
     {
       question: "Does GAIA have a free tier like Fathom?",

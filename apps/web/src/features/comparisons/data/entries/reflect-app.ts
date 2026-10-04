@@ -6,7 +6,7 @@ export const entry: ComparisonData = {
   domain: "reflect.app",
   tagline: "AI-powered networked note-taking with backlinks and daily notes",
   description:
-    "Reflect is a networked note-taking app that mirrors the way your brain works, with backlinks, daily notes, calendar integration, and AI writing assistance. GAIA is a proactive AI productivity OS that connects your email, calendar, tasks, and 50+ tools into a single intelligent assistant that acts before you ask.",
+    "Reflect is a networked note-taking app that mirrors the way your brain works, with backlinks, daily notes, calendar integration, and AI writing assistance. GAIA is a proactive AI productivity OS that connects your email, calendar, tasks, and many tools into a single intelligent assistant that acts before you ask.",
   metaTitle: "Reflect Alternative with AI Email & Workflows — GAIA vs Reflect",
   metaDescription:
     "Reflect helps you think through networked notes but won't manage your inbox or automate workflows. GAIA is an open-source Reflect alternative with AI email management, workflow automation, and graph-based memory spanning your entire work context.",
@@ -23,11 +23,11 @@ export const entry: ComparisonData = {
     "AI task automation",
   ],
   intro:
-    "Reflect has built a polished product for thinkers who want their notes to mirror the way their brain works. Its backlink system automatically surfaces connections between ideas, daily notes keep a running journal of your work life, and calendar integration pulls meeting context directly into your notes. The AI layer — powered by GPT-4o or Claude — helps you write, summarize, and chat with your stored knowledge. For writers, researchers, and knowledge workers who live in their notes, Reflect delivers a genuinely elegant experience. But notes are rarely where work begins or ends. GAIA is built for the fuller picture — it monitors your inbox, manages your calendar, creates tasks from your emails, and executes multi-step automations across 50+ tools. Where Reflect stores and organizes what you think, GAIA acts on what needs to happen.",
+    "Reflect has built a polished product for thinkers who want their notes to mirror the way their brain works. Its backlink system automatically surfaces connections between ideas, daily notes keep a running journal of your work life, and calendar integration pulls meeting context directly into your notes. The AI layer — powered by GPT-4o or Claude — helps you write, summarize, and chat with your stored knowledge. For writers, researchers, and knowledge workers who live in their notes, Reflect delivers a genuinely elegant experience. But notes are rarely where work begins or ends. GAIA is built for the fuller picture — it monitors your inbox, manages your calendar, creates tasks from your emails, and executes multi-step automations across many tools. Where Reflect stores and organizes what you think, GAIA acts on what needs to happen.",
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI productivity OS that monitors your email, calendar, tasks, and 50+ connected tools and acts on your behalf before you ask",
+      gaia: "Proactive AI productivity OS that monitors your email, calendar, tasks, and your connected tools and acts on your behalf before you ask",
       competitor:
         "AI-powered networked note-taking app that mirrors how your brain works through backlinks, daily notes, and conversational AI over your personal knowledge graph",
     },
@@ -51,7 +51,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "AI features",
-      gaia: "Proactive AI agent that reasons across email, calendar, tasks, and 50+ integrations to take action, draft content, build workflows, and surface insights before you ask",
+      gaia: "Proactive AI agent that reasons across email, calendar, tasks, and many integrations to take action, draft content, build workflows, and surface insights before you ask",
       competitor:
         "AI writing assistance, grammar checks, custom prompts, voice-to-text transcription, and conversational chat over your note graph using GPT-4o or Claude 3.5 Sonnet",
     },
@@ -84,7 +84,7 @@ export const entry: ComparisonData = {
     "Proactively manages your inbox, calendar, and tasks — triages email, prepares meeting briefings, and runs workflows without you needing to ask",
     "Full Gmail automation including urgency triage, reply drafting, auto-labeling, and inbox-zero workflows that Reflect cannot perform",
     "Graph-based memory connects your entire work context: tasks, projects, emails, meetings, and people — not just the notes you explicitly wrote",
-    "Natural-language multi-step workflow automation spanning 50+ tools with triggers, conditions, and cross-platform actions",
+    "Natural-language multi-step workflow automation spanning many tools with triggers, conditions, and cross-platform actions",
     "Open source and self-hostable — complete data ownership with no usage caps and no per-seat cost when running on your own infrastructure",
   ],
   competitorAdvantages: [

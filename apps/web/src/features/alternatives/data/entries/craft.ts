@@ -66,7 +66,7 @@ export const entry: AlternativeData = {
     {
       question: "Is GAIA cheaper than Craft?",
       answer:
-        "Craft's Plus plan is $8/month ($96/year). GAIA Pro is $20/month but includes email management, calendar integration, tasks, and 50+ tool connections. Self-hosted GAIA is always free.",
+        "Craft's Plus plan is $8/month ($96/year). GAIA Pro is $20/month but includes email management, calendar integration, tasks, and many tool connections. Self-hosted GAIA is always free.",
     },
     {
       question: "Can GAIA and Craft be used together?",

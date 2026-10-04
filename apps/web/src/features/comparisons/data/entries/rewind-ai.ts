@@ -22,7 +22,7 @@ export const entry: ComparisonData = {
     "searchable screen history alternative",
   ],
   intro:
-    "Rewind has carved out a distinctive niche by recording everything that appears on your screen and everything captured by your microphone, then making that archive instantly searchable with AI. It is a powerful recall tool — if you saw it or heard it, you can find it again. But Rewind is fundamentally passive: it captures what happens and lets you search the past. GAIA takes the opposite stance. Rather than recording your screen, GAIA connects directly to your email, calendar, tasks, and 50+ other tools, builds a structured graph of your work context, and then acts proactively on your behalf — drafting replies, creating calendar events, running multi-step workflows — without waiting to be asked. The choice is between a perfect memory of what you did and an assistant that helps you do what comes next.",
+    "Rewind has carved out a distinctive niche by recording everything that appears on your screen and everything captured by your microphone, then making that archive instantly searchable with AI. It is a powerful recall tool — if you saw it or heard it, you can find it again. But Rewind is fundamentally passive: it captures what happens and lets you search the past. GAIA takes the opposite stance. Rather than recording your screen, GAIA connects directly to your email, calendar, tasks, and many other tools, builds a structured graph of your work context, and then acts proactively on your behalf — drafting replies, creating calendar events, running multi-step workflows — without waiting to be asked. The choice is between a perfect memory of what you did and an assistant that helps you do what comes next.",
   rows: [
     {
       feature: "Core approach",
@@ -68,7 +68,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, and Jira with deep bi-directional read and write actions",
+      gaia: "many integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, and Jira with deep bi-directional read and write actions",
       competitor:
         "No external service integrations; captures whatever is visible on screen regardless of application, but does not connect to or write back to any external tool",
     },
@@ -87,7 +87,7 @@ export const entry: ComparisonData = {
   gaiaAdvantages: [
     "Acts proactively on your behalf — triages email, prepares meeting briefings, and executes workflows without you opening a chat or running a search",
     "Structured graph-based memory models real relationships between tasks, people, meetings, and projects rather than storing a raw recording of past screen activity",
-    "50+ live integrations with bi-directional read and write access mean GAIA can take action inside Gmail, Google Calendar, Slack, Notion, and more — not just recall what was once visible",
+    "many live integrations with bi-directional read and write access mean GAIA can take action inside Gmail, Google Calendar, Slack, Notion, and more — not just recall what was once visible",
     "Cross-platform support on Web, macOS, Windows, Linux, iOS, Android, and bots — not locked to a single operating system",
     "Fully open source and self-hostable with Docker — complete data ownership, no closed-source dependency, and no requirement to trust a third-party with a recording of your entire screen",
   ],
@@ -102,7 +102,7 @@ export const entry: ComparisonData = {
     {
       question: "Does GAIA record my screen like Rewind does?",
       answer:
-        "No. GAIA does not record your screen or microphone. Instead, GAIA connects directly to your tools — Gmail, Google Calendar, Slack, Notion, and 50+ others — via integrations and builds a structured graph of your work context from that live data. This means GAIA has actionable, relationship-aware context rather than a raw video archive, and it can take actions inside those tools on your behalf.",
+        "No. GAIA does not record your screen or microphone. Instead, GAIA connects directly to your tools — Gmail, Google Calendar, Slack, Notion, and many others — via integrations and builds a structured graph of your work context from that live data. This means GAIA has actionable, relationship-aware context rather than a raw video archive, and it can take actions inside those tools on your behalf.",
     },
     {
       question: "Is GAIA available on Windows and Linux, unlike Rewind?",

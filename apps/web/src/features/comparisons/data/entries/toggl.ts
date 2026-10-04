@@ -10,7 +10,7 @@ export const entry: ComparisonData = {
   metaTitle:
     "Toggl Track Alternative with AI Workflow Automation — GAIA vs Toggl",
   metaDescription:
-    "Toggl requires manual time entry and won't manage your tasks. GAIA is an open-source alternative that automates your workflow, manages email and tasks, and syncs across 50+ tools — free tier included.",
+    "Toggl requires manual time entry and won't manage your tasks. GAIA is an open-source alternative that automates your workflow, manages email and tasks, and syncs across many tools — free tier included.",
   keywords: [
     "toggl alternative",
     "gaia vs toggl",
@@ -57,7 +57,7 @@ GAIA approaches productivity from the other direction. Rather than asking you to
     },
     {
       feature: "Workflow automation",
-      gaia: "Multi-step workflows with triggers across 50+ connected tools",
+      gaia: "Multi-step workflows with triggers across your connected tools",
       competitor: "Integrations via Zapier for basic time-entry triggers",
     },
     {
@@ -68,7 +68,7 @@ GAIA approaches productivity from the other direction. Rather than asking you to
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations including Gmail, Slack, GitHub, Notion, Todoist, and more",
+      gaia: "many integrations including Gmail, Slack, GitHub, Notion, Todoist, and more",
       competitor:
         "100+ integrations focused on syncing time entries with PM tools",
     },
@@ -86,7 +86,7 @@ GAIA approaches productivity from the other direction. Rather than asking you to
   gaiaAdvantages: [
     "Proactively creates and routes tasks instead of just recording time",
     "Manages email, calendar, and workflows in one unified assistant",
-    "50+ integrations with AI-powered orchestration",
+    "many integrations with AI-powered orchestration",
     "No manual data entry required — AI works from your existing tools",
     "Open source with self-hosting for complete data ownership",
     "Free tier available without credit card",

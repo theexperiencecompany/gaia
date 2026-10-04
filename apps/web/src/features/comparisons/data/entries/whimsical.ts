@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "whimsical.com",
   tagline: "Visual workspace for wireframes, flowcharts, and mind maps",
   description:
-    "Whimsical is a visual collaboration tool for creating wireframes, flowcharts, mind maps, and sticky-note boards. GAIA is a proactive AI assistant that manages email, calendar, tasks, and 50+ integrations — connecting the planning phase to the execution layer of your work.",
+    "Whimsical is a visual collaboration tool for creating wireframes, flowcharts, mind maps, and sticky-note boards. GAIA is a proactive AI assistant that manages email, calendar, tasks, and many integrations — connecting the planning phase to the execution layer of your work.",
   metaTitle:
     "Whimsical Alternative with AI Workflow Automation & Task Management — GAIA vs Whimsical",
   metaDescription:
-    "Whimsical is great for visual thinking but stays in the design phase. GAIA is a free, open-source Whimsical alternative with proactive AI email management, task automation, and workflow orchestration across 50+ integrations.",
+    "Whimsical is great for visual thinking but stays in the design phase. GAIA is a free, open-source Whimsical alternative with proactive AI email management, task automation, and workflow orchestration across many integrations.",
   keywords: [
     "whimsical alternative",
     "gaia vs whimsical",
@@ -29,11 +29,11 @@ That focus is Whimsical's strength. Teams use it for sprint planning artifacts, 
 
 But Whimsical is a visualization tool, not a productivity system. Once a planning session ends and its wireframes are archived, Whimsical has no awareness of the emails arriving about the project, the tasks being created in Jira or Todoist, the calendar events for the sprint review, or the Slack threads where decisions are made. The gap between the planning artifact and the actual work is left entirely to other tools and human coordination.
 
-GAIA is designed to close that gap. As a proactive AI assistant, GAIA reads your Gmail inbox and creates tasks automatically, manages your Google Calendar and prepares meeting briefings, integrates with GitHub, Jira, Linear, Notion, Slack, and 45+ other tools, and orchestrates multi-step workflows through natural language. GAIA's strength is not visual representation — it does not generate diagrams or wireframes — but it manages the entire text-and-task layer of your work with autonomous intelligence. For professionals who already have a visual collaboration tool and need their AI to handle the action layer, GAIA provides everything Whimsical deliberately omits.`,
+GAIA is designed to close that gap. As a proactive AI assistant, GAIA reads your Gmail inbox and creates tasks automatically, manages your Google Calendar and prepares meeting briefings, integrates with GitHub, Jira, Linear, Notion, Slack, and many other tools, and orchestrates multi-step workflows through natural language. GAIA's strength is not visual representation — it does not generate diagrams or wireframes — but it manages the entire text-and-task layer of your work with autonomous intelligence. For professionals who already have a visual collaboration tool and need their AI to handle the action layer, GAIA provides everything Whimsical deliberately omits.`,
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI assistant managing email, calendar, tasks, and workflows across 50+ connected tools autonomously",
+      gaia: "Proactive AI assistant managing email, calendar, tasks, and workflows across your connected tools autonomously",
       competitor:
         "Visual collaboration workspace for wireframes, flowcharts, mind maps, and sticky-note boards",
     },
@@ -67,7 +67,7 @@ GAIA is designed to close that gap. As a proactive AI assistant, GAIA reads your
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira, and more via MCP",
+      gaia: "many integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira, and more via MCP",
       competitor:
         "Embeds into Notion pages and Confluence; Slack notifications; limited external workflow connections",
     },
@@ -103,7 +103,7 @@ GAIA is designed to close that gap. As a proactive AI assistant, GAIA reads your
   gaiaAdvantages: [
     "Manages the full action layer after planning — email, tasks, calendar, and tool updates — that Whimsical leaves to other tools",
     "Proactively creates tasks and reminders from emails about the projects being planned",
-    "50+ integrations connect project context across Gmail, Jira, Slack, and more without manual coordination",
+    "many integrations connect project context across Gmail, Jira, Slack, and more without manual coordination",
     "Open source and self-hostable — complete data ownership with no per-seat pricing when self-hosted",
     "Natural language workflow automation that replaces multi-tool manual handoffs",
     "Free tier covers basic workflow automation at no cost",
@@ -124,7 +124,7 @@ GAIA is designed to close that gap. As a proactive AI assistant, GAIA reads your
     {
       question: "Does GAIA integrate with Whimsical?",
       answer:
-        "GAIA does not have a native Whimsical integration. Its 50+ integrations focus on tools like Gmail, Slack, Notion, Jira, GitHub, Linear, and Todoist. Teams using both tools would coordinate between them manually rather than through an automated connection.",
+        "GAIA does not have a native Whimsical integration. Its many integrations focus on tools like Gmail, Slack, Notion, Jira, GitHub, Linear, and Todoist. Teams using both tools would coordinate between them manually rather than through an automated connection.",
     },
     {
       question: "Is GAIA a good free alternative to Whimsical?",
@@ -134,7 +134,7 @@ GAIA is designed to close that gap. As a proactive AI assistant, GAIA reads your
     {
       question: "What does GAIA offer that Whimsical doesn't?",
       answer:
-        "GAIA offers proactive email management, automatic task creation from conversations, Google Calendar integration, meeting briefings, and multi-step workflow automation across 50+ tools. Whimsical offers none of these capabilities — it is a visualization tool, not a workflow management system.",
+        "GAIA offers proactive email management, automatic task creation from conversations, Google Calendar integration, meeting briefings, and multi-step workflow automation across many tools. Whimsical offers none of these capabilities — it is a visualization tool, not a workflow management system.",
     },
     {
       question: "Is GAIA cheaper than Whimsical for teams?",

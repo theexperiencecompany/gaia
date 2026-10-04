@@ -59,7 +59,7 @@ export const entry: AlternativeData = {
     {
       question: "Is GAIA cheaper than HEY?",
       answer:
-        "HEY costs $99/year ($8.25/month) for personal use. GAIA Pro is $20/month but includes email management, task tracking, calendar integration, workflow automation, and 50+ tool connections. GAIA also has a free tier and a self-hosted option at no cost.",
+        "HEY costs $99/year ($8.25/month) for personal use. GAIA Pro is $20/month but includes email management, task tracking, calendar integration, workflow automation, and many tool connections. GAIA also has a free tier and a self-hosted option at no cost.",
     },
     {
       question: "Can GAIA work with my existing Gmail account?",

@@ -15,7 +15,7 @@ export const marketplaceFAQs: FAQItem[] = [
   {
     question: "How many integrations does GAIA support?",
     answer:
-      "GAIA supports 50+ integrations including Gmail, Slack, Notion, GitHub, Linear, Google Calendar, Todoist, Asana, ClickUp, Microsoft Teams, HubSpot, and more. The community marketplace allows anyone to build and share custom MCP integrations.",
+      "GAIA connects to your everyday tools including Gmail, Slack, Notion, GitHub, Linear, Google Calendar, Todoist, Asana, ClickUp, Microsoft Teams, HubSpot, and more. The community marketplace allows anyone to build and share custom MCP integrations. I use it with my own stack every day.",
   },
   {
     question: "Can I create custom integrations for GAIA?",

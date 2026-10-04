@@ -11,7 +11,7 @@ export const entry: ComparisonData = {
   metaTitle:
     "Forest App Alternative with AI-Powered Focus Management — GAIA vs Forest",
   metaDescription:
-    "Forest helps you avoid your phone but can't manage your workflow. GAIA is an open-source alternative that proactively schedules focus time, manages your inbox, and automates tasks across 50+ tools — free tier available.",
+    "Forest helps you avoid your phone but can't manage your workflow. GAIA is an open-source alternative that proactively schedules focus time, manages your inbox, and automates tasks across many tools — free tier available.",
   keywords: [
     "Forest app alternative",
     "GAIA vs Forest",
@@ -30,13 +30,13 @@ export const entry: ComparisonData = {
 
 But Forest addresses only one narrow slice of the focus problem: phone distraction during a self-initiated timer session. It does not help you decide what to focus on in the first place, manage the email that interrupts your flow, protect your calendar from meeting creep, or reduce the cognitive overhead of managing tasks across a dozen different tools. You must still decide to start a Forest session — and that decision requires having already cleared enough mental space to know what to work on and having suppressed the urge to check the notifications competing for your attention.
 
-GAIA approaches focus from the upstream side. It proactively schedules protected work blocks on your calendar before meetings can fill them, reads your inbox and creates prioritised task lists so you always know what to tackle next, and automates the routine coordination tasks that eat into your peak hours. When your email, tasks, and calendar are managed by an AI that surfaces the right priorities at the right time, the cognitive overhead of context-switching drops substantially. You arrive at your work sessions with clarity about what matters most — and far fewer interruptions competing for your attention. GAIA connects to Gmail, Slack, Google Calendar, Notion, Todoist, and 40+ more tools, and it is fully open source with a free tier.
+GAIA approaches focus from the upstream side. It proactively schedules protected work blocks on your calendar before meetings can fill them, reads your inbox and creates prioritised task lists so you always know what to tackle next, and automates the routine coordination tasks that eat into your peak hours. When your email, tasks, and calendar are managed by an AI that surfaces the right priorities at the right time, the cognitive overhead of context-switching drops substantially. You arrive at your work sessions with clarity about what matters most — and far fewer interruptions competing for your attention. GAIA connects to Gmail, Slack, Google Calendar, Notion, Todoist, and many more tools, and it is fully open source with a free tier.
 
 The two tools also sit at entirely different price points and capability scopes. Forest costs around $1.99 as a mobile app purchase, with a web subscription available. GAIA's free tier gives you access to AI task management, email triage, calendar integration, and workflow automation — a fundamentally broader set of capabilities. Self-hosting GAIA is entirely free for teams comfortable managing their own infrastructure, and the Pro plan is $20/month. For knowledge workers who want to go beyond phone-locking to genuinely reduce the workflow chaos that makes focus sessions necessary, GAIA operates at a different level entirely.`,
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI productivity OS that manages workflow, schedules focus time, and reduces cognitive overhead across 50+ tools",
+      gaia: "Proactive AI productivity OS that manages workflow, schedules focus time, and reduces cognitive overhead across many tools",
       competitor:
         "Gamified Pomodoro timer app that grows virtual trees during focus sessions to discourage phone use",
     },
@@ -72,7 +72,7 @@ The two tools also sit at entirely different price points and capability scopes.
     },
     {
       feature: "Workflow automation",
-      gaia: "Natural language multi-step workflows across 50+ tools that handle routine coordination automatically",
+      gaia: "Natural language multi-step workflows across many tools that handle routine coordination automatically",
       competitor: "No workflow automation capability",
     },
     {
@@ -83,7 +83,7 @@ The two tools also sit at entirely different price points and capability scopes.
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, and more via MCP",
+      gaia: "many integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, and more via MCP",
       competitor:
         "Todoist integration for session task goals; no other tool connections",
     },
@@ -109,7 +109,7 @@ The two tools also sit at entirely different price points and capability scopes.
     "Proactively schedules and protects focus time on your calendar before meetings fill your day",
     "Reduces cognitive load by automating task creation and email triage — so focus sessions start with clarity rather than chaos",
     "Manages the upstream workflow that makes deep focus possible in the first place",
-    "50+ integrations ensure the full context of your work is always surfaced and actionable",
+    "many integrations ensure the full context of your work is always surfaced and actionable",
     "Open source and self-hostable for complete data ownership",
     "Free tier available with meaningful AI productivity capability — no app store purchase required",
   ],
@@ -195,7 +195,7 @@ The two tools also sit at entirely different price points and capability scopes.
     {
       question: "What integrations does GAIA offer that Forest does not?",
       answer:
-        "Forest integrates with Todoist for session goal-setting and that is essentially the extent of its integration surface. GAIA integrates with 50+ tools via MCP: Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Jira, Asana, Todoist, Obsidian, and more. These integrations power GAIA's proactive workflow management — reading email, monitoring tool activity, managing calendar events, and orchestrating automations across the full tool stack of a modern knowledge worker.",
+        "Forest integrates with Todoist for session goal-setting and that is essentially the extent of its integration surface. GAIA integrates with many tools via MCP: Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Jira, Asana, Todoist, Obsidian, and more. These integrations power GAIA's proactive workflow management — reading email, monitoring tool activity, managing calendar events, and orchestrating automations across the full tool stack of a modern knowledge worker.",
     },
   ],
   relatedPersonas: ["startup-founders", "software-developers"],

@@ -45,7 +45,7 @@ export const entry: AlternativeData = {
     "Free tier available; Missive has no permanent free plan for full features",
     "Proactive email intelligence rather than collaborative inbox management",
     "Open-source and self-hostable unlike Missive's closed SaaS",
-    "Connects email to calendar, tasks, and 50+ tools beyond the inbox",
+    "Connects email to calendar, tasks, and many tools beyond the inbox",
     "Designed for individual power users, not just teams",
   ],
   migrationSteps: [
@@ -63,7 +63,7 @@ export const entry: AlternativeData = {
     {
       question: "Is GAIA cheaper than Missive?",
       answer:
-        "Missive's Starter plan is $14/user/month billed annually. GAIA Pro is $20/month for one person with email management, calendar, tasks, and 50+ integrations. Self-hosted GAIA is completely free.",
+        "Missive's Starter plan is $14/user/month billed annually. GAIA Pro is $20/month for one person with email management, calendar, tasks, and many integrations. Self-hosted GAIA is completely free.",
     },
     {
       question:

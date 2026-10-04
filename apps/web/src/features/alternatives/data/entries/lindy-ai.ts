@@ -64,7 +64,7 @@ export const entry: AlternativeData = {
     {
       question: "Can GAIA build custom agents like Lindy?",
       answer:
-        "GAIA provides a proactive AI assistant with configurable workflows and 50+ tool integrations via MCP, covering the personal productivity use cases most Lindies are built for. It does not offer Lindy's visual agent builder for arbitrary enterprise workflow automation.",
+        "GAIA provides a proactive AI assistant with configurable workflows and many tool integrations via MCP, covering the personal productivity use cases most Lindies are built for. It does not offer Lindy's visual agent builder for arbitrary enterprise workflow automation.",
     },
     {
       question: "Who should choose GAIA over Lindy AI?",

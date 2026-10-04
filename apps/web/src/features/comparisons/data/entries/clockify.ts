@@ -10,7 +10,7 @@ export const entry: ComparisonData = {
   metaTitle:
     "Clockify Alternative with AI Task & Workflow Management — GAIA vs Clockify",
   metaDescription:
-    "Clockify tracks time but won't manage your tasks or automate your workflow. GAIA is a free, open-source alternative that proactively handles your inbox, calendar, and tasks across 50+ integrations.",
+    "Clockify tracks time but won't manage your tasks or automate your workflow. GAIA is a free, open-source alternative that proactively handles your inbox, calendar, and tasks across many integrations.",
   keywords: [
     "clockify alternative",
     "gaia vs clockify",
@@ -31,7 +31,7 @@ GAIA approaches the problem differently. It is a proactive AI assistant that con
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI assistant that manages tasks, calendar, email, and workflows across 50+ tools",
+      gaia: "Proactive AI assistant that manages tasks, calendar, email, and workflows across many tools",
       competitor:
         "Free time tracker for logging hours against projects and clients",
     },
@@ -87,7 +87,7 @@ GAIA approaches the problem differently. It is a proactive AI assistant that con
   gaiaAdvantages: [
     "Proactive task and workflow management instead of passive time logging",
     "AI reads emails and creates tasks automatically — no manual entry",
-    "50+ integrations with intelligent cross-tool orchestration",
+    "many integrations with intelligent cross-tool orchestration",
     "Fully open source and free to self-host",
     "Unified inbox, calendar, and task management in one assistant",
     "Free tier available with no per-seat restrictions",
@@ -113,7 +113,7 @@ GAIA approaches the problem differently. It is a proactive AI assistant that con
     {
       question: "Does GAIA integrate with Clockify?",
       answer:
-        "GAIA connects to the productivity and communication tools where your work originates — Gmail, Slack, GitHub, Linear, Notion, and 40+ more. It can help reduce the need for manual time entry by automating the workflow Clockify is used to track.",
+        "GAIA connects to the productivity and communication tools where your work originates — Gmail, Slack, GitHub, Linear, Notion, and many more. It can help reduce the need for manual time entry by automating the workflow Clockify is used to track.",
     },
     {
       question: "Is GAIA open source?",

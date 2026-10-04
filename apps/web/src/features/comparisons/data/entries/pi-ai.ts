@@ -9,7 +9,7 @@ export const entry: ComparisonData = {
     "Pi is Inflection AI's conversational AI designed to be an empathetic personal companion — thoughtful, supportive, and focused on dialogue. GAIA is a proactive AI productivity assistant that manages your email, calendar, tasks, and workflows while also being conversational.",
   metaTitle: "Pi AI Alternative for Productivity Management — GAIA vs Pi",
   metaDescription:
-    "Pi is great for conversation but won't manage your inbox or automate tasks. GAIA is an open-source alternative that proactively handles your workflow across email, calendar, and 50+ integrations.",
+    "Pi is great for conversation but won't manage your inbox or automate tasks. GAIA is an open-source alternative that proactively handles your workflow across email, calendar, and many integrations.",
   keywords: [
     "pi ai alternative",
     "gaia vs pi ai",
@@ -26,7 +26,7 @@ export const entry: ComparisonData = {
 
 The trade-off of Pi's conversational focus is operational depth. Pi is not designed to take action in your tools — it does not manage your email, create tasks in your project management system, schedule calendar events, or run multi-step workflows. It is a conversation partner, not a productivity OS. If you want to think through how to approach a difficult email, Pi might help you structure your thinking. Actually drafting and sending that email, or triaging the thirty other messages in your inbox, is left for you to do manually.
 
-GAIA approaches personal AI from a productivity-first perspective without sacrificing conversational quality. GAIA's AI layer is built on leading language models, which means interactions feel natural and substantive. But GAIA also has operational depth: it is connected to Gmail, Google Calendar, Slack, GitHub, Notion, Todoist, Linear, and 40+ more tools, and it takes real actions in those tools. When you tell GAIA that you want your inbox organized, it actually organizes it. When you mention that you have a call tomorrow that you are not prepared for, GAIA generates a briefing document from your email history and prior context.
+GAIA approaches personal AI from a productivity-first perspective without sacrificing conversational quality. GAIA's AI layer is built on leading language models, which means interactions feel natural and substantive. But GAIA also has operational depth: it is connected to Gmail, Google Calendar, Slack, GitHub, Notion, Todoist, Linear, and many more tools, and it takes real actions in those tools. When you tell GAIA that you want your inbox organized, it actually organizes it. When you mention that you have a call tomorrow that you are not prepared for, GAIA generates a briefing document from your email history and prior context.
 
 For professionals who value both conversational quality and operational capability, GAIA provides a more complete personal AI. The empathetic, high-quality conversation that Pi optimizes for is a feature of good AI assistants generally — but conversation without execution is incomplete for knowledge workers whose core challenge is managing the overwhelming volume of work that flows through their digital tools daily.`,
   rows: [
@@ -61,12 +61,12 @@ For professionals who value both conversational quality and operational capabili
     },
     {
       feature: "Workflow automation",
-      gaia: "Multi-step automations with natural-language triggers across 50+ integrations",
+      gaia: "Multi-step automations with natural-language triggers across many integrations",
       competitor: "No workflow automation; conversational support only",
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP: Gmail, Slack, GitHub, Linear, Notion, Todoist, Jira, Google Calendar, and more",
+      gaia: "many integrations via MCP: Gmail, Slack, GitHub, Linear, Notion, Todoist, Jira, Google Calendar, and more",
       competitor: "No third-party tool integrations",
     },
     {
@@ -94,7 +94,7 @@ For professionals who value both conversational quality and operational capabili
   ],
   gaiaAdvantages: [
     "Takes real action in your tools — manages email, creates tasks, and runs workflows proactively",
-    "50+ bidirectional tool integrations connecting conversation to real-world execution",
+    "many bidirectional tool integrations connecting conversation to real-world execution",
     "Graph-based memory connecting the full context of your work, not just conversation history",
     "Workflow automation converts natural-language instructions into multi-step cross-tool actions",
     "Open source and self-hostable for complete privacy and data ownership",
@@ -121,7 +121,7 @@ For professionals who value both conversational quality and operational capabili
     {
       question: "Does GAIA integrate with tools that Pi does not?",
       answer:
-        "Yes. GAIA connects to Gmail, Google Calendar, Slack, GitHub, Linear, Notion, Todoist, Jira, and 40+ more via MCP with full read-write access. Pi has no third-party tool integrations — it is a conversation-only platform. If you want AI that can actually do things in your tools, GAIA is the appropriate choice.",
+        "Yes. GAIA connects to Gmail, Google Calendar, Slack, GitHub, Linear, Notion, Todoist, Jira, and many more via MCP with full read-write access. Pi has no third-party tool integrations — it is a conversation-only platform. If you want AI that can actually do things in your tools, GAIA is the appropriate choice.",
     },
     {
       question: "Is GAIA private like Pi claims to be?",

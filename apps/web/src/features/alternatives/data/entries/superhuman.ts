@@ -75,7 +75,7 @@ export const entry: AlternativeData = {
     {
       question: "How is GAIA's pricing compared to Superhuman?",
       answer:
-        "Superhuman is $30/month with no free tier. GAIA Pro is $20/month with a free tier. Self-hosted GAIA is completely free. GAIA includes email, calendar, tasks, and 50+ integrations at a lower price.",
+        "Superhuman is $30/month with no free tier. GAIA Pro is $20/month with a free tier. Self-hosted GAIA is completely free. GAIA includes email, calendar, tasks, and many integrations at a lower price.",
     },
   ],
   comparisonRows: [
@@ -99,7 +99,7 @@ export const entry: AlternativeData = {
     },
     {
       feature: "Tool integrations",
-      gaia: "Connects email to calendar, tasks, and 50+ tools: creates tasks from emails, schedules meetings from threads",
+      gaia: "Connects email to calendar, tasks, and many tools: creates tasks from emails, schedules meetings from threads",
       competitor:
         "Email-only scope; no native task creation from email, no calendar event creation, no workflow automation",
     },

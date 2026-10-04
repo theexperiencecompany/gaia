@@ -9,7 +9,7 @@ export const entry: ComparisonData = {
     "Fantastical is a premium Apple-ecosystem calendar and tasks app known for its natural language event creation and polished design. GAIA goes far beyond calendar management to orchestrate your entire digital workflow across email, tasks, integrations, and more.",
   metaTitle: "Fantastical Alternative with AI Automation — GAIA vs Fantastical",
   metaDescription:
-    "Fantastical is a premium Apple calendar but doesn't manage your inbox or automate workflows. GAIA is an open-source Fantastical alternative with AI automation across email, calendar, and 50+ tools — on every platform, with a free tier.",
+    "Fantastical is a premium Apple calendar but doesn't manage your inbox or automate workflows. GAIA is an open-source Fantastical alternative with AI automation across email, calendar, and many tools — on every platform, with a free tier.",
   keywords: [
     "GAIA vs Fantastical",
     "Fantastical alternative",
@@ -20,11 +20,11 @@ export const entry: ComparisonData = {
     "cross-platform calendar",
   ],
   intro:
-    "Fantastical has long been regarded as the finest calendar app in the Apple ecosystem. Its natural language parsing, unified calendar and task view, and beautifully crafted interface set a high bar for what a calendar app can be. But Fantastical is, fundamentally, a calendar app — and the modern productivity challenge extends well beyond scheduling. GAIA approaches the problem differently: rather than perfecting one tool, it acts as a proactive AI layer that spans your email, calendar, tasks, workflows, and 50+ integrations, taking action on your behalf so you spend less time managing and more time doing.",
+    "Fantastical has long been regarded as the finest calendar app in the Apple ecosystem. Its natural language parsing, unified calendar and task view, and beautifully crafted interface set a high bar for what a calendar app can be. But Fantastical is, fundamentally, a calendar app — and the modern productivity challenge extends well beyond scheduling. GAIA approaches the problem differently: rather than perfecting one tool, it acts as a proactive AI layer that spans your email, calendar, tasks, workflows, and many integrations, taking action on your behalf so you spend less time managing and more time doing.",
   rows: [
     {
       feature: "Core approach",
-      gaia: "Full productivity OS that proactively manages email, calendar, tasks, and workflows across 50+ tools",
+      gaia: "Full productivity OS that proactively manages email, calendar, tasks, and workflows across many tools",
       competitor:
         "Premium calendar and tasks app focused on beautiful scheduling and natural language event creation",
     },
@@ -59,12 +59,12 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Workflow automation",
-      gaia: "Natural language automations spanning email, calendar, tasks, and 50+ integrated services",
+      gaia: "Natural language automations spanning email, calendar, tasks, and many integrated services",
       competitor: "No workflow automation capabilities",
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, and more",
+      gaia: "many integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, and more",
       competitor:
         "Calendar providers (Google, iCloud, Exchange, CalDAV) and Apple Reminders; no third-party app integrations",
     },
@@ -84,7 +84,7 @@ export const entry: ComparisonData = {
     "Works on every platform — Windows and Android users are not left out",
     "Manages email, tasks, and workflows, not just calendar events",
     "Proactive AI agents act on your behalf without waiting to be asked",
-    "50+ integrations connect your entire digital workflow in one place",
+    "many integrations connect your entire digital workflow in one place",
     "Open source and self-hostable for full data ownership and privacy",
     "Graph-based persistent memory learns your patterns over time",
   ],
@@ -95,7 +95,7 @@ export const entry: ComparisonData = {
     "Unified calendar and reminders view with DayTicker and DayMap layouts",
   ],
   verdict:
-    "Choose Fantastical if you live entirely in the Apple ecosystem and want the most refined, beautifully designed calendar app available. Choose GAIA if you need an AI assistant that goes beyond scheduling — managing your email, automating workflows, integrating 50+ tools, and working across every platform including Windows, Android, and the web.",
+    "Choose Fantastical if you live entirely in the Apple ecosystem and want the most refined, beautifully designed calendar app available. Choose GAIA if you need an AI assistant that goes beyond scheduling — managing your email, automating workflows, integrating many tools, and working across every platform including Windows, Android, and the web.",
   faqs: [
     {
       question: "Can GAIA replace Fantastical for calendar management?",

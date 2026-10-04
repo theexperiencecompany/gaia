@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "chatgpt.com",
   tagline: "OpenAI's conversational AI",
   description:
-    "ChatGPT excels at conversation but waits for your prompts. GAIA proactively manages your workflow, automates tasks, and orchestrates 50+ tools autonomously.",
+    "ChatGPT excels at conversation but waits for your prompts. GAIA proactively manages your workflow, automates tasks, and orchestrates many tools autonomously.",
   metaTitle:
     "ChatGPT Teams Alternative for Proactive Productivity — GAIA vs ChatGPT Teams",
   metaDescription:
-    "Compare GAIA and ChatGPT for productivity. ChatGPT answers questions, but GAIA proactively manages your email, calendar, tasks, and workflows across 50+ tools.",
+    "Compare GAIA and ChatGPT for productivity. ChatGPT answers questions, but GAIA proactively manages your email, calendar, tasks, and workflows across many tools.",
   keywords: [
     "GAIA vs ChatGPT",
     "ChatGPT alternative",
@@ -40,7 +40,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Tool integration",
-      gaia: "50+ native integrations with real actions (send emails, create tasks, schedule meetings)",
+      gaia: "many native integrations with real actions (send emails, create tasks, schedule meetings)",
       competitor:
         "Plugin/GPT ecosystem, primarily for browsing and code execution",
     },
@@ -74,7 +74,7 @@ export const entry: ComparisonData = {
   ],
   gaiaAdvantages: [
     "Proactive: acts on your work without prompts",
-    "50+ tool integrations with real actions",
+    "many tool integrations with real actions",
     "Email management with auto-triage and reply drafting",
     "Autonomous task execution and workflow automation",
     "Open source with self-hosting for privacy",
@@ -92,7 +92,7 @@ export const entry: ComparisonData = {
     {
       question: "Is GAIA a ChatGPT alternative?",
       answer:
-        "GAIA and ChatGPT serve different purposes. ChatGPT is a conversational AI for reasoning, writing, and analysis. GAIA is a proactive productivity OS that autonomously manages your email, calendar, tasks, and workflows across 50+ tools. ChatGPT helps you think; GAIA helps you do.",
+        "GAIA and ChatGPT serve different purposes. ChatGPT is a conversational AI for reasoning, writing, and analysis. GAIA is a proactive productivity OS that autonomously manages your email, calendar, tasks, and workflows across many tools. ChatGPT helps you think; GAIA helps you do.",
     },
     {
       question: "Can I use GAIA and ChatGPT together?",

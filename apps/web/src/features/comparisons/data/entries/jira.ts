@@ -6,7 +6,7 @@ export const entry: ComparisonData = {
   domain: "atlassian.com/software/jira",
   tagline: "Enterprise project and issue tracking for software teams",
   description:
-    "Jira is Atlassian's enterprise-grade issue tracker built for software engineering teams. GAIA is a proactive AI personal assistant that manages your entire digital workflow across email, calendar, tasks, and 50+ integrations.",
+    "Jira is Atlassian's enterprise-grade issue tracker built for software engineering teams. GAIA is a proactive AI personal assistant that manages your entire digital workflow across email, calendar, tasks, and many integrations.",
   metaTitle: "Jira Alternative for Personal Productivity — GAIA vs Jira",
   metaDescription:
     "Jira is built for engineering teams — not personal productivity. GAIA is an open-source Jira alternative that manages your email, calendar, and tasks as a proactive AI assistant, with native Jira integration and a free tier.",
@@ -30,7 +30,7 @@ export const entry: ComparisonData = {
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI personal assistant that manages email, calendar, tasks, and workflows across 50+ tools",
+      gaia: "Proactive AI personal assistant that manages email, calendar, tasks, and workflows across many tools",
       competitor:
         "Enterprise issue tracker and project management platform for software engineering teams",
     },
@@ -66,7 +66,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP including GitHub, Linear, Slack, Gmail, Notion, Jira, and more with AI-orchestrated actions",
+      gaia: "many integrations via MCP including GitHub, Linear, Slack, Gmail, Notion, Jira, and more with AI-orchestrated actions",
       competitor:
         "Thousands of Atlassian Marketplace integrations, deeply embedded in enterprise developer toolchains",
     },

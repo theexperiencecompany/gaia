@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline:
     "Mindful daily planner combining tasks, calendar, and intentional work rituals",
   description:
-    "Sunsama is a mindful daily planning tool that guides you through a morning ritual to pull tasks from connected apps, estimate time, and time-block your day — with a philosophy centered on intentional, focused work rather than maximum throughput. GAIA is a proactive AI productivity OS that manages your email, calendar, tasks, and 50+ integrations autonomously, actively reducing the volume of work reaching you rather than helping you plan through it more mindfully.",
+    "Sunsama is a mindful daily planning tool that guides you through a morning ritual to pull tasks from connected apps, estimate time, and time-block your day — with a philosophy centered on intentional, focused work rather than maximum throughput. GAIA is a proactive AI productivity OS that manages your email, calendar, tasks, and many integrations autonomously, actively reducing the volume of work reaching you rather than helping you plan through it more mindfully.",
   metaTitle: "Sunsama Alternative with Proactive AI — GAIA vs Sunsama",
   metaDescription:
     "Compare GAIA and Sunsama. Sunsama helps you plan your day mindfully, but GAIA manages email, calendar, tasks, and workflows proactively — reducing work volume, not just planning it better.",
@@ -34,7 +34,7 @@ export const entry: ComparisonData = {
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI productivity OS — monitors email, calendar, tasks, and 50+ tools and acts autonomously to reduce workload before it reaches you",
+      gaia: "Proactive AI productivity OS — monitors email, calendar, tasks, and many tools and acts autonomously to reduce workload before it reaches you",
       competitor:
         "Mindful daily planning tool — guided morning ritual to pull tasks from connected apps, estimate time, and time-block your calendar intentionally",
     },
@@ -70,7 +70,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Workflow automation",
-      gaia: "Natural-language multi-step automations across 50+ integrations — triggers, conditions, and cross-tool actions via MCP",
+      gaia: "Natural-language multi-step automations across many integrations — triggers, conditions, and cross-tool actions via MCP",
       competitor:
         "No native automation engine; integrations are read-only pulls for surfacing tasks in the daily plan; no cross-tool write actions",
     },
@@ -97,7 +97,7 @@ export const entry: ComparisonData = {
     "Reduces the volume of work reaching you rather than helping you plan through it — handles email triage, scheduling, and task creation before you ever open your planner",
     "Autonomous graph-based memory connects email, calendar, tasks, and people so every automated action benefits from full context about your projects and relationships",
     "Creates tasks from email and conversations automatically — no manual task input or morning import ritual required",
-    "Natural-language multi-step automations across 50+ tools go far beyond Sunsama's read-only task imports",
+    "Natural-language multi-step automations across many tools go far beyond Sunsama's read-only task imports",
     "Open source and self-hostable — complete data ownership with a free tier available, unlike Sunsama's paid-only model",
   ],
   competitorAdvantages: [
@@ -116,7 +116,7 @@ export const entry: ComparisonData = {
     {
       question: "Does GAIA support the same tool integrations as Sunsama?",
       answer:
-        "Sunsama integrates with Jira, Notion, Asana, Trello, Todoist, Slack, Google Calendar, and Outlook for pulling tasks into your daily plan. GAIA integrates with 50+ tools via MCP — including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and Jira — with full bi-directional AI-interpreted actions, not read-only task imports. GAIA can create, update, and manage items in these tools autonomously, not just surface them for manual planning.",
+        "Sunsama integrates with Jira, Notion, Asana, Trello, Todoist, Slack, Google Calendar, and Outlook for pulling tasks into your daily plan. GAIA integrates with many tools via MCP — including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and Jira — with full bi-directional AI-interpreted actions, not read-only task imports. GAIA can create, update, and manage items in these tools autonomously, not just surface them for manual planning.",
     },
     {
       question: "Is GAIA less expensive than Sunsama?",

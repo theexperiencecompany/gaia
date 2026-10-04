@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "perplexity.ai",
   tagline: "AI-powered search and research",
   description:
-    "Perplexity excels at AI-powered research and search. GAIA goes beyond research to proactively manage your entire digital workflow with 50+ tool integrations.",
+    "Perplexity excels at AI-powered research and search. GAIA goes beyond research to proactively manage your entire digital workflow with many tool integrations.",
   metaTitle:
     "Perplexity Alternative with Task & Email Management — GAIA vs Perplexity",
   metaDescription:
-    "Perplexity excels at AI search but stops at information — it won't manage your inbox or automate tasks. GAIA is an open-source Perplexity alternative that turns research into action across email, calendar, and 50+ tools.",
+    "Perplexity excels at AI search but stops at information — it won't manage your inbox or automate tasks. GAIA is an open-source Perplexity alternative that turns research into action across email, calendar, and many tools.",
   keywords: [
     "GAIA vs Perplexity",
     "Perplexity alternative",
@@ -45,7 +45,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations: Gmail, Slack, Notion, GitHub, Calendar, Linear, etc.",
+      gaia: "many integrations: Gmail, Slack, Notion, GitHub, Calendar, Linear, etc.",
       competitor: "Limited integrations, primarily a search interface",
     },
     {
@@ -66,7 +66,7 @@ export const entry: ComparisonData = {
   ],
   gaiaAdvantages: [
     "Proactive workflow management beyond search",
-    "50+ tool integrations for real actions",
+    "many tool integrations for real actions",
     "Email management and auto-triage",
     "Workflow automation with smart triggers",
     "Open source with self-hosting",
@@ -84,7 +84,7 @@ export const entry: ComparisonData = {
     {
       question: "Can GAIA do research like Perplexity?",
       answer:
-        "GAIA integrates with Perplexity as one of its 50+ tools for research tasks. GAIA's strength is taking research results and turning them into action: creating tasks, drafting documents, scheduling follow-ups, and automating workflows.",
+        "GAIA integrates with Perplexity as one of its many tools for research tasks. GAIA's strength is taking research results and turning them into action: creating tasks, drafting documents, scheduling follow-ups, and automating workflows.",
     },
   ],
 };

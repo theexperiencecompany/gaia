@@ -45,7 +45,7 @@ export const entry: AlternativeData = {
     "AI-powered task prioritization instead of manual list sorting",
     "Free tier and self-hosting for cost-conscious individuals",
     "Conversational interface accessible from web, mobile, desktop, and bots",
-    "50+ integrations via MCP extend beyond Basecamp's limited connectors",
+    "many integrations via MCP extend beyond Basecamp's limited connectors",
   ],
   migrationSteps: [
     "Export Basecamp projects and to-dos via the Data Export feature",

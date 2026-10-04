@@ -11,7 +11,7 @@ export const entry: ComparisonData = {
   metaTitle:
     "Focusmate Alternative with AI Focus and Workflow Management — GAIA vs Focusmate",
   metaDescription:
-    "Focusmate needs a partner and a scheduled session. GAIA is an open-source alternative that proactively schedules focus time, manages your inbox, and automates your workflow across 50+ tools — free tier available.",
+    "Focusmate needs a partner and a scheduled session. GAIA is an open-source alternative that proactively schedules focus time, manages your inbox, and automates your workflow across many tools — free tier available.",
   keywords: [
     "Focusmate alternative",
     "GAIA vs Focusmate",
@@ -30,7 +30,7 @@ export const entry: ComparisonData = {
 
 The constraint is structural: Focusmate requires a scheduled session, an available partner, and a video connection. On your most chaotic days — exactly when you most need help staying focused — you may not have the availability to schedule a session, or you may be overwhelmed by the email and task backlog that makes sitting down to work feel impossible in the first place. Focusmate helps you execute during a session once you have already decided to work; it does not help you decide what to work on, clear the inbox flooding your attention, protect your calendar from meeting creep, or reduce the coordination overhead of managing tasks across multiple tools.
 
-GAIA approaches the focus problem from the workflow side. It proactively schedules protected work blocks on your Google Calendar before meetings can fill them, reads your inbox and creates a prioritised task list so you always know what to tackle next, and automates the routine coordination tasks that eat into your peak hours. When your email is triaged, your tasks are created from conversations automatically, and your calendar has protected time built in, the conditions for deep work exist without needing to find a partner who is available at exactly the right moment. GAIA connects to Gmail, Slack, Google Calendar, Notion, Todoist, and 40+ more tools via MCP, and it is fully open source with a free tier.
+GAIA approaches the focus problem from the workflow side. It proactively schedules protected work blocks on your Google Calendar before meetings can fill them, reads your inbox and creates a prioritised task list so you always know what to tackle next, and automates the routine coordination tasks that eat into your peak hours. When your email is triaged, your tasks are created from conversations automatically, and your calendar has protected time built in, the conditions for deep work exist without needing to find a partner who is available at exactly the right moment. GAIA connects to Gmail, Slack, Google Calendar, Notion, Todoist, and many more tools via MCP, and it is fully open source with a free tier.
 
 The tools also operate at different scopes. Focusmate is a single-purpose accountability platform — excellent at its one job but unable to act on the broader workflow causing your focus challenges. GAIA is a full productivity operating system that manages your email, tasks, calendar, and cross-tool automations continuously in the background. GAIA's Pro plan is $20/month flat, self-hosting is free, and the free tier includes access to core AI capabilities. For knowledge workers dealing with complex multi-tool workflows, GAIA addresses the root causes of focus loss rather than helping manage the symptoms during a timed session.`,
   rows: [
@@ -71,7 +71,7 @@ The tools also operate at different scopes. Focusmate is a single-purpose accoun
     },
     {
       feature: "Workflow automation",
-      gaia: "Natural language multi-step workflows across 50+ tools that handle routine coordination automatically",
+      gaia: "Natural language multi-step workflows across many tools that handle routine coordination automatically",
       competitor: "No workflow automation capability",
     },
     {
@@ -82,7 +82,7 @@ The tools also operate at different scopes. Focusmate is a single-purpose accoun
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, and more via MCP",
+      gaia: "many integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, and more via MCP",
       competitor:
         "Minimal tool integrations; self-contained platform focused on the session experience",
     },
@@ -108,7 +108,7 @@ The tools also operate at different scopes. Focusmate is a single-purpose accoun
     "Always available — no partner scheduling, session booking, or time zone coordination required",
     "Proactively creates and protects focus time on your calendar before meetings fill the day",
     "Reduces cognitive overhead by automating task creation and email triage — so you arrive at work with clarity rather than overwhelm",
-    "50+ integrations for comprehensive workflow management that addresses the root causes of focus loss",
+    "many integrations for comprehensive workflow management that addresses the root causes of focus loss",
     "Open source and self-hostable for full data ownership and privacy",
     "Operates asynchronously across all your tools simultaneously, not just during dedicated sessions",
   ],
@@ -169,7 +169,7 @@ The tools also operate at different scopes. Focusmate is a single-purpose accoun
       question:
         "What integrations does GAIA support for focus and productivity?",
       answer:
-        "GAIA integrates with Gmail, Google Calendar, Slack, Notion, Todoist, Linear, Jira, GitHub, Asana, and 40+ more tools via MCP. These integrations power its proactive workflow management: reading email to surface task priorities, monitoring calendar for meeting context, pulling GitHub activity into task status, and more. Focusmate has minimal external integrations — it is a self-contained platform focused on the session experience rather than workflow management.",
+        "GAIA integrates with Gmail, Google Calendar, Slack, Notion, Todoist, Linear, Jira, GitHub, Asana, and many more tools via MCP. These integrations power its proactive workflow management: reading email to surface task priorities, monitoring calendar for meeting context, pulling GitHub activity into task status, and more. Focusmate has minimal external integrations — it is a self-contained platform focused on the session experience rather than workflow management.",
     },
     {
       question: "What platforms does GAIA support?",

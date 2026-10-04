@@ -28,7 +28,7 @@ export const entry: ComparisonData = {
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive productivity OS that monitors your digital life and executes actions across email, calendar, tasks, and 50+ tools automatically",
+      gaia: "Proactive productivity OS that monitors your digital life and executes actions across email, calendar, tasks, and many tools automatically",
       competitor:
         "Reactive conversational AI — provides responses and assistance when you initiate a conversation or prompt",
     },
@@ -70,7 +70,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and Jira with deep bi-directional actions",
+      gaia: "many integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and Jira with deep bi-directional actions",
       competitor:
         "Connects to Gmail and Google Calendar on paid plans; supports third-party GPT plugins and MCP tools, but integration depth and automation scope vary widely",
     },
@@ -91,7 +91,7 @@ export const entry: ComparisonData = {
     "Proactively acts on your behalf — triages email, prepares briefings, and runs workflows without a prompt",
     "Full Gmail automation including urgency triage, auto-labeling, and inbox-zero workflows",
     "Graph-based memory models the relationships between tasks, people, meetings, and projects for deep contextual understanding",
-    "Multi-step workflow automation with natural-language triggers and cross-tool execution across 50+ integrations",
+    "Multi-step workflow automation with natural-language triggers and cross-tool execution across many integrations",
     "Open source and self-hostable — full data ownership, no training on your data, deployable on your own infrastructure",
   ],
   competitorAdvantages: [
@@ -100,7 +100,7 @@ export const entry: ComparisonData = {
     "Advanced Voice mode, DALL-E image generation, Sora video generation (Pro), and Deep Research make it the most versatile all-in-one AI for creative and analytical work",
   ],
   verdict:
-    "ChatGPT is an exceptional on-demand AI for writing, research, coding, and conversation — but it waits for you to ask. GAIA is built for people who want an AI that actively runs their digital life: triaging email, executing calendar actions, managing tasks, and automating workflows across 50+ tools without being prompted each time.",
+    "ChatGPT is an exceptional on-demand AI for writing, research, coding, and conversation — but it waits for you to ask. GAIA is built for people who want an AI that actively runs their digital life: triaging email, executing calendar actions, managing tasks, and automating workflows across many tools without being prompted each time.",
   faqs: [
     {
       question: "Can GAIA replace ChatGPT for everyday AI assistance?",

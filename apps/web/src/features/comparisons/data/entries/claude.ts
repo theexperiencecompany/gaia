@@ -10,7 +10,7 @@ export const entry: ComparisonData = {
   metaTitle:
     "Claude Alternative with Email & Calendar Management — GAIA vs Claude",
   metaDescription:
-    "Claude is a powerful conversational AI but doesn't proactively manage your inbox or automate workflows. GAIA is an open-source Claude alternative with email triage, calendar management, and proactive task automation across 50+ tools.",
+    "Claude is a powerful conversational AI but doesn't proactively manage your inbox or automate workflows. GAIA is an open-source Claude alternative with email triage, calendar management, and proactive task automation across many tools.",
   keywords: [
     "GAIA vs Claude",
     "Claude alternative",
@@ -58,7 +58,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and Jira with deep bi-directional actions",
+      gaia: "many integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and Jira with deep bi-directional actions",
       competitor:
         "Google Drive, Gmail, Calendar, Slack, and Microsoft 365 via native MCP connectors; third-party MCP support is available but action depth varies",
     },
@@ -84,7 +84,7 @@ export const entry: ComparisonData = {
   gaiaAdvantages: [
     "Proactively triages email, prepares briefings, and runs workflows without a prompt",
     "Continuously monitors your inbox and calendar — no session to open, no trigger to configure",
-    "50+ native integrations with deep bi-directional actions across all your tools",
+    "many native integrations with deep bi-directional actions across all your tools",
     "Graph-based memory models relationships between tasks, people, meetings, and projects",
     "Open source and self-hostable — full data ownership, no training on your data",
   ],
@@ -96,12 +96,12 @@ export const entry: ComparisonData = {
     "Industry-leading safety alignment and Constitutional AI approach trusted by enterprises",
   ],
   verdict:
-    "Claude is an exceptional AI for deep reasoning, writing, and coding — and its Cowork features bring real agentic capability to power users. GAIA is built for people who want their digital life managed proactively: inbox triaged, calendar handled, and workflows running across 50+ tools without needing to open a conversation each time.",
+    "Claude is an exceptional AI for deep reasoning, writing, and coding — and its Cowork features bring real agentic capability to power users. GAIA is built for people who want their digital life managed proactively: inbox triaged, calendar handled, and workflows running across many tools without needing to open a conversation each time.",
   faqs: [
     {
       question: "Is GAIA better than Claude?",
       answer:
-        "They serve different purposes. Claude is one of the best conversational AIs for reasoning, coding, and content creation. GAIA is a proactive productivity OS that autonomously manages your email, calendar, tasks, and workflows across 50+ tools. Claude helps you think; GAIA helps you do.",
+        "They serve different purposes. Claude is one of the best conversational AIs for reasoning, coding, and content creation. GAIA is a proactive productivity OS that autonomously manages your email, calendar, tasks, and workflows across many tools. Claude helps you think; GAIA helps you do.",
     },
     {
       question:

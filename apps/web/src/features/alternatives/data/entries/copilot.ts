@@ -15,7 +15,7 @@ export const entry: AlternativeData = {
   ],
   metaTitle: "Best Microsoft Copilot Alternative in 2026",
   metaDescription:
-    "Not on Microsoft 365? GAIA is a proactive AI assistant that works with Gmail, Google Calendar, and 50+ tools, with no Microsoft subscription required. Free tier available.",
+    "Not on Microsoft 365? GAIA is a proactive AI assistant that works with Gmail, Google Calendar, and many tools, with no Microsoft subscription required. Free tier available.",
   keywords: [
     "microsoft copilot alternative",
     "copilot alternative",
@@ -33,7 +33,7 @@ export const entry: AlternativeData = {
     "self-hosted AI assistant",
   ],
   whyPeopleLook:
-    "Microsoft Copilot is powerful within the Microsoft 365 ecosystem, but it is inaccessible to anyone not using Outlook, Teams, and Word as their primary tools. The enterprise licensing starts at $30/user/month on top of existing Microsoft 365 costs, making it unaffordable for individuals and small businesses. Users on Google Workspace, or those using a mix of tools from different vendors, find that Copilot simply cannot help them. GAIA is the ecosystem-agnostic alternative: it works with Gmail, Google Calendar, Todoist, Slack, Discord, and 50+ tools via MCP, without requiring any Microsoft subscription.",
+    "Microsoft Copilot is powerful within the Microsoft 365 ecosystem, but it is inaccessible to anyone not using Outlook, Teams, and Word as their primary tools. The enterprise licensing starts at $30/user/month on top of existing Microsoft 365 costs, making it unaffordable for individuals and small businesses. Users on Google Workspace, or those using a mix of tools from different vendors, find that Copilot simply cannot help them. GAIA is the ecosystem-agnostic alternative: it works with Gmail, Google Calendar, Todoist, Slack, Discord, and many tools via MCP, without requiring any Microsoft subscription.",
   gaiaFitScore: 4,
   gaiaReplaces: [
     "Email triage and drafting for Gmail users",
@@ -47,7 +47,7 @@ export const entry: AlternativeData = {
     "No enterprise licensing required: free tier available",
     "Open-source codebase means no vendor lock-in",
     "Self-hostable for organizations with strict data compliance needs",
-    "50+ tool integrations beyond the Microsoft ecosystem",
+    "many tool integrations beyond the Microsoft ecosystem",
   ],
   migrationSteps: [
     "Connect GAIA to your Gmail account via OAuth",

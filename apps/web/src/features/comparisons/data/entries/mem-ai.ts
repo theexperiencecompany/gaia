@@ -6,7 +6,7 @@ export const entry: ComparisonData = {
   domain: "mem.ai",
   tagline: "AI-powered note-taking and personal knowledge management",
   description:
-    "Mem.ai is an AI-powered note-taking app that automatically organizes your notes, surfaces related content, and lets you chat with your knowledge base. GAIA is a proactive AI productivity OS that connects your email, calendar, tasks, and 50+ tools into a single intelligent assistant that acts before you ask.",
+    "Mem.ai is an AI-powered note-taking app that automatically organizes your notes, surfaces related content, and lets you chat with your knowledge base. GAIA is a proactive AI productivity OS that connects your email, calendar, tasks, and many tools into a single intelligent assistant that acts before you ask.",
   metaTitle: "Mem.ai Alternative with Proactive Email AI — GAIA vs Mem.ai",
   metaDescription:
     "Mem.ai organizes notes with AI but stays passive and note-only. GAIA is an open-source Mem.ai alternative with proactive email AI that reads your inbox, manages tasks, and automates workflows — with graph-based memory spanning all your tools.",
@@ -23,11 +23,11 @@ export const entry: ComparisonData = {
     "AI task automation",
   ],
   intro:
-    "Mem.ai has built a compelling product for people who live in their notes: it ingests everything you write, automatically organizes it without tags or folders, surfaces related content as you work, and lets you chat with your own knowledge base through Mem Chat. If notes are your primary artifact, Mem delivers real value. But notes are rarely where work begins or ends. GAIA is built for the fuller picture — it monitors your inbox, manages your calendar, creates tasks from your emails, and executes multi-step automations across 50+ tools. Critically, GAIA's memory is not a note store: it is a graph that connects tasks to the projects they belong to, meetings to the people who attended them, and emails to the outcomes they produced. The result is a context engine that spans your entire digital life, not just the documents you explicitly saved.",
+    "Mem.ai has built a compelling product for people who live in their notes: it ingests everything you write, automatically organizes it without tags or folders, surfaces related content as you work, and lets you chat with your own knowledge base through Mem Chat. If notes are your primary artifact, Mem delivers real value. But notes are rarely where work begins or ends. GAIA is built for the fuller picture — it monitors your inbox, manages your calendar, creates tasks from your emails, and executes multi-step automations across many tools. Critically, GAIA's memory is not a note store: it is a graph that connects tasks to the projects they belong to, meetings to the people who attended them, and emails to the outcomes they produced. The result is a context engine that spans your entire digital life, not just the documents you explicitly saved.",
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI productivity OS that monitors your email, calendar, tasks, and 50+ connected tools and acts on your behalf before you ask",
+      gaia: "Proactive AI productivity OS that monitors your email, calendar, tasks, and your connected tools and acts on your behalf before you ask",
       competitor:
         "AI-powered note-taking app that automatically organizes notes, surfaces related content, and enables conversational search over your personal knowledge base",
     },
@@ -75,7 +75,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and Jira with deep bi-directional actions",
+      gaia: "many integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and Jira with deep bi-directional actions",
       competitor:
         "Chrome extension for saving web pages; connected email accounts on Pro; Zapier integration for piping external data into Mem; limited deep bi-directional integrations",
     },
@@ -96,7 +96,7 @@ export const entry: ComparisonData = {
     "Proactively manages your inbox, calendar, and tasks — triages email, prepares briefings, and runs workflows without you needing to ask",
     "Graph-based memory connects your entire work context: tasks, projects, emails, meetings, and people — not just the notes you explicitly wrote",
     "Full Gmail automation including urgency triage, reply drafting, auto-labeling, and inbox-zero workflows that Mem cannot perform",
-    "Natural-language multi-step workflow automation spanning 50+ tools with triggers, conditions, and cross-platform actions",
+    "Natural-language multi-step workflow automation spanning many tools with triggers, conditions, and cross-platform actions",
     "Open source and self-hostable — complete data ownership with no usage caps and no per-seat cost when running on your own infrastructure",
   ],
   competitorAdvantages: [

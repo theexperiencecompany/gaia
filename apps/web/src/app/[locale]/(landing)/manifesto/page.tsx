@@ -54,6 +54,15 @@ export default function Manifesto() {
       <JsonLd
         data={[aboutSchema, webPageSchema, breadcrumbSchema, faqSchema]}
       />
+      {/* Founder preamble — this is what makes /manifesto distinct from /about:
+          About tells our story; the manifesto states what we believe and refuse to compromise on. */}
+      <section className="flex w-full justify-center bg-black px-6 pt-28 pb-2">
+        <p className="max-w-2xl text-center text-lg font-light tracking-tight text-foreground-600">
+          Our About page tells you who we are. This is different — this is what
+          I believe about how personal AI should be built, and what I refuse to
+          compromise on even when it costs us growth.
+        </p>
+      </section>
       <About />
     </>
   );

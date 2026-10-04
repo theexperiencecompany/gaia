@@ -10,7 +10,7 @@ export const entry: ComparisonData = {
     "Logseq is an open-source outliner and personal knowledge management tool with local-first storage and a bidirectional graph view. GAIA goes further by proactively managing your email, calendar, tasks, and workflows — turning notes into actions automatically.",
   metaTitle: "Logseq Alternative with Proactive AI — GAIA vs Logseq",
   metaDescription:
-    "Logseq is a great open-source PKM but stays passive and note-focused. GAIA is an open-source Logseq alternative with proactive AI that manages your inbox, calendar, tasks, and automations across 50+ integrations — turning notes into action.",
+    "Logseq is a great open-source PKM but stays passive and note-focused. GAIA is an open-source Logseq alternative with proactive AI that manages your inbox, calendar, tasks, and automations across many integrations — turning notes into action.",
   keywords: [
     "GAIA vs Logseq",
     "Logseq alternative",
@@ -58,7 +58,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "AI capabilities",
-      gaia: "Natural language task creation, semantic memory search, context-aware prioritization, proactive workflow execution, and multi-step automation across 50+ tools",
+      gaia: "Natural language task creation, semantic memory search, context-aware prioritization, proactive workflow execution, and multi-step automation across many tools",
       competitor:
         "AI features are experimental and community-driven via plugins (e.g., GPT-4 prompting blocks); no proactive automation or cross-tool AI actions built in",
     },
@@ -70,7 +70,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP including Gmail, Slack, Notion, GitHub, Linear, Todoist, Asana, and more with deep bi-directional actions",
+      gaia: "many integrations via MCP including Gmail, Slack, Notion, GitHub, Linear, Todoist, Asana, and more with deep bi-directional actions",
       competitor:
         "Community plugin ecosystem for limited integrations; primarily file-system based with no native connections to email, calendar, or project management services",
     },
@@ -90,7 +90,7 @@ export const entry: ComparisonData = {
   gaiaAdvantages: [
     "Proactively monitors your Gmail and acts — triaging, labeling, drafting replies, and creating tasks — without waiting to be asked",
     "Full Google Calendar integration creates events, finds free slots, and generates meeting briefings automatically",
-    "50+ integrations via MCP turn GAIA into a cross-tool orchestration layer, not just a note-taking silo",
+    "many integrations via MCP turn GAIA into a cross-tool orchestration layer, not just a note-taking silo",
     "Natural language workflow automation executes multi-step actions across email, calendar, Slack, Notion, GitHub, and more",
     "Graph-based persistent memory connects tasks, people, meetings, and projects structurally — enabling context-aware reasoning across your entire digital life",
   ],
@@ -100,7 +100,7 @@ export const entry: ComparisonData = {
     "Highly extensible through community plugins and custom queries, giving technical users deep control over their PKM workflows",
   ],
   verdict:
-    "Choose Logseq if your primary goal is building a rich, locally-stored personal knowledge base with bidirectional links and graph exploration — and you are comfortable managing your own notes, tasks, and calendar manually. Choose GAIA if you want an AI assistant that proactively runs your digital life: triaging your inbox, managing your calendar, creating tasks automatically, and executing workflows across 50+ tools — all from an open-source, self-hostable platform that gives you the same data sovereignty Logseq does.",
+    "Choose Logseq if your primary goal is building a rich, locally-stored personal knowledge base with bidirectional links and graph exploration — and you are comfortable managing your own notes, tasks, and calendar manually. Choose GAIA if you want an AI assistant that proactively runs your digital life: triaging your inbox, managing your calendar, creating tasks automatically, and executing workflows across many tools — all from an open-source, self-hostable platform that gives you the same data sovereignty Logseq does.",
   faqs: [
     {
       question: "Can GAIA replace Logseq for personal knowledge management?",

@@ -179,8 +179,8 @@ export default async function AlternativesHubPage() {
             Don't see your tool?
           </h2>
           <p className="mx-auto mb-6 max-w-lg text-zinc-400">
-            GAIA connects to 50+ tools via MCP and supports custom integrations.
-            Compare GAIA side-by-side with any tool you use today.
+            GAIA connects to your tools via MCP and supports custom
+            integrations. Compare GAIA side-by-side with any tool you use today.
           </p>
           <Link
             href="/compare"

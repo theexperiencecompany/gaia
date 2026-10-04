@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "notion.so/product/ai",
   tagline: "AI built into your Notion workspace",
   description:
-    "Notion AI is an in-workspace AI assistant embedded inside the Notion editor — it writes, summarises, and autofills databases on demand. GAIA is a proactive AI assistant that operates across your email, calendar, tasks, and 50+ tools, acting on your behalf before you ask — and integrates with Notion directly so your workspace stays current without manual effort.",
+    "Notion AI is an in-workspace AI assistant embedded inside the Notion editor — it writes, summarises, and autofills databases on demand. GAIA is a proactive AI assistant that operates across your email, calendar, tasks, and many tools, acting on your behalf before you ask — and integrates with Notion directly so your workspace stays current without manual effort.",
   metaTitle:
     "GAIA vs Notion AI: Proactive AI Assistant vs In-Workspace Writing Tool",
   metaDescription:
-    "Compare GAIA and Notion AI. Notion AI enhances your Notion workspace with writing and summarisation. GAIA reads your email, manages your calendar, and acts proactively across 50+ tools.",
+    "Compare GAIA and Notion AI. Notion AI enhances your Notion workspace with writing and summarisation. GAIA reads your email, manages your calendar, and acts proactively across many tools.",
   keywords: [
     "GAIA vs Notion AI",
     "Notion AI alternative",
@@ -31,11 +31,11 @@ export const entry: ComparisonData = {
     "Notion AI vs GAIA",
   ],
   intro:
-    "Notion AI has evolved substantially since its launch as a simple writing helper. By 2026 it includes autonomous agents that can execute multi-step tasks across hundreds of Notion pages, autofill database fields with AI-generated content, transcribe and summarise meeting notes, and answer questions by reading across your entire Notion workspace. If your work lives inside Notion, these features are genuinely impressive — the AI has full context of everything you've stored there.\n\nBut Notion AI's power is bounded by Notion itself. It does not read your email inbox. It cannot monitor your Google Calendar and prepare a briefing before your 9 a.m. call. It has no visibility into the GitHub issue assigned to you this morning, the Slack message that arrived while you were in meetings, or the invoice sitting in your inbox waiting for approval. Notion AI operates on what is already inside Notion — and that is a significant constraint for people whose work spans many tools.\n\nGAIA approaches the problem differently. Rather than enhancing a single workspace, GAIA acts as an AI layer across your entire digital environment. It connects to Gmail and triages your inbox, integrates with Google Calendar to prepare proactive briefings and create events on your behalf, manages tasks in Todoist or its own native task system, and reaches across 50+ integrations via MCP — including Notion itself. When an important email arrives, GAIA can automatically convert it into a Notion page, a task, or a calendar event without you lifting a finger.\n\nThe pricing landscape has also shifted. Notion AI is no longer sold as a standalone add-on; since May 2025 it has been bundled exclusively into the Business plan at $20 per user per month (billed annually). For a solo professional or small team that wants Notion AI, the effective cost is now $20 per seat — just for the workspace plus AI. GAIA's hosted Pro plan is $20 per month regardless of seat count, and self-hosting is entirely free.\n\nThe fundamental difference comes down to philosophy. Notion AI is reactive and workspace-scoped: it acts when you ask it, and it acts only within Notion. GAIA is proactive and tool-agnostic: it monitors your environment continuously, surfaces what matters before you think to ask, and takes action across your entire stack. For teams that have built their knowledge base in Notion, both tools can complement each other well — GAIA as the proactive agent that populates Notion automatically, and Notion AI as the editor assistant that helps refine what gets written there.",
+    "Notion AI has evolved substantially since its launch as a simple writing helper. By 2026 it includes autonomous agents that can execute multi-step tasks across hundreds of Notion pages, autofill database fields with AI-generated content, transcribe and summarise meeting notes, and answer questions by reading across your entire Notion workspace. If your work lives inside Notion, these features are genuinely impressive — the AI has full context of everything you've stored there.\n\nBut Notion AI's power is bounded by Notion itself. It does not read your email inbox. It cannot monitor your Google Calendar and prepare a briefing before your 9 a.m. call. It has no visibility into the GitHub issue assigned to you this morning, the Slack message that arrived while you were in meetings, or the invoice sitting in your inbox waiting for approval. Notion AI operates on what is already inside Notion — and that is a significant constraint for people whose work spans many tools.\n\nGAIA approaches the problem differently. Rather than enhancing a single workspace, GAIA acts as an AI layer across your entire digital environment. It connects to Gmail and triages your inbox, integrates with Google Calendar to prepare proactive briefings and create events on your behalf, manages tasks in Todoist or its own native task system, and reaches across many integrations via MCP — including Notion itself. When an important email arrives, GAIA can automatically convert it into a Notion page, a task, or a calendar event without you lifting a finger.\n\nThe pricing landscape has also shifted. Notion AI is no longer sold as a standalone add-on; since May 2025 it has been bundled exclusively into the Business plan at $20 per user per month (billed annually). For a solo professional or small team that wants Notion AI, the effective cost is now $20 per seat — just for the workspace plus AI. GAIA's hosted Pro plan is $20 per month regardless of seat count, and self-hosting is entirely free.\n\nThe fundamental difference comes down to philosophy. Notion AI is reactive and workspace-scoped: it acts when you ask it, and it acts only within Notion. GAIA is proactive and tool-agnostic: it monitors your environment continuously, surfaces what matters before you think to ask, and takes action across your entire stack. For teams that have built their knowledge base in Notion, both tools can complement each other well — GAIA as the proactive agent that populates Notion automatically, and Notion AI as the editor assistant that helps refine what gets written there.",
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI productivity OS that monitors email, calendar, and 50+ tools continuously and acts on your behalf without being prompted",
+      gaia: "Proactive AI productivity OS that monitors email, calendar, and many tools continuously and acts on your behalf without being prompted",
       competitor:
         "In-workspace AI assistant embedded in the Notion editor — writes, summarises, translates, and autofills databases on demand inside Notion",
     },
@@ -65,7 +65,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP including Gmail, Google Calendar, Slack, GitHub, Linear, Jira, Todoist, and Notion — all orchestrated by the AI agent",
+      gaia: "many integrations via MCP including Gmail, Google Calendar, Slack, GitHub, Linear, Jira, Todoist, and Notion — all orchestrated by the AI agent",
       competitor:
         "Operates within Notion's ecosystem; external integrations are available in Notion but AI features do not extend across those external tools",
     },
@@ -97,7 +97,7 @@ export const entry: ComparisonData = {
   gaiaAdvantages: [
     "Reads your email proactively and creates tasks, Notion pages, or calendar events automatically — no manual capture needed",
     "Acts before you ask: monitors your calendar and surfaces pre-meeting briefings, priority alerts, and action items from across your tool stack",
-    "50+ integrations via MCP let GAIA orchestrate actions across Gmail, Google Calendar, Slack, GitHub, Todoist, and Notion simultaneously",
+    "many integrations via MCP let GAIA orchestrate actions across Gmail, Google Calendar, Slack, GitHub, Todoist, and Notion simultaneously",
     "Graph-based persistent memory builds contextual understanding that spans email, calendar, tasks, and documents — not just what's in one workspace",
     "Open source and self-hostable with no per-seat pricing — flat $20/month hosted Pro, or free when you run your own infrastructure",
   ],
@@ -107,7 +107,7 @@ export const entry: ComparisonData = {
     "Access to multiple frontier models (GPT-5, Claude Opus, o3) inside a polished, mature document editing environment that millions of teams already use daily",
   ],
   verdict:
-    "Choose Notion AI if your work is primarily organised inside Notion and you want an AI that deeply understands your workspace content, drafts documents, and automates database entries — it excels at making Notion smarter. Choose GAIA if you need an AI that operates across your entire digital life: reading your email, managing your calendar, automating workflows across 50+ tools, and populating Notion for you — GAIA is proactive where Notion AI is reactive. For many teams, the most effective setup uses both: GAIA as the proactive agent that captures and routes information across tools, and Notion AI as the editor assistant that refines what ends up on the page.",
+    "Choose Notion AI if your work is primarily organised inside Notion and you want an AI that deeply understands your workspace content, drafts documents, and automates database entries — it excels at making Notion smarter. Choose GAIA if you need an AI that operates across your entire digital life: reading your email, managing your calendar, automating workflows across many tools, and populating Notion for you — GAIA is proactive where Notion AI is reactive. For many teams, the most effective setup uses both: GAIA as the proactive agent that captures and routes information across tools, and Notion AI as the editor assistant that refines what ends up on the page.",
   faqs: [
     {
       question: "Can GAIA write content inside Notion like Notion AI does?",

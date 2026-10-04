@@ -9,7 +9,7 @@ export const entry: ComparisonData = {
     "Zoho One bundles 50+ business applications into a single subscription covering CRM, project management, email, HR, and finance. GAIA is a proactive AI assistant that augments the tools you already use — including Zoho apps — rather than requiring a full platform migration.",
   metaTitle: "Zoho Alternative with Proactive AI Assistance — GAIA vs Zoho",
   metaDescription:
-    "Zoho One bundles 50+ apps but requires learning a new ecosystem. GAIA is an open-source alternative that adds proactive AI to your existing tools — Gmail, Slack, Notion, and 50+ more — free tier available.",
+    "Zoho One bundles 50+ apps but requires learning a new ecosystem. GAIA is an open-source alternative that adds proactive AI to your existing tools — Gmail, Slack, Notion, and many more — free tier available.",
   keywords: [
     "Zoho alternative",
     "GAIA vs Zoho",
@@ -28,7 +28,7 @@ export const entry: ComparisonData = {
 
 The challenge is that switching to Zoho One means replacing tools your team already knows and has customised over years. Gmail, Slack, Notion, GitHub, and Linear are not just tools — they represent muscle memory, integrations, and institutional knowledge built over time. Many teams that evaluate Zoho One discover the switching cost is higher than anticipated. Even after migration, the individual Zoho apps often lag behind best-in-class standalone products in their category: Zoho Mail is solid but not Gmail, Zoho Projects is functional but not Linear or Asana, Zoho CRM is capable but not HubSpot.
 
-GAIA takes the opposite approach: it meets your tools where they are. Rather than asking you to migrate to a new suite, GAIA connects to Gmail, Slack, Google Calendar, Notion, GitHub, Linear, and 40+ more via deep integrations and MCP, then adds a proactive AI layer on top of all of them. It reads your email and creates tasks automatically, schedules work blocks around your calendar events, monitors tool activity to surface what needs attention, and runs multi-step automations across your stack — all within the tools your team already uses and trusts. No migration required, no new app to learn.
+GAIA takes the opposite approach: it meets your tools where they are. Rather than asking you to migrate to a new suite, GAIA connects to Gmail, Slack, Google Calendar, Notion, GitHub, Linear, and many more via deep integrations and MCP, then adds a proactive AI layer on top of all of them. It reads your email and creates tasks automatically, schedules work blocks around your calendar events, monitors tool activity to surface what needs attention, and runs multi-step automations across your stack — all within the tools your team already uses and trusts. No migration required, no new app to learn.
 
 The economics also differ substantially. Zoho One costs $37 per user per month when billed annually — a meaningful expense for teams of any size. GAIA's hosted Pro plan is $20 per month regardless of how many people are on your team, and self-hosting GAIA on your own infrastructure is entirely free. For startups and growing teams evaluating their tool costs, GAIA's model provides significantly more AI-powered productivity per dollar — without the lock-in risk of committing your entire business to a single vendor's ecosystem.`,
   rows: [
@@ -46,7 +46,7 @@ The economics also differ substantially. Zoho One costs $37 per user per month w
     },
     {
       feature: "AI capabilities",
-      gaia: "Ambient AI agent that monitors email, calendar, and 50+ tools to surface insights and take action before you ask",
+      gaia: "Ambient AI agent that monitors email, calendar, and many tools to surface insights and take action before you ask",
       competitor:
         "Zia AI assistant embedded across Zoho apps for suggestions, predictions, and anomaly detection within the Zoho ecosystem",
     },
@@ -64,7 +64,7 @@ The economics also differ substantially. Zoho One costs $37 per user per month w
     },
     {
       feature: "Workflow automation",
-      gaia: "Multi-step AI-driven workflows across 50+ best-in-class tools triggered by any event or message",
+      gaia: "Multi-step AI-driven workflows across many best-in-class tools triggered by any event or message",
       competitor:
         "Zoho Flow for cross-app automation within the Zoho suite; powerful within Zoho but limited for connecting external tools",
     },
@@ -94,7 +94,7 @@ The economics also differ substantially. Zoho One costs $37 per user per month w
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations with best-in-class tools via deep API connections and MCP including Gmail, Slack, GitHub, Notion, and Linear",
+      gaia: "many integrations with best-in-class tools via deep API connections and MCP including Gmail, Slack, GitHub, Notion, and Linear",
       competitor:
         "50+ bundled Zoho apps with tight internal integration; Zoho Marketplace for third-party connections",
     },
@@ -111,7 +111,7 @@ The economics also differ substantially. Zoho One costs $37 per user per month w
     "Open source and self-hostable for full data control and no vendor lock-in",
     "AI-native design focused on workflow orchestration rather than bundling average apps together",
     "Flat pricing at $20/month makes it significantly cheaper than Zoho One at any team size above one person",
-    "50+ integrations let you keep best-in-class tools for each function instead of settling for Zoho's version",
+    "many integrations let you keep best-in-class tools for each function instead of settling for Zoho's version",
   ],
   competitorAdvantages: [
     "Comprehensive all-in-one suite covering CRM, HR, finance, and help desk in a single billing relationship",
@@ -129,7 +129,7 @@ The economics also differ substantially. Zoho One costs $37 per user per month w
     {
       question: "Does GAIA integrate with Zoho apps?",
       answer:
-        "GAIA connects to best-in-class tools across each category — Gmail, Slack, GitHub, Notion, Linear, Jira, and 40+ more. For teams already using Zoho CRM, GAIA's automation capabilities can complement that data by routing email action items and calendar events into task systems that connect back to your Zoho workflows via webhook and API integrations.",
+        "GAIA connects to best-in-class tools across each category — Gmail, Slack, GitHub, Notion, Linear, Jira, and many more. For teams already using Zoho CRM, GAIA's automation capabilities can complement that data by routing email action items and calendar events into task systems that connect back to your Zoho workflows via webhook and API integrations.",
     },
     {
       question: "Is GAIA cheaper than Zoho One?",
@@ -174,7 +174,7 @@ The economics also differ substantially. Zoho One costs $37 per user per month w
     {
       question: "Can GAIA automate workflows like Zoho Flow?",
       answer:
-        "Yes, and with broader scope. Zoho Flow automates workflows between Zoho applications and a selection of third-party tools within Zoho's ecosystem. GAIA's workflow automation spans your entire tool stack — Gmail, Slack, GitHub, Notion, Linear, Jira, Google Calendar, and 40+ more — using natural language descriptions rather than a drag-and-drop flow builder. GAIA's automation is also proactive: it monitors your tools and triggers workflows based on real events rather than waiting for user-initiated configurations.",
+        "Yes, and with broader scope. Zoho Flow automates workflows between Zoho applications and a selection of third-party tools within Zoho's ecosystem. GAIA's workflow automation spans your entire tool stack — Gmail, Slack, GitHub, Notion, Linear, Jira, Google Calendar, and many more — using natural language descriptions rather than a drag-and-drop flow builder. GAIA's automation is also proactive: it monitors your tools and triggers workflows based on real events rather than waiting for user-initiated configurations.",
     },
     {
       question: "What platforms does GAIA support?",

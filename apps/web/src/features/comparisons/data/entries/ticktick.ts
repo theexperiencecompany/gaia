@@ -20,11 +20,11 @@ export const entry: ComparisonData = {
     "task management AI",
   ],
   intro:
-    "TickTick has built a loyal following as one of the most well-rounded to-do apps available. With natural language task entry, a built-in Pomodoro timer, habit tracking, and multi-platform sync, it covers the core bases of personal task management beautifully. But TickTick is still fundamentally a place to store and review tasks — it does not read your email, watch your calendar, or take action on your behalf. GAIA is built around a different premise: rather than waiting for you to log a task, it monitors your digital environment, creates tasks from emails automatically, schedules work on your calendar, and executes multi-step workflows across 50+ connected tools.",
+    "TickTick has built a loyal following as one of the most well-rounded to-do apps available. With natural language task entry, a built-in Pomodoro timer, habit tracking, and multi-platform sync, it covers the core bases of personal task management beautifully. But TickTick is still fundamentally a place to store and review tasks — it does not read your email, watch your calendar, or take action on your behalf. GAIA is built around a different premise: rather than waiting for you to log a task, it monitors your digital environment, creates tasks from emails automatically, schedules work on your calendar, and executes multi-step workflows across your connected tools.",
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI assistant that manages email, calendar, tasks, and workflows across 50+ tools without waiting to be asked",
+      gaia: "Proactive AI assistant that manages email, calendar, tasks, and workflows across many tools without waiting to be asked",
       competitor:
         "Feature-rich to-do app with natural language entry, habit tracking, Pomodoro timer, and cross-platform sync",
     },
@@ -58,7 +58,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Cross-tool integrations",
-      gaia: "50+ integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Todoist, TickTick, and more",
+      gaia: "many integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Todoist, TickTick, and more",
       competitor:
         "Limited third-party integrations; connects to calendars and select productivity apps",
     },
@@ -83,7 +83,7 @@ export const entry: ComparisonData = {
   gaiaAdvantages: [
     "Proactively reads email and creates tasks automatically — no manual logging required",
     "Full workflow automation with natural language triggers and cross-tool actions",
-    "50+ deep integrations versus limited third-party connectivity in TickTick",
+    "many deep integrations versus limited third-party connectivity in TickTick",
     "Graph-based persistent memory that learns your patterns and preferences over time",
     "Open source and self-hostable for users who require full data sovereignty",
   ],

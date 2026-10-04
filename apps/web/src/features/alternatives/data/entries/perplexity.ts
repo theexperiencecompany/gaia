@@ -17,7 +17,7 @@ export const entry: AlternativeData = {
   metaTitle:
     "Perplexity Alternative — GAIA — AI Assistant That Manages Your Work, Not Just Searches It",
   metaDescription:
-    "Need more than AI search? GAIA is a personal AI assistant that manages your email, tasks, and calendar, with persistent memory and 50+ integrations. Open source, self-hostable, free tier available.",
+    "Need more than AI search? GAIA is a personal AI assistant that manages your email, tasks, and calendar, with persistent memory and many integrations. Open source, self-hostable, free tier available.",
   keywords: [
     "perplexity alternative",
     "perplexity alternative free",
@@ -39,7 +39,7 @@ export const entry: AlternativeData = {
   gaiaAdvantages: [
     "Persistent graph-based memory of your email, tasks, calendar, and meetings. Perplexity has no memory of you",
     "GAIA takes action: creates tasks, drafts emails, updates calendar. Perplexity only provides answers",
-    "50+ tool integrations connect GAIA to your actual work context vs Perplexity's web-only knowledge",
+    "many tool integrations connect GAIA to your actual work context vs Perplexity's web-only knowledge",
     "Open source and self-hostable; Perplexity is a closed cloud service",
     "GAIA Pro at $20/month includes full productivity management vs Perplexity Pro's search-only scope",
   ],

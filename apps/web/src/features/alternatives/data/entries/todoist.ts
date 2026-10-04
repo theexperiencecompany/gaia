@@ -47,7 +47,7 @@ export const entry: AlternativeData = {
     "Proactive task creation from email means no manual task entry",
     "Calendar awareness sets realistic deadlines based on your schedule",
     "Free tier with meaningful task management without per-feature paywalls",
-    "Manages tasks alongside email, calendar, and 50+ other tools",
+    "Manages tasks alongside email, calendar, and many other tools",
   ],
   migrationSteps: [
     "Connect GAIA to your existing Todoist account via OAuth integration",
@@ -104,7 +104,7 @@ export const entry: AlternativeData = {
     },
     {
       feature: "Pricing",
-      gaia: "Free tier available; Pro at $20/month including email, calendar, and 50+ integrations; self-hosting free",
+      gaia: "Free tier available; Pro at $20/month including email, calendar, and many integrations; self-hosting free",
       competitor:
         "Free tier available; Pro at $4/month for reminders and filters; Business at $6/user/month",
     },

@@ -9,7 +9,7 @@ export const entry: ComparisonData = {
     "Wrike is a powerful enterprise project management platform with advanced workflow customization, resource management, and reporting. GAIA complements structured project management with proactive AI that manages email, automates workflows, and surfaces what matters most.",
   metaTitle: "Wrike Alternative with Proactive AI Assistance — GAIA vs Wrike",
   metaDescription:
-    "Wrike is built for enterprise PM, but it won't proactively manage your inbox or automate cross-tool workflows. GAIA is an open-source alternative with AI-driven task management and 50+ integrations — free tier available.",
+    "Wrike is built for enterprise PM, but it won't proactively manage your inbox or automate cross-tool workflows. GAIA is an open-source alternative with AI-driven task management and many integrations — free tier available.",
   keywords: [
     "wrike alternative",
     "gaia vs wrike",
@@ -53,7 +53,7 @@ GAIA takes the complementary angle. Rather than replacing structured project man
     },
     {
       feature: "Workflow automation",
-      gaia: "Multi-step AI-driven workflows across 50+ tools with triggers and conditions",
+      gaia: "Multi-step AI-driven workflows across many tools with triggers and conditions",
       competitor:
         "Custom workflow automation with approval chains and request forms",
     },
@@ -65,7 +65,7 @@ GAIA takes the complementary angle. Rather than replacing structured project man
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations including Gmail, Slack, GitHub, Notion, Jira, and more via MCP",
+      gaia: "many integrations including Gmail, Slack, GitHub, Notion, Jira, and more via MCP",
       competitor:
         "400+ integrations with enterprise SSO, SAML, and compliance tools",
     },
@@ -90,7 +90,7 @@ GAIA takes the complementary angle. Rather than replacing structured project man
   gaiaAdvantages: [
     "Proactively creates tasks from emails and tool activity — no manual updates required",
     "AI monitors your workflow and surfaces blockers before they escalate",
-    "50+ integrations with autonomous cross-tool orchestration",
+    "many integrations with autonomous cross-tool orchestration",
     "Open source and self-hostable for privacy and cost control",
     "Unified inbox, calendar, and task management without enterprise complexity",
     "Free tier with meaningful capability",

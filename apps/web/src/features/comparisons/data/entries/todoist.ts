@@ -9,7 +9,7 @@ export const entry: ComparisonData = {
     "Todoist is a well-designed task manager for organizing to-dos. GAIA goes beyond task lists by using AI to create, prioritize, and execute tasks across your entire workflow.",
   metaTitle: "Todoist Alternative with AI Email Integration — GAIA vs Todoist",
   metaDescription:
-    "Todoist requires you to add tasks manually. GAIA is an open-source Todoist alternative that automatically creates tasks from your emails, prioritizes by context, and automates follow-through across 50+ tools — with a free tier.",
+    "Todoist requires you to add tasks manually. GAIA is an open-source Todoist alternative that automatically creates tasks from your emails, prioritizes by context, and automates follow-through across many tools — with a free tier.",
   keywords: [
     "GAIA vs Todoist",
     "Todoist alternative",
@@ -28,7 +28,7 @@ export const entry: ComparisonData = {
   rows: [
     {
       feature: "Core approach",
-      gaia: "AI productivity OS that creates, prioritizes, and executes tasks across 50+ tools",
+      gaia: "AI productivity OS that creates, prioritizes, and executes tasks across many tools",
       competitor:
         "Clean, reliable task management app for organizing personal and team to-dos",
     },
@@ -55,7 +55,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations with AI-powered orchestration via MCP",
+      gaia: "many integrations with AI-powered orchestration via MCP",
       competitor: "80+ integrations focused on task input and sync",
     },
     {
@@ -95,7 +95,7 @@ export const entry: ComparisonData = {
     {
       question: "Does GAIA integrate with Todoist?",
       answer:
-        "Yes. GAIA connects with Todoist as one of its 50+ integrations, allowing you to sync tasks between both systems while adding AI-powered automation on top.",
+        "Yes. GAIA connects with Todoist as one of its many integrations, allowing you to sync tasks between both systems while adding AI-powered automation on top.",
     },
     {
       question: "Is GAIA good for simple to-do lists?",

@@ -4,6 +4,7 @@ import { getAllAlternativeSlugs } from "@/features/alternatives/data/alternative
 import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsData";
 import { getAllGlossaryTerms } from "@/features/glossary/data/glossaryData";
 import { getAllCombos } from "@/features/integrations/data/combosData";
+import { FEATURES } from "@/features/landing/data/featuresData";
 import { defaultLocale, locales } from "@/i18n/config";
 import { getAllBlogPosts } from "@/lib/blog";
 import { fetchAllPaginated, isDevelopment } from "@/lib/fetchAll";
@@ -26,6 +27,7 @@ const SITEMAP_IDS = {
   ALTERNATIVES: 8,
   INTEGRATION_COMBOS: 9,
   NATIVE_INTEGRATIONS: 10,
+  FEATURES: 11,
 } as const;
 
 export const ALL_SITEMAP_IDS = [
@@ -40,6 +42,7 @@ export const ALL_SITEMAP_IDS = [
   SITEMAP_IDS.ALTERNATIVES,
   SITEMAP_IDS.INTEGRATION_COMBOS,
   SITEMAP_IDS.NATIVE_INTEGRATIONS,
+  SITEMAP_IDS.FEATURES,
 ] as const;
 
 function withLocaleUrls(
@@ -90,7 +93,9 @@ const UNTRANSLATED_STATIC_PAGES: StaticPage[] = [
   { path: "/manifesto", freq: "monthly", priority: 0.8 },
   { path: "/about", freq: "monthly", priority: 0.8 },
   { path: "/features", freq: "weekly", priority: 0.8 },
+  { path: "/bots", freq: "weekly", priority: 0.8 },
   { path: "/contact", freq: "monthly", priority: 0.7 },
+  { path: "/cli", freq: "weekly", priority: 0.7 },
   { path: "/brand", freq: "monthly", priority: 0.7 },
   { path: "/terms", freq: "monthly", priority: 0.5 },
   { path: "/privacy", freq: "monthly", priority: 0.5 },
@@ -487,6 +492,19 @@ async function getNativeIntegrationPages(
   }
 }
 
+/**
+ * Feature detail pages (/features/[slug]) — static product capabilities from
+ * the FEATURES array. Untranslated (English-only, self-canonical), so no
+ * withLocaleUrls wrapper — same as the /features hub in STATIC.
+ */
+function getFeaturePages(baseUrl: string): MetadataRoute.Sitemap {
+  return FEATURES.map((feature) => ({
+    url: `${baseUrl}/features/${feature.slug}`,
+    changeFrequency: "monthly" as const,
+    priority: 0.8,
+  }));
+}
+
 export async function getSitemapEntries(
   id: number,
 ): Promise<MetadataRoute.Sitemap> {
@@ -529,6 +547,8 @@ export async function getSitemapEntries(
       return withLocaleUrls(await getIntegrationComboPages(baseUrl), baseUrl);
     case SITEMAP_IDS.NATIVE_INTEGRATIONS:
       return getNativeIntegrationPages(baseUrl);
+    case SITEMAP_IDS.FEATURES:
+      return getFeaturePages(baseUrl);
     default:
       return [];
   }

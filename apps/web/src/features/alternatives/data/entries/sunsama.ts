@@ -68,7 +68,7 @@ export const entry: AlternativeData = {
     {
       question: "Does GAIA cost the same as Sunsama?",
       answer:
-        "Sunsama costs $20/month with no free tier. GAIA Pro is also $20/month but includes email management, workflow automation, memory, and 50+ integrations. GAIA also has a free tier, and self-hosted GAIA is completely free.",
+        "Sunsama costs $20/month with no free tier. GAIA Pro is also $20/month but includes email management, workflow automation, memory, and many integrations. GAIA also has a free tier, and self-hosted GAIA is completely free.",
     },
     {
       question: "Can GAIA help with end-of-day reviews like Sunsama?",

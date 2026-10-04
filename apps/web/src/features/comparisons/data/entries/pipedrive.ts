@@ -10,7 +10,7 @@ export const entry: ComparisonData = {
   metaTitle:
     "Pipedrive Alternative for AI-Powered Sales Productivity — GAIA vs Pipedrive",
   metaDescription:
-    "Pipedrive manages your pipeline but can't proactively handle your inbox or automate cross-tool workflows. GAIA is an open-source AI managing email, tasks, and 50+ integrations — free tier available.",
+    "Pipedrive manages your pipeline but can't proactively handle your inbox or automate cross-tool workflows. GAIA is an open-source AI managing email, tasks, and many integrations — free tier available.",
   keywords: [
     "Pipedrive alternative",
     "GAIA vs Pipedrive",
@@ -29,7 +29,7 @@ export const entry: ComparisonData = {
 
 The limitation surfaces in the day-to-day workflow that surrounds deal management. Pipedrive tracks what deals exist and what stage they are in, but it does not proactively read your inbox to surface unanswered prospect emails, automatically create follow-up tasks from meeting notes, monitor Slack conversations for buying signals, or orchestrate workflows across your sales, marketing, and product tools. Every Pipedrive entry requires a human to initiate it. Sales reps using Pipedrive still spend significant time manually triaging their email, updating deal stages, and coordinating across tools that Pipedrive does not connect.
 
-GAIA fills that productivity gap. It connects to Gmail, Slack, Google Calendar, Notion, GitHub, and 40+ more tools via MCP, then actively manages the workflow layer that surrounds your pipeline. It reads your email and identifies prospect follow-ups that need attention before they slip, prepares briefing notes before sales calls using calendar context and email history, creates tasks from Slack conversations without manual entry, and runs multi-step automations across your entire stack. When a prospect emails to schedule a call, GAIA can detect the request, draft a reply, create a calendar event, and add a follow-up task — all without you switching context to each individual tool.
+GAIA fills that productivity gap. It connects to Gmail, Slack, Google Calendar, Notion, GitHub, and many more tools via MCP, then actively manages the workflow layer that surrounds your pipeline. It reads your email and identifies prospect follow-ups that need attention before they slip, prepares briefing notes before sales calls using calendar context and email history, creates tasks from Slack conversations without manual entry, and runs multi-step automations across your entire stack. When a prospect emails to schedule a call, GAIA can detect the request, draft a reply, create a calendar event, and add a follow-up task — all without you switching context to each individual tool.
 
 The pricing structures also contrast meaningfully. Pipedrive has no free plan — the Essential tier starts at $14 per user per month billed annually, and the Advanced tier with full email sync and automation features is $34 per user per month. For a team of five on the Advanced plan, that is $170/month just for the CRM. GAIA's hosted Pro plan is $20/month flat regardless of headcount, and self-hosting is entirely free. For individuals and small teams who need proactive AI productivity management alongside their CRM, GAIA provides substantially more capability per dollar.`,
   rows: [
@@ -71,7 +71,7 @@ The pricing structures also contrast meaningfully. Pipedrive has no free plan �
     },
     {
       feature: "Workflow automation",
-      gaia: "Natural language multi-step workflows across 50+ tools triggered by any event, email, or condition",
+      gaia: "Natural language multi-step workflows across many tools triggered by any event, email, or condition",
       competitor:
         "Automations for stage changes, activity creation, and email sequences within Pipedrive; cross-tool automation via Zapier",
     },
@@ -83,7 +83,7 @@ The pricing structures also contrast meaningfully. Pipedrive has no free plan �
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations including Gmail, Slack, GitHub, Notion, Linear, Jira, and more via MCP",
+      gaia: "many integrations including Gmail, Slack, GitHub, Notion, Linear, Jira, and more via MCP",
       competitor:
         "400+ marketplace integrations focused on the sales and marketing stack including Slack, Zoom, and marketing automation tools",
     },

@@ -30,7 +30,7 @@ export const entry: ComparisonData = {
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI productivity OS that monitors and acts across email, calendar, tasks, and 50+ tools on your behalf",
+      gaia: "Proactive AI productivity OS that monitors and acts across email, calendar, tasks, and many tools on your behalf",
       competitor:
         "Team project management platform for organizing, assigning, and tracking tasks and projects collaboratively",
     },
@@ -72,7 +72,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Asana, ClickUp, Jira, and more",
+      gaia: "many integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Asana, ClickUp, Jira, and more",
       competitor:
         "270+ app integrations including Slack, Google Workspace, Microsoft 365, Salesforce, Zoom, and GitHub",
     },

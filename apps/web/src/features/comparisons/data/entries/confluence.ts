@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "atlassian.com/software/confluence",
   tagline: "Atlassian's team wiki and documentation platform",
   description:
-    "Confluence is Atlassian's enterprise team wiki and knowledge management platform, widely used alongside Jira for software teams. GAIA is a proactive AI assistant that connects documentation to email, tasks, calendar, and 50+ integrations with autonomous action.",
+    "Confluence is Atlassian's enterprise team wiki and knowledge management platform, widely used alongside Jira for software teams. GAIA is a proactive AI assistant that connects documentation to email, tasks, calendar, and many integrations with autonomous action.",
   metaTitle:
     "Confluence Alternative with AI Automation & Proactive Workflows — GAIA vs Confluence",
   metaDescription:
-    "Confluence stores team knowledge but stays passive. GAIA is a free, open-source Confluence alternative with AI email management, Jira integration, proactive task creation, and workflow automation across 50+ tools.",
+    "Confluence stores team knowledge but stays passive. GAIA is a free, open-source Confluence alternative with AI email management, Jira integration, proactive task creation, and workflow automation across many tools.",
   keywords: [
     "confluence alternative",
     "gaia vs confluence",
@@ -27,13 +27,13 @@ export const entry: ComparisonData = {
 
 But Confluence has a well-known challenge: content creation requires significant manual effort, and pages decay quickly as projects evolve. Teams often end up with outdated documentation that nobody maintains, not because they don't want to, but because keeping Confluence in sync with the fast-moving reality captured in Jira tickets, Slack threads, and email threads is genuinely hard work. Confluence is a passive repository — it stores what you explicitly write into it, but it has no awareness of what is happening in your inbox, your meetings, or your connected tools.
 
-GAIA approaches this differently. As a proactive AI assistant, GAIA can read your Gmail inbox, monitor your Jira board, participate in your Slack threads, and synthesize that information into structured summaries, action items, and documentation — automatically. Rather than requiring engineers and PMs to stop and write up what happened, GAIA captures the signal from where work actually occurs and surfaces it in the format you need. It integrates with Jira, Slack, GitHub, Linear, Notion, and 45+ other tools via MCP, making it possible to coordinate documentation and action across your entire stack from a single interface.
+GAIA approaches this differently. As a proactive AI assistant, GAIA can read your Gmail inbox, monitor your Jira board, participate in your Slack threads, and synthesize that information into structured summaries, action items, and documentation — automatically. Rather than requiring engineers and PMs to stop and write up what happened, GAIA captures the signal from where work actually occurs and surfaces it in the format you need. It integrates with Jira, Slack, GitHub, Linear, Notion, and many other tools via MCP, making it possible to coordinate documentation and action across your entire stack from a single interface.
 
 For large enterprises deeply invested in the Atlassian ecosystem — with existing Jira integrations, custom Confluence spaces, and established documentation workflows — Confluence remains a powerful choice for structured knowledge management. But for teams who find Confluence becoming a documentation graveyard, or who want an AI assistant that actively keeps their knowledge base current rather than waiting for manual updates, GAIA offers a more dynamic and automated alternative.`,
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI assistant that manages email, tasks, calendar, and documentation workflows across 50+ tools",
+      gaia: "Proactive AI assistant that manages email, tasks, calendar, and documentation workflows across many tools",
       competitor:
         "Team wiki and knowledge management platform for structured documentation, runbooks, and internal knowledge bases",
     },
@@ -75,7 +75,7 @@ For large enterprises deeply invested in the Atlassian ecosystem — with existi
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira, and more via MCP",
+      gaia: "many integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira, and more via MCP",
       competitor:
         "Strong Atlassian ecosystem integration (Jira, Trello, Bitbucket); 3,000+ marketplace apps for broader tool connections",
     },
@@ -106,7 +106,7 @@ For large enterprises deeply invested in the Atlassian ecosystem — with existi
   ],
   gaiaAdvantages: [
     "Proactively generates documentation and summaries from email, meetings, and Jira tickets — no manual writing required",
-    "50+ integrations span the full tool stack beyond the Atlassian ecosystem",
+    "many integrations span the full tool stack beyond the Atlassian ecosystem",
     "AI monitors your inbox and Slack to surface action items and keep documentation current automatically",
     "Open source and self-hostable — full data ownership with no per-seat licensing cost when self-hosted",
     "Unified interface for email, tasks, calendar, and documentation instead of switching between Confluence and Jira",

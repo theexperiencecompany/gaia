@@ -61,7 +61,7 @@ export const entry: AlternativeData = {
     {
       question: "Is GAIA cheaper than Airtable?",
       answer:
-        "Airtable's Team plan is $20/seat/month. GAIA Pro is $20/month for one individual with email management, task automation, and 50+ integrations. For teams, GAIA's individual pricing may still be more cost-effective per person. Self-hosted GAIA is free.",
+        "Airtable's Team plan is $20/seat/month. GAIA Pro is $20/month for one individual with email management, task automation, and many integrations. For teams, GAIA's individual pricing may still be more cost-effective per person. Self-hosted GAIA is free.",
     },
     {
       question: "Does GAIA have Airtable's gallery and Gantt views?",

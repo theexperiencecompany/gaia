@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "grammarly.com",
   tagline: "AI writing assistant for grammar, style, and tone",
   description:
-    "Grammarly is an AI-powered writing assistant that checks grammar, spelling, style, and tone across browsers, apps, and documents. GAIA is a proactive AI productivity assistant that manages email, tasks, calendar, and 50+ integrations — with AI-assisted writing built in.",
+    "Grammarly is an AI-powered writing assistant that checks grammar, spelling, style, and tone across browsers, apps, and documents. GAIA is a proactive AI productivity assistant that manages email, tasks, calendar, and many integrations — with AI-assisted writing built in.",
   metaTitle:
     "Grammarly Alternative with Proactive AI Email & Workflow Management — GAIA vs Grammarly",
   metaDescription:
-    "Grammarly improves your writing but doesn't manage your workflow. GAIA is a free, open-source Grammarly alternative with AI email drafting, proactive task creation, and workflow automation across 50+ integrations.",
+    "Grammarly improves your writing but doesn't manage your workflow. GAIA is a free, open-source Grammarly alternative with AI email drafting, proactive task creation, and workflow automation across many integrations.",
   keywords: [
     "grammarly alternative",
     "gaia vs grammarly",
@@ -29,11 +29,11 @@ Grammarly solves a focused problem exceptionally well: it makes the text you wri
 
 But Grammarly's role is limited to improving the content you produce inside a text field. It does not know what emails are in your inbox. It does not know what tasks are due. It does not monitor your calendar, create action items from your conversations, or connect to the dozens of tools where your work actually lives. Grammarly makes your writing better; it does not manage your work.
 
-GAIA is built for that broader scope. It reads your Gmail inbox and drafts replies with appropriate tone and context already loaded. It creates tasks from emails without requiring manual entry. It integrates with Slack, GitHub, Notion, Jira, Todoist, and 45+ other tools to orchestrate action across your entire workflow. GAIA's AI-assisted writing operates in the context of your actual work — understanding the project, the person you're writing to, and the previous thread history — rather than checking grammar in isolation. For professionals who want their AI to handle workflow management alongside writing quality, GAIA addresses both.`,
+GAIA is built for that broader scope. It reads your Gmail inbox and drafts replies with appropriate tone and context already loaded. It creates tasks from emails without requiring manual entry. It integrates with Slack, GitHub, Notion, Jira, Todoist, and many other tools to orchestrate action across your entire workflow. GAIA's AI-assisted writing operates in the context of your actual work — understanding the project, the person you're writing to, and the previous thread history — rather than checking grammar in isolation. For professionals who want their AI to handle workflow management alongside writing quality, GAIA addresses both.`,
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI assistant managing email, calendar, tasks, and workflows across 50+ connected tools with built-in AI writing assistance",
+      gaia: "Proactive AI assistant managing email, calendar, tasks, and workflows across your connected tools with built-in AI writing assistance",
       competitor:
         "AI writing assistant that checks grammar, spelling, style, and tone across text inputs in browsers and apps",
     },
@@ -72,7 +72,7 @@ GAIA is built for that broader scope. It reads your Gmail inbox and drafts repli
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira, and more via MCP",
+      gaia: "many integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira, and more via MCP",
       competitor:
         "Browser extension works across 500,000+ websites and apps; native integrations with Google Docs, Microsoft Word, and Outlook",
     },
@@ -104,7 +104,7 @@ GAIA is built for that broader scope. It reads your Gmail inbox and drafts repli
   gaiaAdvantages: [
     "Manages the full email workflow — not just writing quality but reading, triaging, and acting on messages",
     "Creates tasks, calendar events, and reminders from email context automatically",
-    "50+ integrations connect writing assistance to your actual work context",
+    "many integrations connect writing assistance to your actual work context",
     "Open source and self-hostable — your text is processed in your own infrastructure",
     "Proactive workflow orchestration beyond the writing moment itself",
     "AI writing with full context of the thread, project, and person — not grammar checking in isolation",
@@ -115,7 +115,7 @@ GAIA is built for that broader scope. It reads your Gmail inbox and drafts repli
     "Tone detection and audience-specific suggestions provide writing coaching that improves communication quality over time",
   ],
   verdict:
-    "Choose Grammarly if your primary need is improving the quality of the text you write — catching errors, refining clarity, and adjusting tone across every platform you use. Choose GAIA if you want an AI assistant that manages your entire email workflow, creates tasks proactively, and orchestrates work across 50+ tools — with AI writing assistance built into the context of your actual work.",
+    "Choose Grammarly if your primary need is improving the quality of the text you write — catching errors, refining clarity, and adjusting tone across every platform you use. Choose GAIA if you want an AI assistant that manages your entire email workflow, creates tasks proactively, and orchestrates work across many tools — with AI writing assistance built into the context of your actual work.",
   faqs: [
     {
       question: "Can GAIA replace Grammarly for grammar checking?",

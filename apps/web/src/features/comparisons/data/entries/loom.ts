@@ -9,7 +9,7 @@ export const entry: ComparisonData = {
     "Loom is an async video messaging tool that lets teams share screen recordings to replace unnecessary meetings. GAIA is a proactive AI productivity assistant that manages the tasks, workflows, and communications that surround your work — with or without video.",
   metaTitle: "Loom Alternative for Async Workflow Automation — GAIA vs Loom",
   metaDescription:
-    "Loom replaces meetings with video but won't manage your tasks or workflows. GAIA is an open-source alternative that automates your inbox, calendar, and cross-tool workflows across 50+ integrations.",
+    "Loom replaces meetings with video but won't manage your tasks or workflows. GAIA is an open-source alternative that automates your inbox, calendar, and cross-tool workflows across many integrations.",
   keywords: [
     "loom alternative",
     "gaia vs loom",
@@ -28,11 +28,11 @@ Loom's Atlassian acquisition brought tighter integration with Jira and Confluenc
 
 GAIA operates at a different layer. While Loom helps you share information, GAIA manages the work that follows. When a Loom video results in action items — a feature decision, a bug to fix, a design change to make — GAIA can take those items and create tasks in Linear, Jira, or Todoist. When a recorded demo leads to follow-up questions via email, GAIA triages that inbox and drafts responses. When a project update shared via Loom should trigger a calendar event for a design review, GAIA can create that event and send the invites.
 
-The tools serve different needs. Loom is a communication tool for teams that want to replace synchronous meetings with more flexible, shareable video. GAIA is a productivity AI for professionals who want an assistant that manages the tasks, emails, calendar events, and workflow automations that constitute their actual work. For async-first teams that use Loom heavily, GAIA provides the AI productivity layer that Loom does not offer — connecting communication to execution through a unified automation platform with 50+ integrations.`,
+The tools serve different needs. Loom is a communication tool for teams that want to replace synchronous meetings with more flexible, shareable video. GAIA is a productivity AI for professionals who want an assistant that manages the tasks, emails, calendar events, and workflow automations that constitute their actual work. For async-first teams that use Loom heavily, GAIA provides the AI productivity layer that Loom does not offer — connecting communication to execution through a unified automation platform with many integrations.`,
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI productivity OS managing email, calendar, tasks, and workflows across 50+ integrations",
+      gaia: "Proactive AI productivity OS managing email, calendar, tasks, and workflows across many integrations",
       competitor:
         "Async video messaging tool for sharing screen recordings and replacing synchronous meetings",
     },
@@ -61,7 +61,7 @@ The tools serve different needs. Loom is a communication tool for teams that wan
     },
     {
       feature: "Workflow automation",
-      gaia: "Multi-step automations with natural-language triggers across 50+ integrations",
+      gaia: "Multi-step automations with natural-language triggers across many integrations",
       competitor: "Zapier and Make integrations; no native workflow automation",
     },
     {
@@ -95,7 +95,7 @@ The tools serve different needs. Loom is a communication tool for teams that wan
   ],
   gaiaAdvantages: [
     "Manages the tasks, emails, and calendar events that arise from async communication",
-    "50+ integrations connect communication context to workflow execution across all tools",
+    "many integrations connect communication context to workflow execution across all tools",
     "Proactive email triage ensures async messages get properly actioned",
     "Workflow automation converts communication outcomes into real tasks and project updates",
     "Open source and self-hostable for teams with data sovereignty requirements",

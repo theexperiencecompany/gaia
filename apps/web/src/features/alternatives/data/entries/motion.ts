@@ -44,7 +44,7 @@ export const entry: AlternativeData = {
     "Email-native: tasks are created automatically from Gmail content",
     "Proactive alerts about calendar conflicts and upcoming deadlines",
     "Free tier available; self-hosting is always free",
-    "50+ integrations beyond calendar: manages your entire digital workflow",
+    "many integrations beyond calendar: manages your entire digital workflow",
     "Open-source codebase vs. Motion's closed, proprietary system",
   ],
   migrationSteps: [
@@ -62,7 +62,7 @@ export const entry: AlternativeData = {
     {
       question: "Is GAIA cheaper than Motion?",
       answer:
-        "Yes. Motion costs $19–$34/month. GAIA Pro is $20/month with much broader functionality including email management, 50+ integrations, and workflow automation. Self-hosted GAIA is free.",
+        "Yes. Motion costs $19–$34/month. GAIA Pro is $20/month with much broader functionality including email management, many integrations, and workflow automation. Self-hosted GAIA is free.",
     },
     {
       question: "Can GAIA create tasks from email like Motion cannot?",

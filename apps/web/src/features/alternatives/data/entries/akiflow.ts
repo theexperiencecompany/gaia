@@ -46,7 +46,7 @@ export const entry: AlternativeData = {
     "Proactive scheduling suggestions based on calendar availability",
     "Free tier available; Akiflow has no free plan",
     "Open-source and self-hostable for complete data control",
-    "50+ integrations via MCP alongside native email and calendar management",
+    "many integrations via MCP alongside native email and calendar management",
   ],
   migrationSteps: [
     "Export tasks from Akiflow or connected tools",

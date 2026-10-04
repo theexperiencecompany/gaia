@@ -16,7 +16,7 @@ export const entry: AlternativeData = {
   ],
   metaTitle: "Google Calendar Alternative — GAIA — AI-Powered Smart Calendar",
   metaDescription:
-    "Looking for a smarter Google Calendar alternative? GAIA adds an AI intelligence layer to your calendar: proactive briefings, automatic event creation from email, conflict detection, and 50+ integrations. Open source, self-hostable.",
+    "Looking for a smarter Google Calendar alternative? GAIA adds an AI intelligence layer to your calendar: proactive briefings, automatic event creation from email, conflict detection, and many integrations. Open source, self-hostable.",
   keywords: [
     "google calendar alternative",
     "google calendar alternative free",

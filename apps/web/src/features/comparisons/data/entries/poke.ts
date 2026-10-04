@@ -9,7 +9,7 @@ export const entry: ComparisonData = {
     "Poke is a proactive AI assistant that monitors your email and calendar and nudges you through iMessage with one-tap actions. GAIA adds a full web and desktop app, deeper integrations, automated todos, and open-source self-hosting.",
   metaTitle: "Poke Alternative with App & Open Source — GAIA vs Poke",
   metaDescription:
-    "Both GAIA and Poke are proactive AI assistants. GAIA adds a full web app, 50+ integrations, automated todo management, and open-source self-hosting that Poke doesn't offer.",
+    "Both GAIA and Poke are proactive AI assistants. GAIA adds a full web app, many integrations, automated todo management, and open-source self-hosting that Poke doesn't offer.",
   keywords: [
     "GAIA vs Poke",
     "Poke alternative",
@@ -19,7 +19,7 @@ export const entry: ComparisonData = {
     "Poke AI comparison 2026",
   ],
   intro:
-    "Poke is a proactive AI assistant built around iMessage. It monitors your email and calendar, sends you timely nudges with one-tap action buttons, and lets users publish and subscribe to automation recipes. There is no app to download — you interact entirely through iMessage, SMS, or Telegram. GAIA shares the proactive philosophy but wraps it in a full web and desktop app, deeper integrations with 50+ services, an automated todo system, and an open-source codebase you can self-host.",
+    "Poke is a proactive AI assistant built around iMessage. It monitors your email and calendar, sends you timely nudges with one-tap action buttons, and lets users publish and subscribe to automation recipes. There is no app to download — you interact entirely through iMessage, SMS, or Telegram. GAIA shares the proactive philosophy but wraps it in a full web and desktop app, deeper integrations with many services, an automated todo system, and an open-source codebase you can self-host.",
   rows: [
     {
       feature: "Proactive behavior",
@@ -47,7 +47,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ native integrations via MCP including Gmail, Slack, Notion, GitHub, Linear, Todoist, Asana, and Jira",
+      gaia: "many native integrations via MCP including Gmail, Slack, Notion, GitHub, Linear, Todoist, Asana, and Jira",
       competitor:
         "~20 services including Gmail, Calendar, Outlook, Notion, Linear, Strava, Withings, GitHub, and Philips Hue",
     },
@@ -76,7 +76,7 @@ export const entry: ComparisonData = {
   ],
   gaiaAdvantages: [
     "Full web, desktop, and mobile apps — not limited to a messaging thread",
-    "50+ integrations with deep bi-directional actions vs Poke's ~20 services",
+    "many integrations with deep bi-directional actions vs Poke's ~20 services",
     "Automated todo list that creates and tracks tasks from email and conversation",
     "Multi-step workflow automation with cross-tool orchestration",
     "Open source and self-hostable — full data ownership with no cloud dependency",
@@ -93,7 +93,7 @@ export const entry: ComparisonData = {
     {
       question: "What makes GAIA different from Poke?",
       answer:
-        "GAIA is a complete productivity OS with a web app, desktop app, automated todos, and 50+ integrations. Poke is an iMessage-native assistant focused on lightweight proactive nudges with one-tap actions. GAIA offers more depth and control; Poke offers a frictionless entry point.",
+        "GAIA is a complete productivity OS with a web app, desktop app, automated todos, and many integrations. Poke is an iMessage-native assistant focused on lightweight proactive nudges with one-tap actions. GAIA offers more depth and control; Poke offers a frictionless entry point.",
     },
     {
       question: "Does Poke have an app like GAIA?",

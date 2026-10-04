@@ -9,7 +9,7 @@ export const entry: ComparisonData = {
     "Roam Research is a networked outliner and personal knowledge management tool built around bidirectional links, block references, and daily notes. GAIA is a proactive AI productivity OS that manages your email, calendar, tasks, and workflows — acting on your behalf before you ask.",
   metaTitle: "Roam Research Alternative with Proactive AI — GAIA vs Roam",
   metaDescription:
-    "Roam Research is a powerful networked outliner but stays passive and note-focused. GAIA is an open-source Roam Research alternative with proactive AI that manages your inbox, calendar, tasks, and automations across 50+ integrations — turning knowledge into action.",
+    "Roam Research is a powerful networked outliner but stays passive and note-focused. GAIA is an open-source Roam Research alternative with proactive AI that manages your inbox, calendar, tasks, and automations across many integrations — turning knowledge into action.",
   keywords: [
     "GAIA vs Roam Research",
     "Roam Research alternative",
@@ -25,7 +25,7 @@ export const entry: ComparisonData = {
     "proactive AI assistant vs Roam",
   ],
   intro:
-    "Roam Research pioneered the networked outliner category and built a devoted following among researchers, writers, and knowledge workers who think in interconnected blocks. Its bidirectional links, block references, and daily notes page create a system where ideas accumulate value over time — every note becomes a node in a growing graph of thought. For building a second brain from your reading, research, and reflection, Roam remains a genuinely powerful tool. But Roam is fundamentally a place to capture and connect what you think — it does not read your inbox, create tasks from emails, manage your calendar, or run automations on your behalf. GAIA operates in an entirely different category. Rather than offering a canvas for your ideas, GAIA actively monitors and manages your digital life: triaging email, preparing meeting briefings, managing your todos, and running multi-step automations across 50+ tools without being prompted. Where Roam helps you build knowledge, GAIA handles execution.",
+    "Roam Research pioneered the networked outliner category and built a devoted following among researchers, writers, and knowledge workers who think in interconnected blocks. Its bidirectional links, block references, and daily notes page create a system where ideas accumulate value over time — every note becomes a node in a growing graph of thought. For building a second brain from your reading, research, and reflection, Roam remains a genuinely powerful tool. But Roam is fundamentally a place to capture and connect what you think — it does not read your inbox, create tasks from emails, manage your calendar, or run automations on your behalf. GAIA operates in an entirely different category. Rather than offering a canvas for your ideas, GAIA actively monitors and manages your digital life: triaging email, preparing meeting briefings, managing your todos, and running multi-step automations across many tools without being prompted. Where Roam helps you build knowledge, GAIA handles execution.",
   rows: [
     {
       feature: "Core approach",
@@ -53,7 +53,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "AI capabilities",
-      gaia: "Native proactive AI that creates tasks, drafts emails, schedules meetings, executes automations, and surfaces insights across 50+ tools without being prompted",
+      gaia: "Native proactive AI that creates tasks, drafts emails, schedules meetings, executes automations, and surfaces insights across many tools without being prompted",
       competitor:
         "No built-in AI assistant; community SmartBlocks and third-party extensions can invoke LLMs for text generation within notes, but all AI interactions require manual initiation",
     },
@@ -85,7 +85,7 @@ export const entry: ComparisonData = {
   gaiaAdvantages: [
     "Proactively triages your inbox, prepares meeting briefings, and executes workflows without needing to be prompted — Roam requires you to manually capture everything",
     "Full Gmail automation turns email into an action system: drafting replies, labeling threads, and creating prioritized tasks automatically without any copy-pasting",
-    "50+ integrations via MCP connect GAIA to Slack, Notion, GitHub, Linear, and more for genuine cross-tool orchestration that Roam cannot approach",
+    "many integrations via MCP connect GAIA to Slack, Notion, GitHub, Linear, and more for genuine cross-tool orchestration that Roam cannot approach",
     "Natural language automations replace manual, repetitive workflows across your entire tool stack — not just templated insertions inside a single graph",
     "Fully open source and self-hostable for complete data sovereignty at no per-seat cost, compared to Roam's $15/month closed SaaS subscription",
   ],

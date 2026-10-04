@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "coda.io",
   tagline: "The doc that thinks like an app",
   description:
-    "Coda.io is a powerful all-in-one platform that blends documents, spreadsheets, and app builder functionality into a single workspace. GAIA is a proactive AI assistant that connects your entire digital workflow — email, calendar, tasks, and 50+ integrations — with autonomous action.",
+    "Coda.io is a powerful all-in-one platform that blends documents, spreadsheets, and app builder functionality into a single workspace. GAIA is a proactive AI assistant that connects your entire digital workflow — email, calendar, tasks, and many integrations — with autonomous action.",
   metaTitle:
     "Coda.io Alternative with Proactive AI & Workflow Automation — GAIA vs Coda",
   metaDescription:
-    "Coda is powerful but complex. GAIA is a free, open-source Coda alternative with proactive AI email management, calendar automation, and cross-tool workflows across 50+ integrations — no formula expertise required.",
+    "Coda is powerful but complex. GAIA is a free, open-source Coda alternative with proactive AI email management, calendar automation, and cross-tool workflows across many integrations — no formula expertise required.",
   keywords: [
     "coda alternative",
     "gaia vs coda",
@@ -27,13 +27,13 @@ export const entry: ComparisonData = {
 
 But Coda's power comes with a real complexity tax. Getting the most out of Coda requires learning its formula language, understanding how tables and views relate to one another, and investing significant time in building the templates and automations that make it valuable. For teams willing to invest that effort, Coda can replace multiple tools. For teams who don't have a dedicated "Coda champion" to maintain the setup, those powerful docs often become unmaintained relics.
 
-GAIA takes a different approach to complexity: instead of giving you a flexible building system that you configure yourself, GAIA applies AI directly to your existing workflow. It reads your Gmail inbox and creates tasks and calendar events automatically. It monitors your GitHub repositories and Jira boards. It prepares briefings before your meetings, drafts email replies, and orchestrates multi-step workflows across 50+ connected tools — all through natural language rather than formulas and configuration. The sophistication is in the AI, not in the setup.
+GAIA takes a different approach to complexity: instead of giving you a flexible building system that you configure yourself, GAIA applies AI directly to your existing workflow. It reads your Gmail inbox and creates tasks and calendar events automatically. It monitors your GitHub repositories and Jira boards. It prepares briefings before your meetings, drafts email replies, and orchestrates multi-step workflows across your connected tools — all through natural language rather than formulas and configuration. The sophistication is in the AI, not in the setup.
 
 Where Coda shines as a flexible building platform for teams who love configuring powerful internal tools, GAIA is better suited for professionals who want their AI assistant to do the heavy lifting automatically — connecting the dots across email, calendar, tasks, and tools without requiring them to become workflow architects. GAIA is also open source and self-hostable, which means teams with privacy or compliance requirements can run it entirely within their own infrastructure.`,
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI assistant that autonomously manages email, calendar, tasks, and workflows across 50+ connected tools",
+      gaia: "Proactive AI assistant that autonomously manages email, calendar, tasks, and workflows across your connected tools",
       competitor:
         "All-in-one doc platform combining documents, spreadsheets, and app builder into configurable team tools",
     },
@@ -69,7 +69,7 @@ Where Coda shines as a flexible building platform for teams who love configuring
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira, and more via MCP",
+      gaia: "many integrations including Gmail, Slack, GitHub, Notion, Todoist, Linear, Jira, and more via MCP",
       competitor:
         "600+ Packs for connecting external services to Coda docs; strong ecosystem but requires configuration per Pack",
     },
@@ -107,7 +107,7 @@ Where Coda shines as a flexible building platform for teams who love configuring
   gaiaAdvantages: [
     "No configuration expertise needed — describe workflows in natural language and GAIA executes them",
     "Proactively reads email and calendar to create tasks and surface information without manual input",
-    "50+ integrations orchestrated by AI rather than requiring per-integration Pack configuration",
+    "many integrations orchestrated by AI rather than requiring per-integration Pack configuration",
     "Open source and self-hostable — complete data ownership with no per-seat pricing when self-hosted",
     "Graph-based memory connects context across email, meetings, and tools automatically",
     "Lower barrier to sophisticated automation — no formula language or workflow builder required",
@@ -138,7 +138,7 @@ Where Coda shines as a flexible building platform for teams who love configuring
     {
       question: "Does GAIA integrate with Coda?",
       answer:
-        "GAIA does not have a native Coda integration currently. Its 50+ integrations focus on tools like Gmail, Slack, Notion, Jira, GitHub, Linear, and Todoist. If Coda is a central part of your workflow, you would need to evaluate GAIA's other integrations to see if they cover your needs.",
+        "GAIA does not have a native Coda integration currently. Its many integrations focus on tools like Gmail, Slack, Notion, Jira, GitHub, Linear, and Todoist. If Coda is a central part of your workflow, you would need to evaluate GAIA's other integrations to see if they cover your needs.",
     },
     {
       question: "Is GAIA cheaper than Coda for teams?",

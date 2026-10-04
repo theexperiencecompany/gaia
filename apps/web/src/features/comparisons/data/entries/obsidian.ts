@@ -9,7 +9,7 @@ export const entry: ComparisonData = {
     "Obsidian is a local-first Markdown note-taking app with a graph view for building a personal knowledge base. GAIA is a proactive AI productivity OS that manages your email, calendar, tasks, and workflows — acting on your behalf before you ask.",
   metaTitle: "Obsidian Alternative with AI Email & Calendar — GAIA vs Obsidian",
   metaDescription:
-    "Obsidian is a powerful local-first PKM but stays passive and note-only. GAIA is an open-source Obsidian alternative with AI email management, calendar integration, and workflow automation across 50+ tools — acting proactively before you ask.",
+    "Obsidian is a powerful local-first PKM but stays passive and note-only. GAIA is an open-source Obsidian alternative with AI email management, calendar integration, and workflow automation across many tools — acting proactively before you ask.",
   keywords: [
     "GAIA vs Obsidian",
     "Obsidian alternative",
@@ -26,7 +26,7 @@ export const entry: ComparisonData = {
     "Obsidian vs GAIA",
   ],
   intro:
-    "Obsidian has built a devoted following among knowledge workers, researchers, and writers who want a local-first, Markdown-based system for capturing and connecting ideas. Its bidirectional linking, graph view, and extensive plugin ecosystem make it one of the most flexible personal knowledge bases available. But Obsidian is fundamentally a note-taking and knowledge management tool — it does not manage your inbox, automate your calendar, or execute tasks on your behalf. GAIA operates in an entirely different category. Rather than giving you a place to store and connect your notes, GAIA actively monitors your digital life: triaging email, preparing meeting briefings, managing your todos, and running multi-step automations across 50+ tools without being prompted. If Obsidian is your second brain for knowledge, GAIA is the assistant that handles your workflow.",
+    "Obsidian has built a devoted following among knowledge workers, researchers, and writers who want a local-first, Markdown-based system for capturing and connecting ideas. Its bidirectional linking, graph view, and extensive plugin ecosystem make it one of the most flexible personal knowledge bases available. But Obsidian is fundamentally a note-taking and knowledge management tool — it does not manage your inbox, automate your calendar, or execute tasks on your behalf. GAIA operates in an entirely different category. Rather than giving you a place to store and connect your notes, GAIA actively monitors your digital life: triaging email, preparing meeting briefings, managing your todos, and running multi-step automations across many tools without being prompted. If Obsidian is your second brain for knowledge, GAIA is the assistant that handles your workflow.",
   rows: [
     {
       feature: "Core approach",
@@ -86,7 +86,7 @@ export const entry: ComparisonData = {
   gaiaAdvantages: [
     "Proactively triages your inbox, prepares meeting briefings, and executes workflows without needing to be prompted",
     "Full Gmail automation turns your email into an action system — drafting replies, labeling threads, and creating tasks automatically",
-    "50+ integrations via MCP connect GAIA to Slack, Notion, GitHub, Linear, and more for genuine cross-tool orchestration",
+    "many integrations via MCP connect GAIA to Slack, Notion, GitHub, Linear, and more for genuine cross-tool orchestration",
     "Natural language automations replace manual, repetitive workflows across your entire tool stack — not just inside a single vault",
     "Fully open source and self-hostable for complete data sovereignty with no vendor lock-in",
   ],

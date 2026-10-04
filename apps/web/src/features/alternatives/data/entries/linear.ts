@@ -58,7 +58,7 @@ export const entry: AlternativeData = {
     {
       question: "Can GAIA integrate with Linear?",
       answer:
-        "GAIA supports 50+ integrations via MCP. While direct Linear sync depends on available MCP connectors, GAIA can capture action items from email and meetings and manage them independently, reducing your reliance on Linear for personal task tracking.",
+        "GAIA supports many integrations via MCP. While direct Linear sync depends on available MCP connectors, GAIA can capture action items from email and meetings and manage them independently, reducing your reliance on Linear for personal task tracking.",
     },
     {
       question: "Is there a free Linear alternative?",

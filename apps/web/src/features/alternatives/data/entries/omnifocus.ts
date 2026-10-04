@@ -69,7 +69,7 @@ export const entry: AlternativeData = {
     {
       question: "How does GAIA compare to OmniFocus for power users?",
       answer:
-        "OmniFocus offers deeper GTD customization (custom Perspectives, AppleScript automation, complex project hierarchies) for Apple power users. GAIA trades that depth for breadth: email integration, calendar awareness, workflow automation, and AI prioritization across 50+ connected tools.",
+        "OmniFocus offers deeper GTD customization (custom Perspectives, AppleScript automation, complex project hierarchies) for Apple power users. GAIA trades that depth for breadth: email integration, calendar awareness, workflow automation, and AI prioritization across your connected tools.",
     },
   ],
 };

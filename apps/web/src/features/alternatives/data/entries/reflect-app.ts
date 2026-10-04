@@ -63,7 +63,7 @@ export const entry: AlternativeData = {
     {
       question: "Is GAIA cheaper than Reflect?",
       answer:
-        "Reflect costs $10/month. GAIA Pro is $20/month but includes email, calendar, tasks, memory, and 50+ integrations. Self-hosted GAIA is free.",
+        "Reflect costs $10/month. GAIA Pro is $20/month but includes email, calendar, tasks, memory, and many integrations. Self-hosted GAIA is free.",
     },
     {
       question: "Can GAIA replace Reflect for networked note-taking?",

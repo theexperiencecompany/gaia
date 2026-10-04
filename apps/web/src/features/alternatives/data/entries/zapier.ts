@@ -15,7 +15,7 @@ export const entry: AlternativeData = {
   ],
   metaTitle: "Best Zapier Alternative in 2026",
   metaDescription:
-    "Zapier is expensive and not AI-native. GAIA is a proactive AI assistant with built-in workflow automation and 50+ integrations. Open-source, free tier available.",
+    "Zapier is expensive and not AI-native. GAIA is a proactive AI assistant with built-in workflow automation and many integrations. Open-source, free tier available.",
   keywords: [
     "zapier alternative",
     "best zapier alternative",
@@ -59,7 +59,7 @@ export const entry: AlternativeData = {
     {
       question: "Does GAIA connect to the same apps as Zapier?",
       answer:
-        "GAIA supports 50+ integrations via MCP. Zapier connects to 7,000+ apps. For breadth of app support, Zapier has a significant advantage. GAIA's strength is AI-driven, context-aware automation rather than volume of connectors.",
+        "GAIA supports many integrations via MCP. Zapier connects to 7,000+ apps. For breadth of app support, Zapier has a significant advantage. GAIA's strength is AI-driven, context-aware automation rather than volume of connectors.",
     },
     {
       question: "Is GAIA cheaper than Zapier for automation?",

@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline:
     "Classic note-taking and personal organization tool with web clipping",
   description:
-    "Evernote is one of the original digital note-taking platforms — a place to capture notes, clip web pages, scan documents, and organize information across notebooks with powerful search. GAIA is a proactive AI productivity OS that manages your email, calendar, tasks, and 50+ integrations autonomously, building a connected knowledge graph from your live digital activity rather than manually captured notes.",
+    "Evernote is one of the original digital note-taking platforms — a place to capture notes, clip web pages, scan documents, and organize information across notebooks with powerful search. GAIA is a proactive AI productivity OS that manages your email, calendar, tasks, and many integrations autonomously, building a connected knowledge graph from your live digital activity rather than manually captured notes.",
   metaTitle: "Evernote Alternative with Proactive AI — GAIA vs Evernote",
   metaDescription:
     "Compare GAIA and Evernote. Evernote organizes your notes and clippings, but GAIA manages email, calendar, tasks, and workflows proactively — with AI that acts on your context, not just stores it.",
@@ -34,7 +34,7 @@ export const entry: ComparisonData = {
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI productivity OS — monitors email, calendar, tasks, and 50+ tools; builds a knowledge graph from live digital activity and acts autonomously",
+      gaia: "Proactive AI productivity OS — monitors email, calendar, tasks, and many tools; builds a knowledge graph from live digital activity and acts autonomously",
       competitor:
         "Digital note-taking and personal organization platform — capture notes, clips, scans, and documents in searchable notebooks organized by the user",
     },
@@ -70,7 +70,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Workflow automation",
-      gaia: "Natural-language multi-step automations across 50+ integrations — triggers, conditions, and cross-tool actions via MCP",
+      gaia: "Natural-language multi-step automations across many integrations — triggers, conditions, and cross-tool actions via MCP",
       competitor:
         "No native workflow automation; Zapier integration for piping external data into Evernote; primarily a passive content store",
     },
@@ -97,7 +97,7 @@ export const entry: ComparisonData = {
     "Builds a knowledge graph automatically from live email, calendar, and task activity — no manual note capture or deliberate curation required",
     "Acts on context proactively — triages email, schedules meetings, creates tasks, and runs cross-tool workflows without requiring you to open a note editor",
     "Graph-based memory connects emails to people, tasks to projects, and meetings to outcomes so every AI action has full context across your work history",
-    "Natural-language multi-step automations spanning 50+ tools go far beyond what a note-taking app's Zapier integration can deliver",
+    "Natural-language multi-step automations spanning many tools go far beyond what a note-taking app's Zapier integration can deliver",
     "Open source and self-hostable — complete data ownership with no per-seat cost and no data used for AI training, a meaningful advantage given Evernote's ownership changes",
   ],
   competitorAdvantages: [

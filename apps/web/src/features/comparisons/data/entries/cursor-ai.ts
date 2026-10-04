@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "cursor.sh",
   tagline: "The best way to code with AI",
   description:
-    "Cursor is an AI-first code editor built on VS Code that brings inline completions, multi-file edits, and background agents directly into the coding environment. GAIA complements the editor by managing everything outside it — email, calendar, GitHub notifications, Linear tickets, standup summaries, and 50+ integrations — so developers can stay in flow without context-switching.",
+    "Cursor is an AI-first code editor built on VS Code that brings inline completions, multi-file edits, and background agents directly into the coding environment. GAIA complements the editor by managing everything outside it — email, calendar, GitHub notifications, Linear tickets, standup summaries, and many integrations — so developers can stay in flow without context-switching.",
   metaTitle:
     "Cursor AI Alternative for Full Productivity OS — GAIA vs Cursor AI",
   metaDescription:
-    "Cursor is excellent inside the editor but won't manage your inbox, calendar, or cross-tool workflows. GAIA is an open-source Cursor AI companion for full productivity — handling email, GitHub notifications, Linear tickets, and 50+ integrations outside the editor.",
+    "Cursor is excellent inside the editor but won't manage your inbox, calendar, or cross-tool workflows. GAIA is an open-source Cursor AI companion for full productivity — handling email, GitHub notifications, Linear tickets, and many integrations outside the editor.",
   keywords: [
     "GAIA vs Cursor",
     "Cursor alternative",
@@ -24,7 +24,7 @@ export const entry: ComparisonData = {
   rows: [
     {
       feature: "Core purpose",
-      gaia: "Proactive AI OS for the full developer workflow — email, calendar, tasks, GitHub notifications, Linear tickets, standup summaries, and 50+ integrations outside the editor",
+      gaia: "Proactive AI OS for the full developer workflow — email, calendar, tasks, GitHub notifications, Linear tickets, standup summaries, and many integrations outside the editor",
       competitor:
         "AI-first code editor (VS Code fork) with inline completions, multi-file edits, agentic coding, and background PR agents inside the coding environment",
     },
@@ -60,7 +60,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP: Gmail, Google Calendar, Slack, GitHub, Linear, Notion, Todoist, Asana, Jira, and more — also supports MCP connections to code-adjacent tools",
+      gaia: "many integrations via MCP: Gmail, Google Calendar, Slack, GitHub, Linear, Notion, Todoist, Asana, Jira, and more — also supports MCP connections to code-adjacent tools",
       competitor:
         "Integrates with GitHub for background agent PRs and Slack for PR reviews; supports Model Context Protocol (MCP) for connecting custom data sources inside the editor",
     },
@@ -94,7 +94,7 @@ export const entry: ComparisonData = {
     "Graph-based persistent memory links code work to tasks, meetings, and communications so context is never siloed inside the editor",
     "Natural language workflow automations span email, calendar, tasks, and messaging — no manual stitching between tools required",
     "Open source and self-hostable — full data control with no vendor lock-in and no mandatory cloud subscription",
-    "50+ integrations via MCP cover the entire developer toolchain from inbox to deployment",
+    "many integrations via MCP cover the entire developer toolchain from inbox to deployment",
   ],
   competitorAdvantages: [
     "Best-in-class AI code editing experience with inline completions, multi-file context, and Composer for large refactors",
@@ -117,7 +117,7 @@ export const entry: ComparisonData = {
     {
       question: "How does GAIA help developers specifically?",
       answer:
-        "GAIA handles the parts of a developer's day that happen outside the editor. It triages GitHub notifications and surfaces only the PRs and issues that need attention, links Linear and Jira tickets to related emails and calendar events, generates daily standup summaries from commits and closed tickets, creates pre-meeting briefing docs before engineering syncs, and automates multi-step workflows like PR summary emails across 50+ tools — all without leaving a single interface.",
+        "GAIA handles the parts of a developer's day that happen outside the editor. It triages GitHub notifications and surfaces only the PRs and issues that need attention, links Linear and Jira tickets to related emails and calendar events, generates daily standup summaries from commits and closed tickets, creates pre-meeting briefing docs before engineering syncs, and automates multi-step workflows like PR summary emails across many tools — all without leaving a single interface.",
     },
   ],
 };

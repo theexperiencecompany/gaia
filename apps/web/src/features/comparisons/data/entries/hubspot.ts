@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "hubspot.com",
   tagline: "CRM, marketing automation, sales, and customer service platform",
   description:
-    "HubSpot is a comprehensive CRM platform covering marketing automation, sales pipeline management, and customer service. GAIA focuses on the personal productivity layer — proactively managing your inbox, calendar, and task workflow with AI that acts across 50+ integrations including HubSpot itself.",
+    "HubSpot is a comprehensive CRM platform covering marketing automation, sales pipeline management, and customer service. GAIA focuses on the personal productivity layer — proactively managing your inbox, calendar, and task workflow with AI that acts across many integrations including HubSpot itself.",
   metaTitle:
     "HubSpot Alternative for Personal AI Productivity — GAIA vs HubSpot",
   metaDescription:
-    "HubSpot excels at CRM and marketing, but it won't manage your inbox or automate your personal workflow. GAIA is an open-source AI alternative that proactively handles email, tasks, and 50+ integrations — free tier available.",
+    "HubSpot excels at CRM and marketing, but it won't manage your inbox or automate your personal workflow. GAIA is an open-source AI alternative that proactively handles email, tasks, and many integrations — free tier available.",
   keywords: [
     "HubSpot alternative",
     "GAIA vs HubSpot",
@@ -29,7 +29,7 @@ export const entry: ComparisonData = {
 
 But HubSpot is fundamentally a team CRM platform, not a personal productivity assistant. It excels at managing customer data and automating marketing sequences, but it does not proactively manage your personal inbox, prepare you for meetings, create tasks from Slack conversations, or orchestrate workflows across your engineering, product, and project management tools. A sales manager using HubSpot still spends hours each week manually triaging email, updating deal stages, chasing follow-ups across Slack, and coordinating internally across tools that HubSpot does not connect. HubSpot tracks what happened; it rarely prevents the overhead in the first place.
 
-GAIA addresses the personal productivity layer that HubSpot was not designed for. It connects to Gmail, Slack, Google Calendar, Notion, GitHub, Linear, and 40+ more tools via MCP, then proactively manages the flow of information and tasks through all of them. It reads your email and surfaces deal-related action items automatically, prepares briefing notes before customer calls using calendar and email context, creates follow-up tasks without requiring manual entry, and runs multi-step workflows — like "when I get an email from a prospect mentioning a deadline, add it to my task list and create a calendar reminder" — without any manual configuration. For sales professionals and founders who want more than CRM, GAIA fills the gap between what HubSpot records and what your day actually demands.
+GAIA addresses the personal productivity layer that HubSpot was not designed for. It connects to Gmail, Slack, Google Calendar, Notion, GitHub, Linear, and many more tools via MCP, then proactively manages the flow of information and tasks through all of them. It reads your email and surfaces deal-related action items automatically, prepares briefing notes before customer calls using calendar and email context, creates follow-up tasks without requiring manual entry, and runs multi-step workflows — like "when I get an email from a prospect mentioning a deadline, add it to my task list and create a calendar reminder" — without any manual configuration. For sales professionals and founders who want more than CRM, GAIA fills the gap between what HubSpot records and what your day actually demands.
 
 The pricing difference is also stark. HubSpot's free CRM is genuinely useful, but the features that matter for automation — Marketing Hub, Sales Hub, and Service Hub at meaningful tiers — scale quickly to hundreds or thousands of dollars per month. GAIA's hosted Pro plan is $20 per month flat with no per-seat pricing, and self-hosting is entirely free. For individuals and small teams who need proactive AI productivity management rather than enterprise CRM, GAIA delivers far more value per dollar.`,
   rows: [
@@ -65,7 +65,7 @@ The pricing difference is also stark. HubSpot's free CRM is genuinely useful, bu
     },
     {
       feature: "Workflow automation",
-      gaia: "Natural language multi-step workflows across 50+ personal and team tools triggered by any event, message, or condition",
+      gaia: "Natural language multi-step workflows across many personal and team tools triggered by any event, message, or condition",
       competitor:
         "Marketing and sales automation sequences based on CRM triggers — powerful within HubSpot's ecosystem, not across personal tools",
     },
@@ -83,7 +83,7 @@ The pricing difference is also stark. HubSpot's free CRM is genuinely useful, bu
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations including Gmail, Slack, GitHub, Notion, Linear, Jira, and more via MCP — orchestrated by the AI agent",
+      gaia: "many integrations including Gmail, Slack, GitHub, Notion, Linear, Jira, and more via MCP — orchestrated by the AI agent",
       competitor:
         "1,500+ marketplace integrations focused primarily on marketing, sales, and customer success stack",
     },
@@ -112,7 +112,7 @@ The pricing difference is also stark. HubSpot's free CRM is genuinely useful, bu
     "Works across your entire tool stack — not just the sales and marketing layer",
     "Open source and self-hostable for full data control with no vendor dependency",
     "Dramatically lower cost for personal productivity use cases compared to HubSpot's paid tiers",
-    "50+ integrations covering engineering, product, and communication tools that HubSpot's marketplace does not serve",
+    "many integrations covering engineering, product, and communication tools that HubSpot's marketplace does not serve",
   ],
   competitorAdvantages: [
     "Full-featured team CRM with contact lifecycle tracking, deal pipelines, and shared visibility across the revenue organisation",

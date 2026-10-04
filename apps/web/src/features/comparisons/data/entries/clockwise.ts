@@ -10,7 +10,7 @@ export const entry: ComparisonData = {
   metaTitle:
     "Clockwise Alternative with AI Email Management — GAIA vs Clockwise",
   metaDescription:
-    "Clockwise optimizes team calendars but doesn't touch your inbox or automate cross-tool workflows. GAIA is an open-source Clockwise alternative with AI email management, calendar intelligence, and workflow automation across 50+ tools.",
+    "Clockwise optimizes team calendars but doesn't touch your inbox or automate cross-tool workflows. GAIA is an open-source Clockwise alternative with AI email management, calendar intelligence, and workflow automation across many tools.",
   keywords: [
     "GAIA vs Clockwise",
     "Clockwise alternative",
@@ -22,11 +22,11 @@ export const entry: ComparisonData = {
     "AI productivity tool",
   ],
   intro:
-    "Clockwise has built a compelling product around one specific problem: helping teams protect their focus time by intelligently rearranging calendars and finding optimal meeting slots. Trusted by over 40,000 organizations including Uber, Netflix, and Atlassian, it does calendar optimization remarkably well. But calendar optimization is one slice of the productivity puzzle. Clockwise does not touch your inbox, does not create tasks from emails, does not automate workflows across tools, and has no mobile app. GAIA takes a fundamentally broader position: it is a proactive AI assistant that monitors your email and calendar, acts on your behalf across 50+ connected tools, and maintains persistent memory of your projects and the people in them — without waiting to be asked.",
+    "Clockwise has built a compelling product around one specific problem: helping teams protect their focus time by intelligently rearranging calendars and finding optimal meeting slots. Trusted by over 40,000 organizations including Uber, Netflix, and Atlassian, it does calendar optimization remarkably well. But calendar optimization is one slice of the productivity puzzle. Clockwise does not touch your inbox, does not create tasks from emails, does not automate workflows across tools, and has no mobile app. GAIA takes a fundamentally broader position: it is a proactive AI assistant that monitors your email and calendar, acts on your behalf across your connected tools, and maintains persistent memory of your projects and the people in them — without waiting to be asked.",
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI productivity OS that monitors and acts across email, calendar, tasks, and 50+ tools on your behalf",
+      gaia: "Proactive AI productivity OS that monitors and acts across email, calendar, tasks, and many tools on your behalf",
       competitor:
         "AI-powered calendar optimizer that auto-schedules focus time and finds optimal meeting windows for teams",
     },

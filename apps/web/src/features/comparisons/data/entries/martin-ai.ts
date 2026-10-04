@@ -6,11 +6,11 @@ export const entry: ComparisonData = {
   domain: "trymartin.com",
   tagline: "AI productivity assistant",
   description:
-    "Martin AI offers AI-powered productivity features. GAIA provides a more comprehensive approach with 50+ integrations, proactive automation, and complete open-source transparency.",
+    "Martin AI offers AI-powered productivity features. GAIA provides a more comprehensive approach with many integrations, proactive automation, and complete open-source transparency.",
   metaTitle:
     "Martin AI Alternative — Self-Hosted with Email & Calendar — GAIA vs Martin AI",
   metaDescription:
-    "Compare GAIA and Martin AI for AI productivity. GAIA offers open-source code, 50+ integrations, proactive automation, and graph-based memory for comprehensive workflow management.",
+    "Compare GAIA and Martin AI for AI productivity. GAIA offers open-source code, many integrations, proactive automation, and graph-based memory for comprehensive workflow management.",
   keywords: [
     "GAIA vs Martin AI",
     "Martin AI alternative",
@@ -18,11 +18,11 @@ export const entry: ComparisonData = {
     "AI assistant comparison",
   ],
   intro:
-    "Martin AI aims to bring AI assistance to daily productivity tasks. GAIA operates at a fundamentally different scale: it is a complete productivity operating system that proactively manages your entire digital workflow. With 50+ integrations, graph-based memory, and full open-source transparency, GAIA goes beyond answering questions to actually doing your work.",
+    "Martin AI aims to bring AI assistance to daily productivity tasks. GAIA operates at a fundamentally different scale: it is a complete productivity operating system that proactively manages your entire digital workflow. With many integrations, graph-based memory, and full open-source transparency, GAIA goes beyond answering questions to actually doing your work.",
   rows: [
     {
       feature: "Core approach",
-      gaia: "Complete productivity OS that proactively manages email, calendar, tasks, workflows, and 50+ tools",
+      gaia: "Complete productivity OS that proactively manages email, calendar, tasks, workflows, and many tools",
       competitor:
         "AI assistant focused on productivity enhancement and task support",
     },
@@ -33,7 +33,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations: Gmail, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and more",
+      gaia: "many integrations: Gmail, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and more",
       competitor: "Selected productivity tool integrations",
     },
     {
@@ -58,7 +58,7 @@ export const entry: ComparisonData = {
     },
   ],
   gaiaAdvantages: [
-    "50+ integrations with deep tool orchestration",
+    "many integrations with deep tool orchestration",
     "Proactive monitoring and autonomous execution",
     "Open source with self-hosting for total data control",
     "Graph-based persistent memory",
@@ -69,12 +69,12 @@ export const entry: ComparisonData = {
     "Focused feature set for specific productivity tasks",
   ],
   verdict:
-    "Choose Martin AI if you want focused AI productivity assistance for specific tasks. Choose GAIA if you want a comprehensive, open-source productivity OS that proactively manages your entire digital workflow with 50+ integrations and persistent memory.",
+    "Choose Martin AI if you want focused AI productivity assistance for specific tasks. Choose GAIA if you want a comprehensive, open-source productivity OS that proactively manages your entire digital workflow with many integrations and persistent memory.",
   faqs: [
     {
       question: "How is GAIA different from Martin AI?",
       answer:
-        "GAIA is a complete productivity operating system. It proactively manages your email, calendar, tasks, and workflows across 50+ integrations. It is fully open source with self-hosting support and uses graph-based memory to learn your work patterns.",
+        "GAIA is a complete productivity operating system. It proactively manages your email, calendar, tasks, and workflows across many integrations. It is fully open source with self-hosting support and uses graph-based memory to learn your work patterns.",
     },
   ],
 };

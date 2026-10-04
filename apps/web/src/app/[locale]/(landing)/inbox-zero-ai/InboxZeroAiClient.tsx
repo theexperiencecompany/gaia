@@ -326,7 +326,8 @@ export default function InboxZeroAiClient() {
             </span>
           </div>
           <p className="text-sm leading-relaxed text-zinc-400">
-            Support for Outlook and other email providers is on the roadmap.
+            Gmail-first for now — Outlook is on the roadmap, vote here. Support
+            for Outlook and other email providers is coming soon.
           </p>
         </AnimatedCard>
       </section>

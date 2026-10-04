@@ -6,10 +6,10 @@ export const entry: ComparisonData = {
   domain: "notion.so",
   tagline: "The connected workspace for notes, docs, and projects",
   description:
-    "Notion is an all-in-one workspace for docs, wikis, databases, and project tracking. GAIA is a proactive AI assistant that orchestrates your email, calendar, tasks, and 50+ tools — and integrates directly with Notion to read and write your pages and databases.",
+    "Notion is an all-in-one workspace for docs, wikis, databases, and project tracking. GAIA is a proactive AI assistant that orchestrates your email, calendar, tasks, and many tools — and integrates directly with Notion to read and write your pages and databases.",
   metaTitle: "Open Source Notion Alternative with AI Email — GAIA vs Notion",
   metaDescription:
-    "Notion organizes docs and projects beautifully but waits for you to open it. GAIA is a free, open-source Notion alternative with AI email management, calendar automation, and workflow orchestration across 50+ tools — with native Notion integration.",
+    "Notion organizes docs and projects beautifully but waits for you to open it. GAIA is a free, open-source Notion alternative with AI email management, calendar automation, and workflow orchestration across many tools — with native Notion integration.",
   keywords: [
     "GAIA vs Notion",
     "Notion alternative",
@@ -32,7 +32,7 @@ export const entry: ComparisonData = {
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI productivity OS that monitors and acts across email, calendar, tasks, and 50+ tools on your behalf",
+      gaia: "Proactive AI productivity OS that monitors and acts across email, calendar, tasks, and many tools on your behalf",
       competitor:
         "All-in-one connected workspace for notes, docs, wikis, and project databases that you build and maintain manually",
     },
@@ -80,7 +80,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP including Notion, Gmail, Google Calendar, Slack, GitHub, Linear, Jira, and more — all orchestrated by the AI agent",
+      gaia: "many integrations via MCP including Notion, Gmail, Google Calendar, Slack, GitHub, Linear, Jira, and more — all orchestrated by the AI agent",
       competitor:
         "Native integrations with Slack, GitHub, Jira, Figma, and Google Drive; broader ecosystem available via Zapier, Make, and the Notion API",
     },

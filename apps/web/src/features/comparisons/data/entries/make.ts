@@ -69,7 +69,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Workflow automation",
-      gaia: "Natural-language automations with triggers, conditions, and cross-tool actions; 50+ integrations via MCP with AI-interpreted intent",
+      gaia: "Natural-language automations with triggers, conditions, and cross-tool actions; many integrations via MCP with AI-interpreted intent",
       competitor:
         "Core strength — 2,000+ app integrations with routers, iterators, aggregators, and error handlers for complex, high-volume, and branching data pipelines",
     },
@@ -116,7 +116,7 @@ export const entry: ComparisonData = {
     {
       question: "Does GAIA support as many integrations as Make?",
       answer:
-        "Make supports 2,000+ app integrations, which is significantly broader than GAIA's current 50+ integrations via MCP. Make's advantage is breadth and control over data mapping. GAIA's advantage is depth — its integrations are bi-directional and AI-interpreted, meaning GAIA can decide which integration to use and how to use it based on context, rather than requiring you to define every step. For specialized niche-app connections, Make is likely to have a module; for intelligent multi-tool workflows, GAIA handles the reasoning layer.",
+        "Make supports 2,000+ app integrations, which is significantly broader than GAIA's current many integrations via MCP. Make's advantage is breadth and control over data mapping. GAIA's advantage is depth — its integrations are bi-directional and AI-interpreted, meaning GAIA can decide which integration to use and how to use it based on context, rather than requiring you to define every step. For specialized niche-app connections, Make is likely to have a module; for intelligent multi-tool workflows, GAIA handles the reasoning layer.",
     },
     {
       question:

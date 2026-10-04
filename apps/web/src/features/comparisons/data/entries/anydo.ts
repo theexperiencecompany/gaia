@@ -9,7 +9,7 @@ export const entry: ComparisonData = {
     "Any.do is a polished task and list manager with calendar syncing, WhatsApp reminders, and a ChatGPT-powered assistant. GAIA goes far beyond list management to proactively orchestrate your entire digital workflow with a deeply contextual AI agent.",
   metaTitle: "Any.do Alternative with AI Email & Workflows — GAIA vs Any.do",
   metaDescription:
-    "Any.do is a polished task manager but requires manual entry and lacks email automation. GAIA is an open-source Any.do alternative with AI email integration, multi-step workflow automation, and 50+ tool integrations — with a free tier.",
+    "Any.do is a polished task manager but requires manual entry and lacks email automation. GAIA is an open-source Any.do alternative with AI email integration, multi-step workflow automation, and many tool integrations — with a free tier.",
   keywords: [
     "GAIA vs Any.do",
     "Any.do alternative",
@@ -25,7 +25,7 @@ export const entry: ComparisonData = {
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI productivity OS that manages email, calendar, tasks, and workflows across 50+ tools",
+      gaia: "Proactive AI productivity OS that manages email, calendar, tasks, and workflows across many tools",
       competitor:
         "Smart task and list manager with calendar sync, WhatsApp reminders, and AI-powered suggestions",
     },
@@ -55,7 +55,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Workflow automation",
-      gaia: "Natural language multi-step workflow builder with triggers, conditions, and cross-tool actions spanning 50+ integrations",
+      gaia: "Natural language multi-step workflow builder with triggers, conditions, and cross-tool actions spanning many integrations",
       competitor:
         "Basic automation through Zapier or similar third-party connectors; no native multi-step workflow engine",
     },
@@ -67,7 +67,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, and more",
+      gaia: "many integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, and more",
       competitor:
         "Integrates with Google Calendar, Outlook, Gmail add-on, Slack, WhatsApp, and Zapier for extended connectivity",
     },
@@ -85,7 +85,7 @@ export const entry: ComparisonData = {
   ],
   gaiaAdvantages: [
     "Proactively manages email triage, task creation, and calendar scheduling without manual input",
-    "50+ deeply orchestrated integrations controlled by a single AI agent rather than disconnected add-ons",
+    "many deeply orchestrated integrations controlled by a single AI agent rather than disconnected add-ons",
     "Multi-step workflow automation in natural language spanning the tools you already use",
     "Graph-based persistent memory that connects tasks, meetings, emails, and projects for lasting context",
     "Open source and self-hostable for teams and individuals with data privacy requirements",

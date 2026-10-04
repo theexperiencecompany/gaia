@@ -47,7 +47,7 @@ export const entry: AlternativeData = {
   ],
   gaiaAdvantages: [
     "Proactive: GAIA surfaces what needs your attention without you asking",
-    "No setup required; connects to Gmail, Google Calendar, and 50+ tools instantly",
+    "No setup required; connects to Gmail, Google Calendar, and many tools instantly",
     "Open-source and self-hostable so your data stays under your control",
     "Free tier available; Pro starts at $20/month with no per-seat pricing for individuals",
     "Works across desktop, mobile, web, CLI, Discord, Slack, and Telegram",
@@ -83,7 +83,7 @@ export const entry: AlternativeData = {
   comparisonRows: [
     {
       feature: "Core purpose",
-      gaia: "Proactive AI productivity OS that monitors and acts across email, calendar, tasks, and 50+ tools on your behalf",
+      gaia: "Proactive AI productivity OS that monitors and acts across email, calendar, tasks, and many tools on your behalf",
       competitor:
         "All-in-one connected workspace for notes, docs, wikis, and project databases that you build and maintain manually",
     },

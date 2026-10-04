@@ -10,7 +10,7 @@ export const entry: ComparisonData = {
   metaTitle:
     "Harvest Alternative with AI Task and Workflow Management — GAIA vs Harvest",
   metaDescription:
-    "Harvest tracks time and invoices clients, but it won't manage your tasks or automate your workflow. GAIA is an open-source AI alternative with email integration, task management, and 50+ tool connections — free tier available.",
+    "Harvest tracks time and invoices clients, but it won't manage your tasks or automate your workflow. GAIA is an open-source AI alternative with email integration, task management, and many tool connections — free tier available.",
   keywords: [
     "Harvest alternative",
     "GAIA vs Harvest",
@@ -77,7 +77,7 @@ GAIA is open source and self-hostable, which means your client data and project 
     },
     {
       feature: "Workflow automation",
-      gaia: "Natural language multi-step workflows across 50+ tools triggered by any event — email, Slack message, or calendar change",
+      gaia: "Natural language multi-step workflows across many tools triggered by any event — email, Slack message, or calendar change",
       competitor:
         "No native workflow automation; basic Zapier and webhook integrations available for simple triggers",
     },
@@ -89,9 +89,9 @@ GAIA is open source and self-hostable, which means your client data and project 
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations including Gmail, Slack, GitHub, Notion, Linear, Jira, and more via MCP",
+      gaia: "many integrations including Gmail, Slack, GitHub, Notion, Linear, Jira, and more via MCP",
       competitor:
-        "50+ integrations focused on project management and accounting tools including Asana, Basecamp, Xero, and QuickBooks",
+        "many integrations focused on project management and accounting tools including Asana, Basecamp, Xero, and QuickBooks",
     },
     {
       feature: "Open source",
@@ -111,7 +111,7 @@ GAIA is open source and self-hostable, which means your client data and project 
     "Manages client communication and task routing across all connected tools, reducing non-billable coordination overhead",
     "Schedules project work blocks on your calendar to protect billable hours from meeting creep",
     "Open source and self-hostable for complete client data privacy within your own infrastructure",
-    "50+ integrations across the tools clients and teams actually use — including communication, project management, and developer tools",
+    "many integrations across the tools clients and teams actually use — including communication, project management, and developer tools",
     "Reduces the coordination time between receiving a client request and beginning billable work",
   ],
   competitorAdvantages: [

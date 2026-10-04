@@ -9,7 +9,7 @@ export const entry: ComparisonData = {
     "Linear is a fast, opinionated issue tracker built for engineering teams. GAIA integrates with Linear while also managing your email, calendar, and entire personal workflow as a proactive AI assistant.",
   metaTitle: "Linear Alternative with AI Email & Calendar — GAIA vs Linear",
   metaDescription:
-    "Linear is a great issue tracker but doesn't manage your inbox or calendar. GAIA is an open-source Linear alternative that integrates with Linear while proactively managing email, calendar, and tasks across 50+ tools — with a free tier.",
+    "Linear is a great issue tracker but doesn't manage your inbox or calendar. GAIA is an open-source Linear alternative that integrates with Linear while proactively managing email, calendar, and tasks across many tools — with a free tier.",
   keywords: [
     "GAIA vs Linear",
     "Linear alternative",
@@ -32,7 +32,7 @@ export const entry: ComparisonData = {
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive personal AI assistant that manages email, calendar, tasks, and workflows across 50+ tools including Linear",
+      gaia: "Proactive personal AI assistant that manages email, calendar, tasks, and workflows across many tools including Linear",
       competitor:
         "Fast, opinionated issue tracker built around issues, projects, and cycles for engineering teams",
     },
@@ -67,7 +67,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP including Linear, GitHub, Slack, Jira, Notion, Gmail, and Google Calendar — all in one place",
+      gaia: "many integrations via MCP including Linear, GitHub, Slack, Jira, Notion, Gmail, and Google Calendar — all in one place",
       competitor:
         "Deep GitHub and GitLab integration; Slack and Figma connectors; Linear MCP for AI tooling access",
     },

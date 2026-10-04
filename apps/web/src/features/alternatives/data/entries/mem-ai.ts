@@ -63,7 +63,7 @@ export const entry: AlternativeData = {
     {
       question: "Is GAIA cheaper than Mem.ai?",
       answer:
-        "Mem.ai is $14.99/month. GAIA Pro is $20/month but includes email management, calendar, tasks, 50+ integrations, and workflow automation alongside knowledge management. Self-hosted GAIA is free.",
+        "Mem.ai is $14.99/month. GAIA Pro is $20/month but includes email management, calendar, tasks, many integrations, and workflow automation alongside knowledge management. Self-hosted GAIA is free.",
     },
     {
       question: "Does GAIA have semantic search like Mem?",

@@ -9,7 +9,7 @@ export const entry: ComparisonData = {
     "Trello is a kanban-style project management tool owned by Atlassian. GAIA goes far beyond visual boards to proactively manage your entire digital workflow with AI.",
   metaTitle: "Trello Alternative with AI Automation — GAIA vs Trello",
   metaDescription:
-    "Trello's kanban boards still require manual work. GAIA is an open-source Trello alternative with AI automation that creates tasks from email, automates workflows, and manages your calendar across 50+ tools — with a free tier.",
+    "Trello's kanban boards still require manual work. GAIA is an open-source Trello alternative with AI automation that creates tasks from email, automates workflows, and manages your calendar across many tools — with a free tier.",
   keywords: [
     "GAIA vs Trello",
     "Trello alternative",
@@ -31,7 +31,7 @@ export const entry: ComparisonData = {
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI productivity OS that manages email, calendar, tasks, and workflows across 50+ tools",
+      gaia: "Proactive AI productivity OS that manages email, calendar, tasks, and workflows across many tools",
       competitor:
         "Visual kanban boards with lists and cards for manual task tracking",
     },
@@ -61,7 +61,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Automation",
-      gaia: "Natural language workflow builder with triggers, conditions, and cross-tool actions spanning 50+ integrations",
+      gaia: "Natural language workflow builder with triggers, conditions, and cross-tool actions spanning many integrations",
       competitor:
         "Butler automation for rule-based card actions and scheduled commands within Trello boards",
     },
@@ -73,7 +73,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP including Gmail, Slack, Notion, GitHub, Trello, Jira, and more",
+      gaia: "many integrations via MCP including Gmail, Slack, Notion, GitHub, Trello, Jira, and more",
       competitor:
         "Power-ups for popular tools like Slack, GitHub, and Google Drive; deep Atlassian suite integration",
     },
@@ -91,7 +91,7 @@ export const entry: ComparisonData = {
   ],
   gaiaAdvantages: [
     "Proactively acts on email, calendar, and tasks without waiting for manual input",
-    "50+ deep integrations orchestrated by a single AI agent vs siloed power-ups",
+    "many deep integrations orchestrated by a single AI agent vs siloed power-ups",
     "Eliminates manual card management by capturing and organizing tasks automatically",
     "Graph-based persistent memory connects tasks, projects, and context across all tools",
     "Open source and self-hostable for teams with data privacy requirements",
@@ -114,7 +114,7 @@ export const entry: ComparisonData = {
     {
       question: "Does GAIA have kanban-style boards like Trello?",
       answer:
-        "GAIA focuses on AI-driven task and workflow management rather than visual kanban boards. Tasks are organized by project, priority, and deadline with semantic search. For teams that need visual boards, GAIA can be connected to Trello or other kanban tools via its 50+ integrations and keep them updated automatically.",
+        "GAIA focuses on AI-driven task and workflow management rather than visual kanban boards. Tasks are organized by project, priority, and deadline with semantic search. For teams that need visual boards, GAIA can be connected to Trello or other kanban tools via its many integrations and keep them updated automatically.",
     },
     {
       question: "Is GAIA more expensive than Trello?",

@@ -7,11 +7,11 @@ export const entry: ComparisonData = {
   tagline:
     "OpenAI's enterprise AI platform with SSO, admin controls, and GPT-4",
   description:
-    "ChatGPT Enterprise gives organisations a secure, managed version of ChatGPT with admin controls, SSO, higher usage limits, and data privacy guarantees. GAIA goes beyond conversational AI to proactively manage workflows, email, calendar, and 50+ tool integrations with autonomous action — and is fully open source with self-hosting available.",
+    "ChatGPT Enterprise gives organisations a secure, managed version of ChatGPT with admin controls, SSO, higher usage limits, and data privacy guarantees. GAIA goes beyond conversational AI to proactively manage workflows, email, calendar, and many tool integrations with autonomous action — and is fully open source with self-hosting available.",
   metaTitle:
     "ChatGPT Enterprise Alternative with Proactive AI Workflows — GAIA vs ChatGPT Enterprise",
   metaDescription:
-    "ChatGPT Enterprise answers questions but won't proactively manage your workflow. GAIA is an open-source alternative that autonomously manages email, tasks, and 50+ integrations — self-hostable and free tier available.",
+    "ChatGPT Enterprise answers questions but won't proactively manage your workflow. GAIA is an open-source alternative that autonomously manages email, tasks, and many integrations — self-hostable and free tier available.",
   keywords: [
     "ChatGPT Enterprise alternative",
     "GAIA vs ChatGPT Enterprise",
@@ -30,13 +30,13 @@ export const entry: ComparisonData = {
 
 But ChatGPT Enterprise remains fundamentally a conversational AI. You prompt it, it responds. The intelligence stays inside the chat window while your actual workflow happens across Gmail, Slack, Notion, GitHub, Linear, and a dozen other tools. Enterprise does not read your inbox, schedule work blocks on your calendar, create tasks from meeting notes, monitor your project management tool for blockers, or take autonomous action on your behalf without explicit prompting. Every interaction is reactive — useful, but passive. Your team still has to manage every tool manually and bring context to ChatGPT each time they need assistance.
 
-GAIA is built around a fundamentally different architecture. Rather than waiting to be asked, GAIA actively monitors the tools in your workflow and takes initiative. It reads your email and surfaces action items before you open your inbox, prepares meeting briefings from your calendar and relevant email threads, creates and routes tasks across Todoist, Linear, Jira, and Asana, and runs multi-step automations triggered by real events across your stack. GAIA works across 50+ tools via MCP, so actions span your full environment rather than staying within a chat interface. When a client emails with a deadline change, GAIA detects it, updates the relevant task, and notifies you — without you needing to open another tab.
+GAIA is built around a fundamentally different architecture. Rather than waiting to be asked, GAIA actively monitors the tools in your workflow and takes initiative. It reads your email and surfaces action items before you open your inbox, prepares meeting briefings from your calendar and relevant email threads, creates and routes tasks across Todoist, Linear, Jira, and Asana, and runs multi-step automations triggered by real events across your stack. GAIA works across many tools via MCP, so actions span your full environment rather than staying within a chat interface. When a client emails with a deadline change, GAIA detects it, updates the relevant task, and notifies you — without you needing to open another tab.
 
 The data privacy story is also different in an important way. ChatGPT Enterprise processes data on OpenAI's servers with strong compliance controls — SOC 2, no training on your data, admin visibility — which is solid enterprise-grade security. GAIA can be fully self-hosted on your own infrastructure, meaning your data never leaves your environment at all. For organisations in regulated industries, government, healthcare, or those with strict data residency requirements, the ability to run GAIA entirely on-premises is a qualitative step beyond what any hosted AI platform can offer. GAIA's codebase is fully open source, which means your security team can audit every line. ChatGPT Enterprise's model and platform are proprietary with no source code access.`,
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI productivity OS that autonomously monitors email, calendar, and 50+ tools, taking action on your behalf without being prompted",
+      gaia: "Proactive AI productivity OS that autonomously monitors email, calendar, and many tools, taking action on your behalf without being prompted",
       competitor:
         "Conversational AI chat interface with enterprise security, admin controls, and SSO — responds to prompts with high-quality reasoning and generation",
     },
@@ -66,13 +66,13 @@ The data privacy story is also different in an important way. ChatGPT Enterprise
     },
     {
       feature: "Workflow automation",
-      gaia: "Natural language multi-step autonomous workflows across 50+ tools triggered by real events — emails, calendar changes, Slack messages",
+      gaia: "Natural language multi-step autonomous workflows across many tools triggered by real events — emails, calendar changes, Slack messages",
       competitor:
         "No native workflow automation; requires manual prompting for each interaction; custom GPTs extend capabilities within the chat interface",
     },
     {
       feature: "Tool integrations",
-      gaia: "50+ deep integrations via MCP including Gmail, Slack, GitHub, Notion, Linear, Jira, Todoist, Google Calendar, and more",
+      gaia: "many deep integrations via MCP including Gmail, Slack, GitHub, Notion, Linear, Jira, Todoist, Google Calendar, and more",
       competitor:
         "Custom GPTs and plugins extend capabilities; primarily a self-contained chat interface without deep tool integrations for real actions",
     },
@@ -109,7 +109,7 @@ The data privacy story is also different in an important way. ChatGPT Enterprise
   ],
   gaiaAdvantages: [
     "Proactive autonomous action — continuously monitors email, calendar, and tools and acts without waiting to be prompted",
-    "50+ deep tool integrations with real actions (send emails, create tasks, update calendar events) rather than chat-only assistance",
+    "many deep tool integrations with real actions (send emails, create tasks, update calendar events) rather than chat-only assistance",
     "Fully self-hostable on your own infrastructure for maximum data privacy — data never leaves your environment",
     "Fully open source — complete transparency, auditability, and customisability with no proprietary black boxes",
     "Dramatically lower cost with a free tier and $20/month Pro plan compared to enterprise per-seat pricing",
@@ -126,7 +126,7 @@ The data privacy story is also different in an important way. ChatGPT Enterprise
     {
       question: "How is GAIA different from ChatGPT Enterprise?",
       answer:
-        "The fundamental difference is proactivity and tool integration. ChatGPT Enterprise is a reactive conversational AI — it responds when you prompt it within a chat interface. GAIA is a proactive workflow agent — it monitors your email, calendar, Slack, and 50+ connected tools and takes autonomous action without being asked. GAIA creates tasks from emails, prepares meeting briefings, and runs cross-tool automations continuously. ChatGPT Enterprise helps you think and write; GAIA helps you act.",
+        "The fundamental difference is proactivity and tool integration. ChatGPT Enterprise is a reactive conversational AI — it responds when you prompt it within a chat interface. GAIA is a proactive workflow agent — it monitors your email, calendar, Slack, and your connected tools and takes autonomous action without being asked. GAIA creates tasks from emails, prepares meeting briefings, and runs cross-tool automations continuously. ChatGPT Enterprise helps you think and write; GAIA helps you act.",
     },
     {
       question: "Is GAIA as capable as ChatGPT Enterprise for language tasks?",
@@ -151,7 +151,7 @@ The data privacy story is also different in an important way. ChatGPT Enterprise
     {
       question: "Can GAIA integrate with the tools ChatGPT Enterprise cannot?",
       answer:
-        "Yes. GAIA integrates with 50+ tools via MCP — Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Jira, Asana, Todoist, and more — and takes real actions across all of them (sending emails, creating tasks, updating calendar events). ChatGPT Enterprise is primarily a conversational interface; its Custom GPTs and plugins extend its capabilities within the chat window but do not provide the same depth of real-world tool integration and autonomous action that GAIA offers.",
+        "Yes. GAIA integrates with many tools via MCP — Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Jira, Asana, Todoist, and more — and takes real actions across all of them (sending emails, creating tasks, updating calendar events). ChatGPT Enterprise is primarily a conversational interface; its Custom GPTs and plugins extend its capabilities within the chat window but do not provide the same depth of real-world tool integration and autonomous action that GAIA offers.",
     },
     {
       question: "Is GAIA suitable for enterprise use like ChatGPT Enterprise?",

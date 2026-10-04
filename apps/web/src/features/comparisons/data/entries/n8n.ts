@@ -58,7 +58,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP with AI-powered tool orchestration",
+      gaia: "many integrations via MCP with AI-powered tool orchestration",
       competitor: "400+ integrations with extensive API support",
     },
     {

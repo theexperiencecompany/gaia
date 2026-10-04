@@ -62,7 +62,7 @@ export const entry: AlternativeData = {
     {
       question: "Is GAIA cheaper than Capacities Pro?",
       answer:
-        "Capacities Pro is $11.99/month. GAIA Pro is $20/month but includes email management, calendar integration, task management, and 50+ tool connections alongside knowledge management. Self-hosted GAIA is free.",
+        "Capacities Pro is $11.99/month. GAIA Pro is $20/month but includes email management, calendar integration, task management, and many tool connections alongside knowledge management. Self-hosted GAIA is free.",
     },
     {
       question:

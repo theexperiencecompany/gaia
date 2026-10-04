@@ -6,7 +6,7 @@ export const entry: ComparisonData = {
   domain: "hey.com",
   tagline: "A delightfully opinionated take on email",
   description:
-    "HEY is an opinionated email service from 37signals that reimagines the inbox with a unique three-section model — the Imbox, The Feed, and Paper Trail. GAIA is a proactive AI productivity OS that manages your email alongside calendar, tasks, workflows, and 50+ integrations — without requiring you to abandon Gmail or adopt a proprietary email address.",
+    "HEY is an opinionated email service from 37signals that reimagines the inbox with a unique three-section model — the Imbox, The Feed, and Paper Trail. GAIA is a proactive AI productivity OS that manages your email alongside calendar, tasks, workflows, and many integrations — without requiring you to abandon Gmail or adopt a proprietary email address.",
   metaTitle: "HEY Email Alternative with AI Automation — GAIA vs HEY",
   metaDescription:
     "HEY Email reimagines the inbox with an opinionated structure but still requires manual work. GAIA is an open-source HEY Email alternative with AI automation that triages your Gmail, drafts replies, creates tasks, and runs workflows — with a free tier.",
@@ -32,7 +32,7 @@ export const entry: ComparisonData = {
   rows: [
     {
       feature: "Core approach",
-      gaia: "Proactive AI productivity OS that manages email, calendar, tasks, and 50+ connected tools autonomously on your behalf",
+      gaia: "Proactive AI productivity OS that manages email, calendar, tasks, and your connected tools autonomously on your behalf",
       competitor:
         "Opinionated email service with a fixed three-section inbox model (Imbox, The Feed, Paper Trail) designed to change how you manually process email",
     },
@@ -62,7 +62,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Workflow automation",
-      gaia: "Multi-step automations described in natural language with email-triggered actions spanning inbox, calendar, Slack, Notion, GitHub, Linear, and 50+ other tools",
+      gaia: "Multi-step automations described in natural language with email-triggered actions spanning inbox, calendar, Slack, Notion, GitHub, Linear, and many other tools",
       competitor:
         "No general-purpose workflow automation; no public API, no Zapier support, no CRM integrations — the product explicitly operates as a closed ecosystem",
     },
@@ -80,7 +80,7 @@ export const entry: ComparisonData = {
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and Jira with deep bi-directional actions",
+      gaia: "many integrations via MCP including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and Jira with deep bi-directional actions",
       competitor:
         "No public API, no Zapier support, no third-party integrations; intentionally closed ecosystem — what you see is what you get",
     },
@@ -106,7 +106,7 @@ export const entry: ComparisonData = {
   gaiaAdvantages: [
     "Works with your existing Gmail account — no email migration, no new address, no disruption to your current workflow or contacts",
     "Proactively manages email without user input — triages urgency, drafts replies, creates tasks, and labels messages before you open your inbox",
-    "Connects email to your entire tool stack via 50+ integrations, enabling cross-tool automations that HEY's closed ecosystem cannot support",
+    "Connects email to your entire tool stack via many integrations, enabling cross-tool automations that HEY's closed ecosystem cannot support",
     "Graph-based memory links emails, tasks, meetings, and people so every AI action is informed by the full context of your work",
     "Open source and self-hostable — full data sovereignty at no cost, with a hosted Pro plan at a comparable price to HEY's annual plan",
   ],
@@ -132,7 +132,7 @@ export const entry: ComparisonData = {
     {
       question: "Can GAIA integrate with other tools in a way HEY cannot?",
       answer:
-        "Yes, significantly. HEY has no public API and explicitly does not support Zapier, CRM integrations, or any third-party tools — it is a closed ecosystem by design. GAIA supports 50+ integrations via MCP including Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and Jira, enabling multi-step email-triggered workflows that span your entire tool stack.",
+        "Yes, significantly. HEY has no public API and explicitly does not support Zapier, CRM integrations, or any third-party tools — it is a closed ecosystem by design. GAIA supports many integrations via MCP including Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, and Jira, enabling multi-step email-triggered workflows that span your entire tool stack.",
     },
   ],
 };

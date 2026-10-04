@@ -10,7 +10,7 @@ export const entry: ComparisonData = {
   metaTitle:
     "Airtable Alternative with Proactive AI Workflow Management — GAIA vs Airtable",
   metaDescription:
-    "Airtable organizes your data but won't proactively manage your tasks or inbox. GAIA is an open-source alternative with AI task management, email integration, and 50+ tool connections — free tier available.",
+    "Airtable organizes your data but won't proactively manage your tasks or inbox. GAIA is an open-source alternative with AI task management, email integration, and many tool connections — free tier available.",
   keywords: [
     "Airtable alternative",
     "GAIA vs Airtable",
@@ -29,7 +29,7 @@ export const entry: ComparisonData = {
 
 The challenge Airtable users consistently encounter is that the database is only as current as the last person who updated it. Airtable is excellent at storing and displaying structured data, but it does not read your email to add new records, monitor Slack for project updates that should flow into your bases, automatically create tasks from incoming client requests, or orchestrate workflows that move data between your tools without a human initiating each step. Automations help with rule-based updates within Airtable, but the intelligence required to interpret unstructured communication — an email, a Slack thread, a meeting note — and decide what record to create or update is simply not there. The result is that teams spend significant time manually transcribing information from communication channels into Airtable bases, defeating some of the productivity benefit.
 
-GAIA operates at that intelligence layer. It connects to Gmail, Slack, Google Calendar, GitHub, Notion, Linear, and 40+ more tools via MCP, then actively manages the flow of information and tasks through all of them. It reads your email and creates prioritised tasks automatically, monitors tool activity and surfaces what needs attention, prepares briefings before meetings without being asked, and runs multi-step automations that keep your work organised without manual data entry. For teams that use Airtable as their operational database, GAIA serves as the AI intake layer that populates and updates records from the unstructured communication happening around them.
+GAIA operates at that intelligence layer. It connects to Gmail, Slack, Google Calendar, GitHub, Notion, Linear, and many more tools via MCP, then actively manages the flow of information and tasks through all of them. It reads your email and creates prioritised tasks automatically, monitors tool activity and surfaces what needs attention, prepares briefings before meetings without being asked, and runs multi-step automations that keep your work organised without manual data entry. For teams that use Airtable as their operational database, GAIA serves as the AI intake layer that populates and updates records from the unstructured communication happening around them.
 
 GAIA is fully open source and self-hostable, which means your data stays in your own infrastructure if you choose to self-host. The free tier includes core AI capabilities, and the Pro plan is $20/month flat — significantly cheaper than Airtable's per-user pricing for teams of any meaningful size. Airtable's free plan is limited, and the Pro plan that unlocks meaningful automation is $20 per user per month billed annually. For a team of five, that is $100/month just for the database layer. GAIA delivers proactive AI workflow management at a fraction of that cost, and self-hosting is entirely free.`,
   rows: [
@@ -59,7 +59,7 @@ GAIA is fully open source and self-hostable, which means your data stays in your
     },
     {
       feature: "Workflow automation",
-      gaia: "Natural language multi-step workflows across 50+ tools triggered by any event, message, or condition in plain English",
+      gaia: "Natural language multi-step workflows across many tools triggered by any event, message, or condition in plain English",
       competitor:
         "Rule-based automations for record updates, notifications, and external triggers; integrations with Zapier and Make for advanced cross-tool automation",
     },
@@ -83,7 +83,7 @@ GAIA is fully open source and self-hostable, which means your data stays in your
     },
     {
       feature: "Integrations",
-      gaia: "50+ integrations including Gmail, Slack, GitHub, Notion, Linear, Jira, Todoist, and more via MCP",
+      gaia: "many integrations including Gmail, Slack, GitHub, Notion, Linear, Jira, Todoist, and more via MCP",
       competitor:
         "100+ native integrations plus the Airtable API for custom connectors; App marketplace with pre-built extensions",
     },
@@ -165,7 +165,7 @@ GAIA is fully open source and self-hostable, which means your data stays in your
     {
       question: "How does GAIA's AI compare to Airtable AI?",
       answer:
-        "Airtable AI is an in-database assistant that helps generate text for record fields, summarise content, and extract structured information within the Airtable interface on demand. GAIA is a proactive agent that operates across your entire digital environment — reading your email, managing your calendar, and orchestrating workflows across 50+ tools without being prompted. Airtable AI enhances what you do inside Airtable; GAIA automates what happens across everything that feeds Airtable.",
+        "Airtable AI is an in-database assistant that helps generate text for record fields, summarise content, and extract structured information within the Airtable interface on demand. GAIA is a proactive agent that operates across your entire digital environment — reading your email, managing your calendar, and orchestrating workflows across many tools without being prompted. Airtable AI enhances what you do inside Airtable; GAIA automates what happens across everything that feeds Airtable.",
     },
     {
       question: "What is the best open source alternative to Airtable?",

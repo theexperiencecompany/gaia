@@ -10,7 +10,7 @@ export const entry: ComparisonData = {
   metaTitle:
     "Otter.ai Alternative That Acts on Meeting Outcomes — GAIA vs Otter.ai",
   metaDescription:
-    "Otter.ai transcribes meetings but won't create tasks or update your tools. GAIA is an open-source alternative that manages your full workflow — prep, transcription, follow-ups, and task automation across 50+ integrations.",
+    "Otter.ai transcribes meetings but won't create tasks or update your tools. GAIA is an open-source alternative that manages your full workflow — prep, transcription, follow-ups, and task automation across many integrations.",
   keywords: [
     "otter.ai alternative",
     "gaia vs otter ai",
@@ -74,7 +74,7 @@ For users who specifically need high-quality, real-time transcription during liv
     },
     {
       feature: "Workflow automation",
-      gaia: "Multi-step automations triggered by meeting completion, email receipt, or task updates across 50+ integrations",
+      gaia: "Multi-step automations triggered by meeting completion, email receipt, or task updates across many integrations",
       competitor: "No workflow automation engine; Zapier integration available",
     },
     {
@@ -100,7 +100,7 @@ For users who specifically need high-quality, real-time transcription during liv
     "Converts meeting action items into real tasks across Todoist, Linear, Jira, and Asana automatically",
     "Pre-meeting briefings save significant manual research time before every call",
     "Drafts follow-up emails and updates documents after meetings without manual effort",
-    "50+ integrations connect meeting outcomes to your entire tool stack",
+    "many integrations connect meeting outcomes to your entire tool stack",
     "Open source and self-hostable — meeting content stays on your infrastructure",
     "Proactively manages email and calendar context surrounding every meeting",
   ],
@@ -135,7 +135,7 @@ For users who specifically need high-quality, real-time transcription during liv
     {
       question: "What integrations does GAIA have that Otter.ai lacks?",
       answer:
-        "GAIA connects to Gmail, Google Calendar, Slack, GitHub, Linear, Notion, Todoist, Asana, ClickUp, Jira, and 40+ more tools via MCP. Otter.ai's integrations are primarily focused on meeting platforms (Zoom, Teams, Meet) and basic calendar sync, not post-meeting workflow automation.",
+        "GAIA connects to Gmail, Google Calendar, Slack, GitHub, Linear, Notion, Todoist, Asana, ClickUp, Jira, and many more tools via MCP. Otter.ai's integrations are primarily focused on meeting platforms (Zoom, Teams, Meet) and basic calendar sync, not post-meeting workflow automation.",
     },
   ],
   relatedPersonas: ["startup-founders", "engineering-managers"],
