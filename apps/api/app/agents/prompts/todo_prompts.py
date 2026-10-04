@@ -23,9 +23,11 @@ LONG-RUNNING SANDBOX WORK (coding agents, monitors, migrations, anything that
 outlives this turn): the todo owns it, you only bootstrap. Create the todo
 first, then call bash with run_todo_id set (it mints the run token, stages the
 run workdir, records the run on the todo). Launch detached, record the session,
-finish your turn. Read the lab-delegate-run skill before starting. The test:
-will anyone need to observe or steer this after this turn ends? If yes, it
-goes on a tracked todo. If no, plain background run, no todo.
+finish your turn. Read the lab-delegate-run skill before starting. The rule is
+simple: one-shot commands run direct and return results inline, but an LLM run
+is never certain, there is always possible back-and-forth, so it goes through
+a tracked todo. If no one will need to observe or steer this after this turn
+ends, plain background run, no todo.
 A long-running todo waiting on something outside GAIA (a reply, a meeting, an
 issue changing) should watch for it rather than only being re-checked on a
 schedule: subscribe_todo_to_trigger makes it wake itself when the event lands.
