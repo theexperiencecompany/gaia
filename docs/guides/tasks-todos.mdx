@@ -59,6 +59,19 @@ You can keep iterating in the same conversation:
 
 ## Suggested workflows
 
+### Long-running delegated work
+
+For jobs that run for hours (coding agents, monitors, migrations), GAIA hands the work to a tracked task and reports back instead of making you wait:
+
+<Chat
+  messages={[
+    { from: "user", text: "migrate my Postgres to Neon in OpenCode, tell me here" },
+    { from: "gaia", text: "On it. I'll ping you in this chat when it needs you or finishes." },
+  ]}
+/>
+
+Ask about progress from anywhere, even a different chat or device. GAIA reads the task's log and answers in plain words. Questions, completion, and failures arrive as messages in the chat you started from. Everything is recorded on the task, so nothing is ever lost even if you close the app.
+
 This is where GAIA goes beyond a standard task manager. For any task, GAIA can generate a **suggested workflow**, a step-by-step action plan it can execute for you. Each step has a number, a title and description, and a category (email, calendar, research) showing which tools GAIA will use.
 
 For a task like "Prepare for Monday's board meeting," GAIA might suggest:
