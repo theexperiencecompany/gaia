@@ -137,6 +137,53 @@ class TestGetAllIntegrationsStatus:
 
         assert result["notion"] is False
 
+    @pytest.mark.regression
+    async def test_connected_auth_mcp_without_recoverable_credentials_is_reconciled(
+        self,
+        mock_user_integration_repo,
+        mock_composio_service,
+        mock_token_repository,
+    ) -> None:
+        mock_user_integration_repo.list_for_user = AsyncMock(
+            return_value=[_ui_doc("posthog", "connected")]
+        )
+        token_store = MagicMock()
+        token_store.is_connected = AsyncMock(return_value=False)
+        integration = MagicMock()
+        integration.id = "posthog"
+        integration.available = True
+        integration.managed_by = "mcp"
+        integration.provider = "posthog"
+        integration.mcp_config = MagicMock(requires_auth=True)
+
+        with (
+            patch(
+                "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+                [integration],
+            ),
+            patch(
+                "app.services.integrations.integration_status.MCPTokenStore",
+                create=True,
+                return_value=token_store,
+            ),
+            patch(
+                "app.services.integrations.integration_status.update_user_integration_status",
+                create=True,
+                new_callable=AsyncMock,
+            ) as update_status,
+            patch(
+                "app.services.integrations.integration_status._get_cached_integrations_status",
+                create=True,
+                new_callable=AsyncMock,
+                return_value={"posthog": True},
+            ) as cached_status,
+        ):
+            result = await get_all_integrations_status("user123")
+
+        assert result["posthog"] is False
+        update_status.assert_awaited_once_with("user123", "posthog", "created")
+        cached_status.assert_awaited_once()
+
     async def test_mcp_integration_not_in_mongo_returns_false(
         self,
         mock_user_integration_repo,

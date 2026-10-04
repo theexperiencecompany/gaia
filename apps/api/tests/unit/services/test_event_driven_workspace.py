@@ -268,6 +268,50 @@ async def test_get_connected_integration_ids_filter(docs, expected):
         assert await get_connected_integration_ids("u") == expected
 
 
+@pytest.mark.regression
+async def test_user_integration_records_reflect_posthog_credential_status():
+    record = MagicMock()
+    record.model_dump.return_value = {"integration_id": "posthog", "status": "connected"}
+    with (
+        patch(
+            f"{UINT}.user_integration_repository.list_for_user",
+            new_callable=AsyncMock,
+            return_value=[record],
+        ),
+        patch(f"{UINT}.MCPTokenStore", create=True) as token_store_class,
+        patch("app.db.redis.redis_cache.get", new_callable=AsyncMock, return_value=None),
+        patch("app.db.redis.redis_cache.set", new_callable=AsyncMock),
+    ):
+        token_store_class.return_value.is_connected = AsyncMock(return_value=False)
+
+        from app.services.integrations.user_integrations import get_user_integration_records
+
+        result = await get_user_integration_records("u")
+
+    assert result == [{"integration_id": "posthog", "status": "created"}]
+
+
+@pytest.mark.regression
+async def test_connected_ids_use_live_posthog_credential_state():
+    record = MagicMock()
+    record.model_dump.return_value = {"integration_id": "posthog", "status": "connected"}
+    with (
+        patch(
+            f"{UINT}.user_integration_repository.list_for_user",
+            new_callable=AsyncMock,
+            return_value=[record],
+        ),
+        patch(f"{UINT}.MCPTokenStore", create=True) as token_store_class,
+        patch("app.db.redis.redis_cache.get", new_callable=AsyncMock, return_value=None),
+        patch("app.db.redis.redis_cache.set", new_callable=AsyncMock),
+    ):
+        token_store_class.return_value.is_connected = AsyncMock(return_value=False)
+
+        from app.services.integrations.user_integrations import get_connected_integration_ids
+
+        assert await get_connected_integration_ids("u") == set()
+
+
 # ---------------------------------------------------------------------------
 # connect-path wiring: update_user_integration_status
 # ---------------------------------------------------------------------------

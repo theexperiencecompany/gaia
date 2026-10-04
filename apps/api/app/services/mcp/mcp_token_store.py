@@ -331,12 +331,20 @@ class MCPTokenStore:
                 log.info(f"{LogTag.MCP} Deleted MCP credentials for", integration_id=integration_id)
 
     async def is_connected(self, integration_id: str) -> bool:
-        """Check if user has a connected credential for this integration.
-
-        Returns True if credential exists and has 'connected' status.
-        """
+        """Check whether a connected credential can be used or refreshed."""
         cred = await self.get_credential(integration_id)
-        return cred is not None and cred.status == MCPCredentialStatus.CONNECTED
+        if not cred or cred.status != MCPCredentialStatus.CONNECTED:
+            return False
+
+        if cred.auth_type == MCPAuthType.NONE:
+            return True
+        if cred.auth_type == MCPAuthType.BEARER:
+            return bool(cred.access_token)
+        if cred.refresh_token:
+            return True
+        return bool(cred.access_token) and (
+            cred.token_expires_at is None or cred.token_expires_at > datetime.now(UTC)
+        )
 
     async def get_dcr_client(self, integration_id: str) -> DCRClientRegistration | None:
         """Get stored DCR client registration."""

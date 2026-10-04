@@ -117,6 +117,40 @@ def mock_deps():
 
 
 class TestGetMyIntegrations:
+    @pytest.mark.regression
+    async def test_auth_mcp_uses_reconciled_status_over_connected_mongo_record(
+        self, mock_deps, mock_redis_cache
+    ):
+        mock_deps.config.return_value = IntegrationsConfigResponse(
+            integrations=[
+                _config_item(
+                    id="posthog",
+                    name="PostHog",
+                    managed_by="mcp",
+                    provider="posthog",
+                )
+            ]
+        )
+        mock_deps.status.return_value = {"posthog": False}
+        mock_deps.user.return_value = UserIntegrationsListResponse(
+            integrations=[
+                _user_integration(
+                    integration_id="posthog",
+                    status="connected",
+                    integration=_integration_response(
+                        integration_id="posthog",
+                        name="PostHog",
+                        managed_by="mcp",
+                        source="platform",
+                    ),
+                )
+            ]
+        )
+
+        result = await get_my_integrations(USER_ID)
+
+        assert result.integrations[0].status == "created"
+
     async def test_platform_integration_with_registry_tool_count(self, mock_deps, mock_redis_cache):
         """The registry tool-count fallback keys on the lowercased integration id."""
         mock_deps.categories.return_value = {"Github": 4}

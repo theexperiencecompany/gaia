@@ -1391,6 +1391,40 @@ class TestMCPTokenStoreIsConnected:
         store.get_credential = AsyncMock(return_value=cred)
         assert await store.is_connected(INTEGRATION_ID) is False
 
+    @pytest.mark.regression
+    async def test_false_when_access_token_expired_without_refresh_token(self):
+        store = MCPTokenStore(user_id=USER_ID)
+        cred = _make_credential(
+            status=MCPCredentialStatus.CONNECTED,
+            token_expires_at=datetime.now(UTC) - timedelta(minutes=1),
+        )
+        store.get_credential = AsyncMock(return_value=cred)
+
+        assert await store.is_connected(INTEGRATION_ID) is False
+
+    async def test_refresh_token_keeps_expired_access_credential_recoverable(self):
+        store = MCPTokenStore(user_id=USER_ID)
+        cred = _make_credential(
+            status=MCPCredentialStatus.CONNECTED,
+            refresh_token="encrypted_refresh_token",
+            token_expires_at=datetime.now(UTC) - timedelta(minutes=1),
+        )
+        store.get_credential = AsyncMock(return_value=cred)
+
+        assert await store.is_connected(INTEGRATION_ID) is True
+
+    async def test_bearer_credential_requires_its_access_token(self):
+        store = MCPTokenStore(user_id=USER_ID)
+        cred = _make_credential(
+            status=MCPCredentialStatus.CONNECTED,
+            auth_type=MCPAuthType.BEARER,
+            access_token=None,
+            refresh_token="not-used-for-bearer",
+        )
+        store.get_credential = AsyncMock(return_value=cred)
+
+        assert await store.is_connected(INTEGRATION_ID) is False
+
 
 class TestMCPTokenStoreDCRClient:
     async def test_get_dcr_client(self):

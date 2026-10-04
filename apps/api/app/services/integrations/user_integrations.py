@@ -2,7 +2,7 @@
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from app.config.oauth_config import get_integration_by_id
 from app.constants.cache import ONE_DAY_TTL, USER_INTEGRATION_CACHE_PATTERNS
@@ -23,6 +23,7 @@ from app.services.integrations.marketplace import (
     assemble_integration_response,
     get_integration_details,
 )
+from app.services.mcp.mcp_token_store import MCPTokenStore
 from shared.py.wide_events import log
 
 
@@ -90,14 +91,48 @@ async def get_user_integrations(user_id: str) -> UserIntegrationsListResponse:
     )
 
 
-@Cacheable(key_pattern="tools:user:{user_id}:integrations", ttl=ONE_DAY_TTL)
 async def get_user_integration_records(user_id: str) -> list[dict[str, Any]]:
-    """Return the raw records for all of a user's integrations.
+    """Return user integration records with auth-required MCP status checked against credentials."""
+    records = cast(
+        list[dict[str, Any]],
+        await _get_cached_user_integration_records(user_id),
+    )
+    integration_ids = [
+        str(record["integration_id"])
+        for record in records
+        if record.get("status") == "connected"
+        and record.get("integration_id")
+        and (integration := get_integration_by_id(str(record["integration_id"])))
+        and integration.managed_by == "mcp"
+        and integration.mcp_config
+        and integration.mcp_config.requires_auth
+    ]
+    if not integration_ids:
+        return records
 
-    Includes both created (added, not yet authenticated) and connected
-    states — callers that only want usable integrations filter on
-    status == "connected" (see get_connected_integration_ids).
-    """
+    token_store = MCPTokenStore(user_id)
+    statuses = await asyncio.gather(
+        *(token_store.is_connected(integration_id) for integration_id in integration_ids)
+    )
+    stale_ids = {
+        integration_id
+        for integration_id, is_connected in zip(integration_ids, statuses)
+        if not is_connected
+    }
+    if not stale_ids:
+        return records
+
+    return [
+        {**record, "status": "created"}
+        if str(record.get("integration_id")) in stale_ids
+        else record
+        for record in records
+    ]
+
+
+@Cacheable(key_pattern="tools:user:{user_id}:integrations", ttl=ONE_DAY_TTL)
+async def _get_cached_user_integration_records(user_id: str) -> list[dict[str, Any]]:
+    """Load the persisted integration records before live credential validation."""
     docs = await user_integration_repository.list_for_user(user_id)
     return [doc.model_dump() for doc in docs]
 
@@ -117,14 +152,12 @@ async def get_connected_integration_ids(user_id: str) -> set[str]:
     }
 
 
-@Cacheable(key_pattern="tools:user:{user_id}:connected_named", ttl=ONE_DAY_TTL)
 async def get_connected_integrations_named(user_id: str) -> list[dict[str, str]]:
     """Return connected integration ids paired with their display name.
 
     Platform names resolve from the in-memory OAuth config; custom MCP names
     (UUIDs, absent from that config) come from a single batched catalog query.
-    Cached under tools:user:{user_id}:*, so connect/disconnect is reflected
-    immediately.
+    Connection state is checked against MCP credentials as well as Mongo status.
     """
     connected = sorted(await get_connected_integration_ids(user_id))
     if not connected:

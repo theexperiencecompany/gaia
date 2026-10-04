@@ -8,6 +8,7 @@ tools are fetched on demand via get_integration_tools.
 """
 
 import asyncio
+from typing import cast
 
 from app.constants.cache import ONE_DAY_TTL
 from app.decorators.caching import Cacheable
@@ -29,17 +30,46 @@ from app.utils.errors import create_error
 from shared.py.wide_events import log
 
 
-@Cacheable(key_pattern="tools:user:{user_id}:my", ttl=ONE_DAY_TTL, model=MyIntegrationsResponse)
 async def get_my_integrations(user_id: str) -> MyIntegrationsResponse:
-    """Return every platform and custom integration tagged with connection status and tool_count.
+    """Return the cached integration catalog with current auth-MCP status."""
+    status_map = await get_all_integrations_status(user_id)
+    result = cast(
+        MyIntegrationsResponse,
+        await _get_cached_my_integrations(user_id, status_map),
+    )
+    stale_mcp_ids = {
+        item.id
+        for item in result.integrations
+        if item.status == "connected"
+        and item.managed_by == "mcp"
+        and item.requires_auth
+        and not status_map.get(item.id, False)
+    }
+    if not stale_mcp_ids:
+        return result
+    return result.model_copy(
+        update={
+            "integrations": [
+                item.model_copy(update={"status": "created"}) if item.id in stale_mcp_ids else item
+                for item in result.integrations
+            ]
+        }
+    )
 
-    Cached under tools:user:{user_id}:*, so the integration mutators bust it.
-    """
+
+@Cacheable(
+    key_pattern="tools:user:{user_id}:my",
+    ttl=ONE_DAY_TTL,
+    model=MyIntegrationsResponse,
+)
+async def _get_cached_my_integrations(
+    user_id: str, status_map: dict[str, bool]
+) -> MyIntegrationsResponse:
+    """Build the cached catalog after the live MCP credential check."""
     log.set(component="my_integrations", operation="get_my_integrations", user={"id": user_id})
 
     config = build_integrations_config()
-    status_map, added, category_counts = await asyncio.gather(
-        get_all_integrations_status(user_id),
+    added, category_counts = await asyncio.gather(
         get_user_integrations(user_id),
         get_tool_categories(),
     )
