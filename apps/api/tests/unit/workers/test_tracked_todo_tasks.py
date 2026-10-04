@@ -28,6 +28,7 @@ import pytest
 
 from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import TodoRunRequest
+from app.agents.prompts import todo_prompts
 from app.agents.prompts.todo_prompts import (
     DELIVERED_RESULT_GUIDANCE,
     SILENT_RUN_GUIDANCE,
@@ -430,6 +431,25 @@ class TestTriggeredExecutionPrompt:
         )
 
         assert TRIGGERED_RELEVANCE_GUIDANCE in prompt
+
+    def test_a_sandbox_run_event_gets_run_guidance_not_watch_tightening(self):
+        # A sandbox run's event is never noise to filter: it is the agent finishing
+        # or asking. Telling the run to unsubscribe and tighten would cut it off.
+        origin = TriggerOrigin(
+            subscription_id="sub-1",
+            trigger_name="sandbox_run",
+            payload={"kind": "Stop", "event": {"hook_event_name": "Stop"}},
+        )
+
+        prompt = _build_execution_prompt(
+            _doc(title="Fix flaky test"),
+            canvas_content=None,
+            reference_context="",
+            origin=origin,
+        )
+
+        assert todo_prompts.SANDBOX_RUN_EVENT_GUIDANCE in prompt
+        assert TRIGGERED_RELEVANCE_GUIDANCE not in prompt
 
 
 class TestDeliveryContractInThePrompt:

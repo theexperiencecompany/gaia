@@ -9,11 +9,10 @@ Currently:
   exempt while the flag is on (their keep-warm refresh keeps last_used_at
   fresh anyway; the exemption covers a missed cron run).
 - refresh_lab_sandboxes: every 30 minutes. Re-acquires flagged users'
-  sandboxes so the E2B kill timer never lapses, which also re-stages the
-  sandbox bridge token after a pause/resume cycle. Runs older than
-  SANDBOX_LAB_MAX_RUN_SECONDS are skipped (idle-pause reclaims them) with one
-  notification per cap window; dead-run marking lives in the future
-  supervisor tick (see TODO-S1-supervisor-tick), not here.
+  sandboxes so the E2B kill timer never lapses; once every run is past
+  SANDBOX_LAB_MAX_RUN_SECONDS the sandbox is left to
+  idle-pause, with one notification per cap window. Dead runs are the
+  owning todo's concern.
 """
 
 from __future__ import annotations
@@ -22,7 +21,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from arq.connections import ArqRedis
-from e2b import AsyncSandbox
 
 from app.config.settings import settings
 from app.constants.execute import SANDBOX_LAB_MAX_RUN_SECONDS
@@ -36,16 +34,7 @@ from app.models.notification.notification_models import (
     NotificationType,
 )
 from app.models.todo_models import TodoDocument
-from app.services.agent_lab.lab_runs import (
-    LAB_SEED_TIMEOUT_SECONDS,
-    parse_lab_routing_ref,
-    run_dir,
-)
-from app.services.agent_lab.sandbox_setup import (
-    build_seed_command,
-    lab_events_url,
-    mint_lab_hooks_token,
-)
+from app.services.agent_lab.lab_runs import SANDBOX_RUN_TRIGGER, run_subscriptions
 from app.services.feature_flags import is_agent_lab_enabled
 from app.services.notification_service import notification_service
 from app.services.sandbox import acquire_sandbox, mark_sandbox_dead
@@ -102,23 +91,11 @@ async def refresh_lab_sandboxes(ctx: dict[str, Any]) -> str:
                 await _notify_lab_cap_hit(ctx, user_id, capped_todo_ids)
                 continue
             # Re-acquire refreshes the kill timer (connect carries a full
-            # lifetime), touches last_used_at, and re-stages the bridge token.
-            # The hooks token outlives nothing here: it is 6h against the 12h
-            # cap, so a refreshed run also gets a fresh token re-seeded into
-            # each of its workdirs (same candidate scan the cap uses).
-            async with acquire_sandbox(user_id) as sbx:
-                await _reseed_lab_tokens(user_id, sbx, lab_todos)
+            # lifetime) and touches last_used_at.
+            async with acquire_sandbox(user_id):
+                pass
             refreshed += 1
         except Exception as e:
-            # TODO-S1-supervisor-tick: this catch is the whole miss policy today —
-            # a single failed re-acquire logs and moves on, with no todo touched.
-            # The supervisor tick must add Redis consecutive-miss counting (K=3)
-            # here and, on the Kth miss, mark each lab-run todo FAILED
-            # (add_labels FAILED_LABEL + record_activity) and deliver its last
-            # stored tail. Do NOT reuse record_lab_event for that: it overwrites
-            # the tail with the new event instead of delivering the stored one —
-            # deliver via deliver_result_to_platforms, the same call the wake
-            # path (_wake_or_quiet) uses, reading the tail out of log_content.
             log.warning(
                 f"{LogTag.SANDBOX} failed to refresh lab sandbox",
                 user_id=user_id,
@@ -134,98 +111,29 @@ async def refresh_lab_sandboxes(ctx: dict[str, Any]) -> str:
     return f"Refreshed {refreshed} lab sandboxes, skipped {capped} past cap"
 
 
-# How many of a user's tracked todos to scan for lab-run candidates per tick.
-# list_active_tracked returns most-recently-updated first and a silent/wedged
-# lab run's todo goes stale, so stale lab todos sort last: the scan must cover
-# a deep tracked backlog or a capped run hides past the cutoff and refreshes
-# forever. One bounded query; a miss fails open (keep refreshing), never caps.
-_LAB_RUN_TODO_SCAN_LIMIT = 200
-
-
 def _lab_cap_notified_key(user_id: str) -> str:
     """Redis key throttling the cap-hit notification to one per cap window."""
     return f"lab:cap_notified:{user_id}"
 
 
-def _lab_run_started_at(todo: TodoDocument) -> datetime | None:
-    """Run-start proxy from the todo's own write clock; None (fail open) when unstamped."""
-    stamp = todo.updated_at or todo.created_at
-    if stamp is None:
-        return None
-    return stamp if stamp.tzinfo is not None else stamp.replace(tzinfo=UTC)
-
-
-def _lab_run_ids(references: list[str]) -> list[str]:
-    """Run ids with a routing entry, in order, deduplicated; bare ids ignored so unrelated todos never steer cap/re-seed."""
-    seen: set[str] = set()
-    run_ids: list[str] = []
-    for entry in references:
-        parsed = parse_lab_routing_ref(entry)
-        if parsed is None:
-            continue
-        run_id, _ = parsed
-        if run_id not in seen:
-            seen.add(run_id)
-            run_ids.append(run_id)
-    return run_ids
-
-
 async def _lab_run_todos(user_id: str) -> list[TodoDocument]:
-    """Active tracked todos actually carrying a lab run (routing entry present)."""
-    todos = await todo_repository.list_active_tracked(user_id, limit=_LAB_RUN_TODO_SCAN_LIMIT)
-    return [todo for todo in todos if _lab_run_ids(todo.references)]
+    """Open todos subscribed to at least one sandbox run."""
+    return await todo_repository.find_active_by_user_and_trigger(user_id, SANDBOX_RUN_TRIGGER)
 
 
 def _lab_cap_status(lab_todos: list[TodoDocument]) -> tuple[bool, list[str]]:
-    """Whether every lab-run candidate is older than the cap; pass routing-entry todos only, empty means keep refreshing."""
-    if not lab_todos:
+    """Whether every watched run started more than the cap ago; no runs means keep refreshing."""
+    started = [
+        (todo.id, subscription.created_at)
+        for todo in lab_todos
+        for subscription in run_subscriptions(todo)
+    ]
+    if not started:
         return False, []
     now = datetime.now(UTC)
-    capped_ids = [
-        todo.id
-        for todo in lab_todos
-        if (started := _lab_run_started_at(todo)) is not None
-        and (now - started).total_seconds() > SANDBOX_LAB_MAX_RUN_SECONDS
-    ]
-    if len(capped_ids) != len(lab_todos):
+    if any((now - at).total_seconds() <= SANDBOX_LAB_MAX_RUN_SECONDS for _, at in started):
         return False, []
-    return True, capped_ids
-
-
-async def _lab_runs_past_cap(user_id: str) -> tuple[bool, list[str]]:
-    """Whether every lab-run candidate todo for user_id is older than the cap."""
-    return _lab_cap_status(await _lab_run_todos(user_id))
-
-
-async def _reseed_lab_tokens(user_id: str, sbx: AsyncSandbox, lab_todos: list[TodoDocument]) -> None:
-    """Stage a fresh hooks token into each run's workdir (6h token vs 12h cap); one run's failure never costs the tick."""
-    if not lab_todos:
-        return
-    try:
-        events_url = lab_events_url()
-    except Exception as e:
-        log.warning(
-            f"{LogTag.SANDBOX} lab token re-seed skipped: events URL unconfigured",
-            user_id=user_id,
-            error_type=type(e).__name__,
-            error=str(e),
-        )
-        return
-    for todo in lab_todos:
-        for run_id in _lab_run_ids(todo.references):
-            try:
-                token = mint_lab_hooks_token(user_id, run_id)
-                seed = build_seed_command(events_url, token, run_id, run_dir(run_id))
-                await sbx.commands.run(seed, timeout=LAB_SEED_TIMEOUT_SECONDS)
-            except Exception as e:
-                log.warning(
-                    f"{LogTag.SANDBOX} lab token re-seed failed; run keeps its aging token",
-                    user_id=user_id,
-                    todo_id=todo.id,
-                    run_id=run_id,
-                    error_type=type(e).__name__,
-                    error=str(e),
-                )
+    return True, sorted({todo_id for todo_id, _ in started})
 
 
 async def _notify_lab_cap_hit(ctx: dict[str, Any], user_id: str, todo_ids: list[str]) -> None:

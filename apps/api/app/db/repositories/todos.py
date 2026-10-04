@@ -383,11 +383,6 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             filt["_id"] = {"$gt": ObjectId(after_id)}
         return await self._find(filt, sort=[("_id", 1)], limit=limit)
 
-    async def find_by_reference(self, user_id: str, reference: str) -> TodoDocument | None:
-        """One user's todo carrying reference in its references map, if any."""
-        rows = await self._find({"user_id": user_id, "references": reference}, limit=1)
-        return rows[0] if rows else None
-
     async def find_active_by_composio_trigger(self, composio_trigger_id: str) -> list[TodoDocument]:
         """Every user's incomplete todos actively subscribed to composio_trigger_id (per-resource dispatch)."""
         return await self._find(

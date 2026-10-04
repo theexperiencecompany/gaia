@@ -7476,20 +7476,20 @@
         "type": "object"
       },
       "LabEventResponse": {
-        "description": "Accepted for storage; the payload itself is never echoed back.",
+        "description": "Accepted; the payload itself is never echoed back.",
         "properties": {
           "ok": {
             "title": "Ok",
             "type": "boolean"
           },
-          "session_id": {
-            "title": "Session Id",
+          "run_id": {
+            "title": "Run Id",
             "type": "string"
           }
         },
         "required": [
           "ok",
-          "session_id"
+          "run_id"
         ],
         "title": "LabEventResponse",
         "type": "object"

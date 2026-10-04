@@ -1,6 +1,6 @@
 ---
 name: lab-delegate-run
-description: Delegate long-running sandbox work to a tracked todo that supervises itself. Read before starting any task that outlives this turn.
+description: Delegate long-running sandbox work to a tracked todo that the run itself wakes. Read before starting any task that outlives this turn.
 target: executor
 ---
 
@@ -10,28 +10,24 @@ You do not supervise long work. The todo does. Your job is bootstrap + handoff, 
 
 ## Rule
 
-If anyone will need to observe or steer this after this turn ends, it belongs on a tracked todo. Otherwise run it in background and forget it.
+One-shot commands run direct. Anything an LLM runs (Claude Code, OpenCode), or anything someone may need to observe or steer after this turn, belongs on a tracked todo.
 
-## Bootstrap (first and only active run)
+## Bootstrap (the only active turn)
 
-1. `create_tracked_todo` with goal + done-checks on canvas. Recurrence = check interval (e.g. hourly for active builds, daily for slow burns).
-2. Launch the first command with `bash(command, background=True, run_todo_id=<todo>)` — never foreground; foreground dies with your run. The tool mints the 6h run token, seeds the run workdir (credential links, install-if-missing, hooks fragment or plugin, `GAIA_LAB_*` env), records `lab:<run>:<run>` on the todo's references, and posts the started activity line. It returns the `lab_run_id`; your command runs with the lab env already injected. See `lab-claude-drive` / `lab-opencode-drive` for CLI specifics. Flag off, unknown todo, or seed failure returns a loud error and runs nothing.
-3. When the CLI reports its session id, append `lab:<run>:<ses>` to the todo's references with the existing todo tools (the seed-time ref points at the run id itself because the CLI session is unknown until launch).
-4. Report "working on it" and FINISH. You are done; the todo owns it from here.
+1. `create_tracked_todo` with the goal and done-checks on the canvas, and a recurrence as the safety net (every 30-60 minutes while the run is live).
+2. Launch with `bash(command, background=True, run_todo_id=<todo>)`. Never foreground; it dies with your turn. Passing the todo id subscribes the todo to the run: every event the agent reports (finished, needs input, error) runs the todo with that event attached. The tool also injects the run env (`GAIA_LAB_*`, `OPENCODE_CONFIG_DIR`). Run the CLI in the user's repo; see `lab-claude-drive` / `lab-opencode-drive` for the launch line.
+3. Write the returned pid, log path and run workdir on the todo's canvas. A later run starts in a fresh conversation and only finds the log through the canvas.
+4. Tell the user it is underway, in plain words, and FINISH.
 
-## What the todo does on each scheduled fire (not you, the recurrence)
+## When the todo runs
 
-Each fire is a fresh worker run on this todo. It reads canvas + activity tail + log tail (`tail -c`, `stat`, exit markers), then exactly one of:
-
-- New output → update canvas status block, append activity. Stay silent.
-- Question / done / failed → deliver to subscribed surfaces, record activity.
-- Stale tail + dead process → resume from checkpoint or relaunch, record it.
-- Nothing new → silence. Never narrate routine polls.
+- **Woken by a run event.** The prompt carries the agent's raw hook payload. Tail the log, then: relay a question to the user, report and complete on done, resume with a nudge if it stopped short, or say what failed. Every resume is `bash(..., background=True)`: record its new log path on the canvas, then finish the turn; the resumed agent's next event wakes the todo again.
+- **Woken by its schedule (no event).** Check the pid and the log's age. Alive and moving: stay silent. Dead with the goal unmet: resume once; if that fails, mark it failed and tell the user with the last output.
 
 ## Steering from any surface
 
-Read the todo (canvas status + tail) to answer progress. To steer, append instruction to canvas and, if the process needs the input now, write the run's inbox + resume its session (see drive skills). Steering from a surface subscribes it to future pings; reading subscribes nothing.
+To answer "how is it going", read the canvas and tail the log. To pass the user's answer on, note it on the canvas, then source the run's lab-env and resume the agent's session in the background (drive skills), and finish. If the resume fails, say so.
 
 ## Transparency
 
-Every state change lands in activity with timestamp and actor. The user can open the todo and see: started lines, every question asked and answered, resumes, failures, completion. Nothing about a run lives only in a chat transcript.
+Every state change lands in activity with timestamp and actor: the watch starting, every event, every question and answer, resumes, failures, completion. Nothing about a run lives only in a chat transcript. Never show the user run ids, session ids or tokens.

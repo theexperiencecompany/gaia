@@ -35,8 +35,10 @@ UNVERIFIED: exact per-provider entry schema inside `auth.json` (never dumped; se
 
 ## Drive
 
+Run from the user's repo. `OPENCODE_CONFIG_DIR` (injected by `bash run_todo_id`) loads the run's notify plugin, so OpenCode reports back from any working directory:
+
 ```bash
-opencode run --format json -m opencode/muse-spark-1.3-contributor-free "<message>"
+cd /workspace/<repo> && opencode run --format json -m <provider/model> "<message>"
 ```
 
 `--format json` emits line-delimited JSON events; verified types include `{"type":"text","part":{"text":"..."}}` and `{"type":"step_finish",...}` (anything else needs a live capture).
@@ -45,7 +47,14 @@ Optional long-running mode: `opencode serve` (headless HTTP API; `OPENCODE_SERVE
 
 ## Continue a session (after pause/resume or sandbox recreate)
 
-Record the session id on the todo at start (`opencode run` prints it; `opencode session list` shows saved ones, all `ses_`-prefixed — `-s` REJECTS ids without the prefix). Re-enter headless with `opencode run --format json -s <ses_id> "<follow-up>"` (`--format json` required; bare `run -c` opens the interactive TUI). Session data (`opencode.db`) lives beside `auth.json`, so the whole-dir symlink above already covers it for pause/resume AND recreate. After a recreate, run `opencode session list` first; if the session is gone, re-anchor with a fresh run seeded from the todo's log tail. Prefer explicit `-s <ses_id>` over `-c` whenever several runs exist.
+Find the session id in the run's output (`opencode session list` also shows saved ones; all `ses_`-prefixed, and `-s` REJECTS ids without the prefix) and write it on the todo's canvas. A later bash call gets no env injected, so source the run env first or the plugin stays silent. Resume with `bash(..., background=True)` and finish your turn: a foreground resume is killed at the bash timeout, and the resumed agent's own idle event is what wakes the todo next:
+
+```bash
+set -a; . /workspace/.gaia/lab/<run>/.gaia/lab-env; set +a
+cd /workspace/<repo> && opencode run --format json -s <ses_id> "<follow-up>"
+```
+
+`--format json` is required; bare `run -c` opens the interactive TUI. Prefer explicit `-s <ses_id>` over `-c` whenever several runs exist. Session data (`opencode.db`) lives beside `auth.json`, so the whole-dir symlink above covers pause/resume AND recreate. After a recreate, run `opencode session list` first; if the session is gone, start a fresh run seeded from the todo's log tail.
 
 ## Stop
 

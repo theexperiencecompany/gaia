@@ -1,34 +1,24 @@
-"""Per-RUN sandbox seeding for Agent Lab: hooks fragment + plugin + credential links.
+"""Per-run sandbox seeding for Agent Lab: hooks settings, plugin, env file, credential links.
 
-The vendored ``claude_hooks.json`` is a template: its ``{{GAIA_LAB_EVENTS_URL}}``
-and ``{{GAIA_LAB_TOKEN}}`` placeholders are rendered per run at lab start, so no
-host or credential is baked into the repo or the template.
-
-Per-run isolation: EVERYTHING lands under the RUN's workdir, never the global
-``~/.claude/settings.json``, so two concurrent runs keep separate tokens::
-
-    <run_dir>/.claude/settings.json              — Claude picks up hooks, no flags
-    <run_dir>/.gaia/claude-hooks.json            — auditable rendered fragment
-    <run_dir>/.gaia/lab-env                      — GAIA_LAB_CALLBACK_URL/TOKEN/SESSION_ID (0600)
-    <run_dir>/.opencode/plugins/gaia_lab_notify.js — vendored relay plugin
-
-The OpenCode plugin reads its three ``GAIA_LAB_*`` vars from ``process.env``
-at event time, so whatever starts ``opencode serve`` must source the env file
-first. Claude needs no env: its session id arrives inside the native hook POST
-body. The seed script ends by echoing ``GAIA_LAB_RUN_ID=<session_id>`` so the
-model driving the CLI via bash has one id to reference in replies.
-
-Credential DIRS are linked (never copied) into ``/workspace/.credentials/*``
-for JuiceFS persistence; linking is link-if-missing only, so a live login is
-never clobbered.
+The vendored claude_hooks.json is a template whose URL and token placeholders
+are rendered per run, so no host or credential is baked into the repo.
+Everything lands under the run's workdir, so concurrent runs keep separate
+tokens: .gaia/claude-settings.json (claude --settings), the OpenCode plugin
+under .opencode/plugins (OPENCODE_CONFIG_DIR) and the sourceable .gaia/lab-env.
+The CLIs run in the user's repo, so both find their hooks by path from the run
+env, never from the working directory. Credential dirs are linked, never
+copied, into /workspace/.credentials for JuiceFS persistence, link-if-missing
+so a live login is never clobbered.
 """
 
 import base64
 from pathlib import Path
+import shlex
 from typing import Final
 
 from app.config.settings import settings
 from app.constants.execute import SANDBOX_LAB_EVENTS_TOKEN_TTL_SECONDS
+from app.services.agent_lab.lab_runs import run_dir
 from app.services.sandbox.execute_token import mint_execute_token
 from app.utils.errors import AppError
 
@@ -38,22 +28,21 @@ TOKEN_PLACEHOLDER: Final[str] = "{{GAIA_LAB_TOKEN}}"
 FRAGMENT_FILENAME: Final[str] = "claude_hooks.json"
 PLUGIN_FILENAME: Final[str] = "opencode_notify_plugin.js"
 
-# Per-run layout, all relative to the RUN's workdir (never global paths).
-CLAUDE_SETTINGS_REL: Final[str] = ".claude/settings.json"
-SEEDED_FRAGMENT_REL: Final[str] = ".gaia/claude-hooks.json"
+# Per-run layout, all relative to the run's workdir (never global paths).
+CLAUDE_SETTINGS_REL: Final[str] = ".gaia/claude-settings.json"
 LAB_ENV_REL: Final[str] = ".gaia/lab-env"
-PLUGIN_REL: Final[str] = ".opencode/plugins/gaia_lab_notify.js"
-MERGE_SCRIPT_PATH: Final[str] = "/tmp/gaia-merge-hooks.py"
+OPENCODE_CONFIG_REL: Final[str] = ".opencode"
+PLUGIN_REL: Final[str] = f"{OPENCODE_CONFIG_REL}/plugins/gaia_lab_notify.js"
 
-# Env keys the OpenCode relay plugin reads at event time (see PLUGIN_FILENAME).
+# The run env: hooks read the first two at fire time, the CLIs the last two at launch.
 LAB_CALLBACK_URL_VAR: Final[str] = "GAIA_LAB_CALLBACK_URL"
 LAB_TOKEN_VAR: Final[str] = "GAIA_LAB_TOKEN"
-LAB_SESSION_ID_VAR: Final[str] = "GAIA_LAB_SESSION_ID"
 LAB_RUN_ID_VAR: Final[str] = "GAIA_LAB_RUN_ID"
+LAB_CLAUDE_SETTINGS_VAR: Final[str] = "GAIA_LAB_CLAUDE_SETTINGS"
+OPENCODE_CONFIG_DIR_VAR: Final[str] = "OPENCODE_CONFIG_DIR"
 
 # Install-if-missing, one line per CLI. The drive skills
-# (lab-claude-drive, lab-opencode-drive) are the source of truth for method;
-# Codex is docs-only in MVP (no relay fragment, no install line).
+# (lab-claude-drive, lab-opencode-drive) are the source of truth for method.
 LOCAL_BIN_EXPORT: Final[str] = 'export PATH="/workspace/.local/bin:$PATH"'
 CLAUDE_INSTALL_LINE: Final[str] = (
     "command -v claude >/dev/null 2>&1 || curl -fsSL https://claude.ai/install.sh | bash -s 2.1.286"
@@ -66,36 +55,8 @@ OPENCODE_INSTALL_LINE: Final[str] = (
 # links; seeding only ensures them link-if-missing at session start.
 CREDENTIAL_LINKS: Final[tuple[tuple[str, str], ...]] = (
     ("$HOME/.claude", "/workspace/.credentials/claude"),
-    ("$HOME/.codex", "/workspace/.credentials/codex"),
     ("$HOME/.local/share/opencode", "/workspace/.credentials/opencode"),
 )
-
-MERGE_SETTINGS_SCRIPT: Final[str] = """\
-import json
-import sys
-
-fragment_path, settings_path = sys.argv[1], sys.argv[2]
-with open(fragment_path) as handle:
-    fragment = json.load(handle)
-try:
-    with open(settings_path) as handle:
-        current = json.load(handle)
-except FileNotFoundError:
-    current = {}
-hooks = current.setdefault("hooks", {})
-for event, groups in fragment.get("hooks", {}).items():
-    existing = hooks.setdefault(event, [])
-    for group in groups:
-        if group not in existing:
-            existing.append(group)
-with open(settings_path, "w") as handle:
-    json.dump(current, handle, indent=2)
-"""
-
-
-def lab_events_enabled() -> bool:
-    """Whether hooks can be seeded: same secret plus the sandbox-reachable URL."""
-    return bool(settings.SANDBOX_EXECUTE_TOKEN_SECRET and settings.SANDBOX_LAB_EVENTS_CALLBACK_URL)
 
 
 def lab_events_url() -> str:
@@ -112,11 +73,11 @@ def lab_events_url() -> str:
     return url
 
 
-def mint_lab_hooks_token(user_id: str, session_id: str) -> str:
+def mint_lab_hooks_token(user_id: str, run_id: str) -> str:
     """Per-run hooks token; empty tool scope keeps it off /sandbox/execute."""
     return mint_execute_token(
         user_id,
-        session_id,
+        run_id,
         scoped_tool_names=[],
         ttl_seconds=SANDBOX_LAB_EVENTS_TOKEN_TTL_SECONDS,
     )
@@ -145,69 +106,51 @@ def render_hooks_fragment(events_url: str, token: str) -> str:
     return template.replace(URL_PLACEHOLDER, events_url).replace(TOKEN_PLACEHOLDER, token)
 
 
-def render_lab_env(events_url: str, token: str, session_id: str) -> str:
-    """KEY=value lines the `serve` starter sources; fails loud on empty input."""
-    if not events_url or not token or not session_id:
-        raise AppError(
-            message="lab env has no empty fields",
-            why="events_url, token and session_id are all required",
-            fix="mint the hooks token first, then render the env",
-            status_code=500,
-            code="agent_lab_env_incomplete",
-        )
-    return (
-        f"{LAB_CALLBACK_URL_VAR}={events_url}\n"
-        f"{LAB_TOKEN_VAR}={token}\n"
-        f"{LAB_SESSION_ID_VAR}={session_id}\n"
-    )
+def lab_env(events_url: str, token: str, run_id: str) -> dict[str, str]:
+    """Return the run env, the one source for both the command env and the lab-env file."""
+    folder = run_dir(run_id)
+    return {
+        LAB_CALLBACK_URL_VAR: events_url,
+        LAB_TOKEN_VAR: token,
+        LAB_RUN_ID_VAR: run_id,
+        LAB_CLAUDE_SETTINGS_VAR: f"{folder}/{CLAUDE_SETTINGS_REL}",
+        OPENCODE_CONFIG_DIR_VAR: f"{folder}/{OPENCODE_CONFIG_REL}",
+    }
 
 
-def build_seed_command(events_url: str, token: str, session_id: str, run_dir: str) -> str:
-    """One idempotent shell script seeding hooks + plugin + env + links into the run workdir."""
-    if not run_dir:
+def build_seed_command(events_url: str, token: str, run_id: str) -> str:
+    """Return one idempotent shell script seeding settings + plugin + env + links into the run workdir."""
+    if not run_id:
         raise AppError(
-            message="lab seed needs a run workdir",
-            why="run_dir is empty — per-run isolation has no target",
-            fix="pass the run's workdir so hooks land in <run_dir>/.claude, never global",
-            status_code=500,
-            code="agent_lab_seed_missing_run_dir",
-        )
-    if not session_id:
-        raise AppError(
-            message="lab seed needs a session id",
-            why="session_id is empty — the relayed events would carry no identity",
+            message="lab seed needs a run id",
+            why="run_id is empty, so there is no workdir and the token names no run",
             fix="mint the run id first, then seed with it",
             status_code=500,
-            code="agent_lab_seed_missing_session_id",
+            code="agent_lab_seed_missing_run_id",
         )
-    fragment = render_hooks_fragment(events_url, token)
-    env_file = render_lab_env(events_url, token, session_id)
-    plugin = Path(__file__).with_name(PLUGIN_FILENAME).read_text()
-    fragment_b64 = base64.b64encode(fragment.encode()).decode()
-    merge_b64 = base64.b64encode(MERGE_SETTINGS_SCRIPT.encode()).decode()
-    plugin_b64 = base64.b64encode(plugin.encode()).decode()
-    env_b64 = base64.b64encode(env_file.encode()).decode()
-    settings_path = f"{run_dir}/{CLAUDE_SETTINGS_REL}"
-    fragment_path = f"{run_dir}/{SEEDED_FRAGMENT_REL}"
-    lab_env_path = f"{run_dir}/{LAB_ENV_REL}"
-    plugin_path = f"{run_dir}/{PLUGIN_REL}"
+    folder = run_dir(run_id)
+    env = lab_env(events_url, token, run_id)
+    settings_b64 = _b64(render_hooks_fragment(events_url, token))
+    plugin_b64 = _b64(Path(__file__).with_name(PLUGIN_FILENAME).read_text())
+    env_b64 = _b64("".join(f"{key}={shlex.quote(value)}\n" for key, value in env.items()))
+    settings_path = env[LAB_CLAUDE_SETTINGS_VAR]
+    plugin_path = f"{folder}/{PLUGIN_REL}"
+    lab_env_path = f"{folder}/{LAB_ENV_REL}"
     links = " && ".join(
         f'[ -e "{home}" ] || ln -s {target} "{home}"' for home, target in CREDENTIAL_LINKS
     )
-    # The trailing echo gives the model one stable RUN id to reference in replies.
+    targets = " ".join(target for _, target in CREDENTIAL_LINKS)
     return (
-        f'mkdir -p "{run_dir}/.claude" "{run_dir}/.gaia" "{run_dir}/.opencode/plugins" '
-        "/workspace/.credentials/claude /workspace/.credentials/codex "
-        "/workspace/.credentials/opencode $HOME/.local/share"
+        f'mkdir -p "{folder}/.gaia" "{folder}/{OPENCODE_CONFIG_REL}/plugins" {targets} $HOME/.local/share'
         f" && {links}"
         f" && {LOCAL_BIN_EXPORT}"
         f" && {CLAUDE_INSTALL_LINE}"
         f" && {OPENCODE_INSTALL_LINE}"
-        f" && echo '{fragment_b64}' | base64 -d > \"{fragment_path}\""
-        f" && echo '{merge_b64}' | base64 -d > {MERGE_SCRIPT_PATH}"
-        f' && python3 {MERGE_SCRIPT_PATH} "{fragment_path}" "{settings_path}"'
+        f" && echo '{settings_b64}' | base64 -d > \"{settings_path}\""
         f" && echo '{plugin_b64}' | base64 -d > \"{plugin_path}\""
         f' && echo \'{env_b64}\' | base64 -d > "{lab_env_path}" && chmod 600 "{lab_env_path}"'
-        f' && . "{lab_env_path}" && export {LAB_CALLBACK_URL_VAR} {LAB_TOKEN_VAR} {LAB_SESSION_ID_VAR}'
-        f" && echo '{LAB_RUN_ID_VAR}={session_id}'"
     )
+
+
+def _b64(text: str) -> str:
+    return base64.b64encode(text.encode()).decode()

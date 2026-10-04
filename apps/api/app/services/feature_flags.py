@@ -61,7 +61,7 @@ FEATURE_FLAG_DESCRIPTIONS: dict[FeatureFlag, str] = {
         "failure; off keeps the LLM classifier. On by default (see ENABLE_HIL_JEV_REPLY)."
     ),
     FeatureFlag.AGENT_LAB: (
-        "Private agent lab runs Claude Code, Codex, and OpenCode CLIs inside "
+        "Private agent lab runs Claude Code and OpenCode CLIs inside "
         "the per-user E2B sandbox, controllable from chat. Off by default "
         "(see ENABLE_AGENT_LAB)."
     ),

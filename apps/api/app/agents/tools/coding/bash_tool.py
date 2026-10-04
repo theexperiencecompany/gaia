@@ -41,16 +41,17 @@ from app.constants.sandbox import (
     BASH_MAX_TIMEOUT_SECONDS,
     WORKSPACE_TMP_SUFFIX,
 )
-from app.constants.todos import TodoActivityEvent
+from app.constants.todos import FAILED_LABEL, GAIA_TRACKED_LABEL
 from app.db.repositories.todos import todo_repository
 from app.decorators import with_doc, with_rate_limiting
-from app.services.agent_lab.lab_runs import LAB_SEED_TIMEOUT_SECONDS, routing_ref, run_dir
+from app.services.agent_lab.lab_runs import (
+    LAB_SEED_TIMEOUT_SECONDS,
+    run_dir,
+    subscribe_todo_to_run,
+)
 from app.services.agent_lab.sandbox_setup import (
-    LAB_CALLBACK_URL_VAR,
-    LAB_RUN_ID_VAR,
-    LAB_SESSION_ID_VAR,
-    LAB_TOKEN_VAR,
     build_seed_command,
+    lab_env,
     lab_events_url,
     mint_lab_hooks_token,
 )
@@ -66,7 +67,6 @@ from app.services.sandbox.execute_client import (
 )
 from app.services.storage import FsOps, fs_timer
 from app.services.storage.metrics import _register_once
-from app.services.todo_activity import record_activity
 from app.templates.docstrings.coding_tools_docs import BASH_TOOL
 from app.utils.output_limiter import truncate_head_tail
 from shared.py.wide_events import log
@@ -193,8 +193,8 @@ def build_bash_tool(scoped_tools: Mapping[str, BaseTool] | None = None) -> BaseT
         background: Annotated[bool, "Run detached; returns pid + log path"] = False,
         run_todo_id: Annotated[
             str | None,
-            "Tracked todo id: seed an agent-lab run (Claude Code/OpenCode hooks + "
-            "GAIA_LAB_* env) before running. See AGENT LAB RUNS in the description.",
+            "Tracked todo id: seed an agent-lab run and subscribe the todo to its "
+            "events before running. See AGENT LAB RUNS in the description.",
         ] = None,
     ) -> str:
         """Run a shell command in the user's persistent coding sandbox."""
@@ -260,7 +260,7 @@ class _LabRun:
 
 
 async def _setup_lab_run(*, user_id: str, run_todo_id: str, sbx: object) -> _LabRun | str:
-    """Mint the run token, stage the seed, and link the todo; or return the loud error.
+    """Mint the run token, stage the seed, and subscribe the todo; or return the loud error.
 
     On any failure the caller runs nothing. The error is a plain string (the
     tool's contract), not a raise — the command must never execute unseeded.
@@ -273,12 +273,19 @@ async def _setup_lab_run(*, user_id: str, run_todo_id: str, sbx: object) -> _Lab
         return f"Error: cannot resolve tracked todo {run_todo_id} ({e}), ran nothing"
     if todo is None:
         return f"Error: tracked todo {run_todo_id} not found, ran nothing"
+    # Events for any of these 404 or get skipped, so the run would work on unheard.
+    if GAIA_TRACKED_LABEL not in todo.labels:
+        return f"Error: todo {run_todo_id} is not a tracked todo, ran nothing"
+    if todo.completed:
+        return f"Error: tracked todo {run_todo_id} is completed; create a new one, ran nothing"
+    if FAILED_LABEL in todo.labels:
+        return f"Error: tracked todo {run_todo_id} is marked failed; reset it first, ran nothing"
 
     lab_run_id = uuid.uuid4().hex
     try:
         url = lab_events_url()
         token = mint_lab_hooks_token(user_id, lab_run_id)
-        seed = build_seed_command(url, token, lab_run_id, run_dir(lab_run_id))
+        seed = build_seed_command(url, token, lab_run_id)
     except Exception as e:
         return f"Error: lab seed setup failed ({e}), ran nothing"
     try:
@@ -287,37 +294,21 @@ async def _setup_lab_run(*, user_id: str, run_todo_id: str, sbx: object) -> _Lab
         await sbx.commands.run(seed, timeout=LAB_SEED_TIMEOUT_SECONDS)  # type: ignore[attr-defined]  # e2b sandbox SDK ships no type stubs
     except Exception as e:
         return f"Error: lab seed failed ({e}), ran nothing"
-
-    lab_env = {
-        LAB_CALLBACK_URL_VAR: url,
-        LAB_TOKEN_VAR: token,
-        LAB_SESSION_ID_VAR: lab_run_id,
-        LAB_RUN_ID_VAR: lab_run_id,
-    }
-    # Bare id so the event receiver resolves pushes; routing ref (seeded with
-    # the run id itself — the CLI session is unknown until launch) so the
-    # keepwarm supervisor recognizes the todo as a lab run.
-    updated = await todo_repository.add_references(
-        run_todo_id, user_id=user_id, references=[lab_run_id, routing_ref(lab_run_id, lab_run_id)]
-    )
-    if updated is None:
-        return f"Error: tracked todo {run_todo_id} vanished during lab setup, ran nothing"
-    await record_activity(
-        run_todo_id,
-        user_id,
-        TodoActivityEvent.RUN_STARTED,
-        f"lab run {lab_run_id} seeded in {run_dir(lab_run_id)}",
-    )
-    return _LabRun(run_id=lab_run_id, env=lab_env)
+    try:
+        await subscribe_todo_to_run(todo, lab_run_id)
+    except Exception as e:
+        return f"Error: subscribing todo {run_todo_id} to the run failed ({e}), ran nothing"
+    return _LabRun(run_id=lab_run_id, env=lab_env(url, token, lab_run_id))
 
 
 def _lab_footer(lab: _LabRun, run_todo_id: str) -> str:
-    """Tell the model its run id and the one write the seed could not do itself."""
+    """Tell the model what the run parameter did and the one record it still owes."""
     return (
-        f"lab_run_id: {lab.run_id} (workdir {run_dir(lab.run_id)}, "
-        f"GAIA_LAB_* env injected, todo {run_todo_id} linked)\n"
-        f"When the CLI reports its session id, append lab:{lab.run_id}:<ses> "
-        "to the todo's references with the existing todo tools."
+        f"lab_run_id: {lab.run_id} (workdir {run_dir(lab.run_id)}, GAIA_LAB_* and "
+        "OPENCODE_CONFIG_DIR injected). "
+        f"Todo {run_todo_id} is now subscribed to this run: every event the agent "
+        "reports (finished, needs input, error) runs the todo with that event.\n"
+        "Record the pid and log path on the todo's canvas so later runs can find the log."
     )
 
 

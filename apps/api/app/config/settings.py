@@ -144,7 +144,7 @@ class CommonSettings(BaseAppSettings):
     # one structured decision call per reply (hil-reply calibration: 0 dangerous
     # approves vs the LLM's 2), LLM classifier as the transport-failure fallback.
     ENABLE_HIL_JEV_REPLY: bool = True
-    # Private agent lab — Claude Code / Codex / OpenCode CLIs inside the
+    # Private agent lab — Claude Code / OpenCode CLIs inside the
     # per-user E2B sandbox, controllable from chat. Off by default; PostHog
     # targeting enables it for specific users.
     ENABLE_AGENT_LAB: bool = False
@@ -286,10 +286,9 @@ class CommonSettings(BaseAppSettings):
     # URL must be reachable FROM the E2B sandbox (public API base in prod).
     SANDBOX_EXECUTE_TOKEN_SECRET: str | None = None
     SANDBOX_EXECUTE_CALLBACK_URL: str | None = None
-    # Lab lifecycle pushes (Claude hooks POSTing to /api/v1/lab/events). Same
-    # reachability rule as above: the hooks run inside the E2B sandbox, so this
-    # must be the public API base in prod. Unset = hooks seed dark (sessions
-    # still run; no push events until it is set).
+    # Sandbox run events (hooks POSTing to /api/v1/lab/events); must be reachable
+    # from the E2B sandbox, so the public API base in prod. Unset = bash
+    # run_todo_id refuses to launch, since the run could never report back.
     SANDBOX_LAB_EVENTS_CALLBACK_URL: str | None = None
 
     # Rejected at startup rather than at mint time: the token's user_id is a

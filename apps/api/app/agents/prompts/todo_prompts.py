@@ -22,8 +22,9 @@ Two modes:
 LONG-RUNNING SANDBOX WORK (coding agents, monitors, migrations, anything that
 outlives this turn): the todo owns it, you only bootstrap. Create the todo
 first, then call bash with run_todo_id set (it mints the run token, stages the
-run workdir, records the run on the todo). Launch detached, record the session,
-finish your turn. Read the lab-delegate-run skill before starting. The rule is
+run workdir, and subscribes the todo to the run, so every event the agent
+reports wakes the todo). Launch detached, record the pid and log path on the
+canvas, finish your turn. Read the lab-delegate-run skill before starting. The rule is
 simple: one-shot commands run direct and return results inline, but an LLM run
 is never certain, there is always possible back-and-forth, so it goes through
 a tracked todo. Why the todo: it already owns everything long work needs,
@@ -100,6 +101,21 @@ TRIGGERED_RELEVANCE_GUIDANCE = (
     "a subject token), then note what you tightened and why."
 )
 
+
+# Guidance for a todo woken by its own sandbox run (bash run_todo_id). The event
+# is the coding agent's raw hook payload: it finished a turn, wants input, or failed.
+SANDBOX_RUN_EVENT_GUIDANCE = (
+    "This event came from the coding agent (Claude Code or OpenCode) this todo "
+    "launched in the sandbox. It is never noise: do not unsubscribe or tighten "
+    "anything. Read the event, then tail the run's log with bash (pid and log path "
+    "are on the canvas) and decide which one it is. The agent asked a question or "
+    "needs permission: tell the user plainly what it needs and record it in "
+    "activity.md. It finished: check the done-checks on the canvas, report the "
+    "outcome, and complete the todo. It stopped short of the goal: resume its "
+    "session with a nudge via bash background=True (lab drive skills; source the "
+    "run's lab-env first), then end your turn, since its next event wakes you. It "
+    "failed: say what broke. Never show the user run ids, session ids, or tokens."
+)
 
 # Appended to a scheduled/triggered run whose todo has notify_on_run set. GAIA
 # reads the run's final report and messages the user only when it matters, so

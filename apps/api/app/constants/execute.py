@@ -49,30 +49,20 @@ SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS = 32
 # a runaway or injected script hits a hard wall instead of unlimited calls.
 SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN = 300
 SANDBOX_EXECUTE_MAX_CALLS_PER_MINUTE = 60
-# Lab lifecycle pushes (POST /api/v1/lab/events) ride the same HMAC token
-# scheme, minted per lab session with an empty tool scope so the token is
-# useless on /sandbox/execute. 6h covers a long agent session without forcing
-# a re-seed; a run that outlives its token re-seeds on its next start
-# (no refresh loop in MVP).
-SANDBOX_LAB_EVENTS_TOKEN_TTL_SECONDS = 21600
-# Lab budget counters must outlive the 6h lab token, so a counter can never
-# expire (and reset) while its token is still valid.
-SANDBOX_LAB_EVENTS_BUDGET_WINDOW_SECONDS = 25200
+# Max lab wall-clock since run start (12h): past it keep-warm stops refreshing
+# the sandbox and idle-pause reclaims it, bounding E2B burn on forgotten runs.
+SANDBOX_LAB_MAX_RUN_SECONDS = 43200
+# Sandbox run event token (POST /api/v1/lab/events), empty tool scope. A running
+# CLI keeps the token it launched with, so it must outlive the longest run.
+SANDBOX_LAB_EVENTS_TOKEN_TTL_SECONDS = SANDBOX_LAB_MAX_RUN_SECONDS + 3600
+# Budget counters must outlive the token, so one can never reset mid-run.
+SANDBOX_LAB_EVENTS_BUDGET_WINDOW_SECONDS = SANDBOX_LAB_EVENTS_TOKEN_TTL_SECONDS + 3600
 # TTL of the per-minute lab push bucket: two minutes so a burst straddling a
 # minute boundary still counts against one window instead of resetting early.
 SANDBOX_LAB_EVENTS_RATE_BUCKET_TTL_SECONDS = 120
-# Raw hook payloads are stored verbatim on the todo, so the receiver refuses
-# anything bigger than this before it touches the budget or the database.
+# Each event body rides into the woken todo run's prompt verbatim; bigger ones
+# are cut to this size with a marker rather than lost.
 LAB_EVENT_MAX_RAW_BYTES = 64 * 1024
-# Only the tail of a raw payload is kept on the todo's log: the marked lab
-# section is overwritten per event, so a chatty run cannot grow log.md
-# without bound.
-LAB_LOG_TAIL_MAX_CHARS = 4000
-# Max lab wall-clock since run start (12h): past this the keep-warm tick stops
-# refreshing that user's sandbox, E2B's idle-pause reclaims it naturally, and
-# the user gets one notification per cap window. Bounds E2B burn on
-# forgotten/wedged runs; the supervisor tick owns dead-run marking, not this.
-SANDBOX_LAB_MAX_RUN_SECONDS = 43200
 # Budget counters must outlive any legal token; bash caps command timeouts well
 # under this, so a counter can never expire while its token is still valid.
 SANDBOX_EXECUTE_BUDGET_WINDOW_SECONDS = 3600

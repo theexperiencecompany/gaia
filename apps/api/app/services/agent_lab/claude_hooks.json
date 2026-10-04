@@ -15,9 +15,8 @@
         ]
       }
     ],
-    "Notification": [
+    "StopFailure": [
       {
-        "matcher": "agent_needs_input|agent_completed",
         "hooks": [
           {
             "type": "http",
@@ -29,7 +28,9 @@
             "allowedEnvVars": []
           }
         ]
-      },
+      }
+    ],
+    "Notification": [
       {
         "hooks": [
           {

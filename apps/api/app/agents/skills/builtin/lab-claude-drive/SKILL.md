@@ -39,9 +39,11 @@ Rules: `ANTHROPIC_API_KEY` must be unset or `-p` silently uses the key instead o
 
 ## Drive
 
+Run from the user's repo. `--settings` loads the run's hooks (from `bash run_todo_id`), so Claude reports back from any working directory:
+
 ```bash
 unset ANTHROPIC_API_KEY
-claude -p "<prompt>" --output-format stream-json
+cd /workspace/<repo> && claude -p "<prompt>" --output-format stream-json --settings "$GAIA_LAB_CLAUDE_SETTINGS"
 ```
 
 Useful flags: `--verbose --include-partial-messages` (token streaming), `--input-format text|stream-json`, `--continue` / `--resume [session-id]` / `--session-id <uuid>` / `--fork-session`, `--allowedTools`, `--permission-mode`, `--append-system-prompt`, `--mcp-config`, `--max-budget-usd`. With unattended runs, denials surface as `permission_denied` system messages in stream-json.
@@ -50,16 +52,14 @@ Background: `claude agents --json` lists (`--json` is REQUIRED headless; bare
 
 ## Continue a session (after pause/resume or sandbox recreate)
 
-Always start runs with an explicit id and record it on the todo:
+Find the session id in the run's events or stream-json output (`session_id`) and write it on the todo's canvas. A later bash call gets no env injected, so source the run env first. Resume with `bash(..., background=True)` and finish your turn: a foreground resume is killed at the bash timeout, and the resumed agent's own Stop event is what wakes the todo next:
 
 ```bash
-claude -p "<prompt>" --output-format stream-json --session-id <uuid>
+set -a; . /workspace/.gaia/lab/<run>/.gaia/lab-env; set +a
+cd /workspace/<repo> && claude -p --resume <uuid> "<follow-up>" --output-format stream-json --settings "$GAIA_LAB_CLAUDE_SETTINGS"
 ```
 
-Re-enter later with `claude -p --resume <uuid> "<follow-up>"` (`-p` is REQUIRED;
-bare `claude --resume` opens an interactive session that hangs headless, and
-`--continue` is interactive-only the same way). For the most recent session,
-`claude -p --continue "…"`. Session transcripts live beside credentials under `~/.claude/`, so the whole-dir symlink above already covers them for pause/resume AND template recreate. After a recreate, verify with `claude agents` before resuming; if the session is gone, re-anchor by starting a fresh run pasting the todo's log tail as context. Never assume `--continue` reaches the right session when several runs exist — prefer explicit `--resume <uuid>`.
+`-p` is REQUIRED: bare `claude --resume` opens an interactive session that hangs headless, and `--continue` is interactive-only the same way. Prefer explicit `--resume <uuid>` over `-p --continue` whenever several runs exist. Session transcripts live beside credentials under `~/.claude/`, so the whole-dir symlink above covers pause/resume AND template recreate. After a recreate, verify with `claude agents --json` before resuming; if the session is gone, start a fresh run with the todo's log tail pasted as context.
 
 ## Stop
 

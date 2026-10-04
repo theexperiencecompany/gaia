@@ -8920,13 +8920,13 @@ export interface components {
         };
         /**
          * LabEventResponse
-         * @description Accepted for storage; the payload itself is never echoed back.
+         * @description Accepted; the payload itself is never echoed back.
          */
         LabEventResponse: {
             /** Ok */
             ok: boolean;
-            /** Session Id */
-            session_id: string;
+            /** Run Id */
+            run_id: string;
         };
         /**
          * LinearCommentAddedConfig

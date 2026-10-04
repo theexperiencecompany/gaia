@@ -674,24 +674,6 @@ class MCPClient:
             "oauth discovery cache clear",
         )
 
-    @staticmethod
-    async def _wrap_tunnel_connector(
-        integration_id: str, connector: DeviceConnector
-    ) -> BaseMCPClient:
-        """Build an mcp_use client around one tunnel connector session.
-
-        Everything downstream (adapter, tool conversion) reads from
-        get_all_active_sessions(), which this populates.
-        """
-        session = MCPSession(connector, auto_connect=True)
-        await session.initialize()
-
-        client = BaseMCPClient(config={"mcpServers": {}})
-        client.sessions[integration_id] = session
-        if integration_id not in client.active_sessions:
-            client.active_sessions.append(integration_id)
-        return client
-
     async def _build_device_client(
         self, integration_id: str, mcp_config: MCPConfig
     ) -> BaseMCPClient:
@@ -717,9 +699,15 @@ class MCPClient:
                 f"Device {device_id} is not an active device owned by user {self.user_id}"
             )
 
-        return await self._wrap_tunnel_connector(
-            integration_id, DeviceConnector(device_id, server_key)
-        )
+        connector = DeviceConnector(device_id, server_key)
+        session = MCPSession(connector, auto_connect=True)
+        await session.initialize()
+
+        client = BaseMCPClient(config={"mcpServers": {}})
+        client.sessions[integration_id] = session
+        if integration_id not in client.active_sessions:
+            client.active_sessions.append(integration_id)
+        return client
 
     async def _open_session(self, integration_id: str, mcp_config: MCPConfig) -> BaseMCPClient:
         """Create the MCP client and its session for one integration.

@@ -207,10 +207,9 @@ def get_sandbox_pool() -> SandboxPool:
 async def refresh_sandbox_timeout(entry: PooledSandbox) -> bool:
     """Refresh the sandbox kill timer once the refresh window has elapsed.
 
-    Keep-warm is resume-on-demand plus this refresh, not immortality: E2B
-    kills every sandbox at SANDBOX_LIFETIME_SECONDS (3600 hobby / 86400 pro)
-    no matter how often it is refreshed. Past that ceiling acquire_sandbox
-    recreates, and credentials survive via the JuiceFS symlinks from Task 3.
+    Not immortality: E2B kills every sandbox at SANDBOX_LIFETIME_SECONDS however
+    often it is refreshed; past that acquire_sandbox recreates, and CLI logins
+    survive through the lab seed's JuiceFS-backed credential links.
     """
     if time.monotonic() - entry.timeout_refreshed_at <= SANDBOX_TIMEOUT_REFRESH_SECONDS:
         return False

@@ -1,38 +1,41 @@
-"""/api/v1/lab/events — token-only auth, todo-native dumb-pipe receipt."""
+"""/api/v1/lab/events: token-only identity, the body wakes the todo watching the run."""
 
+from collections.abc import Iterator
+from contextlib import ExitStack, contextmanager
 import json
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from fastapi import HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request
 import pytest
 
 from app.api.v1.endpoints.lab_events import LabEventResponse, report_lab_event
 from app.api.v1.middleware.auth import WorkOSAuthMiddleware
 from app.api.v1.middleware.entitlement_allowlist import is_free_path
 from app.api.v1.routes import router as v1_router
-from app.constants.chat import ConversationSource
+from app.constants import execute
 from app.constants.execute import SANDBOX_LAB_EVENTS_TOKEN_TTL_SECONDS
 from app.constants.todos import TodoActivityEvent
 from app.models.todo_models import TodoDocument
-from app.services.agent_lab import lab_events as service, sandbox_setup
-from app.services.agent_lab.lab_events import (
-    LabEventReceipt,
-    parse_lab_event_body,
-    record_lab_event,
+from app.models.trigger_subscription_models import (
+    SubscriptionAction,
+    SubscriptionResolution,
+    TriggerOrigin,
+    TriggerSubscription,
 )
+from app.services.agent_lab import lab_events, lab_runs, sandbox_setup
 from app.services.sandbox import execute_token
 from app.services.sandbox.execute_token import mint_execute_token
 from app.utils.errors import AppError
 
 MODULE = "app.api.v1.endpoints.lab_events"
 SVC = "app.services.agent_lab.lab_events"
+DISPATCH = "app.services.triggers.subscription_dispatch"
 SECRET = "unit-test-secret-0123456789abcdef0123456789abcdef"
 
 
 @pytest.fixture(autouse=True)
-def _secret():
+def _secret() -> Iterator[None]:
     with patch.object(execute_token.settings, "SANDBOX_EXECUTE_TOKEN_SECRET", SECRET):
         yield
 
@@ -43,8 +46,6 @@ def _bearer(user_id: str = "u1", run_id: str = "run-1") -> str:
 
 
 def _request(body: object) -> Request:
-    """Build a bare POST request carrying body as its JSON payload."""
-
     async def receive() -> dict[str, Any]:
         return {"type": "http.request", "body": json.dumps(body).encode(), "more_body": False}
 
@@ -52,180 +53,139 @@ def _request(body: object) -> Request:
 
 
 def _raw_request(payload: bytes) -> Request:
-    """Build a bare POST request carrying payload as its raw body."""
-
     async def receive() -> dict[str, Any]:
         return {"type": "http.request", "body": payload, "more_body": False}
 
     return Request({"type": "http", "method": "POST", "headers": []}, receive)
 
 
-def _service(return_id: str = "run-1", todo_id: str = "t1"):
-    return AsyncMock(return_value=LabEventReceipt(id=return_id, todo_id=todo_id))
+def _receipt(todo_id: str = "t1", kind: str = "Stop") -> AsyncMock:
+    return AsyncMock(return_value=lab_events.LabEventReceipt(todo_id=todo_id, kind=kind))
 
 
-def _redis() -> MagicMock:
+def _redis(*counts: int) -> MagicMock:
     client = MagicMock()
-    client.incr = AsyncMock(side_effect=[1, 1])
+    client.incr = AsyncMock(side_effect=list(counts or (1, 1)))
     client.expire = AsyncMock()
     redis = MagicMock()
     redis.client = client
     return redis
 
 
-def _todo(**overrides: Any) -> TodoDocument:
-    fields: dict[str, Any] = {"id": "t1", "user_id": "u1", "title": "Lab task"}
-    fields.update(overrides)
-    return TodoDocument(**fields)
+def _run_subscription(run_id: str) -> TriggerSubscription:
+    return TriggerSubscription(
+        trigger_name=lab_runs.SANDBOX_RUN_TRIGGER,
+        action=SubscriptionAction.EXECUTE,
+        cooldown_seconds=0,
+        resolution=SubscriptionResolution.ACCOUNT,
+        trigger_data={lab_runs.RUN_ID_KEY: run_id},
+    )
 
 
-def _svc_stack(**overrides: Any):
-    """Patch every seam of record_lab_event; returns the (stack, mocks) pair."""
-    repo = MagicMock()
-    repo.find_by_reference = AsyncMock(return_value=_todo())
-    repo.replace_note_fields = AsyncMock(return_value=_todo())
-    defaults: dict[str, Any] = {
-        f"{SVC}.is_paid": AsyncMock(return_value=True),
-        f"{SVC}.is_agent_lab_enabled": AsyncMock(return_value=True),
-        f"{SVC}.todo_repository": repo,
-        f"{SVC}.record_activity": AsyncMock(return_value=True),
-        f"{SVC}.load_user_context": AsyncMock(return_value=SimpleNamespace(id="u1")),
-        f"{SVC}.deliver_result_to_platforms": AsyncMock(return_value=None),
-    }
-    defaults.update(overrides)
-    return defaults
+def _todo(todo_id: str = "t1", *run_ids: str) -> TodoDocument:
+    return TodoDocument(
+        id=todo_id,
+        user_id="u1",
+        title="Fix flaky test",
+        trigger_subscriptions=[_run_subscription(r) for r in run_ids or ("run-1",)],
+    )
+
+
+class _Seams:
+    def __init__(self) -> None:
+        self.repo = MagicMock()
+        self.activity = AsyncMock(return_value=True)
+        self.enqueue = AsyncMock()
+        self.capture = MagicMock()
+
+
+@contextmanager
+def _service_seams(
+    todos: list[TodoDocument], *, paid: bool = True, lab_on: bool = True
+) -> Iterator[_Seams]:
+    """Mock the receiver's seams one layer down; fire_subscription itself runs for real."""
+    seams = _Seams()
+    seams.repo.find_active_by_user_and_trigger = AsyncMock(return_value=todos)
+    with ExitStack() as stack:
+        stack.enter_context(patch(f"{SVC}.is_paid", AsyncMock(return_value=paid)))
+        stack.enter_context(patch(f"{SVC}.is_agent_lab_enabled", AsyncMock(return_value=lab_on)))
+        stack.enter_context(patch(f"{SVC}.todo_repository", seams.repo))
+        stack.enter_context(patch(f"{DISPATCH}.record_activity", seams.activity))
+        stack.enter_context(patch(f"{DISPATCH}.enqueue_worker_job", seams.enqueue))
+        stack.enter_context(patch(f"{DISPATCH}.capture_event", seams.capture))
+        stack.enter_context(
+            patch(f"{DISPATCH}.RedisPoolManager.get_pool", AsyncMock(return_value=MagicMock()))
+        )
+        yield seams
 
 
 @pytest.mark.unit
 class TestLabEventsAuth:
-    async def test_missing_token_is_401_and_stores_nothing(self) -> None:
+    async def test_missing_token_is_401_and_records_nothing(self) -> None:
         with (
-            patch(f"{MODULE}.record_lab_event", _service()) as record,
+            patch(f"{MODULE}.record_lab_event", _receipt()) as record,
             patch(f"{MODULE}.redis_cache", _redis()),
             patch(f"{MODULE}.log") as mocked_log,
         ):
             with pytest.raises(AppError) as err:
-                await report_lab_event(_request({"session_id": "run-1", "kind": "stop"}))
+                await report_lab_event(_request({"kind": "idle"}))
         assert err.value.status_code == 401
         record.assert_not_awaited()
         mocked_log.warning.assert_called_once()
 
     async def test_tampered_token_is_401(self) -> None:
         with (
-            patch(f"{MODULE}.record_lab_event", _service()) as record,
+            patch(f"{MODULE}.record_lab_event", _receipt()) as record,
             patch(f"{MODULE}.redis_cache", _redis()),
         ):
             with pytest.raises(AppError) as err:
-                await report_lab_event(
-                    _request({"session_id": "run-1", "kind": "stop"}),
-                    authorization=_bearer() + "x",
-                )
+                await report_lab_event(_request({"kind": "idle"}), authorization=_bearer() + "x")
         assert err.value.status_code == 401
         record.assert_not_awaited()
 
     async def test_wrong_scheme_is_401(self) -> None:
         token = _bearer().split(" ", 1)[1]
         with (
-            patch(f"{MODULE}.record_lab_event", _service()) as record,
+            patch(f"{MODULE}.record_lab_event", _receipt()) as record,
             patch(f"{MODULE}.redis_cache", _redis()),
         ):
             with pytest.raises(AppError) as err:
-                await report_lab_event(
-                    _request({"session_id": "run-1", "kind": "stop"}),
-                    authorization=f"Basic {token}",
-                )
+                await report_lab_event(_request({"kind": "idle"}), authorization=f"Basic {token}")
         assert err.value.status_code == 401
         record.assert_not_awaited()
 
 
 @pytest.mark.unit
-class TestLabEventsShapes:
-    async def test_canonical_shape_is_forwarded_verbatim(self) -> None:
-        raw: dict[str, Any] = {
-            "hook_event_name": "Stop",
-            "session_id": "abc123",
-            "nested": {"list": [1, 2, {"deep": True}]},
-            "stop_hook_active": False,
-        }
-        with (
-            patch(f"{MODULE}.record_lab_event", _service()) as record,
-            patch(f"{MODULE}.redis_cache", _redis()),
-        ):
-            response = await report_lab_event(
-                _request({"session_id": "run-1", "kind": "stop", "raw": raw}),
-                authorization=_bearer(),
-            )
-        assert isinstance(response, LabEventResponse)
-        assert response.ok is True
-        assert record.await_args.kwargs["kind"] == "stop"
-        assert record.await_args.kwargs["raw"] == raw
-        assert record.await_args.kwargs["user_id"] == "u1"
-
-    async def test_free_form_kind_passes_through_uninterpreted(self) -> None:
-        with (
-            patch(f"{MODULE}.record_lab_event", _service()) as record,
-            patch(f"{MODULE}.redis_cache", _redis()),
-        ):
-            await report_lab_event(
-                _request({"session_id": "run-1", "kind": "session_idle", "raw": {}}),
-                authorization=_bearer(),
-            )
-        assert record.await_args.kwargs["kind"] == "session_idle"
-
-    async def test_hook_stop_post_maps_kind_and_stashes_whole_body(self) -> None:
+class TestLabEventsIdentityFromToken:
+    async def test_claude_hook_with_its_own_session_id_is_accepted_for_the_token_run(
+        self,
+    ) -> None:
+        """Claude's hook body carries Claude's session id, never GAIA's run id: the token decides."""
         body = {
-            "session_id": "run-1",
+            "session_id": "6f1c2b9e-4d1a-4a8e-9c2f-1b7e3d5a9c10",
             "hook_event_name": "Stop",
-            "transcript_path": "/tmp/t.jsonl",
-            "stop_hook_active": False,
+            "transcript_path": "/root/.claude/projects/x/6f1c.jsonl",
         }
         with (
-            patch(f"{MODULE}.record_lab_event", _service()) as record,
+            patch(f"{MODULE}.record_lab_event", _receipt()) as record,
             patch(f"{MODULE}.redis_cache", _redis()),
         ):
-            response = await report_lab_event(_request(body), authorization=_bearer())
-        assert response.ok is True
-        assert record.await_args.kwargs["kind"] == "stop"
-        assert record.await_args.kwargs["raw"] == body
+            await report_lab_event(_request(body), authorization=_bearer(run_id="run-1"))
+        assert record.await_args.args[0] == "run-1"
 
-    async def test_hook_notification_post_maps_kind(self) -> None:
-        body = {
-            "session_id": "run-1",
-            "hook_event_name": "Notification",
-            "message": "Task needs your input",
-        }
+    async def test_body_is_forwarded_verbatim_with_the_token_user(self) -> None:
+        body = {"kind": "permission", "raw": {"nested": {"list": [1, {"deep": True}]}}}
         with (
-            patch(f"{MODULE}.record_lab_event", _service()) as record,
+            patch(f"{MODULE}.record_lab_event", _receipt()) as record,
             patch(f"{MODULE}.redis_cache", _redis()),
         ):
-            await report_lab_event(_request(body), authorization=_bearer())
-        assert record.await_args.kwargs["kind"] == "notification"
-        assert record.await_args.kwargs["raw"] == body
-
-    async def test_unknown_hook_event_is_stored_lowercased_never_422(self) -> None:
-        body = {"session_id": "run-1", "hook_event_name": "SomethingNew"}
-        with (
-            patch(f"{MODULE}.record_lab_event", _service()) as record,
-            patch(f"{MODULE}.redis_cache", _redis()),
-        ):
-            await report_lab_event(_request(body), authorization=_bearer())
-        assert record.await_args.kwargs["kind"] == "somethingnew"
-
-    async def test_body_without_session_id_is_422(self) -> None:
-        with (
-            patch(f"{MODULE}.record_lab_event", _service()) as record,
-            patch(f"{MODULE}.redis_cache", _redis()),
-        ):
-            with pytest.raises(AppError) as err:
-                await report_lab_event(
-                    _request({"hook_event_name": "Stop"}), authorization=_bearer()
-                )
-        assert err.value.status_code == 422
-        record.assert_not_awaited()
+            response = await report_lab_event(_request(body), authorization=_bearer(user_id="u7"))
+        assert record.await_args.kwargs == {"user_id": "u7", "body": body}
+        assert response == LabEventResponse(ok=True, run_id="run-1")
 
     async def test_non_object_json_is_422(self) -> None:
         with (
-            patch(f"{MODULE}.record_lab_event", _service()) as record,
+            patch(f"{MODULE}.record_lab_event", _receipt()) as record,
             patch(f"{MODULE}.redis_cache", _redis()),
         ):
             with pytest.raises(AppError) as err:
@@ -235,7 +195,7 @@ class TestLabEventsShapes:
 
     async def test_unparseable_body_is_422(self) -> None:
         with (
-            patch(f"{MODULE}.record_lab_event", _service()) as record,
+            patch(f"{MODULE}.record_lab_event", _receipt()) as record,
             patch(f"{MODULE}.redis_cache", _redis()),
         ):
             with pytest.raises(AppError) as err:
@@ -243,433 +203,147 @@ class TestLabEventsShapes:
         assert err.value.status_code == 422
         record.assert_not_awaited()
 
-    async def test_accepts_with_202_semantics(self) -> None:
-        """202, never the stored payload echoed back."""
-        with (
-            patch(f"{MODULE}.record_lab_event", _service()),
-            patch(f"{MODULE}.redis_cache", _redis()),
-        ):
-            response = await report_lab_event(
-                _request({"session_id": "run-1", "kind": "stop"}), authorization=_bearer()
-            )
-        assert response.model_dump() == {"ok": True, "session_id": "run-1"}
-
-
-@pytest.mark.unit
-class TestLabEventsOwnership:
-    async def test_cross_session_write_is_rejected(self) -> None:
-        with (
-            patch(f"{MODULE}.record_lab_event", _service()) as record,
-            patch(f"{MODULE}.redis_cache", _redis()) as redis,
-            patch(f"{MODULE}.log") as mocked_log,
-        ):
-            with pytest.raises(AppError) as err:
-                await report_lab_event(
-                    _request({"session_id": "run-2", "kind": "stop", "raw": {}}),
-                    authorization=_bearer(run_id="run-1"),
-                )
-        assert err.value.status_code == 403
-        record.assert_not_awaited()
-        redis.client.incr.assert_not_awaited()
-        mocked_log.warning.assert_called_once()
-
 
 @pytest.mark.unit
 class TestLabEventsBudgetAndAudit:
-    def _exhausted_redis(self) -> MagicMock:
-        client = MagicMock()
-        client.incr = AsyncMock(side_effect=[10_000, 1])
-        client.expire = AsyncMock()
-        redis = MagicMock()
-        redis.client = client
-        return redis
-
     async def test_exhausted_budget_is_429_and_never_records(self) -> None:
         with (
-            patch(f"{MODULE}.record_lab_event", _service()) as record,
-            patch(f"{MODULE}.redis_cache", self._exhausted_redis()),
+            patch(f"{MODULE}.record_lab_event", _receipt()) as record,
+            patch(f"{MODULE}.redis_cache", _redis(10_000, 1)),
         ):
             with pytest.raises(AppError) as err:
-                await report_lab_event(
-                    _request({"session_id": "run-1", "kind": "stop"}), authorization=_bearer()
-                )
+                await report_lab_event(_request({"kind": "idle"}), authorization=_bearer())
         assert err.value.status_code == 429
         record.assert_not_awaited()
 
     async def test_per_minute_rate_limit_is_429_and_never_records(self) -> None:
-        client = MagicMock()
-        client.incr = AsyncMock(side_effect=[5, 61])
-        client.expire = AsyncMock()
-        redis = MagicMock()
-        redis.client = client
         with (
-            patch(f"{MODULE}.record_lab_event", _service()) as record,
-            patch(f"{MODULE}.redis_cache", redis),
+            patch(f"{MODULE}.record_lab_event", _receipt()) as record,
+            patch(f"{MODULE}.redis_cache", _redis(5, 61)),
         ):
             with pytest.raises(AppError) as err:
-                await report_lab_event(
-                    _request({"session_id": "run-1", "kind": "stop"}), authorization=_bearer()
-                )
+                await report_lab_event(_request({"kind": "idle"}), authorization=_bearer())
         assert err.value.status_code == 429
         record.assert_not_awaited()
 
     async def test_every_accepted_call_is_audited(self) -> None:
         with (
-            patch(f"{MODULE}.record_lab_event", _service(todo_id="t9")),
+            patch(f"{MODULE}.record_lab_event", _receipt(todo_id="t9", kind="Stop")),
             patch(f"{MODULE}.redis_cache", _redis()),
             patch(f"{MODULE}.log") as mocked_log,
         ):
             await report_lab_event(
-                _request({"session_id": "run-1", "kind": "stop"}), authorization=_bearer()
+                _request({"hook_event_name": "Stop"}), authorization=_bearer(user_id="u1")
             )
         audit_kwargs = mocked_log.audit.call_args.kwargs
         assert audit_kwargs["actor"] == "u1"
-        assert audit_kwargs["kind"] == "stop"
+        assert audit_kwargs["kind"] == "Stop"
         assert audit_kwargs["run_id"] == "run-1"
         assert audit_kwargs["todo_id"] == "t9"
 
     async def test_budget_counters_are_namespaced_per_run(self) -> None:
         seen: list[str] = []
-        client = MagicMock()
 
         async def _incr(key: str) -> int:
             seen.append(key)
             return 1
 
-        client.incr = AsyncMock(side_effect=_incr)
-        client.expire = AsyncMock()
-        redis = MagicMock()
-        redis.client = client
+        redis = _redis()
+        redis.client.incr = AsyncMock(side_effect=_incr)
         with (
-            patch(f"{MODULE}.record_lab_event", _service()),
+            patch(f"{MODULE}.record_lab_event", _receipt()),
             patch(f"{MODULE}.redis_cache", redis),
         ):
             await report_lab_event(
-                _request({"session_id": "run-7", "kind": "stop"}),
-                authorization=_bearer(run_id="run-7"),
+                _request({"kind": "idle"}), authorization=_bearer(run_id="run-7")
             )
         assert seen[0] == "lab_events:calls:run-7"
         assert seen[1].startswith("lab_events:rate:run-7:")
 
 
 @pytest.mark.unit
-class TestParseLabEventBody:
-    def test_canonical_shape(self) -> None:
-        parsed = parse_lab_event_body({"session_id": "s", "kind": "k", "raw": {"a": 1}})
-        assert (parsed.session_id, parsed.kind, parsed.raw) == ("s", "k", {"a": 1})
-
-    def test_canonical_shape_defaults_empty_raw(self) -> None:
-        assert parse_lab_event_body({"session_id": "s", "kind": "k"}).raw == {}
-
-    def test_hook_shape_stashes_whole_body(self) -> None:
-        body = {"session_id": "s", "hook_event_name": "Stop", "extra": 1}
-        parsed = parse_lab_event_body(body)
-        assert parsed.kind == "stop"
-        assert parsed.raw == body
-
-
-@pytest.mark.unit
-class TestRecordLabEventEntitlements:
-    async def test_oversize_raw_is_rejected_before_any_check(self) -> None:
-        patches = _svc_stack()
-        with (
-            patch(f"{SVC}.is_paid", patches[f"{SVC}.is_paid"]) as paid,
-            patch(f"{SVC}.is_agent_lab_enabled", patches[f"{SVC}.is_agent_lab_enabled"]),
-            patch(f"{SVC}.todo_repository", patches[f"{SVC}.todo_repository"]),
-            patch(f"{SVC}.record_activity", patches[f"{SVC}.record_activity"]),
-            patch(f"{SVC}.load_user_context", patches[f"{SVC}.load_user_context"]),
-            patch(
-                f"{SVC}.deliver_result_to_platforms",
-                patches[f"{SVC}.deliver_result_to_platforms"],
-            ),
-        ):
-            with pytest.raises(AppError) as err:
-                await record_lab_event(
-                    "run-1", user_id="u1", kind="stop", raw={"blob": "x" * (64 * 1024)}
-                )
-        assert err.value.status_code == 413
-        paid.assert_not_awaited()
-
+class TestRecordLabEventGates:
     async def test_lapsed_subscription_is_402(self) -> None:
-        patches = _svc_stack(**{f"{SVC}.is_paid": AsyncMock(return_value=False)})
-        with (
-            patch(f"{SVC}.is_paid", patches[f"{SVC}.is_paid"]),
-            patch(f"{SVC}.is_agent_lab_enabled", patches[f"{SVC}.is_agent_lab_enabled"]) as flag,
-            patch(f"{SVC}.todo_repository", patches[f"{SVC}.todo_repository"]) as repo,
-        ):
+        with _service_seams([_todo()], paid=False) as seams:
             with pytest.raises(HTTPException) as err:
-                await record_lab_event("run-1", user_id="u1", kind="stop", raw={})
+                await lab_events.record_lab_event("run-1", user_id="u1", body={})
         assert err.value.status_code == 402
-        flag.assert_not_awaited()
-        repo.find_by_reference.assert_not_awaited()
+        seams.enqueue.assert_not_awaited()
 
     async def test_revoked_flag_is_403(self) -> None:
-        patches = _svc_stack(**{f"{SVC}.is_agent_lab_enabled": AsyncMock(return_value=False)})
-        with (
-            patch(f"{SVC}.is_paid", patches[f"{SVC}.is_paid"]),
-            patch(f"{SVC}.is_agent_lab_enabled", patches[f"{SVC}.is_agent_lab_enabled"]),
-            patch(f"{SVC}.todo_repository", patches[f"{SVC}.todo_repository"]) as repo,
-        ):
+        with _service_seams([_todo()], lab_on=False) as seams:
             with pytest.raises(AppError) as err:
-                await record_lab_event("run-1", user_id="u1", kind="stop", raw={})
+                await lab_events.record_lab_event("run-1", user_id="u1", body={})
         assert err.value.status_code == 403
-        repo.find_by_reference.assert_not_awaited()
+        seams.enqueue.assert_not_awaited()
 
-    async def test_unknown_run_is_404(self) -> None:
-        repo = MagicMock()
-        repo.find_by_reference = AsyncMock(return_value=None)
-        patches = _svc_stack(**{f"{SVC}.todo_repository": repo})
-        with (
-            patch(f"{SVC}.is_paid", patches[f"{SVC}.is_paid"]),
-            patch(f"{SVC}.is_agent_lab_enabled", patches[f"{SVC}.is_agent_lab_enabled"]),
-            patch(f"{SVC}.todo_repository", repo),
-        ):
+    async def test_run_no_open_todo_watches_is_404(self) -> None:
+        with _service_seams([_todo("t1", "run-other")]) as seams:
             with pytest.raises(AppError) as err:
-                await record_lab_event("run-9", user_id="u1", kind="stop", raw={})
+                await lab_events.record_lab_event("run-9", user_id="u1", body={})
         assert err.value.status_code == 404
+        seams.enqueue.assert_not_awaited()
 
 
 @pytest.mark.unit
-class TestRecordLabEventPersist:
-    async def test_happy_path_files_tail_and_returns_receipt(self) -> None:
-        patches = _svc_stack()
-        with (
-            patch(f"{SVC}.is_paid", patches[f"{SVC}.is_paid"]),
-            patch(f"{SVC}.is_agent_lab_enabled", patches[f"{SVC}.is_agent_lab_enabled"]),
-            patch(f"{SVC}.todo_repository", patches[f"{SVC}.todo_repository"]) as repo,
-            patch(f"{SVC}.record_activity", patches[f"{SVC}.record_activity"]) as activity,
-            patch(f"{SVC}.load_user_context", patches[f"{SVC}.load_user_context"]),
-            patch(
-                f"{SVC}.deliver_result_to_platforms",
-                patches[f"{SVC}.deliver_result_to_platforms"],
-            ),
-        ):
-            receipt = await record_lab_event("run-1", user_id="u1", kind="stop", raw={"answer": 42})
-        assert receipt.id == "run-1"
-        assert receipt.todo_id == "t1"
-        repo.find_by_reference.assert_awaited_once_with("u1", "run-1")
-        written = repo.replace_note_fields.await_args.kwargs["update"].log_content
-        assert service.LAB_TAIL_MARKER in written
-        assert '"answer": 42' in written
-        assert activity.await_args.args[2] is TodoActivityEvent.LAB_EVENT_RECEIVED
+class TestRecordLabEventWakesTheTodo:
+    async def test_event_queues_the_watching_todo_with_the_raw_body(self) -> None:
+        body = {"session_id": "claude-uuid", "hook_event_name": "Stop"}
+        todos = [_todo("t1", "run-other"), _todo("t2", "run-1")]
+        with _service_seams(todos) as seams:
+            receipt = await lab_events.record_lab_event("run-1", user_id="u1", body=body)
 
-    async def test_tail_is_overwritten_never_appended(self) -> None:
-        patches = _svc_stack()
-        first_raw = {"answer": "FIRST-TAIL-UNIQUE"}
-        second_raw = {"answer": "SECOND-TAIL-UNIQUE"}
-        with (
-            patch(f"{SVC}.is_paid", patches[f"{SVC}.is_paid"]),
-            patch(f"{SVC}.is_agent_lab_enabled", patches[f"{SVC}.is_agent_lab_enabled"]),
-            patch(f"{SVC}.todo_repository", patches[f"{SVC}.todo_repository"]) as repo,
-            patch(f"{SVC}.record_activity", patches[f"{SVC}.record_activity"]),
-            patch(f"{SVC}.load_user_context", patches[f"{SVC}.load_user_context"]),
-            patch(
-                f"{SVC}.deliver_result_to_platforms",
-                patches[f"{SVC}.deliver_result_to_platforms"],
-            ),
-        ):
-            await record_lab_event("run-1", user_id="u1", kind="stop", raw=first_raw)
-            first_written: str = repo.replace_note_fields.await_args.kwargs["update"].log_content
-            assert "FIRST-TAIL-UNIQUE" in first_written
-            repo.find_by_reference = AsyncMock(return_value=_todo(log_content=first_written))
-            await record_lab_event("run-1", user_id="u1", kind="stop", raw=second_raw)
-            second_written: str = repo.replace_note_fields.await_args.kwargs["update"].log_content
-        assert "SECOND-TAIL-UNIQUE" in second_written
-        assert "FIRST-TAIL-UNIQUE" not in second_written
-        assert second_written.count(service.LAB_TAIL_MARKER) == 1
+        assert receipt == lab_events.LabEventReceipt(todo_id="t2", kind="Stop")
+        _, job, todo_id, origin = seams.enqueue.await_args.args
+        assert (job, todo_id) == ("execute_tracked_todo", "t2")
+        assert isinstance(origin, TriggerOrigin)
+        assert origin.trigger_name == lab_runs.SANDBOX_RUN_TRIGGER
+        assert origin.subscription_id == todos[1].trigger_subscriptions[0].id
+        assert origin.payload == {"kind": "Stop", "event": body}
 
-    async def test_identical_repost_suppresses_second_wake(self) -> None:
-        patches = _svc_stack()
-        raw = {"hook_event_name": "Notification", "message": "SAME-DUPE-UNIQUE"}
-        with (
-            patch(f"{SVC}.is_paid", patches[f"{SVC}.is_paid"]),
-            patch(f"{SVC}.is_agent_lab_enabled", patches[f"{SVC}.is_agent_lab_enabled"]),
-            patch(f"{SVC}.todo_repository", patches[f"{SVC}.todo_repository"]) as repo,
-            patch(f"{SVC}.record_activity", patches[f"{SVC}.record_activity"]) as activity,
-            patch(f"{SVC}.load_user_context", patches[f"{SVC}.load_user_context"]),
-            patch(
-                f"{SVC}.deliver_result_to_platforms",
-                patches[f"{SVC}.deliver_result_to_platforms"],
-            ) as deliver,
-        ):
-            await record_lab_event("run-1", user_id="u1", kind="notification", raw=raw)
-            first_written: str = repo.replace_note_fields.await_args.kwargs["update"].log_content
-            assert "SAME-DUPE-UNIQUE" in first_written
-            repo.find_by_reference = AsyncMock(return_value=_todo(log_content=first_written))
-            await record_lab_event("run-1", user_id="u1", kind="notification", raw=raw)
-        deliver.assert_awaited_once()
-        assert "duplicate suppressed" in activity.await_args.args[3]
+    async def test_event_lands_on_the_todo_timeline(self) -> None:
+        with _service_seams([_todo()]) as seams:
+            await lab_events.record_lab_event("run-1", user_id="u1", body={"kind": "idle"})
+        todo_id, user_id, event, _ = seams.activity.await_args.args
+        assert (todo_id, user_id, event) == ("t1", "u1", TodoActivityEvent.TRIGGER_FIRED)
 
-    async def test_repost_with_different_case_kind_suppresses_second_wake(self) -> None:
-        """Fingerprint lowercases kind, so the marker must too — or a recased re-POST wakes twice."""
-        patches = _svc_stack()
-        raw = {"hook_event_name": "Notification", "message": "CASE-DUPE-UNIQUE"}
-        with (
-            patch(f"{SVC}.is_paid", patches[f"{SVC}.is_paid"]),
-            patch(f"{SVC}.is_agent_lab_enabled", patches[f"{SVC}.is_agent_lab_enabled"]),
-            patch(f"{SVC}.todo_repository", patches[f"{SVC}.todo_repository"]) as repo,
-            patch(f"{SVC}.record_activity", patches[f"{SVC}.record_activity"]) as activity,
-            patch(f"{SVC}.load_user_context", patches[f"{SVC}.load_user_context"]),
-            patch(
-                f"{SVC}.deliver_result_to_platforms",
-                patches[f"{SVC}.deliver_result_to_platforms"],
-            ) as deliver,
-        ):
-            await record_lab_event("run-1", user_id="u1", kind="Notification", raw=raw)
-            first_written: str = repo.replace_note_fields.await_args.kwargs["update"].log_content
-            assert "CASE-DUPE-UNIQUE" in first_written
-            repo.find_by_reference = AsyncMock(return_value=_todo(log_content=first_written))
-            await record_lab_event("run-1", user_id="u1", kind="notification", raw=raw)
-        deliver.assert_awaited_once()
-        assert "duplicate suppressed" in activity.await_args.args[3]
+    async def test_fire_is_counted_for_the_owning_user(self) -> None:
+        with _service_seams([_todo()]) as seams:
+            await lab_events.record_lab_event("run-1", user_id="u1", body={"kind": "idle"})
+        distinct_id, _, props = seams.capture.call_args.args
+        assert distinct_id == "u1"
+        assert props["trigger_name"] == lab_runs.SANDBOX_RUN_TRIGGER
 
-    async def test_system_trail_outside_the_tail_survives(self) -> None:
-        repo = MagicMock()
-        repo.find_by_reference = AsyncMock(
-            return_value=_todo(log_content="# System Log: t\n- old entry")
-        )
-        repo.replace_note_fields = AsyncMock(return_value=_todo())
-        patches = _svc_stack(**{f"{SVC}.todo_repository": repo})
-        with (
-            patch(f"{SVC}.is_paid", patches[f"{SVC}.is_paid"]),
-            patch(f"{SVC}.is_agent_lab_enabled", patches[f"{SVC}.is_agent_lab_enabled"]),
-            patch(f"{SVC}.todo_repository", repo),
-            patch(f"{SVC}.record_activity", patches[f"{SVC}.record_activity"]),
-            patch(f"{SVC}.load_user_context", patches[f"{SVC}.load_user_context"]),
-            patch(
-                f"{SVC}.deliver_result_to_platforms",
-                patches[f"{SVC}.deliver_result_to_platforms"],
-            ),
-        ):
-            await record_lab_event("run-1", user_id="u1", kind="stop", raw={})
-        written: str = repo.replace_note_fields.await_args.kwargs["update"].log_content
-        assert "- old entry" in written
+    async def test_oversize_body_still_wakes_the_todo_cut_down_with_a_marker(self) -> None:
+        """A long final answer must not cost the completion wake; the cut is explicit."""
+        body = {"hook_event_name": "Stop", "last_assistant_message": "x" * (200 * 1024)}
+        with _service_seams([_todo()]) as seams:
+            await lab_events.record_lab_event("run-1", user_id="u1", body=body)
 
+        payload = seams.enqueue.await_args.args[3].payload
+        assert payload["kind"] == "Stop"
+        event = payload["event"]
+        assert event["truncated_from_bytes"] > lab_events.LAB_EVENT_MAX_RAW_BYTES
+        assert len(event["head"].encode()) <= lab_events.LAB_EVENT_MAX_RAW_BYTES
+        assert event["head"].startswith('{"hook_event_name": "Stop"')
 
-@pytest.mark.unit
-class TestRecordLabEventWake:
-    async def test_question_delivers_when_notify_on(self) -> None:
-        patches = _svc_stack(
-            **{f"{SVC}.deliver_result_to_platforms": AsyncMock(return_value=ConversationSource.TELEGRAM)}
-        )
-        with (
-            patch(f"{SVC}.is_paid", patches[f"{SVC}.is_paid"]),
-            patch(f"{SVC}.is_agent_lab_enabled", patches[f"{SVC}.is_agent_lab_enabled"]),
-            patch(f"{SVC}.todo_repository", patches[f"{SVC}.todo_repository"]),
-            patch(f"{SVC}.record_activity", patches[f"{SVC}.record_activity"]) as activity,
-            patch(f"{SVC}.load_user_context", patches[f"{SVC}.load_user_context"]),
-            patch(
-                f"{SVC}.deliver_result_to_platforms",
-                patches[f"{SVC}.deliver_result_to_platforms"],
-            ) as deliver,
-        ):
-            await record_lab_event(
-                "run-1", user_id="u1", kind="question", raw={"message": "Which table?"}
-            )
-        deliver.assert_awaited_once()
-        assert deliver.await_args.kwargs["user_id"] == "u1"
-        assert "Which table?" in deliver.await_args.kwargs["notification_text"]
-        assert "result sent on telegram" in activity.await_args.args[3]
-        assert "not sent" not in activity.await_args.args[3]
-
-    async def test_question_without_linked_chat_records_not_sent(self) -> None:
-        patches = _svc_stack()
-        with (
-            patch(f"{SVC}.is_paid", patches[f"{SVC}.is_paid"]),
-            patch(f"{SVC}.is_agent_lab_enabled", patches[f"{SVC}.is_agent_lab_enabled"]),
-            patch(f"{SVC}.todo_repository", patches[f"{SVC}.todo_repository"]),
-            patch(f"{SVC}.record_activity", patches[f"{SVC}.record_activity"]) as activity,
-            patch(f"{SVC}.load_user_context", patches[f"{SVC}.load_user_context"]),
-            patch(
-                f"{SVC}.deliver_result_to_platforms",
-                patches[f"{SVC}.deliver_result_to_platforms"],
-            ) as deliver,
-        ):
-            await record_lab_event(
-                "run-1", user_id="u1", kind="question", raw={"message": "Which table?"}
-            )
-        deliver.assert_awaited_once()
-        assert "result not sent: no linked chat app accepted it" in activity.await_args.args[3]
-
-    async def test_completion_wakes_the_user(self) -> None:
-        patches = _svc_stack()
-        with (
-            patch(f"{SVC}.is_paid", patches[f"{SVC}.is_paid"]),
-            patch(f"{SVC}.is_agent_lab_enabled", patches[f"{SVC}.is_agent_lab_enabled"]),
-            patch(f"{SVC}.todo_repository", patches[f"{SVC}.todo_repository"]),
-            patch(f"{SVC}.record_activity", patches[f"{SVC}.record_activity"]),
-            patch(f"{SVC}.load_user_context", patches[f"{SVC}.load_user_context"]),
-            patch(
-                f"{SVC}.deliver_result_to_platforms",
-                patches[f"{SVC}.deliver_result_to_platforms"],
-            ) as deliver,
-        ):
-            await record_lab_event("run-1", user_id="u1", kind="completion", raw={})
-        deliver.assert_awaited_once()
-
-    async def test_progress_kind_stays_quiet_but_is_recorded(self) -> None:
-        patches = _svc_stack()
-        with (
-            patch(f"{SVC}.is_paid", patches[f"{SVC}.is_paid"]),
-            patch(f"{SVC}.is_agent_lab_enabled", patches[f"{SVC}.is_agent_lab_enabled"]),
-            patch(f"{SVC}.todo_repository", patches[f"{SVC}.todo_repository"]),
-            patch(f"{SVC}.record_activity", patches[f"{SVC}.record_activity"]) as activity,
-            patch(f"{SVC}.load_user_context", patches[f"{SVC}.load_user_context"]),
-            patch(
-                f"{SVC}.deliver_result_to_platforms",
-                patches[f"{SVC}.deliver_result_to_platforms"],
-            ) as deliver,
-        ):
-            await record_lab_event("run-1", user_id="u1", kind="heartbeat", raw={})
-        deliver.assert_not_awaited()
-        assert "kept quiet" in activity.await_args.args[3]
-
-    async def test_notify_off_stays_quiet(self) -> None:
-        repo = MagicMock()
-        repo.find_by_reference = AsyncMock(return_value=_todo(notify_on_run=False))
-        repo.replace_note_fields = AsyncMock(return_value=_todo(notify_on_run=False))
-        patches = _svc_stack(**{f"{SVC}.todo_repository": repo})
-        with (
-            patch(f"{SVC}.is_paid", patches[f"{SVC}.is_paid"]),
-            patch(f"{SVC}.is_agent_lab_enabled", patches[f"{SVC}.is_agent_lab_enabled"]),
-            patch(f"{SVC}.todo_repository", repo),
-            patch(f"{SVC}.record_activity", patches[f"{SVC}.record_activity"]) as activity,
-            patch(f"{SVC}.load_user_context", patches[f"{SVC}.load_user_context"]) as loader,
-            patch(
-                f"{SVC}.deliver_result_to_platforms",
-                patches[f"{SVC}.deliver_result_to_platforms"],
-            ) as deliver,
-        ):
-            await record_lab_event("run-1", user_id="u1", kind="question", raw={})
-        deliver.assert_not_awaited()
-        loader.assert_not_awaited()
-        assert "delivery is off" in activity.await_args.args[3]
-
-    async def test_delivery_failure_still_files_the_event(self) -> None:
-        patches = _svc_stack(
-            **{f"{SVC}.deliver_result_to_platforms": AsyncMock(side_effect=RuntimeError("down"))}
-        )
-        with (
-            patch(f"{SVC}.is_paid", patches[f"{SVC}.is_paid"]),
-            patch(f"{SVC}.is_agent_lab_enabled", patches[f"{SVC}.is_agent_lab_enabled"]),
-            patch(f"{SVC}.todo_repository", patches[f"{SVC}.todo_repository"]),
-            patch(f"{SVC}.record_activity", patches[f"{SVC}.record_activity"]) as activity,
-            patch(f"{SVC}.load_user_context", patches[f"{SVC}.load_user_context"]),
-            patch(
-                f"{SVC}.deliver_result_to_platforms", patches[f"{SVC}.deliver_result_to_platforms"]
-            ),
-        ):
-            receipt = await record_lab_event("run-1", user_id="u1", kind="stop", raw={})
-        assert receipt.todo_id == "t1"
-        activity.assert_awaited_once()
+    def test_kind_falls_back_from_plugin_kind_to_hook_name_to_generic(self) -> None:
+        assert lab_events.lab_event_kind({"kind": "idle", "hook_event_name": "Stop"}) == "idle"
+        assert lab_events.lab_event_kind({"hook_event_name": "Stop"}) == "Stop"
+        assert lab_events.lab_event_kind({"kind": ""}) == lab_events.UNNAMED_EVENT_KIND
 
 
 @pytest.mark.unit
 class TestLabTokenTtl:
-    def test_lab_events_token_lives_six_hours(self) -> None:
-        assert SANDBOX_LAB_EVENTS_TOKEN_TTL_SECONDS == 21600
+    def test_token_outlives_the_longest_allowed_run(self) -> None:
+        """A running CLI keeps the token it launched with; re-seeding files never reaches it."""
+        assert SANDBOX_LAB_EVENTS_TOKEN_TTL_SECONDS > execute.SANDBOX_LAB_MAX_RUN_SECONDS
 
-    def test_hooks_mint_uses_the_six_hour_constant(self) -> None:
+    def test_budget_window_outlives_the_token(self) -> None:
+        window = execute.SANDBOX_LAB_EVENTS_BUDGET_WINDOW_SECONDS
+        assert window >= SANDBOX_LAB_EVENTS_TOKEN_TTL_SECONDS
+
+    def test_hooks_mint_uses_the_run_token_ttl(self) -> None:
         with patch.object(sandbox_setup, "mint_execute_token", return_value="tok") as mint:
             sandbox_setup.mint_lab_hooks_token("u1", "lab-1")
         assert mint.call_args.kwargs["ttl_seconds"] == SANDBOX_LAB_EVENTS_TOKEN_TTL_SECONDS
@@ -691,8 +365,6 @@ class TestLabMountAndAllowlist:
         assert "/sandbox/execute" in paths
 
     def test_auth_middleware_excludes_the_token_only_path(self) -> None:
-        from fastapi import FastAPI
-
         middleware = WorkOSAuthMiddleware(FastAPI(), workos_client=MagicMock())
         assert "/api/v1/lab/events" in middleware.exclude_paths
 

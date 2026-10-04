@@ -1,11 +1,9 @@
-"""The lab lifecycle-event receiver — the sandbox's push door back into GAIA.
+"""The sandbox run event receiver: the sandbox's push door back into GAIA.
 
-Dumb pipe: this route authenticates the caller, verifies the session belongs
-to them, and files the raw payload's tail onto the run's tracked todo. It
-never classifies or acts on kind/raw — a future supervisor reads the tail.
-Authenticated by the run's HMAC token alone, so the path is excluded from
-WorkOS auth like /sandbox/execute. Accepts canonical {session_id, kind, raw}
-and Claude's raw hook POST alike; a hook-shaped push never 422s.
+Dumb pipe: the run's HMAC token alone names the run (the path is excluded from
+WorkOS auth like /sandbox/execute), and the body, any JSON object, is handed on
+verbatim to wake the todo watching that run. Claude's raw hook POST and the
+OpenCode plugin's {kind, raw} land the same way.
 """
 
 import time
@@ -21,7 +19,7 @@ from app.constants.execute import (
 )
 from app.db.redis import redis_cache
 from app.schemas.common import ResponseModel
-from app.services.agent_lab.lab_events import ParsedLabEvent, parse_lab_event_body, record_lab_event
+from app.services.agent_lab.lab_events import LabEventReceipt, record_lab_event
 from app.services.sandbox.execute_token import SandboxExecuteClaims, claims_from_authorization
 from app.utils.errors import AppError
 from shared.py.wide_events import log
@@ -30,10 +28,10 @@ router = APIRouter(prefix="/lab", tags=["Lab"])
 
 
 class LabEventResponse(ResponseModel):
-    """Accepted for storage; the payload itself is never echoed back."""
+    """Accepted; the payload itself is never echoed back."""
 
     ok: bool
-    session_id: str
+    run_id: str
 
 
 async def _enforce_lab_budget(run_id: str) -> None:
@@ -62,15 +60,15 @@ async def _enforce_lab_budget(run_id: str) -> None:
         )
 
 
-def _audit(claims: SandboxExecuteClaims, event: ParsedLabEvent, todo_id: str) -> None:
-    # Every push from sandbox code writes to the user's todos with no per-action
-    # approval — the audit trail is the record.
+def _audit(claims: SandboxExecuteClaims, receipt: LabEventReceipt) -> None:
+    # Every push from sandbox code runs one of the user's todos with no
+    # per-action approval — the audit trail is the record.
     log.audit(
         "lab_event call",
         actor=claims.user_id,
-        kind=event.kind,
+        kind=receipt.kind,
         run_id=claims.run_id,
-        todo_id=todo_id,
+        todo_id=receipt.todo_id,
         ok=True,
     )
 
@@ -88,37 +86,30 @@ async def report_lab_event(
     request: Request,
     authorization: Annotated[str, Header()] = "",  # pragma: no mutate — no scheme, same 401
 ) -> LabEventResponse:
+    log.set(lab_event={"operation": "report"})
     try:
         body: Any = await request.json()
     except Exception:
         raise AppError(
-            message="agent lab event body is not valid JSON",
+            message="sandbox run event body is not valid JSON",
             why="the push has no parseable object",
-            fix="push {session_id, kind, raw} or the raw hook payload",
+            fix="push a JSON object: the raw hook payload or {kind, raw}",
             status_code=422,
-            code="agent_lab_event_not_identifiable",
+            code="agent_lab_event_not_json",
         ) from None
-    event = parse_lab_event_body(body)
-    log.set(lab_event={"session_id": event.session_id, "kind": event.kind})
+    if not isinstance(body, dict):
+        raise AppError(
+            message="sandbox run event must be a JSON object",
+            why="the body is valid JSON but not an object",
+            fix="push a JSON object: the raw hook payload or {kind, raw}",
+            status_code=422,
+            code="agent_lab_event_not_object",
+        )
     claims = _claims_or_401(authorization)
     log.set(user={"id": claims.user_id}, lab_event={"run_id": claims.run_id})
-    if event.session_id != claims.run_id:
-        log.warning(
-            "lab_event auth failed: session does not belong to the token",
-            run_id=claims.run_id,
-        )
-        raise AppError(
-            message="session does not belong to this token",
-            why=f"body names {event.session_id} but the token is bound to {claims.run_id}",
-            fix="push with the token minted for this run",
-            status_code=403,
-            code="agent_lab_session_not_owned",
-        )
     await _enforce_lab_budget(claims.run_id)
 
-    receipt = await record_lab_event(
-        event.session_id, user_id=claims.user_id, kind=event.kind, raw=event.raw
-    )
-    _audit(claims, event, receipt.todo_id)
-    log.set_ns("lab_event", session_id=receipt.id, todo_id=receipt.todo_id, kind=event.kind)
-    return LabEventResponse(ok=True, session_id=receipt.id)
+    receipt = await record_lab_event(claims.run_id, user_id=claims.user_id, body=body)
+    _audit(claims, receipt)
+    log.set_ns("lab_event", todo_id=receipt.todo_id, kind=receipt.kind)
+    return LabEventResponse(ok=True, run_id=claims.run_id)
