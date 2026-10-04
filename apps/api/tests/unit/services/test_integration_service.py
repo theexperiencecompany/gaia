@@ -787,6 +787,39 @@ class TestGetUserIntegrations:
     @patch("app.services.integrations.user_integrations.user_repository")
     @patch("app.services.integrations.user_integrations.integration_repository")
     @patch("app.services.integrations.user_integrations.user_integration_repository")
+    async def test_custom_integration_hydrates_stored_metadata_and_creator(
+        self, mock_repo, mock_int_repo, mock_users_col
+    ):
+        """Stored custom docs carry the creator and tools the catalog lacks."""
+        stored = Integration(
+            integration_id="custom-uuid",
+            name="Custom",
+            description="Mine",
+            category="custom",
+            managed_by="mcp",
+            created_by="user-9",
+            tools=[StoredIntegrationTool(name="do_thing")],
+        )
+        mock_repo.list_for_user_newest_first = AsyncMock(
+            return_value=[_ui_doc("custom-uuid", status="connected")]
+        )
+        mock_int_repo.find_by_ids = AsyncMock(return_value=[stored])
+        mock_users_col.find_by_ids = AsyncMock(
+            return_value=[SimpleNamespace(id="user-9", name="Nina", picture=None)]
+        )
+
+        result = await get_user_integrations(USER_ID)
+
+        assert result.total == 1
+        item = result.integrations[0]
+        assert item.integration.name == "Custom"
+        assert [tool.name for tool in item.integration.tools] == ["do_thing"]
+        assert item.integration.creator is not None
+        assert item.integration.creator["name"] == "Nina"
+
+    @patch("app.services.integrations.user_integrations.user_repository")
+    @patch("app.services.integrations.user_integrations.integration_repository")
+    @patch("app.services.integrations.user_integrations.user_integration_repository")
     async def test_expired_at_is_carried_from_the_stored_document(
         self, mock_repo, mock_int_repo, mock_users_col
     ):

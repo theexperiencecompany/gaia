@@ -116,32 +116,44 @@ class TestGetIntegrationsConfig:
 class TestFastIntegrationCatalog:
     async def test_snapshot_uses_fast_catalog_service(self, client: AsyncClient) -> None:
         snapshot = MyIntegrationsResponse(integrations=[], total=0)
-        with patch(
-            f"{_MODULE}.get_my_integrations_snapshot",
-            create=True,
-            new_callable=AsyncMock,
-            return_value=snapshot,
-        ) as mock_snapshot:
+        with (
+            patch(
+                f"{_MODULE}.get_my_integrations_snapshot",
+                create=True,
+                new_callable=AsyncMock,
+                return_value=snapshot,
+            ) as mock_snapshot,
+            patch(f"{_MODULE}.log") as mock_log,
+        ):
             resp = await client.get(f"{API}/me/snapshot")
 
         assert resp.status_code == 200
         assert resp.json() == {"integrations": [], "total": 0}
         mock_snapshot.assert_awaited_once_with(_VALID_UID)
+        mock_log.set.assert_any_call(
+            operation="get_my_integrations_snapshot", user={"id": _VALID_UID}
+        )
+        mock_log.set.assert_any_call(result_count=0, outcome="success")
 
     async def test_status_endpoint_returns_the_refreshable_status_map(
         self, client: AsyncClient
     ) -> None:
-        with patch(
-            f"{_MODULE}.get_all_integrations_status",
-            create=True,
-            new_callable=AsyncMock,
-            return_value={"posthog": False},
-        ) as mock_status:
+        with (
+            patch(
+                f"{_MODULE}.get_all_integrations_status",
+                create=True,
+                new_callable=AsyncMock,
+                return_value={"posthog": False},
+            ) as mock_status,
+            patch(f"{_MODULE}.log") as mock_log,
+        ):
             resp = await client.get(f"{API}/status")
 
         assert resp.status_code == 200
         assert resp.json() == {"statuses": {"posthog": False}}
         mock_status.assert_awaited_once_with(_VALID_UID)
+        mock_log.set.assert_any_call(operation="get_integration_statuses", user={"id": _VALID_UID})
+        mock_log.set.assert_any_call(result_count=1, outcome="success")
 
 
 # ===========================================================================

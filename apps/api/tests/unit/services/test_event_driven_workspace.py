@@ -336,6 +336,70 @@ async def test_mcp_record_without_stored_config_keeps_its_status():
     token_store_class.assert_not_called()
 
 
+async def test_custom_auth_filter_returns_only_mcp_integrations_needing_auth():
+    """The custom credential check mirrors the platform filter exactly."""
+    docs = [
+        MagicMock(integration_id="a", managed_by="mcp", requires_auth=True),
+        MagicMock(integration_id="b", managed_by="mcp", requires_auth=False),
+        MagicMock(integration_id="c", managed_by="composio", requires_auth=True),
+    ]
+    with patch(f"{UINT}.integration_repository") as mock_repo:
+        mock_repo.find_by_ids = AsyncMock(return_value=docs)
+
+        from app.services.integrations.user_integrations import get_custom_auth_mcp_ids
+
+        assert await get_custom_auth_mcp_ids(["a", "b", "c"]) == ["a"]
+
+    mock_repo.find_by_ids.assert_awaited_once_with(["a", "b", "c"])
+
+
+async def test_custom_auth_filter_empty_list_skips_the_query():
+    with patch(f"{UINT}.integration_repository") as mock_repo:
+        mock_repo.find_by_ids = AsyncMock()
+
+        from app.services.integrations.user_integrations import get_custom_auth_mcp_ids
+
+        assert await get_custom_auth_mcp_ids([]) == []
+
+    mock_repo.find_by_ids.assert_not_awaited()
+
+
+async def test_custom_and_platform_records_reconcile_independently():
+    """Platform and custom checks share one credential batch but filter separately."""
+    records = [
+        {"integration_id": "github", "status": "connected"},
+        {"integration_id": "custom-uuid", "status": "connected"},
+    ]
+    custom_doc = MagicMock(integration_id="custom-uuid", managed_by="mcp", requires_auth=True)
+
+    async def _find(ids: list[str]) -> list[object]:
+        return [custom_doc] if custom_doc.integration_id in ids else []
+
+    async def _check(ids: list[str]) -> dict[str, bool]:
+        return dict.fromkeys(ids, False)
+
+    with (
+        patch(
+            f"{UINT}._get_cached_user_integration_records",
+            new_callable=AsyncMock,
+            return_value=records,
+        ),
+        patch(f"{UINT}.integration_repository") as mock_repo,
+        patch(f"{UINT}.MCPTokenStore", create=True) as token_store_class,
+    ):
+        mock_repo.find_by_ids = AsyncMock(side_effect=_find)
+        token_store_class.return_value.are_connected = AsyncMock(side_effect=_check)
+
+        from app.services.integrations.user_integrations import get_user_integration_records
+
+        result = await get_user_integration_records("u")
+
+    by_id = {record["integration_id"]: record["status"] for record in result}
+    assert by_id == {"github": "connected", "custom-uuid": "created"}
+    mock_repo.find_by_ids.assert_awaited_once_with(["custom-uuid"])
+    token_store_class.return_value.are_connected.assert_awaited_once_with(["custom-uuid"])
+
+
 # ---------------------------------------------------------------------------
 # connect-path wiring: update_user_integration_status
 # ---------------------------------------------------------------------------

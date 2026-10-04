@@ -1531,6 +1531,7 @@ class TestMCPTokenStoreBatchLookup:
         try:
             _stored_credential(session, USER_ID, "a")
             _stored_credential(session, USER_ID, "b")
+            _stored_credential(session, USER_ID, "unrequested")
             _stored_credential(session, "other-user", "a")
             await session.commit()
 
@@ -1863,6 +1864,7 @@ class TestTryRefreshToken:
             _make_oauth_discovery(),
         )
         assert result is False
+        token_store.get_dcr_client.assert_awaited_once_with(INTEGRATION_ID)
 
     async def test_refresh_http_error(self):
         token_store = AsyncMock(spec=MCPTokenStore)
@@ -1898,9 +1900,15 @@ class TestTryRefreshToken:
 
         mock_response = MagicMock()
         mock_response.status_code = 400
-        mock_response.json.return_value = {"error": "invalid_grant"}
+        mock_response.json.return_value = {
+            "error": "invalid_grant",
+            "error_description": "Token expired",
+        }
 
-        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
+        with (
+            patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http,
+            patch("app.services.mcp.token_management.log") as mock_log,
+        ):
             mock_client = AsyncMock()
             mock_client.post = AsyncMock(return_value=mock_response)
             mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -1915,6 +1923,15 @@ class TestTryRefreshToken:
 
         assert result is False
         token_store.clear_refresh_token.assert_awaited_once_with(INTEGRATION_ID)
+        mock_log.warning.assert_any_call(
+            f"{LogTag.MCP} try_refresh_token: token endpoint returned an error",
+            status_code=400,
+            integration_id=INTEGRATION_ID,
+            user_id=USER_ID,
+            oauth_error="invalid_grant",
+            oauth_error_description="Token expired",
+            endpoint_host="https://auth.example.com",
+        )
 
     async def test_transient_refresh_error_keeps_the_refresh_token(self):
         token_store = AsyncMock(spec=MCPTokenStore)
@@ -2036,6 +2053,31 @@ class TestRevokeTokens:
             await revoke_tokens(token_store, INTEGRATION_ID, mcp_config, oauth_config)
 
         assert mock_client.post.await_count == 2
+
+    async def test_revocation_uses_dcr_credentials_when_unconfigured(self):
+        token_store = AsyncMock(spec=MCPTokenStore)
+        token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
+        token_store.get_oauth_token = AsyncMock(return_value=None)
+        token_store.get_dcr_client = AsyncMock(
+            return_value={"client_id": "dcr_cid", "client_secret": "dcr_sec"}
+        )
+
+        oauth_config = _make_oauth_discovery(
+            metadata_overrides={"revocation_endpoint": "https://auth.example.com/revoke"}
+        )
+
+        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock()
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_http.return_value.__aexit__ = AsyncMock()
+
+            await revoke_tokens(token_store, INTEGRATION_ID, _make_mcp_config(), oauth_config)
+
+        token_store.get_dcr_client.assert_awaited_once_with(INTEGRATION_ID)
+        posted = mock_client.post.await_args
+        assert posted.kwargs["data"]["client_id"] == "dcr_cid"
+        assert posted.kwargs["headers"]["Authorization"].startswith("Basic ")
 
     async def test_skips_when_no_endpoint(self):
         token_store = AsyncMock(spec=MCPTokenStore)
@@ -4560,6 +4602,7 @@ class TestHandleConnectFailureExact:
         assert result is None
         update_status.assert_not_awaited()
         reset.assert_not_awaited()
+        client.token_store.get_refresh_token.assert_awaited_once_with(INTEGRATION_ID)
         mock_log.warning.assert_called_once_with(
             f"{LogTag.MCP} OAuth token unavailable but refresh retained for",
             integration_id=INTEGRATION_ID,

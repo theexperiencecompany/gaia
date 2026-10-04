@@ -275,6 +275,7 @@ class TestGetAllIntegrationsStatus:
         assert result["custom-uuid"] is False
         token_store_class.assert_called_once_with("user123")
         token_store.are_connected.assert_awaited_once_with(["custom-uuid"])
+        mock_int_repo.find_by_ids.assert_awaited_once_with(["custom-uuid"])
 
     async def test_custom_auth_mcp_with_usable_credential_stays_connected(
         self,
@@ -309,6 +310,7 @@ class TestGetAllIntegrationsStatus:
             result = await get_all_integrations_status("user123")
 
         assert result["custom-uuid"] is True
+        mock_int_repo.find_by_ids.assert_awaited_once_with(["custom-uuid"])
 
     async def test_mcp_integration_not_in_mongo_returns_false(
         self,
