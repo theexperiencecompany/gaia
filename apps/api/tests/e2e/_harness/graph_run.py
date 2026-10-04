@@ -46,6 +46,8 @@ FINISH_NODE = "finish_task"
 #: Where the completion guard sends a run back for one more pass instead of
 #: letting it end on demonstrably unfinished work.
 NUDGE_NODE = "nudge_continue"
+#: The user every harness run acts as.
+HARNESS_USER_ID = "u-1"
 
 #: The memory engine double a comms graph was built with, so a test can assert
 #: passive ingestion actually ran.
@@ -461,19 +463,35 @@ def scripted_model_of(graph: Any) -> RecordingFakeModel:
     return _SCRIPTED_MODELS[id(graph)]
 
 
+def _record_update(run: GraphRun, node: str, update: object) -> None:
+    """Record one node update: the visit, then any bindings, todos and messages it carries."""
+    if not run.visited or run.visited[-1] != node:
+        run.visited.append(node)
+    if not isinstance(update, dict):
+        return
+    if "selected_tool_ids" in update:
+        run.selected.append(list(update["selected_tool_ids"]))
+    if update.get("todos"):
+        run.todos = list(update["todos"])
+    for message in update.get("messages", []) or []:
+        run.events.append(NodeMessage(node=node, message=message))
+
+
 async def run_graph(
     graph: Any,
     prompt: str,
     *,
     thread_id: str = "t-1",
-    user_id: str = "u-1",
     recursion_limit: int = 25,
     state: dict[str, Any] | None = None,
+    execution_mode: str | None = None,
 ) -> GraphRun:
     """Drive one turn and record every node update.
 
     A GraphRecursionError is captured on the run rather than raised: an
     agent spinning to its limit is a behaviour worth asserting, not a test error.
+    execution_mode is stamped on the configurable as build_agent_config does,
+    so "background" drives the unattended-run behaviour.
     """
     from langgraph.errors import GraphRecursionError
 
@@ -481,9 +499,12 @@ async def run_graph(
     # user_id goes in BOTH places, as build_agent_config does: the graph reads
     # `configurable` but every @tool reads `metadata["user_id"]`, so setting
     # only one makes tools silently return "user_id not found" as if they ran.
+    configurable: dict[str, Any] = {"thread_id": thread_id, "user_id": HARNESS_USER_ID}
+    if execution_mode is not None:
+        configurable["execution_mode"] = execution_mode
     config = {
-        "configurable": {"thread_id": thread_id, "user_id": user_id},
-        "metadata": {"user_id": user_id},
+        "configurable": configurable,
+        "metadata": {"user_id": HARNESS_USER_ID},
         "recursion_limit": recursion_limit,
     }
     initial = (
@@ -492,16 +513,7 @@ async def run_graph(
     try:
         async for _mode, payload in graph.astream(initial, stream_mode=["updates"], config=config):
             for node, update in payload.items():
-                if not run.visited or run.visited[-1] != node:
-                    run.visited.append(node)
-                if not isinstance(update, dict):
-                    continue
-                if "selected_tool_ids" in update:
-                    run.selected.append(list(update["selected_tool_ids"]))
-                if update.get("todos"):
-                    run.todos = list(update["todos"])
-                for message in update.get("messages", []) or []:
-                    run.events.append(NodeMessage(node=node, message=message))
+                _record_update(run, node, update)
     except GraphRecursionError as exc:
         run.error = exc
 

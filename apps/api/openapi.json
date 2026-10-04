@@ -7377,6 +7377,24 @@
         "title": "IntegrationResponse",
         "type": "object"
       },
+      "IntegrationStatusesResponse": {
+        "description": "Current connection status map, fetched independently of the catalog.",
+        "properties": {
+          "statuses": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "description": "Connection state keyed by integration id",
+            "title": "Statuses",
+            "type": "object"
+          }
+        },
+        "required": [
+          "statuses"
+        ],
+        "title": "IntegrationStatusesResponse",
+        "type": "object"
+      },
       "IntegrationSuccessResponse": {
         "properties": {
           "integrationId": {
@@ -26513,6 +26531,58 @@
         ]
       }
     },
+    "/api/v1/integrations/me/snapshot": {
+      "get": {
+        "description": "Return the workspace catalog without waiting for connection checks.",
+        "operationId": "integrations_get_my_integrations_snapshot_endpoint",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyIntegrationsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get My Integrations Snapshot Endpoint",
+        "tags": [
+          "Integrations"
+        ]
+      }
+    },
     "/api/v1/integrations/public/{identifier}": {
       "get": {
         "description": "Get public integration details by slug or native integration ID.",
@@ -26800,6 +26870,58 @@
           }
         },
         "summary": "Search Integrations",
+        "tags": [
+          "Integrations"
+        ]
+      }
+    },
+    "/api/v1/integrations/status": {
+      "get": {
+        "description": "Refresh connection state independently from the fast catalog snapshot.",
+        "operationId": "integrations_get_integration_statuses_endpoint",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationStatusesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Integration Statuses Endpoint",
         "tags": [
           "Integrations"
         ]
