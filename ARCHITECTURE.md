@@ -276,7 +276,7 @@ Each is a directory containing a `SKILL.md` with YAML frontmatter. Examples:
 - Slack: `slack-send-message/`, `slack-gather-context/`, `meet-invite-slack/`
 - Google: `googledocs-create-document/`, `googlesheets-analyze-data/`, `googlesheets-charts-graphs/`
 - Other: `linear-create-issue/`, `linear-gather-context/`, `linkedin-create-post/`, `reddit-research-post/`, `posthog-find-metrics/`, `twitter-create-thread/`, `twitter-send-dm/`, `twitter-send-dm-legacy/`, `todoist-organize-tasks/`, `task-management/`
-- GAIA system skills: `gaia-custom-instructions/`, `gaia-self-knowledge/`, `gaia-task-tracking/`
+- GAIA system skills: `gaia-custom-instructions/`, `gaia-self-knowledge/`, `gaia-task-tracking/`, `gaia-delegate-long-work/`
 
 A skill's `target:` frontmatter binds it to an integration (e.g. `target: gmail_agent`).
 

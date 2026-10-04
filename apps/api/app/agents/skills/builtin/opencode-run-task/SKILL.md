@@ -1,5 +1,5 @@
 ---
-name: lab-opencode-drive
+name: opencode-run-task
 description: Install, authenticate, and drive the OpenCode CLI headlessly inside the sandbox (Zen/API-key auth, run --format json, resume/stop). Read before any bash that touches the opencode CLI.
 target: executor
 ---

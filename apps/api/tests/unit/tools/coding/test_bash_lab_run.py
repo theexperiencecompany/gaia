@@ -190,7 +190,7 @@ class TestLabHappyPath:
         assert envs[LAB_TOKEN_VAR] == "tok-lab"
         assert envs[LAB_CALLBACK_URL_VAR] == EVENTS_URL
         assert envs[LAB_RUN_ID_VAR] == run_id
-        assert f"lab_run_id: {run_id}" in out
+        assert f"sandbox_run_id: {run_id}" in out
 
     async def test_watch_started_activity_line_is_posted(self) -> None:
         sbx = _sbx(_ok("seeded"), _ok("hi"))
@@ -258,7 +258,7 @@ class TestLabHappyPath:
             )
         assert sbx.commands.run.await_count == 2
         assert "pid=777" in out
-        assert "lab_run_id:" in out
+        assert "sandbox_run_id:" in out
         todos.update.assert_awaited_once()
 
 
@@ -329,7 +329,7 @@ class TestLabRunSubscribesTodo:
         assert subscription.action == SubscriptionAction.EXECUTE
         assert subscription.cooldown_seconds == 0
         run_id = subscription.trigger_data[lab_runs.RUN_ID_KEY]
-        assert f"lab_run_id: {run_id}" in out
+        assert f"sandbox_run_id: {run_id}" in out
 
     async def test_subscribing_is_counted_for_the_todo_owner(self) -> None:
         sbx = _sbx(_ok("seeded"), _ok("hi"))

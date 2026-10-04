@@ -193,8 +193,8 @@ def build_bash_tool(scoped_tools: Mapping[str, BaseTool] | None = None) -> BaseT
         background: Annotated[bool, "Run detached; returns pid + log path"] = False,
         run_todo_id: Annotated[
             str | None,
-            "Tracked todo id: seed an agent-lab run and subscribe the todo to its "
-            "events before running. See AGENT LAB RUNS in the description.",
+            "Tracked todo id: seed a sandbox run and subscribe the todo to its "
+            "events before running. See SANDBOX RUNS in the description.",
         ] = None,
     ) -> str:
         """Run a shell command in the user's persistent coding sandbox."""
@@ -281,11 +281,11 @@ async def _setup_lab_run(*, user_id: str, run_todo_id: str, sbx: object) -> _Lab
     if FAILED_LABEL in todo.labels:
         return f"Error: tracked todo {run_todo_id} is marked failed; reset it first, ran nothing"
 
-    lab_run_id = uuid.uuid4().hex
+    sandbox_run_id = uuid.uuid4().hex
     try:
         url = lab_events_url()
-        token = mint_lab_hooks_token(user_id, lab_run_id)
-        seed = build_seed_command(url, token, lab_run_id)
+        token = mint_lab_hooks_token(user_id, sandbox_run_id)
+        seed = build_seed_command(url, token, sandbox_run_id)
     except Exception as e:
         return f"Error: lab seed setup failed ({e}), ran nothing"
     try:
@@ -295,16 +295,16 @@ async def _setup_lab_run(*, user_id: str, run_todo_id: str, sbx: object) -> _Lab
     except Exception as e:
         return f"Error: lab seed failed ({e}), ran nothing"
     try:
-        await subscribe_todo_to_run(todo, lab_run_id)
+        await subscribe_todo_to_run(todo, sandbox_run_id)
     except Exception as e:
         return f"Error: subscribing todo {run_todo_id} to the run failed ({e}), ran nothing"
-    return _LabRun(run_id=lab_run_id, env=lab_env(url, token, lab_run_id))
+    return _LabRun(run_id=sandbox_run_id, env=lab_env(url, token, sandbox_run_id))
 
 
 def _lab_footer(lab: _LabRun, run_todo_id: str) -> str:
     """Tell the model what the run parameter did and the one record it still owes."""
     return (
-        f"lab_run_id: {lab.run_id} (workdir {run_dir(lab.run_id)}, GAIA_LAB_* and "
+        f"sandbox_run_id: {lab.run_id} (workdir {run_dir(lab.run_id)}, GAIA_LAB_* and "
         "OPENCODE_CONFIG_DIR injected). "
         f"Todo {run_todo_id} is now subscribed to this run: every event the agent "
         "reports (finished, needs input, error) runs the todo with that event.\n"

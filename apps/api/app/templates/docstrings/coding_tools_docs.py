@@ -64,11 +64,11 @@ PARAMETERS:
 - background (bool): If true, runs the command detached and returns a `pid`
   plus a log path the agent can `tail` later. Useful for servers, watch
   processes, anything long-running.
-- run_todo_id (str): Tracked todo id to launch this command as an agent-lab
+- run_todo_id (str): Tracked todo id to launch this command as a sandbox
   run (Claude Code / OpenCode). Passing it SUBSCRIBES THAT TODO TO THE RUN.
   Omit for ordinary commands.
 
-AGENT LAB RUNS (run_todo_id):
+SANDBOX RUNS (run_todo_id):
 When set, BEFORE your command runs the tool does three visible things:
 (1) mints a run token bound to this run + user, (2) stages the run workdir
 `~/.gaia-lab/<run>/` (Claude hooks settings, OpenCode plugin,

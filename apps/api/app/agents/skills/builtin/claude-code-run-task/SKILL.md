@@ -1,5 +1,5 @@
 ---
-name: lab-claude-drive
+name: claude-code-run-task
 description: Install, log in, and drive Claude Code headlessly inside the sandbox (OAuth paste-back, stream-json drive, resume/stop). Read before any bash that touches the claude CLI.
 target: executor
 ---

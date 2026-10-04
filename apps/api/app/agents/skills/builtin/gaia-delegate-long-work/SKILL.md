@@ -1,5 +1,5 @@
 ---
-name: lab-delegate-run
+name: gaia-delegate-long-work
 description: Delegate long-running sandbox work to a tracked todo that the run itself wakes. Read before starting any task that outlives this turn.
 target: executor
 ---
@@ -15,7 +15,7 @@ One-shot commands run direct. Anything an LLM runs (Claude Code, OpenCode), or a
 ## Bootstrap (the only active turn)
 
 1. `create_tracked_todo` with the goal and done-checks on the canvas, and a recurrence as the safety net (every 30-60 minutes while the run is live).
-2. Launch with `bash(command, background=True, run_todo_id=<todo>)`. Never foreground; it dies with your turn. Passing the todo id subscribes the todo to the run: every event the agent reports (finished, needs input, error) runs the todo with that event attached. The tool also injects the run env (`GAIA_LAB_*`, `OPENCODE_CONFIG_DIR`). Run the CLI in the user's repo; see `lab-claude-drive` / `lab-opencode-drive` for the launch line.
+2. Launch with `bash(command, background=True, run_todo_id=<todo>)`. Never foreground; it dies with your turn. Passing the todo id subscribes the todo to the run: every event the agent reports (finished, needs input, error) runs the todo with that event attached. The tool also injects the run env (`GAIA_LAB_*`, `OPENCODE_CONFIG_DIR`). Run the CLI in the user's repo; see `claude-code-run-task` / `opencode-run-task` for the launch line.
 3. Write the returned pid, log path and run workdir on the todo's canvas. A later run starts in a fresh conversation and only finds the log through the canvas.
 4. Tell the user it is underway, in plain words, and FINISH.
 
@@ -26,7 +26,7 @@ One-shot commands run direct. Anything an LLM runs (Claude Code, OpenCode), or a
 
 ## Steering from any surface
 
-To answer "how is it going", read the canvas and tail the log. To pass the user's answer on, note it on the canvas, then source the run's lab-env and resume the agent's session in the background (drive skills), and finish. If the resume fails, say so.
+To answer "how is it going", read the canvas and tail the log. To pass the user's answer on, note it on the canvas, then source the run's lab-env and resume the agent's session in the background (claude-code-run-task / opencode-run-task), and finish. If the resume fails, say so.
 
 ## Transparency
 

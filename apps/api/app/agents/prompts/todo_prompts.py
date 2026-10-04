@@ -24,12 +24,12 @@ outlives this turn): the todo owns it, you only bootstrap. Create the todo
 first, then call bash with run_todo_id set (it mints the run token, stages the
 run workdir, and subscribes the todo to the run, so every event the agent
 reports wakes the todo). Launch detached, record the pid and log path on the
-canvas, finish your turn. Read the lab-delegate-run skill before starting. The rule is
+canvas, finish your turn. Read the gaia-delegate-long-work skill before starting. The rule is
 simple: one-shot commands run direct and return results inline, but an LLM run
 is never certain, there is always possible back-and-forth, so it goes through
 a tracked todo. Why the todo: it already owns everything long work needs,
 scheduling and recurrence to wake itself, retries with backoff, orphan sweeps,
-durable canvas and activity notes, and notify routing. A lab run rides all of
+durable canvas and activity notes, and notify routing. A sandbox run rides all of
 that instead of duplicating it. If no one will need to observe or steer this
 after this turn ends, plain background run, no todo.
 COMPLETION: when the underlying work is clearly resolved (the fix is live and
@@ -124,7 +124,7 @@ SANDBOX_RUN_EVENT_GUIDANCE = (
     "needs permission: tell the user plainly what it needs and record it in "
     "activity.md. It finished: check the done-checks on the canvas, report the "
     "outcome, and complete the todo. It stopped short of the goal: resume its "
-    "session with a nudge via bash background=True (lab drive skills; source the "
+    "session with a nudge via bash background=True (claude-code-run-task / opencode-run-task skills; source the "
     "run's lab-env first), then end your turn, since its next event wakes you. It "
     "failed: say what broke. Never show the user run ids, session ids, or tokens."
 )
