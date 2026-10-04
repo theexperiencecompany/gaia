@@ -408,9 +408,14 @@ def _message_view(message: RelayedGmailMessage, *, include_body: bool) -> GmailM
 
 
 def detailed_message_template(raw: Mapping[str, object]) -> dict[str, object]:
-    """Convert a raw Gmail message to its detailed view, keyed as the agent reads it."""
+    """Convert a raw Gmail message to its detailed view, keyed as the agent reads it.
+
+    Every field of the view is a JSON-native scalar, a list of them, or a TypedDict of
+    them, so the dump is already the document the agent is handed. The test that round-
+    trips this through json.dumps is what keeps that true for a field added later.
+    """
     view = _message_view(RelayedGmailMessage.model_validate(raw), include_body=True)
-    return view.model_dump(mode="json", by_alias=True)
+    return view.model_dump(by_alias=True)
 
 
 def thread_template(thread: GmailThreadData) -> GmailThreadView:
@@ -474,7 +479,7 @@ def project_message_view(
 
     None or an empty fields list means "all fields".
     """
-    wire = view.model_dump(mode="json", by_alias=True)
+    wire = view.model_dump(by_alias=True)
     if not fields:
         return wire
     return {key: wire[key] for key in fields if key in wire}
@@ -517,4 +522,4 @@ def process_list_drafts_response(raw: Mapping[str, object]) -> GmailDraftListVie
 def process_get_thread_response(raw: Mapping[str, object]) -> dict[str, object]:
     """Process the response from get_email_thread tool to minimize data."""
     thread = thread_template(GmailThreadData.model_validate(raw))
-    return thread.model_dump(mode="json", by_alias=True)
+    return thread.model_dump(by_alias=True)

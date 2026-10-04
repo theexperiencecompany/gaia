@@ -1,11 +1,8 @@
 """Provisioning the Inbox desk: one scheduled tracked todo per paying user, never one they stopped."""
 
 from collections.abc import Iterator
-from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
-import os
 import re
-import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
@@ -40,7 +37,7 @@ from app.services.todos.inbox_desk import (
     reconcile_inbox_desks,
 )
 from app.services.tracked_todo_service import TrackedTodoService, starting_canvas
-from tests.helpers import captured_wide_event
+from tests.helpers import captured_wide_event, local_timezone
 
 MODULE = "app.services.todos.inbox_desk"
 USER_ID = "507f1f77bcf86cd799439011"
@@ -488,6 +485,7 @@ async def test_a_desk_that_keeps_observations_md_is_not_written(
     todo_repository.replace_note_fields.assert_not_awaited()
 
 
+@time_machine.travel(datetime(2026, 10, 3, 19, 30, tzinfo=UTC), tick=False)
 async def test_carried_lines_are_stamped_with_the_utc_day_they_moved(
     stored: dict[str, TodoDocument],
 ) -> None:
@@ -499,28 +497,10 @@ async def test_carried_lines_are_stamped_with_the_utc_day_they_moved(
     canvas = OLD_DESK_CANVAS.replace("## Key Details", CANVAS_OBSERVATIONS + "## Key Details")
     stored[DESK_ID] = _desk(canvas_content=canvas, updated_at=STAMP)
 
-    with _local_timezone("Asia/Kolkata"):
+    with local_timezone("Asia/Kolkata"):
         ready = await inbox_desk.with_desk_notes(stored[DESK_ID])
 
     assert "first seen: before 2026-10-03" in ready.observations_content
-
-
-@contextmanager
-def _local_timezone(tz_name: str) -> Iterator[None]:
-    """Run the body with the process's local timezone set, restoring it afterwards."""
-    original = os.environ.get("TZ")
-    try:
-        os.environ["TZ"] = tz_name
-        if hasattr(time, "tzset"):
-            time.tzset()
-        yield
-    finally:
-        if original is None:
-            os.environ.pop("TZ", None)
-        else:
-            os.environ["TZ"] = original
-        if hasattr(time, "tzset"):
-            time.tzset()
 
 
 async def test_a_desk_whose_notes_moved_since_it_was_read_fails_its_run(

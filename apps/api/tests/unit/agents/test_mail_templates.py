@@ -2,7 +2,10 @@
 
 import base64
 import email.message
+import json
 from unittest.mock import patch
+
+import pytest
 
 from app.agents.templates.mail_templates import (
     GmailMessageParser,
@@ -12,6 +15,7 @@ from app.agents.templates.mail_templates import (
     build_message_view,
     detailed_message_template,
     draft_template,
+    message_view_needs_body,
     minimal_message_template,
     process_get_thread_response,
     process_list_drafts_response,
@@ -350,6 +354,52 @@ class TestGmailMessageParserPayload:
 
 
 class TestGmailMessageParserLabels:
+    def test_the_wide_event_names_the_message_this_parse_read(self):
+        """The parse stamps the id it is working on.
+
+        With no raw and no messageId the field is an empty string, never the thread id or
+        a stale one: an operator reading a parse warning needs to know which message failed.
+        """
+        log.reset()
+
+        _parser(_make_gmail_message(raw=_make_raw_email())).parse()
+
+        assert log.get()["gmail_message_id"] == "msg_001"
+        assert log.get()["mail_op"] == "parse_gmail_message"
+
+    def test_the_wide_event_falls_back_to_the_relayed_id_then_says_nothing(self):
+        """A relay that carries only messageId still names the message it parsed."""
+        log.reset()
+
+        _parser({"messageId": "mid_9", "labelIds": []}).parse()
+
+        assert log.get()["gmail_message_id"] == "mid_9"
+
+    def test_a_message_with_neither_id_is_logged_with_no_id(self):
+        log.reset()
+
+        _parser({"labelIds": []}).parse()
+
+        assert log.get()["gmail_message_id"] == ""
+
+    def test_no_header_reads_as_empty_before_and_after_a_failed_parse(self):
+        """Every header getter answers "" when there is no parsed message to ask.
+
+        Before parse() there is nothing to read, and after a parse that failed the message
+        is None: either way a caller building a card gets an empty string rather than an
+        AttributeError, and the empty string is falsy so the fallback fields take over.
+        """
+        parser = _parser(_make_gmail_message(raw=_make_raw_email()))
+
+        assert (parser.subject, parser.sender, parser.to) == ("", "", "")
+        assert parser.parse() is True
+
+        parser = _parser({"labelIds": [], "snippet": "no raw and no payload"})
+        assert parser.parse() is False
+        assert parser.subject == ""
+        assert parser.sender == ""
+        assert parser.to == ""
+
     def test_labels(self):
         msg = _make_gmail_message(label_ids=["INBOX", "UNREAD", "HAS_ATTACHMENT"])
         parser = _parser(msg)
@@ -451,6 +501,52 @@ class TestMinimalMessageTemplate:
         assert result.id == "mid_1"
         assert result.sender == "fallback@sender.com"
 
+    def test_every_header_and_label_reaches_the_card_under_its_own_field(self):
+        """Each field carries its own value, not a neighbour's.
+
+        The card is all the run sees of a thread, so a field showing the wrong value —
+        the sender's address in the subject line, an unread message reported as
+        read — is a misread the run acts on. Asserted whole, since the mutant that
+        swaps two fallbacks passes any single-field check.
+        """
+        raw = _make_raw_email(
+            subject="Quarterly numbers",
+            sender="Alice <alice@example.com>",
+            to="Bob <bob@example.com>",
+            date="Tue, 02 Jan 2025 09:30:00 +0000",
+            body_text="The body",
+        )
+        msg = _make_gmail_message(
+            raw=raw, label_ids=["INBOX", "UNREAD", "HAS_ATTACHMENT"], snippet="The snippet"
+        )
+
+        result = minimal_message_template(RelayedGmailMessage.model_validate(msg))
+
+        assert result.id == "msg_001"
+        assert result.thread_id == "thread_001"
+        assert result.sender == "Alice <alice@example.com>"
+        assert result.to == "Bob <bob@example.com>"
+        assert result.subject == "Quarterly numbers"
+        assert result.snippet == "The snippet"
+        assert "02 Jan 2025 09:30:00" in result.time
+        assert result.is_read is False
+        assert result.has_attachment is True
+        assert result.labels == ["INBOX", "UNREAD", "HAS_ATTACHMENT"]
+        assert result.body.strip() == "The body"
+
+    def test_a_message_with_no_id_at_all_carries_no_id_rather_than_one_of_its_neighbours(self):
+        """Neither Gmail id present: the card says nothing rather than naming the thread.
+
+        A wrong id here is worse than none — the run would fetch, or fetch again,
+        something this thread never had.
+        """
+        msg = {"threadId": "t1", "labelIds": [], "snippet": "s"}
+
+        result = minimal_message_template(RelayedGmailMessage.model_validate(msg))
+
+        assert result.id == ""
+        assert result.thread_id == "t1"
+
 
 # ---------------------------------------------------------------------------
 # detailed_message_template
@@ -484,6 +580,23 @@ class TestDetailedMessageTemplate:
         result = detailed_message_template(msg)
         assert result["id"] == "m1"
 
+    def test_the_detailed_card_is_a_json_document_the_agent_can_be_handed(self):
+        """It reaches the agent as JSON, so every value must already be JSON.
+
+        A Python-mode dump builds fine and only fails at the json.dumps on the far side,
+        where nothing says which field broke. The date header is the field that catches
+        this: Gmail's own header is a string, but nothing stops a relayed one arriving as
+        a datetime, and json cannot carry that.
+        """
+        raw = _make_raw_email(
+            subject="JSON please", sender="a@b.com", to="c@d.com", body_text="Body"
+        )
+        msg = _make_gmail_message(raw=raw, label_ids=["INBOX"])
+
+        result = detailed_message_template(msg)
+
+        assert json.loads(json.dumps(result)) == result
+
 
 # ---------------------------------------------------------------------------
 # build_message_view / project_message_view
@@ -514,6 +627,40 @@ class TestFetchedMessageView:
             "cc",
             "body",
         ]
+
+    def test_the_fetched_view_carries_each_field_under_its_own_value(self):
+        """Every field of the fetched view holds its own value.
+
+        The desk's sweep and the thread card both read this, so a field carrying a
+        neighbour's value reads as a fact about the mail. Asserted whole: a mutant
+        that swaps two fallbacks passes any single-field check.
+        """
+        raw = _make_raw_email(
+            subject="Lease renewal",
+            sender="Alice <alice@example.com>",
+            to="Bob <bob@example.com>",
+            date="Wed, 03 Jan 2025 11:00:00 +0000",
+            body_text="Sign here",
+        )
+        message = RelayedGmailMessage.model_validate(
+            _make_gmail_message(raw=raw, label_ids=["INBOX", "UNREAD"], snippet="Sign here today")
+        )
+
+        view = build_message_view(message, "raw")
+
+        assert view.id == "msg_001"
+        assert view.thread_id == "thread_001"
+        assert view.sender == "Alice <alice@example.com>"
+        # The sweep groups by this, so it is the address alone, lowercased, whatever
+        # the display name was.
+        assert view.from_address == "alice@example.com"
+        assert view.to == "Bob <bob@example.com>"
+        assert view.subject == "Lease renewal"
+        assert view.snippet == "Sign here today"
+        assert "03 Jan 2025 11:00:00" in view.time
+        assert view.is_read is False
+        assert view.has_attachment is False
+        assert view.labels == ["INBOX", "UNREAD"]
 
     def test_the_dual_text_and_html_blob_never_reaches_the_agent(self):
         wire = project_message_view(_fetched_view("raw"), None)
@@ -822,3 +969,244 @@ class TestDecodePartPayload:
         _decode_part_payload(part)
 
         assert "warnings" not in log.get()
+
+
+# ---------------------------------------------------------------------------
+# What each template does when a field is missing, empty, or present
+# ---------------------------------------------------------------------------
+
+
+def _attachment_payload() -> dict:
+    return {
+        "mimeType": "multipart/mixed",
+        "filename": "",
+        "parts": [
+            {"mimeType": "text/plain", "filename": "", "body": {"size": 12}},
+            {
+                "mimeType": "application/pdf",
+                "filename": "invoice.pdf",
+                "body": {"size": 2048, "attachmentId": "att-1"},
+            },
+        ],
+    }
+
+
+class TestTheCardsFallbacksAndEmptyFields:
+    """A relayed message and its raw email disagree about which fields exist.
+
+    The card reads the parsed email first and the relayed payload second, and answers ""
+    for a field neither has. Every branch of that chain is a place a wrong value can
+    reach the run, so each is pinned with a message where the two disagree.
+    """
+
+    def test_the_relayed_fields_are_used_where_the_parsed_email_has_nothing(self) -> None:
+        msg = {
+            "id": "m1",
+            "messageId": "mid_1",
+            "threadId": "thread_from_relay",
+            "sender": "Alice <alice@example.com>",
+            "to": "Bob <bob@example.com>",
+            "subject": "From the relay",
+            "snippet": "relayed snippet",
+            "messageTimestamp": "2026-01-02T03:04:05Z",
+            "labelIds": ["INBOX"],
+        }
+
+        result = minimal_message_template(RelayedGmailMessage.model_validate(msg))
+
+        assert result.id == "mid_1"
+        assert result.thread_id == "thread_from_relay"
+        assert result.sender == "Alice <alice@example.com>"
+        assert result.to == "Bob <bob@example.com>"
+        assert result.subject == "From the relay"
+        assert result.snippet == "relayed snippet"
+        assert result.time == "2026-01-02T03:04:05Z"
+
+    def test_a_relay_with_none_of_them_yields_empty_fields(self) -> None:
+        result = minimal_message_template(RelayedGmailMessage.model_validate({"labelIds": []}))
+
+        assert (result.id, result.thread_id, result.sender, result.to) == ("", "", "", "")
+        assert (result.subject, result.snippet, result.time) == ("", "", "")
+        assert result.body == ""
+
+    def test_a_header_the_email_never_carried_reads_as_empty(self) -> None:
+        """The raw email has a Subject but no To: the To must be "" and not a neighbour.
+
+        Reading one header's value for another is the failure here — a card naming the
+        subject line as the recipient gets the run replying to the wrong place.
+        """
+        raw = _make_raw_email(subject="Only a subject", to="", cc="", body_text="Body")
+
+        parser = _parser(_make_gmail_message(raw=raw))
+
+        assert parser.parse() is True
+        assert parser.subject == "Only a subject"
+        assert parser.to == ""
+        assert parser.cc == ""
+
+    def test_a_message_with_neither_raw_nor_payload_reports_the_failed_parse(self) -> None:
+        """No MIME tree anywhere: the parse says so rather than raising on a None payload."""
+        parser = _parser({"id": "m1", "labelIds": [], "snippet": "s"})
+
+        assert parser.parse() is False
+        assert parser.email_message is None
+        assert parser.subject == ""
+
+    def test_an_empty_payload_object_is_the_same_as_no_payload(self) -> None:
+        assert _parser({"labelIds": [], "payload": {}}).parse() is False
+
+    def test_a_message_without_the_unread_label_is_reported_as_read(self) -> None:
+        """is_read comes from the labels, not from the model default.
+
+        A read message is the default value of the field, so a view that never computed
+        it would look identical — this is the only way the two answers differ.
+        """
+        raw = _make_raw_email(subject="Read", body_text="Body")
+
+        result = minimal_message_template(
+            RelayedGmailMessage.model_validate(_make_gmail_message(raw=raw, label_ids=["INBOX"]))
+        )
+
+        assert result.is_read is True
+
+    def test_a_message_with_neither_id_snippet_nor_body_still_carries_its_labels(self) -> None:
+        result = minimal_message_template(
+            RelayedGmailMessage.model_validate({"labelIds": ["INBOX", "UNREAD"]})
+        )
+
+        assert result.labels == ["INBOX", "UNREAD"]
+        assert result.is_read is False
+        assert result.snippet == ""
+
+    def test_a_thread_with_no_id_reports_no_id(self) -> None:
+        result = thread_template(GmailThreadData.model_validate({"messages": []}))
+
+        assert result.id == ""
+        assert result.messages == []
+        assert result.message_count == 0
+
+
+class TestTheFetchedViewReadsThePayload:
+    def test_an_attachment_in_the_payload_is_reported_with_its_metadata(self) -> None:
+        """The attachment list is walked out of the MIME parts, name and id paired.
+
+        The run has to ask Gmail for the bytes by attachmentId; losing either the name
+        or the id makes the attachment unfetchable, and the view is the only place the
+        two are paired.
+        """
+        message = RelayedGmailMessage.model_validate(
+            _make_gmail_message(payload=_attachment_payload(), label_ids=["INBOX"])
+        )
+
+        view = build_message_view(message, "raw")
+
+        assert view.attachments == [
+            {
+                "filename": "invoice.pdf",
+                "mimeType": "application/pdf",
+                "size": 2048,
+                "attachmentId": "att-1",
+            }
+        ]
+        assert view.has_attachment is False
+
+    def test_the_has_attachment_label_is_the_one_gmail_sends(self) -> None:
+        """The flag reads the label Gmail actually sets, spelled exactly.
+
+        Matched loosely it would report an attachment for any label containing the words
+        and miss the real one whenever the casing drifted.
+        """
+        message = RelayedGmailMessage.model_validate(
+            _make_gmail_message(
+                payload=_attachment_payload(), label_ids=["INBOX", "HAS_ATTACHMENT"]
+            )
+        )
+
+        assert build_message_view(message, "raw").has_attachment is True
+
+    def test_a_relay_with_no_ids_and_no_snippet_reports_them_empty(self) -> None:
+        """A metadata-format message carries no id, thread or snippet of its own.
+
+        Each of those three answers "" rather than a neighbour's value, so a run reading
+        the view cannot mistake one message's identity for another's.
+        """
+        message = RelayedGmailMessage.model_validate(
+            {"labelIds": ["INBOX"], "payload": _attachment_payload()}
+        )
+
+        view = build_message_view(message, "raw")
+
+        assert view.id == ""
+        assert view.thread_id == ""
+        assert view.snippet == ""
+
+
+class TestTheBodyIsOnlyFetchedWhenAFieldAsksForIt:
+    """Whether the MIME body has to be parsed at all, decided before it is fetched.
+
+    Getting this wrong either costs a full fetch for a metadata-only request, or hands
+    back a view whose promised field is silently absent.
+    """
+
+    @pytest.mark.parametrize(
+        ("fields", "body_processing", "expected"),
+        [
+            (None, "raw", True),
+            (None, "none", False),
+            (None, "normalize", True),
+            ([], "raw", True),
+            (["subject"], "raw", False),
+            (["subject", "labels"], "normalize", False),
+            (["body"], "raw", True),
+            (["body"], "none", False),
+        ],
+        ids=[
+            "all-fields-raw",
+            "none-drops-it",
+            "all-fields-normalize",
+            "empty-list-is-all",
+            "headers-only",
+            "headers-only-normalize",
+            "body-asked-for",
+            "none-beats-body",
+        ],
+    )
+    def test_the_decision_depends_on_the_field_list_and_the_processing(
+        self, fields, body_processing, expected
+    ) -> None:
+        assert message_view_needs_body(fields, body_processing) is expected
+
+
+class TestNormalizeStripsTheBoilerplate:
+    def test_a_signature_and_an_unsubscribe_footer_are_gone_and_the_words_stay(self) -> None:
+        """The normalize pass removes the boilerplate and keeps what the sender wrote.
+
+        Dropping the body instead of trimming it hands the run nothing to act on, and
+        skipping the pass hands it a footer as often as a message.
+        """
+        raw = _make_raw_email(
+            subject="Invoice",
+            body_text=(
+                "Your invoice for October is attached.\n\n"
+                "--\nAlice Example\nHead of Things, Example Ltd\n\n"
+                "Unsubscribe: https://example.com/u/abc123\n"
+            ),
+        )
+        message = RelayedGmailMessage.model_validate(_make_gmail_message(raw=raw))
+
+        view = build_message_view(message, "normalize")
+
+        assert "Your invoice for October is attached." in view.body
+        assert "Head of Things" not in view.body
+        assert "Unsubscribe" not in view.body
+
+    def test_raw_keeps_the_boilerplate_normalize_removes(self) -> None:
+        """Same message, the two modes have to differ or one of them is a lie."""
+        raw = _make_raw_email(
+            subject="Invoice",
+            body_text="The invoice is attached.\n\nUnsubscribe: https://example.com/u/abc123\n",
+        )
+        message = RelayedGmailMessage.model_validate(_make_gmail_message(raw=raw))
+
+        assert "Unsubscribe" in (build_message_view(message, "raw").body or "")
+        assert "Unsubscribe" not in (build_message_view(message, "normalize").body or "")

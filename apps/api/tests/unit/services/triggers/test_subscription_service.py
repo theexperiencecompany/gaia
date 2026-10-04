@@ -8,6 +8,7 @@ exactly what these tests are asserting.
 """
 
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -255,11 +256,16 @@ class TestRegisterSubscription:
     @pytest.mark.regression
     async def test_a_concurrent_write_of_the_same_watch_returns_the_stored_row(self) -> None:
         """Two Gmail connects provision one desk at once; the desk ends with one watch, not two."""
-        first = _subscription()
-        with _Harness(_todo(), ["ti_1"]) as h:
+        first = _subscription(composio_trigger_ids=["winner-id"])
+        with _Harness(_todo(), ["loser-id"]) as h:
             h.set_subscriptions.return_value = None  # the other writer's write won
             reads: list[TodoDocument] = [_todo(), _todo(trigger_subscriptions=[first])]
-            h.get.side_effect = lambda *_, **__: reads.pop(0)
+
+            async def read_todo(todo_id: str, *, user_id: str) -> TodoDocument:
+                assert (todo_id, user_id) == (TODO_ID, USER_ID)
+                return reads.pop(0)
+
+            h.get.side_effect = read_todo
 
             subscription, _outcome = await register_subscription(
                 todo_id=TODO_ID,
@@ -273,7 +279,100 @@ class TestRegisterSubscription:
         # Nothing is appended on top of it, and the instance registered for the row
         # that lost the race is released rather than left orphaned upstream.
         assert h.set_subscriptions.await_count == 1
-        h.unregister.assert_awaited_once()
+        h.unregister.assert_awaited_once_with(
+            USER_ID, INSTANCE_TRIGGER, ["loser-id"], todo_id=TODO_ID
+        )
+
+    @pytest.mark.regression
+    async def test_a_write_conflict_retries_from_the_revision_the_other_writer_left(self) -> None:
+        """Both watches survive when another writer advances the todo between our read and write.
+
+        Retrying against the old revision loses again; dropping the revision guard overwrites
+        the competing watch. Only the refreshed revision can append without losing either.
+        """
+        first_revision = datetime(2026, 10, 3, 12, tzinfo=UTC)
+        competing_revision = first_revision + timedelta(seconds=1)
+        original = _todo(updated_at=first_revision)
+        competing = _subscription(
+            action=SubscriptionAction.NOTIFY,
+            composio_trigger_ids=["other-writer-id"],
+        )
+        concurrent_todo = _todo(
+            updated_at=competing_revision,
+            trigger_subscriptions=[competing],
+        )
+        with _Harness(original, ["new-watch-id"]) as h:
+            reads = [original, concurrent_todo]
+
+            async def read_todo(todo_id: str, *, user_id: str) -> TodoDocument:
+                assert (todo_id, user_id) == (TODO_ID, USER_ID)
+                return reads.pop(0)
+
+            h.get.side_effect = read_todo
+            revisions: list[datetime | None] = []
+
+            async def compare_and_set(
+                todo_id: str,
+                user_id: str,
+                *,
+                subscriptions: list[TriggerSubscription],
+                expected_updated_at: datetime | None,
+            ) -> TodoDocument | None:
+                assert (todo_id, user_id) == (TODO_ID, USER_ID)
+                revisions.append(expected_updated_at)
+                if expected_updated_at == first_revision:
+                    return None
+                if expected_updated_at == competing_revision:
+                    return concurrent_todo.model_copy(
+                        update={"trigger_subscriptions": subscriptions}
+                    )
+                return None
+
+            h.set_subscriptions.side_effect = compare_and_set
+
+            stored, _outcome = await register_subscription(
+                todo_id=TODO_ID,
+                user_id=USER_ID,
+                trigger_name=INSTANCE_TRIGGER,
+                conditions=[],
+                action=SubscriptionAction.EXECUTE,
+            )
+
+        assert revisions == [first_revision, competing_revision]
+        assert [sub.id for sub in h.written_subscriptions] == [competing.id, stored.id]
+
+    @pytest.mark.regression
+    async def test_duplicate_cleanup_failure_is_recorded_and_keeps_the_winning_watch(
+        self,
+    ) -> None:
+        winner = _subscription(composio_trigger_ids=["winner-id"])
+        with _Harness(_todo(), ["loser-id"]) as h:
+            h.set_subscriptions.return_value = None
+            reads: list[TodoDocument] = [_todo(), _todo(trigger_subscriptions=[winner])]
+
+            async def read_todo(todo_id: str, *, user_id: str) -> TodoDocument:
+                assert (todo_id, user_id) == (TODO_ID, USER_ID)
+                return reads.pop(0)
+
+            h.get.side_effect = read_todo
+            h.unregister.side_effect = RuntimeError("composio down")
+
+            async with captured_wide_event() as event:
+                stored, _outcome = await register_subscription(
+                    todo_id=TODO_ID,
+                    user_id=USER_ID,
+                    trigger_name=INSTANCE_TRIGGER,
+                    conditions=[],
+                    action=SubscriptionAction.EXECUTE,
+                )
+
+        assert stored.id == winner.id
+        (error,) = event["errors"]
+        assert error["msg"] == "todo_subscription.unregister_failed"
+        assert error["todo_id"] == TODO_ID
+        assert error["subscription_id"]
+        assert error["error"] == "composio down"
+        assert error["error_type"] == "RuntimeError"
 
     @pytest.mark.regression
     async def test_an_unresolvable_write_conflict_is_refused_not_silently_dropped(self) -> None:

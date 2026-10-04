@@ -18,8 +18,13 @@ import time_machine
 
 from app.agents.prompts import todo_prompts
 from app.agents.tools.coding.query_json_tool import _apply_query
+from app.constants.offload import OFFLOAD_RESULT_KEY
 from app.models.common_models import GatherContextInput
-from app.models.composio_schemas.gmail import BodyProcessingLiteral, FetchMessagesInput
+from app.models.composio_schemas.gmail import (
+    BodyProcessingLiteral,
+    FetchMessagesInput,
+    FetchThreadInput,
+)
 from app.services.composio.custom_tools.gmail_constants import OFFLOAD_MIN_MESSAGES
 from app.services.composio.custom_tools.gmail_tools import (
     ArchiveEmailInput,
@@ -924,10 +929,702 @@ class TestTheDesksSweep:
                 "app.services.composio.custom_tools.gmail_tools.current_run_config",
                 return_value={"configurable": {}},
             ),
-            pytest.raises(AppError, match="no session"),
+            pytest.raises(AppError, match="no session") as refused,
         ):
             _register_and_get_tools()["FETCH_MESSAGES"](
                 request=FetchMessagesInput(query="after:1790000000", offload=True),
                 execute_request=MagicMock(),
                 auth_credentials=AUTH_CREDS,
             )
+
+        # The refusal is the agent's only account of why nothing came back, so it names
+        # the tool that refused, says the file had nowhere to go, and says what to do.
+        assert refused.value.message == (
+            "GMAIL_FETCH_MESSAGES has no session to write the requested file into"
+        )
+        assert refused.value.why == (
+            "offload was requested outside a conversation, so there is no workspace for it."
+        )
+        assert "without offload" in refused.value.fix
+        assert refused.value.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Whose mailbox, and what was asked of it
+# ---------------------------------------------------------------------------
+
+
+def _one_message_mailbox(
+    *, sender: str = "Alice <alice@example.com>", subject: str = "Lease renewal"
+) -> Callable[[ProxyRequest], dict[str, Any]]:
+    """Serve a list page of one message and that same message in full."""
+    full = {
+        "id": "msg-1",
+        "threadId": "thread-1",
+        "labelIds": ["INBOX"],
+        "snippet": "the snippet",
+        "internalDate": "1767225845000",
+        "payload": {
+            "headers": [
+                {"name": "From", "value": sender},
+                {"name": "To", "value": "Bob <bob@example.com>"},
+                {"name": "Subject", "value": subject},
+                {"name": "Date", "value": "Tue, 02 Jan 2025 09:30:00 +0000"},
+            ],
+            "body": {"data": base64.urlsafe_b64encode(b"The lease needs signing.").decode()},
+        },
+    }
+
+    def serve(request: ProxyRequest) -> dict[str, Any]:
+        if re.match(r".+/users/me/messages/?$", request.endpoint):
+            return {"messages": [{"id": "msg-1", "threadId": "thread-1"}], "resultSizeEstimate": 1}
+        return full
+
+    return serve
+
+
+def threads_formats(proxy) -> list[dict[str, Any]]:
+    """Return the query of every users/me/threads call the proxy was asked to make."""
+    return [
+        dict(call.args[0].query or {})
+        for call in proxy.call_args_list
+        if "/users/me/threads/" in call.args[0].endpoint
+    ]
+
+
+def _users_asked(proxy) -> set[str | None]:
+    """Return the authenticated user every proxy call in this test was made for."""
+    return {call.args[0].user_id for call in proxy.call_args_list}
+
+
+class TestEveryToolActsAsTheAuthenticatedUser:
+    """Each tool reads the user off its credentials and hands it to the proxy.
+
+    A tool that passed anything else would read or write the wrong mailbox, and nothing
+    downstream re-checks it: the proxy is called with whatever it is given.
+    """
+
+    @pytest.mark.parametrize(
+        ("tool", "tool_request", "responses"),
+        [
+            ("MARK_AS_READ", MarkAsReadInput(message_ids=["m1"]), [{"id": "m1"}]),
+            ("MARK_AS_UNREAD", MarkAsUnreadInput(message_ids=["m1"]), [{"id": "m1"}]),
+            ("ARCHIVE_EMAIL", ArchiveEmailInput(message_ids=["m1"]), [{"id": "m1"}]),
+            ("STAR_EMAIL", StarEmailInput(message_ids=["m1"]), [{"id": "m1"}]),
+            (
+                "GET_UNREAD_COUNT",
+                GetUnreadCountInput(),
+                [{"name": "INBOX", "messagesUnread": 1, "messagesTotal": 2}],
+            ),
+            ("GET_CONTACT_LIST", GetContactListInput(query="boss"), [{"messages": []}, {}]),
+            (
+                "CUSTOM_GATHER_CONTEXT",
+                GatherContextInput(),
+                [
+                    {"emailAddress": "u@x.com", "messagesTotal": 1, "threadsTotal": 1},
+                    {"messagesUnread": 0, "messagesTotal": 0},
+                    {"messages": []},
+                ],
+            ),
+            (
+                "FETCH_MESSAGES",
+                FetchMessagesInput(query="after:1790000000", per_page=5),
+                None,
+            ),
+            ("FETCH_THREAD", FetchThreadInput(thread_ids=["thread-1"]), None),
+        ],
+        ids=[
+            "mark-as-read",
+            "mark-as-unread",
+            "archive",
+            "star",
+            "unread-count",
+            "contact-list",
+            "gather-context",
+            "fetch-messages",
+            "fetch-thread",
+        ],
+    )
+    def test_the_proxy_is_only_ever_called_for_the_caller(
+        self, mock_proxy, tool, tool_request, responses
+    ):
+        mock_proxy.side_effect = responses if responses is not None else _one_message_mailbox()
+
+        _register_and_get_tools()[tool](
+            request=tool_request, execute_request=MagicMock(), auth_credentials=AUTH_CREDS
+        )
+
+        assert _users_asked(mock_proxy) == {"user_test_123"}
+
+    def test_credentials_without_a_user_are_refused_before_any_mailbox_call(self, mock_proxy):
+        """No user_id means no mailbox to act on, and an empty string is not a mailbox.
+
+        Defaulting to "" would send every such call to Gmail as some anonymous account,
+        which is how a user's mail ends up read under someone else's id.
+        """
+        with pytest.raises(ValueError, match="user_id"):
+            _register_and_get_tools()["MARK_AS_READ"](
+                request=MarkAsReadInput(message_ids=["m1"]),
+                execute_request=MagicMock(),
+                auth_credentials={},
+            )
+
+        mock_proxy.assert_not_called()
+
+
+class TestWhatEachToolAsksGmailFor:
+    """The query each tool builds, as Gmail receives it.
+
+    Gmail matches its parameter names exactly, so a re-cased or mis-spelled one is
+    ignored and the filter the run asked for silently widens to the whole mailbox — an
+    unread-inbox filter that matches nothing reads to the desk as "you have no mail".
+    """
+
+    def test_the_contact_search_sends_the_query_and_the_page_size(self, mock_proxy):
+        mock_proxy.side_effect = [{"messages": [{"id": "m1"}]}, {}]
+
+        _register_and_get_tools()["GET_CONTACT_LIST"](
+            request=GetContactListInput(query="from:boss@example.com", max_results=42),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        search = mock_proxy.call_args_list[0].args[0]
+        assert search.query == {"q": "from:boss@example.com", "maxResults": 42}
+        assert search.endpoint.endswith("/users/me/messages")
+
+    def test_the_recent_inbox_ids_ask_the_inbox_for_a_bounded_page(self, mock_proxy):
+        mock_proxy.side_effect = [
+            {"emailAddress": "u@x.com", "messagesTotal": 1, "threadsTotal": 1},
+            {"messagesUnread": 0, "messagesTotal": 0},
+            {"messages": [{"id": "m1"}]},
+        ]
+
+        _register_and_get_tools()["CUSTOM_GATHER_CONTEXT"](
+            request=GatherContextInput(), execute_request=MagicMock(), auth_credentials=AUTH_CREDS
+        )
+
+        recent = mock_proxy.call_args_list[2].args[0]
+        assert recent.query == {"labelIds": "INBOX", "maxResults": 5}
+
+
+class TestTheInlineEmailCard:
+    """The card the chat renders beside an inline result, row by row."""
+
+    def test_each_row_carries_its_own_field_under_the_key_the_card_reads(self, mock_proxy):
+        """Every key holds that message's own value, and no others.
+
+        The card is the list a user scans before deciding what to read: a row whose
+        subject holds the sender's address, or whose id holds the thread id, is a
+        message they cannot act on.
+        """
+        writer = MagicMock()
+        mock_proxy.side_effect = _one_message_mailbox()
+
+        with (
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.get_stream_writer",
+                return_value=writer,
+            ),
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.current_run_config",
+                return_value={"configurable": {}},
+            ),
+        ):
+            _register_and_get_tools()["FETCH_MESSAGES"](
+                request=FetchMessagesInput(query="after:1790000000", per_page=5),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+        payload = writer.call_args.args[0]
+        assert payload["resultSize"] == 1
+        (row,) = payload["email_fetch_data"]
+        assert set(row) == {"from", "subject", "time", "thread_id", "id"}
+        assert row["from"] == "Alice <alice@example.com>"
+        assert row["subject"] == "Lease renewal"
+        assert row["thread_id"] == "thread-1"
+        assert row["id"] == "msg-1"
+        assert row["time"]
+
+
+class TestTheOffloadedFile:
+    """The JSONL the agent queries instead of holding the mail in context."""
+
+    def test_the_file_is_one_full_view_per_line_written_for_this_run(self, mock_proxy, tmp_path):
+        """Every field is in the file, whatever the caller projected.
+
+        The agent queries the file for whatever it did not ask for inline, so a body the
+        caller narrowed away has to be here or the query finds nothing and reports it
+        as no match. The byte count is the file's, so a read plan can price the read.
+        """
+        written: dict[str, str] = {}
+
+        def _write(*, user_id, conversation_id, relative_path, content):
+            written.update(user_id=user_id, conversation_id=conversation_id, content=content)
+            return tmp_path / "f.jsonl", "/workspace/sessions/run/f.jsonl"
+
+        mock_proxy.side_effect = _one_message_mailbox()
+
+        with (
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.write_session_file_sync",
+                side_effect=_write,
+            ),
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.current_run_config",
+                return_value={"configurable": {"vfs_session_id": "run"}},
+            ),
+        ):
+            result = _register_and_get_tools()["FETCH_MESSAGES"](
+                request=FetchMessagesInput(
+                    query="after:1790000000",
+                    offload=True,
+                    fields=["id", "from"],
+                ),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+        assert written["user_id"] == "user_test_123"
+        assert written["conversation_id"] == "run"
+        assert result["offloaded_to"] == "/workspace/sessions/run/f.jsonl"
+        assert result[OFFLOAD_RESULT_KEY]["bytes"] == len(written["content"].encode("utf-8"))
+        assert result[OFFLOAD_RESULT_KEY]["path"] == "/workspace/sessions/run/f.jsonl"
+        assert result[OFFLOAD_RESULT_KEY]["fmt"] == "jsonl"
+        (line,) = written["content"].splitlines()
+        assert json.loads(line)["id"] == "msg-1"
+        assert "body" in json.loads(line)
+        assert "The lease needs signing." in json.loads(line)["body"]
+
+
+class TestTheFetchQueryAndItsCursor:
+    def test_the_list_call_carries_the_combined_query_and_the_page_size(self, mock_proxy):
+        """Gmail's own parameter names, spelled as Gmail spells them.
+
+        Gmail ignores a parameter it does not recognise, so a re-cased "maxResults"
+        caps nothing and the desk walks a whole mailbox one default page at a time.
+        """
+        seen: list[dict[str, Any]] = []
+        mailbox = _one_message_mailbox()
+
+        def _serve(request: ProxyRequest) -> dict[str, Any]:
+            seen.append(dict(request.query or {}))
+            return mailbox(request)
+
+        mock_proxy.side_effect = _serve
+
+        _register_and_get_tools()["FETCH_MESSAGES"](
+            request=FetchMessagesInput(query="newer_than:1d", per_page=7),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert seen[0]["q"]
+        assert seen[0]["maxResults"] == 7
+
+    def test_fetched_at_is_the_epoch_second_gmail_was_asked_at(self, mock_proxy):
+        """The desk's cursor is a Unix second, the same everywhere.
+
+        It is fed straight back as `after:<fetched_at>`, so it has to be the epoch Gmail
+        will read rather than a wall-clock string or a local offset: an hour out and
+        every later sweep either re-reads or skips an hour of mail.
+        """
+        mock_proxy.side_effect = _one_message_mailbox()
+
+        with time_machine.travel(FETCH_STARTED, tick=False):
+            result = _register_and_get_tools()["FETCH_MESSAGES"](
+                request=FetchMessagesInput(query="after:1790000000", per_page=5),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+        assert result["fetched_at"] == int(FETCH_STARTED.timestamp())
+
+    def test_a_result_exactly_at_the_inline_limit_is_still_inline(self, mock_proxy):
+        """The limit is `over`, not `at`: a result that exactly fills it stays in context.
+
+        Offloading on the boundary would hand the agent a file for the sake of one
+        character of headroom, and the user a download they never asked for.
+        """
+        request = FetchMessagesInput(query="after:1790000000", per_page=5)
+        exact = _inline_size_of(mock_proxy, request)
+        mock_proxy.side_effect = _one_message_mailbox()
+
+        with (
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.INLINE_LIMIT_CHARS",
+                exact,
+            ),
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.current_run_config",
+                return_value={"configurable": {"vfs_session_id": "run"}},
+            ),
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.write_session_file_sync",
+                return_value=("/tmp/f.jsonl", "/workspace/sessions/run/f.jsonl"),
+            ),
+        ):
+            at_limit = _register_and_get_tools()["FETCH_MESSAGES"](
+                request=request, execute_request=MagicMock(), auth_credentials=AUTH_CREDS
+            )
+
+        mock_proxy.side_effect = _one_message_mailbox()
+        with (
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.INLINE_LIMIT_CHARS",
+                exact - 1,
+            ),
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.write_session_file_sync",
+                return_value=("/tmp/f.jsonl", "/workspace/sessions/run/f.jsonl"),
+            ),
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.current_run_config",
+                return_value={"configurable": {"vfs_session_id": "run"}},
+            ),
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.current_run_config",
+                return_value={"configurable": {"vfs_session_id": "run"}},
+            ),
+        ):
+            one_over = _register_and_get_tools()["FETCH_MESSAGES"](
+                request=request, execute_request=MagicMock(), auth_credentials=AUTH_CREDS
+            )
+
+        assert "offloaded_to" not in at_limit
+        assert one_over["offloaded_to"] == "/workspace/sessions/run/f.jsonl"
+
+
+def _inline_size_of(mock_proxy, request: FetchMessagesInput) -> int:
+    """Measure this request's inline result by running it, for use as its own size limit."""
+    mock_proxy.side_effect = _one_message_mailbox()
+    with patch(
+        "app.services.composio.custom_tools.gmail_tools.current_run_config",
+        return_value={"configurable": {}},
+    ):
+        result = _register_and_get_tools()["FETCH_MESSAGES"](
+            request=request, execute_request=MagicMock(), auth_credentials=AUTH_CREDS
+        )
+    return len(json.dumps({"messages": result["messages"]}))
+
+
+class TestTheThreadRead:
+    """FETCH_THREAD rebuilds a conversation; every message of it has to arrive."""
+
+    def _threads(self, count: int = 2) -> Callable[[ProxyRequest], dict[str, Any]]:
+        """Serve one thread carrying `count` messages, addressed by the id asked for."""
+        single = _one_message_mailbox()
+        seen: list[dict[str, Any]] = []
+
+        def serve(request: ProxyRequest) -> dict[str, Any]:
+            seen.append(dict(request.query or {}))
+            if re.match(r".+/users/me/messages/?$", request.endpoint):
+                return {"messages": [{"id": "msg-1", "threadId": "thread-1"}]}
+            thread_id = re.search(r"/threads/([^/]+)$", request.endpoint).group(1)
+            payload = single(
+                ProxyRequest(user_id="u", toolkit="gmail", endpoint=request.endpoint, method="GET")
+            )
+            messages = [
+                {
+                    **payload,
+                    "id": f"msg-{index + 1}",
+                    "threadId": thread_id,
+                    "snippet": f"message {index + 1}",
+                }
+                for index in range(count)
+            ]
+            return {"id": thread_id, "messages": messages}
+
+        serve.queries = seen  # type: ignore[attr-defined]
+        return serve
+
+    def test_each_thread_comes_back_under_its_own_id_with_its_message_count(self, mock_proxy):
+        """The agent groups by thread id and tells the user how much each one holds.
+
+        A count that disagrees with the messages attached to it reads as a summary of a
+        conversation that does not exist.
+        """
+        mock_proxy.side_effect = self._threads(count=3)
+
+        result = _register_and_get_tools()["FETCH_THREAD"](
+            request=FetchThreadInput(thread_ids=["thread-1"]),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert [thread["id"] for thread in result["threads"]] == ["thread-1"]
+        (thread,) = result["threads"]
+        assert thread["message_count"] == 3
+        assert [message["id"] for message in thread["messages"]] == [
+            "msg-1",
+            "msg-2",
+            "msg-3",
+        ]
+
+    def test_the_body_is_only_fetched_when_a_field_asks_for_it(self, mock_proxy):
+        """format=full costs a full MIME fetch per thread; a metadata one does not.
+
+        Asked for the wrong way round, a metadata-only sweep pays for every body it will
+        not read, and a body-requesting read comes back with the body missing.
+        """
+        for fields, processing, expected in (
+            (["id"], "none", "metadata"),
+            (["subject"], "none", "metadata"),
+            (["body"], "raw", "full"),
+            (["attachments"], "none", "full"),
+        ):
+            mock_proxy.reset_mock()
+            mock_proxy.side_effect = self._threads()
+            _register_and_get_tools()["FETCH_THREAD"](
+                request=FetchThreadInput(
+                    thread_ids=["thread-1"], fields=fields, body_processing=processing
+                ),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+            formats = [
+                query["format"] for query in threads_formats(mock_proxy) if "format" in query
+            ]
+
+            assert formats == [expected], (fields, processing)
+
+    def test_a_cap_the_thread_fills_exactly_is_not_reported_as_truncated(self, mock_proxy):
+        """A cap that exactly fits every message of the thread truncated nothing.
+
+        Reporting truncation here tells the agent part of the conversation is missing
+        when it has all of it, and the run then goes looking for the rest.
+        """
+        mock_proxy.side_effect = self._threads(count=2)
+
+        result = _register_and_get_tools()["FETCH_THREAD"](
+            request=FetchThreadInput(thread_ids=["thread-1"], max_messages=2),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert result.get("truncated") is not True
+        (thread,) = result["threads"]
+        assert thread["message_count"] == 2
+
+    def test_a_cap_below_the_thread_size_reports_what_it_left_out(self, mock_proxy):
+        mock_proxy.side_effect = self._threads(count=4)
+
+        result = _register_and_get_tools()["FETCH_THREAD"](
+            request=FetchThreadInput(thread_ids=["thread-1"], max_messages=3),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert result["truncated"] is True
+        (thread,) = result["threads"]
+        assert len(thread["messages"]) == 3
+
+
+class TestAStarredMessageIsStillTheCallersOwn:
+    def test_unstarring_calls_gmail_for_the_caller_too(self, mock_proxy):
+        """The unstar branch takes the same user as the star branch.
+
+        Reading one and not the other means half the star tool writes to whatever
+        mailbox the proxy defaults to.
+        """
+        mock_proxy.return_value = {"id": "m1"}
+
+        _register_and_get_tools()["STAR_EMAIL"](
+            request=StarEmailInput(message_ids=["m1"], unstar=True),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert _users_asked(mock_proxy) == {"user_test_123"}
+        assert mock_proxy.call_args.args[0].body["removeLabelIds"] == ["STARRED"]
+
+
+class TestTheContactHeaderFetch:
+    """The metadata read behind GET_CONTACT_LIST, which only needs addressing headers."""
+
+    def test_it_asks_gmail_for_the_addressing_headers_and_nothing_else(self, mock_proxy):
+        """The header list decides what the contact list can contain.
+
+        Gmail returns exactly the headers named here, so dropping Reply-To loses the
+        address a reply actually goes to, and asking for Subject instead costs money
+        on every message of the search.
+        """
+        mock_proxy.side_effect = [{"messages": [{"id": "m1"}]}, {}]
+
+        _register_and_get_tools()["GET_CONTACT_LIST"](
+            request=GetContactListInput(query="boss"),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        message_read = mock_proxy.call_args_list[1].args[0]
+        assert message_read.query == {
+            "format": "metadata",
+            "metadataHeaders": ["From", "To", "Cc", "Reply-To"],
+        }
+
+
+class TestTheUnreadCountShape:
+    def test_a_single_label_query_reports_which_label_it_counted(self, mock_proxy):
+        """One label counted, the result says which — so a caller can tell two runs apart."""
+        mock_proxy.return_value = {"resultSizeEstimate": "12", "messagesUnreadEstimate": "4"}
+
+        result = _register_and_get_tools()["GET_UNREAD_COUNT"](
+            request=GetUnreadCountInput(mode="query", query="is:unread", label_ids=["INBOX"]),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert result["label_id"] == "INBOX"
+        assert result["is_estimate"] is True
+
+    def test_several_labels_counted_report_no_single_label(self, mock_proxy):
+        """Two labels is not one label: naming either of them would misattribute the count."""
+        mock_proxy.return_value = {"resultSizeEstimate": "12", "messagesUnreadEstimate": "4"}
+
+        result = _register_and_get_tools()["GET_UNREAD_COUNT"](
+            request=GetUnreadCountInput(
+                mode="query", query="is:unread", label_ids=["INBOX", "STARRED"]
+            ),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert "label_id" not in result
+        assert result["label_ids"] == ["INBOX", "STARRED"]
+
+
+class TestAMessageReadForMetadataStaysAMetadataRead:
+    def test_a_body_no_one_asked_for_is_not_fetched(self, mock_proxy):
+        """format=metadata is the default for a read whose fields exclude the body.
+
+        Asking for full instead pays for a MIME tree per message and then projects it
+        away, which on a sweep of a large mailbox is the whole cost of the run.
+        """
+        formats: list[str] = []
+        mailbox = _one_message_mailbox()
+
+        def _serve(request: ProxyRequest) -> dict[str, Any]:
+            if "/users/me/messages/" in request.endpoint and (request.query or {}).get("format"):
+                formats.append(request.query["format"])
+            return mailbox(request)
+
+        mock_proxy.side_effect = _serve
+
+        _register_and_get_tools()["FETCH_MESSAGES"](
+            request=FetchMessagesInput(query="after:1790000000", per_page=5, fields=["id"]),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert formats and set(formats) == {"metadata"}
+
+
+class TestTheThreadCapStopsTheWalk:
+    def test_a_cap_reached_on_the_first_thread_stops_the_walk(self, mock_proxy):
+        """The cap is a budget for the whole read, not per thread.
+
+        Once it is spent the walk stops: the threads behind it are dropped rather than
+        grouped, so the result says which threads it actually read instead of showing a
+        conversation list that is quietly incomplete.
+        """
+
+        def _serve(request: ProxyRequest) -> dict[str, Any]:
+            if match := re.search(r"/users/me/threads/([^/]+)$", request.endpoint):
+                payload = {
+                    "id": match.group(1),
+                    "messages": [
+                        {"id": f"{match.group(1)}-m{index}", "labelIds": ["INBOX"]}
+                        for index in range(2)
+                    ],
+                }
+                return payload
+            return {"messages": [{"id": "t1-m0", "threadId": "thread-1"}]}
+
+        mock_proxy.side_effect = _serve
+
+        result = _register_and_get_tools()["FETCH_THREAD"](
+            request=FetchThreadInput(
+                thread_ids=["thread-1", "thread-2"], max_messages=2, body_processing="none"
+            ),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert [thread["id"] for thread in result["threads"]] == ["thread-1"]
+        assert result["truncated"] is True
+
+
+class TestAPartialThreadRead:
+    def test_the_messages_fetched_before_the_failure_come_back_projected(self, mock_proxy):
+        """A thread read that dies halfway returns what it had, in the caller's fields.
+
+        The projection is what makes the partial result usable: an unprojected message
+        carries the whole body the caller did not ask for, and a projected one carries
+        exactly the fields it did.
+        """
+
+        def _serve(request: ProxyRequest) -> dict[str, Any]:
+            if match := re.search(r"/users/me/threads/([^/]+)$", request.endpoint):
+                if match.group(1) == "thread-2":
+                    raise RuntimeError("Gmail 503")
+                return {
+                    "id": "thread-1",
+                    "messages": [{"id": "m1", "threadId": "thread-1", "labelIds": ["INBOX"]}],
+                }
+            return {"messages": [{"id": "thread-1", "threadId": "thread-1"}]}
+
+        mock_proxy.side_effect = _serve
+
+        result = _register_and_get_tools()["FETCH_THREAD"](
+            request=FetchThreadInput(thread_ids=["thread-1", "thread-2"], fields=["id"]),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert result["partial"] is True
+        assert [message["id"] for message in result["messages"]] == ["m1"]
+        assert set(result["messages"][0]) == {"id"}
+
+
+class TestAPartialFetchStaysProjected:
+    def test_the_messages_fetched_before_the_failure_carry_only_the_asked_fields(self, mock_proxy):
+        """A partial result is still a result, so it obeys the same field contract.
+
+        The unprojected form carries every message in full — the bodies the caller
+        narrowed away included — which is exactly what a run that failed halfway cannot
+        afford, twice over.
+        """
+        with time_machine.travel(FETCH_STARTED, tick=False) as traveller:
+            mock_proxy.side_effect = _gmail_taking_a_minute_per_call(
+                traveller, fail_second_page=True
+            )
+
+            result = _register_and_get_tools()["FETCH_MESSAGES"](
+                request=FetchMessagesInput(query="after:1790000000", per_page=3, fields=["id"]),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+        assert result["partial"] is True
+        assert result["messages"]
+        assert set(result["messages"][0]) == {"id"}
+
+    def test_a_complete_fetch_carries_only_the_fields_asked_for(self, mock_proxy):
+        """The whole-result path projects too, not just the partial one.
+
+        A caller that narrowed to ids pays for the fetch either way, so an unprojected
+        result hands it every field of every message it did not ask for.
+        """
+        mock_proxy.side_effect = _one_message_mailbox()
+
+        result = _register_and_get_tools()["FETCH_MESSAGES"](
+            request=FetchMessagesInput(query="after:1790000000", per_page=5, fields=["id"]),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert "offloaded_to" not in result
+        assert result["messages"]
+        assert set(result["messages"][0]) == {"id"}

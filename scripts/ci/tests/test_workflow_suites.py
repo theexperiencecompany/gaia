@@ -11,6 +11,7 @@ only stop running here by someone editing THIS file, which a reviewer sees.
 
 from __future__ import annotations
 
+import ast
 import json
 from pathlib import Path
 import subprocess
@@ -156,3 +157,28 @@ def test_the_quality_gate_requires_the_job_that_runs_them(workflow: dict[str, An
     # branch-protection target fails when test-python does.
     gate = workflow["jobs"]["quality-gate"]
     assert "test-python" in gate["needs"]
+
+
+def test_local_dagger_quality_checks_run_sequentially_with_bounded_workers() -> None:
+    """A local full gate must not fan out every heavy lane onto one developer Mac."""
+    dagger_source = DAGGER_MODULE.read_text()
+    tree = ast.parse(dagger_source)
+    gaia_ci = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "GaiaCi"
+    )
+    quality = next(
+        node
+        for node in gaia_ci.body
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "quality_checks"
+    )
+    source = ast.get_source_segment(DAGGER_MODULE.read_text(), quality)
+    assert source is not None
+    assert "asyncio.gather" not in source
+    assert "worker_limit=2" in source
+    assert "parallelism=1" in source
+    assert source.count('"--parallel=1"') == 3
+    assert '.with_env_variable("GAIA_BUILD_WORKERS", "2")' in source
+    next_config = (REPO_ROOT / "apps" / "web" / "next.config.mjs").read_text()
+    assert 'process.env.GAIA_BUILD_WORKERS' in next_config

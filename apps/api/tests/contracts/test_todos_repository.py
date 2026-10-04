@@ -879,6 +879,74 @@ class TestUpdateIfScheduledAt:
         assert updated is not None
 
 
+class TestSetTriggerSubscriptions:
+    """Two writers appending a watch to one todo: the second write must see the first."""
+
+    def _watch(self, trigger_name: str = "gmail_new_message") -> TriggerSubscription:
+        return TriggerSubscription(
+            trigger_name=trigger_name,
+            action=SubscriptionAction.EXECUTE,
+            resolution=SubscriptionResolution.ACCOUNT,
+        )
+
+    async def test_stores_the_watch_when_the_revision_matches(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1"))
+        stored = await repo.get(created.id, user_id="u1")
+        assert stored is not None
+        watch = self._watch()
+
+        updated = await repo.set_trigger_subscriptions(
+            created.id,
+            "u1",
+            subscriptions=[watch],
+            expected_updated_at=stored.updated_at,
+        )
+
+        assert updated is not None
+        assert [sub.id for sub in updated.trigger_subscriptions] == [watch.id]
+
+    async def test_a_stale_revision_keeps_the_other_writers_watch(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1"))
+        stored = await repo.get(created.id, user_id="u1")
+        assert stored is not None
+        first, second = self._watch("gmail_new_message"), self._watch("slack_new_message")
+        winner = await repo.set_trigger_subscriptions(
+            created.id,
+            "u1",
+            subscriptions=[first],
+            expected_updated_at=stored.updated_at,
+        )
+        assert winner is not None
+
+        assert (
+            await repo.set_trigger_subscriptions(
+                created.id,
+                "u1",
+                subscriptions=[second],
+                expected_updated_at=stored.updated_at,
+            )
+            is None
+        )
+        reread = await repo.get(created.id, user_id="u1")
+        assert reread is not None
+        assert [sub.id for sub in reread.trigger_subscriptions] == [first.id]
+
+    async def test_the_write_is_scoped_to_the_todos_owner(self, repo, make_doc):
+        created = await repo.create(make_doc(user_id="u1"))
+        stored = await repo.get(created.id, user_id="u1")
+        assert stored is not None
+
+        assert (
+            await repo.set_trigger_subscriptions(
+                created.id,
+                "u2",
+                subscriptions=[self._watch()],
+                expected_updated_at=stored.updated_at,
+            )
+            is None
+        )
+
+
 class TestCrossDomainDeletes:
     """Finders/deletes used by the onboarding + dev-reset cross-domain callers."""
 

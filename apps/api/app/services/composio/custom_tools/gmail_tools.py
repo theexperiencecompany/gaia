@@ -11,6 +11,7 @@ import datetime
 import json
 import math
 import re
+import time
 from typing import NotRequired, TypedDict
 import uuid
 
@@ -291,7 +292,7 @@ def _fetch_message_view(
     *,
     fields: Sequence[MessageFieldLiteral] | None,
     body_processing: BodyProcessingLiteral,
-    force_body: bool = False,
+    force_body: bool,
 ) -> GmailMessageView | None:
     """Fetch one message and build its full (unprojected) view.
 
@@ -363,8 +364,11 @@ def _aggregate_pages(
                 if first_page:
                     first_page = False
                     estimate = data.result_size_estimate
-                    expected = min(estimate, effective_max) if estimate is not None else 0
-                    headed_for_file = request.offload or expected > OFFLOAD_MIN_MESSAGES
+                    # An absent estimate says nothing about the size, so it cannot be
+                    # read as "small": only a number over the threshold offloads.
+                    headed_for_file = request.offload or (
+                        estimate is not None and min(estimate, effective_max) > OFFLOAD_MIN_MESSAGES
+                    )
                     force_body = headed_for_file and request.body_processing != "none"
                 page_ids = [ref.id for ref in data.messages if ref.id]
                 if not page_ids:
@@ -477,7 +481,7 @@ def _format_offload_result(
     """
     rel_path = _offload_path()
     full = [project_message_view(view, None) for view in views]
-    body = "\n".join(json.dumps(v, default=str) for v in full)
+    body = "\n".join(json.dumps(v) for v in full)
     file_size_bytes = len(body.encode("utf-8"))
     _, sandbox_path = write_session_file_sync(
         user_id=user_id,
@@ -593,7 +597,7 @@ def _count_inline_fit(messages: list[dict[str, object]]) -> int:
     budget = INLINE_LIMIT_CHARS
     count = 0
     for message in messages:
-        budget -= len(json.dumps(message, default=str)) + 2  # +2 for separators
+        budget -= len(json.dumps(message)) + 2  # +2 for separators
         if budget < 0:
             break
         count += 1
@@ -605,7 +609,7 @@ def _summarize(
     request: FetchMessagesInput,
 ) -> dict[str, object]:
     """Run the query and stamp its result with fetched_at, the Unix second before Gmail was asked."""
-    fetched_at = int(datetime.datetime.now(datetime.UTC).timestamp())
+    fetched_at = int(time.time())
     return {TOOL_RESULT_FETCHED_AT_KEY: fetched_at, **_fetch_and_shape(user_id, request)}
 
 
@@ -629,7 +633,7 @@ def _fetch_and_shape(
         )
 
     messages = [project_message_view(view, request.fields) for view in full_views]
-    serialized = json.dumps({"messages": messages}, default=str)
+    serialized = json.dumps({"messages": messages})
     over_char_limit = len(serialized) > INLINE_LIMIT_CHARS
     over_message_limit = len(messages) > OFFLOAD_MIN_MESSAGES
     if not request.offload and not over_char_limit and not over_message_limit:
@@ -797,7 +801,7 @@ def _summarize_threads(
         for thread_id, views in threads
     ]
     projected_flat = [project_message_view(view, request.fields) for view in flat_views]
-    serialized = json.dumps({"threads": grouped}, default=str)
+    serialized = json.dumps({"threads": grouped})
     over_char_limit = len(serialized) > INLINE_LIMIT_CHARS
     over_message_limit = len(flat_views) > OFFLOAD_MIN_MESSAGES
     if not over_char_limit and not over_message_limit:

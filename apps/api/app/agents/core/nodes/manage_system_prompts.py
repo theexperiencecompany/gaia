@@ -25,6 +25,7 @@ from langgraph.store.base import BaseStore
 
 from app.agents.context.slots import (
     SINGLETON_SLOTS,
+    TAIL_VOLATILE_PROVIDERS,
     PromptSlot,
     request_slot_order,
     slot_of,
@@ -141,10 +142,8 @@ def _manage_system_prompts(state: State, config: RunnableConfig) -> State:
         # behind the cache boundary. Characters, not tokens — no tokenizer
         # here, and ~4 chars/token is close enough to rank the slots.
         slot_chars = {name: len(text) for name, text in slot_text.items()}
-        # The per-turn slots are the ones that follow the conversation, so their
-        # presence in its tail is the layout that decides what joins the cached
-        # prefix; a sudden drop in cache hit rate is answered by reporting it.
-        tail_slots = slot_order[slot_order.index(PromptSlot.CONVERSATION) + 1 :]
+        # OpenRouter-wire providers place memory recall after conversation; OpenAI
+        # and Gemini keep it ahead, which is the layout this field diagnoses.
 
         log.set(
             prompt_pruning={
@@ -155,7 +154,7 @@ def _manage_system_prompts(state: State, config: RunnableConfig) -> State:
                 "dropped_system_prompts": kept.dropped_system,
                 "dropped_time_context": kept.dropped_time,
                 **{field: bool(by_slot.get(slot)) for slot, field in _KEPT_FIELDS.items()},
-                "tail_layout": PromptSlot.MEMORY_RECALL in tail_slots,
+                "tail_layout": lane is not None and lane.provider in TAIL_VOLATILE_PROVIDERS,
             }
         )
 

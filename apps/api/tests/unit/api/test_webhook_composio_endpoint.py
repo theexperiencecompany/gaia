@@ -14,9 +14,10 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
+from pydantic import AliasChoices, AliasPath, ValidationError
 import pytest
 
-from app.models.webhook_models import ComposioWebhookEvent
+from app.models.webhook_models import ComposioWebhookEvent, _stamped_in_data
 from app.services.integrations.integration_expiry import ExpiryOptions
 
 ENDPOINT = "/api/v1/webhook/composio"
@@ -384,6 +385,59 @@ def _trigger_event(event_type: str = "gmail_new_gmail_message") -> dict:
             "payload": {"subject": "hi"},
         },
     }
+
+
+class TestStampedDeliveryIds:
+    """Composio stamps the trigger ids inside `data`, not beside it.
+
+    The alias reads the wire path first and the plain name second, so a delivery
+    carrying both keeps the one Composio actually stamped, and a missing id is
+    reported at data.<name> — where Composio put it — rather than at the top level.
+    """
+
+    def test_the_wire_path_is_read_before_the_plain_name(self) -> None:
+        assert _stamped_in_data("connection_id") == AliasChoices(
+            AliasPath("data", "connection_id"), "connection_id"
+        )
+
+    def test_ids_stamped_inside_data_validate(self) -> None:
+        event = ComposioWebhookEvent.model_validate(_trigger_event())
+
+        assert event.connection_id == "conn-1"
+        assert event.trigger_id == "trig-1"
+        assert event.user_id == "507f1f77bcf86cd799439011"
+
+    def test_ids_given_directly_validate_too(self) -> None:
+        body = {
+            "type": "gmail_new_gmail_message",
+            "timestamp": "2026-08-10T05:44:33Z",
+            "data": {"payload": {"subject": "hi"}},
+            "connection_id": "conn-direct",
+            "connection_nano_id": "nano-direct",
+            "trigger_nano_id": "trig-nano-direct",
+            "trigger_id": "trig-direct",
+            "user_id": "507f1f77bcf86cd799439011",
+        }
+
+        event = ComposioWebhookEvent.model_validate(body)
+
+        assert event.connection_id == "conn-direct"
+        assert event.trigger_id == "trig-direct"
+
+    def test_a_missing_id_is_reported_where_composio_put_it(self) -> None:
+        body = _trigger_event()
+        del body["data"]["trigger_id"]
+
+        with pytest.raises(ValidationError) as caught:
+            ComposioWebhookEvent.model_validate(body)
+
+        assert caught.value.errors(include_url=False, include_input=False) == [
+            {
+                "type": "missing",
+                "loc": ("data", "trigger_id"),
+                "msg": "Field required",
+            }
+        ]
 
 
 class TestDeliveryGuards:

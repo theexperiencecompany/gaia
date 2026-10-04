@@ -227,7 +227,7 @@ async def webhook_composio(request: Request) -> ComposioWebhookAckResponse:
         event_data = ComposioWebhookEvent.model_validate(body)
     except ValidationError as e:
         # A delivery missing its timestamp or ids is refused, naming the fields.
-        raise RequestValidationError(e.errors(include_url=False, include_input=False)) from e
+        raise RequestValidationError(e.errors()) from e
     log.set(
         user={"id": event_data.user_id},
         webhook={"event_type": event_data.type, "trigger_id": event_data.trigger_id},
