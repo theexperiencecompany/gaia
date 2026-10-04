@@ -47,10 +47,10 @@ from app.models.integration_models import (
     UserIntegrationStatus,
 )
 from app.models.mcp_config import MCPConfig, OAuthDiscovery, OidcTokenResponse
+from app.services.mcp import mcp_client
 from app.services.mcp.langchain_adapter import SanitizingLangChainAdapter
 from app.services.mcp.mcp_client import (
     DCRNotSupportedError,
-    MCPAuthorizationRequiredError,
     MCPClient,
     StepUpAuthRequiredError,
     _extract_response_signal,
@@ -4596,7 +4596,7 @@ class TestHandleConnectFailureExact:
             patch.object(client, "_reset_to_disconnected", new_callable=AsyncMock) as reset,
             patch("app.services.mcp.mcp_client.log") as mock_log,
         ):
-            err = MCPAuthorizationRequiredError(INTEGRATION_ID)
+            err = mcp_client.MCPAuthorizationRequiredError(INTEGRATION_ID)
             result = await client._handle_connect_failure(err, INTEGRATION_ID, mcp_config)
 
         assert result is None

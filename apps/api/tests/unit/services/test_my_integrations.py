@@ -22,11 +22,8 @@ from app.schemas.integrations.responses import (
     MyIntegrationItem,
     MyIntegrationsResponse,
 )
-from app.services.integrations.my_integrations import (
-    get_integration_tools,
-    get_my_integrations,
-    get_my_integrations_snapshot,
-)
+from app.services.integrations import my_integrations
+from app.services.integrations.my_integrations import get_integration_tools, get_my_integrations
 from app.utils.errors import AppError
 
 _MOD = "app.services.integrations.my_integrations"
@@ -127,7 +124,7 @@ class TestGetMyIntegrations:
     ):
         mock_deps.status.side_effect = AssertionError("snapshot must remain fast")
 
-        result = await get_my_integrations_snapshot(USER_ID)
+        result = await my_integrations.get_my_integrations_snapshot(USER_ID)
 
         assert result.integrations[0].status == "not_connected"
         mock_deps.status.assert_not_awaited()
