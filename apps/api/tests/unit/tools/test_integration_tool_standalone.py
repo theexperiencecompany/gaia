@@ -686,6 +686,7 @@ class TestConnectIntegration:
         )
 
         assert "already connected" in result
+        mock_check.assert_any_call("gmail", FAKE_USER_ID)
         mock_request.assert_awaited_once_with(
             "posthog", "PostHog", FAKE_USER_ID, force_reconnect=False
         )
@@ -712,6 +713,7 @@ class TestConnectIntegration:
         )
 
         assert "not found" in result
+        mock_check.assert_awaited_once_with("gmail", FAKE_USER_ID)
         mock_request.assert_awaited_once_with("gmail", "Gmail", FAKE_USER_ID, force_reconnect=False)
 
     @patch(f"{MODULE}.get_stream_writer")
