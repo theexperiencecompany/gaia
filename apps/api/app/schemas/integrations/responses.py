@@ -164,6 +164,14 @@ class MyIntegrationsResponse(ResponseModel):
     total: int = 0
 
 
+class IntegrationStatusesResponse(ResponseModel):
+    """Current connection status map, fetched independently of the catalog."""
+
+    statuses: dict[str, bool] = Field(
+        description="Connection state keyed by integration id"
+    )
+
+
 class IntegrationToolsResponse(CamelModel, ResponseModel):
     """Full tool list for a single integration (catalog data, on demand)."""
 

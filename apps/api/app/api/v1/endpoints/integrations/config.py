@@ -14,6 +14,7 @@ from app.models.user_models import AuthenticatedUser
 from app.schemas.integrations.requests import ConnectIntegrationRequest
 from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
+    IntegrationStatusesResponse,
     IntegrationsConfigResponse,
     IntegrationSuccessResponse,
     IntegrationToolsResponse,
@@ -36,7 +37,9 @@ from app.services.integrations.integration_resolver import (
 from app.services.integrations.my_integrations import (
     get_integration_tools,
     get_my_integrations,
+    get_my_integrations_snapshot,
 )
+from app.services.integrations.integration_status import get_all_integrations_status
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -62,6 +65,28 @@ async def get_my_integrations_endpoint(
     result = await get_my_integrations(user_id)
     log.set(result_count=result.total, outcome="success")
     return result
+
+
+@router.get("/me/snapshot")
+async def get_my_integrations_snapshot_endpoint(
+    user_id: str = Depends(get_user_id),
+) -> MyIntegrationsResponse:
+    """Return the workspace catalog without waiting for connection checks."""
+    log.set(operation="get_my_integrations_snapshot", user={"id": user_id})
+    result = await get_my_integrations_snapshot(user_id)
+    log.set(result_count=result.total, outcome="success")
+    return result
+
+
+@router.get("/status")
+async def get_integration_statuses_endpoint(
+    user_id: str = Depends(get_user_id),
+) -> IntegrationStatusesResponse:
+    """Refresh connection state independently from the fast catalog snapshot."""
+    log.set(operation="get_integration_statuses", user={"id": user_id})
+    statuses = await get_all_integrations_status(user_id)
+    log.set(result_count=len(statuses), outcome="success")
+    return IntegrationStatusesResponse(statuses=statuses)
 
 
 @router.get("/{integration_id}/tools")

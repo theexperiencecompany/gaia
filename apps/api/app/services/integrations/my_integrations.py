@@ -12,6 +12,7 @@ from typing import cast
 
 from app.constants.cache import ONE_DAY_TTL
 from app.decorators.caching import Cacheable
+from app.models.integration_models import UserIntegrationsListResponse
 from app.schemas.integrations.responses import (
     CommunityIntegrationCreator,
     IntegrationToolsResponse,
@@ -57,6 +58,28 @@ async def get_my_integrations(user_id: str) -> MyIntegrationsResponse:
     )
 
 
+async def get_my_integrations_snapshot(user_id: str) -> MyIntegrationsResponse:
+    """Return the cached catalog from Mongo without external status checks."""
+    return cast(
+        MyIntegrationsResponse,
+        await _get_cached_my_integrations_snapshot(user_id),
+    )
+
+
+@Cacheable(
+    key_pattern="tools:user:{user_id}:my_snapshot",
+    ttl=ONE_DAY_TTL,
+    model=MyIntegrationsResponse,
+)
+async def _get_cached_my_integrations_snapshot(user_id: str) -> MyIntegrationsResponse:
+    added, category_counts = await asyncio.gather(
+        get_user_integrations(user_id),
+        get_tool_categories(),
+    )
+    status_map = {item.integration_id: item.status == "connected" for item in added.integrations}
+    return _build_my_integrations_response(user_id, status_map, added, category_counts)
+
+
 @Cacheable(
     key_pattern="tools:user:{user_id}:my",
     ttl=ONE_DAY_TTL,
@@ -67,12 +90,20 @@ async def _get_cached_my_integrations(
 ) -> MyIntegrationsResponse:
     """Build the cached catalog after the live MCP credential check."""
     log.set(component="my_integrations", operation="get_my_integrations", user={"id": user_id})
-
-    config = build_integrations_config()
     added, category_counts = await asyncio.gather(
         get_user_integrations(user_id),
         get_tool_categories(),
     )
+    return _build_my_integrations_response(user_id, status_map, added, category_counts)
+
+
+def _build_my_integrations_response(
+    user_id: str,
+    status_map: dict[str, bool],
+    added: UserIntegrationsListResponse,
+    category_counts: dict[str, int],
+) -> MyIntegrationsResponse:
+    config = build_integrations_config()
 
     # Registry tool counts are keyed by (often upper-case) category; the user's
     # own tool lists give exact counts for custom/MCP integrations.

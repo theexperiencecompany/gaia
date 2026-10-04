@@ -14,7 +14,10 @@ from httpx import AsyncClient
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.models.user_models import AuthenticatedUser, UserDocument
-from app.schemas.integrations.responses import ConnectIntegrationResponse
+from app.schemas.integrations.responses import (
+    ConnectIntegrationResponse,
+    MyIntegrationsResponse,
+)
 from app.services.analytics_service import AnalyticsEvents
 from tests.factories import make_authenticated_user
 
@@ -108,6 +111,37 @@ class TestGetIntegrationsConfig:
             resp = await unauthed_client.get(f"{API}/config")
         # Config endpoint has no auth dependency — should succeed
         assert resp.status_code == 200
+
+
+class TestFastIntegrationCatalog:
+    async def test_snapshot_uses_fast_catalog_service(self, client: AsyncClient) -> None:
+        snapshot = MyIntegrationsResponse(integrations=[], total=0)
+        with patch(
+            f"{_MODULE}.get_my_integrations_snapshot",
+            create=True,
+            new_callable=AsyncMock,
+            return_value=snapshot,
+        ) as mock_snapshot:
+            resp = await client.get(f"{API}/me/snapshot")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"integrations": [], "total": 0}
+        mock_snapshot.assert_awaited_once_with(_VALID_UID)
+
+    async def test_status_endpoint_returns_the_refreshable_status_map(
+        self, client: AsyncClient
+    ) -> None:
+        with patch(
+            f"{_MODULE}.get_all_integrations_status",
+            create=True,
+            new_callable=AsyncMock,
+            return_value={"posthog": False},
+        ) as mock_status:
+            resp = await client.get(f"{API}/status")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"statuses": {"posthog": False}}
+        mock_status.assert_awaited_once_with(_VALID_UID)
 
 
 # ===========================================================================

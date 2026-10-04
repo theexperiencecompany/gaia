@@ -21,7 +21,11 @@ from app.schemas.integrations.responses import (
     IntegrationsConfigResponse,
     MyIntegrationsResponse,
 )
-from app.services.integrations.my_integrations import get_integration_tools, get_my_integrations
+from app.services.integrations.my_integrations import (
+    get_integration_tools,
+    get_my_integrations,
+    get_my_integrations_snapshot,
+)
 from app.utils.errors import AppError
 
 _MOD = "app.services.integrations.my_integrations"
@@ -117,6 +121,16 @@ def mock_deps():
 
 
 class TestGetMyIntegrations:
+    async def test_snapshot_does_not_wait_for_external_status_checks(
+        self, mock_deps, mock_redis_cache
+    ):
+        mock_deps.status.side_effect = AssertionError("snapshot must remain fast")
+
+        result = await get_my_integrations_snapshot(USER_ID)
+
+        assert result.integrations[0].status == "not_connected"
+        mock_deps.status.assert_not_awaited()
+
     @pytest.mark.regression
     async def test_auth_mcp_uses_reconciled_status_over_connected_mongo_record(
         self, mock_deps, mock_redis_cache

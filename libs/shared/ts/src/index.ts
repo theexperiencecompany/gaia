@@ -434,6 +434,7 @@ export {
   getTriggerLabel,
   INTEGRATION_STATE_ORDER,
   integrationConnectionState,
+  reconcileIntegrationStatus,
   isKnownApprovalStatus,
   isOverdue,
   isReactionAck,
