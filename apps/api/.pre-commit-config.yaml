@@ -2,6 +2,9 @@
 # tools/lints/check_tool_pins.py (EXPECTED table) — even though the root
 # .pre-commit-config.yaml also gates them repo-wide at identical versions.
 # Do not remove: the guard fails without these blocks.
+# Commit-time only; the pre-push stage belongs to the root ci:local hook.
+default_stages: [pre-commit]
+
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.13
