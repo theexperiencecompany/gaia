@@ -93,7 +93,6 @@ from app.workers.tasks.tracked_todo_tasks import (
     _execute_todo_with_retry,
     _mark_todo_failed,
     _RunContext,
-    _schedule_retry,
     execute_tracked_todo,
     resume_tracked_todo,
     safety_net_check_orphaned_todos,
@@ -1140,9 +1139,14 @@ class TestExecuteTodoWithRetryFailure:
         assert args == ("execute_tracked_todo", "todo-1")
         assert kwargs.items() >= _scheduled(next_attempt).items()
 
+    @pytest.mark.regression
     @pytest.mark.parametrize("attempt", [0, len(RETRY_BACKOFF) + 1, -1])
     async def test_a_retry_off_the_ladder_fails_loudly(self, attempt: int) -> None:
         """Refuse an attempt the ladder has no rung for."""
+        # Imported here, not at module scope: the helper does not exist on the
+        # base revision, and the regression lane must run this file there.
+        from app.workers.tasks.tracked_todo_tasks import _schedule_retry
+
         with pytest.raises(ValueError, match="no rung on the"):
             await _schedule_retry(_doc(), attempt, None, [])
 
@@ -1307,7 +1311,6 @@ class TestARecurringTodoOutlivesAFailedOccurrence:
         assert _updates(seams.repo) == [{"gaia_retry_count": 0}]
         seams.repo.add_labels.assert_not_awaited()
 
-    @pytest.mark.regression
     async def test_a_delivered_run_arms_the_next_occurrence_in_the_users_own_timezone(self) -> None:
         """The next run is stamped in the user's zone, not the worker's UTC."""
         doc = _doc(recurrence="0 8 * * *")  # due now, so this is a real occurrence
@@ -1319,7 +1322,6 @@ class TestARecurringTodoOutlivesAFailedOccurrence:
         assert call.args[:2] == ("todo-1", "user-1")
         assert scheduled_at.astimezone(KOLKATA).hour == 8
 
-    @pytest.mark.regression
     async def test_a_watch_run_delivered_leaves_the_schedule_and_clears_the_count(self) -> None:
         """A watch firing is not the todo's schedule, so only the retry count is its to clear."""
         pending = datetime.now(UTC) + timedelta(hours=5)

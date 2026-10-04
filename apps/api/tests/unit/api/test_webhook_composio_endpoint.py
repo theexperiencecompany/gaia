@@ -17,7 +17,7 @@ from httpx import AsyncClient
 from pydantic import AliasChoices, AliasPath, ValidationError
 import pytest
 
-from app.models.webhook_models import ComposioWebhookEvent, _stamped_in_data
+from app.models.webhook_models import ComposioWebhookEvent
 from app.services.integrations.integration_expiry import ExpiryOptions
 
 ENDPOINT = "/api/v1/webhook/composio"
@@ -390,11 +390,19 @@ class TestStampedDeliveryIds:
     reported at data.<name> — where Composio put it — rather than at the top level.
     """
 
+    @pytest.mark.regression
     def test_the_wire_path_is_read_before_the_plain_name(self) -> None:
+        # Imported here, not at module scope: the helper does not exist on the
+        # base revision, and the regression lane must run this file there. A
+        # module-level import would fail collection (an error proves nothing);
+        # failing inside the body registers the red the mark promises.
+        from app.models.webhook_models import _stamped_in_data
+
         assert _stamped_in_data("connection_id") == AliasChoices(
             AliasPath("data", "connection_id"), "connection_id"
         )
 
+    @pytest.mark.regression
     def test_ids_stamped_inside_data_validate(self) -> None:
         event = ComposioWebhookEvent.model_validate(_trigger_event())
 
@@ -419,6 +427,7 @@ class TestStampedDeliveryIds:
         assert event.connection_id == "conn-direct"
         assert event.trigger_id == "trig-direct"
 
+    @pytest.mark.regression
     def test_a_missing_id_is_reported_where_composio_put_it(self) -> None:
         body = _trigger_event()
         del body["data"]["trigger_id"]
