@@ -11,16 +11,17 @@
 //   Auth: Authorization: Bearer <GAIA_LAB_TOKEN>
 //
 // Version-sensitive API uses (verified live against opencode v2.0.2, 2026-10-04:
-// v2.0.2-as-installed REQUIRES `export default { id, setup }` and rejects the
-// named-export function shape the docs page still shows. If plugins stop
-// loading after an upgrade, re-probe with a minimal default-export probe and
-// check /api/plugin for state active.):
-//   - Default export { id, setup }: setup(ctx) returns the hooks object.
-//   - The `event:` hook receives `{ event }` and dispatches on `event.type`.
+// v2.0.2-as-installed REQUIRES `export default { id, setup }`, AND ignores the
+// hooks object setup returns — `{ event }` handlers are never invoked (proven:
+// setup side-effects ran, zero hook calls across idle/created/deleted while
+// /api/plugin reported active). The wired path is `for await (... of
+// ctx.event.subscribe())` inside setup (verified live; the callback form
+// subscribe(fn) silently delivers nothing). If plugins stop relaying after an
+// upgrade, re-probe with a catch-all subscribe loop, not the docs page.):
 //   - Subscribed event.type values: `session.idle`, `permission.asked`,
-//     `session.error` (docs event list; relay of idle/permission UNVERIFIED
-//     without provider auth — session CRUD works pre-auth, model turns don't).
-// If any of the above changed upstream, check --help / the docs page, not this file.
+//     `session.error`. Turn-scoped: strictly post-OAuth, never fires for
+//     API-driven session CRUD (verified: creates/deletes emit SSE only).
+// If any of the above changed upstream, re-probe live, not this file.
 
 const KIND_BY_EVENT_TYPE = {
   "session.idle": "idle",
@@ -44,26 +45,31 @@ async function postEvent(url, token, payload) {
 
 export default {
   id: "gaia-lab-notify",
-  setup: async (_ctx) => {
-    return {
-      // Version-sensitive: `event:` hook shape per https://opencode.ai/docs/plugins.
-      event: async ({ event }) => {
-        const kind = KIND_BY_EVENT_TYPE[event?.type];
-        if (!kind) return;
-        const url = process.env.GAIA_LAB_CALLBACK_URL;
-        const token = process.env.GAIA_LAB_TOKEN;
-        const sessionId = process.env.GAIA_LAB_SESSION_ID;
-        if (!url || !token || !sessionId) return;
-        try {
-          await postEvent(url, token, {
-            session_id: sessionId,
-            kind,
-            raw: event,
-          });
-        } catch {
-          // Never break the agent session on a notify failure.
+  setup: async (ctx) => {
+    // Fire-and-forget: the subscribe loop below is the relay; never block setup.
+    void (async () => {
+      try {
+        for await (const event of ctx.event.subscribe()) {
+          const kind = KIND_BY_EVENT_TYPE[event?.type];
+          if (!kind) continue;
+          const url = process.env.GAIA_LAB_CALLBACK_URL;
+          const token = process.env.GAIA_LAB_TOKEN;
+          const sessionId = process.env.GAIA_LAB_SESSION_ID;
+          if (!url || !token || !sessionId) continue;
+          try {
+            await postEvent(url, token, {
+              session_id: sessionId,
+              kind,
+              raw: event,
+            });
+          } catch {
+            // Never break the agent session on a notify failure.
+          }
         }
-      },
-    };
+      } catch {
+        // Subscribe loop died; session continues without relay.
+      }
+    })();
+    return {};
   },
 };
