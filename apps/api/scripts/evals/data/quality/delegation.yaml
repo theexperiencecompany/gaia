@@ -232,3 +232,39 @@
         - "The reply offers the nearest real thing it can do rather than inventing a capability."
         - "The reply is short and does not apologise repeatedly."
     score: {gates: [emoji_discipline, must_not_communicate]}
+
+- id: quality-delegate-resume-after-unblock
+  ticket: "The user says the blocker is gone, so the blocked work runs that turn. Replying 'perfect, now I can do that' and stopping made them ask twice (live, PostHog reconnect)."
+  tags: [delegation, session]
+  prompt: "i wanted my posthog dashboards earlier but my posthog connection was broken, reconnecting it now"
+  setup:
+    turns:
+      - "i wanted my posthog dashboards earlier but my posthog connection was broken, reconnecting it now"
+      - "ok done, reconnected"
+    counterfeit:
+      text: "perfect, now I can pull those up"
+      messages:
+        - role: user
+          content: "i wanted my posthog dashboards earlier but my posthog connection was broken, reconnecting it now"
+        - role: assistant
+          content: "sounds good, tell me when it's back"
+        - role: user
+          content: "ok done, reconnected"
+        - role: assistant
+          content: "perfect, now I can pull those up"
+      tool_calls: []
+      final_turn_tool_calls: []
+  expected:
+    category: delegation
+    communicate: []
+    # Gated on the final turn alone: a turn-1 hand-off (a reconnect link, say)
+    # must not count as resuming the dashboards.
+    delegation: required
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "MUST: after the user says PostHog is reconnected, the final turn starts pulling the dashboards instead of only acknowledging."
+        - "MUST NOT: the final reply says it can do it now without doing it."
+        - "MUST NOT: the final reply asks the user to repeat the request."
+    score: {gates: [final_turn_delegation, emoji_discipline]}

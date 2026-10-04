@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from fastapi import FastAPI
 from httpx import AsyncClient
+import pytest
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.models.user_models import AuthenticatedUser, UserDocument
@@ -685,6 +686,7 @@ class TestConnectLinkEndpoint:
         assert resp.status_code == 303
         assert "connect_error=invalid_or_expired_link" in resp.headers["location"]
 
+    @pytest.mark.regression
     async def test_get_does_not_spend_the_code(self, unauthed_client: AsyncClient) -> None:
         """Regression: Telegram's link-preview GET spent the single-use code before the user tapped it."""
         with patch(

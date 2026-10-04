@@ -64,6 +64,7 @@ from scripts.evals.core.scorers import (
     NOTHING_TO_INSPECT,
     BubbleBoundary,
     CommunicateGate,
+    DelegationGate,
     OpenUICheck,
     RubricJudge,
     ToolCard,
@@ -300,6 +301,7 @@ class ChatStreamTransport:
             raise ProviderError(provider.name, "case prompt has no turns")
         transcript: list[dict[str, str]] = []
         tool_calls: list[dict[str, Any]] = []
+        final_turn_tool_calls: list[dict[str, Any]] = []
         raw: list[dict[str, Any]] = []
         text_parts: list[str] = []
         follow_up_actions: list[str] | None = None
@@ -329,6 +331,7 @@ class ChatStreamTransport:
                             transcript.append({"role": "assistant", "content": turn["text"]})
                         text_parts.append(turn["text"])
                         tool_calls.extend(turn["tool_calls"])
+                        final_turn_tool_calls = turn["tool_calls"]
                         raw.extend(turn["raw"])
                         if turn["error"]:
                             error = error or turn["error"]
@@ -347,6 +350,7 @@ class ChatStreamTransport:
                 model=provider.model,
                 messages=transcript,
                 tool_calls=tool_calls,
+                final_turn_tool_calls=final_turn_tool_calls,
                 text=text,
                 raw=raw,
                 duration_s=time.monotonic() - start,
@@ -379,6 +383,7 @@ class ChatStreamTransport:
             model=provider.model,
             messages=transcript,
             tool_calls=tool_calls,
+            final_turn_tool_calls=final_turn_tool_calls,
             text=text,
             raw=raw,
             tokens_in=tokens_in,
@@ -610,11 +615,23 @@ def _reject_unfalsifiable_openui_gate(case: Case) -> None:
 
 def _tool_card_gate(case: Case, run: CaseRun) -> float:
     del case
-    return ToolCard().score(tool_calls=run.tool_calls, messages=run.messages, output=run.text).value
+    result = ToolCard().score(tool_calls=run.tool_calls, messages=run.messages, output=run.text)
+    return float(result.value)
+
+
+def _final_turn_delegation_gate(case: Case, run: CaseRun) -> float:
+    """expected.delegation, judged on the last turn alone: an earlier hand-off cannot satisfy it."""
+    result = DelegationGate().score(
+        output=run.text,
+        tool_calls=run.final_turn_tool_calls,
+        expected=case.expected,
+        messages=run.messages,
+    )
+    return float(result.value)
 
 
 def _openui_gate(case: Case, run: CaseRun) -> float:
-    return OpenUICheck().score(output=run.text, expected=case.expected).value
+    return float(OpenUICheck().score(output=run.text, expected=case.expected).value)
 
 
 def _recorded(
@@ -641,6 +658,7 @@ def _recorded(
 QUALITY_GATES: ExtraGates = {
     "tool_card": _tool_card_gate,
     "openui": _openui_gate,
+    "final_turn_delegation": _final_turn_delegation_gate,
     "emoji_discipline": _recorded("emoji", _emoji_discipline_check),
     "suggestion": _recorded("suggestion", _suggestion_check),
     **{name: _recorded(name, check) for name, check in PROMPT_GATES.items()},
