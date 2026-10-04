@@ -8,14 +8,15 @@ target: executor
 
 Drive the CLI directly via bash. Do not invent flags; confirm with `claude --help` when unsure.
 
-## Install (pinned, user-writable prefix)
+## Install (part of every launch line)
+
+The run setup installs nothing; start every launch with this. The installer puts the binary in `~/.local/bin` (local disk, about 11s on a fresh sandbox, skipped when present):
 
 ```bash
-export PATH="/workspace/.local/bin:$PATH"
+export PATH="$HOME/.local/bin:$PATH"
 command -v claude >/dev/null 2>&1 || curl -fsSL https://claude.ai/install.sh | bash -s 2.1.286
 ```
 
-npm alternative (needs Node >= 22): `npm install -g --prefix /workspace/.local @anthropic-ai/claude-code@2.1.286`.
 UNVERIFIED: `DISABLE_UPDATES` env to stop the native installer's background auto-update inside the sandbox; check docs before relying on it.
 
 ## Login (OAuth paste-back)
@@ -55,11 +56,11 @@ Background: `claude agents --json` lists (`--json` is REQUIRED headless; bare
 Find the session id in the run's events or stream-json output (`session_id`) and write it on the todo's canvas. A later bash call gets no env injected, so source the run env first. Resume with `bash(..., background=True)` and finish your turn: a foreground resume is killed at the bash timeout, and the resumed agent's own Stop event is what wakes the todo next:
 
 ```bash
-set -a; . /workspace/.gaia/lab/<run>/.gaia/lab-env; set +a
+set -a; . ~/.gaia-lab/<run>/.gaia/lab-env; set +a
 cd /workspace/<repo> && claude -p --resume <uuid> "<follow-up>" --output-format stream-json --settings "$GAIA_LAB_CLAUDE_SETTINGS"
 ```
 
-`-p` is REQUIRED: bare `claude --resume` opens an interactive session that hangs headless, and `--continue` is interactive-only the same way. Prefer explicit `--resume <uuid>` over `-p --continue` whenever several runs exist. Session transcripts live beside credentials under `~/.claude/`, so the whole-dir symlink above covers pause/resume AND template recreate. After a recreate, verify with `claude agents --json` before resuming; if the session is gone, start a fresh run with the todo's log tail pasted as context.
+`-p` is REQUIRED: bare `claude --resume` opens an interactive session that hangs headless, and `--continue` is interactive-only the same way. Prefer explicit `--resume <uuid>` over `-p --continue` whenever several runs exist. Session transcripts live beside credentials under `~/.claude/`, so the whole-dir symlink above covers pause/resume AND template recreate. The run folder lives on local disk, so after a sandbox recreate it is gone: relaunch the resume through `bash(..., background=True, run_todo_id=<todo>)` (fresh run env and subscription) instead of sourcing. Verify with `claude agents --json` before resuming; if the session is gone, start a fresh run with the todo's log tail pasted as context.
 
 ## Stop
 

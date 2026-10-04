@@ -8,14 +8,16 @@ target: executor
 
 Drive the CLI directly via bash. Do not invent flags; confirm with `opencode --help` when unsure.
 
-## Install (pinned, user-writable prefix)
+## Install (part of every launch line)
+
+The run setup installs nothing; start every launch with this. The installer puts the binary in `~/.opencode/bin` (local disk, about 4s on a fresh sandbox, skipped when present):
 
 ```bash
-export PATH="/workspace/.local/bin:$PATH"
+export PATH="$HOME/.opencode/bin:$PATH"
 command -v opencode >/dev/null 2>&1 || curl -fsSL https://opencode.ai/install | bash
 ```
 
-UNVERIFIED: pinning method and v1/v2 package naming (`opencode-ai` vs `@opencode/cli`; probed local version is v2.0.2 via `@opencode/cli@2.0.2`). Resolve with `--help` / docs before pinning in automation. `opencode upgrade [target]` exists for updates.
+The installer is unpinned (it installed 1.18.34 in the sandbox on 2026-10-04). The notify plugin handles both the 1.x and 2.x plugin APIs.
 
 ## Auth (Zen key paste-back)
 
@@ -50,11 +52,11 @@ Optional long-running mode: `opencode serve` (headless HTTP API; `OPENCODE_SERVE
 Find the session id in the run's output (`opencode session list` also shows saved ones; all `ses_`-prefixed, and `-s` REJECTS ids without the prefix) and write it on the todo's canvas. A later bash call gets no env injected, so source the run env first or the plugin stays silent. Resume with `bash(..., background=True)` and finish your turn: a foreground resume is killed at the bash timeout, and the resumed agent's own idle event is what wakes the todo next:
 
 ```bash
-set -a; . /workspace/.gaia/lab/<run>/.gaia/lab-env; set +a
+set -a; . ~/.gaia-lab/<run>/.gaia/lab-env; set +a
 cd /workspace/<repo> && opencode run --format json -s <ses_id> "<follow-up>"
 ```
 
-`--format json` is required; bare `run -c` opens the interactive TUI. Prefer explicit `-s <ses_id>` over `-c` whenever several runs exist. Session data (`opencode.db`) lives beside `auth.json`, so the whole-dir symlink above covers pause/resume AND recreate. After a recreate, run `opencode session list` first; if the session is gone, start a fresh run seeded from the todo's log tail.
+`--format json` is required; bare `run -c` opens the interactive TUI. Prefer explicit `-s <ses_id>` over `-c` whenever several runs exist. Session data (`opencode.db`) lives beside `auth.json`, so the whole-dir symlink above covers pause/resume AND recreate. The run folder lives on local disk, so after a sandbox recreate it is gone: relaunch the resume through `bash(..., background=True, run_todo_id=<todo>)` (fresh run env and subscription) instead of sourcing. Run `opencode session list` first; if the session is gone, start a fresh run seeded from the todo's log tail.
 
 ## Stop
 

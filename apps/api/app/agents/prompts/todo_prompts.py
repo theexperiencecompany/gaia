@@ -118,7 +118,8 @@ TRIGGERED_RELEVANCE_GUIDANCE = (
 SANDBOX_RUN_EVENT_GUIDANCE = (
     "This event came from the coding agent (Claude Code or OpenCode) this todo "
     "launched in the sandbox. It is never noise: do not unsubscribe or tighten "
-    "anything. Read the event, then tail the run's log with bash (pid and log path "
+    "anything. The subscription already matched it to this run; a session_id in "
+    "the payload is the CLI's own id, not the run id. Read the event, then tail the run's log with bash (pid and log path "
     "are on the canvas) and decide which one it is. The agent asked a question or "
     "needs permission: tell the user plainly what it needs and record it in "
     "activity.md. It finished: check the done-checks on the canvas, report the "

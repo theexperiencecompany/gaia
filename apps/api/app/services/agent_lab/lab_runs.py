@@ -8,6 +8,7 @@ subscription teardown ends the run's watch without touching anything upstream.
 
 from typing import Final
 
+from app.constants.sandbox import SANDBOX_USER_HOME
 from app.constants.todos import TodoActivityEvent
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import TodoDocument, TodoUpdate
@@ -26,8 +27,10 @@ SANDBOX_RUN_TRIGGER: Final[str] = "sandbox_run"
 #: Key in the subscription's trigger_data naming the run it watches.
 RUN_ID_KEY: Final[str] = "run_id"
 
-#: Parent dir for per-run workdirs; one run owns exactly one subdir.
-LAB_RUN_DIR_PREFIX: Final[str] = "/workspace/.gaia/lab"
+#: Parent dir for per-run workdirs, on the sandbox's local disk: on JuiceFS every
+#: seeded file cost ~2.4s of metadata round trips. A recreate kills the run's
+#: process anyway, so the folder never needs to outlive the sandbox.
+LAB_RUN_DIR_PREFIX: Final[str] = f"{SANDBOX_USER_HOME}/.gaia-lab"
 
 #: Seed runs CLI installs, so allow time for a cold download.
 LAB_SEED_TIMEOUT_SECONDS: Final[int] = 300

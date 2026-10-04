@@ -71,7 +71,7 @@ PARAMETERS:
 AGENT LAB RUNS (run_todo_id):
 When set, BEFORE your command runs the tool does three visible things:
 (1) mints a run token bound to this run + user, (2) stages the run workdir
-`/workspace/.gaia/lab/<run>/` (Claude hooks settings, OpenCode plugin,
+`~/.gaia-lab/<run>/` (Claude hooks settings, OpenCode plugin,
 sourceable `.gaia/lab-env`) and injects the run env into your command:
 GAIA_LAB_CALLBACK_URL, GAIA_LAB_TOKEN, GAIA_LAB_RUN_ID,
 GAIA_LAB_CLAUDE_SETTINGS, OPENCODE_CONFIG_DIR, (3) subscribes the todo to the
@@ -79,9 +79,10 @@ run: every event the agent reports (finished, needs input, error) runs the
 todo with that event attached, until the todo ends. Run the CLI in the user's
 repo, not the workdir: launch Claude with `--settings "$GAIA_LAB_CLAUDE_SETTINGS"`;
 OpenCode loads its plugin from OPENCODE_CONFIG_DIR. A later bash call (resume)
-gets no env injected: `set -a; . /workspace/.gaia/lab/<run>/.gaia/lab-env; set +a`
+gets no env injected: `set -a; . ~/.gaia-lab/<run>/.gaia/lab-env; set +a`
 first, and run it with background=True too, then end the turn: the resumed
-agent's next event wakes the todo. Flag off, unknown todo, or seed failure returns a loud error and runs
+agent's next event wakes the todo. The run folder is on local disk; after a
+sandbox recreate it is gone, so resume with run_todo_id again instead. Flag off, unknown todo, or seed failure returns a loud error and runs
 nothing.
 
 OUTPUT:

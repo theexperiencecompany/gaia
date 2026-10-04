@@ -26,6 +26,10 @@ WORKSPACE_TMP_SUFFIX = ".gaia-tmp"
 HEALTH_PROBE_REQUEST_TIMEOUT_SECONDS = 4
 HEALTH_PROBE_WAIT_TIMEOUT_SECONDS = 5
 
+# Home of the sandbox's unprivileged user (E2B's default "user"; see
+# mount_juicefs.sh SANDBOX_USER). Local root disk, unlike /workspace (JuiceFS).
+SANDBOX_USER_HOME = "/home/user"
+
 # Sandbox server-side lifetime (seconds), refreshed via `set_timeout()` on reuse
 # so an active sandbox is never killed mid-session. 3600 is the E2B Hobby-tier
 # ceiling (Pro allows up to 86_400) — raise if the account is on Pro.

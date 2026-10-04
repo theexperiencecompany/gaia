@@ -22,6 +22,7 @@ from tests.e2e._harness.fake_sandbox import FakeAsyncSandbox
 from tests.e2e._harness.fake_todos import InMemoryTodos
 
 from app.agents.tools.coding.bash_tool import _setup_lab_run, bash
+from app.constants.sandbox import SANDBOX_USER_HOME
 from app.constants.todos import FAILED_LABEL, GAIA_TRACKED_LABEL, TodoActivityEvent
 from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import SubscriptionAction
@@ -290,13 +291,17 @@ class TestLabSeedExecutes:
         assert claims.scoped_tool_names == []
 
         def _local(sandbox_path: str) -> Path:
-            return Path(sandbox_path.replace("/workspace", str(fake.root)))
+            return Path(
+                sandbox_path.replace(SANDBOX_USER_HOME, str(fake.root / "home")).replace(
+                    "/workspace", str(fake.root)
+                )
+            )
 
         settings_file = _local(lab.env["GAIA_LAB_CLAUDE_SETTINGS"])
         assert EVENTS_URL in settings_file.read_text()
         plugin_dir = _local(lab.env["OPENCODE_CONFIG_DIR"]) / "plugins"
         assert (plugin_dir / "gaia_lab_notify.js").is_file()
-        assert run_dir(lab.run_id) == f"/workspace/.gaia/lab/{lab.run_id}"
+        assert run_dir(lab.run_id) == f"{SANDBOX_USER_HOME}/.gaia-lab/{lab.run_id}"
 
         lab_env_file = _local(f"{run_dir(lab.run_id)}/.gaia/lab-env")
         sourced = await fake.commands.run(

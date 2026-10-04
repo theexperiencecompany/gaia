@@ -2,7 +2,7 @@
 
 The vendored claude_hooks.json is a template whose URL and token placeholders
 are rendered per run, so no host or credential is baked into the repo.
-Everything lands under the run's workdir, so concurrent runs keep separate
+Everything lands under the run's workdir on local disk, so concurrent runs keep separate
 tokens: .gaia/claude-settings.json (claude --settings), the OpenCode plugin
 under .opencode/plugins (OPENCODE_CONFIG_DIR) and the sourceable .gaia/lab-env.
 The CLIs run in the user's repo, so both find their hooks by path from the run
@@ -40,16 +40,6 @@ LAB_TOKEN_VAR: Final[str] = "GAIA_LAB_TOKEN"
 LAB_RUN_ID_VAR: Final[str] = "GAIA_LAB_RUN_ID"
 LAB_CLAUDE_SETTINGS_VAR: Final[str] = "GAIA_LAB_CLAUDE_SETTINGS"
 OPENCODE_CONFIG_DIR_VAR: Final[str] = "OPENCODE_CONFIG_DIR"
-
-# Install-if-missing, one line per CLI. The drive skills
-# (lab-claude-drive, lab-opencode-drive) are the source of truth for method.
-LOCAL_BIN_EXPORT: Final[str] = 'export PATH="/workspace/.local/bin:$PATH"'
-CLAUDE_INSTALL_LINE: Final[str] = (
-    "command -v claude >/dev/null 2>&1 || curl -fsSL https://claude.ai/install.sh | bash -s 2.1.286"
-)
-OPENCODE_INSTALL_LINE: Final[str] = (
-    "command -v opencode >/dev/null 2>&1 || curl -fsSL https://opencode.ai/install | bash"
-)
 
 # Home credential dir → JuiceFS-backed target. The template owns the canonical
 # links; seeding only ensures them link-if-missing at session start.
@@ -142,11 +132,10 @@ def build_seed_command(events_url: str, token: str, run_id: str) -> str:
     targets = " ".join(target for _, target in CREDENTIAL_LINKS)
     return (
         f'mkdir -p "{folder}/.gaia" "{folder}/{OPENCODE_CONFIG_REL}/plugins" {targets} $HOME/.local/share'
+        f' && chmod 700 "{folder}"'
         f" && {links}"
-        f" && {LOCAL_BIN_EXPORT}"
-        f" && {CLAUDE_INSTALL_LINE}"
-        f" && {OPENCODE_INSTALL_LINE}"
         f" && echo '{settings_b64}' | base64 -d > \"{settings_path}\""
+        f' && chmod 600 "{settings_path}"'
         f" && echo '{plugin_b64}' | base64 -d > \"{plugin_path}\""
         f' && echo \'{env_b64}\' | base64 -d > "{lab_env_path}" && chmod 600 "{lab_env_path}"'
     )

@@ -578,10 +578,12 @@ async def _run_background(
     runs out; after that calls fail with 401 rather than living forever.
     """
     log_path = f"{runs_log_dir()}/{run.run_id}.log"
+    # Braces keep `&` on nohup alone: `a && b & echo` backgrounds the whole list
+    # in a subshell that holds stdout, so the launch blocks until the command ends.
     wrapped = (
         f"mkdir -p {sh_quote(runs_log_dir())} && "
-        f"nohup bash -c {sh_quote(run.command)} > {sh_quote(log_path)} 2>&1 "
-        "& echo $!"
+        f"{{ nohup bash -c {sh_quote(run.command)} > {sh_quote(log_path)} 2>&1 & }} "
+        "&& echo $!"
     )
     result = await sbx.commands.run(  # type: ignore[attr-defined]  # e2b sandbox SDK ships no type stubs
         wrapped, cwd=run.cwd or WORKSPACE_ROOT, envs=envs or {}, timeout=10

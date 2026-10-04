@@ -13,12 +13,10 @@ import pytest
 from app.services.agent_lab import sandbox_setup
 from app.services.agent_lab.lab_runs import run_dir
 from app.services.agent_lab.sandbox_setup import (
-    CLAUDE_INSTALL_LINE,
     CREDENTIAL_LINKS,
     LAB_CALLBACK_URL_VAR,
     LAB_RUN_ID_VAR,
     LAB_TOKEN_VAR,
-    OPENCODE_INSTALL_LINE,
     TOKEN_PLACEHOLDER,
     URL_PLACEHOLDER,
     build_seed_command,
@@ -125,11 +123,21 @@ class TestRenderAndSeed:
         assert f"{RUN_DIR}/.gaia/claude-settings.json" in command
         assert ".claude/settings.json" not in command
 
-    def test_seed_installs_both_clis(self) -> None:
+    def test_run_folders_live_on_local_disk_not_juicefs(self) -> None:
+        """On real E2B each JuiceFS-seeded file cost ~2.4s of hosted-metadata round trips."""
+        assert not RUN_DIR.startswith("/workspace/")
+
+    def test_seed_makes_the_run_folder_and_token_files_owner_only(self) -> None:
+        command = _seed()
+        assert f'chmod 700 "{RUN_DIR}"' in command
+        assert f'chmod 600 "{RUN_DIR}/.gaia/claude-settings.json"' in command
+
+    def test_seed_installs_no_cli(self) -> None:
+        """Installing is the launch line's job (drive skills), so a launch pays only for its CLI."""
         command = _seed()
 
-        assert CLAUDE_INSTALL_LINE in command
-        assert OPENCODE_INSTALL_LINE in command
+        assert "install" not in command
+        assert "curl" not in command
 
     def test_run_env_points_both_clis_at_the_seeded_files(self) -> None:
         env = sandbox_setup.lab_env(EVENTS_URL, "tok-1", RUN_ID)
