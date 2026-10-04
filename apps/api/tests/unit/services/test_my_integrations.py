@@ -4,6 +4,7 @@ The merge of platform config + connection status + custom integrations is
 the unit under test; get_integration_tools authorization is tested too.
 """
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -82,7 +83,7 @@ def _user_integration(**overrides: object) -> UserIntegrationResponse:
 
 
 @pytest.fixture
-def mock_redis_cache():
+def mock_redis_cache() -> Iterator[None]:
     """Bypass the @Cacheable layer so the wrapped function body runs."""
     with (
         patch("app.decorators.caching.get_cache", new_callable=AsyncMock, return_value=None),
@@ -92,7 +93,7 @@ def mock_redis_cache():
 
 
 @pytest.fixture
-def mock_deps():
+def mock_deps() -> Iterator[SimpleNamespace]:
     with (
         patch(f"{_MOD}.build_integrations_config") as m_config,
         patch(f"{_MOD}.get_all_integrations_status", new_callable=AsyncMock) as m_status,
@@ -120,8 +121,8 @@ def mock_deps():
 
 class TestGetMyIntegrations:
     async def test_snapshot_does_not_wait_for_external_status_checks(
-        self, mock_deps, mock_redis_cache
-    ):
+        self, mock_deps: SimpleNamespace, mock_redis_cache: None
+    ) -> None:
         mock_deps.status.side_effect = AssertionError("snapshot must remain fast")
 
         result = await my_integrations.get_my_integrations_snapshot(USER_ID)
@@ -131,8 +132,8 @@ class TestGetMyIntegrations:
 
     @pytest.mark.regression
     async def test_auth_mcp_uses_reconciled_status_over_connected_mongo_record(
-        self, mock_deps, mock_redis_cache
-    ):
+        self, mock_deps: SimpleNamespace, mock_redis_cache: None
+    ) -> None:
         mock_deps.config.return_value = IntegrationsConfigResponse(
             integrations=[
                 _config_item(
@@ -166,10 +167,8 @@ class TestGetMyIntegrations:
         mock_deps.user.assert_awaited_once_with(USER_ID)
 
     async def test_live_connected_upgrades_stale_snapshot_and_clears_expired_at(
-        self, mock_deps, mock_redis_cache
-    ):
-        from datetime import UTC, datetime
-
+        self, mock_deps: SimpleNamespace, mock_redis_cache: None
+    ) -> None:
         died = datetime(2026, 8, 15, 9, 0, tzinfo=UTC)
         mock_deps.config.return_value = IntegrationsConfigResponse(
             integrations=[
@@ -204,7 +203,9 @@ class TestGetMyIntegrations:
         mock_deps.status.assert_awaited_once_with(USER_ID)
         mock_deps.user.assert_awaited_once_with(USER_ID)
 
-    async def test_overlay_leaves_consistent_rows_untouched(self, mock_deps, mock_redis_cache):
+    async def test_overlay_leaves_consistent_rows_untouched(
+        self, mock_deps: SimpleNamespace, mock_redis_cache: None
+    ) -> None:
         """A row that already agrees with the live map is returned untouched."""
         sentinel = MyIntegrationsResponse(
             integrations=[
@@ -237,8 +238,8 @@ class TestGetMyIntegrations:
         m_status.assert_awaited_once_with(USER_ID)
 
     async def test_overlay_does_not_downgrade_a_never_connected_mcp(
-        self, mock_deps, mock_redis_cache
-    ):
+        self, mock_deps: SimpleNamespace, mock_redis_cache: None
+    ) -> None:
         """Only a stale connected auth-MCP flips to created."""
         mock_deps.config.return_value = IntegrationsConfigResponse(
             integrations=[
@@ -258,8 +259,8 @@ class TestGetMyIntegrations:
         assert result.integrations[0].status == "not_connected"
 
     async def test_overlay_preserves_untouched_rows_alongside_changed_ones(
-        self, mock_deps, mock_redis_cache
-    ):
+        self, mock_deps: SimpleNamespace, mock_redis_cache: None
+    ) -> None:
         """Untouched rows keep their content alongside changed ones."""
         mock_deps.config.return_value = IntegrationsConfigResponse(
             integrations=[
@@ -300,7 +301,9 @@ class TestGetMyIntegrations:
         assert by_id["deepwiki"].status == "not_connected"
         assert by_id["deepwiki"].name == "DeepWiki"
 
-    async def test_platform_integration_with_registry_tool_count(self, mock_deps, mock_redis_cache):
+    async def test_platform_integration_with_registry_tool_count(
+        self, mock_deps: SimpleNamespace, mock_redis_cache: None
+    ) -> None:
         """The registry tool-count fallback keys on the lowercased integration id."""
         mock_deps.categories.return_value = {"Github": 4}
 
@@ -315,22 +318,26 @@ class TestGetMyIntegrations:
         assert item.tool_count == 4
 
     async def test_platform_integration_without_registry_match_has_zero_tools(
-        self, mock_deps, mock_redis_cache
-    ):
+        self, mock_deps: SimpleNamespace, mock_redis_cache: None
+    ) -> None:
         mock_deps.categories.return_value = {"Developer": 4}
 
         result = await get_my_integrations(USER_ID)
 
         assert result.integrations[0].tool_count == 0
 
-    async def test_platform_status_from_connection_map(self, mock_deps, mock_redis_cache):
+    async def test_platform_status_from_connection_map(
+        self, mock_deps: SimpleNamespace, mock_redis_cache: None
+    ) -> None:
         mock_deps.status.return_value = {"github": True}
 
         result = await get_my_integrations(USER_ID)
 
         assert result.integrations[0].status == "connected"
 
-    async def test_user_integration_status_and_tool_count_win(self, mock_deps, mock_redis_cache):
+    async def test_user_integration_status_and_tool_count_win(
+        self, mock_deps: SimpleNamespace, mock_redis_cache: None
+    ) -> None:
         mock_deps.user.return_value = UserIntegrationsListResponse(
             integrations=[
                 _user_integration(
@@ -353,8 +360,8 @@ class TestGetMyIntegrations:
         assert item.tool_count == 2
 
     async def test_expired_platform_integration_carries_expired_at(
-        self, mock_deps, mock_redis_cache
-    ):
+        self, mock_deps: SimpleNamespace, mock_redis_cache: None
+    ) -> None:
         """Dropping expired_at collapses a connection that broke into one never set up."""
         died = datetime(2026, 8, 15, 9, 0, tzinfo=UTC)
         mock_deps.user.return_value = UserIntegrationsListResponse(
@@ -377,13 +384,15 @@ class TestGetMyIntegrations:
         assert item.expired_at == died
 
     async def test_platform_integration_without_user_record_has_no_expired_at(
-        self, mock_deps, mock_redis_cache
-    ):
+        self, mock_deps: SimpleNamespace, mock_redis_cache: None
+    ) -> None:
         result = await get_my_integrations(USER_ID)
 
         assert result.integrations[0].expired_at is None
 
-    async def test_expired_custom_integration_carries_expired_at(self, mock_deps, mock_redis_cache):
+    async def test_expired_custom_integration_carries_expired_at(
+        self, mock_deps: SimpleNamespace, mock_redis_cache: None
+    ) -> None:
         died = datetime(2026, 8, 15, 9, 0, tzinfo=UTC)
         mock_deps.user.return_value = UserIntegrationsListResponse(
             integrations=[_user_integration(status="expired", expired_at=died)]
@@ -394,7 +403,9 @@ class TestGetMyIntegrations:
         custom = next(i for i in result.integrations if i.id == "custom-tool")
         assert custom.expired_at == died
 
-    async def test_custom_integration_appended(self, mock_deps, mock_redis_cache):
+    async def test_custom_integration_appended(
+        self, mock_deps: SimpleNamespace, mock_redis_cache: None
+    ) -> None:
         mock_deps.user.return_value = UserIntegrationsListResponse(
             integrations=[_user_integration()]
         )
@@ -409,7 +420,9 @@ class TestGetMyIntegrations:
         assert custom.is_public is True
         assert custom.created_by == USER_ID
 
-    async def test_platform_integration_not_duplicated_as_custom(self, mock_deps, mock_redis_cache):
+    async def test_platform_integration_not_duplicated_as_custom(
+        self, mock_deps: SimpleNamespace, mock_redis_cache: None
+    ) -> None:
         mock_deps.user.return_value = UserIntegrationsListResponse(
             integrations=[
                 _user_integration(
@@ -424,7 +437,9 @@ class TestGetMyIntegrations:
         assert result.total == 1
         assert all(i.id == "github" for i in result.integrations)
 
-    async def test_empty_catalog_still_lists_user_integrations(self, mock_deps, mock_redis_cache):
+    async def test_empty_catalog_still_lists_user_integrations(
+        self, mock_deps: SimpleNamespace, mock_redis_cache: None
+    ) -> None:
         mock_deps.config.return_value = IntegrationsConfigResponse(integrations=[])
         mock_deps.user.return_value = UserIntegrationsListResponse(
             integrations=[_user_integration()]
@@ -437,7 +452,7 @@ class TestGetMyIntegrations:
 
 
 class TestGetIntegrationTools:
-    async def test_platform_integration_always_readable(self, mock_deps):
+    async def test_platform_integration_always_readable(self, mock_deps: SimpleNamespace) -> None:
         mock_deps.resolve.return_value = SimpleNamespace(source="platform", custom_doc=None)
         mock_deps.tools.return_value = [{"name": "a"}, {"name": "b"}]
 
@@ -447,7 +462,7 @@ class TestGetIntegrationTools:
         assert response.count == 2
         assert [t.name for t in response.tools] == ["a", "b"]
 
-    async def test_public_custom_integration_readable(self, mock_deps):
+    async def test_public_custom_integration_readable(self, mock_deps: SimpleNamespace) -> None:
         mock_deps.resolve.return_value = SimpleNamespace(
             source="custom", custom_doc={"is_public": True, "created_by": "other"}
         )
@@ -457,7 +472,7 @@ class TestGetIntegrationTools:
         assert mock_deps.tools.await_args.args[0] == "custom-tool"
         mock_deps.has.assert_not_awaited()
 
-    async def test_own_custom_integration_readable(self, mock_deps):
+    async def test_own_custom_integration_readable(self, mock_deps: SimpleNamespace) -> None:
         mock_deps.resolve.return_value = SimpleNamespace(
             source="custom", custom_doc={"is_public": False, "created_by": USER_ID}
         )
@@ -466,7 +481,7 @@ class TestGetIntegrationTools:
 
         mock_deps.has.assert_not_awaited()
 
-    async def test_private_custom_in_workspace_readable(self, mock_deps):
+    async def test_private_custom_in_workspace_readable(self, mock_deps: SimpleNamespace) -> None:
         mock_deps.resolve.return_value = SimpleNamespace(
             source="custom", custom_doc={"is_public": False, "created_by": "other"}
         )
@@ -476,7 +491,7 @@ class TestGetIntegrationTools:
 
         mock_deps.has.assert_awaited_once_with(USER_ID, "custom-tool")
 
-    async def test_private_custom_forbidden(self, mock_deps):
+    async def test_private_custom_forbidden(self, mock_deps: SimpleNamespace) -> None:
         mock_deps.resolve.return_value = SimpleNamespace(
             source="custom", custom_doc={"is_public": False, "created_by": "other"}
         )
@@ -488,7 +503,7 @@ class TestGetIntegrationTools:
         assert exc_info.value.status_code == 403
         mock_deps.tools.assert_not_awaited()
 
-    async def test_unresolved_returns_empty_response(self, mock_deps):
+    async def test_unresolved_returns_empty_response(self, mock_deps: SimpleNamespace) -> None:
         mock_deps.resolve.return_value = None
 
         response = await get_integration_tools("ghost", USER_ID)
