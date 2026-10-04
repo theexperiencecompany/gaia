@@ -44,7 +44,8 @@
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "doctor": "npx react-doctor@0.9.12",
     "seo:pull-gsc": "node scripts/seo/pull-gsc.mjs",
-    "seo:suggest": "node scripts/seo/suggest-pages.mjs"
+    "seo:suggest": "node scripts/seo/suggest-pages.mjs",
+    "seo:check-desc": "node scripts/seo/trim-descriptions.mjs --check",
   },
   "dependencies": {
     "@gaia/shared": "workspace:*",
