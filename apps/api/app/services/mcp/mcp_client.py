@@ -260,11 +260,12 @@ def _is_terminal_auth_failure(exception: Exception, refresh_attempted: bool = Fa
     if refresh_attempted and status in (401, 403):
         return True
 
-    # No response attached (network-layer error): word-boundary string match
-    # avoids false positives like "401k" or "invalid_grants_table".
+    # No response attached (network-layer error): match a standalone status
+    # token, not a port or path inside a URL (https://host:403/ must not read
+    # as an authorization signal) and not a longer token like "401k".
     if getattr(exception, "response", None) is None:
         msg = str(exception).lower()
-        if refresh_attempted and re.search(r"\b(?:401|403)\b", msg):
+        if refresh_attempted and re.search(r"(?<![:\w/])(?:401|403)(?![\w/])", msg):
             return True
         for code in _TERMINAL_OAUTH_ERROR_CODES:
             if re.search(rf"\b{re.escape(code)}\b", msg):
@@ -940,11 +941,9 @@ class MCPClient:
     ) -> list[BaseTool] | None:
         """Shared connect-failure handling.
 
-        Raises :class:StepUpAuthRequiredError for 403 insufficient_scope, retries
-        once via token refresh on auth-related failures (returning the retried
-        connection's tools), marks missing access credentials as needing OAuth,
-        and tears down only demonstrably dead credentials. Returns None when the
-        caller should re-raise.
+        Raises StepUpAuthRequiredError for 403 insufficient_scope, retries once
+        via token refresh, marks missing credentials as needing OAuth, and tears
+        down only demonstrably dead credentials. Returns None to re-raise.
         """
         error_str = str(e).lower()
 
@@ -956,6 +955,15 @@ class MCPClient:
             error_type=type(e).__name__,
         )
         if isinstance(e, MCPAuthorizationRequiredError):
+            if await self.token_store.get_refresh_token(integration_id) is not None:
+                # Refresh retained: the grant may still recover, so keep the
+                # saved status (a dead refresh is cleared separately).
+                log.warning(
+                    f"{LogTag.MCP} OAuth token unavailable but refresh retained for",
+                    integration_id=integration_id,
+                    user_id=self.user_id,
+                )
+                return None
             await update_user_integration_status(self.user_id, integration_id, "created")
             log.warning(
                 f"{LogTag.MCP} OAuth authorization required for",
@@ -1035,7 +1043,9 @@ class MCPClient:
             # error_str is already lowered; the pattern is digits-only so case
             # cannot matter, but matching against it (not a fresh .lower())
             # keeps the normalization in exactly one place.
-            if getattr(e, "response", None) is None and re.search(r"\b(?:401|403)\b", error_str):
+            if getattr(e, "response", None) is None and re.search(
+                r"(?<![:\w/])(?:401|403)(?![\w/])", error_str
+            ):
                 log.warning(
                     f"{LogTag.MCP} Resetting on message-only status signal after refresh",
                     integration_id=integration_id,

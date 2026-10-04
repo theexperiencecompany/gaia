@@ -8,7 +8,7 @@ tools are fetched on demand via get_integration_tools.
 """
 
 import asyncio
-from typing import cast
+from typing import TypedDict, cast
 
 from app.constants.cache import ONE_DAY_TTL
 from app.decorators.caching import Cacheable
@@ -29,6 +29,13 @@ from app.services.integrations.user_integrations import (
 from app.services.tools.tools_service import get_integration_tool_list, get_tool_categories
 from app.utils.errors import create_error
 from shared.py.wide_events import log
+
+
+class _CustomDocVisibility(TypedDict, total=False):
+    """Visibility flags on a dumped custom-integration doc (always present)."""
+
+    is_public: bool | None
+    created_by: str | None
 
 
 async def get_my_integrations(user_id: str) -> MyIntegrationsResponse:
@@ -108,10 +115,8 @@ def _build_my_integrations_response(
 
     for cfg in config.integrations:
         ui = added_by_id.get(cfg.id.lower())
-        # The snapshot is Mongo-only by construction: an integration the user
-        # has not added is definitionally not connected here. Liveness (a
-        # provider that reports connected with no workspace record) arrives via
-        # the _apply_live_status_overlay in get_my_integrations, never here.
+        # Mongo-only snapshot: not added means not connected here; liveness
+        # arrives via the overlay in get_my_integrations, never here.
         status = ui.status if ui is not None else "not_connected"
         tool_count = (
             (len(ui.integration.tools) or counts.get(cfg.id.lower(), 0))
@@ -186,7 +191,7 @@ async def get_integration_tools(integration_id: str, user_id: str) -> Integratio
         return IntegrationToolsResponse(integration_id=integration_id, tools=[], count=0)
 
     if resolved.source == "custom":
-        doc = resolved.custom_doc or {}
+        doc: _CustomDocVisibility = cast(_CustomDocVisibility, resolved.custom_doc or {})
         visible = (
             bool(doc.get("is_public"))
             or doc.get("created_by") == user_id

@@ -44,12 +44,12 @@ async def request_integration_connection(
     *,
     force_reconnect: bool = False,
 ) -> str:
-    """Show the (re)connect card for an unusable integration and return the agent's instruction.
+    """Show the reconnect card for an unusable integration and return the agent instruction.
 
     UI clients get a URL-free text; text-only clients relay the single-use
     link (valid 1 hour) or the integrations page. A background run gets the
     integrations page, read after any single-use link has died, and carries on.
-    ``force_reconnect`` presents reauthorization even when stored status is connected.
+    force_reconnect presents reauthorization even when stored status is connected.
     """
     # Only Composio grants ever reach the ``expired`` status, so MCP integrations
     # fall through to the never-connected wording without needing a special case.

@@ -345,6 +345,30 @@ class MCPTokenStore:
                 await session.commit()
                 log.info(f"{LogTag.MCP} Deleted MCP credentials for", integration_id=integration_id)
 
+    async def clear_refresh_token(self, integration_id: str) -> None:
+        """Drop a proven-dead refresh token while keeping the credential row.
+
+        A refresh rejected with invalid_grant will never succeed again; keeping
+        the token makes every later liveness check report recoverable and the
+        status overlay keep showing connected with no re-auth prompt.
+        """
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(MCPCredential).where(
+                    MCPCredential.user_id == self.user_id,
+                    MCPCredential.integration_id == integration_id,
+                )
+            )
+            cred = result.scalar_one_or_none()
+            if cred and cred.refresh_token:
+                cred.refresh_token = None
+                session.add(cred)
+                await session.commit()
+                log.info(
+                    f"{LogTag.MCP} Cleared dead refresh token for",
+                    integration_id=integration_id,
+                )
+
     async def is_connected(self, integration_id: str) -> bool:
         """Check whether a connected credential can be used or refreshed."""
         cred = await self.get_credential(integration_id)

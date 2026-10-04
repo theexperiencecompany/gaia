@@ -7,6 +7,8 @@ layer for pause/resume, so the reader lives where both can import it.
 
 from __future__ import annotations
 
+from typing import TypedDict, cast
+
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_scopes
 from app.config.token_repository import token_repository
 from app.constants.cache import OAUTH_STATUS_KEY
@@ -21,8 +23,15 @@ from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators.caching import Cacheable
 from app.models.oauth_models import OAuthIntegration
 from app.services.composio.composio_service import get_composio_service
+from app.services.integrations.user_integrations import get_custom_auth_mcp_ids
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from shared.py.wide_events import OAuthContext, log
+
+
+class _TokenScope(TypedDict):
+    """The OAuth2Token field the self-managed status check reads (always set)."""
+
+    scope: str
 
 
 async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
@@ -33,7 +42,7 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
     transition (MCP connect failure, missing-token build), not on a GET.
     """
     base = await _get_cached_integrations_status(user_id)
-    stale_mcp_ids = await _find_stale_mcp_ids(user_id)
+    stale_mcp_ids = await _find_stale_mcp_ids(user_id, base)
     if not stale_mcp_ids:
         return dict(base)
     return {**base, **dict.fromkeys(stale_mcp_ids, False)}
@@ -93,12 +102,14 @@ async def _get_cached_integrations_status(user_id: str) -> dict[str, bool]:
     return result
 
 
-async def _find_stale_mcp_ids(user_id: str) -> set[str]:
-    """Auth-MCPs whose Mongo record says connected but credentials are unusable.
+async def _find_stale_mcp_ids(user_id: str, base_statuses: dict[str, bool]) -> set[str]:
+    """Auth-MCPs that read connected but whose credentials are unusable.
 
-    Read-only overlay for GET paths: one Mongo list plus one batched credential
-    query, no writes. Persistence happens on the owning failure transitions.
+    Covers platform and custom auth-MCPs (customs never appear in the
+    catalog). Read-only overlay: no writes, persistence lives on the
+    owning failure transitions.
     """
+    platform_ids = {integration.id for integration in OAUTH_INTEGRATIONS}
     auth_mcp_ids = {
         integration.id
         for integration in OAUTH_INTEGRATIONS
@@ -106,14 +117,10 @@ async def _find_stale_mcp_ids(user_id: str) -> set[str]:
         and integration.mcp_config
         and integration.mcp_config.requires_auth
     }
-    if not auth_mcp_ids:
-        return set()
-    user_integrations = await user_integration_repository.list_for_user(user_id, limit=100)
-    candidates = [
-        ui.integration_id
-        for ui in user_integrations
-        if ui.status == INTEGRATION_STATUS_CONNECTED and ui.integration_id in auth_mcp_ids
-    ]
+    connected_ids = {iid for iid, ok in base_statuses.items() if ok}
+    candidates = [iid for iid in connected_ids if iid in auth_mcp_ids]
+    custom_candidates = [iid for iid in connected_ids if iid not in platform_ids]
+    candidates += await get_custom_auth_mcp_ids(custom_candidates)
     if not candidates:
         return set()
     connected_map = await MCPTokenStore(user_id).are_connected(candidates)
@@ -134,7 +141,8 @@ async def _self_managed_connected(user_id: str, integration: OAuthIntegration) -
             error_type=type(e).__name__,
         )
         return False
-    granted = token.get("scope")
+    scoped_token: _TokenScope = cast(_TokenScope, token)
+    granted = scoped_token.get("scope")
     authorized_scopes = str(granted).split() if granted else []
     return all(scope in authorized_scopes for scope in get_integration_scopes(integration.id))
 

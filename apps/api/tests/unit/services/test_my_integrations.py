@@ -208,11 +208,7 @@ class TestGetMyIntegrations:
         mock_deps.user.assert_awaited_once_with(USER_ID)
 
     async def test_overlay_leaves_consistent_rows_untouched(self, mock_deps, mock_redis_cache):
-        """An already-connected row under a live True is returned as-is.
-
-        The overlay must not rewrite (and must not clear fields on) rows that
-        already agree with the live map — verified by identity, not equality.
-        """
+        """A row that already agrees with the live map is returned untouched."""
         sentinel = MyIntegrationsResponse(
             integrations=[
                 MyIntegrationItem(
@@ -246,11 +242,7 @@ class TestGetMyIntegrations:
     async def test_overlay_does_not_downgrade_a_never_connected_mcp(
         self, mock_deps, mock_redis_cache
     ):
-        """Only a stale *connected* auth-MCP flips to created.
-
-        Widening the downgrade condition to `or` would demote rows that were
-        never connected; a not_connected row under a live False must survive.
-        """
+        """Only a stale connected auth-MCP flips to created."""
         mock_deps.config.return_value = IntegrationsConfigResponse(
             integrations=[
                 _config_item(
@@ -271,11 +263,7 @@ class TestGetMyIntegrations:
     async def test_overlay_preserves_untouched_rows_alongside_changed_ones(
         self, mock_deps, mock_redis_cache
     ):
-        """Rows the overlay does not touch keep their identity and content.
-
-        The built list is returned only when something changed, so a mutant
-        corrupting the pass-through branch hides in single-row fixtures.
-        """
+        """Untouched rows keep their content alongside changed ones."""
         mock_deps.config.return_value = IntegrationsConfigResponse(
             integrations=[
                 _config_item(

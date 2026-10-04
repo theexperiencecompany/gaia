@@ -33,6 +33,7 @@ from mcp.types import (
 )
 from pydantic import AnyUrl, ValidationError
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 import time_machine
 
 from app.constants.device_bridge import DEVICE_TRANSPORT
@@ -49,6 +50,7 @@ from app.models.mcp_config import MCPConfig, OAuthDiscovery, OidcTokenResponse
 from app.services.mcp.langchain_adapter import SanitizingLangChainAdapter
 from app.services.mcp.mcp_client import (
     DCRNotSupportedError,
+    MCPAuthorizationRequiredError,
     MCPClient,
     StepUpAuthRequiredError,
     _extract_response_signal,
@@ -1487,13 +1489,11 @@ async def _sqlite_session_factory() -> tuple[Any, Any]:
     Mocked sessions return canned rows whatever the statement says, so WHERE
     mutants survive; SQLite executes the actual query.
     """
-    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-
-    from app.db.postgresql import Base
-
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        # Only the credentials table: the shared Base metadata holds
+        # Postgres-only column types (JSONB) that SQLite cannot create.
+        await conn.run_sync(lambda sync_conn: MCPCredential.__table__.create(sync_conn))
     session = AsyncSession(engine, expire_on_commit=False)
     return session, engine
 
@@ -1888,6 +1888,59 @@ class TestTryRefreshToken:
 
             result = await try_refresh_token(token_store, INTEGRATION_ID, mcp_config, oauth_config)
         assert result is False
+
+    async def test_dead_grant_clears_the_refresh_token(self):
+        """An invalid_grant refresh drops the dead token so liveness stays honest."""
+        token_store = AsyncMock(spec=MCPTokenStore)
+        token_store.user_id = USER_ID
+        token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
+        token_store.get_dcr_client = AsyncMock(return_value=None)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 400
+        mock_response.json.return_value = {"error": "invalid_grant"}
+
+        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_http.return_value.__aexit__ = AsyncMock()
+
+            result = await try_refresh_token(
+                token_store,
+                INTEGRATION_ID,
+                _make_mcp_config(client_id="cid"),
+                _make_oauth_discovery(),
+            )
+
+        assert result is False
+        token_store.clear_refresh_token.assert_awaited_once_with(INTEGRATION_ID)
+
+    async def test_transient_refresh_error_keeps_the_refresh_token(self):
+        token_store = AsyncMock(spec=MCPTokenStore)
+        token_store.user_id = USER_ID
+        token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
+        token_store.get_dcr_client = AsyncMock(return_value=None)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.json.return_value = {}
+
+        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_http.return_value.__aexit__ = AsyncMock()
+
+            result = await try_refresh_token(
+                token_store,
+                INTEGRATION_ID,
+                _make_mcp_config(client_id="cid"),
+                _make_oauth_discovery(),
+            )
+
+        assert result is False
+        token_store.clear_refresh_token.assert_not_awaited()
 
     async def test_refresh_exception(self):
         token_store = AsyncMock(spec=MCPTokenStore)
@@ -4457,6 +4510,7 @@ class TestHandleConnectFailureExact:
         client.token_store.get_bearer_token = AsyncMock(return_value=None)
         client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
         client.token_store.get_oauth_token = AsyncMock(return_value=None)
+        client.token_store.get_refresh_token = AsyncMock(return_value=None)
         mcp_config = _make_mcp_config(requires_auth=True)
 
         with (
@@ -4480,6 +4534,34 @@ class TestHandleConnectFailureExact:
         reset.assert_not_awaited()
         mock_log.warning.assert_any_call(
             f"{LogTag.MCP} OAuth authorization required for",
+            integration_id=INTEGRATION_ID,
+            user_id=USER_ID,
+        )
+
+    async def test_retained_refresh_token_keeps_saved_status_on_transient_failure(
+        self,
+    ) -> None:
+        """A stored refresh token keeps the saved status on transient failure."""
+        client = MCPClient(user_id=USER_ID)
+        client.token_store.get_refresh_token = AsyncMock(return_value="enc-refresh")
+        mcp_config = _make_mcp_config(requires_auth=True)
+
+        with (
+            patch(
+                "app.services.mcp.mcp_client.update_user_integration_status",
+                new_callable=AsyncMock,
+            ) as update_status,
+            patch.object(client, "_reset_to_disconnected", new_callable=AsyncMock) as reset,
+            patch("app.services.mcp.mcp_client.log") as mock_log,
+        ):
+            err = MCPAuthorizationRequiredError(INTEGRATION_ID)
+            result = await client._handle_connect_failure(err, INTEGRATION_ID, mcp_config)
+
+        assert result is None
+        update_status.assert_not_awaited()
+        reset.assert_not_awaited()
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.MCP} OAuth token unavailable but refresh retained for",
             integration_id=INTEGRATION_ID,
             user_id=USER_ID,
         )
@@ -4804,6 +4886,25 @@ class TestConnectFailureClassification:
 
         client._try_refresh_token.assert_awaited_once()
         client._reset_to_disconnected.assert_not_awaited()
+
+    async def test_url_port_is_not_an_authorization_signal(self) -> None:
+        """A :403 port in a connection URL must not delete saved credentials."""
+        client = self._client()
+        with patch("app.services.mcp.mcp_client.log") as mock_log:
+            await client._handle_connect_failure(
+                RuntimeError("connect to https://mcp.example.com:403/sse failed"),
+                INTEGRATION_ID,
+                _make_mcp_config(requires_auth=True),
+            )
+
+        client._try_refresh_token.assert_awaited_once()
+        client._reset_to_disconnected.assert_not_awaited()
+        assert [
+            c
+            for c in mock_log.warning.call_args_list
+            if c.args
+            and c.args[0] == f"{LogTag.MCP} Resetting on message-only status signal after refresh"
+        ] == []
 
     @pytest.mark.parametrize(
         "message",

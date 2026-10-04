@@ -165,11 +165,6 @@ class TestGetAllIntegrationsStatus:
                 "app.services.integrations.integration_status.MCPTokenStore",
                 return_value=token_store,
             ) as token_store_class,
-            patch(
-                "app.services.integrations.integration_status._get_cached_integrations_status",
-                new_callable=AsyncMock,
-                return_value={"posthog": True},
-            ),
         ):
             result = await get_all_integrations_status("user123")
 
@@ -205,11 +200,6 @@ class TestGetAllIntegrationsStatus:
                 "app.services.integrations.integration_status.MCPTokenStore",
                 return_value=token_store,
             ) as token_store_class,
-            patch(
-                "app.services.integrations.integration_status._get_cached_integrations_status",
-                new_callable=AsyncMock,
-                return_value={"posthog": True},
-            ),
         ):
             result = await get_all_integrations_status("user123")
 
@@ -244,16 +234,81 @@ class TestGetAllIntegrationsStatus:
                 "app.services.integrations.integration_status.MCPTokenStore",
                 return_value=token_store,
             ),
-            patch(
-                "app.services.integrations.integration_status._get_cached_integrations_status",
-                new_callable=AsyncMock,
-                return_value={"posthog": True},
-            ),
         ):
             result = await get_all_integrations_status("user123")
 
         assert result["posthog"] is False
         mock_user_integration_repo.set_status.assert_not_called()
+
+    async def test_custom_auth_mcp_with_dead_credential_reads_disconnected(
+        self,
+        mock_user_integration_repo,
+        mock_composio_service,
+        mock_token_repository,
+    ) -> None:
+        mock_user_integration_repo.list_for_user = AsyncMock(
+            return_value=[_ui_doc("custom-uuid", "connected")]
+        )
+        token_store = MagicMock()
+        token_store.are_connected = AsyncMock(return_value={"custom-uuid": False})
+        custom_doc = MagicMock()
+        custom_doc.integration_id = "custom-uuid"
+        custom_doc.managed_by = "mcp"
+        custom_doc.requires_auth = True
+
+        with (
+            patch(
+                "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+                [],
+            ),
+            patch(
+                "app.services.integrations.integration_status.MCPTokenStore",
+                return_value=token_store,
+            ) as token_store_class,
+            patch(
+                "app.services.integrations.user_integrations.integration_repository"
+            ) as mock_int_repo,
+        ):
+            mock_int_repo.find_by_ids = AsyncMock(return_value=[custom_doc])
+            result = await get_all_integrations_status("user123")
+
+        assert result["custom-uuid"] is False
+        token_store_class.assert_called_once_with("user123")
+        token_store.are_connected.assert_awaited_once_with(["custom-uuid"])
+
+    async def test_custom_auth_mcp_with_usable_credential_stays_connected(
+        self,
+        mock_user_integration_repo,
+        mock_composio_service,
+        mock_token_repository,
+    ) -> None:
+        mock_user_integration_repo.list_for_user = AsyncMock(
+            return_value=[_ui_doc("custom-uuid", "connected")]
+        )
+        token_store = MagicMock()
+        token_store.are_connected = AsyncMock(return_value={"custom-uuid": True})
+        custom_doc = MagicMock()
+        custom_doc.integration_id = "custom-uuid"
+        custom_doc.managed_by = "mcp"
+        custom_doc.requires_auth = True
+
+        with (
+            patch(
+                "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+                [],
+            ),
+            patch(
+                "app.services.integrations.integration_status.MCPTokenStore",
+                return_value=token_store,
+            ),
+            patch(
+                "app.services.integrations.user_integrations.integration_repository"
+            ) as mock_int_repo,
+        ):
+            mock_int_repo.find_by_ids = AsyncMock(return_value=[custom_doc])
+            result = await get_all_integrations_status("user123")
+
+        assert result["custom-uuid"] is True
 
     async def test_mcp_integration_not_in_mongo_returns_false(
         self,

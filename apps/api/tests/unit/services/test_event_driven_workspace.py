@@ -13,6 +13,8 @@ limits (no mount, empty sets, stale vs current markers, force, partial
 failure, new-vs-existing user), not the filesystem.
 """
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -268,8 +270,9 @@ async def test_get_connected_integration_ids_filter(docs, expected):
         assert await get_connected_integration_ids("u") == expected
 
 
-@pytest.mark.regression
-async def test_user_integration_records_reflect_posthog_credential_status():
+@asynccontextmanager
+async def _stale_posthog_credential() -> AsyncIterator[MagicMock]:
+    """Workspace seams with posthog connected in Mongo but dead in Postgres."""
     record = MagicMock()
     record.model_dump.return_value = {"integration_id": "posthog", "status": "connected"}
 
@@ -287,7 +290,12 @@ async def test_user_integration_records_reflect_posthog_credential_status():
         patch("app.db.redis.redis_cache.set", new_callable=AsyncMock),
     ):
         token_store_class.return_value.are_connected = AsyncMock(return_value={"posthog": False})
+        yield token_store_class
 
+
+@pytest.mark.regression
+async def test_user_integration_records_reflect_posthog_credential_status():
+    async with _stale_posthog_credential() as token_store_class:
         from app.services.integrations.user_integrations import get_user_integration_records
 
         result = await get_user_integration_records("u")
@@ -299,24 +307,7 @@ async def test_user_integration_records_reflect_posthog_credential_status():
 
 @pytest.mark.regression
 async def test_connected_ids_use_live_posthog_credential_state():
-    record = MagicMock()
-    record.model_dump.return_value = {"integration_id": "posthog", "status": "connected"}
-
-    async def _list_for_user(user_id: str, *args: object, **kwargs: object) -> list[object]:
-        return [record] if user_id == "u" else []
-
-    with (
-        patch(
-            f"{UINT}.user_integration_repository.list_for_user",
-            new_callable=AsyncMock,
-            side_effect=_list_for_user,
-        ),
-        patch(f"{UINT}.MCPTokenStore", create=True) as token_store_class,
-        patch("app.db.redis.redis_cache.get", new_callable=AsyncMock, return_value=None),
-        patch("app.db.redis.redis_cache.set", new_callable=AsyncMock),
-    ):
-        token_store_class.return_value.are_connected = AsyncMock(return_value={"posthog": False})
-
+    async with _stale_posthog_credential() as token_store_class:
         from app.services.integrations.user_integrations import get_connected_integration_ids
 
         assert await get_connected_integration_ids("u") == set()
@@ -325,11 +316,7 @@ async def test_connected_ids_use_live_posthog_credential_state():
 
 
 async def test_mcp_record_without_stored_config_keeps_its_status():
-    """The credential check needs both mcp management and a stored config.
-
-    Widening the filter to `or` would read requires_auth off a missing config
-    and crash instead of leaving the record alone.
-    """
+    """An MCP record with no stored config keeps its status without crashing."""
     with (
         patch(
             f"{UINT}._get_cached_user_integration_records",
