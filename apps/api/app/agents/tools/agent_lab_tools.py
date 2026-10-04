@@ -49,7 +49,7 @@ LAB_RUN_DIR_PREFIX: str = "/workspace/.gaia/lab"
 #: Seed runs CLI installs, so allow time for a cold download.
 LAB_SEED_TIMEOUT_SECONDS: int = 300
 
-#: Probe budget for `opencode session list` — a local index read, never agent work.
+#: Probe budget for `opencode session list` - a local index read, never agent work.
 LAB_SESSION_PROBE_TIMEOUT_SECONDS: int = 30
 
 #: Bound for the resume turn so a wedged CLI cannot hang the relay forever.
@@ -249,7 +249,7 @@ async def lab_message(
             # lab_start mints one cli_session_id for EITHER cli and the model
             # launches one of them by hand, so no record names the CLI. Probe
             # opencode's session index: a hit names opencode, a miss means
-            # claude (foreground -p sessions have no listable index — the
+            # claude (foreground -p sessions have no listable index - the
             # transcript subpath is UNVERIFIED per the drive skill, so there is
             # nothing reliable to grep). A wrong default still fails loudly at
             # resume (unknown session exits non-zero), never misdelivers.
@@ -262,7 +262,7 @@ async def lab_message(
                     "Error: reply filed to the run inbox but the CLI could not be "
                     "determined (`opencode session list` failed: "
                     f"{(e.stderr or '').strip()[-1000:]}). The run has NOT seen "
-                    f"the reply — resume session {run.cli_session_id} by hand "
+                    f"the reply - resume session {run.cli_session_id} by hand "
                     f"from {run.run_dir}."
                 )
             cli = (
@@ -286,7 +286,7 @@ async def lab_message(
                 return (
                     f"Error: reply filed to the run inbox but {cli} resume failed "
                     f"(exit {e.exit_code}): {detail}. The run has NOT seen the "
-                    f"reply — resume session {run.cli_session_id} by hand from "
+                    f"reply - resume session {run.cli_session_id} by hand from "
                     f"{run.run_dir}."
                 )
     except SandboxAcquisitionError as e:
