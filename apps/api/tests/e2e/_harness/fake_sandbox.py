@@ -7,7 +7,7 @@ install-if-missing lines stay offline) and implements ``files.make_dir`` /
 ``write`` / ``read`` on the real filesystem. Non-zero exits raise
 ``CommandExitException`` exactly like the SDK, so tool error paths stay honest.
 
-What this proves: the seed script lab_start builds is executable and writes
+What this proves: the seed script build_seed_command builds is executable and writes
 the files it claims (hooks fragment, settings merge, lab-env, plugin). What
 it does NOT prove: cold-boot time, the JuiceFS mount (no FUSE here), pause /
 resume and canary staleness, the template image's preinstalled CLIs, or hook

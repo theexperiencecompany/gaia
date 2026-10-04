@@ -744,7 +744,6 @@ class TestInitializedCategoryContract:
         "integration_instructions": {"internal": True},
         "development": {"internal": True},
         "execute": {"internal": True},
-        "agent_lab": {"internal": True},
         "creative": {},
         "weather": {},
         "context": {},

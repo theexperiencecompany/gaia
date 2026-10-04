@@ -24,11 +24,6 @@ from typing import Any, cast
 from arq.connections import ArqRedis
 from e2b import AsyncSandbox
 
-from app.agents.tools.agent_lab_tools import (
-    LAB_RUN_DIR_PREFIX,
-    LAB_SEED_TIMEOUT_SECONDS,
-    parse_lab_routing_ref,
-)
 from app.config.settings import settings
 from app.constants.execute import SANDBOX_LAB_MAX_RUN_SECONDS
 from app.constants.log_tags import LogTag
@@ -41,6 +36,11 @@ from app.models.notification.notification_models import (
     NotificationType,
 )
 from app.models.todo_models import TodoDocument
+from app.services.agent_lab.lab_runs import (
+    LAB_SEED_TIMEOUT_SECONDS,
+    parse_lab_routing_ref,
+    run_dir,
+)
 from app.services.agent_lab.sandbox_setup import (
     build_seed_command,
     lab_events_url,
@@ -215,9 +215,7 @@ async def _reseed_lab_tokens(user_id: str, sbx: AsyncSandbox, lab_todos: list[To
         for run_id in _lab_run_ids(todo.references):
             try:
                 token = mint_lab_hooks_token(user_id, run_id)
-                seed = build_seed_command(
-                    events_url, token, run_id, f"{LAB_RUN_DIR_PREFIX}/{run_id}"
-                )
+                seed = build_seed_command(events_url, token, run_id, run_dir(run_id))
                 await sbx.commands.run(seed, timeout=LAB_SEED_TIMEOUT_SECONDS)
             except Exception as e:
                 log.warning(

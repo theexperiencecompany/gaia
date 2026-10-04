@@ -1,28 +1,31 @@
 """Two concurrent lab runs stay isolated: tails, dedupe fingerprints, wakes.
 
-Drives the REAL lab_start tool twice through one FakeAsyncSandbox (the real
-build_seed_command output runs through a local bash, once per run), then
-interleaves REAL record_lab_event calls across both sessions — including a
-byte-identical kind+raw pair on both. Each todo's tail must carry its own
-session id, and the wake must fire once per run: no cross-talk, and no
-suppressed-duplicate false positive across different sessions (the event
-fingerprint binds the session id, so identical payloads on two runs are two
-events, not one re-POST).
+Seeds two runs directly with the REAL seeder through one FakeAsyncSandbox
+(the real build_seed_command output runs through a local bash, once per run),
+records each run id on its todo's references, then interleaves REAL
+record_lab_event calls across both sessions — including a byte-identical
+kind+raw pair on both. Each todo's tail must carry its own session id, and
+the wake must fire once per run: no cross-talk, and no suppressed-duplicate
+false positive across different sessions (the event fingerprint binds the
+session id, so identical payloads on two runs are two events, not one
+re-POST).
 """
 
 from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
 import pytest
 
-import app.agents.tools.agent_lab_tools as lab_tools
 from app.models.todo_models import TodoDocument, TodoUpdate
 from app.services.agent_lab import sandbox_setup
 import app.services.agent_lab.lab_events as lab_events_mod
 from app.services.agent_lab.lab_events import LAB_TAIL_MARKER, record_lab_event
+from app.services.agent_lab.lab_runs import routing_ref, run_dir
+from app.services.agent_lab.sandbox_setup import build_seed_command, mint_lab_hooks_token
 from tests.e2e._harness.fake_sandbox import FakeAsyncSandbox
 
 pytestmark = pytest.mark.e2e
@@ -30,21 +33,8 @@ pytestmark = pytest.mark.e2e
 EVENTS_URL = "https://gaia.test/api/v1/lab/events"
 
 
-class _AcquireCM:
-    """Async CM yielding the fake sandbox (mirrors acquire_sandbox use)."""
-
-    def __init__(self, sbx: Any) -> None:
-        self._sbx = sbx
-
-    async def __aenter__(self) -> Any:
-        return self._sbx
-
-    async def __aexit__(self, *args: Any) -> bool:
-        return False
-
-
 class _FakeTodos:
-    """In-memory todo store for N runs: start writes refs, the relay resolves them."""
+    """In-memory todo store for N runs: the seeder writes refs, the relay resolves them."""
 
     def __init__(self, todos: list[TodoDocument]) -> None:
         self._by_id = {todo.id: todo for todo in todos}
@@ -95,11 +85,16 @@ def _bare_run_id(todo: TodoDocument) -> str:
     return bare[0]
 
 
-def _config(user_id: str, thread_id: str) -> dict[str, Any]:
-    return {
-        "configurable": {"thread_id": thread_id, "user_id": user_id},
-        "metadata": {"user_id": user_id},
-    }
+async def _seed_run(fake: FakeAsyncSandbox, todos: _FakeTodos, todo_id: str) -> str:
+    """Seed one run's workdir for real and record its ids on the todo; returns the run id."""
+    run_id = uuid4().hex
+    token = mint_lab_hooks_token("u-1", run_id)
+    seed = build_seed_command(sandbox_setup.lab_events_url(), token, run_id, run_dir(run_id))
+    await fake.commands.run(seed, timeout=300)
+    await todos.add_references(
+        todo_id, user_id="u-1", references=[run_id, routing_ref(run_id, uuid4().hex)]
+    )
+    return run_id
 
 
 async def test_concurrent_runs_keep_tails_and_wakes_isolated(
@@ -113,27 +108,12 @@ async def test_concurrent_runs_keep_tails_and_wakes_isolated(
     todo_a = TodoDocument(id="t-a", user_id="u-1", title="First chore")
     todo_b = TodoDocument(id="t-b", user_id="u-1", title="Second chore")
     todos = _FakeTodos([todo_a, todo_b])
-    start_activity = AsyncMock(return_value=True)
 
-    with (
-        patch.object(lab_tools, "is_agent_lab_enabled", new=AsyncMock(return_value=True)),
-        patch.object(lab_tools, "todo_repository", new=todos),
-        patch.object(lab_tools, "acquire_sandbox", new=MagicMock(return_value=_AcquireCM(fake))),
-        patch.object(lab_tools, "record_activity", new=start_activity),
-    ):
-        result_a = await lab_tools.lab_start.ainvoke(
-            {"task": "Do the first thing", "active_todo_id": "t-a"},
-            config=_config("u-1", "lab-concurrent-a"),
-        )
-        result_b = await lab_tools.lab_start.ainvoke(
-            {"task": "Do the second thing", "active_todo_id": "t-b"},
-            config=_config("u-1", "lab-concurrent-b"),
-        )
-    assert "Lab run seeded" in result_a, result_a
-    assert "Lab run seeded" in result_b, result_b
-    run_a = _bare_run_id(todo_a)
-    run_b = _bare_run_id(todo_b)
+    run_a = await _seed_run(fake, todos, "t-a")
+    run_b = await _seed_run(fake, todos, "t-b")
     assert run_a != run_b
+    assert _bare_run_id(todo_a) == run_a
+    assert _bare_run_id(todo_b) == run_b
 
     event_activity = AsyncMock(return_value=True)
     deliver = AsyncMock(return_value=None)

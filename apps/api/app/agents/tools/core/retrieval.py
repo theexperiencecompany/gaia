@@ -27,7 +27,6 @@ from pydantic import Field, TypeAdapter
 
 from app.agents.core.subagents.active_integrations import get_active
 from app.agents.core.subagents.registry import get_subagent_by_id
-from app.agents.tools.agent_lab_tools import LAB_TOOL_NAMES
 from app.agents.tools.core.registry import (
     DESKTOP_TOOL_CATEGORY,
     DESKTOP_TOOL_SPACE,
@@ -49,7 +48,6 @@ from app.models.chat_models import ConversationSource
 from app.models.integration_models import PublicIntegrationSearchHit
 from app.models.integrations.composio_hooks import RunMetadata
 from app.override.langgraph_bigtool.utils import RetrieveToolsResult
-from app.services.feature_flags import is_agent_lab_enabled
 from app.services.integrations.integration_service import (
     get_user_available_tool_namespaces,
 )
@@ -941,10 +939,6 @@ def get_retrieve_tools_function(
                     # Desktop tools must not bind outside desktop sessions —
                     # the tools also re-check the source at execution time.
                     unknown_tool_names.append(tool_name)
-                elif tool_name in LAB_TOOL_NAMES and not await is_agent_lab_enabled(user_id):
-                    # Agent-lab tools must not bind for flag-off users — the
-                    # bodies also refuse at execution time.
-                    unknown_tool_names.append(tool_name)
                 elif tool_name in bindable_set or tool_name in mcp_tool_names_set:
                     validated_tool_names.append(tool_name)
                 elif canonical := known_by_canonical.get(tool_name.replace("-", "_")):
@@ -1126,13 +1120,6 @@ def get_retrieve_tools_function(
         )
 
         final_tools = _deduplicate_and_sort(all_results, limit)
-
-        # Agent-lab tools never surface in discovery for flag-off users (the
-        # binding gate above covers exact names; this covers semantic search).
-        if any(t in LAB_TOOL_NAMES for t in final_tools) and not await is_agent_lab_enabled(
-            user_id
-        ):
-            final_tools = [t for t in final_tools if t not in LAB_TOOL_NAMES]
 
         log.set(
             tool_retrieval={

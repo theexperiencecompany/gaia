@@ -1,9 +1,10 @@
 """Seed -> relay chain through a fake sandbox that really executes bash.
 
-Drives the REAL lab_start tool with acquire_sandbox yielding a
-FakeAsyncSandbox (the real build_seed_command output runs through a local
-bash, not a string match), then simulates the sandbox's hook POST at the REAL
-record_lab_event service level with a faked todo repository.
+Seeds a run directly with the REAL seeder (mint_lab_hooks_token plus
+build_seed_command output runs through a local bash, not a string match),
+records the run id on the todo's references, then simulates the sandbox's
+hook POST at the REAL record_lab_event service level with a faked todo
+repository.
 
 Service level, not the HTTP endpoint, deliberately: the endpoint needs full
 app boot plus Redis budget counters; the token-ownership check it performs is
@@ -14,11 +15,11 @@ fragment render, seed execution, hook parsing and tail filing are all real.
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
 import pytest
 
-import app.agents.tools.agent_lab_tools as lab_tools
 from app.models.todo_models import TodoDocument, TodoUpdate
 from app.services.agent_lab import sandbox_setup
 import app.services.agent_lab.lab_events as lab_events_mod
@@ -27,6 +28,8 @@ from app.services.agent_lab.lab_events import (
     parse_lab_event_body,
     record_lab_event,
 )
+from app.services.agent_lab.lab_runs import routing_ref, run_dir
+from app.services.agent_lab.sandbox_setup import build_seed_command, mint_lab_hooks_token
 from app.services.sandbox.execute_token import verify_execute_token
 from tests.e2e._harness.fake_sandbox import FakeAsyncSandbox
 
@@ -35,21 +38,8 @@ pytestmark = pytest.mark.e2e
 EVENTS_URL = "https://gaia.test/api/v1/lab/events"
 
 
-class _AcquireCM:
-    """Async CM yielding the fake sandbox (mirrors acquire_sandbox use)."""
-
-    def __init__(self, sbx: Any) -> None:
-        self._sbx = sbx
-
-    async def __aenter__(self) -> Any:
-        return self._sbx
-
-    async def __aexit__(self, *args: Any) -> bool:
-        return False
-
-
 class _FakeTodos:
-    """In-memory todo store: start writes refs here, the relay resolves them."""
+    """In-memory todo store: the seeder writes refs here, the relay resolves them."""
 
     def __init__(self, todo: TodoDocument) -> None:
         self._todo = todo
@@ -104,25 +94,21 @@ async def test_seed_executes_then_hook_tail_is_filed(monkeypatch: pytest.MonkeyP
     todos = _FakeTodos(todo)
     activity = AsyncMock(return_value=True)
 
-    with (
-        patch.object(lab_tools, "is_agent_lab_enabled", new=AsyncMock(return_value=True)),
-        patch.object(lab_tools, "todo_repository", new=todos),
-        patch.object(lab_tools, "acquire_sandbox", new=MagicMock(return_value=_AcquireCM(fake))),
-        patch.object(lab_tools, "record_activity", new=activity),
-    ):
-        result = await lab_tools.lab_start.ainvoke(
-            {"task": "Probe the billing page", "active_todo_id": "t1"},
-            config={
-                "configurable": {"thread_id": "lab-seed-relay", "user_id": "u-1"},
-                "metadata": {"user_id": "u-1"},
-            },
-        )
+    run_id = uuid4().hex
+    cli_session_id = uuid4().hex
+    token = mint_lab_hooks_token("u-1", run_id)
+    seed = build_seed_command(sandbox_setup.lab_events_url(), token, run_id, run_dir(run_id))
+    # Raises CommandExitException on a non-zero exit, so reaching the
+    # assertions below proves the seed executed.
+    await fake.commands.run(seed, timeout=300)
+    await todos.add_references(
+        "t1", user_id="u-1", references=[run_id, routing_ref(run_id, cli_session_id)]
+    )
 
-    assert "Lab run seeded" in result, result
     bare = [r for r in todo.references if not r.startswith("lab:")]
     routing = [r for r in todo.references if r.startswith("lab:")]
     assert len(bare) == 1 and len(routing) == 1
-    run_id = bare[0]
+    assert bare[0] == run_id
     assert routing[0].startswith(f"lab:{run_id}:")
     assert any(f"GAIA_LAB_RUN_ID={run_id}" in cmd for cmd in fake.commands.history)
 

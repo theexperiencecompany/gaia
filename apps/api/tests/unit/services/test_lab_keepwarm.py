@@ -9,13 +9,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.agents.tools.agent_lab_tools import LAB_RUN_DIR_PREFIX, LAB_SEED_TIMEOUT_SECONDS
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
 )
 from app.models.todo_models import TodoDocument
+from app.services.agent_lab.lab_runs import LAB_RUN_DIR_PREFIX, LAB_SEED_TIMEOUT_SECONDS
 from app.services.sandbox import lifecycle
 from app.services.sandbox.pool import PooledSandbox, refresh_sandbox_timeout
 from app.workers.tasks import sandbox_tasks

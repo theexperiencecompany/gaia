@@ -662,9 +662,6 @@ class TestBuildExecutorGraph:
                 "approve_device_pairing",
                 "list_devices",
                 "run_on_device",
-                "lab_start",
-                "lab_message",
-                "lab_stop",
             ]
 
     async def test_spawned_subagents_inherit_tools_but_never_the_orchestration_ones(self):

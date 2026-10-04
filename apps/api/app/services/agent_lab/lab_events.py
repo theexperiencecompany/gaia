@@ -135,7 +135,7 @@ async def record_lab_event(
         raise AppError(
             message="no tracked todo carries this lab run",
             why=f"run {session_id} is not recorded on any of the user's todos",
-            fix="start the run with lab_start so its run id lands on the todo",
+            fix="record its run id on the todo's references",
             status_code=404,
             code="agent_lab_run_unknown",
         )

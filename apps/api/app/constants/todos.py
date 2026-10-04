@@ -99,8 +99,6 @@ class TodoActivityEvent(StrEnum):
     COMPLETED = "completed"
     # A raw agent-lab lifecycle push landed on this todo (receiver record path).
     LAB_EVENT_RECEIVED = "lab_event_received"
-    # A chat reply the executor relayed into a lab run's sandbox inbox.
-    LAB_MESSAGE_RELAYED = "lab_message_relayed"
 
 
 # The sections every canvas.md carries exactly once, in this order. Activity

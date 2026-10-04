@@ -350,7 +350,6 @@ class ToolRegistry:
         # NOTE: Import tool modules lazily to avoid circular imports during app startup.
         from app.agents.tools import (
             account_tools,
-            agent_lab_tools,
             context_tool,
             desktop_tools,
             download_tool,
@@ -536,16 +535,6 @@ class ToolRegistry:
         self._add_category(
             "context",
             tools=[context_tool.gather_context],
-            risk=CategoryRisk(destructive_tools=set()),
-        )
-        # Agent-lab orchestration is agent-only plumbing like the sandbox coding
-        # tools (internal, never in user-facing listings) that acts only inside
-        # the user's own sandbox + their tracked todos. Per-user visibility is
-        # gated on the AGENT_LAB flag in retrieve_tools; the bodies re-check it.
-        self._add_category(
-            "agent_lab",
-            tools=[*agent_lab_tools.tools],
-            options=CategoryOptions(internal=True),
             risk=CategoryRisk(destructive_tools=set()),
         )
         # Desktop-executed tools live in their own space so discovery can be
