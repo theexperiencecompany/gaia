@@ -24,11 +24,11 @@ opencode auth login [target] [--method <label>]
 ```
 
 Zen flow: `/connect` in the TUI (or the login command) signs in at `opencode.ai/auth`, then paste the API key back into the terminal. This paste-back is headless-friendly by design.
-Credential lands at `~/.local/share/opencode/auth.json` (i.e. `$XDG_DATA_HOME/opencode/auth.json`). Symlink it for persistence:
+Credential lands at `~/.local/share/opencode/auth.json` (i.e. `$XDG_DATA_HOME/opencode/auth.json`; if `XDG_DATA_HOME` is set the whole tree moves — symlink the resolved dir). Symlink the WHOLE data dir for persistence (sessions live in `opencode.db` beside it — an `auth.json`-only symlink loses sessions on recreate):
 
 ```bash
 mkdir -p /workspace/.credentials/opencode
-ln -sfn /workspace/.credentials/opencode/auth.json ~/.local/share/opencode/auth.json
+ln -sfn /workspace/.credentials/opencode ~/.local/share/opencode
 ```
 
 UNVERIFIED: exact per-provider entry schema inside `auth.json` (never dumped; secret-adjacent) and whether Zen auth has a browser-callback step or is pure key-paste. Probe with `auth login --method` and a real account before scripting it. `opencode auth list|logout|switch` and `opencode mcp auth [name]` (MCP-server OAuth, separate surface) also exist.

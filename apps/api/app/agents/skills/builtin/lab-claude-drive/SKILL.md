@@ -28,11 +28,11 @@ claude auth login
 The browser cannot reach the sandbox callback, so it shows a login code instead; paste it at the `Paste code here` prompt. Terminal shows `Login successful`.
 Alternative: `claude setup-token` mints a one-year OAuth token; export it as `CLAUDE_CODE_OAUTH_TOKEN`. UNVERIFIED end-to-end (docs-only, never minted here).
 
-Credential lands at `~/.claude/.credentials.json` on Linux (0600). Symlink it for persistence:
+Credential lands at `~/.claude/.credentials.json` on Linux (0600). Symlink the WHOLE `~/.claude` dir for persistence (background-job state under `jobs/` and transcripts under `projects/` live beside it — a credentials-only symlink loses sessions on recreate):
 
 ```bash
 mkdir -p /workspace/.credentials/claude
-ln -sfn /workspace/.credentials/claude/credentials.json ~/.claude/.credentials.json
+ln -sfn /workspace/.credentials/claude ~/.claude
 ```
 
 Rules: `ANTHROPIC_API_KEY` must be unset or `-p` silently uses the key instead of subscription OAuth. Never use `--bare` for OAuth sessions; it never reads OAuth or Keychain and requires an API key.
