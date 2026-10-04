@@ -384,11 +384,7 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._find(filt, sort=[("_id", 1)], limit=limit)
 
     async def find_by_reference(self, user_id: str, reference: str) -> TodoDocument | None:
-        """One user's todo carrying reference in its references map, if any.
-
-        Lab runs record their run id here at lab_start, so the events receiver
-        resolves run → todo without a separate session collection.
-        """
+        """One user's todo carrying reference in its references map, if any."""
         rows = await self._find({"user_id": user_id, "references": reference}, limit=1)
         return rows[0] if rows else None
 

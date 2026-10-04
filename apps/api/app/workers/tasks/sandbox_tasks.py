@@ -148,16 +148,7 @@ def _lab_cap_notified_key(user_id: str) -> str:
 
 
 def _lab_run_started_at(todo: TodoDocument) -> datetime | None:
-    """Best-effort run-start proxy: the todo's own write clock.
-
-    No lab_run_started_at field exists on the todo — the receiver resolves
-    run → todo via find_by_reference on `references` — so age is derived from
-    updated_at (lab_start records the run id on the todo, and every lab event
-    overwrites its log tail, both stamping updated_at), falling back to
-    created_at. A chatty run therefore slides its cap; accepted, since the cap
-    bounds forgotten/wedged runs, not active ones. Missing stamps fail open
-    (None = keep refreshing) rather than stranding a live run.
-    """
+    """Run-start proxy from the todo's own write clock; None (fail open) when unstamped."""
     stamp = todo.updated_at or todo.created_at
     if stamp is None:
         return None
@@ -165,13 +156,7 @@ def _lab_run_started_at(todo: TodoDocument) -> datetime | None:
 
 
 def _lab_run_ids(references: list[str]) -> list[str]:
-    """Run ids with a routing entry, in reference order, deduplicated.
-
-    Only ``lab:<run_id>:<cli_session_id>`` entries (written by lab_start via
-    parse_lab_routing_ref's shape) mark a lab run. Bare ids and institutional-
-    memory links are ignored: an old unrelated todo must never read as a
-    capped run or steer a token re-seed.
-    """
+    """Run ids with a routing entry, in order, deduplicated; bare ids ignored so unrelated todos never steer cap/re-seed."""
     seen: set[str] = set()
     run_ids: list[str] = []
     for entry in references:
@@ -192,13 +177,7 @@ async def _lab_run_todos(user_id: str) -> list[TodoDocument]:
 
 
 def _lab_cap_status(lab_todos: list[TodoDocument]) -> tuple[bool, list[str]]:
-    """Whether every lab-run candidate todo is older than the cap.
-
-    `references` also carries non-lab institutional-memory links, but those
-    never reach here — _lab_run_todos already filtered to routing entries —
-    so all-old means every live run has been silent for 12h and genuinely
-    looks dead. No candidates (or any fresh one) means keep refreshing.
-    """
+    """Whether every lab-run candidate is older than the cap; pass routing-entry todos only, empty means keep refreshing."""
     if not lab_todos:
         return False, []
     now = datetime.now(UTC)
@@ -219,13 +198,7 @@ async def _lab_runs_past_cap(user_id: str) -> tuple[bool, list[str]]:
 
 
 async def _reseed_lab_tokens(user_id: str, sbx: AsyncSandbox, lab_todos: list[TodoDocument]) -> None:
-    """Stage a fresh hooks token into each active lab run's workdir.
-
-    The hooks token lives 6h against the 12h run cap, so a refreshed run would
-    otherwise go deaf halfway through its second half. Re-runs the canonical
-    seeder per run (idempotent by construction); one run's failure costs a
-    warning line, never the tick or its sibling runs.
-    """
+    """Stage a fresh hooks token into each run's workdir (6h token vs 12h cap); one run's failure never costs the tick."""
     if not lab_todos:
         return
     try:
@@ -258,12 +231,7 @@ async def _reseed_lab_tokens(user_id: str, sbx: AsyncSandbox, lab_todos: list[To
 
 
 async def _notify_lab_cap_hit(ctx: dict[str, Any], user_id: str, todo_ids: list[str]) -> None:
-    """One in-app notification that keep-warm stopped for a capped run.
-
-    Best-effort mirror of the tracked-todo failure notify: delivery failure
-    costs a warning line, never the tick. Redis throttles to one notification
-    per cap window; a bare ctx (unit tests) has no pool and notifies outright.
-    """
+    """One in-app notification per cap window that keep-warm stopped; delivery failure never costs the tick."""
     pool = cast(ArqRedis | None, ctx.get("redis"))
     if pool is not None:
         try:

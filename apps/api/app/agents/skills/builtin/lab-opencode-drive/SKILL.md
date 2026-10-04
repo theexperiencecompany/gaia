@@ -39,13 +39,13 @@ UNVERIFIED: exact per-provider entry schema inside `auth.json` (never dumped; se
 opencode run --format json -m opencode/muse-spark-1.3-contributor-free "<message>"
 ```
 
-`--format json` emits line-delimited JSON events; observed types include `{"type":"text","part":{"text":"..."}}` and `{"type":"step_finish",...}`. Full event taxonomy UNVERIFIED (anything else needs a live capture).
+`--format json` emits line-delimited JSON events; verified types include `{"type":"text","part":{"text":"..."}}` and `{"type":"step_finish",...}` (anything else needs a live capture).
 Useful flags: `-m/--model provider/model`, `--agent`, `-c/--continue`, `-s/--session <id>`, `--fork`, `--share`, `-f/--file`, `--title`, `--dir`, `--auto` (auto-approve non-denied permissions). Resume via `run -c` / `run -s <id>` / `--fork`; `opencode session list|delete|export|import` manages saved sessions.
 Optional long-running mode: `opencode serve` (headless HTTP API; `OPENCODE_SERVER_PASSWORD` for basic auth) plus `opencode run --attach <url>` per message to avoid MCP cold-boot per run.
 
 ## Continue a session (after pause/resume or sandbox recreate)
 
-Record the session id on the todo at start (`opencode run` prints it; `opencode session list` shows saved ones, all `ses_`-prefixed — `-s` REJECTS ids without the prefix). Re-enter headless with `opencode run --format json -s <ses_id> "<follow-up>"` (`--format json` required; bare `run -c` opens the interactive TUI). Session data lives next to `auth.json` under `~/.local/share/opencode/` — UNVERIFIED exact subpath; inspect in the sandbox and extend the symlink pattern above to whatever holds sessions so resume survives pause/resume AND recreate. After a recreate, run `opencode session list` first; if the session is gone, re-anchor with a fresh run seeded from the todo's log tail. Prefer explicit `-s <ses_id>` over `-c` whenever several runs exist.
+Record the session id on the todo at start (`opencode run` prints it; `opencode session list` shows saved ones, all `ses_`-prefixed — `-s` REJECTS ids without the prefix). Re-enter headless with `opencode run --format json -s <ses_id> "<follow-up>"` (`--format json` required; bare `run -c` opens the interactive TUI). Session data (`opencode.db`) lives beside `auth.json`, so the whole-dir symlink above already covers it for pause/resume AND recreate. After a recreate, run `opencode session list` first; if the session is gone, re-anchor with a fresh run seeded from the todo's log tail. Prefer explicit `-s <ses_id>` over `-c` whenever several runs exist.
 
 ## Stop
 

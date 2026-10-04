@@ -1,15 +1,8 @@
 """Per-RUN sandbox seeding for Agent Lab: hooks fragment + plugin + credential links.
 
-The vendored ``claude_hooks.json`` is a template, not a live config. Its two
-placeholders are rendered per run at lab start — never hardcoded, so no
-host or credential is baked into the repo or the template:
-
-- ``{{GAIA_LAB_EVENTS_URL}}`` → ``SANDBOX_LAB_EVENTS_CALLBACK_URL`` (the
-  /api/v1/lab/events URL reachable FROM the E2B sandbox, public API base).
-- ``{{GAIA_LAB_TOKEN}}`` → a per-run HMAC token minted by
-  :func:`mint_lab_hooks_token` (same scheme as /sandbox/execute, but with an
-  EMPTY tool scope, so the token is useless on /sandbox/execute and only the
-  events receiver accepts it).
+The vendored ``claude_hooks.json`` is a template: its ``{{GAIA_LAB_EVENTS_URL}}``
+and ``{{GAIA_LAB_TOKEN}}`` placeholders are rendered per run at lab start, so no
+host or credential is baked into the repo or the template.
 
 Per-run isolation: EVERYTHING lands under the RUN's workdir, never the global
 ``~/.claude/settings.json``, so two concurrent runs keep separate tokens::
@@ -21,17 +14,9 @@ Per-run isolation: EVERYTHING lands under the RUN's workdir, never the global
 
 The OpenCode plugin reads its three ``GAIA_LAB_*`` vars from ``process.env``
 at event time, so whatever starts ``opencode serve`` must source the env file
-first (``set -a; . <run_dir>/.gaia/lab-env; set +a``) — that `serve` start is
-T1's job; this module only guarantees the file exists with rendered values.
-Claude needs no env: its session id arrives inside the native hook POST body,
-and the receiver maps ``hook_event_name`` to kind (unmatched Notification
-types become ``notification_other`` there, not here).
-
-Reply-routing seam: the seed script ends by echoing a stable
-``GAIA_LAB_RUN_ID=<session_id>`` line so the model driving the CLI via bash
-has one id to reference in replies. Persisting the CLI-native session id
-(``--session-id`` / ``-s``) onto the todo at start is T1's job, not this
-module's.
+first. Claude needs no env: its session id arrives inside the native hook POST
+body. The seed script ends by echoing ``GAIA_LAB_RUN_ID=<session_id>`` so the
+model driving the CLI via bash has one id to reference in replies.
 
 Credential DIRS are linked (never copied) into ``/workspace/.credentials/*``
 for JuiceFS persistence; linking is link-if-missing only, so a live login is
@@ -139,6 +124,14 @@ def mint_lab_hooks_token(user_id: str, session_id: str) -> str:
 
 def render_hooks_fragment(events_url: str, token: str) -> str:
     """Render the vendored fragment with per-run values; fails loud on drift."""
+    if not events_url or not token:
+        raise AppError(
+            message="lab hooks fragment has no empty fields",
+            why="events_url and token are both required to render the push config",
+            fix="resolve the callback URL and mint the hooks token first",
+            status_code=500,
+            code="agent_lab_hooks_empty_input",
+        )
     template = Path(__file__).with_name(FRAGMENT_FILENAME).read_text()
     for placeholder in (URL_PLACEHOLDER, TOKEN_PLACEHOLDER):
         if placeholder not in template:
@@ -179,6 +172,14 @@ def build_seed_command(events_url: str, token: str, session_id: str, run_dir: st
             status_code=500,
             code="agent_lab_seed_missing_run_dir",
         )
+    if not session_id:
+        raise AppError(
+            message="lab seed needs a session id",
+            why="session_id is empty — the relayed events would carry no identity",
+            fix="mint the run id first, then seed with it",
+            status_code=500,
+            code="agent_lab_seed_missing_session_id",
+        )
     fragment = render_hooks_fragment(events_url, token)
     env_file = render_lab_env(events_url, token, session_id)
     plugin = Path(__file__).with_name(PLUGIN_FILENAME).read_text()
@@ -193,8 +194,7 @@ def build_seed_command(events_url: str, token: str, session_id: str, run_dir: st
     links = " && ".join(
         f'[ -e "{home}" ] || ln -s {target} "{home}"' for home, target in CREDENTIAL_LINKS
     )
-    # Persisting the CLI-native session id (--session-id / -s) onto the todo is
-    # T1's job; the trailing echo gives the model one stable RUN id to reference.
+    # The trailing echo gives the model one stable RUN id to reference in replies.
     return (
         f'mkdir -p "{run_dir}/.claude" "{run_dir}/.gaia" "{run_dir}/.opencode/plugins" '
         "/workspace/.credentials/claude /workspace/.credentials/codex "

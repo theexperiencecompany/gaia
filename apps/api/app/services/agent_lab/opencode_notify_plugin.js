@@ -32,6 +32,9 @@ const KIND_BY_EVENT_TYPE = {
 async function postEvent(url, token, payload) {
   const res = await fetch(url, {
     method: "POST",
+    // Same 15s budget as the Claude hook pushes: a hung callback must fail
+    // into the catch below (relay continues) instead of stalling the loop.
+    signal: AbortSignal.timeout(15000),
     headers: {
       "content-type": "application/json",
       authorization: `Bearer ${token}`,

@@ -59,7 +59,7 @@ claude -p "<prompt>" --output-format stream-json --session-id <uuid>
 Re-enter later with `claude -p --resume <uuid> "<follow-up>"` (`-p` is REQUIRED;
 bare `claude --resume` opens an interactive session that hangs headless, and
 `--continue` is interactive-only the same way). For the most recent session,
-`claude -p --continue "…"`. Session transcripts live under `~/.claude/` — UNVERIFIED exact subpath; run `ls ~/.claude` in the sandbox and symlink whatever holds sessions (same pattern as credentials above) so resume survives pause/resume AND template recreate. After a recreate, verify with `claude agents` before resuming; if the session is gone, re-anchor by starting a fresh run pasting the todo's log tail as context. Never assume `--continue` reaches the right session when several runs exist — prefer explicit `--resume <uuid>`.
+`claude -p --continue "…"`. Session transcripts live beside credentials under `~/.claude/`, so the whole-dir symlink above already covers them for pause/resume AND template recreate. After a recreate, verify with `claude agents` before resuming; if the session is gone, re-anchor by starting a fresh run pasting the todo's log tail as context. Never assume `--continue` reaches the right session when several runs exist — prefer explicit `--resume <uuid>`.
 
 ## Stop
 

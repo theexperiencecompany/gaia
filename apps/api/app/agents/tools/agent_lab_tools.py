@@ -1,14 +1,9 @@
 """Private agent-lab orchestration: seed a per-run sandbox workdir, relay messages, stop runs.
 
-Thin relay only. The model drives the Claude/OpenCode CLIs itself via bash
-following the lab-claude-drive / lab-opencode-drive skills; these tools never
-parse CLI output and never run a login state machine. They seed the run
-workdir (hooks fragment + plugin + env + credential links via
-sandbox_setup.build_seed_command), persist the run id and the CLI-native
-session id on the tracked todo's references (the events receiver resolves
-run -> todo via find_by_reference on the bare run id), and record activity.
-
-Reference entries for one run are the bare ``run_id`` (receiver shape) plus
+Thin relay only — the model drives the CLIs itself via bash per the drive
+skills; these tools seed the workdir, persist the run id plus the CLI-native
+session id on the tracked todo's references, and record activity. One run's
+entries are the bare ``run_id`` (receiver shape) plus
 ``lab:<run_id>:<cli_session_id>`` (routing shape for message/stop).
 """
 
@@ -17,7 +12,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 from uuid import uuid4
 
-from e2b import CommandExitException
+from e2b import AsyncSandbox, CommandExitException
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
@@ -54,6 +49,16 @@ LAB_SESSION_PROBE_TIMEOUT_SECONDS: int = 30
 
 #: Bound for the resume turn so a wedged CLI cannot hang the relay forever.
 LAB_RESUME_TIMEOUT_SECONDS: int = 600
+
+#: Bound for the stop signal so a wedged sandbox cannot hang the tool.
+LAB_STOP_TIMEOUT_SECONDS: int = 15
+
+#: Stderr tail kept in user-facing errors; the full stream stays in the sandbox.
+LAB_STDERR_TAIL_CHARS: int = 2000
+LAB_SHORT_STDERR_TAIL_CHARS: int = 1000
+
+#: Text kept in a todo's activity entry; the full reply lives in the inbox file.
+LAB_ACTIVITY_TEXT_CHARS: int = 200
 
 LAB_DISABLED_MESSAGE: str = (
     "Agent lab is not enabled for this user. Tell the user agent lab is off "
@@ -125,6 +130,32 @@ async def _resolve_run(config: RunnableConfig, user_id: str, todo_id: str | None
     )
 
 
+async def _seed_run_workdir(user_id: str, run_id: str, run_dir: str) -> str | None:
+    """Seed hooks + plugin + env into the run workdir; error string on failure."""
+    try:
+        token = mint_lab_hooks_token(user_id, run_id)
+        seed = build_seed_command(lab_events_url(), token, run_id, run_dir)
+    except Exception as e:
+        log.error(f"{LogTag.TOOL} lab_start seed build failed", error_type=type(e).__name__)
+        return f"Error: could not prepare the lab run ({e})."
+    try:
+        async with acquire_sandbox(user_id) as sbx:
+            try:
+                await sbx.commands.run(seed, timeout=LAB_SEED_TIMEOUT_SECONDS)
+            except CommandExitException as e:
+                log.error(f"{LogTag.TOOL} lab_start seed failed", error_type=type(e).__name__)
+                return (
+                    "Error: seeding the lab workdir failed in the sandbox "
+                    f"(exit {e.exit_code}): {(e.stderr or '').strip()[-LAB_STDERR_TAIL_CHARS:]}"
+                )
+    except SandboxAcquisitionError as e:
+        return f"Error: sandbox unavailable ({e})"
+    except Exception as e:
+        log.error(f"{LogTag.TOOL} lab_start failed", error_type=type(e).__name__)
+        return f"Error: could not start the lab run ({e})."
+    return None
+
+
 @tool
 async def lab_start(
     config: RunnableConfig,
@@ -161,33 +192,18 @@ async def lab_start(
     run_id = uuid4().hex
     cli_session_id = uuid4().hex
     run_dir = _run_dir(run_id)
-    try:
-        token = mint_lab_hooks_token(user_id, run_id)
-        seed = build_seed_command(lab_events_url(), token, run_id, run_dir)
-    except Exception as e:
-        log.error(f"{LogTag.TOOL} lab_start seed build failed", error_type=type(e).__name__)
-        return f"Error: could not prepare the lab run ({e})."
-
-    try:
-        async with acquire_sandbox(user_id) as sbx:
-            try:
-                await sbx.commands.run(seed, timeout=LAB_SEED_TIMEOUT_SECONDS)
-            except CommandExitException as e:
-                return (
-                    "Error: seeding the lab workdir failed in the sandbox "
-                    f"(exit {e.exit_code}): {(e.stderr or '').strip()[-2000:]}"
-                )
-    except SandboxAcquisitionError as e:
-        return f"Error: sandbox unavailable ({e})"
-    except Exception as e:
-        log.error(f"{LogTag.TOOL} lab_start failed", error_type=type(e).__name__)
-        return f"Error: could not start the lab run ({e})."
+    seed_error = await _seed_run_workdir(user_id, run_id, run_dir)
+    if seed_error is not None:
+        return seed_error
 
     await todo_repository.add_references(
         todo.id, user_id=user_id, references=[run_id, _routing_ref(run_id, cli_session_id)]
     )
     await record_activity(
-        todo.id, user_id, TodoActivityEvent.RUN_STARTED, f"lab run started: {task.strip()[:200]}"
+        todo.id,
+        user_id,
+        TodoActivityEvent.RUN_STARTED,
+        f"lab run started: {task.strip()[:LAB_ACTIVITY_TEXT_CHARS]}",
     )
     log.set_ns("lab", todo_id=todo.id)
     return (
@@ -204,18 +220,58 @@ async def lab_start(
 
 
 def _lab_resume_command(cli: str, cli_session_id: str, text: str, run_dir: str) -> str:
-    """CLI-native resume from the run workdir.
-
-    Verbatim shapes from the drive skills, never invented flags: lab-claude-drive
-    re-enters with ``claude --resume <uuid> "<follow-up>"``,
-    lab-opencode-drive with ``opencode run -s <id> "<follow-up>"``.
-    """
+    """CLI-native resume from the run workdir; verbatim shapes from the drive skills."""
     quoted = sh_quote(text.strip())
     if cli == "opencode":
         resume = f"opencode run -s {sh_quote(cli_session_id)} {quoted}"
     else:
         resume = f"claude --resume {sh_quote(cli_session_id)} {quoted}"
     return f"cd {sh_quote(run_dir)} && {resume}"
+
+
+async def _relay_via_resume(
+    sbx: AsyncSandbox, run: _LabRun, text: str, user_id: str
+) -> tuple[bool, str]:
+    """Probe the owning CLI and resume its session; (False, error) when the run never saw the reply."""
+    # No record names the CLI (one cli_session_id covers either), so probe
+    # opencode's session index: a hit names opencode, a miss means claude
+    # (foreground -p sessions have no listable index). A wrong default fails
+    # loudly at resume, never misdelivers.
+    try:
+        session_list = await sbx.commands.run(
+            "opencode session list", timeout=LAB_SESSION_PROBE_TIMEOUT_SECONDS
+        )
+    except CommandExitException as e:
+        log.warning(f"{LogTag.TOOL} lab_message CLI probe failed", error_type=type(e).__name__)
+        return False, (
+            "Error: reply filed to the run inbox but the CLI could not be "
+            "determined (`opencode session list` failed: "
+            f"{(e.stderr or '').strip()[-LAB_SHORT_STDERR_TAIL_CHARS:]}). The run has NOT seen "
+            f"the reply - resume session {run.cli_session_id} by hand "
+            f"from {run.run_dir}."
+        )
+    cli = "opencode" if run.cli_session_id in (session_list.stdout or "") else "claude"
+    try:
+        await sbx.commands.run(
+            _lab_resume_command(cli, run.cli_session_id, text, run.run_dir),
+            timeout=LAB_RESUME_TIMEOUT_SECONDS,
+        )
+    except CommandExitException as e:
+        detail = (e.stderr or "").strip()[-LAB_STDERR_TAIL_CHARS:]
+        log.warning(f"{LogTag.TOOL} lab_message resume failed", error_type=type(e).__name__)
+        await record_activity(
+            run.todo_id,
+            user_id,
+            TodoActivityEvent.LAB_MESSAGE_RELAYED,
+            f"reply filed to inbox but {cli} resume failed: {detail[:LAB_ACTIVITY_TEXT_CHARS]}",
+        )
+        return False, (
+            f"Error: reply filed to the run inbox but {cli} resume failed "
+            f"(exit {e.exit_code}): {detail}. The run has NOT seen the "
+            f"reply - resume session {run.cli_session_id} by hand from "
+            f"{run.run_dir}."
+        )
+    return True, cli
 
 
 @tool
@@ -246,49 +302,10 @@ async def lab_message(
                 await sbx.files.write(inbox_path, text.strip() + "\n")
             except CommandExitException as e:
                 return f"Error: could not write the reply into the sandbox ({e})."
-            # lab_start mints one cli_session_id for EITHER cli and the model
-            # launches one of them by hand, so no record names the CLI. Probe
-            # opencode's session index: a hit names opencode, a miss means
-            # claude (foreground -p sessions have no listable index - the
-            # transcript subpath is UNVERIFIED per the drive skill, so there is
-            # nothing reliable to grep). A wrong default still fails loudly at
-            # resume (unknown session exits non-zero), never misdelivers.
-            try:
-                session_list = await sbx.commands.run(
-                    "opencode session list", timeout=LAB_SESSION_PROBE_TIMEOUT_SECONDS
-                )
-            except CommandExitException as e:
-                return (
-                    "Error: reply filed to the run inbox but the CLI could not be "
-                    "determined (`opencode session list` failed: "
-                    f"{(e.stderr or '').strip()[-1000:]}). The run has NOT seen "
-                    f"the reply - resume session {run.cli_session_id} by hand "
-                    f"from {run.run_dir}."
-                )
-            cli = (
-                "opencode"
-                if run.cli_session_id in (session_list.stdout or "")
-                else "claude"
-            )
-            try:
-                await sbx.commands.run(
-                    _lab_resume_command(cli, run.cli_session_id, text, run.run_dir),
-                    timeout=LAB_RESUME_TIMEOUT_SECONDS,
-                )
-            except CommandExitException as e:
-                detail = (e.stderr or "").strip()[-2000:]
-                await record_activity(
-                    run.todo_id,
-                    user_id,
-                    TodoActivityEvent.LAB_MESSAGE_RELAYED,
-                    f"reply filed to inbox but {cli} resume failed: {detail[:200]}",
-                )
-                return (
-                    f"Error: reply filed to the run inbox but {cli} resume failed "
-                    f"(exit {e.exit_code}): {detail}. The run has NOT seen the "
-                    f"reply - resume session {run.cli_session_id} by hand from "
-                    f"{run.run_dir}."
-                )
+            delivered, result = await _relay_via_resume(sbx, run, text, user_id)
+            if not delivered:
+                return result
+            cli = result
     except SandboxAcquisitionError as e:
         return f"Error: sandbox unavailable ({e})"
     except Exception as e:
@@ -296,7 +313,10 @@ async def lab_message(
         return f"Error: could not relay the reply ({e})."
 
     await record_activity(
-        run.todo_id, user_id, TodoActivityEvent.LAB_MESSAGE_RELAYED, text.strip()[:200]
+        run.todo_id,
+        user_id,
+        TodoActivityEvent.LAB_MESSAGE_RELAYED,
+        text.strip()[:LAB_ACTIVITY_TEXT_CHARS],
     )
     return (
         f'Reply delivered to the run on "{run.todo_title}" via {cli} resume '
@@ -321,7 +341,9 @@ async def lab_stop(config: RunnableConfig) -> str:
     try:
         async with acquire_sandbox(user_id) as sbx:
             try:
-                await sbx.commands.run(f"pkill -f {sh_quote(run.cli_session_id)}", timeout=15)
+                await sbx.commands.run(
+                    f"pkill -f {sh_quote(run.cli_session_id)}", timeout=LAB_STOP_TIMEOUT_SECONDS
+                )
                 stopped = True
             except CommandExitException as e:
                 if (e.exit_code or 0) not in (0, 1):

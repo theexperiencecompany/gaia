@@ -58,6 +58,9 @@ SANDBOX_LAB_EVENTS_TOKEN_TTL_SECONDS = 21600
 # Lab budget counters must outlive the 6h lab token, so a counter can never
 # expire (and reset) while its token is still valid.
 SANDBOX_LAB_EVENTS_BUDGET_WINDOW_SECONDS = 25200
+# TTL of the per-minute lab push bucket: two minutes so a burst straddling a
+# minute boundary still counts against one window instead of resetting early.
+SANDBOX_LAB_EVENTS_RATE_BUCKET_TTL_SECONDS = 120
 # Raw hook payloads are stored verbatim on the todo, so the receiver refuses
 # anything bigger than this before it touches the budget or the database.
 LAB_EVENT_MAX_RAW_BYTES = 64 * 1024

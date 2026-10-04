@@ -1,19 +1,11 @@
 """The lab lifecycle-event receiver — the sandbox's push door back into GAIA.
 
-DUMB-PIPE RULE: this route authenticates the caller, verifies the session
-belongs to them, and files the raw payload's tail onto the run's tracked todo.
-It never classifies, interprets, or acts on kind/raw — no parsing contracts, no
-agent-output abstraction. A future supervisor tick reads the stored tail and
-decides what anything means; until then this module is storage plus a wake-up
-nudge.
-
-Authenticated by the run's HMAC token alone (the sandbox hooks have no user
-session), so the path is excluded from WorkOS auth like /sandbox/execute.
-
-Accepts the canonical {session_id, kind, raw} AND Claude's raw hook POST
-({session_id, hook_event_name, ...} → kind derived, whole body as raw): the
-body is parsed by hand, never by a strict schema, so a hook-shaped push can
-never 422.
+Dumb pipe: this route authenticates the caller, verifies the session belongs
+to them, and files the raw payload's tail onto the run's tracked todo. It
+never classifies or acts on kind/raw — a future supervisor reads the tail.
+Authenticated by the run's HMAC token alone, so the path is excluded from
+WorkOS auth like /sandbox/execute. Accepts canonical {session_id, kind, raw}
+and Claude's raw hook POST alike; a hook-shaped push never 422s.
 """
 
 import time
@@ -25,6 +17,7 @@ from app.constants.execute import (
     SANDBOX_EXECUTE_MAX_CALLS_PER_MINUTE,
     SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN,
     SANDBOX_LAB_EVENTS_BUDGET_WINDOW_SECONDS,
+    SANDBOX_LAB_EVENTS_RATE_BUCKET_TTL_SECONDS,
 )
 from app.db.redis import redis_cache
 from app.schemas.common import ResponseModel
@@ -44,13 +37,7 @@ class LabEventResponse(ResponseModel):
 
 
 async def _enforce_lab_budget(run_id: str) -> None:
-    """Hard per-run limits — the wall a wedged hook retry loop hits.
-
-    Mirrors the /sandbox/execute budget: counters live in Redis so every API
-    replica enforces the same budget, under a lab key prefix so the two
-    surfaces never share a counter. The total counter's window outlives the 6h
-    lab token, so it cannot expire (and reset) while its token is still valid.
-    """
+    """Per-run push limits, Redis-backed so every replica enforces one budget."""
     total_key = f"lab_events:calls:{run_id}"
     total = await redis_cache.client.incr(total_key)
     if total == 1:
@@ -65,7 +52,7 @@ async def _enforce_lab_budget(run_id: str) -> None:
     minute_key = f"lab_events:rate:{run_id}:{int(time.time()) // 60}"
     rate = await redis_cache.client.incr(minute_key)
     if rate == 1:
-        await redis_cache.client.expire(minute_key, 120)
+        await redis_cache.client.expire(minute_key, SANDBOX_LAB_EVENTS_RATE_BUCKET_TTL_SECONDS)
     if rate > SANDBOX_EXECUTE_MAX_CALLS_PER_MINUTE:
         raise AppError(
             message="Lab events rate limit hit",

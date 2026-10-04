@@ -1,9 +1,9 @@
 """Dumb-pipe persistence for agent lifecycle events pushed from the sandbox.
 
-The receiver never classifies or interprets kind/raw — it authenticates the
-caller, checks the session belongs to them, and stores the payload's tail
-verbatim on the run's tracked todo. A future supervisor reads the tail; until
-then this module is storage plus a wake-up nudge, never a parser.
+The receiver authenticates the caller, checks the session belongs to them,
+and stores the payload's tail verbatim on the run's tracked todo. A future
+supervisor reads the tail; until then this module is storage plus a wake-up
+nudge, never a parser.
 """
 
 from datetime import UTC, datetime
@@ -77,12 +77,7 @@ class LabEventReceipt(BaseModel):
 
 
 def parse_lab_event_body(body: object) -> ParsedLabEvent:
-    """Normalize either accepted shape; fails loud only on an unusable body.
-
-    Accepts the canonical {session_id, kind, raw} and Claude's raw hook POST
-    ({session_id, hook_event_name, ...} → kind derived, whole body as raw).
-    A hook-shaped body never 422s.
-    """
+    """Normalize either accepted shape (canonical or raw hook POST); fails loud only on an unusable body."""
     if not isinstance(body, dict):
         raise AppError(
             message="agent lab event must be a JSON object",
@@ -175,11 +170,7 @@ def _reject_oversize(raw: dict[str, Any]) -> None:
 
 
 def _event_fingerprint(session_id: str, kind: str, raw: dict[str, Any]) -> str:
-    """Short stable hash so a re-POSTed identical event is recognizable.
-
-    The Claude catch-all Notification hook double-fires on matched events with a
-    byte-identical body; without this the user gets two nudges for one question.
-    """
+    """Short stable hash so a re-POSTed identical event is recognizable (the catch-all hook double-fires)."""
     digest = hashlib.sha256(
         json.dumps(
             {"s": session_id, "k": kind.lower(), "r": raw}, sort_keys=True, default=str
@@ -206,11 +197,7 @@ def _render_tail(session_id: str, kind: str, raw: dict[str, Any]) -> str:
 
 
 async def _overwrite_lab_tail(todo: TodoDocument, user_id: str, tail: str) -> None:
-    """Replace the marked lab section in log.md with this event's tail.
-
-    Overwrite, never append: the section holds exactly one tail, so a chatty
-    run cannot grow the log without bound. The rest of log.md is untouched.
-    """
+    """Replace the marked lab section with this event's tail; never append, so a chatty run cannot grow the log."""
     head = (todo.log_content or "").split(LAB_TAIL_MARKER)[0].rstrip()
     content = f"{head}\n\n{LAB_TAIL_MARKER}\n{tail}\n" if head else f"{LAB_TAIL_MARKER}\n{tail}\n"
     updated = await todo_repository.replace_note_fields(
@@ -229,12 +216,7 @@ async def _overwrite_lab_tail(todo: TodoDocument, user_id: str, tail: str) -> No
 async def _wake_or_quiet(
     todo: TodoDocument, *, user_id: str, session_id: str, kind: str, raw: dict[str, Any]
 ) -> str:
-    """Deliver questions/completions to the user's chat; note why when quiet.
-
-    The todo_run_delivery pattern: SILENCE (a kind needing no reply), NOTIFY_OFF
-    (the todo opted out), best-effort delivery otherwise. Never raises — a lost
-    nudge costs the activity line, not the stored event.
-    """
+    """Deliver questions/completions to the user's chat; never raises — a lost nudge costs the activity line, not the event."""
     if kind.lower() not in LAB_WAKE_KINDS:
         return f"kept quiet: kind {kind!r} needs no reply"
     if not todo.notify_on_run:
