@@ -103,6 +103,12 @@ def turns_for(case: Case) -> list[str]:
     return [t.strip() for t in case.prompt.split(TURN_SEPARATOR) if t.strip()]
 
 
+#: A transcript entry for a tap-back rather than a written reply. The judge reads
+#: the reaction in its content; the emoji gate skips it, because a reaction is the
+#: one emoji the comms prompt always allows.
+REACTION_KIND = "reaction"
+
+
 def _parse_frames(frames: list[Frame]) -> TurnRecord:
     """Reduce the raw SSE frame list into a turn record.
 
@@ -117,6 +123,7 @@ def _parse_frames(frames: list[Frame]) -> TurnRecord:
     seen_call_ids: set[str] = set()
     follow_up_actions: list[str] | None = None
     error: str | None = None
+    reaction: str | None = None
     raw: list[dict[str, Any]] = []
 
     for frame in frames:
@@ -224,6 +231,10 @@ def _parse_frames(frames: list[Frame]) -> TurnRecord:
                 }
             )
             continue
+        if isinstance(frame.get("emoji_ack"), dict):
+            reaction = str(frame["emoji_ack"].get("emoji") or "") or None
+            raw.append({"type": "emoji_ack", "emoji": reaction})
+            continue
         if isinstance(frame.get("error"), str):
             error = error or frame["error"]
             raw.append({"type": "error", "detail": _truncate(frame["error"], 300)})
@@ -258,6 +269,7 @@ def _parse_frames(frames: list[Frame]) -> TurnRecord:
         "tool_calls": tool_calls,
         "follow_up_actions": follow_up_actions,
         "error": error,
+        "reaction": reaction,
         "raw": raw,
     }
 
@@ -329,6 +341,14 @@ class ChatStreamTransport:
                         transcript.append({"role": "user", "content": turn_text})
                         if turn["text"]:
                             transcript.append({"role": "assistant", "content": turn["text"]})
+                        if turn["reaction"]:
+                            transcript.append(
+                                {
+                                    "role": "assistant",
+                                    "content": f"[reaction: {turn['reaction']}]",
+                                    "kind": REACTION_KIND,
+                                }
+                            )
                         text_parts.append(turn["text"])
                         tool_calls.extend(turn["tool_calls"])
                         final_turn_tool_calls = turn["tool_calls"]
@@ -519,6 +539,8 @@ def _emoji_discipline_check(run: CaseRun) -> tuple[float, str]:
             user_has_emojied = user_has_emojied or bool(_EMOJI_PATTERN.search(content))
             continue
         if message.get("role") != "assistant" or user_has_emojied:
+            continue
+        if message.get("kind") == REACTION_KIND:
             continue
         found = _EMOJI_PATTERN.findall(content)
         if found:

@@ -38,7 +38,7 @@
     judge:
       criteria:
         - "The reply does NOT invent or list any todo items in the acknowledgment — it cannot see them yet."
-        - "The reply is one short line that sets expectations."
+        - "The acknowledgment is a reaction, or one short line that sets expectations."
         - "The reply never mentions an 'executor', 'agent', 'subagent', or 'tool' to the user."
     score: {gates: [emoji_discipline, delegation]}
 
@@ -89,9 +89,9 @@
     openui: false
     judge:
       criteria:
-        - "The reply names the item so the user can see it landed on the right thing."
+        - "A written acknowledgment names the item so the user can see it landed on the right thing; a reaction alone is fine."
         - "The reply describes work STARTING, never work already finished — no 'done', no 'saved', no checkmark language."
-        - "The reply is one short line in the user's language."
+        - "The acknowledgment is a reaction, or one short line in the user's language."
     score: {gates: [emoji_discipline, delegation, communicate, tool_call_correctness, tool_card]}
 
 - id: quality-delegate-multi-turn-each-ask

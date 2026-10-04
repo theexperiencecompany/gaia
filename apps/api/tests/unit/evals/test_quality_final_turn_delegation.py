@@ -65,7 +65,7 @@ async def test_transport_records_only_the_last_turns_calls() -> None:
     turn_one = {"conversation_id": "c1", "text": "getting you a link", "tool_calls": [HANDOFF]}
     turn_two = {"conversation_id": "c1", "text": "now I can do that", "tool_calls": []}
     records = [
-        {**turn, "raw": [], "error": None, "follow_up_actions": None}
+        {**turn, "raw": [], "error": None, "follow_up_actions": None, "reaction": None}
         for turn in (turn_one, turn_two)
     ]
     provider = ProviderConfig(
