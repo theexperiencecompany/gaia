@@ -45,7 +45,7 @@ Optional long-running mode: `opencode serve` (headless HTTP API; `OPENCODE_SERVE
 
 ## Continue a session (after pause/resume or sandbox recreate)
 
-Record the session id on the todo at start (`opencode run` prints it; `opencode session list` shows saved ones). Re-enter with `opencode run -s <id> "<follow-up>"` (`-c` only when sure it is the most recent). Session data lives next to `auth.json` under `~/.local/share/opencode/` — UNVERIFIED exact subpath; inspect in the sandbox and extend the symlink pattern above to whatever holds sessions so resume survives pause/resume AND recreate. After a recreate, run `opencode session list` first; if the session is gone, re-anchor with a fresh run seeded from the todo's log tail. Prefer explicit `-s <id>` over `-c` whenever several runs exist.
+Record the session id on the todo at start (`opencode run` prints it; `opencode session list` shows saved ones, all `ses_`-prefixed — `-s` REJECTS ids without the prefix). Re-enter headless with `opencode run --format json -s <ses_id> "<follow-up>"` (`--format json` required; bare `run -c` opens the interactive TUI). Session data lives next to `auth.json` under `~/.local/share/opencode/` — UNVERIFIED exact subpath; inspect in the sandbox and extend the symlink pattern above to whatever holds sessions so resume survives pause/resume AND recreate. After a recreate, run `opencode session list` first; if the session is gone, re-anchor with a fresh run seeded from the todo's log tail. Prefer explicit `-s <ses_id>` over `-c` whenever several runs exist.
 
 ## Stop
 

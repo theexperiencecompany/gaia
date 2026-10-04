@@ -45,7 +45,8 @@ claude -p "<prompt>" --output-format stream-json
 ```
 
 Useful flags: `--verbose --include-partial-messages` (token streaming), `--input-format text|stream-json`, `--continue` / `--resume [session-id]` / `--session-id <uuid>` / `--fork-session`, `--allowedTools`, `--permission-mode`, `--append-system-prompt`, `--mcp-config`, `--max-budget-usd`. With unattended runs, denials surface as `permission_denied` system messages in stream-json.
-Background: `claude agents` lists, `claude attach <id>` / `claude logs <id>` / `claude stop|kill <id>` (keeps conversation) / `claude rm <id>`.
+Background: `claude agents --json` lists (`--json` is REQUIRED headless; bare
+`claude agents` refuses without a TTY), `claude attach <id>` / `claude logs <id>` / `claude stop|kill <id>` (keeps conversation) / `claude rm <id>`.
 
 ## Continue a session (after pause/resume or sandbox recreate)
 
@@ -55,7 +56,10 @@ Always start runs with an explicit id and record it on the todo:
 claude -p "<prompt>" --output-format stream-json --session-id <uuid>
 ```
 
-Re-enter later with `claude --resume <uuid> "<follow-up>"` (or `--continue` for the most recent). Session transcripts live under `~/.claude/` — UNVERIFIED exact subpath; run `ls ~/.claude` in the sandbox and symlink whatever holds sessions (same pattern as credentials above) so resume survives pause/resume AND template recreate. After a recreate, verify with `claude agents` before resuming; if the session is gone, re-anchor by starting a fresh run pasting the todo's log tail as context. Never assume `--continue` reaches the right session when several runs exist — prefer explicit `--resume <uuid>`.
+Re-enter later with `claude -p --resume <uuid> "<follow-up>"` (`-p` is REQUIRED;
+bare `claude --resume` opens an interactive session that hangs headless, and
+`--continue` is interactive-only the same way). For the most recent session,
+`claude -p --continue "…"`. Session transcripts live under `~/.claude/` — UNVERIFIED exact subpath; run `ls ~/.claude` in the sandbox and symlink whatever holds sessions (same pattern as credentials above) so resume survives pause/resume AND template recreate. After a recreate, verify with `claude agents` before resuming; if the session is gone, re-anchor by starting a fresh run pasting the todo's log tail as context. Never assume `--continue` reaches the right session when several runs exist — prefer explicit `--resume <uuid>`.
 
 ## Stop
 
