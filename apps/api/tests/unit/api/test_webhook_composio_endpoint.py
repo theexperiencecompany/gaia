@@ -392,10 +392,8 @@ class TestStampedDeliveryIds:
 
     @pytest.mark.regression
     def test_the_wire_path_is_read_before_the_plain_name(self) -> None:
-        # Imported here, not at module scope: the helper does not exist on the
-        # base revision, and the regression lane must run this file there. A
-        # module-level import would fail collection (an error proves nothing);
-        # failing inside the body registers the red the mark promises.
+        # Function scope: the helper is absent on base, where a module import
+        # would fail collection instead of failing this test.
         from app.models.webhook_models import _stamped_in_data
 
         assert _stamped_in_data("connection_id") == AliasChoices(

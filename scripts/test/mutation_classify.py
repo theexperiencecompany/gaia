@@ -626,14 +626,18 @@ def _unobservable_header_case(
     return False
 
 
-class _RecaseSite(NamedTuple):
-    callee: ast.FunctionDef
-    module: dict[str, ast.FunctionDef]
-    literal: ast.Constant
+class _MutationSpot(NamedTuple):
     line_no: int
     col: int
     orig_line: str
     mut_line: str
+
+
+class _RecaseSite(NamedTuple):
+    callee: ast.FunctionDef
+    module: dict[str, ast.FunctionDef]
+    literal: ast.Constant
+    spot: _MutationSpot
 
 
 def _unobservable_case_insensitive_heading(
@@ -651,31 +655,46 @@ def _unobservable_case_insensitive_heading(
     except SyntaxError:
         return False
     module = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+    spot = _MutationSpot(line_no, col, orig_line, mut_line)
+    calls = [
+        (module[node.func.id], node)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in module
+    ]
+    return any(
+        _recased_call_argument_is_equivalent(callee, module, node, spot)
+        for callee, node in calls
+    )
+
+
+def _recased_call_argument_is_equivalent(
+    callee: ast.FunctionDef,
+    module: dict[str, ast.FunctionDef],
+    node: ast.Call,
+    spot: _MutationSpot,
+) -> bool:
+    """Whether a re-cased literal at this call site reaches only the folded match."""
+    for index, literal in enumerate(node.args):
+        if not isinstance(literal, ast.Constant) or not isinstance(literal.value, str):
             continue
-        callee = module.get(node.func.id)
-        if callee is None:
+        param = _positional_parameter(callee, index)
+        if param is None:
             continue
-        for index, literal in enumerate(node.args):
-            if not isinstance(literal, ast.Constant) or not isinstance(literal.value, str):
-                continue
-            param = _positional_parameter(callee, index)
-            if param is None:
-                continue
-            site = _RecaseSite(callee, module, literal, line_no, col, orig_line, mut_line)
-            if _recased_literal_is_equivalent(site, param):
-                return True
-        for keyword in node.keywords:
-            if not isinstance(keyword.value, ast.Constant) or not isinstance(
-                keyword.value.value, str
-            ):
-                continue
-            if keyword.arg not in _parameter_names(callee):
-                continue
-            site = _RecaseSite(callee, module, keyword.value, line_no, col, orig_line, mut_line)
-            if _recased_literal_is_equivalent(site, keyword.arg):
-                return True
+        site = _RecaseSite(callee, module, literal, spot)
+        if _recased_literal_is_equivalent(site, param):
+            return True
+    for keyword in node.keywords:
+        if not isinstance(keyword.value, ast.Constant) or not isinstance(
+            keyword.value.value, str
+        ):
+            continue
+        if keyword.arg not in _parameter_names(callee):
+            continue
+        site = _RecaseSite(callee, module, keyword.value, spot)
+        if _recased_literal_is_equivalent(site, keyword.arg):
+            return True
     return False
 
 
@@ -694,16 +713,16 @@ def _recased_literal_is_equivalent(site: _RecaseSite, param: str) -> bool:
     """Whether the mutation re-cased the literal taken as this parameter."""
     # A case-only rewrite is usually a different length, so the slice ends where
     # the mutant's literal ends rather than where the original's did.
-    literal = site.literal
+    literal, spot = site.literal, site.spot
     mut_span = (
         literal.lineno,
         literal.col_offset,
         literal.end_lineno or literal.lineno,
-        literal.end_col_offset + len(site.mut_line) - len(site.orig_line),
+        literal.end_col_offset + len(spot.mut_line) - len(spot.orig_line),
     )
-    if not _within(mut_span, site.line_no, site.col):
+    if not _within(mut_span, spot.line_no, spot.col):
         return False
-    replacement = _mutated_token(mut_span, site.line_no, site.orig_line, site.mut_line)
+    replacement = _mutated_token(mut_span, spot.line_no, spot.orig_line, spot.mut_line)
     if replacement is None:
         return False
     try:
@@ -760,7 +779,7 @@ def _loads_under(node: ast.AST, name: str) -> set[int]:
 def _forwarded_parameters(
     called: ast.FunctionDef, node: ast.Call, param: str
 ) -> list[str]:
-    """The called function's parameters receiving exactly this value."""
+    """Return the called function's parameters receiving exactly this value."""
     positional = (*called.args.posonlyargs, *called.args.args)
     targets = [
         positional[index].arg

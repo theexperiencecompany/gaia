@@ -1291,10 +1291,8 @@ class TestTheThreadRead:
     def _threads(self, count: int = 2) -> Callable[[ProxyRequest], dict[str, Any]]:
         """Serve one thread carrying count messages, addressed by the id asked for."""
         single = _one_message_mailbox()
-        seen: list[dict[str, Any]] = []
 
         def serve(request: ProxyRequest) -> dict[str, Any]:
-            seen.append(dict(request.query or {}))
             if re.match(r".+/users/me/messages/?$", request.endpoint):
                 return {"messages": [{"id": "msg-1", "threadId": "thread-1"}]}
             thread_id = re.search(r"/threads/([^/]+)$", request.endpoint).group(1)
@@ -1312,7 +1310,6 @@ class TestTheThreadRead:
             ]
             return {"id": thread_id, "messages": messages}
 
-        serve.queries = seen  # type: ignore[attr-defined]
         return serve
 
     def test_each_thread_comes_back_under_its_own_id_with_its_message_count(self, mock_proxy: MagicMock) -> None:
