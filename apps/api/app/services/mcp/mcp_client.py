@@ -249,8 +249,8 @@ def _is_terminal_auth_failure(exception: Exception, refresh_attempted: bool = Fa
     """Return True only when credentials are demonstrably dead.
 
     Treating every exception as terminal wipes integrations on transient
-    errors (5xx, network blip, transport mismatch). Be conservative: require
-    a spec'd OAuth error code, or a 401/403 after a refresh attempt.
+    errors (5xx, network blip, transport mismatch). Require a spec'd OAuth error
+    code or a 401/403 signal after a refresh attempt.
     """
     status, error_code = _extract_response_signal(exception)
 
@@ -264,6 +264,8 @@ def _is_terminal_auth_failure(exception: Exception, refresh_attempted: bool = Fa
     # avoids false positives like "401k" or "invalid_grants_table".
     if getattr(exception, "response", None) is None:
         msg = str(exception).lower()
+        if refresh_attempted and re.search(r"\b(?:401|403)\b", msg):
+            return True
         for code in _TERMINAL_OAUTH_ERROR_CODES:
             if re.search(rf"\b{re.escape(code)}\b", msg):
                 return True

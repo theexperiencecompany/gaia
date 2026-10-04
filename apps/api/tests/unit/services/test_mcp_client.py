@@ -4563,6 +4563,31 @@ class TestConnectFailureClassification:
         after_refresh._try_refresh_token.assert_awaited_once()
         after_refresh._reset_to_disconnected.assert_awaited_once_with(INTEGRATION_ID)
 
+    @pytest.mark.regression
+    async def test_plain_401_without_response_resets_after_failed_refresh(self) -> None:
+        client = self._client()
+        with patch("app.services.mcp.mcp_client.log"):
+            await client._handle_connect_failure(
+                RuntimeError("401 Unauthorized from PostHog"),
+                INTEGRATION_ID,
+                _make_mcp_config(requires_auth=True),
+            )
+
+        client._try_refresh_token.assert_awaited_once()
+        client._reset_to_disconnected.assert_awaited_once_with(INTEGRATION_ID)
+
+    async def test_http_status_word_boundary_does_not_match_401k(self) -> None:
+        client = self._client()
+        with patch("app.services.mcp.mcp_client.log"):
+            await client._handle_connect_failure(
+                RuntimeError("401k is not an HTTP status"),
+                INTEGRATION_ID,
+                _make_mcp_config(requires_auth=True),
+            )
+
+        client._try_refresh_token.assert_awaited_once()
+        client._reset_to_disconnected.assert_not_awaited()
+
     @pytest.mark.parametrize(
         "message",
         ["403 something else entirely", 'insufficient_scope scope="read"'],
