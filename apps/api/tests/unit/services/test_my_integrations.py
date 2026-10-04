@@ -268,6 +268,53 @@ class TestGetMyIntegrations:
 
         assert result.integrations[0].status == "not_connected"
 
+    async def test_overlay_preserves_untouched_rows_alongside_changed_ones(
+        self, mock_deps, mock_redis_cache
+    ):
+        """Rows the overlay does not touch keep their identity and content.
+
+        The built list is returned only when something changed, so a mutant
+        corrupting the pass-through branch hides in single-row fixtures.
+        """
+        mock_deps.config.return_value = IntegrationsConfigResponse(
+            integrations=[
+                _config_item(
+                    id="posthog",
+                    name="PostHog",
+                    managed_by="mcp",
+                    provider="posthog",
+                ),
+                _config_item(
+                    id="deepwiki",
+                    name="DeepWiki",
+                    managed_by="mcp",
+                    provider="deepwiki",
+                ),
+            ]
+        )
+        mock_deps.status.return_value = {"posthog": True}
+        mock_deps.user.return_value = UserIntegrationsListResponse(
+            integrations=[
+                _user_integration(
+                    integration_id="posthog",
+                    status="created",
+                    integration=_integration_response(
+                        integration_id="posthog",
+                        name="PostHog",
+                        managed_by="mcp",
+                        source="platform",
+                    ),
+                )
+            ]
+        )
+
+        result = await get_my_integrations(USER_ID)
+
+        by_id = {item.id: item for item in result.integrations}
+        assert by_id["posthog"].status == "connected"
+        assert by_id["deepwiki"].status == "not_connected"
+        assert by_id["deepwiki"].name == "DeepWiki"
+
     async def test_platform_integration_with_registry_tool_count(self, mock_deps, mock_redis_cache):
         """The registry tool-count fallback keys on the lowercased integration id."""
         mock_deps.categories.return_value = {"Github": 4}

@@ -1032,9 +1032,10 @@ class MCPClient:
         # Only reset on demonstrably dead credentials — transient errors
         # (5xx, network blip, transport mismatch) keep the existing tokens.
         if _is_terminal_auth_failure(e, refresh_attempted=refresh_attempted):
-            if getattr(e, "response", None) is None and re.search(
-                r"\b(?:401|403)\b", str(e).lower()
-            ):
+            # error_str is already lowered; the pattern is digits-only so case
+            # cannot matter, but matching against it (not a fresh .lower())
+            # keeps the normalization in exactly one place.
+            if getattr(e, "response", None) is None and re.search(r"\b(?:401|403)\b", error_str):
                 log.warning(
                     f"{LogTag.MCP} Resetting on message-only status signal after refresh",
                     integration_id=integration_id,

@@ -1481,65 +1481,111 @@ class TestMCPTokenStoreIsConnected:
             assert await store.is_connected(INTEGRATION_ID) is False
 
 
-def _fake_batch_db_session(creds: list[MCPCredential]):
-    """Session fake for the batched credential lookup (scalars().all)."""
-    mock_session = AsyncMock()
-    mock_scalars = MagicMock()
-    mock_scalars.all.return_value = creds
-    mock_result = MagicMock()
-    mock_result.scalars.return_value = mock_scalars
-    mock_session.execute = AsyncMock(return_value=mock_result)
+async def _sqlite_session_factory() -> tuple[Any, Any]:
+    """Real in-memory SQLite session for tests that must observe SQL filtering.
 
-    @asynccontextmanager
-    async def _ctx():
-        yield mock_session
+    Mocked sessions return canned rows whatever the statement says, so WHERE
+    mutants survive; SQLite executes the actual query.
+    """
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
-    return _ctx, mock_session
+    from app.db.postgresql import Base
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    session = AsyncSession(engine, expire_on_commit=False)
+    return session, engine
+
+
+@asynccontextmanager
+async def _sqlite_session_ctx(session: Any) -> Any:
+    yield session
+
+
+def _stored_credential(
+    session: Any,
+    user_id: str,
+    integration_id: str,
+    **overrides: Any,
+) -> MCPCredential:
+    """Persist a real MCPCredential row (SQLAlchemy model, not a mock)."""
+    from app.models.db_oauth import MCPCredential as _Row
+
+    row = _Row(
+        user_id=user_id,
+        integration_id=integration_id,
+        auth_type=overrides.get("auth_type", MCPAuthType.OAUTH),
+        status=overrides.get("status", MCPCredentialStatus.CONNECTED),
+        access_token=overrides.get("access_token", "tok"),
+        refresh_token=overrides.get("refresh_token"),
+        token_expires_at=overrides.get("token_expires_at"),
+    )
+    session.add(row)
+    return row
 
 
 class TestMCPTokenStoreBatchLookup:
-    async def test_get_credentials_map_keys_by_integration_id(self):
-        store = MCPTokenStore(user_id=USER_ID)
-        cred_a = _make_credential(integration_id="a")
-        cred_b = _make_credential(integration_id="b")
-        ctx_fn, mock_session = _fake_batch_db_session([cred_a, cred_b])
-        with patch("app.services.mcp.mcp_token_store.get_db_session", ctx_fn):
-            result = await store.get_credentials_map(["a", "b", "missing"])
+    async def test_get_credentials_map_filters_by_user_and_ids(self):
+        session, engine = await _sqlite_session_factory()
+        try:
+            _stored_credential(session, USER_ID, "a")
+            _stored_credential(session, USER_ID, "b")
+            _stored_credential(session, "other-user", "a")
+            await session.commit()
 
-        assert result == {"a": cred_a, "b": cred_b}
-        mock_session.execute.assert_awaited_once()
+            store = MCPTokenStore(user_id=USER_ID)
+            with patch(
+                "app.services.mcp.mcp_token_store.get_db_session",
+                lambda: _sqlite_session_ctx(session),
+            ):
+                result = await store.get_credentials_map(["a", "b", "missing"])
+        finally:
+            await session.close()
+            await engine.dispose()
+
+        assert set(result) == {"a", "b"}
+        assert all(row.user_id == USER_ID for row in result.values())
 
     async def test_get_credentials_map_empty_list_skips_the_query(self):
         store = MCPTokenStore(user_id=USER_ID)
-        ctx_fn, mock_session = _fake_batch_db_session([])
-        with patch("app.services.mcp.mcp_token_store.get_db_session", ctx_fn):
+        with patch(
+            "app.services.mcp.mcp_token_store.get_db_session",
+            side_effect=AssertionError("empty id list must not touch the database"),
+        ):
             assert await store.get_credentials_map([]) == {}
 
-        mock_session.execute.assert_not_awaited()
-
     async def test_are_connected_evaluates_each_id_in_one_round_trip(self):
-        store = MCPTokenStore(user_id=USER_ID)
-        usable = _make_credential(
-            integration_id="usable",
-            status=MCPCredentialStatus.CONNECTED,
-            auth_type=MCPAuthType.NONE,
-        )
-        stale = _make_credential(
-            integration_id="stale",
-            status=MCPCredentialStatus.CONNECTED,
-            token_expires_at=datetime.now(UTC) - timedelta(minutes=1),
-        )
-        ctx_fn, mock_session = _fake_batch_db_session([usable, stale])
-        with patch("app.services.mcp.mcp_token_store.get_db_session", ctx_fn):
-            result = await store.are_connected(["usable", "stale", "unknown"])
+        session, engine = await _sqlite_session_factory()
+        try:
+            _stored_credential(session, USER_ID, "usable", auth_type=MCPAuthType.NONE)
+            _stored_credential(
+                session,
+                USER_ID,
+                "stale",
+                token_expires_at=datetime.now(UTC) - timedelta(minutes=1),
+            )
+            await session.commit()
+
+            store = MCPTokenStore(user_id=USER_ID)
+            with patch(
+                "app.services.mcp.mcp_token_store.get_db_session",
+                lambda: _sqlite_session_ctx(session),
+            ):
+                result = await store.are_connected(["usable", "stale", "unknown"])
+        finally:
+            await session.close()
+            await engine.dispose()
 
         assert result == {"usable": True, "stale": False, "unknown": False}
-        mock_session.execute.assert_awaited_once()
 
     async def test_are_connected_empty_list_returns_empty_map(self):
         store = MCPTokenStore(user_id=USER_ID)
-
-        assert await store.are_connected([]) == {}
+        with patch(
+            "app.services.mcp.mcp_token_store.get_db_session",
+            side_effect=AssertionError("empty id list must not touch the database"),
+        ):
+            assert await store.are_connected([]) == {}
 
 
 class TestMCPTokenStoreDCRClient:
