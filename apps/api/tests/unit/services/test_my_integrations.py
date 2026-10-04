@@ -19,6 +19,7 @@ from app.models.integration_models import (
 from app.schemas.integrations.responses import (
     IntegrationConfigItem,
     IntegrationsConfigResponse,
+    MyIntegrationItem,
     MyIntegrationsResponse,
 )
 from app.services.integrations.my_integrations import (
@@ -164,6 +165,8 @@ class TestGetMyIntegrations:
         result = await get_my_integrations(USER_ID)
 
         assert result.integrations[0].status == "created"
+        mock_deps.status.assert_awaited_once_with(USER_ID)
+        mock_deps.user.assert_awaited_once_with(USER_ID)
 
     async def test_live_connected_upgrades_stale_snapshot_and_clears_expired_at(
         self, mock_deps, mock_redis_cache
@@ -201,6 +204,69 @@ class TestGetMyIntegrations:
 
         assert result.integrations[0].status == "connected"
         assert result.integrations[0].expired_at is None
+        mock_deps.status.assert_awaited_once_with(USER_ID)
+        mock_deps.user.assert_awaited_once_with(USER_ID)
+
+    async def test_overlay_leaves_consistent_rows_untouched(self, mock_deps, mock_redis_cache):
+        """An already-connected row under a live True is returned as-is.
+
+        The overlay must not rewrite (and must not clear fields on) rows that
+        already agree with the live map — verified by identity, not equality.
+        """
+        sentinel = MyIntegrationsResponse(
+            integrations=[
+                MyIntegrationItem(
+                    id="posthog",
+                    name="PostHog",
+                    description="Product analytics",
+                    category="business",
+                    source="platform",
+                    managed_by="mcp",
+                    status="connected",
+                    requires_auth=True,
+                    auth_type="oauth",
+                    tool_count=1,
+                )
+            ],
+            total=1,
+        )
+        with (
+            patch(f"{_MOD}.get_my_integrations_snapshot", new_callable=AsyncMock) as m_snap,
+            patch(f"{_MOD}.get_all_integrations_status", new_callable=AsyncMock) as m_status,
+        ):
+            m_snap.return_value = sentinel
+            m_status.return_value = {"posthog": True}
+
+            result = await get_my_integrations(USER_ID)
+
+        assert result is sentinel
+        m_snap.assert_awaited_once_with(USER_ID)
+        m_status.assert_awaited_once_with(USER_ID)
+
+    async def test_overlay_does_not_downgrade_a_never_connected_mcp(
+        self, mock_deps, mock_redis_cache
+    ):
+        """Only a stale *connected* auth-MCP flips to created.
+
+        Widening the downgrade condition to `or` would demote rows that were
+        never connected; a not_connected row under a live False must survive.
+        """
+        mock_deps.config.return_value = IntegrationsConfigResponse(
+            integrations=[
+                _config_item(
+                    id="posthog",
+                    name="PostHog",
+                    managed_by="mcp",
+                    provider="posthog",
+                )
+            ]
+        )
+        mock_deps.status.return_value = {"posthog": False}
+        mock_deps.user.return_value = UserIntegrationsListResponse(integrations=[])
+
+        result = await get_my_integrations(USER_ID)
+
+        assert result.integrations[0].status == "not_connected"
 
     async def test_platform_integration_with_registry_tool_count(self, mock_deps, mock_redis_cache):
         """The registry tool-count fallback keys on the lowercased integration id."""

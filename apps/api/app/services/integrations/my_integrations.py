@@ -89,12 +89,10 @@ async def _get_cached_my_integrations_snapshot(user_id: str) -> MyIntegrationsRe
         get_user_integrations(user_id),
         get_tool_categories(),
     )
-    status_map = {item.integration_id: item.status == "connected" for item in added.integrations}
-    return _build_my_integrations_response(status_map, added, category_counts)
+    return _build_my_integrations_response(added, category_counts)
 
 
 def _build_my_integrations_response(
-    status_map: dict[str, bool],
     added: UserIntegrationsListResponse,
     category_counts: dict[str, int],
 ) -> MyIntegrationsResponse:
@@ -110,11 +108,11 @@ def _build_my_integrations_response(
 
     for cfg in config.integrations:
         ui = added_by_id.get(cfg.id.lower())
-        status = (
-            ui.status
-            if ui is not None
-            else ("connected" if status_map.get(cfg.id) else "not_connected")
-        )
+        # The snapshot is Mongo-only by construction: an integration the user
+        # has not added is definitionally not connected here. Liveness (a
+        # provider that reports connected with no workspace record) arrives via
+        # the _apply_live_status_overlay in get_my_integrations, never here.
+        status = ui.status if ui is not None else "not_connected"
         tool_count = (
             (len(ui.integration.tools) or counts.get(cfg.id.lower(), 0))
             if ui is not None

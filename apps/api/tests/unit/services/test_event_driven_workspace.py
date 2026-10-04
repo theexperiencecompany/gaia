@@ -272,11 +272,15 @@ async def test_get_connected_integration_ids_filter(docs, expected):
 async def test_user_integration_records_reflect_posthog_credential_status():
     record = MagicMock()
     record.model_dump.return_value = {"integration_id": "posthog", "status": "connected"}
+
+    async def _list_for_user(user_id: str, *args: object, **kwargs: object) -> list[object]:
+        return [record] if user_id == "u" else []
+
     with (
         patch(
             f"{UINT}.user_integration_repository.list_for_user",
             new_callable=AsyncMock,
-            return_value=[record],
+            side_effect=_list_for_user,
         ),
         patch(f"{UINT}.MCPTokenStore", create=True) as token_store_class,
         patch("app.db.redis.redis_cache.get", new_callable=AsyncMock, return_value=None),
@@ -289,17 +293,23 @@ async def test_user_integration_records_reflect_posthog_credential_status():
         result = await get_user_integration_records("u")
 
     assert result == [{"integration_id": "posthog", "status": "created"}]
+    token_store_class.assert_called_once_with("u")
+    token_store_class.return_value.are_connected.assert_awaited_once_with(["posthog"])
 
 
 @pytest.mark.regression
 async def test_connected_ids_use_live_posthog_credential_state():
     record = MagicMock()
     record.model_dump.return_value = {"integration_id": "posthog", "status": "connected"}
+
+    async def _list_for_user(user_id: str, *args: object, **kwargs: object) -> list[object]:
+        return [record] if user_id == "u" else []
+
     with (
         patch(
             f"{UINT}.user_integration_repository.list_for_user",
             new_callable=AsyncMock,
-            return_value=[record],
+            side_effect=_list_for_user,
         ),
         patch(f"{UINT}.MCPTokenStore", create=True) as token_store_class,
         patch("app.db.redis.redis_cache.get", new_callable=AsyncMock, return_value=None),
@@ -310,6 +320,33 @@ async def test_connected_ids_use_live_posthog_credential_state():
         from app.services.integrations.user_integrations import get_connected_integration_ids
 
         assert await get_connected_integration_ids("u") == set()
+
+    token_store_class.assert_called_once_with("u")
+
+
+async def test_mcp_record_without_stored_config_keeps_its_status():
+    """The credential check needs both mcp management and a stored config.
+
+    Widening the filter to `or` would read requires_auth off a missing config
+    and crash instead of leaving the record alone.
+    """
+    with (
+        patch(
+            f"{UINT}._get_cached_user_integration_records",
+            new_callable=AsyncMock,
+            return_value=[{"integration_id": "odd-mcp", "status": "connected"}],
+        ),
+        patch(f"{UINT}.get_integration_by_id") as mock_lookup,
+        patch(f"{UINT}.MCPTokenStore", create=True) as token_store_class,
+    ):
+        mock_lookup.return_value = MagicMock(managed_by="mcp", mcp_config=None)
+
+        from app.services.integrations.user_integrations import get_user_integration_records
+
+        result = await get_user_integration_records("u")
+
+    assert result == [{"integration_id": "odd-mcp", "status": "connected"}]
+    token_store_class.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

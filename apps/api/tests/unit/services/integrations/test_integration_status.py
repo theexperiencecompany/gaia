@@ -164,12 +164,19 @@ class TestGetAllIntegrationsStatus:
             patch(
                 "app.services.integrations.integration_status.MCPTokenStore",
                 return_value=token_store,
+            ) as token_store_class,
+            patch(
+                "app.services.integrations.integration_status._get_cached_integrations_status",
+                new_callable=AsyncMock,
+                return_value={"posthog": True},
             ),
         ):
             result = await get_all_integrations_status("user123")
 
         assert result["posthog"] is False
+        token_store_class.assert_called_once_with("user123")
         token_store.are_connected.assert_awaited_once_with(["posthog"])
+        mock_user_integration_repo.list_for_user.assert_awaited_once_with("user123", limit=100)
 
     async def test_connected_auth_mcp_with_valid_credentials_remains_connected(
         self,
@@ -197,11 +204,17 @@ class TestGetAllIntegrationsStatus:
             patch(
                 "app.services.integrations.integration_status.MCPTokenStore",
                 return_value=token_store,
+            ) as token_store_class,
+            patch(
+                "app.services.integrations.integration_status._get_cached_integrations_status",
+                new_callable=AsyncMock,
+                return_value={"posthog": True},
             ),
         ):
             result = await get_all_integrations_status("user123")
 
         assert result["posthog"] is True
+        token_store_class.assert_called_once_with("user123")
 
     async def test_status_read_is_side_effect_free_when_stale(
         self,
@@ -232,15 +245,15 @@ class TestGetAllIntegrationsStatus:
                 return_value=token_store,
             ),
             patch(
-                "app.services.integrations.integration_status.update_user_integration_status",
-                create=True,
+                "app.services.integrations.integration_status._get_cached_integrations_status",
                 new_callable=AsyncMock,
-            ) as update_status,
+                return_value={"posthog": True},
+            ),
         ):
             result = await get_all_integrations_status("user123")
 
         assert result["posthog"] is False
-        update_status.assert_not_awaited()
+        mock_user_integration_repo.set_status.assert_not_called()
 
     async def test_mcp_integration_not_in_mongo_returns_false(
         self,
