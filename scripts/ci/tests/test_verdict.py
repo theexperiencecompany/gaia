@@ -892,3 +892,353 @@ def test_an_unreachable_api_is_a_failure_not_a_pass(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(verdict, "_gh_json", lambda endpoint: None)
 
     assert _mirror() == 1
+
+
+class _FakeClock:
+    """Stands in for verdict's `time`: sleeping advances the clock instead of waiting."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.sleeps = 0
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps += 1
+        self.now += seconds
+
+
+def _mirror_waiting(seconds: int) -> int:
+    return verdict.cmd_mirror_previous_gate(
+        [
+            "--repo",
+            MIRROR_REPO,
+            "--sha",
+            MIRROR_SHA,
+            "--workflow",
+            "main.yml",
+            "--job",
+            MIRROR_JOB,
+            "--run-id",
+            str(CURRENT_RUN),
+            "--wait-seconds",
+            str(seconds),
+        ]
+    )
+
+
+def test_an_edit_waits_for_the_run_it_no_longer_cancels(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # An edit used to cancel the real run on the same merge sha. It now runs in
+    # its own concurrency group, so the real run finishes and the edit's gate
+    # repeats that verdict instead of failing while it is still in flight.
+    clock = _FakeClock()
+    monkeypatch.setattr(verdict, "time", clock)
+    still_running = {"id": 8, "status": "in_progress"}
+    finished = {"id": 8, "status": "completed"}
+    polls: list[str] = []
+
+    def fake(endpoint: str) -> dict[str, Any] | None:
+        polls.append(endpoint)
+        done = clock.sleeps >= 2
+        if "/jobs" in endpoint:
+            return {"jobs": _jobs_with_lane(_gate_job("success" if done else None), "success")}
+        return {"workflow_runs": [finished if done else still_running]}
+
+    monkeypatch.setattr(verdict, "_gh_json", fake)
+
+    assert _mirror_waiting(600) == 0
+    assert clock.sleeps == 2
+    assert "mirroring run 8" in capsys.readouterr().out
+
+
+def test_a_wait_that_runs_out_fails_rather_than_assuming(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    clock = _FakeClock()
+    monkeypatch.setattr(verdict, "time", clock)
+    _stub_api(
+        monkeypatch,
+        [{"id": 8, "status": "in_progress"}],
+        {8: _jobs_with_lane(_gate_job(None, status="in_progress"), None)},
+    )
+
+    assert _mirror_waiting(90) == 1
+    assert clock.now >= 90
+    assert "latest validation has not concluded" in capsys.readouterr().out
+
+
+def test_a_finished_run_whose_gate_never_ran_is_not_waited_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A cancelled run is completed with a skipped gate: it will never conclude,
+    # so waiting on it would only burn the timeout before the same failure.
+    clock = _FakeClock()
+    monkeypatch.setattr(verdict, "time", clock)
+    _stub_api(
+        monkeypatch,
+        [{"id": 9, "status": "completed"}],
+        {9: _jobs_with_lane(_gate_job("skipped"), "cancelled")},
+    )
+
+    assert _mirror_waiting(600) == 1
+    assert clock.sleeps == 0
+
+
+# --- reuse-plan --------------------------------------------------------------
+#
+# A push re-ran every lane its PR touched against the base, even when the push
+# changed nothing a lane reads. reuse-plan carries a lane's last PASS forward
+# when nothing in its scope and nothing in CI tooling changed since — and must
+# never carry forward a failure, a pass on another base, or a pass it cannot
+# diff against.
+
+REUSE_WORKFLOW = """\
+jobs:
+  changes:
+    name: Detect changed languages
+  biome:
+    name: Biome lint + format
+  python-static:
+    name: Python static
+"""
+REUSE_LANES = {
+    "lanes": [
+        {"name": "biome", "ci_job": "biome", "scope": r"\.(ts|tsx)$"},
+        {"name": "python-ruff", "ci_job": "python-static", "scope": r"\.py$"},
+        {"name": "py-tests", "scope": r"\.py$"},
+    ]
+}
+
+
+def _git(repo: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def _commit(repo: Path, path: str, body: str) -> str:
+    target = repo / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(body)
+    _git(repo, "add", "-A")
+    _git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", path)
+    return _git(repo, "rev-parse", "HEAD")
+
+
+@pytest.fixture
+def reuse_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    (repo / ".github" / "workflows").mkdir(parents=True)
+    (repo / ".github" / "workflows" / "code-quality.yml").write_text(REUSE_WORKFLOW)
+    (repo / "lanes.json").write_text(json.dumps(REUSE_LANES))
+    _commit(repo, "apps/web/a.ts", "one")
+    monkeypatch.setattr(verdict, "REPO_ROOT", repo)
+    return repo
+
+
+def _stub_runs(
+    monkeypatch: pytest.MonkeyPatch, runs: list[tuple[int, str, str, dict[str, str]]]
+) -> None:
+    """Stub the PR's runs, newest first, each (id, head sha, base ref, {job name: conclusion})."""
+    listing = {
+        "workflow_runs": [
+            {
+                "id": run_id,
+                "status": "completed",
+                "head_sha": sha,
+                "pull_requests": [{"base": {"ref": base}}],
+            }
+            for run_id, sha, base, _ in runs
+        ]
+    }
+    jobs = {
+        run_id: [{"name": name, "conclusion": result} for name, result in results.items()]
+        for run_id, _, _, results in runs
+    }
+
+    def fake(endpoint: str) -> dict[str, Any] | None:
+        if "/jobs" in endpoint:
+            return {"jobs": jobs[int(endpoint.split("/runs/")[1].split("/jobs")[0])]}
+        return listing
+
+    monkeypatch.setattr(verdict, "_gh_json", fake)
+
+
+def _plan(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, head: str, *extra: str
+) -> dict[str, str]:
+    out = tmp_path / "out"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out))
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    assert (
+        verdict.cmd_reuse_plan(
+            [
+                "--repo",
+                MIRROR_REPO,
+                "--workflow",
+                "code-quality.yml",
+                "--branch",
+                "feature",
+                "--base",
+                "master",
+                "--head-sha",
+                head,
+                "--run-id",
+                str(CURRENT_RUN),
+                "--event",
+                "pull_request",
+                "--lanes",
+                str(repo / "lanes.json"),
+                *extra,
+            ]
+        )
+        == 0
+    )
+    fields = dict(line.split("=", 1) for line in out.read_text().splitlines())
+    return json.loads(fields["reused"])
+
+
+PASSED = {"Biome lint + format": "success", "Python static": "success"}
+
+
+def test_a_lane_whose_scope_did_not_change_since_its_pass_is_reused(
+    reuse_repo: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    anchor = _git(reuse_repo, "rev-parse", "HEAD")
+    head = _commit(reuse_repo, "apps/api/x.py", "py only")
+    _stub_runs(monkeypatch, [(7, anchor, "master", PASSED)])
+
+    reused = _plan(reuse_repo, monkeypatch, tmp_path, head)
+
+    # The TS lane read nothing that changed; the Python lane did.
+    assert list(reused) == ["biome"]
+    assert "run 7" in reused["biome"]
+
+
+def test_a_ci_or_tooling_change_reuses_nothing(
+    reuse_repo: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    anchor = _git(reuse_repo, "rev-parse", "HEAD")
+    head = _commit(reuse_repo, ".github/workflows/code-quality.yml", REUSE_WORKFLOW + "# edit\n")
+    _stub_runs(monkeypatch, [(7, anchor, "master", PASSED)])
+
+    assert _plan(reuse_repo, monkeypatch, tmp_path, head) == {}
+
+
+def test_a_failed_lane_is_never_carried_forward(
+    reuse_repo: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    anchor = _git(reuse_repo, "rev-parse", "HEAD")
+    head = _commit(reuse_repo, "docs/notes.md", "unrelated")
+    _stub_runs(
+        monkeypatch,
+        [(7, anchor, "master", {"Biome lint + format": "failure", "Python static": "skipped"})],
+    )
+
+    # Neither a failure nor a skip is a pass to reuse, however little changed.
+    assert _plan(reuse_repo, monkeypatch, tmp_path, head) == {}
+
+
+def test_the_anchor_is_the_newest_pass_not_the_newest_run(
+    reuse_repo: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    passed_at = _git(reuse_repo, "rev-parse", "HEAD")
+    failed_at = _commit(reuse_repo, "apps/web/b.ts", "broke biome")
+    head = _commit(reuse_repo, "apps/web/b.ts", "fixed biome")
+    _stub_runs(
+        monkeypatch,
+        [
+            (
+                8,
+                failed_at,
+                "master",
+                {"Biome lint + format": "failure", "Python static": "success"},
+            ),
+            (7, passed_at, "master", PASSED),
+        ],
+    )
+
+    reused = _plan(reuse_repo, monkeypatch, tmp_path, head)
+
+    # Biome's last pass predates two TS edits, so it runs; Python static passed
+    # at run 8 and nothing Python changed after it.
+    assert list(reused) == ["python-static"]
+    assert "run 8" in reused["python-static"]
+
+
+def test_a_pass_against_another_base_is_not_reused(
+    reuse_repo: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    anchor = _git(reuse_repo, "rev-parse", "HEAD")
+    head = _commit(reuse_repo, "docs/notes.md", "unrelated")
+    _stub_runs(monkeypatch, [(7, anchor, "feature/parent", PASSED)])
+
+    # A retarget changes what every lane diffs against, with no file changing.
+    assert _plan(reuse_repo, monkeypatch, tmp_path, head) == {}
+
+
+def test_an_anchor_missing_from_the_checkout_reuses_nothing(
+    reuse_repo: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    head = _commit(reuse_repo, "docs/notes.md", "unrelated")
+    _stub_runs(monkeypatch, [(7, "0" * 40, "master", PASSED)])
+
+    # A force-push orphans the old head; without a diff there is no proof.
+    assert _plan(reuse_repo, monkeypatch, tmp_path, head) == {}
+
+
+def test_a_manual_rerun_reuses_nothing(
+    reuse_repo: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    anchor = _git(reuse_repo, "rev-parse", "HEAD")
+    head = _commit(reuse_repo, "docs/notes.md", "unrelated")
+    _stub_runs(monkeypatch, [(7, anchor, "master", PASSED)])
+
+    assert _plan(reuse_repo, monkeypatch, tmp_path, head, "--run-attempt", "2") == {}
+
+
+def test_an_unreadable_api_reuses_nothing(
+    reuse_repo: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    head = _commit(reuse_repo, "docs/notes.md", "unrelated")
+    monkeypatch.setattr(verdict, "_gh_json", lambda endpoint: None)
+
+    assert _plan(reuse_repo, monkeypatch, tmp_path, head) == {}
+
+
+def test_display_names_match_the_real_workflow() -> None:
+    yaml = pytest.importorskip("yaml")
+    workflow = Path(__file__).resolve().parents[3] / ".github" / "workflows" / "code-quality.yml"
+    expected = {
+        job: spec.get("name", job)
+        for job, spec in yaml.safe_load(workflow.read_text())["jobs"].items()
+    }
+
+    names = verdict._job_display_names(workflow)
+
+    lanes = json.loads((workflow.parents[2] / "scripts" / "dev" / "verify-lanes.json").read_text())
+    for job in {lane["ci_job"] for lane in lanes["lanes"] if lane.get("ci_job")}:
+        assert names[job] == expected[job], job
+
+
+def test_consolidate_labels_a_reused_lane(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert (
+        verdict.cmd_consolidate(
+            [
+                str(tmp_path),
+                "--expect",
+                "biome=skipped",
+                "--reused",
+                json.dumps({"biome": "passed at abc in run 7"}),
+            ]
+        )
+        == 0
+    )
+    assert "reused — passed at abc in run 7" in capsys.readouterr().out
