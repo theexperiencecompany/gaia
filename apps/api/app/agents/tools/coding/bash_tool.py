@@ -41,8 +41,20 @@ from app.constants.sandbox import (
     BASH_MAX_TIMEOUT_SECONDS,
     WORKSPACE_TMP_SUFFIX,
 )
+from app.constants.todos import TodoActivityEvent
+from app.db.repositories.todos import todo_repository
 from app.decorators import with_doc, with_rate_limiting
-from app.services.feature_flags import is_code_mode_enabled
+from app.services.agent_lab.lab_runs import LAB_SEED_TIMEOUT_SECONDS, routing_ref, run_dir
+from app.services.agent_lab.sandbox_setup import (
+    LAB_CALLBACK_URL_VAR,
+    LAB_RUN_ID_VAR,
+    LAB_SESSION_ID_VAR,
+    LAB_TOKEN_VAR,
+    build_seed_command,
+    lab_events_url,
+    mint_lab_hooks_token,
+)
+from app.services.feature_flags import is_agent_lab_enabled, is_code_mode_enabled
 from app.services.sandbox import (
     SandboxAcquisitionError,
     acquire_sandbox,
@@ -54,6 +66,7 @@ from app.services.sandbox.execute_client import (
 )
 from app.services.storage import FsOps, fs_timer
 from app.services.storage.metrics import _register_once
+from app.services.todo_activity import record_activity
 from app.templates.docstrings.coding_tools_docs import BASH_TOOL
 from app.utils.output_limiter import truncate_head_tail
 from shared.py.wide_events import log
@@ -178,6 +191,11 @@ def build_bash_tool(scoped_tools: Mapping[str, BaseTool] | None = None) -> BaseT
             int, "Seconds before kill"
         ] = BASH_DEFAULT_TIMEOUT_SECONDS,  # NOSONAR python:S7483
         background: Annotated[bool, "Run detached; returns pid + log path"] = False,
+        run_todo_id: Annotated[
+            str | None,
+            "Tracked todo id: seed an agent-lab run (Claude Code/OpenCode hooks + "
+            "GAIA_LAB_* env) before running. See AGENT LAB RUNS in the description.",
+        ] = None,
     ) -> str:
         """Run a shell command in the user's persistent coding sandbox."""
         return await _run_bash(
@@ -186,6 +204,7 @@ def build_bash_tool(scoped_tools: Mapping[str, BaseTool] | None = None) -> BaseT
             cwd=cwd,
             timeout=timeout,
             background=background,
+            run_todo_id=run_todo_id,
             scoped_tools=scoped_tools,
         )
 
@@ -232,6 +251,76 @@ async def _build_execute_env(run: _BashInvocation, sbx: object) -> dict[str, str
     )
 
 
+@dataclass(frozen=True)
+class _LabRun:
+    """A seeded agent-lab run: its id plus the GAIA_LAB_* env for the command."""
+
+    run_id: str
+    env: dict[str, str]
+
+
+async def _setup_lab_run(*, user_id: str, run_todo_id: str, sbx: object) -> _LabRun | str:
+    """Mint the run token, stage the seed, and link the todo; or return the loud error.
+
+    On any failure the caller runs nothing. The error is a plain string (the
+    tool's contract), not a raise — the command must never execute unseeded.
+    """
+    if not await is_agent_lab_enabled(user_id):
+        return "Error: agent lab is disabled for this user (run_todo_id needs the AGENT_LAB flag)"
+    try:
+        todo = await todo_repository.get(run_todo_id, user_id=user_id)
+    except Exception as e:
+        return f"Error: cannot resolve tracked todo {run_todo_id} ({e}), ran nothing"
+    if todo is None:
+        return f"Error: tracked todo {run_todo_id} not found, ran nothing"
+
+    lab_run_id = uuid.uuid4().hex
+    try:
+        url = lab_events_url()
+        token = mint_lab_hooks_token(user_id, lab_run_id)
+        seed = build_seed_command(url, token, lab_run_id, run_dir(lab_run_id))
+    except Exception as e:
+        return f"Error: lab seed setup failed ({e}), ran nothing"
+    try:
+        # Absolute paths inside, so no cwd; minimal kwargs keep the seed
+        # runnable on the same surface the fake-sandbox harness implements.
+        await sbx.commands.run(seed, timeout=LAB_SEED_TIMEOUT_SECONDS)  # type: ignore[attr-defined]  # e2b sandbox SDK ships no type stubs
+    except Exception as e:
+        return f"Error: lab seed failed ({e}), ran nothing"
+
+    lab_env = {
+        LAB_CALLBACK_URL_VAR: url,
+        LAB_TOKEN_VAR: token,
+        LAB_SESSION_ID_VAR: lab_run_id,
+        LAB_RUN_ID_VAR: lab_run_id,
+    }
+    # Bare id so the event receiver resolves pushes; routing ref (seeded with
+    # the run id itself — the CLI session is unknown until launch) so the
+    # keepwarm supervisor recognizes the todo as a lab run.
+    updated = await todo_repository.add_references(
+        run_todo_id, user_id=user_id, references=[lab_run_id, routing_ref(lab_run_id, lab_run_id)]
+    )
+    if updated is None:
+        return f"Error: tracked todo {run_todo_id} vanished during lab setup, ran nothing"
+    await record_activity(
+        run_todo_id,
+        user_id,
+        TodoActivityEvent.RUN_STARTED,
+        f"lab run {lab_run_id} seeded in {run_dir(lab_run_id)}",
+    )
+    return _LabRun(run_id=lab_run_id, env=lab_env)
+
+
+def _lab_footer(lab: _LabRun, run_todo_id: str) -> str:
+    """Tell the model its run id and the one write the seed could not do itself."""
+    return (
+        f"lab_run_id: {lab.run_id} (workdir {run_dir(lab.run_id)}, "
+        f"GAIA_LAB_* env injected, todo {run_todo_id} linked)\n"
+        f"When the CLI reports its session id, append lab:{lab.run_id}:<ses> "
+        "to the todo's references with the existing todo tools."
+    )
+
+
 async def _run_bash(
     *,
     config: RunnableConfig,
@@ -239,6 +328,7 @@ async def _run_bash(
     cwd: str,
     timeout: int,  # NOSONAR python:S7483 -- e2b server-side command deadline, not a local wait (see _run_foreground)
     background: bool,
+    run_todo_id: str | None,
     scoped_tools: Mapping[str, BaseTool] | None,
 ) -> str:
     log.set(tool={"name": "bash", "action": "execute"})
@@ -294,15 +384,26 @@ async def _run_bash(
                 with contextlib.suppress(Exception):
                     await sbx.files.make_dir(cwd)
             execute_env = await _build_execute_env(run, sbx)
+            command_env = execute_env
+            lab: _LabRun | None = None
+            if run_todo_id is not None:
+                setup = await _setup_lab_run(user_id=user_id, run_todo_id=run_todo_id, sbx=sbx)
+                if isinstance(setup, str):
+                    return _emit_bash_error(run_id, setup, setup, session_id)
+                lab = setup
+                command_env = {**(command_env or {}), **lab.env}
             if background:
-                return await _run_background(sbx, run, execute_env)
-            result = await _run_foreground(sbx, run, execute_env)
-            # A bash command can create artifacts many ways (cat, python, mv,
-            # curl -o, …), not just the write tool. Enumerate the session's
-            # artifacts/ from the sandbox itself (no cross-mount race) in real time.
-            if session_id:
-                async with fs_timer(FsOps.TOOL_BASH_PUBLISH):
-                    await _publish_artifacts(sbx, user_id, session_id)
+                result = await _run_background(sbx, run, command_env)
+            else:
+                result = await _run_foreground(sbx, run, command_env)
+                # A bash command can create artifacts many ways (cat, python, mv,
+                # curl -o, …), not just the write tool. Enumerate the session's
+                # artifacts/ from the sandbox itself (no cross-mount race) in real time.
+                if session_id:
+                    async with fs_timer(FsOps.TOOL_BASH_PUBLISH):
+                        await _publish_artifacts(sbx, user_id, session_id)
+            if lab is not None and run_todo_id is not None:
+                result = f"{result}\n{_lab_footer(lab, run_todo_id)}"
             return result
     except SandboxAcquisitionError as e:
         return _emit_bash_error(run_id, str(e), f"Error: sandbox unavailable ({e})", session_id)

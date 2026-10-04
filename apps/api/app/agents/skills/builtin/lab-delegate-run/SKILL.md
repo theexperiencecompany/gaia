@@ -15,9 +15,9 @@ If anyone will need to observe or steer this after this turn ends, it belongs on
 ## Bootstrap (first and only active run)
 
 1. `create_tracked_todo` with goal + done-checks on canvas. Recurrence = check interval (e.g. hourly for active builds, daily for slow burns).
-2. Seed the run workdir in the sandbox (see `lab-claude-drive` / `lab-opencode-drive` for CLI specifics): credential links, install-if-missing, event egress (hooks fragment or plugin), run id.
-3. Launch the command detached (`nohup … >> run.log 2>&1 &` — never foreground; foreground dies with your run). Record pid + log path + run id in `references` (`lab:<run>:<session>`).
-4. Post a started line to activity. Report "working on it" and FINISH. You are done; the todo owns it from here.
+2. Launch the first command with `bash(command, background=True, run_todo_id=<todo>)` — never foreground; foreground dies with your run. The tool mints the 6h run token, seeds the run workdir (credential links, install-if-missing, hooks fragment or plugin, `GAIA_LAB_*` env), records `lab:<run>:<run>` on the todo's references, and posts the started activity line. It returns the `lab_run_id`; your command runs with the lab env already injected. See `lab-claude-drive` / `lab-opencode-drive` for CLI specifics. Flag off, unknown todo, or seed failure returns a loud error and runs nothing.
+3. When the CLI reports its session id, append `lab:<run>:<ses>` to the todo's references with the existing todo tools (the seed-time ref points at the run id itself because the CLI session is unknown until launch).
+4. Report "working on it" and FINISH. You are done; the todo owns it from here.
 
 ## What the todo does on each scheduled fire (not you, the recurrence)
 

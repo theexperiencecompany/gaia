@@ -64,6 +64,20 @@ PARAMETERS:
 - background (bool): If true, runs the command detached and returns a `pid`
   plus a log path the agent can `tail` later. Useful for servers, watch
   processes, anything long-running.
+- run_todo_id (str): Tracked todo id to launch this command as an agent-lab
+  run (Claude Code / OpenCode only). Omit for ordinary commands.
+
+AGENT LAB RUNS (run_todo_id):
+When set, BEFORE your command runs the tool does three visible things:
+(1) mints a 6h run token bound to this run + user, (2) stages the seed
+(hooks fragment/plugin/env) into the run workdir
+`/workspace/.gaia/lab/<run>/` and injects GAIA_LAB_* env into your command's
+environment, (3) records lab:<run>:<session> in the todo's references plus a
+started activity line. Flag off, unknown todo, or seed failure returns a loud
+error and runs nothing. The CLI session id is unknown at seed time, so the
+routing ref initially points at the run id itself; when the CLI reports its
+session id, append lab:<run>:<ses> to the todo's references yourself with the
+existing todo tools.
 
 OUTPUT:
 A formatted string with `exit_code`, the stdout, and the stderr (capped at
@@ -75,6 +89,7 @@ EXAMPLES:
 ✅ bash("pip install requests && python -c 'import requests; print(requests.__version__)'")
 ✅ bash("python script.py", cwd="/workspace/project", timeout=60)
 ✅ bash("python server.py", background=True)  # returns {pid, log_path}
+✅ bash("claude -p 'fix it' --output-format stream-json", background=True, run_todo_id="todo-1")
 """
 
 READ_TOOL = """
