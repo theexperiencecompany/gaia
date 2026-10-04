@@ -478,7 +478,7 @@ _ON_THREAD = SubscriptionCondition(
 
 async def _registered(
     *, trigger_name: str, conditions: list[SubscriptionCondition], **_: object
-) -> tuple[TriggerSubscription, None]:
+) -> tuple[TriggerSubscription, None, bool]:
     """Stand in for register_subscription: the stored watch, with no repairs to report."""
     return (
         TriggerSubscription(
@@ -488,6 +488,7 @@ async def _registered(
             resolution=SubscriptionResolution.ACCOUNT,
         ),
         None,
+        True,
     )
 
 
@@ -1856,10 +1857,12 @@ class TestReopenOfATakenRef:
 
         created: list[TriggerSubscription] = []
 
-        async def register(**kwargs: object) -> tuple[TriggerSubscription, None]:
-            subscription, outcome = await _registered(**kwargs)
+        async def register(
+            **kwargs: object,
+        ) -> tuple[TriggerSubscription, None, bool]:
+            subscription, outcome, created_flag = await _registered(**kwargs)
             created.append(subscription)
-            return subscription, outcome
+            return subscription, outcome, created_flag
 
         with (
             patch(_REGISTER, new_callable=AsyncMock, side_effect=register),
@@ -1950,10 +1953,12 @@ class TestReopenWatchesTheRefAgain:
         mock_todo_repo.update = AsyncMock(side_effect=RuntimeError("mongo down"))
         created: list[TriggerSubscription] = []
 
-        async def register(**kwargs: object) -> tuple[TriggerSubscription, None]:
-            subscription, outcome = await _registered(**kwargs)
+        async def register(
+            **kwargs: object,
+        ) -> tuple[TriggerSubscription, None, bool]:
+            subscription, outcome, created_flag = await _registered(**kwargs)
             created.append(subscription)
-            return subscription, outcome
+            return subscription, outcome, created_flag
 
         with (
             patch(_REGISTER, new_callable=AsyncMock, side_effect=register),

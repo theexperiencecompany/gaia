@@ -19,6 +19,7 @@ import json
 from pathlib import Path
 import re
 import sys
+from typing import NamedTuple
 
 survivor, workdir, changed_ranges = sys.argv[1].strip().split(": ", 1)[0], sys.argv[2], sys.argv[3]
 module_path = sys.argv[4]
@@ -625,22 +626,25 @@ def _unobservable_header_case(
     return False
 
 
+class _RecaseSite(NamedTuple):
+    callee: ast.FunctionDef
+    module: dict[str, ast.FunctionDef]
+    literal: ast.Constant
+    line_no: int
+    col: int
+    orig_line: str
+    mut_line: str
+
+
 def _unobservable_case_insensitive_heading(
     path: str, line_no: int, col: int, orig_line: str, mut_line: str
 ) -> bool:
-    """Return True when the mutation only re-cased a heading passed to this module's own matcher.
+    """Return True when the mutation only re-cased a heading the matcher folds anyway.
 
-    ``canvas_markdown._section_span`` compiles its heading pattern with
-    ``re.IGNORECASE``, so ``remove_section(text, "Activity Log")`` and
-    ``... "activity log"`` select the same span for every canvas — the four
-    re-cased survivors on ``split_legacy_canvas`` cannot be killed by any test.
-
-    Narrow on purpose: the call must be a positional string literal, and it must
-    resolve to a function in the SAME module that passes the parameter into an
-    ``re.compile`` carrying ``re.IGNORECASE``. A literal handed to anything else
-    (a dict key, a comparison, a name that reaches a file) is a real survivor,
-    and mutmut's ``"XXheadingXX"`` rewrite is exactly as observable as any other
-    wrong value, so only a case-ONLY rewrite passes here.
+    Canvas headings match case-insensitively, so no casing of the literal selects
+    a different span — the re-cased survivors cannot be killed by any test. Only
+    a case-only rewrite of one literal passes here, and only when the exact
+    parameter receiving it is observed solely through that one folded match.
     """
     try:
         tree = ast.parse(Path(path).read_text())
@@ -653,36 +657,53 @@ def _unobservable_case_insensitive_heading(
         callee = module.get(node.func.id)
         if callee is None:
             continue
-        for literal in node.args:
+        for index, literal in enumerate(node.args):
             if not isinstance(literal, ast.Constant) or not isinstance(literal.value, str):
                 continue
-            if _recased_literal_is_equivalent(callee, module, literal, line_no, col, orig_line, mut_line):
+            param = _positional_parameter(callee, index)
+            if param is None:
+                continue
+            site = _RecaseSite(callee, module, literal, line_no, col, orig_line, mut_line)
+            if _recased_literal_is_equivalent(site, param):
+                return True
+        for keyword in node.keywords:
+            if not isinstance(keyword.value, ast.Constant) or not isinstance(
+                keyword.value.value, str
+            ):
+                continue
+            if keyword.arg not in _parameter_names(callee):
+                continue
+            site = _RecaseSite(callee, module, keyword.value, line_no, col, orig_line, mut_line)
+            if _recased_literal_is_equivalent(site, keyword.arg):
                 return True
     return False
 
 
-def _recased_literal_is_equivalent(
-    callee: ast.FunctionDef,
-    module: dict[str, ast.FunctionDef],
-    literal: ast.Constant,
-    line_no: int,
-    col: int,
-    orig_line: str,
-    mut_line: str,
-) -> bool:
-    """Whether the mutation re-cased THIS literal into an IGNORECASE-matched heading."""
-    # A case-only rewrite is usually a different LENGTH ("Activity Log" is 12
-    # characters, "activity log" is 11), so the slice has to end where the
-    # mutant's literal ends, not where the original's did.
+def _parameter_names(callee: ast.FunctionDef) -> set[str]:
+    return {arg.arg for arg in (*callee.args.args, *callee.args.kwonlyargs)}
+
+
+def _positional_parameter(callee: ast.FunctionDef, index: int) -> str | None:
+    positional = (*callee.args.posonlyargs, *callee.args.args)
+    if index >= len(positional):
+        return None
+    return positional[index].arg
+
+
+def _recased_literal_is_equivalent(site: _RecaseSite, param: str) -> bool:
+    """Whether the mutation re-cased the literal taken as this parameter."""
+    # A case-only rewrite is usually a different length, so the slice ends where
+    # the mutant's literal ends rather than where the original's did.
+    literal = site.literal
     mut_span = (
         literal.lineno,
         literal.col_offset,
         literal.end_lineno or literal.lineno,
-        literal.end_col_offset + len(mut_line) - len(orig_line),
+        literal.end_col_offset + len(site.mut_line) - len(site.orig_line),
     )
-    if not _within(mut_span, line_no, col):
+    if not _within(mut_span, site.line_no, site.col):
         return False
-    replacement = _mutated_token(mut_span, line_no, orig_line, mut_line)
+    replacement = _mutated_token(mut_span, site.line_no, site.orig_line, site.mut_line)
     if replacement is None:
         return False
     try:
@@ -695,46 +716,84 @@ def _recased_literal_is_equivalent(
         and mutated.lower() == literal.value.lower()
     ):
         return False
-    return _heading_matched_case_insensitively(callee, module, {callee.name})
+    return _heading_matched_case_insensitively(site.callee, site.module, {site.callee.name}, param)
 
 
 def _heading_matched_case_insensitively(
-    callee: ast.FunctionDef, module: dict[str, ast.FunctionDef], seen: set[str]
+    callee: ast.FunctionDef, module: dict[str, ast.FunctionDef], seen: set[str], param: str
 ) -> bool:
-    """Whether the callee feeds the argument it received into an ``re.compile(..., re.IGNORECASE)``.
+    """Whether the value taken as param is observed only through one folded match.
 
-    Follows the module's own calls, because the matcher is usually a helper:
-    ``remove_section`` hands its heading to ``_section_span``, which compiles it.
-    The walk is bounded to functions already visited, so a cycle terminates.
+    Follows the parameter through this module's own calls, since the matcher is
+    usually a helper one hop down. Any other read of the value — a second use, a
+    case-sensitive match — can observe its casing, so only an exclusive chain
+    reports equivalence. The visited set keeps a call cycle terminating.
     """
+    loads = _loads_under(callee, param)
+    if not loads:
+        return False
+    allowed: set[int] = set()
     for node in ast.walk(callee):
         if not isinstance(node, ast.Call):
             continue
         if isinstance(node.func, ast.Name):
             called = module.get(node.func.id)
             if called is not None and called.name not in seen:
-                seen.add(called.name)
-                if _heading_matched_case_insensitively(called, module, seen):
-                    return True
-        if not (
-            isinstance(node.func, ast.Attribute)
-            and node.func.attr == "compile"
-            and isinstance(node.func.value, ast.Name)
-            and node.func.value.id == "re"
-            and node.args
-        ):
+                for target in _forwarded_parameters(called, node, param):
+                    seen.add(called.name)
+                    if _heading_matched_case_insensitively(called, module, seen, target):
+                        allowed.update(_loads_under(node, param))
             continue
-        if not any(_mentions(node.args[0], arg.arg) for arg in callee.args.args):
-            continue
-        # re.compile(pattern, flags) takes flags positionally as often as by keyword.
-        flags = [keyword.value for keyword in node.keywords if keyword.arg == "flags"]
-        if len(node.args) > 1:
-            flags.append(node.args[1])
-        if any(
-            isinstance(flag, ast.Attribute) and flag.attr in ("IGNORECASE", "I") for flag in flags
-        ):
-            return True
-    return False
+        if _is_ignorecase_compile(node) and _mentions(node.args[0], param):
+            allowed.update(_loads_under(node.args[0], param))
+    return not (loads - allowed)
+
+
+def _loads_under(node: ast.AST, name: str) -> set[int]:
+    return {
+        id(child)
+        for child in ast.walk(node)
+        if isinstance(child, ast.Name) and child.id == name and isinstance(child.ctx, ast.Load)
+    }
+
+
+def _forwarded_parameters(
+    called: ast.FunctionDef, node: ast.Call, param: str
+) -> list[str]:
+    """The called function's parameters receiving exactly this value."""
+    positional = (*called.args.posonlyargs, *called.args.args)
+    targets = [
+        positional[index].arg
+        for index, arg in enumerate(node.args)
+        if isinstance(arg, ast.Name) and arg.id == param and index < len(positional)
+    ]
+    keywordable = {arg.arg for arg in (*called.args.args, *called.args.kwonlyargs)}
+    targets.extend(
+        keyword.arg
+        for keyword in node.keywords
+        if keyword.arg in keywordable
+        and isinstance(keyword.value, ast.Name)
+        and keyword.value.id == param
+    )
+    return targets
+
+
+def _is_ignorecase_compile(node: ast.Call) -> bool:
+    if not (
+        isinstance(node.func, ast.Attribute)
+        and node.func.attr == "compile"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "re"
+        and node.args
+    ):
+        return False
+    # re.compile takes flags positionally as often as by keyword.
+    flags = [keyword.value for keyword in node.keywords if keyword.arg == "flags"]
+    if len(node.args) > 1:
+        flags.append(node.args[1])
+    return any(
+        isinstance(flag, ast.Attribute) and flag.attr in ("IGNORECASE", "I") for flag in flags
+    )
 
 
 def _mentions(node: ast.AST, name: str) -> bool:

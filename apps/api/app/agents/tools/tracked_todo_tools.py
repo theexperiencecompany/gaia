@@ -1190,7 +1190,7 @@ async def subscribe_todo_to_trigger(
     trigger_data = scope or None
 
     try:
-        subscription, outcome = await register_subscription(
+        subscription, outcome, _created = await register_subscription(
             todo_id=todo_id,
             user_id=user_id,
             trigger_name=trigger_name,

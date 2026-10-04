@@ -100,11 +100,11 @@ def worker_redis_url(base_url: str) -> str:
 
 @contextmanager
 def local_timezone(tz_name: str) -> Iterator[None]:
-    """Run the body with the process's local timezone set, restoring it afterwards.
+    """Run the body with the process local timezone set, restoring it afterwards.
 
-    `datetime.now()` reads the local zone and `datetime.now(UTC)` does not, so a test
-    that has to tell the two apart has to run on a box (or an environment) where they
-    differ. Asia/Kolkata is UTC+5:30, so anything near midnight separates them.
+    datetime.now reads the local zone and datetime.now(UTC) does not, so a test
+    that has to tell the two apart has to run where they differ. Asia/Kolkata
+    is UTC+5:30, so anything near midnight separates them.
     """
     zoneinfo.ZoneInfo(tz_name)  # fail loudly on a zone this box does not have
     original = os.environ.get("TZ")

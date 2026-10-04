@@ -82,7 +82,7 @@ async def watch_external_ref(
         for trigger_name in watch.trigger_names:
             if trigger_name in watched:
                 continue
-            subscription, _outcome = await register_subscription(
+            subscription, _outcome, created = await register_subscription(
                 todo_id=todo_id,
                 user_id=user_id,
                 trigger_name=trigger_name,
@@ -90,7 +90,10 @@ async def watch_external_ref(
                 action=SubscriptionAction.EXECUTE,
                 cooldown_seconds=watch.window_seconds,
             )
-            added.append(subscription)
+            # Only rows this call stored are rolled back: a concurrent winner's
+            # row is not ours to remove if a later watch fails.
+            if created:
+                added.append(subscription)
     except Exception:
         await release_watches(todo_id, user_id, added)
         raise

@@ -276,12 +276,7 @@ class TestTheExpiryIsHandedOffCorrectly:
     async def test_the_wide_event_names_the_keys_a_delivery_carried_beyond_the_schema(
         self, unauthed_client: AsyncClient
     ) -> None:
-        """Report the delivered shape, so an undeclared field Composio added is visible.
-
-        The keys are what the run was asked to act on; reading only the declared fields
-        would report the same shape for a delivery that grew a field, which is exactly the
-        drift this event is here to catch. The values are never logged, state included.
-        """
+        """Report the delivered shape, so an undeclared field Composio added is visible."""
         body = {
             **_expired_connection_event(),
             "sdk_version": "3.9.1",
@@ -388,7 +383,7 @@ def _trigger_event(event_type: str = "gmail_new_gmail_message") -> dict:
 
 
 class TestStampedDeliveryIds:
-    """Composio stamps the trigger ids inside `data`, not beside it.
+    """Composio stamps the trigger ids inside data, not beside it.
 
     The alias reads the wire path first and the plain name second, so a delivery
     carrying both keeps the one Composio actually stamped, and a missing id is
@@ -593,12 +588,7 @@ class TestAMalformedTriggerDeliveryIsRefused:
     async def test_the_422_reports_the_field_that_was_wrong_and_echoes_no_input(
         self, unauthed_client: AsyncClient
     ) -> None:
-        """The refusal names the field, says what was wrong with it, and quotes nothing back.
-
-        include_url and include_input are both off: a URL pointing into GAIA's own schema
-        tells the caller nothing about what to send instead, and the input is their own
-        payload — a token in it would come back to them inside a 422.
-        """
+        """The refusal names the field, says what was wrong with it, and quotes nothing back."""
         secret = "sk-live-should-not-be-echoed"
         body = {**_trigger_event(), "data": "not-an-object", "token": secret}
 
@@ -615,11 +605,7 @@ class TestAMalformedTriggerDeliveryIsRefused:
     async def test_the_422_carries_no_url_into_the_schema(
         self, unauthed_client: AsyncClient
     ) -> None:
-        """include_url is off: a link into GAIA's own schema tells the caller nothing.
-
-        They cannot read the schema behind this webhook, so a URL in the refusal is a
-        dead end in the one place they will look for what to send instead.
-        """
+        """include_url is off: a link into GAIA's own schema tells the caller nothing."""
         body = {**_trigger_event(), "data": "not-an-object"}
 
         response = await _post_event(unauthed_client, body, "bad-url")

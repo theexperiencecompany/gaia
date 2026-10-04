@@ -62,7 +62,7 @@ class TestBuildContactIndex:
         assert result["count"] == 1
         assert result["contacts"][0]["email"] == "good@example.com"
 
-    def test_skips_headers_missing_a_name_or_value(self):
+    def test_skips_headers_missing_a_name_or_value(self) -> None:
         messages = [
             _message([{"name": "From"}]),  # header without "value"
             _message([{"value": "NoName <x@example.com>"}]),  # header without "name"
@@ -99,7 +99,7 @@ class TestBuildContactIndex:
 
         assert result["contacts"][0]["name"] == "Alice"
 
-    def test_a_second_name_does_not_replace_the_first(self):
+    def test_a_second_name_does_not_replace_the_first(self) -> None:
         # Both headers name the person, so there is nothing to fill in: the address
         # was already known with a name and the second message must not churn it.
         messages = [

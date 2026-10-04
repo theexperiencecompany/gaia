@@ -135,7 +135,7 @@ _REGISTER = "app.services.todos.external_ref_watch.register_subscription"
 
 async def _registered(
     *, trigger_name: str, conditions: list[SubscriptionCondition], **_: object
-) -> tuple[TriggerSubscription, None]:
+) -> tuple[TriggerSubscription, None, bool]:
     """Stand in for register_subscription: the stored watch, with no repairs to report."""
     return (
         TriggerSubscription(
@@ -145,6 +145,7 @@ async def _registered(
             resolution=SubscriptionResolution.ACCOUNT,
         ),
         None,
+        True,
     )
 
 
@@ -197,7 +198,7 @@ class TestCreateThreadTodo:
         mock_deps.create.return_value = _todo_response()
         mock_repo.update.side_effect = lambda *a, **k: order.append("setup")
 
-        async def register(**kwargs: object) -> tuple[TriggerSubscription, None]:
+        async def register(**kwargs: object) -> tuple[TriggerSubscription, None, bool]:
             order.append(str(kwargs["trigger_name"]))
             return await _registered(**kwargs)
 
@@ -213,8 +214,8 @@ class TestCreateThreadTodo:
         watch.register.assert_not_awaited()
 
     async def test_a_new_inbox_desk_watches_its_mailbox_for_new_mail(
-        self, mock_repo, mock_deps, watch
-    ):
+        self, mock_repo: MagicMock, mock_deps: MagicMock, watch: SimpleNamespace
+    ) -> None:
         desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
         mock_deps.create.return_value = _todo_response()
 

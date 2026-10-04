@@ -333,10 +333,7 @@ class TestPromptPruningWideEvent:
         assert before["slot_digests"]["dynamic_stable"] != after["slot_digests"]["dynamic_stable"]
 
     def test_a_kept_slot_is_reported_kept_and_an_absent_one_not(self) -> None:
-        """One field per slot says what actually survived, keyed by the slot held.
-
-        A run that keeps one slot and never saw another must say so both ways.
-        """
+        """One field per slot says what actually survived, keyed by the slot held."""
         pruning = self._pruning_for([_static("prompt"), _dynamic("ctx")])
 
         assert pruning["kept_static"] is True

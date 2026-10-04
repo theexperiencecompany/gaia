@@ -243,10 +243,7 @@ async def test_a_success_midway_resets_the_identical_run_without_ending_the_tall
 
 
 async def test_a_result_this_delegation_never_issued_is_skipped_not_fatal() -> None:
-    """A ToolMessage whose call predates the delegation is skipped, not fatal.
-
-    It is not one of this run's failures, and the failures after it still are.
-    """
+    """A ToolMessage whose call predates the delegation is skipped, not fatal."""
     orphan = ToolMessage(content="boom", tool_call_id="t-elsewhere", name="search", status="error")
     history = [orphan, *_retries(LOOP_GUARD_WARN_IDENTICAL - 1)]
     result = await _wrap(LoopGuardMiddleware(), _after(*history), _failing())

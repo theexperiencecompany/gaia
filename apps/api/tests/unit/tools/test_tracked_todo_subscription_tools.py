@@ -153,7 +153,7 @@ class TestSubscribe:
     @staticmethod
     def _register() -> tuple[AsyncMock, TriggerSubscription]:
         subscription = _subscription()
-        return AsyncMock(return_value=(subscription, ValidationOutcome())), subscription
+        return AsyncMock(return_value=(subscription, ValidationOutcome(), True)), subscription
 
     async def test_it_registers_and_reports_the_subscription_id(self) -> None:
         register, subscription = self._register()
@@ -332,7 +332,7 @@ class TestSubscribe:
         assert repaired.repairs, "fixture no longer exercises a repair"
 
         with patch(
-            f"{_MOD}.register_subscription", AsyncMock(return_value=(_subscription(), repaired))
+            f"{_MOD}.register_subscription", AsyncMock(return_value=(_subscription(), repaired, True))
         ):
             out = await subscribe_todo_to_trigger.coroutine(
                 config=_config(), todo_id=TODO_ID, trigger_name=GMAIL, action="execute"
@@ -355,7 +355,7 @@ class TestSubscribe:
             ],
         )
         with patch(
-            f"{_MOD}.register_subscription", AsyncMock(return_value=(_subscription(), outcome))
+            f"{_MOD}.register_subscription", AsyncMock(return_value=(_subscription(), outcome, True))
         ):
             out = await subscribe_todo_to_trigger.coroutine(
                 config=_config(), todo_id=TODO_ID, trigger_name=GMAIL, action="execute"

@@ -77,13 +77,11 @@ async def register_subscription(
     match: ConditionMatch = ConditionMatch.ALL,
     cooldown_seconds: int = DEFAULT_COOLDOWN_SECONDS,
     trigger_data: Mapping[str, object] | None = None,
-) -> tuple[TriggerSubscription, ValidationOutcome]:
+) -> tuple[TriggerSubscription, ValidationOutcome, bool]:
     """Validate, register with Composio, and store one subscription on todo_id.
 
-    Returns the stored subscription and the validation outcome, so the caller can
-    surface what was mechanically repaired. Raises SubscriptionError when the
-    conditions cannot be made valid or the trigger cannot be registered — a
-    subscription that cannot fire must never be stored.
+    Returns the stored row, the validation outcome, and whether this call stored
+    it — a concurrent winner's row must not be treated as this call's own.
     """
     log.set(
         component="trigger_subscription",
@@ -161,18 +159,23 @@ async def register_subscription(
         trigger_data=dict(trigger_data or {}),
     )
 
-    stored = await _append_subscription(todo_id, user_id, todo, subscription)
-    if stored is None:
+    appended = await _append_subscription(todo_id, user_id, todo, subscription)
+    if appended is None:
+        # The Composio instance registered above has no stored row: without a
+        # release it lives upstream forever, firing for a watch nobody can see.
+        await _release_unstored_registration(todo_id, user_id, subscription)
         raise _fail(
             "write_conflict",
             f"The watches on {todo_id} changed while this one was being added, "
             f"{SUBSCRIPTION_WRITE_ATTEMPTS} times over. Try again.",
         )
-    if stored.id != subscription.id:
-        # A concurrent registration of the same watch landed first: its row is the
-        # one on the todo, and the trigger instance registered for ours is redundant.
-        await _release_duplicate_registration(todo_id, user_id, subscription)
-        return stored, outcome
+    stored, created = appended
+    if not created:
+        # A concurrent registration of the same watch landed first: its row is
+        # the one on the todo, and the trigger instance registered for ours is
+        # redundant.
+        await _release_unstored_registration(todo_id, user_id, subscription)
+        return stored, outcome, False
     capture_event(
         user_id,
         AnalyticsEvents.TODO_SUBSCRIPTION_REGISTERED,
@@ -201,28 +204,28 @@ async def register_subscription(
         condition_count=len(outcome.conditions),
         repair_count=len(outcome.repairs),
     )
-    return stored, outcome
+    return stored, outcome, True
 
 
 def _same_watch(left: TriggerSubscription, right: TriggerSubscription) -> bool:
-    """Whether two watches would fire on exactly the same events."""
+    """Whether two watches would fire on exactly the same events, with the same settings."""
     return (
         left.trigger_name == right.trigger_name
         and left.action == right.action
         and left.match == right.match
         and set(left.conditions) == set(right.conditions)
+        and left.cooldown_seconds == right.cooldown_seconds
+        and left.trigger_data == right.trigger_data
     )
 
 
 async def _append_subscription(
     todo_id: str, user_id: str, todo: TodoDocument, subscription: TriggerSubscription
-) -> TriggerSubscription | None:
-    """Add the watch compare-and-set on updated_at, and return the row now on the todo.
+) -> tuple[TriggerSubscription, bool] | None:
+    """Add the watch compare-and-set on updated_at.
 
-    The watch list is read, extended and written back, so two Gmail connects
-    provisioning one desk at once would overwrite each other without the gate: the
-    second write loses the desk's watch, or (as an unconditional append) doubles it.
-    A lost write re-reads and asks again, returning the row the winner stored.
+    Returns the row now on the todo and whether this call stored it, or None
+    when every attempt lost the race to a concurrent writer.
     """
     current = todo
     for _ in range(SUBSCRIPTION_WRITE_ATTEMPTS):
@@ -231,7 +234,7 @@ async def _append_subscription(
             None,
         )
         if duplicate is not None:
-            return duplicate
+            return duplicate, False
         written = await todo_repository.set_trigger_subscriptions(
             todo_id,
             user_id,
@@ -239,22 +242,26 @@ async def _append_subscription(
             expected_updated_at=current.updated_at,
         )
         if written is not None:
-            return subscription
+            return subscription, True
         current = await todo_repository.get(todo_id, user_id=user_id)
         if current is None:
             return None
     return None
 
 
-async def _release_duplicate_registration(
+async def _release_unstored_registration(
     todo_id: str, user_id: str, subscription: TriggerSubscription
 ) -> None:
-    """Drop the Composio instance registered for a watch whose row lost the race."""
+    """Drop a Composio instance whose watch was never stored.
+
+    The todo_id is error-log context only: it is NOT passed to
+    unregister_triggers, so a concurrent winner's live reference still counts.
+    """
     if not subscription.composio_trigger_ids:
         return
     try:
         await TriggerService.unregister_triggers(
-            user_id, subscription.trigger_name, subscription.composio_trigger_ids, todo_id=todo_id
+            user_id, subscription.trigger_name, subscription.composio_trigger_ids
         )
     except Exception as e:
         log.error(

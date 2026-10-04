@@ -485,3 +485,24 @@ class TestCaseInsensitiveHeading:
 
         assert result.stdout.strip().startswith("CHANGED"), result.stdout + result.stderr
         assert result.returncode == 1
+
+    def test_a_recased_literal_read_case_sensitively_beside_the_match_is_a_survivor(
+        self, workdir: Path
+    ) -> None:
+        """The matcher folding one argument does not fold the other one."""
+        (workdir / MODULE_REL).write_text(
+            "import re\n"
+            "def probe(canvas):\n"
+            '    return cut("Activity Log", canvas)\n'
+            "def cut(heading, text):\n"
+            "    return (heading in text, _span(text, heading))\n"
+            "def _span(text, heading):\n"
+            '    return re.compile(rf"## {heading}", re.IGNORECASE).search(text)\n'
+        )
+        body = '    return cut("Activity Log", canvas)'
+        _write_mutants(workdir, body, body.replace("Activity Log", "activity log"))
+
+        result = _classify(workdir)
+
+        assert result.stdout.strip().startswith("CHANGED"), result.stdout + result.stderr
+        assert result.returncode == 1

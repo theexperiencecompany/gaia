@@ -21,7 +21,7 @@ from app.models.trigger_subscription_models import (
 )
 from app.services.todos.external_ref_watch import watch_external_ref
 from app.services.triggers.condition_matching import conditions_match
-from app.services.triggers.subscription_service import DEFAULT_COOLDOWN_SECONDS
+from app.services.triggers.subscription_service import DEFAULT_COOLDOWN_SECONDS, SubscriptionError
 
 pytestmark = pytest.mark.unit
 
@@ -36,14 +36,14 @@ THREAD = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f0a9b7d4e611
 def register() -> Iterator[AsyncMock]:
     async def _register(
         *, trigger_name: str, conditions: list[SubscriptionCondition], **_: object
-    ) -> tuple[TriggerSubscription, None]:
+    ) -> tuple[TriggerSubscription, None, bool]:
         stored = TriggerSubscription(
             trigger_name=trigger_name,
             conditions=conditions,
             action=SubscriptionAction.EXECUTE,
             resolution=SubscriptionResolution.ACCOUNT,
         )
-        return stored, None
+        return stored, None, True
 
     with patch(f"{MODULE}.register_subscription", AsyncMock(side_effect=_register)) as mock:
         yield mock
@@ -112,6 +112,32 @@ async def test_a_desk_already_watching_gets_no_second_watch(register: AsyncMock)
 
     assert added == []
     register.assert_not_awaited()
+
+
+async def test_a_concurrent_winners_row_is_not_rolled_back_with_this_calls_failures() -> None:
+    """A later watch failing must not take down a concurrent winner's row."""
+    winner = TriggerSubscription(
+        trigger_name=GMAIL_NEW_MESSAGE_TRIGGER_NAME,
+        conditions=[],
+        action=SubscriptionAction.EXECUTE,
+        resolution=SubscriptionResolution.ACCOUNT,
+    )
+    with (
+        patch(
+            f"{MODULE}.register_subscription",
+            AsyncMock(
+                side_effect=[
+                    (winner, None, False),
+                    SubscriptionError("registration_failed"),
+                ]
+            ),
+        ),
+        patch(f"{MODULE}.unregister_subscription", new_callable=AsyncMock) as unregister,
+    ):
+        with pytest.raises(SubscriptionError):
+            await watch_external_ref(TODO_ID, USER_ID, THREAD, [])
+
+    unregister.assert_not_awaited()
 
 
 async def test_a_thread_watches_its_mail_both_ways_in_the_default_window(

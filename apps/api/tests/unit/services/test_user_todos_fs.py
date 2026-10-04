@@ -79,11 +79,7 @@ async def test_each_projection_carries_the_todo_and_its_subtasks() -> None:
 
 
 async def test_the_gaia_tracked_exclusion_is_the_finders_not_this_glue() -> None:
-    """GAIA's tracked todos never reach here because the finder leaves them out.
-
-    That exclusion is the contract tier's to hold; what arrives here is projected as
-    given, so this glue cannot quietly widen the list on its own.
-    """
+    """The gaia-tracked exclusion is the finder's; this glue projects what arrives."""
     finder, _asked = _finder_returning(_doc(labels=[GAIA_TRACKED_LABEL]))
 
     with patch(f"{MODULE}.todo_repository.list_active_user_todos_since", finder):

@@ -354,12 +354,8 @@ class TestGmailMessageParserPayload:
 
 
 class TestGmailMessageParserLabels:
-    def test_the_wide_event_names_the_message_this_parse_read(self):
-        """The parse stamps the id it is working on.
-
-        With no raw and no messageId the field is an empty string, never the thread id or
-        a stale one: an operator reading a parse warning needs to know which message failed.
-        """
+    def test_the_wide_event_names_the_message_this_parse_read(self) -> None:
+        """The parse stamps the id it is working on."""
         log.reset()
 
         _parser(_make_gmail_message(raw=_make_raw_email())).parse()
@@ -367,7 +363,7 @@ class TestGmailMessageParserLabels:
         assert log.get()["gmail_message_id"] == "msg_001"
         assert log.get()["mail_op"] == "parse_gmail_message"
 
-    def test_the_wide_event_falls_back_to_the_relayed_id_then_says_nothing(self):
+    def test_the_wide_event_falls_back_to_the_relayed_id_then_says_nothing(self) -> None:
         """A relay that carries only messageId still names the message it parsed."""
         log.reset()
 
@@ -375,20 +371,15 @@ class TestGmailMessageParserLabels:
 
         assert log.get()["gmail_message_id"] == "mid_9"
 
-    def test_a_message_with_neither_id_is_logged_with_no_id(self):
+    def test_a_message_with_neither_id_is_logged_with_no_id(self) -> None:
         log.reset()
 
         _parser({"labelIds": []}).parse()
 
         assert log.get()["gmail_message_id"] == ""
 
-    def test_no_header_reads_as_empty_before_and_after_a_failed_parse(self):
-        """Every header getter answers "" when there is no parsed message to ask.
-
-        Before parse() there is nothing to read, and after a parse that failed the message
-        is None: either way a caller building a card gets an empty string rather than an
-        AttributeError, and the empty string is falsy so the fallback fields take over.
-        """
+    def test_no_header_reads_as_empty_before_and_after_a_failed_parse(self) -> None:
+        """Every header getter answers "" when there is no parsed message to ask."""
         parser = _parser(_make_gmail_message(raw=_make_raw_email()))
 
         assert (parser.subject, parser.sender, parser.to) == ("", "", "")
@@ -400,12 +391,12 @@ class TestGmailMessageParserLabels:
         assert parser.sender == ""
         assert parser.to == ""
 
-    def test_labels(self):
+    def test_labels(self) -> None:
         msg = _make_gmail_message(label_ids=["INBOX", "UNREAD", "HAS_ATTACHMENT"])
         parser = _parser(msg)
         assert parser.labels == ["INBOX", "UNREAD", "HAS_ATTACHMENT"]
 
-    def test_no_label_ids_returns_empty_list(self):
+    def test_no_label_ids_returns_empty_list(self) -> None:
         msg = {"id": "x"}
         parser = _parser(msg)
         assert parser.labels == []
@@ -501,14 +492,8 @@ class TestMinimalMessageTemplate:
         assert result.id == "mid_1"
         assert result.sender == "fallback@sender.com"
 
-    def test_every_header_and_label_reaches_the_card_under_its_own_field(self):
-        """Each field carries its own value, not a neighbour's.
-
-        The card is all the run sees of a thread, so a field showing the wrong value —
-        the sender's address in the subject line, an unread message reported as
-        read — is a misread the run acts on. Asserted whole, since the mutant that
-        swaps two fallbacks passes any single-field check.
-        """
+    def test_every_header_and_label_reaches_the_card_under_its_own_field(self) -> None:
+        """Each field carries its own value, not a neighbour's."""
         raw = _make_raw_email(
             subject="Quarterly numbers",
             sender="Alice <alice@example.com>",
@@ -534,12 +519,8 @@ class TestMinimalMessageTemplate:
         assert result.labels == ["INBOX", "UNREAD", "HAS_ATTACHMENT"]
         assert result.body.strip() == "The body"
 
-    def test_a_message_with_no_id_at_all_carries_no_id_rather_than_one_of_its_neighbours(self):
-        """Neither Gmail id present: the card says nothing rather than naming the thread.
-
-        A wrong id here is worse than none — the run would fetch, or fetch again,
-        something this thread never had.
-        """
+    def test_a_message_with_no_id_at_all_carries_no_id_rather_than_one_of_its_neighbours(self) -> None:
+        """Neither Gmail id present: the card says nothing rather than naming the thread."""
         msg = {"threadId": "t1", "labelIds": [], "snippet": "s"}
 
         result = minimal_message_template(RelayedGmailMessage.model_validate(msg))
@@ -580,14 +561,8 @@ class TestDetailedMessageTemplate:
         result = detailed_message_template(msg)
         assert result["id"] == "m1"
 
-    def test_the_detailed_card_is_a_json_document_the_agent_can_be_handed(self):
-        """It reaches the agent as JSON, so every value must already be JSON.
-
-        A Python-mode dump builds fine and only fails at the json.dumps on the far side,
-        where nothing says which field broke. The date header is the field that catches
-        this: Gmail's own header is a string, but nothing stops a relayed one arriving as
-        a datetime, and json cannot carry that.
-        """
+    def test_the_detailed_card_is_a_json_document_the_agent_can_be_handed(self) -> None:
+        """It reaches the agent as JSON, so every value must already be JSON."""
         raw = _make_raw_email(
             subject="JSON please", sender="a@b.com", to="c@d.com", body_text="Body"
         )
@@ -610,7 +585,7 @@ def _fetched_view(body_processing: BodyProcessingLiteral) -> GmailMessageView:
 
 
 class TestFetchedMessageView:
-    def test_the_agent_reads_every_field_under_its_documented_key(self):
+    def test_the_agent_reads_every_field_under_its_documented_key(self) -> None:
         assert list(project_message_view(_fetched_view("raw"), None)) == [
             "id",
             "threadId",
@@ -628,13 +603,8 @@ class TestFetchedMessageView:
             "body",
         ]
 
-    def test_the_fetched_view_carries_each_field_under_its_own_value(self):
-        """Every field of the fetched view holds its own value.
-
-        The desk's sweep and the thread card both read this, so a field carrying a
-        neighbour's value reads as a fact about the mail. Asserted whole: a mutant
-        that swaps two fallbacks passes any single-field check.
-        """
+    def test_the_fetched_view_carries_each_field_under_its_own_value(self) -> None:
+        """Every field of the fetched view holds its own value."""
         raw = _make_raw_email(
             subject="Lease renewal",
             sender="Alice <alice@example.com>",
@@ -662,13 +632,13 @@ class TestFetchedMessageView:
         assert view.has_attachment is False
         assert view.labels == ["INBOX", "UNREAD"]
 
-    def test_the_dual_text_and_html_blob_never_reaches_the_agent(self):
+    def test_the_dual_text_and_html_blob_never_reaches_the_agent(self) -> None:
         wire = project_message_view(_fetched_view("raw"), None)
 
         assert "content" not in wire
         assert "Plain words" in str(wire["body"])
 
-    def test_an_unfetched_body_is_absent_rather_than_null(self):
+    def test_an_unfetched_body_is_absent_rather_than_null(self) -> None:
         view = _fetched_view("none")
 
         assert "body" not in project_message_view(view, None)
@@ -1030,11 +1000,7 @@ class TestTheCardsFallbacksAndEmptyFields:
         assert result.body == ""
 
     def test_a_header_the_email_never_carried_reads_as_empty(self) -> None:
-        """The raw email has a Subject but no To: the To must be "" and not a neighbour.
-
-        Reading one header's value for another is the failure here — a card naming the
-        subject line as the recipient gets the run replying to the wrong place.
-        """
+        """The raw email has a Subject but no To: the To must be "" and not a neighbour."""
         raw = _make_raw_email(subject="Only a subject", to="", cc="", body_text="Body")
 
         parser = _parser(_make_gmail_message(raw=raw))
@@ -1056,11 +1022,7 @@ class TestTheCardsFallbacksAndEmptyFields:
         assert _parser({"labelIds": [], "payload": {}}).parse() is False
 
     def test_a_message_without_the_unread_label_is_reported_as_read(self) -> None:
-        """is_read comes from the labels, not from the model default.
-
-        A read message is the default value of the field, so a view that never computed
-        it would look identical — this is the only way the two answers differ.
-        """
+        """is_read comes from the labels, not from the model default."""
         raw = _make_raw_email(subject="Read", body_text="Body")
 
         result = minimal_message_template(
@@ -1088,12 +1050,7 @@ class TestTheCardsFallbacksAndEmptyFields:
 
 class TestTheFetchedViewReadsThePayload:
     def test_an_attachment_in_the_payload_is_reported_with_its_metadata(self) -> None:
-        """The attachment list is walked out of the MIME parts, name and id paired.
-
-        The run has to ask Gmail for the bytes by attachmentId; losing either the name
-        or the id makes the attachment unfetchable, and the view is the only place the
-        two are paired.
-        """
+        """The attachment list is walked out of the MIME parts, name and id paired."""
         message = RelayedGmailMessage.model_validate(
             _make_gmail_message(payload=_attachment_payload(), label_ids=["INBOX"])
         )
@@ -1111,11 +1068,7 @@ class TestTheFetchedViewReadsThePayload:
         assert view.has_attachment is False
 
     def test_the_has_attachment_label_is_the_one_gmail_sends(self) -> None:
-        """The flag reads the label Gmail actually sets, spelled exactly.
-
-        Matched loosely it would report an attachment for any label containing the words
-        and miss the real one whenever the casing drifted.
-        """
+        """The flag reads the label Gmail actually sets, spelled exactly."""
         message = RelayedGmailMessage.model_validate(
             _make_gmail_message(
                 payload=_attachment_payload(), label_ids=["INBOX", "HAS_ATTACHMENT"]
@@ -1125,11 +1078,7 @@ class TestTheFetchedViewReadsThePayload:
         assert build_message_view(message, "raw").has_attachment is True
 
     def test_a_relay_with_no_ids_and_no_snippet_reports_them_empty(self) -> None:
-        """A metadata-format message carries no id, thread or snippet of its own.
-
-        Each of those three answers "" rather than a neighbour's value, so a run reading
-        the view cannot mistake one message's identity for another's.
-        """
+        """A metadata-format message carries no id, thread or snippet of its own."""
         message = RelayedGmailMessage.model_validate(
             {"labelIds": ["INBOX"], "payload": _attachment_payload()}
         )
@@ -1172,18 +1121,14 @@ class TestTheBodyIsOnlyFetchedWhenAFieldAsksForIt:
         ],
     )
     def test_the_decision_depends_on_the_field_list_and_the_processing(
-        self, fields, body_processing, expected
+        self, fields: list[str] | None, body_processing: str, expected: bool
     ) -> None:
         assert message_view_needs_body(fields, body_processing) is expected
 
 
 class TestNormalizeStripsTheBoilerplate:
     def test_a_signature_and_an_unsubscribe_footer_are_gone_and_the_words_stay(self) -> None:
-        """The normalize pass removes the boilerplate and keeps what the sender wrote.
-
-        Dropping the body instead of trimming it hands the run nothing to act on, and
-        skipping the pass hands it a footer as often as a message.
-        """
+        """The normalize pass removes the boilerplate and keeps what the sender wrote."""
         raw = _make_raw_email(
             subject="Invoice",
             body_text=(

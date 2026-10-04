@@ -50,12 +50,8 @@ class TestSectionBody:
     def test_none_when_missing(self):
         assert section_body(LEGACY, "Nope") is None
 
-    def test_a_canvas_that_is_not_there_yet_is_an_empty_one_not_a_missing_one(self):
-        """A todo written before the canvas existed has an empty canvas, not no canvas.
-
-        Returning "" for None lets every caller write the rest back without inventing a
-        placeholder; returning None would have each of them decide for itself.
-        """
+    def test_a_canvas_that_is_not_there_yet_is_an_empty_one_not_a_missing_one(self) -> None:
+        """A todo written before the canvas existed has an empty canvas, not no canvas."""
         assert remove_section(None, "Activity Log") == ("", None)
 
     def test_a_todo_without_a_canvas_has_no_section(self):
@@ -95,12 +91,10 @@ class TestSplitLegacyCanvas:
         ],
         ids=["activity-lower", "activity-upper", "timeline-lower", "timeline-upper"],
     )
-    def test_the_legacy_headings_are_found_however_they_are_cased(self, heading, line):
-        """A canvas a model wrote in a different case is still a legacy canvas.
-
-        The section lookup is case-insensitive, so the heading is cut out whole
-        rather than only its dated blocks being rescued.
-        """
+    def test_the_legacy_headings_are_found_however_they_are_cased(
+        self, heading: str, line: str
+    ) -> None:
+        """A canvas a model wrote in a different case is still a legacy canvas."""
         original = "## Activity Log" if "activity" in heading.lower() else "## Timeline"
         canvas = LEGACY.replace(original, f"## {heading}")
 

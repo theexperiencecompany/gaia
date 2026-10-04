@@ -462,11 +462,7 @@ async def test_the_canvas_observations_move_into_observations_md_once(
 async def test_a_desk_with_no_canvas_at_all_is_seeded_from_the_seed_alone(
     stored: dict[str, TodoDocument],
 ) -> None:
-    """A desk written before the canvas existed gets observations.md and nothing else.
-
-    There is no canvas to cut a section out of, so the seed is written on its own rather
-    than alongside a canvas the desk never had.
-    """
+    """A desk written before the canvas existed gets observations.md and nothing else."""
     stored[DESK_ID] = _desk(canvas_content=None, updated_at=STAMP)
 
     ready = await inbox_desk.with_desk_notes(stored[DESK_ID])
@@ -489,11 +485,7 @@ async def test_a_desk_that_keeps_observations_md_is_not_written(
 async def test_carried_lines_are_stamped_with_the_utc_day_they_moved(
     stored: dict[str, TodoDocument],
 ) -> None:
-    """Stamp the carried patterns with the UTC day, the zone the todo's own timestamps use.
-
-    A naive local date would file an evening's read under the next day, which then reads
-    as a pattern the desk had known for longer than it had.
-    """
+    """Stamp the carried patterns with the UTC day, the zone the todo's own timestamps use."""
     canvas = OLD_DESK_CANVAS.replace("## Key Details", CANVAS_OBSERVATIONS + "## Key Details")
     stored[DESK_ID] = _desk(canvas_content=canvas, updated_at=STAMP)
 
@@ -515,10 +507,7 @@ async def test_a_desk_whose_notes_moved_since_it_was_read_fails_its_run(
 async def test_a_repair_writes_this_desks_own_notes_under_its_own_user(
     stored: dict[str, TodoDocument],
 ) -> None:
-    """The repair is scoped to the todo being read, not to whoever the caller's session says.
-
-    A repair naming another user would move one desk's observations onto another's.
-    """
+    """The repair is scoped to the todo being read, not to whoever the caller's session says."""
     stored[DESK_ID] = _desk(canvas_content=OLD_DESK_CANVAS, updated_at=STAMP)
 
     await inbox_desk.with_desk_notes(stored[DESK_ID])

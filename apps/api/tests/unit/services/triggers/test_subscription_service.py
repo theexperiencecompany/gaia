@@ -128,7 +128,7 @@ class TestRegisterSubscription:
         # Gmail's register() returns [] by design. Treating that as a failure
         # would make the whole reply-watching flow impossible.
         with _Harness(_todo(), []) as h:
-            subscription, outcome = await register_subscription(
+            subscription, outcome, _ = await register_subscription(
                 todo_id=TODO_ID,
                 user_id=USER_ID,
                 trigger_name=ACCOUNT_TRIGGER,
@@ -170,7 +170,7 @@ class TestRegisterSubscription:
         # The inbox trigger never sees SENT mail; this is the only way a thread
         # todo learns the user already replied from Gmail.
         with _Harness(_todo(), []) as h:
-            subscription, outcome = await register_subscription(
+            subscription, outcome, _ = await register_subscription(
                 todo_id=TODO_ID,
                 user_id=USER_ID,
                 trigger_name="gmail_email_sent",
@@ -189,7 +189,7 @@ class TestRegisterSubscription:
 
     async def test_per_resource_trigger_stores_its_instance_ids(self) -> None:
         with _Harness(_todo(), ["ti_9"]) as h:
-            subscription, _ = await register_subscription(
+            subscription, _, _ = await register_subscription(
                 todo_id=TODO_ID,
                 user_id=USER_ID,
                 trigger_name=INSTANCE_TRIGGER,
@@ -267,7 +267,7 @@ class TestRegisterSubscription:
 
             h.get.side_effect = read_todo
 
-            subscription, _outcome = await register_subscription(
+            subscription, _outcome, created = await register_subscription(
                 todo_id=TODO_ID,
                 user_id=USER_ID,
                 trigger_name=INSTANCE_TRIGGER,
@@ -276,20 +276,34 @@ class TestRegisterSubscription:
             )
 
         assert subscription.id == first.id
-        # Nothing is appended on top of it, and the instance registered for the row
-        # that lost the race is released rather than left orphaned upstream.
+        assert created is False
+        # Nothing is appended: the loser's instance is released with the winner's
+        # reference still counting.
         assert h.set_subscriptions.await_count == 1
-        h.unregister.assert_awaited_once_with(
-            USER_ID, INSTANCE_TRIGGER, ["loser-id"], todo_id=TODO_ID
-        )
+        h.unregister.assert_awaited_once_with(USER_ID, INSTANCE_TRIGGER, ["loser-id"])
+
+    @pytest.mark.regression
+    async def test_watches_with_different_settings_are_not_the_same_watch(self) -> None:
+        """A calendar watch with another reminder window is another watch, not a duplicate."""
+        existing = _subscription(cooldown_seconds=60, trigger_data={"window": "15m"})
+        with _Harness(_todo(trigger_subscriptions=[existing]), ["ti_2"]) as h:
+            stored, _outcome, created = await register_subscription(
+                todo_id=TODO_ID,
+                user_id=USER_ID,
+                trigger_name=INSTANCE_TRIGGER,
+                conditions=[],
+                action=SubscriptionAction.EXECUTE,
+                cooldown_seconds=3600,
+                trigger_data={"window": "1h"},
+            )
+
+        assert created is True
+        assert stored.cooldown_seconds == 3600
+        assert [sub.id for sub in h.written_subscriptions] == [existing.id, stored.id]
 
     @pytest.mark.regression
     async def test_a_write_conflict_retries_from_the_revision_the_other_writer_left(self) -> None:
-        """Both watches survive when another writer advances the todo between our read and write.
-
-        Retrying against the old revision loses again; dropping the revision guard overwrites
-        the competing watch. Only the refreshed revision can append without losing either.
-        """
+        """Both watches survive when another writer advances the todo between our read and write."""
         first_revision = datetime(2026, 10, 3, 12, tzinfo=UTC)
         competing_revision = first_revision + timedelta(seconds=1)
         original = _todo(updated_at=first_revision)
@@ -330,7 +344,7 @@ class TestRegisterSubscription:
 
             h.set_subscriptions.side_effect = compare_and_set
 
-            stored, _outcome = await register_subscription(
+            stored, _outcome, _created = await register_subscription(
                 todo_id=TODO_ID,
                 user_id=USER_ID,
                 trigger_name=INSTANCE_TRIGGER,
@@ -358,7 +372,7 @@ class TestRegisterSubscription:
             h.unregister.side_effect = RuntimeError("composio down")
 
             async with captured_wide_event() as event:
-                stored, _outcome = await register_subscription(
+                stored, _outcome, created = await register_subscription(
                     todo_id=TODO_ID,
                     user_id=USER_ID,
                     trigger_name=INSTANCE_TRIGGER,
@@ -367,6 +381,7 @@ class TestRegisterSubscription:
                 )
 
         assert stored.id == winner.id
+        assert created is False
         (error,) = event["errors"]
         assert error["msg"] == "todo_subscription.unregister_failed"
         assert error["todo_id"] == TODO_ID
@@ -379,17 +394,28 @@ class TestRegisterSubscription:
         with _Harness(_todo(), ["ti_9"]) as h:
             h.set_subscriptions.return_value = None  # every compare-and-set loses
             h.get.return_value = _todo()  # the re-read finds a doc, but the stamp never matches
+            h.unregister.side_effect = RuntimeError("composio down")
 
-            with pytest.raises(SubscriptionError, match="changed while this one was being added"):
-                await register_subscription(
-                    todo_id=TODO_ID,
-                    user_id=USER_ID,
-                    trigger_name=INSTANCE_TRIGGER,
-                    conditions=[],
-                    action=SubscriptionAction.EXECUTE,
-                )
+            async with captured_wide_event() as event:
+                with pytest.raises(
+                    SubscriptionError, match="changed while this one was being added"
+                ):
+                    await register_subscription(
+                        todo_id=TODO_ID,
+                        user_id=USER_ID,
+                        trigger_name=INSTANCE_TRIGGER,
+                        conditions=[],
+                        action=SubscriptionAction.EXECUTE,
+                    )
 
         assert h.set_subscriptions.await_count == 3
+        # The instance registered for the watch that never stored is released rather
+        # than left orphaned upstream, and the failed release names the todo it
+        # belongs to rather than an empty id.
+        h.unregister.assert_awaited_once_with(USER_ID, INSTANCE_TRIGGER, ["ti_9"])
+        (error,) = event["errors"]
+        assert error["msg"] == "todo_subscription.unregister_failed"
+        assert error["todo_id"] == TODO_ID
         h.capture.assert_called_once_with(
             USER_ID,
             AnalyticsEvents.TODO_SUBSCRIPTION_FAILED,
@@ -772,7 +798,7 @@ class TestCalendarReminders:
 
     async def test_a_window_reaches_the_handler_config(self) -> None:
         with _Harness(_todo(), ["ti_cal"]) as h:
-            subscription, _ = await register_subscription(
+            subscription, _, _ = await register_subscription(
                 todo_id=TODO_ID,
                 user_id=USER_ID,
                 trigger_name="calendar_event_starting_soon",

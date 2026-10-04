@@ -25,11 +25,7 @@ def test_the_seeds_commented_example_is_never_taken_for_a_conclusion() -> None:
 
 
 def test_the_truncation_note_names_the_real_length_and_the_full_file() -> None:
-    """The note tells the run what it is looking at and where the rest lives.
-
-    Without the character count it cannot tell a long file from a short one, and
-    without the file path it has no way to read what was cut.
-    """
+    """The note tells the run what it is looking at and where the rest lives."""
     entry = "### a@example.com\n- conclusion: alerts, low priority\n"
     observations = "## Senders\n" + entry * (OBSERVATIONS_PROMPT_MAX_CHARS // len(entry) + 5)
 
@@ -63,11 +59,7 @@ def test_a_line_with_no_sub_heading_or_colon_is_carried_under_senders_whole() ->
 
 
 def test_a_carried_pattern_without_a_conclusion_states_the_pattern_itself() -> None:
-    """An old canvas line that named no treatment still has to record one.
-
-    Or the run reads a conclusion line with nothing after its colon and writes
-    the file back that way.
-    """
+    """An old canvas line that named no treatment still has to record one."""
     carried = with_carried_lines(
         "# Observations\n\n## Senders\n", "- airline statements, ~2/month\n", TODAY
     )
@@ -76,11 +68,7 @@ def test_a_carried_pattern_without_a_conclusion_states_the_pattern_itself() -> N
 
 
 def test_several_carried_patterns_under_one_heading_are_kept_apart() -> None:
-    """Each pattern is its own block.
-
-    Joined without a blank line they read as one run-on conclusion, and the next
-    run's rewrite would carry the merged line forward.
-    """
+    """Each pattern is its own block."""
     carried = with_carried_lines(
         "# Observations\n\n## Senders\n",
         "### Recurring\n- airline: monthly\n- hotel: on check-in\n",
@@ -105,11 +93,7 @@ def test_a_sub_heading_the_file_lacks_becomes_its_own_section() -> None:
 
 
 def test_a_comment_spanning_lines_does_not_take_the_conclusion_below_it() -> None:
-    """The comment is cut out BEFORE the lines are picked, so the line under it survives.
-
-    Cutting it later would leave a comment's first line glued to the conclusion
-    and drop a real observation from the prompt.
-    """
+    """The comment is cut out BEFORE the lines are picked, so the line under it survives."""
     body = "- conclusion: alerts, low priority\n"
     observations = "## Senders\n<!-- a note to the reader\nspanning two lines -->\n" + body * 400
 
@@ -122,10 +106,7 @@ def test_a_comment_spanning_lines_does_not_take_the_conclusion_below_it() -> Non
 
 
 def test_a_comment_inside_a_conclusion_leaves_the_conclusion_intact() -> None:
-    """A comment in the middle of a line is cut out of that line, not replaced.
-
-    Whatever the run wrote after it is part of the conclusion the prompt carries.
-    """
+    """A comment in the middle of a line is cut out of that line, not replaced."""
     body = "- conclusion: alerts, low priority\n"
     observations = "## Senders\n- conclusion: GitHub<!-- inline --> notifications\n" + body * 400
 
@@ -150,11 +131,7 @@ def _room_for(file_length: int) -> int:
 
 
 def test_conclusions_past_the_room_are_cut_so_no_line_is_left_half_written() -> None:
-    """A body one character past the room is cut back to its last whole line.
-
-    Cutting at the room and keeping the remainder would leave a truncated
-    conclusion in the prompt; a room one character wider would keep it.
-    """
+    """A body one character past the room is cut back to its last whole line."""
     head = "## Senders\n"
     file_length = OBSERVATIONS_PROMPT_MAX_CHARS * 3
     room = _room_for(file_length)
@@ -178,11 +155,7 @@ def test_conclusions_past_the_room_are_cut_so_no_line_is_left_half_written() -> 
 
 
 def test_conclusions_that_exactly_fill_the_room_are_kept_whole() -> None:
-    """A body landing exactly on the room is kept whole.
-
-    The room is what is left after the note and the newline joining them, so
-    nothing is dropped for want of a character.
-    """
+    """A body landing exactly on the room is kept whole."""
     head = "## Senders\n"
     file_length = OBSERVATIONS_PROMPT_MAX_CHARS * 3
     room = _room_for(file_length)

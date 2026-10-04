@@ -889,7 +889,7 @@ class TestSetTriggerSubscriptions:
             resolution=SubscriptionResolution.ACCOUNT,
         )
 
-    async def test_stores_the_watch_when_the_revision_matches(self, repo, make_doc):
+    async def test_stores_the_watch_when_the_revision_matches(self, repo: TodosRepository, make_doc: Callable[..., TodoDocument]) -> None:
         created = await repo.create(make_doc(user_id="u1"))
         stored = await repo.get(created.id, user_id="u1")
         assert stored is not None
@@ -905,7 +905,7 @@ class TestSetTriggerSubscriptions:
         assert updated is not None
         assert [sub.id for sub in updated.trigger_subscriptions] == [watch.id]
 
-    async def test_a_stale_revision_keeps_the_other_writers_watch(self, repo, make_doc):
+    async def test_a_stale_revision_keeps_the_other_writers_watch(self, repo: TodosRepository, make_doc: Callable[..., TodoDocument]) -> None:
         created = await repo.create(make_doc(user_id="u1"))
         stored = await repo.get(created.id, user_id="u1")
         assert stored is not None
@@ -931,7 +931,7 @@ class TestSetTriggerSubscriptions:
         assert reread is not None
         assert [sub.id for sub in reread.trigger_subscriptions] == [first.id]
 
-    async def test_the_write_is_scoped_to_the_todos_owner(self, repo, make_doc):
+    async def test_the_write_is_scoped_to_the_todos_owner(self, repo: TodosRepository, make_doc: Callable[..., TodoDocument]) -> None:
         created = await repo.create(make_doc(user_id="u1"))
         stored = await repo.get(created.id, user_id="u1")
         assert stored is not None
