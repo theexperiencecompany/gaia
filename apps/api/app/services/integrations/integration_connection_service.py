@@ -418,7 +418,7 @@ async def initiate_integration_connection(
 ) -> ConnectIntegrationResponse | None:
     """Resolve an integration and start its connect flow.
 
-    Shared by POST /connect/{id} and the login-free GET /connect-link.
+    Shared by POST /connect/{id} and the login-free POST /connect-link.
     Returns None when the integration does not exist (callers map that to
     404); otherwise redirect_url is the provider OAuth URL.
     """

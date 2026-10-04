@@ -1518,6 +1518,19 @@
         "title": "Body_image_image_to_text",
         "type": "object"
       },
+      "Body_integrations_connect_link_endpoint": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "Body_integrations_connect_link_endpoint",
+        "type": "object"
+      },
       "Body_notification_unregister_device_token": {
         "properties": {
           "token": {
@@ -25884,22 +25897,21 @@
       }
     },
     "/api/v1/integrations/connect-link": {
-      "get": {
-        "description": "Login-free entry point for bot / non-UI users.\n\nResolves the single-use connect code to its bound ``(user, integration)``\n(no session required \u2014 the code is the credential) and bounces the user\nstraight into the provider OAuth flow. Invalid/expired/used codes redirect\nto a friendly page. Excluded from auth in WorkOSAuthMiddleware; it\nself-authenticates. Per-IP rate limited so the short code can't be brute\nforced online.",
+      "post": {
+        "description": "Login-free entry point for bot / non-UI users: spend the code, 303 into OAuth.\n\nPOST-only because spending the code is a state change: link-preview\ncrawlers (Telegram, Slack) GET every link in a message and would burn it\nbefore the user taps. The web /connect/<code> page posts here from a button.\nExcluded from auth (the code is the credential) and per-IP rate limited\nso the short code can't be brute forced online.",
         "operationId": "integrations_connect_link_endpoint",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "code",
-            "required": true,
-            "schema": {
-              "title": "Code",
-              "type": "string"
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_integrations_connect_link_endpoint"
+              }
             }
-          }
-        ],
+          },
+          "required": true
+        },
         "responses": {
-          "307": {
+          "303": {
             "description": "Successful Response"
           },
           "422": {

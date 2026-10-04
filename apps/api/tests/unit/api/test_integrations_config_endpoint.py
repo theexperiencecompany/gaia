@@ -662,8 +662,10 @@ class TestConnectLinkEndpoint:
             ),
             patch(f"{_MODULE}.capture_event") as mock_capture,
         ):
-            resp = await client.get(f"{API}/connect-link?code=somecode", follow_redirects=False)
-        assert resp.status_code in (302, 307)
+            resp = await client.post(
+                f"{API}/connect-link", data={"code": "somecode"}, follow_redirects=False
+            )
+        assert resp.status_code == 303
         assert resp.headers["location"] == "https://oauth.example/go"
         mock_capture.assert_called_once_with(
             _VALID_UID,
@@ -677,9 +679,24 @@ class TestConnectLinkEndpoint:
             new_callable=AsyncMock,
             return_value=None,
         ):
-            resp = await client.get(f"{API}/connect-link?code=bad", follow_redirects=False)
-        assert resp.status_code in (302, 307)
+            resp = await client.post(
+                f"{API}/connect-link", data={"code": "bad"}, follow_redirects=False
+            )
+        assert resp.status_code == 303
         assert "connect_error=invalid_or_expired_link" in resp.headers["location"]
+
+    async def test_get_does_not_spend_the_code(self, unauthed_client: AsyncClient) -> None:
+        """Regression: Telegram's link-preview GET spent the single-use code before the user tapped it."""
+        with patch(
+            f"{_MODULE}.resolve_and_consume_connect_code",
+            new_callable=AsyncMock,
+            return_value=(_VALID_UID, "notion"),
+        ) as mock_consume:
+            resp = await unauthed_client.get(
+                f"{API}/connect-link?code=somecode", follow_redirects=False
+            )
+        assert resp.status_code == 405
+        mock_consume.assert_not_awaited()
 
     async def test_works_without_login(self, unauthed_client: AsyncClient) -> None:
         """A logged-out user reaches it (not 401) and is sent into OAuth — identity comes from the single-use code, not a session."""
@@ -701,8 +718,8 @@ class TestConnectLinkEndpoint:
                 return_value=result,
             ),
         ):
-            resp = await unauthed_client.get(
-                f"{API}/connect-link?code=somecode", follow_redirects=False
+            resp = await unauthed_client.post(
+                f"{API}/connect-link", data={"code": "somecode"}, follow_redirects=False
             )
         assert resp.status_code != 401
         assert resp.headers["location"] == "https://oauth.example/go"
