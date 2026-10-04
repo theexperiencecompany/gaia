@@ -7,8 +7,6 @@ layer for pause/resume, so the reader lives where both can import it.
 
 from __future__ import annotations
 
-from typing import cast
-
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_scopes
 from app.config.token_repository import token_repository
 from app.constants.cache import OAUTH_STATUS_KEY
@@ -21,44 +19,37 @@ from app.constants.integrations import (
 from app.constants.log_tags import LogTag
 from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators.caching import Cacheable
-from app.models.integration_models import UserIntegrationDocument
 from app.models.oauth_models import OAuthIntegration
 from app.services.composio.composio_service import get_composio_service
-from app.services.integrations.user_integration_status import update_user_integration_status
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from shared.py.wide_events import OAuthContext, log
 
 
 async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
-    """Reconcile auth-required MCP credentials before returning cached statuses."""
-    user_integrations, stale_mcp_ids = await _reconcile_mcp_auth_status(user_id)
-    if stale_mcp_ids:
-        user_integrations = [
-            user_integration.model_copy(update={"status": "created"})
-            if user_integration.integration_id in stale_mcp_ids
-            else user_integration
-            for user_integration in user_integrations
-        ]
-    result = cast(
-        dict[str, bool],
-        await _get_cached_integrations_status(user_id, user_integrations),
-    )
-    if stale_mcp_ids:
-        result = {**result, **dict.fromkeys(stale_mcp_ids, False)}
-    return result
+    """Return live connection statuses; stale auth-MCPs read as disconnected.
+
+    Read-only: stale credentials are overlaid as False without writing Mongo.
+    Persistence of the downgrade happens on the failure paths that own the
+    transition (MCP connect failure, missing-token build), not on a GET.
+    """
+    base = await _get_cached_integrations_status(user_id)
+    stale_mcp_ids = await _find_stale_mcp_ids(user_id)
+    if not stale_mcp_ids:
+        return dict(base)
+    return {**base, **dict.fromkeys(stale_mcp_ids, False)}
 
 
 @Cacheable(ttl=86400, key_pattern=f"{OAUTH_STATUS_KEY}:{{user_id}}")
-async def _get_cached_integrations_status(
-    user_id: str, user_integrations: list[UserIntegrationDocument]
-) -> dict[str, bool]:
+async def _get_cached_integrations_status(user_id: str) -> dict[str, bool]:
     """Return connection status for every integration for user_id.
 
     Checks MongoDB user_integrations first (canonical), falling back to
     external services for platform integrations connected before it existed.
+    The cache key is exactly (user_id): every argument is part of the key.
     """
-    result = {}
+    result: dict[str, bool] = {}
 
+    user_integrations = await user_integration_repository.list_for_user(user_id, limit=100)
     mongo_status = {
         ui.integration_id: ui.status == INTEGRATION_STATUS_CONNECTED for ui in user_integrations
     }
@@ -102,10 +93,12 @@ async def _get_cached_integrations_status(
     return result
 
 
-async def _reconcile_mcp_auth_status(
-    user_id: str,
-) -> tuple[list[UserIntegrationDocument], set[str]]:
-    user_integrations = await user_integration_repository.list_for_user(user_id, limit=100)
+async def _find_stale_mcp_ids(user_id: str) -> set[str]:
+    """Auth-MCPs whose Mongo record says connected but credentials are unusable.
+
+    Read-only overlay for GET paths: one Mongo list plus one batched credential
+    query, no writes. Persistence happens on the owning failure transitions.
+    """
     auth_mcp_ids = {
         integration.id
         for integration in OAUTH_INTEGRATIONS
@@ -113,25 +106,18 @@ async def _reconcile_mcp_auth_status(
         and integration.mcp_config
         and integration.mcp_config.requires_auth
     }
-    token_store = MCPTokenStore(user_id)
-    stale_ids: set[str] = set()
-
-    for user_integration in user_integrations:
-        if user_integration.status != INTEGRATION_STATUS_CONNECTED:
-            continue
-        if user_integration.integration_id not in auth_mcp_ids:
-            continue
-        if await token_store.is_connected(user_integration.integration_id):
-            continue
-
-        await update_user_integration_status(
-            user_id,
-            user_integration.integration_id,
-            "created",
-        )
-        stale_ids.add(user_integration.integration_id)
-
-    return user_integrations, stale_ids
+    if not auth_mcp_ids:
+        return set()
+    user_integrations = await user_integration_repository.list_for_user(user_id, limit=100)
+    candidates = [
+        ui.integration_id
+        for ui in user_integrations
+        if ui.status == INTEGRATION_STATUS_CONNECTED and ui.integration_id in auth_mcp_ids
+    ]
+    if not candidates:
+        return set()
+    connected_map = await MCPTokenStore(user_id).are_connected(candidates)
+    return {iid for iid, ok in connected_map.items() if not ok}
 
 
 async def _self_managed_connected(user_id: str, integration: OAuthIntegration) -> bool:

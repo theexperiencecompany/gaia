@@ -282,7 +282,7 @@ async def test_user_integration_records_reflect_posthog_credential_status():
         patch("app.db.redis.redis_cache.get", new_callable=AsyncMock, return_value=None),
         patch("app.db.redis.redis_cache.set", new_callable=AsyncMock),
     ):
-        token_store_class.return_value.is_connected = AsyncMock(return_value=False)
+        token_store_class.return_value.are_connected = AsyncMock(return_value={"posthog": False})
 
         from app.services.integrations.user_integrations import get_user_integration_records
 
@@ -305,7 +305,7 @@ async def test_connected_ids_use_live_posthog_credential_state():
         patch("app.db.redis.redis_cache.get", new_callable=AsyncMock, return_value=None),
         patch("app.db.redis.redis_cache.set", new_callable=AsyncMock),
     ):
-        token_store_class.return_value.is_connected = AsyncMock(return_value=False)
+        token_store_class.return_value.are_connected = AsyncMock(return_value={"posthog": False})
 
         from app.services.integrations.user_integrations import get_connected_integration_ids
 

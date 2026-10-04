@@ -148,7 +148,7 @@ class TestGetAllIntegrationsStatus:
             return_value=[_ui_doc("posthog", "connected")]
         )
         token_store = MagicMock()
-        token_store.is_connected = AsyncMock(return_value=False)
+        token_store.are_connected = AsyncMock(return_value={"posthog": False})
         integration = MagicMock()
         integration.id = "posthog"
         integration.available = True
@@ -163,26 +163,13 @@ class TestGetAllIntegrationsStatus:
             ),
             patch(
                 "app.services.integrations.integration_status.MCPTokenStore",
-                create=True,
                 return_value=token_store,
             ),
-            patch(
-                "app.services.integrations.integration_status.update_user_integration_status",
-                create=True,
-                new_callable=AsyncMock,
-            ) as update_status,
-            patch(
-                "app.services.integrations.integration_status._get_cached_integrations_status",
-                create=True,
-                new_callable=AsyncMock,
-                return_value={"posthog": True},
-            ) as cached_status,
         ):
             result = await get_all_integrations_status("user123")
 
         assert result["posthog"] is False
-        update_status.assert_awaited_once_with("user123", "posthog", "created")
-        cached_status.assert_awaited_once()
+        token_store.are_connected.assert_awaited_once_with(["posthog"])
 
     async def test_connected_auth_mcp_with_valid_credentials_remains_connected(
         self,
@@ -194,7 +181,40 @@ class TestGetAllIntegrationsStatus:
             return_value=[_ui_doc("posthog", "connected")]
         )
         token_store = MagicMock()
-        token_store.is_connected = AsyncMock(return_value=True)
+        token_store.are_connected = AsyncMock(return_value={"posthog": True})
+        integration = MagicMock()
+        integration.id = "posthog"
+        integration.available = True
+        integration.managed_by = "mcp"
+        integration.provider = "posthog"
+        integration.mcp_config = MagicMock(requires_auth=True)
+
+        with (
+            patch(
+                "app.services.integrations.integration_status.OAUTH_INTEGRATIONS",
+                [integration],
+            ),
+            patch(
+                "app.services.integrations.integration_status.MCPTokenStore",
+                return_value=token_store,
+            ),
+        ):
+            result = await get_all_integrations_status("user123")
+
+        assert result["posthog"] is True
+
+    async def test_status_read_is_side_effect_free_when_stale(
+        self,
+        mock_user_integration_repo,
+        mock_composio_service,
+        mock_token_repository,
+    ) -> None:
+        """GET paths overlay stale credentials without writing Mongo."""
+        mock_user_integration_repo.list_for_user = AsyncMock(
+            return_value=[_ui_doc("posthog", "connected")]
+        )
+        token_store = MagicMock()
+        token_store.are_connected = AsyncMock(return_value={"posthog": False})
         integration = MagicMock()
         integration.id = "posthog"
         integration.available = True
@@ -213,12 +233,13 @@ class TestGetAllIntegrationsStatus:
             ),
             patch(
                 "app.services.integrations.integration_status.update_user_integration_status",
+                create=True,
                 new_callable=AsyncMock,
             ) as update_status,
         ):
             result = await get_all_integrations_status("user123")
 
-        assert result["posthog"] is True
+        assert result["posthog"] is False
         update_status.assert_not_awaited()
 
     async def test_mcp_integration_not_in_mongo_returns_false(

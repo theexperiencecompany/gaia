@@ -34,6 +34,21 @@ from shared.py.wide_events import log
 _DCR_CLIENT_REGISTRATION: TypeAdapter[DCRClientRegistration] = TypeAdapter(DCRClientRegistration)
 
 
+def _is_credential_usable(cred: MCPCredential | None) -> bool:
+    if not cred or cred.status != MCPCredentialStatus.CONNECTED:
+        return False
+    if cred.auth_type == MCPAuthType.NONE:
+        return True
+    if cred.auth_type == MCPAuthType.BEARER:
+        return bool(cred.access_token)
+    if cred.refresh_token:
+        return True
+    expires_at = cred.token_expires_at
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    return bool(cred.access_token) and (expires_at is None or expires_at > datetime.now(UTC))
+
+
 class MCPTokenStore:
     """PostgreSQL-based token storage for MCP credentials."""
 
@@ -333,18 +348,31 @@ class MCPTokenStore:
     async def is_connected(self, integration_id: str) -> bool:
         """Check whether a connected credential can be used or refreshed."""
         cred = await self.get_credential(integration_id)
-        if not cred or cred.status != MCPCredentialStatus.CONNECTED:
-            return False
+        return _is_credential_usable(cred)
 
-        if cred.auth_type == MCPAuthType.NONE:
-            return True
-        if cred.auth_type == MCPAuthType.BEARER:
-            return bool(cred.access_token)
-        if cred.refresh_token:
-            return True
-        return bool(cred.access_token) and (
-            cred.token_expires_at is None or cred.token_expires_at > datetime.now(UTC)
-        )
+    async def get_credentials_map(self, integration_ids: list[str]) -> dict[str, MCPCredential]:
+        """Fetch credentials for several integrations in one query."""
+        if not integration_ids:
+            return {}
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(MCPCredential).where(
+                    MCPCredential.user_id == self.user_id,
+                    MCPCredential.integration_id.in_(integration_ids),
+                )
+            )
+            rows = result.scalars().all()
+        return {row.integration_id: row for row in rows}
+
+    async def are_connected(self, integration_ids: list[str]) -> dict[str, bool]:
+        """Batch version of is_connected: one query, in-memory evaluation."""
+        if not integration_ids:
+            return {}
+        creds = await self.get_credentials_map(integration_ids)
+        return {
+            integration_id: _is_credential_usable(creds.get(integration_id))
+            for integration_id in integration_ids
+        }
 
     async def get_dcr_client(self, integration_id: str) -> DCRClientRegistration | None:
         """Get stored DCR client registration."""

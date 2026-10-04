@@ -8,10 +8,7 @@ export function reconcileIntegrationStatus(
   requiresAuth: boolean | undefined,
 ): IntegrationStatusValue {
   if (connected === undefined) return snapshotStatus;
-  if (
-    connected &&
-    (snapshotStatus === "not_connected" || snapshotStatus === "created")
-  ) {
+  if (connected && snapshotStatus !== "connected") {
     return "connected";
   }
   if (

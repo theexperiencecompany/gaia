@@ -111,14 +111,8 @@ async def get_user_integration_records(user_id: str) -> list[dict[str, Any]]:
         return records
 
     token_store = MCPTokenStore(user_id)
-    statuses = await asyncio.gather(
-        *(token_store.is_connected(integration_id) for integration_id in integration_ids)
-    )
-    stale_ids = {
-        integration_id
-        for integration_id, is_connected in zip(integration_ids, statuses)
-        if not is_connected
-    }
+    connected_map = await token_store.are_connected(integration_ids)
+    stale_ids = {iid for iid, ok in connected_map.items() if not ok}
     if not stale_ids:
         return records
 

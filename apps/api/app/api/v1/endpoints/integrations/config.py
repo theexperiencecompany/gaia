@@ -14,8 +14,8 @@ from app.models.user_models import AuthenticatedUser
 from app.schemas.integrations.requests import ConnectIntegrationRequest
 from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
-    IntegrationStatusesResponse,
     IntegrationsConfigResponse,
+    IntegrationStatusesResponse,
     IntegrationSuccessResponse,
     IntegrationToolsResponse,
     MyIntegrationsResponse,
@@ -34,12 +34,12 @@ from app.services.integrations.integration_resolver import (
     IntegrationResolver,
     ResolvedIntegration,
 )
+from app.services.integrations.integration_status import get_all_integrations_status
 from app.services.integrations.my_integrations import (
     get_integration_tools,
     get_my_integrations,
     get_my_integrations_snapshot,
 )
-from app.services.integrations.integration_status import get_all_integrations_status
 from shared.py.wide_events import log
 
 router = APIRouter()

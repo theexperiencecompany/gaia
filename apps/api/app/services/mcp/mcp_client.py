@@ -1032,6 +1032,15 @@ class MCPClient:
         # Only reset on demonstrably dead credentials — transient errors
         # (5xx, network blip, transport mismatch) keep the existing tokens.
         if _is_terminal_auth_failure(e, refresh_attempted=refresh_attempted):
+            if getattr(e, "response", None) is None and re.search(
+                r"\b(?:401|403)\b", str(e).lower()
+            ):
+                log.warning(
+                    f"{LogTag.MCP} Resetting on message-only status signal after refresh",
+                    integration_id=integration_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
             await self._reset_to_disconnected(integration_id)
         else:
             log.warning(

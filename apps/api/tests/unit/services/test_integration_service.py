@@ -851,7 +851,11 @@ class TestGetUserConnectedIntegrations:
     async def test_returns_serialized_documents(self, mock_repo):
         mock_repo.list_for_user = AsyncMock(return_value=[_ui_doc("github")])
 
-        result = await get_user_integration_records.__wrapped__(USER_ID)
+        with (
+            patch("app.decorators.caching.get_cache", new_callable=AsyncMock, return_value=None),
+            patch("app.decorators.caching.set_cache", new_callable=AsyncMock),
+        ):
+            result = await get_user_integration_records(USER_ID)
 
         assert len(result) == 1
         assert result[0]["integration_id"] == "github"
@@ -861,7 +865,11 @@ class TestGetUserConnectedIntegrations:
     async def test_empty_list_when_no_integrations(self, mock_repo):
         mock_repo.list_for_user = AsyncMock(return_value=[])
 
-        result = await get_user_integration_records.__wrapped__(USER_ID)
+        with (
+            patch("app.decorators.caching.get_cache", new_callable=AsyncMock, return_value=None),
+            patch("app.decorators.caching.set_cache", new_callable=AsyncMock),
+        ):
+            result = await get_user_integration_records(USER_ID)
         assert result == []
 
 

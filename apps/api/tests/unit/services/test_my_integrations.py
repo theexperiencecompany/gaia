@@ -165,6 +165,43 @@ class TestGetMyIntegrations:
 
         assert result.integrations[0].status == "created"
 
+    async def test_live_connected_upgrades_stale_snapshot_and_clears_expired_at(
+        self, mock_deps, mock_redis_cache
+    ):
+        from datetime import UTC, datetime
+
+        died = datetime(2026, 8, 15, 9, 0, tzinfo=UTC)
+        mock_deps.config.return_value = IntegrationsConfigResponse(
+            integrations=[
+                _config_item(
+                    id="github",
+                    name="GitHub",
+                    managed_by="composio",
+                    provider="composio",
+                )
+            ]
+        )
+        mock_deps.status.return_value = {"github": True}
+        mock_deps.user.return_value = UserIntegrationsListResponse(
+            integrations=[
+                _user_integration(
+                    integration_id="github",
+                    status="expired",
+                    expired_at=died,
+                    integration=_integration_response(
+                        integration_id="github",
+                        name="GitHub",
+                        source="platform",
+                    ),
+                )
+            ]
+        )
+
+        result = await get_my_integrations(USER_ID)
+
+        assert result.integrations[0].status == "connected"
+        assert result.integrations[0].expired_at is None
+
     async def test_platform_integration_with_registry_tool_count(self, mock_deps, mock_redis_cache):
         """The registry tool-count fallback keys on the lowercased integration id."""
         mock_deps.categories.return_value = {"Github": 4}

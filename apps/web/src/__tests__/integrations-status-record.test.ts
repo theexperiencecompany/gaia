@@ -92,11 +92,14 @@ describe("findIntegrationStatus", () => {
 });
 
 describe("reconcileIntegrationStatus", () => {
-  it("overlays a refreshed status without hiding expired or created states", () => {
+  it("overlays a refreshed status without hiding created states", () => {
     expect(
       reconcileIntegrationStatus("not_connected", true, "composio", true),
     ).toBe("connected");
     expect(reconcileIntegrationStatus("created", true, "mcp", true)).toBe(
+      "connected",
+    );
+    expect(reconcileIntegrationStatus("expired", true, "mcp", true)).toBe(
       "connected",
     );
     expect(reconcileIntegrationStatus("expired", false, "mcp", true)).toBe(
