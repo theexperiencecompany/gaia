@@ -875,6 +875,22 @@ async def complete_tracked_todo(
     return f"Tracked todo {todo_id} completed and archived."
 
 
+async def _rollback_stale_move(user_id: str, todo_id: str, parent_todo_id: str) -> str | None:
+    """Re-check a move after its write; roll back when the parent closed meanwhile."""
+    try:
+        await require_sub_todo_parent(user_id, parent_todo_id)
+    except SubTodoParentError:
+        await todo_repository.update(
+            todo_id, user_id=user_id, update=TodoUpdate(parent_todo_id=None)
+        )
+        return (
+            f"Error: the parent no longer accepts sub-todos, "
+            f"so moving todo {todo_id} under it was rolled back. "
+            "Reopen the parent first, or pick an open one."
+        )
+    return None
+
+
 async def _save_field_update(existing: TodoDocument, update: TodoUpdate, actor: str) -> str | None:
     """Persist a field update and move the scheduled run; an error string when refused."""
     effective_scheduled_at = (
@@ -894,6 +910,11 @@ async def _save_field_update(existing: TodoDocument, update: TodoUpdate, actor: 
     if update.scheduled_at is not None:
         await tracked_todo_service.schedule_execution(existing.id, update.scheduled_at)
     await record_field_changes(existing.id, existing.user_id, update, by=actor)
+    # The link check and this write are two separate writes: when the parent
+    # closed in between, the move is rolled back rather than completing the
+    # user's open todo out from under them.
+    if update.parent_todo_id is not None:
+        return await _rollback_stale_move(existing.user_id, existing.id, update.parent_todo_id)
     return None
 
 
@@ -1004,21 +1025,6 @@ async def update_tracked_todo(
         update = TodoUpdate.model_validate(update_fields)
         if error := await _save_field_update(existing, update, actor):
             return error
-        if parent_todo_id and update_fields.get("parent_todo_id"):
-            # The link check and this write are two separate writes: when the
-            # parent closed in between, the move is rolled back rather than
-            # completing the user's open todo out from under them.
-            try:
-                await require_sub_todo_parent(user_id, parent_todo_id)
-            except SubTodoParentError:
-                await todo_repository.update(
-                    todo_id, user_id=user_id, update=TodoUpdate(parent_todo_id=None)
-                )
-                return (
-                    f"Error: the parent no longer accepts sub-todos, "
-                    f"so moving todo {todo_id} under it was rolled back. "
-                    "Reopen the parent first, or pick an open one."
-                )
     updated_keys = list(update_fields)
     if references:
         if (
