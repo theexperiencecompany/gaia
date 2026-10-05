@@ -1403,6 +1403,11 @@ GLOBAL_INVALIDATORS = re.compile(
     r"|(^|/)(pyproject\.toml|package\.json|project\.json|tsconfig[^/]*\.json|biome\.jsonc?|uv\.lock|pnpm-lock\.yaml)$"
 )
 REUSE_LOOKBACK_RUNS = 30
+# The annotation each run's plan leaves on its `changes` job naming the base tip
+# it validated, so a later run can diff base movement too: a pull_request run
+# checks the MERGE of head and base, and the base moves between pushes.
+VALIDATED_BASE_TITLE = "reuse-plan base"
+CHANGES_JOB = "changes"
 
 
 def _job_display_names(workflow: Path) -> dict[str, str]:
@@ -1444,33 +1449,78 @@ def _changed_between(anchor: str, head: str) -> list[str] | None:
     return [line for line in proc.stdout.splitlines() if line]
 
 
+def _validated_base(head_sha: str) -> str | None:
+    """Return the base tip this pull_request checkout merged the head into, or None when HEAD is not that merge."""
+    proc = subprocess.run(
+        ["git", "rev-list", "--parents", "-n", "1", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=REPO_ROOT,
+    )
+    commits = proc.stdout.split()
+    if proc.returncode != 0 or len(commits) != 3 or head_sha not in commits[1:]:
+        return None
+    return next(parent for parent in commits[1:] if parent != head_sha)
+
+
+def _recorded_base(job: dict[str, Any]) -> str | None:
+    """Return the base tip an earlier run's plan annotated on its changes job, if it left one."""
+    url = str(job.get("check_run_url") or "")
+    if "api.github.com/" not in url:
+        return None
+    annotations = _gh_json(f"{url.split('api.github.com/', 1)[1]}/annotations")
+    for note in annotations if isinstance(annotations, list) else []:
+        if note.get("title") == VALIDATED_BASE_TITLE:
+            return str(note.get("message", "")).strip() or None
+    return None
+
+
 class _Anchor(NamedTuple):
     run_id: int
     head_sha: str
+    base_sha: str
 
 
-def _reuse_anchors(
-    repo: str, workflow: str, branch: str, base: str, run_id: int, names: dict[str, str]
-) -> dict[str, _Anchor]:
-    """Each job's newest earlier PASS on this PR (same base), keyed by job id."""
+class _PrRuns(NamedTuple):
+    """Which runs to read: this PR's earlier runs of one workflow, against one base branch."""
+
+    repo: str
+    workflow: str
+    branch: str
+    base: str
+    run_id: int
+
+
+def _reuse_anchors(pr: _PrRuns, names: dict[str, str], changes_name: str) -> dict[str, _Anchor]:
+    """Each job's newest earlier PASS on this PR (same base branch, recorded base tip), keyed by job id."""
     listing = _gh_json(
-        f"repos/{repo}/actions/workflows/{workflow}/runs"
-        f"?branch={branch}&event=pull_request&per_page={REUSE_LOOKBACK_RUNS}"
+        f"repos/{pr.repo}/actions/workflows/{pr.workflow}/runs"
+        f"?branch={pr.branch}&event=pull_request&per_page={REUSE_LOOKBACK_RUNS}"
     )
     if listing is None:
         return {}
     wanted = {name: job for job, name in names.items()}
     anchors: dict[str, _Anchor] = {}
     for run in listing.get("workflow_runs", []):
-        if int(run["id"]) == run_id or run.get("status") != "completed":
+        if int(run["id"]) == pr.run_id or run.get("status") != "completed":
             continue
-        bases = {pr.get("base", {}).get("ref") for pr in run.get("pull_requests") or []}
-        if base not in bases:
+        bases = {entry.get("base", {}).get("ref") for entry in run.get("pull_requests") or []}
+        if pr.base not in bases:
             continue
-        for job in _run_jobs(repo, int(run["id"])):
-            key = wanted.get(str(job.get("name")))
-            if key and key not in anchors and job.get("conclusion") == "success":
-                anchors[key] = _Anchor(int(run["id"]), str(run["head_sha"]))
+        jobs = _run_jobs(pr.repo, int(run["id"]))
+        passed = [
+            wanted[str(job.get("name"))]
+            for job in jobs
+            if str(job.get("name")) in wanted
+            and wanted[str(job.get("name"))] not in anchors
+            and job.get("conclusion") == "success"
+        ]
+        changes = next((job for job in jobs if job.get("name") == changes_name), None)
+        recorded = _recorded_base(changes) if passed and changes else None
+        if recorded:
+            for key in passed:
+                anchors[key] = _Anchor(int(run["id"]), str(run["head_sha"]), recorded)
         if len(anchors) == len(wanted):
             break
     return anchors
@@ -1496,31 +1546,36 @@ def cmd_reuse_plan(args: list[str]) -> int:
     opts = parser.parse_args(args)
 
     reused: dict[str, str] = {}
-    if opts.event != "pull_request" or opts.run_attempt > 1:
-        print(f"reuse-plan: {opts.event} attempt {opts.run_attempt} — every lane runs")
+    current_base = _validated_base(opts.head_sha) if opts.event == "pull_request" else None
+    if current_base:
+        print(f"::notice title={VALIDATED_BASE_TITLE}::{current_base}")
+    if current_base is None or opts.run_attempt > 1:
+        print(
+            f"reuse-plan: {opts.event} attempt {opts.run_attempt}, validated base "
+            f"{current_base or 'unknown'} — every lane runs"
+        )
     else:
         scopes = _job_scopes(opts.lanes)
-        names = {
-            job: name
-            for job, name in _job_display_names(
-                REPO_ROOT / ".github" / "workflows" / opts.workflow
-            ).items()
-            if job in scopes
-        }
+        all_names = _job_display_names(REPO_ROOT / ".github" / "workflows" / opts.workflow)
+        names = {job: name for job, name in all_names.items() if job in scopes}
         anchors = _reuse_anchors(
-            opts.repo, opts.workflow, opts.branch, opts.base, opts.run_id, names
+            _PrRuns(opts.repo, opts.workflow, opts.branch, opts.base, opts.run_id),
+            names,
+            all_names.get(CHANGES_JOB, CHANGES_JOB),
         )
         for job in sorted(names):
             anchor = anchors.get(job)
             if anchor is None:
                 print(f"  {job + ':':<28} runs — no earlier pass on this PR")
                 continue
-            changed = _changed_between(anchor.head_sha, opts.head_sha)
-            if changed is None:
+            head_changes = _changed_between(anchor.head_sha, opts.head_sha)
+            base_changes = _changed_between(anchor.base_sha, current_base)
+            if head_changes is None or base_changes is None:
                 print(
-                    f"  {job + ':':<28} runs — anchor {anchor.head_sha[:12]} is not in the checkout"
+                    f"  {job + ':':<28} runs — run {anchor.run_id}'s commits are not in the checkout"
                 )
                 continue
+            changed = head_changes + base_changes
             hit = next(
                 (
                     path

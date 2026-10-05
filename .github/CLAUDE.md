@@ -117,10 +117,14 @@ Four layers, from cheap to precise:
    manual re-run) is still valid — nothing in the union of its lanes'
    `verify-lanes.json` scopes and nothing under `.github/`, `scripts/`,
    `tools/`, `config/`, `patches/`, the repo root or any config manifest
-   (`GLOBAL_INVALIDATORS` in verdict.py) changed between
-   that pass's head commit and this one — is skipped and labelled `reused`
-   in the gate. A lane needs `ci_job` in the lane table to be reusable;
-   one without it always runs. Anything the plan cannot read means no reuse.
+   (`GLOBAL_INVALIDATORS` in verdict.py) changed between that pass and this
+   run, on the head OR on the base it was merged into — is skipped and
+   labelled `reused` in the gate. A pull_request run checks the merge, so each
+   plan annotates the base tip it validated on its `changes` job
+   (`::notice title=reuse-plan base`) and the next run diffs base tip to base
+   tip as well as head to head; a run without that note never anchors. A lane
+   needs `ci_job` in the lane table to be reusable; one without it always
+   runs. Anything the plan cannot read means no reuse.
 
 **Fail loud is non-negotiable in detection code.** Never
 `nx ... 2>/dev/null || echo ""` — a broken nx invocation must fail the job.

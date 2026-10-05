@@ -66,6 +66,8 @@ def _composio_event_totals() -> _ComposioEventTotals:
 
 
 class ComposioService:
+    """GAIA's Composio client: connect links, connected accounts, toolkits and triggers."""
+
     def __init__(self, api_key: str):
         from app.config.oauth_config import OAUTH_INTEGRATIONS
 
@@ -86,6 +88,7 @@ class ComposioService:
     async def connect_account(
         self, provider: str, user_id: str, state_token: str | None = None
     ) -> ComposioConnectLink:
+        """Mint a hosted Connect Link for this user; the account stays pending until they authorize it."""
         if provider not in COMPOSIO_SOCIAL_CONFIGS:
             raise ValueError(f"Provider '{provider}' not supported")
 
@@ -368,6 +371,7 @@ class ComposioService:
     def get_connected_account_by_id(
         self, connected_account_id: str
     ) -> ConnectedAccountRetrieveResponse | None:
+        """Fetch one connected account by its nanoid, or None when Composio cannot return it."""
         try:
             connected_account = self.composio.connected_accounts.get(
                 nanoid=connected_account_id,
@@ -383,6 +387,7 @@ class ComposioService:
             return None
 
     async def delete_connected_account(self, user_id: str, provider: str) -> dict[str, str]:
+        """Delete every active connected account this user holds for the provider."""
         log.set(composio_user_id=user_id, composio_provider=provider)
         if provider not in COMPOSIO_SOCIAL_CONFIGS:
             raise ValueError(f"Provider '{provider}' not supported")
@@ -478,6 +483,7 @@ class ComposioService:
         try:
 
             def create_trigger(trigger: TriggerConfig) -> TriggerInstanceUpsertResponse:
+                """Create one trigger instance for this user."""
                 return self.composio.triggers.create(
                     user_id=user_id,
                     slug=trigger.slug,
@@ -506,12 +512,14 @@ class ComposioService:
     strategy=MissingKeyStrategy.WARN,
 )
 def init_composio_service() -> ComposioService:
+    """Build the ComposioService the lazy provider registry hands out."""
     if settings.COMPOSIO_KEY is None:
         raise RuntimeError("COMPOSIO_KEY is not set in settings")
     return ComposioService(settings.COMPOSIO_KEY)
 
 
 def get_composio_service() -> ComposioService:
+    """Return the registered ComposioService; raise when it is not available."""
     service = providers.get(COMPOSIO_SERVICE_PROVIDER)
     if service is None:
         raise RuntimeError("ComposioService is not available")

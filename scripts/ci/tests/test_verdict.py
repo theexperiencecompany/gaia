@@ -14,7 +14,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
-from typing import Any
+from typing import Any, NamedTuple
 
 import pytest
 
@@ -991,9 +991,9 @@ def test_a_finished_run_whose_gate_never_ran_is_not_waited_on(
 #
 # A push re-ran every lane its PR touched against the base, even when the push
 # changed nothing a lane reads. reuse-plan carries a lane's last PASS forward
-# when nothing in its scope and nothing in CI tooling changed since — and must
-# never carry forward a failure, a pass on another base, or a pass it cannot
-# diff against.
+# when nothing in its scope and nothing in CI tooling changed since, on the
+# head OR on the base the run merged it into — and never carries forward a
+# failure, a pass on another base, or a pass it cannot diff against.
 
 REUSE_WORKFLOW = """\
 jobs:
@@ -1011,11 +1011,16 @@ REUSE_LANES = {
         {"name": "py-tests", "scope": r"\.py$"},
     ]
 }
+PASSED = {"Biome lint + format": "success", "Python static": "success"}
 
 
 def _git(repo: Path, *args: str) -> str:
     return subprocess.run(
-        ["git", *args], cwd=repo, check=True, capture_output=True, text=True
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
     ).stdout.strip()
 
 
@@ -1024,27 +1029,54 @@ def _commit(repo: Path, path: str, body: str) -> str:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(body)
     _git(repo, "add", "-A")
-    _git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", path)
+    _git(repo, "commit", "-qm", path)
     return _git(repo, "rev-parse", "HEAD")
 
 
+def _check_out_merge(repo: Path, base: str, head: str) -> None:
+    """Leave HEAD where a pull_request checkout does: the merge of head into the base tip."""
+    _git(repo, "checkout", "-q", "--detach", base)
+    _git(repo, "merge", "-q", "--no-ff", "-m", "merge", head)
+
+
+class _Pr(NamedTuple):
+    repo: Path
+    base: str
+    head: str
+
+
 @pytest.fixture
-def reuse_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def reuse_pr(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> _Pr:
+    """Build a master branch and a PR branch, one commit each — the state an anchor run validated."""
     repo = tmp_path / "repo"
     repo.mkdir()
-    _git(repo, "init", "-q")
+    _git(repo, "init", "-q", "-b", "master")
     (repo / ".github" / "workflows").mkdir(parents=True)
     (repo / ".github" / "workflows" / "code-quality.yml").write_text(REUSE_WORKFLOW)
     (repo / "lanes.json").write_text(json.dumps(REUSE_LANES))
-    _commit(repo, "apps/web/a.ts", "one")
+    base = _commit(repo, "apps/web/a.ts", "one")
+    _git(repo, "checkout", "-q", "-b", "pr")
+    head = _commit(repo, "apps/api/x.py", "one")
     monkeypatch.setattr(verdict, "REPO_ROOT", repo)
-    return repo
+    return _Pr(repo, base, head)
+
+
+def _push(pr: _Pr, path: str, body: str, *, base_change: tuple[str, str] | None = None) -> str:
+    """Add a PR commit (and optionally a base commit), then check out their merge."""
+    _git(pr.repo, "checkout", "-q", "pr")
+    head = _commit(pr.repo, path, body)
+    if base_change:
+        _git(pr.repo, "checkout", "-q", "master")
+        _commit(pr.repo, *base_change)
+    _check_out_merge(pr.repo, "master", head)
+    return head
 
 
 def _stub_runs(
-    monkeypatch: pytest.MonkeyPatch, runs: list[tuple[int, str, str, dict[str, str]]]
+    monkeypatch: pytest.MonkeyPatch,
+    runs: list[tuple[int, str, str, str | None, dict[str, str]]],
 ) -> None:
-    """Stub the PR's runs, newest first, each (id, head sha, base ref, {job name: conclusion})."""
+    """Stub the PR's runs, newest first: (id, head sha, base ref, recorded base tip, {job: conclusion})."""
     listing = {
         "workflow_runs": [
             {
@@ -1053,15 +1085,29 @@ def _stub_runs(
                 "head_sha": sha,
                 "pull_requests": [{"base": {"ref": base}}],
             }
-            for run_id, sha, base, _ in runs
+            for run_id, sha, base, _, _ in runs
         ]
     }
     jobs = {
-        run_id: [{"name": name, "conclusion": result} for name, result in results.items()]
-        for run_id, _, _, results in runs
+        run_id: [
+            {
+                "name": "Detect changed languages",
+                "conclusion": "success",
+                "check_run_url": f"https://api.github.com/repos/{MIRROR_REPO}/check-runs/{run_id}0",
+            },
+            *({"name": name, "conclusion": result} for name, result in results.items()),
+        ]
+        for run_id, _, _, _, results in runs
+    }
+    notes = {
+        f"{run_id}0": [{"title": verdict.VALIDATED_BASE_TITLE, "message": recorded}]
+        for run_id, _, _, recorded, _ in runs
+        if recorded
     }
 
-    def fake(endpoint: str) -> dict[str, Any] | None:
+    def fake(endpoint: str) -> Any:
+        if endpoint.endswith("/annotations"):
+            return notes.get(endpoint.split("/check-runs/")[1].split("/")[0], [])
         if "/jobs" in endpoint:
             return {"jobs": jobs[int(endpoint.split("/runs/")[1].split("/jobs")[0])]}
         return listing
@@ -1070,100 +1116,131 @@ def _stub_runs(
 
 
 def _plan(
-    repo: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, head: str, *extra: str
+    pr: _Pr,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    head: str,
+    *extra: str,
+    capsys: pytest.CaptureFixture[str] | None = None,
 ) -> dict[str, str]:
     out = tmp_path / "out"
     monkeypatch.setenv("GITHUB_OUTPUT", str(out))
     monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
-    assert (
-        verdict.cmd_reuse_plan(
-            [
-                "--repo",
-                MIRROR_REPO,
-                "--workflow",
-                "code-quality.yml",
-                "--branch",
-                "feature",
-                "--base",
-                "master",
-                "--head-sha",
-                head,
-                "--run-id",
-                str(CURRENT_RUN),
-                "--event",
-                "pull_request",
-                "--lanes",
-                str(repo / "lanes.json"),
-                *extra,
-            ]
-        )
-        == 0
-    )
+    argv = [
+        "--repo", MIRROR_REPO, "--workflow", "code-quality.yml", "--branch", "pr",
+        "--base", "master", "--head-sha", head, "--run-id", str(CURRENT_RUN),
+        "--event", "pull_request", "--lanes", str(pr.repo / "lanes.json"), *extra,
+    ]  # fmt: skip
+    assert verdict.cmd_reuse_plan(argv) == 0
     fields = dict(line.split("=", 1) for line in out.read_text().splitlines())
     return json.loads(fields["reused"])
 
 
-PASSED = {"Biome lint + format": "success", "Python static": "success"}
-
-
 def test_a_lane_whose_scope_did_not_change_since_its_pass_is_reused(
-    reuse_repo: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    anchor = _git(reuse_repo, "rev-parse", "HEAD")
-    head = _commit(reuse_repo, "apps/api/x.py", "py only")
-    _stub_runs(monkeypatch, [(7, anchor, "master", PASSED)])
+    head = _push(reuse_pr, "apps/api/x.py", "py only")
+    _stub_runs(monkeypatch, [(7, reuse_pr.head, "master", reuse_pr.base, PASSED)])
 
-    reused = _plan(reuse_repo, monkeypatch, tmp_path, head)
+    reused = _plan(reuse_pr, monkeypatch, tmp_path, head)
 
     # The TS lane read nothing that changed; the Python lane did.
     assert list(reused) == ["biome"]
     assert "run 7" in reused["biome"]
 
 
-def test_a_ci_or_tooling_change_reuses_nothing(
-    reuse_repo: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+def test_the_plan_records_the_base_it_validated(
+    reuse_pr: _Pr,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    anchor = _git(reuse_repo, "rev-parse", "HEAD")
-    head = _commit(reuse_repo, ".github/workflows/code-quality.yml", REUSE_WORKFLOW + "# edit\n")
-    _stub_runs(monkeypatch, [(7, anchor, "master", PASSED)])
+    # The next run can only diff base movement if this one says which base it merged.
+    head = _push(reuse_pr, "docs/a.md", "x")
+    _stub_runs(monkeypatch, [])
 
-    assert _plan(reuse_repo, monkeypatch, tmp_path, head) == {}
+    _plan(reuse_pr, monkeypatch, tmp_path, head)
+
+    master = _git(reuse_pr.repo, "rev-parse", "master")
+    assert f"::notice title={verdict.VALIDATED_BASE_TITLE}::{master}" in capsys.readouterr().out
+
+
+def test_base_movement_in_a_lane_scope_reruns_it(
+    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The run validates head MERGED with base: a TS commit landing on master
+    # changes what biome would check, though the PR head touched only docs.
+    head = _push(reuse_pr, "docs/a.md", "x", base_change=("apps/web/b.ts", "new on master"))
+    _stub_runs(monkeypatch, [(7, reuse_pr.head, "master", reuse_pr.base, PASSED)])
+
+    reused = _plan(reuse_pr, monkeypatch, tmp_path, head)
+
+    assert list(reused) == ["python-static"]
+
+
+def test_base_movement_outside_a_lane_scope_keeps_it_reused(
+    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    head = _push(reuse_pr, "docs/a.md", "x", base_change=("docs/b.md", "new on master"))
+    _stub_runs(monkeypatch, [(7, reuse_pr.head, "master", reuse_pr.base, PASSED)])
+
+    assert sorted(_plan(reuse_pr, monkeypatch, tmp_path, head)) == ["biome", "python-static"]
+
+
+def test_a_run_that_recorded_no_base_is_not_an_anchor(
+    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Every run before the base was recorded: without it, base movement is unknowable.
+    head = _push(reuse_pr, "docs/a.md", "x")
+    _stub_runs(monkeypatch, [(7, reuse_pr.head, "master", None, PASSED)])
+
+    assert _plan(reuse_pr, monkeypatch, tmp_path, head) == {}
+
+
+def test_a_ci_or_tooling_change_reuses_nothing(
+    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    head = _push(reuse_pr, ".github/workflows/code-quality.yml", REUSE_WORKFLOW + "# edit\n")
+    _stub_runs(monkeypatch, [(7, reuse_pr.head, "master", reuse_pr.base, PASSED)])
+
+    assert _plan(reuse_pr, monkeypatch, tmp_path, head) == {}
 
 
 def test_a_failed_lane_is_never_carried_forward(
-    reuse_repo: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    anchor = _git(reuse_repo, "rev-parse", "HEAD")
-    head = _commit(reuse_repo, "docs/notes.md", "unrelated")
-    _stub_runs(
-        monkeypatch,
-        [(7, anchor, "master", {"Biome lint + format": "failure", "Python static": "skipped"})],
-    )
-
-    # Neither a failure nor a skip is a pass to reuse, however little changed.
-    assert _plan(reuse_repo, monkeypatch, tmp_path, head) == {}
-
-
-def test_the_anchor_is_the_newest_pass_not_the_newest_run(
-    reuse_repo: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    passed_at = _git(reuse_repo, "rev-parse", "HEAD")
-    failed_at = _commit(reuse_repo, "apps/web/b.ts", "broke biome")
-    head = _commit(reuse_repo, "apps/web/b.ts", "fixed biome")
+    head = _push(reuse_pr, "docs/a.md", "x")
     _stub_runs(
         monkeypatch,
         [
             (
-                8,
-                failed_at,
+                7,
+                reuse_pr.head,
                 "master",
-                {"Biome lint + format": "failure", "Python static": "success"},
-            ),
-            (7, passed_at, "master", PASSED),
+                reuse_pr.base,
+                {"Biome lint + format": "failure", "Python static": "skipped"},
+            )
         ],
     )
 
-    reused = _plan(reuse_repo, monkeypatch, tmp_path, head)
+    # Neither a failure nor a skip is a pass to reuse, however little changed.
+    assert _plan(reuse_pr, monkeypatch, tmp_path, head) == {}
+
+
+def test_the_anchor_is_the_newest_pass_not_the_newest_run(
+    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    failed_at = _push(reuse_pr, "apps/web/b.ts", "broke biome")
+    head = _push(reuse_pr, "apps/web/b.ts", "fixed biome")
+    _stub_runs(
+        monkeypatch,
+        [
+            (8, failed_at, "master", reuse_pr.base, {"Biome lint + format": "failure", "Python static": "success"}),
+            (7, reuse_pr.head, "master", reuse_pr.base, PASSED),
+        ],
+    )  # fmt: skip
+
+    reused = _plan(reuse_pr, monkeypatch, tmp_path, head)
 
     # Biome's last pass predates two TS edits, so it runs; Python static passed
     # at run 8 and nothing Python changed after it.
@@ -1172,43 +1249,52 @@ def test_the_anchor_is_the_newest_pass_not_the_newest_run(
 
 
 def test_a_pass_against_another_base_is_not_reused(
-    reuse_repo: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    anchor = _git(reuse_repo, "rev-parse", "HEAD")
-    head = _commit(reuse_repo, "docs/notes.md", "unrelated")
-    _stub_runs(monkeypatch, [(7, anchor, "feature/parent", PASSED)])
+    head = _push(reuse_pr, "docs/a.md", "x")
+    _stub_runs(monkeypatch, [(7, reuse_pr.head, "feature/parent", reuse_pr.base, PASSED)])
 
     # A retarget changes what every lane diffs against, with no file changing.
-    assert _plan(reuse_repo, monkeypatch, tmp_path, head) == {}
+    assert _plan(reuse_pr, monkeypatch, tmp_path, head) == {}
 
 
 def test_an_anchor_missing_from_the_checkout_reuses_nothing(
-    reuse_repo: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    head = _commit(reuse_repo, "docs/notes.md", "unrelated")
-    _stub_runs(monkeypatch, [(7, "0" * 40, "master", PASSED)])
+    head = _push(reuse_pr, "docs/a.md", "x")
+    _stub_runs(monkeypatch, [(7, "0" * 40, "master", reuse_pr.base, PASSED)])
 
     # A force-push orphans the old head; without a diff there is no proof.
-    assert _plan(reuse_repo, monkeypatch, tmp_path, head) == {}
+    assert _plan(reuse_pr, monkeypatch, tmp_path, head) == {}
+
+
+def test_a_checkout_that_is_not_the_pr_merge_reuses_nothing(
+    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    head = _push(reuse_pr, "docs/a.md", "x")
+    _git(reuse_pr.repo, "checkout", "-q", "pr")
+    _stub_runs(monkeypatch, [(7, reuse_pr.head, "master", reuse_pr.base, PASSED)])
+
+    # With no merge commit there is no validated base to compare against.
+    assert _plan(reuse_pr, monkeypatch, tmp_path, head) == {}
 
 
 def test_a_manual_rerun_reuses_nothing(
-    reuse_repo: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    anchor = _git(reuse_repo, "rev-parse", "HEAD")
-    head = _commit(reuse_repo, "docs/notes.md", "unrelated")
-    _stub_runs(monkeypatch, [(7, anchor, "master", PASSED)])
+    head = _push(reuse_pr, "docs/a.md", "x")
+    _stub_runs(monkeypatch, [(7, reuse_pr.head, "master", reuse_pr.base, PASSED)])
 
-    assert _plan(reuse_repo, monkeypatch, tmp_path, head, "--run-attempt", "2") == {}
+    assert _plan(reuse_pr, monkeypatch, tmp_path, head, "--run-attempt", "2") == {}
 
 
 def test_an_unreadable_api_reuses_nothing(
-    reuse_repo: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    reuse_pr: _Pr, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    head = _commit(reuse_repo, "docs/notes.md", "unrelated")
+    head = _push(reuse_pr, "docs/a.md", "x")
     monkeypatch.setattr(verdict, "_gh_json", lambda endpoint: None)
 
-    assert _plan(reuse_repo, monkeypatch, tmp_path, head) == {}
+    assert _plan(reuse_pr, monkeypatch, tmp_path, head) == {}
 
 
 def test_display_names_match_the_real_workflow() -> None:

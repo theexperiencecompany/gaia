@@ -184,6 +184,7 @@ jobs:
       contents: read
       pull-requests: read
       actions: read
+      checks: read # reuse-plan reads the base tip earlier runs annotated
     outputs:
       has_python: ${{ steps.detect.outputs.has_python }}
       has_typescript: ${{ steps.detect.outputs.has_typescript }}
@@ -219,9 +220,13 @@ jobs:
 
       - name: Reuse lanes whose inputs did not change since their last pass
         id: reuse
+        # Through env, never inline: the head branch name is PR-author controlled.
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/ci/verdict.py reuse-plan --repo "$GITHUB_REPOSITORY" --workflow code-quality.yml --branch "${{ github.head_ref || github.ref_name }}" --base "${{ steps.base.outputs.base_ref }}" --head-sha "${{ github.event.pull_request.head.sha || github.sha }}" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --event "$GITHUB_EVENT_NAME"
+          PR_BRANCH: ${{ github.head_ref || github.ref_name }}
+          PR_BASE: ${{ steps.base.outputs.base_ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python3 scripts/ci/verdict.py reuse-plan --repo "$GITHUB_REPOSITORY" --workflow code-quality.yml --branch "$PR_BRANCH" --base "$PR_BASE" --head-sha "$PR_HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --event "$GITHUB_EVENT_NAME"
 
       - uses: nrwl/nx-set-shas@afb73a62d26e41464e9254689e1fd6122ee683c1 # v5.0.1
         with:
