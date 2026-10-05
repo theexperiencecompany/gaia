@@ -43,8 +43,9 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "vitest run",
-    "format": "prettier --write src/",
-    "lint": "eslint src/"
+    "format": "biome format --write src/",
+    "format:check": "biome format src/",
+    "lint": "biome check ."
   },
   "dependencies": {
     "@hono/node-server": "^1.19.14",

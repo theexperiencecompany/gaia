@@ -10,7 +10,12 @@ repos:
       - id: check-yaml
         priority: 0
       - id: check-json
-        exclude: ^(apps/web/.*tsconfig.*\.json|\.vscode/.*\.json|packages/cli/.*tsconfig.*\.json)$
+        # Every tsconfig is JSONC — tsc accepts comments, check-json does not.
+        # apps/desktop/tsconfig.json carries a load-bearing comment block explaining
+        # why rootDir is widened, so this was a guaranteed failure on any commit
+        # touching a .ts/.tsx file anywhere in the repo. Match tsconfigs by name
+        # rather than per-app, so a new app's tsconfig needs no entry here.
+        exclude: ^(.*tsconfig.*\.json|\.vscode/.*\.json)$
         priority: 0
       - id: check-toml
         priority: 0
