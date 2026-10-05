@@ -128,8 +128,28 @@ async def require_sub_todo_parent(
         raise SubTodoParentError(
             f"{child_id} is completed; only an open todo can become a sub-todo."
         )
+    if child is not None and GAIA_TRACKED_LABEL not in child.labels:
+        raise SubTodoParentError(
+            f"{child_id} is not a tracked todo, so it cannot become a sub-todo."
+        )
     if await todo_repository.find_sub_todos(user_id, [child_id]):
         raise SubTodoParentError(f"{child_id} has sub-todos of its own, so it cannot become one.")
+
+
+async def _reconcile_parent_completion(user_id: str, parent_todo_id: str, child_id: str) -> None:
+    """Complete a newborn sub-todo whose parent closed while it was being created.
+
+    Re-running the link check here catches the insert the completion's sweeps
+    missed. Only a newborn is completed; a moved todo keeps its work.
+    """
+    try:
+        await require_sub_todo_parent(user_id, parent_todo_id)
+    except SubTodoParentError:
+        await TrackedTodoService.complete_tracked_todo(
+            child_id,
+            user_id,
+            summary="Parent completed while this sub-todo was being created.",
+        )
 
 
 async def _active_todo_first(
@@ -294,6 +314,8 @@ class TrackedTodoService:
             title=title,
             vfs_path=vfs_path,
         )
+        if parent_todo_id is not None:
+            await _reconcile_parent_completion(user_id, parent_todo_id, todo_id)
         schedule_gaia_tasks_sync(user_id)
         return result
 

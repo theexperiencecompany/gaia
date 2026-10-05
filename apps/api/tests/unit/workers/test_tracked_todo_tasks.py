@@ -82,6 +82,7 @@ from app.workers.tasks.tracked_todo_tasks import (
     TRIGGER_TODO_FEATURE_KEY,
     _build_execution_prompt,
     _collect_reference_learnings,
+    _collect_run_context,
     _compute_next_run,
     _execute_on_executor,
     _execute_todo_with_retry,
@@ -2502,3 +2503,46 @@ class TestResumeTrackedTodo:
         assert run.result == "resume_dropped:todo-1 (lock held)"
         run.enqueue.assert_not_awaited()
         run.log.warning.assert_called_once_with("tracked_todo.resume_lock_held", todo_id="todo-1")
+
+
+class TestCollectRunContext:
+    """Prompt enrichment degrades; it never spends the run's retries."""
+
+    async def test_a_failed_section_degrades_to_empty_and_is_logged(self):
+        doc = _doc(references=["507f1f77bcf86cd799439011"])
+        with (
+            patch(
+                f"{MODULE}.todo_repository.get", AsyncMock(side_effect=RuntimeError("mongo down"))
+            ),
+            patch(
+                f"{MODULE}.todo_repository.find_by_ids",
+                AsyncMock(side_effect=RuntimeError("mongo down")),
+            ),
+            patch(f"{MODULE}.log") as mock_log,
+        ):
+            context = await _collect_run_context(doc)
+
+        assert context == _RunContext()
+        assert mock_log.warning.call_count == 2
+        assert {c.kwargs["section"] for c in mock_log.warning.call_args_list} == {
+            "sub_todos",
+            "learnings",
+        }
+
+    async def test_a_healthy_section_survives_a_failed_sibling(self):
+        parent = _doc(id="parent-1", canvas_content="## Standing rules\nBe kind.\n")
+        doc = _doc(parent_todo_id="parent-1")
+
+        async def _get(todo_id: str, *, user_id: str):
+            if todo_id == "parent-1":
+                return parent
+            raise RuntimeError("mongo down")
+
+        with (
+            patch(f"{MODULE}.todo_repository.get", AsyncMock(side_effect=_get)),
+            patch(f"{MODULE}.log"),
+        ):
+            context = await _collect_run_context(doc)
+
+        assert "Be kind." in context.parent_rules
+        assert context.sub_todos == ""
