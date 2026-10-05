@@ -27,16 +27,25 @@ async def _drain(frames: AsyncGenerator[str, None]) -> list[str]:
 async def test_silent_producer_still_writes_to_the_socket() -> None:
     """A producer that yields nothing for several intervals is padded, since the bot translator swallows web-only frames."""
 
-    async def silent_then_speak() -> AsyncGenerator[str, None]:
-        await asyncio.sleep(INTERVAL * 3.5)
+    # The producer stays silent until three keepalives have reached the socket,
+    # so no wall-clock margin decides the outcome; a fixed 3.5-interval sleep
+    # lost its third keepalive to timer drift on a loaded runner.
+    spoke = asyncio.Event()
+
+    async def silent_until_told() -> AsyncGenerator[str, None]:
+        await spoke.wait()
         yield "data: real\n\n"
 
-    frames = await _drain(with_heartbeat(silent_then_speak(), interval=INTERVAL))
+    frames: list[str] = []
+    async with asyncio.timeout(5):
+        async for frame in with_heartbeat(silent_until_told(), interval=INTERVAL):
+            frames.append(frame)
+            if frames.count(SSE_KEEPALIVE_FRAME) == 3:
+                spoke.set()
 
-    assert frames.count(SSE_KEEPALIVE_FRAME) >= 3, (
-        f"expected the gap to be padded with keepalives, got {frames!r}"
+    assert frames == [SSE_KEEPALIVE_FRAME] * 3 + ["data: real\n\n"], (
+        f"the silence must be padded and the real frame arrive last and intact, got {frames!r}"
     )
-    assert frames[-1] == "data: real\n\n", "the real frame must still arrive, last and intact"
 
 
 @pytest.mark.asyncio
