@@ -451,6 +451,11 @@ class TestTriggeredExecutionPrompt:
         assert todo_prompts.SANDBOX_RUN_EVENT_GUIDANCE in prompt
         assert TRIGGERED_RELEVANCE_GUIDANCE not in prompt
 
+    def test_sandbox_guidance_marks_run_outcomes_as_asked_for_every_time(self):
+        # Live E2B run: the todo completed the delegated work and delivery kept quiet,
+        # because nothing told it the user asked to hear the outcome.
+        assert "asked to hear" in todo_prompts.SANDBOX_RUN_EVENT_GUIDANCE
+
     def test_sandbox_guidance_says_the_payload_session_id_is_the_clis_own(self):
         # Live E2B run: a woken todo dismissed a real StopFailure as a non-match because
         # the payload's session_id (Claude's) differed from the watched run id.

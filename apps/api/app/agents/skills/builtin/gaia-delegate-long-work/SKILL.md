@@ -14,7 +14,7 @@ One-shot commands run direct. Anything an LLM runs (Claude Code, OpenCode), or a
 
 ## Bootstrap (the only active turn)
 
-1. `create_tracked_todo` with the goal and done-checks on the canvas, and a recurrence as the safety net (every 30-60 minutes while the run is live).
+1. `create_tracked_todo` with the goal and done-checks on the canvas, and a recurrence as the safety net (every 30-60 minutes while the run is live). Write the standing request under Key Details: "Tell the user whenever the agent asks something, finishes, or fails." Delivery always sends results the user asked to hear every time, and Key Details is where it looks.
 2. Launch with `bash(command, background=True, run_todo_id=<todo>)`. Never foreground; it dies with your turn. Passing the todo id subscribes the todo to the run: every event the agent reports (finished, needs input, error) runs the todo with that event attached. The tool also injects the run env (`GAIA_LAB_*`, `OPENCODE_CONFIG_DIR`). Run the CLI in the user's repo; see `claude-code-run-task` / `opencode-run-task` for the launch line.
 3. Write the returned pid, log path and run workdir on the todo's canvas. A later run starts in a fresh conversation and only finds the log through the canvas.
 4. Tell the user it is underway, in plain words, and FINISH.

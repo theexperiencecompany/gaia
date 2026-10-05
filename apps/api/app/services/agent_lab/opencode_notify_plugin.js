@@ -104,6 +104,8 @@ export default {
     event: async ({ event }) => relay(event),
   }),
   setup: async (ctx) => {
+    // 1.x also calls setup, with no event stream; its events arrive via server().
+    if (typeof ctx?.event?.subscribe !== "function") return {};
     void (async () => {
       try {
         for await (const event of ctx.event.subscribe()) {

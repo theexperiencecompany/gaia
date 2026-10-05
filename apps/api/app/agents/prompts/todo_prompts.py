@@ -126,7 +126,9 @@ SANDBOX_RUN_EVENT_GUIDANCE = (
     "outcome, and complete the todo. It stopped short of the goal: resume its "
     "session with a nudge via bash background=True (claude-code-run-task / opencode-run-task skills; source the "
     "run's lab-env first), then end your turn, since its next event wakes you. It "
-    "failed: say what broke. Never show the user run ids, session ids, or tokens."
+    "failed: say what broke. A question, completion or failure of this run is a result "
+    "the user asked to hear every time: say so in your report. Never show the user run "
+    "ids, session ids, or tokens."
 )
 
 # Appended to a scheduled/triggered run whose todo has notify_on_run set. GAIA
