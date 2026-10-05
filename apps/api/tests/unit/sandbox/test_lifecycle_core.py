@@ -463,7 +463,7 @@ async def test_a_wedged_mount_that_still_passes_mountpoint_is_remounted_with_cre
 async def test_first_use_after_acquire_writes_a_canary_and_accepts_the_sandbox() -> None:
     sbx = _fake_sandbox()
     entry = PooledSandbox(sandbox=sbx, last_canary_ts=None)
-    assert await lifecycle._verify_canary_or_die(entry) is True
+    assert await lifecycle._verify_canary_or_die("u1", entry) is True
     path, written = sbx.files.write.await_args.args
     assert path == lifecycle.CANARY_PATH
     assert entry.last_canary_ts == written, "the cached canary must match what is on disk"
@@ -472,19 +472,58 @@ async def test_first_use_after_acquire_writes_a_canary_and_accepts_the_sandbox()
 async def test_a_canary_that_does_not_match_reports_a_stale_filesystem() -> None:
     # This is the whole point of the canary: a resumed sandbox whose FS rolled
     # back to an older snapshot must be recreated, not silently used.
-    sbx = _fake_sandbox()
+    sbx = _fake_sandbox("sbx-1")
     sbx.files.read = AsyncMock(return_value="2020-01-01T00:00:00+00:00")
     entry = PooledSandbox(sandbox=sbx, last_canary_ts="2026-01-01T00:00:00+00:00")
-    assert await lifecycle._verify_canary_or_die(entry) is False
+    with _recorded_canary("sbx-1", "2026-02-01T00:00:00+00:00"):
+        assert await lifecycle._verify_canary_or_die("u1", entry) is False
+
+
+def _recorded_canary(sandbox_id: str, canary: str) -> Any:
+    """Patch Mongo to hold the canary the last replica to acquire recorded."""
+    repo = AsyncMock()
+    repo.get_for_user = AsyncMock(
+        return_value=E2bSandboxDocument(
+            user_id="u1",
+            shard_id=0,
+            state=E2bSandboxState.ACTIVE,
+            sandbox_id=sandbox_id,
+            last_canary_ts=canary,
+        )
+    )
+    return patch.object(lifecycle, "e2b_sandbox_repository", repo)
+
+
+async def test_a_canary_another_replica_wrote_on_this_sandbox_is_adopted_not_stale() -> None:
+    # Regression: the API and the worker each cache the sandbox. One resuming it
+    # rewrites the canary, and the other then killed a healthy sandbox (and the
+    # coding agent running in it) as "stale" on its next call.
+    sbx = _fake_sandbox("sbx-1")
+    sbx.files.read = AsyncMock(return_value="ts-other-replica")
+    entry = PooledSandbox(sandbox=sbx, last_canary_ts="ts-mine")
+    with _recorded_canary("sbx-1", "ts-other-replica"):
+        assert await lifecycle._verify_canary_or_die("u1", entry) is True
+    assert entry.last_canary_ts == "ts-other-replica"
+
+
+async def test_a_canary_recorded_for_another_sandbox_is_not_adopted() -> None:
+    # /workspace is shared JuiceFS, so a replacement sandbox's canary is
+    # readable from a superseded one; matching it must not keep the old one.
+    sbx = _fake_sandbox("sbx-old")
+    sbx.files.read = AsyncMock(return_value="ts-new-sandbox")
+    entry = PooledSandbox(sandbox=sbx, last_canary_ts="ts-mine")
+    with _recorded_canary("sbx-new", "ts-new-sandbox"):
+        assert await lifecycle._verify_canary_or_die("u1", entry) is False
 
 
 async def test_a_missing_canary_file_reports_a_stale_filesystem() -> None:
     # A rolled-back FS loses the file entirely; a read failure must be "stale",
     # never "assume fine".
-    sbx = _fake_sandbox()
+    sbx = _fake_sandbox("sbx-1")
     sbx.files.read = AsyncMock(side_effect=FileNotFoundError("no canary"))
     entry = PooledSandbox(sandbox=sbx, last_canary_ts="ts-1")
-    assert await lifecycle._verify_canary_or_die(entry) is False
+    with _recorded_canary("sbx-1", "ts-1"):
+        assert await lifecycle._verify_canary_or_die("u1", entry) is False
 
 
 async def test_an_empty_canary_file_reports_a_stale_filesystem() -> None:
@@ -501,7 +540,7 @@ async def test_canary_comparison_survives_a_trailing_newline_from_the_sandbox() 
     sbx = _fake_sandbox()
     sbx.files.read = AsyncMock(return_value="ts-1\n")
     entry = PooledSandbox(sandbox=sbx, last_canary_ts="ts-1")
-    assert await lifecycle._verify_canary_or_die(entry) is True
+    assert await lifecycle._verify_canary_or_die("u1", entry) is True
 
 
 async def test_writing_a_canary_returns_the_exact_value_it_stored() -> None:

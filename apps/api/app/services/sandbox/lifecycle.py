@@ -328,11 +328,12 @@ async def _read_canary(sbx: AsyncSandbox) -> str | None:
     return content.strip() or None
 
 
-async def _verify_canary_or_die(entry: PooledSandbox) -> bool:
-    """Check that the in-sandbox canary matches our cached value.
+async def _verify_canary_or_die(user_id: str, entry: PooledSandbox) -> bool:
+    """Check the in-sandbox canary against our cached value or the one Mongo records for this sandbox.
 
-    Returns True if the canary is valid (proceed with the call). Returns False
-    if the FS appears stale and the sandbox should be discarded + recreated.
+    Returns False when the FS appears stale and the sandbox should be
+    discarded + recreated. Another replica resuming the sandbox rewrites the
+    canary and records it, so a match there is adopted, not stale.
     """
     async with fs_timer(FsOps.SBX_CANARY_VERIFY):
         if entry.last_canary_ts is None:
@@ -340,7 +341,18 @@ async def _verify_canary_or_die(entry: PooledSandbox) -> bool:
             entry.last_canary_ts = await _write_canary(entry.sandbox)
             return True
         actual = await _read_canary(entry.sandbox)
-        return actual == entry.last_canary_ts
+        if actual is not None and actual == entry.last_canary_ts:
+            return True
+        doc = await e2b_sandbox_repository.get_for_user(user_id)
+        recorded_here = (
+            doc is not None
+            and doc.sandbox_id == getattr(entry.sandbox, "sandbox_id", None)
+            and doc.last_canary_ts == actual
+        )
+        if actual is not None and recorded_here:
+            entry.last_canary_ts = actual
+            return True
+        return False
 
 
 async def _connect_sandbox(sandbox_id: str) -> AsyncSandbox | None:
@@ -466,7 +478,7 @@ async def _reuse_cached_entry(
     await refresh_sandbox_timeout(entry)
 
     await _ensure_mounted(entry.sandbox, mount_env)
-    if not await _verify_canary_or_die(entry):
+    if not await _verify_canary_or_die(user_id, entry):
         _record(cache_evicted="canary_stale")
         log.warning(f"{LogTag.SANDBOX} canary stale user=; recreating sandbox", user_id=user_id)
         await mark_sandbox_dead(user_id)
