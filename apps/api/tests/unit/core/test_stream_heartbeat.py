@@ -62,18 +62,41 @@ async def test_real_frames_are_forwarded_in_order_and_unmodified() -> None:
 
 
 @pytest.mark.asyncio
-async def test_no_keepalive_when_the_producer_keeps_talking() -> None:
-    """A stream that never goes quiet gets no padding — keepalives are for gaps."""
+async def test_an_always_ready_producer_is_forwarded_verbatim() -> None:
+    """The wrapper is transparent: real frames through, padding not asserted absent."""
 
-    async def steady() -> AsyncGenerator[str, None]:
+    async def ready() -> AsyncGenerator[str, None]:
         for index in range(4):
-            await asyncio.sleep(INTERVAL / 4)
             yield f"data: {index}\n\n"
 
-    frames = await _drain(with_heartbeat(steady(), interval=INTERVAL))
+    frames = await _drain(with_heartbeat(ready(), interval=INTERVAL))
 
-    assert SSE_KEEPALIVE_FRAME not in frames
-    assert len(frames) == 4
+    assert [frame for frame in frames if frame != SSE_KEEPALIVE_FRAME] == [
+        f"data: {index}\n\n" for index in range(4)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_stall_longer_than_the_interval_is_padded_even_before_the_first_frame() -> None:
+    """Padding is keyed to silence, not frame position — even before the first frame."""
+
+    async def slow_first_frame() -> AsyncGenerator[str, None]:
+        await asyncio.sleep(INTERVAL * 2)
+        yield "data: late\n\n"
+
+    async def occupy(seconds: float) -> None:
+        # Block the loop thread the way a co-scheduled xdist worker does, so the
+        # sleep above cannot be serviced on time.
+        deadline = asyncio.get_running_loop().time() + seconds
+        while asyncio.get_running_loop().time() < deadline:
+            pass
+
+    staller = asyncio.ensure_future(occupy(INTERVAL * 2))
+    frames = await _drain(with_heartbeat(slow_first_frame(), interval=INTERVAL))
+    await staller
+
+    assert frames[0] == SSE_KEEPALIVE_FRAME
+    assert "data: late\n\n" in frames
 
 
 @pytest.mark.asyncio
