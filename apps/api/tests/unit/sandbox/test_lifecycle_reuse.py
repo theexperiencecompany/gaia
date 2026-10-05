@@ -40,7 +40,7 @@ def _patch_probes_healthy() -> tuple[Any, Any, Any, Any]:
 async def _reuse(entry: PooledSandbox) -> tuple[str, PooledSandbox | None]:
     user_id = _seed(entry)
     try:
-        return user_id, await lifecycle._reuse_cached_entry(user_id, {})
+        return user_id, await lifecycle._reuse_cached_entry(user_id, {}, "gaia-coder")
     finally:
         get_sandbox_pool().evict(user_id)
 
@@ -75,7 +75,7 @@ async def test_unhealthy_cached_handle_is_evicted() -> None:
         patch.object(lifecycle, "e2b_sandbox_repository", repo),
     ):
         user_id = _seed(entry)
-        result = await lifecycle._reuse_cached_entry(user_id, {})
+        result = await lifecycle._reuse_cached_entry(user_id, {}, "gaia-coder")
         assert result is None, "an unhealthy cached handle must not be reused"
         assert get_sandbox_pool().get(user_id) is None, "it must be evicted"
         entry.sandbox.set_timeout.assert_not_awaited()
@@ -96,7 +96,7 @@ async def test_stale_canary_is_evicted() -> None:
         patch.object(lifecycle, "e2b_sandbox_repository", repo),
     ):
         user_id = _seed(entry)
-        result = await lifecycle._reuse_cached_entry(user_id, {})
+        result = await lifecycle._reuse_cached_entry(user_id, {}, "gaia-coder")
         assert result is None, "a stale-canary (stale FS) sandbox must be recreated"
         assert get_sandbox_pool().get(user_id) is None
         repo.mark_dead.assert_awaited_once()
@@ -105,4 +105,4 @@ async def test_stale_canary_is_evicted() -> None:
 async def test_returns_none_when_no_cached_entry() -> None:
     missing = f"u-{uuid.uuid4().hex}"
     get_sandbox_pool().evict(missing)
-    assert await lifecycle._reuse_cached_entry(missing, {}) is None
+    assert await lifecycle._reuse_cached_entry(missing, {}, "gaia-coder") is None

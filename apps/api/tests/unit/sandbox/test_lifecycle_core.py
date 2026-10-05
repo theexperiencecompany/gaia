@@ -77,6 +77,7 @@ def _sandbox_class(sbx: AsyncMock) -> MagicMock:
     cls = MagicMock()
     cls.create = AsyncMock(return_value=sbx)
     cls.connect = AsyncMock(return_value=sbx)
+    cls.kill = AsyncMock(return_value=True)
     return cls
 
 
@@ -246,7 +247,7 @@ async def test_missing_e2b_api_key_fails_before_any_sandbox_is_provisioned() -> 
         patch.object(lifecycle, "AsyncSandbox", cls),
     ):
         with pytest.raises(lifecycle.SandboxAcquisitionError, match="E2B_API_KEY"):
-            await lifecycle._create_fresh_sandbox("u1", 0)
+            await lifecycle._create_fresh_sandbox("u1", 0, "tpl")
     cls.create.assert_not_awaited()
 
 
@@ -254,15 +255,26 @@ async def test_missing_template_id_fails_before_any_sandbox_is_provisioned() -> 
     # A create with template=None would boot the default e2b image, which has
     # no JuiceFS tooling — the mount would then "succeed" as ephemeral and the
     # user's files would silently not persist.
-    cls = _sandbox_class(_fake_sandbox())
     with (
-        patch.object(lifecycle.settings, "E2B_API_KEY", "key"),
         patch.object(lifecycle.settings, "E2B_TEMPLATE_ID", None),
-        patch.object(lifecycle, "AsyncSandbox", cls),
+        patch.object(lifecycle, "is_agent_lab_enabled", AsyncMock(return_value=False)),
     ):
         with pytest.raises(lifecycle.SandboxAcquisitionError, match="E2B_TEMPLATE_ID"):
-            await lifecycle._create_fresh_sandbox("u1", 0)
-    cls.create.assert_not_awaited()
+            await lifecycle._template_for("u1")
+
+
+async def test_a_flagged_user_without_an_agent_lab_template_fails_instead_of_running_small() -> (
+    None
+):
+    # Falling back to the default template would hand an agent-lab user a
+    # sandbox their coding agents get OOM-killed in.
+    with (
+        patch.object(lifecycle.settings, "E2B_TEMPLATE_ID", "gaia-coder"),
+        patch.object(lifecycle.settings, "E2B_AGENT_LAB_TEMPLATE_ID", None),
+        patch.object(lifecycle, "is_agent_lab_enabled", AsyncMock(return_value=True)),
+    ):
+        with pytest.raises(lifecycle.SandboxAcquisitionError, match="E2B_AGENT_LAB_TEMPLATE_ID"):
+            await lifecycle._template_for("u1")
 
 
 async def test_fresh_sandbox_is_created_with_the_full_lifetime_and_owner_metadata() -> None:
@@ -276,7 +288,7 @@ async def test_fresh_sandbox_is_created_with_the_full_lifetime_and_owner_metadat
         patch.object(lifecycle, "AsyncSandbox", cls),
         patch.object(lifecycle, "_run_mount_script", AsyncMock()),
     ):
-        result = await lifecycle._create_fresh_sandbox("u1", 2)
+        result = await lifecycle._create_fresh_sandbox("u1", 2, "gaia-coder")
     assert result is sbx
     kwargs = cls.create.await_args.kwargs
     assert kwargs["template"] == "gaia-coder"
@@ -296,7 +308,7 @@ async def test_a_fresh_sandbox_is_mounted_with_its_own_shard_credentials() -> No
         patch.object(lifecycle, "AsyncSandbox", _sandbox_class(sbx)),
         patch.object(lifecycle, "_run_mount_script", mount),
     ):
-        await lifecycle._create_fresh_sandbox("u1", 5)
+        await lifecycle._create_fresh_sandbox("u1", 5, "gaia-coder")
     mount.assert_awaited_once()
     mounted_sbx, env = mount.await_args.args
     assert mounted_sbx is sbx
@@ -634,13 +646,17 @@ async def test_a_real_seeding_failure_is_not_swallowed_as_dev_mode() -> None:
 
 
 def _doc(
-    sandbox_id: str | None, workspace_version: int = 0, shard_id: int = 0
+    sandbox_id: str | None,
+    workspace_version: int = 0,
+    shard_id: int = 0,
+    template_id: str | None = "gaia-coder",
 ) -> E2bSandboxDocument:
     return E2bSandboxDocument(
         user_id="u1",
         shard_id=shard_id,
         state=E2bSandboxState.PAUSED,
         sandbox_id=sandbox_id,
+        template_id=template_id,
         workspace_version=workspace_version,
     )
 
@@ -687,11 +703,13 @@ async def test_a_resumed_sandbox_is_remounted_before_it_is_used() -> None:
 # --------------------------------------------------------------------------
 
 
-def _acquire_patches(sbx: AsyncMock, repo: AsyncMock) -> list[Any]:
-    """Patch only the true boundaries: e2b, Mongo, the limiter, host JuiceFS."""
+def _acquire_patches(sbx: AsyncMock, repo: AsyncMock, *, lab: bool = False) -> list[Any]:
+    """Patch only the true boundaries: e2b, Mongo, PostHog, the limiter, host JuiceFS."""
     return [
         patch.object(lifecycle.settings, "E2B_API_KEY", "key"),
         patch.object(lifecycle.settings, "E2B_TEMPLATE_ID", "gaia-coder"),
+        patch.object(lifecycle.settings, "E2B_AGENT_LAB_TEMPLATE_ID", "gaia-coder-8gb"),
+        patch.object(lifecycle, "is_agent_lab_enabled", AsyncMock(return_value=lab)),
         patch.object(lifecycle, "AsyncSandbox", _sandbox_class(sbx)),
         patch.object(lifecycle, "e2b_sandbox_repository", repo),
         patch.object(lifecycle, "enforce_rate_limit", AsyncMock(return_value={})),
@@ -702,8 +720,10 @@ def _acquire_patches(sbx: AsyncMock, repo: AsyncMock) -> list[Any]:
     ]
 
 
-async def _acquire(user_id: str, sbx: AsyncMock, repo: AsyncMock) -> PooledSandbox:
-    stack = _acquire_patches(sbx, repo)
+async def _acquire(
+    user_id: str, sbx: AsyncMock, repo: AsyncMock, *, lab: bool = False
+) -> PooledSandbox:
+    stack = _acquire_patches(sbx, repo, lab=lab)
     for p in stack:
         p.start()
     try:
@@ -859,6 +879,138 @@ async def test_a_healthy_cached_entry_short_circuits_before_any_mongo_or_e2b_cal
         assert await _acquire(uid, sbx, repo) is entry
         repo.get_for_user.assert_not_awaited()
         repo.record_acquisition.assert_not_awaited()
+    finally:
+        get_sandbox_pool().evict(uid)
+
+
+# --------------------------------------------------------------------------
+# Template choice — the agent-lab flag puts a user on the 8GB template
+# --------------------------------------------------------------------------
+
+
+async def test_an_unflagged_user_keeps_the_default_template() -> None:
+    uid = _uid()
+    sbx = _fake_sandbox("sbx-fresh")
+    repo = AsyncMock()
+    repo.get_for_user = AsyncMock(return_value=None)
+    try:
+        entry = await _acquire(uid, sbx, repo)
+        assert entry.template_id == "gaia-coder"
+        assert repo.record_acquisition.await_args.kwargs["template_id"] == "gaia-coder"
+    finally:
+        get_sandbox_pool().evict(uid)
+
+
+async def test_a_flagged_user_gets_a_fresh_sandbox_from_the_agent_lab_template() -> None:
+    # The default template's 1GB OOM-kills OpenCode; the flag must reach create().
+    uid = _uid()
+    sbx = _fake_sandbox("sbx-fresh")
+    repo = AsyncMock()
+    repo.get_for_user = AsyncMock(return_value=None)
+    cls = _sandbox_class(sbx)
+    stack = [*_acquire_patches(sbx, repo, lab=True), patch.object(lifecycle, "AsyncSandbox", cls)]
+    for p in stack:
+        p.start()
+    try:
+        entry = await lifecycle._acquire_or_create(uid)
+        assert cls.create.await_args.kwargs["template"] == "gaia-coder-8gb"
+        assert entry.template_id == "gaia-coder-8gb"
+        assert repo.record_acquisition.await_args.kwargs["template_id"] == "gaia-coder-8gb"
+    finally:
+        for p in reversed(stack):
+            p.stop()
+        get_sandbox_pool().evict(uid)
+
+
+async def test_a_flagged_users_recorded_default_sandbox_is_killed_and_replaced() -> None:
+    # Resuming it would keep the user on 1GB for good: lab users never idle-pause.
+    uid = _uid()
+    sbx = _fake_sandbox("sbx-big")
+    repo = AsyncMock()
+    repo.get_for_user = AsyncMock(
+        return_value=_doc("sbx-small", workspace_version=2, template_id="gaia-coder")
+    )
+    cls = _sandbox_class(sbx)
+    stack = [*_acquire_patches(sbx, repo, lab=True), patch.object(lifecycle, "AsyncSandbox", cls)]
+    for p in stack:
+        p.start()
+    try:
+        entry = await lifecycle._acquire_or_create(uid)
+        cls.kill.assert_awaited_once_with("sbx-small")
+        cls.connect.assert_not_awaited()
+        assert cls.create.await_args.kwargs["template"] == "gaia-coder-8gb"
+        assert entry.sandbox is sbx
+        assert repo.record_acquisition.await_args.kwargs["workspace_version"] == 3
+    finally:
+        for p in reversed(stack):
+            p.stop()
+        get_sandbox_pool().evict(uid)
+
+
+async def test_a_flagged_users_cached_default_sandbox_is_replaced() -> None:
+    uid = _uid()
+    small = _fake_sandbox("sbx-small")
+    small.files.read = AsyncMock(return_value="ts-1")
+    get_sandbox_pool().put(
+        uid,
+        PooledSandbox(
+            sandbox=small,
+            last_canary_ts="ts-1",
+            timeout_refreshed_at=time.monotonic(),
+            template_id="gaia-coder",
+        ),
+    )
+    big = _fake_sandbox("sbx-big")
+    repo = AsyncMock()
+    repo.get_for_user = AsyncMock(return_value=None)
+    try:
+        entry = await _acquire(uid, big, repo, lab=True)
+        small.kill.assert_awaited_once()
+        assert entry.sandbox is big
+        assert entry.template_id == "gaia-coder-8gb"
+    finally:
+        get_sandbox_pool().evict(uid)
+
+
+async def test_a_flag_reading_off_never_kills_a_recorded_agent_lab_sandbox() -> None:
+    # The flag reads off whenever PostHog is unreachable; a downgrade then
+    # would kill a coding agent mid-run.
+    uid = _uid()
+    sbx = _fake_sandbox("sbx-big")
+    repo = AsyncMock()
+    repo.get_for_user = AsyncMock(return_value=_doc("sbx-big", template_id="gaia-coder-8gb"))
+    cls = _sandbox_class(sbx)
+    stack = [*_acquire_patches(sbx, repo), patch.object(lifecycle, "AsyncSandbox", cls)]
+    for p in stack:
+        p.start()
+    try:
+        entry = await lifecycle._acquire_or_create(uid)
+        cls.kill.assert_not_awaited()
+        cls.create.assert_not_awaited()
+        assert entry.sandbox is sbx
+        assert entry.template_id == "gaia-coder-8gb"
+    finally:
+        for p in reversed(stack):
+            p.stop()
+        get_sandbox_pool().evict(uid)
+
+
+async def test_a_flag_reading_off_never_kills_a_cached_agent_lab_sandbox() -> None:
+    uid = _uid()
+    sbx = _fake_sandbox("sbx-big")
+    sbx.files.read = AsyncMock(return_value="ts-1")
+    entry = PooledSandbox(
+        sandbox=sbx,
+        last_canary_ts="ts-1",
+        timeout_refreshed_at=time.monotonic(),
+        template_id="gaia-coder-8gb",
+    )
+    get_sandbox_pool().put(uid, entry)
+    repo = AsyncMock()
+    repo.get_for_user = AsyncMock(return_value=None)
+    try:
+        assert await _acquire(uid, sbx, repo) is entry
+        sbx.kill.assert_not_awaited()
     finally:
         get_sandbox_pool().evict(uid)
 

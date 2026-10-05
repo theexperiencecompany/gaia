@@ -290,6 +290,9 @@ class CommonSettings(BaseAppSettings):
     # from the E2B sandbox, so the public API base in prod. Unset = bash
     # run_todo_id refuses to launch, since the run could never report back.
     SANDBOX_LAB_EVENTS_CALLBACK_URL: str | None = None
+    # Template for users with the AGENT_LAB flag: the default one's 1GB OOM-kills
+    # coding-agent CLIs. Built with build_e2b_template.py --memory-mb 8192.
+    E2B_AGENT_LAB_TEMPLATE_ID: str | None = None
 
     # Rejected at startup rather than at mint time: the token's user_id is a
     # claim nothing else binds, so a guessable secret means running any user's

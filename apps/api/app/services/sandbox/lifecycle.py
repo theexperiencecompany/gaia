@@ -171,12 +171,30 @@ async def _enforce_creation_limit(user_id: str) -> None:
         raise SandboxAcquisitionError(f"sandbox creation limit check failed: {e}") from e
 
 
-async def _create_fresh_sandbox(user_id: str, shard_id: int) -> AsyncSandbox:
+async def _template_for(user_id: str) -> str:
+    """Return the template the user's sandbox must run: the 8GB agent-lab one when their flag is on."""
+    if await is_agent_lab_enabled(user_id):
+        if not settings.E2B_AGENT_LAB_TEMPLATE_ID:
+            raise SandboxAcquisitionError("E2B_AGENT_LAB_TEMPLATE_ID is not configured")
+        return settings.E2B_AGENT_LAB_TEMPLATE_ID
+    if not settings.E2B_TEMPLATE_ID:
+        raise SandboxAcquisitionError("E2B_TEMPLATE_ID is not configured")
+    return settings.E2B_TEMPLATE_ID
+
+
+def _needs_agent_lab_upgrade(current_template_id: str | None, template_id: str) -> bool:
+    """Whether a live sandbox must be replaced to move a flagged user onto the agent-lab template.
+
+    Never the other way: the flag reads off whenever PostHog is unreachable,
+    and replacing then would kill a coding agent mid-run.
+    """
+    return template_id == settings.E2B_AGENT_LAB_TEMPLATE_ID and current_template_id != template_id
+
+
+async def _create_fresh_sandbox(user_id: str, shard_id: int, template_id: str) -> AsyncSandbox:
     """Provision a new E2B sandbox for the user, run mount script, return handle."""
     if not settings.E2B_API_KEY:
         raise SandboxAcquisitionError("E2B_API_KEY is not configured")
-    if not settings.E2B_TEMPLATE_ID:
-        raise SandboxAcquisitionError("E2B_TEMPLATE_ID is not configured")
 
     async_sandbox_cls = AsyncSandbox
 
@@ -187,12 +205,12 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int) -> AsyncSandbox:
         f"{LogTag.SANDBOX} creating fresh sandbox",
         user_id=user_id,
         shard_id=shard_id,
-        e2b_template_id=settings.E2B_TEMPLATE_ID,
+        e2b_template_id=template_id,
         e2b_domain=settings.E2B_DOMAIN,
     )
     async with fs_timer(FsOps.SBX_CREATE):
         sbx = await async_sandbox_cls.create(
-            template=settings.E2B_TEMPLATE_ID,
+            template=template_id,
             timeout=SANDBOX_LIFETIME_SECONDS,
             metadata={"user_id": user_id, "shard_id": str(shard_id)},
         )
@@ -200,7 +218,7 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int) -> AsyncSandbox:
     _record(
         created=True,
         sandbox_id=sandbox_id,
-        template_id=settings.E2B_TEMPLATE_ID,
+        template_id=template_id,
         shard_id=shard_id,
     )
     log.info(
@@ -409,14 +427,23 @@ async def _seed_user_subtrees(user_id: str) -> None:
         return
 
 
-async def _reuse_cached_entry(user_id: str, mount_env: dict[str, str]) -> PooledSandbox | None:
+async def _reuse_cached_entry(
+    user_id: str, mount_env: dict[str, str], template_id: str
+) -> PooledSandbox | None:
     """Return a healthy cached PooledSandbox, or None if it must be recreated.
 
-    Evicts the cached entry when it is unhealthy or its canary is stale.
+    Evicts the cached entry when it is unhealthy, its canary is stale, or the
+    user has outgrown its template.
     """
     pool = get_sandbox_pool()
     entry = pool.get(user_id)
     if entry is None or entry.sandbox is None:
+        return None
+
+    if _needs_agent_lab_upgrade(entry.template_id, template_id):
+        _record(cache_evicted="template_upgrade")
+        log.info(f"{LogTag.SANDBOX} replacing cached sandbox with the agent-lab template")
+        await mark_sandbox_dead(user_id)
         return None
 
     # Wait for the cancel to actually finish — a bare cancel() only requests it,
@@ -482,8 +509,9 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
     # Built once per acquire so _ensure_mounted can re-run mount.sh on a
     # stale FUSE without resorting to sandbox-wide credential env vars.
     mount_env = _mount_env(user_id, shard_id)
+    template_id = await _template_for(user_id)
 
-    cached = await _reuse_cached_entry(user_id, mount_env)
+    cached = await _reuse_cached_entry(user_id, mount_env, template_id)
     if cached is not None:
         _record(
             source="cache",
@@ -496,6 +524,8 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
     sbx: AsyncSandbox | None = None
     workspace_version = 0
     source = "create"
+    # A resumed sandbox keeps the template it was built from, not today's choice.
+    running_template_id: str | None = template_id
 
     if doc is not None and doc.shard_id != shard_id:
         # Pin to the shard the user's workspace actually lives on: shard_for
@@ -512,10 +542,20 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
         mount_env = _mount_env(user_id, shard_id)
 
     if doc is not None and doc.sandbox_id and doc.state != E2bSandboxState.DEAD:
-        sbx = await _resume_existing_sandbox(doc, mount_env)
         workspace_version = doc.workspace_version
-        if sbx is not None:
-            source = "resume"
+        if _needs_agent_lab_upgrade(doc.template_id, template_id):
+            _record(resume_status="template_upgrade")
+            log.info(
+                f"{LogTag.SANDBOX} replacing recorded sandbox with the agent-lab template",
+                sandbox_id=doc.sandbox_id,
+            )
+            # Killed by id, not resumed first: its JuiceFS sessions go to the stale reaper.
+            await AsyncSandbox.kill(doc.sandbox_id)
+        else:
+            sbx = await _resume_existing_sandbox(doc, mount_env)
+            if sbx is not None:
+                source = "resume"
+                running_template_id = doc.template_id
 
     if sbx is None:
         await _enforce_creation_limit(user_id)
@@ -523,7 +563,7 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
         # mounts find them ready — done on the host (full JuiceFS mount) so the
         # sandbox never briefly sees the full cross-user namespace.
         await _seed_user_subtrees(user_id)
-        sbx = await _create_fresh_sandbox(user_id, shard_id)
+        sbx = await _create_fresh_sandbox(user_id, shard_id, template_id)
         workspace_version += 1
 
     _record(
@@ -537,7 +577,7 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
     await e2b_sandbox_repository.record_acquisition(
         user_id=user_id,
         sandbox_id=getattr(sbx, "sandbox_id", None),
-        template_id=settings.E2B_TEMPLATE_ID,
+        template_id=running_template_id,
         shard_id=shard_id,
         workspace_version=workspace_version,
         last_canary_ts=canary_ts,
@@ -547,7 +587,10 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
     # create()/connect() just set the kill timer to a full lifetime, so stamp
     # the refresh clock now — the first reuse won't redundantly re-set it.
     entry = PooledSandbox(
-        sandbox=sbx, last_canary_ts=canary_ts, timeout_refreshed_at=time.monotonic()
+        sandbox=sbx,
+        last_canary_ts=canary_ts,
+        timeout_refreshed_at=time.monotonic(),
+        template_id=running_template_id,
     )
     pool.put(user_id, entry)
     await _ensure_watcher(user_id, entry)

@@ -54,6 +54,7 @@ class PooledSandbox:
     # monotonic timestamp of the last sandbox kill-timer refresh (set_timeout)
     timeout_refreshed_at: float = 0.0
     watcher: ArtifactWatcher | None = None
+    template_id: str | None = None
 
 
 class SandboxPool:
