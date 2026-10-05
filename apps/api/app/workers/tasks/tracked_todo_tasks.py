@@ -430,20 +430,22 @@ class _RunContext(NamedTuple):
 async def _collect_run_context(doc: TodoDocument) -> _RunContext:
     """Gather everything a run reads from the owner's other todos.
 
-    Each read is enrichment, not the work: a Mongo blip must not burn the run's
-    retries or mark the todo failed without attempting anything. A failed read
-    degrades to "" and is logged, so the wide event still shows what was missing.
+    The parent's Standing rules govern the run, so their read failure raises
+    and the run retries with backoff rather than acting without instructions
+    it must obey. The other two reads are enrichment: a failed one degrades
+    to "" and is logged, so a Mongo blip does not burn the run's retries.
     """
-    collectors = {
-        "parent_rules": _collect_parent_rules(doc.parent_todo_id, doc.user_id),
-        "sub_todos": _collect_sub_todo_states(doc),
-        "learnings": _collect_reference_learnings(doc.references, doc.user_id),
-    }
-    gathered = await asyncio.gather(*collectors.values(), return_exceptions=True)
-    context: dict[str, str] = {}
-    for name, result in zip(collectors, gathered):
+    parent_rules = await _collect_parent_rules(doc.parent_todo_id, doc.user_id)
+    sub_todos, learnings = await asyncio.gather(
+        _collect_sub_todo_states(doc),
+        _collect_reference_learnings(doc.references, doc.user_id),
+        return_exceptions=True,
+    )
+    context = {"sub_todos": sub_todos, "learnings": learnings}
+    degraded: dict[str, str] = {}
+    for name, result in context.items():
         if isinstance(result, str):
-            context[name] = result
+            degraded[name] = result
             continue
         log.warning(
             "tracked_todo.run_context_incomplete",
@@ -452,8 +454,8 @@ async def _collect_run_context(doc: TodoDocument) -> _RunContext:
             error=str(result),
             error_type=type(result).__name__,
         )
-        context[name] = ""
-    return _RunContext(**context)
+        degraded[name] = ""
+    return _RunContext(parent_rules=parent_rules, **degraded)
 
 
 async def _collect_parent_rules(parent_todo_id: str | None, user_id: str) -> str:
