@@ -519,7 +519,9 @@ class TestMinimalMessageTemplate:
         assert result.labels == ["INBOX", "UNREAD", "HAS_ATTACHMENT"]
         assert result.body.strip() == "The body"
 
-    def test_a_message_with_no_id_at_all_carries_no_id_rather_than_one_of_its_neighbours(self) -> None:
+    def test_a_message_with_no_id_at_all_carries_no_id_rather_than_one_of_its_neighbours(
+        self,
+    ) -> None:
         """Neither Gmail id present: the card says nothing rather than naming the thread."""
         msg = {"threadId": "t1", "labelIds": [], "snippet": "s"}
 

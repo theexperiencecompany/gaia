@@ -185,7 +185,9 @@ class TestReadFile:
         assert await read_file(TaskFile(doc, GaiaTaskFile.OBSERVATIONS), USER_ID) == ""
         assert await read_file(TaskFile(doc, GaiaTaskFile.LOG), USER_ID) == ""
 
-    async def test_observations_md_resolves_and_reads_its_own_body(self, mock_repo: MagicMock) -> None:
+    async def test_observations_md_resolves_and_reads_its_own_body(
+        self, mock_repo: MagicMock
+    ) -> None:
         doc = _doc(observations_content=OBSERVATIONS)
         mock_repo.find_tracked_by_short_id = AsyncMock(return_value=[doc])
 
@@ -349,7 +351,9 @@ class TestWriteFile:
         )
 
     @pytest.mark.regression
-    async def test_an_entry_already_in_the_log_is_not_appended_again(self, writers: tuple[AsyncMock, AsyncMock, AsyncMock]) -> None:
+    async def test_an_entry_already_in_the_log_is_not_appended_again(
+        self, writers: tuple[AsyncMock, AsyncMock, AsyncMock]
+    ) -> None:
         """Regression: desk runs copied GAIA's own run lines back into their appends, 2-4 times each."""
         _canvas, activity, _syslog = writers
         doc = _doc(activity_content=f"{RUN_STARTED}\n{RUN_FINISHED}")
@@ -364,7 +368,9 @@ class TestWriteFile:
         assert activity.await_args.args[2] == f"{RUN_STARTED}\n{RUN_FINISHED}\n{mine}"
 
     @pytest.mark.regression
-    async def test_an_append_of_nothing_but_repeats_writes_nothing(self, writers: tuple[AsyncMock, AsyncMock, AsyncMock]) -> None:
+    async def test_an_append_of_nothing_but_repeats_writes_nothing(
+        self, writers: tuple[AsyncMock, AsyncMock, AsyncMock]
+    ) -> None:
         _canvas, activity, syslog = writers
         doc = _doc(activity_content=f"{RUN_STARTED}\n{RUN_FINISHED}")
 
@@ -377,7 +383,9 @@ class TestWriteFile:
         syslog.assert_not_awaited()
 
     @pytest.mark.regression
-    async def test_a_new_entry_repeated_within_one_append_is_written_once(self, writers: tuple[AsyncMock, AsyncMock, AsyncMock]) -> None:
+    async def test_a_new_entry_repeated_within_one_append_is_written_once(
+        self, writers: tuple[AsyncMock, AsyncMock, AsyncMock]
+    ) -> None:
         _canvas, activity, _syslog = writers
         doc = _doc(activity_content=RUN_STARTED)
         mine = "- 2026-10-01T08:04:12+00:00 [run] triaged 10 threads"
@@ -388,7 +396,9 @@ class TestWriteFile:
 
         assert activity.await_args.args[2] == f"{RUN_STARTED}\n{mine}"
 
-    async def test_an_undated_line_may_repeat(self, writers: tuple[AsyncMock, AsyncMock, AsyncMock]) -> None:
+    async def test_an_undated_line_may_repeat(
+        self, writers: tuple[AsyncMock, AsyncMock, AsyncMock]
+    ) -> None:
         """Only a timestamped entry is one record; "- nothing new" on two days is two entries."""
         _canvas, activity, _syslog = writers
         doc = _doc(activity_content="### 2026-09-30\n- nothing new")
@@ -416,7 +426,9 @@ class TestWriteFile:
         assert refusal is not None and "append-only" in refusal
         activity.assert_not_awaited()
 
-    async def test_observations_are_saved_whole_to_their_own_field(self, writers: tuple[AsyncMock, AsyncMock, AsyncMock]) -> None:
+    async def test_observations_are_saved_whole_to_their_own_field(
+        self, writers: tuple[AsyncMock, AsyncMock, AsyncMock]
+    ) -> None:
         canvas, activity, syslog = writers
         doc = _doc()
         with patch(
@@ -436,7 +448,9 @@ class TestWriteFile:
             f"Agent wrote observations.md ({len(OBSERVATIONS)} chars)"
         )
 
-    async def test_observations_past_their_cap_are_refused_unwritten(self, writers: tuple[AsyncMock, AsyncMock, AsyncMock]) -> None:
+    async def test_observations_past_their_cap_are_refused_unwritten(
+        self, writers: tuple[AsyncMock, AsyncMock, AsyncMock]
+    ) -> None:
         from app.constants.todos import OBSERVATIONS_MAX_CHARS
 
         body = "o" * (OBSERVATIONS_MAX_CHARS + 1)

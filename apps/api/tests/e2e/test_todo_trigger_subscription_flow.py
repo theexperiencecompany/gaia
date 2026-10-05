@@ -222,9 +222,7 @@ class TestSubscribeThroughTheGraph:
         accepted = _tool_message(messages, "call-good")
         assert "is now watching" in accepted.content
         assert (
-            set_subscriptions.await_args.kwargs["subscriptions"][0]
-            .conditions[0]
-            .field_name
+            set_subscriptions.await_args.kwargs["subscriptions"][0].conditions[0].field_name
             == "sender"
         )
 

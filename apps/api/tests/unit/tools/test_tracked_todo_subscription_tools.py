@@ -332,7 +332,8 @@ class TestSubscribe:
         assert repaired.repairs, "fixture no longer exercises a repair"
 
         with patch(
-            f"{_MOD}.register_subscription", AsyncMock(return_value=(_subscription(), repaired, True))
+            f"{_MOD}.register_subscription",
+            AsyncMock(return_value=(_subscription(), repaired, True)),
         ):
             out = await subscribe_todo_to_trigger.coroutine(
                 config=_config(), todo_id=TODO_ID, trigger_name=GMAIL, action="execute"
@@ -355,7 +356,8 @@ class TestSubscribe:
             ],
         )
         with patch(
-            f"{_MOD}.register_subscription", AsyncMock(return_value=(_subscription(), outcome, True))
+            f"{_MOD}.register_subscription",
+            AsyncMock(return_value=(_subscription(), outcome, True)),
         ):
             out = await subscribe_todo_to_trigger.coroutine(
                 config=_config(), todo_id=TODO_ID, trigger_name=GMAIL, action="execute"

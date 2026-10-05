@@ -755,7 +755,9 @@ class TestFetchedAt:
         )
 
     @pytest.mark.regression
-    def test_an_inline_result_carries_the_moment_before_the_query(self, mock_proxy: MagicMock) -> None:
+    def test_an_inline_result_carries_the_moment_before_the_query(
+        self, mock_proxy: MagicMock
+    ) -> None:
         with time_machine.travel(FETCH_STARTED, tick=False) as traveller:
             mock_proxy.side_effect = _gmail_taking_a_minute_per_call(traveller)
             result = self._fetch(FetchMessagesInput(query="newer_than:1d", per_page=10))
@@ -923,7 +925,9 @@ class TestTheDesksSweep:
             {"value": "bob@example.com", "count": 2},
         ]
 
-    def test_a_requested_file_with_no_session_to_hold_it_fails_the_call(self, mock_proxy: MagicMock) -> None:
+    def test_a_requested_file_with_no_session_to_hold_it_fails_the_call(
+        self, mock_proxy: MagicMock
+    ) -> None:
         mock_proxy.return_value = {"messages": [], "resultSizeEstimate": 0}
         with (
             patch(
@@ -1047,7 +1051,11 @@ class TestEveryToolActsAsTheAuthenticatedUser:
         ],
     )
     def test_the_proxy_is_only_ever_called_for_the_caller(
-        self, mock_proxy: MagicMock, tool: str, tool_request: BaseModel, responses: list[dict[str, object]] | None
+        self,
+        mock_proxy: MagicMock,
+        tool: str,
+        tool_request: BaseModel,
+        responses: list[dict[str, object]] | None,
     ) -> None:
         mock_proxy.side_effect = responses if responses is not None else _one_message_mailbox()
 
@@ -1057,7 +1065,9 @@ class TestEveryToolActsAsTheAuthenticatedUser:
 
         assert _users_asked(mock_proxy) == {"user_test_123"}
 
-    def test_credentials_without_a_user_are_refused_before_any_mailbox_call(self, mock_proxy: MagicMock) -> None:
+    def test_credentials_without_a_user_are_refused_before_any_mailbox_call(
+        self, mock_proxy: MagicMock
+    ) -> None:
         """No user_id means no mailbox to act on, and an empty string is not a mailbox."""
         with pytest.raises(ValueError, match="user_id"):
             _register_and_get_tools()["MARK_AS_READ"](
@@ -1077,7 +1087,9 @@ class TestWhatEachToolAsksGmailFor:
     unread-inbox filter that matches nothing reads to the desk as "you have no mail".
     """
 
-    def test_the_contact_search_sends_the_query_and_the_page_size(self, mock_proxy: MagicMock) -> None:
+    def test_the_contact_search_sends_the_query_and_the_page_size(
+        self, mock_proxy: MagicMock
+    ) -> None:
         mock_proxy.side_effect = [{"messages": [{"id": "m1"}]}, {}]
 
         _register_and_get_tools()["GET_CONTACT_LIST"](
@@ -1090,7 +1102,9 @@ class TestWhatEachToolAsksGmailFor:
         assert search.query == {"q": "from:boss@example.com", "maxResults": 42}
         assert search.endpoint.endswith("/users/me/messages")
 
-    def test_the_recent_inbox_ids_ask_the_inbox_for_a_bounded_page(self, mock_proxy: MagicMock) -> None:
+    def test_the_recent_inbox_ids_ask_the_inbox_for_a_bounded_page(
+        self, mock_proxy: MagicMock
+    ) -> None:
         mock_proxy.side_effect = [
             {"emailAddress": "u@x.com", "messagesTotal": 1, "threadsTotal": 1},
             {"messagesUnread": 0, "messagesTotal": 0},
@@ -1108,7 +1122,9 @@ class TestWhatEachToolAsksGmailFor:
 class TestTheInlineEmailCard:
     """The card the chat renders beside an inline result, row by row."""
 
-    def test_each_row_carries_its_own_field_under_the_key_the_card_reads(self, mock_proxy: MagicMock) -> None:
+    def test_each_row_carries_its_own_field_under_the_key_the_card_reads(
+        self, mock_proxy: MagicMock
+    ) -> None:
         """Every key holds that message's own value, and no others."""
         writer = MagicMock()
         mock_proxy.side_effect = _one_message_mailbox()
@@ -1143,7 +1159,9 @@ class TestTheInlineEmailCard:
 class TestTheOffloadedFile:
     """The JSONL the agent queries instead of holding the mail in context."""
 
-    def test_the_file_is_one_full_view_per_line_written_for_this_run(self, mock_proxy: MagicMock, tmp_path: Path) -> None:
+    def test_the_file_is_one_full_view_per_line_written_for_this_run(
+        self, mock_proxy: MagicMock, tmp_path: Path
+    ) -> None:
         """Every field is in the file, whatever the caller projected."""
         written: dict[str, str] = {}
 
@@ -1188,7 +1206,9 @@ class TestTheOffloadedFile:
 
 
 class TestTheFetchQueryAndItsCursor:
-    def test_the_list_call_carries_the_combined_query_and_the_page_size(self, mock_proxy: MagicMock) -> None:
+    def test_the_list_call_carries_the_combined_query_and_the_page_size(
+        self, mock_proxy: MagicMock
+    ) -> None:
         """Gmail's own parameter names, spelled as Gmail spells them."""
         seen: list[dict[str, Any]] = []
         mailbox = _one_message_mailbox()
@@ -1221,7 +1241,9 @@ class TestTheFetchQueryAndItsCursor:
 
         assert result["fetched_at"] == int(FETCH_STARTED.timestamp())
 
-    def test_a_result_exactly_at_the_inline_limit_is_still_inline(self, mock_proxy: MagicMock) -> None:
+    def test_a_result_exactly_at_the_inline_limit_is_still_inline(
+        self, mock_proxy: MagicMock
+    ) -> None:
         """A result that exactly fills the inline limit stays in context."""
         request = FetchMessagesInput(query="after:1790000000", per_page=5)
         exact = _inline_size_of(mock_proxy, request)
@@ -1312,7 +1334,9 @@ class TestTheThreadRead:
 
         return serve
 
-    def test_each_thread_comes_back_under_its_own_id_with_its_message_count(self, mock_proxy: MagicMock) -> None:
+    def test_each_thread_comes_back_under_its_own_id_with_its_message_count(
+        self, mock_proxy: MagicMock
+    ) -> None:
         """The agent groups by thread id and tells the user how much each one holds."""
         mock_proxy.side_effect = self._threads(count=3)
 
@@ -1354,7 +1378,9 @@ class TestTheThreadRead:
 
             assert formats == [expected], (fields, processing)
 
-    def test_a_cap_the_thread_fills_exactly_is_not_reported_as_truncated(self, mock_proxy: MagicMock) -> None:
+    def test_a_cap_the_thread_fills_exactly_is_not_reported_as_truncated(
+        self, mock_proxy: MagicMock
+    ) -> None:
         """A cap that exactly fits every message of the thread truncated nothing."""
         mock_proxy.side_effect = self._threads(count=2)
 
@@ -1368,7 +1394,9 @@ class TestTheThreadRead:
         (thread,) = result["threads"]
         assert thread["message_count"] == 2
 
-    def test_a_cap_below_the_thread_size_reports_what_it_left_out(self, mock_proxy: MagicMock) -> None:
+    def test_a_cap_below_the_thread_size_reports_what_it_left_out(
+        self, mock_proxy: MagicMock
+    ) -> None:
         mock_proxy.side_effect = self._threads(count=4)
 
         result = _register_and_get_tools()["FETCH_THREAD"](
@@ -1400,7 +1428,9 @@ class TestAStarredMessageIsStillTheCallersOwn:
 class TestTheContactHeaderFetch:
     """The metadata read behind GET_CONTACT_LIST, which only needs addressing headers."""
 
-    def test_it_asks_gmail_for_the_addressing_headers_and_nothing_else(self, mock_proxy: MagicMock) -> None:
+    def test_it_asks_gmail_for_the_addressing_headers_and_nothing_else(
+        self, mock_proxy: MagicMock
+    ) -> None:
         """The header list decides what the contact list can contain."""
         mock_proxy.side_effect = [{"messages": [{"id": "m1"}]}, {}]
 
@@ -1418,7 +1448,9 @@ class TestTheContactHeaderFetch:
 
 
 class TestTheUnreadCountShape:
-    def test_a_single_label_query_reports_which_label_it_counted(self, mock_proxy: MagicMock) -> None:
+    def test_a_single_label_query_reports_which_label_it_counted(
+        self, mock_proxy: MagicMock
+    ) -> None:
         """One label counted, the result says which — so a caller can tell two runs apart."""
         mock_proxy.return_value = {"resultSizeEstimate": "12", "messagesUnreadEstimate": "4"}
 
@@ -1500,7 +1532,9 @@ class TestTheThreadCapStopsTheWalk:
 
 
 class TestAPartialThreadRead:
-    def test_the_messages_fetched_before_the_failure_come_back_projected(self, mock_proxy: MagicMock) -> None:
+    def test_the_messages_fetched_before_the_failure_come_back_projected(
+        self, mock_proxy: MagicMock
+    ) -> None:
         """A thread read that dies halfway returns what it had, in the caller's fields."""
 
         def _serve(request: ProxyRequest) -> dict[str, Any]:
@@ -1527,7 +1561,9 @@ class TestAPartialThreadRead:
 
 
 class TestAPartialFetchStaysProjected:
-    def test_the_messages_fetched_before_the_failure_carry_only_the_asked_fields(self, mock_proxy: MagicMock) -> None:
+    def test_the_messages_fetched_before_the_failure_carry_only_the_asked_fields(
+        self, mock_proxy: MagicMock
+    ) -> None:
         """A partial result is still a result, so it obeys the same field contract."""
         with time_machine.travel(FETCH_STARTED, tick=False) as traveller:
             mock_proxy.side_effect = _gmail_taking_a_minute_per_call(
@@ -1544,7 +1580,9 @@ class TestAPartialFetchStaysProjected:
         assert result["messages"]
         assert set(result["messages"][0]) == {"id"}
 
-    def test_a_complete_fetch_carries_only_the_fields_asked_for(self, mock_proxy: MagicMock) -> None:
+    def test_a_complete_fetch_carries_only_the_fields_asked_for(
+        self, mock_proxy: MagicMock
+    ) -> None:
         """The whole-result path projects too, not just the partial one."""
         mock_proxy.side_effect = _one_message_mailbox()
 
