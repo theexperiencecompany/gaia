@@ -283,6 +283,27 @@ class TestRegisterSubscription:
         h.unregister.assert_awaited_once_with(USER_ID, INSTANCE_TRIGGER, ["loser-id"])
 
     @pytest.mark.regression
+    async def test_a_paused_match_is_not_a_duplicate_of_an_active_watch(self) -> None:
+        """A paused row cannot fire, so re-adding its watch stores a live one.
+
+        The paused twin stays paused for resync to own; the desk ends with one
+        watch that fires, not one row that cannot.
+        """
+        paused = _subscription(status=TriggerSubscriptionStatus.PAUSED)
+        with _Harness(_todo(trigger_subscriptions=[paused]), ["ti_live"]) as h:
+            stored, _outcome, created = await register_subscription(
+                todo_id=TODO_ID,
+                user_id=USER_ID,
+                trigger_name=INSTANCE_TRIGGER,
+                conditions=[],
+                action=SubscriptionAction.EXECUTE,
+            )
+
+        assert created is True
+        assert stored.status is TriggerSubscriptionStatus.ACTIVE
+        assert [sub.id for sub in h.written_subscriptions] == [paused.id, stored.id]
+
+    @pytest.mark.regression
     async def test_watches_with_different_settings_are_not_the_same_watch(self) -> None:
         """A calendar watch with another reminder window is another watch, not a duplicate."""
         existing = _subscription(cooldown_seconds=60, trigger_data={"window": "15m"})

@@ -216,6 +216,10 @@ def _same_watch(left: TriggerSubscription, right: TriggerSubscription) -> bool:
         and set(left.conditions) == set(right.conditions)
         and left.cooldown_seconds == right.cooldown_seconds
         and left.trigger_data == right.trigger_data
+        # A paused row is resync-owned: returning it as the duplicate would hand
+        # back a watch that cannot fire, so only active rows dedupe.
+        and left.status is TriggerSubscriptionStatus.ACTIVE
+        and right.status is TriggerSubscriptionStatus.ACTIVE
     )
 
 
