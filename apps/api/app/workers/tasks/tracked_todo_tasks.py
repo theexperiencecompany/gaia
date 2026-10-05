@@ -251,6 +251,17 @@ async def _execute_todo_with_retry(
             await _advance_schedule(
                 doc, user_tz.value, one_time_rerun_at=datetime.now(UTC) + PAUSED_RUN_RECHECK
             )
+        else:
+            # Drained to fire this run: hold again for the catch-up drain.
+            # Buffering schedules the drain itself.
+            for event in [origin, *coalesced]:
+                if not await buffer_todo_trigger_event(todo_id, event):
+                    log.error(
+                        "tracked_todo.trigger_event_lost_paused",
+                        todo_id=todo_id,
+                        trigger_name=event.trigger_name,
+                        subscription_id=event.subscription_id,
+                    )
         await record_activity(todo_id, user_id, TodoActivityEvent.RUN_SKIPPED, paused)
         log.set(tracked_todo={"paused": paused})
         return f"paused:{todo_id}"

@@ -778,6 +778,59 @@ class TestARunWaitsForItsAccount:
         assert result == "success:todo-1"
         via_agent.assert_awaited_once()
 
+    async def test_a_paused_trigger_run_holds_its_events_for_the_catch_up_drain(
+        self, account, activity
+    ):
+        """Drained events are held, not dropped, while the account is ineligible."""
+        account.paid.return_value = False
+        first = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
+        rest = TriggerOrigin(subscription_id="sub-2", trigger_name="gmail_new_message")
+        doc = _doc(external_ref=ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="t-1"))
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=doc)
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}._execute_on_executor", AsyncMock()),
+            patch(
+                f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
+            ),
+            patch(f"{MODULE}.buffer_todo_trigger_event", AsyncMock(return_value=True)) as held,
+            _serving(_pool()),
+        ):
+            result = await _execute_todo_with_retry("todo-1", first, coalesced=[rest])
+
+        assert result == "paused:todo-1"
+        assert [c.args[1] for c in held.await_args_list] == [first, rest]
+        assert (TodoActivityEvent.RUN_SKIPPED, "skipped: the user's plan is not active") in (
+            _recorded(activity)
+        )
+
+    async def test_an_unholdable_event_is_logged_not_silently_dropped(self, account, activity):
+        first = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
+        doc = _doc(external_ref=ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="t-1"))
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=doc)
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}._execute_on_executor", AsyncMock()),
+            patch(
+                f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
+            ),
+            patch(f"{MODULE}.buffer_todo_trigger_event", AsyncMock(return_value=False)),
+            patch(f"{MODULE}.log") as mock_log,
+            _serving(_pool()),
+        ):
+            account.paid.return_value = False
+            result = await _execute_todo_with_retry("todo-1", first)
+
+        assert result == "paused:todo-1"
+        mock_log.error.assert_called_once_with(
+            "tracked_todo.trigger_event_lost_paused",
+            todo_id="todo-1",
+            trigger_name="gmail_new_message",
+            subscription_id="sub-1",
+        )
+
 
 class TestExecuteTodoWithRetryEarlyExits:
     @pytest.fixture(autouse=True)
