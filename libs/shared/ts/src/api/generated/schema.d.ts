@@ -1815,20 +1815,19 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        get?: never;
+        put?: never;
         /**
          * Connect Link Endpoint
-         * @description Login-free entry point for bot / non-UI users.
+         * @description Login-free entry point for bot / non-UI users: spend the code, 303 into OAuth.
          *
-         *     Resolves the single-use connect code to its bound ``(user, integration)``
-         *     (no session required — the code is the credential) and bounces the user
-         *     straight into the provider OAuth flow. Invalid/expired/used codes redirect
-         *     to a friendly page. Excluded from auth in WorkOSAuthMiddleware; it
-         *     self-authenticates. Per-IP rate limited so the short code can't be brute
-         *     forced online.
+         *     POST-only because spending the code is a state change: link-preview
+         *     crawlers (Telegram, Slack) GET every link in a message and would burn it
+         *     before the user taps. The web /connect/<code> page posts here from a button.
+         *     Excluded from auth (the code is the credential) and per-IP rate limited
+         *     so the short code can't be brute forced online.
          */
-        get: operations["integrations_connect_link_endpoint"];
-        put?: never;
-        post?: never;
+        post: operations["integrations_connect_link_endpoint"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6030,6 +6029,11 @@ export interface components {
             file: string;
             /** Message */
             message: string;
+        };
+        /** Body_integrations_connect_link_endpoint */
+        Body_integrations_connect_link_endpoint: {
+            /** Code */
+            code: string;
         };
         /** Body_notification_unregister_device_token */
         Body_notification_unregister_device_token: {
@@ -14839,6 +14843,7 @@ export type BlogPost = components['schemas']['BlogPost'];
 export type Body_bot_transcribe_bot_audio = components['schemas']['Body_bot_transcribe_bot_audio'];
 export type Body_file_upload_file_endpoint = components['schemas']['Body_file_upload_file_endpoint'];
 export type Body_image_image_to_text = components['schemas']['Body_image_image_to_text'];
+export type Body_integrations_connect_link_endpoint = components['schemas']['Body_integrations_connect_link_endpoint'];
 export type Body_notification_unregister_device_token = components['schemas']['Body_notification_unregister_device_token'];
 export type Body_support_submit_support_request_with_attachments = components['schemas']['Body_support_submit_support_request_with_attachments'];
 export type Body_user_update_holo_card_colors = components['schemas']['Body_user_update_holo_card_colors'];
@@ -20128,14 +20133,16 @@ export interface operations {
     };
     integrations_connect_link_endpoint: {
         parameters: {
-            query: {
-                code: string;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["Body_integrations_connect_link_endpoint"];
+            };
+        };
         responses: {
             /** @description Client Error */
             "4XX": {
@@ -20156,7 +20163,7 @@ export interface operations {
                 };
             };
             /** @description Successful Response */
-            307: {
+            303: {
                 headers: {
                     [name: string]: unknown;
                 };

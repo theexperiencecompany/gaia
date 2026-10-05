@@ -470,8 +470,8 @@ description = "Run all pre-commit checks (workspace mode)"
 run = "prek run --all-files"
 
 [tasks."pre-commit:install"]
-description = "Install pre-commit hooks using prek"
-run = "prek install"
+description = "Install the commit and pre-push hooks using prek"
+run = "prek install --hook-type pre-commit --hook-type pre-push"
 
 [tasks."pre-commit:run"]
 description = "Run pre-commit hooks on staged files"
@@ -670,7 +670,10 @@ run = "python3 tools/evlog_map --all"
 # ── Agent-legible gates ──────────────────────────────────────────────────────
 [tasks."ci:local"]
 description = "Run CI quality gates locally (same lanes/versions as GitHub Actions); --list shows all lanes"
-run = "uv run python scripts/dev/gaia_verify.py"
+# --no-project: the runner is stdlib-only. A project run synced the workspace
+# root (voice-agent's livekit included) into the shared .venv, so the mypy lane
+# saw packages CI never installs and failed where CI passes.
+run = "uv run --no-project python scripts/dev/gaia_verify.py"
 
 
 [tasks."pr:comments"]

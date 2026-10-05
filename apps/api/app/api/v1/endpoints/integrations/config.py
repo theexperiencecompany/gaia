@@ -1,7 +1,9 @@
 """Integration config, catalog, and connection routes."""
 
+from typing import Annotated
+
 from bson.errors import InvalidId
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
@@ -283,20 +285,24 @@ def _connect_link_error(reason: str) -> RedirectResponse:
     still lands somewhere useful.
     """
     base = settings.FRONTEND_URL.rstrip("/")
-    return RedirectResponse(url=f"{base}/integrations?connect_error={reason}")
+    return RedirectResponse(
+        url=f"{base}/integrations?connect_error={reason}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
 
 
-@router.get("/connect-link", response_class=RedirectResponse)
+@router.post(
+    "/connect-link", response_class=RedirectResponse, status_code=status.HTTP_303_SEE_OTHER
+)
 @limiter.limit("10/minute")
-async def connect_link_endpoint(request: Request, code: str) -> RedirectResponse:  # noqa: ARG001 -- slowapi's @limiter.limit requires request in the handler signature
-    """Login-free entry point for bot / non-UI users.
+async def connect_link_endpoint(request: Request, code: Annotated[str, Form()]) -> RedirectResponse:  # noqa: ARG001 -- slowapi's @limiter.limit requires request in the handler signature
+    """Login-free entry point for bot / non-UI users: spend the code, 303 into OAuth.
 
-    Resolves the single-use connect code to its bound ``(user, integration)``
-    (no session required — the code is the credential) and bounces the user
-    straight into the provider OAuth flow. Invalid/expired/used codes redirect
-    to a friendly page. Excluded from auth in WorkOSAuthMiddleware; it
-    self-authenticates. Per-IP rate limited so the short code can't be brute
-    forced online.
+    POST-only because spending the code is a state change: link-preview
+    crawlers (Telegram, Slack) GET every link in a message and would burn it
+    before the user taps. The web /connect/<code> page posts here from a button.
+    Excluded from auth (the code is the credential) and per-IP rate limited
+    so the short code can't be brute forced online.
     """
     log.set(operation="connect_link")
     verified = await resolve_and_consume_connect_code(code)
@@ -367,7 +373,7 @@ async def connect_link_endpoint(request: Request, code: str) -> RedirectResponse
             {"integration_id": integration_id, "source": "connect_link"},
         )
         log.set(outcome="redirect")
-        return RedirectResponse(url=result.redirect_url)
+        return RedirectResponse(url=result.redirect_url, status_code=status.HTTP_303_SEE_OTHER)
 
     log.set(outcome="error")
     return _connect_link_error("could_not_start")

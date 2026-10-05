@@ -2693,6 +2693,10 @@ class TestConnectComposioIntegration:
 
         assert result.status == "redirect"
         assert result.redirect_url == "https://composio.dev/auth"
+        # The link is minted for this user and provider, carrying the OAuth state.
+        mock_service.connect_account.assert_awaited_once_with(
+            "slack", USER_ID, state_token="state-token"
+        )
         # Two writes: `created` before the redirect, so an abandoned connect still
         # leaves a record, then the connected-account id once Composio mints it.
         assert mock_update_status.await_args_list == [

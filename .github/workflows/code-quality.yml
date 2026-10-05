@@ -46,8 +46,10 @@ on:
 # Per-SHA group; superseded runs are cancelled by select-runner via the API
 # (scripts/ci/runner.sh cancel-superseded) so a new push never waits on the old
 # run's cancellation — see main.yml for the measured reason.
+# A plain title/body edit gets its own group: it shares the merge sha with the
+# run that validated the commit, and in that group it used to cancel it.
 concurrency:
-  group: code-quality-${{ github.workflow }}-${{ github.head_ref || github.ref }}-${{ github.sha }}
+  group: code-quality-${{ github.workflow }}-${{ github.head_ref || github.ref }}-${{ github.sha }}${{ github.event.action == 'edited' && github.event.changes.base == '' && '-edit' || '' }}
   cancel-in-progress: true
 
 permissions:
@@ -182,6 +184,7 @@ jobs:
       contents: read
       pull-requests: read
       actions: read
+      checks: read # reuse-plan reads the base tip earlier runs annotated
     outputs:
       has_python: ${{ steps.detect.outputs.has_python }}
       has_typescript: ${{ steps.detect.outputs.has_typescript }}
@@ -194,6 +197,10 @@ jobs:
       # it costs one API call and because a per-lane resolution is a per-lane
       # chance to disagree.
       base_ref: ${{ steps.base.outputs.base_ref }}
+      # Jobs whose last pass on this PR still holds (verdict.py reuse-plan):
+      # each skips on it, and the gate labels it reused.
+      reused_jobs: ${{ steps.reuse.outputs.reused_jobs }}
+      reused: ${{ steps.reuse.outputs.reused }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -210,6 +217,16 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: bash scripts/ci/changes.sh base
+
+      - name: Reuse lanes whose inputs did not change since their last pass
+        id: reuse
+        # Through env, never inline: the head branch name is PR-author controlled.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BRANCH: ${{ github.head_ref || github.ref_name }}
+          PR_BASE: ${{ steps.base.outputs.base_ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python3 scripts/ci/verdict.py reuse-plan --repo "$GITHUB_REPOSITORY" --workflow code-quality.yml --branch "$PR_BRANCH" --base "$PR_BASE" --head-sha "$PR_HEAD_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --event "$GITHUB_EVENT_NAME"
 
       - uses: nrwl/nx-set-shas@afb73a62d26e41464e9254689e1fd6122ee683c1 # v5.0.1
         with:
@@ -300,7 +317,7 @@ jobs:
   biome:
     name: Biome lint + format
     needs: [select-runner, changes, python-static, python-mypy, dead-code]
-    if: ${{ !cancelled() && (needs.changes.outputs.has_typescript == 'true') }}
+    if: ${{ (!cancelled() && (needs.changes.outputs.has_typescript == 'true')) && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'biome') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
@@ -381,7 +398,7 @@ jobs:
   deps:
     name: Workspace dependency hygiene
     needs: [select-runner, changes, python-static, python-mypy, dead-code]
-    if: ${{ !cancelled() && (needs.changes.outputs.has_typescript == 'true') }}
+    if: ${{ (!cancelled() && (needs.changes.outputs.has_typescript == 'true')) && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'deps') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
@@ -461,7 +478,7 @@ jobs:
   circular:
     name: No circular imports
     needs: [select-runner, changes, python-static, python-mypy, dead-code]
-    if: ${{ !cancelled() && (needs.changes.outputs.has_typescript == 'true') }}
+    if: ${{ (!cancelled() && (needs.changes.outputs.has_typescript == 'true')) && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'circular') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
@@ -497,7 +514,7 @@ jobs:
   file-size:
     name: File size limits
     needs: [select-runner, changes, python-static, python-mypy, dead-code]
-    if: ${{ !cancelled() && (needs.changes.outputs.has_typescript == 'true') }}
+    if: ${{ (!cancelled() && (needs.changes.outputs.has_typescript == 'true')) && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'file-size') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
@@ -542,7 +559,7 @@ jobs:
     needs: [select-runner, changes]
     # has_api_schema is the path-scoped half: a dependency bump changes the
     # generated document without making nx call any project affected.
-    if: needs.changes.outputs.has_python == 'true' || needs.changes.outputs.has_typescript == 'true' || needs.changes.outputs.has_api_schema == 'true'
+    if: ${{ (needs.changes.outputs.has_python == 'true' || needs.changes.outputs.has_typescript == 'true' || needs.changes.outputs.has_api_schema == 'true') && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'api-schema') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     env:
       GAIA_PR_BASE: ${{ needs.changes.outputs.base_ref }}
@@ -588,7 +605,7 @@ jobs:
   types-location:
     name: Types live in dedicated *.types.ts files
     needs: [select-runner, changes, python-static, python-mypy, dead-code]
-    if: ${{ !cancelled() && (needs.changes.outputs.has_typescript == 'true') }}
+    if: ${{ (!cancelled() && (needs.changes.outputs.has_typescript == 'true')) && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'types-location') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
@@ -631,7 +648,7 @@ jobs:
   doc-comments:
     name: Doc comments state the contract (no narration, restating, banners)
     needs: [select-runner, changes, python-static, python-mypy, dead-code]
-    if: ${{ !cancelled() && (needs.changes.outputs.has_js_sources == 'true') }}
+    if: ${{ (!cancelled() && (needs.changes.outputs.has_js_sources == 'true')) && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'doc-comments') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
@@ -674,7 +691,7 @@ jobs:
   components-per-file:
     name: At most 2 React components per file
     needs: [select-runner, changes, python-static, python-mypy, dead-code]
-    if: ${{ !cancelled() && (needs.changes.outputs.has_typescript == 'true') }}
+    if: ${{ (!cancelled() && (needs.changes.outputs.has_typescript == 'true')) && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'components-per-file') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
@@ -717,7 +734,7 @@ jobs:
   duplicates:
     name: Copy-paste detection (jscpd)
     needs: [select-runner, changes]
-    if: needs.changes.outputs.has_typescript == 'true'
+    if: ${{ (needs.changes.outputs.has_typescript == 'true') && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'duplicates') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
@@ -756,7 +773,7 @@ jobs:
   package-hygiene:
     name: Published package hygiene (publint + attw)
     needs: [select-runner, changes, python-static, python-mypy, dead-code]
-    if: ${{ !cancelled() && (needs.changes.outputs.has_typescript == 'true') }}
+    if: ${{ (!cancelled() && (needs.changes.outputs.has_typescript == 'true')) && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'package-hygiene') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
@@ -811,7 +828,7 @@ jobs:
   type-check:
     name: TypeScript strict type-check (all workspaces)
     needs: [select-runner, changes, python-static, python-mypy, dead-code]
-    if: ${{ !cancelled() && (needs.changes.outputs.has_typescript == 'true') }}
+    if: ${{ (!cancelled() && (needs.changes.outputs.has_typescript == 'true')) && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'type-check') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
@@ -861,9 +878,9 @@ jobs:
   # plus the aggregating verdict at the end: one red tool no longer hides the
   # other five, which is the only thing separate jobs bought us here.
   python-static:
-    name: Python static (ruff + custom lints + import contracts + xenon + interrogate + bandit + pip-audit)
+    name: Python static (ruff + custom lints + import contracts + ratchets + xenon + interrogate + bandit)
     needs: [select-runner, changes]
-    if: needs.changes.outputs.has_python == 'true'
+    if: ${{ (needs.changes.outputs.has_python == 'true') && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'python-static') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
@@ -977,23 +994,6 @@ jobs:
           python3 tools/lints/check_typed_boundaries.py
           echo "::endgroup::"
           echo "typed-boundaries: OK"
-      - name: Import cost of the base layers (trend; not gating yet)
-        id: import-cost
-        continue-on-error: true
-        # Measured 2026-09-17 on the home box: every module under app/utils and
-        # app/models costs 6-15 s to import ALONE, because those layers reach up
-        # into app.agents and app.services (app.utils.chat_utils imports
-        # app.agents.llm.chatbot). Gating at MODULE_BUDGET_MS today would red
-        # ~200 modules on a PR that did not cause any of them, so the step runs
-        # with --report: it measures everything and records the entry points'
-        # cost as a trend. Drop `--report` to gate — that is the whole change —
-        # once the layering is fixed. It is still in the verdict below, so a
-        # step that stops RUNNING is still a red lane.
-        run: |
-          echo "::group::import cost"
-          python3 tools/lints/check_import_cost.py --report
-          echo "::endgroup::"
-          echo "import-cost: measured (trend only until the base layers stop importing upward)"
       - name: Complexity scan (max-absolute F, max-modules E, max-average B)
         id: xenon
         continue-on-error: true
@@ -1059,6 +1059,84 @@ jobs:
           echo "::endgroup::"
           echo "### Bandit — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "Security: OK (0 issues across all severity levels)"
+      - name: Verdict (every tool above ran; this fails if any of them did not pass)
+        if: always()
+        env:
+          # Step outcomes passed through env to match the quality gate's
+          # no-inline-expansion convention.
+          RUFF: ${{ steps.ruff.outcome }}
+          CUSTOM_LINTS: ${{ steps.custom-lints.outcome }}
+          LINT_IMPORTS: ${{ steps.lint-imports.outcome }}
+          IGNORE_WHYS: ${{ steps.ignore-whys.outcome }}
+          PLR_COMPLEXITY: ${{ steps.plr-complexity.outcome }}
+          TYPED_BOUNDARIES: ${{ steps.typed-boundaries.outcome }}
+          XENON: ${{ steps.xenon.outcome }}
+          INTERROGATE: ${{ steps.interrogate.outcome }}
+          BANDIT: ${{ steps.bandit.outcome }}
+        run: |
+          python3 scripts/ci/verdict.py step-outcomes --lane python-static \
+            --findings "$RUNNER_TEMP/findings.jsonl" \
+            "ruff=$RUFF" \
+            "custom-lints=$CUSTOM_LINTS" \
+            "lint-imports=$LINT_IMPORTS" \
+            "ignore-whys=$IGNORE_WHYS" \
+            "plr-complexity=$PLR_COMPLEXITY" \
+            "typed-boundaries=$TYPED_BOUNDARIES" \
+            "xenon=$XENON" \
+            "interrogate=$INTERROGATE" \
+            "bandit=$BANDIT"
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: python-static
+
+  # --- Python dependency audit + import cost --------------------------------
+  # Split out of python-static: the two slow tools (pip-audit ~220 s against the
+  # vulnerability DB, import-cost ~125 s importing every base module) used to hold
+  # the ~10 s ratchets' verdict back for nine minutes in one job.
+  python-audit:
+    name: Python dependency audit (pip-audit) + import cost
+    needs: [select-runner, changes]
+    if: ${{ (needs.changes.outputs.has_python == 'true') && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'python-audit') }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # The base every scoped step in this job diffs against (see python-static).
+    env:
+      GAIA_PR_BASE: ${{ needs.changes.outputs.base_ref }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-uv
+      # import-cost imports the real modules, so it needs the real venv.
+      - uses: ./.github/actions/setup-python-test-env
+        with:
+          services: "false"
+          node: "false"
+          restore-models: "false"
+      - name: Import cost of the base layers (trend; not gating yet)
+        id: import-cost
+        continue-on-error: true
+        # Measured 2026-09-17 on the home box: every module under app/utils and
+        # app/models costs 6-15 s to import ALONE, because those layers reach up
+        # into app.agents and app.services (app.utils.chat_utils imports
+        # app.agents.llm.chatbot). Gating at MODULE_BUDGET_MS today would red
+        # ~200 modules on a PR that did not cause any of them, so the step runs
+        # with --report: it measures everything and records the entry points'
+        # cost as a trend. Drop `--report` to gate — that is the whole change —
+        # once the layering is fixed. It is still in the verdict below, so a
+        # step that stops RUNNING is still a red lane.
+        run: |
+          echo "::group::import cost"
+          python3 tools/lints/check_import_cost.py --report
+          echo "::endgroup::"
+          echo "import-cost: measured (trend only until the base layers stop importing upward)"
       - name: pip-audit (dependency CVEs — blocking)
         id: pip-audit
         continue-on-error: true
@@ -1073,36 +1151,12 @@ jobs:
           echo "::endgroup::"
           echo "### pip-audit — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "pip-audit: OK (no CVEs)"
-      - name: Verdict (every tool above ran; this fails if any of them did not pass)
+      - name: Verdict (both tools above ran; this fails if either did not pass)
         if: always()
         env:
-          # Step outcomes passed through env to match the quality gate's
-          # no-inline-expansion convention.
-          RUFF: ${{ steps.ruff.outcome }}
-          CUSTOM_LINTS: ${{ steps.custom-lints.outcome }}
-          LINT_IMPORTS: ${{ steps.lint-imports.outcome }}
-          IGNORE_WHYS: ${{ steps.ignore-whys.outcome }}
-          PLR_COMPLEXITY: ${{ steps.plr-complexity.outcome }}
-          TYPED_BOUNDARIES: ${{ steps.typed-boundaries.outcome }}
           IMPORT_COST: ${{ steps.import-cost.outcome }}
-          XENON: ${{ steps.xenon.outcome }}
-          INTERROGATE: ${{ steps.interrogate.outcome }}
-          BANDIT: ${{ steps.bandit.outcome }}
           PIP_AUDIT: ${{ steps.pip-audit.outcome }}
-        run: |
-          python3 scripts/ci/verdict.py step-outcomes --lane python-static \
-            --findings "$RUNNER_TEMP/findings.jsonl" \
-            "ruff=$RUFF" \
-            "custom-lints=$CUSTOM_LINTS" \
-            "lint-imports=$LINT_IMPORTS" \
-            "ignore-whys=$IGNORE_WHYS" \
-            "plr-complexity=$PLR_COMPLEXITY" \
-            "typed-boundaries=$TYPED_BOUNDARIES" \
-            "import-cost=$IMPORT_COST" \
-            "xenon=$XENON" \
-            "interrogate=$INTERROGATE" \
-            "bandit=$BANDIT" \
-            "pip-audit=$PIP_AUDIT"
+        run: python3 scripts/ci/verdict.py step-outcomes --lane python-audit "import-cost=$IMPORT_COST" "pip-audit=$PIP_AUDIT"
       - name: Upload the verdict
         if: always()
         uses: ./.github/actions/upload-verdict
@@ -1110,13 +1164,13 @@ jobs:
           # job.status, not a status function inside the composite:
           # those read the composite's own steps and always said success.
           status: ${{ job.status }}
-          name: python-static
+          name: python-audit
 
   # --- Python mypy --------------------------------------------------------
   python-mypy:
     name: Python mypy (staged-strict)
     needs: [select-runner, changes]
-    if: needs.changes.outputs.has_python == 'true'
+    if: ${{ (needs.changes.outputs.has_python == 'true') && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'python-mypy') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
@@ -1142,7 +1196,15 @@ jobs:
       # The cache is ~50 MB, so the round-trip is cheap even from GitHub's
       # side. restore-keys lets a lockfile bump start from the previous cache
       # instead of cold.
+      # Self-hosted keeps the cache in the instance's RUNNER_LOCAL_CACHE (one
+      # writer per instance, untouched by the workspace clean), so only
+      # GitHub-hosted runners round-trip it through actions/cache. Its post-job
+      # save on the box hung at 0 MB/s and cancelled a passing lane at the job
+      # cap (run 37220487362).
+      - name: Point mypy at this runner's persistent cache
+        run: echo "MYPY_CACHE_DIR=${RUNNER_LOCAL_CACHE:-$GITHUB_WORKSPACE}/.mypy_cache" >> "$GITHUB_ENV"
       - name: Restore mypy incremental cache
+        if: runner.environment != 'self-hosted'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .mypy_cache
@@ -1152,8 +1214,6 @@ jobs:
             mypy-${{ runner.os }}-
 
       - name: mypy across api + voice-agent + shared + lint tooling (staged-strict + shared.* strict override)
-        env:
-          MYPY_CACHE_DIR: ${{ github.workspace }}/.mypy_cache
         run: |
           echo "::group::mypy"
           # mypy needs the whole module graph per project, so it can't be scoped
@@ -1223,7 +1283,7 @@ jobs:
   observability:
     name: Observability score (evlog map)
     needs: [select-runner, changes, python-static, python-mypy, dead-code]
-    if: ${{ !cancelled() && (needs.changes.outputs.has_python == 'true' || needs.changes.outputs.has_typescript == 'true') }}
+    if: ${{ (!cancelled() && (needs.changes.outputs.has_python == 'true' || needs.changes.outputs.has_typescript == 'true')) && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'observability') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
@@ -1323,7 +1383,7 @@ jobs:
   wide-event-conformance:
     name: Wide events have one shape across Python and TypeScript
     needs: [select-runner, changes, python-static, python-mypy, dead-code]
-    if: ${{ !cancelled() && (needs.changes.outputs.has_python == 'true' || needs.changes.outputs.has_typescript == 'true') }}
+    if: ${{ (!cancelled() && (needs.changes.outputs.has_python == 'true' || needs.changes.outputs.has_typescript == 'true')) && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'wide-event-conformance') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
@@ -1364,7 +1424,7 @@ jobs:
   dead-code:
     name: Dead code (knip + vulture, strict)
     needs: [select-runner, changes]
-    if: needs.changes.outputs.has_typescript == 'true' || needs.changes.outputs.has_python == 'true'
+    if: ${{ (needs.changes.outputs.has_typescript == 'true' || needs.changes.outputs.has_python == 'true') && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'dead-code') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
@@ -1423,7 +1483,7 @@ jobs:
   alert-rules:
     name: Grafana alert rules (pint + promtool)
     needs: [select-runner, changes, python-static, python-mypy, dead-code]
-    if: ${{ !cancelled() && (needs.changes.outputs.has_alert_rules == 'true') }}
+    if: ${{ (!cancelled() && (needs.changes.outputs.has_alert_rules == 'true')) && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'alert-rules') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
@@ -1496,7 +1556,7 @@ jobs:
     # `!cancelled()` alone runs this on a skipped DAG, where `runs-on` is
     # `fromJSON('')` and the lane dies on the runner lookup — the same shape
     # main.yml's trivy-scan and test-harness-tools already guard against.
-    if: ${{ !cancelled() && needs.select-runner.result == 'success' }}
+    if: ${{ (!cancelled() && needs.select-runner.result == 'success') && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'suppression-hygiene') }}
     # No job-level language gate on purpose: check_tool_pins reads the WORKFLOW
     # FILES themselves (code-quality.yml, main.yml), so a workflow-only PR is
     # exactly the change this lane validates — and nx-affected correctly marks
@@ -1588,7 +1648,7 @@ jobs:
     # Skip (gate counts skipped as passing): its PRs are machine-generated
     # manifest/lockfile bumps, and every human commit stays scanned. To scan
     # them too, mirror GITLEAKS_LICENSE into Dependabot secrets and drop this.
-    if: github.actor != 'dependabot[bot]'
+    if: ${{ (github.actor != 'dependabot[bot]') && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'gitleaks') }}
     runs-on: ubuntu-latest
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
@@ -1641,7 +1701,7 @@ jobs:
   semgrep:
     name: Python security patterns (semgrep)
     needs: [changes]
-    if: needs.changes.outputs.has_python == 'true'
+    if: ${{ (needs.changes.outputs.has_python == 'true') && !contains(fromJSON(needs.changes.outputs.reused_jobs || '[]'), 'semgrep') }}
     runs-on: ubuntu-latest
     # The base every scoped step in this job diffs against. Job-level because a
     # workflow-level `env:` cannot read `needs`, and every step here that calls
@@ -1878,6 +1938,7 @@ jobs:
       - package-hygiene
       - type-check
       - python-static
+      - python-audit
       - python-mypy
       - observability
       - wide-event-conformance
@@ -1889,7 +1950,8 @@ jobs:
       - test-mutation-plan
       - test-mutation
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    # Covers the edit path's wait for the run that validated this commit.
+    timeout-minutes: 45
     permissions:
       contents: read
       actions: read # read this head SHA's previous runs (mirror step below)
@@ -1927,8 +1989,10 @@ jobs:
           # carried would go unmutated (see consolidate --help).
           # Results go through env, not inline expansion.
           EXPECT: >-
-            changes=${{ needs.changes.result }},biome=${{ needs.biome.result }},deps=${{ needs.deps.result }},circular=${{ needs.circular.result }},file-size=${{ needs.file-size.result }},types-location=${{ needs.types-location.result }},api-schema=${{ needs.api-schema.result }},doc-comments=${{ needs.doc-comments.result }},components-per-file=${{ needs.components-per-file.result }},duplicates=${{ needs.duplicates.result }},package-hygiene=${{ needs.package-hygiene.result }},type-check=${{ needs.type-check.result }},python-static=${{ needs.python-static.result }},python-mypy=${{ needs.python-mypy.result }},observability=${{ needs.observability.result }},wide-event-conformance=${{ needs.wide-event-conformance.result }},dead-code=${{ needs.dead-code.result }},alert-rules=${{ needs.alert-rules.result }},suppression-hygiene=${{ needs.suppression-hygiene.result }},gitleaks=${{ needs.gitleaks.result }},semgrep=${{ needs.semgrep.result }},test-mutation-plan=${{ needs.test-mutation-plan.result }},test-mutation@mutation*${{ needs.test-mutation-plan.outputs.count }}=${{ needs.test-mutation.result }},select-runner-services@result-only=${{ needs.select-runner-services.result }}
-        run: python3 scripts/ci/verdict.py consolidate "$RUNNER_TEMP/verdicts" --expect "$EXPECT"
+            changes=${{ needs.changes.result }},biome=${{ needs.biome.result }},deps=${{ needs.deps.result }},circular=${{ needs.circular.result }},file-size=${{ needs.file-size.result }},types-location=${{ needs.types-location.result }},api-schema=${{ needs.api-schema.result }},doc-comments=${{ needs.doc-comments.result }},components-per-file=${{ needs.components-per-file.result }},duplicates=${{ needs.duplicates.result }},package-hygiene=${{ needs.package-hygiene.result }},type-check=${{ needs.type-check.result }},python-static=${{ needs.python-static.result }},python-audit=${{ needs.python-audit.result }},python-mypy=${{ needs.python-mypy.result }},observability=${{ needs.observability.result }},wide-event-conformance=${{ needs.wide-event-conformance.result }},dead-code=${{ needs.dead-code.result }},alert-rules=${{ needs.alert-rules.result }},suppression-hygiene=${{ needs.suppression-hygiene.result }},gitleaks=${{ needs.gitleaks.result }},semgrep=${{ needs.semgrep.result }},test-mutation-plan=${{ needs.test-mutation-plan.result }},test-mutation@mutation*${{ needs.test-mutation-plan.outputs.count }}=${{ needs.test-mutation.result }},select-runner-services@result-only=${{ needs.select-runner-services.result }}
+          # reuse-plan's notes, so a reused lane reads as reused rather than untouched.
+          REUSED: ${{ needs.changes.outputs.reused }}
+        run: python3 scripts/ci/verdict.py consolidate "$RUNNER_TEMP/verdicts" --expect "$EXPECT" --reused "$REUSED"
       # The other half of the `always()` above: a title or body edit ran no
       # lane, so there is nothing to consolidate — but this check must still
       # conclude, and it must conclude what the head SHA already earned. The
@@ -1938,4 +2002,4 @@ jobs:
         if: ${{ github.event.action == 'edited' && github.event.changes.base == '' }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/ci/verdict.py mirror-previous-gate --repo "$GITHUB_REPOSITORY" --sha "${{ github.event.pull_request.head.sha }}" --workflow code-quality.yml --job "Quality gate (required)" --run-id "$GITHUB_RUN_ID"
+        run: python3 scripts/ci/verdict.py mirror-previous-gate --repo "$GITHUB_REPOSITORY" --sha "${{ github.event.pull_request.head.sha }}" --workflow code-quality.yml --job "Quality gate (required)" --run-id "$GITHUB_RUN_ID" --wait-seconds 2400
