@@ -164,9 +164,7 @@ def test_local_dagger_quality_checks_run_sequentially_with_bounded_workers() -> 
     dagger_source = DAGGER_MODULE.read_text()
     tree = ast.parse(dagger_source)
     gaia_ci = next(
-        node
-        for node in tree.body
-        if isinstance(node, ast.ClassDef) and node.name == "GaiaCi"
+        node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "GaiaCi"
     )
     quality = next(
         node
@@ -181,4 +179,4 @@ def test_local_dagger_quality_checks_run_sequentially_with_bounded_workers() -> 
     assert source.count('"--parallel=1"') == 3
     assert '.with_env_variable("GAIA_BUILD_WORKERS", "2")' in source
     next_config = (REPO_ROOT / "apps" / "web" / "next.config.mjs").read_text()
-    assert 'process.env.GAIA_BUILD_WORKERS' in next_config
+    assert "process.env.GAIA_BUILD_WORKERS" in next_config

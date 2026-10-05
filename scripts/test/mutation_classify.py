@@ -659,13 +659,10 @@ def _unobservable_case_insensitive_heading(
     calls = [
         (module[node.func.id], node)
         for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id in module
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in module
     ]
     return any(
-        _recased_call_argument_is_equivalent(callee, module, node, spot)
-        for callee, node in calls
+        _recased_call_argument_is_equivalent(callee, module, node, spot) for callee, node in calls
     )
 
 
@@ -686,9 +683,7 @@ def _recased_call_argument_is_equivalent(
         if _recased_literal_is_equivalent(site, param):
             return True
     for keyword in node.keywords:
-        if not isinstance(keyword.value, ast.Constant) or not isinstance(
-            keyword.value.value, str
-        ):
+        if not isinstance(keyword.value, ast.Constant) or not isinstance(keyword.value.value, str):
             continue
         if keyword.arg not in _parameter_names(callee):
             continue
@@ -776,9 +771,7 @@ def _loads_under(node: ast.AST, name: str) -> set[int]:
     }
 
 
-def _forwarded_parameters(
-    called: ast.FunctionDef, node: ast.Call, param: str
-) -> list[str]:
+def _forwarded_parameters(called: ast.FunctionDef, node: ast.Call, param: str) -> list[str]:
     """Return the called function's parameters receiving exactly this value."""
     positional = (*called.args.posonlyargs, *called.args.args)
     targets = [
