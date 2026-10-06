@@ -390,6 +390,7 @@ unfixable = [
 "apps/api/app/models/**" = ["D", "DOC"]  # pydantic model docstrings are OpenAPI schema descriptions
 "apps/api/app/schemas/**" = ["D", "DOC"]  # response schema docstrings are OpenAPI schema descriptions
 "apps/api/app/agents/skills/models.py" = ["D"]  # Skill/SkillTarget/SkillUpdate are exported to openapi.json exactly like app/models; they just live beside the skills code
+"apps/voice-agent/src/llm.py" = ["ARG002"]  # CustomLLM.chat keeps livekit LLM.chat's full keyword signature; the backend picks tools, so the tool settings go unused
 # The same rule, for docstrings read at runtime OUTSIDE those four trees.
 # A developer CLI passes its MODULE docstring to argparse as description=__doc__,
 # so the module docstring IS the --help text a human reads before running a

@@ -41,7 +41,7 @@
       "cache": true,
       "inputs": [
         "{projectRoot}/pyproject.toml",
-        "{projectRoot}/uv.lock"
+        "{workspaceRoot}/uv.lock"
       ]
     },
     "dev": {
@@ -68,9 +68,28 @@
       "inputs": [
         "default",
         "{workspaceRoot}/apps/voice-agent/pyproject.toml",
-        "{workspaceRoot}/apps/voice-agent/uv.lock",
+        "{workspaceRoot}/uv.lock",
         "{workspaceRoot}/libs/shared/py/**/*",
         "^production"
+      ]
+    },
+    "type-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run --group dev mypy src --ignore-missing-imports",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/apps/voice-agent/pyproject.toml",
+        "{workspaceRoot}/uv.lock",
+        "{workspaceRoot}/pyproject.toml",
+        "{workspaceRoot}/libs/shared/py/**/*",
+        "^production"
+      ],
+      "outputs": [
+        "{projectRoot}/.mypy_cache"
       ]
     },
     "format": {

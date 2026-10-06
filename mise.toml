@@ -705,9 +705,7 @@ run = "python3 tools/evlog_map --all"
 # ── Agent-legible gates ──────────────────────────────────────────────────────
 [tasks."ci:local"]
 description = "Run CI quality gates locally (same lanes/versions as GitHub Actions); --list shows all lanes"
-# --no-project: the runner is stdlib-only. A project run synced the workspace
-# root (voice-agent's livekit included) into the shared .venv, so the mypy lane
-# saw packages CI never installs and failed where CI passes.
+# --no-project: the runner is stdlib-only.
 run = "uv run --no-project python scripts/dev/gaia_verify.py"
 
 

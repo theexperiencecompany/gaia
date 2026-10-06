@@ -153,7 +153,7 @@
       "heavy": false,
       "timeout_s": 900,
       "require_cmd": [],
-      "command": "uv run --project apps/api --frozen --group backend --group dev mypy apps/api/app apps/voice-agent/src libs/shared/py tools/lints --ignore-missing-imports"
+      "command": "uv run --project apps/api --frozen --group backend --group dev mypy apps/api/app libs/shared/py tools/lints --ignore-missing-imports && uv run --project apps/voice-agent --frozen --group dev mypy apps/voice-agent/src --ignore-missing-imports"
     },
     {
       "name": "custom-lints",
