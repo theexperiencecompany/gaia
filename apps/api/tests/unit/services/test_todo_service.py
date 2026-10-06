@@ -7,8 +7,10 @@ queueing, search indexing, tracked-todo completion routing, response mapping,
 and the ProjectService guards.
 """
 
+from collections.abc import Coroutine
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, call, patch
 
 from bson import ObjectId
@@ -359,10 +361,15 @@ class TestCreateTodo:
         mock_todo_repo.create = AsyncMock(
             return_value=_make_todo_doc(todo_id=FAKE_TODO_ID, project_id=FAKE_INBOX_ID)
         )
+
+        def refuse_to_spawn(_operation: str, coro: Coroutine[Any, Any, Any], **_: Any) -> None:
+            coro.close()
+            raise RuntimeError("loop closed")
+
         with (
             patch(
                 "app.services.todos.todo_service.spawn_logged_task",
-                side_effect=RuntimeError("loop closed"),
+                side_effect=refuse_to_spawn,
             ),
             patch("app.services.todos.todo_service.log") as log,
         ):
@@ -374,7 +381,6 @@ class TestCreateTodo:
         log.warning.assert_called_once_with(
             "todo.workflow_queue_failed", title="Buy milk", error="loop closed"
         )
-        mock_workflow_queue.queue_todo_workflow_generation.return_value.close()
 
     async def test_create_todo_with_workflow_refuses_a_tracked_todo(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
