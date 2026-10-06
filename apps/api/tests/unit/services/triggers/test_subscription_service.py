@@ -284,11 +284,7 @@ class TestRegisterSubscription:
 
     @pytest.mark.regression
     async def test_a_paused_match_is_not_a_duplicate_of_an_active_watch(self) -> None:
-        """A paused row cannot fire, so re-adding its watch stores a live one.
-
-        The paused twin stays paused for resync to own; the desk ends with one
-        watch that fires, not one row that cannot.
-        """
+        """Regression: a re-added watch returned its paused twin, which cannot fire."""
         paused = _subscription(status=TriggerSubscriptionStatus.PAUSED)
         with _Harness(_todo(trigger_subscriptions=[paused]), ["ti_live"]) as h:
             stored, _outcome, created = await register_subscription(
