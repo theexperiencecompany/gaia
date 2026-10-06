@@ -127,6 +127,8 @@ class TestScheduledFireStamping:
             assert defer_until == utc_armed
             assert defer_until.tzinfo is not None
         finally:
+            # Restore TZ before reloading it: glibc keeps whichever zone tzset() last read.
+            monkeypatch.undo()
             time.tzset()
 
 
