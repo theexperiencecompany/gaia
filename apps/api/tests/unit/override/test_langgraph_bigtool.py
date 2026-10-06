@@ -1965,7 +1965,12 @@ class TestSelectToolsTwinWiring:
 
         await node.afunc([tool_call], config, store=store)
 
-        mock_call_kwargs.assert_called_once_with(tool_call, "store", store, config)
+        mock_call_kwargs.assert_called_once_with(
+            {"name": retrieve_tools.name, "id": "c1", "args": {"query": "calendar"}},
+            "store",
+            store,
+            config,
+        )
         retrieve_tools.ainvoke.assert_awaited_once_with(
             {"query": "calendar", "store": store}, config=config
         )

@@ -29,7 +29,6 @@ from app.constants.llm import (
     LOOP_GUARD_WARN_SAME_TOOL,
 )
 from app.constants.log_tags import LogTag
-from app.models.agent_models import runtime_configurable
 from shared.py.wide_events import log
 
 _TASK = HumanMessage("do the task")
