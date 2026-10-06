@@ -157,3 +157,22 @@ async def test_a_running_sandbox_whose_health_endpoint_stays_silent_is_evicted()
         _, result = await _reuse(entry)
     assert result is None
     repo.mark_dead.assert_awaited_once()
+
+
+@pytest.mark.regression
+async def test_evicting_a_dead_cached_sandbox_marks_only_that_sandbox_dead() -> None:
+    # Another process may already have replaced it; marking the user's record
+    # dead wholesale abandoned that replacement and created a third sandbox.
+    entry = _healthy_entry()
+    entry.sandbox.sandbox_id = "sbx-stale"
+    repo = AsyncMock()
+    with (
+        patch.object(lifecycle, "_health_probe", AsyncMock(return_value=False)),
+        patch.object(
+            lifecycle.AsyncSandbox, "get_info", AsyncMock(side_effect=NotFoundException("gone"))
+        ),
+        patch.object(lifecycle, "_stop_watcher", AsyncMock()),
+        patch.object(lifecycle, "e2b_sandbox_repository", repo),
+    ):
+        await _reuse(entry)
+    assert repo.mark_dead.await_args.kwargs["sandbox_id"] == "sbx-stale"

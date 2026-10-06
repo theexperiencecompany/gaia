@@ -783,14 +783,17 @@ async def _hard_evict(user_id: str, entry: PooledSandbox) -> None:
 async def mark_sandbox_dead(user_id: str) -> None:
     """Forcibly drop the cached sandbox and mark it dead in Mongo.
 
-    Caller's next acquire will create a fresh one.
+    Only that sandbox: another process may already have recorded its
+    replacement, which the next acquire then resumes instead of creating one.
     """
     _record(marked_dead=True)
     log.info(f"{LogTag.SANDBOX} marking sandbox dead user", user_id=user_id)
     entry = get_sandbox_pool().get(user_id)
+    sandbox_id = None
     if entry is not None:
+        sandbox_id = getattr(entry.sandbox, "sandbox_id", None)
         await _hard_evict(user_id, entry)
-    await e2b_sandbox_repository.mark_dead(user_id, timestamp=_now())
+    await e2b_sandbox_repository.mark_dead(user_id, sandbox_id=sandbox_id, timestamp=_now())
 
 
 async def renew_sandbox(user_id: str) -> None:
