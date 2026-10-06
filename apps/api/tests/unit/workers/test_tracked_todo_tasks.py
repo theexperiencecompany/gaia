@@ -2514,7 +2514,8 @@ class TestCollectRunContext:
         doc = _doc(references=["507f1f77bcf86cd799439011"])
         with (
             patch(
-                f"{MODULE}.todo_repository.get", AsyncMock(side_effect=RuntimeError("mongo down"))
+                f"{MODULE}.todo_repository.list_active_tracked",
+                AsyncMock(side_effect=RuntimeError("mongo down")),
             ),
             patch(
                 f"{MODULE}.todo_repository.find_by_ids",
@@ -2542,6 +2543,10 @@ class TestCollectRunContext:
 
         with (
             patch(f"{MODULE}.todo_repository.get", AsyncMock(side_effect=_get)),
+            patch(
+                f"{MODULE}.todo_repository.list_active_tracked",
+                AsyncMock(side_effect=RuntimeError("mongo down")),
+            ),
             patch(f"{MODULE}.log"),
         ):
             context = await _collect_run_context(doc)
