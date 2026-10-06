@@ -835,6 +835,37 @@ async def test_a_run_that_ended_on_its_own_card_gets_no_second_one(
     assert [c for c in h.cards if c["kind"] == "result"] == [finished.model_dump(mode="json")]
 
 
+async def test_a_stop_landing_while_the_result_card_publishes_still_puts_it_on_the_feed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: an abort mid-publish left the card counted as out, so the feed closed with no result on it."""
+    finished = _result(BrowserSessionStatus.COMPLETED, True, "Booked.")
+
+    async def _finished(h: Harness) -> BrowserResultSnapshot:
+        await h.emit(finished)
+        return finished
+
+    h = _install(monkeypatch, run_body=_finished)
+    publish = h.publish
+    aborted = False
+
+    async def _aborted_on_the_first_result(job_id: str, payload: dict[str, Any]) -> None:
+        nonlocal aborted
+        card = payload.get(BROWSER_TASK_EVENT)
+        if not aborted and isinstance(card, dict) and card.get("kind") == "result":
+            aborted = True
+            raise asyncio.CancelledError
+        await publish(job_id, payload)
+
+    monkeypatch.setattr(jr, "publish_frame_to_job", _aborted_on_the_first_result)
+
+    with pytest.raises(asyncio.CancelledError):
+        await jr.execute_browser_job(_request(task="x"))
+
+    assert [c for c in h.cards if c["kind"] == "result"] == [finished.model_dump(mode="json")]
+    assert h.feed_signals == [JOB_TERMINAL_FRAME]
+
+
 async def test_a_run_whose_history_could_not_be_recorded_still_ends_on_its_result(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

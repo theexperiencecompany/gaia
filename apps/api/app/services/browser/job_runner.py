@@ -310,12 +310,14 @@ class ProgressEmitter:
     async def end(self, result: BrowserResultSnapshot) -> BrowserResultSnapshot:
         """Show the card the job ends on, as its ending of record says, and return it."""
         card = await self._ending_card(result)
-        self.result = card
         await self._show(card)
         return card
 
     async def _show(self, snapshot: BrowserCardSnapshot) -> None:
         await self._publish(card_frame(snapshot))
+        if isinstance(snapshot, BrowserResultSnapshot):
+            # Only once it is on the feed: a stop's abort before then must still end the run on it.
+            self.result = snapshot
         await self.thread_mirror.mirror(snapshot)
         if isinstance(snapshot, BrowserStepSnapshot):
             if snapshot.goal:
