@@ -494,6 +494,7 @@ def _recorded_canary(sandbox_id: str, canary: str) -> Any:
     return patch.object(lifecycle, "e2b_sandbox_repository", repo)
 
 
+@pytest.mark.regression
 async def test_a_canary_another_replica_wrote_on_this_sandbox_is_adopted_not_stale() -> None:
     # Regression: the API and the worker each cache the sandbox. One resuming it
     # rewrites the canary, and the other then killed a healthy sandbox (and the
