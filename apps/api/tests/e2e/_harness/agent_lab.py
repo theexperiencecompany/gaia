@@ -11,7 +11,7 @@ from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.agent_lab import lab_runs, sandbox_setup
+from app.services.agent_lab import sandbox_setup
 from app.services.sandbox import execute_token
 from tests.e2e._harness.fake_sandbox import FakeAsyncSandbox
 from tests.e2e._harness.fake_todos import InMemoryTodos
@@ -61,6 +61,6 @@ def lab_world(todos: InMemoryTodos) -> Iterator[AsyncMock]:
 async def token_from_seeded_env(fake: FakeAsyncSandbox, run_id: str) -> str:
     """Read the token the way a hook would: by sourcing the seeded lab-env."""
     result = await fake.commands.run(
-        f"set -a; . {lab_runs.run_dir(run_id)}/.gaia/lab-env; set +a; printf %s $GAIA_LAB_TOKEN"
+        f"set -a; . {sandbox_setup.lab_env_path(run_id)}; set +a; printf %s $GAIA_LAB_TOKEN"
     )
     return result.stdout

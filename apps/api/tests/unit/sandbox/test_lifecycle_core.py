@@ -34,6 +34,8 @@ import pytest
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.constants.sandbox import SANDBOX_LIFETIME_SECONDS
 from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
+from app.services.agent_lab.agents_home import build_agents_setup_command
+from app.services.agent_lab.sandbox_events import SandboxEventKind
 from app.services.sandbox import lifecycle, pool as pool_module
 from app.services.sandbox.artifact_watcher import ArtifactWatcher
 from app.services.sandbox.pool import PooledSandbox, SandboxPool, get_sandbox_pool
@@ -781,6 +783,7 @@ def _acquire_patches(sbx: AsyncMock, repo: AsyncMock, *, lab: bool = False) -> l
         patch.object(lifecycle, "ensure_user_skills_dir", AsyncMock()),
         patch.object(lifecycle, "start_watcher_for", AsyncMock(return_value=_fake_watcher())),
         patch.object(lifecycle, "_run_mount_script", AsyncMock()),
+        patch.object(lifecycle, "report_sandbox_event", AsyncMock()),
     ]
 
 
@@ -1075,6 +1078,100 @@ async def test_a_flag_reading_off_never_kills_a_cached_agent_lab_sandbox() -> No
     try:
         assert await _acquire(uid, sbx, repo) is entry
         sbx.kill.assert_not_awaited()
+    finally:
+        get_sandbox_pool().evict(uid)
+
+
+# --------------------------------------------------------------------------
+# The agents' home on agent-lab sandboxes, and telling todos about a replacement
+# --------------------------------------------------------------------------
+
+
+async def _acquire_lab(
+    uid: str, sbx: AsyncMock, doc: E2bSandboxDocument | None, *, lab: bool = True
+) -> tuple[MagicMock, AsyncMock]:
+    """Run a real acquire that has to create; return the e2b class and the event reporter."""
+    repo = AsyncMock()
+    repo.get_for_user = AsyncMock(return_value=doc)
+    cls = _sandbox_class(sbx)
+    report = AsyncMock()
+    stack = [
+        *_acquire_patches(sbx, repo, lab=lab),
+        patch.object(lifecycle, "AsyncSandbox", cls),
+        patch.object(lifecycle, "report_sandbox_event", report),
+        patch.object(lifecycle, "_resume_existing_sandbox", AsyncMock(return_value=None)),
+    ]
+    for p in stack:
+        p.start()
+    try:
+        await lifecycle._acquire_or_create(uid)
+    finally:
+        for p in reversed(stack):
+            p.stop()
+        get_sandbox_pool().evict(uid)
+    return cls, report
+
+
+def _ran(sbx: AsyncMock, command: str) -> bool:
+    return any(call.args and call.args[0] == command for call in sbx.commands.run.await_args_list)
+
+
+async def test_a_fresh_agent_lab_sandbox_gets_the_agents_home_set_up() -> None:
+    # Without it the CLIs would start on an empty home: no logins, no sessions.
+    sbx = _fake_sandbox("sbx-new")
+    await _acquire_lab(_uid(), sbx, None)
+    assert _ran(sbx, build_agents_setup_command())
+
+
+async def test_a_default_template_sandbox_gets_no_agents_home() -> None:
+    sbx = _fake_sandbox("sbx-new")
+    await _acquire_lab(_uid(), sbx, None, lab=False)
+    assert not _ran(sbx, build_agents_setup_command())
+
+
+async def test_a_first_sandbox_is_not_reported_as_a_replacement() -> None:
+    _, report = await _acquire_lab(_uid(), _fake_sandbox("sbx-new"), None)
+    report.assert_not_awaited()
+
+
+async def test_a_replacement_tells_the_watching_todos_which_save_came_back() -> None:
+    # The old sandbox took the agents' processes with it; without this the todo
+    # waits forever for an event no process is left to send.
+    sbx = _fake_sandbox("sbx-new")
+    sbx.commands.run = AsyncMock(
+        return_value=_cmd_result(stdout="restored_from=2026-10-07T10:00:00Z\n")
+    )
+    uid = _uid()
+    previous = _doc("sbx-old", template_id="gaia-coder-8gb")
+    previous.state = E2bSandboxState.DEAD
+    _, report = await _acquire_lab(uid, sbx, previous)
+    user_id, kind, detail = report.await_args.args
+    assert (user_id, kind) == (uid, SandboxEventKind.REPLACED)
+    assert "2026-10-07T10:00:00Z" in detail
+
+
+async def test_renewing_pauses_then_resumes_with_a_full_lifetime_and_swaps_the_handle() -> None:
+    # set_timeout cannot pass E2B's hour; only a resume starts a new one.
+    uid = _uid()
+    old = _fake_sandbox("sbx-1")
+    old.files.read = AsyncMock(return_value="ts-1")
+    entry = PooledSandbox(sandbox=old, last_canary_ts="ts-1", timeout_refreshed_at=time.monotonic())
+    get_sandbox_pool().put(uid, entry)
+    resumed = _fake_sandbox("sbx-1")
+    cls = _sandbox_class(resumed)
+    repo = AsyncMock()
+    stack = [*_acquire_patches(old, repo), patch.object(lifecycle, "AsyncSandbox", cls)]
+    for p in stack:
+        p.start()
+    try:
+        await lifecycle.renew_sandbox(uid)
+    finally:
+        for p in reversed(stack):
+            p.stop()
+    try:
+        old.beta_pause.assert_awaited_once()
+        cls.connect.assert_awaited_once_with("sbx-1", timeout=SANDBOX_LIFETIME_SECONDS)
+        assert get_sandbox_pool().get(uid).sandbox is resumed
     finally:
         get_sandbox_pool().evict(uid)
 

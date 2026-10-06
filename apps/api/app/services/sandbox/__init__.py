@@ -9,6 +9,7 @@ from app.services.sandbox.lifecycle import (
     acquire_sandbox,
     mark_sandbox_dead,
     pause_sandbox_for_user,
+    renew_sandbox,
 )
 from app.services.sandbox.pool import get_sandbox_pool
 from app.services.sandbox.shard_router import shard_for, shard_meta_url
@@ -19,6 +20,7 @@ __all__ = [
     "get_sandbox_pool",
     "mark_sandbox_dead",
     "pause_sandbox_for_user",
+    "renew_sandbox",
     "shard_for",
     "shard_meta_url",
 ]

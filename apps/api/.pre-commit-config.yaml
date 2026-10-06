@@ -102,5 +102,7 @@ repos:
         # apps/api-relative: this nested config runs with cwd=apps/api, so
         # ^apps/api/app/ can never match and the hook would always skip.
         files: ^app/
+        # app/ also holds skills (.md), the sandbox plugin (.js) and scripts (.sh).
+        types: [python]
         pass_filenames: true
         priority: 0

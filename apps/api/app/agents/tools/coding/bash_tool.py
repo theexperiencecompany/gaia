@@ -44,14 +44,11 @@ from app.constants.sandbox import (
 from app.constants.todos import FAILED_LABEL, GAIA_TRACKED_LABEL
 from app.db.repositories.todos import todo_repository
 from app.decorators import with_doc, with_rate_limiting
-from app.services.agent_lab.lab_runs import (
-    LAB_SEED_TIMEOUT_SECONDS,
-    run_dir,
-    subscribe_todo_to_run,
-)
+from app.services.agent_lab.lab_runs import LAB_SEED_TIMEOUT_SECONDS, subscribe_todo_to_run
 from app.services.agent_lab.sandbox_setup import (
     build_seed_command,
     lab_env,
+    lab_env_path,
     lab_events_url,
     mint_lab_hooks_token,
 )
@@ -304,8 +301,8 @@ async def _setup_lab_run(*, user_id: str, run_todo_id: str, sbx: object) -> _Lab
 def _lab_footer(lab: _LabRun, run_todo_id: str) -> str:
     """Tell the model what the run parameter did and the one record it still owes."""
     return (
-        f"sandbox_run_id: {lab.run_id} (workdir {run_dir(lab.run_id)}, GAIA_LAB_* and "
-        "OPENCODE_CONFIG_DIR injected). "
+        f"sandbox_run_id: {lab.run_id} (GAIA_LAB_* and OPENCODE_CONFIG_DIR injected; a later "
+        f"resume sources {lab_env_path(lab.run_id)}). "
         f"Todo {run_todo_id} is now subscribed to this run: every event the agent "
         "reports (finished, needs input, error) runs the todo with that event.\n"
         "Record the pid and log path on the todo's canvas so later runs can find the log."

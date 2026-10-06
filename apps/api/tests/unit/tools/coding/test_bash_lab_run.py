@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
+import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -26,7 +28,7 @@ from app.constants.sandbox import SANDBOX_USER_HOME
 from app.constants.todos import FAILED_LABEL, GAIA_TRACKED_LABEL, TodoActivityEvent
 from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import SubscriptionAction
-from app.services.agent_lab import lab_runs, sandbox_setup
+from app.services.agent_lab import agents_home, lab_runs, sandbox_setup
 from app.services.agent_lab.lab_runs import run_dir
 from app.services.agent_lab.sandbox_setup import (
     LAB_CALLBACK_URL_VAR,
@@ -297,15 +299,25 @@ class TestLabSeedExecutes:
                 )
             )
 
-        settings_file = _local(lab.env["GAIA_LAB_CLAUDE_SETTINGS"])
-        assert EVENTS_URL in settings_file.read_text()
-        plugin_dir = _local(lab.env["OPENCODE_CONFIG_DIR"]) / "plugins"
-        assert (plugin_dir / "gaia_lab_notify.js").is_file()
-        assert run_dir(lab.run_id) == f"{SANDBOX_USER_HOME}/.gaia-lab/{lab.run_id}"
+        settings = json.loads(_local(lab.env["GAIA_LAB_CLAUDE_SETTINGS"]).read_text())
+        commands = {
+            handler["command"]
+            for groups in settings["hooks"].values()
+            for group in groups
+            for handler in group["hooks"]
+        }
+        assert commands == {agents_home.HOOK_SCRIPT}
+        assert os.access(_local(agents_home.HOOK_SCRIPT), os.X_OK)
+        plugin = _local(lab.env["OPENCODE_CONFIG_DIR"]) / "plugins" / "gaia_notify.js"
+        assert agents_home.HOOK_SCRIPT in plugin.read_text()
+        # The token lives only in the run's private env file, never in shared config.
+        for shared in (_local(lab.env["GAIA_LAB_CLAUDE_SETTINGS"]), plugin):
+            assert lab.env[LAB_TOKEN_VAR] not in shared.read_text()
+        assert run_dir(lab.run_id) == f"{SANDBOX_USER_HOME}/agents/runs/{lab.run_id}"
 
-        lab_env_file = _local(f"{run_dir(lab.run_id)}/.gaia/lab-env")
+        lab_env_file = _local(sandbox_setup.lab_env_path(lab.run_id))
         sourced = await fake.commands.run(
-            f"set -a; . {run_dir(lab.run_id)}/.gaia/lab-env; set +a; "
+            f"set -a; . {sandbox_setup.lab_env_path(lab.run_id)}; set +a; "
             "echo $GAIA_LAB_RUN_ID $OPENCODE_CONFIG_DIR"
         )
         assert oct(lab_env_file.stat().st_mode & 0o777) == "0o600"
@@ -341,15 +353,13 @@ class TestLabRunSubscribesTodo:
         assert event == AnalyticsEvents.TODO_SUBSCRIPTION_REGISTERED
         assert props["trigger_name"] == lab_runs.SANDBOX_RUN_TRIGGER
 
-    async def test_command_env_points_both_clis_at_the_run_folder(self) -> None:
-        """The CLI runs in the user's repo, so hooks must load by path, not by cwd."""
+    async def test_command_env_points_both_clis_at_the_shared_hooks(self) -> None:
+        """The CLI runs in its project folder, so hooks must load by path, not by cwd."""
         sbx = _sbx(_ok("seeded"), _ok("hi"))
         todos = AsyncMock()
         with _lab_stack(sbx, todos, todo=_todo()):
             todos.update = AsyncMock(return_value=_todo())
             await bash.ainvoke({"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG)
-        subscription = todos.update.await_args.kwargs["update"].trigger_subscriptions[0]
-        folder = run_dir(subscription.trigger_data[lab_runs.RUN_ID_KEY])
         envs = sbx.commands.run.await_args_list[1].kwargs["envs"]
-        assert envs["OPENCODE_CONFIG_DIR"] == f"{folder}/.opencode"
-        assert envs["GAIA_LAB_CLAUDE_SETTINGS"] == f"{folder}/.gaia/claude-settings.json"
+        assert envs["OPENCODE_CONFIG_DIR"] == agents_home.OPENCODE_CONFIG_DIR
+        assert envs["GAIA_LAB_CLAUDE_SETTINGS"] == agents_home.CLAUDE_SETTINGS_PATH

@@ -181,11 +181,11 @@ WorkerSettings.cron_jobs = [
         minute=0,  # Hourly
         second=0,
     ),
-    # Keep-warm for AGENT_LAB users: re-acquire refreshes the E2B kill timer
-    # well inside the hourly lifetime ceiling, so flagged sandboxes stay warm.
+    # Keep-warm for AGENT_LAB users: saves the agents' home and renews the
+    # sandbox before E2B's one-hour end (see SANDBOX_LAB_RENEW_WHEN_SECONDS_LEFT).
     cron(
         cast(WorkerCoroutine, _refresh_lab_sandboxes),
-        minute={0, 30},  # Every 30 minutes
+        minute={0, 10, 20, 30, 40, 50},
         second=0,
     ),
     # Hourly, off the top of the hour so it does not pile onto the other sweeps.

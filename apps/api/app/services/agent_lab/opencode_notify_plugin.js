@@ -1,14 +1,10 @@
-// GAIA Agent Lab: OpenCode notify relay (thin relay, no Python abstraction).
+// GAIA: OpenCode notify relay.
 //
-// Seeded per run as `<run>/.opencode/plugins/gaia_lab_notify.js`, loaded through
-// OPENCODE_CONFIG_DIR=<run>/.opencode so it works from any working directory.
-// Env (the run env, injected at launch):
-//   GAIA_LAB_CALLBACK_URL - full GAIA receiver URL (POST /api/v1/lab/events)
-//   GAIA_LAB_TOKEN        - the run's bearer token; it alone names the run
-//
-// Contract (owned by the GAIA-side receiver; do NOT build an endpoint here):
-//   POST {GAIA_LAB_CALLBACK_URL} {kind: string, raw: object}
-//   Auth: Authorization: Bearer <GAIA_LAB_TOKEN>
+// Seeded once per sandbox at ~/agents/config/opencode/plugins/gaia_notify.js and
+// loaded through OPENCODE_CONFIG_DIR, so it works from any working directory.
+// Each forwarded event is piped as {kind, raw} into gaia-hook (path rendered at
+// seed time), which saves the agents' home and then POSTs the event to GAIA with
+// the run's GAIA_LAB_CALLBACK_URL / GAIA_LAB_TOKEN from this process's env.
 //
 // One file serves both plugin APIs, each verified live (2026-10-04):
 //   OpenCode 1.x loads `{ server }` and calls the `event` hook it returns.
@@ -18,6 +14,12 @@
 // Every forwarded event runs the owning todo, so only "the agent stopped,
 // is asking, or failed" is forwarded; streaming chatter never is.
 // If relaying stops after an upgrade, re-probe live, not the docs page.
+
+import { spawn } from "node:child_process";
+
+const GAIA_HOOK = "{{GAIA_HOOK}}";
+// gaia-hook bounds its own save and POST; this only stops a wedged child.
+const HOOK_DEADLINE_MS = Number("{{HOOK_TIMEOUT_SECONDS}}") * 1000;
 
 // 1.x and 2.x name the same moments differently. Seen firing live: 1.x
 // session.idle/session.error, 2.x session.execution.failed; the rest are taken
@@ -69,33 +71,34 @@ function isRepeat(event, kind) {
   return false;
 }
 
+function runHook(body) {
+  return new Promise((resolve) => {
+    const child = spawn(GAIA_HOOK, [], { stdio: ["pipe", "ignore", "inherit"] });
+    const deadline = setTimeout(() => {
+      console.error("gaia-lab-notify: gaia-hook timed out; killing it");
+      child.kill("SIGKILL");
+    }, HOOK_DEADLINE_MS);
+    child.on("error", (error) => {
+      clearTimeout(deadline);
+      console.error(`gaia-lab-notify: gaia-hook failed to start: ${error}`);
+      resolve();
+    });
+    child.on("close", () => {
+      clearTimeout(deadline);
+      resolve();
+    });
+    child.stdin.end(JSON.stringify(body));
+  });
+}
+
 async function relay(event) {
   if (!event?.type) return;
   rememberChildSession(event);
   const kind = KIND_BY_EVENT_TYPE[event.type];
-  const url = process.env.GAIA_LAB_CALLBACK_URL;
-  const token = process.env.GAIA_LAB_TOKEN;
-  if (!kind || !url || !token) return;
+  if (!kind) return;
   if (state.childSessions.has(sessionOf(event)) || isRepeat(event, kind)) return;
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      // Same 15s budget as the Claude hook pushes: a hung callback must fail
-      // here instead of stalling the agent's event loop.
-      signal: AbortSignal.timeout(15000),
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ kind, raw: event }),
-    });
-    if (!res.ok) {
-      console.error(`gaia-lab-notify: callback answered ${res.status}`);
-    }
-  } catch (error) {
-    // Never break the agent session on a notify failure; say so in its log.
-    console.error(`gaia-lab-notify: callback failed: ${error}`);
-  }
+  // Never break the agent session on a relay failure; gaia-hook logs its own.
+  await runHook({ kind, raw: event });
 }
 
 export default {

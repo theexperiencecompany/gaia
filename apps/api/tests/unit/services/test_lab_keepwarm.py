@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 import time
-from types import TracebackType
+from types import SimpleNamespace, TracebackType
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,7 +20,8 @@ from app.models.trigger_subscription_models import (
     SubscriptionResolution,
     TriggerSubscription,
 )
-from app.services.agent_lab import lab_runs
+from app.services.agent_lab import agents_home, lab_runs
+from app.services.agent_lab.sandbox_events import SandboxEventKind
 from app.services.sandbox import lifecycle
 from app.services.sandbox.pool import PooledSandbox, refresh_sandbox_timeout
 from app.workers.tasks import sandbox_tasks
@@ -96,17 +97,27 @@ class TestSweepExemption:
 
 
 class _FakeAcquire:
-    """Minimal async context manager recording the acquired user."""
+    """Minimal async context manager recording the acquired user; its sandbox has minutes_left."""
 
-    def __init__(self, seen: list[str], user_id: str) -> None:
+    def __init__(
+        self,
+        seen: list[str],
+        user_id: str,
+        *,
+        minutes_left: float = 50,
+        run: AsyncMock | None = None,
+    ) -> None:
         self._seen = seen
         self._user_id = user_id
+        self.sbx = MagicMock()
+        self.sbx.commands.run = run or AsyncMock()
+        self.sbx.get_info = AsyncMock(
+            return_value=SimpleNamespace(end_at=datetime.now(UTC) + timedelta(minutes=minutes_left))
+        )
 
     async def __aenter__(self) -> MagicMock:
         self._seen.append(self._user_id)
-        sbx = MagicMock()
-        sbx.commands.run = AsyncMock()
-        return sbx
+        return self.sbx
 
     async def __aexit__(
         self,
@@ -139,7 +150,7 @@ class TestRefreshScope:
             ),
             patch(f"{TASKS_MODULE}.acquire_sandbox", side_effect=fake_acquire),
         ):
-            result = await sandbox_tasks.refresh_lab_sandboxes({})
+            result = await sandbox_tasks.refresh_lab_sandboxes({"redis": _FakePool()})
         assert seen == ["lab"]
         assert result == "Refreshed 1 lab sandboxes, skipped 0 past cap"
 
@@ -166,7 +177,7 @@ class TestRefreshScope:
             ),
             patch(f"{TASKS_MODULE}.acquire_sandbox", side_effect=fake_acquire),
         ):
-            result = await sandbox_tasks.refresh_lab_sandboxes({})
+            result = await sandbox_tasks.refresh_lab_sandboxes({"redis": _FakePool()})
         assert seen == ["lab"]
         assert result == "Refreshed 1 lab sandboxes, skipped 0 past cap"
 
@@ -223,7 +234,7 @@ def _lab_todo(
 
 
 class _FakePool:
-    """Minimal stand-in for the ARQ redis pool (exists/set only)."""
+    """Minimal stand-in for the ARQ redis pool (exists/set/delete only)."""
 
     def __init__(self) -> None:
         self.store: dict[str, str] = {}
@@ -231,9 +242,14 @@ class _FakePool:
     async def exists(self, key: str) -> int:
         return 1 if key in self.store else 0
 
-    async def set(self, key: str, value: str, ex: int | None = None) -> bool:
+    async def set(self, key: str, value: str, ex: int | None = None, nx: bool = False) -> bool:
+        if nx and key in self.store:
+            return False
         self.store[key] = value
         return True
+
+    async def delete(self, key: str) -> int:
+        return 1 if self.store.pop(key, None) is not None else 0
 
 
 class TestLabRunCap:
@@ -262,7 +278,7 @@ class TestLabRunCap:
                 AsyncMock(),
             ) as notify_create,
         ):
-            result = await sandbox_tasks.refresh_lab_sandboxes({})
+            result = await sandbox_tasks.refresh_lab_sandboxes({"redis": _FakePool()})
         assert seen == []
         assert result == "Refreshed 0 lab sandboxes, skipped 1 past cap"
         notify_create.assert_awaited_once()
@@ -296,7 +312,7 @@ class TestLabRunCap:
                 AsyncMock(),
             ) as notify_create,
         ):
-            result = await sandbox_tasks.refresh_lab_sandboxes({})
+            result = await sandbox_tasks.refresh_lab_sandboxes({"redis": _FakePool()})
         assert seen == ["lab"]
         assert result == "Refreshed 1 lab sandboxes, skipped 0 past cap"
         notify_create.assert_not_awaited()
@@ -327,7 +343,7 @@ class TestLabRunCap:
                 AsyncMock(),
             ) as notify_create,
         ):
-            result = await sandbox_tasks.refresh_lab_sandboxes({})
+            result = await sandbox_tasks.refresh_lab_sandboxes({"redis": _FakePool()})
         assert seen == ["lab"]
         assert result == "Refreshed 1 lab sandboxes, skipped 0 past cap"
         notify_create.assert_not_awaited()
@@ -357,7 +373,7 @@ class TestLabRunCap:
                 AsyncMock(),
             ) as notify_create,
         ):
-            result = await sandbox_tasks.refresh_lab_sandboxes({})
+            result = await sandbox_tasks.refresh_lab_sandboxes({"redis": _FakePool()})
         assert seen == ["lab"]
         assert result == "Refreshed 1 lab sandboxes, skipped 0 past cap"
         notify_create.assert_not_awaited()
@@ -417,7 +433,7 @@ class TestLabCapCountsRunsOnly:
             patch(f"{TASKS_MODULE}.acquire_sandbox", side_effect=fake_acquire),
             patch(f"{TASKS_MODULE}.notification_service.create_notification", AsyncMock()),
         ):
-            result = await sandbox_tasks.refresh_lab_sandboxes({})
+            result = await sandbox_tasks.refresh_lab_sandboxes({"redis": _FakePool()})
         assert result == "Refreshed 0 lab sandboxes, skipped 1 past cap"
 
     async def test_other_watches_on_the_todo_are_not_runs(self) -> None:
@@ -444,7 +460,7 @@ class TestLabCapCountsRunsOnly:
                 f"{TASKS_MODULE}.notification_service.create_notification", AsyncMock()
             ) as notify_create,
         ):
-            result = await sandbox_tasks.refresh_lab_sandboxes({})
+            result = await sandbox_tasks.refresh_lab_sandboxes({"redis": _FakePool()})
         assert seen == ["lab"]
         assert result == "Refreshed 1 lab sandboxes, skipped 0 past cap"
         notify_create.assert_not_awaited()
@@ -460,7 +476,7 @@ class TestLabCapCountsRunsOnly:
             patch(f"{TASKS_MODULE}.is_agent_lab_enabled", AsyncMock(return_value=True)),
             patch(f"{TASKS_MODULE}.acquire_sandbox", side_effect=lambda u: _FakeAcquire([], u)),
         ):
-            await sandbox_tasks.refresh_lab_sandboxes({})
+            await sandbox_tasks.refresh_lab_sandboxes({"redis": _FakePool()})
         lookup.assert_awaited_once_with("lab", lab_runs.SANDBOX_RUN_TRIGGER)
 
 
@@ -494,8 +510,51 @@ class TestLabMissPolicy:
                 AsyncMock(),
             ) as notify_create,
         ):
-            result = await sandbox_tasks.refresh_lab_sandboxes({})
+            result = await sandbox_tasks.refresh_lab_sandboxes({"redis": _FakePool()})
         assert seen == ["lab"]
         assert result == "Refreshed 1 lab sandboxes, skipped 0 past cap"
         add_labels.assert_not_awaited()
         notify_create.assert_not_awaited()
+
+
+class TestKeepWarmSavesAndRenews:
+    """Each tick saves the agents' home; only a sandbox near E2B's hour gets a pause+resume."""
+
+    async def _tick(
+        self, acquire: _FakeAcquire, pool: _FakePool | None = None
+    ) -> tuple[AsyncMock, AsyncMock]:
+        renew = AsyncMock()
+        report = AsyncMock()
+        with (
+            patch(f"{TASKS_MODULE}.acquire_sandbox", return_value=acquire),
+            patch(f"{TASKS_MODULE}.renew_sandbox", renew),
+            patch(f"{TASKS_MODULE}.report_sandbox_event", report),
+        ):
+            await sandbox_tasks._keep_lab_sandbox({"redis": pool or _FakePool()}, "lab")
+        return renew, report
+
+    async def test_every_tick_saves_the_agents_home(self) -> None:
+        acquire = _FakeAcquire([], "lab", minutes_left=50)
+        renew, report = await self._tick(acquire)
+        assert acquire.sbx.commands.run.await_args.args[0] == agents_home.SAVE_SCRIPT
+        renew.assert_not_awaited()
+        report.assert_not_awaited()
+
+    async def test_a_sandbox_near_its_hour_is_renewed_and_the_todos_hear_it(self) -> None:
+        acquire = _FakeAcquire([], "lab", minutes_left=12)
+        renew, report = await self._tick(acquire)
+        renew.assert_awaited_once_with("lab")
+        user_id, kind, _detail = report.await_args.args
+        assert (user_id, kind) == ("lab", SandboxEventKind.RENEWED)
+
+    async def test_a_failed_save_wakes_the_todos_once_until_a_save_succeeds(self) -> None:
+        pool = _FakePool()
+        failing = AsyncMock(side_effect=RuntimeError("tar: write failed"))
+        _, first = await self._tick(_FakeAcquire([], "lab", run=failing), pool)
+        _, second = await self._tick(_FakeAcquire([], "lab", run=failing), pool)
+        _, after_success = await self._tick(_FakeAcquire([], "lab"), pool)
+        _, third = await self._tick(_FakeAcquire([], "lab", run=failing), pool)
+        assert [call.args[1] for call in first.await_args_list] == [SandboxEventKind.SAVE_FAILED]
+        second.assert_not_awaited()
+        after_success.assert_not_awaited()
+        assert [call.args[1] for call in third.await_args_list] == [SandboxEventKind.SAVE_FAILED]

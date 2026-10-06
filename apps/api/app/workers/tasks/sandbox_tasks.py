@@ -8,11 +8,10 @@ Currently:
   available if the user comes back inside the window. AGENT_LAB users are
   exempt while the flag is on (their keep-warm refresh keeps last_used_at
   fresh anyway; the exemption covers a missed cron run).
-- refresh_lab_sandboxes: every 30 minutes. Re-acquires flagged users'
-  sandboxes so the E2B kill timer never lapses; once every run is past
-  SANDBOX_LAB_MAX_RUN_SECONDS the sandbox is left to
-  idle-pause, with one notification per cap window. Dead runs are the
-  owning todo's concern.
+- refresh_lab_sandboxes: every 10 minutes. For flagged users it saves the
+  agents' home and, near E2B's one-hour end, renews the sandbox with a pause
+  and resume; past SANDBOX_LAB_MAX_RUN_SECONDS it leaves the sandbox to
+  idle-pause, with one notification per cap window.
 """
 
 from __future__ import annotations
@@ -21,9 +20,13 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from arq.connections import ArqRedis
+from e2b import AsyncSandbox
 
 from app.config.settings import settings
-from app.constants.execute import SANDBOX_LAB_MAX_RUN_SECONDS
+from app.constants.execute import (
+    SANDBOX_LAB_MAX_RUN_SECONDS,
+    SANDBOX_LAB_RENEW_WHEN_SECONDS_LEFT,
+)
 from app.constants.log_tags import LogTag
 from app.db.repositories.e2b_sandboxes import e2b_sandbox_repository
 from app.db.repositories.todos import todo_repository
@@ -34,10 +37,12 @@ from app.models.notification.notification_models import (
     NotificationType,
 )
 from app.models.todo_models import TodoDocument
+from app.services.agent_lab.agents_home import SAVE_SCRIPT, SAVE_TIMEOUT_SECONDS
 from app.services.agent_lab.lab_runs import SANDBOX_RUN_TRIGGER, run_subscriptions
+from app.services.agent_lab.sandbox_events import SandboxEventKind, report_sandbox_event
 from app.services.feature_flags import is_agent_lab_enabled
 from app.services.notification_service import notification_service
-from app.services.sandbox import acquire_sandbox, mark_sandbox_dead
+from app.services.sandbox import acquire_sandbox, mark_sandbox_dead, renew_sandbox
 from shared.py.wide_events import SandboxContext, log
 
 
@@ -90,10 +95,7 @@ async def refresh_lab_sandboxes(ctx: dict[str, Any]) -> str:
                 )
                 await _notify_lab_cap_hit(ctx, user_id, capped_todo_ids)
                 continue
-            # Re-acquire refreshes the kill timer (connect carries a full
-            # lifetime) and touches last_used_at.
-            async with acquire_sandbox(user_id):
-                pass
+            await _keep_lab_sandbox(ctx, user_id)
             refreshed += 1
         except Exception as e:
             log.warning(
@@ -109,6 +111,51 @@ async def refresh_lab_sandboxes(ctx: dict[str, Any]) -> str:
         capped_count=capped,
     )
     return f"Refreshed {refreshed} lab sandboxes, skipped {capped} past cap"
+
+
+async def _keep_lab_sandbox(ctx: dict[str, Any], user_id: str) -> None:
+    """Save the agents' home, then renew the sandbox when E2B's hour is nearly up."""
+    async with acquire_sandbox(user_id) as sbx:
+        info = await sbx.get_info()
+        seconds_left = (info.end_at - datetime.now(UTC)).total_seconds()
+        await _save_agents_home(ctx, user_id, sbx)
+    if seconds_left > SANDBOX_LAB_RENEW_WHEN_SECONDS_LEFT:
+        return
+    await renew_sandbox(user_id)
+    await report_sandbox_event(
+        user_id,
+        SandboxEventKind.RENEWED,
+        f"paused and resumed to start a new hour ({int(seconds_left // 60)} min were left); "
+        "running agents carried on",
+    )
+
+
+async def _save_agents_home(ctx: dict[str, Any], user_id: str, sbx: AsyncSandbox) -> None:
+    """Run gaia-save; a failure wakes the watching todos once until a save succeeds again."""
+    pool = cast(ArqRedis, ctx["redis"])
+    key = _lab_save_failed_key(user_id)
+    try:
+        await sbx.commands.run(SAVE_SCRIPT, timeout=SAVE_TIMEOUT_SECONDS)
+    except Exception as e:
+        log.warning(
+            f"{LogTag.SANDBOX} scheduled agents-home save failed",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        if await pool.set(key, "1", nx=True):
+            await report_sandbox_event(
+                user_id,
+                SandboxEventKind.SAVE_FAILED,
+                f"the scheduled save of the coding agents' home failed: {str(e)[:500]}",
+            )
+        return
+    await pool.delete(key)
+
+
+def _lab_save_failed_key(user_id: str) -> str:
+    """Redis flag: the last scheduled save failed and the todos were already told."""
+    return f"lab:save_failed:{user_id}"
 
 
 def _lab_cap_notified_key(user_id: str) -> str:

@@ -41,6 +41,12 @@ from app.constants.sandbox import (
 from app.db.repositories.e2b_sandboxes import e2b_sandbox_repository
 from app.decorators import enforce_rate_limit
 from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
+from app.services.agent_lab.agents_home import (
+    AGENTS_SETUP_TIMEOUT_SECONDS,
+    build_agents_setup_command,
+    restored_from,
+)
+from app.services.agent_lab.sandbox_events import SandboxEventKind, report_sandbox_event
 from app.services.feature_flags import is_agent_lab_enabled
 from app.services.sandbox.artifact_watcher import start_watcher_for
 from app.services.sandbox.errors import SandboxAcquisitionError, SandboxRateLimitError
@@ -230,6 +236,31 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int, template_id: str) -
     )
     await _run_mount_script(sbx, _mount_env(user_id, shard_id))
     return sbx
+
+
+async def _set_up_agents_home(user_id: str, sbx: AsyncSandbox, *, replaced: bool) -> None:
+    """Lay out the coding agents' home on a fresh agent-lab sandbox, restoring the last save.
+
+    A sandbox replacing an earlier one stopped that one's agent processes with
+    it, so the todos watching their runs hear which save came back.
+    """
+    result = await sbx.commands.run(
+        build_agents_setup_command(), timeout=AGENTS_SETUP_TIMEOUT_SECONDS
+    )
+    saved_at = restored_from(result.stdout)
+    log.info(f"{LogTag.SANDBOX} agents home ready", user_id=user_id, restored_from=saved_at)
+    if not replaced:
+        return
+    restored = (
+        f"their home was restored from the save at {saved_at}"
+        if saved_at
+        else "no save existed to restore"
+    )
+    await report_sandbox_event(
+        user_id,
+        SandboxEventKind.REPLACED,
+        f"the sandbox was replaced, so the coding agents' processes stopped; {restored}",
+    )
 
 
 async def _run_mount_script(sbx: AsyncSandbox, mount_env: dict[str, str]) -> None:
@@ -603,6 +634,10 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
         await _seed_user_subtrees(user_id)
         sbx = await _create_fresh_sandbox(user_id, shard_id, template_id)
         workspace_version += 1
+        if template_id == settings.E2B_AGENT_LAB_TEMPLATE_ID:
+            await _set_up_agents_home(
+                user_id, sbx, replaced=doc is not None and doc.sandbox_id is not None
+            )
 
     _record(
         source=source,
@@ -756,6 +791,27 @@ async def mark_sandbox_dead(user_id: str) -> None:
     if entry is not None:
         await _hard_evict(user_id, entry)
     await e2b_sandbox_repository.mark_dead(user_id, timestamp=_now())
+
+
+async def renew_sandbox(user_id: str) -> None:
+    """Restart E2B's lifetime clock with a pause and resume; processes and local disk survive.
+
+    E2B ends a sandbox an hour after it starts and set_timeout cannot pass that,
+    while a resume starts a fresh hour (both measured). The next acquire remounts.
+    """
+    pool = get_sandbox_pool()
+    async with pool.distributed_lock(user_id):
+        entry = await _acquire_or_create(user_id)
+        await _cancel_pause_task(entry)
+        await _stop_watcher(entry)
+        sandbox_id = entry.sandbox.sandbox_id
+        await entry.sandbox.beta_pause()
+        entry.sandbox = await AsyncSandbox.connect(sandbox_id, timeout=SANDBOX_LIFETIME_SECONDS)
+        entry.timeout_refreshed_at = time.monotonic()
+        await e2b_sandbox_repository.touch_last_used(user_id, timestamp=_now())
+        log.info(
+            f"{LogTag.SANDBOX} renewed sandbox lifetime", user_id=user_id, sandbox_id=sandbox_id
+        )
 
 
 async def pause_sandbox_for_user(user_id: str) -> bool:
