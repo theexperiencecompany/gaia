@@ -2527,6 +2527,11 @@ class TestCollectRunContext:
 
         assert context == _RunContext()
         assert mock_log.warning.call_count == 2
+        for call in mock_log.warning.call_args_list:
+            assert call.args[0] == "tracked_todo.run_context_incomplete"
+            assert call.kwargs["todo_id"] == "todo-1"
+            assert call.kwargs["error"] == "mongo down"
+            assert call.kwargs["error_type"] == "RuntimeError"
         assert {c.kwargs["section"] for c in mock_log.warning.call_args_list} == {
             "sub_todos",
             "learnings",
