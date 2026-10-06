@@ -4,6 +4,7 @@ from functools import lru_cache
 from typing import Literal
 
 from mcp_use.client.exceptions import OAuthAuthenticationError
+from pydantic import BaseModel, ConfigDict
 import pymongo.errors
 import redis
 
@@ -16,6 +17,7 @@ from app.config.token_repository import token_repository
 from app.constants.log_tags import LogTag
 from app.db.redis import delete_cache
 from app.helpers.mcp_helpers import get_api_base_url
+from app.models.integrations.composio import ComposioConnectLink
 from app.models.mcp_config import McpAuthChallenge, McpProbeResult
 from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
@@ -39,6 +41,14 @@ from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.oauth.oauth_state_service import create_oauth_state
 from app.utils.oauth_utils import build_google_oauth_url
 from shared.py.wide_events import log
+
+
+class _CustomIntegrationOwner(BaseModel):
+    """The ``IntegrationResolver.custom_doc`` key a disconnect reads: who created it."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    created_by: str | None = None
 
 
 @lru_cache(maxsize=1)
@@ -330,13 +340,15 @@ async def connect_composio_integration(
 
     await update_user_integration_status(user_id, integration_id, "created")
 
-    url = await composio_service.connect_account(provider, user_id, state_token=state_token)
+    connect_link: ComposioConnectLink = await composio_service.connect_account(
+        provider, user_id, state_token=state_token
+    )
 
     # Composio mints the connected account before the user authorizes it; record
     # it now so an abandoned connection is still addressable. Callback overwrites
     # it with whichever account actually completed.
     await update_user_integration_status(
-        user_id, integration_id, "created", connected_account_id=url["connection_id"]
+        user_id, integration_id, "created", connected_account_id=connect_link["connection_id"]
     )
 
     log.set(
@@ -352,7 +364,7 @@ async def connect_composio_integration(
         status="redirect",
         integration_id=integration_id,
         name=integration_name,
-        redirect_url=url["redirect_url"],
+        redirect_url=connect_link["redirect_url"],
         message="OAuth authentication required",
     )
 
@@ -418,7 +430,7 @@ async def initiate_integration_connection(
 ) -> ConnectIntegrationResponse | None:
     """Resolve an integration and start its connect flow.
 
-    Shared by POST /connect/{id} and the login-free GET /connect-link.
+    Shared by POST /connect/{id} and the login-free POST /connect-link.
     Returns None when the integration does not exist (callers map that to
     404); otherwise redirect_url is the provider OAuth URL.
     """
@@ -498,7 +510,8 @@ async def disconnect_integration(user_id: str, integration_id: str) -> Integrati
         mcp_client = await get_mcp_client(user_id=user_id)
         await mcp_client.disconnect(integration_id)
         await remove_user_integration(user_id, integration_id)
-        if resolved.custom_doc and resolved.custom_doc.get("created_by") == user_id:
+        owner = _CustomIntegrationOwner.model_validate(resolved.custom_doc or {})
+        if owner.created_by == user_id:
             await delete_custom_integration(user_id, integration_id)
 
     elif resolved.managed_by == "composio":

@@ -33,6 +33,8 @@ from mcp.types import (
 )
 from pydantic import AnyUrl, ValidationError
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+import time_machine
 
 from app.constants.device_bridge import DEVICE_TRANSPORT
 from app.constants.log_tags import LogTag
@@ -45,6 +47,7 @@ from app.models.integration_models import (
     UserIntegrationStatus,
 )
 from app.models.mcp_config import MCPConfig, OAuthDiscovery, OidcTokenResponse
+from app.services.mcp import mcp_client
 from app.services.mcp.langchain_adapter import SanitizingLangChainAdapter
 from app.services.mcp.mcp_client import (
     DCRNotSupportedError,
@@ -1393,6 +1396,200 @@ class TestMCPTokenStoreIsConnected:
         store.get_credential = AsyncMock(return_value=cred)
         assert await store.is_connected(INTEGRATION_ID) is False
 
+    @pytest.mark.regression
+    async def test_false_when_access_token_expired_without_refresh_token(self):
+        store = MCPTokenStore(user_id=USER_ID)
+        cred = _make_credential(
+            status=MCPCredentialStatus.CONNECTED,
+            token_expires_at=datetime.now(UTC) - timedelta(minutes=1),
+        )
+        store.get_credential = AsyncMock(return_value=cred)
+
+        assert await store.is_connected(INTEGRATION_ID) is False
+
+    async def test_refresh_token_keeps_expired_access_credential_recoverable(self):
+        store = MCPTokenStore(user_id=USER_ID)
+        cred = _make_credential(
+            status=MCPCredentialStatus.CONNECTED,
+            refresh_token="encrypted_refresh_token",
+            token_expires_at=datetime.now(UTC) - timedelta(minutes=1),
+        )
+        store.get_credential = AsyncMock(return_value=cred)
+
+        assert await store.is_connected(INTEGRATION_ID) is True
+
+    async def test_bearer_credential_requires_its_access_token(self):
+        store = MCPTokenStore(user_id=USER_ID)
+        cred = _make_credential(
+            status=MCPCredentialStatus.CONNECTED,
+            auth_type=MCPAuthType.BEARER,
+            access_token=None,
+            refresh_token="not-used-for-bearer",
+        )
+        store.get_credential = AsyncMock(return_value=cred)
+
+        assert await store.is_connected(INTEGRATION_ID) is False
+
+    async def test_unauthenticated_credential_is_usable_without_tokens(self):
+        store = MCPTokenStore(user_id=USER_ID)
+        cred = _make_credential(
+            status=MCPCredentialStatus.CONNECTED,
+            auth_type=MCPAuthType.NONE,
+            access_token=None,
+            refresh_token=None,
+        )
+        store.get_credential = AsyncMock(return_value=cred)
+
+        assert await store.is_connected(INTEGRATION_ID) is True
+
+    async def test_bearer_credential_with_token_is_usable(self):
+        store = MCPTokenStore(user_id=USER_ID)
+        cred = _make_credential(
+            status=MCPCredentialStatus.CONNECTED,
+            auth_type=MCPAuthType.BEARER,
+            access_token="encrypted_bearer",
+        )
+        store.get_credential = AsyncMock(return_value=cred)
+
+        assert await store.is_connected(INTEGRATION_ID) is True
+
+    async def test_naive_expiry_in_the_past_reads_as_disconnected(self):
+        store = MCPTokenStore(user_id=USER_ID)
+        cred = _make_credential(
+            status=MCPCredentialStatus.CONNECTED,
+            token_expires_at=datetime.now().replace(tzinfo=None) - timedelta(minutes=1),
+        )
+        store.get_credential = AsyncMock(return_value=cred)
+
+        assert await store.is_connected(INTEGRATION_ID) is False
+
+    async def test_naive_expiry_in_the_future_reads_as_connected(self):
+        store = MCPTokenStore(user_id=USER_ID)
+        cred = _make_credential(
+            status=MCPCredentialStatus.CONNECTED,
+            token_expires_at=datetime.now().replace(tzinfo=None) + timedelta(minutes=5),
+        )
+        store.get_credential = AsyncMock(return_value=cred)
+
+        assert await store.is_connected(INTEGRATION_ID) is True
+
+    async def test_token_expiring_exactly_now_reads_as_disconnected(self):
+        store = MCPTokenStore(user_id=USER_ID)
+        now = datetime.now(UTC)
+        cred = _make_credential(
+            status=MCPCredentialStatus.CONNECTED,
+            token_expires_at=now,
+        )
+        store.get_credential = AsyncMock(return_value=cred)
+        with time_machine.travel(now, tick=False):
+            assert await store.is_connected(INTEGRATION_ID) is False
+
+
+async def _sqlite_session_factory() -> tuple[Any, Any]:
+    """Real in-memory SQLite session for tests that must observe SQL filtering.
+
+    Mocked sessions return canned rows whatever the statement says, so WHERE
+    mutants survive; SQLite executes the actual query.
+    """
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        # Only the credentials table: the shared Base metadata holds
+        # Postgres-only column types (JSONB) that SQLite cannot create.
+        await conn.run_sync(lambda sync_conn: MCPCredential.__table__.create(sync_conn))
+    session = AsyncSession(engine, expire_on_commit=False)
+    return session, engine
+
+
+@asynccontextmanager
+async def _sqlite_session_ctx(session: Any) -> Any:
+    yield session
+
+
+def _stored_credential(
+    session: Any,
+    user_id: str,
+    integration_id: str,
+    **overrides: Any,
+) -> MCPCredential:
+    """Persist a real MCPCredential row (SQLAlchemy model, not a mock)."""
+    from app.models.db_oauth import MCPCredential as _Row
+
+    row = _Row(
+        user_id=user_id,
+        integration_id=integration_id,
+        auth_type=overrides.get("auth_type", MCPAuthType.OAUTH),
+        status=overrides.get("status", MCPCredentialStatus.CONNECTED),
+        access_token=overrides.get("access_token", "tok"),
+        refresh_token=overrides.get("refresh_token"),
+        token_expires_at=overrides.get("token_expires_at"),
+    )
+    session.add(row)
+    return row
+
+
+class TestMCPTokenStoreBatchLookup:
+    async def test_get_credentials_map_filters_by_user_and_ids(self):
+        session, engine = await _sqlite_session_factory()
+        try:
+            _stored_credential(session, USER_ID, "a")
+            _stored_credential(session, USER_ID, "b")
+            _stored_credential(session, USER_ID, "unrequested")
+            _stored_credential(session, "other-user", "a")
+            await session.commit()
+
+            store = MCPTokenStore(user_id=USER_ID)
+            with patch(
+                "app.services.mcp.mcp_token_store.get_db_session",
+                lambda: _sqlite_session_ctx(session),
+            ):
+                result = await store.get_credentials_map(["a", "b", "missing"])
+        finally:
+            await session.close()
+            await engine.dispose()
+
+        assert set(result) == {"a", "b"}
+        assert all(row.user_id == USER_ID for row in result.values())
+
+    async def test_get_credentials_map_empty_list_skips_the_query(self):
+        store = MCPTokenStore(user_id=USER_ID)
+        with patch(
+            "app.services.mcp.mcp_token_store.get_db_session",
+            side_effect=AssertionError("empty id list must not touch the database"),
+        ):
+            assert await store.get_credentials_map([]) == {}
+
+    async def test_are_connected_evaluates_each_id_in_one_round_trip(self):
+        session, engine = await _sqlite_session_factory()
+        try:
+            _stored_credential(session, USER_ID, "usable", auth_type=MCPAuthType.NONE)
+            _stored_credential(
+                session,
+                USER_ID,
+                "stale",
+                token_expires_at=datetime.now(UTC) - timedelta(minutes=1),
+            )
+            await session.commit()
+
+            store = MCPTokenStore(user_id=USER_ID)
+            with patch(
+                "app.services.mcp.mcp_token_store.get_db_session",
+                lambda: _sqlite_session_ctx(session),
+            ):
+                result = await store.are_connected(["usable", "stale", "unknown"])
+        finally:
+            await session.close()
+            await engine.dispose()
+
+        assert result == {"usable": True, "stale": False, "unknown": False}
+
+    async def test_are_connected_empty_list_returns_empty_map(self):
+        store = MCPTokenStore(user_id=USER_ID)
+        with patch(
+            "app.services.mcp.mcp_token_store.get_db_session",
+            side_effect=AssertionError("empty id list must not touch the database"),
+        ):
+            assert await store.are_connected([]) == {}
+
 
 class TestMCPTokenStoreDCRClient:
     async def test_get_dcr_client(self):
@@ -1669,6 +1866,7 @@ class TestTryRefreshToken:
             _make_oauth_discovery(),
         )
         assert result is False
+        token_store.get_dcr_client.assert_awaited_once_with(INTEGRATION_ID)
 
     async def test_refresh_http_error(self):
         token_store = AsyncMock(spec=MCPTokenStore)
@@ -1694,6 +1892,74 @@ class TestTryRefreshToken:
 
             result = await try_refresh_token(token_store, INTEGRATION_ID, mcp_config, oauth_config)
         assert result is False
+
+    async def test_dead_grant_clears_the_refresh_token(self):
+        """An invalid_grant refresh drops the dead token so liveness stays honest."""
+        token_store = AsyncMock(spec=MCPTokenStore)
+        token_store.user_id = USER_ID
+        token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
+        token_store.get_dcr_client = AsyncMock(return_value=None)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 400
+        mock_response.json.return_value = {
+            "error": "invalid_grant",
+            "error_description": "Token expired",
+        }
+
+        with (
+            patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http,
+            patch("app.services.mcp.token_management.log") as mock_log,
+        ):
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_http.return_value.__aexit__ = AsyncMock()
+
+            result = await try_refresh_token(
+                token_store,
+                INTEGRATION_ID,
+                _make_mcp_config(client_id="cid"),
+                _make_oauth_discovery(),
+            )
+
+        assert result is False
+        token_store.clear_refresh_token.assert_awaited_once_with(INTEGRATION_ID)
+        mock_log.warning.assert_any_call(
+            f"{LogTag.MCP} try_refresh_token: token endpoint returned an error",
+            status_code=400,
+            integration_id=INTEGRATION_ID,
+            user_id=USER_ID,
+            oauth_error="invalid_grant",
+            oauth_error_description="Token expired",
+            endpoint_host="https://auth.example.com",
+        )
+
+    async def test_transient_refresh_error_keeps_the_refresh_token(self):
+        token_store = AsyncMock(spec=MCPTokenStore)
+        token_store.user_id = USER_ID
+        token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
+        token_store.get_dcr_client = AsyncMock(return_value=None)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.json.return_value = {}
+
+        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_http.return_value.__aexit__ = AsyncMock()
+
+            result = await try_refresh_token(
+                token_store,
+                INTEGRATION_ID,
+                _make_mcp_config(client_id="cid"),
+                _make_oauth_discovery(),
+            )
+
+        assert result is False
+        token_store.clear_refresh_token.assert_not_awaited()
 
     async def test_refresh_exception(self):
         token_store = AsyncMock(spec=MCPTokenStore)
@@ -1789,6 +2055,31 @@ class TestRevokeTokens:
             await revoke_tokens(token_store, INTEGRATION_ID, mcp_config, oauth_config)
 
         assert mock_client.post.await_count == 2
+
+    async def test_revocation_uses_dcr_credentials_when_unconfigured(self):
+        token_store = AsyncMock(spec=MCPTokenStore)
+        token_store.get_refresh_token = AsyncMock(return_value="refresh_tok")
+        token_store.get_oauth_token = AsyncMock(return_value=None)
+        token_store.get_dcr_client = AsyncMock(
+            return_value={"client_id": "dcr_cid", "client_secret": "dcr_sec"}
+        )
+
+        oauth_config = _make_oauth_discovery(
+            metadata_overrides={"revocation_endpoint": "https://auth.example.com/revoke"}
+        )
+
+        with patch("app.services.mcp.token_management.httpx.AsyncClient") as mock_http:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock()
+            mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_http.return_value.__aexit__ = AsyncMock()
+
+            await revoke_tokens(token_store, INTEGRATION_ID, _make_mcp_config(), oauth_config)
+
+        token_store.get_dcr_client.assert_awaited_once_with(INTEGRATION_ID)
+        posted = mock_client.post.await_args
+        assert posted.kwargs["data"]["client_id"] == "dcr_cid"
+        assert posted.kwargs["headers"]["Authorization"].startswith("Basic ")
 
     async def test_skips_when_no_endpoint(self):
         token_store = AsyncMock(spec=MCPTokenStore)
@@ -4255,6 +4546,71 @@ class TestRunPostConnectTasksExact:
 
 
 class TestHandleConnectFailureExact:
+    @pytest.mark.regression
+    async def test_missing_oauth_token_marks_the_integration_unconnected_without_deleting_credentials(
+        self,
+    ) -> None:
+        client = MCPClient(user_id=USER_ID)
+        client.token_store.get_bearer_token = AsyncMock(return_value=None)
+        client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
+        client.token_store.get_oauth_token = AsyncMock(return_value=None)
+        client.token_store.get_refresh_token = AsyncMock(return_value=None)
+        mcp_config = _make_mcp_config(requires_auth=True)
+
+        with (
+            patch(
+                "app.services.mcp.mcp_client.update_user_integration_status",
+                new_callable=AsyncMock,
+            ) as update_status,
+            patch.object(client, "_reset_to_disconnected", new_callable=AsyncMock) as reset,
+            patch("app.services.mcp.mcp_client.log") as mock_log,
+        ):
+            with pytest.raises(ValueError, match="OAuth authorization required") as exc_info:
+                await client._build_config(INTEGRATION_ID, mcp_config)
+
+            await client._handle_connect_failure(exc_info.value, INTEGRATION_ID, mcp_config)
+
+        assert str(exc_info.value) == (
+            f"No valid token for {INTEGRATION_ID}. "
+            "OAuth authorization required - user must complete the OAuth flow."
+        )
+        update_status.assert_awaited_once_with(USER_ID, INTEGRATION_ID, "created")
+        reset.assert_not_awaited()
+        mock_log.warning.assert_any_call(
+            f"{LogTag.MCP} OAuth authorization required for",
+            integration_id=INTEGRATION_ID,
+            user_id=USER_ID,
+        )
+
+    async def test_retained_refresh_token_keeps_saved_status_on_transient_failure(
+        self,
+    ) -> None:
+        """A stored refresh token keeps the saved status on transient failure."""
+        client = MCPClient(user_id=USER_ID)
+        client.token_store.get_refresh_token = AsyncMock(return_value="enc-refresh")
+        mcp_config = _make_mcp_config(requires_auth=True)
+
+        with (
+            patch(
+                "app.services.mcp.mcp_client.update_user_integration_status",
+                new_callable=AsyncMock,
+            ) as update_status,
+            patch.object(client, "_reset_to_disconnected", new_callable=AsyncMock) as reset,
+            patch("app.services.mcp.mcp_client.log") as mock_log,
+        ):
+            err = mcp_client.MCPAuthorizationRequiredError(INTEGRATION_ID)
+            result = await client._handle_connect_failure(err, INTEGRATION_ID, mcp_config)
+
+        assert result is None
+        update_status.assert_not_awaited()
+        reset.assert_not_awaited()
+        client.token_store.get_refresh_token.assert_awaited_once_with(INTEGRATION_ID)
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.MCP} OAuth token unavailable but refresh retained for",
+            integration_id=INTEGRATION_ID,
+            user_id=USER_ID,
+        )
+
     async def test_step_up_raises_with_parsed_scopes_and_original_cause(self):
         client = MCPClient(user_id=USER_ID)
         err = ValueError('403 insufficient_scope scope="read write"')
@@ -4532,12 +4888,68 @@ class TestConnectFailureClassification:
         without_refresh._reset_to_disconnected.assert_not_awaited()
 
         after_refresh = self._client()
-        with patch("app.services.mcp.mcp_client.log"):
+        with patch("app.services.mcp.mcp_client.log") as mock_log:
             await after_refresh._handle_connect_failure(
                 err, INTEGRATION_ID, _make_mcp_config(requires_auth=True)
             )
         after_refresh._try_refresh_token.assert_awaited_once()
         after_refresh._reset_to_disconnected.assert_awaited_once_with(INTEGRATION_ID)
+        assert [
+            c
+            for c in mock_log.warning.call_args_list
+            if c.args
+            and c.args[0] == f"{LogTag.MCP} Resetting on message-only status signal after refresh"
+        ] == []
+
+    @pytest.mark.regression
+    async def test_plain_401_without_response_resets_after_failed_refresh(self) -> None:
+        client = self._client()
+        with patch("app.services.mcp.mcp_client.log") as mock_log:
+            await client._handle_connect_failure(
+                RuntimeError("401 Unauthorized from PostHog"),
+                INTEGRATION_ID,
+                _make_mcp_config(requires_auth=True),
+            )
+
+        client._try_refresh_token.assert_awaited_once()
+        client._reset_to_disconnected.assert_awaited_once_with(INTEGRATION_ID)
+        mock_log.warning.assert_any_call(
+            f"{LogTag.MCP} Resetting on message-only status signal after refresh",
+            integration_id=INTEGRATION_ID,
+            error="401 Unauthorized from PostHog",
+            error_type="RuntimeError",
+        )
+
+    async def test_http_status_word_boundary_does_not_match_401k(self) -> None:
+        client = self._client()
+        with patch("app.services.mcp.mcp_client.log"):
+            await client._handle_connect_failure(
+                RuntimeError("401k is not an HTTP status"),
+                INTEGRATION_ID,
+                _make_mcp_config(requires_auth=True),
+            )
+
+        client._try_refresh_token.assert_awaited_once()
+        client._reset_to_disconnected.assert_not_awaited()
+
+    async def test_url_port_is_not_an_authorization_signal(self) -> None:
+        """A :403 port in a connection URL must not delete saved credentials."""
+        client = self._client()
+        with patch("app.services.mcp.mcp_client.log") as mock_log:
+            await client._handle_connect_failure(
+                RuntimeError("connect to https://mcp.example.com:403/sse failed"),
+                INTEGRATION_ID,
+                _make_mcp_config(requires_auth=True),
+            )
+
+        client._try_refresh_token.assert_awaited_once()
+        client._reset_to_disconnected.assert_not_awaited()
+        assert [
+            c
+            for c in mock_log.warning.call_args_list
+            if c.args
+            and c.args[0] == f"{LogTag.MCP} Resetting on message-only status signal after refresh"
+        ] == []
 
     @pytest.mark.parametrize(
         "message",

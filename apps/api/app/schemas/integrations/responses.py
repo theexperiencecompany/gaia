@@ -1,7 +1,7 @@
 """Integration response models with camelCase aliases."""
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
@@ -115,7 +115,7 @@ class IntegrationResponse(CamelModel, CloneCountMixin):
     clone_count: int = 0
     slug: str | None = None  # Computed at runtime via generate_integration_slug
     # Creator info (populated via aggregation from users collection)
-    creator: Optional["CommunityIntegrationCreator"] = None
+    creator: "CommunityIntegrationCreator | None" = None
 
 
 class MarketplaceResponse(BaseModel):
@@ -152,7 +152,7 @@ class MyIntegrationItem(CamelModel, CloneCountMixin):
     created_by: str | None = None
     published_at: datetime | None = None
     clone_count: int = 0
-    creator: Optional["CommunityIntegrationCreator"] = None
+    creator: "CommunityIntegrationCreator | None" = None
 
 
 class MyIntegrationsResponse(ResponseModel):
@@ -162,6 +162,12 @@ class MyIntegrationsResponse(ResponseModel):
 
     integrations: list[MyIntegrationItem] = Field(default_factory=list)
     total: int = 0
+
+
+class IntegrationStatusesResponse(ResponseModel):
+    """Current connection status map, fetched independently of the catalog."""
+
+    statuses: dict[str, bool] = Field(description="Connection state keyed by integration id")
 
 
 class IntegrationToolsResponse(CamelModel, ResponseModel):

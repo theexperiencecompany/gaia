@@ -496,16 +496,17 @@ REQUEST_TOKEN_COUNTER_TTL_SECONDS = 30 * 60
 
 # --- Tool-loop guardrails (LoopGuardMiddleware) ---------------------------------
 # "Identical" = same tool+args; "same_tool" = any failure of that tool. WARN appends an
-# in-band nudge to the error ToolMessage; STOP skips the call, returning a synthetic error.
+# in-band nudge; STOP (background runs only) skips the call with a synthetic error.
 LOOP_GUARD_WARN_IDENTICAL = 2
 LOOP_GUARD_WARN_SAME_TOOL = 3
 LOOP_GUARD_STOP_IDENTICAL = 5
 LOOP_GUARD_STOP_SAME_TOOL = 8
-# "Repeat" counts CONSECUTIVE identical calls regardless of success or failure:
-# a successful call whose result won't change is as much a loop as a failing
-# one (the failure counters above only see status="error").
+# "Repeat" counts identical calls issued this run, consecutive or not, regardless of
+# success or failure: a successful call whose result won't change is as much a loop
+# as a failing one (the failure counters above only see status="error").
 LOOP_GUARD_WARN_REPEAT = 3
 LOOP_GUARD_STOP_REPEAT = 6
-# The middleware is a per-process singleton, so failure counters are keyed by the
-# run's thread_id and bounded to the most recent N runs (LRU) to keep memory flat.
+# The middleware is a per-process singleton, so counters are keyed by the run
+# (thread_id + root_request_id) and bounded to the most recent N runs (LRU) to keep
+# memory flat.
 LOOP_GUARD_MAX_TRACKED_RUNS = 512

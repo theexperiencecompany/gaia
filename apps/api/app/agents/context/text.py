@@ -23,6 +23,9 @@ BACKGROUND_EXECUTION_BANNER = (
     "   - Just execute. If no card can carry the decision (a truly novel choice with "
     "no standing instruction), write the question into "
     "the Context section of the active todo's canvas.md and stop.\n"
+    "   - If an integration the task needs is not connected, nobody can connect it during "
+    "this run: do not retry it or search for its tools again. Record it as not connected "
+    "in your result and carry on with the rest of the task.\n"
     "   - Your output is consumed by the system, not a human. Be terse and action-only."
 )
 

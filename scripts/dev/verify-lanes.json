@@ -1,9 +1,10 @@
 {
-  "$comment": "GAIA verify lanes — local mirror of CI quality gates (.github/workflows/code-quality.yml + main.yml). name matches the CI job/step (rows may be step-granular). scope = extended regex over changed paths; lane runs if ANY file matches (--all overrides). heavy=true needs --with-heavy. timeout_s hard cap; expiry -> status=timeout (exit 2). require_cmd: any missing -> skipped(missing-tool). command runs at repo root — keep byte-parity with the CI job's own repro line. Edit a workflow lane and this file in the SAME commit. INTENTIONALLY NOT MIRRORED (CI-only): build, build-images, coverage (combines the unit/integration/bridge slices; fail-under 80 on master, report-only on PRs), docker-image, regression-proof, validate-release-manifest, test-harness-tools, trivy-scan (advisory), changelog-sync (auto-fix PR job). Known deltas: py-tests mirrors via Dagger not byte-parity flake-gate slices; alert-rules needs locally installed pint/promtool (CI pins v0.87.0/v3.1.0 from release tarballs); whole-repo scopes are stricter than CI's changed-file scoping (safe direction). Post-merge note: master pinned bandit/xenon/interrogate and split ignore-ratchet into ignore-whys + ignore-staleness + tool-pins (2026-08 merge of origin/master).",
+  "$comment": "GAIA verify lanes — local mirror of CI quality gates (.github/workflows/code-quality.yml + main.yml). name matches the CI job/step (rows may be step-granular). ci_job = the code-quality.yml job that runs the lane; `verdict.py reuse-plan` unions a job's scopes to decide whether its last pass on a PR still holds, so a lane missing here makes its job always run, and a job whose real inputs a scope misses could be wrongly reused. scope = extended regex over changed paths; lane runs if ANY file matches (--all overrides). heavy=true needs --with-heavy. timeout_s hard cap; expiry -> status=timeout (exit 2). require_cmd: any missing -> skipped(missing-tool). command runs at repo root — keep byte-parity with the CI job's own repro line. Edit a workflow lane and this file in the SAME commit. INTENTIONALLY NOT MIRRORED (CI-only): build, build-images, coverage (combines the unit/integration/bridge slices; fail-under 80 on master, report-only on PRs), docker-image, regression-proof, validate-release-manifest, test-harness-tools, trivy-scan (advisory), changelog-sync (auto-fix PR job). Known deltas: py-tests mirrors via Dagger not byte-parity flake-gate slices; alert-rules needs locally installed pint/promtool (CI pins v0.87.0/v3.1.0 from release tarballs); whole-repo scopes are stricter than CI's changed-file scoping (safe direction). Post-merge note: master pinned bandit/xenon/interrogate and split ignore-ratchet into ignore-whys + ignore-staleness + tool-pins (2026-08 merge of origin/master).",
   "schema_version": 1,
   "lanes": [
     {
       "name": "biome",
+      "ci_job": "biome",
       "scope": "\\.(ts|tsx|js|jsx|mjs|cjs|json|jsonc|css)$",
       "heavy": false,
       "timeout_s": 300,
@@ -12,6 +13,7 @@
     },
     {
       "name": "deps",
+      "ci_job": "deps",
       "scope": "\\.(ts|tsx|js|jsx|json)$|^pnpm-lock\\.yaml$|^packages/",
       "heavy": false,
       "timeout_s": 120,
@@ -20,6 +22,7 @@
     },
     {
       "name": "circular",
+      "ci_job": "circular",
       "scope": "\\.(ts|tsx|js|jsx)$",
       "heavy": false,
       "timeout_s": 180,
@@ -28,6 +31,7 @@
     },
     {
       "name": "file-size",
+      "ci_job": "file-size",
       "scope": "\\.(ts|tsx|js|jsx|mjs|cjs)$",
       "heavy": false,
       "timeout_s": 120,
@@ -36,6 +40,7 @@
     },
     {
       "name": "types-location",
+      "ci_job": "types-location",
       "scope": "\\.(ts|tsx|js)$",
       "heavy": false,
       "timeout_s": 120,
@@ -44,6 +49,7 @@
     },
     {
       "name": "api-schema",
+      "ci_job": "api-schema",
       "$comment": "THE source of truth for what can change the generated API contract: the prek `api-types` hook's `files:` must match it byte for byte, and code-quality.yml's `changes` job greps it out of this file. A FastAPI/Pydantic bump changes the generated output with no route edit, so the manifests count as inputs. Enforced by scripts/ci/tests/test_api_schema_scope.py.",
       "scope": "^apps/api/app/.*\\.py$|^apps/api/scripts/export_openapi\\.py$|^apps/api/tests/offline_env\\.py$|^apps/api/pyproject\\.toml$|^apps/api/openapi\\.json$|^uv\\.lock$|^libs/shared/ts/src/api/generated/|^scripts/ci/checks\\.mjs$|^package\\.json$",
       "heavy": false,
@@ -53,6 +59,7 @@
     },
     {
       "name": "doc-comments",
+      "ci_job": "doc-comments",
       "scope": "\\.(ts|tsx|js|jsx|mjs|cjs)$",
       "heavy": false,
       "timeout_s": 120,
@@ -61,6 +68,7 @@
     },
     {
       "name": "api-schema-types",
+      "ci_job": "api-schema",
       "scope": "\\.(ts|tsx)$|^apps/api/openapi\\.json$|^config/api-schema-baseline\\.json$",
       "heavy": false,
       "timeout_s": 120,
@@ -69,6 +77,7 @@
     },
     {
       "name": "components-per-file",
+      "ci_job": "components-per-file",
       "scope": "\\.tsx$",
       "heavy": false,
       "timeout_s": 120,
@@ -77,6 +86,7 @@
     },
     {
       "name": "duplicates",
+      "ci_job": "duplicates",
       "scope": "\\.(ts|tsx|js|jsx|py)$",
       "heavy": false,
       "timeout_s": 240,
@@ -85,6 +95,7 @@
     },
     {
       "name": "package-hygiene",
+      "ci_job": "package-hygiene",
       "scope": "^packages/cli/|^pnpm-lock\\.yaml$",
       "heavy": false,
       "timeout_s": 600,
@@ -101,6 +112,7 @@
     },
     {
       "name": "type-check",
+      "ci_job": "type-check",
       "scope": "\\.(ts|tsx|js|jsx)$|^tsconfig|^nx\\.json$",
       "heavy": false,
       "timeout_s": 900,
@@ -109,6 +121,7 @@
     },
     {
       "name": "suppression-hygiene",
+      "ci_job": "suppression-hygiene",
       "scope": "\\.(ts|tsx|js|jsx|py)$",
       "heavy": false,
       "timeout_s": 120,
@@ -117,6 +130,7 @@
     },
     {
       "name": "dead-code",
+      "ci_job": "dead-code",
       "scope": "\\.(ts|tsx|py)$",
       "heavy": false,
       "timeout_s": 600,
@@ -125,6 +139,7 @@
     },
     {
       "name": "python-ruff",
+      "ci_job": "python-static",
       "scope": "\\.py$|^pyproject\\.toml$|^ruff\\.toml$",
       "heavy": false,
       "timeout_s": 180,
@@ -133,6 +148,7 @@
     },
     {
       "name": "python-mypy",
+      "ci_job": "python-mypy",
       "scope": "\\.py$|^pyproject\\.toml$|^uv\\.lock$",
       "heavy": false,
       "timeout_s": 900,
@@ -141,6 +157,7 @@
     },
     {
       "name": "custom-lints",
+      "ci_job": "python-static",
       "scope": "\\.py$|^tools/lints/",
       "heavy": false,
       "timeout_s": 120,
@@ -149,6 +166,7 @@
     },
     {
       "name": "lint-imports",
+      "ci_job": "python-static",
       "scope": "^apps/api/(app/.*\\.py|pyproject\\.toml)$",
       "heavy": false,
       "timeout_s": 300,
@@ -157,6 +175,7 @@
     },
     {
       "name": "plr-complexity",
+      "ci_job": "python-static",
       "scope": "\\.py$|^tools/lints/(check_plr_complexity\\.py|plr_complexity_baseline\\.txt)",
       "heavy": false,
       "timeout_s": 120,
@@ -164,7 +183,17 @@
       "command": "python3 tools/lints/check_plr_complexity.py"
     },
     {
+      "name": "typed-boundaries",
+      "ci_job": "python-static",
+      "scope": "\\.py$|^tools/lints/(check_typed_boundaries\\.py|typed_boundaries_baseline\\.txt|_ratchet\\.py|_common\\.py)$",
+      "heavy": false,
+      "timeout_s": 120,
+      "require_cmd": [],
+      "command": "python3 tools/lints/check_typed_boundaries.py"
+    },
+    {
       "name": "import-cost",
+      "ci_job": "python-audit",
       "$comment": "Imports the real modules in fresh subprocesses, so it needs the synced venv; --report matches the CI step, which measures without gating until the base layers stop importing upward.",
       "scope": "^apps/api/app/(constants|config|utils|models)/|^apps/api/app/(main|worker)\\.py$|^apps/api/tests/conftest\\.py$|^tools/lints/check_import_cost\\.py$",
       "heavy": true,
@@ -174,6 +203,7 @@
     },
     {
       "name": "ignore-whys",
+      "ci_job": "python-static",
       "scope": "^pyproject\\.toml$|^tools/lints/(check_ignore_ratchet\\.py|ignore_ratchet_baseline\\.txt)",
       "heavy": false,
       "timeout_s": 120,
@@ -182,6 +212,7 @@
     },
     {
       "name": "ignore-staleness",
+      "ci_job": "suppression-hygiene",
       "scope": "^pyproject\\.toml$|^tools/lints/",
       "heavy": false,
       "timeout_s": 120,
@@ -190,6 +221,7 @@
     },
     {
       "name": "tool-pins",
+      "ci_job": "suppression-hygiene",
       "scope": "\\.(py|toml)$|^tools/lints/|^\\.pre-commit-config\\.yaml$",
       "heavy": false,
       "timeout_s": 120,
@@ -198,6 +230,7 @@
     },
     {
       "name": "interrogate",
+      "ci_job": "python-static",
       "scope": "\\.py$|^pyproject\\.toml$",
       "heavy": false,
       "timeout_s": 180,
@@ -206,6 +239,7 @@
     },
     {
       "name": "xenon",
+      "ci_job": "python-static",
       "scope": "\\.py$|^pyproject\\.toml$",
       "heavy": false,
       "timeout_s": 180,
@@ -214,6 +248,7 @@
     },
     {
       "name": "bandit",
+      "ci_job": "python-static",
       "scope": "\\.py$|^pyproject\\.toml$",
       "heavy": false,
       "timeout_s": 300,
@@ -222,6 +257,7 @@
     },
     {
       "name": "pip-audit",
+      "ci_job": "python-audit",
       "scope": "^uv\\.lock$|^pyproject\\.toml$",
       "heavy": true,
       "timeout_s": 600,
@@ -230,6 +266,7 @@
     },
     {
       "name": "observability-evlog-tests",
+      "ci_job": "observability",
       "scope": "\\.py$|^tools/(evlog_map|logcheck)/",
       "heavy": false,
       "timeout_s": 300,
@@ -238,6 +275,7 @@
     },
     {
       "name": "observability-map",
+      "ci_job": "observability",
       "scope": "\\.py$|^apps/bots/|^libs/shared/ts/",
       "heavy": false,
       "timeout_s": 300,
@@ -246,6 +284,7 @@
     },
     {
       "name": "observability-ratchet",
+      "ci_job": "observability",
       "scope": "\\.py$",
       "heavy": false,
       "timeout_s": 120,
@@ -254,6 +293,7 @@
     },
     {
       "name": "wide-event-conformance",
+      "ci_job": "wide-event-conformance",
       "scope": "\\.(py|ts|tsx)$",
       "heavy": false,
       "timeout_s": 300,
@@ -262,6 +302,7 @@
     },
     {
       "name": "alert-rules",
+      "ci_job": "alert-rules",
       "scope": "^tools/alert-rules/|^infra/docker/observability/grafana/provisioning/alerting/|^config/pint\\.hcl$",
       "heavy": true,
       "timeout_s": 600,
@@ -270,6 +311,7 @@
     },
     {
       "name": "gitleaks",
+      "ci_job": "gitleaks",
       "scope": ".",
       "heavy": false,
       "timeout_s": 300,
@@ -278,6 +320,7 @@
     },
     {
       "name": "semgrep",
+      "ci_job": "semgrep",
       "scope": "\\.py$",
       "heavy": true,
       "timeout_s": 900,

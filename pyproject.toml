@@ -29,6 +29,9 @@ constraint-dependencies = [
   "pillow>=12.3.0",
   "json-repair>=0.60.1",
   "virtualenv>=21.7.13",
+  "fsspec>=2026.6.0",
+  "multidict>=6.9.1",
+  "werkzeug>=3.1.9",
 ]
 
 [tool.uv.workspace]
