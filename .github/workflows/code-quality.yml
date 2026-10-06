@@ -1349,7 +1349,8 @@ jobs:
             uv run --project apps/api --frozen --group backend --group dev mypy $API_TARGETS --ignore-missing-imports
           fi
           if [ -n "$VOICE" ]; then
-            uv run --project apps/voice-agent --frozen --group dev mypy apps/voice-agent/src --ignore-missing-imports
+            # Its own cache: one shared with the API run, built in another environment, crashed mypy's cache load.
+            uv run --project apps/voice-agent --frozen --group dev mypy apps/voice-agent/src --ignore-missing-imports --cache-dir "${MYPY_CACHE_DIR:-.mypy_cache}/voice-agent"
           fi
           echo "::endgroup::"
           echo "mypy: OK (no type errors)"

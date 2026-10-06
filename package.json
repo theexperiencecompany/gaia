@@ -19,7 +19,7 @@
     "quality:pkg-json": "npmPkgJsonLint . --configFile config/.npmpackagejsonlintrc.json --quiet",
     "quality:publint": "pnpm --filter @heygaia/cli build && publint packages/cli",
     "quality:py:interrogate": "uvx --no-build interrogate==1.7.0 -c pyproject.toml apps/api apps/voice-agent libs/shared/py",
-    "quality:py:mypy": "uv run --project apps/api --group backend --group dev mypy apps/api/app libs/shared/py --ignore-missing-imports && uv run --project apps/voice-agent --group dev mypy apps/voice-agent/src --ignore-missing-imports",
+    "quality:py:mypy": "uv run --project apps/api --group backend --group dev mypy apps/api/app libs/shared/py --ignore-missing-imports && uv run --project apps/voice-agent --group dev mypy apps/voice-agent/src --ignore-missing-imports --cache-dir .mypy_cache/voice-agent",
     "quality:py:ruff": "uv run --project apps/api --group dev ruff check apps/api apps/voice-agent libs/shared/py",
     "quality:py:xenon": "uvx --no-build xenon==0.9.3 --max-absolute F --max-modules E --max-average B apps/api apps/voice-agent libs/shared/py -e 'apps/api/tests/**' -e 'apps/api/scripts/**' -e 'libs/shared/py/tests/**'",
     "quality:size": "node scripts/ci/checks.mjs file-sizes",
