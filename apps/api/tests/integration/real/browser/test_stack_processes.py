@@ -19,7 +19,7 @@ import time
 
 import pytest
 
-from tests.integration.real.browser._stack.processes import API_ROOT
+from tests.integration.real.browser._stack.processes import API_ROOT, READY_SECONDS
 
 pytestmark = pytest.mark.skipif(
     not sys.platform.startswith("linux"), reason="PR_SET_PDEATHSIG is Linux-only"
@@ -46,7 +46,8 @@ StackProcess(
 ).start()
 time.sleep(600)
 """
-_DEADLINE_SECONDS = 20.0
+#: How long the kernel gets to end the stack process once its parent is gone.
+_DEATH_SECONDS = 20.0
 
 
 def _alive(pid: int) -> bool:
@@ -58,13 +59,13 @@ def _alive(pid: int) -> bool:
     return stat.rsplit(") ", 1)[1].split()[0] != "Z"
 
 
-def _wait_for(condition: Callable[[], object], what: str) -> None:
-    deadline = time.monotonic() + _DEADLINE_SECONDS
+def _wait_for(condition: Callable[[], object], what: str, seconds: float) -> None:
+    deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         if condition():
             return
         time.sleep(0.1)
-    raise AssertionError(f"{what} within {_DEADLINE_SECONDS}s")
+    raise AssertionError(f"{what} within {seconds}s")
 
 
 def test_a_hard_killed_test_process_takes_its_stack_processes_and_their_engines_along(
@@ -77,14 +78,24 @@ def test_a_hard_killed_test_process_takes_its_stack_processes_and_their_engines_
         env={**os.environ, "PYTHONPATH": str(API_ROOT)},
     )
     try:
-        _wait_for(lambda: pids_file.exists() and pids_file.read_text(), "the stack process started")
+        # The parent cold-imports the app before it starts anything; a parent that dies doing so fails at once.
+        _wait_for(
+            lambda: (pids_file.exists() and pids_file.read_text()) or parent.poll() is not None,
+            "the stack process started",
+            READY_SECONDS,
+        )
+        assert parent.poll() is None, f"the probe parent exited {parent.returncode} before starting"
         child, grandchild = (int(pid) for pid in pids_file.read_text().split())
         assert _alive(child) and _alive(grandchild)
 
         parent.send_signal(signal.SIGKILL)
         parent.wait()
 
-        _wait_for(lambda: not _alive(child) and not _alive(grandchild), "the stack process died")
+        _wait_for(
+            lambda: not _alive(child) and not _alive(grandchild),
+            "the stack process died",
+            _DEATH_SECONDS,
+        )
     finally:
         if parent.poll() is None:
             parent.kill()

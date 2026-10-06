@@ -1457,7 +1457,7 @@ class TestMCPTokenStoreIsConnected:
         store = MCPTokenStore(user_id=USER_ID)
         cred = _make_credential(
             status=MCPCredentialStatus.CONNECTED,
-            token_expires_at=datetime.now().replace(tzinfo=None) - timedelta(minutes=1),
+            token_expires_at=datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=1),
         )
         store.get_credential = AsyncMock(return_value=cred)
 
@@ -1467,7 +1467,7 @@ class TestMCPTokenStoreIsConnected:
         store = MCPTokenStore(user_id=USER_ID)
         cred = _make_credential(
             status=MCPCredentialStatus.CONNECTED,
-            token_expires_at=datetime.now().replace(tzinfo=None) + timedelta(minutes=5),
+            token_expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=5),
         )
         store.get_credential = AsyncMock(return_value=cred)
 
