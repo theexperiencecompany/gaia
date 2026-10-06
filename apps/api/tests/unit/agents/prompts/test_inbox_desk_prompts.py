@@ -224,6 +224,7 @@ def test_a_meeting_request_is_answered_from_the_calendar_into_a_draft() -> None:
     assert "memory, the thread or the user's calendar can answer it" in rule
     assert "check that slot on the calendar" in rule
     assert "a yes when it is free, or two free times when it is not" in rule
+    assert "found by checking the rest of that day and the next" in rule
     assert "only when a fact or file only the user has is missing" in rule
 
 
@@ -255,7 +256,7 @@ def test_a_desk_run_never_writes_a_standing_rule_of_its_own() -> None:
     """Regression: a run added "do not track GitHub notifications" to Standing rules unasked."""
     assert (
         "edit canvas.md only for step 10. Standing rules are the user's own instructions, "
-        "never yours: what you notice goes to observations.md."
+        "never yours, in canvas.md or a todo you open: what you notice goes to observations.md."
     ) in INBOX_DESK_RUN_GUIDANCE
 
 

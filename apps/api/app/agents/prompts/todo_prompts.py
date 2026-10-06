@@ -256,9 +256,9 @@ REPLY_DRAFT_RULE = (
     "draft the reply (GMAIL_CREATE_EMAIL_DRAFT) whenever memory, the thread or the user's "
     "calendar can answer it, and never send. A meeting or time request is answered from "
     "the calendar when CONNECTED INTEGRATIONS lists Google Calendar: check that slot on the "
-    "calendar and draft a yes when it is free, or two free times when it is not. Draft "
-    "nothing only when a fact or file only the user has is missing, and name it as the "
-    "item's status."
+    "calendar and draft a yes when it is free, or two free times when it is not, found by "
+    "checking the rest of that day and the next. Draft nothing only when a fact or file "
+    "only the user has is missing, and name it as the item's status."
 )
 
 # Opens a desk run that new mail woke: the desk's steps fetch the mail, so the event is left out.
@@ -300,7 +300,7 @@ Noticed: each conclusion you added or changed in observations.md this run, one l
 Filtered: the number only, from step 3.
 Nothing in any section: say only that nothing is new.
 Woken by new mail, your final report is an alert in the briefing's form and under its rules, with only the Needs you items you opened this run and the events you added or proposed for today or tomorrow; with neither, or between {INBOX_DESK_QUIET_HOURS_START:02d}:00 and {INBOX_DESK_QUIET_HOURS_END:02d}:00 the user's local time, it is only that nothing is new, and the next briefing carries the rest.
-GAIA records this run and your report in activity.md itself: write nothing there, write observations.md only in step 9, and edit canvas.md only for step 10. Standing rules are the user's own instructions, never yours: what you notice goes to observations.md."""
+GAIA records this run and your report in activity.md itself: write nothing there, write observations.md only in step 9, and edit canvas.md only for step 10. Standing rules are the user's own instructions, never yours, in canvas.md or a todo you open: what you notice goes to observations.md."""
 
 
 # Added to every run of a todo that owns one Gmail thread; ref_id is filled with
