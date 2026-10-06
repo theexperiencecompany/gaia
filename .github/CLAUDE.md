@@ -95,7 +95,7 @@ to check is `gh pr view --json mergeable`. Keep the branch merged with
 
 ## Skipping work that isn't needed
 
-Three layers, from cheap to precise:
+Four layers, from cheap to precise:
 
 1. **`code-quality.yml` `changes` job** — one no-toolchain job diffs the PR
    and skips whole language lanes (Python lanes on a TS-only PR and vice
@@ -112,6 +112,19 @@ Three layers, from cheap to precise:
    exact changed files. Contract: prints `__FULL__` (push/dispatch → full
    scan), nothing (PR with no relevant changes → skip & pass), or one path
    per line. Lanes using it need `fetch-depth: 0` checkouts.
+4. **`verdict.py reuse-plan` in `changes`** — across pushes to the same PR.
+   A code-quality job whose last `success` on this PR (same base, not a
+   manual re-run) is still valid — nothing in the union of its lanes'
+   `verify-lanes.json` scopes and nothing under `.github/`, `scripts/`,
+   `tools/`, `config/`, `patches/`, the repo root or any config manifest
+   (`GLOBAL_INVALIDATORS` in verdict.py) changed between that pass and this
+   run, on the head OR on the base it was merged into — is skipped and
+   labelled `reused` in the gate. A pull_request run checks the merge, so each
+   plan annotates the base tip it validated on its `changes` job
+   (`::notice title=reuse-plan base`) and the next run diffs base tip to base
+   tip as well as head to head; a run without that note never anchors. A lane
+   needs `ci_job` in the lane table to be reusable; one without it always
+   runs. Anything the plan cannot read means no reuse.
 
 **Fail loud is non-negotiable in detection code.** Never
 `nx ... 2>/dev/null || echo ""` — a broken nx invocation must fail the job.

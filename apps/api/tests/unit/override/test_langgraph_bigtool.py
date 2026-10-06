@@ -14,19 +14,24 @@ from langchain_openrouter import ChatOpenRouter
 from langgraph._internal._runnable import RunnableCallable
 from langgraph.graph import END, StateGraph
 from langgraph.store.base import BaseStore
+from langgraph.types import Command
 import pytest
 
 from app.agents.llm import lane as lane_module
 from app.agents.llm.lane import ModelLane
+from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
     DEFAULT_MAX_TOKENS,
     LANE_FIELD_ID,
+    LOOP_GUARD_STOP_REPEAT,
+    LOOP_GUARD_WARN_REPEAT,
     RECURSION_WRAPUP_THRESHOLD_STEPS,
     LLMProviderName,
 )
 from app.models.agent_models import AgentConfigurable
+from app.override.langgraph_bigtool import create_agent as create_agent_module
 from app.override.langgraph_bigtool.agent_config import (
     AgentConfig,
     HookConfig,
@@ -916,6 +921,182 @@ class TestSelectTools:
 
         result = await select_node.runnable.afunc(tool_calls, config, store=store)  # type: ignore[union-attr]  # RunnableCallable types func/afunc as Optional
         assert "dummy_tool_a" in result["selected_tool_ids"]
+
+
+class TestSelectToolsLoopGuard:
+    """retrieve_tools runs in the select_tools node, outside the tool node's middleware chain.
+
+    Live, an executor issued the same retrieve_tools query 14 times in one run and
+    the loop guard never saw one of them, since only the tool node consulted it.
+    """
+
+    @staticmethod
+    def _node(executed: list[str]) -> Any:
+        async def retrieve(query: str) -> dict:
+            """Retrieve tools."""
+            executed.append(query)
+            return {
+                "tools_to_bind": ["dummy_tool_a"],
+                "response": ["dummy_tool_a"],
+                "response_text": "found dummy_tool_a",
+            }
+
+        builder = create_agent(
+            _make_llm(),
+            _make_tool_registry(dummy_tool_a),
+            tools_config=ToolRetrievalConfig(retrieve_tools_coroutine=retrieve),
+            agent_config=AgentConfig(middleware=[LoopGuardMiddleware()]),
+        )  # type: ignore[arg-type]  # test stub returns a bare dict, not the declared RetrieveToolsResult union
+        return builder.nodes["select_tools"].runnable
+
+    @pytest.mark.regression
+    async def test_a_repeated_query_is_warned_in_an_interactive_run(self) -> None:
+        executed: list[str] = []
+        node = self._node(executed)
+        config = _make_config(thread_id="t1", execution_mode="interactive")
+
+        results = [
+            await node.afunc(
+                [{"id": f"tc{i}", "args": {"query": "calendar"}}], config, store=MagicMock()
+            )
+            for i in range(LOOP_GUARD_WARN_REPEAT)
+        ]
+
+        assert len(executed) == LOOP_GUARD_WARN_REPEAT
+        assert "[Loop guard:" not in results[0]["messages"][0].content
+        last = results[-1]["messages"][0]
+        assert last.content.startswith("found dummy_tool_a")
+        assert f"called {LOOP_GUARD_WARN_REPEAT} times this run" in last.content
+        assert last.tool_call_id == f"tc{LOOP_GUARD_WARN_REPEAT - 1}"
+        assert results[-1]["selected_tool_ids"] == ["dummy_tool_a"]
+
+    @pytest.mark.regression
+    async def test_a_repeated_query_is_blocked_in_a_background_run(self) -> None:
+        executed: list[str] = []
+        node = self._node(executed)
+        config = _make_config(thread_id="t1", execution_mode="background")
+
+        results = [
+            await node.afunc(
+                [{"id": f"tc{i}", "args": {"query": "calendar"}}], config, store=MagicMock()
+            )
+            for i in range(LOOP_GUARD_STOP_REPEAT)
+        ]
+
+        assert len(executed) == LOOP_GUARD_STOP_REPEAT - 1  # the last never ran
+        blocked = results[-1]["messages"][0]
+        assert blocked.additional_kwargs["loop_guard_stopped"] is True
+        assert blocked.tool_call_id == f"tc{LOOP_GUARD_STOP_REPEAT - 1}"
+        assert results[-1]["selected_tool_ids"] == []
+
+    async def test_without_a_loop_guard_every_call_runs(self) -> None:
+        executed: list[str] = []
+
+        async def retrieve(query: str) -> list:
+            """Retrieve tools."""
+            executed.append(query)
+            return ["dummy_tool_a"]
+
+        builder = create_agent(
+            _make_llm(),
+            _make_tool_registry(dummy_tool_a),
+            tools_config=ToolRetrievalConfig(retrieve_tools_coroutine=retrieve),
+        )
+        node = builder.nodes["select_tools"].runnable
+        config = _make_config(thread_id="t1", execution_mode="background")
+
+        for i in range(LOOP_GUARD_STOP_REPEAT):
+            await node.afunc(
+                [{"id": f"tc{i}", "args": {"query": "calendar"}}], config, store=MagicMock()
+            )
+
+        assert len(executed) == LOOP_GUARD_STOP_REPEAT
+
+
+class TestRetrievalThroughTheLoopGuard:
+    """select_tools hands the loop guard the request the tool node would, and renders only ToolMessages."""
+
+    @staticmethod
+    def _retrieve_tools() -> BaseTool:
+        retrieve_tools = MagicMock(spec=BaseTool)
+        retrieve_tools.name = "retrieve_tools"
+        return retrieve_tools
+
+    def test_the_request_carries_the_call_the_tool_and_the_graph_context(self) -> None:
+        retrieve_tools = self._retrieve_tools()
+        store = MagicMock()
+        config = _make_config(thread_id="t1")
+
+        request = create_agent_module._retrieval_request(
+            {"id": "c1", "args": {"query": "calendar"}}, retrieve_tools, config, store
+        )
+
+        assert request.tool_call == {
+            "name": "retrieve_tools",
+            "args": {"query": "calendar"},
+            "id": "c1",
+        }
+        assert request.tool is retrieve_tools
+        assert request.state == {}
+        assert request.runtime.config is config
+        assert request.runtime.store is store
+        assert request.runtime.tool_name == "retrieve_tools"
+
+    async def test_without_a_guard_the_call_runs_directly(self) -> None:
+        request = create_agent_module._retrieval_request(
+            {"id": "c1", "args": {}}, self._retrieve_tools(), _make_config(), MagicMock()
+        )
+        answer = ToolMessage(content="found", tool_call_id="c1")
+        retrieve = AsyncMock(return_value=answer)
+
+        assert await create_agent_module._through_loop_guard(None, request, retrieve) is answer
+        retrieve.assert_awaited_once_with(request)
+
+    async def test_the_guard_wraps_the_call(self) -> None:
+        request = create_agent_module._retrieval_request(
+            {"id": "c1", "args": {}}, self._retrieve_tools(), _make_config(), MagicMock()
+        )
+        guarded = ToolMessage(content="warned", tool_call_id="c1")
+        guard = MagicMock(spec=LoopGuardMiddleware)
+        guard.awrap_tool_call = AsyncMock(return_value=guarded)
+        retrieve = AsyncMock()
+
+        assert await create_agent_module._through_loop_guard(guard, request, retrieve) is guarded
+        guard.awrap_tool_call.assert_awaited_once_with(request, retrieve)
+
+    async def test_a_guard_answer_that_is_not_a_tool_message_is_refused(self) -> None:
+        request = create_agent_module._retrieval_request(
+            {"id": "c1", "args": {}}, self._retrieve_tools(), _make_config(), MagicMock()
+        )
+        guard = MagicMock(spec=LoopGuardMiddleware)
+        guard.awrap_tool_call = AsyncMock(return_value=Command(update={}))
+
+        with pytest.raises(TypeError) as raised:
+            await create_agent_module._through_loop_guard(guard, request, AsyncMock())
+
+        assert str(raised.value) == (
+            "loop guard returned Command for retrieve_tools call c1; "
+            "select_tools only renders ToolMessages"
+        )
+
+    async def test_a_retrieve_tools_call_without_an_id_is_refused(self) -> None:
+        async def retrieve(query: str) -> list:
+            """Retrieve tools."""
+            return ["dummy_tool_a"]
+
+        builder = create_agent(
+            _make_llm(),
+            _make_tool_registry(dummy_tool_a),
+            tools_config=ToolRetrievalConfig(retrieve_tools_coroutine=retrieve),
+        )
+        node = builder.nodes["select_tools"].runnable
+
+        with pytest.raises(ValueError) as raised:
+            await node.afunc(
+                [{"id": None, "args": {"query": "calendar"}}], _make_config(), store=MagicMock()
+            )
+
+        assert str(raised.value) == "retrieve_tools call carries no id to answer it under"
 
 
 class TestBindSessionId:
@@ -1918,6 +2099,22 @@ class TestSelectToolsTwinWiring:
             {"query": "calendar", "store": store}, config=config
         )
 
+    async def test_async_twin_builds_each_guard_request_from_the_graph_store(self) -> None:
+        retrieve_tools = MagicMock(name="retrieve_tools")
+        retrieve_tools.ainvoke = AsyncMock(return_value=["dummy_tool_a"])
+        node = _select_tools_node(_make_branch_deps(retrieve_tools=retrieve_tools))
+        tool_call = {"id": "c1", "args": {"query": "calendar"}}
+        config = _make_config()
+        store = MagicMock()
+
+        with patch(
+            f"{_CREATE_AGENT_MODULE}._retrieval_request",
+            wraps=create_agent_module._retrieval_request,
+        ) as build_request:
+            await node.afunc([tool_call], config, store=store)
+
+        build_request.assert_called_once_with(tool_call, retrieve_tools, config, store)
+
     @patch(f"{_CREATE_AGENT_MODULE}._retrieval_call_kwargs")
     async def test_async_twin_passes_call_store_arg_store_and_config(
         self, mock_call_kwargs: MagicMock
@@ -1933,7 +2130,14 @@ class TestSelectToolsTwinWiring:
 
         await node.afunc([tool_call], config, store=store)
 
-        mock_call_kwargs.assert_called_once_with(tool_call, "store", store, config)
+        # The async twin normalizes the call into the ToolCall its loop-guard
+        # request carries; the args and id flowing down are the model's own.
+        mock_call_kwargs.assert_called_once_with(
+            {"name": retrieve_tools.name, "args": {"query": "calendar"}, "id": "c1"},
+            "store",
+            store,
+            config,
+        )
         retrieve_tools.ainvoke.assert_awaited_once_with(
             {"query": "calendar", "store": store}, config=config
         )

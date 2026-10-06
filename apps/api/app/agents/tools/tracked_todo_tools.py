@@ -708,12 +708,32 @@ async def complete_tracked_todo(
 ) -> str:
     """Complete a tracked todo: mark done and flag its canvas as completed in search.
 
-    Call when the todo's goal is fully achieved. Use the regular todo update for
-    partial completion or status changes only.
+    Call on your own as soon as the goal is clearly resolved: the fix is live
+    and verified, the PR is merged, the external system shows done, the watched
+    event arrived and is handled, or the user confirmed it. Do not wait for the
+    user to report it or ask for closure. Use the regular todo update for
+    partial completion or status changes only. Never repeat the todo ID in
+    user-visible text.
+
+    Refuses a todo with an active recurrence: one finished run never ends a
+    standing schedule. To stop one entirely, clear its recurrence (and
+    scheduled_at) with update_tracked_todo first, then complete it.
     """
     user_id = RunMetadata.model_validate(config.get("metadata", {})).user_id
     if not user_id:
         return _ERR_NO_USER_ID
+
+    doc = await todo_repository.get(todo_id, user_id=user_id)
+    if doc is None:
+        return f"Error: could not complete tracked todo {todo_id}, not found or missing vfs_path"
+    if doc.recurrence:
+        return (
+            f"Error: tracked todo {todo_id} still has an active recurrence "
+            f"({doc.recurrence}). One finished run never ends a standing schedule: "
+            "leave it open, or if the user asked to stop it entirely, clear its "
+            "recurrence (and scheduled_at) with update_tracked_todo first, "
+            "then complete it."
+        )
 
     success = await tracked_todo_service.complete_tracked_todo(
         todo_id=todo_id, user_id=user_id, summary=summary

@@ -242,6 +242,15 @@ Before calling `complete_tracked_todo`, `edit` the `## Learnings` section of can
 1. Write `## Learnings` in canvas.md
 2. `complete_tracked_todo(todo_id="...", summary="...")`: marks completed in DB + ChromaDB
 
+Complete on your own as soon as the work is clearly resolved (the fix is live
+and verified, the PR is merged, the external system shows done, the watched
+event arrived and is handled, the user confirmed it). Do not wait for the user
+to report it or ask for closure. Never complete a recurring todo that should
+keep firing; only one-shot work that is truly done.
+
+Never repeat todo, task, subscription, notification or approval IDs in
+user-visible text; refer to todos by title. IDs are wiring for tool calls only.
+
 ## Examples
 
 ### Immediate: send an email

@@ -28,7 +28,7 @@ const openuiFence = (name: string): string => {
   return `:::openui\n${code}\n:::`;
 };
 
-const SAMPLE_USER = `Hey, can you show me **everything** the renderer supports? I want to see a proper table, a fenced code block, a task list, a blockquote, and some inline math like $E = mc^2$ rendered nicely. Basically throw the whole kitchen sink at it so I can check that nothing looks off while it streams in word by word. Don't hold back 🙂`;
+const SAMPLE_USER = `Hey, can you show me **everything** the renderer supports? I want to see a proper table, a fenced code block, a task list, a blockquote, and some inline math like $$E = mc^2$$ rendered nicely. Basically throw the whole kitchen sink at it so I can check that nothing looks off while it streams in word by word. Don't hold back 🙂`;
 
 // Comprehensive tour of every markdown feature the GAIA renderer supports.
 const SAMPLE_BOT = [
@@ -71,7 +71,7 @@ const SAMPLE_BOT = [
   "",
   "## Math",
   "",
-  "Inline: $a^2 + b^2 = c^2$. Display:",
+  "Inline: $$a^2 + b^2 = c^2$$. Display:",
   "",
   String.raw`$$\int_0^\infty e^{-x}\,dx = 1$$`,
   "",

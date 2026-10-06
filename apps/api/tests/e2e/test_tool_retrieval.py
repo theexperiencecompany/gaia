@@ -14,10 +14,13 @@ instead of silently becoming non-deterministic.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.constants.llm import LOOP_GUARD_STOP_REPEAT
 from tests.e2e._harness.graph_run import (
     REJECT_NODE,
     SELECT_NODE,
@@ -285,3 +288,52 @@ class TestRetrievalContract:
                 "run retrieve_tools(query=...) to find what actually exists."
             )
         ]
+
+
+#: A Google Calendar catalog slug. Its integration is reported unconnected below.
+CALENDAR_TOOL = "GOOGLECALENDAR_EVENTS_LIST"
+
+
+@pytest.fixture
+def calendar_not_connected() -> Iterator[None]:
+    """Report Google Calendar as unconnected through the connection-status seam."""
+    with patch(
+        "app.services.oauth.oauth_service.get_all_integrations_status",
+        AsyncMock(return_value={"googlecalendar": False}),
+    ):
+        yield
+
+
+@pytest.mark.usefixtures("calendar_not_connected")
+class TestUnconnectedIntegrationLoop:
+    """The live loop: 21 retrieve_tools calls for an unconnected Google Calendar, to the recursion limit."""
+
+    @pytest.mark.regression
+    async def test_an_interactive_run_is_told_it_needs_connecting_and_what_to_do(self):
+        async with executor_graph([retrieve(CALENDAR_TOOL), "ok"]) as graph:
+            run = await run_graph(
+                graph, "what's on my calendar today", execution_mode="interactive"
+            )
+
+        (reply,) = run.results_from(SELECT_NODE)
+        assert run.bound_tools() == []
+        assert reply.startswith("Google Calendar needs to be connected")
+        assert 'activate_integration(integration_id="googlecalendar")' in reply
+        assert "retrieve_tools(query=" not in reply
+        assert f"## {CALENDAR_TOOL}" not in reply
+
+    @pytest.mark.regression
+    async def test_a_background_run_repeating_the_call_is_stopped_by_the_loop_guard(self):
+        calls = [
+            retrieve(CALENDAR_TOOL, retrieve_id=f"r{i}") for i in range(LOOP_GUARD_STOP_REPEAT)
+        ]
+        async with executor_graph([*calls, "reported it"]) as graph:
+            run = await run_graph(graph, "daily agenda", execution_mode="background")
+
+        replies = run.results_from(SELECT_NODE)
+        assert len(replies) == LOOP_GUARD_STOP_REPEAT
+        assert "carry on with the rest of the task" in replies[0]
+        assert "activate_integration" not in replies[0]
+        assert replies[-1].startswith("[Loop guard] Blocked without executing: `retrieve_tools`")
+        assert run.error is None
+        assert run.final_text() == "reported it"

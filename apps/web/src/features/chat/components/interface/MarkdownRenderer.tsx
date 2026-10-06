@@ -47,21 +47,14 @@ const ANIMATION: AnimateOptions = {
   // stagger: 80,
 };
 
-// Single-dollar inline math is OFF: "$55, $26, and $82" is far more common than
-// inline LaTeX, and remark-math would swallow everything between the first two
-// `$` into mangled italics. Block math (`$$…$$`) still renders.
-function remarkMathWithoutCurrency(this: ThisParameterType<typeof remarkMath>) {
-  return remarkMath.call(this, { singleDollarTextMath: false });
-}
-
-// Math goes through streamdown's plugin slot rather than the rehype list so
-// rehype-katex runs after sanitize/harden — its output is trusted markup that
-// would otherwise be stripped. rehype-katex renders what remark-math parsed.
+// Math uses streamdown's plugin slot so rehype-katex runs after sanitize/harden,
+// which would strip its trusted markup. Only `$$…$$` is math: a single `$` is
+// currency ("$347.53 … $8"), which remark-math's default renders as a formula.
 const PLUGINS: PluginConfig = {
   math: {
     name: "katex",
     type: "math",
-    remarkPlugin: remarkMathWithoutCurrency,
+    remarkPlugin: [remarkMath, { singleDollarTextMath: false }],
     rehypePlugin: rehypeKatex,
   },
 };

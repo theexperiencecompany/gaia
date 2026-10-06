@@ -295,6 +295,10 @@ async def connect_integration(
         "List of exact integration IDs to connect (e.g., ['gmail', 'notion', 'twitter']).",
     ],
     config: RunnableConfig,
+    force_reconnect: Annotated[
+        bool,
+        "Set true only when the user explicitly asks to reconnect or refresh an integration that may already be connected.",
+    ] = False,
 ) -> str:
     try:
         log.set(tool={"name": "connect_integration", "action": "connect"})
@@ -334,17 +338,23 @@ async def connect_integration(
                 results.append(f"⏳ {integration.name} is not available yet. Coming soon!")
                 continue
 
-            is_connected = await check_single_integration_status(integration.id, user_id)
-            if is_connected:
-                results.append(f"✅ {integration.name} is already connected!")
-                continue
+            if not force_reconnect:
+                is_connected = await check_single_integration_status(integration.id, user_id)
+                if is_connected:
+                    results.append(f"✅ {integration.name} is already connected!")
+                    continue
 
             connections_to_initiate.append(integration)
 
         for integration in connections_to_initiate:
             writer({"progress": f"Initiating {integration.name} connection..."})
             results.append(
-                await request_integration_connection(integration.id, integration.name, str(user_id))
+                await request_integration_connection(
+                    integration.id,
+                    integration.name,
+                    str(user_id),
+                    force_reconnect=force_reconnect,
+                )
             )
 
         return "\n".join(results) if results else "No integrations to connect."

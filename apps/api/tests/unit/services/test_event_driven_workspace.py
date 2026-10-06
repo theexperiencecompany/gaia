@@ -13,6 +13,8 @@ limits (no mount, empty sets, stale vs current markers, force, partial
 failure, new-vs-existing user), not the filesystem.
 """
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -20,6 +22,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.models.user_models import UserDocument
+from app.services.integrations import user_integrations
+from app.services.integrations.user_integration_status import update_user_integration_status
+from app.services.integrations.user_integrations import (
+    get_connected_integration_ids,
+    get_user_integration_records,
+)
+from app.services.integrations_fs import sync_user_integrations
+from app.services.oauth.oauth_service import store_user_info
+from app.services.storage import juicefs
+from app.services.workspace_sync import (
+    init_system_subtree,
+    resync_stale_user_workspaces,
+    sync_stale_user_workspaces,
+)
 
 WS = "app.services.workspace_sync"
 IFS = "app.services.integrations_fs"
@@ -35,16 +51,12 @@ JFS = "app.services.storage.juicefs"
 
 
 def test_is_mounted_rejects_plain_existing_dir(tmp_path):
-    from app.services.storage import juicefs
-
     # tmp_path exists and is a directory, but is NOT a mountpoint.
     with patch.object(juicefs, "_mount_root", return_value=tmp_path):
         assert juicefs._is_mounted() is False
 
 
 def test_is_mounted_false_for_missing_path():
-    from app.services.storage import juicefs
-
     with patch.object(juicefs, "_mount_root", return_value=Path("/no/such/mount/xyz123")):
         assert juicefs._is_mounted() is False
 
@@ -82,8 +94,6 @@ def wsync():
 
 
 async def _run_sync(**kwargs):
-    from app.services.workspace_sync import sync_stale_user_workspaces
-
     return await sync_stale_user_workspaces(**kwargs)
 
 
@@ -174,8 +184,6 @@ async def test_init_system_subtree_waits_for_mount_then_materializes():
         patch(f"{WS}.providers", SimpleNamespace(aget=aget)),
         patch(f"{WS}.ensure_system_subtree", subtree),
     ):
-        from app.services.workspace_sync import init_system_subtree
-
         await init_system_subtree()
     assert calls == [("mount", "juicefs_mount"), ("subtree",)]
 
@@ -185,8 +193,6 @@ async def test_resync_runs_active_only():
         patch(f"{WS}.providers", SimpleNamespace(aget=AsyncMock())),
         patch(f"{WS}.sync_stale_user_workspaces", new_callable=AsyncMock) as sync,
     ):
-        from app.services.workspace_sync import resync_stale_user_workspaces
-
         await resync_stale_user_workspaces()
     sync.assert_awaited_once_with(active_only=True)
 
@@ -205,8 +211,6 @@ async def test_sync_user_integrations_materializes_connected_set():
         ),
         patch(f"{IFS}.materialize_user_integrations", new_callable=AsyncMock) as mat,
     ):
-        from app.services.integrations_fs import sync_user_integrations
-
         rc = await sync_user_integrations("user-1")
     assert rc == 0
     mat.assert_awaited_once_with("user-1", {"gmail", "slack"})
@@ -222,8 +226,6 @@ async def test_sync_user_integrations_empty_set_still_materializes():
         ),
         patch(f"{IFS}.materialize_user_integrations", new_callable=AsyncMock) as mat,
     ):
-        from app.services.integrations_fs import sync_user_integrations
-
         await sync_user_integrations("user-1")
     mat.assert_awaited_once_with("user-1", set())
 
@@ -263,9 +265,125 @@ async def test_get_connected_integration_ids_filter(docs, expected):
         new_callable=AsyncMock,
         return_value=docs,
     ):
-        from app.services.integrations.user_integrations import get_connected_integration_ids
-
         assert await get_connected_integration_ids("u") == expected
+
+
+@asynccontextmanager
+async def _stale_posthog_credential() -> AsyncIterator[MagicMock]:
+    """Workspace seams with posthog connected in Mongo but dead in Postgres."""
+    record = MagicMock()
+    record.model_dump.return_value = {"integration_id": "posthog", "status": "connected"}
+
+    async def _list_for_user(user_id: str, *args: object, **kwargs: object) -> list[object]:
+        return [record] if user_id == "u" else []
+
+    with (
+        patch(
+            f"{UINT}.user_integration_repository.list_for_user",
+            new_callable=AsyncMock,
+            side_effect=_list_for_user,
+        ),
+        patch(f"{UINT}.MCPTokenStore", create=True) as token_store_class,
+        patch("app.db.redis.redis_cache.get", new_callable=AsyncMock, return_value=None),
+        patch("app.db.redis.redis_cache.set", new_callable=AsyncMock),
+    ):
+        token_store_class.return_value.are_connected = AsyncMock(return_value={"posthog": False})
+        yield token_store_class
+
+
+@pytest.mark.regression
+async def test_user_integration_records_reflect_posthog_credential_status():
+    async with _stale_posthog_credential() as token_store_class:
+        result = await get_user_integration_records("u")
+
+    assert result == [{"integration_id": "posthog", "status": "created"}]
+    token_store_class.assert_called_once_with("u")
+    token_store_class.return_value.are_connected.assert_awaited_once_with(["posthog"])
+
+
+@pytest.mark.regression
+async def test_connected_ids_use_live_posthog_credential_state():
+    async with _stale_posthog_credential() as token_store_class:
+        assert await get_connected_integration_ids("u") == set()
+
+    token_store_class.assert_called_once_with("u")
+
+
+async def test_mcp_record_without_stored_config_keeps_its_status():
+    """An MCP record with no stored config keeps its status without crashing."""
+    with (
+        patch(
+            f"{UINT}._get_cached_user_integration_records",
+            new_callable=AsyncMock,
+            return_value=[{"integration_id": "odd-mcp", "status": "connected"}],
+        ),
+        patch(f"{UINT}.get_integration_by_id") as mock_lookup,
+        patch(f"{UINT}.MCPTokenStore", create=True) as token_store_class,
+    ):
+        mock_lookup.return_value = MagicMock(managed_by="mcp", mcp_config=None)
+
+        result = await get_user_integration_records("u")
+
+    assert result == [{"integration_id": "odd-mcp", "status": "connected"}]
+    token_store_class.assert_not_called()
+
+
+async def test_custom_auth_filter_returns_only_mcp_integrations_needing_auth():
+    """The custom credential check mirrors the platform filter exactly."""
+    docs = [
+        MagicMock(integration_id="a", managed_by="mcp", requires_auth=True),
+        MagicMock(integration_id="b", managed_by="mcp", requires_auth=False),
+        MagicMock(integration_id="c", managed_by="composio", requires_auth=True),
+    ]
+    with patch(f"{UINT}.integration_repository") as mock_repo:
+        mock_repo.find_by_ids = AsyncMock(return_value=docs)
+
+        assert await user_integrations.get_custom_auth_mcp_ids(["a", "b", "c"]) == ["a"]
+
+    mock_repo.find_by_ids.assert_awaited_once_with(["a", "b", "c"])
+
+
+async def test_custom_auth_filter_empty_list_skips_the_query():
+    with patch(f"{UINT}.integration_repository") as mock_repo:
+        mock_repo.find_by_ids = AsyncMock()
+
+        assert await user_integrations.get_custom_auth_mcp_ids([]) == []
+
+    mock_repo.find_by_ids.assert_not_awaited()
+
+
+async def test_custom_and_platform_records_reconcile_independently():
+    """Platform and custom checks share one credential batch but filter separately."""
+    records = [
+        {"integration_id": "github", "status": "connected"},
+        {"integration_id": "custom-uuid", "status": "connected"},
+    ]
+    custom_doc = MagicMock(integration_id="custom-uuid", managed_by="mcp", requires_auth=True)
+
+    async def _find(ids: list[str]) -> list[object]:
+        return [custom_doc] if custom_doc.integration_id in ids else []
+
+    async def _check(ids: list[str]) -> dict[str, bool]:
+        return dict.fromkeys(ids, False)
+
+    with (
+        patch(
+            f"{UINT}._get_cached_user_integration_records",
+            new_callable=AsyncMock,
+            return_value=records,
+        ),
+        patch(f"{UINT}.integration_repository") as mock_repo,
+        patch(f"{UINT}.MCPTokenStore", create=True) as token_store_class,
+    ):
+        mock_repo.find_by_ids = AsyncMock(side_effect=_find)
+        token_store_class.return_value.are_connected = AsyncMock(side_effect=_check)
+
+        result = await get_user_integration_records("u")
+
+    by_id = {record["integration_id"]: record["status"] for record in result}
+    assert by_id == {"github": "connected", "custom-uuid": "created"}
+    mock_repo.find_by_ids.assert_awaited_once_with(["custom-uuid"])
+    token_store_class.return_value.are_connected.assert_awaited_once_with(["custom-uuid"])
 
 
 # ---------------------------------------------------------------------------
@@ -280,8 +398,6 @@ async def test_connect_schedules_sync():
         patch(f"{USTATUS}.user_integration_repository", repo),
         patch(f"{USTATUS}.schedule_user_integrations_sync") as sched,
     ):
-        from app.services.integrations.user_integration_status import update_user_integration_status
-
         ok = await update_user_integration_status("u", "gmail", "connected")
     assert ok is True
     sched.assert_called_once_with("u")
@@ -294,8 +410,6 @@ async def test_created_status_does_not_schedule_sync():
         patch(f"{USTATUS}.user_integration_repository", repo),
         patch(f"{USTATUS}.schedule_user_integrations_sync") as sched,
     ):
-        from app.services.integrations.user_integration_status import update_user_integration_status
-
         await update_user_integration_status("u", "gmail", "created")
     sched.assert_not_called()
 
@@ -324,8 +438,6 @@ async def test_new_user_provisions_workspace():
     sched = MagicMock()
     p = _oauth_patches(repo, sched)
     with p[0], p[1], p[2], p[3], p[4]:
-        from app.services.oauth.oauth_service import store_user_info
-
         user_id, is_new = await store_user_info("Ada", "ada@x.com", None)
     assert is_new is True
     sched.assert_called_once_with("NEW123")
@@ -340,8 +452,6 @@ async def test_existing_user_does_not_provision():
     sched = MagicMock()
     p = _oauth_patches(repo, sched)
     with p[0], p[1], p[2], p[3], p[4]:
-        from app.services.oauth.oauth_service import store_user_info
-
         user_id, is_new = await store_user_info("Ada", "ada@x.com", None)
     assert is_new is False
     sched.assert_not_called()

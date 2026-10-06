@@ -1065,6 +1065,7 @@ class TestErrorHandling:
         client.token_store.get_bearer_token = AsyncMock(return_value=None)
         client.token_store.get_oauth_token = AsyncMock(return_value=None)
         client.token_store.is_token_expiring_soon = AsyncMock(return_value=False)
+        client.token_store.get_refresh_token = AsyncMock(return_value=None)
 
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config(requires_auth=True)
