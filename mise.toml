@@ -70,13 +70,14 @@ prek = "0.2.23"
 
 [env]
 _.python.venv = { path = ".venv", create = true }
-MISE_NODE_COREPACK = "1"
 # Per-worktree port allocation written by `mise run wt:env`. Optional: mise silently
 # skips it when absent, so the main worktree keeps today's defaults (ports 8000/3000).
 _.file = ".env.worktree"
 
 [settings]
 experimental = true
+# a setting, not [env]: [env] is exported to commands, never read as mise config, so node installed without pnpm
+node.corepack = true
 task.monorepo_depth = 4
 task.monorepo_exclude_dirs = ["node_modules", ".next", ".venv", "__pycache__", "dist", "build", ".expo"]
 
