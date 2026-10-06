@@ -7,9 +7,13 @@ real set_timeout call count and real pool state.
 from __future__ import annotations
 
 import time
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
 import uuid
+
+from e2b import NotFoundException, SandboxState
+import pytest
 
 from app.constants.sandbox import SANDBOX_TIMEOUT_REFRESH_SECONDS
 from app.services.sandbox import lifecycle
@@ -71,6 +75,9 @@ async def test_unhealthy_cached_handle_is_evicted() -> None:
     repo = AsyncMock()
     with (
         patch.object(lifecycle, "_health_probe", AsyncMock(return_value=False)),
+        patch.object(
+            lifecycle.AsyncSandbox, "get_info", AsyncMock(side_effect=NotFoundException("gone"))
+        ),
         patch.object(lifecycle, "_stop_watcher", AsyncMock()),
         patch.object(lifecycle, "e2b_sandbox_repository", repo),
     ):
@@ -106,3 +113,47 @@ async def test_returns_none_when_no_cached_entry() -> None:
     missing = f"u-{uuid.uuid4().hex}"
     get_sandbox_pool().evict(missing)
     assert await lifecycle._reuse_cached_entry(missing, {}, "gaia-coder") is None
+
+
+def _control_plane(state: SandboxState) -> object:
+    """Patch E2B's control plane to report the sandbox in the given state."""
+    return patch.object(
+        lifecycle.AsyncSandbox, "get_info", AsyncMock(return_value=SimpleNamespace(state=state))
+    )
+
+
+@pytest.mark.regression
+async def test_a_live_sandbox_that_misses_one_health_probe_is_kept() -> None:
+    # A live sandbox misses the 4s /health probe about 1 in 60 times (measured
+    # on E2B); killing on that miss recreated the sandbox, and the coding agent
+    # running in it, every few minutes.
+    entry = _healthy_entry()
+    repo = AsyncMock()
+    with (
+        patch.object(lifecycle, "_health_probe", AsyncMock(side_effect=[False, True])),
+        _control_plane(SandboxState.RUNNING),
+        patch.object(lifecycle, "_ensure_mounted", AsyncMock()),
+        patch.object(lifecycle, "_verify_canary_or_die", AsyncMock(return_value=True)),
+        patch.object(lifecycle, "_ensure_watcher", AsyncMock()),
+        patch.object(lifecycle, "e2b_sandbox_repository", repo),
+    ):
+        _, result = await _reuse(entry)
+    assert result is entry
+    entry.sandbox.kill.assert_not_awaited()
+    repo.mark_dead.assert_not_awaited()
+
+
+async def test_a_running_sandbox_whose_health_endpoint_stays_silent_is_evicted() -> None:
+    # E2B can report a sandbox running while its envd is wedged; every command
+    # would then hang to its deadline, so a second, longer miss means dead.
+    entry = _healthy_entry()
+    repo = AsyncMock()
+    with (
+        patch.object(lifecycle, "_health_probe", AsyncMock(return_value=False)),
+        _control_plane(SandboxState.RUNNING),
+        patch.object(lifecycle, "_stop_watcher", AsyncMock()),
+        patch.object(lifecycle, "e2b_sandbox_repository", repo),
+    ):
+        _, result = await _reuse(entry)
+    assert result is None
+    repo.mark_dead.assert_awaited_once()

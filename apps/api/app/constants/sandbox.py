@@ -25,6 +25,10 @@ WORKSPACE_TMP_SUFFIX = ".gaia-tmp"
 # plane never stalls sandbox acquisition.
 HEALTH_PROBE_REQUEST_TIMEOUT_SECONDS = 4
 HEALTH_PROBE_WAIT_TIMEOUT_SECONDS = 5
+# Second probe once E2B says the sandbox is running: a live sandbox misses the
+# first one about 1 in 60 times (p95 2.7s, max 4.8s measured), a wedged one never answers.
+HEALTH_PROBE_RETRY_REQUEST_TIMEOUT_SECONDS = 14
+HEALTH_PROBE_RETRY_WAIT_TIMEOUT_SECONDS = 15
 
 # Home of the sandbox's unprivileged user (E2B's default "user"; see
 # mount_juicefs.sh SANDBOX_USER). Local root disk, unlike /workspace (JuiceFS).

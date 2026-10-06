@@ -25,13 +25,15 @@ import time
 from typing import Any, cast
 from urllib.parse import unquote, urlsplit, urlunsplit
 
-from e2b import AsyncSandbox
+from e2b import AsyncSandbox, NotFoundException, SandboxState
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.sandbox import (
     HEALTH_PROBE_REQUEST_TIMEOUT_SECONDS,
+    HEALTH_PROBE_RETRY_REQUEST_TIMEOUT_SECONDS,
+    HEALTH_PROBE_RETRY_WAIT_TIMEOUT_SECONDS,
     HEALTH_PROBE_WAIT_TIMEOUT_SECONDS,
     SANDBOX_CONNECT_TIMEOUT_SECONDS,
     SANDBOX_LIFETIME_SECONDS,
@@ -379,7 +381,11 @@ async def _connect_sandbox(sandbox_id: str) -> AsyncSandbox | None:
             return None
 
 
-async def _health_probe(sbx: AsyncSandbox) -> bool:
+async def _health_probe(
+    sbx: AsyncSandbox,
+    request_timeout: int = HEALTH_PROBE_REQUEST_TIMEOUT_SECONDS,
+    wait_timeout: int = HEALTH_PROBE_WAIT_TIMEOUT_SECONDS,
+) -> bool:
     """Return True if the sandbox responds within a short window.
 
     Uses the official E2B health endpoint (HTTP GET /health) which is faster
@@ -389,11 +395,31 @@ async def _health_probe(sbx: AsyncSandbox) -> bool:
     async with fs_timer(FsOps.SBX_HEALTH_PROBE):
         try:
             return await asyncio.wait_for(
-                sbx.is_running(request_timeout=HEALTH_PROBE_REQUEST_TIMEOUT_SECONDS),
-                timeout=HEALTH_PROBE_WAIT_TIMEOUT_SECONDS,
+                sbx.is_running(request_timeout=request_timeout), timeout=wait_timeout
             )
         except Exception:
             return False
+
+
+async def _sandbox_alive(sbx: AsyncSandbox) -> bool:
+    """Whether the sandbox is up, asking E2B's control plane before calling a missed probe a death.
+
+    One missed /health probe is not death: a live sandbox misses it about 1 in
+    60 times, and killing on that killed the coding agent running inside.
+    """
+    if await _health_probe(sbx):
+        return True
+    try:
+        info = await AsyncSandbox.get_info(sbx.sandbox_id)
+    except NotFoundException:
+        return False
+    if info.state != SandboxState.RUNNING:
+        return False
+    return await _health_probe(
+        sbx,
+        request_timeout=HEALTH_PROBE_RETRY_REQUEST_TIMEOUT_SECONDS,
+        wait_timeout=HEALTH_PROBE_RETRY_WAIT_TIMEOUT_SECONDS,
+    )
 
 
 async def _ensure_watcher(user_id: str, entry: PooledSandbox) -> None:
@@ -466,7 +492,7 @@ async def _reuse_cached_entry(
     # Cheap liveness check first — if the cached handle is stale (sandbox
     # was paused / killed since we last touched it), evict and create
     # fresh. Otherwise we'd hang for the full command timeout below.
-    if not await _health_probe(entry.sandbox):
+    if not await _sandbox_alive(entry.sandbox):
         _record(cache_evicted="unhealthy")
         log.info(f"{LogTag.SANDBOX} cached sandbox unhealthy user=; evicting", user_id=user_id)
         await mark_sandbox_dead(user_id)
@@ -500,7 +526,7 @@ async def _resume_existing_sandbox(
     if sbx is None:
         _record(resume_status="failed")
         return None
-    if not await _health_probe(sbx):
+    if not await _sandbox_alive(sbx):
         _record(resume_status="unhealthy")
         log.info(
             f"{LogTag.SANDBOX} resumed sandbox still unhealthy after connect; falling through to fresh create",
@@ -765,7 +791,7 @@ async def acquire_sandbox(user_id: str) -> AsyncIterator[AsyncSandbox]:
             # A tool op failed — could be the sandbox itself dying or just a
             # command error. Ask the official /health endpoint rather than parse
             # error text; owning eviction here means every tool gets it uniformly.
-            sandbox_dead = not await _health_probe(entry.sandbox)
+            sandbox_dead = not await _sandbox_alive(entry.sandbox)
             if sandbox_dead:
                 _record(health_ok=False)
             raise

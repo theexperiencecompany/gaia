@@ -28,7 +28,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
 
-from e2b import CommandExitException
+from e2b import CommandExitException, SandboxState
 import pytest
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
@@ -720,8 +720,32 @@ async def test_a_resumed_but_unhealthy_sandbox_is_not_handed_back() -> None:
     # means every tool call in the turn times out instead of one fresh create.
     sbx = _fake_sandbox()
     sbx.is_running = AsyncMock(return_value=False)
-    with patch.object(lifecycle, "_connect_sandbox", AsyncMock(return_value=sbx)):
+    with (
+        patch.object(lifecycle, "_connect_sandbox", AsyncMock(return_value=sbx)),
+        _control_plane_says(SandboxState.RUNNING),
+    ):
         assert await lifecycle._resume_existing_sandbox(_doc("sbx-old"), {}) is None
+
+
+def _control_plane_says(state: SandboxState) -> Any:
+    """Patch E2B's control plane to report the sandbox in the given state."""
+    return patch.object(
+        lifecycle.AsyncSandbox, "get_info", AsyncMock(return_value=SimpleNamespace(state=state))
+    )
+
+
+@pytest.mark.regression
+async def test_a_resumed_sandbox_that_misses_one_probe_is_handed_back() -> None:
+    # Falling through to a fresh create here abandoned a live sandbox (and its
+    # running agent) for the sake of one /health blip.
+    sbx = _fake_sandbox()
+    sbx.is_running = AsyncMock(side_effect=[False, True])
+    with (
+        patch.object(lifecycle, "_connect_sandbox", AsyncMock(return_value=sbx)),
+        patch.object(lifecycle, "_ensure_mounted", AsyncMock()),
+        _control_plane_says(SandboxState.RUNNING),
+    ):
+        assert await lifecycle._resume_existing_sandbox(_doc("sbx-old"), {}) is sbx
 
 
 async def test_a_resumed_sandbox_is_remounted_before_it_is_used() -> None:

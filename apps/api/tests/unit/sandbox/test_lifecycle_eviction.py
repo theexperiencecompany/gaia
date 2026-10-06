@@ -10,11 +10,13 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
 import uuid
 
-from e2b import NotFoundException, TimeoutException
+from e2b import NotFoundException, SandboxState, TimeoutException
+import pytest
 
 from app.services.sandbox import lifecycle
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
@@ -22,9 +24,17 @@ from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 
 @asynccontextmanager
 async def _run(
-    sandbox: AsyncMock, *, body_error: Exception | None
+    sandbox: AsyncMock,
+    *,
+    body_error: Exception | None,
+    control_plane: AsyncMock | None = None,
 ) -> AsyncIterator[tuple[str, Any, AsyncMock, Any, Exception | None]]:
-    """Drive acquire_sandbox for a fresh user; yield (user_id, pool, coll, sched)."""
+    """Drive acquire_sandbox for a fresh user; yield (user_id, pool, coll, sched).
+
+    control_plane stands in for E2B's get_info; by default the sandbox is gone.
+    """
+    if control_plane is None:
+        control_plane = AsyncMock(side_effect=NotFoundException("sandbox gone"))
     user_id = f"u-{uuid.uuid4().hex}"
     pool = get_sandbox_pool()
     entry = PooledSandbox(sandbox=sandbox, last_canary_ts="x")
@@ -35,6 +45,7 @@ async def _run(
 
     coll = AsyncMock()
     with (
+        patch.object(lifecycle.AsyncSandbox, "get_info", control_plane),
         patch.object(lifecycle, "_acquire_or_create", side_effect=fake_acquire_or_create),
         patch.object(lifecycle, "e2b_sandbox_repository", coll),
         patch.object(lifecycle, "_schedule_pause") as sched,
@@ -142,4 +153,23 @@ async def test_happy_path_keeps_sandbox_and_schedules_pause() -> None:
         assert pool.get(uid) is not None
         sched.assert_called_once()  # last in-flight call schedules the idle pause
         sbx.is_running.assert_not_called()  # no health probe on success — happy path is cheap
+        assert not _dead_state_written(coll)
+
+
+@pytest.mark.regression
+async def test_a_tool_error_plus_one_missed_probe_keeps_a_live_sandbox() -> None:
+    # A failing command followed by a single /health blip used to kill the
+    # live sandbox and everything running in it.
+    sbx = AsyncMock()
+    sbx.is_running = AsyncMock(side_effect=[False, True])
+    running = AsyncMock(return_value=SimpleNamespace(state=SandboxState.RUNNING))
+    async with _run(sbx, body_error=RuntimeError("grep: no match"), control_plane=running) as (
+        uid,
+        pool,
+        coll,
+        sched,
+        raised,
+    ):
+        assert isinstance(raised, RuntimeError)
+        assert pool.get(uid) is not None
         assert not _dead_state_written(coll)
