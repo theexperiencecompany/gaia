@@ -2,8 +2,8 @@
 
 Heavy focus on the pure helper functions (datetime/recurrence validation,
 update-field builders) — no mocking needed, and this is exactly where the real
-bugs in this file were hiding: both _parse_iso_future_datetime and
-_build_scheduled_at_update raised an unhandled TypeError (instead of a clean
+bugs in this file were hiding: both parse_iso_future_datetime and
+build_scheduled_at_update raised an unhandled TypeError (instead of a clean
 validation error) on a timezone-naive ISO datetime. Fixed at the root in
 tracked_todo_tools.py; the tests here pin the fix down.
 """
@@ -15,25 +15,29 @@ from unittest.mock import AsyncMock, call, patch
 from pydantic import ValidationError
 import pytest
 
-from app.agents.tools import tracked_todo_tools
+from app.agents.tools import tracked_todo_fields, tracked_todo_tools
+from app.agents.tools.tracked_todo_fields import (
+    apply_cron_first_fire,
+    build_clearable_datetime_update,
+    build_labels_update,
+    build_priority_update,
+    build_recurrence_update,
+    build_scheduled_at_update,
+    format_first_fire_note,
+    get_user_tz,
+    is_cron_expression,
+    parse_iso_future_datetime,
+    resolve_cron_first_fire,
+    resolve_first_fire,
+    validate_recurrence_format,
+)
+from app.agents.tools.tracked_todo_formatting import (
+    build_list_detail_parts,
+    format_create_output,
+    format_tracked_todo_full,
+)
 from app.agents.tools.tracked_todo_tools import (
-    _apply_cron_first_fire,
-    _build_clearable_datetime_update,
-    _build_labels_update,
-    _build_list_detail_parts,
-    _build_priority_update,
-    _build_recurrence_update,
-    _build_scheduled_at_update,
-    _format_create_output,
-    _format_first_fire_note,
-    _format_tracked_todo_full,
-    _get_user_tz,
-    _is_cron_expression,
-    _parse_iso_future_datetime,
-    _resolve_cron_first_fire,
-    _resolve_first_fire,
     _schedule_execution_after_create,
-    _validate_recurrence_format,
     complete_tracked_todo,
     create_tracked_todo,
     list_tracked_todos,
@@ -75,35 +79,35 @@ def _config(user_id: str | None = "user-1") -> dict:
 
 
 # ---------------------------------------------------------------------------
-# _parse_iso_future_datetime / _build_scheduled_at_update — tz-naive crash bug
+# parse_iso_future_datetime / build_scheduled_at_update — tz-naive crash bug
 # ---------------------------------------------------------------------------
 
 
 class TestParseIsoFutureDatetime:
     def test_valid_future_datetime_with_offset(self):
-        parsed, error = _parse_iso_future_datetime(_FUTURE_ISO, "scheduled_at")
+        parsed, error = parse_iso_future_datetime(_FUTURE_ISO, "scheduled_at")
         assert error is None
         assert parsed == _FUTURE
 
     def test_past_datetime_rejected(self):
-        parsed, error = _parse_iso_future_datetime(_PAST_ISO, "scheduled_at")
+        parsed, error = parse_iso_future_datetime(_PAST_ISO, "scheduled_at")
         assert parsed is None
         assert "must be in the future" in error
 
     def test_invalid_format_rejected(self):
-        parsed, error = _parse_iso_future_datetime("not-a-date", "scheduled_at")
+        parsed, error = parse_iso_future_datetime("not-a-date", "scheduled_at")
         assert parsed is None
         assert "invalid scheduled_at format" in error
 
     def test_naive_datetime_without_timezone_offset_is_rejected_cleanly(self):
         """Regression: a naive datetime used to raise an unhandled TypeError instead of a clean validation error."""
-        parsed, error = _parse_iso_future_datetime("2027-03-20T09:00:00", "scheduled_at")
+        parsed, error = parse_iso_future_datetime("2027-03-20T09:00:00", "scheduled_at")
         assert parsed is None
         assert "timezone offset" in error
 
     def test_z_suffix_is_treated_as_utc(self):
         future_z = (datetime.now(UTC) + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        parsed, error = _parse_iso_future_datetime(future_z, "scheduled_at")
+        parsed, error = parse_iso_future_datetime(future_z, "scheduled_at")
         assert error is None
         assert parsed.tzinfo is not None
 
@@ -111,67 +115,67 @@ class TestParseIsoFutureDatetime:
 class TestBuildScheduledAtUpdate:
     def test_none_is_a_no_op(self):
         fields: dict[str, object] = {}
-        assert _build_scheduled_at_update(None, fields) is None
+        assert build_scheduled_at_update(None, fields) is None
         assert fields == {}
 
     def test_empty_string_clears_the_field(self):
         fields: dict[str, object] = {}
-        assert _build_scheduled_at_update("", fields) is None
+        assert build_scheduled_at_update("", fields) is None
         assert fields == {"scheduled_at": None}
 
     def test_naive_datetime_is_rejected_cleanly_not_a_crash(self):
         fields: dict[str, object] = {}
-        error = _build_scheduled_at_update("2027-03-20T09:00:00", fields)
+        error = build_scheduled_at_update("2027-03-20T09:00:00", fields)
         assert error is not None
         assert "timezone offset" in error
         assert fields == {}
 
     def test_past_datetime_rejected(self):
         fields: dict[str, object] = {}
-        error = _build_scheduled_at_update(_PAST_ISO, fields)
+        error = build_scheduled_at_update(_PAST_ISO, fields)
         assert "must be in the future" in error
         assert fields == {}
 
     def test_valid_future_datetime_sets_the_field(self):
         fields: dict[str, object] = {}
-        error = _build_scheduled_at_update(_FUTURE_ISO, fields)
+        error = build_scheduled_at_update(_FUTURE_ISO, fields)
         assert error is None
         assert fields["scheduled_at"] == _FUTURE
 
     def test_invalid_format_rejected(self):
         fields: dict[str, object] = {}
-        error = _build_scheduled_at_update("garbage", fields)
+        error = build_scheduled_at_update("garbage", fields)
         assert error is not None
         assert "invalid scheduled_at format" in error
         assert fields == {}
 
 
 # ---------------------------------------------------------------------------
-# _build_clearable_datetime_update / _build_priority_update / _build_labels_update
+# build_clearable_datetime_update / build_priority_update / build_labels_update
 # ---------------------------------------------------------------------------
 
 
 class TestBuildClearableDatetimeUpdate:
     def test_none_is_a_no_op(self):
         fields: dict[str, object] = {}
-        assert _build_clearable_datetime_update(None, "due_date", fields) is None
+        assert build_clearable_datetime_update(None, "due_date", fields) is None
         assert fields == {}
 
     def test_empty_string_clears(self):
         fields: dict[str, object] = {}
-        assert _build_clearable_datetime_update("", "due_date", fields) is None
+        assert build_clearable_datetime_update("", "due_date", fields) is None
         assert fields == {"due_date": None}
 
     def test_invalid_format_returns_error_and_does_not_touch_fields(self):
         fields: dict[str, object] = {}
-        error = _build_clearable_datetime_update("garbage", "due_date", fields)
+        error = build_clearable_datetime_update("garbage", "due_date", fields)
         assert "invalid due_date format" in error
         assert fields == {}
 
     def test_valid_datetime_sets_field_no_future_requirement(self):
         """Unlike scheduled_at, due_date/expires_at may legitimately be in the past (an overdue due_date is still meaningful)."""
         fields: dict[str, object] = {}
-        error = _build_clearable_datetime_update(_PAST_ISO, "due_date", fields)
+        error = build_clearable_datetime_update(_PAST_ISO, "due_date", fields)
         assert error is None
         assert fields["due_date"] is not None
 
@@ -179,66 +183,66 @@ class TestBuildClearableDatetimeUpdate:
 class TestBuildPriorityUpdate:
     def test_none_is_a_no_op(self):
         fields: dict[str, object] = {}
-        assert _build_priority_update(None, fields) is None
+        assert build_priority_update(None, fields) is None
         assert fields == {}
 
     @pytest.mark.parametrize("value", list(Priority))
     def test_valid_priority_values(self, value):
         fields: dict[str, object] = {}
-        assert _build_priority_update(value, fields) is None
+        assert build_priority_update(value, fields) is None
         assert fields["priority"] == value.value
 
 
 class TestBuildLabelsUpdate:
     def test_none_is_a_no_op(self):
         fields: dict[str, object] = {}
-        assert _build_labels_update(None, fields) is None
+        assert build_labels_update(None, fields) is None
         assert fields == {}
 
     def test_gaia_tracked_label_is_added_if_missing(self):
         fields: dict[str, object] = {}
-        _build_labels_update(["work"], fields)
+        build_labels_update(["work"], fields)
         assert GAIA_TRACKED_LABEL in fields["labels"]
         assert "work" in fields["labels"]
 
     def test_gaia_tracked_label_is_not_duplicated_if_already_present(self):
         fields: dict[str, object] = {}
-        _build_labels_update(["work", GAIA_TRACKED_LABEL], fields)
+        build_labels_update(["work", GAIA_TRACKED_LABEL], fields)
         assert fields["labels"].count(GAIA_TRACKED_LABEL) == 1
 
     def test_empty_list_still_gets_the_tracked_label(self):
         fields: dict[str, object] = {}
-        _build_labels_update([], fields)
+        build_labels_update([], fields)
         assert fields["labels"] == [GAIA_TRACKED_LABEL]
 
 
 # ---------------------------------------------------------------------------
-# Recurrence: _is_cron_expression / _validate_recurrence_format / _resolve_first_fire
+# Recurrence: is_cron_expression / validate_recurrence_format / resolve_first_fire
 # ---------------------------------------------------------------------------
 
 
 class TestRecurrenceValidation:
     @pytest.mark.parametrize("shortcut", ["daily", "weekly", "every_4h", "every_1h"])
     def test_shortcuts_are_not_cron_expressions(self, shortcut):
-        assert _is_cron_expression(shortcut) is False
+        assert is_cron_expression(shortcut) is False
 
     def test_cron_string_is_a_cron_expression(self):
-        assert _is_cron_expression("0 9 * * *") is True
+        assert is_cron_expression("0 9 * * *") is True
 
     def test_valid_cron_passes_format_validation(self):
-        assert _validate_recurrence_format("0 9,20 * * *") is None
+        assert validate_recurrence_format("0 9,20 * * *") is None
 
     def test_invalid_cron_is_rejected(self):
-        error = _validate_recurrence_format("not a cron")
+        error = validate_recurrence_format("not a cron")
         assert error is not None
         assert "invalid recurrence" in error
 
     def test_valid_shortcut_passes_format_validation(self):
-        assert _validate_recurrence_format("daily") is None
+        assert validate_recurrence_format("daily") is None
 
     def test_unknown_shortcut_word_is_rejected_with_shortcut_guidance(self):
         """A typo'd shortcut is neither a known shortcut nor a valid cron — the error must still point the caller at the valid shortcut options, not just say "invalid"."""
-        error = _validate_recurrence_format("monthly")
+        error = validate_recurrence_format("monthly")
         assert error is not None
         assert "Use one of:" in error
         assert "daily" in error
@@ -246,55 +250,55 @@ class TestRecurrenceValidation:
 
 class TestResolveFirstFire:
     def test_no_recurrence_no_scheduled_at_returns_nothing(self):
-        parsed, notes, error = _resolve_first_fire(None, None, "UTC")
+        parsed, notes, error = resolve_first_fire(None, None, "UTC")
         assert parsed is None
         assert error is None
 
     def test_plain_scheduled_at_without_recurrence(self):
-        parsed, notes, error = _resolve_first_fire(None, _FUTURE_ISO, "UTC")
+        parsed, notes, error = resolve_first_fire(None, _FUTURE_ISO, "UTC")
         assert error is None
         assert parsed == _FUTURE
 
     def test_shortcut_recurrence_without_scheduled_at_is_an_error(self):
-        parsed, notes, error = _resolve_first_fire("daily", None, "UTC")
+        parsed, notes, error = resolve_first_fire("daily", None, "UTC")
         assert parsed is None
         assert "requires scheduled_at" in error
 
     def test_shortcut_recurrence_with_scheduled_at_anchors_on_it(self):
-        parsed, notes, error = _resolve_first_fire("daily", _FUTURE_ISO, "UTC")
+        parsed, notes, error = resolve_first_fire("daily", _FUTURE_ISO, "UTC")
         assert error is None
         assert parsed == _FUTURE
 
     def test_cron_recurrence_ignores_scheduled_at_and_notes_it(self):
-        parsed, notes, error = _resolve_first_fire("0 9 * * *", _FUTURE_ISO, "UTC")
+        parsed, notes, error = resolve_first_fire("0 9 * * *", _FUTURE_ISO, "UTC")
         assert error is None
         assert parsed is not None
         assert any("ignored" in n for n in notes)
 
     def test_invalid_cron_recurrence_is_rejected(self):
-        parsed, notes, error = _resolve_first_fire("not a cron", None, "UTC")
+        parsed, notes, error = resolve_first_fire("not a cron", None, "UTC")
         assert parsed is None
         assert error is not None
 
 
 class TestBuildRecurrenceUpdate:
-    """The update-path equivalent of _resolve_first_fire — recomputes the cron first-fire against the user's stored timezone (a real Mongo lookup via _get_user_tz, mocked here at that boundary)."""
+    """The update-path equivalent of resolve_first_fire — recomputes the cron first-fire against the user's stored timezone (a real Mongo lookup via get_user_tz, mocked here at that boundary)."""
 
     async def test_none_is_a_no_op(self):
         fields: dict[str, object] = {}
-        error = await _build_recurrence_update(None, None, "u1", fields, [])
+        error = await build_recurrence_update(None, None, "u1", fields, [])
         assert error is None
         assert fields == {}
 
     async def test_empty_string_clears_recurrence(self):
         fields: dict[str, object] = {}
-        error = await _build_recurrence_update("", None, "u1", fields, [])
+        error = await build_recurrence_update("", None, "u1", fields, [])
         assert error is None
         assert fields == {"recurrence": None}
 
     async def test_invalid_format_returns_error(self):
         fields: dict[str, object] = {}
-        error = await _build_recurrence_update("not a cron", None, "u1", fields, [])
+        error = await build_recurrence_update("not a cron", None, "u1", fields, [])
         assert error is not None
         assert "recurrence" not in fields
 
@@ -302,11 +306,11 @@ class TestBuildRecurrenceUpdate:
         fields: dict[str, object] = {}
         notes: list[str] = []
         with patch(
-            "app.agents.tools.tracked_todo_tools._get_user_tz",
+            "app.agents.tools.tracked_todo_fields.get_user_tz",
             new_callable=AsyncMock,
             return_value="America/New_York",
         ):
-            error = await _build_recurrence_update("0 9 * * *", None, "u1", fields, notes)
+            error = await build_recurrence_update("0 9 * * *", None, "u1", fields, notes)
 
         assert error is None
         assert fields["recurrence"] == "0 9 * * *"
@@ -315,13 +319,13 @@ class TestBuildRecurrenceUpdate:
     async def test_shortcut_recurrence_does_not_touch_scheduled_at(self):
         """A shortcut ("daily") has no cron to recompute a first-fire from — scheduled_at is update_tracked_todo's own guard, required separately."""
         fields: dict[str, object] = {}
-        error = await _build_recurrence_update("daily", None, "u1", fields, [])
+        error = await build_recurrence_update("daily", None, "u1", fields, [])
         assert error is None
         assert fields == {"recurrence": "daily"}
 
 
 # ---------------------------------------------------------------------------
-# _build_list_detail_parts — overdue/expired day-math
+# build_list_detail_parts — overdue/expired day-math
 # ---------------------------------------------------------------------------
 
 
@@ -334,28 +338,28 @@ class TestBuildListDetailParts:
     def test_overdue_due_date_is_flagged(self):
         now = datetime.now(UTC)
         doc = self._doc(due_date=now - timedelta(days=3))
-        parts = _build_list_detail_parts(doc, now)
+        parts = build_list_detail_parts(doc, now)
         assert any("OVERDUE" in p for p in parts)
 
     def test_future_due_date_is_not_flagged_overdue(self):
         now = datetime.now(UTC)
         doc = self._doc(due_date=now + timedelta(days=3))
-        parts = _build_list_detail_parts(doc, now)
+        parts = build_list_detail_parts(doc, now)
         assert not any("OVERDUE" in p for p in parts)
         assert any("Due: 3d" in p for p in parts)
 
     def test_expired_is_flagged(self):
         now = datetime.now(UTC)
         doc = self._doc(expires_at=now - timedelta(days=2))
-        parts = _build_list_detail_parts(doc, now)
+        parts = build_list_detail_parts(doc, now)
         assert any("EXPIRED" in p for p in parts)
 
     def test_retry_count_shown_only_when_positive(self):
         now = datetime.now(UTC)
         doc = self._doc(gaia_retry_count=0)
-        assert not any("Retries" in p for p in _build_list_detail_parts(doc, now))
+        assert not any("Retries" in p for p in build_list_detail_parts(doc, now))
         doc2 = self._doc(gaia_retry_count=2)
-        assert any("Retries: 2" in p for p in _build_list_detail_parts(doc2, now))
+        assert any("Retries: 2" in p for p in build_list_detail_parts(doc2, now))
 
 
 # ---------------------------------------------------------------------------
@@ -619,57 +623,57 @@ class TestCompleteTrackedTodo:
 
 
 # ---------------------------------------------------------------------------
-# _get_user_tz
+# get_user_tz
 # ---------------------------------------------------------------------------
 
 
 class TestGetUserTz:
     async def test_valid_timezone_is_returned(self):
         with patch(
-            "app.agents.tools.tracked_todo_tools.get_user_by_id",
+            "app.agents.tools.tracked_todo_fields.get_user_by_id",
             new_callable=AsyncMock,
             return_value=UserDocument(timezone="America/New_York"),
         ):
-            tz = await _get_user_tz("u1")
+            tz = await get_user_tz("u1")
         assert tz == "America/New_York"
 
     async def test_invalid_timezone_name_falls_back_to_utc(self):
         with patch(
-            "app.agents.tools.tracked_todo_tools.get_user_by_id",
+            "app.agents.tools.tracked_todo_fields.get_user_by_id",
             new_callable=AsyncMock,
             return_value=UserDocument(timezone="Not/A_Real_Zone"),
         ):
-            tz = await _get_user_tz("u1")
+            tz = await get_user_tz("u1")
         assert tz == "UTC"
 
     async def test_no_user_found_falls_back_to_utc(self):
         with patch(
-            "app.agents.tools.tracked_todo_tools.get_user_by_id",
+            "app.agents.tools.tracked_todo_fields.get_user_by_id",
             new_callable=AsyncMock,
             return_value=None,
         ):
-            tz = await _get_user_tz("u1")
+            tz = await get_user_tz("u1")
         assert tz == "UTC"
 
     async def test_no_user_found_records_only_the_fallback_warning(self):
         with (
             patch(
-                "app.agents.tools.tracked_todo_tools.get_user_by_id",
+                "app.agents.tools.tracked_todo_fields.get_user_by_id",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
-            patch("app.agents.tools.tracked_todo_tools.log") as mock_log,
+            patch("app.agents.tools.tracked_todo_fields.log") as mock_log,
         ):
-            await _get_user_tz("u1")
+            await get_user_tz("u1")
         mock_log.warning.assert_called_once_with("tracked_todo.user_tz_fallback_utc", user_id="u1")
 
     async def test_lookup_failure_falls_back_to_utc_not_a_crash(self):
         with patch(
-            "app.agents.tools.tracked_todo_tools.get_user_by_id",
+            "app.agents.tools.tracked_todo_fields.get_user_by_id",
             new_callable=AsyncMock,
             side_effect=RuntimeError("mongo down"),
         ):
-            tz = await _get_user_tz("u1")
+            tz = await get_user_tz("u1")
         assert tz == "UTC"
 
 
@@ -694,22 +698,22 @@ class TestSpawnBackgroundTask:
 
 
 # ---------------------------------------------------------------------------
-# _resolve_cron_first_fire — exception path
+# resolve_cron_first_fire — exception path
 # ---------------------------------------------------------------------------
 
 
 class TestResolveCronFirstFire:
     def test_compute_failure_returns_clean_error_not_a_crash(self):
         with patch(
-            "app.agents.tools.tracked_todo_tools._compute_first_fire_from_cron",
+            "app.agents.tools.tracked_todo_fields.compute_first_fire_from_cron",
             side_effect=RuntimeError("bad timezone data"),
         ):
-            parsed, notes, error = _resolve_cron_first_fire("0 9 * * *", None, "UTC")
+            parsed, notes, error = resolve_cron_first_fire("0 9 * * *", None, "UTC")
         assert parsed is None
         assert "could not compute first fire" in error
 
     def test_scheduled_at_ignored_note_added_when_provided_alongside_cron(self):
-        parsed, notes, error = _resolve_cron_first_fire("0 9 * * *", _FUTURE_ISO, "UTC")
+        parsed, notes, error = resolve_cron_first_fire("0 9 * * *", _FUTURE_ISO, "UTC")
         assert error is None
         # Pinned whole: the note has to say WHICH input won and where the time
         # came from, or the user reads "ignored" and cannot tell what was booked.
@@ -719,7 +723,7 @@ class TestResolveCronFirstFire:
         ]
 
     def test_no_note_when_scheduled_at_not_provided(self):
-        parsed, notes, error = _resolve_cron_first_fire("0 9 * * *", None, "UTC")
+        parsed, notes, error = resolve_cron_first_fire("0 9 * * *", None, "UTC")
         assert error is None
         assert notes == []
 
@@ -731,13 +735,13 @@ class TestResolveCronFirstFire:
 
 class TestCreationFieldUpdate:
     def test_nothing_to_set_is_no_update(self):
-        assert tracked_todo_tools._creation_field_update(None, None, None, None) == (None, None)
+        assert tracked_todo_fields.creation_field_update(None, None, None, None) == (None, None)
 
     def test_an_empty_date_is_unset_not_a_clear(self):
-        assert tracked_todo_tools._creation_field_update(None, None, "", "") == (None, None)
+        assert tracked_todo_fields.creation_field_update(None, None, "", "") == (None, None)
 
     def test_collects_every_field_the_create_sets(self):
-        update, error = tracked_todo_tools._creation_field_update(
+        update, error = tracked_todo_fields.creation_field_update(
             _FUTURE, "daily", _PAST_ISO, _FUTURE_ISO
         )
         assert error is None
@@ -750,7 +754,7 @@ class TestCreationFieldUpdate:
     @pytest.mark.parametrize("field", ["due_date", "expires_at"])
     def test_an_unparseable_date_is_an_error(self, field):
         dates = {"due_date": None, "expires_at": None, field: "garbage"}
-        update, error = tracked_todo_tools._creation_field_update(_FUTURE, "daily", **dates)
+        update, error = tracked_todo_fields.creation_field_update(_FUTURE, "daily", **dates)
         assert update is None
         assert error == f"Error: invalid {field} format 'garbage'."
 
@@ -783,7 +787,7 @@ class TestScheduleExecutionAfterCreate:
 
 
 # ---------------------------------------------------------------------------
-# _format_first_fire_note
+# format_first_fire_note
 # ---------------------------------------------------------------------------
 
 
@@ -799,7 +803,7 @@ class TestFormatCreateOutput:
             updated_at=now,
         )
 
-        out = _format_create_output(result, None, None, [])
+        out = format_create_output(result, None, None, [])
 
         assert "/workspace/gaia-tasks/fix-the-thing-5f10e407/canvas.md" in out
         assert "/workspace/gaia-tasks/fix-the-thing-5f10e407/activity.md" in out
@@ -811,30 +815,30 @@ class TestFormatCreateOutput:
 
 class TestFormatFirstFireNote:
     def test_with_valid_user_timezone(self):
-        note = _format_first_fire_note(_FUTURE, "America/New_York")
+        note = format_first_fire_note(_FUTURE, "America/New_York")
         assert "your timezone (America/New_York)" in note
         assert "update_tracked_todo" in note
 
     def test_without_user_timezone_shows_utc(self):
-        note = _format_first_fire_note(_FUTURE, None)
+        note = format_first_fire_note(_FUTURE, None)
         assert "UTC" in note
 
     def test_invalid_timezone_falls_back_to_utc_note_not_a_crash(self):
         """Timezone.parse itself never raises (it falls back to UTC with a warning log); this exercises that graceful path, not the astimezone except-branch below."""
-        note = _format_first_fire_note(_FUTURE, "Not/A_Real_Zone")
+        note = format_first_fire_note(_FUTURE, "Not/A_Real_Zone")
         assert "UTC" in note
 
     def test_astimezone_failure_falls_back_to_plain_utc_note(self):
         with patch(
-            "app.agents.tools.tracked_todo_tools.Timezone.parse",
+            "app.agents.tools.tracked_todo_fields.Timezone.parse",
             side_effect=RuntimeError("unexpected tz failure"),
         ):
-            note = _format_first_fire_note(_FUTURE, "America/New_York")
+            note = format_first_fire_note(_FUTURE, "America/New_York")
         assert note == f"\nFirst fire (UTC): {_FUTURE.isoformat()}"
 
 
 # ---------------------------------------------------------------------------
-# _apply_cron_first_fire — exception path
+# apply_cron_first_fire — exception path
 # ---------------------------------------------------------------------------
 
 
@@ -843,16 +847,16 @@ class TestApplyCronFirstFire:
         fields: dict[str, object] = {}
         with (
             patch(
-                "app.agents.tools.tracked_todo_tools._get_user_tz",
+                "app.agents.tools.tracked_todo_fields.get_user_tz",
                 new_callable=AsyncMock,
                 return_value="UTC",
             ),
             patch(
-                "app.agents.tools.tracked_todo_tools._compute_first_fire_from_cron",
+                "app.agents.tools.tracked_todo_fields.compute_first_fire_from_cron",
                 side_effect=RuntimeError("bad cron math"),
             ),
         ):
-            error = await _apply_cron_first_fire("0 9 * * *", None, "u1", fields, [])
+            error = await apply_cron_first_fire("0 9 * * *", None, "u1", fields, [])
         assert error is not None
         assert "could not compute first fire" in error
         assert "scheduled_at" not in fields
@@ -861,11 +865,11 @@ class TestApplyCronFirstFire:
         fields: dict[str, object] = {}
         notes: list[str] = []
         with patch(
-            "app.agents.tools.tracked_todo_tools._get_user_tz",
+            "app.agents.tools.tracked_todo_fields.get_user_tz",
             new_callable=AsyncMock,
             return_value="UTC",
         ):
-            error = await _apply_cron_first_fire("0 9 * * *", _FUTURE_ISO, "u1", fields, notes)
+            error = await apply_cron_first_fire("0 9 * * *", _FUTURE_ISO, "u1", fields, notes)
         assert error is None
         # The update path addresses the user directly ("your timezone"), unlike
         # the create path's third-person copy — same fact, different speaker.
@@ -877,7 +881,7 @@ class TestApplyCronFirstFire:
 
 
 # ---------------------------------------------------------------------------
-# _build_list_detail_parts — scheduled_at / recurrence display lines
+# build_list_detail_parts — scheduled_at / recurrence display lines
 # ---------------------------------------------------------------------------
 
 
@@ -890,18 +894,18 @@ class TestBuildListDetailPartsScheduling:
     def test_scheduled_at_is_shown(self):
         now = datetime.now(UTC)
         doc = self._doc(scheduled_at=_FUTURE)
-        parts = _build_list_detail_parts(doc, now)
+        parts = build_list_detail_parts(doc, now)
         assert any("Scheduled:" in p for p in parts)
 
     def test_recurrence_is_shown(self):
         now = datetime.now(UTC)
         doc = self._doc(recurrence="daily")
-        parts = _build_list_detail_parts(doc, now)
+        parts = build_list_detail_parts(doc, now)
         assert any("Recurrence: daily" in p for p in parts)
 
 
 # ---------------------------------------------------------------------------
-# _format_tracked_todo_full
+# format_tracked_todo_full
 # ---------------------------------------------------------------------------
 
 
@@ -917,7 +921,7 @@ class TestFormatTrackedTodoFull:
             created_at=now,
             updated_at=now,
         )
-        result = _format_tracked_todo_full(doc, now)
+        result = format_tracked_todo_full(doc, now)
         assert '"My todo"' in result
         assert "[work]" in result
         # The internal tracking label must never leak into the display text.
@@ -936,7 +940,7 @@ class TestFormatTrackedTodoFull:
             updated_at=now,
         )
 
-        result = _format_tracked_todo_full(doc, now)
+        result = format_tracked_todo_full(doc, now)
 
         assert "files: /workspace/gaia-tasks/fix-the-thing-5f10e407/" in result
 
@@ -950,7 +954,7 @@ class TestFormatTrackedTodoFull:
             created_at=now,
             updated_at=now,
         )
-        assert "Owns gmail_thread: 18f3a2b" in _format_tracked_todo_full(doc, now)
+        assert "Owns gmail_thread: 18f3a2b" in format_tracked_todo_full(doc, now)
 
     def test_includes_detail_line_when_scheduling_fields_present(self):
         now = datetime.now(UTC)
@@ -962,7 +966,7 @@ class TestFormatTrackedTodoFull:
             created_at=now,
             updated_at=now,
         )
-        result = _format_tracked_todo_full(doc, now)
+        result = format_tracked_todo_full(doc, now)
         assert "Recurrence: daily" in result
 
 
@@ -1201,7 +1205,7 @@ class TestUpdateTrackedTodoSuccess:
                 new_callable=AsyncMock,
             ),
             patch(
-                "app.agents.tools.tracked_todo_tools._get_user_tz",
+                "app.agents.tools.tracked_todo_fields.get_user_tz",
                 new_callable=AsyncMock,
                 return_value="UTC",
             ) as mock_tz,

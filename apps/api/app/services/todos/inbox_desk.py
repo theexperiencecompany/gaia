@@ -6,7 +6,6 @@ runs mail.
 """
 
 from datetime import UTC, datetime
-from typing import NamedTuple
 
 from app.agents.prompts.todo_prompts import (
     INBOX_DESK_DELIVERY_RULE,
@@ -26,7 +25,13 @@ from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators.entitlements import is_paid
-from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument, TodoUpdate
+from app.models.todo_models import (
+    DeskReconcile,
+    ExternalRef,
+    ExternalRefSource,
+    TodoDocument,
+    TodoUpdate,
+)
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.canvas_markdown import remove_section
 from app.services.integrations.user_integrations import get_connected_integration_ids
@@ -74,13 +79,6 @@ async def provision_inbox_desk(user_id: str) -> None:
     # The job id dedupes an occurrence already queued; a lost job is queued again.
     await tracked_todo_service.schedule_execution(desk.id, next_run)
     log.set_ns("inbox_desk", outcome="armed", todo_id=desk.id, next_run=next_run.isoformat())
-
-
-class DeskReconcile(NamedTuple):
-    """How a reconcile sweep went: the paying Gmail users it visited, and how many failed."""
-
-    users: int
-    failures: int
 
 
 async def reconcile_inbox_desks() -> DeskReconcile:

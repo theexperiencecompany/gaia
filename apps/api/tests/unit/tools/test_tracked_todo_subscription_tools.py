@@ -18,9 +18,11 @@ import pytest
 
 from app.agents.core.graph_builder import build_graph
 from app.agents.tools import tracked_todo_tools
+from app.agents.tools.tracked_todo_formatting import (
+    format_subscription_lines,
+    format_tracked_todo_full,
+)
 from app.agents.tools.tracked_todo_tools import (
-    _format_subscription_lines,
-    _format_tracked_todo_full,
     list_trigger_fields,
     subscribe_todo_to_trigger,
     unsubscribe_todo_from_trigger,
@@ -541,7 +543,7 @@ class TestSubscriptionsAreVisibleOnTheTodo:
         )
         doc = _todo(trigger_subscriptions=[subscription])
 
-        rendered = _format_tracked_todo_full(doc, datetime.now(UTC))
+        rendered = format_tracked_todo_full(doc, datetime.now(UTC))
 
         assert f"Watching {GMAIL} -> execute when thread_id equals t-1" in rendered
         assert subscription.id in rendered
@@ -549,15 +551,15 @@ class TestSubscriptionsAreVisibleOnTheTodo:
     def test_a_watch_with_no_conditions_says_so(self) -> None:
         doc = _todo(trigger_subscriptions=[_subscription()])
 
-        assert "when any event" in _format_tracked_todo_full(doc, datetime.now(UTC))
+        assert "when any event" in format_tracked_todo_full(doc, datetime.now(UTC))
 
     def test_a_paused_watch_says_the_integration_is_disconnected(self) -> None:
         doc = _todo(trigger_subscriptions=[_subscription(status=TriggerSubscriptionStatus.PAUSED)])
 
-        assert "PAUSED" in _format_tracked_todo_full(doc, datetime.now(UTC))
+        assert "PAUSED" in format_tracked_todo_full(doc, datetime.now(UTC))
 
     def test_a_todo_with_no_watches_renders_unchanged(self) -> None:
-        assert "Watching" not in _format_tracked_todo_full(_todo(), datetime.now(UTC))
+        assert "Watching" not in format_tracked_todo_full(_todo(), datetime.now(UTC))
 
 
 class TestFormatSubscriptionLines:
@@ -576,7 +578,7 @@ class TestFormatSubscriptionLines:
 
     def test_all_match_joins_conditions_with_and(self) -> None:
         sub = _subscription(match=ConditionMatch.ALL, conditions=self._two_conditions())
-        (line,) = _format_subscription_lines(_todo(trigger_subscriptions=[sub]))
+        (line,) = format_subscription_lines(_todo(trigger_subscriptions=[sub]))
 
         assert line == (
             f"Watching {GMAIL} -> execute when "
@@ -586,7 +588,7 @@ class TestFormatSubscriptionLines:
 
     def test_any_match_joins_conditions_with_or(self) -> None:
         sub = _subscription(match=ConditionMatch.ANY, conditions=self._two_conditions())
-        (line,) = _format_subscription_lines(_todo(trigger_subscriptions=[sub]))
+        (line,) = format_subscription_lines(_todo(trigger_subscriptions=[sub]))
 
         assert line == (
             f"Watching {GMAIL} -> execute when "
@@ -596,13 +598,13 @@ class TestFormatSubscriptionLines:
 
     def test_a_paused_watch_ends_with_the_disconnected_marker(self) -> None:
         sub = _subscription(status=TriggerSubscriptionStatus.PAUSED)
-        (line,) = _format_subscription_lines(_todo(trigger_subscriptions=[sub]))
+        (line,) = format_subscription_lines(_todo(trigger_subscriptions=[sub]))
 
         assert line.endswith(" (PAUSED: integration disconnected)")
 
     def test_an_active_watch_ends_at_the_subscription_id_with_no_marker(self) -> None:
         sub = _subscription()
-        (line,) = _format_subscription_lines(_todo(trigger_subscriptions=[sub]))
+        (line,) = format_subscription_lines(_todo(trigger_subscriptions=[sub]))
 
         assert line == f"Watching {GMAIL} -> execute when any event (subscription: {sub.id})"
 

@@ -50,11 +50,16 @@ from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
     CANVAS_PROMPT_MAX_CHARS,
     FAILED_LABEL,
+    LOCK_DEFER_BACKOFF,
+    LOCK_TTL_SECONDS,
+    MAX_RETRY_ATTEMPTS,
     REFERENCED_TODOS_PROMPT_LIMIT,
+    RETRY_BACKOFF,
     STANDING_RULES_MAX_CHARS,
     SUB_TODO_STATE_EXCERPT_CHARS,
     SUB_TODOS_PROMPT_LIMIT,
     TODO_SCHEDULE_FIRE_GRACE,
+    TRIGGER_TODO_FEATURE_KEY,
     TodoActivityEvent,
 )
 from app.db.repositories.todos import todo_repository
@@ -62,7 +67,13 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
 )
-from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument, TodoUpdate
+from app.models.todo_models import (
+    ExternalRef,
+    ExternalRefSource,
+    TodoDocument,
+    TodoRunContext,
+    TodoUpdate,
+)
 from app.models.trigger_subscription_models import (
     ConditionOperator,
     SubscriptionAction,
@@ -81,20 +92,13 @@ from app.utils.occurrence import occurrence_stamp
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import Timezone
 from app.workers.task_envelope import arq_task
+from app.workers.tasks.todo_run_context import collect_reference_learnings
+from app.workers.tasks.todo_run_prompt import build_execution_prompt
 from app.workers.tasks.tracked_todo_tasks import (
-    LOCK_DEFER_BACKOFF,
-    LOCK_TTL_SECONDS,
-    MAX_RETRY_ATTEMPTS,
-    RETRY_BACKOFF,
-    TRIGGER_TODO_FEATURE_KEY,
-    _build_execution_prompt,
-    _collect_reference_learnings,
-    _collect_run_context,
     _compute_next_run,
     _execute_on_executor,
     _execute_todo_with_retry,
     _mark_todo_failed,
-    _RunContext,
     execute_tracked_todo,
     resume_tracked_todo,
     safety_net_check_orphaned_todos,
@@ -117,14 +121,14 @@ _LATE = datetime(2026, 10, 3, 23, 8, tzinfo=KOLKATA)
 def _prompt(
     doc: TodoDocument,
     *,
-    context: _RunContext | None = None,
+    context: TodoRunContext | None = None,
     origin: TriggerOrigin | None = None,
     coalesced: Sequence[TriggerOrigin] = (),
     local_now: datetime = _DAYTIME,
 ) -> str:
-    return _build_execution_prompt(
+    return build_execution_prompt(
         doc,
-        context=context or _RunContext(),
+        context=context or TodoRunContext(),
         origin=origin,
         coalesced=coalesced,
         local_now=local_now,
@@ -349,6 +353,7 @@ class TestTriggeredExecutionLock:
             patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
             patch(f"{MODULE}.buffer_todo_trigger_event", AsyncMock(return_value=False)),
             patch(f"{MODULE}.todo_repository", repo),
+            patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(f"{MODULE}.record_activity", recorded),
             patch(f"{MODULE}.log") as log_mock,
         ):
@@ -717,6 +722,7 @@ class TestTriggeredExecutionGating:
         budget = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
+            patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", via_agent),
             patch(f"{MODULE}.enforce_daily_cost_budget", budget),
             patch(
@@ -761,6 +767,7 @@ class TestTriggeredExecutionGating:
         repo.update = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
+            patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", AsyncMock(side_effect=RuntimeError("boom"))),
             patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
             patch(f"{MODULE}._mark_todo_failed", AsyncMock()),
@@ -785,6 +792,7 @@ class TestTriggeredExecutionGating:
         repo.update = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
+            patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", AsyncMock(side_effect=RuntimeError("boom"))),
             patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
             patch(
@@ -817,6 +825,7 @@ class TestARunWaitsForItsAccount:
         via_agent = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
+            patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", via_agent),
             patch(f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone=tz))),
             _serving(_pool()),
@@ -953,6 +962,7 @@ class TestExecuteTodoWithRetryEarlyExits:
         via_agent = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
+            patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", via_agent),
             patch(
                 f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
@@ -1038,6 +1048,7 @@ class TestExecuteTodoWithRetrySuccess:
         repo.update_if_scheduled_at = AsyncMock(return_value=None if rescheduled_meanwhile else doc)
         with (
             patch(f"{MODULE}.todo_repository", repo),
+            patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", AsyncMock()),
             patch(
                 f"{MODULE}.load_user_context",
@@ -1153,6 +1164,7 @@ class TestExecuteTodoWithRetryFailure:
         mark_failed = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
+            patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", AsyncMock(side_effect=RuntimeError("boom"))),
             patch(
                 f"{MODULE}.load_user_context", AsyncMock(side_effect=_user_context(timezone="UTC"))
@@ -1280,6 +1292,7 @@ class TestARecurringTodoOutlivesAFailedOccurrence:
         executed = AsyncMock(side_effect=RuntimeError("402")) if fails else AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
+            patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", executed),
             patch(
                 f"{MODULE}.load_user_context",
@@ -1442,6 +1455,7 @@ class TestATrackedTodoAlwaysRunsTheAgent:
         queue = AsyncMock(return_value=True)
         with (
             patch(f"{MODULE}.todo_repository", repo),
+            patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", via_agent),
             patch(
                 "app.services.workflow.queue_service.WorkflowQueueService.queue_workflow_execution",
@@ -1473,7 +1487,7 @@ class TestCollectReferenceLearnings:
     async def _run(self, ref_ids: list[str], owned: list[TodoDocument]) -> None:
         find = AsyncMock(return_value=owned)
         with patch.object(todo_repository, "find_by_ids", find):
-            return await _collect_reference_learnings(ref_ids, "user-1"), find
+            return await collect_reference_learnings(ref_ids, "user-1"), find
 
     async def test_no_references_short_circuits_without_touching_mongo(self) -> None:
         result, find = await self._run([], [])
@@ -1576,7 +1590,7 @@ class TestBuildExecutionPrompt:
                 canvas_content="## Current State\nblocked",
                 activity_content="- 2026-09-01T09:00:00+00:00 started",
             ),
-            context=_RunContext(
+            context=TodoRunContext(
                 parent_rules="parent rules", sub_todos="sub-todo states", learnings="past stuff"
             ),
         )
@@ -1964,6 +1978,7 @@ class TestStaleScheduledFire:
         run = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
+            patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(f"{MODULE}._execute_on_executor", run),
             patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
             patch(
@@ -2132,6 +2147,7 @@ class TestOneRunPerOccurrence:
         run = run or AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", row),
+            patch("app.workers.tasks.todo_run_context.todo_repository", row),
             patch(f"{MODULE}._execute_on_executor", run),
             patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
             patch(f"{MODULE}._mark_todo_failed", AsyncMock()),
@@ -2377,6 +2393,7 @@ class TestTriggerEventsCoalesce:
         self.budget = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", row),
+            patch("app.workers.tasks.todo_run_context.todo_repository", row),
             patch(f"{_DISPATCH}.todo_repository", row),
             patch(f"{MODULE}.run_todo_on_executor", run),
             patch(f"{MODULE}.enforce_daily_cost_budget", self.budget),
@@ -2624,11 +2641,11 @@ class TestExecuteOnExecutor:
     def _patches(self, *, run=None):
         self.run = run or AsyncMock()
         self.timeline = AsyncMock(return_value=True)
-        self.context = AsyncMock(return_value=_RunContext())
+        self.context = AsyncMock(return_value=TodoRunContext())
         return (
             patch(f"{MODULE}.run_todo_on_executor", self.run),
             patch(f"{MODULE}.record_activity", self.timeline),
-            patch(f"{MODULE}._collect_run_context", self.context),
+            patch(f"{MODULE}.collect_run_context", self.context),
         )
 
     def _request(self) -> TodoRunRequest:
@@ -2756,6 +2773,7 @@ class TestMarkTodoFailed:
         teardown = AsyncMock(return_value=1)
         with (
             patch(f"{MODULE}.todo_repository", repo),
+            patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(f"{MODULE}.notification_service.create_notification", notify),
             patch(f"{MODULE}.teardown_subscriptions", teardown),
         ):
@@ -2776,6 +2794,10 @@ class TestMarkTodoFailed:
     async def test_stopping_is_on_the_todos_timeline(self, activity):
         with (
             patch(f"{MODULE}.todo_repository", MagicMock(add_labels=AsyncMock())),
+            patch(
+                "app.workers.tasks.todo_run_context.todo_repository",
+                MagicMock(add_labels=AsyncMock()),
+            ),
             patch(f"{MODULE}.notification_service.create_notification", AsyncMock()),
             patch(f"{MODULE}.teardown_subscriptions", AsyncMock(return_value=0)),
         ):
@@ -2793,6 +2815,7 @@ class TestMarkTodoFailed:
         repo.add_labels = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
+            patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(
                 f"{MODULE}.notification_service.create_notification",
                 AsyncMock(side_effect=RuntimeError("notification bus down")),
@@ -2891,6 +2914,7 @@ class TestSafetyNet:
         repo.find_due_tracked_all_users = AsyncMock(return_value=candidates)
         with (
             patch(f"{MODULE}.todo_repository", repo),
+            patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
         ):
             result = await safety_net_check_orphaned_todos({})
@@ -3021,6 +3045,7 @@ class TestResumeTrackedTodo:
         with (
             patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=run.pool)),
             patch(f"{MODULE}.todo_repository", run.repo),
+            patch("app.workers.tasks.todo_run_context.todo_repository", run.repo),
             patch(f"{MODULE}._load_user_with_tz", run.load_user),
             patch(f"{MODULE}.enforce_daily_cost_budget", run.budget),
             patch(f"{MODULE}.run_todo_on_executor", run.agent),

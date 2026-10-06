@@ -8,7 +8,7 @@ import pytest
 
 from app.constants.log_tags import LogTag
 from app.constants.todos import INBOX_DESK_PROVISION_RETRY_DELAY
-from app.services.todos.inbox_desk import DeskReconcile
+from app.models.todo_models import DeskReconcile
 from app.workers.tasks.inbox_desk_tasks import provision_inbox_desk_task, reconcile_inbox_desks_task
 from tests.helpers import captured_wide_event
 

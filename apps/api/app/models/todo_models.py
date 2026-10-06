@@ -1,6 +1,7 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum, StrEnum
-from typing import Annotated
+from typing import Annotated, NamedTuple
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -586,3 +587,32 @@ class TodoPage(BaseModel):
 
     items: list[TodoDocument] = Field(default_factory=list)
     total: int = 0
+
+
+@dataclass(frozen=True)
+class UpdateFieldInputs:
+    """The raw agent-supplied field values for update_tracked_todo, bundled so the
+    validator chain that consumes them is one small helper instead of six inline
+    guards on the tool body."""
+
+    labels: list[str] | None
+    due_date: str | None
+    priority: Priority | None
+    scheduled_at: str | None
+    recurrence: str | None
+    expires_at: str | None
+
+
+class TodoRunContext(NamedTuple):
+    """What a run reads from other todos: its parent's rules, its sub-todos, past lessons."""
+
+    parent_rules: str = ""
+    sub_todos: str = ""
+    learnings: str = ""
+
+
+class DeskReconcile(NamedTuple):
+    """How a reconcile sweep went: the paying Gmail users it visited, and how many failed."""
+
+    users: int
+    failures: int

@@ -195,3 +195,22 @@ INBOX_DESK_NEEDS_YOU_MAX_ITEMS: Final[int] = 5
 INBOX_DESK_FYI_MAX_LINES: Final[int] = 3
 # First retry delay of a failed provisioning; each further try doubles it.
 INBOX_DESK_PROVISION_RETRY_DELAY: Final[timedelta] = timedelta(minutes=2)
+
+# How many times a failed tracked-todo run is retried, and how long each retry waits.
+MAX_RETRY_ATTEMPTS: Final[int] = 3
+RETRY_BACKOFF: Final[list[timedelta]] = [timedelta(hours=1), timedelta(hours=4)]
+# How long one run of a todo may hold its execution lock.
+LOCK_TTL_SECONDS: Final[int] = 1800
+# Held by whichever run of a todo is going: a scheduled or triggered run, or an approval resume.
+RUN_LOCK_KEY: Final[str] = "gaia_todo_exec:{todo_id}"
+
+# An approval resume that lands mid-execution waits for the lock instead of vanishing.
+# Bounded, because a todo stuck under the 30-minute lock TTL must eventually give
+# up loudly rather than re-enqueue itself forever.
+LOCK_DEFER_BACKOFF: Final[list[timedelta]] = [
+    timedelta(minutes=1),
+    timedelta(minutes=3),
+    timedelta(minutes=10),
+]
+# The daily cost-budget feature a triggered todo run charges against.
+TRIGGER_TODO_FEATURE_KEY: Final[str] = "trigger_todo_executions"

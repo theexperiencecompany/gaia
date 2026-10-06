@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.agents.tools.tracked_todo_tools import _build_clearable_datetime_update
+from app.agents.tools.tracked_todo_fields import build_clearable_datetime_update
 
 
 @pytest.mark.regression
@@ -10,6 +10,6 @@ from app.agents.tools.tracked_todo_tools import _build_clearable_datetime_update
 def test_a_date_without_an_offset_is_refused(value: str) -> None:
     """A naive wall time would be saved as UTC, off by the user's offset."""
     fields: dict[str, object] = {}
-    error = _build_clearable_datetime_update(value, "due_date", fields)
+    error = build_clearable_datetime_update(value, "due_date", fields)
     assert error == f"Error: due_date '{value}' must include a timezone offset."
     assert fields == {}
