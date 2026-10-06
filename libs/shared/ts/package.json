@@ -50,7 +50,7 @@
   "dependencies": {
     "@hono/node-server": "^1.19.14",
     "@infisical/sdk": "^4.0.6",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.32.0",
     "amqplib": "^0.10.9",
     "axios": "^1.18.1",
     "dotenv": "^16.6.1",
