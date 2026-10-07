@@ -1,33 +1,29 @@
-"""The one transition that marks a user's integration connection dead.
+"""The one transition that marks a user's connected account dead.
 
 Two callers, same state change, different escalation: the Composio
-connection-lifecycle webhook runs it proactively with notify=True (the user
-is not looking at GAIA, so the notification and the live page update are the
-whole point), and the tool-execution reconciliation path runs it with
-notify=False (the user is mid-conversation and is handed a connect card in
-the same turn — a notification seconds later is noise).
+connection-lifecycle webhook runs it and then announces it (the user is not
+looking at GAIA, so the notification and the live page update are the whole
+point), and the tool-execution reconciliation path runs it silently (the user is
+mid-conversation and is handed a connect card in the same turn).
 
-Pausing the workflows that needed the dead integration is the *caller's* job:
-it hands the paused titles in as paused_workflows and this module only
-folds them into the announcement. The transition is reachable from the Composio
-tool wrapper, so importing the workflow layer here would close an import cycle
-(workflow.service -> trigger_service/generation_service ->
-composio_service -> back to this module).
+The integration itself only reads as expired once every account has died.
+Pausing workflows is the *caller's* job, decided off the returned outcome: the
+transition is reachable from the Composio tool wrapper, so importing the
+workflow layer here would close an import cycle (workflow.service ->
+trigger_service/generation_service -> composio_service -> back to this module).
 """
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Literal
 
 from app.config.oauth_config import get_integration_by_id
-from app.constants.integrations import (
-    INTEGRATION_STATUS_EXPIRED,
-    INTEGRATION_STATUS_UPDATE_EVENT,
-)
+from app.constants.integrations import INTEGRATION_STATUS_UPDATE_EVENT
 from app.constants.log_tags import LogTag
 from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.core.websocket_manager import websocket_manager
-from app.db.repositories.user_integrations import user_integration_repository
+from app.models.integration_models import IntegrationAccount
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -40,8 +36,11 @@ from app.models.notification.notification_models import (
     NotificationType,
     RedirectConfig,
 )
-from app.services.composio.proxy_client import invalidate_connected_account_cache
-from app.services.integrations.user_integration_status import update_user_integration_status
+from app.services.integrations.integration_accounts import (
+    get_account_record,
+    primary_account,
+    save_accounts,
+)
 from app.services.integrations_fs import schedule_user_integrations_sync
 from app.services.notification_service import notification_service
 from shared.py.wide_events import log
@@ -52,98 +51,87 @@ ExpiryTrigger = Literal["webhook", "tool_execution"]
 
 
 @dataclass(frozen=True)
-class ExpiryOptions:
-    """Why the connection is being expired, and what the expiry should trigger."""
+class AccountExpired:
+    account: IntegrationAccount
+    account_count: int
+    was_primary: bool
+    # Every account is now dead, so the integration itself reads expired.
+    integration_expired: bool
 
-    # Required, not defaulted: a default `trigger` silently picks the detection
-    # path and a default `notify` silently decides if the user is told — both
-    # are the caller's call, never inherited by omission.
-    trigger: ExpiryTrigger
-    notify: bool
-    reason: str | None = None
-    connected_account_id: str | None = None
-    paused_workflows: Sequence[str] = ()
+    @property
+    def stops_workflows(self) -> bool:
+        """Workflow triggers live on the primary, so its death halts them even with others alive."""
+        return self.integration_expired or self.was_primary
 
 
-async def expire_user_integration(
+async def expire_account(
     user_id: str,
     integration_id: str,
-    options: ExpiryOptions,
-) -> bool:
-    """Mark a user's integration connection dead and stop the rest of GAIA treating it as usable.
+    connected_account_id: str | None,
+    *,
+    trigger: ExpiryTrigger,
+    reason: str | None = None,
+) -> AccountExpired | None:
+    """Mark one account dead (None names the primary); None when nothing changed.
 
-    Returns True when the transition was applied, False when it was a no-op —
-    no user_integrations record (never fabricates one) or already expired
-    (idempotent, so a flapping account cannot notify twice without a real
-    reconnect in between).
+    No-ops: no record (never fabricates one), an account GAIA does not track (a
+    superseded or legacy one), or one already expired (idempotent, so a flapping
+    account cannot notify twice without a real reconnect in between).
     """
-    reason = options.reason
-    trigger = options.trigger
-    notify = options.notify
-    connected_account_id = options.connected_account_id
-    paused_workflows = options.paused_workflows
-
-    integration = get_integration_by_id(integration_id)
-    toolkit = (
-        integration.composio_config.toolkit if integration and integration.composio_config else None
-    )
-
     log.set_ns(
         "integration_expiry",
         user_id=user_id,
         integration_id=integration_id,
-        toolkit=toolkit,
         reason=reason,
         trigger=trigger,
-        notify=notify,
         connected_account_id=connected_account_id,
     )
-
-    record = await user_integration_repository.get_for_user(user_id, integration_id)
+    record = await get_account_record(user_id, integration_id)
     if record is None:
         log.set_ns("integration_expiry", outcome="no_record")
-        return False
-    if record.status == INTEGRATION_STATUS_EXPIRED:
-        log.set_ns("integration_expiry", outcome="already_expired")
-        return False
-
-    log.set_ns("integration_expiry", previous_status=record.status)
-
-    # The @CacheInvalidator on update_user_integration_status busts the full
-    # USER_INTEGRATION_CACHE_PATTERNS set (oauth_status + tools:user:* +
-    # tool_namespaces), so the next status read recomputes from Mongo.
-    await update_user_integration_status(
-        user_id,
-        integration_id,
-        INTEGRATION_STATUS_EXPIRED,
-        expired_reason=reason,
-        connected_account_id=connected_account_id,
+        return None
+    account = (
+        record.find_account(connected_account_id)
+        if connected_account_id
+        else primary_account(record)
     )
-    invalidate_connected_account_cache(user_id, toolkit)
+    if account is None:
+        log.set_ns("integration_expiry", outcome="untracked_account")
+        return None
+    if account.status == "expired":
+        log.set_ns("integration_expiry", outcome="already_expired")
+        return None
+
+    dead = account.model_copy(
+        update={"status": "expired", "expired_at": datetime.now(UTC), "expired_reason": reason}
+    )
+    accounts = [dead if a is account else a for a in record.accounts]
+    saved = await save_accounts(
+        user_id, integration_id, accounts, record.primary_account_id, expired_reason=reason
+    )
     schedule_user_integrations_sync(user_id)
 
-    log.set_ns("integration_expiry", outcome="expired", paused_workflows=len(paused_workflows))
+    outcome = AccountExpired(
+        account=dead,
+        account_count=len(accounts),
+        was_primary=record.primary_account_id == account.connected_account_id,
+        integration_expired=saved.status == "expired",
+    )
+    log.set_ns(
+        "integration_expiry",
+        outcome="expired",
+        was_primary=outcome.was_primary,
+        integration_expired=outcome.integration_expired,
+    )
     log.warning(
-        f"{LogTag.INTEGRATION} Integration connection expired",
+        f"{LogTag.INTEGRATION} Connected account expired",
         user_id=user_id,
         integration_id=integration_id,
-        toolkit=toolkit,
-        previous_status=record.status,
         reason=reason,
         trigger=trigger,
-        paused_workflows=len(paused_workflows),
+        integration_expired=outcome.integration_expired,
     )
-
-    if notify or paused_workflows:
-        await _announce_expiry(
-            user_id,
-            integration_id,
-            integration.name if integration else integration_id,
-            paused_workflows,
-            reason,
-        )
-
-    return True
+    return outcome
 
 
 # Composio types `status_reason` as a bare `Optional[str]` (SDK's webhook
@@ -187,22 +175,32 @@ def _expiry_body(integration_name: str, paused_workflows: Sequence[str], reason:
     return f"{lead} {len(paused_workflows)} workflows are paused until you reconnect."
 
 
-async def _announce_expiry(
+async def announce_account_expiry(
     user_id: str,
     integration_id: str,
-    integration_name: str,
+    expired: AccountExpired,
     paused_workflows: Sequence[str],
     reason: str | None,
 ) -> None:
     """Flip an open integrations page live, then leave a persistent Reconnect nudge."""
+    integration = get_integration_by_id(integration_id)
+    integration_name = integration.name if integration else integration_id
     await websocket_manager.broadcast_to_user(
         user_id=user_id,
         message={
             "type": INTEGRATION_STATUS_UPDATE_EVENT,
-            "data": {"integration_id": integration_id, "status": INTEGRATION_STATUS_EXPIRED},
+            "data": {
+                "integration_id": integration_id,
+                "status": "expired" if expired.integration_expired else "connected",
+            },
         },
     )
 
+    named = (
+        f"{integration_name} ({expired.account.display_name})"
+        if expired.account_count > 1
+        else integration_name
+    )
     await notification_service.create_notification(
         NotificationRequest(
             user_id=user_id,
@@ -210,8 +208,8 @@ async def _announce_expiry(
             type=NotificationType.WARNING,
             channels=[ChannelConfig(channel_type=CHANNEL_TYPE_INAPP)],
             content=NotificationContent(
-                title=f"{integration_name} disconnected",
-                body=_expiry_body(integration_name, paused_workflows, reason),
+                title=f"{named} disconnected",
+                body=_expiry_body(named, paused_workflows, reason),
                 actions=[
                     NotificationAction(
                         type=ActionType.REDIRECT,

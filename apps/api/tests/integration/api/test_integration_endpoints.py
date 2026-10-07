@@ -249,7 +249,7 @@ class TestUserIntegrationEndpoints:
     # ------------------------------------------------------------------
 
     @patch(
-        "app.api.v1.endpoints.integrations.user.remove_user_integration",
+        "app.api.v1.endpoints.integrations.user.remove_from_workspace",
         new_callable=AsyncMock,
     )
     async def test_remove_integration_returns_200(self, mock_remove, test_client):
@@ -266,7 +266,7 @@ class TestUserIntegrationEndpoints:
         assert data["integrationId"] == "gmail"
 
     @patch(
-        "app.api.v1.endpoints.integrations.user.remove_user_integration",
+        "app.api.v1.endpoints.integrations.user.remove_from_workspace",
         new_callable=AsyncMock,
     )
     async def test_remove_integration_not_found_returns_404(self, mock_remove, test_client):
@@ -279,7 +279,7 @@ class TestUserIntegrationEndpoints:
         assert "not found" in response.json()["message"].lower()
 
     @patch(
-        "app.api.v1.endpoints.integrations.user.remove_user_integration",
+        "app.api.v1.endpoints.integrations.user.remove_from_workspace",
         new_callable=AsyncMock,
     )
     async def test_remove_integration_service_error_returns_500(self, mock_remove, test_client):
@@ -297,7 +297,7 @@ class TestUserIntegrationEndpoints:
         assert response.status_code == 401
 
     @patch(
-        "app.api.v1.endpoints.integrations.user.remove_user_integration",
+        "app.api.v1.endpoints.integrations.user.remove_from_workspace",
         new_callable=AsyncMock,
     )
     async def test_remove_integration_passes_correct_id(self, mock_remove, test_client):
@@ -369,7 +369,7 @@ class TestIntegrationEndpointLogic:
         assert "already" in detail.lower()
 
     @patch(
-        "app.api.v1.endpoints.integrations.user.remove_user_integration",
+        "app.api.v1.endpoints.integrations.user.remove_from_workspace",
         new_callable=AsyncMock,
     )
     async def test_remove_nonexistent_integration_returns_404(self, mock_remove, test_client):
@@ -383,7 +383,7 @@ class TestIntegrationEndpointLogic:
         assert "not found" in detail
 
     @patch(
-        "app.api.v1.endpoints.integrations.user.remove_user_integration",
+        "app.api.v1.endpoints.integrations.user.remove_from_workspace",
         new_callable=AsyncMock,
     )
     async def test_remove_existing_integration_does_not_return_404(self, mock_remove, test_client):

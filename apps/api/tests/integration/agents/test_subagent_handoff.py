@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
 import os
 from types import SimpleNamespace
 from typing import Any
@@ -385,7 +386,7 @@ async def real_subagent_seams():
             f"{HANDOFF_MODULE}.create_subagent_system_message",
             AsyncMock(return_value=SystemMessage(content="You are the Gmail agent.")),
         ),
-        patch(f"{HANDOFF_MODULE}.get_provider_metadata", AsyncMock(return_value=None)),
+        patch(f"{HANDOFF_MODULE}.get_account_record", AsyncMock(return_value=None)),
         patch(
             f"{HANDOFF_MODULE}.list_parked_subagents_for_conversation",
             AsyncMock(return_value=[]),
@@ -821,6 +822,11 @@ async def _async_iter(items):
 @pytest.mark.usefixtures("fake_redis")
 class TestHandoffFunctionDirectly:
     """Call the handoff() coroutine directly and verify it returns and passes state correctly."""
+
+    @pytest.fixture(autouse=True)
+    def _no_accounts_on_record(self) -> Iterator[None]:
+        with patch(f"{HANDOFF_MODULE}.get_account_record", AsyncMock(return_value=None)):
+            yield
 
     async def test_handoff_function_directly(self):
         """Calling handoff() directly must return the subagent's response via execute_subagent_stream."""
@@ -1334,6 +1340,11 @@ class TestHandoffThreadIsolation:
 class TestHandoffWithToolCallArgs:
     """Verify subagent_id and task from the tool call are correctly forwarded through handoff."""
 
+    @pytest.fixture(autouse=True)
+    def _no_accounts_on_record(self) -> Iterator[None]:
+        with patch(f"{HANDOFF_MODULE}.get_account_record", AsyncMock(return_value=None)):
+            yield
+
     async def test_handoff_with_tool_call_args(self):
         """subagent_id and task must reach _resolve_subagent and build_initial_messages unchanged."""
 
@@ -1585,7 +1596,7 @@ def handoff_seams(gated_subagent):
             f"{HANDOFF_MODULE}.create_subagent_system_message",
             AsyncMock(return_value=SystemMessage(content="You are the Gmail agent.")),
         ),
-        patch(f"{HANDOFF_MODULE}.get_provider_metadata", AsyncMock(return_value=None)),
+        patch(f"{HANDOFF_MODULE}.get_account_record", AsyncMock(return_value=None)),
         patch(
             f"{HANDOFF_MODULE}.list_parked_subagents_for_conversation",
             AsyncMock(return_value=[]),
@@ -1757,7 +1768,7 @@ async def background_dispatch_seams():
             f"{HANDOFF_MODULE}.create_subagent_system_message",
             AsyncMock(return_value=SystemMessage(content="You are the Gmail agent.")),
         ),
-        patch(f"{HANDOFF_MODULE}.get_provider_metadata", AsyncMock(return_value=None)),
+        patch(f"{HANDOFF_MODULE}.get_account_record", AsyncMock(return_value=None)),
         patch(
             f"{HANDOFF_MODULE}.list_parked_subagents_for_conversation",
             AsyncMock(return_value=[]),

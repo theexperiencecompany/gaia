@@ -94,6 +94,18 @@ EXECUTOR_ACTIVATION_CONNECTED_INTEGRATIONS_HEADER = (
     "are always available and are not listed here:"
 )
 
+#: Shown with an integration's account list only when the user has connected more
+#: than one account to it; single-account users never see account handling.
+MULTI_ACCOUNT_INSTRUCTION: Final[str] = (
+    "Integration tools act as the primary account unless you pass `account` to execute "
+    "with one of the names above. When the user means a specific account (an address, a "
+    "workspace, 'my work email'), pass it. For requests across their accounts ('my inbox', "
+    "'my repos'), run the tool once per connected account and say which result came from "
+    "which. For a write where the user named no account, use the primary. If they name an "
+    "account that is not listed, ask instead of guessing. Expired accounts cannot be used "
+    "until the user reconnects them in Integrations."
+)
+
 MEMORY_RECALL_HEADER = (
     "Based on our previous conversations (bracketed dates say when "
     "something happened / was last mentioned):"

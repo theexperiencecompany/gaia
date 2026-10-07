@@ -11,6 +11,7 @@ import pytest
 from app.agents.context.assemble import AssembledContext
 from app.agents.core.subagents import handoff_tools
 from app.agents.core.subagents.handoff_tools import prepare_subagent_execution
+from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 
 pytestmark = pytest.mark.e2e
 
@@ -26,6 +27,16 @@ def _configurable(**overrides: Any) -> dict[str, Any]:
     }
     base.update(overrides)
     return base
+
+
+def _gmail_record(identity: dict[str, str]) -> UserIntegrationDocument:
+    return UserIntegrationDocument(
+        user_id="u1",
+        integration_id="gmail",
+        status="connected",
+        accounts=[IntegrationAccount(connected_account_id="ca_1", label="me", identity=identity)],
+        primary_account_id="ca_1",
+    )
 
 
 @pytest.fixture
@@ -53,12 +64,12 @@ def gmail_subagent(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
         handoff_tools,
         "get_subagent_by_id",
-        lambda _id: MagicMock(provider="gmail", name="Gmail"),
+        lambda _id: MagicMock(provider="gmail", name="Gmail", managed_by="composio"),
     )
     monkeypatch.setattr(
         handoff_tools,
-        "get_provider_metadata",
-        AsyncMock(return_value={"username": "dhruv@gmail.com"}),
+        "get_account_record",
+        AsyncMock(return_value=_gmail_record({"username": "dhruv@gmail.com"})),
     )
     # The context message pulls memories, skills and stored instructions; each is
     # its own subsystem and none of them is what this file is about.
@@ -168,7 +179,7 @@ class TestServiceIdentity:
         self, gmail_subagent, monkeypatch
     ):
         """With no provider metadata the name still must not reach the tool as a search term; "authenticated user" is the fallback the model can act on."""
-        monkeypatch.setattr(handoff_tools, "get_provider_metadata", AsyncMock(return_value=None))
+        monkeypatch.setattr(handoff_tools, "get_account_record", AsyncMock(return_value=None))
 
         ctx, _, _ = await prepare_subagent_execution(
             "gmail", "find gmail messages from user: Dhruv", _configurable()

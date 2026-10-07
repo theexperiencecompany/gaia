@@ -5,7 +5,7 @@ tests pin the exact registration contract (tool names + toolkit kwarg) and
 the delete-doc failure path.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 import json
 from typing import Any
 from unittest.mock import MagicMock, call, patch
@@ -49,6 +49,16 @@ EXPECTED_TOOL_NAMES = [
     "GOOGLEDOCS_CUSTOM_DELETE_DOC",
     "GOOGLEDOCS_CUSTOM_GATHER_CONTEXT",
 ]
+
+
+@pytest.fixture(autouse=True)
+def scoped_account() -> Iterator[MagicMock]:
+    """Pin the account the call is scoped to; resolving it reads Mongo, not the subject here."""
+    with patch(
+        "app.agents.tools.integrations.google_docs_tool.scoped_connected_account_id",
+        MagicMock(return_value="ca_scoped"),
+    ) as resolve:
+        yield resolve
 
 
 def _capture_tools(
@@ -424,6 +434,7 @@ def test_fetch_document_data_returns_parsed_document() -> None:
         version=None,
         dangerously_skip_version_check=True,
         user_id="user_test_123",
+        connected_account_id="ca_scoped",
     )
 
 
@@ -515,6 +526,7 @@ def test_insert_toc_text_sends_exact_insert_request_and_returns_result() -> None
         version=None,
         dangerously_skip_version_check=True,
         user_id="user_test_123",
+        connected_account_id="ca_scoped",
     )
     assert result == GoogleDocsToolExecution(successful=True, data={"done": True})
 
@@ -628,6 +640,7 @@ def test_create_toc_end_to_end_on_a_documents_get_payload() -> None:
         version=None,
         dangerously_skip_version_check=True,
         user_id="user_test_123",
+        connected_account_id="ca_scoped",
     )
     assert result == {
         "document_id": "doc-6",

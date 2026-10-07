@@ -4,7 +4,7 @@ Clean webhook models for Dodo Payments based on actual webhook format.
 
 from datetime import datetime
 from enum import Enum, StrEnum
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -217,6 +217,12 @@ class ComposioWebhookAckResponse(BaseModel):
 
     status: Literal["success"] = "success"
     message: str
+
+
+class TriggerEventAccount(TypedDict, total=False):
+    """What GAIA adds to a trigger payload: the account that received it, when the user has several."""
+
+    gaia_account: str
 
 
 class ComposioWebhookEvent(BaseModel):

@@ -12,7 +12,7 @@ Covers:
 - reddit_hooks: helper functions, before/after hooks for search/post/comments/content creation
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -36,6 +36,7 @@ from app.utils.composio_hooks.reddit_hooks import (
 )
 from app.utils.composio_hooks.registry import (
     ComposioHookRegistry,
+    master_before_execute_hook,
     register_after_hook,
     register_before_hook,
     register_schema_modifier,
@@ -414,6 +415,57 @@ class TestMasterHooks:
             result = master_schema_modifier("T", "K", schema)
             mock.assert_called_once()
             assert result is schema
+
+
+@pytest.fixture(autouse=True)
+def scoped_account() -> Iterator[MagicMock]:
+    """Pin the account the call is scoped to; its Mongo-backed lookup is not the subject here."""
+    with patch(
+        "app.utils.composio_hooks.registry.scoped_connected_account_id",
+        MagicMock(return_value="ca_primary"),
+    ) as resolve:
+        yield resolve
+
+
+class TestConnectedAccountPinning:
+    """Composio, given only a user, picks among several accounts itself; every call names one."""
+
+    def test_a_known_toolkit_call_names_the_scoped_account(self, scoped_account: MagicMock) -> None:
+        params = _make_params({"subject": "s"})
+        params["arguments"]["__runnable_config__"] = {"metadata": {"user_id": "u1"}}
+
+        master_before_execute_hook("GMAIL_SEND_EMAIL", "gmail", params)
+
+        assert params["connected_account_id"] == "ca_primary"
+        scoped_account.assert_called_once_with("u1", "gmail")
+
+    def test_a_user_bound_at_fetch_time_is_pinned_too(self, scoped_account: MagicMock) -> None:
+        """Trigger-option lookups carry no metadata; their user is already in params."""
+        params = _make_params({})
+        params["user_id"] = "u1"
+
+        master_before_execute_hook("SLACK_LIST_ALL_CHANNELS", "slack", params)
+
+        assert params["connected_account_id"] == "ca_primary"
+
+    def test_a_catalog_toolkit_without_a_gaia_integration_is_left_to_composio(
+        self, scoped_account: MagicMock
+    ) -> None:
+        params = _make_params({})
+        params["user_id"] = "u1"
+
+        master_before_execute_hook("WEATHERMAP_NOW", "weathermap", params)
+
+        assert "connected_account_id" not in params
+        scoped_account.assert_not_called()
+
+    def test_no_user_means_nothing_to_pin(self, scoped_account: MagicMock) -> None:
+        params = _make_params({})
+
+        master_before_execute_hook("GMAIL_SEND_EMAIL", "gmail", params)
+
+        assert "connected_account_id" not in params
+        scoped_account.assert_not_called()
 
 
 class TestCallIdentityResolution:

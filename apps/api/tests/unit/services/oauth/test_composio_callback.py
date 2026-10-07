@@ -12,28 +12,20 @@ from tests.factories import make_integration_config
 
 from app.constants.log_tags import LogTag
 from app.services.analytics_service import AnalyticsEvents
+from app.services.integrations.integration_account_lifecycle import AccountLimitReached
 from app.services.oauth.composio_callback import (
     ConnectionCompleted,
     ConnectionRejected,
     complete_composio_connection,
-    stored_connected_account_id,
 )
 
 MODULE = "app.services.oauth.composio_callback"
-STATE = {"user_id": "uid1", "integration_id": "gmail", "redirect_path": "/integrations"}
 
 
 @pytest.fixture
 def mock_log():
     with patch(f"{MODULE}.log") as log:
         yield log
-
-
-@pytest.fixture
-def mock_repo():
-    with patch(f"{MODULE}.user_integration_repository") as repo:
-        repo.get_for_user = AsyncMock(return_value=None)
-        yield repo
 
 
 @pytest.fixture
@@ -76,39 +68,6 @@ def _integration() -> MagicMock:
     integration = make_integration_config(integration_id="gmail")
     integration.provider = "google"
     return integration
-
-
-@pytest.mark.unit
-class TestStoredConnectedAccountId:
-    async def test_returns_the_id_minted_at_initiate(self, mock_repo, mock_log):
-        record = MagicMock()
-        record.connected_account_id = "acc_from_initiate"
-        mock_repo.get_for_user.return_value = record
-
-        result = await stored_connected_account_id(STATE)
-
-        assert result == "acc_from_initiate"
-        mock_repo.get_for_user.assert_awaited_once_with("uid1", "gmail")
-        mock_log.set_ns.assert_called_once_with(
-            "oauth", connected_account_id_source="stored_record"
-        )
-
-    async def test_no_record_is_none_and_reported_as_missing(self, mock_repo, mock_log):
-        result = await stored_connected_account_id(STATE)
-
-        assert result is None
-        mock_repo.get_for_user.assert_awaited_once_with("uid1", "gmail")
-        mock_log.set_ns.assert_called_once_with("oauth", connected_account_id_source="missing")
-
-    async def test_a_record_without_an_account_id_is_missing_too(self, mock_repo, mock_log):
-        record = MagicMock()
-        record.connected_account_id = None
-        mock_repo.get_for_user.return_value = record
-
-        result = await stored_connected_account_id(STATE)
-
-        assert result is None
-        mock_log.set_ns.assert_called_once_with("oauth", connected_account_id_source="missing")
 
 
 @pytest.mark.unit
@@ -191,6 +150,23 @@ class TestCompleteComposioConnectionRejections:
             connected_account_id="acc1",
         )
         mock_handle.assert_not_awaited()
+        mock_capture.assert_not_called()
+
+
+@pytest.mark.unit
+class TestCompleteComposioConnectionAccountLimit:
+    async def test_a_connect_over_the_limit_is_rejected_and_not_reported_as_connected(
+        self, mock_composio, mock_config, mock_handle, mock_capture, mock_log, background_tasks
+    ):
+        mock_composio.get_connected_account_by_id.return_value = _account(user_id="uid1")
+        mock_config.return_value = _integration()
+        mock_handle.return_value = AccountLimitReached(limit=5)
+
+        outcome = await complete_composio_connection(
+            "acc1", expected_user_id="uid1", background_tasks=background_tasks
+        )
+
+        assert outcome == ConnectionRejected(reason="account_limit")
         mock_capture.assert_not_called()
 
 

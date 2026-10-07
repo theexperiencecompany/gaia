@@ -16,8 +16,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.models.integration_models import IntegrationAccount
 from app.models.webhook_models import ComposioWebhookEvent
-from app.services.integrations.integration_expiry import ExpiryOptions
+from app.services.integrations.integration_expiry import AccountExpired
 
 ENDPOINT = "/api/v1/webhook/composio"
 MODULE = "app.api.v1.endpoints.webhook_composio"
@@ -301,44 +302,73 @@ class TestTheExpiryIsHandedOffCorrectly:
 class TestTheBackgroundExpiry:
     """Runs detached from the request, so a stall that logs nothing would leave a user's integration reading as connected forever."""
 
-    async def test_it_pauses_the_dependent_workflows_before_expiring_them(self) -> None:
-        """The paused titles become the notification copy ("2 workflows are paused"), so the pause has to complete first and hand them over."""
+    @staticmethod
+    def _expired(*, stops_workflows: bool) -> AccountExpired:
+        account = IntegrationAccount(connected_account_id="ca_1", label="a@b.c", status="expired")
+        return AccountExpired(
+            account=account,
+            account_count=2,
+            was_primary=stops_workflows,
+            integration_expired=False,
+        )
+
+    async def test_a_dead_account_that_halts_workflows_pauses_them_and_names_them(self) -> None:
+        """The paused titles become the notification copy, so the pause completes first and hands them over."""
+        expired = self._expired(stops_workflows=True)
         with (
+            patch(f"{MODULE}.expire_account", AsyncMock(return_value=expired)) as expire,
             patch(
                 f"{MODULE}.pause_workflows_for_expired_integration",
                 AsyncMock(return_value=["Morning digest"]),
             ) as pause,
-            patch(f"{MODULE}.expire_user_integration", AsyncMock()) as expire,
+            patch(f"{MODULE}.announce_account_expiry", AsyncMock()) as announce,
         ):
             await _endpoint()._expire_connection("user-1", "gmail", "refresh_token_revoked", "ca_1")
 
-        pause.assert_awaited_once_with("user-1", "gmail")
         expire.assert_awaited_once_with(
-            "user-1",
-            "gmail",
-            ExpiryOptions(
-                reason="refresh_token_revoked",
-                trigger="webhook",
-                notify=True,
-                connected_account_id="ca_1",
-                paused_workflows=["Morning digest"],
-            ),
+            "user-1", "gmail", "ca_1", trigger="webhook", reason="refresh_token_revoked"
+        )
+        pause.assert_awaited_once_with("user-1", "gmail")
+        announce.assert_awaited_once_with(
+            "user-1", "gmail", expired, ["Morning digest"], "refresh_token_revoked"
         )
 
+    async def test_a_secondary_account_dying_pauses_nothing_but_is_still_announced(self) -> None:
+        expired = self._expired(stops_workflows=False)
+        with (
+            patch(f"{MODULE}.expire_account", AsyncMock(return_value=expired)),
+            patch(f"{MODULE}.pause_workflows_for_expired_integration", AsyncMock()) as pause,
+            patch(f"{MODULE}.announce_account_expiry", AsyncMock()) as announce,
+        ):
+            await _endpoint()._expire_connection("user-1", "gmail", "revoked", "ca_1")
+
+        pause.assert_not_awaited()
+        announce.assert_awaited_once_with("user-1", "gmail", expired, [], "revoked")
+
+    async def test_an_account_that_changed_nothing_is_not_announced(self) -> None:
+        with (
+            patch(f"{MODULE}.expire_account", AsyncMock(return_value=None)),
+            patch(f"{MODULE}.pause_workflows_for_expired_integration", AsyncMock()) as pause,
+            patch(f"{MODULE}.announce_account_expiry", AsyncMock()) as announce,
+        ):
+            await _endpoint()._expire_connection("user-1", "gmail", "revoked", "ca_gone")
+
+        pause.assert_not_awaited()
+        announce.assert_not_awaited()
+
     async def test_a_stall_is_logged_rather_than_disappearing_with_the_task(self) -> None:
-        async def _never_finishes(*_a: object, **_k: object) -> list[str]:
+        async def _never_finishes(*_a: object, **_k: object) -> None:
             await asyncio.sleep(10)
-            return []
 
         with (
             patch(f"{MODULE}.WEBHOOK_TASK_TIMEOUT", 0.01),
-            patch(f"{MODULE}.pause_workflows_for_expired_integration", _never_finishes),
-            patch(f"{MODULE}.expire_user_integration", AsyncMock()) as expire,
+            patch(f"{MODULE}.expire_account", _never_finishes),
+            patch(f"{MODULE}.announce_account_expiry", AsyncMock()) as announce,
             patch(f"{MODULE}.log") as mock_log,
         ):
             await _endpoint()._expire_connection("user-1", "gmail", "revoked", "ca_1")
 
-        expire.assert_not_awaited()
+        announce.assert_not_awaited()
         mock_log.error.assert_called_once()
         assert "timed out" in mock_log.error.call_args.args[0].lower()
         assert mock_log.error.call_args.kwargs == {
@@ -493,6 +523,37 @@ class TestDeliveryWithoutAnId:
 
 
 class TestBackgroundTriggerProcessing:
+    @pytest.fixture(autouse=True)
+    def account_name(self):
+        with patch(f"{MODULE}.event_account_name", AsyncMock(return_value=None)) as name:
+            yield name
+
+    async def test_an_event_on_one_of_several_accounts_names_that_account(
+        self, account_name: AsyncMock
+    ) -> None:
+        """The run must act on the inbox that received the email, not the primary."""
+        account_name.return_value = "me@gmail.com"
+        handler = MagicMock()
+        handler.process_event = AsyncMock()
+        event = ComposioWebhookEvent(
+            connection_id="conn-1",
+            connection_nano_id="ca_personal",
+            trigger_nano_id="ti_nano",
+            trigger_id="uuid-1",
+            user_id="user-1",
+            data={"payload": 1},
+            timestamp="2026-08-10T05:44:33Z",
+            type="gmail_new_gmail_message",
+        )
+
+        await _endpoint()._process_webhook_event(handler, event)
+
+        account_name.assert_awaited_once_with("user-1", "GMAIL_NEW_GMAIL_MESSAGE", "ca_personal")
+        assert handler.process_event.await_args.kwargs["data"] == {
+            "payload": 1,
+            "gaia_account": "me@gmail.com",
+        }
+
     async def test_the_handler_gets_the_nano_id_it_actually_matches_on(self) -> None:
         """Handlers match trigger_config.composio_trigger_ids, which stores the nano id from triggers.create(); the internal UUID never matches."""
         handler = MagicMock()

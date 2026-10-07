@@ -31,8 +31,10 @@ from app.models.webhook_models import (
     ComposioConnectionEvent,
     ComposioWebhookAckResponse,
     ComposioWebhookEvent,
+    TriggerEventAccount,
 )
-from app.services.integrations.integration_expiry import ExpiryOptions, expire_user_integration
+from app.services.integrations.integration_accounts import event_account_name
+from app.services.integrations.integration_expiry import announce_account_expiry, expire_account
 from app.services.triggers import get_handler_by_event
 from app.services.triggers.base import TriggerHandler
 from app.services.workflow.integration_pause import pause_workflows_for_expired_integration
@@ -45,6 +47,12 @@ router = APIRouter()
 async def _process_webhook_event(handler: TriggerHandler, event_data: ComposioWebhookEvent) -> None:
     """Background task: find matching workflows and queue them."""
     try:
+        account = await event_account_name(
+            event_data.user_id, event_data.type, event_data.connection_nano_id
+        )
+        if account is not None:
+            # Lets the run act on the account that received the event, not the primary.
+            event_data.data.update(TriggerEventAccount(gaia_account=account))
         await asyncio.wait_for(
             handler.process_event(
                 event_type=event_data.type,
@@ -77,26 +85,25 @@ async def _process_webhook_event(handler: TriggerHandler, event_data: ComposioWe
 async def _expire_connection(
     user_id: str, integration_id: str, reason: str | None, connected_account_id: str
 ) -> None:
-    """Background task: pause the dependent workflows, then run the expiry transition.
+    """Background task: expire the account, pause what its death halts, then tell the user.
 
     Pausing is the caller's job because ``integration_expiry`` cannot import the
     workflow layer without closing an import cycle (see its module docstring).
-    Both steps share one timeout budget.
+    All steps share one timeout budget.
     """
     try:
         async with asyncio.timeout(WEBHOOK_TASK_TIMEOUT):
-            paused = await pause_workflows_for_expired_integration(user_id, integration_id)
-            await expire_user_integration(
-                user_id,
-                integration_id,
-                ExpiryOptions(
-                    reason=reason,
-                    trigger="webhook",
-                    notify=True,
-                    connected_account_id=connected_account_id,
-                    paused_workflows=paused,
-                ),
+            expired = await expire_account(
+                user_id, integration_id, connected_account_id, trigger="webhook", reason=reason
             )
+            if expired is None:
+                return
+            paused = (
+                await pause_workflows_for_expired_integration(user_id, integration_id)
+                if expired.stops_workflows
+                else []
+            )
+            await announce_account_expiry(user_id, integration_id, expired, paused, reason)
     except TimeoutError:
         log.error(
             f"{LogTag.COMPOSIO} Connection expiry processing timed out",

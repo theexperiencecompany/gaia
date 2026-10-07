@@ -1908,6 +1908,7 @@ class TestRedeemOutcomes:
             user_id="u1",
             tool_name="GMAIL_SEND_EMAIL",
             data={"to": "b@x"},
+            account=None,
             config={"user": "u1"},
         )
         seams.settle_frame.assert_called_once_with("stream-1", "ap_1", "executed")

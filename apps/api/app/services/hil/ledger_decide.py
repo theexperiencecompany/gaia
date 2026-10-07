@@ -426,6 +426,7 @@ async def redeem_approved(
             user_id=row.user_id or None,
             tool_name=row.tool_name,
             data=dict(row.args),
+            account=row.account,
             # Identity-bearing config, not a bare configurable: the wrappers
             # resolve per-user auth from this (see dispatch_config_for).
             config=dispatch_config_for(row.user_id),
@@ -634,7 +635,7 @@ async def publish_ledger_decision(
     )
     entry = _approval_entry(
         row.approval_id,
-        GatedCall(name=row.tool_name, id="", args=row.args),
+        GatedCall(name=row.tool_name, id="", args=row.args, account=row.account),
         mapped,
         row.summary,
         None,

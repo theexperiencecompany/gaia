@@ -43,6 +43,15 @@ DEAD_CONNECTION_STATUSES: Final = frozenset(
     }
 )
 
+# --- Multi-account (Composio) ------------------------------------------------
+MAX_ACCOUNTS_PER_INTEGRATION: Final = 5
+# One page of a user's Composio accounts; covers every provider's accounts at the cap.
+COMPOSIO_ACCOUNT_LIST_LIMIT: Final = 100
+# Label for an account whose provider exposes no identity (no metadata_config).
+FALLBACK_ACCOUNT_LABEL: Final = "{integration} account {number}"
+# Redirect error code when a connect would exceed MAX_ACCOUNTS_PER_INTEGRATION.
+ACCOUNT_LIMIT_ERROR: Final = "account_limit"
+
 # Integration managed_by provider identifiers
 MANAGED_BY_MCP = "mcp"
 MANAGED_BY_COMPOSIO = "composio"

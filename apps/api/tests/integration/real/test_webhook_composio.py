@@ -17,7 +17,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import ASGITransport, AsyncClient
 import pytest
 
-from app.services.integrations.integration_expiry import ExpiryOptions
+from app.models.integration_models import IntegrationAccount
+from app.services.integrations.integration_expiry import AccountExpired
 
 
 def _endpoint():
@@ -324,13 +325,12 @@ class TestComposioWebhookRouting:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
-        # The endpoint dispatches the handler with asyncio.create_task and acks
-        # immediately, so the task has not run by the time the response returns.
-        # Yield until it does rather than asserting into the race.
-        for _ in range(100):
+        # The handler runs in a background task after the ack, behind a real Mongo
+        # read of the user's accounts, so poll for it instead of asserting a race.
+        for _ in range(200):
             if mock_handler.process_event.await_count:
                 break
-            await asyncio.sleep(0)
+            await asyncio.sleep(0.01)
         # "Webhook accepted" is the handler branch; the no-handler branch acks
         # "Webhook received" with the same status, so this is what distinguishes them.
         assert data["message"] == "Webhook accepted"
@@ -384,7 +384,7 @@ class TestComposioConnectionEvents:
 
         with (
             patch.object(_endpoint(), "get_integration_by_config", return_value=integration),
-            patch.object(_endpoint(), "expire_user_integration", new_callable=AsyncMock) as expire,
+            patch.object(_endpoint(), "expire_account", AsyncMock(return_value=None)) as expire,
         ):
             response = await self._post(
                 real_redis, _make_connection_payload(), webhook_id="conn-expired-001"
@@ -401,16 +401,12 @@ class TestComposioConnectionEvents:
         expire.assert_awaited_once_with(
             "507f1f77bcf86cd799439011",
             "notion",
-            ExpiryOptions(
-                reason="refresh_token_revoked",
-                trigger="webhook",
-                notify=True,
-                connected_account_id="ca_xxxxxxxxxxxx",
-                paused_workflows=[],
-            ),
+            "ca_xxxxxxxxxxxx",
+            trigger="webhook",
+            reason="refresh_token_revoked",
         )
 
-    async def test_it_pauses_the_dependent_workflows_and_hands_the_titles_to_the_expiry(
+    async def test_it_pauses_the_dependent_workflows_and_hands_the_titles_to_the_announcement(
         self, real_redis, pause
     ):
         # The endpoint owns the pause because `integration_expiry` cannot import
@@ -419,23 +415,29 @@ class TestComposioConnectionEvents:
         integration = MagicMock()
         integration.id = "notion"
         pause.return_value = ["Morning digest", "Invoice filing"]
+        expired = AccountExpired(
+            account=IntegrationAccount(
+                connected_account_id="ca_xxxxxxxxxxxx", label="me", status="expired"
+            ),
+            account_count=1,
+            was_primary=True,
+            integration_expired=True,
+        )
 
         with (
             patch.object(_endpoint(), "get_integration_by_config", return_value=integration),
-            patch.object(_endpoint(), "expire_user_integration", new_callable=AsyncMock) as expire,
+            patch.object(_endpoint(), "expire_account", AsyncMock(return_value=expired)),
+            patch.object(_endpoint(), "announce_account_expiry", AsyncMock()) as announce,
         ):
             await self._post(real_redis, _make_connection_payload(), webhook_id="conn-paused-001")
 
             for _ in range(100):
-                if expire.await_count:
+                if announce.await_count:
                     break
                 await asyncio.sleep(0)
 
         pause.assert_awaited_once_with("507f1f77bcf86cd799439011", "notion")
-        assert expire.await_args.args[2].paused_workflows == [
-            "Morning digest",
-            "Invoice filing",
-        ]
+        assert announce.await_args.args[3] == ["Morning digest", "Invoice filing"]
 
     async def test_the_toolkit_slug_resolves_the_integration_when_the_auth_config_does_not(
         self, real_redis
@@ -448,7 +450,7 @@ class TestComposioConnectionEvents:
             patch.object(
                 _endpoint(), "get_integration_by_toolkit", return_value=integration
             ) as by_toolkit,
-            patch.object(_endpoint(), "expire_user_integration", new_callable=AsyncMock) as expire,
+            patch.object(_endpoint(), "expire_account", AsyncMock(return_value=None)) as expire,
         ):
             response = await self._post(
                 real_redis, _make_connection_payload(), webhook_id="conn-fallback-001"
@@ -467,7 +469,7 @@ class TestComposioConnectionEvents:
         with (
             patch.object(_endpoint(), "get_integration_by_config", return_value=None),
             patch.object(_endpoint(), "get_integration_by_toolkit", return_value=None),
-            patch.object(_endpoint(), "expire_user_integration", new_callable=AsyncMock) as expire,
+            patch.object(_endpoint(), "expire_account", AsyncMock(return_value=None)) as expire,
         ):
             response = await self._post(
                 real_redis, _make_connection_payload(), webhook_id="conn-unknown-001"
@@ -484,7 +486,7 @@ class TestComposioConnectionEvents:
 
         with (
             patch.object(_endpoint(), "get_integration_by_config", return_value=integration),
-            patch.object(_endpoint(), "expire_user_integration", new_callable=AsyncMock) as expire,
+            patch.object(_endpoint(), "expire_account", AsyncMock(return_value=None)) as expire,
         ):
             response = await self._post(
                 real_redis,
@@ -508,7 +510,7 @@ class TestComposioConnectionEvents:
 
         with (
             patch.object(_endpoint(), "get_integration_by_config", return_value=integration),
-            patch.object(_endpoint(), "expire_user_integration", new_callable=AsyncMock) as expire,
+            patch.object(_endpoint(), "expire_account", AsyncMock(return_value=None)) as expire,
         ):
             response = await self._post(
                 real_redis,
@@ -526,7 +528,7 @@ class TestComposioConnectionEvents:
         payload = _make_connection_payload()
         del payload["data"]["toolkit"]
 
-        with patch.object(_endpoint(), "expire_user_integration", new_callable=AsyncMock) as expire:
+        with patch.object(_endpoint(), "expire_account", AsyncMock(return_value=None)) as expire:
             response = await self._post(real_redis, payload, webhook_id="conn-malformed-001")
 
         assert response.status_code == 200
@@ -540,7 +542,7 @@ class TestComposioConnectionEvents:
 
         with (
             patch.object(_endpoint(), "get_integration_by_config", return_value=integration),
-            patch.object(_endpoint(), "expire_user_integration", new_callable=AsyncMock) as expire,
+            patch.object(_endpoint(), "expire_account", AsyncMock(return_value=None)) as expire,
         ):
             first = await self._post(real_redis, _make_connection_payload(), webhook_id=webhook_id)
             for _ in range(100):
@@ -569,7 +571,7 @@ class TestComposioConnectionEvents:
         assert expire.await_count == 1
 
     async def test_an_unsigned_connection_event_is_rejected_before_any_parsing(self, real_redis):
-        with patch.object(_endpoint(), "expire_user_integration", new_callable=AsyncMock) as expire:
+        with patch.object(_endpoint(), "expire_account", AsyncMock(return_value=None)) as expire:
             async with _make_composio_client() as client:
                 with patch("app.config.settings.settings.COMPOSIO_WEBHOOK_SECRET", "test-secret"):
                     response = await client.post(
@@ -582,7 +584,7 @@ class TestComposioConnectionEvents:
         expire.assert_not_awaited()
 
     async def test_the_endpoint_does_not_check_the_user_exists_before_dispatching(self, real_redis):
-        # `expire_user_integration` already no-ops on a user with no record (unit X1);
+        # `expire_account` already no-ops on a user with no record;
         # re-checking here would duplicate that guard, so the endpoint just acks.
         stranger_id = "507f1f77bcf86cd799439099"
         integration = MagicMock()
@@ -590,7 +592,7 @@ class TestComposioConnectionEvents:
 
         with (
             patch.object(_endpoint(), "get_integration_by_config", return_value=integration),
-            patch.object(_endpoint(), "expire_user_integration", new_callable=AsyncMock) as expire,
+            patch.object(_endpoint(), "expire_account", AsyncMock(return_value=None)) as expire,
         ):
             response = await self._post(
                 real_redis,

@@ -1045,7 +1045,7 @@ async def test_a_subagents_execute_proxy_is_confined_to_its_own_tool_dict():
             config={"configurable": {}},
         )
 
-    assert dispatch.await_args.kwargs["scoped_tool_names"] == set(scoped)
+    assert dispatch.await_args.kwargs["space"].tool_names == set(scoped)
 
 
 @pytest.mark.asyncio

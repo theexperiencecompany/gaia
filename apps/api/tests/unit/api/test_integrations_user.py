@@ -82,7 +82,7 @@ class TestRemoveIntegrationFromWorkspace:
         with (
             patch(f"{_USER}.user_integration_repository") as mock_repo,
             patch(
-                f"{_USER}.remove_user_integration",
+                f"{_USER}.remove_from_workspace",
                 new_callable=AsyncMock,
                 return_value=True,
             ) as mock_remove,
@@ -110,7 +110,7 @@ class TestRemoveIntegrationFromWorkspace:
         with (
             patch(f"{_USER}.user_integration_repository") as mock_repo,
             patch(
-                f"{_USER}.remove_user_integration",
+                f"{_USER}.remove_from_workspace",
                 new_callable=AsyncMock,
                 return_value=True,
             ) as mock_remove,
@@ -128,7 +128,7 @@ class TestRemoveIntegrationFromWorkspace:
         with (
             patch(f"{_USER}.user_integration_repository") as mock_repo,
             patch(
-                f"{_USER}.remove_user_integration",
+                f"{_USER}.remove_from_workspace",
                 new_callable=AsyncMock,
                 return_value=True,
             ) as mock_remove,
@@ -152,7 +152,7 @@ class TestRemoveIntegrationFromWorkspace:
         with (
             patch(f"{_USER}.user_integration_repository") as mock_repo,
             patch(
-                f"{_USER}.remove_user_integration",
+                f"{_USER}.remove_from_workspace",
                 new_callable=AsyncMock,
                 return_value=False,
             ),

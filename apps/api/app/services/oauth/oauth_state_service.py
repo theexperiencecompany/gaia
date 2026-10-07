@@ -63,6 +63,18 @@ async def create_oauth_state(user_id: str, redirect_path: str, integration_id: s
     return state_token
 
 
+async def attach_connected_account(state_token: str, connected_account_id: str) -> None:
+    """Record the pending Composio account on its OAuth state, so the callback knows which one completed.
+
+    Per attempt, not per integration: a user adding a second account must not
+    lose track of the first one's id while the second is pending.
+    """
+    await redis_cache.client.hset(
+        f"{STATE_KEY_PREFIX}:{state_token}",
+        mapping={"connected_account_id": connected_account_id},
+    )
+
+
 async def validate_and_consume_oauth_state(
     state_token: str,
 ) -> dict[str, str] | None:
@@ -86,6 +98,7 @@ async def validate_and_consume_oauth_state(
             "user_id": state_data.get("user_id", ""),
             "redirect_path": state_data.get("redirect_path", ""),
             "integration_id": state_data.get("integration_id", ""),
+            "connected_account_id": state_data.get("connected_account_id", ""),
         }
 
         log.set(auth={"user_id": result["user_id"], "provider": result["integration_id"]})

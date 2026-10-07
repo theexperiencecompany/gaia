@@ -9,7 +9,7 @@ Detailed per-function behavior tests live in the per-tool unit modules
 that fails fast if a tool stops routing through the proxy.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -28,6 +28,16 @@ from app.models.twitter_models import BatchFollowInput, CreateThreadInput
 
 AUTH_CREDS: dict[str, Any] = {"user_id": "user_test_123"}
 EXECUTE_REQUEST = MagicMock()
+
+
+@pytest.fixture(autouse=True)
+def scoped_account() -> Iterator[MagicMock]:
+    """Pin the account the call is scoped to; resolving it reads Mongo, not the subject here."""
+    with patch(
+        "app.agents.tools.integrations.notion_tool.scoped_connected_account_id",
+        MagicMock(return_value="ca_scoped"),
+    ) as resolve:
+        yield resolve
 
 
 def _capture_tools(register_fn: Callable[..., Any]) -> dict[str, Any]:

@@ -19,7 +19,7 @@ from datetime import UTC, datetime, timedelta
 import importlib
 import json
 from typing import Any, cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
 from composio import Composio
@@ -29,10 +29,13 @@ from langgraph.types import StreamMode
 import pytest
 from typing_extensions import TypedDict
 
-from app.config.oauth_config import get_composio_social_configs
+from app.models.integration_models import (
+    IntegrationAccount,
+    IntegrationAccountStatus,
+    UserIntegrationDocument,
+)
 from app.models.user_models import UserDocument
 from app.services.composio.custom_tools.registry import CustomToolsRegistry
-from app.services.composio.proxy_client import invalidate_connected_account_cache
 from app.utils.errors import AppError
 
 # Imported for its side effect: app.patches installs the custom-tool schema
@@ -53,17 +56,27 @@ def tools() -> dict[str, Any]:
     return client.tools._custom_tools.custom_tools_registry
 
 
-@pytest.fixture(autouse=True)
-def _clear_connected_account_cache() -> Any:
-    """Invalidate the cached connected_account_id before and after each test.
+ACCOUNT_ID = "connected-account-1"
 
-    The proxy caches it for 600s in a module global; without this, the second
-    test to use a toolkit never re-resolves the account, so its
-    connected_accounts.list assertions read as zero calls.
-    """
-    invalidate_connected_account_cache()
-    yield
-    invalidate_connected_account_cache()
+
+def _accounts_record(status: IntegrationAccountStatus = "connected") -> UserIntegrationDocument:
+    return UserIntegrationDocument(
+        user_id=USER,
+        integration_id="any",
+        status="connected" if status == "connected" else "expired",
+        accounts=[IntegrationAccount(connected_account_id=ACCOUNT_ID, label="me", status=status)],
+        primary_account_id=ACCOUNT_ID,
+    )
+
+
+@pytest.fixture(autouse=True)
+def account_record() -> Any:
+    """Pin the user's account record; the real primary-account resolution behind the proxy reads it."""
+    with patch(
+        "app.services.integrations.integration_accounts.user_integration_repository.get_for_user",
+        AsyncMock(return_value=_accounts_record()),
+    ) as lookup:
+        yield lookup
 
 
 # =============================================================================
@@ -124,20 +137,12 @@ class FakeProxyResponse:
         self.headers = headers or {}
 
 
-def fake_composio(proxy: Any, *, account_status: str = "ACTIVE") -> MagicMock:
+def fake_composio(proxy: Any) -> MagicMock:
     """Build a stand-in Composio SDK client for seam A.
 
     Everything in proxy_client above the SDK call still runs for real.
     """
-    account = MagicMock()
-    account.id = "connected-account-1"
-    account.status = account_status
-    account.auth_config.is_disabled = False
-    listing = MagicMock()
-    listing.items = [account]
-
     client = MagicMock()
-    client.connected_accounts.list.return_value = listing
     client.tools.proxy.side_effect = proxy
     return client
 
@@ -252,7 +257,6 @@ class TestGmailFetchMessages:
             return FakeProxyResponse({"messages": [], "resultSizeEstimate": 0})
 
         for zone in ("Pacific/Kiritimati", "Etc/GMT+12"):
-            invalidate_connected_account_cache()
             with stub_auth(tool), patch(PROXY_SEAM, return_value=fake_composio(proxy)):
                 run_in_graph(
                     lambda: tool.invoke_trusted(
@@ -429,10 +433,13 @@ class TestGmailMutations:
 
 
 class TestGmailConnectionErrors:
-    def test_a_disconnected_gmail_tells_the_user_to_reconnect_not_to_log_in(self, tools):
+    def test_a_disconnected_gmail_tells_the_user_to_reconnect_not_to_log_in(
+        self, tools, account_record
+    ):
         """403, never 401 — the web client's axios interceptor treats 401 as session expiry and pops the login modal on an already-logged-in user."""
         tool = tools["GMAIL_GET_UNREAD_COUNT"]
-        client = fake_composio(lambda **kwargs: FakeProxyResponse({}), account_status="INITIATED")
+        account_record.return_value = _accounts_record("expired")
+        client = fake_composio(lambda **kwargs: FakeProxyResponse({}))
 
         with stub_auth(tool), patch(PROXY_SEAM, return_value=client):
             with pytest.raises(AppError) as excinfo:
@@ -441,24 +448,7 @@ class TestGmailConnectionErrors:
         assert excinfo.value.status_code == 403
         assert excinfo.value.code == "INTEGRATION_NOT_CONNECTED"
 
-    def test_a_rejected_token_invalidates_the_cached_account(self, tools):
-        """The connected-account id is cached for ten minutes; without invalidation, a retry in that window replays the dead account after reconnect."""
-        from app.services.composio.proxy_client import _connected_account_cache
-
-        tool = tools["GMAIL_GET_UNREAD_COUNT"]
-        client = fake_composio(
-            lambda **kwargs: FakeProxyResponse({"error": "invalid_grant"}, status=401)
-        )
-
-        with stub_auth(tool), patch(PROXY_SEAM, return_value=client):
-            with pytest.raises(AppError) as excinfo:
-                tool.invoke_trusted(user_id=USER, request_kwargs={})
-
-        assert excinfo.value.status_code == 403
-        assert excinfo.value.code == "INTEGRATION_NOT_CONNECTED"
-        assert (USER, "GMAIL") not in _connected_account_cache
-
-    def test_the_gmail_proxy_resolves_the_gmail_auth_config(self, tools):
+    def test_the_gmail_proxy_acts_as_the_users_primary_gmail_account(self, tools, account_record):
         tool = tools["GMAIL_GET_UNREAD_COUNT"]
         client = fake_composio(
             lambda **kwargs: FakeProxyResponse(
@@ -469,12 +459,8 @@ class TestGmailConnectionErrors:
         with stub_auth(tool), patch(PROXY_SEAM, return_value=client):
             result = tool.invoke_trusted(user_id=USER, request_kwargs={})
 
-        configs = get_composio_social_configs()
-        assert client.connected_accounts.list.call_args.kwargs == {
-            "user_ids": [USER],
-            "auth_config_ids": [configs["gmail"].auth_config_id],
-            "limit": 10,
-        }
+        account_record.assert_awaited_once_with(USER, "gmail")
+        assert client.tools.proxy.call_args.kwargs["connected_account_id"] == ACCOUNT_ID
         assert result["unreadCount"] == 7
         assert result["totalCount"] == 120
 

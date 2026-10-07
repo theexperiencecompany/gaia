@@ -55,7 +55,7 @@ RICH_SOURCES = ContextSources(
     tracked_todos="Tracked: ship the context refactor",
     skills="## Available skills\n- inbox-triage",
     connected_integrations=[{"id": "gmail", "name": "Gmail"}],
-    provider_metadata={"email": "ada@example.com"},
+    account_identity={"email": "ada@example.com"},
     custom_instructions="Always archive newsletters.",
     workflow_integrations_hint="# Connected integrations\nGmail (`gmail`)",
 )

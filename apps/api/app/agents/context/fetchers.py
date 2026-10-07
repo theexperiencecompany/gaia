@@ -26,6 +26,7 @@ from app.agents.context.text import (
     CORE_MEMORY_HEADER,
     GAIA_KNOWLEDGE_HEADER,
     MEMORY_RECALL_HEADER,
+    MULTI_ACCOUNT_INSTRUCTION,
 )
 from app.agents.prompts.new_user_prompts import build_new_user_guidance
 from app.agents.workspace.paths import session_dir
@@ -38,15 +39,19 @@ from app.db.repositories.todos import todo_repository
 from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
+from app.models.integration_models import IntegrationAccount
 from app.models.todo_models import TodoDocument
 from app.models.user_models import OnboardingNeed, OnboardingPreferences
 from app.services.device.device_service import (
     get_device_manifest,
 )
 from app.services.gaia_knowledge_service import gaia_knowledge_service
+from app.services.integrations.integration_accounts import (
+    get_account_record,
+    list_multi_account_records,
+)
 from app.services.integrations.user_integrations import get_connected_integrations_named
 from app.services.onboarding.first_question import seeded_chips
-from app.services.provider_metadata_service import get_provider_metadata
 from app.services.storage._vfs_common import folder_name
 from app.services.tools.tools_service import get_integration_tool_list
 from app.services.tracked_todo_service import tracked_todo_service
@@ -415,12 +420,33 @@ async def build_connected_integrations_manifest(user_id: str, header: str) -> st
     if not items:
         return ""
     connected: list[_ConnectedIntegration] = _dedupe_by_provider(items)
+    accounts = await _multi_account_rows(user_id)
     lines = [header, *_builtin_overlap_lines(connected)]
     for item in connected:
         iid, name = item["id"], item["name"]
         row = f"- {name} ({iid})" if name and name != iid else f"- {iid}"
-        lines.append(f"{row}{await _tool_summary(iid)}")
+        lines.append(f"{row}{accounts.get(iid, '')}{await _tool_summary(iid)}")
     return "\n".join(lines)
+
+
+async def _multi_account_rows(user_id: str) -> dict[str, str]:
+    """' [accounts: a (primary), b]' per integration holding more than one account."""
+    try:
+        records = await list_multi_account_records(user_id)
+    except Exception as e:
+        log.warning(
+            "Could not list integration accounts; manifest rows omit them",
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return {}
+    return {
+        record.integration_id: " [accounts: "
+        + ", ".join(_account_line(a, record.primary_account_id) for a in record.accounts)
+        + "]"
+        for record in records
+    }
 
 
 #: How many tool names a manifest row shows. Enough for the model to see what an
@@ -486,8 +512,19 @@ async def build_connected_devices_manifest(user_id: str, header: str) -> str:
     return "\n".join(lines)
 
 
+def _account_line(account: IntegrationAccount, primary_id: str | None) -> str:
+    # A nickname hides the address the user may name the account by.
+    tags = [account.label] if account.nickname else []
+    if account.connected_account_id == primary_id:
+        tags.append("primary")
+    if account.status != "connected":
+        tags.append("expired")
+    suffix = f" ({', '.join(tags)})" if tags else ""
+    return f"{account.display_name}{suffix}"
+
+
 async def build_provider_metadata_block(integration_id: str | None, user_id: str | None) -> str:
-    """Who the user is on this provider — GitHub login, Gmail address, etc.
+    """Who the user is on this provider: the identity of one account, or the list of several.
 
     Shared by the worker context sections and activate_integration: an
     executor acting on an integration directly needs the same identity a
@@ -496,23 +533,30 @@ async def build_provider_metadata_block(integration_id: str | None, user_id: str
     if not (integration_id and user_id):
         return ""
     integration = get_integration_by_id(integration_id)
-    if not integration or not integration.provider:
+    if not integration:
         return ""
     try:
-        metadata = await get_provider_metadata(user_id, integration.provider)
+        record = await get_account_record(user_id, integration_id)
     except Exception as e:
         log.warning(
-            f"{LogTag.AGENT} Failed to fetch provider metadata",
-            provider=integration.provider,
+            f"{LogTag.AGENT} Failed to read the integration's accounts",
+            integration_id=integration_id,
             user_id=user_id,
             error_type=type(e).__name__,
             error=str(e),
         )
         return ""
-    if not metadata:
+    if record is None or not record.accounts:
         return ""
-    lines = "\n".join(f"- {key}: {value}" for key, value in metadata.items())
-    return f"USER CONTEXT FOR {integration.name.upper()}:\n{lines}"
+    title = integration.name.upper()
+    if len(record.accounts) == 1:
+        identity = record.accounts[0].identity
+        if not identity:
+            return ""
+        lines = "\n".join(f"- {key}: {value}" for key, value in identity.items())
+        return f"USER CONTEXT FOR {title}:\n{lines}"
+    lines = "\n".join(f"- {_account_line(a, record.primary_account_id)}" for a in record.accounts)
+    return f"USER'S {title} ACCOUNTS:\n{lines}\n{MULTI_ACCOUNT_INSTRUCTION}"
 
 
 async def build_open_pendings_block(ctx: SectionContext) -> str:

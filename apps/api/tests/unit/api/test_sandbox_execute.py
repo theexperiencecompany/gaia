@@ -410,8 +410,8 @@ class TestSandboxExecuteRecord:
 
         kwargs = dispatch.await_args.kwargs
         assert kwargs["data"] == {"max_results": 3}
-        assert kwargs["integration_only"] is True
-        assert kwargs["scoped_tool_names"] is None
+        assert kwargs["space"].integration_only is True
+        assert kwargs["space"].tool_names is None
 
     async def test_the_call_is_audited_and_recorded_on_the_wide_event(
         self, fake_redis: fakeredis.aioredis.FakeRedis

@@ -4,6 +4,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.models.integration_models import IntegrationAccount
+from app.services.integrations.integration_account_lifecycle import AccountConnected
+
 
 @pytest.fixture
 def mock_user_repo():
@@ -41,12 +44,21 @@ def mock_composio_service():
 
 
 @pytest.fixture
-def mock_update_user_integration_status():
-    with patch(
-        "app.services.oauth.oauth_service.update_user_integration_status",
-        new_callable=AsyncMock,
-    ) as mock_fn:
-        yield mock_fn
+def mock_record_account():
+    """Patch the account recorder; by default it records a first account, so the primary moved."""
+    connected = AccountConnected(
+        account=IntegrationAccount(connected_account_id="ca_new", label="ada@example.com"),
+        replaced_account_id=None,
+        primary_changed=True,
+    )
+    with (
+        patch(
+            "app.services.oauth.oauth_service.record_connected_account",
+            AsyncMock(return_value=connected),
+        ) as record,
+        patch("app.services.oauth.oauth_service.publish_connected", AsyncMock()),
+    ):
+        yield record
 
 
 @pytest.fixture
@@ -75,15 +87,6 @@ def mock_track_signup():
 def mock_track_login():
     with patch("app.services.oauth.oauth_service.track_login") as mock_tl:
         yield mock_tl
-
-
-@pytest.fixture
-def mock_fetch_and_store_provider_metadata():
-    with patch(
-        "app.services.oauth.oauth_service.fetch_and_store_provider_metadata",
-        new_callable=AsyncMock,
-    ) as mock_fn:
-        yield mock_fn
 
 
 @pytest.fixture

@@ -106,6 +106,8 @@ export function useOAuthSuccessToast() {
         user_mismatch:
           "Authentication security error. Please log out and try again.",
         failed: "Authentication failed. Please try again.",
+        account_limit:
+          "You've connected the maximum number of accounts for this integration. Disconnect one to add another.",
       };
 
       toast.error(

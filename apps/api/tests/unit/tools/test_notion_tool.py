@@ -5,7 +5,7 @@ tests pin the exact registration contract (tool names + toolkit kwarg) and
 the FETCH_DATA failure paths.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any
 from unittest.mock import MagicMock, call, patch
 
@@ -58,6 +58,16 @@ MODULE = "app.agents.tools.integrations.notion_tool"
 
 AUTH_CREDS: dict[str, Any] = {"user_id": "user_test_123"}
 CREDS = CustomToolAuthCredentials(user_id="user_test_123")
+
+
+@pytest.fixture(autouse=True)
+def scoped_account() -> Iterator[MagicMock]:
+    """Pin the account the call is scoped to; resolving it reads Mongo, not the subject here."""
+    with patch(
+        "app.agents.tools.integrations.notion_tool.scoped_connected_account_id",
+        MagicMock(return_value="ca_scoped"),
+    ) as resolve:
+        yield resolve
 
 
 def _cell(text: str) -> list[NotionTextRun]:
@@ -505,6 +515,7 @@ def test_execute_notion_action_passes_version_through_from_credentials() -> None
         version="2024-01-01",
         dangerously_skip_version_check=True,
         user_id="user_test_123",
+        connected_account_id="ca_scoped",
     )
     assert result == ComposioResponse(successful=True, error=None, data={"ok": 1})
 
@@ -524,6 +535,7 @@ def test_fetch_page_blocks_returns_results_list_and_sends_exact_execute_call() -
         version=None,
         dangerously_skip_version_check=True,
         user_id="user_test_123",
+        connected_account_id="ca_scoped",
     )
 
 
@@ -664,6 +676,7 @@ def test_append_table_block_sends_exact_table_args_and_raises_on_failure() -> No
         version=None,
         dangerously_skip_version_check=True,
         user_id="user_test_123",
+        connected_account_id="ca_scoped",
     )
 
     failing = _composio_returning({"successful": False, "error": "table refused"})
@@ -704,6 +717,7 @@ def test_append_content_block_includes_after_only_when_set_and_raises_on_failure
         version=None,
         dangerously_skip_version_check=True,
         user_id="user_test_123",
+        connected_account_id="ca_scoped",
     )
 
     failing = _composio_returning({"successful": False, "error": "insert refused"})

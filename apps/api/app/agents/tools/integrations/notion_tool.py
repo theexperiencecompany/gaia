@@ -46,6 +46,7 @@ from app.models.notion_models import (
     InsertMarkdownInput,
     MovePageInput,
 )
+from app.services.composio.account_scope import scoped_connected_account_id
 from app.services.composio.proxy_client import ProxyRequest, proxy_request_sync
 from app.templates.docstrings.notion_tool_docs import (
     FETCH_DATA_DOC,
@@ -85,6 +86,9 @@ def _execute_notion_action(
             version=auth_credentials.version,
             dangerously_skip_version_check=True,
             user_id=auth_credentials.user_id,
+            connected_account_id=scoped_connected_account_id(
+                auth_credentials.user_id, NOTION_TOOLKIT
+            ),
         )
     )
 

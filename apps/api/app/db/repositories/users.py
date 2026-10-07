@@ -740,18 +740,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         )
         return updated is not None
 
-    async def set_provider_metadata(
-        self, user_id: str, provider: str, metadata: dict[str, str]
-    ) -> bool:
-        """Store a provider's extracted user metadata under provider_metadata; returns whether the user existed."""
-        updated = await self._apply_raw_update(
-            {"_id": self._id_value(user_id)},
-            {"$set": {f"provider_metadata.{provider}": metadata}},
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
-        )
-        return updated is not None
-
     # ------------------------------------------------------- platform linking
 
     async def link_platform(

@@ -17,7 +17,7 @@ from app.models.trigger_config import TriggerOption, TriggerOptionsQuery
 from app.models.trigger_configs import SlackChannelCreatedConfig, SlackNewMessageConfig
 from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.composio.composio_service import get_composio_service
-from app.services.triggers.base import TriggerHandler
+from app.services.triggers.base import TriggerHandler, primary_account_for_trigger
 from app.utils.exceptions import TriggerRegistrationError
 from shared.py.wide_events import log
 
@@ -75,6 +75,7 @@ class SlackTriggerHandler(TriggerHandler):
             )
 
         trigger_data = trigger_config.trigger_data
+        connected_account_id = await primary_account_for_trigger(user_id, "SLACK_CHANNEL_CREATED")
 
         # Handle channel created separately
         if trigger_name == "slack_channel_created":
@@ -83,7 +84,13 @@ class SlackTriggerHandler(TriggerHandler):
                     f"Expected SlackChannelCreatedConfig for trigger '{trigger_name}', "
                     f"but got {type(trigger_data).__name__}"
                 )
-            return self._register_single_trigger_sync(user_id, "SLACK_CHANNEL_CREATED", {})
+            return await asyncio.to_thread(
+                self._register_single_trigger_sync,
+                user_id,
+                connected_account_id,
+                "SLACK_CHANNEL_CREATED",
+                {},
+            )
 
         # Validate trigger_data type for slack_new_message
         if not isinstance(trigger_data, SlackNewMessageConfig):
@@ -136,7 +143,11 @@ class SlackTriggerHandler(TriggerHandler):
         # Register all triggers in parallel
         async def register_single(composio_slug: str, config: dict[str, Any]) -> list[str]:
             return await asyncio.to_thread(
-                self._register_single_trigger_sync, user_id, composio_slug, config
+                self._register_single_trigger_sync,
+                user_id,
+                connected_account_id,
+                composio_slug,
+                config,
             )
 
         tasks = [register_single(slug, cfg) for slug, cfg in triggers_to_register]
@@ -180,13 +191,17 @@ class SlackTriggerHandler(TriggerHandler):
         return successful_ids
 
     def _register_single_trigger_sync(
-        self, user_id: str, composio_slug: str, trigger_config: dict[str, Any]
+        self,
+        user_id: str,
+        connected_account_id: str,
+        composio_slug: str,
+        trigger_config: dict[str, Any],
     ) -> list[str]:
         """Register a single Composio trigger synchronously."""
         try:
             composio = get_composio_service()
             result = composio.composio.triggers.create(
-                user_id=user_id,
+                connected_account_id=connected_account_id,
                 slug=composio_slug,
                 trigger_config=trigger_config.copy(),
             )

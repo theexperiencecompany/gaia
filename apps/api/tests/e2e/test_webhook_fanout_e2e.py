@@ -16,6 +16,7 @@ downstream queues and stores the fanned-out work lands in.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
 import importlib
 import inspect
 import pkgutil
@@ -29,8 +30,9 @@ from app.api.v1.endpoints.webhook_composio import (
     _expire_connection,
     _process_webhook_event,
 )
+from app.models.integration_models import IntegrationAccount
 from app.models.webhook_models import ComposioWebhookEvent
-from app.services.integrations.integration_expiry import ExpiryOptions
+from app.services.integrations.integration_expiry import AccountExpired
 from app.services.triggers import (
     get_handler_by_event,
     get_handler_by_name,
@@ -107,6 +109,11 @@ class TestEveryShippedHandlerIsReachable:
 
 
 class TestProcessWebhookEvent:
+    @pytest.fixture(autouse=True)
+    def _single_account(self) -> Iterator[None]:
+        with patch(f"{MODULE}.event_account_name", AsyncMock(return_value=None)):
+            yield
+
     async def test_nano_id_is_preferred_over_internal_id(self) -> None:
         handler = AsyncMock()
         await _process_webhook_event(handler, _event())
@@ -137,36 +144,31 @@ class TestProcessWebhookEvent:
 
 
 class TestExpireConnection:
-    async def test_pause_runs_first_and_feeds_the_expiry(self) -> None:
+    async def test_the_expiry_runs_first_and_decides_whether_to_pause(self) -> None:
         order: list[str] = []
+        expired = AccountExpired(
+            account=IntegrationAccount(connected_account_id="ca-1", label="me", status="expired"),
+            account_count=1,
+            was_primary=True,
+            integration_expired=True,
+        )
+        expire = AsyncMock(side_effect=lambda *a, **k: (order.append("expire"), expired)[1])
         pause = AsyncMock(side_effect=lambda *a: (order.append("pause"), ["Standup"])[1])
-        expire = AsyncMock(side_effect=lambda *a, **k: order.append("expire"))
         with (
+            patch(f"{MODULE}.expire_account", expire),
             patch(f"{MODULE}.pause_workflows_for_expired_integration", pause),
-            patch(f"{MODULE}.expire_user_integration", expire),
+            patch(f"{MODULE}.announce_account_expiry", AsyncMock()) as announce,
         ):
             await _expire_connection(USER_ID, "googlecalendar", "revoked", "ca-1")
 
-        assert order == ["pause", "expire"]
-        expire.assert_awaited_once_with(
-            USER_ID,
-            "googlecalendar",
-            ExpiryOptions(
-                reason="revoked",
-                trigger="webhook",
-                notify=True,
-                connected_account_id="ca-1",
-                paused_workflows=["Standup"],
-            ),
+        assert order == ["expire", "pause"]
+        announce.assert_awaited_once_with(
+            USER_ID, "googlecalendar", expired, ["Standup"], "revoked"
         )
 
     async def test_expiry_timeout_is_swallowed_not_raised(self) -> None:
         with (
-            patch(
-                f"{MODULE}.pause_workflows_for_expired_integration",
-                AsyncMock(return_value=[]),
-            ),
-            patch(f"{MODULE}.expire_user_integration", AsyncMock(side_effect=TimeoutError())),
+            patch(f"{MODULE}.expire_account", AsyncMock(side_effect=TimeoutError())),
         ):
             await _expire_connection(USER_ID, "googlecalendar", None, "ca-1")  # no raise
 
@@ -178,8 +180,7 @@ class TestExpireConnection:
 
         with (
             patch(f"{MODULE}.WEBHOOK_TASK_TIMEOUT", 0.01),
-            patch(f"{MODULE}.pause_workflows_for_expired_integration", AsyncMock()),
-            patch(f"{MODULE}.expire_user_integration", AsyncMock(side_effect=_hang)),
+            patch(f"{MODULE}.expire_account", AsyncMock(side_effect=_hang)),
         ):
             await _expire_connection(USER_ID, "googlecalendar", None, "ca-1")  # no raise
 

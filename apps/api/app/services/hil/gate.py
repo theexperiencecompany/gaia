@@ -245,7 +245,7 @@ async def _decide_ledger(
         invalid = await _invalid_args_message(request, context.user_id, call)
         if invalid is not None:
             return invalid
-        fingerprint = approval_fingerprint(call.name, call.args)
+        fingerprint = approval_fingerprint(call.name, call.args, call.account)
         live = await approval_ledger_repository.find_live(fingerprint, context.conversation_id)
         if live is not None:
             return _live_envelope_message(call, context, live)
@@ -257,7 +257,7 @@ async def _decide_ledger(
         deny_note = _prior_denial_note(denied)
 
         integration_name = await _integration_name_for(call.name)
-        summary = build_summary(call.name, call.args, integration_name)
+        summary = build_summary(call.name, call.args, integration_name, call.account)
         # Owner is the worker thread, stable across runs: subagent threads read
         # "<integration>_<conversation>", the executor "executor_<...>", so a
         # later turn of the same worker can revoke what it proposed.
@@ -273,6 +273,7 @@ async def _decide_ledger(
                 fingerprint=fingerprint,
                 tool_name=call.name,
                 args=call.args,
+                account=call.account,
                 summary=summary,
                 preview=clip_text(json.dumps(call.args, default=str), 500),
                 owner_agent=str(owner),
@@ -411,7 +412,7 @@ async def _decide(
             return invalid
 
         integration_name = await _integration_name_for(call.name)
-        summary = build_summary(call.name, call.args, integration_name)
+        summary = build_summary(call.name, call.args, integration_name, call.account)
 
         decision: IntentDecision | None = None
         if policy == "auto":
@@ -654,7 +655,7 @@ async def _auto_ledger_verdict(
     if policy != "auto":
         return _AutoVerdict()
     integration_name = await _integration_name_for(call.name)
-    summary = build_summary(call.name, call.args, integration_name)
+    summary = build_summary(call.name, call.args, integration_name, call.account)
     decision = await _judge(request, context, call, None, summary)
     if decision is None:
         return _AutoVerdict()

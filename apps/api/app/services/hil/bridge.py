@@ -352,11 +352,17 @@ async def recall_declined_call(
     )
 
 
-def build_summary(tool_name: str, args: Mapping[str, object], integration_name: str | None) -> str:
+def build_summary(
+    tool_name: str,
+    args: Mapping[str, object],
+    integration_name: str | None,
+    account: str | None = None,
+) -> str:
     """Deterministic one-line summary of a gated call (no LLM in the hot path)."""
     label = tool_name.replace("_", " ").strip().capitalize()
-    if integration_name:
-        label = f"{label} ({integration_name})"
+    source = ", ".join(part for part in (integration_name, account) if part)
+    if source:
+        label = f"{label} ({source})"
     parts = _summary_arg_parts(args)
     return f"{label} — {', '.join(parts)}" if parts else label
 

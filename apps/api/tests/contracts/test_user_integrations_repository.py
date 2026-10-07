@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.db.repositories.user_integrations import UserIntegrationsRepository
-from app.models.integration_models import UserIntegrationDocument
+from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 
 
 @pytest.fixture
@@ -107,15 +107,78 @@ class TestSetStatusStamps:
         assert doc.expired_reason is None
         assert doc.connected_at is not None
 
-    async def test_the_account_that_died_is_recorded_and_never_cleared(self, repo):
-        """The id of the account that died lets us address it later, so a write that does not know it must not erase it."""
+    async def test_saving_accounts_round_trips_them_with_their_primary(self, repo):
         await repo.create(_ui("u", "gmail", status="created"))
+        accounts = [
+            IntegrationAccount(connected_account_id="ca_1", label="work@acme.com"),
+            IntegrationAccount(
+                connected_account_id="ca_2",
+                label="me@gmail.com",
+                identity={"email": "me@gmail.com"},
+            ),
+        ]
 
-        await repo.set_status("u", "gmail", status="connected", connected_account_id="ca_1")
-        assert (await repo.get_for_user("u", "gmail")).connected_account_id == "ca_1"
+        saved = await repo.save_accounts(
+            "u", "gmail", accounts=accounts, primary_account_id="ca_2", status="connected"
+        )
 
-        await repo.set_status("u", "gmail", status="expired", expired_reason="revoked")
-        assert (await repo.get_for_user("u", "gmail")).connected_account_id == "ca_1"
+        stored = await repo.get_for_user("u", "gmail")
+        assert stored == saved
+        assert [a.connected_account_id for a in stored.accounts] == ["ca_1", "ca_2"]
+        assert stored.accounts[1].identity == {"email": "me@gmail.com"}
+        assert stored.primary_account_id == "ca_2"
+        assert stored.status == "connected"
+        assert stored.connected_at is not None
+
+    async def test_saving_accounts_creates_the_record_when_the_callback_is_first(self, repo):
+        saved = await repo.save_accounts(
+            "u",
+            "gmail",
+            accounts=[IntegrationAccount(connected_account_id="ca_1", label="a")],
+            primary_account_id="ca_1",
+            status="connected",
+        )
+
+        assert saved.created_at is not None
+        assert (await repo.get_for_user("u", "gmail")) is not None
+
+    async def test_every_account_dead_stamps_the_expiry_and_a_revival_clears_it(self, repo):
+        dead = IntegrationAccount(connected_account_id="ca_1", label="a", status="expired")
+        await repo.save_accounts(
+            "u",
+            "gmail",
+            accounts=[dead],
+            primary_account_id="ca_1",
+            status="expired",
+            expired_reason="revoked",
+        )
+        expired = await repo.get_for_user("u", "gmail")
+        assert expired.expired_at is not None
+        assert expired.expired_reason == "revoked"
+
+        live = dead.model_copy(update={"status": "connected"})
+        await repo.save_accounts(
+            "u", "gmail", accounts=[live], primary_account_id="ca_1", status="connected"
+        )
+
+        revived = await repo.get_for_user("u", "gmail")
+        assert revived.expired_at is None
+        assert revived.expired_reason is None
+
+    async def test_a_status_write_keeps_the_accounts(self, repo):
+        await repo.save_accounts(
+            "u",
+            "gmail",
+            accounts=[IntegrationAccount(connected_account_id="ca_1", label="a")],
+            primary_account_id="ca_1",
+            status="connected",
+        )
+
+        await repo.set_status("u", "gmail", status="created")
+
+        assert [
+            a.connected_account_id for a in (await repo.get_for_user("u", "gmail")).accounts
+        ] == ["ca_1"]
 
     async def test_it_is_scoped_to_the_owning_user(self, repo):
         await repo.create(_ui("owner", "gmail", status="connected"))

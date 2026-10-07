@@ -16,6 +16,7 @@ import { useIntegrationPermissions } from "@/features/integrations/hooks/useInte
 import { useIntegrationTools } from "@/features/integrations/hooks/useIntegrationTools";
 import type { Integration } from "@/features/integrations/types";
 
+import { IntegrationAccounts } from "./integration-sidebar/IntegrationAccounts";
 import { IntegrationActions } from "./integration-sidebar/IntegrationActions";
 import { IntegrationHeaderChips } from "./integration-sidebar/IntegrationHeaderChips";
 
@@ -48,6 +49,11 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   isSettling = false,
 }) => {
   const isConnected = integration.status === "connected";
+  // Composio integrations hold several accounts; an expired one still lists
+  // its accounts so each can be reconnected or removed.
+  const hasAccounts =
+    integration.managedBy === "composio" &&
+    (isConnected || integration.status === "expired");
   const {
     tools: integrationTools,
     mentionNames: toolMentionNames,
@@ -103,6 +109,13 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           onPublish={onPublish}
           onUnpublish={onUnpublish}
         />
+
+        {hasAccounts && (
+          <IntegrationAccounts
+            integration={integration}
+            onConnect={onConnect}
+          />
+        )}
 
         {isConnected && (
           <div className="mt-3">

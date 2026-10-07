@@ -14,6 +14,7 @@ model's mistake to correct.
 
 import asyncio
 from collections.abc import Container
+from dataclasses import dataclass
 from enum import StrEnum
 import json
 from typing import Any, TypedDict, cast
@@ -23,7 +24,8 @@ from langchain_core.tools import BaseTool
 from prometheus_client import Counter
 from pydantic import BaseModel, ValidationError
 
-from app.agents.tools.execute.resolver import resolve_tool
+from app.agents.tools.execute.resolver import ResolvedTool, resolve_tool
+from app.config.oauth_config import get_integration_by_tool_slug
 from app.constants.execute import (
     TICKET_APPROVE_NAME,
     TICKET_NAMES,
@@ -32,7 +34,14 @@ from app.constants.execute import (
 from app.constants.llm import TOOL_EXECUTION_TIMEOUT_SECONDS, TOOL_TIMEOUT_EXEMPT_TOOLS
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, agent_configurable
+from app.models.integration_models import UserIntegrationDocument
+from app.models.integrations.composio_hooks import ComposioAccountSelection
 from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.integrations.integration_accounts import (
+    get_account_record,
+    match_account,
+    primary_account,
+)
 from app.services.storage.metrics import _register_once
 from app.services.tool_shape_service import record_observed_shape
 from shared.py.wide_events import log, spawn_logged_task
@@ -59,6 +68,11 @@ class DispatchErrorKind(StrEnum):
     # A registered tool outside the calling agent's tool space (a subagent
     # reaching for another integration's tools).
     OUT_OF_SCOPE = "out_of_scope"
+    # `account` names no connected account of the tool's integration, or names
+    # one on a tool that has no accounts to choose between.
+    UNKNOWN_ACCOUNT = "unknown_account"
+    # The chosen account's grant died while another account still works.
+    ACCOUNT_EXPIRED = "account_expired"
     # The tool did not return within the host's bound. Its own outcome is
     # unknown, so this is the one failure a retry can duplicate.
     TIMEOUT = "timeout"
@@ -79,6 +93,85 @@ class ToolExecutionResult(BaseModel):
     # own shape and the proxy must pass it through unaltered (boundary, item 8).
     output: Any = None
     error: DispatchError | None = None
+
+
+@dataclass(frozen=True)
+class _AccountChoice:
+    selection: ComposioAccountSelection
+    is_primary: bool
+    account_count: int
+
+
+def _account_names(record: UserIntegrationDocument) -> str:
+    return ", ".join(
+        f"{a.display_name} ({'expired' if a.status != 'connected' else 'connected'})"
+        for a in record.accounts
+    )
+
+
+async def _choose_account(
+    user_id: str | None, tool_name: str, account: str | None
+) -> _AccountChoice | DispatchError | None:
+    """The connected account a Composio tool call acts as; None leaves the call unpinned.
+
+    Unpinned covers non-Composio tools and integrations with no accounts on
+    record, where the tool's own not-connected path (the connect card) answers.
+    """
+    integration = get_integration_by_tool_slug(tool_name)
+    composio_config = integration.composio_config if integration else None
+    if integration is None or composio_config is None or not user_id:
+        if account:
+            return DispatchError(
+                kind=DispatchErrorKind.UNKNOWN_ACCOUNT,
+                detail=f"'{tool_name}' has no connected accounts to choose between.",
+                hint="Retry without `account`.",
+            )
+        return None
+    record = await get_account_record(user_id, integration.id)
+    if record is None or not record.accounts:
+        return None
+    chosen = match_account(record, account) if account else primary_account(record)
+    if chosen is None:
+        return DispatchError(
+            kind=DispatchErrorKind.UNKNOWN_ACCOUNT,
+            detail=f"No connected {integration.name} account is called '{account}'.",
+            hint=f"Pass one of these as `account`: {_account_names(record)}.",
+        )
+    live = [a for a in record.accounts if a.status == "connected"]
+    if chosen.status != "connected" and live:
+        return DispatchError(
+            kind=DispatchErrorKind.ACCOUNT_EXPIRED,
+            detail=f"The {integration.name} account {chosen.display_name} needs reconnecting.",
+            hint=(
+                "Tell the user it must be reconnected in Integrations, or act through "
+                f"another account via `account`: {_account_names(record)}."
+            ),
+        )
+    return _AccountChoice(
+        selection=ComposioAccountSelection(
+            toolkit=composio_config.toolkit, connected_account_id=chosen.connected_account_id
+        ),
+        is_primary=chosen.connected_account_id == record.primary_account_id,
+        account_count=len(record.accounts),
+    )
+
+
+def _usage_properties(tool_name: str, choice: _AccountChoice | None) -> dict[str, object]:
+    properties: dict[str, object] = {"tool_name": tool_name, "via": "execute"}
+    if choice is not None:
+        properties["account_count"] = choice.account_count
+        properties["account_is_primary"] = choice.is_primary
+    return properties
+
+
+def _with_account(config: RunnableConfig, choice: _AccountChoice | None) -> RunnableConfig:
+    if choice is None:
+        return config
+    metadata = {
+        **(config.get("metadata") or {}),
+        "composio_account": choice.selection.model_dump(mode="json"),
+    }
+    return {**config, "metadata": metadata}
 
 
 class _TicketData(TypedDict, total=False):
@@ -103,32 +196,92 @@ def dispatch_config_for(user_id: str) -> RunnableConfig:
     }
 
 
+@dataclass(frozen=True)
+class ToolSpace:
+    """What one caller may reach through the proxy.
+
+    integration_only is the sandbox route's scope: internal tools need graph
+    runtime the route doesn't have, and excluding them narrows what a leaked
+    token can reach. tool_names is a subagent's complete legitimate space (its
+    toolkit, its MCP tools, the internals); any resolved tool outside it is
+    refused, so a scoped subagent cannot reach another integration on demand.
+    None is the executor's space: the whole registry.
+    """
+
+    integration_only: bool = False
+    tool_names: Container[str] | None = None
+
+
+def _refusal(resolved: ResolvedTool, space: ToolSpace) -> DispatchError | None:
+    if space.integration_only and not resolved.is_integration:
+        log.warning(
+            f"{LogTag.TOOL} execute: internal tool refused on integration-only surface",
+            tool_name=resolved.name,
+        )
+        return DispatchError(
+            kind=DispatchErrorKind.INTERNAL_TOOL,
+            detail=f"'{resolved.name}' is an internal tool, not an integration tool.",
+            hint=(
+                "Sandbox scripts can only call integration tools (Gmail, GitHub, "
+                "Notion, MCP, ...). Use internal tools from the conversation instead."
+            ),
+        )
+    if space.tool_names is not None and resolved.name not in space.tool_names:
+        log.warning(
+            f"{LogTag.TOOL} execute: tool refused outside the calling agent's tool space",
+            tool_name=resolved.name,
+        )
+        return DispatchError(
+            kind=DispatchErrorKind.OUT_OF_SCOPE,
+            detail=f"'{resolved.name}' is not available inside this subagent.",
+            hint=(
+                "It belongs to the main executor, not this subagent. Do not retry it; "
+                "finish your task here and let the executor handle it."
+            ),
+        )
+    return None
+
+
+async def _admit(
+    user_id: str | None,
+    resolved: ResolvedTool,
+    data: dict[str, object],
+    account: str | None,
+    space: ToolSpace,
+) -> tuple[dict[str, object], _AccountChoice | None] | DispatchError:
+    """Return the validated args and the account to act as, or why the call may not run."""
+    refusal = _refusal(resolved, space)
+    if refusal is not None:
+        return refusal
+    validated = _validate_args(resolved.tool, data)
+    if isinstance(validated, DispatchError):
+        log.warning(
+            f"{LogTag.TOOL} execute: args failed schema validation", tool_name=resolved.name
+        )
+        return validated
+    choice = await _choose_account(user_id, resolved.name, account)
+    if isinstance(choice, DispatchError):
+        log.warning(f"{LogTag.TOOL} execute: account not usable", tool_name=resolved.name)
+        return choice
+    return validated, choice
+
+
 async def dispatch_tool(
     *,
     user_id: str | None,
     tool_name: str,
     data: dict[str, object],
     config: RunnableConfig,
-    integration_only: bool = False,
-    scoped_tool_names: Container[str] | None = None,
+    account: str | None = None,
+    space: ToolSpace | None = None,
 ) -> ToolExecutionResult:
-    """Run one proxied tool.
+    """Run one proxied tool, as the named connected account (the primary when None).
 
-    ``integration_only`` is the sandbox route's scope: internal tools need graph
-    runtime the route doesn't have, and excluding them narrows what a leaked
-    token can reach.
-
-    ``scoped_tool_names`` is a subagent's own tool set — and its complete
-    legitimate space: the full toolkit a Composio subagent registered, every
-    MCP tool an MCP subagent connected, plus the always-available internals.
-    Without it the caller's space is the whole registry (the executor). With it,
-    ANY resolved tool whose name is outside the set is refused — MCP tools and
-    on-demand catalog slugs included, so a scoped subagent cannot reach another
-    integration's tools by resolving them on demand. Both of the proxy's
-    surfaces enforce it (the sandbox route reads the space from the run's token).
+    space is the caller's reach (see ToolSpace); None is the executor's whole registry.
     """
+    space = space or ToolSpace()
     if tool_name in TICKET_NAMES:
-        if integration_only:
+        if space.integration_only:
             # Tickets need a conversation (owner/caller checks) the sandbox
             # route deliberately withholds: without it every ticket call
             # misses, so refuse loudly instead of failing silently downstream.
@@ -167,50 +320,10 @@ async def dispatch_tool(
             ),
         )
     resolved_name, tool = resolved.name, resolved.tool
-
-    if integration_only and not resolved.is_integration:
-        log.warning(
-            f"{LogTag.TOOL} execute: internal tool refused on integration-only surface",
-            tool_name=resolved_name,
-        )
-        return _failure(
-            user_id,
-            resolved_name,
-            DispatchError(
-                kind=DispatchErrorKind.INTERNAL_TOOL,
-                detail=f"'{resolved_name}' is an internal tool, not an integration tool.",
-                hint=(
-                    "Sandbox scripts can only call integration tools (Gmail, GitHub, "
-                    "Notion, MCP, ...). Use internal tools from the conversation instead."
-                ),
-            ),
-        )
-
-    if scoped_tool_names is not None and resolved_name not in scoped_tool_names:
-        log.warning(
-            f"{LogTag.TOOL} execute: tool refused outside the calling agent's tool space",
-            tool_name=resolved_name,
-        )
-        return _failure(
-            user_id,
-            resolved_name,
-            DispatchError(
-                kind=DispatchErrorKind.OUT_OF_SCOPE,
-                detail=f"'{resolved_name}' is not available inside this subagent.",
-                hint=(
-                    "It belongs to the main executor, not this subagent. Do not retry it; "
-                    "finish your task here and let the executor handle it."
-                ),
-            ),
-        )
-
-    validated = _validate_args(tool, data)
-    if isinstance(validated, DispatchError):
-        log.warning(
-            f"{LogTag.TOOL} execute: args failed schema validation",
-            tool_name=resolved_name,
-        )
-        return _failure(user_id, resolved_name, validated)
+    admitted = await _admit(user_id, resolved, data, account, space)
+    if isinstance(admitted, DispatchError):
+        return _failure(user_id, resolved_name, admitted)
+    validated, choice = admitted
 
     # Named before the run so a propagated infrastructure failure still says
     # which tool it was; the ok outcome is stamped only once the invoke has
@@ -222,7 +335,7 @@ async def dispatch_tool(
     bound = None if resolved_name in TOOL_TIMEOUT_EXEMPT_TOOLS else TOOL_EXECUTION_TIMEOUT_SECONDS
     try:
         async with asyncio.timeout(bound):
-            output = await tool.ainvoke(validated, config=config)
+            output = await tool.ainvoke(validated, config=_with_account(config, choice))
     except TimeoutError:
         # The only failure whose effect is unknown — the provider may have
         # applied it after we stopped waiting. Bounded here so the model gets
@@ -257,11 +370,7 @@ async def dispatch_tool(
         # The one TOOL_USED per proxied run, attributed to the real tool with
         # via="execute" (the middleware emitter skips calls named execute for
         # this reason: one action, one event, one emitter).
-        capture_event(
-            user_id,
-            AnalyticsEvents.TOOL_USED,
-            {"tool_name": resolved_name, "via": "execute"},
-        )
+        capture_event(user_id, AnalyticsEvents.TOOL_USED, _usage_properties(resolved_name, choice))
 
     return ToolExecutionResult(ok=True, resolved_name=resolved_name, output=output)
 

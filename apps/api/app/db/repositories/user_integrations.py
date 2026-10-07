@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 
 from app.db.repositories.base import UserScopedRepository
 from app.models.integration_models import (
+    IntegrationAccount,
     UserIntegrationDocument,
     UserIntegrationStatus,
     UserIntegrationUpdate,
@@ -59,22 +60,17 @@ class UserIntegrationsRepository(
         *,
         status: UserIntegrationStatus,
         expired_reason: str | None = None,
-        connected_account_id: str | None = None,
     ) -> bool:
         """Upsert the user's connection status; always succeeds (the upsert matches or inserts).
 
         connected_at/expired_at/expired_reason stamp on their transitions;
-        connected_account_id is written when learned and never cleared, so a
-        dead account can still be addressed after the fact. Reconnecting clears
-        the expiry stamps.
+        reconnecting clears the expiry stamps.
         """
         set_fields: dict[str, object] = {
             "status": status,
             "user_id": user_id,
             "integration_id": integration_id,
         }
-        if connected_account_id is not None:
-            set_fields["connected_account_id"] = connected_account_id
         if status == "connected":
             set_fields["connected_at"] = datetime.now(UTC)
             set_fields["expired_at"] = None
@@ -89,6 +85,45 @@ class UserIntegrationsRepository(
             upsert=True,
         )
         return doc is not None
+
+    async def save_accounts(
+        self,
+        user_id: str,
+        integration_id: str,
+        *,
+        accounts: list[IntegrationAccount],
+        primary_account_id: str | None,
+        status: UserIntegrationStatus,
+        expired_reason: str | None = None,
+    ) -> UserIntegrationDocument:
+        """Replace the account list and primary, with the status derived from them, in one write.
+
+        Status stamps follow set_status: connected clears the expiry, expired records it.
+        """
+        now = datetime.now(UTC)
+        set_fields: dict[str, object] = {
+            "user_id": user_id,
+            "integration_id": integration_id,
+            "accounts": [a.model_dump() for a in accounts],
+            "primary_account_id": primary_account_id,
+            "status": status,
+        }
+        if status == "connected":
+            set_fields["connected_at"] = now
+            set_fields["expired_at"] = None
+            set_fields["expired_reason"] = None
+        elif status == "expired":
+            set_fields["expired_at"] = now
+            set_fields["expired_reason"] = expired_reason
+        doc = await self._apply_raw_update(
+            {"user_id": user_id, "integration_id": integration_id},
+            {"$set": set_fields, "$setOnInsert": {"created_at": now}},
+            scope=user_id,
+            upsert=True,
+        )
+        if doc is None:
+            raise RuntimeError(f"user_integrations upsert returned nothing for {integration_id}")
+        return doc
 
     async def user_ids_with_integration(self, integration_id: str) -> list[str]:
         """Every user_id that has added integration_id (cross-user fan-out for cache-bust/cleanup)."""

@@ -54,6 +54,7 @@ from app.agents.workspace.paths import session_dir
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.todos import todo_repository
 from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
+from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.memory_models import MemorySearchResult
 from app.models.todo_models import TodoDocument
 from app.models.user_models import NEEDS_MAX_SELECTION, OnboardingNeed, OnboardingPreferences
@@ -265,6 +266,43 @@ class TestConnectedIntegrationsManifest:
             "app.agents.context.fetchers.get_integration_tool_list", AsyncMock(return_value=[])
         ) as lister:
             yield lister
+
+    @pytest.fixture(autouse=True)
+    def single_accounts_by_default(self) -> Iterator[AsyncMock]:
+        with patch(
+            "app.agents.context.fetchers.list_multi_account_records", AsyncMock(return_value=[])
+        ) as lister:
+            yield lister
+
+    async def test_a_row_lists_the_accounts_when_there_are_several(
+        self, single_accounts_by_default: AsyncMock
+    ) -> None:
+        single_accounts_by_default.return_value = [
+            UserIntegrationDocument(
+                user_id="u1",
+                integration_id="gmail",
+                accounts=[
+                    IntegrationAccount(connected_account_id="ca_1", label="work@acme.com"),
+                    IntegrationAccount(
+                        connected_account_id="ca_2", label="me@gmail.com", status="expired"
+                    ),
+                ],
+                primary_account_id="ca_1",
+            )
+        ]
+        with patch(
+            "app.agents.context.fetchers.get_connected_integrations_named",
+            AsyncMock(
+                return_value=[{"id": "gmail", "name": "Gmail"}, {"id": "github", "name": "GitHub"}]
+            ),
+        ):
+            manifest = await build_connected_integrations_manifest("u1", header="HEADER:")
+
+        assert manifest == (
+            "HEADER:\n"
+            "- Gmail (gmail) [accounts: work@acme.com (primary), me@gmail.com (expired)]\n"
+            "- GitHub (github)"
+        )
 
     async def test_a_row_names_what_the_connection_is_for(
         self, no_tools_by_default: AsyncMock

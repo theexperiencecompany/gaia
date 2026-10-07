@@ -62,6 +62,7 @@ from app.models.payment_models import (
     UserSubscriptionStatus,
 )
 from app.models.user_models import AuthenticatedUser
+from app.utils.concurrency import reset_captured_loop
 
 # Hermetic by default (USE_REAL_SERVICES=0): a bare local run stays offline
 # via the global _get_mongodb_instance mock. CI sets USE_REAL_SERVICES=1 so
@@ -333,6 +334,13 @@ def _hermetic_allowed_keys() -> frozenset[str]:
 _HERMETIC_FAKE_KEYS = {
     "GOOGLE_API_KEY": "sk-hermetic-test-key-not-real",  # pragma: allowlist secret
 }
+
+
+@pytest.fixture(autouse=True)
+def _no_captured_loop_carryover() -> Iterator[None]:
+    """Forget a server loop a test captured (unified_startup does); the next test's loop is new, that one closed."""
+    yield
+    reset_captured_loop()
 
 
 @pytest.fixture

@@ -11,6 +11,7 @@ Covers:
   - app/services/triggers/handlers/linear.py (LinearTriggerHandler)
 """
 
+from collections.abc import Iterator
 import sys
 from types import ModuleType
 from typing import Any
@@ -156,6 +157,20 @@ def _make_trigger_config(
 # ===========================================================================
 
 
+PRIMARY_ACCOUNT_ID = "ca_primary"
+
+
+@pytest.fixture(autouse=True)
+def primary_account() -> Iterator[AsyncMock]:
+    """Workflow triggers register on the primary account; its lookup is Mongo, not the subject here."""
+    resolve = AsyncMock(return_value=PRIMARY_ACCOUNT_ID)
+    with (
+        patch("app.services.triggers.base.primary_account_for_trigger", resolve),
+        patch("app.services.triggers.handlers.slack.primary_account_for_trigger", resolve),
+    ):
+        yield resolve
+
+
 class _ConcreteTriggerHandler(TriggerHandler):
     """Concrete implementation of TriggerHandler for testing the base class."""
 
@@ -259,6 +274,9 @@ class TestTriggerHandlerBase:
         )
         assert len(result) == 2
         assert all(tid == "tid_new" for tid in result)
+        for call in mock_composio.composio.triggers.create.call_args_list:
+            assert call.kwargs["connected_account_id"] == PRIMARY_ACCOUNT_ID
+            assert "user_id" not in call.kwargs
 
     @patch("app.services.triggers.base.get_composio_service")
     async def test_register_triggers_parallel_returns_none_trigger_id(self, mock_get_composio):

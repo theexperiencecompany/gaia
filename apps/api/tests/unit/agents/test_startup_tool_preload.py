@@ -336,7 +336,7 @@ class TestPrepareInjectsPreloadDocs:
                     }
                 ),
             ),
-            patch.object(handoff_tools, "get_provider_metadata", new=AsyncMock(return_value=None)),
+            patch.object(handoff_tools, "get_account_record", new=AsyncMock(return_value=None)),
             patch.object(
                 handoff_tools,
                 "build_initial_messages",
@@ -396,7 +396,7 @@ class TestPrepareInjectsPreloadDocs:
                     }
                 ),
             ),
-            patch.object(handoff_tools, "get_provider_metadata", new=AsyncMock(return_value=None)),
+            patch.object(handoff_tools, "get_account_record", new=AsyncMock(return_value=None)),
             patch.object(
                 handoff_tools,
                 "build_initial_messages",
@@ -436,7 +436,7 @@ def _prepared_gmail_run(preload: AsyncMock) -> Iterator[dict[str, Any]]:
             "create_subagent_system_message",
             new=AsyncMock(return_value=SystemMessage(content="STATIC GMAIL PROMPT")),
         ),
-        patch.object(handoff_tools, "get_provider_metadata", new=AsyncMock(return_value=None)),
+        patch.object(handoff_tools, "get_account_record", new=AsyncMock(return_value=None)),
         patch.object(handoff_tools, "build_initial_messages", side_effect=_capture),
         patch.object(handoff_tools, "preloaded_startup_docs", new=preload),
     ):

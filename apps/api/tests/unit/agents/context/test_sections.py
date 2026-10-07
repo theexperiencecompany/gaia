@@ -24,10 +24,15 @@ from app.agents.context.slots import PromptSlot
 from app.agents.context.text import (
     CONNECTED_INTEGRATIONS_HEADER,
     EXECUTOR_ACTIVATION_CONNECTED_INTEGRATIONS_HEADER,
+    MULTI_ACCOUNT_INSTRUCTION,
 )
 from app.agents.context.tiers import ALL_TIERS, AgentTier
-from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
+from app.models.integration_models import (
+    IntegrationAccount,
+    IntegrationAccountStatus,
+    UserIntegrationDocument,
+)
 
 #: A real, registered integration, so ``get_integration_by_id`` resolves and the
 #: provider-metadata and custom-instruction sections are genuinely reachable
@@ -266,9 +271,9 @@ class TestIntegrationsManifest:
 class TestProviderMetadata:
     async def test_it_names_who_the_user_is_on_that_provider(self) -> None:
         """Two fields, not one: with a single entry the \\n joining them would be unobservable."""
+        record = _record(_account("ca_1", identity={"email": "ada@example.com", "login": "ada"}))
         with patch(
-            "app.agents.context.fetchers.get_provider_metadata",
-            AsyncMock(return_value={"email": "ada@example.com", "login": "ada"}),
+            "app.agents.context.fetchers.get_account_record", AsyncMock(return_value=record)
         ):
             rendered = await section("provider_metadata").fetch(
                 ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
@@ -276,39 +281,64 @@ class TestProviderMetadata:
 
         assert rendered == "USER CONTEXT FOR GMAIL:\n- email: ada@example.com\n- login: ada"
 
-    async def test_it_asks_about_this_user_on_this_provider(self) -> None:
-        """The provider comes from the resolved integration, not the raw id."""
-        metadata = AsyncMock(return_value={})
-        with patch("app.agents.context.fetchers.get_provider_metadata", metadata):
+    async def test_several_accounts_are_listed_with_the_primary_and_the_rule_for_choosing(
+        self,
+    ) -> None:
+        record = _record(
+            _account("ca_1", label="work@acme.com"),
+            _account("ca_2", label="me@gmail.com", nickname="Personal"),
+            _account("ca_3", label="old@acme.com", status="expired"),
+            primary="ca_2",
+        )
+        with patch(
+            "app.agents.context.fetchers.get_account_record", AsyncMock(return_value=record)
+        ):
+            rendered = await section("provider_metadata").fetch(
+                ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
+            )
+
+        assert rendered == (
+            "USER'S GMAIL ACCOUNTS:\n"
+            "- work@acme.com\n"
+            "- Personal (me@gmail.com, primary)\n"
+            "- old@acme.com (expired)\n" + MULTI_ACCOUNT_INSTRUCTION
+        )
+
+    async def test_it_asks_about_this_user_on_this_integration(self) -> None:
+        lookup = AsyncMock(return_value=None)
+        with patch("app.agents.context.fetchers.get_account_record", lookup):
             await section("provider_metadata").fetch(
                 ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
             )
 
-        metadata.assert_awaited_once_with("user1", get_integration_by_id(INTEGRATION_ID).provider)
+        lookup.assert_awaited_once_with("user1", INTEGRATION_ID)
 
     async def test_an_unknown_user_is_never_looked_up(self) -> None:
-        metadata = AsyncMock(return_value={"email": "ada@example.com"})
-        with patch("app.agents.context.fetchers.get_provider_metadata", metadata):
+        lookup = AsyncMock(return_value=_record(_account("ca_1", identity={"email": "a@b.c"})))
+        with patch("app.agents.context.fetchers.get_account_record", lookup):
             rendered = await section("provider_metadata").fetch(
                 SectionContext(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
             )
 
         assert rendered == ""
-        metadata.assert_not_awaited()
+        lookup.assert_not_awaited()
 
     async def test_an_unregistered_integration_is_never_looked_up(self) -> None:
-        """A subagent id that resolves to no integration has no provider to ask about."""
-        metadata = AsyncMock(return_value={"email": "ada@example.com"})
-        with patch("app.agents.context.fetchers.get_provider_metadata", metadata):
+        """A subagent id that resolves to no integration has no accounts to ask about."""
+        lookup = AsyncMock(return_value=_record(_account("ca_1", identity={"email": "a@b.c"})))
+        with patch("app.agents.context.fetchers.get_account_record", lookup):
             rendered = await section("provider_metadata").fetch(
                 ctx(AgentTier.PROVIDER_SUBAGENT, integration_id="not-a-real-integration")
             )
 
         assert rendered == ""
-        metadata.assert_not_awaited()
+        lookup.assert_not_awaited()
 
-    async def test_no_metadata_yields_no_block(self) -> None:
-        with patch("app.agents.context.fetchers.get_provider_metadata", AsyncMock(return_value={})):
+    async def test_one_account_without_an_identity_yields_no_block(self) -> None:
+        record = _record(_account("ca_1"))
+        with patch(
+            "app.agents.context.fetchers.get_account_record", AsyncMock(return_value=record)
+        ):
             assert (
                 await section("provider_metadata").fetch(
                     ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
@@ -319,8 +349,8 @@ class TestProviderMetadata:
     async def test_a_failed_lookup_is_visible_in_the_wide_event(self) -> None:
         async with captured_wide_event() as event:
             with patch(
-                "app.agents.context.fetchers.get_provider_metadata",
-                AsyncMock(side_effect=RuntimeError("composio down")),
+                "app.agents.context.fetchers.get_account_record",
+                AsyncMock(side_effect=RuntimeError("mongo down")),
             ):
                 rendered = await section("provider_metadata").fetch(
                     ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
@@ -328,11 +358,38 @@ class TestProviderMetadata:
 
         assert rendered == ""
         (warning,) = event["warnings"]
-        assert warning["msg"] == f"{LogTag.AGENT} Failed to fetch provider metadata"
-        assert warning["provider"]
+        assert warning["msg"] == f"{LogTag.AGENT} Failed to read the integration's accounts"
+        assert warning["integration_id"] == INTEGRATION_ID
         assert warning["user_id"] == "user1"
-        assert warning["error"] == "composio down"
+        assert warning["error"] == "mongo down"
         assert warning["error_type"] == "RuntimeError"
+
+
+def _account(
+    account_id: str,
+    *,
+    label: str = "acct",
+    nickname: str | None = None,
+    identity: dict[str, str] | None = None,
+    status: IntegrationAccountStatus = "connected",
+) -> IntegrationAccount:
+    return IntegrationAccount(
+        connected_account_id=account_id,
+        label=label,
+        nickname=nickname,
+        identity=identity or {},
+        status=status,
+    )
+
+
+def _record(*accounts: IntegrationAccount, primary: str = "ca_1") -> UserIntegrationDocument:
+    return UserIntegrationDocument(
+        user_id="user1",
+        integration_id=INTEGRATION_ID,
+        status="connected",
+        accounts=list(accounts),
+        primary_account_id=primary,
+    )
 
 
 @pytest.mark.unit

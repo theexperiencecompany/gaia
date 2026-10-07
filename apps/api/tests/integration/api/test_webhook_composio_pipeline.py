@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+from collections.abc import Iterator
 import hashlib
 import hmac as hmac_mod
 import json
@@ -12,8 +13,8 @@ from httpx import AsyncClient
 import pytest
 
 from app.config.settings import settings
+from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
-from app.services.integrations.integration_expiry import ExpiryOptions
 from app.services.triggers.batching import PER_EMAIL_FALLBACK_WINDOW_SECONDS
 from app.services.workflow.queue_service import WorkflowQueueService
 from shared.py.wide_events import spawn_logged_task
@@ -144,6 +145,15 @@ async def _drain(spawned: list[asyncio.Task]) -> None:
 
 class TestTriggerDeliveryToQueuedExecution:
     """A signed GMAIL_NEW_GMAIL_MESSAGE delivery must become a queued workflow execution."""
+
+    @pytest.fixture(autouse=True)
+    def _single_account(self) -> Iterator[None]:
+        """One account on record, so the event is not tagged with which inbox received it."""
+        with patch(
+            "app.services.integrations.integration_accounts.user_integration_repository.get_for_user",
+            AsyncMock(return_value=None),
+        ):
+            yield
 
     async def test_a_signed_delivery_buffers_the_matched_workflow_for_a_batched_run(
         self,
@@ -322,13 +332,36 @@ class TestConnectionExpiryDelivery:
         _webhook_secret: None,
         _redis: MagicMock,
         _spawned: list,
+        fake_redis: object,
     ) -> None:
-        pause = AsyncMock(return_value=3)
-        expire = AsyncMock()
+        """The real expiry runs against the repository seam: the dead primary halts workflows."""
+        record = UserIntegrationDocument(
+            user_id=USER_ID,
+            integration_id="googlecalendar",
+            status="connected",
+            accounts=[
+                IntegrationAccount(connected_account_id="ca_xxxxxxxxxxxx", label="work@acme.com")
+            ],
+            primary_account_id="ca_xxxxxxxxxxxx",
+        )
+        repository = MagicMock()
+        repository.get_for_user = AsyncMock(return_value=record)
+        repository.save_accounts = AsyncMock(
+            side_effect=lambda user_id, integration_id, **f: record.model_copy(
+                update={"status": f["status"], "accounts": f["accounts"]}
+            )
+        )
+        pause = AsyncMock(return_value=["Standup prep"])
+        announce = AsyncMock()
         body = _expired_connection_delivery()
         with (
+            patch(
+                "app.services.integrations.integration_accounts.user_integration_repository",
+                repository,
+            ),
+            patch("app.services.integrations.integration_expiry.schedule_user_integrations_sync"),
             patch(f"{MODULE}.pause_workflows_for_expired_integration", pause),
-            patch(f"{MODULE}.expire_user_integration", expire),
+            patch(f"{MODULE}.announce_account_expiry", announce),
         ):
             response = await unauthenticated_client.post(
                 ENDPOINT,
@@ -340,18 +373,18 @@ class TestConnectionExpiryDelivery:
         assert response.status_code == 200
         assert response.json()["message"] == "Connection event accepted"
 
+        saved = repository.save_accounts.await_args.kwargs
+        assert saved["status"] == "expired"
+        assert [a.status for a in saved["accounts"]] == ["expired"]
         pause.assert_awaited_once_with(USER_ID, "googlecalendar")
-        expire.assert_awaited_once_with(
+        user_id, integration_id, expired, paused, reason = announce.await_args.args
+        assert (user_id, integration_id, paused, reason) == (
             USER_ID,
             "googlecalendar",
-            ExpiryOptions(
-                reason="refresh_token_revoked",
-                trigger="webhook",
-                notify=True,
-                connected_account_id="ca_xxxxxxxxxxxx",
-                paused_workflows=3,
-            ),
+            ["Standup prep"],
+            "refresh_token_revoked",
         )
+        assert expired.integration_expired is True
 
     async def test_an_unrecognised_toolkit_is_acked_without_touching_any_user(
         self,
@@ -367,7 +400,7 @@ class TestConnectionExpiryDelivery:
         body["data"]["auth_config"]["id"] = "ac_unknown_config"
         with (
             patch(f"{MODULE}.pause_workflows_for_expired_integration", pause),
-            patch(f"{MODULE}.expire_user_integration", expire),
+            patch(f"{MODULE}.expire_account", expire),
         ):
             response = await unauthenticated_client.post(
                 ENDPOINT,

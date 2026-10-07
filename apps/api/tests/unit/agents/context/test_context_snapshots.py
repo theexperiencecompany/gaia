@@ -37,7 +37,7 @@ COMMON_SOURCES = ContextSources(
     tracked_todos="Tracked: ship the context refactor",
     skills="## Available skills\n- inbox-triage",
     connected_integrations=[{"id": "gmail", "name": "Gmail"}],
-    provider_metadata={"email": "ada@example.com"},
+    account_identity={"email": "ada@example.com"},
     custom_instructions="Always archive newsletters.",
     workflow_integrations_hint="# Connected integrations\nGmail (`gmail`)",
 )
@@ -55,7 +55,7 @@ BOUND_RUN_SOURCES = ContextSources(
     tracked_todos=COMMON_SOURCES.tracked_todos,
     skills=COMMON_SOURCES.skills,
     connected_integrations=COMMON_SOURCES.connected_integrations,
-    provider_metadata=COMMON_SOURCES.provider_metadata,
+    account_identity=COMMON_SOURCES.account_identity,
     custom_instructions=COMMON_SOURCES.custom_instructions,
     active_todo=ACTIVE_TODO,
 )

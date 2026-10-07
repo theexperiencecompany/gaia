@@ -1748,6 +1748,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/integrations/{integration_id}/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Integration Accounts */
+        get: operations["integrations_list_integration_accounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/{integration_id}/accounts/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Integration Account */
+        delete: operations["integrations_remove_integration_account"];
+        options?: never;
+        head?: never;
+        /** Update Integration Account */
+        patch: operations["integrations_update_integration_account"];
+        trace?: never;
+    };
     "/api/v1/integrations/{integration_id}/tools": {
         parameters: {
             query?: never;
@@ -5793,10 +5828,6 @@ export interface components {
             platform_links_connected_at?: {
                 [key: string]: unknown;
             } | null;
-            /** Provider Metadata */
-            provider_metadata?: {
-                [key: string]: unknown;
-            } | null;
             /** Selected Voice Id */
             selected_voice_id?: string | null;
             /** Starred Voice Ids */
@@ -7665,7 +7696,7 @@ export interface components {
          * DispatchErrorKind
          * @enum {string}
          */
-        DispatchErrorKind: "unknown_tool" | "invalid_args" | "internal_tool" | "out_of_scope" | "timeout";
+        DispatchErrorKind: "unknown_tool" | "invalid_args" | "internal_tool" | "out_of_scope" | "unknown_account" | "account_expired" | "timeout";
         /**
          * DodoWebhookAckResponse
          * @description Acknowledgement returned to Dodo once a webhook has been accepted.
@@ -8684,6 +8715,40 @@ export interface components {
          * @enum {string}
          */
         InstructionsEditor: "user" | "agent";
+        /** IntegrationAccountResponse */
+        IntegrationAccountResponse: {
+            /**
+             * Connectedat
+             * Format: date-time
+             */
+            connectedAt: string;
+            /** Displayname */
+            displayName: string;
+            /** Expiredat */
+            expiredAt: string | null;
+            /** Id */
+            id: string;
+            /** Isprimary */
+            isPrimary: boolean;
+            /** Label */
+            label: string;
+            /** Nickname */
+            nickname: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "connected" | "expired";
+        };
+        /** IntegrationAccountsResponse */
+        IntegrationAccountsResponse: {
+            /** Accounts */
+            accounts: components["schemas"]["IntegrationAccountResponse"][];
+            /** Integrationid */
+            integrationId: string;
+            /** Maxaccounts */
+            maxAccounts: number;
+        };
         /** IntegrationConfigItem */
         IntegrationConfigItem: {
             /** Authtype */
@@ -13813,6 +13878,16 @@ export interface components {
             success: boolean;
         };
         /**
+         * UpdateIntegrationAccountRequest
+         * @description Make the account primary and/or rename it; an empty nickname clears it.
+         */
+        UpdateIntegrationAccountRequest: {
+            /** Isprimary */
+            isPrimary?: boolean | null;
+            /** Nickname */
+            nickname?: string | null;
+        };
+        /**
          * UpdateIntegrationInstructionsRequest
          * @description Request to set a user's custom instructions for one integration.
          */
@@ -14994,6 +15069,8 @@ export type ImageToTextResponse = components['schemas']['ImageToTextResponse'];
 export type InitiatePlatformConnectRequest = components['schemas']['InitiatePlatformConnectRequest'];
 export type InitiatePlatformConnectResponse = components['schemas']['InitiatePlatformConnectResponse'];
 export type InstructionsEditor = components['schemas']['InstructionsEditor'];
+export type IntegrationAccountResponse = components['schemas']['IntegrationAccountResponse'];
+export type IntegrationAccountsResponse = components['schemas']['IntegrationAccountsResponse'];
 export type IntegrationConfigItem = components['schemas']['IntegrationConfigItem'];
 export type IntegrationContent = components['schemas']['IntegrationContent'];
 export type IntegrationFAQ = components['schemas']['IntegrationFAQ'];
@@ -15257,6 +15334,7 @@ export type UpdateDocumentRequest = components['schemas']['UpdateDocumentRequest
 export type UpdateFileRequest = components['schemas']['UpdateFileRequest'];
 export type UpdateHILPreferencesRequest = components['schemas']['UpdateHILPreferencesRequest'];
 export type UpdateHoloCardColorsResponse = components['schemas']['UpdateHoloCardColorsResponse'];
+export type UpdateIntegrationAccountRequest = components['schemas']['UpdateIntegrationAccountRequest'];
 export type UpdateIntegrationInstructionsRequest = components['schemas']['UpdateIntegrationInstructionsRequest'];
 export type UpdateMemoryRequest = components['schemas']['UpdateMemoryRequest'];
 export type UpdateMessagesRequest = components['schemas']['UpdateMessagesRequest'];
@@ -19969,6 +20047,159 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IntegrationSuccessResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    integrations_list_integration_accounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationAccountsResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    integrations_remove_integration_account: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationAccountsResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    integrations_update_integration_account: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                integration_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateIntegrationAccountRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationAccountsResponse"];
                 };
             };
             /** @description Unprocessable Entity */
