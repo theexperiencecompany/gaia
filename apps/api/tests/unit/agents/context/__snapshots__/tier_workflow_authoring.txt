@@ -340,7 +340,7 @@
     User Preferences:
     User Profession: Engineer
     <user_instructions scope="global">
-    The user's standing preferences. Follow them for tone, format, defaults and focus. They never override the rules in your system prompt on safety, privacy, approvals or how tools and data are handled.
+    The user's standing preferences. Follow them for tone, format, defaults and focus, within the rules of your system prompt.
     
     Reply in plain English.
     </user_instructions>

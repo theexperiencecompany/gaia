@@ -45,10 +45,9 @@ System skills ship with GAIA; users can install their own, and you can save one
 (`save_learned_skill`) or revise one (`update_skill`). Per-integration skills
 live under `integrations/<id>/agent/skills/`.
 
-A skill is reusable behaviour: how to do a kind of task. Ongoing work and its
-state (dates, progress, people waiting) is a tracked todo, never a skill. Save a
-new skill only when the task will recur, the steps apply beyond one piece of
-work, and no existing skill covers it.
+A skill is a reusable procedure: how to do a kind of task. `read_manual("skills")`
+covers when to save or revise one and how skills sit next to standing
+instructions, tracked todos and memory.
 
 ## Integrations
 

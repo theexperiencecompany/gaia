@@ -17,16 +17,11 @@ from app.services.user_instructions_service import get_instructions, write_instr
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
-_SCOPE_DESCRIPTION = (
-    f"'{GLOBAL_INSTRUCTIONS_SCOPE}' for instructions that apply to every conversation, or a "
-    "connected integration's id (e.g. 'slack', 'github', 'linear') for that integration only."
-)
-
 
 @tool
 async def get_user_instructions(
     config: RunnableConfig,
-    scope: Annotated[str, _SCOPE_DESCRIPTION],
+    scope: Annotated[str, "'global', or a connected integration's id such as 'slack'."],
 ) -> str:
     """Read the user's current standing instructions for one scope.
 
@@ -43,7 +38,11 @@ async def get_user_instructions(
 @tool
 async def update_user_instructions(
     config: RunnableConfig,
-    scope: Annotated[str, _SCOPE_DESCRIPTION],
+    scope: Annotated[
+        str,
+        "'global' for every conversation, or a connected integration's id such as 'slack' "
+        "for that integration's work.",
+    ],
     content: Annotated[
         str,
         "The FULL new instructions (replaces the existing text, does not append). "

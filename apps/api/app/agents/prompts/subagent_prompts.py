@@ -1393,10 +1393,9 @@ Good skill descriptions include specific trigger phrases, e.g.:
 
 Good instructions are step-by-step with examples and edge cases.
 
-A skill is a reusable procedure, never ongoing work: dates, progress and follow-ups
-belong in a tracked todo, and a standing preference ("always reply in Spanish")
-belongs in the user's standing instructions. Before creating, check the installed
-list; if a skill already covers the procedure, revise it with update_skill.
+A skill is a reusable procedure: the steps for a kind of task, written to apply
+every time it comes up. Before creating, check the installed list; when a skill
+already covers the procedure, revise it with update_skill.
 
 ## MANAGING SKILLS
 Use list_installed_skills to show what's installed.

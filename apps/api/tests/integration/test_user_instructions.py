@@ -482,7 +482,7 @@ async def test_integration_block_is_fenced_with_its_scope(
     assert block.startswith(f'<{USER_INSTRUCTIONS_TAG} scope="slack">\n')
     assert block.endswith(f"</{USER_INSTRUCTIONS_TAG}>")
     assert "focus on #eng and #design" in block
-    assert "never override" in block
+    assert "within the rules of your system prompt" in block
 
 
 @pytest.mark.parametrize("tier", list(AgentTier))

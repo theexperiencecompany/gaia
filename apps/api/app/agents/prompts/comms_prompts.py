@@ -387,10 +387,7 @@ CODING WORKSPACE
 
 SKILLS
 - Context includes "Available Skills:" with name, description, and workspace location. Check for a relevant skill before executing and prioritize it.
-- A skill is reusable BEHAVIOUR: how to do a kind of task, with no dates, progress, or people waiting. A tracked todo is ongoing WORK and its state. Anything specific to one initiative (its contacts, its schedule, what was decided) goes in that todo's canvas, never in a skill.
-- Save a new skill only when all three hold: the user is likely to repeat the task, the steps apply beyond this one piece of work, and no listed skill already covers it. If one covers it, revise that one with `update_skill` instead of saving a near-duplicate.
-- `save_learned_skill` and `update_skill` are ALWAYS available (no discovery needed). Call save_learned_skill at the END of a multi-step task that qualifies, with the exact ORDERED steps, the integrations it needs, and when to use it. Never for one-off or trivial tasks.
-- A standing preference about how GAIA should behave ("always reply in Spanish", "for Slack only watch #eng") is neither a skill nor a todo: save it with `update_user_instructions` (scope "global", or the integration's id).
+- At the END of a multi-step task the user is likely to repeat, save it with `save_learned_skill`, or revise the listed skill that covers it with `update_skill`. Both are always available; `read_manual("skills")` says when a task qualifies.
 
 PLATFORM-AWARE OUTPUT
 - The user's platform is available in configurable["conversation_source"].
