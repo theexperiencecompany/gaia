@@ -33,7 +33,7 @@ import pytest
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.constants import sandbox as sandbox_limits
-from app.constants.sandbox import SANDBOX_LAB_LIFETIME_SECONDS, SANDBOX_LIFETIME_SECONDS
+from app.constants.sandbox import SANDBOX_LIFETIME_SECONDS
 from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
 from app.services.agent_lab.agents_home import build_agents_setup_command
 from app.services.agent_lab.sandbox_events import SandboxEventKind
@@ -42,6 +42,9 @@ from app.services.sandbox.artifact_watcher import ArtifactWatcher
 from app.services.sandbox.pool import PooledSandbox, SandboxPool, get_sandbox_pool
 from app.services.sandbox.shard_router import shard_for
 from app.services.storage import JuiceFSUnavailable
+
+# A Pro team's agent-lab lifetime; the dev default (1h) equals the regular one.
+LAB_LIFETIME = 12 * 3600
 
 
 def _uid() -> str:
@@ -570,19 +573,20 @@ async def test_connect_refreshes_the_server_side_lifetime_of_a_resumed_sandbox()
     assert cls.connect.await_args.kwargs["timeout"] == SANDBOX_LIFETIME_SECONDS
 
 
-async def test_a_resumed_agent_lab_sandbox_asks_for_the_twelve_hour_lifetime() -> None:
+async def test_a_resumed_agent_lab_sandbox_asks_for_the_lab_lifetime() -> None:
     # A coding agent runs for hours; the 1h regular lifetime would force a
-    # pause-and-resume renewal every ~40 min instead of every ~11h40.
+    # pause-and-resume renewal every ~40 min instead of every ~11h40 on Pro.
     sbx = _fake_sandbox()
     cls = _sandbox_class(sbx)
     with (
         patch.object(lifecycle, "AsyncSandbox", cls),
         patch.object(lifecycle.settings, "E2B_AGENT_LAB_TEMPLATE_ID", "gaia-coder-8gb"),
         patch.object(pool_module.settings, "E2B_AGENT_LAB_TEMPLATE_ID", "gaia-coder-8gb"),
+        patch.object(pool_module.settings, "E2B_AGENT_LAB_LIFETIME_SECONDS", LAB_LIFETIME),
         patch.object(lifecycle, "_ensure_mounted", AsyncMock()),
     ):
         await lifecycle._resume_existing_sandbox(_doc("sbx-old", template_id="gaia-coder-8gb"), {})
-    assert cls.connect.await_args.kwargs["timeout"] == SANDBOX_LAB_LIFETIME_SECONDS
+    assert cls.connect.await_args.kwargs["timeout"] == LAB_LIFETIME
 
 
 async def test_connect_failure_returns_none_so_acquire_falls_through_to_a_fresh_create() -> None:
@@ -791,6 +795,7 @@ def _acquire_patches(sbx: AsyncMock, repo: AsyncMock, *, lab: bool = False) -> l
         patch.object(lifecycle.settings, "E2B_API_KEY", "key"),
         patch.object(lifecycle.settings, "E2B_TEMPLATE_ID", "gaia-coder"),
         patch.object(lifecycle.settings, "E2B_AGENT_LAB_TEMPLATE_ID", "gaia-coder-8gb"),
+        patch.object(lifecycle.settings, "E2B_AGENT_LAB_LIFETIME_SECONDS", LAB_LIFETIME),
         patch.object(lifecycle, "is_agent_lab_enabled", AsyncMock(return_value=lab)),
         patch.object(lifecycle, "AsyncSandbox", _sandbox_class(sbx)),
         patch.object(lifecycle, "e2b_sandbox_repository", repo),
@@ -997,7 +1002,7 @@ async def test_a_flagged_user_gets_a_fresh_sandbox_from_the_agent_lab_template()
     try:
         entry = await lifecycle._acquire_or_create(uid, await lifecycle._template_for(uid))
         assert cls.create.await_args.kwargs["template"] == "gaia-coder-8gb"
-        assert cls.create.await_args.kwargs["timeout"] == SANDBOX_LAB_LIFETIME_SECONDS
+        assert cls.create.await_args.kwargs["timeout"] == LAB_LIFETIME
         assert entry.template_id == "gaia-coder-8gb"
         assert repo.record_acquisition.await_args.kwargs["template_id"] == "gaia-coder-8gb"
     finally:
@@ -1228,7 +1233,7 @@ async def test_renewing_pauses_then_resumes_with_a_full_lifetime_and_swaps_the_h
             p.stop()
     try:
         old.beta_pause.assert_awaited_once()
-        cls.connect.assert_awaited_once_with("sbx-1", timeout=SANDBOX_LAB_LIFETIME_SECONDS)
+        cls.connect.assert_awaited_once_with("sbx-1", timeout=LAB_LIFETIME)
         assert get_sandbox_pool().get(uid).sandbox is resumed
     finally:
         get_sandbox_pool().evict(uid)

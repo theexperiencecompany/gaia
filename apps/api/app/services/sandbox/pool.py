@@ -24,7 +24,6 @@ from e2b import AsyncSandbox
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.sandbox import (
-    SANDBOX_LAB_LIFETIME_SECONDS,
     SANDBOX_LIFETIME_SECONDS,
     SANDBOX_LOCK_ACQUIRE_TIMEOUT_SECONDS,
     SANDBOX_LOCK_LEASE_SECONDS,
@@ -212,9 +211,9 @@ def is_agent_lab_template(template_id: str | None) -> bool:
 
 
 def sandbox_lifetime_seconds(template_id: str | None) -> int:
-    """Return the kill-timer lifetime for a sandbox built from template_id: 12h for agent-lab, else 1h."""
+    """Return the kill-timer lifetime for a sandbox built from template_id: the lab setting, else 1h."""
     return (
-        SANDBOX_LAB_LIFETIME_SECONDS
+        settings.E2B_AGENT_LAB_LIFETIME_SECONDS
         if is_agent_lab_template(template_id)
         else SANDBOX_LIFETIME_SECONDS
     )

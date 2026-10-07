@@ -293,6 +293,9 @@ class CommonSettings(BaseAppSettings):
     # Template for users with the AGENT_LAB flag: the default one's 1GB OOM-kills
     # coding-agent CLIs. Built with build_e2b_template.py --memory-mb 8192.
     E2B_AGENT_LAB_TEMPLATE_ID: str | None = None
+    # Lab sandbox lifetime, at most the E2B team's cap: a create asking more is
+    # rejected (dev/staging team: 1h). Production's Pro team allows 12h (43200).
+    E2B_AGENT_LAB_LIFETIME_SECONDS: int = 3600
 
     # Rejected at startup rather than at mint time: the token's user_id is a
     # claim nothing else binds, so a guessable secret means running any user's

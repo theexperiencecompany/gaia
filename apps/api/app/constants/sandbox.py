@@ -34,13 +34,9 @@ HEALTH_PROBE_RETRY_WAIT_TIMEOUT_SECONDS = 15
 # mount_juicefs.sh SANDBOX_USER). Local root disk, unlike /workspace (JuiceFS).
 SANDBOX_USER_HOME = "/home/user"
 
-# E2B kill-timer lifetime (seconds), refreshed via set_timeout() on reuse so an
-# active sandbox is never killed mid-session. Regular sandboxes keep 1h: their
-# idle pause is an in-process timer, so a pod restart that loses it costs at most this.
+# E2B kill-timer lifetime (seconds) of a regular sandbox, refreshed on reuse; a lost
+# in-process idle pause costs at most this. Lab: settings.E2B_AGENT_LAB_LIFETIME_SECONDS.
 SANDBOX_LIFETIME_SECONDS = 3600
-# Agent-lab sandboxes run coding agents for hours: 12h, the EU team's Pro cap. E2B
-# silently caps a longer request at the team's limit (the dev team's is 1h, measured).
-SANDBOX_LAB_LIFETIME_SECONDS = 12 * 3600
 
 # Bound on a single connect control-plane call (seconds) so a hung E2B control
 # plane falls through to a fresh create instead of stalling the agent.
