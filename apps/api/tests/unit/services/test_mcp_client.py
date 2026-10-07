@@ -3209,6 +3209,86 @@ class TestMCPClientRegisterClient:
                     "https://myapp.com/callback",
                 )
 
+    async def test_dcr_rejection_logs_warning_not_error(self) -> None:
+        """A remote AS rejecting DCR warns (not errors) so it skips the Sentry sink."""
+        client = MCPClient(user_id=USER_ID)
+        as_metadata = _make_oauth_metadata(
+            registration_endpoint="https://auth.example.com/register"
+        )
+
+        mock_response = MagicMock()
+        mock_response.status_code = 400
+        mock_response.aread = AsyncMock(
+            return_value=json.dumps(
+                {
+                    "error": "invalid_request",
+                    "error_description": (
+                        "Invalid redirect_uri: redirect_uri host "
+                        "'api.heygaia.io' is not in the allowed list"
+                    ),
+                }
+            ).encode()
+        )
+
+        mock_http_client = AsyncMock()
+        mock_http_client.send = AsyncMock(return_value=mock_response)
+
+        with (
+            patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http,
+            patch("app.services.mcp.mcp_client.log") as mock_log,
+        ):
+            mock_cm = AsyncMock()
+            mock_cm.__aenter__.return_value = mock_http_client
+            mock_http.return_value = mock_cm
+
+            with pytest.raises(ValueError, match="Dynamic Client Registration failed"):
+                await client._register_client(
+                    INTEGRATION_ID,
+                    as_metadata,
+                    "https://myapp.com/callback",
+                )
+
+        mock_log.error.assert_not_called()
+        mock_log.warning.assert_called_once()
+        args, kwargs = mock_log.warning.call_args
+        assert "DCR rejected by authorization server" in args[0]
+        assert "Registration failed: 400" in kwargs["error"]
+        assert kwargs["integration_id"] == INTEGRATION_ID
+        assert kwargs["registration_endpoint"] == "https://auth.example.com/register"
+        # The logged error_type is the original caught exception (the SDK raises
+        # OAuthRegistrationError on a 4xx body), not the ValueError it is wrapped in.
+        assert kwargs["error_type"] == "OAuthRegistrationError"
+
+    async def test_dcr_internal_failure_logs_error_not_warning(self) -> None:
+        """A transport/internal failure keeps error-level monitoring, not warn."""
+        client = MCPClient(user_id=USER_ID)
+        as_metadata = _make_oauth_metadata(
+            registration_endpoint="https://auth.example.com/register"
+        )
+
+        with (
+            patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http,
+            patch("app.services.mcp.mcp_client.log") as mock_log,
+        ):
+            mock_http.return_value.__aenter__ = AsyncMock(side_effect=Exception("Network error"))
+            mock_http.return_value.__aexit__ = AsyncMock()
+
+            with pytest.raises(ValueError, match="Dynamic Client Registration failed"):
+                await client._register_client(
+                    INTEGRATION_ID,
+                    as_metadata,
+                    "https://myapp.com/callback",
+                )
+
+        mock_log.warning.assert_not_called()
+        mock_log.error.assert_called_once()
+        args, kwargs = mock_log.error.call_args
+        assert "DCR failed unexpectedly" in args[0]
+        assert kwargs["error"] == "Network error"
+        assert kwargs["integration_id"] == INTEGRATION_ID
+        assert kwargs["registration_endpoint"] == "https://auth.example.com/register"
+        assert kwargs["error_type"] == "Exception"
+
 
 # ===========================================================================
 # MCPClient Session-based operations Tests

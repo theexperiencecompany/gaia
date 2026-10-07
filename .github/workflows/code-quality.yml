@@ -1147,7 +1147,12 @@ jobs:
           # and two python-static jobs from different PRs would audit each
           # other's export.
           uv export --frozen --no-emit-workspace -o "$RUNNER_TEMP/gaia-requirements.txt"
-          uvx --no-build pip-audit==2.10.1 --strict --skip-editable --disable-pip --ignore-vuln GHSA-wj6h-64fc-37mp --ignore-vuln PYSEC-2026-1325 -r "$RUNNER_TEMP/gaia-requirements.txt"
+          # GHSA-3qf3-8w2g-rqmx (python-jose HMAC confusion) has no upstream fix
+          # (3.5.0 is the latest release) and is not exploitable here: every
+          # jose.jwt.decode call site passes an explicit algorithms=[HS256], which
+          # is exactly the precondition the CVE requires to be absent. Re-check on
+          # every python-jose release; drop this line once a fixed version exists.
+          uvx --no-build pip-audit==2.10.1 --strict --skip-editable --disable-pip --ignore-vuln GHSA-wj6h-64fc-37mp --ignore-vuln PYSEC-2026-1325 --ignore-vuln GHSA-3qf3-8w2g-rqmx -r "$RUNNER_TEMP/gaia-requirements.txt"
           echo "::endgroup::"
           echo "### pip-audit — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "pip-audit: OK (no CVEs)"
