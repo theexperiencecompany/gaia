@@ -454,6 +454,17 @@ class TestSpawnWiring:
 
 
 class TestLoopGuardWiring:
+    @staticmethod
+    def _guard(**kwargs: Any) -> LoopGuardMiddleware:
+        stack = create_middleware_stack(chat_llm=_fake_llm(), **kwargs)
+        guard = next((mw for mw in stack if isinstance(mw, LoopGuardMiddleware)), None)
+        assert isinstance(guard, LoopGuardMiddleware)
+        return guard
+
+    def test_the_default_stack_carries_the_loop_guard(self) -> None:
+        """No build-time mode: whether it may block is read per call from the run's execution_mode."""
+        assert self._guard()
+
     def test_disabling_the_loop_guard_leaves_it_out(self) -> None:
         stack = create_middleware_stack(
             chat_llm=_fake_llm(), loop_guard=LoopGuardOptions(enabled=False)

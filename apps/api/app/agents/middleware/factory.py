@@ -95,7 +95,12 @@ class ContextOptions:
 
 @dataclass(frozen=True)
 class LoopGuardOptions:
-    """LoopGuardMiddleware knobs; enabled=False leaves it out."""
+    """LoopGuardMiddleware knobs; enabled=False leaves it out.
+
+    Whether it may block a call is decided per call from the run's
+    execution_mode (background runs only), never here: the executor graph is
+    a per-process singleton shared by interactive and background runs.
+    """
 
     enabled: bool = True
 
@@ -203,7 +208,7 @@ def create_middleware_stack(
     log.debug(f"{LogTag.AGENT} Media description middleware enabled", agent_name=agent_name)
 
     # Added LAST so it sits innermost, observing the raw tool result before
-    # compaction/summarization transform it.
+    # compaction/summarization transform it. Blocks only in background runs.
     if loop_guard.enabled:
         middleware.append(LoopGuardMiddleware())
         log.debug(f"{LogTag.AGENT} Loop guard middleware enabled", agent_name=agent_name)
