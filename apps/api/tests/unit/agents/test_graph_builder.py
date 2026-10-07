@@ -214,12 +214,26 @@ class TestCheckpointerManager:
 
     @staticmethod
     def _record_setup_order(
-        mock_pool_cls, mock_saver_cls, mock_store_cls, *, store_error: Exception | None = None
+        mock_pool_cls,
+        mock_saver_cls,
+        mock_store_cls,
+        *,
+        store_error: Exception | None = None,
+        lock_answers: tuple[bool, ...] = (True,),
     ) -> MagicMock:
+        """Record setup's statements in order; pg_try_advisory_lock answers lock_answers in turn, then True."""
         order = MagicMock()
         pool = _mock_pool()
         conn = pool.connection.return_value.__aenter__.return_value
-        conn.execute.side_effect = lambda sql, params: order.execute(sql, params)
+        answers = iter(lock_answers)
+
+        def execute(sql: str, params: tuple[int, ...]) -> MagicMock:
+            order.execute(sql, params)
+            cursor = MagicMock()
+            cursor.fetchone = AsyncMock(return_value=(next(answers, True),))
+            return cursor
+
+        conn.execute.side_effect = execute
         mock_pool_cls.return_value = pool
 
         saver = AsyncMock()
@@ -248,7 +262,7 @@ class TestCheckpointerManager:
         mock_store_cls.from_conn_string.assert_called_once_with(_TEST_DB_URL)
         lock = (LANGGRAPH_SETUP_LOCK_ID,)
         assert order.mock_calls == [
-            call.execute("SELECT pg_advisory_lock(%s)", lock),
+            call.execute("SELECT pg_try_advisory_lock(%s)", lock),
             call.saver_setup(),
             call.store_setup(),
             call.execute("SELECT pg_advisory_unlock(%s)", lock),
@@ -257,18 +271,44 @@ class TestCheckpointerManager:
     @patch(f"{_CM_MOD}.AsyncPostgresStore")
     @patch(f"{_CM_MOD}.AsyncPostgresSaver")
     @patch(f"{_CM_MOD}.AsyncConnectionPool")
-    async def test_a_failed_migration_still_releases_the_lock(
-        self, mock_pool_cls, mock_saver_cls, mock_store_cls
+    async def test_a_starter_waits_for_the_lock_by_asking_again_never_inside_a_statement(
+        self, mock_pool_cls, mock_saver_cls, mock_store_cls, monkeypatch
     ):
+        """A blocking wait sits in a transaction the holder's CREATE INDEX CONCURRENTLY waits on."""
+        monkeypatch.setattr(f"{_CM_MOD}.LANGGRAPH_SETUP_LOCK_POLL_SECONDS", 0)
+        monkeypatch.setattr(f"{_CM_MOD}.LANGGRAPH_SETUP_LOCK_ATTEMPTS", 3)
         order = self._record_setup_order(
-            mock_pool_cls, mock_saver_cls, mock_store_cls, store_error=RuntimeError("store DDL")
+            mock_pool_cls, mock_saver_cls, mock_store_cls, lock_answers=(False, False, True)
         )
 
-        with pytest.raises(RuntimeError, match="store DDL"):
+        await self._make_manager().setup()
+
+        lock = (LANGGRAPH_SETUP_LOCK_ID,)
+        assert order.mock_calls[:4] == [
+            call.execute("SELECT pg_try_advisory_lock(%s)", lock),
+            call.execute("SELECT pg_try_advisory_lock(%s)", lock),
+            call.execute("SELECT pg_try_advisory_lock(%s)", lock),
+            call.saver_setup(),
+        ]
+
+    @patch(f"{_CM_MOD}.AsyncPostgresStore")
+    @patch(f"{_CM_MOD}.AsyncPostgresSaver")
+    @patch(f"{_CM_MOD}.AsyncConnectionPool")
+    async def test_a_lock_never_released_fails_setup_loud_without_migrating(
+        self, mock_pool_cls, mock_saver_cls, mock_store_cls, monkeypatch
+    ):
+        monkeypatch.setattr(f"{_CM_MOD}.LANGGRAPH_SETUP_LOCK_POLL_SECONDS", 0)
+        monkeypatch.setattr(f"{_CM_MOD}.LANGGRAPH_SETUP_LOCK_ATTEMPTS", 3)
+        order = self._record_setup_order(
+            mock_pool_cls, mock_saver_cls, mock_store_cls, lock_answers=(False, False, False)
+        )
+
+        with pytest.raises(RuntimeError, match=f"setup lock {LANGGRAPH_SETUP_LOCK_ID} still held"):
             await self._make_manager().setup()
 
-        assert order.mock_calls[-1] == call.execute(
-            "SELECT pg_advisory_unlock(%s)", (LANGGRAPH_SETUP_LOCK_ID,)
+        assert (
+            order.mock_calls
+            == [call.execute("SELECT pg_try_advisory_lock(%s)", (LANGGRAPH_SETUP_LOCK_ID,))] * 3
         )
 
 
@@ -321,6 +361,7 @@ class TestBuildCommsGraph:
             deps["builder"].compile.assert_called_once()
 
     async def test_yields_compiled_graph_postgres(self):
+        """The default, as build_comms_agent builds it: the shared Postgres checkpointer."""
         fake_cp = MagicMock(name="postgres_checkpointer")
         fake_manager = MagicMock()
         fake_manager.get_checkpointer.return_value = fake_cp
@@ -332,9 +373,7 @@ class TestBuildCommsGraph:
             )
             from app.agents.core.graph_builder.build_graph import build_comms_graph
 
-            async with build_comms_graph(
-                chat_llm=deps["llm"], in_memory_checkpointer=False
-            ) as graph:
+            async with build_comms_graph(chat_llm=deps["llm"]) as graph:
                 assert graph is deps["compiled"]
 
             call_kwargs = deps["builder"].compile.call_args.kwargs
@@ -398,6 +437,9 @@ class TestBuildCommsGraph:
             assert kwargs["tools_config"].initial_tool_ids == [
                 "call_executor",
                 "cancel_executor",
+                "browser_step_done",
+                "stop_browser_task",
+                "tell_browser_task",
                 "find_integration",
                 "search_public_workflows",
                 web_search_tool.name,
@@ -456,8 +498,8 @@ class TestBuildCommsGraph:
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
             pre_model_hooks = kwargs["hooks_config"].pre_model_hooks
             # comms agent: filter_messages_node, executor_status_hook,
-            # manage_system_prompts_node
-            assert len(pre_model_hooks) == 3
+            # browser_task_status_hook, manage_system_prompts_node
+            assert len(pre_model_hooks) == 4
 
     async def test_comms_middleware_passed_to_create_agent(self):
         mock_mw = [MagicMock(name="mw1")]
@@ -654,6 +696,7 @@ class TestBuildExecutorGraph:
                 "subscribe_todo_to_trigger",
                 "unsubscribe_todo_from_trigger",
                 "save_learned_skill",
+                "browser_task",
                 "write_playbook",
                 "decline_playbook",
                 "read_playbook",

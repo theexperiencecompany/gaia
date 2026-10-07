@@ -11,19 +11,6 @@
 import { render, screen } from "@testing-library/react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-// cmdk measures rows via ResizeObserver, which jsdom doesn't implement.
-class MockResizeObserver {
-  observe() {
-    // no-op: jsdom has no layout to observe
-  }
-  unobserve() {
-    // no-op: jsdom has no layout to observe
-  }
-  disconnect() {
-    // no-op: jsdom has no layout to observe
-  }
-}
-
 let isPaid = false;
 let isUnknown = false;
 
@@ -65,9 +52,6 @@ import CommandMenu from "@/features/search/components/CommandMenu";
 
 describe("CommandMenu — Upgrade to Pro item vs. plan status unknown", () => {
   beforeAll(() => {
-    (
-      globalThis as unknown as { ResizeObserver: typeof MockResizeObserver }
-    ).ResizeObserver = MockResizeObserver;
     // cmdk scrolls the active item into view on selection changes; jsdom
     // doesn't implement layout, so scrollIntoView doesn't exist.
     Element.prototype.scrollIntoView = vi.fn();

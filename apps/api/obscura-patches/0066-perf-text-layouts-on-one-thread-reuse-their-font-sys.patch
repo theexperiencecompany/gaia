@@ -1,0 +1,168 @@
+From f479cf163d19c7da83a149675db945622206f8df Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 10:00:49 +0530
+Subject: [PATCH] perf(text): layouts on one thread reuse their font system and
+ its shaped runs
+
+Every layout built a new TextEngine and with it a new cosmic-text
+FontSystem: fonts parsed again and every text run shaped again, though a
+forced relayout of the same document shapes almost the same runs. Font
+systems now go back to a small per-thread pool keyed by the font set they
+were built from, with cosmic-text's shape-run cache enabled and trimmed
+to the runs of the most recent layout. A full layout of the Transformer
+article drops from about 640 ms to about 590 ms.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-render/Cargo.toml    |  2 +-
+ crates/obscura-render/src/inline.rs | 96 +++++++++++++++++++++++++++++
+ 2 files changed, 97 insertions(+), 1 deletion(-)
+
+diff --git a/crates/obscura-render/Cargo.toml b/crates/obscura-render/Cargo.toml
+index 4c8e19e..6804def 100644
+--- a/crates/obscura-render/Cargo.toml
++++ b/crates/obscura-render/Cargo.toml
+@@ -21,7 +21,7 @@ ab_glyph = { workspace = true, optional = true }
+ # Real inline text layout: HarfBuzz-class shaping (rustybuzz) + UAX#14 line
+ # breaking, the same algorithms browsers use. Built with only our embedded
+ # fonts (no system-font scan) so layout stays deterministic across hosts.
+-cosmic-text = { version = "=0.14.2", default-features = false, features = ["std", "swash"], optional = true }
++cosmic-text = { version = "=0.14.2", default-features = false, features = ["std", "swash", "shape-run-cache"], optional = true }
+ # Keep this exactly aligned with cosmic-text 0.14's raster backend. Cosmic
+ # and the renderer consume the same canonical variation coordinates for
+ # shaping and rasterization.
+diff --git a/crates/obscura-render/src/inline.rs b/crates/obscura-render/src/inline.rs
+index 00c8f72..4b140b4 100644
+--- a/crates/obscura-render/src/inline.rs
++++ b/crates/obscura-render/src/inline.rs
+@@ -13,6 +13,7 @@
+ //! OS, so layout remains deterministic unless the operator supplies fonts.
+ 
+ use std::{
++    cell::RefCell,
+     collections::{hash_map::DefaultHasher, HashMap, VecDeque},
+     hash::{Hash, Hasher},
+     path::PathBuf,
+@@ -869,6 +870,9 @@ struct MarkerPlacement {
+ /// [`crate::DomLayout`] so paint can rasterize the shaped glyphs.
+ pub struct TextEngine {
+     font_system: FontSystem,
++    /// The font set `font_system` was built from, so it can go back to the
++    /// thread's pool when this engine is dropped.
++    font_key: Option<FontSetKey>,
+     loaded_families: HashMap<String, LoadedFamily>,
+     swash: SwashCache,
+     variable_swash: VariableSwashCache,
+@@ -1247,6 +1251,80 @@ pub(crate) fn constrained_auto_replaced_size(
+     })
+ }
+ 
++/// The font set a `FontSystem` was built from: two engines built from equal
++/// sets have identical font databases, so one's font system serves the other.
++#[derive(Clone)]
++struct FontSetKey {
++    signature: u64,
++    load_emoji: bool,
++    fonts: Vec<WebFont>,
++}
++
++impl FontSetKey {
++    fn matches(&self, other: &FontSetKey) -> bool {
++        self.signature == other.signature
++            && self.load_emoji == other.load_emoji
++            && self.fonts == other.fonts
++    }
++}
++
++struct PooledFontSystem {
++    key: FontSetKey,
++    font_system: FontSystem,
++    loaded_families: HashMap<String, LoadedFamily>,
++}
++
++/// Font systems kept between layout passes on one thread. A layout builds a
++/// fresh TextEngine, and a fresh FontSystem re-parses every font face it uses
++/// and re-shapes every run; reusing the last one keeps its parsed faces and
++/// its shape-run cache. A page thread lays out one document at a time, so a
++/// couple of entries cover alternating font sets.
++const POOLED_FONT_SYSTEMS: usize = 2;
++/// Shape runs not used by the most recent layout pass are dropped when the
++/// font system goes back to the pool, so the cache holds one document's text.
++const SHAPE_RUN_CACHE_KEEP_AGES: u64 = 1;
++
++thread_local! {
++    static FONT_SYSTEM_POOL: RefCell<VecDeque<PooledFontSystem>> =
++        const { RefCell::new(VecDeque::new()) };
++}
++
++fn take_pooled_font_system(
++    key: &FontSetKey,
++) -> Option<(FontSystem, HashMap<String, LoadedFamily>)> {
++    FONT_SYSTEM_POOL.with(|pool| {
++        let mut pool = pool.borrow_mut();
++        let index = pool.iter().position(|entry| entry.key.matches(key))?;
++        let entry = pool.remove(index)?;
++        Some((entry.font_system, entry.loaded_families))
++    })
++}
++
++impl Drop for TextEngine {
++    fn drop(&mut self) {
++        let Some(key) = self.font_key.take() else {
++            return;
++        };
++        let empty = FontSystem::new_with_locale_and_db(
++            "en-US".to_string(),
++            cosmic_text::fontdb::Database::new(),
++        );
++        let mut font_system = std::mem::replace(&mut self.font_system, empty);
++        font_system.shape_run_cache.trim(SHAPE_RUN_CACHE_KEEP_AGES);
++        let loaded_families = std::mem::take(&mut self.loaded_families);
++        // A pool already being torn down (thread exit) just drops the entry.
++        let _ = FONT_SYSTEM_POOL.try_with(|pool| {
++            let mut pool = pool.borrow_mut();
++            pool.push_front(PooledFontSystem {
++                key,
++                font_system,
++                loaded_families,
++            });
++            pool.truncate(POOLED_FONT_SYSTEMS);
++        });
++    }
++}
++
+ impl Default for TextEngine {
+     fn default() -> Self {
+         Self::new()
+@@ -1276,6 +1354,23 @@ impl TextEngine {
+     }
+ 
+     pub(crate) fn new_with_web_fonts_and_emoji(fonts: &[WebFont], load_emoji: bool) -> Self {
++        let font_key = FontSetKey {
++            signature: web_font_signature(fonts, load_emoji),
++            load_emoji,
++            fonts: fonts.to_vec(),
++        };
++        if let Some((font_system, loaded_families)) = take_pooled_font_system(&font_key) {
++            return TextEngine {
++                font_system,
++                font_key: Some(font_key),
++                loaded_families,
++                swash: SwashCache::new(),
++                variable_swash: VariableSwashCache::new(),
++                items: Vec::new(),
++                replaced: Vec::new(),
++                intrinsic_boxes: Vec::new(),
++            };
++        }
+         let (db, loaded_families) = if fonts.is_empty() {
+             (*base_font_database(load_emoji)).clone()
+         } else if let Some(cached) = cached_web_font_database(fonts, load_emoji) {
+@@ -1302,6 +1397,7 @@ impl TextEngine {
+         let font_system = FontSystem::new_with_locale_and_db("en-US".to_string(), db);
+         TextEngine {
+             font_system,
++            font_key: Some(font_key),
+             loaded_families,
+             swash: SwashCache::new(),
+             variable_swash: VariableSwashCache::new(),

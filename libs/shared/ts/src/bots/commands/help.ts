@@ -18,7 +18,7 @@ export const helpCommand: BotCommand = {
       type: "embed",
       title: "Hey, I'm GAIA 👋",
       description:
-        "Your personal AI — I think ahead, remember what matters, and help you actually get things done. Here's how we work together.",
+        "Your personal AI. I think ahead, remember what matters, and help you actually get things done. Here's how we work together.",
       color: 0x7c3aed,
       fields: [
         {
@@ -32,21 +32,21 @@ export const helpCommand: BotCommand = {
         {
           name: "What I can do",
           value: [
-            "`/gaia` — chat with me privately",
-            "`/todo` — capture and manage your tasks",
-            "`/workflow` — set up and run automations",
-            "`/settings` — your account and connected apps",
-            "`/status` — check if you're linked",
-            "`/new` — start a fresh conversation",
-            "`/stop` — cancel the current reply and reset",
-            "`/conversations` — pick up a past chat",
-            "`/unlink` — disconnect your account",
+            "`/gaia`: chat with me privately",
+            "`/todo`: capture and manage your tasks",
+            "`/workflow`: set up and run automations",
+            "`/settings`: your account and connected apps",
+            "`/status`: check if you're linked",
+            "`/new`: start a fresh conversation",
+            "`/stop`: cancel the current reply and reset",
+            "`/conversations`: pick up a past chat",
+            "`/unlink`: disconnect your account",
           ].join("\n"),
         },
         {
           name: "Or just mention me",
           value:
-            "@mention me in any channel for a quick question — I'll keep track of the thread.",
+            "@mention me in any channel for a quick question, and I'll keep track of the thread.",
         },
       ],
       links: [

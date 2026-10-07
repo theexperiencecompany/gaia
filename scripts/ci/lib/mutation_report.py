@@ -91,6 +91,9 @@ EXCLUSION_REASONS = {
     "the two levels that never reach the wide event",
     "EQUIV": "provably equivalent — the mutated program does the same thing at runtime",
     "UNCHANGED": "on a line this PR did not change (the gate is diff-driven)",
+    "LINTED": 'lint-caught — the mutation rewrites the mode="json" literal of a model_dump '
+    "under app/agents/tools/, which the tool-dump-boundary lint rejects in every other "
+    "spelling, so the change cannot reach master",
 }
 
 

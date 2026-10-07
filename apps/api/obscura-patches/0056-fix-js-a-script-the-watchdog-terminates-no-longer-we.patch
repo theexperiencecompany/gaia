@@ -1,0 +1,165 @@
+From acc5ccf31835536d3f148ad242b523364d2e517e Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 07:40:09 +0530
+Subject: [PATCH] fix(js): a script the watchdog terminates no longer wedges
+ the scripts behind it
+
+A fetched dynamic script reports its completion through a callback the
+engine calls after running it. When the watchdog terminated one (a runaway
+script past its budget) the callback never ran: the in-order queue stayed
+busy, every later in-order and module script never executed, and the
+load-delaying count never dropped, so the page reported pending scripts
+forever. Script runs in flight are now tracked, and after any cancelled
+termination (command watchdog, task budget, heap limit) the runtime
+settles them in every realm.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/js/bootstrap.js | 19 +++++++++++-
+ crates/obscura-js/src/ops.rs      |  5 ++++
+ crates/obscura-js/src/runtime.rs  | 48 +++++++++++++++++++++++++++++--
+ 3 files changed, 69 insertions(+), 3 deletions(-)
+
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index 3eac80f..b257124 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -381,10 +381,16 @@ async function __runDynScriptTask(task) {
+         // page's Promise polyfill is not involved), which leaves no bootstrap
+         // frame below the script's top level.
+         await new Promise(resolve => {
++          const settle = () => {
++            if (!_scriptRunsInFlight.delete(settle)) return;
++            globalThis.__currentScriptNid = task.prevNid || 0;
++            resolve();
++          };
++          _scriptRunsInFlight.add(settle);
+           const run = Deno.core.ops.op_script_run_classic.bind(
+             null, body, task.url, _realmFrameId,
+             () => { globalThis.__currentScriptNid = task.nid; },
+-            () => { globalThis.__currentScriptNid = task.prevNid || 0; resolve(); },
++            settle,
+           );
+           const execute = () => { Deno.core.ops.op_queue_microtask(run); };
+           if (_scheduleAfter(0, execute) === undefined) execute();
+@@ -405,6 +411,17 @@ async function __runDynScriptTask(task) {
+     }
+   }
+ }
++// Completions of fetched scripts handed to the engine to run. One the engine
++// terminates (a runaway script past its budget) never reports back, so the
++// host settles them once it has cancelled the termination; otherwise the
++// in-order queue and the load-delaying count would wait on it forever.
++const _scriptRunsInFlight = new Set();
++Object.defineProperty(globalThis, '__obscura_settleTerminatedScripts', {
++  value: function() { for (const settle of [..._scriptRunsInFlight]) settle(); },
++  writable: false,
++  enumerable: false,
++  configurable: false,
++});
+ async function __runAsyncClassicScript(task) {
+   __dynClassicPending++;
+   try {
+diff --git a/crates/obscura-js/src/ops.rs b/crates/obscura-js/src/ops.rs
+index b429080..c03bed5 100644
+--- a/crates/obscura-js/src/ops.rs
++++ b/crates/obscura-js/src/ops.rs
+@@ -694,6 +694,11 @@ impl RealmStates {
+         self.entries.retain(|(known, _, _)| known != context);
+     }
+ 
++    /// The contexts of the live frame realms.
++    pub(crate) fn frame_contexts(&self) -> Vec<v8::Global<v8::Context>> {
++        self.entries.iter().map(|(context, _, _)| context.clone()).collect()
++    }
++
+     fn context_by_frame_id(&self, frame_id: u32) -> Option<v8::Global<v8::Context>> {
+         self.entries
+             .iter()
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index 3faa254..c192aa6 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -1113,6 +1113,7 @@ impl ObscuraJsRuntime {
+         let isolate_handle = self.isolate_handle.clone();
+         let heap_limit_state = self.heap_limit_state.clone();
+         install_heap_limit_guard(&mut *self.runtime(), isolate_handle, heap_limit_state);
++        self.settle_terminated_scripts();
+         tracing::warn!("V8 heap limit reached: terminated the current JavaScript task");
+         true
+     }
+@@ -3054,7 +3055,7 @@ impl ObscuraJsRuntime {
+     pub fn disarm_watchdog(&mut self, token: WatchdogToken) -> bool {
+         let fired = token.stop();
+         if fired {
+-            self.runtime().v8_isolate().cancel_terminate_execution();
++            self.cancel_termination();
+             tracing::warn!("V8 watchdog fired: terminated a synchronous overrun");
+         }
+         fired
+@@ -3072,6 +3073,19 @@ impl ObscuraJsRuntime {
+     /// No-op when the isolate is not terminating.
+     pub fn cancel_termination(&mut self) {
+         self.runtime().v8_isolate().cancel_terminate_execution();
++        self.settle_terminated_scripts();
++    }
++
++    /// After a termination is cancelled: the fetched scripts the engine was
++    /// running when it fired never reported their completion. Settle them in
++    /// every realm so the scripts queued behind them run.
++    fn settle_terminated_scripts(&mut self) {
++        const SETTLE: &str = "globalThis.__obscura_settleTerminatedScripts?.(), true";
++        let _ = self.execute_runtime_script("<settle-terminated-scripts>", SETTLE.to_string());
++        let frames = self.realm_states().borrow().frame_contexts();
++        for frame in frames {
++            let _ = self.eval_in_realm(&frame, SETTLE);
++        }
+     }
+ 
+     /// Drive the event loop for at most `budget_ms`, bounded against BOTH async
+@@ -3243,7 +3257,7 @@ impl ObscuraJsRuntime {
+                 .poll_event_loop(cx, deno_core::PollEventLoopOptions::default());
+             let watchdog_fired = crate::cdp_watchdog::disarm(watchdog);
+             if watchdog_fired {
+-                self.runtime().v8_isolate().cancel_terminate_execution();
++                self.cancel_termination();
+                 return std::task::Poll::Ready(Err(
+                     "autonomous browser task exceeded its task budget".into(),
+                 ));
+@@ -7339,6 +7353,36 @@ mod tests {
+         );
+     }
+ 
++    /// A runaway in-order script the watchdog kills never reports its own
++    /// completion; the scripts queued behind it must still run.
++    #[tokio::test(flavor = "current_thread")]
++    async fn a_terminated_in_order_script_does_not_wedge_the_scripts_behind_it() {
++        let mut rt = setup_runtime("<html><head></head><body></body></html>");
++        rt.evaluate(
++            r#"
++            const looping = document.createElement('script');
++            looping.async = false;
++            looping.src = 'data:text/javascript,while (true) {}';
++            const next = document.createElement('script');
++            next.async = false;
++            next.src = 'data:text/javascript,window.__nextRan = true';
++            document.head.append(looping, next);
++            true
++            "#,
++        )
++        .unwrap();
++        let watchdog = rt.arm_watchdog(std::time::Duration::from_millis(300));
++        let _ = tokio::time::timeout(std::time::Duration::from_secs(10), rt.run_event_loop()).await;
++        assert!(rt.disarm_watchdog(watchdog), "the looping script was not terminated");
++
++        rt.run_event_loop_bounded(200).await.unwrap();
++        assert_eq!(rt.evaluate("window.__nextRan === true").unwrap(), serde_json::json!(true));
++        assert_eq!(
++            rt.evaluate("globalThis.__obscura_hasPendingDynamicScripts()").unwrap(),
++            serde_json::json!(false)
++        );
++    }
++
+     #[test]
+     fn service_workers_and_secure_context_follow_the_document_url() {
+         for (url, secure) in [

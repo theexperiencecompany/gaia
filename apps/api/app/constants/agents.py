@@ -40,6 +40,18 @@ class AgentTag(StrEnum):
     SUBAGENT_INTERJECTION = "subagent_interjection"
     #: A subagent the executor force-stopped, told in its returned result.
     SUBAGENT_CANCELLED = "subagent_cancelled"
+    #: What the chat's browser task is doing, told to comms each turn it can act on it.
+    BROWSER_TASK = "browser_task"
+    #: A background browser job's ending, told to the run that owns the conversation.
+    BROWSER_RESULT = "browser_result"
+    #: A browser job a stop ended: the thread learns it ended, and no run wakes for it.
+    BROWSER_STOPPED = "browser_stopped"
+
+
+#: Entries that only inform: they wait for the next run's drain and never start one.
+NON_WAKING_TAGS: frozenset[AgentTag] = frozenset(
+    {AgentTag.EXECUTOR_INTERRUPTED, AgentTag.BROWSER_STOPPED}
+)
 
 
 def wrap_agent_payload(tag: AgentTag, body: str, agent: str | None = None) -> str:
@@ -96,6 +108,13 @@ TOOL_RESULT_NOTE_SEPARATOR = "\n\n"
 #: that returned data, when judging an empty result. Reaches past every heal
 #: run (which replays nothing) for every suspect the streak allows.
 PLAYBOOK_SUSPECT_BASELINE_WINDOW = PLAYBOOK_SUSPECT_STREAK_LIMIT * (1 + PLAYBOOK_HEAL_ATTEMPT_LIMIT)
+
+#: Closes every executor brief's definition of done. A memory of the same task
+#: once stood in for the run: "log me in" came back "already done" with no browser.
+DONE_EVIDENCE_RULE = (
+    "An item that asks for an action, or for what a page or account shows now, is met "
+    "only by a tool call in this run. A memory, or an earlier run of the same task, never meets it."
+)
 
 #: The tag both playbook briefs open with. The executor's graph loop reads it
 #: off the task turn to know the run owes a decision, so the briefs and the

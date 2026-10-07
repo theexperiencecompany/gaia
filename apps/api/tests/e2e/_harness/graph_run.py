@@ -482,16 +482,17 @@ async def run_graph(
     prompt: str,
     *,
     thread_id: str = "t-1",
+    user_id: str = HARNESS_USER_ID,
     recursion_limit: int = 25,
     state: dict[str, Any] | None = None,
-    execution_mode: str | None = None,
+    **configurable: Any,
 ) -> GraphRun:
     """Drive one turn and record every node update.
 
     A GraphRecursionError is captured on the run rather than raised: an
     agent spinning to its limit is a behaviour worth asserting, not a test error.
-    execution_mode is stamped on the configurable as build_agent_config does,
-    so "background" drives the unattended-run behaviour.
+    Further keywords are configurable keys, as build_agent_config stamps them
+    (execution_mode, stream_id, conversation_id, provenance).
     """
     from langgraph.errors import GraphRecursionError
 
@@ -499,12 +500,9 @@ async def run_graph(
     # user_id goes in BOTH places, as build_agent_config does: the graph reads
     # `configurable` but every @tool reads `metadata["user_id"]`, so setting
     # only one makes tools silently return "user_id not found" as if they ran.
-    configurable: dict[str, Any] = {"thread_id": thread_id, "user_id": HARNESS_USER_ID}
-    if execution_mode is not None:
-        configurable["execution_mode"] = execution_mode
     config = {
-        "configurable": configurable,
-        "metadata": {"user_id": HARNESS_USER_ID},
+        "configurable": {"thread_id": thread_id, "user_id": user_id, **configurable},
+        "metadata": {"user_id": user_id},
         "recursion_limit": recursion_limit,
     }
     initial = (

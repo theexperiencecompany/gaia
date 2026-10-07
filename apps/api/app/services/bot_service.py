@@ -15,6 +15,8 @@ from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.bot_session_merge import apply_merge, plan_merge
+from app.services.browser.handoff import bot_chat_address
+from app.services.browser.job_stop import requester_chat, stop_chat_jobs
 from app.services.conversation_service import create_conversation_service
 from shared.py.wide_events import log
 
@@ -176,7 +178,7 @@ class BotService:
         *,
         is_dm: bool = False,
     ) -> str:
-        """Delete the existing bot session and return a freshly created conversation id."""
+        """Stop what the current session's conversation is running, delete it, and return a freshly created conversation id."""
         if is_dm:
             # The channel-keyed legacy row IS this DM: left in place, the next
             # inbound merge would resurrect the conversation the user just reset.
@@ -184,6 +186,16 @@ class BotService:
             await bot_session_repository.delete_by_session_key(legacy_key)
             channel_id = None
         session_key = BotService.build_session_key(platform, platform_user_id, channel_id)
+        current = await bot_session_repository.get_by_session_key(session_key)
+        # /stop resets the session; a browser run outlives the turn that started it,
+        # so without this it keeps going in a conversation the user has left. A DM's /stop
+        # also reaches a run started in a group, which answers to this DM; a group's, its own.
+        source = ConversationSource.coerce(platform)
+        requester = requester_chat(user.user_id, source) if is_dm else None
+        if current is not None:
+            await stop_chat_jobs(current.conversation_id, requester)
+        elif requester is not None:
+            await stop_chat_jobs(bot_chat_address(requester.source, user.user_id), requester)
         await bot_session_repository.delete_by_session_key(session_key)
 
         return await BotService.get_or_create_session(platform, platform_user_id, channel_id, user)

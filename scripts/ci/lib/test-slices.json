@@ -8,7 +8,9 @@
       "services": "false",
       "workers": "5",
       "serial": "false",
-      "after": []
+      "after": [],
+      "timeout_minutes": "45",
+      "engines": "false"
     },
     {
       "name": "unit-b",
@@ -18,17 +20,21 @@
       "services": "false",
       "workers": "7",
       "serial": "false",
-      "after": ["shared-suite"]
+      "after": ["shared-suite"],
+      "timeout_minutes": "45",
+      "engines": "false"
     },
     {
       "name": "integration",
       "paths": "tests/integration/real tests/e2e tests/stress tests/integration tests/contracts",
-      "ignore": "--ignore=tests/integration/real/test_device_bridge_e2e.py",
+      "ignore": "--ignore=tests/integration/real/test_device_bridge_e2e.py --ignore=tests/integration/real/browser",
       "node": "false",
       "services": "true",
       "workers": "4",
       "serial": "false",
-      "after": ["contract-fuzz"]
+      "after": ["contract-fuzz"],
+      "timeout_minutes": "45",
+      "engines": "false"
     },
     {
       "name": "bridge",
@@ -38,7 +44,21 @@
       "services": "true",
       "workers": "0",
       "serial": "true",
-      "after": []
+      "after": [],
+      "timeout_minutes": "45",
+      "engines": "false"
+    },
+    {
+      "name": "browser",
+      "paths": "tests/integration/real/browser",
+      "ignore": "",
+      "node": "false",
+      "services": "true",
+      "workers": "2",
+      "serial": "false",
+      "timeout_minutes": "15",
+      "after": [],
+      "engines": "true"
     }
   ]
 }

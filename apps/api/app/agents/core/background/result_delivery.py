@@ -189,18 +189,24 @@ async def deliver_message_to_conversation(
     user: AuthenticatedUser,
     text: str,
     origin: str,
+    tool_data: list[ToolDataEntry] | None = None,
 ) -> ConversationSource | None:
     """Deliver an already-voiced proactive message into one existing conversation.
 
     Routes over the conversation's own transport (bot platform or WebSocket), then
-    appends to the checkpoint so a later turn remembers it. Unlike deliver_result,
-    takes no run and doesn't narrate — text is already the user-facing message.
-    Best-effort: never raises. Returns the conversation's source, or None.
+    appends to the checkpoint so a later turn remembers it. Takes no run and does
+    not narrate: text is the user-facing message already, and tool_data the cards
+    of work that ran outside any turn. Never raises; returns the source, or None.
     """
     if not text.strip():
         return None
     user_id = user.user_id
-    bot_message = MessageModel(type="bot", response=text, date=datetime.now(UTC).isoformat())
+    # An empty card list is "no cards", not a card set: kept as None so a plain
+    # proactive message never persists an empty tool_data array.
+    cards = tool_data or None
+    bot_message = MessageModel(
+        type="bot", response=text, date=datetime.now(UTC).isoformat(), tool_data=cards
+    )
     bot_message.message_id = str(uuid4())
 
     if not await _save_bot_message(conversation_id, user, bot_message):
@@ -226,7 +232,7 @@ async def deliver_message_to_conversation(
             target=target,
             bot_message=bot_message,
             notification_text=text,
-            tool_data=None,
+            tool_data=cards,
         )
         delivered = True
         transport = "websocket"
@@ -235,7 +241,7 @@ async def deliver_message_to_conversation(
     # (only once actually delivered) so the next turn here remembers it.
     if delivered:
         await record_platform_delivery(
-            conversation_id, f"[Delivered to the user — {origin}]: {text}"
+            conversation_id, f"[Delivered to the user ({origin})]: {text}"
         )
 
     _log_delivery_verdict(
@@ -309,13 +315,11 @@ async def _narrate_and_deliver(
         user_msg_content=user_msg_content,
     )
 
-    # Follow-ups are a second LLM call. The web/mobile path delivers the answer
-    # first and generates them in the background so the result isn't gated on
-    # them; workflow/bot-platform paths have no spinner to unblock, so attach inline.
+    # Follow-ups are a second LLM call: web/mobile get them after the answer, a
+    # workflow run attaches them inline, and a bot reply gets none (no bot renders them).
     conversation_source = await _get_conversation_source(run.conversation_id, user_id)
-    is_ws_path = not run.workflow_id and not is_bot_platform(conversation_source)
 
-    if not is_ws_path and not is_react:
+    if run.workflow_id and not is_react:
         follow_up_actions = await _safe_inline_follow_ups(
             result_type=result_type,
             notification_text=notification_text,

@@ -159,8 +159,10 @@ jobs:
       has_typescript: ${{ steps.affected.outputs.has_typescript }}
       python_projects: ${{ steps.affected.outputs.python_projects }}
       typescript_projects: ${{ steps.affected.outputs.typescript_projects }}
-      # The test-python matrix, from the one slice definition CI and Dagger share.
+      # The test-python matrices, from the one slice definition CI and Dagger share:
+      # the slices that need no browser engine, and those that do.
       python_slices: ${{ steps.slices.outputs.python_slices }}
+      engine_slices: ${{ steps.slices.outputs.engine_slices }}
       # The branch every lane below diffs against. Resolved here, once — see the
       # note at the top of scripts/ci/changes.sh for why the event payload
       # cannot be trusted for it on a stacked PR.
@@ -189,7 +191,7 @@ jobs:
           main-branch-name: master
       - name: Validate release manifest
         run: node scripts/ci/release.mjs validate-manifest
-      - name: Read the test-python slice matrix
+      - name: Read the test-python slice matrices
         id: slices
         run: bash scripts/ci/pytest.sh slices >> "$GITHUB_OUTPUT"
       - uses: ./.github/actions/setup-node-pnpm
@@ -263,7 +265,11 @@ jobs:
     # changes.sh, nx affected or pytest.sh must agree on one answer.
     env:
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
-    timeout-minutes: 15
+    # ~4 min on an idle box, but the host CPU governor makes lanes queue and
+    # that queueing counts here: while four packed mutation shards share the
+    # box this job measured 12 min, then 16 (cancelled at the old 15-min cap,
+    # 2026-09-08). Sized like test-python's 22, not the idle-box number.
+    timeout-minutes: 25
     permissions:
       contents: read
     steps:
@@ -334,6 +340,40 @@ jobs:
   # from ~2.7 GB to ~1 GB — the parallel lanes now fit in RAM together.
   # Each lane writes its own coverage data; the `coverage` job below combines
   # them and enforces the threshold, so coverage never blocks either lane.
+  # ── The Obscura binaries the engine slices run, built once per run ─────────
+  # Its own job so a cold cargo build (a patch or Dockerfile change, an evicted
+  # cache) has a cap sized for it, and the browser slice's cap covers only its
+  # tests. The same composite and GHA cache scope as obscura-compat. The
+  # binaries travel as a tar: an artifact does not keep the executable bit.
+  obscura-bin:
+    needs: [detect]
+    if: needs.detect.outputs.has_python == 'true' && needs.detect.outputs.engine_slices != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.github/actions/build-obscura
+      - name: Pack the binaries
+        run: tar -C "$RUNNER_TEMP" -cf "$RUNNER_TEMP/obscura-bin.tar" obscura
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: obscura-bin
+          path: ${{ runner.temp }}/obscura-bin.tar
+          retention-days: 1
+      - name: Upload the verdict
+        if: always()
+        uses: ./.github/actions/upload-verdict
+        with:
+          # job.status, not a status function inside the composite:
+          # those read the composite's own steps and always said success.
+          status: ${{ job.status }}
+          name: obscura-bin
+
   test-python:
     name: test-python (${{ matrix.slice.name }})
     needs: [select-runner, detect]
@@ -350,8 +390,9 @@ jobs:
     # in minutes (whole suite 183s at 16 workers), but on 2026-09-16 a loaded
     # box (mutation shards starved then fail-open + both push workflows
     # overlapping) crept past 22m without finishing; 45 bounds a hang while
-    # leaving a saturated fallback room to land.
-    timeout-minutes: 45
+    # leaving a saturated fallback room to land. Per slice (test-slices.json):
+    # the browser slice is bounded tighter, a whole stack per worker.
+    timeout-minutes: ${{ fromJSON(matrix.slice.timeout_minutes) }}
     permissions:
       contents: read
       actions: read # `test_impact.py fetch` reads the map artifact of a master run
@@ -361,7 +402,8 @@ jobs:
         # scripts/ci/lib/test-slices.json, which Dagger's test-python reads too;
         # the worker-share rationale lives beside its reader in pytest.sh.
         slice: ${{ fromJSON(needs.detect.outputs.python_slices) }}
-    steps:
+    # One list of steps for both slice jobs: test-python-engines runs it by alias.
+    steps: &test-python-steps
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           clean: ${{ runner.environment != 'self-hosted' }}
@@ -373,6 +415,20 @@ jobs:
         with:
           node: ${{ matrix.slice.node }}
           services: ${{ matrix.slice.services }}
+      # An engine slice runs real browser hosts: Chrome from the runner image and
+      # Obscura as the obscura-bin job built it. A missing binary fails the slice;
+      # it never skips.
+      - name: Fetch the Obscura binaries the obscura-bin job built
+        if: matrix.slice.engines == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: obscura-bin
+          path: ${{ runner.temp }}
+      - name: Locate the browser binaries
+        if: matrix.slice.engines == 'true'
+        run: |
+          tar -C "$RUNNER_TEMP" -xf "$RUNNER_TEMP/obscura-bin.tar"
+          bash scripts/ci/browser.sh locate
       # Only the GitHub-hosted fallback uses this: the static shares below are
       # sized for the 16-thread box and would put 7 workers on a 4-vCPU VM.
       - name: Detect parallelism
@@ -382,20 +438,22 @@ jobs:
           PY=$(bash scripts/ci/runner.sh parallel --pytest-n)
           echo "py=$PY" >> "$GITHUB_OUTPUT"
           echo "pytest xdist n=$PY on $(nproc) vCPUs ($(free -g | awk '/^Mem:/{print $7}')G available)"
-      # ── Test impact selection (PRs only, never the bridge slice) ───────────
+      # ── Test impact selection (PRs only, never the bridge or browser slice) ─
       # The bridge slice is one serial file; selecting inside it saves nothing
-      # and its e2e is the least safe thing to skip. See the header of scripts/ci/test_impact.py.
+      # and its e2e is the least safe thing to skip. The browser slice runs the
+      # app in child processes coverage never traces, so the map cannot know
+      # which app files reach it: selection there would skip it on every change. See the header of scripts/ci/test_impact.py.
       # Artifact, not actions/cache: a PR run cannot restore a cache written on
       # its head branch, only on its merge ref or master (`test_impact.py fetch`).
       - name: Fetch test impact map
-        if: github.event_name == 'pull_request' && matrix.slice.name != 'bridge'
+        if: github.event_name == 'pull_request' && matrix.slice.name != 'bridge' && matrix.slice.name != 'browser'
         env:
           SLICE_NAME: ${{ matrix.slice.name }}
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/ci/test_impact.py fetch
       - name: Select impacted tests
         id: impact
-        if: github.event_name == 'pull_request' && matrix.slice.name != 'bridge'
+        if: github.event_name == 'pull_request' && matrix.slice.name != 'bridge' && matrix.slice.name != 'browser'
         env:
           SLICE_NAME: ${{ matrix.slice.name }}
           SLICE_PATHS: ${{ matrix.slice.paths }}
@@ -428,7 +486,8 @@ jobs:
           # serial lanes get -n 0 (GitHub's expression engine treats the string "0" as
           # falsy, hence the explicit flag); the box gets its static share, the
           # GitHub-hosted fallback the count detected on the VM it landed on.
-          XDIST_N: ${{ matrix.slice.serial == 'true' && '0' || (needs.select-runner.outputs.is_self_hosted == 'true' && matrix.slice.workers || steps.par.outputs.py) }}
+          # The browser slice keeps its own share everywhere: each worker boots a whole stack.
+          XDIST_N: ${{ matrix.slice.serial == 'true' && '0' || ((needs.select-runner.outputs.is_self_hosted == 'true' || matrix.slice.name == 'browser') && matrix.slice.workers || steps.par.outputs.py) }}
         run: |
           echo "Runner: ${{ needs.select-runner.outputs.runner_label }} (self_hosted=${{ needs.select-runner.outputs.is_self_hosted }}) nproc=$(nproc) xdist=$XDIST_N slice=${{ matrix.slice.name }}"
           bash scripts/ci/pytest.sh slice
@@ -484,6 +543,26 @@ jobs:
           name: test-python-${{ matrix.slice.name }}
           lane: test-python/${{ matrix.slice.name }}
 
+  # The slices that drive real browser engines (engines: true in test-slices.json):
+  # test-python's steps, run once the obscura-bin job has built the engine, so a
+  # cold engine build never spends a slice's cap. The other slices never wait on it.
+  test-python-engines:
+    name: test-python (${{ matrix.slice.name }})
+    needs: [select-runner, detect, obscura-bin]
+    if: needs.detect.outputs.has_python == 'true' && needs.detect.outputs.engine_slices != '[]'
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    env:
+      GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
+    timeout-minutes: ${{ fromJSON(matrix.slice.timeout_minutes) }}
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        slice: ${{ fromJSON(needs.detect.outputs.engine_slices) }}
+    steps: *test-python-steps
+
   # ── Coverage gate — its own job, off the test lanes' critical path ────────
   #
   # A PR HAS NO COVERAGE GATE. This is deliberate, not an oversight: diff-cover
@@ -493,7 +572,7 @@ jobs:
   # the 80% combined gate run on master, which is the backstop. Do not
   # "restore" diff-cover to a PR lane; it would be measuring the selection.
   coverage:
-    needs: [select-runner, detect, test-python]
+    needs: [select-runner, detect, test-python, test-python-engines]
     # PR lanes do not trace coverage at all (see the COVERAGE env on
     # test-python) — tracing costs ~35 CPU-points per lane for a number
     # nothing would be entitled to read.
@@ -529,7 +608,7 @@ jobs:
         run: |
           set -euo pipefail
           ls -la .coverage.*
-          uv run --frozen --package gaia --group dev coverage combine .coverage.unit-a .coverage.unit-b .coverage.integration .coverage.bridge
+          uv run --frozen --package gaia --group dev coverage combine .coverage.unit-a .coverage.unit-b .coverage.integration .coverage.bridge .coverage.browser
           uv run --frozen --package gaia --group dev coverage report --fail-under="$FAIL_UNDER" | tail -n 5
           echo "coverage gate: fail-under=$FAIL_UNDER (master/dispatch only — PR lanes do not trace coverage)" >> "$GITHUB_STEP_SUMMARY"
           uv run --frozen --package gaia --group dev coverage xml -o coverage.xml
@@ -954,7 +1033,9 @@ jobs:
       - detect
       - probe
       - build
+      - obscura-bin
       - test-python
+      - test-python-engines
       - coverage
       - test-typescript
       - docker-image
@@ -1008,7 +1089,7 @@ jobs:
           # composite this branch adds is not in its tree). Both are still
           # enforced on their job result — declared, not dropped.
           EXPECT: >-
-            select-runner@result-only=${{ needs.select-runner.result }},detect=${{ needs.detect.result }},probe@result-only=${{ needs.probe.result }},build=${{ needs.build.result }},test-python=${{ needs.test-python.result }},coverage=${{ needs.coverage.result }},test-typescript=${{ needs.test-typescript.result }},docker-image=${{ needs.docker-image.result }},test-harness-tools=${{ needs.test-harness-tools.result }},trivy-scan=${{ needs.trivy-scan.result }},regression-proof=${{ needs.regression-proof.result }}
+            select-runner@result-only=${{ needs.select-runner.result }},detect=${{ needs.detect.result }},probe@result-only=${{ needs.probe.result }},build=${{ needs.build.result }},obscura-bin=${{ needs.obscura-bin.result }},test-python=${{ needs.test-python.result }},test-python-engines@test-python/browser=${{ needs.test-python-engines.result }},coverage=${{ needs.coverage.result }},test-typescript=${{ needs.test-typescript.result }},docker-image=${{ needs.docker-image.result }},test-harness-tools=${{ needs.test-harness-tools.result }},trivy-scan=${{ needs.trivy-scan.result }},regression-proof=${{ needs.regression-proof.result }}
         run: python3 scripts/ci/verdict.py consolidate "$RUNNER_TEMP/verdicts" --expect "$EXPECT"
       # The other half of the `always()` above: a title or body edit ran no
       # lane, so there is nothing to consolidate — but this check must still

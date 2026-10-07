@@ -1324,6 +1324,7 @@ sys.exit(proc.returncode)
   EQUIVALENT=""
   UNCHANGED=""
   LOGGING=""
+  LINTED=""
   # One row per survivor — name, mutmut's status, the classifier's verdict
   # (CHANGED:<line> / LOGGING:<line> / UNCHANGED:<line> / EQUIV) — for
   # lib/mutation_report.py to turn into verdict.json. The line number is the
@@ -1355,6 +1356,9 @@ sys.exit(proc.returncode)
         LOGGING:*)
           LOGGING="$LOGGING
   $line" ;;
+        LINTED:*)
+          LINTED="$LINTED
+  $line" ;;
         *)
           echo "MUTATION CLASSIFIER FAILED on: $line" >&2
           echo "  exit=$CLASSIFIER_RC verdict='$VERDICT'" >&2
@@ -1376,7 +1380,7 @@ sys.exit(proc.returncode)
         CHANGED:*)
           NO_TESTS_CHANGED="$NO_TESTS_CHANGED
   $line" ;;
-        UNCHANGED:*|LOGGING:*|EQUIV) ;;
+        UNCHANGED:*|LOGGING:*|LINTED:*|EQUIV) ;;
         *)
           echo "MUTATION CLASSIFIER FAILED on: $line" >&2
           echo "  exit=$CLASSIFIER_RC verdict='$VERDICT'" >&2
@@ -1416,6 +1420,18 @@ sys.exit(proc.returncode)
     echo "      and a case-ONLY rewrite of a header name in an x.headers.get()" >&2
     echo "      lookup, which every .headers mapping resolves case-insensitively" >&2
     echo "      (RFC 9110 5.1); asking for a DIFFERENT header still fails." >&2
+    echo "      Two more: an argument DELETED whose value is the callee's own" >&2
+    echo "      default (BrowserConfig(headless=True) builds a byte-identical" >&2
+    echo "      object without it) — re-VALUING that same argument is reported —" >&2
+    echo "      and a lookup default feeding urlparse(...).hostname, which is None" >&2
+    echo "      for every non-URL, so \"\", None and \"XXXX\" are indistinguishable;" >&2
+    echo "      mutating the lookup's KEY there is still reported." >&2
+    echo "      And one more: a cache write's model= dropped or None'd where the" >&2
+    echo "      value at that call site IS a construction of that same class —" >&2
+    echo "      redis_cache.set dumps through TypeAdapter(model or Any), which" >&2
+    echo "      emits identical bytes for an instance it does not have to coerce." >&2
+    echo "      A dict or a variable value there is coerced, and stays reported," >&2
+    echo "      as does any mutation of that call's key or TTL." >&2
     echo "      Also the argument of a Starlette call_next(): BaseHTTPMiddleware" >&2
     echo "      closes over the request's own scope/receive/send and never reads" >&2
     echo "      that parameter, so call_next(None) is the same program." >&2
@@ -1431,6 +1447,16 @@ sys.exit(proc.returncode)
     echo "      only for mutants on lines the PR changed, and printed before the" >&2
     echo "      verdict so an exclusion is never invisible, including on a failing run:" >&2
     echo "$LOGGING" >&2
+  fi
+  if [ -n "$LINTED" ]; then
+    LINTED_COUNT=$(printf '%s\n' "$LINTED" | grep -c . || true)
+    echo "NOTE: $LINTED_COUNT mutant(s) excluded as lint-caught — the mutation rewrites the" >&2
+    echo "      mode=\"json\" literal of a model_dump under app/agents/tools/, which the" >&2
+    echo "      tool-dump-boundary lint (python-static lane of this same gate, issue" >&2
+    echo "      #917) rejects in every other spelling, so the change cannot reach master." >&2
+    echo "      NOT an equivalence claim — whether the bytes differ depends on the model —" >&2
+    echo "      and printed before the verdict so the exclusion is never invisible:" >&2
+    echo "$LINTED" >&2
   fi
   # Every survivor's diff, uncapped. The old cap was 40, which on a real run
   # left 39 survivors carrying a name and nothing else — and a mutant id with no

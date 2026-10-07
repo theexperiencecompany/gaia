@@ -20,7 +20,7 @@ from __future__ import annotations
 from collections.abc import Mapping, MutableMapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, TypedDict
 
 from langchain_core.messages import AIMessage
 from pydantic import BaseModel, ConfigDict, Field, SkipValidation
@@ -90,7 +90,7 @@ class _ToolOutputEvent(BaseModel):
     output: str | None = None
 
 
-class _ReasoningEvent(BaseModel):
+class ReasoningEvent(BaseModel):
     """A collector ``reasoning`` frame: one flushed step of thinking."""
 
     model_config = ConfigDict(extra="ignore")
@@ -111,7 +111,7 @@ class _CollectorEvent(BaseModel):
 
     tool_data: Annotated[ToolDataEntry | list[ToolDataEntry] | None, SkipValidation] = None
     tool_output: _ToolOutputEvent | None = None
-    reasoning: _ReasoningEvent | None = None
+    reasoning: ReasoningEvent | None = None
     subagent_start: Annotated[dict[str, object] | None, SkipValidation] = None
     subagent_end: Annotated[dict[str, object] | None, SkipValidation] = None
 
@@ -254,7 +254,7 @@ def absorb_collector_event(
         if tid and val:
             tool_outputs[tid] = val
     if event.reasoning is not None:
-        _absorb_reasoning(event.reasoning, entries)
+        absorb_reasoning(event.reasoning, entries)
     if event.subagent_start is not None:
         start_id = _SubagentFrameId.model_validate(event.subagent_start).subagent_id
         _lifecycle_bucket(accumulated, "subagent_starts")[start_id] = event.subagent_start
@@ -271,32 +271,63 @@ def _lifecycle_bucket(accumulated: MutableMapping[str, object], bucket: str) -> 
     return frames
 
 
-def _absorb_reasoning(reasoning: _ReasoningEvent, tool_data: list[ToolDataEntry]) -> None:
+#: tool_category and inner tool_name of a thinking step riding the tool-call channel.
+REASONING_STEP = "reasoning"
+
+
+class _ReasoningStepData(TypedDict):
+    """The data of a thinking step: the renderer's step fields plus the thinking text."""
+
+    tool_name: str
+    tool_category: str
+    message: str
+    reasoning: str
+
+
+def absorb_reasoning(reasoning: ReasoningEvent, tool_data: list[ToolDataEntry]) -> None:
     """Persist a streamed thinking block into tool_data as a reasoning step.
 
     A reasoning step rides a tool_calls_data entry so it persists and
     renders alongside tool calls. One event is already one step's worth of
-    thinking — _ReasoningBuffer flushes at each tool boundary — so this appends.
+    thinking (_ReasoningBuffer flushes at each tool boundary), so this appends.
     """
     content = reasoning.content
     if not content:
         return
     subagent_id = reasoning.subagent_id
-    # `data` is a SINGLE step dict, not a list — a list here would nest a
+    # `data` is a SINGLE step dict, not a list: a list here would nest a
     # tool_call with no tool_name and crash the frontend renderer.
+    step = _ReasoningStepData(
+        tool_name=REASONING_STEP, tool_category=REASONING_STEP, message="", reasoning=content
+    )
     entry: ToolDataEntry = {
         "tool_name": "tool_calls_data",
-        "tool_category": "reasoning",
-        "data": {
-            "tool_name": "reasoning",
-            "tool_category": "reasoning",
-            "message": "",
-            "reasoning": content,
-        },
+        "tool_category": REASONING_STEP,
+        "data": step,
     }
     if subagent_id:
         entry["subagent_id"] = subagent_id
     tool_data.append(entry)
+
+
+def absorb_reasoning_delta(reasoning: ReasoningEvent, tool_data: list[ToolDataEntry]) -> None:
+    """Fold one streamed thinking delta into the step it continues, or start a new step.
+
+    Comms streams its thinking chunk by chunk, so deltas with nothing between them
+    are one step; a tool call or another agent's thinking in between starts a new one.
+    """
+    if not reasoning.content:
+        return
+    last: ToolDataEntry | None = tool_data[-1] if tool_data else None
+    if (
+        last is not None
+        and last.get("tool_category") == REASONING_STEP
+        and last.get("subagent_id") == reasoning.subagent_id
+    ):
+        step: _ReasoningStepData = last["data"]
+        step["reasoning"] += reasoning.content
+        return
+    absorb_reasoning(reasoning, tool_data)
 
 
 def apply_outputs_to_tool_data(

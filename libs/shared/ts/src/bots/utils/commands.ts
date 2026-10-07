@@ -4,9 +4,10 @@
  * Each handler: calls GaiaClient -> formats the result -> returns a string.
  * Bot adapters become thin wrappers: extract platform args -> call handler -> reply.
  *
- * All handlers catch errors via formatBotError, so bot code doesn't need
- * its own try/catch for API failures. The returned string is always safe
- * to send directly to the user.
+ * All handlers catch API failures through reportCommandFailure, which records
+ * the failure on the command's wide event and returns the user-facing text,
+ * so bot code doesn't need its own try/catch. The returned string is always
+ * safe to send directly to the user.
  *
  * To add a new command:
  * 1. Add the API method to GaiaClient (api/index.ts)
@@ -16,6 +17,7 @@
  */
 import type { GaiaClient } from "../api";
 import type { CommandContext } from "../types";
+import { recordBotFailure } from "./failure-reasons";
 import {
   COMMAND_HELP,
   formatBotError,
@@ -26,6 +28,19 @@ import {
   formatWorkflowList,
 } from "./formatters";
 
+/**
+ * Records a command's caught API failure on its wide event (reason, HTTP status,
+ * API error code) and returns the reply for the user.
+ */
+export function reportCommandFailure(
+  operation: string,
+  error: unknown,
+  ctx: CommandContext,
+): string {
+  recordBotFailure(`${operation}_failed`, error, { operation });
+  return formatBotError(error, ctx.platform);
+}
+
 export async function handleWorkflowList(
   gaia: GaiaClient,
   ctx: CommandContext,
@@ -34,7 +49,7 @@ export async function handleWorkflowList(
     const response = await gaia.listWorkflows(ctx);
     return formatWorkflowList(response.workflows);
   } catch (error: unknown) {
-    return formatBotError(error);
+    return reportCommandFailure("list_workflows", error, ctx);
   }
 }
 
@@ -51,7 +66,7 @@ export async function handleWorkflowExecute(
     );
     return `✅ BotWorkflow execution started!\nExecution ID: ${response.execution_id}\nStatus: ${response.status}`;
   } catch (error: unknown) {
-    return formatBotError(error);
+    return reportCommandFailure("execute_workflow", error, ctx);
   }
 }
 
@@ -64,7 +79,7 @@ export async function handleTodoList(
     const response = await gaia.listTodos(ctx, { completed });
     return formatTodoList(response.todos);
   } catch (error: unknown) {
-    return formatBotError(error);
+    return reportCommandFailure("list_todos", error, ctx);
   }
 }
 
@@ -85,7 +100,7 @@ export async function handleTodoCreate(
     );
     return `✅ BotTodo created!\n\n${formatTodo(todo)}`;
   } catch (error: unknown) {
-    return formatBotError(error);
+    return reportCommandFailure("create_todo", error, ctx);
   }
 }
 
@@ -98,7 +113,7 @@ export async function handleTodoComplete(
     const todo = await gaia.completeTodo(todoId, ctx);
     return `✅ BotTodo marked as complete: ${todo.title}`;
   } catch (error: unknown) {
-    return formatBotError(error);
+    return reportCommandFailure("complete_todo", error, ctx);
   }
 }
 
@@ -114,7 +129,7 @@ export async function handleConversationList(
       gaia.getFrontendUrl(),
     );
   } catch (error: unknown) {
-    return formatBotError(error);
+    return reportCommandFailure("list_conversations", error, ctx);
   }
 }
 
@@ -127,7 +142,7 @@ export async function handleWorkflowGet(
     const response = await gaia.getWorkflow(workflowId, ctx);
     return formatWorkflow(response);
   } catch (error: unknown) {
-    return formatBotError(error);
+    return reportCommandFailure("get_workflow", error, ctx);
   }
 }
 
@@ -144,7 +159,7 @@ export async function handleWorkflowCreate(
     );
     return `✅ BotWorkflow created!\n\n${formatWorkflow(workflow)}`;
   } catch (error: unknown) {
-    return formatBotError(error);
+    return reportCommandFailure("create_workflow", error, ctx);
   }
 }
 
@@ -157,7 +172,7 @@ export async function handleTodoDelete(
     await gaia.deleteTodo(todoId, ctx);
     return "✅ BotTodo deleted successfully";
   } catch (error: unknown) {
-    return formatBotError(error);
+    return reportCommandFailure("delete_todo", error, ctx);
   }
 }
 
@@ -197,7 +212,7 @@ export async function handleWorkflowDelete(
     await gaia.deleteWorkflow(workflowId, ctx);
     return "✅ BotWorkflow deleted successfully";
   } catch (error: unknown) {
-    return formatBotError(error);
+    return reportCommandFailure("delete_workflow", error, ctx);
   }
 }
 
@@ -245,7 +260,7 @@ export async function handleNewConversation(
       ctx.isDm,
     );
     return "Started a new conversation. Your previous conversation is saved and accessible from the GAIA web app.";
-  } catch (_error: unknown) {
-    return "Failed to start a new conversation. Please try again.";
+  } catch (error: unknown) {
+    return reportCommandFailure("reset_session", error, ctx);
   }
 }

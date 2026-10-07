@@ -153,12 +153,18 @@ async def seed_dev_data(
     # by consumers.
     platform_user_ids = {platform: f"dev-{platform}-{user_id}" for platform in platform_links}
 
-    # Every link is checked before any is written, and links go before todos and
-    # conversations: a dev user with a real account already linked gets its 409
-    # with nothing written.
+    # Every link is checked before any is written, so another user's account is a 409
+    # with nothing written; a different account of this user's own is replaced, since
+    # the seed decides who the harness's synthetic id reaches.
     try:
-        for platform, platform_user_id in platform_user_ids.items():
-            await PlatformLinkService.ensure_linkable(user_id, platform, platform_user_id)
+        replaced = [
+            platform
+            for platform, platform_user_id in platform_user_ids.items()
+            if await _holds_other_account(user_id, platform, platform_user_id)
+        ]
+        await asyncio.gather(
+            *(PlatformLinkService.unlink_account(user_id, platform) for platform in replaced)
+        )
         await asyncio.gather(
             *(
                 PlatformLinkService.link_account(
@@ -210,6 +216,15 @@ async def seed_dev_data(
         platforms_linked=platform_links,
         platform_user_ids=platform_user_ids,
     )
+
+
+async def _holds_other_account(user_id: str, platform: str, platform_user_id: str) -> bool:
+    """Return whether the user has a different account linked on platform; raise if another user holds this one."""
+    try:
+        await PlatformLinkService.ensure_linkable(user_id, platform, platform_user_id)
+    except AccountHasDifferentPlatformError:
+        return True
+    return False
 
 
 async def delete_dev_user(email: str) -> DeleteDevUserResponse:

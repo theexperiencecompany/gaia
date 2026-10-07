@@ -57,6 +57,7 @@ The **only** agent the user talks to. Owns the conversation thread, narrates pro
 
 - `call_executor` — the **only** way to do work. Non-blocking; returns `Task accepted (task_id: ...)` immediately.
 - `cancel_executor` — cancel the most recent background run.
+- `browser_step_done` / `stop_browser_task` / `tell_browser_task` (`apps/api/app/agents/tools/browser_chat_tools.py`) — what the user says to a browser task already running: finish the step it is paused on (with a note, or a redirect), stop it, or tell it something. Each finds the task from the turn (`apps/api/app/services/browser/chat_task.py`), never from a model-written id, and acts only on a turn answering the user's own message. The `<browser_task>` frame (`apps/api/app/agents/core/nodes/browser_task_status.py`) tells comms each turn whether a task runs or waits, and on what.
 - Memory tools — `add_memory`, `search_memory`, `forget_memory`, `read_memory_document` (see §8).
 - Discovery tools (`apps/api/app/agents/tools/discovery_tools.py`) — `find_integration` and `search_public_workflows` are read-only catalogue lookups. The connect card is not one of them: comms hands connecting to the executor, whose `connect_integration` tool and integration checker are the one card source.
 
@@ -76,7 +77,7 @@ The worker tier. Has access to **everything** that does work.
 
 ### Initial tool IDs (the executor's initial bind set)
 
-`activate_integration`, `handoff`, `execute`, `get_tool_schema`, `plan_tasks`, `update_tasks`, `read`, `bash`, `deep_research`, `list_running_subagents`, `message_subagent`, `cancel_subagent`, `read_manual`, `create_tracked_todo`, `update_tracked_todo`, `complete_tracked_todo`, `search_todo_context`, `list_tracked_todos`, `list_trigger_fields`, `subscribe_todo_to_trigger`, `unsubscribe_todo_from_trigger`, `save_learned_skill`, `write_playbook`, `decline_playbook`, `read_playbook`, `disable_playbook`, `add_device`, `approve_device_pairing`, `list_devices`, `run_on_device`.
+`activate_integration`, `handoff`, `execute`, `get_tool_schema`, `plan_tasks`, `update_tasks`, `read`, `bash`, `deep_research`, `list_running_subagents`, `message_subagent`, `cancel_subagent`, `read_manual`, `create_tracked_todo`, `update_tracked_todo`, `complete_tracked_todo`, `search_todo_context`, `list_tracked_todos`, `list_trigger_fields`, `subscribe_todo_to_trigger`, `unsubscribe_todo_from_trigger`, `save_learned_skill`, `browser_task`, `write_playbook`, `decline_playbook`, `read_playbook`, `disable_playbook`, `add_device`, `approve_device_pairing`, `list_devices`, `run_on_device`.
 
 ### Handoff lifecycle (background, async)
 
@@ -102,7 +103,7 @@ One rule governs it:
 
 - `apps/api/app/agents/core/background/executor_capture.py` — per-stream collector for executor tool events so background/workflow runs render identically to live chat.
 - `apps/api/app/agents/core/background/executor_channel.py` — **the live channel.** `ExecutorInbox` (per-conversation pending messages), the `decide_drain` rule, the `<user_interjection>` / `<executor_interrupted>` framing, and `drain_inbox_hook`. See "Live channel" below.
-- `apps/api/app/agents/core/background/executor_queue.py` — the `busy` Redis lock (`try_acquire_lock` SET NX, `release_lock_if_owned`, `extend_lock_if_owned`, `is_executor_busy`) plus `prepare_run_from_item` / `build_run_item`, which materialize a **detached** run — one that owns its own stream. `open_detached_stream` / `close_detached_stream` are the one way any detached run (executor or background subagent) mints its stream, announces it with `executor.stream_started` (folded into `bot_message_id`'s message when given) and ends it. There is no queue of pending runs.
+- `apps/api/app/agents/core/background/executor_queue.py` — the `busy` Redis lock (`try_acquire_lock` SET NX, `release_lock_if_owned`, `extend_lock_if_owned`; every holder renews its liveness with `keep_alive`, and `reclaim_dead_lock` is the one way a dead holder's lock is freed) plus `prepare_run_from_item` / `build_run_item`, which materialize a **detached** run — one that owns its own stream. `open_detached_stream` / `close_detached_stream` are the one way any detached run (executor or background subagent) mints its stream, announces it with `executor.stream_started` (folded into `bot_message_id`'s message when given) and ends it. There is no queue of pending runs.
 - `apps/api/app/agents/core/background/result_delivery.py` — `deliver_result()` and `persist_cancelled_run()`. Finished text → narrate and deliver as new bot message; cancelled → persist `tool_data` only if `executor_owns_tool_data`.
 - `apps/api/app/agents/core/background/session.py` — `StreamSession`, `ExecutorRun`, `RunKind` (LIVE shares comms' stream / QUEUED owns its own). **One session per `stream_id`** replaces the old module-level dict soup.
 - `apps/api/app/agents/core/background/redis_writer.py` — `make_redis_stream_writer(stream_id)` routes executor tool events back to the SSE consumer.
@@ -150,7 +151,7 @@ Provider and built-in integrations are NOT subagents: the executor loads them in
 
 One module builds the per-run context for comms, the executor, MCP/spawned subagents and the workflow author. Tier differences are rows in a table, not divergent code paths.
 
-- `apps/api/app/agents/context/slots.py` — `PromptSlot`, the canonical message order `[static, dynamic_stable, onboarding, todo_context, background_executor, executor_status, memory_recall, …conversation…, time]`, plus the marker read/write helpers. The two constraints that fix this order (Gemini's leading-contiguous system block; longest-common-prefix cache matching) are documented there.
+- `apps/api/app/agents/context/slots.py` — `PromptSlot`, the canonical message order `[static, dynamic_stable, onboarding, todo_context, background_executor, executor_status, browser_task, memory_recall, …conversation…, time]`, plus the marker read/write helpers. The two constraints that fix this order (Gemini's leading-contiguous system block; longest-common-prefix cache matching) are documented there.
 - `apps/api/app/agents/context/tiers.py` — `AgentTier`, the closed set of tiers a section declares applicability against.
 - `apps/api/app/agents/context/section_context.py` — `SectionContext`, the closed shape every section reads from. Its own module so the fetchers can take it without importing the table that calls them.
 - `apps/api/app/agents/context/sections.py` — `Section(id, slot, applies_to, order, fetch)` and the section × tier table. A row points straight at its body in `fetchers.py`; the private functions here are only the sections that genuinely branch before rendering.
@@ -383,6 +384,7 @@ Integration tools (Composio + per-user MCP — the thousands) are **never bound*
 ### 9.3 Subagent coordination
 
 - Background results need no join tool: a finished background subagent lands its result in the executor inbox (waking a rested executor), and the pre-model drain hook injects it before the next reasoning step. Steering is `list_running_subagents` / `message_subagent` / `cancel_subagent`. A background subagent parked on an approval announces itself the same way and resumes on its own when the user decides (see §4 Delegation).
+- A background browser job needs no join tool either: its ending lands in the executor inbox the same way, as a `<browser_result>` entry (see Browser automation).
 
 ### 9.4 Lifecycle / orchestration
 
@@ -533,6 +535,33 @@ Integration tools (Composio + per-user MCP — the thousands) are **never bound*
 - **Workspace path helpers** — `apps/api/app/agents/workspace/paths.py` (canonical `/workspace/...` paths, session_dir, runs_log_dir).
 - **Namespace derivation** — `apps/api/app/helpers/namespace_utils.py` (derives tool namespace from integration_id + server_url).
 - **Wide-event logging** — `libs/shared/py/wide_events.py` (used throughout for structured logging with `log.set(...)`).
+
+---
+
+## Browser automation
+
+A browser task is a background job, not a tool call the turn holds open. `browser_task` claims the conversation's one browser slot, enqueues an ARQ job and, in a live conversation, returns a started notice at once (the background-subagent pattern); the run itself happens in the worker and outlives the turn that asked for it. A headless run (workflow, scheduled todo) blocks in the tool call until the job ends, decided at enqueue.
+
+- `apps/api/app/agents/tools/browser_tool.py`: the executor's one browser tool. `browser_task` starts a job; it returns the job's ending only when headless.
+- `apps/api/app/services/browser/jobs.py`: the Redis state one run shares across processes. The per-conversation slot lease (one browser per conversation, heartbeated by the worker), the state of a job that has not ended (queued or running), and the one terminal record of how it ended, result included (`record_ending`, SET-once, read through `done_state`).
+- `apps/api/app/services/browser/job_teller.py`: the one telling. A background job's ending lands in the executor inbox in the same transaction that records it: a finished run as a `BROWSER_RESULT` entry, whose executor run is the only teller; a stop as a `BROWSER_STOPPED` notice that wakes nobody, because the stop already answered the user.
+- `apps/api/app/workers/tasks/browser_tasks.py`: `run_browser_job`, registered with no retry, because a browser run is not idempotent. It holds the conversation's slot and a per-job worker lease, both heartbeated, and wakes the executor for a landed result. `reap_browser_jobs` (a 15 s cron on the main worker, `browser_worker.browser_reaper_cron`) ends a job only on positive evidence that its worker died (not queued, no lease, for a confirm window), through the run's own emitter on a `worker_lost` card; and it wakes any landed result still unread past a short grace. A landed result's wake is recorded with the landing and kept until its inbox entry is read.
+- Executor liveness: every executor run renews `executor:alive:<conversation>` while its process lives (a parked run for its park), so a woken run that died with its process does not hold the busy lock for its 30-minute TTL: `wake_executor_for_inbox` reclaims a lock whose holder stopped beating.
+- `apps/api/app/services/browser/job_runner.py`: `execute_browser_job`, the process-agnostic run. No stream writer, no LangGraph config, no tool result: every card snapshot goes to the job's own feed and to the bot platform, and every failure becomes a terminal result card.
+- `apps/api/app/services/browser/job_events.py`: one replayable Redis stream per job. A reader starts from `0-0`, so one that starts late or restarts still shows the run from step 1; a sentinel frame closes it.
+- `apps/api/app/services/browser/job_relay.py`: `relay_job_cards`, running beside the turn that started a background job. It replays the feed onto a detached stream of its own, folded into that turn's message the way a background subagent's is (`folded_stream.py` saves the cards there when the job ends). A headless run follows the same feed into its own stream while it blocks.
+- Stops: `job_stop.stop_job` records STOPPED first or loses to the run's own ending; the handoff card's Cancel is such a stop. An executor run that crashes stops its conversation's job.
+- `apps/api/app/services/browser/runner.py`: `BrowserTaskRunner` owns one task's progress, handoff, budgets and metering.
+- `apps/api/app/services/browser/agent_run.py`: `BrowserAgentRun` runs one Browser-Use `Agent` on the browser agent model (`llm.py`). Its initial action is `jev` on the part of the task the start page is for, so Jev drives first and the agent's first model call reads what Jev did; the agent then finishes with the answer, hands `jev` another single-page objective, or acts itself (moving between pages and reading them are always its own). The agent is the only finisher and the only answer writer.
+- `apps/api/app/services/browser/jev/`: Jev, ported from browser-use/jev-ultrafast. What Jev does and leaves to the agent is stated once, in `JEV_DESCRIPTION` (`tool.py`), the `jev` action's description. `snapshot.js` reads the page atomically (controls with live values, visible text, code-owned node ids, freshness guards; open shadow roots and same-origin frames too); `page.py` observes and executes over the Browser-Use session's CDP connection (per-key typing, occlusion re-checked before input, no retried mutation); `decision.py` asks one decisions request per step (an operation head and one target head per operation); `loop.py` runs a burst until the agent's `done_when` holds, BLOCKED, or it stops unfinished; `tool.py` is the `jev` action and the report the agent reads; `gateway.py` is the decisions client.
+- Credentials: `browser_task` takes `secrets`; the task carries `<secret>name</secret>` and only the page receives a value (`jev/secrets.py`).
+- `apps/api/app/services/browser/ledger.py`: every model call of a run (Jev, text helper, agent), metered the moment it lands so the user's budget binds mid-run.
+- Mid-task messages: comms is the one reader of what the user says to a running or paused task. Its `<browser_task>` frame shows the task's state, and its tools resolve the paused step (`browser_step_done`), stop the job (`stop_browser_task`) or post to the job's inbox (`tell_browser_task`, `jobs.py`), which ends the current Jev burst and reaches the agent as a follow-up request.
+- Engines: Chrome by default; `FeatureFlag.BROWSER_OBSCURA` opts a user into Obscura with Chrome as the fallback (`job_runner.hosts_for`). Browser-Use patches that work around Obscura gaps apply to Obscura sessions only (`app/patches/obscura_sessions.py`).
+- Handoff: `request_human_takeover` and `solve_captcha_with_help`, registered in `apps/api/app/services/browser/tools.py`, are the agent's own way to pause; the runner blocks the task and resumes it with the user's note.
+- `apps/api/app/services/browser/stalled_loads.py`: a top-level load whose site sends nothing for 15 s is stopped, because Chrome answers no script on a tab until its pending navigation gets a first byte; the agent (or Jev's report) is told which page stalled.
+- Each run takes its own bubus event lock (`app/patches/browser_use_run_lock_patch.py`): bubus otherwise serialises every Browser-Use session in the worker process.
+- Browser-Use is pinned (`browser-use==0.11.13` in `apps/api/pyproject.toml`). GAIA's changes to it are overrides on objects each run builds, not patches: `GaiaBrowserSession` (`services/browser/browser_use_session.py`: per-user stealth script on every tab, capped load wait, document titles) and `GaiaTools` (`services/browser/browser_use_tools.py`: secret values only for `input` on the secret's site, read results shown in full). What goes to the user (logins, payments, OTPs, bot checks on sites the user named) is `BROWSER_HUMAN_CHECKS`, in the agent's system message.
 
 ---
 

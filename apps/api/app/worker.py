@@ -8,12 +8,14 @@ import stackprinter
 from app.constants.email import SIGNUP_EMAIL_TASK
 from app.constants.onboarding import INTELLIGENCE_TASK
 from app.constants.payments import SUBSCRIPTION_WORKFLOW_SYNC_TASK
+from app.constants.todos import TODO_RUN_FINISH_MAX_TRIES, TODO_RUN_FINISH_TASK
 
 # Needs the same monkey-patches as the API process (main.py) — without this,
 # custom tools 500 with "Missing user_id in auth_credentials" because the
 # CustomTool user_id-injection patch never loads here.
 import app.patches  # noqa: F401 -- applies monkeypatches on import; must run before the patched SDKs are used
-from app.workers.config.worker_settings import WorkerSettings
+from app.workers.browser_worker import browser_reaper_cron
+from app.workers.config.worker_settings import WorkerFunction, WorkerSettings
 from app.workers.lifecycle import shutdown, startup
 from app.workers.task_envelope import arq_task
 from app.workers.tasks import (
@@ -46,6 +48,7 @@ from app.workers.tasks.scheduler_recovery_tasks import rescan_pending_scheduled_
 from app.workers.tasks.subscription_workflow_tasks import sync_workflows_for_subscription_state
 from app.workers.tasks.tracked_todo_tasks import (
     execute_tracked_todo,
+    finish_tracked_todo_run,
     resume_tracked_todo,
     safety_net_check_orphaned_todos,
 )
@@ -104,13 +107,21 @@ _deliver_signup_emails = func(
 )
 _sweep_undelivered_signup_emails = arq_task(sweep_undelivered_signup_emails)
 _warm_device_servers = arq_task(warm_device_servers)
+# Named from the constant delivery enqueues by; finish_tracked_todo_run bounds its own tries.
+_finish_tracked_todo_run = func(
+    arq_task(finish_tracked_todo_run),
+    name=TODO_RUN_FINISH_TASK,
+    max_tries=TODO_RUN_FINISH_MAX_TRIES,
+)
 # Named from the constant the webhook enqueues by, so the two cannot drift.
 _sync_workflows_for_subscription_state = func(
     arq_task(sync_workflows_for_subscription_state),
     name=SUBSCRIPTION_WORKFLOW_SYNC_TASK,
 )
 
-WorkerSettings.functions = [
+# Every job on the default queue. Browser jobs have their own worker
+# (app.workers.browser_worker), started from the worker lifecycle.
+TASK_FUNCTIONS: list[WorkerFunction] = [
     _sweep_hil_approvals,
     _process_reminder,
     _cleanup_expired_reminders,
@@ -128,6 +139,7 @@ WorkerSettings.functions = [
     _prune_checkpoint_versions,
     _execute_tracked_todo,
     _resume_tracked_todo,
+    _finish_tracked_todo_run,
     _dispatch_todo_subscriptions,
     _backfill_active_users,
     _backfill_user_memories,
@@ -140,6 +152,7 @@ WorkerSettings.functions = [
     _warm_device_servers,
     _sync_workflows_for_subscription_state,
 ]
+WorkerSettings.functions = TASK_FUNCTIONS
 
 WorkerSettings.cron_jobs = [
     cron(
@@ -149,6 +162,9 @@ WorkerSettings.cron_jobs = [
         _sweep_hil_approvals,
         second=0,
     ),
+    # Every few seconds: a browser job whose worker died is ended, and a result no
+    # run was woken for is told, within moments rather than a lock's TTL.
+    browser_reaper_cron(),
     cron(
         _cleanup_expired_reminders,
         hour=0,  # At midnight

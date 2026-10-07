@@ -54,7 +54,9 @@ from app.services.mcp.mcp_client import (
     MCPClient,
     StepUpAuthRequiredError,
     _extract_response_signal,
+    _is_terminal_auth_failure,
     _parse_device_server_url,
+    _spawn_background,
     get_mcp_client,
 )
 from app.services.mcp.mcp_client_pool import MCPClientPool, PooledClient
@@ -1455,7 +1457,7 @@ class TestMCPTokenStoreIsConnected:
         store = MCPTokenStore(user_id=USER_ID)
         cred = _make_credential(
             status=MCPCredentialStatus.CONNECTED,
-            token_expires_at=datetime.now().replace(tzinfo=None) - timedelta(minutes=1),
+            token_expires_at=datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=1),
         )
         store.get_credential = AsyncMock(return_value=cred)
 
@@ -1465,7 +1467,7 @@ class TestMCPTokenStoreIsConnected:
         store = MCPTokenStore(user_id=USER_ID)
         cred = _make_credential(
             status=MCPCredentialStatus.CONNECTED,
-            token_expires_at=datetime.now().replace(tzinfo=None) + timedelta(minutes=5),
+            token_expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=5),
         )
         store.get_credential = AsyncMock(return_value=cred)
 
@@ -6111,3 +6113,42 @@ class TestServerUrlMatchingHelpersExact:
 
     def test_connectable_candidate_ids_empty_for_no_docs(self):
         assert MCPClient._connectable_candidate_ids([]) == []
+
+
+class TestTerminalAuthFailure:
+    """Only a demonstrably dead credential may wipe an integration."""
+
+    @staticmethod
+    def _http_error(status: int, body: object) -> Exception:
+        response = MagicMock(status_code=status)
+        response.json.return_value = body
+        return _ErrorWithResponse(response)
+
+    def test_a_spec_oauth_error_code_in_the_body_is_terminal(self):
+        error = self._http_error(400, {"error": "INVALID_GRANT", "error_description": "revoked"})
+
+        assert _is_terminal_auth_failure(error) is True
+
+    def test_a_non_terminal_oauth_error_code_is_not(self):
+        error = self._http_error(400, {"error": "temporarily_unavailable"})
+
+        assert _is_terminal_auth_failure(error) is False
+
+    def test_a_body_without_an_error_code_is_not(self):
+        assert _is_terminal_auth_failure(self._http_error(400, {"detail": "bad"})) is False
+
+
+class TestSpawnBackground:
+    async def test_the_work_runs_in_its_own_wide_event_named_for_it(self):
+        """Detached from the request, its log.set() fields reach Loki only inside a boundary."""
+        seen: dict[str, Any] = {}
+
+        async def _work() -> None:
+            seen.update(log.get())
+
+        task = _spawn_background(_work(), "reconnect")
+        assert task is not None
+        await task
+
+        assert task.get_name() == "mcp:reconnect"
+        assert seen["task"] == "mcp:reconnect"

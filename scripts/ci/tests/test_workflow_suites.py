@@ -49,21 +49,41 @@ def _step_running(job: dict[str, Any], command: str) -> dict[str, Any]:
 def test_the_matrix_is_the_shared_slice_file(workflow: dict[str, Any]) -> None:
     # One definition, read by CI and by the Dagger harness alike: an inline
     # matrix is a second copy, and the local run drifts from it silently.
-    matrix = workflow["jobs"]["test-python"]["strategy"]["matrix"]["slice"]
-    assert matrix == "${{ fromJSON(needs.detect.outputs.python_slices) }}"
-    detect = workflow["jobs"]["detect"]
-    assert detect["outputs"]["python_slices"] == "${{ steps.slices.outputs.python_slices }}"
+    for job, key in (("test-python", "python_slices"), ("test-python-engines", "engine_slices")):
+        matrix = workflow["jobs"][job]["strategy"]["matrix"]["slice"]
+        assert matrix == f"${{{{ fromJSON(needs.detect.outputs.{key}) }}}}"
+        detect = workflow["jobs"]["detect"]
+        assert detect["outputs"][key] == f"${{{{ steps.slices.outputs.{key} }}}}"
     step = next(s for s in detect["steps"] if s.get("id") == "slices")
     assert step["run"].startswith("bash scripts/ci/pytest.sh slices")
 
 
-def test_pytest_sh_publishes_exactly_the_slice_file(slices: list[dict[str, Any]]) -> None:
-    line = subprocess.run(
+def test_pytest_sh_publishes_exactly_the_slice_file_split_by_engine_need(
+    slices: list[dict[str, Any]],
+) -> None:
+    lines = subprocess.run(
         ["bash", str(PYTEST_SH), "slices"], check=True, capture_output=True, text=True
-    ).stdout.strip()
-    key, _, payload = line.partition("=")
-    assert key == "python_slices"
-    assert json.loads(payload) == slices
+    ).stdout.splitlines()
+    published = {
+        key: json.loads(payload) for key, _, payload in (line.partition("=") for line in lines)
+    }
+    assert published == {
+        "python_slices": [s for s in slices if s["engines"] == "false"],
+        "engine_slices": [s for s in slices if s["engines"] == "true"],
+    }
+
+
+def test_the_engine_slices_wait_on_the_engine_build_and_no_other_slice_does(
+    workflow: dict[str, Any],
+) -> None:
+    # A cold Obscura build is tens of minutes: inside a slice's cap it timed the
+    # browser slice out before it tested anything, and as a need of every slice
+    # it would hold the unit slices behind it.
+    jobs = workflow["jobs"]
+    assert "obscura-bin" in jobs["test-python-engines"]["needs"]
+    assert "obscura-bin" not in jobs["test-python"]["needs"]
+    assert jobs["test-python-engines"]["steps"] is jobs["test-python"]["steps"]
+    assert jobs["obscura-bin"]["timeout-minutes"] >= 60
 
 
 def test_the_dagger_harness_runs_the_same_slices_through_the_same_script() -> None:

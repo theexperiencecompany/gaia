@@ -13,8 +13,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.agents.core.subagents.subagent_runner import SubagentOutcome
-from app.agents.llm import lane as lane_module
 from app.agents.llm.lane import AgentRole, dev_option_for
+from app.config.settings import settings
 from app.constants.llm import DEV_MODEL_OPTIONS
 from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentTurn
 from app.models.user_models import OnboardingPreferences, OnboardingSubdocument
@@ -150,7 +150,7 @@ class TestTheModelADirectRunIsAskedFor:
         with (
             patch(f"{MODULE}.require_dev_user", AsyncMock(return_value=_dev_user_doc())),
             patch(f"{MODULE}.build_agent_config", build_config),
-            patch.object(lane_module.settings, "DEV_DEFAULT_MODEL", dev_default),
+            patch.object(settings, "DEV_DEFAULT_MODEL", dev_default),
         ):
             await _dev_base_configurable("dev@gaia.local", "conv-1", "executor_agent", model)
         return build_config.call_args.kwargs["lane"]
@@ -176,7 +176,7 @@ class TestTheModelADirectRunIsAskedFor:
         ctx = SimpleNamespace(agent_name="executor_agent", configurable={"thread_id": "t"})
         with (
             _direct_run("prepare_executor_execution", (ctx, None), SubagentOutcome("ok")) as seams,
-            patch.object(lane_module.settings, "DEV_DEFAULT_MODEL", None),
+            patch.object(settings, "DEV_DEFAULT_MODEL", None),
         ):
             await run_executor_direct("dev@gaia.local", "task", "conv-1", model="glm-5.2")
 
@@ -188,7 +188,7 @@ class TestTheModelADirectRunIsAskedFor:
             _direct_run(
                 "prepare_subagent_execution", (ctx, None, None), SubagentOutcome("ok")
             ) as seams,
-            patch.object(lane_module.settings, "DEV_DEFAULT_MODEL", None),
+            patch.object(settings, "DEV_DEFAULT_MODEL", None),
         ):
             await run_subagent_direct("dev@gaia.local", "gmail", "task", "conv-1", model="glm-5.2")
 

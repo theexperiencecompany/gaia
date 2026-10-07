@@ -12,7 +12,7 @@ passed through when unrecognised); the keys this module acts on are read
 through the private models below.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import json
 
@@ -94,11 +94,12 @@ class ChunkAccumulators:
     """Per-turn accumulators that :func:process_data_chunk mutates in place."""
 
     tool_entries: list[ToolDataEntry]
-    subagent_starts: dict[str, dict[str, object]]
-    subagent_ends: dict[str, dict[str, object]]
     tool_outputs: dict[str, str]
     todo_progress: dict[str, dict[str, object]]
     follow_up_actions: list[str]
+    # Only filled when process_data_chunk runs with forward_subagents.
+    subagent_starts: dict[str, dict[str, object]] = field(default_factory=dict)
+    subagent_ends: dict[str, dict[str, object]] = field(default_factory=dict)
 
 
 async def process_data_chunk(

@@ -510,6 +510,29 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             await self._invalidate(scope)
         return result.matched_count
 
+    async def _apply_pipeline_update_unfetched(
+        self,
+        filter_: Mapping[str, object],
+        pipeline: Sequence[Mapping[str, object]],
+        *,
+        scope: str | None,
+        doc_id: str | None = None,
+        extra_filter: Mapping[str, object] | None = None,
+    ) -> int:
+        """Apply an aggregation-pipeline update via update_one, without reading it back.
+
+        For a write that must read the document it changes in the same atomic update.
+        scope None marks a write no cached read shows, so nothing is invalidated.
+        """
+        result = await get_async_collection(self.collection_name).update_one(
+            {**dict(filter_), **(extra_filter or {})}, [dict(stage) for stage in pipeline]
+        )
+        if result.matched_count and scope is not None:
+            if doc_id is not None:
+                await self._cache_evict(scope, doc_id)
+            await self._invalidate(scope)
+        return result.matched_count
+
     async def _find_one_projected(
         self,
         filter_: Mapping[str, object],

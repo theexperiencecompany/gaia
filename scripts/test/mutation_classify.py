@@ -1,4 +1,4 @@
-"""Classify one surviving mutant: CHANGED / UNCHANGED / LOGGING / EQUIV.
+"""Classify one surviving mutant: CHANGED / UNCHANGED / LOGGING / LINTED / EQUIV.
 
 Extracted from mutation.sh, where it lived twice verbatim — once for the
 survivor loop and once for the no-covering-test loop. Two copies of 356 lines
@@ -8,7 +8,7 @@ invoked from both.
 Argv: <survivor-line> <workdir> <changed-ranges-json> <module-path>
 
 Prints exactly one verdict and exits 1 for a verdict the lane must act on
-(CHANGED/UNCHANGED/LOGGING) or 0 for EQUIV. Any other exit is a classifier
+(CHANGED/UNCHANGED/LOGGING/LINTED) or 0 for EQUIV. Any other exit is a classifier
 failure, and the caller fails closed on it rather than dropping the mutant —
 an unclassified survivor silently leaving every bucket is the same
 silence-read-as-success this gate exists to stop.
@@ -19,6 +19,7 @@ import json
 from pathlib import Path
 import re
 import sys
+from urllib.parse import urlparse
 
 survivor, workdir, changed_ranges = sys.argv[1].strip().split(": ", 1)[0], sys.argv[2], sys.argv[3]
 module_path = sys.argv[4]
@@ -307,17 +308,33 @@ def _boolean_consumer(node) -> bool:
     return isinstance(parent, ast.If | ast.IfExp) and parent.test is node
 
 
-def _early_exit_on_falsy(stmt, name: str) -> bool:
-    """Return True for ``if not name: <exit>`` — everything after runs only on truthy."""
+def _is_not_name(node, name: str) -> bool:
     return (
+        isinstance(node, ast.UnaryOp)
+        and isinstance(node.op, ast.Not)
+        and isinstance(node.operand, ast.Name)
+        and node.operand.id == name
+    )
+
+
+def _early_exit_on_falsy(stmt, name: str) -> bool:
+    """Return True for ``if not name: <exit>`` — everything after runs only on truthy.
+
+    An ``or`` chain holding ``not name`` is the same guard for that name: a falsy
+    value makes the whole test true, so ``if not w or not h: return`` leaves
+    every later read of ``w`` (and of ``h``) on the truthy side.
+    """
+    if not (
         isinstance(stmt, ast.If)
         and not stmt.orelse
-        and isinstance(stmt.test, ast.UnaryOp)
-        and isinstance(stmt.test.op, ast.Not)
-        and isinstance(stmt.test.operand, ast.Name)
-        and stmt.test.operand.id == name
         and all(isinstance(s, ast.Return | ast.Raise | ast.Continue | ast.Break) for s in stmt.body)
+    ):
+        return False
+    test = stmt.test
+    operands = (
+        test.values if isinstance(test, ast.BoolOp) and isinstance(test.op, ast.Or) else [test]
     )
+    return any(_is_not_name(operand, name) for operand in operands)
 
 
 def _tests_truthy(test, name: str) -> bool:
@@ -371,9 +388,21 @@ def _through_casts(node):
     return node
 
 
+def _through_conditionals(node):
+    """Hop out of an enclosing ``a if c else node`` — on that arm the expression IS the node.
+
+    The reasoning extractor binds ``x.get(k) if isinstance(x, dict) else getattr(x, k, "")``
+    and truth-tests the name; the lookup's consumer is the conditional's consumer.
+    """
+    parent = getattr(node, "parent", None)
+    while isinstance(parent, ast.IfExp) and (parent.body is node or parent.orelse is node):
+        node, parent = parent, getattr(parent, "parent", None)
+    return node
+
+
 def _only_boolean_uses(call) -> bool:
     """Return True when nothing downstream of `call` can tell one falsy value from another."""
-    call = _through_casts(call)
+    call = _through_conditionals(_through_casts(call))
     if _boolean_consumer(call):
         return True
     # Bound to a name first: then EVERY read of that name has to be blind to
@@ -777,6 +806,269 @@ def _unreachable_match_arm(path: str, line_no: int) -> bool:
     return False
 
 
+# The callee defaults compared against below, hard-coded rather than read off
+# the real callable with inspect.signature. The classifier is pure-AST and
+# imports nothing outside the stdlib on purpose: the lane runs it once per
+# survivor, and importing the callee's module to read a default would mean
+# importing crawl4ai (which pulls in playwright and litellm) on every
+# invocation — seconds of startup each, and a whole new failure mode, since an
+# ImportError here fails the classifier closed and reports an unobservable
+# mutant as CHANGED. Every value below was verified against the constructed
+# object, not read off documentation: two BrowserConfigs built with and without
+# these arguments have identical vars().
+_CALLEE_ARG_DEFAULTS: dict[tuple[str, str], object] = {
+    ("BrowserConfig", "headless"): True,
+    ("BrowserConfig", "browser_mode"): "dedicated",
+    ("BrowserConfig", "cdp_cleanup_on_close"): False,
+    # int.from_bytes(bytes, byteorder="big", *, signed=False) — the default has
+    # been "big" since Python 3.11, and this repo runs 3.12.
+    ("int.from_bytes", "byteorder"): "big",
+}
+
+# The same defaults for callees that take the argument positionally, by slot.
+_CALLEE_POSITIONAL_NAMES: dict[tuple[str, int], str] = {
+    ("int.from_bytes", 1): "byteorder",
+}
+
+_MISSING = object()
+
+
+def _callee_name(func) -> str | None:
+    """Dotted source name of a call's callee — ``BrowserConfig``, ``int.from_bytes``."""
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        prefix = _callee_name(func.value)
+        return f"{prefix}.{func.attr}" if prefix else None
+    return None
+
+
+def _node_span(node):
+    return (node.lineno, node.col_offset, node.end_lineno or node.lineno, node.end_col_offset)
+
+
+def _literal_equals(node, expected: object) -> bool:
+    """Return True when ``node`` is a literal equal to ``expected``, same type and all."""
+    try:
+        value = ast.literal_eval(node)
+    except (ValueError, SyntaxError):
+        return False
+    # `True == 1` in Python, and a headless=1 would NOT be the default it looks like.
+    return type(value) is type(expected) and value == expected
+
+
+def _argument_at(span, line_no: int, col: int, orig_line: str) -> bool:
+    """Return True when the mutation's column, or its whole line, is the argument at ``span``.
+
+    The column alone is not enough for an argument mutmut DELETED off its own
+    line: the body then shifts up, so the "differing column" is computed against
+    whatever followed, and a closing ``)`` differs from the argument's indent
+    rather than from the argument itself. An argument that occupies its entire
+    line is identified by the line, not the column.
+    """
+    if _within(span, line_no, col):
+        return True
+    start_line, start_col, end_line, end_col = span
+    if start_line != line_no or end_line != line_no:
+        return False
+    return not orig_line[:start_col].strip() and orig_line[end_col:].strip() in ("", ",")
+
+
+def _argument_deleted(orig_line: str, mut_line: str, span, keyword: str | None) -> bool:
+    """Return True when the mutant DELETED the argument at ``span`` rather than re-valuing it.
+
+    mutmut removes the argument's text and its separator, so what is left of the
+    original line is exactly what the mutant line must be. The second branch is
+    the argument that WAS the whole line: mutmut drops the line outright, so the
+    "mutant line" at this index is whatever followed it. Requiring the keyword to
+    be gone from that line is what separates a deleted line from a re-valued one
+    — ``headless=None,`` still reads ``headless=``.
+    """
+    start_line, start_col, end_line, end_col = span
+    if start_line != end_line:
+        return False
+    end = end_col
+    while end < len(orig_line) and orig_line[end] in ", ":
+        end += 1
+    without = orig_line[:start_col] + orig_line[end:]
+    if without.rstrip() == mut_line.rstrip():
+        return True
+    if keyword is None:
+        return False
+    return not without.strip() and f"{keyword}=" not in mut_line
+
+
+def _unobservable_default_argument(
+    path: str, line_no: int, col: int, orig_line: str, mut_line: str
+) -> bool:
+    """Return True when the mutation only deleted an argument whose value IS the callee's default.
+
+    ``BrowserConfig(headless=True, ...)`` states a value the class already
+    defaults to, so dropping it constructs a byte-identical object and no test
+    can tell. The argument is stated deliberately — it documents the intent and
+    survives the library changing its default — so the line must stay, and the
+    mutant cannot be killed. Deliberately NOT a blanket "a dropped argument is
+    fine": the (callee, argument) pair must be in the table above AND carry
+    exactly the default value there, and the mutation must be a DELETION —
+    ``headless=False`` is the same argument with a real behavioral change, and
+    is reported.
+    """
+    try:
+        tree = ast.parse(Path(path).read_text())
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = _callee_name(node.func)
+        if name is None:
+            continue
+        for kw in node.keywords:
+            if kw.arg is None or not _argument_at(_node_span(kw), line_no, col, orig_line):
+                continue
+            expected = _CALLEE_ARG_DEFAULTS.get((name, kw.arg), _MISSING)
+            if expected is _MISSING or not _literal_equals(kw.value, expected):
+                return False
+            return _argument_deleted(orig_line, mut_line, _node_span(kw), kw.arg)
+        for index, arg in enumerate(node.args):
+            if not _argument_at(_node_span(arg), line_no, col, orig_line):
+                continue
+            slot = _CALLEE_POSITIONAL_NAMES.get((name, index))
+            expected = (
+                _CALLEE_ARG_DEFAULTS.get((name, slot), _MISSING) if slot is not None else _MISSING
+            )
+            if expected is _MISSING or not _literal_equals(arg, expected):
+                return False
+            return _argument_deleted(orig_line, mut_line, _node_span(arg), None)
+    return False
+
+
+# The two cache writers that serialise through ``serialize_any(value, model)``
+# -> ``TypeAdapter(model or Any).dump_json(value)`` (app/db/redis.py).
+_SERIALISING_CACHE_SETTERS = {"redis_cache.set", "set_cache"}
+
+
+def _value_argument(node):
+    """Return the ``value`` argument of a cache set call — second positional, or the kwarg."""
+    for kw in node.keywords:
+        if kw.arg == "value":
+            return kw.value
+    return node.args[1] if len(node.args) > 1 else None
+
+
+def _unobservable_serialised_model_argument(
+    path: str, line_no: int, col: int, orig_line: str, mut_line: str
+) -> bool:
+    """Return True when a cache write's ``model=C`` is dropped/None'd while the value IS a ``C(...)``.
+
+    ``redis_cache.set`` serialises with ``TypeAdapter(model or Any).dump_json``,
+    so ``model=`` only changes the bytes written when it has to coerce the value.
+    Handed an instance of that very class, both adapters emit the same JSON —
+    measured, not reasoned: ``TypeAdapter(ImportTokenRecord)`` and
+    ``TypeAdapter(Any)`` both dump ``ImportTokenRecord(user_id="u1")`` as
+    ``{"user_id":"u1"}``, with no warning under ``-W error``. The argument is
+    stated deliberately (it documents the stored shape and matches the ``model=``
+    the read side validates with), so the line stays and the mutant cannot die.
+    Narrow on purpose: the value at THAT call site must be a direct ``C(...)``
+    construction of the same class named by ``model=``. A dict or a variable
+    there really is coerced by the adapter, and stays reported — as does any
+    mutation of the key or the TTL, which are different spans.
+    """
+    try:
+        tree = ast.parse(Path(path).read_text())
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if _callee_name(node.func) not in _SERIALISING_CACHE_SETTERS:
+            continue
+        for kw in node.keywords:
+            if kw.arg != "model" or not isinstance(kw.value, ast.Name):
+                continue
+            span = _node_span(kw)
+            if not _argument_at(span, line_no, col, orig_line):
+                continue
+            value = _value_argument(node)
+            if not (isinstance(value, ast.Call) and _callee_name(value.func) == kw.value.id):
+                return False
+            if _argument_deleted(orig_line, mut_line, span, kw.arg):
+                return True
+            replacement = _mutated_token(_node_span(kw.value), line_no, orig_line, mut_line)
+            return replacement is not None and replacement.strip() == "None"
+    return False
+
+
+def _hostname_is_none(value: object) -> bool:
+    """Return True when the default names no host: it is None, or a string urlparse finds no host in.
+
+    Any other literal (an int, bytes) is not something this rule can reason
+    about, so it answers False and the mutant stays a survivor. Only ValueError
+    is caught, which urlparse raises for a genuinely malformed URL (an
+    unparseable IPv6 literal) — that is an answer, not a bug. Anything else
+    propagates: a swallowed NameError here once made this rule silently answer
+    False for every mutant, which reads exactly like a correct classifier that
+    simply never fires.
+    """
+    if value is None:
+        return True
+    if not isinstance(value, str):
+        return False
+    try:
+        return urlparse(value).hostname is None
+    except ValueError:
+        return False
+
+
+def _unobservable_urlparse_host_default(
+    path: str, line_no: int, col: int, orig_line: str, mut_line: str
+) -> bool:
+    """Return True when the mutation changed a ``.get()`` default that urlparse reads as no host.
+
+    ``urlparse(origin.get("origin", "")).hostname`` is None for every value that
+    is not a URL — "", None (what the lookup returns once mutmut drops the
+    default), and mutmut's "XXXX" alike — so on the missing-key path every
+    mutant yields the identical None and nothing downstream can tell them apart.
+    Narrow on purpose: the mutated literal must be the DEFAULT of a lookup that
+    is the sole argument of a ``urlparse()`` read only through ``.hostname``, and
+    both the original and the replacement must actually resolve to no host.
+    Mutating the lookup's KEY is a different span and stays reported — asking for
+    a key that is not there really does lose the origin.
+    """
+    try:
+        tree = ast.parse(Path(path).read_text())
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            child.parent = node
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and _callee_name(node.func) == "urlparse"):
+            continue
+        parent = getattr(node, "parent", None)
+        if not (isinstance(parent, ast.Attribute) and parent.attr == "hostname"):
+            continue
+        if len(node.args) != 1 or not _lookup_with_default(node.args[0]):
+            continue
+        default = node.args[0].args[-1]
+        span = _node_span(default)
+        if not _within(span, line_no, col):
+            continue
+        replacement = _mutated_token(span, line_no, orig_line, mut_line)
+        if replacement is None:
+            return False
+        stripped = replacement.strip()
+        try:
+            # An emptied slot is mutmut dropping the default entirely, and
+            # ``.get(k)`` then hands back None.
+            mutated = None if not stripped else ast.literal_eval(stripped)
+            original = ast.literal_eval(default)
+        except (ValueError, SyntaxError):
+            return False
+        return _hostname_is_none(original) and _hostname_is_none(mutated)
+    return False
+
+
 def _within(span, line_no: int, col: int) -> bool:
     start_line, start_col, end_line, end_col = span
     if line_no < start_line or line_no > end_line:
@@ -793,6 +1085,44 @@ def _first_differing_col(before: str, after: str) -> int:
         if x != y:
             return i
     return min(len(before), len(after))
+
+
+# Mirrors _SCOPE_SEGMENT in tools/lints/tool_dump_boundary.py, as a module path
+# relative to the repo root (the lint matches on an absolute path).
+_TOOL_DUMP_LINT_SCOPE = "app/agents/tools/"
+
+
+def _rejected_by_tool_dump_boundary(
+    module_rel: str, path: str, line_no: int, col: int, orig_line: str
+) -> bool:
+    """Return True when the mutation rewrote a ``mode="json"`` on a tools-tree ``model_dump``.
+
+    Not an equivalence claim — whether the dumped bytes differ depends on the
+    model's fields. It is a different guard: tools/lints/tool_dump_boundary.py
+    requires that literal on every ``model_dump`` under app/agents/tools/
+    (issue #917), and the lint lane runs in this same gate, so a mutant that
+    deletes, blanks or respells it cannot reach master. Reported under its own
+    verdict so the exclusion is never read as a proof that the value cannot
+    matter. Any other argument of the same call is still reported.
+    """
+    if not module_rel.startswith(_TOOL_DUMP_LINT_SCOPE):
+        return False
+    try:
+        tree = ast.parse(Path(path).read_text())
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "model_dump"
+        ):
+            continue
+        for kw in node.keywords:
+            if kw.arg == "mode" and _literal_equals(kw.value, "json"):
+                if _argument_at(_node_span(kw), line_no, col, orig_line):
+                    return True
+    return False
 
 
 # Find the first differing line in the ORIGINAL file. `_body` drops only the
@@ -817,9 +1147,17 @@ for i, (a, b) in enumerate(zip(orig_lines, mut_lines)):
             or _unobservable_header_case(real_path, line_no, col, orig_raw[i], mut_raw[i])
             or _unobservable_response_header_case(real_path, line_no, col, orig_raw[i], mut_raw[i])
             or _unreachable_match_arm(real_path, line_no)
+            or _unobservable_default_argument(real_path, line_no, col, orig_raw[i], mut_raw[i])
+            or _unobservable_urlparse_host_default(real_path, line_no, col, orig_raw[i], mut_raw[i])
+            or _unobservable_serialised_model_argument(
+                real_path, line_no, col, orig_raw[i], mut_raw[i]
+            )
         ):
             print("EQUIV")
             sys.exit(0)
+        if _rejected_by_tool_dump_boundary(module_path, real_path, line_no, col, orig_raw[i]):
+            print(f"LINTED:{line_no}")
+            sys.exit(1)
         span = _excluded_span(real_path, line_no)
         if span is not None and _within(span, line_no, col):
             print(f"LOGGING:{line_no}")

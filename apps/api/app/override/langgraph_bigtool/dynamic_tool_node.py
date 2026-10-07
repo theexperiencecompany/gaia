@@ -57,7 +57,7 @@ def _timeout_error_text(tool_name: str, seconds: float | None) -> str:
     after = f" after {seconds:g}s" if seconds is not None else ""
     return (
         f"Error: TimeoutError: '{tool_name}' timed out{after}. The operation may or "
-        "may not have completed on the provider side — verify its effect before retrying."
+        "may not have completed on the provider side. Verify its effect before retrying."
     )
 
 

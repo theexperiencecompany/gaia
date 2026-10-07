@@ -16,7 +16,7 @@ const faqs = [
   {
     question: "What data does GAIA store?",
     answer:
-      "When self-hosted, GAIA stores data exclusively on your own servers — PostgreSQL for structured data, MongoDB for documents, Redis for caching, and ChromaDB for vector embeddings. Nothing is sent to GAIA's servers. You control every byte.",
+      "When self-hosted, GAIA stores data exclusively on your own servers: PostgreSQL for structured data, MongoDB for documents, Redis for caching, and ChromaDB for vector embeddings. Nothing is sent to GAIA's servers. You control every byte.",
   },
   {
     question: "Can I audit GAIA's code?",
@@ -26,7 +26,7 @@ const faqs = [
   {
     question: "What are the system requirements to self-host GAIA?",
     answer:
-      "GAIA runs via Docker Compose. You need a Linux server (or macOS/Windows for local dev) with at least 4GB RAM and Docker installed. A modern VPS with 2 vCPUs and 4GB RAM is sufficient for a single user. The full stack includes PostgreSQL, MongoDB, Redis, ChromaDB, and RabbitMQ — all orchestrated by Docker Compose.",
+      "GAIA runs via Docker Compose. You need a Linux server (or macOS/Windows for local dev) with at least 4GB RAM and Docker installed. A modern VPS with 2 vCPUs and 4GB RAM is sufficient for a single user. The full stack includes PostgreSQL, MongoDB, Redis, ChromaDB, and RabbitMQ, all orchestrated by Docker Compose.",
   },
 ];
 
@@ -41,7 +41,7 @@ const selfHostSteps = [
   },
   {
     name: "Deploy with Docker Compose",
-    text: "Run `cd infra/docker && docker compose up` to start all services — the API, worker, databases, and message broker — in one command. GAIA is running on your server.",
+    text: "Run `cd infra/docker && docker compose up` to start all services (the API, worker, databases, and message broker) in one command. GAIA is running on your server.",
   },
 ];
 
@@ -55,7 +55,7 @@ const comparisonRows = [
   },
   {
     feature: "Self-hostable",
-    gaia: "Yes — Docker Compose",
+    gaia: "Yes, Docker Compose",
     chatgpt: "No",
     copilot: "No",
     notionAI: "No",
@@ -76,21 +76,21 @@ const comparisonRows = [
   },
   {
     feature: "Email management",
-    gaia: "Yes — full triage + drafts",
+    gaia: "Yes, full triage + drafts",
     chatgpt: "No",
     copilot: "Limited (Outlook only)",
     notionAI: "No",
   },
   {
     feature: "Calendar management",
-    gaia: "Yes — schedule, reschedule",
+    gaia: "Yes, schedule and reschedule",
     chatgpt: "No",
     copilot: "Yes (M365 only)",
     notionAI: "No",
   },
   {
     feature: "Proactive actions",
-    gaia: "Yes — acts without prompting",
+    gaia: "Yes, acts without prompting",
     chatgpt: "No",
     copilot: "Limited",
     notionAI: "No",
@@ -108,7 +108,7 @@ const differentiators = [
   {
     title: "MIT Licensed",
     description:
-      "The entire codebase — backend, frontend, and agents — is published under the MIT license. Use it, fork it, modify it. No restrictions.",
+      "The entire codebase (backend, frontend, and agents) is published under the MIT license. Use it, fork it, modify it. No restrictions.",
   },
   {
     title: "Self-Hostable via Docker",
@@ -128,12 +128,12 @@ const differentiators = [
 ];
 
 const checklistItems = [
-  "Triages your inbox — labels emails by urgency, drafts replies, archives noise",
-  "Manages your calendar — schedules meetings, handles conflicts, sends invites",
-  "Tracks your tasks — syncs with Todoist, Linear, GitHub Issues, and more",
-  "Sends proactive briefings — your day's priorities at 7am, without asking",
-  "Connects 50+ tools via MCP — Slack, Notion, HubSpot, GitHub, Google Workspace",
-  "Runs automated workflows — recurring tasks, follow-ups, reports, on a schedule",
+  "Triages your inbox: labels emails by urgency, drafts replies, archives noise",
+  "Manages your calendar: schedules meetings, handles conflicts, sends invites",
+  "Tracks your tasks: syncs with Todoist, Linear, GitHub Issues, and more",
+  "Sends proactive briefings: your day's priorities at 7am, without asking",
+  "Connects 50+ tools via MCP: Slack, Notion, HubSpot, GitHub, Google Workspace",
+  "Runs automated workflows: recurring tasks, follow-ups, reports, on a schedule",
 ];
 
 const openSourceReasons = [
@@ -145,7 +145,7 @@ const openSourceReasons = [
   {
     title: "Customization",
     description:
-      "Need a custom integration with your internal tools? Want to change how the agent reasons about your tasks? You have full access to the code — modify anything.",
+      "Need a custom integration with your internal tools? Want to change how the agent reasons about your tasks? You have full access to the code. Modify anything.",
   },
   {
     title: "No per-seat pricing",
@@ -167,7 +167,7 @@ export default function OpenSourceAIClient() {
         <SectionHeader
           label="Open Source"
           headline="What makes GAIA different from every other AI assistant"
-          description="GAIA is the only AI assistant that's fully open source, self-hostable, and designed to manage your entire work life — without sending your data anywhere."
+          description="GAIA is the only AI assistant that's fully open source, self-hostable, and designed to manage your entire work life, without sending your data anywhere."
           integrations={[
             { id: "github", label: "GitHub" },
             { id: "notion", label: "Notion" },
@@ -197,7 +197,7 @@ export default function OpenSourceAIClient() {
         <SectionHeader
           label="Capabilities"
           headline="What GAIA actually does for you"
-          description="A proactive AI assistant that handles the repetitive work across every tool you use — so you can focus on what matters."
+          description="A proactive AI assistant that handles the repetitive work across every tool you use, so you can focus on what matters."
           integrations={[
             { id: "gmail", label: "Gmail" },
             { id: "googlecalendar", label: "Calendar" },
@@ -372,7 +372,7 @@ export default function OpenSourceAIClient() {
             href: "/ai-chief-of-staff",
             label: "AI Chief of Staff",
             description:
-              "See how GAIA acts as your proactive AI chief of staff — managing your entire workday autonomously.",
+              "See how GAIA acts as your proactive AI chief of staff, managing your entire workday autonomously.",
           },
           {
             href: "/inbox-zero-ai",

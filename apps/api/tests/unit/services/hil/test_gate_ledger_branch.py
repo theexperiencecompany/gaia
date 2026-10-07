@@ -19,7 +19,7 @@ from app.models.hil_models import (
     LedgerState,
 )
 from app.services.hil import gate
-from app.services.hil.bridge import ApprovalOutcome
+from app.services.hil.bridge import ApprovalOutcome, GatedApproval
 from app.services.hil.fingerprint import approval_fingerprint
 from app.services.hil.intent import AutoContext, IntentDecision, JudgedCall, summarize_history
 from app.services.hil.jev_judge import JevIntentJudge
@@ -479,13 +479,15 @@ class TestLedgerRegistration:
             )
         )
         gate_seams.publish_ledger.assert_awaited_once_with(
-            approval_id="ap_abc1234567",
-            stream_id=STREAM_ID,
-            user_id=USER_ID,
-            conversation_id=CONVERSATION_ID,
-            tool_call=GatedCall(name=GATED_TOOL, id="call-1", args=GATED_ARGS),
-            summary=GATED_SUMMARY,
-            integration_name="Gmail",
+            GatedApproval(
+                approval_id="ap_abc1234567",
+                stream_id=STREAM_ID,
+                user_id=USER_ID,
+                conversation_id=CONVERSATION_ID,
+                tool_call=GatedCall(name=GATED_TOOL, id="call-1", args=GATED_ARGS),
+                summary=GATED_SUMMARY,
+                integration_name="Gmail",
+            ),
             auto_reason=None,
             owner_run_type="",
             owner_id="",

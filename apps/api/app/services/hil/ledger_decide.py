@@ -20,19 +20,12 @@ from typing import Literal
 from uuid import uuid4
 
 from app.agents.core.background.executor_channel import ExecutorInbox
-from app.agents.core.background.executor_queue import (
-    break_holder_lock,
-    get_lock_holder,
-    parse_lock_value,
-)
-from app.agents.core.background.session import get_session
 from app.agents.tools.execute.dispatch import (
     DispatchErrorKind,
     dispatch_config_for,
     dispatch_tool,
 )
 from app.constants.agents import AgentTag
-from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_BUSY_TTL
 from app.constants.general import EXECUTOR_THREAD_PREFIX
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import websocket_manager
@@ -47,8 +40,8 @@ from app.models.hil_models import (
 from app.models.user_models import AuthenticatedUser
 from app.schemas.hil_schemas import BatchDecisionItem, BatchDecisionOutcome
 from app.services.analytics_service import AnalyticsEvents, capture_event
-from app.services.hil.approvals_store import list_pending_for_conversation
 from app.services.hil.bridge import (
+    SettledApprovalCard,
     _approval_entry,
     _publish_entry,
     settle_session_approval_frame,
@@ -263,12 +256,6 @@ async def decide_ledger_batch(
     return outcomes
 
 
-# A busy-lock holder older than this with no live session is provably dead,
-# not parked (parked/live runs keep a session). A mistaken break only costs a
-# redundant run, never a duplicate: the ticket-claim CAS still bounds execution.
-STALE_HOLDER_MIN_AGE_SECONDS = 300
-
-
 def _ticket_task(row: ApprovalLedgerDocument) -> str:
     """Build the wake that turns an approval into a redeem: id, age, and the execute call that honors it."""
     age = "unknown age"
@@ -284,54 +271,17 @@ def _ticket_task(row: ApprovalLedgerDocument) -> str:
     )
 
 
-async def _reclaim_dead_holder(conversation_id: str) -> bool:
-    """Release a busy lock whose holder is provably gone; True when free.
-
-    A dead holder bricks delivery (deliver_to_executor appends to an inbox no
-    live run drains). Reclaim only when all hold: lock present, stream has no
-    live session, older than STALE_HOLDER_MIN_AGE, no paused executor approval.
-    Compare-and-delete; never raises — on any doubt the lock stands.
-    """
-    try:
-        holder = await get_lock_holder(conversation_id)
-        if holder is None:
-            return True
-        stream_id, _ = parse_lock_value(holder)
-        if stream_id and get_session(stream_id) is not None:
-            return False
-        if redis_cache.client is None:
-            return True
-        ttl = await redis_cache.client.ttl(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
-        if ttl is None or ttl < 0:
-            return True
-        if EXECUTOR_BUSY_TTL - ttl < STALE_HOLDER_MIN_AGE_SECONDS:
-            return False
-        for record in await list_pending_for_conversation(conversation_id):
-            if record.resume_item is not None:
-                return False
-        return await break_holder_lock(conversation_id, holder)
-    except Exception as e:
-        log.warning(
-            f"{LogTag.HIL} Holder reclaim check failed; keeping the lock",
-            conversation_id=conversation_id,
-            error_type=type(e).__name__,
-        )
-        return False
-
-
 async def _deliver_ticket(row: ApprovalLedgerDocument) -> None:
     """Hand an approved ticket to the model — steer or start, never execute.
 
-    Reclaims a provably-dead lock holder first, else a crashed run's lock
-    bricks delivery into an inbox no live run drains. Deferred import:
-    executor_runner reaches services.hil, so a top-level import risks closing
-    a cycle (same guard as revoke_tool).
+    Delivery reclaims a dead holder's lock, so a crashed run never bricks it.
+    Deferred import: executor_runner reaches services.hil, so a top-level
+    import risks closing a cycle (same guard as revoke_tool).
     """
     from app.agents.core.background.executor_runner import (  # noqa: PLC0415 -- same cycle guard as revoke_tool
         deliver_to_executor,
     )
 
-    await _reclaim_dead_holder(row.conversation_id)
     await deliver_to_executor(
         row.conversation_id,
         AuthenticatedUser(user_id=row.user_id),
@@ -359,7 +309,6 @@ async def _deliver_verdict(row: ApprovalLedgerDocument, outcome: str, result: ob
         "Do not re-request it."
     )
     try:
-        await _reclaim_dead_holder(row.conversation_id)
         await deliver_to_executor(
             row.conversation_id,
             AuthenticatedUser(user_id=row.user_id),
@@ -633,13 +582,14 @@ async def publish_ledger_decision(
     mapped = (
         HILApprovalStatus.APPROVED if status is LedgerState.APPROVED else HILApprovalStatus.DENIED
     )
+    card = SettledApprovalCard(
+        approval_id=row.approval_id,
+        tool_call=GatedCall(name=row.tool_name, id="", args=row.args, account=row.account),
+        summary=row.summary,
+        integration_name=None,
+    )
     entry = _approval_entry(
-        row.approval_id,
-        GatedCall(name=row.tool_name, id="", args=row.args, account=row.account),
-        mapped,
-        row.summary,
-        None,
-        feedback if feedback is not None else row.feedback,
+        card, mapped, feedback=feedback if feedback is not None else row.feedback
     )
     if row.proposing_run_id:
         try:

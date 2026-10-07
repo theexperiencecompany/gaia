@@ -4,7 +4,14 @@ concurrency:
   group: publish-cli-${{ github.ref }}
   cancel-in-progress: false
 
-# Publishes @heygaia/cli from an explicit release tag/version pair.
+# Publishes @heygaia/cli from an explicit release tag/version pair, and attaches
+# the tools/gaia-connect binaries to the same cli-v<version> GitHub Release —
+# one CLI release ships both halves. The two jobs are independent on purpose:
+# npm publish self-skips when the version already exists, while the binary
+# upload is `--clobber`-idempotent and must still be able to attach missing
+# assets to an already-published release. Both run release.mjs verify-cli first,
+# so a mistyped tag or a version that disagrees with packages/cli/package.json
+# can neither publish the wrong package nor attach binaries to the wrong release.
 on:
   # Manual dispatch keeps CLI publish intentional and auditable.
   workflow_dispatch:
@@ -114,4 +121,84 @@ jobs:
             **Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
             The release tag exists but npm was never updated, so `npm install -g @heygaia/cli` still serves the previous version.
             **To retry:** fix the cause, then re-run this workflow with the same tag/version — it is idempotent and skips versions already on npm.
+        run: bash scripts/ci/deploy.sh notify
+
+  # The Go companion tool (tools/gaia-connect) ships as release assets on the
+  # same cli-v<version> tag: `gaia connect` downloads them by exact name, so the
+  # asset names and the sha256sum manifest are a contract — see
+  # scripts/ci/release.sh connect-binaries.
+  publish-binaries:
+    name: Attach gaia-connect binaries
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      # Uploading release assets writes to the release.
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # go-version-file keeps the toolchain pinned by tools/gaia-connect/go.mod
+      # (go 1.26.5) rather than a second copy here; the module cache is keyed on
+      # the hash of that module's go.sum, so an unrelated lock change cannot
+      # invalidate it.
+      - name: Setup Go
+        id: setup-go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/gaia-connect/go.mod
+          cache-dependency-path: tools/gaia-connect/go.sum
+
+      - name: Report Go toolchain and module cache
+        env:
+          CACHE_HIT: ${{ steps.setup-go.outputs.cache-hit }}
+        run: |
+          echo "::group::go env"
+          go version
+          echo "::endgroup::"
+          echo "### gaia-connect toolchain — go module cache hit: \`${CACHE_HIT:-false}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Vet the Go tool (suspicious constructs)
+        working-directory: tools/gaia-connect
+        run: go vet ./...
+
+      - name: Test the Go tool
+        working-directory: tools/gaia-connect
+        run: go test ./...
+
+      # The same tag/version/package.json guard the npm job runs: the upload
+      # targets whatever release the tag names, so a dispatch that fails the
+      # npm half must not still attach binaries there. Idempotent reruns pass
+      # (an already-published version is a skip signal, not an error).
+      - name: Verify CLI release tag/version
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag }}
+          RELEASE_VERSION: ${{ github.event.inputs.version }}
+        run: node scripts/ci/release.mjs verify-cli --tag "$RELEASE_TAG" --version "$RELEASE_VERSION"
+
+      # One command line: the five-target cross-compile, the sha256sum manifest
+      # and the upload all live in the release concept script.
+      - name: Cross-compile and attach binaries to the release
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/release.sh connect-binaries
+
+      # Same reasoning as the npm half: a release whose binaries never landed
+      # leaves `gaia connect` downloading a 404, and nobody notices from a green
+      # npm publish.
+      - name: Notify Discord — gaia-connect binaries failed
+        if: failure()
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          COLOR: "#ff6b6b"
+          MESSAGE: |
+            🚨 **gaia-connect Binary Upload Failed**
+            **Tag:** `${{ github.event.inputs.tag }}`
+            **Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            The CLI release exists but its `gaia-connect-*` assets are missing, so `gaia connect` cannot download the helper.
+            **To retry:** re-run this workflow with the same tag/version — the upload uses `--clobber` and is idempotent.
         run: bash scripts/ci/deploy.sh notify

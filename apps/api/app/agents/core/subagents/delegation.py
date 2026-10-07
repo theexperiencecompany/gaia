@@ -20,16 +20,11 @@ from langchain_core.runnables.config import var_child_runnable_config
 from langgraph.config import get_stream_writer
 from langgraph.errors import GraphBubbleUp
 from langgraph.types import Command
-from pydantic import BaseModel, ConfigDict
 
 from app.agents.core.background.bg_results import release_bg_dispatch, try_claim_bg_dispatch
-from app.agents.core.background.executor_capture import drain_executor_tool_data
-from app.agents.core.background.executor_queue import (
-    close_detached_stream,
-    open_detached_stream,
-    safe_configurable,
-)
+from app.agents.core.background.executor_queue import open_detached_stream, safe_configurable
 from app.agents.core.background.executor_runner import deliver_to_executor
+from app.agents.core.background.folded_stream import close_folded_stream
 from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.background.session import run_user_from_configurable
@@ -52,12 +47,10 @@ from app.agents.prompts.delegation_prompts import (
     THREAD_BUSY_REFUSAL,
 )
 from app.constants.agents import AgentTag
-from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME
-from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME, SUBAGENT_RESUME_CONFIG_KEY
+from app.constants.hil import SUBAGENT_RESUME_CONFIG_KEY
 from app.constants.log_tags import LogTag
 from app.constants.streaming import DetachedStreamKind
 from app.core.stream_manager import stream_manager
-from app.db.repositories.conversations import conversation_repository
 from app.models.agent_models import (
     AgentConfigurable,
     RunningSubagent,
@@ -65,7 +58,6 @@ from app.models.agent_models import (
     SubagentResumeItem,
     agent_configurable,
 )
-from app.models.chat_models import SavedSubagentGroup, ToolDataEntry
 from app.models.hil_models import HilInterruptPayload, HilResumeDecision
 from app.services.hil.approvals_store import get_approval, mark_resumed
 from app.utils.agent_utils import (
@@ -338,7 +330,12 @@ async def _run_background(
         finally:
             # Released before the park looks at its decisions, so a resume can claim it.
             await RunningSubagents(delegation.conversation_id).deregister(record)
-            await _close_own_stream(delegation, stream_id)
+            await close_folded_stream(
+                stream_id,
+                conversation_id=delegation.conversation_id,
+                user_id=delegation.ctx.user_id or "",
+                message_id=_folds_into(delegation),
+            )
 
         if outcome is None:
             await _land(delegation, failure)
@@ -412,96 +409,6 @@ def _folds_into(delegation: Delegation) -> str | None:
     """Return the message a background run's own stream folds into: the dispatching run's."""
     parent: AgentConfigurable = delegation.parent_configurable
     return parent.get("bot_message_id")
-
-
-async def _close_own_stream(delegation: Delegation, stream_id: str) -> None:
-    """Save what the run streamed into the message it folded into, then end its stream."""
-    try:
-        entries = drain_executor_tool_data(stream_id)
-        message_id = _folds_into(delegation)
-        if entries and message_id:
-            await _save_frames(delegation, message_id, entries)
-        elif entries:
-            log.warning(
-                f"{LogTag.AGENT} Background subagent has no message to save its cards into",
-                conversation_id=delegation.conversation_id,
-                entries=len(entries),
-            )
-    except Exception as e:  # unsaved cards must not also cost the run its result
-        log.error(
-            f"{LogTag.AGENT} Could not save a background subagent's cards",
-            conversation_id=delegation.conversation_id,
-            subagent_id=delegation.subagent_id,
-            error_type=type(e).__name__,
-            error=str(e),
-        )
-    finally:
-        await close_detached_stream(
-            stream_id, cancelled=await stream_manager.is_cancelled(stream_id)
-        )
-
-
-class _SavedCard(BaseModel):
-    """The identity of a saved approval_request entry."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    approval_id: str = ""
-
-
-async def _save_frames(
-    delegation: Delegation, message_id: str, entries: list[ToolDataEntry]
-) -> None:
-    """Persist a segment's frames by identity, so a reload shows one row and one card.
-
-    A resumed segment's calls extend the row its park saved (in place, never read-
-    modify-write), and a card already saved is settled there by the decision.
-    """
-    conversation_id, user_id = delegation.conversation_id, delegation.ctx.user_id or ""
-    saved = await conversation_repository.get_message(conversation_id, message_id, user_id=user_id)
-    if saved is None:
-        log.error(
-            f"{LogTag.AGENT} Background subagent cards matched no message; not saved",
-            conversation_id=conversation_id,
-            message_id=message_id,
-            entries=len(entries),
-        )
-        return
-    held: list[ToolDataEntry] = saved.tool_data or []
-    held_groups = {
-        SavedSubagentGroup.model_validate(e["data"]).subagent_id
-        for e in held
-        if e["tool_name"] == SUBAGENT_GROUP_TOOL_NAME
-    }
-    held_cards = {
-        _SavedCard.model_validate(e["data"]).approval_id
-        for e in held
-        if e["tool_name"] == APPROVAL_REQUEST_TOOL_NAME
-    }
-    fresh: list[ToolDataEntry] = []
-    for entry in entries:
-        if entry["tool_name"] == SUBAGENT_GROUP_TOOL_NAME:
-            group = SavedSubagentGroup.model_validate(entry["data"])
-            if group.subagent_id in held_groups:
-                await conversation_repository.extend_subagent_group(
-                    conversation_id, user_id=user_id, message_id=message_id, group=group
-                )
-                continue
-        elif (
-            entry["tool_name"] == APPROVAL_REQUEST_TOOL_NAME
-            and _SavedCard.model_validate(entry["data"]).approval_id in held_cards
-        ):
-            continue
-        fresh.append(entry)
-    if fresh and not await conversation_repository.append_message_tool_data(
-        conversation_id, user_id=user_id, message_id=message_id, entries=fresh
-    ):
-        log.error(
-            f"{LogTag.AGENT} Background subagent cards matched no message; not saved",
-            conversation_id=conversation_id,
-            message_id=message_id,
-            entries=len(fresh),
-        )
 
 
 async def _park(delegation: Delegation, interrupt: HilInterruptPayload) -> None:

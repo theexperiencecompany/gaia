@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from typing import Protocol
 
 from app.constants.todos import TodoActivityEvent
+from app.db.mongodb.retry import TRANSIENT_MONGO_RETRY
 from app.services.todo_canvas_storage import append_activity
 from shared.py.wide_events import log
 
@@ -37,6 +38,23 @@ async def record_activity(
             error_type=type(e).__name__,
         )
         return False
+
+
+def run_finished_marker(run_id: str) -> str:
+    """Name one run's finish entry: written once, and found by it afterwards."""
+    return f"[{TodoActivityEvent.RUN_FINISHED.value}] run {run_id}:"
+
+
+async def record_run_finished(todo_id: str, user_id: str, run_id: str, detail: str) -> None:
+    """Append a run's finish entry exactly once, retrying a failed write with backoff.
+
+    Raises the last PyMongoError once the attempts run out. A todo deleted
+    meanwhile has nowhere to keep the entry, and append_activity says so.
+    """
+    line = activity_line(TodoActivityEvent.RUN_FINISHED, f"run {run_id}: {detail}")
+    async for attempt in TRANSIENT_MONGO_RETRY.copy():
+        with attempt:
+            await append_activity(todo_id, user_id, line, once=run_finished_marker(run_id))
 
 
 class ScheduleFieldChanges(Protocol):

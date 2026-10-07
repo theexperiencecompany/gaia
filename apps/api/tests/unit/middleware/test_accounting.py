@@ -31,12 +31,13 @@ from app.config.rate_limits import (
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
     BUDGET_WRAPUP_REMAINING_FRACTION,
+    DEFAULT_MAX_TOKENS,
     PROVIDER_NAME_METADATA_KEY,
     RECURSION_HWM_FRACTION,
 )
 from app.constants.log_tags import LogTag
 from app.models.payment_models import PlanType
-from app.services import llm_metering
+from app.services import cost_budget, llm_metering
 from app.services.cost_budget import (
     BUDGET_WRAPUP_NOTICE,
     BudgetCheck,
@@ -44,10 +45,19 @@ from app.services.cost_budget import (
 )
 from shared.py.wide_events import log
 
+#: A stored lane, whole: to_configurable writes every key, so a fixture must too.
+_LANE: dict[str, object] = {
+    "provider": "gemini",
+    "model": "gemini-3-pro",
+    "reasoning": None,
+    "provider_pin": None,
+    "max_input_tokens": DEFAULT_MAX_TOKENS,
+}
+
 CONFIG: dict[str, Any] = {
     "configurable": {
         "thread_id": "conv-1",
-        "lane": {"provider": "gemini", "model": "gemini-3-pro"},
+        "lane": _LANE,
         "user_id": "user-1",
     }
 }
@@ -143,7 +153,7 @@ _LEDGER_CONFIG: dict[str, Any] = {
         "conversation_id": "conv-1",
         "workflow_id": "wf-1",
         "root_request_id": "req-1",
-        "lane": {"provider": "gemini", "model": "gemini-3-pro"},
+        "lane": _LANE,
         "user_id": "user-1",
     }
 }
@@ -212,7 +222,7 @@ async def test_a_graph_call_is_never_recorded_as_background_system_work() -> Non
     bare = {
         "configurable": {
             "user_id": "user-1",
-            "lane": {"provider": "gemini", "model": "gemini-3-pro"},
+            "lane": _LANE,
         }
     }
 
@@ -278,6 +288,24 @@ async def test_the_provider_calls_wall_time_reaches_the_ledger_in_milliseconds()
         await mw.aafter_model(_state(_ai()), None)
 
     assert record.await_args.kwargs["context"].duration_ms == 50.12
+
+
+async def test_the_dev_unlimited_flag_lets_the_model_call_through(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The real budget check runs here: under the flag it once returned None, and every model call raised AttributeError."""
+    monkeypatch.setattr(cost_budget.settings, "DEV_UNLIMITED_RATE_LIMITS", True)
+    config_patch, cost_patch, usage_patch = _accounting_env(_LEDGER_CONFIG)
+    mw = LLMAccountingMiddleware(agent_name="comms_agent")
+    reply = ModelResponse(result=[_ai()])
+
+    async def _handler(_request: Any) -> Any:
+        return reply
+
+    with config_patch, cost_patch, usage_patch:
+        response = await mw.awrap_model_call(_model_request(), _handler)
+
+    assert response is reply
 
 
 async def test_a_call_the_budget_wall_stopped_reports_no_latency() -> None:
