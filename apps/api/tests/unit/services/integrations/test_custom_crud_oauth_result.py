@@ -6,6 +6,7 @@ remote-server policy, not a GAIA fault. The failure is already returned to the
 user as a failed connection they can retry, so it must be logged at WARNING —
 logging it at ERROR forwards it to Sentry (app/config/sentry.py sink forwards
 ERROR+) and pages it as a High bug, which is the noise this guards against.
+An internal failure (a bare ValueError, a KeyError) must stay ERROR-level.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -13,16 +14,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.services.integrations.custom_crud import _build_oauth_result
+from app.services.mcp.mcp_client import DCRRegistrationError
 
 INTEGRATION_ID = "89d43eae-d6b4-4bfa-aa9a-90b971af8c03"
 
 
 @pytest.mark.asyncio
 async def test_build_oauth_result_logs_dcr_rejection_as_warning_not_error() -> None:
-    """A remote DCR rejection is surfaced to the user and logged at WARNING only."""
+    """An identified remote DCR rejection is surfaced to the user and warned, not errored."""
     mcp_client = MagicMock()
     mcp_client.build_oauth_auth_url = AsyncMock(
-        side_effect=ValueError(
+        side_effect=DCRRegistrationError(
             "Dynamic Client Registration failed: Registration failed: 400 "
             '{"error":"invalid_request","error_description":"Invalid redirect_uri: '
             "redirect_uri host 'api.heygaia.io' is not in the allowed list\"}"
@@ -42,6 +44,29 @@ async def test_build_oauth_result_logs_dcr_rejection_as_warning_not_error() -> N
     args, kwargs = mock_log.warning.call_args
     assert "OAuth discovery failed" in args[0]
     assert "allowed list" in kwargs["error"]
+    assert kwargs["integration_id"] == INTEGRATION_ID
+    assert kwargs["error_type"] == "DCRRegistrationError"
+    # The callback redirect_uri and the post-auth redirect_path are passed through.
+    _, call_kwargs = mcp_client.build_oauth_auth_url.await_args
+    assert call_kwargs["redirect_path"] == "/integrations"
+    assert call_kwargs["redirect_uri"].endswith("/api/v1/mcp/oauth/callback")
+
+
+@pytest.mark.asyncio
+async def test_build_oauth_result_logs_bare_value_error_as_error() -> None:
+    """A bare ValueError (e.g. integration-resolution failure) stays ERROR, not warn."""
+    mcp_client = MagicMock()
+    mcp_client.build_oauth_auth_url = AsyncMock(side_effect=ValueError("Integration foo not found"))
+
+    with patch("app.services.integrations.custom_crud.log") as mock_log:
+        result = await _build_oauth_result(mcp_client, INTEGRATION_ID)
+
+    assert result["status"] == "failed"
+    mock_log.warning.assert_not_called()
+    mock_log.error.assert_called_once()
+    args, kwargs = mock_log.error.call_args
+    assert "OAuth discovery failed unexpectedly" in args[0]
+    assert "not found" in kwargs["error"]
     assert kwargs["integration_id"] == INTEGRATION_ID
     assert kwargs["error_type"] == "ValueError"
 

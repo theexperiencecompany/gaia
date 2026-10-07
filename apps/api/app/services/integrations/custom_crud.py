@@ -37,17 +37,21 @@ from app.services.integrations.user_integrations import (
     invalidate_user_integration_caches,
     remove_user_integration,
 )
-from app.services.mcp.mcp_client import DCRNotSupportedError, MCPClient
+from app.services.mcp.mcp_client import (
+    DCRNotSupportedError,
+    DCRRegistrationError,
+    MCPClient,
+)
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.utils.favicon_utils import fetch_favicon_from_url
 from app.utils.mcp_oauth_utils import OAuthDiscoveryError, OAuthSecurityError
 from shared.py.wide_events import log
 
 #: OAuth discovery/DCR failures that are the remote server's policy, not a GAIA
-#: fault. The caller returns them to the user, so they warn (visible in Loki)
-#: rather than paging Sentry; anything else is an unexpected internal bug.
+#: fault: they warn (Loki, not Sentry High). A bare ValueError is internal and
+#: deliberately absent, so it stays error-level.
 _EXPECTED_OAUTH_DISCOVERY_ERRORS: tuple[type[Exception], ...] = (
-    ValueError,  # _register_client wraps DCR rejections as ValueError
+    DCRRegistrationError,  # identified AS rejection (subclass of ValueError)
     OAuthAuthenticationError,
     DCRNotSupportedError,
     OAuthDiscoveryError,
