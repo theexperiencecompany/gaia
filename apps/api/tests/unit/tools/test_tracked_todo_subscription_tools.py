@@ -10,7 +10,7 @@ trigger is a separate responsibility from todo CRUD, not because it is a separat
 module.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -599,6 +599,29 @@ class TestFormatSubscriptionLines:
         (line,) = format_subscription_lines(_todo(trigger_subscriptions=[sub]))
 
         assert line == f"Watching {GMAIL} -> execute when any event (subscription: {sub.id})"
+
+
+class TestFormatTrackedTodoFull:
+    def test_labels_age_and_missing_timestamps_render_exactly(self):
+        """Two labels join with ', '; a missing updated_at falls back to now (0d)."""
+        now = datetime(2026, 10, 3, 12, tzinfo=UTC)
+        doc = _todo(
+            labels=["gaia-tracked", "needs-reply", "vip"],
+            created_at=now - timedelta(days=4),
+            updated_at=None,
+        )
+        rendered = format_tracked_todo_full(doc, now)
+
+        assert '"Chase Acme" [needs-reply, vip]' in rendered
+        assert "Age: 4d | Last updated: 0d ago" in rendered
+
+    def test_parent_and_subscriptions_render_on_their_own_lines(self):
+        now = datetime(2026, 10, 3, 12, tzinfo=UTC)
+        doc = _todo(parent_todo_id="parent-1")
+        rendered = format_tracked_todo_full(doc, now)
+
+        assert "Sub-todo of parent-1" in rendered
+        assert rendered.count("Sub-todo of parent-1") == 1
 
 
 class TestToolsAreReachable:

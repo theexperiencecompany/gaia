@@ -20,7 +20,6 @@ from app.utils.timezone import Timezone, is_valid_timezone
 from shared.py.wide_events import log
 
 RECURRENCE_SHORTCUTS = {"daily", "weekly", "every_4h", "every_1h"}
-UTC_OFFSET = "+00:00"
 
 
 def gives_sub_todo_rules(
@@ -70,7 +69,7 @@ def is_cron_expression(recurrence: str) -> bool:
 def parse_iso_datetime(iso_str: str, field_name: str) -> tuple[datetime | None, str | None]:
     """Parse an ISO datetime that carries its offset; a naive one would be saved as UTC."""
     try:
-        parsed = datetime.fromisoformat(iso_str.replace("Z", UTC_OFFSET))
+        parsed = datetime.fromisoformat(iso_str)
     except ValueError:
         return None, f"Error: invalid {field_name} format '{iso_str}'."
     if parsed.tzinfo is None:
@@ -232,7 +231,7 @@ def build_scheduled_at_update(
         update_fields["scheduled_at"] = None
         return None
     try:
-        parsed_at = datetime.fromisoformat(scheduled_at.replace("Z", UTC_OFFSET))
+        parsed_at = datetime.fromisoformat(scheduled_at)
     except ValueError:
         return f"Error: invalid scheduled_at format '{scheduled_at}'."
     if parsed_at.tzinfo is None:

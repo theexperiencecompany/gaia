@@ -3217,7 +3217,10 @@ class TestCollectRunContext:
             raise RuntimeError("mongo down")
 
         with (
-            patch("app.workers.tasks.todo_run_context.todo_repository.get", AsyncMock(side_effect=_get)),
+            patch(
+                "app.workers.tasks.todo_run_context.todo_repository.get",
+                AsyncMock(side_effect=_get),
+            ),
             patch(
                 "app.workers.tasks.todo_run_context.todo_repository.list_active_tracked",
                 AsyncMock(side_effect=RuntimeError("mongo down")),
@@ -3234,7 +3237,8 @@ class TestCollectRunContext:
         doc = _doc(parent_todo_id="parent-1")
         with (
             patch(
-                "app.workers.tasks.todo_run_context.todo_repository.get", AsyncMock(side_effect=RuntimeError("mongo down"))
+                "app.workers.tasks.todo_run_context.todo_repository.get",
+                AsyncMock(side_effect=RuntimeError("mongo down")),
             ),
             patch("app.workers.tasks.todo_run_context.log") as mock_log,
             pytest.raises(RuntimeError, match="mongo down"),

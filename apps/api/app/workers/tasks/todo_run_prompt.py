@@ -43,8 +43,6 @@ WAKE_OPENINGS: Mapping[ExternalRefSource, str] = MappingProxyType(
 )
 
 
-
-
 def external_ref_guidance(doc: TodoDocument) -> str | None:
     """Return how to work the outside object the todo owns, or None when that kind has no contract."""
     if doc.external_ref is None:
@@ -149,5 +147,3 @@ def build_execution_prompt(
         prompt_parts.append(context.learnings)
     prompt_parts.append(delivery_guidance(doc))
     return "\n\n".join(prompt_parts)
-
-
