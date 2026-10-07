@@ -97,7 +97,7 @@ EXAMPLES:
 ✅ bash("pip install requests && python -c 'import requests; print(requests.__version__)'")
 ✅ bash("python script.py", cwd="/workspace/project", timeout=60)
 ✅ bash("python server.py", background=True)  # returns {pid, log_path}
-✅ bash("cd /workspace/repo && claude -p 'fix it' --output-format stream-json --settings \"$GAIA_LAB_CLAUDE_SETTINGS\"", background=True, run_todo_id="todo-1")
+✅ bash("mkdir -p ~/agents/work/repo && cd ~/agents/work/repo && claude -p 'fix it' --output-format stream-json --verbose --settings \"$GAIA_LAB_CLAUDE_SETTINGS\"", background=True, run_todo_id="todo-1")
 """
 
 READ_TOOL = """

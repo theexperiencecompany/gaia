@@ -6,6 +6,7 @@ real set_timeout call count and real pool state.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from types import SimpleNamespace
 from typing import Any
@@ -196,3 +197,63 @@ async def test_an_agent_lab_sandbox_refreshes_to_twelve_hours_on_its_own_window(
         entry.timeout_refreshed_at = time.monotonic() - (SANDBOX_LAB_LIFETIME_SECONDS // 2 + 5)
         await _reuse(entry)
     entry.sandbox.set_timeout.assert_awaited_once_with(SANDBOX_LAB_LIFETIME_SECONDS)
+
+
+@pytest.mark.regression
+async def test_a_paused_cached_sandbox_is_dropped_for_resume_never_killed() -> None:
+    # Regression: PAUSED read as dead, so a sandbox paused by a failed renew
+    # (or another replica) was killed instead of resumed.
+    entry = _healthy_entry()
+    repo = AsyncMock()
+    with (
+        patch.object(lifecycle, "_health_probe", AsyncMock(return_value=False)),
+        _control_plane(SandboxState.PAUSED),
+        patch.object(lifecycle, "_stop_watcher", AsyncMock()),
+        patch.object(lifecycle, "e2b_sandbox_repository", repo),
+    ):
+        user_id, result = await _reuse(entry)
+    assert result is None
+    assert get_sandbox_pool().get(user_id) is None
+    entry.sandbox.kill.assert_not_awaited()
+    repo.mark_dead.assert_not_awaited()
+
+
+@pytest.mark.regression
+async def test_an_unreachable_control_plane_never_gets_a_live_sandbox_killed() -> None:
+    # Regression: a transient E2B error from get_info escaped the liveness check
+    # and failed the acquire while the user's lock was held.
+    entry = _healthy_entry()
+    repo = AsyncMock()
+    with (
+        patch.object(lifecycle, "_health_probe", AsyncMock(return_value=False)),
+        patch.object(
+            lifecycle.AsyncSandbox, "get_info", AsyncMock(side_effect=RuntimeError("e2b 502"))
+        ),
+        patch.object(lifecycle, "_ensure_mounted", AsyncMock()),
+        patch.object(lifecycle, "_verify_canary_or_die", AsyncMock(return_value=True)),
+        patch.object(lifecycle, "_ensure_watcher", AsyncMock()),
+        patch.object(lifecycle, "e2b_sandbox_repository", repo),
+    ):
+        _, result = await _reuse(entry)
+    assert result is entry
+    repo.mark_dead.assert_not_awaited()
+
+
+@pytest.mark.regression
+async def test_a_hung_control_plane_is_bounded_in_the_liveness_check() -> None:
+    entry = _healthy_entry()
+
+    async def hang(*_args: object, **_kwargs: object) -> None:
+        await asyncio.sleep(3600)
+
+    with (
+        patch.object(lifecycle, "_health_probe", AsyncMock(return_value=False)),
+        patch.object(lifecycle.AsyncSandbox, "get_info", hang),
+        patch.object(lifecycle, "SANDBOX_CONNECT_TIMEOUT_SECONDS", 0.05),
+        patch.object(lifecycle, "_ensure_mounted", AsyncMock()),
+        patch.object(lifecycle, "_verify_canary_or_die", AsyncMock(return_value=True)),
+        patch.object(lifecycle, "_ensure_watcher", AsyncMock()),
+        patch.object(lifecycle, "e2b_sandbox_repository", AsyncMock()),
+    ):
+        _, result = await asyncio.wait_for(_reuse(entry), timeout=2)
+    assert result is entry

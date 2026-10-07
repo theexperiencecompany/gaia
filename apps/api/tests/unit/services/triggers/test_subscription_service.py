@@ -32,6 +32,7 @@ from app.services.triggers.subscription_service import (
     teardown_subscriptions,
 )
 from app.services.triggers.subscription_validation import validate_conditions
+from app.utils.errors import AppError
 from app.utils.exceptions import TriggerRegistrationError
 from tests.helpers import captured_wide_event
 
@@ -79,7 +80,8 @@ class _Harness:
         self.get = AsyncMock(return_value=todo)
         self.register = AsyncMock()
         self.unregister = AsyncMock(return_value=True)
-        self.update = AsyncMock(return_value=None)
+        # The real repository returns the updated todo, and None only when it is gone.
+        self.update = AsyncMock(return_value=todo)
         self.capture = Mock()
 
     def __enter__(self) -> "_Harness":
@@ -223,6 +225,21 @@ class TestRegisterSubscription:
 
         assert len(h.written_subscriptions) == 2
         assert h.written_subscriptions[0].id == existing.id
+
+    async def test_a_todo_that_vanishes_mid_register_fails_loud_and_logs_nothing(self) -> None:
+        # The write matched no todo: claiming the watch was added would lie.
+        with _Harness(_todo(), []) as h:
+            h.update.return_value = None
+            with pytest.raises(AppError) as err:
+                await register_subscription(
+                    todo_id=TODO_ID,
+                    user_id=USER_ID,
+                    trigger_name=ACCOUNT_TRIGGER,
+                    conditions=[],
+                    action=SubscriptionAction.EXECUTE,
+                )
+        assert err.value.status_code == 404
+        h.capture.assert_not_called()
 
     async def test_register_stamps_the_wide_event(self) -> None:
         # A watch registered under the wrong operation/component/ids cannot be

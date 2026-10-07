@@ -205,11 +205,19 @@ def get_sandbox_pool() -> SandboxPool:
     return _pool_singleton
 
 
+def is_agent_lab_template(template_id: str | None) -> bool:
+    """Whether template_id is the configured agent-lab template; never true when none is configured."""
+    lab_template = settings.E2B_AGENT_LAB_TEMPLATE_ID
+    return lab_template is not None and template_id == lab_template
+
+
 def sandbox_lifetime_seconds(template_id: str | None) -> int:
     """Return the kill-timer lifetime for a sandbox built from template_id: 12h for agent-lab, else 1h."""
-    if template_id is not None and template_id == settings.E2B_AGENT_LAB_TEMPLATE_ID:
-        return SANDBOX_LAB_LIFETIME_SECONDS
-    return SANDBOX_LIFETIME_SECONDS
+    return (
+        SANDBOX_LAB_LIFETIME_SECONDS
+        if is_agent_lab_template(template_id)
+        else SANDBOX_LIFETIME_SECONDS
+    )
 
 
 async def refresh_sandbox_timeout(entry: PooledSandbox) -> bool:

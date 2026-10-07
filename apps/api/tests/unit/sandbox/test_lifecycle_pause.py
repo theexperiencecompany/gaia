@@ -11,12 +11,11 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
-import uuid
 
 import pytest
 
 from app.services.sandbox import lifecycle
-from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
+from app.services.sandbox.pool import PooledSandbox
 
 
 def _paused_state_written(repo: AsyncMock) -> bool:
@@ -145,12 +144,6 @@ async def test_schedule_pause_cancels_a_prior_pending_task() -> None:
         second.cancel()
         with pytest.raises(asyncio.CancelledError):
             await second
-
-
-async def test_pause_sandbox_for_user_noop_when_not_pooled() -> None:
-    missing = f"u-{uuid.uuid4().hex}"
-    get_sandbox_pool().evict(missing)
-    assert await lifecycle.pause_sandbox_for_user(missing) is False
 
 
 async def test_idle_check_treats_the_window_edge_as_idle() -> None:

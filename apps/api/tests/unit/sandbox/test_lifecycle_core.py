@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import base64
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 import re
 import time
@@ -32,6 +32,7 @@ from e2b import CommandExitException, SandboxState
 import pytest
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
+from app.constants import sandbox as sandbox_limits
 from app.constants.sandbox import SANDBOX_LAB_LIFETIME_SECONDS, SANDBOX_LIFETIME_SECONDS
 from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
 from app.services.agent_lab.agents_home import build_agents_setup_command
@@ -809,7 +810,7 @@ async def _acquire(
     for p in stack:
         p.start()
     try:
-        return await lifecycle._acquire_or_create(user_id)
+        return await lifecycle._acquire_or_create(user_id, await lifecycle._template_for(user_id))
     finally:
         for p in reversed(stack):
             p.stop()
@@ -864,7 +865,7 @@ async def test_a_resume_is_not_charged_against_the_creation_rate_limit() -> None
     for p in stack:
         p.start()
     try:
-        await lifecycle._acquire_or_create(uid)
+        await lifecycle._acquire_or_create(uid, await lifecycle._template_for(uid))
     finally:
         for p in reversed(stack):
             p.stop()
@@ -886,7 +887,7 @@ async def test_a_failed_resume_creates_fresh_and_bumps_the_workspace_version() -
     for p in stack:
         p.start()
     try:
-        entry = await lifecycle._acquire_or_create(uid)
+        entry = await lifecycle._acquire_or_create(uid, await lifecycle._template_for(uid))
         assert entry.sandbox is sbx
         assert repo.record_acquisition.await_args.kwargs["workspace_version"] == 5
     finally:
@@ -914,7 +915,7 @@ async def test_a_rate_limited_user_gets_no_pool_entry_and_no_mongo_record() -> N
         p.start()
     try:
         with pytest.raises(lifecycle.SandboxRateLimitError):
-            await lifecycle._acquire_or_create(uid)
+            await lifecycle._acquire_or_create(uid, await lifecycle._template_for(uid))
     finally:
         for p in reversed(stack):
             p.stop()
@@ -939,7 +940,7 @@ async def test_an_e2b_failure_mid_acquire_leaves_nothing_behind() -> None:
         p.start()
     try:
         with pytest.raises(RuntimeError, match="e2b 503"):
-            await lifecycle._acquire_or_create(uid)
+            await lifecycle._acquire_or_create(uid, await lifecycle._template_for(uid))
     finally:
         for p in reversed(stack):
             p.stop()
@@ -994,7 +995,7 @@ async def test_a_flagged_user_gets_a_fresh_sandbox_from_the_agent_lab_template()
     for p in stack:
         p.start()
     try:
-        entry = await lifecycle._acquire_or_create(uid)
+        entry = await lifecycle._acquire_or_create(uid, await lifecycle._template_for(uid))
         assert cls.create.await_args.kwargs["template"] == "gaia-coder-8gb"
         assert cls.create.await_args.kwargs["timeout"] == SANDBOX_LAB_LIFETIME_SECONDS
         assert entry.template_id == "gaia-coder-8gb"
@@ -1018,7 +1019,7 @@ async def test_a_flagged_users_recorded_default_sandbox_is_killed_and_replaced()
     for p in stack:
         p.start()
     try:
-        entry = await lifecycle._acquire_or_create(uid)
+        entry = await lifecycle._acquire_or_create(uid, await lifecycle._template_for(uid))
         cls.kill.assert_awaited_once_with("sbx-small")
         cls.connect.assert_not_awaited()
         assert cls.create.await_args.kwargs["template"] == "gaia-coder-8gb"
@@ -1067,7 +1068,7 @@ async def test_a_flag_reading_off_never_kills_a_recorded_agent_lab_sandbox() -> 
     for p in stack:
         p.start()
     try:
-        entry = await lifecycle._acquire_or_create(uid)
+        entry = await lifecycle._acquire_or_create(uid, await lifecycle._template_for(uid))
         cls.kill.assert_not_awaited()
         cls.create.assert_not_awaited()
         assert entry.sandbox is sbx
@@ -1120,7 +1121,7 @@ async def _acquire_lab(
     for p in stack:
         p.start()
     try:
-        await lifecycle._acquire_or_create(uid)
+        await lifecycle._acquire_or_create(uid, await lifecycle._template_for(uid))
     finally:
         for p in reversed(stack):
             p.stop()
@@ -1166,6 +1167,38 @@ async def test_a_replacement_tells_the_watching_todos_which_save_came_back() -> 
     assert "2026-10-07T10:00:00Z" in detail
 
 
+@pytest.mark.regression
+async def test_a_failed_agents_home_setup_still_records_the_sandbox_and_tells_the_todo() -> None:
+    # Regression: setup ran before the sandbox was recorded, so a failure left
+    # it orphaned and every later acquire created (and orphaned) another.
+    uid = _uid()
+    sbx = _fake_sandbox("sbx-new")
+    sbx.commands.run = AsyncMock(side_effect=TimeoutError("setup timed out after 300s"))
+    repo = AsyncMock()
+    previous = _doc("sbx-old", template_id="gaia-coder-8gb")
+    previous.state = E2bSandboxState.DEAD
+    repo.get_for_user = AsyncMock(return_value=previous)
+    report = AsyncMock()
+    stack = [
+        *_acquire_patches(sbx, repo, lab=True),
+        patch.object(lifecycle, "report_sandbox_event", report),
+    ]
+    for p in stack:
+        p.start()
+    try:
+        entry = await lifecycle._acquire_or_create(uid, await lifecycle._template_for(uid))
+        assert entry.sandbox is sbx
+        assert get_sandbox_pool().get(uid) is entry
+        assert repo.record_acquisition.await_args.kwargs["sandbox_id"] == "sbx-new"
+        _user, kind, detail = report.await_args.args
+        assert kind == SandboxEventKind.REPLACED
+        assert "setup timed out after 300s" in detail
+    finally:
+        for p in reversed(stack):
+            p.stop()
+        get_sandbox_pool().evict(uid)
+
+
 async def test_renewing_pauses_then_resumes_with_a_full_lifetime_and_swaps_the_handle() -> None:
     # set_timeout cannot pass E2B's lifetime cap; only a resume starts a new one.
     uid = _uid()
@@ -1202,7 +1235,7 @@ async def test_renewing_pauses_then_resumes_with_a_full_lifetime_and_swaps_the_h
 
 
 # --------------------------------------------------------------------------
-# _cancel_pause_task / pause_sandbox_for_user
+# _cancel_pause_task / pause_idle_sandbox
 # --------------------------------------------------------------------------
 
 
@@ -1226,24 +1259,104 @@ async def test_cancelling_an_already_finished_pause_is_a_no_op() -> None:
     assert entry.pause_task is None
 
 
-async def test_a_manual_pause_stops_the_watcher_and_drops_the_pending_idle_pause() -> None:
-    # Pausing with the watcher still attached leaks its envd stream, and a
-    # surviving idle-pause task would fire again on a sandbox already paused.
+def _idle_repo(
+    state: E2bSandboxState = E2bSandboxState.ACTIVE, *, used_ago_s: int = 3600
+) -> AsyncMock:
+    """Return a repo whose sbx-1 record was last used used_ago_s seconds ago."""
+    doc = _doc("sbx-1", template_id="gaia-coder")
+    doc.state = state
+    doc.last_used_at = datetime.now(UTC) - timedelta(seconds=used_ago_s)
+    repo = AsyncMock()
+    repo.get_for_user = AsyncMock(return_value=doc)
+    return repo
+
+
+async def test_an_idle_sandbox_is_paused_its_watcher_stopped_and_its_handle_dropped() -> None:
+    # Pausing with the watcher attached leaks its envd stream; a surviving
+    # idle-pause task would fire again; a pooled handle would point at a frozen sandbox.
     uid = _uid()
-    sbx = _fake_sandbox()
-    watcher = _fake_watcher()
-    entry = PooledSandbox(sandbox=sbx, last_canary_ts="x", watcher=watcher)
+    sbx = _fake_sandbox("sbx-1")
+    entry = PooledSandbox(sandbox=sbx, last_canary_ts="x", watcher=_fake_watcher())
     entry.pause_task = asyncio.create_task(asyncio.sleep(30))
     pending = entry.pause_task
     get_sandbox_pool().put(uid, entry)
-    try:
-        with patch.object(lifecycle, "e2b_sandbox_repository", AsyncMock()):
-            assert await lifecycle.pause_sandbox_for_user(uid) is True
-    finally:
-        get_sandbox_pool().evict(uid)
+    repo = _idle_repo()
+    with patch.object(lifecycle, "e2b_sandbox_repository", repo):
+        assert await lifecycle.pause_idle_sandbox(uid) is True
     sbx.beta_pause.assert_awaited_once()
+    repo.mark_paused.assert_awaited_once()
     assert entry.watcher is None
     assert pending.done()
+    assert get_sandbox_pool().get(uid) is None
+
+
+async def test_a_sandbox_used_inside_the_idle_window_is_left_running() -> None:
+    uid = _uid()
+    sbx = _fake_sandbox("sbx-1")
+    get_sandbox_pool().put(uid, PooledSandbox(sandbox=sbx, last_canary_ts="x"))
+    try:
+        with patch.object(lifecycle, "e2b_sandbox_repository", _idle_repo(used_ago_s=5)):
+            assert await lifecycle.pause_idle_sandbox(uid) is False
+    finally:
+        get_sandbox_pool().evict(uid)
+    sbx.beta_pause.assert_not_awaited()
+
+
+async def test_a_sandbox_that_is_not_running_is_left_alone() -> None:
+    connect = AsyncMock()
+    with (
+        patch.object(lifecycle, "e2b_sandbox_repository", _idle_repo(E2bSandboxState.PAUSED)),
+        patch.object(lifecycle, "_connect_sandbox", connect),
+    ):
+        assert await lifecycle.pause_idle_sandbox(_uid()) is False
+    connect.assert_not_awaited()
+
+
+async def test_a_sandbox_another_process_holds_is_connected_and_paused() -> None:
+    # A coding agent makes no GAIA calls, so no process may have it cached.
+    sbx = _fake_sandbox("sbx-1")
+    with (
+        patch.object(lifecycle, "e2b_sandbox_repository", _idle_repo()),
+        patch.object(lifecycle, "_connect_sandbox", AsyncMock(return_value=sbx)),
+    ):
+        assert await lifecycle.pause_idle_sandbox(_uid()) is True
+    sbx.beta_pause.assert_awaited_once()
+
+
+@pytest.mark.regression
+async def test_a_regular_sandbox_never_runs_gaia_save_when_no_lab_template_is_set() -> None:
+    # Regression: with no agent-lab template configured, None == None made every
+    # regular sandbox look agent-lab, so each idle pause ran a missing gaia-save
+    # and reported a failed save.
+    save = AsyncMock(return_value=True)
+    entry = PooledSandbox(sandbox=_fake_sandbox("sbx-1"), template_id=None)
+    with (
+        patch.object(lifecycle.settings, "E2B_AGENT_LAB_TEMPLATE_ID", None),
+        patch.object(lifecycle, "save_agents_home", save),
+        patch.object(lifecycle, "e2b_sandbox_repository", AsyncMock()),
+    ):
+        assert await lifecycle._pause_sandbox("u1", entry) is True
+    save.assert_not_awaited()
+
+
+async def test_an_agent_lab_sandbox_saves_its_agents_home_before_pausing() -> None:
+    # A paused sandbox may never resume; the save is what a replacement restores.
+    order: list[str] = []
+    sbx = _fake_sandbox("sbx-1")
+    sbx.beta_pause = AsyncMock(side_effect=lambda: order.append("pause"))
+    entry = PooledSandbox(sandbox=sbx, template_id="gaia-coder-8gb")
+
+    async def save(_user_id: str, _sbx: object) -> bool:
+        order.append("save")
+        return True
+
+    with (
+        patch.object(lifecycle.settings, "E2B_AGENT_LAB_TEMPLATE_ID", "gaia-coder-8gb"),
+        patch.object(lifecycle, "save_agents_home", save),
+        patch.object(lifecycle, "e2b_sandbox_repository", AsyncMock()),
+    ):
+        assert await lifecycle._pause_sandbox("u1", entry) is True
+    assert order == ["save", "pause"]
 
 
 # --------------------------------------------------------------------------
@@ -1378,3 +1491,112 @@ async def test_a_finished_acquisition_schedules_the_pause_under_the_user_lock() 
 
     dlock.assert_called_once_with(uid)
     schedule_pause.assert_called_once_with(uid, entry)
+
+
+def _renew_world(uid: str, *, connect: AsyncMock) -> tuple[AsyncMock, AsyncMock, list[Any]]:
+    """Pool a lab sandbox sbx-1 and build the patches to renew it: (old handle, repo, patches)."""
+    old = _fake_sandbox("sbx-1")
+    old.files.read = AsyncMock(return_value="ts-1")
+    get_sandbox_pool().put(
+        uid,
+        PooledSandbox(
+            sandbox=old,
+            last_canary_ts="ts-1",
+            timeout_refreshed_at=time.monotonic(),
+            template_id="gaia-coder-8gb",
+        ),
+    )
+    repo = AsyncMock()
+    repo.get_for_user = AsyncMock(return_value=_doc("sbx-1", template_id="gaia-coder-8gb"))
+    cls = _sandbox_class(old)
+    cls.connect = connect
+    patches = [
+        *_acquire_patches(old, repo, lab=True),
+        patch.object(lifecycle, "AsyncSandbox", cls),
+    ]
+    return old, repo, patches
+
+
+@pytest.mark.regression
+async def test_a_renew_whose_resume_fails_records_the_sandbox_paused_not_lost() -> None:
+    # Regression: the sandbox stayed paused while Mongo said running, and the
+    # next acquire read PAUSED as dead and killed a resumable sandbox.
+    uid = _uid()
+    old, repo, patches = _renew_world(uid, connect=AsyncMock(side_effect=RuntimeError("e2b 503")))
+    for p in patches:
+        p.start()
+    try:
+        with pytest.raises(lifecycle.SandboxAcquisitionError):
+            await lifecycle.renew_sandbox(uid)
+        repo.mark_paused.assert_awaited_once()
+        assert get_sandbox_pool().get(uid) is None
+        old.kill.assert_not_awaited()
+    finally:
+        for p in reversed(patches):
+            p.stop()
+        get_sandbox_pool().evict(uid)
+
+
+@pytest.mark.regression
+async def test_a_renewed_sandbox_is_remounted_before_its_agents_save_again() -> None:
+    # Regression: renew skipped the mount check, so a stale FUSE mount after
+    # the resume made every gaia-save in the sandbox fail.
+    uid = _uid()
+    resumed = _fake_sandbox("sbx-1")
+    _old, _repo, patches = _renew_world(uid, connect=AsyncMock(return_value=resumed))
+    ensure = AsyncMock()
+    patches = [*patches, patch.object(lifecycle, "_ensure_mounted", ensure)]
+    for p in patches:
+        p.start()
+    try:
+        await lifecycle.renew_sandbox(uid)
+        assert ensure.await_args.args[0] is resumed
+        assert ensure.await_args.args[1]["USER_ID"] == uid
+    finally:
+        # Only this test's patches: stopall would also stop the session-wide rate-limit fence.
+        for p in reversed(patches):
+            p.stop()
+        get_sandbox_pool().evict(uid)
+
+
+@pytest.mark.regression
+async def test_the_flag_is_evaluated_before_the_users_lock_is_taken() -> None:
+    # Regression: _template_for called PostHog on every acquisition while the
+    # user's lock was held, so a slow flag call stalled every queued caller.
+    uid = _uid()
+    lock_held_during_flag_call: list[bool] = []
+
+    async def flag(user_id: str | None) -> bool:
+        lock_held_during_flag_call.append((await get_sandbox_pool().get_lock(uid)).locked())
+        return False
+
+    sbx = _fake_sandbox("sbx-fresh")
+    repo = AsyncMock()
+    repo.get_for_user = AsyncMock(return_value=None)
+    stack = [*_acquire_patches(sbx, repo), patch.object(lifecycle, "is_agent_lab_enabled", flag)]
+    for p in stack:
+        p.start()
+    try:
+        async with lifecycle.acquire_sandbox(uid):
+            pass
+    finally:
+        for p in reversed(stack):
+            p.stop()
+        get_sandbox_pool().evict(uid)
+    assert lock_held_during_flag_call == [False]
+
+
+@pytest.mark.regression
+def test_the_sandbox_lock_outlasts_the_slowest_cold_create() -> None:
+    # Regression: the lease capped at 300s while a cold create can run the
+    # 120s mount plus a 300s agents-home restore, so it expired mid-acquire and
+    # let another replica create a second sandbox; waiters gave up at 180s.
+    slowest_create = (
+        sandbox_limits.SANDBOX_MOUNT_TIMEOUT_SECONDS
+        + sandbox_limits.SANDBOX_AGENTS_SETUP_TIMEOUT_SECONDS
+    )
+    assert slowest_create < sandbox_limits.SANDBOX_LOCK_MAX_HOLD_SECONDS
+    assert (
+        sandbox_limits.SANDBOX_LOCK_ACQUIRE_TIMEOUT_SECONDS
+        > sandbox_limits.SANDBOX_LOCK_MAX_HOLD_SECONDS
+    )

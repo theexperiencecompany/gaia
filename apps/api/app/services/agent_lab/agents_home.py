@@ -58,8 +58,6 @@ SAVE_EXCLUDES: Final[tuple[str, ...]] = (
 SAVE_TIMEOUT_SECONDS: Final[int] = 120
 # Save, then up to two 15s POSTs (the event, and a failed save's report).
 HOOK_TIMEOUT_SECONDS: Final[int] = SAVE_TIMEOUT_SECONDS + 30
-#: A restore copies the whole saved home back from JuiceFS.
-AGENTS_SETUP_TIMEOUT_SECONDS: Final[int] = 300
 
 #: Printed by the setup command when it restored a fresh sandbox from the save.
 RESTORED_MARKER: Final[str] = "restored_from="

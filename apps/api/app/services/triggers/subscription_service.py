@@ -20,7 +20,7 @@ from pydantic_core import ErrorDetails
 
 from app.constants.todos import BLOCKING_LABEL, TodoActivityEvent
 from app.db.repositories.todos import todo_repository
-from app.models.todo_models import TodoUpdate
+from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import (
     ConditionMatch,
     SubscriptionAction,
@@ -38,6 +38,7 @@ from app.services.triggers.subscription_validation import (
     validate_conditions,
 )
 from app.services.workflow.trigger_service import TriggerService
+from app.utils.errors import AppError
 from app.utils.exceptions import TriggerRegistrationError
 from shared.py.wide_events import log
 
@@ -160,40 +161,61 @@ async def register_subscription(
         trigger_data=dict(trigger_data or {}),
     )
 
-    await todo_repository.update(
-        todo_id,
-        user_id=user_id,
-        update=TodoUpdate(trigger_subscriptions=[*todo.trigger_subscriptions, subscription]),
-    )
-    capture_event(
-        user_id,
-        AnalyticsEvents.TODO_SUBSCRIPTION_REGISTERED,
-        {
-            "trigger_name": trigger_name,
-            "action": action.value,
-            "resolution": subscription.resolution.value,
-            "condition_count": len(outcome.conditions),
-            "repaired": bool(outcome.repairs),
-            "cooldown_seconds": cooldown_seconds,
-        },
-    )
-    await record_activity(
-        todo_id,
-        user_id,
-        TodoActivityEvent.WATCH_ADDED,
-        f"watching {trigger_name} ({len(outcome.conditions)} condition(s)) to {action.value}",
-    )
-    log.info(
-        "todo_subscription.registered",
-        todo_id=todo_id,
-        subscription_id=subscription.id,
-        trigger_name=trigger_name,
-        action=action.value,
-        resolution=subscription.resolution.value,
-        condition_count=len(outcome.conditions),
-        repair_count=len(outcome.repairs),
+    await store_subscription(
+        todo,
+        subscription,
+        repaired=bool(outcome.repairs),
+        activity=(
+            f"watching {trigger_name} ({len(outcome.conditions)} condition(s)) to {action.value}"
+        ),
     )
     return subscription, outcome
+
+
+async def store_subscription(
+    todo: TodoDocument, subscription: TriggerSubscription, *, repaired: bool, activity: str
+) -> None:
+    """Append a ready subscription to the todo, count it, and put activity on the todo's timeline.
+
+    The one write path for every subscription, Composio-backed or not (a
+    sandbox run's has no trigger to register). Fails loud if the todo is gone.
+    """
+    updated = await todo_repository.update(
+        todo.id,
+        user_id=todo.user_id,
+        update=TodoUpdate(trigger_subscriptions=[*todo.trigger_subscriptions, subscription]),
+    )
+    if updated is None:
+        raise AppError(
+            message="the todo vanished while subscribing it",
+            why=f"todo {todo.id} is gone after it was resolved",
+            fix="create the tracked todo again, then subscribe it",
+            status_code=404,
+            code="todo_subscription_todo_missing",
+        )
+    capture_event(
+        todo.user_id,
+        AnalyticsEvents.TODO_SUBSCRIPTION_REGISTERED,
+        {
+            "trigger_name": subscription.trigger_name,
+            "action": subscription.action.value,
+            "resolution": subscription.resolution.value,
+            "condition_count": len(subscription.conditions),
+            "repaired": repaired,
+            "cooldown_seconds": subscription.cooldown_seconds,
+        },
+    )
+    await record_activity(todo.id, todo.user_id, TodoActivityEvent.WATCH_ADDED, activity)
+    log.info(
+        "todo_subscription.registered",
+        todo_id=todo.id,
+        subscription_id=subscription.id,
+        trigger_name=subscription.trigger_name,
+        action=subscription.action.value,
+        resolution=subscription.resolution.value,
+        condition_count=len(subscription.conditions),
+        repaired=repaired,
+    )
 
 
 async def unregister_subscription(

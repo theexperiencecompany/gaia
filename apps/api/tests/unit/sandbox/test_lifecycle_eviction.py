@@ -39,7 +39,7 @@ async def _run(
     pool = get_sandbox_pool()
     entry = PooledSandbox(sandbox=sandbox, last_canary_ts="x")
 
-    async def fake_acquire_or_create(uid: str) -> PooledSandbox:
+    async def fake_acquire_or_create(uid: str, _template_id: str) -> PooledSandbox:
         pool.put(uid, entry)  # mirror real behavior: entry lives in the pool
         return entry
 
@@ -47,6 +47,7 @@ async def _run(
     with (
         patch.object(lifecycle.AsyncSandbox, "get_info", control_plane),
         patch.object(lifecycle, "_acquire_or_create", side_effect=fake_acquire_or_create),
+        patch.object(lifecycle, "_template_for", AsyncMock(return_value="gaia-coder")),
         patch.object(lifecycle, "e2b_sandbox_repository", coll),
         patch.object(lifecycle, "_schedule_pause") as sched,
     ):
@@ -171,5 +172,24 @@ async def test_a_tool_error_plus_one_missed_probe_keeps_a_live_sandbox() -> None
         raised,
     ):
         assert isinstance(raised, RuntimeError)
+        assert pool.get(uid) is not None
+        assert not _dead_state_written(coll)
+
+
+@pytest.mark.regression
+async def test_a_tool_error_keeps_its_own_message_when_e2b_cannot_be_asked() -> None:
+    # Regression: the liveness check raised on a transient control-plane error,
+    # replacing the tool's real error and leaving the sandbox state unknown.
+    sbx = AsyncMock()
+    sbx.is_running = AsyncMock(return_value=False)
+    unreachable = AsyncMock(side_effect=RuntimeError("e2b 502"))
+    async with _run(sbx, body_error=RuntimeError("grep: no match"), control_plane=unreachable) as (
+        uid,
+        pool,
+        coll,
+        sched,
+        raised,
+    ):
+        assert str(raised) == "grep: no match"
         assert pool.get(uid) is not None
         assert not _dead_state_written(coll)

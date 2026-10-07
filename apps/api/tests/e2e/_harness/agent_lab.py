@@ -32,21 +32,22 @@ def lab_world(todos: InMemoryTodos) -> Iterator[AsyncMock]:
             patch.object(execute_token.settings, "SANDBOX_EXECUTE_TOKEN_SECRET", SECRET)
         )
         for target in (
-            "app.agents.tools.coding.bash_tool.is_agent_lab_enabled",
-            "app.services.agent_lab.lab_events.is_agent_lab_enabled",
+            "app.services.agent_lab.lab_runs.is_agent_lab_enabled",
+            "app.services.agent_lab.lab_runs.is_paid",
         ):
             stack.enter_context(patch(target, AsyncMock(return_value=True)))
-        stack.enter_context(
-            patch("app.services.agent_lab.lab_events.is_paid", AsyncMock(return_value=True))
-        )
         for module in (
             "app.agents.tools.coding.bash_tool",
             "app.services.agent_lab.lab_runs",
             "app.services.agent_lab.lab_events",
+            "app.services.triggers.subscription_service",
         ):
             stack.enter_context(patch(f"{module}.todo_repository", todos))
         stack.enter_context(
-            patch("app.services.agent_lab.lab_runs.record_activity", AsyncMock(return_value=True))
+            patch(
+                "app.services.triggers.subscription_service.record_activity",
+                AsyncMock(return_value=True),
+            )
         )
         dispatch = "app.services.triggers.subscription_dispatch"
         stack.enter_context(patch(f"{dispatch}.record_activity", AsyncMock(return_value=True)))

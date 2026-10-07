@@ -31,6 +31,7 @@ from app.utils.errors import AppError
 MODULE = "app.api.v1.endpoints.lab_events"
 SVC = "app.services.agent_lab.lab_events"
 DISPATCH = "app.services.triggers.subscription_dispatch"
+BUDGET = "app.services.sandbox.token_budget"
 SECRET = "unit-test-secret-0123456789abcdef0123456789abcdef"
 
 
@@ -107,8 +108,11 @@ def _service_seams(
     seams = _Seams()
     seams.repo.find_active_by_user_and_trigger = AsyncMock(return_value=todos)
     with ExitStack() as stack:
-        stack.enter_context(patch(f"{SVC}.is_paid", AsyncMock(return_value=paid)))
-        stack.enter_context(patch(f"{SVC}.is_agent_lab_enabled", AsyncMock(return_value=lab_on)))
+        access_seams = "app.services.agent_lab.lab_runs"
+        stack.enter_context(patch(f"{access_seams}.is_paid", AsyncMock(return_value=paid)))
+        stack.enter_context(
+            patch(f"{access_seams}.is_agent_lab_enabled", AsyncMock(return_value=lab_on))
+        )
         stack.enter_context(patch(f"{SVC}.todo_repository", seams.repo))
         stack.enter_context(patch(f"{DISPATCH}.record_activity", seams.activity))
         stack.enter_context(patch(f"{DISPATCH}.enqueue_worker_job", seams.enqueue))
@@ -124,7 +128,7 @@ class TestLabEventsAuth:
     async def test_missing_token_is_401_and_records_nothing(self) -> None:
         with (
             patch(f"{MODULE}.record_lab_event", _receipt()) as record,
-            patch(f"{MODULE}.redis_cache", _redis()),
+            patch(f"{BUDGET}.redis_cache", _redis()),
             patch(f"{MODULE}.log") as mocked_log,
         ):
             with pytest.raises(AppError) as err:
@@ -136,7 +140,7 @@ class TestLabEventsAuth:
     async def test_tampered_token_is_401(self) -> None:
         with (
             patch(f"{MODULE}.record_lab_event", _receipt()) as record,
-            patch(f"{MODULE}.redis_cache", _redis()),
+            patch(f"{BUDGET}.redis_cache", _redis()),
         ):
             with pytest.raises(AppError) as err:
                 await report_lab_event(_request({"kind": "idle"}), authorization=_bearer() + "x")
@@ -147,7 +151,7 @@ class TestLabEventsAuth:
         token = _bearer().split(" ", 1)[1]
         with (
             patch(f"{MODULE}.record_lab_event", _receipt()) as record,
-            patch(f"{MODULE}.redis_cache", _redis()),
+            patch(f"{BUDGET}.redis_cache", _redis()),
         ):
             with pytest.raises(AppError) as err:
                 await report_lab_event(_request({"kind": "idle"}), authorization=f"Basic {token}")
@@ -168,7 +172,7 @@ class TestLabEventsIdentityFromToken:
         }
         with (
             patch(f"{MODULE}.record_lab_event", _receipt()) as record,
-            patch(f"{MODULE}.redis_cache", _redis()),
+            patch(f"{BUDGET}.redis_cache", _redis()),
         ):
             await report_lab_event(_request(body), authorization=_bearer(run_id="run-1"))
         assert record.await_args.args[0] == "run-1"
@@ -177,7 +181,7 @@ class TestLabEventsIdentityFromToken:
         body = {"kind": "permission", "raw": {"nested": {"list": [1, {"deep": True}]}}}
         with (
             patch(f"{MODULE}.record_lab_event", _receipt()) as record,
-            patch(f"{MODULE}.redis_cache", _redis()),
+            patch(f"{BUDGET}.redis_cache", _redis()),
         ):
             response = await report_lab_event(_request(body), authorization=_bearer(user_id="u7"))
         assert record.await_args.kwargs == {"user_id": "u7", "body": body}
@@ -186,7 +190,7 @@ class TestLabEventsIdentityFromToken:
     async def test_non_object_json_is_422(self) -> None:
         with (
             patch(f"{MODULE}.record_lab_event", _receipt()) as record,
-            patch(f"{MODULE}.redis_cache", _redis()),
+            patch(f"{BUDGET}.redis_cache", _redis()),
         ):
             with pytest.raises(AppError) as err:
                 await report_lab_event(_request(["not", "an", "object"]), authorization=_bearer())
@@ -196,7 +200,7 @@ class TestLabEventsIdentityFromToken:
     async def test_unparseable_body_is_422(self) -> None:
         with (
             patch(f"{MODULE}.record_lab_event", _receipt()) as record,
-            patch(f"{MODULE}.redis_cache", _redis()),
+            patch(f"{BUDGET}.redis_cache", _redis()),
         ):
             with pytest.raises(AppError) as err:
                 await report_lab_event(_raw_request(b"{nope"), authorization=_bearer())
@@ -209,17 +213,29 @@ class TestLabEventsBudgetAndAudit:
     async def test_exhausted_budget_is_429_and_never_records(self) -> None:
         with (
             patch(f"{MODULE}.record_lab_event", _receipt()) as record,
-            patch(f"{MODULE}.redis_cache", _redis(10_000, 1)),
+            patch(f"{BUDGET}.redis_cache", _redis(10_000, 1)),
         ):
             with pytest.raises(AppError) as err:
                 await report_lab_event(_request({"kind": "idle"}), authorization=_bearer())
         assert err.value.status_code == 429
         record.assert_not_awaited()
 
+    @pytest.mark.regression
+    async def test_a_long_run_is_not_cut_off_by_the_one_hour_execute_budget(
+        self, fake_redis: Any
+    ) -> None:
+        # Regression: the receiver reused /sandbox/execute's 300-call budget, sized
+        # for a 1h token, on a 13h run token; a long run with many turns hit 429
+        # and gaia-hook swallowed it, so the todo silently stopped hearing.
+        await fake_redis.set("lab_events:calls:run-1", 300)
+        with patch(f"{MODULE}.record_lab_event", _receipt()) as record:
+            await report_lab_event(_request({"kind": "idle"}), authorization=_bearer())
+        record.assert_awaited_once()
+
     async def test_per_minute_rate_limit_is_429_and_never_records(self) -> None:
         with (
             patch(f"{MODULE}.record_lab_event", _receipt()) as record,
-            patch(f"{MODULE}.redis_cache", _redis(5, 61)),
+            patch(f"{BUDGET}.redis_cache", _redis(5, 61)),
         ):
             with pytest.raises(AppError) as err:
                 await report_lab_event(_request({"kind": "idle"}), authorization=_bearer())
@@ -229,7 +245,7 @@ class TestLabEventsBudgetAndAudit:
     async def test_every_accepted_call_is_audited(self) -> None:
         with (
             patch(f"{MODULE}.record_lab_event", _receipt(todo_id="t9", kind="Stop")),
-            patch(f"{MODULE}.redis_cache", _redis()),
+            patch(f"{BUDGET}.redis_cache", _redis()),
             patch(f"{MODULE}.log") as mocked_log,
         ):
             await report_lab_event(
@@ -252,7 +268,7 @@ class TestLabEventsBudgetAndAudit:
         redis.client.incr = AsyncMock(side_effect=_incr)
         with (
             patch(f"{MODULE}.record_lab_event", _receipt()),
-            patch(f"{MODULE}.redis_cache", redis),
+            patch(f"{BUDGET}.redis_cache", redis),
         ):
             await report_lab_event(
                 _request({"kind": "idle"}), authorization=_bearer(run_id="run-7")

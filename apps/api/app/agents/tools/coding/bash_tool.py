@@ -44,7 +44,12 @@ from app.constants.sandbox import (
 from app.constants.todos import FAILED_LABEL, GAIA_TRACKED_LABEL
 from app.db.repositories.todos import todo_repository
 from app.decorators import with_doc, with_rate_limiting
-from app.services.agent_lab.lab_runs import LAB_SEED_TIMEOUT_SECONDS, subscribe_todo_to_run
+from app.services.agent_lab.lab_runs import (
+    LAB_SEED_TIMEOUT_SECONDS,
+    LabAccess,
+    lab_access,
+    subscribe_todo_to_run,
+)
 from app.services.agent_lab.sandbox_setup import (
     build_seed_command,
     lab_env,
@@ -52,7 +57,7 @@ from app.services.agent_lab.sandbox_setup import (
     lab_events_url,
     mint_lab_hooks_token,
 )
-from app.services.feature_flags import is_agent_lab_enabled, is_code_mode_enabled
+from app.services.feature_flags import is_code_mode_enabled
 from app.services.sandbox import (
     SandboxAcquisitionError,
     acquire_sandbox,
@@ -64,6 +69,7 @@ from app.services.sandbox.execute_client import (
 )
 from app.services.storage import FsOps, fs_timer
 from app.services.storage.metrics import _register_once
+from app.services.triggers.subscription_service import unregister_subscription
 from app.templates.docstrings.coding_tools_docs import BASH_TOOL
 from app.utils.output_limiter import truncate_head_tail
 from shared.py.wide_events import log
@@ -250,10 +256,15 @@ async def _build_execute_env(run: _BashInvocation, sbx: object) -> dict[str, str
 
 @dataclass(frozen=True)
 class _LabRun:
-    """A seeded agent-lab run: its id plus the GAIA_LAB_* env for the command."""
+    """A seeded agent-lab run: its id, the todo's subscription to it, and the GAIA_LAB_* env."""
 
     run_id: str
+    subscription_id: str
     env: dict[str, str]
+
+
+class BackgroundStartError(RuntimeError):
+    """The detached command printed no pid, so nothing is running."""
 
 
 async def _setup_lab_run(*, user_id: str, run_todo_id: str, sbx: object) -> _LabRun | str:
@@ -262,7 +273,10 @@ async def _setup_lab_run(*, user_id: str, run_todo_id: str, sbx: object) -> _Lab
     On any failure the caller runs nothing. The error is a plain string (the
     tool's contract), not a raise — the command must never execute unseeded.
     """
-    if not await is_agent_lab_enabled(user_id):
+    access = await lab_access(user_id)
+    if access == LabAccess.NOT_PAID:
+        return "Error: sandbox agent runs need a paid plan (run_todo_id), ran nothing"
+    if access == LabAccess.FLAG_OFF:
         return "Error: agent lab is disabled for this user (run_todo_id needs the AGENT_LAB flag)"
     try:
         todo = await todo_repository.get(run_todo_id, user_id=user_id)
@@ -292,10 +306,14 @@ async def _setup_lab_run(*, user_id: str, run_todo_id: str, sbx: object) -> _Lab
     except Exception as e:
         return f"Error: lab seed failed ({e}), ran nothing"
     try:
-        await subscribe_todo_to_run(todo, sandbox_run_id)
+        subscription = await subscribe_todo_to_run(todo, sandbox_run_id)
     except Exception as e:
         return f"Error: subscribing todo {run_todo_id} to the run failed ({e}), ran nothing"
-    return _LabRun(run_id=sandbox_run_id, env=lab_env(url, token, sandbox_run_id))
+    return _LabRun(
+        run_id=sandbox_run_id,
+        subscription_id=subscription.id,
+        env=lab_env(url, token, sandbox_run_id),
+    )
 
 
 def _lab_footer(lab: _LabRun, run_todo_id: str) -> str:
@@ -380,16 +398,22 @@ async def _run_bash(
                     return _emit_bash_error(run_id, setup, setup, session_id)
                 lab = setup
                 command_env = {**(command_env or {}), **lab.env}
-            if background:
-                result = await _run_background(sbx, run, command_env)
-            else:
-                result = await _run_foreground(sbx, run, command_env)
+            try:
+                if background:
+                    result = await _run_background(sbx, run, command_env)
+                else:
+                    result = await _run_foreground(sbx, run, command_env)
+            except Exception:
+                # A run that never started must not stay subscribed and count as live.
+                if lab is not None and run_todo_id is not None:
+                    await unregister_subscription(run_todo_id, user_id, lab.subscription_id)
+                raise
+            if not background and session_id:
                 # A bash command can create artifacts many ways (cat, python, mv,
                 # curl -o, …), not just the write tool. Enumerate the session's
                 # artifacts/ from the sandbox itself (no cross-mount race) in real time.
-                if session_id:
-                    async with fs_timer(FsOps.TOOL_BASH_PUBLISH):
-                        await _publish_artifacts(sbx, user_id, session_id)
+                async with fs_timer(FsOps.TOOL_BASH_PUBLISH):
+                    await _publish_artifacts(sbx, user_id, session_id)
             if lab is not None and run_todo_id is not None:
                 result = f"{result}\n{_lab_footer(lab, run_todo_id)}"
             return result
@@ -587,8 +611,8 @@ async def _run_background(
     )
     pid = (getattr(result, "stdout", "") or "").strip()
     if not pid:
-        return (
-            f"Error: failed to start background command (stderr: {getattr(result, 'stderr', '')})"
+        raise BackgroundStartError(
+            f"failed to start background command (stderr: {getattr(result, 'stderr', '')})"
         )
     safe_emit(
         {

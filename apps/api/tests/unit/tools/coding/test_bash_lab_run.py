@@ -40,6 +40,7 @@ from app.services.sandbox import execute_token
 
 MODULE = "app.agents.tools.coding.bash_tool"
 LAB_RUNS = "app.services.agent_lab.lab_runs"
+SUBSCRIPTIONS = "app.services.triggers.subscription_service"
 CONFIG = {"configurable": {"user_id": "u1", "stream_id": "s1"}}
 EVENTS_URL = "https://gaia.test/api/v1/lab/events"
 SECRET = "unit-test-secret-0123456789abcdef0123456789abcdef"
@@ -88,11 +89,13 @@ def _lab_stack(
         stack.enter_context(patch(f"{MODULE}.acquire_sandbox", new=_acquire(sbx)))
         stack.enter_context(patch(f"{MODULE}.sandbox_execute_enabled", return_value=False))
         stack.enter_context(
-            patch(f"{MODULE}.is_agent_lab_enabled", new=AsyncMock(return_value=lab_enabled))
+            patch(f"{LAB_RUNS}.is_agent_lab_enabled", new=AsyncMock(return_value=lab_enabled))
         )
+        stack.enter_context(patch(f"{LAB_RUNS}.is_paid", new=AsyncMock(return_value=True)))
         stack.enter_context(patch(f"{MODULE}.todo_repository", new=todos))
         stack.enter_context(patch(f"{LAB_RUNS}.todo_repository", new=todos))
-        stack.enter_context(patch(f"{LAB_RUNS}.record_activity", new=activity))
+        stack.enter_context(patch(f"{SUBSCRIPTIONS}.todo_repository", new=todos))
+        stack.enter_context(patch(f"{SUBSCRIPTIONS}.record_activity", new=activity))
         stack.enter_context(patch(f"{MODULE}.mint_lab_hooks_token", return_value="tok-lab"))
         stack.enter_context(patch(f"{MODULE}.lab_events_url", return_value=EVENTS_URL))
         todos.get = AsyncMock(return_value=todo)
@@ -116,6 +119,21 @@ class TestLabGate:
         assert sbx.commands.run.await_count == 0
         todos.get.assert_not_awaited()
 
+    @pytest.mark.regression
+    async def test_a_flagged_user_off_the_paid_plan_launches_nothing(self) -> None:
+        # Regression: launch checked only the flag while the event receiver also
+        # requires Pro, so the run's every event got 402 and its todo never heard.
+        sbx = _sbx()
+        todos = AsyncMock()
+        with (
+            _lab_stack(sbx, todos, todo=_todo()),
+            patch(f"{LAB_RUNS}.is_paid", AsyncMock(return_value=False), create=True),
+        ):
+            out = await bash.ainvoke({"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG)
+        assert out.startswith("Error:") and "paid plan" in out
+        assert sbx.commands.run.await_count == 0
+        todos.update.assert_not_awaited()
+
     async def test_missing_todo_rejects_and_runs_nothing(self) -> None:
         sbx = _sbx()
         todos = AsyncMock()
@@ -131,7 +149,8 @@ class TestLabGate:
         with (
             patch(f"{MODULE}.acquire_sandbox", new=_acquire(sbx)),
             patch(f"{MODULE}.sandbox_execute_enabled", return_value=False),
-            patch(f"{MODULE}.is_agent_lab_enabled", new=AsyncMock(return_value=True)),
+            patch(f"{LAB_RUNS}.is_agent_lab_enabled", new=AsyncMock(return_value=True)),
+            patch(f"{LAB_RUNS}.is_paid", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.todo_repository", new=todos),
         ):
             out = await bash.ainvoke(
@@ -236,10 +255,12 @@ class TestLabHappyPath:
             patch(f"{MODULE}.is_code_mode_enabled", return_value=True),
             patch(f"{MODULE}.seed_execute_client", new=AsyncMock()),
             patch(f"{MODULE}.mint_execute_env", return_value={"GAIA_EXECUTE_TOKEN": "tok-exec"}),
-            patch(f"{MODULE}.is_agent_lab_enabled", new=AsyncMock(return_value=True)),
+            patch(f"{LAB_RUNS}.is_agent_lab_enabled", new=AsyncMock(return_value=True)),
+            patch(f"{LAB_RUNS}.is_paid", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.todo_repository", new=todos),
             patch(f"{LAB_RUNS}.todo_repository", new=todos),
-            patch(f"{LAB_RUNS}.record_activity", new=AsyncMock(return_value=True)),
+            patch(f"{SUBSCRIPTIONS}.todo_repository", new=todos),
+            patch(f"{SUBSCRIPTIONS}.record_activity", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.mint_lab_hooks_token", return_value="tok-lab"),
             patch(f"{MODULE}.lab_events_url", return_value=EVENTS_URL),
         ):
@@ -277,10 +298,12 @@ class TestLabSeedExecutes:
         todo = _todo()
         todos = InMemoryTodos(todo)
         with (
-            patch(f"{MODULE}.is_agent_lab_enabled", new=AsyncMock(return_value=True)),
+            patch(f"{LAB_RUNS}.is_agent_lab_enabled", new=AsyncMock(return_value=True)),
+            patch(f"{LAB_RUNS}.is_paid", new=AsyncMock(return_value=True)),
             patch(f"{MODULE}.todo_repository", new=todos),
             patch(f"{LAB_RUNS}.todo_repository", new=todos),
-            patch(f"{LAB_RUNS}.record_activity", new=AsyncMock(return_value=True)),
+            patch(f"{SUBSCRIPTIONS}.todo_repository", new=todos),
+            patch(f"{SUBSCRIPTIONS}.record_activity", new=AsyncMock(return_value=True)),
         ):
             lab = await _setup_lab_run(user_id="u1", run_todo_id="t1", sbx=fake)
         assert not isinstance(lab, str)
@@ -328,6 +351,32 @@ class TestLabSeedExecutes:
 
 
 @pytest.mark.unit
+class TestFailedLaunchUnsubscribes:
+    @pytest.mark.regression
+    async def test_a_background_launch_that_never_starts_leaves_no_subscription(self) -> None:
+        # Regression: the todo subscribed before the launch and stayed subscribed
+        # when it failed, so a run that never existed counted as live.
+        sbx = _sbx(_ok("seeded"), SimpleNamespace(exit_code=0, stdout="", stderr="no shell"))
+        todos = InMemoryTodos(_todo())
+        with (
+            _lab_stack(sbx, AsyncMock(), todo=_todo()),
+            patch(f"{MODULE}.todo_repository", new=todos),
+            patch(f"{LAB_RUNS}.todo_repository", new=todos),
+            patch(f"{SUBSCRIPTIONS}.todo_repository", new=todos),
+            patch(f"{SUBSCRIPTIONS}.record_activity", AsyncMock()),
+        ):
+            out = await bash.ainvoke(
+                {"command": "claude -p hi", "run_todo_id": "t1", "background": True},
+                config=CONFIG,
+            )
+        assert "failed to start background command" in out
+        assert "sandbox_run_id" not in out
+        stored = await todos.get("t1", user_id="u1")
+        assert stored is not None
+        assert lab_runs.run_subscriptions(stored) == []
+
+
+@pytest.mark.unit
 class TestLabRunSubscribesTodo:
     async def test_run_todo_id_subscribes_the_todo_to_the_run(self) -> None:
         sbx = _sbx(_ok("seeded"), _ok("hi"))
@@ -346,7 +395,10 @@ class TestLabRunSubscribesTodo:
     async def test_subscribing_is_counted_for_the_todo_owner(self) -> None:
         sbx = _sbx(_ok("seeded"), _ok("hi"))
         todos = AsyncMock()
-        with _lab_stack(sbx, todos, todo=_todo()), patch(f"{LAB_RUNS}.capture_event") as capture:
+        with (
+            _lab_stack(sbx, todos, todo=_todo()),
+            patch(f"{SUBSCRIPTIONS}.capture_event") as capture,
+        ):
             await bash.ainvoke({"command": "echo hi", "run_todo_id": "t1"}, config=CONFIG)
         distinct_id, event, props = capture.call_args.args
         assert distinct_id == "u1"

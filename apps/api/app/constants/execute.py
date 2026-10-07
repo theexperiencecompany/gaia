@@ -54,14 +54,17 @@ SANDBOX_EXECUTE_MAX_CALLS_PER_MINUTE = 60
 SANDBOX_LAB_MAX_RUN_SECONDS = 43200
 # Keep-warm ticks every 10 min; renewing under 20 min left always beats E2B's lifetime cap.
 SANDBOX_LAB_RENEW_WHEN_SECONDS_LEFT = 20 * 60
+# Users handled at once per keep-warm tick; a save can take up to SAVE_TIMEOUT_SECONDS.
+SANDBOX_LAB_KEEP_WARM_CONCURRENCY = 8
 # Sandbox run event token (POST /api/v1/lab/events), empty tool scope. A running
 # CLI keeps the token it launched with, so it must outlive the longest run.
 SANDBOX_LAB_EVENTS_TOKEN_TTL_SECONDS = SANDBOX_LAB_MAX_RUN_SECONDS + 3600
 # Budget counters must outlive the token, so one can never reset mid-run.
 SANDBOX_LAB_EVENTS_BUDGET_WINDOW_SECONDS = SANDBOX_LAB_EVENTS_TOKEN_TTL_SECONDS + 3600
-# TTL of the per-minute lab push bucket: two minutes so a burst straddling a
-# minute boundary still counts against one window instead of resetting early.
-SANDBOX_LAB_EVENTS_RATE_BUCKET_TTL_SECONDS = 120
+# Events one run may push over its whole life (a turn end, question or failure
+# each): a 12h run ending a turn every 30s stays under it; a hook in a loop does not.
+SANDBOX_LAB_EVENTS_MAX_PER_RUN = 2000
+SANDBOX_LAB_EVENTS_MAX_PER_MINUTE = 60
 # Each event body rides into the woken todo run's prompt verbatim; bigger ones
 # are cut to this size with a marker rather than lost.
 LAB_EVENT_MAX_RAW_BYTES = 64 * 1024

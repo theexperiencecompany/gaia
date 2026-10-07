@@ -8,22 +8,25 @@ Currently:
   available if the user comes back inside the window. AGENT_LAB users are
   exempt while the flag is on (their keep-warm refresh keeps last_used_at
   fresh anyway; the exemption covers a missed cron run).
-- refresh_lab_sandboxes: every 10 minutes. For flagged users it saves the
-  agents' home and, near E2B's lifetime cap, renews the sandbox with a pause
-  and resume; past SANDBOX_LAB_MAX_RUN_SECONDS it leaves the sandbox to
-  idle-pause, with one notification per cap window.
+- refresh_lab_sandboxes: every 10 minutes, over agent-lab sandboxes. A live
+  run's sandbox is saved and, near E2B's lifetime cap, renewed with a pause
+  and resume; any other, including a run past SANDBOX_LAB_MAX_RUN_SECONDS
+  (one notification per cap window), is paused once idle.
 """
 
 from __future__ import annotations
 
+import asyncio
+from collections import Counter
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from typing import Any, cast
 
 from arq.connections import ArqRedis
-from e2b import AsyncSandbox
 
 from app.config.settings import settings
 from app.constants.execute import (
+    SANDBOX_LAB_KEEP_WARM_CONCURRENCY,
     SANDBOX_LAB_MAX_RUN_SECONDS,
     SANDBOX_LAB_RENEW_WHEN_SECONDS_LEFT,
 )
@@ -37,12 +40,17 @@ from app.models.notification.notification_models import (
     NotificationType,
 )
 from app.models.todo_models import TodoDocument
-from app.services.agent_lab.agents_home import SAVE_SCRIPT, SAVE_TIMEOUT_SECONDS
-from app.services.agent_lab.lab_runs import SANDBOX_RUN_TRIGGER, run_subscriptions
+from app.services.agent_lab.agents_saves import save_agents_home
+from app.services.agent_lab.lab_runs import SANDBOX_RUN_TRIGGER, run_cap_status
 from app.services.agent_lab.sandbox_events import SandboxEventKind, report_sandbox_event
 from app.services.feature_flags import is_agent_lab_enabled
 from app.services.notification_service import notification_service
-from app.services.sandbox import acquire_sandbox, mark_sandbox_dead, renew_sandbox
+from app.services.sandbox import (
+    acquire_sandbox,
+    mark_sandbox_dead,
+    pause_idle_sandbox,
+    renew_sandbox,
+)
 from shared.py.wide_events import SandboxContext, log
 
 
@@ -75,50 +83,75 @@ async def sweep_idle_sandboxes(_ctx: dict[str, Any]) -> str:
     return f"Evicted {evicted} idle sandboxes (cutoff={cutoff.isoformat()})"
 
 
+class LabTickOutcome(StrEnum):
+    """What one keep-warm tick did with one user's agent-lab sandbox."""
+
+    KEPT = "kept"
+    PAUSED = "paused"
+    LEFT = "left"
+    FAILED = "failed"
+
+
 async def refresh_lab_sandboxes(ctx: dict[str, Any]) -> str:
-    """Re-acquire flagged users' sandboxes so the E2B kill timer never lapses."""
-    user_ids = await e2b_sandbox_repository.find_live_user_ids()
-    refreshed = 0
-    capped = 0
-    for user_id in user_ids:
-        try:
-            if not await is_agent_lab_enabled(user_id):
-                continue
-            lab_todos = await _lab_run_todos(user_id)
-            past_cap, capped_todo_ids = _lab_cap_status(lab_todos)
-            if past_cap:
-                capped += 1
-                log.info(
-                    f"{LogTag.SANDBOX} lab run past cap; leaving sandbox to idle-pause",
-                    user_id=user_id,
-                    capped_todo_ids=capped_todo_ids,
-                )
-                await _notify_lab_cap_hit(ctx, user_id, capped_todo_ids)
-                continue
-            await _keep_lab_sandbox(ctx, user_id)
-            refreshed += 1
-        except Exception as e:
-            log.warning(
-                f"{LogTag.SANDBOX} failed to refresh lab sandbox",
-                user_id=user_id,
-                error_type=type(e).__name__,
-                error=str(e),
-            )
-    log.set(sandbox=SandboxContext(operation="lab_refresh", evicted_count=refreshed))
+    """Keep agent-lab sandboxes with a live run warm and saved; pause the rest once idle.
+
+    Candidates come from the template recorded in Mongo, so regular users cost
+    no flag evaluation; users are handled concurrently, so one slow save never
+    pushes another past its renew margin.
+    """
+    template_id = settings.E2B_AGENT_LAB_TEMPLATE_ID
+    if not template_id:
+        return "Agent-lab template not configured; nothing to keep warm"
+    user_ids = await e2b_sandbox_repository.find_live_user_ids_on_template(template_id)
+    slots = asyncio.Semaphore(SANDBOX_LAB_KEEP_WARM_CONCURRENCY)
+
+    async def tick(user_id: str) -> LabTickOutcome:
+        async with slots:
+            return await _tick_lab_sandbox(ctx, user_id)
+
+    outcomes = Counter(await asyncio.gather(*(tick(user_id) for user_id in user_ids)))
+    log.set(
+        sandbox=SandboxContext(
+            operation="lab_refresh", evicted_count=outcomes[LabTickOutcome.PAUSED]
+        )
+    )
     log.info(
         f"{LogTag.SANDBOX} refreshed lab sandboxes",
-        refreshed_count=refreshed,
-        capped_count=capped,
+        **{f"{outcome.value}_count": outcomes[outcome] for outcome in LabTickOutcome},
     )
-    return f"Refreshed {refreshed} lab sandboxes, skipped {capped} past cap"
+    return (
+        f"Kept {outcomes[LabTickOutcome.KEPT]} lab sandboxes warm, "
+        f"paused {outcomes[LabTickOutcome.PAUSED]} idle, "
+        f"{outcomes[LabTickOutcome.FAILED]} failed"
+    )
 
 
-async def _keep_lab_sandbox(ctx: dict[str, Any], user_id: str) -> None:
+async def _tick_lab_sandbox(ctx: dict[str, Any], user_id: str) -> LabTickOutcome:
+    """Keep a live run's sandbox warm; otherwise pause it once idle. A failure only logs."""
+    try:
+        status = run_cap_status(await _lab_run_todos(user_id))
+        if status.capped_todo_ids:
+            await _notify_lab_cap_hit(ctx, user_id, status.capped_todo_ids)
+        if status.live and await is_agent_lab_enabled(user_id):
+            await _keep_lab_sandbox(user_id)
+            return LabTickOutcome.KEPT
+        return LabTickOutcome.PAUSED if await pause_idle_sandbox(user_id) else LabTickOutcome.LEFT
+    except Exception as e:
+        log.warning(
+            f"{LogTag.SANDBOX} failed to refresh lab sandbox",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        return LabTickOutcome.FAILED
+
+
+async def _keep_lab_sandbox(user_id: str) -> None:
     """Save the agents' home, then renew the sandbox when E2B's lifetime cap is near."""
     async with acquire_sandbox(user_id) as sbx:
         info = await sbx.get_info()
         seconds_left = (info.end_at - datetime.now(UTC)).total_seconds()
-        await _save_agents_home(ctx, user_id, sbx)
+        await save_agents_home(user_id, sbx)
     if seconds_left > SANDBOX_LAB_RENEW_WHEN_SECONDS_LEFT:
         return
     await renew_sandbox(user_id)
@@ -130,34 +163,6 @@ async def _keep_lab_sandbox(ctx: dict[str, Any], user_id: str) -> None:
     )
 
 
-async def _save_agents_home(ctx: dict[str, Any], user_id: str, sbx: AsyncSandbox) -> None:
-    """Run gaia-save; a failure wakes the watching todos once until a save succeeds again."""
-    pool = cast(ArqRedis, ctx["redis"])
-    key = _lab_save_failed_key(user_id)
-    try:
-        await sbx.commands.run(SAVE_SCRIPT, timeout=SAVE_TIMEOUT_SECONDS)
-    except Exception as e:
-        log.warning(
-            f"{LogTag.SANDBOX} scheduled agents-home save failed",
-            user_id=user_id,
-            error_type=type(e).__name__,
-            error=str(e),
-        )
-        if await pool.set(key, "1", nx=True):
-            await report_sandbox_event(
-                user_id,
-                SandboxEventKind.SAVE_FAILED,
-                f"the scheduled save of the coding agents' home failed: {str(e)[:500]}",
-            )
-        return
-    await pool.delete(key)
-
-
-def _lab_save_failed_key(user_id: str) -> str:
-    """Redis flag: the last scheduled save failed and the todos were already told."""
-    return f"lab:save_failed:{user_id}"
-
-
 def _lab_cap_notified_key(user_id: str) -> str:
     """Redis key throttling the cap-hit notification to one per cap window."""
     return f"lab:cap_notified:{user_id}"
@@ -166,21 +171,6 @@ def _lab_cap_notified_key(user_id: str) -> str:
 async def _lab_run_todos(user_id: str) -> list[TodoDocument]:
     """Open todos subscribed to at least one sandbox run."""
     return await todo_repository.find_active_by_user_and_trigger(user_id, SANDBOX_RUN_TRIGGER)
-
-
-def _lab_cap_status(lab_todos: list[TodoDocument]) -> tuple[bool, list[str]]:
-    """Whether every watched run started more than the cap ago; no runs means keep refreshing."""
-    started = [
-        (todo.id, subscription.created_at)
-        for todo in lab_todos
-        for subscription in run_subscriptions(todo)
-    ]
-    if not started:
-        return False, []
-    now = datetime.now(UTC)
-    if any((now - at).total_seconds() <= SANDBOX_LAB_MAX_RUN_SECONDS for _, at in started):
-        return False, []
-    return True, sorted({todo_id for todo_id, _ in started})
 
 
 async def _notify_lab_cap_hit(ctx: dict[str, Any], user_id: str, todo_ids: list[str]) -> None:

@@ -47,15 +47,19 @@ SANDBOX_LAB_LIFETIME_SECONDS = 12 * 3600
 SANDBOX_CONNECT_TIMEOUT_SECONDS = 10
 
 
-# Serializes sandbox acquisition per user across replicas, or two pods
-# create/resume the same sandbox at once. Short lease renewed by a watchdog,
-# since cold create + JuiceFS mount has no useful upper bound to size it to.
+# The slow cold-create steps inside the user's lock: the JuiceFS mount script
+# (its readiness poll is ~105s worst case) and an agent-lab home restore.
+SANDBOX_MOUNT_TIMEOUT_SECONDS = 120
+SANDBOX_AGENTS_SETUP_TIMEOUT_SECONDS = 300
+
+# Serializes sandbox acquisition per user across replicas: a short lease a
+# watchdog renews, since a cold create has no useful upper bound to size it to.
 SANDBOX_LOCK_LEASE_SECONDS = 30
 SANDBOX_LOCK_RENEW_SECONDS = 10
-# A waiter blocks this long before giving up; longer than the mount script's
-# 120s so a queue behind a genuinely slow create waits rather than failing.
-SANDBOX_LOCK_ACQUIRE_TIMEOUT_SECONDS = 180
-# Hard cap on watchdog renewal; past this the lease expires so a hung-but-alive
-# holder can't block the user forever. Comfortably above the real critical
-# section (cold create + 120s mount).
-SANDBOX_LOCK_MAX_HOLD_SECONDS = 300
+# Hard cap on watchdog renewal: the slowest cold create (E2B create, mount,
+# restore) plus margin, so a hung-but-alive holder still cannot block forever.
+SANDBOX_LOCK_MAX_HOLD_SECONDS = (
+    SANDBOX_MOUNT_TIMEOUT_SECONDS + SANDBOX_AGENTS_SETUP_TIMEOUT_SECONDS + 120
+)
+# A waiter outlasts a full hold, so a queue behind a slow create waits rather than failing.
+SANDBOX_LOCK_ACQUIRE_TIMEOUT_SECONDS = SANDBOX_LOCK_MAX_HOLD_SECONDS + 60

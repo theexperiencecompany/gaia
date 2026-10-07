@@ -12,9 +12,8 @@ from pydantic import BaseModel
 
 from app.constants.execute import LAB_EVENT_MAX_RAW_BYTES
 from app.db.repositories.todos import todo_repository
-from app.decorators.entitlements import SubscriptionRequiredException, is_paid
-from app.services.agent_lab.lab_runs import SANDBOX_RUN_TRIGGER, find_run
-from app.services.feature_flags import is_agent_lab_enabled
+from app.decorators.entitlements import SubscriptionRequiredException
+from app.services.agent_lab.lab_runs import SANDBOX_RUN_TRIGGER, LabAccess, find_run, lab_access
 from app.services.triggers.subscription_dispatch import fire_subscription
 from app.utils.errors import AppError
 from shared.py.wide_events import log
@@ -51,9 +50,10 @@ def lab_event_kind(body: dict[str, Any]) -> str:
 
 async def record_lab_event(run_id: str, *, user_id: str, body: dict[str, Any]) -> LabEventReceipt:
     """Wake the todo subscribed to run_id with body attached; fails loud on misuse."""
-    if not await is_paid(user_id):
+    access = await lab_access(user_id)
+    if access == LabAccess.NOT_PAID:
         raise SubscriptionRequiredException()
-    if not await is_agent_lab_enabled(user_id):
+    if access == LabAccess.FLAG_OFF:
         raise AppError(
             message="agent lab is disabled for this user",
             why="the AGENT_LAB flag was revoked after the token was minted",

@@ -20,6 +20,7 @@ import base64
 from collections.abc import AsyncIterator
 import contextlib
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from pathlib import Path
 import time
 from typing import Any, cast
@@ -35,16 +36,16 @@ from app.constants.sandbox import (
     HEALTH_PROBE_RETRY_REQUEST_TIMEOUT_SECONDS,
     HEALTH_PROBE_RETRY_WAIT_TIMEOUT_SECONDS,
     HEALTH_PROBE_WAIT_TIMEOUT_SECONDS,
+    SANDBOX_AGENTS_SETUP_TIMEOUT_SECONDS,
     SANDBOX_CONNECT_TIMEOUT_SECONDS,
+    SANDBOX_MOUNT_TIMEOUT_SECONDS,
 )
 from app.db.repositories.e2b_sandboxes import e2b_sandbox_repository
 from app.decorators import enforce_rate_limit
 from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
-from app.services.agent_lab.agents_home import (
-    AGENTS_SETUP_TIMEOUT_SECONDS,
-    build_agents_setup_command,
-    restored_from,
-)
+from app.services.agent_lab.agents_home import build_agents_setup_command, restored_from
+from app.services.agent_lab.agents_saves import save_agents_home
+from app.services.agent_lab.lab_runs import keeps_sandbox_awake
 from app.services.agent_lab.sandbox_events import SandboxEventKind, report_sandbox_event
 from app.services.feature_flags import is_agent_lab_enabled
 from app.services.sandbox.artifact_watcher import start_watcher_for
@@ -52,6 +53,7 @@ from app.services.sandbox.errors import SandboxAcquisitionError, SandboxRateLimi
 from app.services.sandbox.pool import (
     PooledSandbox,
     get_sandbox_pool,
+    is_agent_lab_template,
     refresh_sandbox_timeout,
     sandbox_lifetime_seconds,
 )
@@ -68,10 +70,8 @@ from shared.py.wide_events import log
 CANARY_PATH = "/workspace/.gaia/canary.txt"
 MOUNT_SCRIPT_PATH = "/etc/gaia/mount.sh"  # template-baked copy (runtime-ship fallback)
 # The API ships its own copy of mount_juicefs.sh at acquire time (see
-# _run_mount_script), so script changes need no template rebuild. Timeout
-# covers the in-script mount-readiness poll (~105s worst case) plus margin.
+# _run_mount_script), so script changes need no template rebuild.
 MOUNT_SCRIPT_FILE = Path(__file__).resolve().parents[3] / "scripts" / "mount_juicefs.sh"
-MOUNT_SCRIPT_TIMEOUT_SECONDS = 120
 # Graceful JuiceFS unmount before a hard kill — short, best-effort.
 JFS_UNMOUNT_TIMEOUT_SECONDS = 15
 SANDBOX_CREATION_FEATURE_KEY = "sandbox_creation"
@@ -196,7 +196,7 @@ def _needs_agent_lab_upgrade(current_template_id: str | None, template_id: str) 
     Never the other way: the flag reads off whenever PostHog is unreachable,
     and replacing then would kill a coding agent mid-run.
     """
-    return template_id == settings.E2B_AGENT_LAB_TEMPLATE_ID and current_template_id != template_id
+    return is_agent_lab_template(template_id) and current_template_id != template_id
 
 
 async def _create_fresh_sandbox(user_id: str, shard_id: int, template_id: str) -> AsyncSandbox:
@@ -241,26 +241,35 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int, template_id: str) -
 async def _set_up_agents_home(user_id: str, sbx: AsyncSandbox, *, replaced: bool) -> None:
     """Lay out the coding agents' home on a fresh agent-lab sandbox, restoring the last save.
 
-    A sandbox replacing an earlier one stopped that one's agent processes with
-    it, so the todos watching their runs hear which save came back.
+    Runs once the sandbox is recorded, so a failure never orphans it: the
+    error is logged, the next run seed retries the idempotent setup, and a
+    replacement still tells the todos watching its runs what came back.
     """
-    result = await sbx.commands.run(
-        build_agents_setup_command(), timeout=AGENTS_SETUP_TIMEOUT_SECONDS
-    )
-    saved_at = restored_from(result.stdout)
-    log.info(f"{LogTag.SANDBOX} agents home ready", user_id=user_id, restored_from=saved_at)
-    if not replaced:
-        return
-    restored = (
-        f"their home was restored from the save at {saved_at}"
-        if saved_at
-        else "no save existed to restore"
-    )
-    await report_sandbox_event(
-        user_id,
-        SandboxEventKind.REPLACED,
-        f"the sandbox was replaced, so the coding agents' processes stopped; {restored}",
-    )
+    try:
+        result = await sbx.commands.run(
+            build_agents_setup_command(), timeout=SANDBOX_AGENTS_SETUP_TIMEOUT_SECONDS
+        )
+        saved_at = restored_from(result.stdout)
+        restored = (
+            f"their home was restored from the save at {saved_at}"
+            if saved_at
+            else "no save existed to restore"
+        )
+        log.info(f"{LogTag.SANDBOX} agents home ready", user_id=user_id, restored_from=saved_at)
+    except Exception as e:
+        log.error(
+            f"{LogTag.SANDBOX} agents home setup failed",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        restored = f"restoring their home failed ({str(e)[:300]}); the next launch retries it"
+    if replaced:
+        await report_sandbox_event(
+            user_id,
+            SandboxEventKind.REPLACED,
+            f"the sandbox was replaced, so the coding agents' processes stopped; {restored}",
+        )
 
 
 async def _run_mount_script(sbx: AsyncSandbox, mount_env: dict[str, str]) -> None:
@@ -280,7 +289,7 @@ async def _run_mount_script(sbx: AsyncSandbox, mount_env: dict[str, str]) -> Non
     async with fs_timer(FsOps.SBX_MOUNT_SCRIPT):
         result = await sbx.commands.run(
             cmd,
-            timeout=MOUNT_SCRIPT_TIMEOUT_SECONDS,
+            timeout=SANDBOX_MOUNT_TIMEOUT_SECONDS,
             envs=mount_env,
             user="root",
         )
@@ -432,25 +441,46 @@ async def _health_probe(
             return False
 
 
-async def _sandbox_alive(sbx: AsyncSandbox) -> bool:
-    """Whether the sandbox is up, asking E2B's control plane before calling a missed probe a death.
+class SandboxLiveness(StrEnum):
+    """What a cached or resumed handle points at: usable, frozen (resume it), or gone (recreate)."""
+
+    ALIVE = "alive"
+    PAUSED = "paused"
+    GONE = "gone"
+
+
+async def _liveness(sbx: AsyncSandbox) -> SandboxLiveness:
+    """Classify the sandbox, asking E2B's control plane before calling a missed probe a death.
 
     One missed /health probe is not death: a live sandbox misses it about 1 in
-    60 times, and killing on that killed the coding agent running inside.
+    60 times, and killing on that killed the coding agent running inside. When
+    the control plane cannot be asked either, the answer is ALIVE: never
+    destroy a sandbox on a guess; its next command fails loud if it is gone.
     """
     if await _health_probe(sbx):
-        return True
+        return SandboxLiveness.ALIVE
     try:
-        info = await AsyncSandbox.get_info(sbx.sandbox_id)
+        info = await asyncio.wait_for(
+            AsyncSandbox.get_info(sbx.sandbox_id), timeout=SANDBOX_CONNECT_TIMEOUT_SECONDS
+        )
     except NotFoundException:
-        return False
-    if info.state != SandboxState.RUNNING:
-        return False
-    return await _health_probe(
+        return SandboxLiveness.GONE
+    except Exception as e:
+        log.warning(
+            f"{LogTag.SANDBOX} control plane unreachable; keeping the sandbox",
+            sandbox_id=sbx.sandbox_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        return SandboxLiveness.ALIVE
+    if info.state == SandboxState.PAUSED:
+        return SandboxLiveness.PAUSED
+    alive = await _health_probe(
         sbx,
         request_timeout=HEALTH_PROBE_RETRY_REQUEST_TIMEOUT_SECONDS,
         wait_timeout=HEALTH_PROBE_RETRY_WAIT_TIMEOUT_SECONDS,
     )
+    return SandboxLiveness.ALIVE if alive else SandboxLiveness.GONE
 
 
 async def _ensure_watcher(user_id: str, entry: PooledSandbox) -> None:
@@ -520,10 +550,17 @@ async def _reuse_cached_entry(
     # wasteful recreate at the health probe below.
     await _cancel_pause_task(entry)
 
-    # Cheap liveness check first — if the cached handle is stale (sandbox
-    # was paused / killed since we last touched it), evict and create
-    # fresh. Otherwise we'd hang for the full command timeout below.
-    if not await _sandbox_alive(entry.sandbox):
+    # Cheap liveness check first: a stale handle would hang for the full
+    # command timeout below. Paused since (a failed renew, another replica):
+    # drop the handle, Mongo's record resumes it. Gone: recreate.
+    liveness = await _liveness(entry.sandbox)
+    if liveness == SandboxLiveness.PAUSED:
+        _record(cache_evicted="paused")
+        log.info(f"{LogTag.SANDBOX} cached sandbox paused; resuming from record", user_id=user_id)
+        await _stop_watcher(entry)
+        pool.evict(user_id)
+        return None
+    if liveness == SandboxLiveness.GONE:
         _record(cache_evicted="unhealthy")
         log.info(f"{LogTag.SANDBOX} cached sandbox unhealthy user=; evicting", user_id=user_id)
         await mark_sandbox_dead(user_id)
@@ -557,7 +594,7 @@ async def _resume_existing_sandbox(
     if sbx is None:
         _record(resume_status="failed")
         return None
-    if not await _sandbox_alive(sbx):
+    if await _liveness(sbx) != SandboxLiveness.ALIVE:
         _record(resume_status="unhealthy")
         log.info(
             f"{LogTag.SANDBOX} resumed sandbox still unhealthy after connect; falling through to fresh create",
@@ -570,15 +607,18 @@ async def _resume_existing_sandbox(
     return sbx
 
 
-async def _acquire_or_create(user_id: str) -> PooledSandbox:
-    """Return a PooledSandbox for the user, creating/resuming as needed."""
+async def _acquire_or_create(user_id: str, template_id: str) -> PooledSandbox:
+    """Return a PooledSandbox for the user on template_id, creating/resuming as needed.
+
+    template_id comes from _template_for, evaluated before the user's lock so
+    the flag lookup never holds it.
+    """
     pool = get_sandbox_pool()
     shard_id = shard_for(user_id)
     _record(operation="acquire", shard_id=shard_id)
     # Built once per acquire so _ensure_mounted can re-run mount.sh on a
     # stale FUSE without resorting to sandbox-wide credential env vars.
     mount_env = _mount_env(user_id, shard_id)
-    template_id = await _template_for(user_id)
 
     cached = await _reuse_cached_entry(user_id, mount_env, template_id)
     if cached is not None:
@@ -634,10 +674,6 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
         await _seed_user_subtrees(user_id)
         sbx = await _create_fresh_sandbox(user_id, shard_id, template_id)
         workspace_version += 1
-        if template_id == settings.E2B_AGENT_LAB_TEMPLATE_ID:
-            await _set_up_agents_home(
-                user_id, sbx, replaced=doc is not None and doc.sandbox_id is not None
-            )
 
     _record(
         source=source,
@@ -667,6 +703,10 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
     )
     pool.put(user_id, entry)
     await _ensure_watcher(user_id, entry)
+    if source == "create" and is_agent_lab_template(template_id):
+        await _set_up_agents_home(
+            user_id, sbx, replaced=doc is not None and doc.sandbox_id is not None
+        )
     return entry
 
 
@@ -685,8 +725,11 @@ async def _pause_sandbox(user_id: str, entry: PooledSandbox) -> bool:
     """Pause the sandbox and record the paused state. False on failure.
 
     The SDK method is beta_pause (there is no plain pause); it snapshots
-    both filesystem and memory so a later connect() resumes in place.
+    both filesystem and memory so a later connect() resumes in place. An
+    agent-lab sandbox saves its agents' home first, in case it never resumes.
     """
+    if is_agent_lab_template(entry.template_id):
+        await save_agents_home(user_id, entry.sandbox)
     try:
         await entry.sandbox.beta_pause()
         await e2b_sandbox_repository.mark_paused(user_id, timestamp=_now())
@@ -731,9 +774,8 @@ def _schedule_pause(user_id: str, entry: PooledSandbox) -> None:
         # inner ``except Exception`` never catches it — so the idle-pause task
         # cancels cleanly when work arrives.
         await asyncio.sleep(settings.E2B_SANDBOX_IDLE_PAUSE_SECONDS)
-        # Evaluated at fire time, not schedule time, so a flag flip during the
-        # idle window takes effect on the next pause decision either way.
-        if await is_agent_lab_enabled(user_id):
+        # At fire time, so a run starting or ending in the idle window counts.
+        if await keeps_sandbox_awake(user_id):
             return
         if entry.refcount > 0:
             return
@@ -800,33 +842,68 @@ async def renew_sandbox(user_id: str) -> None:
     """Restart E2B's lifetime clock with a pause and resume; processes and local disk survive.
 
     E2B ends a sandbox at its team's lifetime cap from its start and set_timeout
-    cannot pass that, while a resume restarts the clock (both measured). The next acquire remounts.
+    cannot pass that, while a resume restarts the clock (both measured). A
+    resume that fails leaves the sandbox paused, not lost: it is recorded so,
+    and the next acquire resumes it.
     """
     pool = get_sandbox_pool()
+    template_id = await _template_for(user_id)
     async with pool.distributed_lock(user_id):
-        entry = await _acquire_or_create(user_id)
+        entry = await _acquire_or_create(user_id, template_id)
         await _cancel_pause_task(entry)
         await _stop_watcher(entry)
         sandbox_id = entry.sandbox.sandbox_id
         await entry.sandbox.beta_pause()
-        entry.sandbox = await AsyncSandbox.connect(
-            sandbox_id, timeout=sandbox_lifetime_seconds(entry.template_id)
-        )
+        resumed = await _connect_sandbox(sandbox_id, sandbox_lifetime_seconds(entry.template_id))
+        if resumed is None:
+            await e2b_sandbox_repository.mark_paused(user_id, timestamp=_now())
+            pool.evict(user_id)
+            raise SandboxAcquisitionError(
+                f"renewing sandbox {sandbox_id} paused it but the resume failed; "
+                "the next acquire resumes it"
+            )
+        entry.sandbox = resumed
         entry.timeout_refreshed_at = time.monotonic()
+        # The resume can leave a stale FUSE mount, and the agents' saves write to it.
+        doc = await e2b_sandbox_repository.get_for_user(user_id)
+        if doc is None:
+            raise SandboxAcquisitionError(f"sandbox record for {user_id} vanished during renew")
+        await _ensure_mounted(resumed, _mount_env(user_id, doc.shard_id))
+        await _ensure_watcher(user_id, entry)
         await e2b_sandbox_repository.touch_last_used(user_id, timestamp=_now())
         log.info(
             f"{LogTag.SANDBOX} renewed sandbox lifetime", user_id=user_id, sandbox_id=sandbox_id
         )
 
 
-async def pause_sandbox_for_user(user_id: str) -> bool:
-    """Pause synchronously (e.g. for tests or maintenance)."""
-    entry = get_sandbox_pool().get(user_id)
-    if entry is None:
-        return False
-    await _cancel_pause_task(entry)
-    await _stop_watcher(entry)
-    return await _pause_sandbox(user_id, entry)
+async def pause_idle_sandbox(user_id: str) -> bool:
+    """Pause the user's running sandbox from any process once nobody used it in the idle window.
+
+    The in-process idle pause only fires after a call in that process, and a
+    coding agent makes none; keep-warm uses this for every lab sandbox it no
+    longer keeps awake. False when nothing was running or it is still in use.
+    """
+    pool = get_sandbox_pool()
+    async with pool.distributed_lock(user_id):
+        doc = await e2b_sandbox_repository.get_for_user(user_id)
+        if doc is None or doc.state != E2bSandboxState.ACTIVE or doc.sandbox_id is None:
+            return False
+        if not await _idle_on_every_replica(user_id):
+            return False
+        entry = pool.get(user_id)
+        if entry is not None and entry.refcount > 0:
+            return False
+        if entry is None:
+            sbx = await _connect_sandbox(doc.sandbox_id, sandbox_lifetime_seconds(doc.template_id))
+            if sbx is None:
+                return False
+            entry = PooledSandbox(sandbox=sbx, template_id=doc.template_id)
+        await _cancel_pause_task(entry)
+        await _stop_watcher(entry)
+        paused = await _pause_sandbox(user_id, entry)
+        # The pooled handle points at a frozen sandbox; the next acquire resumes it from Mongo.
+        pool.evict(user_id)
+        return paused
 
 
 @contextlib.asynccontextmanager
@@ -840,9 +917,10 @@ async def acquire_sandbox(user_id: str) -> AsyncIterator[AsyncSandbox]:
         raise SandboxAcquisitionError("user_id is required")
 
     pool = get_sandbox_pool()
+    template_id = await _template_for(user_id)
     async with pool.distributed_lock(user_id):
         async with fs_timer(FsOps.SBX_ACQUIRE):
-            entry = await _acquire_or_create(user_id)
+            entry = await _acquire_or_create(user_id, template_id)
         entry.refcount += 1
         _record(refcount=entry.refcount)
         sandbox_dead = False
@@ -852,7 +930,7 @@ async def acquire_sandbox(user_id: str) -> AsyncIterator[AsyncSandbox]:
             # A tool op failed — could be the sandbox itself dying or just a
             # command error. Ask the official /health endpoint rather than parse
             # error text; owning eviction here means every tool gets it uniformly.
-            sandbox_dead = not await _sandbox_alive(entry.sandbox)
+            sandbox_dead = await _liveness(entry.sandbox) == SandboxLiveness.GONE
             if sandbox_dead:
                 _record(health_ok=False)
             raise

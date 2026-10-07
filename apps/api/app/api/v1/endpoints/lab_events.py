@@ -6,21 +6,19 @@ verbatim to wake the todo watching that run. Claude's raw hook POST and the
 OpenCode plugin's {kind, raw} land the same way.
 """
 
-import time
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Header, Request
 
 from app.constants.execute import (
-    SANDBOX_EXECUTE_MAX_CALLS_PER_MINUTE,
-    SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN,
     SANDBOX_LAB_EVENTS_BUDGET_WINDOW_SECONDS,
-    SANDBOX_LAB_EVENTS_RATE_BUCKET_TTL_SECONDS,
+    SANDBOX_LAB_EVENTS_MAX_PER_MINUTE,
+    SANDBOX_LAB_EVENTS_MAX_PER_RUN,
 )
-from app.db.redis import redis_cache
 from app.schemas.common import ResponseModel
 from app.services.agent_lab.lab_events import LabEventReceipt, record_lab_event
 from app.services.sandbox.execute_token import SandboxExecuteClaims, claims_from_authorization
+from app.services.sandbox.token_budget import TokenBudget, enforce_token_budget
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
@@ -34,30 +32,16 @@ class LabEventResponse(ResponseModel):
     run_id: str
 
 
-async def _enforce_lab_budget(run_id: str) -> None:
-    """Per-run push limits, Redis-backed so every replica enforces one budget."""
-    total_key = f"lab_events:calls:{run_id}"
-    total = await redis_cache.client.incr(total_key)
-    if total == 1:
-        await redis_cache.client.expire(total_key, SANDBOX_LAB_EVENTS_BUDGET_WINDOW_SECONDS)
-    if total > SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN:
-        raise AppError(
-            message="Lab events budget exhausted for this run",
-            why=f"more than {SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN} pushes on one token",
-            fix="A fresh lab run mints a fresh budget",
-            status_code=429,
-        )
-    minute_key = f"lab_events:rate:{run_id}:{int(time.time()) // 60}"
-    rate = await redis_cache.client.incr(minute_key)
-    if rate == 1:
-        await redis_cache.client.expire(minute_key, SANDBOX_LAB_EVENTS_RATE_BUCKET_TTL_SECONDS)
-    if rate > SANDBOX_EXECUTE_MAX_CALLS_PER_MINUTE:
-        raise AppError(
-            message="Lab events rate limit hit",
-            why=f"more than {SANDBOX_EXECUTE_MAX_CALLS_PER_MINUTE} pushes in one minute",
-            fix="Slow the hooks down or batch the work",
-            status_code=429,
-        )
+LAB_EVENTS_BUDGET = TokenBudget(
+    key_prefix="lab_events",
+    max_calls=SANDBOX_LAB_EVENTS_MAX_PER_RUN,
+    max_per_minute=SANDBOX_LAB_EVENTS_MAX_PER_MINUTE,
+    window_seconds=SANDBOX_LAB_EVENTS_BUDGET_WINDOW_SECONDS,
+    exhausted_message="Lab events budget exhausted for this run",
+    exhausted_fix="A fresh lab run mints a fresh budget",
+    rate_message="Lab events rate limit hit",
+    rate_fix="Slow the hooks down or batch the work",
+)
 
 
 def _audit(claims: SandboxExecuteClaims, receipt: LabEventReceipt) -> None:
@@ -107,7 +91,7 @@ async def report_lab_event(
         )
     claims = _claims_or_401(authorization)
     log.set(user={"id": claims.user_id}, lab_event={"run_id": claims.run_id})
-    await _enforce_lab_budget(claims.run_id)
+    await enforce_token_budget(LAB_EVENTS_BUDGET, claims.run_id)
 
     receipt = await record_lab_event(claims.run_id, user_id=claims.user_id, body=body)
     _audit(claims, receipt)

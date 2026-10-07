@@ -273,6 +273,28 @@ class TestBashRunContract:
         assert all(e["id"] == run_id for e in events)
         assert all(c.kwargs["session_id"] == "conv1" for c in emit.call_args_list)
 
+    async def test_a_foreground_run_publishes_the_artifacts_it_made_and_a_background_one_does_not(
+        self,
+    ) -> None:
+        # A command can write artifacts many ways (cat, python, mv), so the tool
+        # enumerates them after every foreground run; a detached one has not run yet.
+        publish = AsyncMock()
+        foreground = _sbx()
+        foreground.commands.run = _streaming_run()
+        background = _sbx()
+        background.commands.run = AsyncMock(
+            return_value=SimpleNamespace(exit_code=0, stdout="12345\n", stderr="")
+        )
+        with patch(f"{MODULE}._publish_artifacts", new=publish):
+            with patch(f"{MODULE}.acquire_sandbox", new=_acquire(foreground)):
+                await bash.ainvoke({"command": "make"}, config=SESSION_CONFIG)
+            with patch(f"{MODULE}.acquire_sandbox", new=_acquire(background)):
+                await bash.ainvoke(
+                    {"command": "sleep 99", "background": True}, config=SESSION_CONFIG
+                )
+        publish.assert_awaited_once()
+        assert publish.await_args.args[0] is foreground
+
     async def test_the_background_started_event_carries_the_runs_id(self) -> None:
         sbx = _sbx()
         sbx.commands.run = AsyncMock(
