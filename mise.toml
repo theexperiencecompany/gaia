@@ -13,7 +13,7 @@
 # Documentation: https://docs.heygaia.io/developers/commands
 # ═══════════════════════════════════════════════════════════════════════════════
 
-experimental_monorepo_root = true
+monorepo_root = true
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MONOREPO CONFIGURATION
@@ -42,16 +42,16 @@ experimental_monorepo_root = true
 #   - Local tasks (cd apps/api && mise dev) = when working in one app
 #
 
-# [monorepo]
-# config_roots = [
-#     "apps/api",
-#     "apps/web",
-#     "apps/desktop",
-#     "apps/mobile",
-#     "docs",
-#     "apps/voice-agent",
-#     "apps/bots/*",
-# ]
+[monorepo]
+config_roots = [
+    "apps/api",
+    "apps/web",
+    "apps/desktop",
+    "apps/mobile",
+    "docs",
+    "apps/voice-agent",
+    "apps/bots/*",
+]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TOOLS & ENVIRONMENT
@@ -78,8 +78,6 @@ _.file = ".env.worktree"
 experimental = true
 # a setting, not [env]: [env] is exported to commands, never read as mise config, so node installed without pnpm
 node.corepack = true
-task.monorepo_depth = 4
-task.monorepo_exclude_dirs = ["node_modules", ".next", ".venv", "__pycache__", "dist", "build", ".expo"]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SETUP & INSTALLATION
