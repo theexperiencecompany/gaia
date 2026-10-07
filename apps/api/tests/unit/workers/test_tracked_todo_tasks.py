@@ -801,6 +801,7 @@ class TestARunWaitsForItsAccount:
 
         assert result == "paused:todo-1"
         assert [c.args[1] for c in held.await_args_list] == [first, rest]
+        assert {c.args[0] for c in held.await_args_list} == {"todo-1"}
         assert (TodoActivityEvent.RUN_SKIPPED, "skipped: the user's plan is not active") in (
             _recorded(activity)
         )
