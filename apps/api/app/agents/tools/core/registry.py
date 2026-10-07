@@ -632,11 +632,15 @@ class ToolRegistry:
 
         composio_service = get_composio_service()
 
+        # Unavailable integrations are hidden from retrieval and the marketplace
+        # and refuse connect, so indexing their toolkits only spends startup on
+        # Composio round trips for tools nobody can reach.
         integrations = [
             integration
             for integration in OAUTH_INTEGRATIONS
             if (
-                integration.managed_by == "composio"
+                integration.available
+                and integration.managed_by == "composio"
                 and integration.composio_config
                 and integration.subagent_config
                 and integration.subagent_config.has_subagent

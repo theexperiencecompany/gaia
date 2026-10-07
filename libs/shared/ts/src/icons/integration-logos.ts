@@ -52,6 +52,11 @@ export const INTEGRATION_LOGO_FILES: Record<string, string> = {
 export const INTEGRATION_LOGO_EXTERNAL_URLS: Record<string, string> = {
   agentmail:
     "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://agentmail.to&size=256",
+  calcom: "https://www.google.com/s2/favicons?domain=cal.com&sz=128",
+  calendly: "https://www.google.com/s2/favicons?domain=calendly.com&sz=128",
+  outlook: "https://www.google.com/s2/favicons?domain=outlook.live.com&sz=128",
+  jira: "https://www.google.com/s2/favicons?domain=jira.atlassian.com&sz=128",
+  dropbox: "https://www.google.com/s2/favicons?domain=dropbox.com&sz=128",
 };
 
 /**
