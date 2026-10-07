@@ -26,15 +26,14 @@ from shared.py.wide_events import (
 
 def _record(
     *,
-    level_no: int = 40,
-    level_name: str = "ERROR",
     message: str = "boom",
     logger_name: str | None = "APP",
-    module: str = "some_module",
+    level: tuple[str, int] = ("ERROR", 40),
     extra: dict[str, object] | None = None,
     exception: object | None = None,
 ) -> SimpleNamespace:
     """Build a minimal stand-in for the loguru Message the sink receives."""
+    level_name, level_no = level
     extra_fields: dict[str, object] = {"logger_name": logger_name} if logger_name else {}
     if extra:
         extra_fields.update(extra)
@@ -43,7 +42,7 @@ def _record(
             "level": SimpleNamespace(no=level_no, name=level_name),
             "extra": extra_fields,
             "exception": exception,
-            "module": module,
+            "module": "some_module",
             "message": message,
         }
     )
@@ -76,7 +75,7 @@ def test_forwards_specific_error_to_sentry() -> None:
 
 def test_critical_record_forwards_as_fatal() -> None:
     cap_msg, _cap_exc, _scope = _run_sink(
-        _record(level_name="CRITICAL", message="meltdown", logger_name="APP")
+        _record(level=("CRITICAL", 50), message="meltdown", logger_name="APP")
     )
     _, kwargs = cap_msg.call_args
     assert kwargs["level"] == "fatal"
@@ -92,9 +91,9 @@ def test_exception_record_captures_the_exception_not_a_message() -> None:
 
 
 def test_scope_is_tagged_with_logger_and_module() -> None:
-    _cap_msg, _cap_exc, scope = _run_sink(_record(logger_name="AUTH", module="auth_module"))
+    _cap_msg, _cap_exc, scope = _run_sink(_record(logger_name="AUTH"))
     scope.set_tag.assert_any_call("logger", "AUTH")
-    scope.set_tag.assert_any_call("module", "auth_module")
+    scope.set_tag.assert_any_call("module", "some_module")
 
 
 def test_logger_tag_falls_back_to_app_when_absent() -> None:
@@ -168,8 +167,6 @@ def test_boundary_task_failed_with_exception_is_still_captured() -> None:
 
 
 def test_skips_below_error_level() -> None:
-    cap_msg, cap_exc, _scope = _run_sink(
-        _record(level_no=30, level_name="WARNING", message="just a warning")
-    )
+    cap_msg, cap_exc, _scope = _run_sink(_record(level=("WARNING", 30), message="just a warning"))
     cap_msg.assert_not_called()
     cap_exc.assert_not_called()
