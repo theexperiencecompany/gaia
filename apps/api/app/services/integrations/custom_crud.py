@@ -437,7 +437,10 @@ async def _build_oauth_result(mcp_client: MCPClient, integration_id: str) -> Cus
         )
         return {"status": "requires_oauth", "oauth_url": auth_url}
     except Exception as e:
-        log.error(
+        # A user-supplied MCP server rejecting OAuth discovery/DCR is its policy,
+        # not a GAIA fault; it is returned to the user, so warn (not error) to
+        # keep it out of Sentry's High queue.
+        log.warning(
             f"{LogTag.INTEGRATION} OAuth discovery failed",
             error=str(e),
             error_type=type(e).__name__,

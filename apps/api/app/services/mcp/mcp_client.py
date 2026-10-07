@@ -1570,7 +1570,10 @@ class MCPClient:
         except DCRNotSupportedError:
             raise  # Re-raise without wrapping
         except Exception as e:
-            log.error(
+            # An external AS rejecting our DCR is its policy, not a GAIA fault;
+            # the caller surfaces it to the user, so warn to keep it out of
+            # Sentry's High queue.
+            log.warning(
                 f"{LogTag.MCP} DCR failed for at",
                 integration_id=integration_id,
                 registration_endpoint=registration_endpoint,

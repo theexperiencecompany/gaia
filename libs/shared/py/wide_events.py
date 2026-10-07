@@ -71,6 +71,30 @@ _LEVEL_ORDER: dict[str, int] = {
     "CRITICAL": 4,
 }
 
+# Canonical message a boundary emits inside its `finally` when the wrapped work
+# raised, recorded as an errors[] entry carrying error/error_type. Constant by
+# design so every failing task's real cause lives in the entry and in Loki, not
+# in this message — which is exactly why the Sentry sink must not forward it as
+# its own issue (see app/config/sentry.py).
+BOUNDARY_FAILURE_MESSAGE = "task failed"
+
+# The canonical event_name each _wide_event_boundary flavour flushes on exit,
+# and the logger_name it binds. These roll up EVERY task of their kind under one
+# constant message, so forwarding them to Sentry groups unrelated failures into
+# one useless issue — the per-task cause is already logged with its own specific
+# message elsewhere. The HTTP counterpart is REQUEST ("http_request"); the TS
+# bots' is "bot_event". Mirror any change in tools/logcheck/logcheck.py
+# (BOUNDARY_MESSAGES) and libs/shared/ts/src/bots/utils/wide-events.ts.
+WORKER_EVENT_NAME = "worker_task"
+WORKER_LOGGER_NAME = "WORKER"
+BACKGROUND_EVENT_NAME = "background_task"
+BACKGROUND_LOGGER_NAME = "BG"
+
+#: Logger names whose records are the generic boundary roll-up, not a specific
+#: failure. The Sentry sink skips these (plus REQUEST) so a failing task pages
+#: on its own specific log.error(), never on the aggregate.
+BOUNDARY_LOGGER_NAMES = frozenset({WORKER_LOGGER_NAME, BACKGROUND_LOGGER_NAME})
+
 
 class _EventState:
     """Mutable per-request accumulator shared across context copies.
@@ -837,7 +861,7 @@ async def _wide_event_boundary(
     finally:
         if failure is not None:
             log.error(
-                "task failed",
+                BOUNDARY_FAILURE_MESSAGE,
                 error=str(failure),
                 error_type=type(failure).__name__,
             )
@@ -890,8 +914,8 @@ def wide_task(
     """
     return _wide_event_boundary(
         task_name,
-        event_name="worker_task",
-        logger_name="WORKER",
+        event_name=WORKER_EVENT_NAME,
+        logger_name=WORKER_LOGGER_NAME,
         trace_id=trace_id,
         **initial_context,
     )
@@ -917,8 +941,8 @@ def log_context(
     """
     return _wide_event_boundary(
         operation,
-        event_name="background_task",
-        logger_name="BG",
+        event_name=BACKGROUND_EVENT_NAME,
+        logger_name=BACKGROUND_LOGGER_NAME,
         trace_id=trace_id,
         **initial_context,
     )
