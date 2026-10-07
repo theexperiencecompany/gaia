@@ -1,4 +1,9 @@
 import { GLOBAL_INSTRUCTIONS_SCOPE } from "@gaia/shared/constants/instructions";
+import {
+  editInstructions,
+  type InstructionsEdit,
+  viewInstructionsDraft,
+} from "@gaia/shared/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
@@ -15,7 +20,8 @@ const GLOBAL_INSTRUCTIONS_KEY = ["instructions", GLOBAL_INSTRUCTIONS_SCOPE];
  */
 export function useGlobalInstructions() {
   const qc = useQueryClient();
-  const [draft, setDraft] = useState<string | null>(null);
+  const [edit, setEdit] =
+    useState<InstructionsEdit<InstructionsResponse> | null>(null);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: GLOBAL_INSTRUCTIONS_KEY,
@@ -40,33 +46,33 @@ export function useGlobalInstructions() {
         GLOBAL_INSTRUCTIONS_KEY,
         result.instructions,
       );
-      setDraft(null);
+      setEdit(null);
     },
   });
 
-  const saved = data?.content ?? "";
-  const value = draft ?? saved;
+  const { base, value, isDirty } = viewInstructionsDraft(edit, data);
 
   return {
     value,
-    setValue: setDraft,
+    setValue: (content: string) =>
+      setEdit((prev) => editInstructions(prev, content, data)),
     isLoaded: data !== undefined,
     isLoading,
     isSaving: mutation.isPending,
-    isDirty: value !== saved,
+    isDirty,
     retryLoad: refetch,
-    /** Save the draft; pass a conflict's currentRevision to overwrite the newer copy. */
+    /** Save against the revision the edit started from; pass a conflict's currentRevision to overwrite the newer copy. */
     save: async (baseRevision?: number): Promise<SaveInstructionsResult> => {
-      if (!data) throw new Error("Global instructions have not loaded yet");
+      if (!base) throw new Error("Global instructions have not loaded yet");
       return mutation.mutateAsync({
         content: value,
-        baseRevision: baseRevision ?? data.revision,
+        baseRevision: baseRevision ?? base.revision,
       });
     },
     /** Replace the draft with the server's current copy. */
     loadLatest: async (): Promise<void> => {
       await refetch({ throwOnError: true });
-      setDraft(null);
+      setEdit(null);
     },
   };
 }

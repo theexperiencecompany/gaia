@@ -5,6 +5,7 @@ These tools handle installing, creating, listing, and managing skills.
 They run in-context after activate_integration("skills").
 """
 
+from http import HTTPStatus
 import json
 from typing import Annotated, Any
 
@@ -18,6 +19,7 @@ from app.agents.skills.installer import (
     uninstall_skill_full,
     update_skill_inline,
 )
+from app.agents.skills.models import SkillAuthor, SkillInlineCreateRequest
 from app.agents.skills.registry import (
     disable_skill,
     enable_skill,
@@ -26,6 +28,7 @@ from app.agents.skills.registry import (
 )
 from app.constants.log_tags import LogTag
 from app.models.integrations.composio_hooks import RunMetadata
+from app.utils.errors import AppError
 from shared.py.wide_events import log
 
 
@@ -77,6 +80,7 @@ async def install_skill_from_github(
             repo_url=repo_url,
             skill_path=skill_path or None,
             target_override=target or None,
+            author=SkillAuthor.AGENT,
         )
 
         files_info = f" ({len(installed.files)} files)" if len(installed.files) > 1 else ""
@@ -137,11 +141,11 @@ async def create_skill(
 
     try:
         installed = await install_from_inline(
-            user_id=user_id,
-            name=name,
-            description=description,
-            instructions=instructions,
-            target=target,
+            user_id,
+            SkillInlineCreateRequest(
+                name=name, description=description, instructions=instructions, target=target
+            ),
+            author=SkillAuthor.AGENT,
         )
 
         return (
@@ -363,23 +367,15 @@ async def save_learned_skill(
     log.set(tool={"name": "save_learned_skill", "action": "save"})
     user_id = _get_user_id(config)
 
-    if await get_skill_by_name(user_id, spec.name, spec.target):
-        log.set(tool={"name": "save_learned_skill", "action": "save", "error": "name_taken"})
-        return (
-            f"Not saved: a skill named '{spec.name}' already exists for {spec.target}. "
-            "If it covers this task, revise it with update_skill (read its SKILL.md first and "
-            "keep what still applies); otherwise save under a different name."
-        )
-
     try:
         body = _compose_learned_skill_md(spec)
         installed = await install_from_inline(
-            user_id=user_id,
-            name=spec.name,
-            description=spec.description,
-            instructions=body,
-            target=spec.target,
-            extra_metadata={"source": "learned", "learned_from_run": "1"},
+            user_id,
+            SkillInlineCreateRequest(
+                name=spec.name, description=spec.description, instructions=body, target=spec.target
+            ),
+            author=SkillAuthor.AGENT,
+            learned=True,
         )
         return (
             f"Saved skill '{installed.name}' successfully.\n"
@@ -390,6 +386,19 @@ async def save_learned_skill(
             f"- The skill is now active and will appear in the {spec.target} agent's "
             "Available Skills. Next time this task comes up, it runs the saved steps instead "
             "of re-deriving them."
+        )
+    except AppError as e:
+        if e.status_code != HTTPStatus.CONFLICT:
+            log.set(
+                tool={"name": "save_learned_skill", "action": "save", "error": "persist_failed"}
+            )
+            log.error(f"{LogTag.TOOL} Learned-skill save error", error=str(e), user_id=user_id)
+            return "Error saving skill: the skill could not be persisted. Try again."
+        log.set(tool={"name": "save_learned_skill", "action": "save", "error": "name_taken"})
+        return (
+            f"Not saved: {e.message} If it covers this task, revise it with update_skill "
+            "(read its SKILL.md first and keep what still applies); otherwise save under a "
+            "different name."
         )
     except ValueError as e:
         log.set(tool={"name": "save_learned_skill", "action": "save", "error": "invalid_spec"})
@@ -426,15 +435,26 @@ async def update_skill(
     """
     log.set(tool={"name": "update_skill", "action": "update"})
     user_id = _get_user_id(config)
-    skill = await get_skill_by_name(user_id, name, target)
-    if not skill or not skill.id:
+    matches = [
+        skill
+        for skill in await list_skills(user_id)
+        if skill.name == name and (target is None or skill.target == target)
+    ]
+    if not matches or not matches[0].id:
         return (
             f"Skill '{name}' not found among the user's skills. Builtin skills cannot be "
             "revised; use save_learned_skill for a new one."
         )
+    if len(matches) > 1:
+        targets = ", ".join(skill.target for skill in matches)
+        return f"Not updated: '{name}' exists for {targets}. Pass target to choose one."
     try:
         updated = await update_skill_inline(
-            user_id, skill.id, description=description, instructions=instructions
+            user_id,
+            matches[0].id,
+            description=description,
+            instructions=instructions,
+            author=SkillAuthor.AGENT,
         )
     except ValueError as e:
         return f"Not updated: {e}"

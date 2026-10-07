@@ -1,8 +1,9 @@
 """Agent tools for reading and updating the user's standing instructions.
 
-One pair for every scope: "global" (every conversation) or a connected integration's
-id (that integration's work). Writes go through the same service as the settings
-page, so the prompt, the projections and the editor all see the same record.
+The executor reads and writes any scope: "global" (every conversation) or a connected
+integration's id. A provider subagent reads untrusted data (an inbox, a channel), so it
+is bound update_integration_instructions instead, which cannot touch the global scope
+every tier reads. Writes go through the same service as the settings page.
 """
 
 from typing import Annotated
@@ -12,10 +13,28 @@ from langchain_core.tools import tool
 
 from app.agents.tools.core.mutations import user_id_from_config
 from app.models.user_instructions_models import GLOBAL_INSTRUCTIONS_SCOPE, InstructionsEditor
-from app.services.account_fs import schedule_account_sync
 from app.services.user_instructions_service import get_instructions, write_instructions
 from app.utils.errors import AppError
 from shared.py.wide_events import log
+
+
+async def _save(config: RunnableConfig, scope: str, content: str, tool_name: str) -> str:
+    user_id = user_id_from_config(config)
+    if not user_id:
+        return "Error: user_id not found in config"
+    log.set(tool={"name": tool_name})
+    try:
+        saved = await write_instructions(
+            user_id, scope, content, updated_by=InstructionsEditor.AGENT
+        )
+    except AppError as e:
+        return f"Error: {e.message}. {e.fix}".strip()
+    if not saved.content:
+        return f"Cleared the standing instructions for '{scope}'."
+    return (
+        f"Saved the standing instructions for '{scope}'. They apply from the next turn "
+        "and the user can see and edit them in settings."
+    )
 
 
 @tool
@@ -54,24 +73,30 @@ async def update_user_instructions(
     Use for lasting preferences ("always reply in Spanish", "for Slack only watch #eng").
     Never for one-off corrections, facts about the user (memory), or ongoing work (tracked todos).
     """
-    user_id = user_id_from_config(config)
-    if not user_id:
-        return "Error: user_id not found in config"
-    log.set(tool={"name": "update_user_instructions"})
-    try:
-        saved = await write_instructions(
-            user_id, scope, content, updated_by=InstructionsEditor.AGENT
+    return await _save(config, scope, content, "update_user_instructions")
+
+
+@tool
+async def update_integration_instructions(
+    config: RunnableConfig,
+    integration_id: Annotated[str, "Your own integration's id, e.g. 'slack'."],
+    content: Annotated[
+        str,
+        "The FULL new instructions for this integration (replaces, does not append); "
+        "merge with the block already in your context.",
+    ],
+) -> str:
+    """Save the user's lasting preference for how this integration should be used.
+
+    For durable preferences only ("always post to #eng", "default to the Backend project");
+    one-off corrections stay in the current task.
+    """
+    if integration_id == GLOBAL_INSTRUCTIONS_SCOPE:
+        return (
+            "Error: global instructions are saved by the main agent. Report the preference "
+            "in your result instead."
         )
-    except AppError as e:
-        return f"Error: {e.message}. {e.fix}".strip()
-    if scope == GLOBAL_INSTRUCTIONS_SCOPE:
-        schedule_account_sync(user_id)
-    if not saved.content:
-        return f"Cleared the standing instructions for '{scope}'."
-    return (
-        f"Saved the standing instructions for '{scope}'. They apply from the next turn "
-        "and the user can see and edit them in settings."
-    )
+    return await _save(config, integration_id, content, "update_integration_instructions")
 
 
-tools = [get_user_instructions, update_user_instructions]
+tools = [get_user_instructions, update_user_instructions, update_integration_instructions]

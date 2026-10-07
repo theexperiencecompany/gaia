@@ -1,5 +1,6 @@
 import { ApiError } from "@gaia/shared";
 import type { InstructionsResponse } from "@gaia/shared/api/generated";
+import { INSTRUCTIONS_CONFLICT_CODE } from "@gaia/shared/constants/instructions";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { settingsApi } from "./settings-api";
 
@@ -46,7 +47,7 @@ describe("settingsApi.updateInstructions", () => {
     putMock.mockRejectedValue(
       ApiError.fromBody(409, {
         message: "These instructions were changed somewhere else",
-        code: "instructions_conflict",
+        code: INSTRUCTIONS_CONFLICT_CODE,
         current_revision: 7,
       }),
     );
@@ -63,7 +64,7 @@ describe("settingsApi.updateInstructions", () => {
     putMock.mockRejectedValue(
       ApiError.fromBody(409, {
         message: "Conflict",
-        code: "instructions_conflict",
+        code: INSTRUCTIONS_CONFLICT_CODE,
       }),
     );
 

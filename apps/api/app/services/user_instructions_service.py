@@ -20,6 +20,7 @@ from app.models.user_instructions_models import (
     InstructionsEditor,
     InstructionsResponse,
 )
+from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.integrations.user_integrations import check_user_has_integration
 from app.services.storage.juicefs import ensure_safe_path_id
@@ -118,6 +119,8 @@ async def write_instructions(
             public={"current_revision": current.revision},
         )
     log.set_ns("instructions", revision=doc.revision, chars=len(stored))
+    if scope == GLOBAL_INSTRUCTIONS_SCOPE:
+        schedule_account_sync(user_id)
     capture_event(
         user_id,
         AnalyticsEvents.INSTRUCTIONS_UPDATED,

@@ -15,7 +15,13 @@ from typing import cast
 
 import httpx
 
-from app.agents.skills.models import Skill, SkillSource
+from app.agents.skills.models import (
+    Skill,
+    SkillAuthor,
+    SkillInlineCreateRequest,
+    SkillSource,
+    SkillUpdate,
+)
 from app.agents.skills.parser import (
     generate_skill_md,
     parse_skill_md,
@@ -37,7 +43,12 @@ from app.agents.skills.utils import (
     github_url,
 )
 from app.constants.log_tags import LogTag
-from app.constants.skills import SKILL_SOURCE_FILENAME
+from app.constants.skills import (
+    LEARNED_SKILL_METADATA,
+    LEARNED_SKILL_SOURCE,
+    SKILL_SOURCE_FILENAME,
+)
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.storage import (
     JuiceFSUnavailable,
     delete_user_skill,
@@ -133,6 +144,8 @@ async def install_from_github(
     skill_path: str | None = None,
     target_override: str | None = None,
     allowed_targets: set[str] | None = None,
+    *,
+    author: SkillAuthor,
 ) -> Skill:
     """Install a skill from a GitHub repository.
 
@@ -193,7 +206,7 @@ async def install_from_github(
                 "Connect the integration before installing a skill scoped to it."
             )
 
-        await ensure_skill_name_available(user_id, metadata.name, target)
+        await ensure_skill_name_available(user_id, metadata.name)
 
         # Determine logical storage path (used by the Skill record)
         storage_path = _skill_storage_path(user_id, metadata.name)
@@ -244,6 +257,16 @@ async def install_from_github(
         file_count=len(file_list),
         target=target,
     )
+    capture_event(
+        user_id,
+        AnalyticsEvents.SKILL_INSTALLED,
+        {
+            "skill_id": installed.id,
+            "target": installed.target,
+            "source": "github",
+            "author": author,
+        },
+    )
     return installed
 
 
@@ -293,28 +316,26 @@ async def _download_github_dir(
 
 async def install_from_inline(
     user_id: str,
-    name: str,
-    description: str,
-    instructions: str,
-    target: str = "executor",
-    extra_metadata: dict[str, str] | None = None,
+    request: SkillInlineCreateRequest,
+    *,
+    author: SkillAuthor,
+    learned: bool = False,
 ) -> Skill:
-    """Create and install a skill from inline components.
+    """Create and install a skill from inline components; learned marks one saved from a run.
 
-    Generates a SKILL.md from the provided components, validates it,
-    writes body-only to VFS, and registers flat metadata in MongoDB.
+    Generates a SKILL.md, validates it, writes body-only to VFS and registers flat
+    metadata in MongoDB.
     """
     log.set(
         user_id=user_id,
-        skill=SkillContext(operation="install", skill_name=name),
+        skill=SkillContext(operation="install", skill_name=request.name),
     )
-    # Generate SKILL.md content (with frontmatter for validation)
     skill_md_content = generate_skill_md(
-        name=name,
-        description=description,
-        instructions=instructions,
-        target=target,
-        metadata=extra_metadata,
+        name=request.name,
+        description=request.description,
+        instructions=request.instructions,
+        target=request.target,
+        metadata=LEARNED_SKILL_METADATA if learned else None,
     )
 
     # Validate
@@ -325,7 +346,7 @@ async def install_from_inline(
     # Parse back to get validated metadata + body
     metadata, body = parse_skill_md(skill_md_content)
 
-    await ensure_skill_name_available(user_id, metadata.name, metadata.target)
+    await ensure_skill_name_available(user_id, metadata.name)
 
     # Write body-only to JuiceFS (metadata lives in MongoDB)
     storage_path = _skill_storage_path(user_id, metadata.name)
@@ -355,7 +376,19 @@ async def install_from_inline(
         ),
     )
 
-    log.info(f"{LogTag.SKILLS} Created inline skill", skill_name=name, target=target)
+    log.info(
+        f"{LogTag.SKILLS} Created inline skill", skill_name=request.name, target=request.target
+    )
+    capture_event(
+        user_id,
+        AnalyticsEvents.SKILL_INSTALLED,
+        {
+            "skill_id": installed.id,
+            "target": installed.target,
+            "source": LEARNED_SKILL_SOURCE if learned else "inline",
+            "author": author,
+        },
+    )
     return installed
 
 
@@ -366,6 +399,7 @@ async def update_skill_inline(
     description: str | None = None,
     instructions: str | None = None,
     target: str | None = None,
+    author: SkillAuthor,
 ) -> Skill | None:
     """Edit an existing skill's description, instructions (body), and/or target.
 
@@ -418,15 +452,17 @@ async def update_skill_inline(
         await update_skill(
             user_id,
             skill_id,
-            {
-                "description": metadata.description,
-                "target": metadata.target,
-                "body_content": body,
-            },
+            SkillUpdate(
+                description=metadata.description, target=metadata.target, body_content=body
+            ),
         ),
     )
 
     log.info(f"{LogTag.SKILLS} Updated inline skill", skill_name=skill.name, target=metadata.target)
+    if updated is not None:
+        capture_event(
+            user_id, AnalyticsEvents.SKILL_UPDATED, {"target": updated.target, "author": author}
+        )
     return updated
 
 

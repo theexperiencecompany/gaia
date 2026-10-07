@@ -144,6 +144,7 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "check_integrations_status": "Checking integration status",
     "get_user_instructions": "Reading your standing instructions",
     "update_user_instructions": "Saving your standing instructions",
+    "update_integration_instructions": "Saving integration settings",
     # ── Native: memory ─────────────────────────────────────────────────
     "add_memory": "Remembering that",
     "search_memory": "Searching memory",

@@ -6,13 +6,11 @@ from fastapi import APIRouter, Depends
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.models.user_instructions_models import (
-    GLOBAL_INSTRUCTIONS_SCOPE,
     InstructionsEditor,
     InstructionsResponse,
     UpdateInstructionsRequest,
 )
 from app.schemas.errors import error_responses
-from app.services.account_fs import schedule_account_sync
 from app.services.user_instructions_service import (
     get_instructions_record,
     validate_scope,
@@ -63,6 +61,5 @@ async def update_instructions(
         updated_by=InstructionsEditor.USER,
         base_revision=request.base_revision,
     )
-    if scope == GLOBAL_INSTRUCTIONS_SCOPE:
-        schedule_account_sync(user_id)
+    log.set_ns("instructions", revision=saved.revision)
     return saved

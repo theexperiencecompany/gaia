@@ -1,4 +1,9 @@
 import type { InstructionsResponse } from "@shared/api/generated";
+import {
+  editInstructions,
+  type InstructionsEdit,
+  viewInstructionsDraft,
+} from "@shared/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { toast } from "@/lib/toast";
@@ -8,12 +13,6 @@ import {
   instructionsConflictRevision,
   instructionsQueryOptions,
 } from "../api/instructionsApi";
-
-/** An in-progress edit, pinned to the record it started from so a refetch cannot move its base. */
-interface InstructionsEdit {
-  content: string;
-  base: InstructionsResponse | undefined;
-}
 
 const errorMessage = (error: unknown, fallback: string): string =>
   error instanceof Error ? error.message : fallback;
@@ -27,13 +26,15 @@ const errorMessage = (error: unknown, fallback: string): string =>
 export const useInstructions = (scope: string) => {
   const queryClient = useQueryClient();
   const query = useQuery(instructionsQueryOptions(scope));
-  const [edit, setEdit] = useState<InstructionsEdit | null>(null);
+  const [edit, setEdit] =
+    useState<InstructionsEdit<InstructionsResponse> | null>(null);
   const [conflictRevision, setConflictRevision] = useState<number | null>(null);
 
-  const base = edit?.base ?? query.data;
-  const draft = edit?.content ?? base?.content ?? "";
-  // Raw compare: the backend already normalizes whitespace-only content to empty.
-  const isDirty = base !== undefined && draft !== base.content;
+  const {
+    base,
+    value: draft,
+    isDirty,
+  } = viewInstructionsDraft(edit, query.data);
 
   const mutation = useMutation({
     mutationFn: (body: { content: string; base_revision: number }) =>
@@ -42,7 +43,7 @@ export const useInstructions = (scope: string) => {
 
   const setDraft = useCallback(
     (content: string) =>
-      setEdit((prev) => ({ content, base: prev?.base ?? query.data })),
+      setEdit((prev) => editInstructions(prev, content, query.data)),
     [query.data],
   );
 

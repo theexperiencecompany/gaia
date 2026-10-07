@@ -39,3 +39,7 @@ SKILL_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)  # NO
 # leading-whitespace gap is matched possessively (`\s*+`) to stay linear;
 # trailing whitespace is stripped by the caller.
 SKILL_FRONTMATTER_KV_RE = re.compile(r"^([A-Za-z_]\w*):\s*+(.+)$")
+
+# metadata["source"] on a skill GAIA saved from a run that worked (save_learned_skill).
+LEARNED_SKILL_SOURCE = "learned"
+LEARNED_SKILL_METADATA: dict[str, str] = {"source": LEARNED_SKILL_SOURCE, "learned_from_run": "1"}

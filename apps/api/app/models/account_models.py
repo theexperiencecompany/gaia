@@ -5,7 +5,7 @@ by :mod:`app.services.account_fs`. Deliberately curated (not raw document
 dumps): provider ids and internal bookkeeping never reach the agent's workspace.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 from app.models.user_models import OnboardingNeed
 from app.schemas.usage import BudgetWindow, FeatureUsageSummary
@@ -80,9 +80,14 @@ class LinkedAccountProjection(BaseModel):
 
     platform: str
     connected: bool = False
-    connected_at: str | None = None
+    # Aliases read a PlatformLinkEntry (camelCase, as stored) straight into this shape.
+    connected_at: str | None = Field(
+        default=None, validation_alias=AliasChoices("connected_at", "connectedAt")
+    )
     username: str | None = None
-    display_name: str | None = None
+    display_name: str | None = Field(
+        default=None, validation_alias=AliasChoices("display_name", "displayName")
+    )
 
 
 __all__ = [

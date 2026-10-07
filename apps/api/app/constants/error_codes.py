@@ -7,4 +7,4 @@ NOT_AUTHENTICATED = "NOT_AUTHENTICATED"
 INTEGRATION_NOT_CONNECTED = "INTEGRATION_NOT_CONNECTED"
 
 # 409 — a standing-instructions save raced another write; body carries current_revision.
-INSTRUCTIONS_CONFLICT = "instructions_conflict"
+INSTRUCTIONS_CONFLICT = "INSTRUCTIONS_CONFLICT"

@@ -19,7 +19,7 @@ from httpx import AsyncClient
 import pytest
 from starlette.requests import Request
 
-from app.agents.skills.models import Skill
+from app.agents.skills.models import Skill, SkillAuthor
 from app.models.hil_models import LedgerState
 from app.models.integration_models import Integration
 from app.models.mail_models import GmailMessageResource
@@ -337,15 +337,13 @@ def _make_skill() -> Skill:
 
 
 class TestSkillNewEvents:
-    async def test_update_captures(self, client: AsyncClient) -> None:
-        with (
-            patch(f"{_SKILLS}.update_skill_inline", new_callable=AsyncMock) as mock_upd,
-            patch(_SK_CAPTURE) as mock_capture,
-        ):
+    async def test_update_attributes_the_edit_to_the_user(self, client: AsyncClient) -> None:
+        """skill:updated is emitted by update_skill_inline, the path REST and update_skill share."""
+        with patch(f"{_SKILLS}.update_skill_inline", new_callable=AsyncMock) as mock_upd:
             mock_upd.return_value = _make_skill()
             resp = await client.put(f"{SK}/sk_abc123", json={"description": "new"})
         assert resp.status_code == 200
-        mock_capture.assert_called_once_with(AnalyticsEvents.SKILL_UPDATED)
+        assert mock_upd.await_args.kwargs["author"] is SkillAuthor.USER
 
     async def test_enable_captures(self, client: AsyncClient) -> None:
         with (
@@ -1449,7 +1447,7 @@ class TestInstructionsUpdate:
                 new_callable=AsyncMock,
                 return_value=saved,
             ),
-            patch("app.api.v1.endpoints.instructions.schedule_account_sync"),
+            patch(f"{INSTRUCTIONS_SERVICE}.schedule_account_sync"),
             patch(f"{INSTRUCTIONS_SERVICE}.capture_event") as mock_capture,
         ):
             resp = await client.put(

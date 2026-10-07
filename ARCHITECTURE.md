@@ -181,7 +181,7 @@ Tests: `apps/api/tests/_harness/context_chain.py` produces the *effective* array
 - **Composio integrations** — `tool_registry.register_provider_tools(toolkit_name, space_name, specific_tools)` in `provider_subagents.py` loads their tools into the registry for activation; the executor runs them via `execute`. User OAuth token attached server-side via `@composio.tools.custom_tool`.
 - **MCP subagents (auth-required)** — live tools read from `MCPClient` (source of truth), not copied into a registry. `get_mcp_client(user_id)` in `apps/api/app/services/mcp/mcp_client.py`.
 - **Custom MCP subagents** — `_create_custom_mcp_subagent` in `provider_subagents.py` reads from `integrations_collection` in MongoDB. If `1 <= tool_count <= 10`, sets `use_direct_tools=True, disable_retrieve_tools=True` for low latency.
-- **Always-on tools for every subagent** (in `base_subagent.py::_build_scoped_tool_dict`): `search_memory`, `read`, `bash`, `web_search_tool`, `fetch_webpages`, `deep_research`, `update_user_instructions`, and optionally `finish_task`.
+- **Always-on tools for every subagent** (in `base_subagent.py::_build_scoped_tool_dict`): `search_memory`, `read`, `bash`, `web_search_tool`, `fetch_webpages`, `deep_research`, `update_integration_instructions` (its own integration's scope only, never global), and optionally `finish_task`.
 
 ### Subagent middleware
 
@@ -399,7 +399,7 @@ Integration tools (Composio + per-user MCP — the thousands) are **never bound*
 - `apps/api/app/agents/tools/todo_tool.py` — classic user-facing todos.
 - `apps/api/app/agents/tools/todo_tools.py` — `plan_tasks`, `update_tasks` (in-state todo channel).
 - `apps/api/app/agents/tools/tracked_todo_tools.py` — see §12.
-- `apps/api/app/agents/tools/instructions_tools.py` — `get_user_instructions` / `update_user_instructions` (the user's standing instructions, global or per integration; see §16 Prompt layers).
+- `apps/api/app/agents/tools/instructions_tools.py` — `get_user_instructions` / `update_user_instructions` (executor: any scope) and `update_integration_instructions` (subagents: an integration scope, never global); see §16 Prompt layers.
 - `apps/api/app/agents/tools/integration_tool.py` — integration-agnostic tools.
 - `apps/api/app/agents/tools/research_tool.py` — `deep_research` (Tavily + multi-source synthesis).
 - `apps/api/app/agents/tools/webpage_tool.py` — `fetch_webpages`, `web_search_tool`.

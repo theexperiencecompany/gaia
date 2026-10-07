@@ -695,6 +695,7 @@ class TestBuildExecutorGraph:
                     "message_subagent",
                     "cancel_subagent",
                     "activate_integration",
+                    "update_user_instructions",
                 },
                 tool_runtime_config=runtime_config,
                 inherit_parent_tools=True,

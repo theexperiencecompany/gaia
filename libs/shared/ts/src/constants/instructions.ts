@@ -11,4 +11,4 @@ export const GLOBAL_INSTRUCTIONS_SCOPE = "global";
 export const MAX_INSTRUCTIONS_CHARS = 8000;
 
 /** ErrorEnvelope code for a save whose base_revision is no longer current. */
-export const INSTRUCTIONS_CONFLICT_CODE = "instructions_conflict";
+export const INSTRUCTIONS_CONFLICT_CODE = "INSTRUCTIONS_CONFLICT";

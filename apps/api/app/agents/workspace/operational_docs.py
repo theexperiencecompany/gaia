@@ -653,8 +653,8 @@ or missing a step, revise that skill with `update_skill`.
 - `save_learned_skill(spec)`: records a run that worked as a skill. The spec
   holds the name (kebab-case), a description naming when to use it, the
   integrations it needs, and the exact ORDERED steps (the tool, example args and
-  any pitfall for each). A taken name is refused with a pointer to
-  `update_skill`.
+  any pitfall for each). Names are unique per user across every target, so a
+  taken name is refused with a pointer to `update_skill`.
 - `update_skill(name, instructions, description?, target?)`: replaces a
   skill's body (pass the FULL new instructions; read its `SKILL.md` first and
   keep what still applies). Built-in skills stay as shipped.

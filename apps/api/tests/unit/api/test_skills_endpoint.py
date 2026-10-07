@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
 
+from app.agents.skills.models import SkillAuthor
 from app.services.analytics_service import AnalyticsEvents
 
 if TYPE_CHECKING:
@@ -181,8 +182,7 @@ class TestInstallFromGitHub:
                 _INSTALL_GITHUB,
                 new_callable=AsyncMock,
                 return_value=mock_skill,
-            ),
-            patch(_CAPTURE) as mock_capture,
+            ) as mock_install,
         ):
             response = await client.post(
                 INSTALL_GITHUB_URL,
@@ -193,10 +193,8 @@ class TestInstallFromGitHub:
             )
 
         assert response.status_code == 201
-        mock_capture.assert_called_once_with(
-            AnalyticsEvents.SKILL_INSTALLED,
-            {"skill_id": "sk_abc123", "target": "gmail_agent", "source": "github"},
-        )
+        # The installer emits skill:installed; the route's part is saying who acted.
+        assert mock_install.await_args.kwargs["author"] is SkillAuthor.USER
 
     async def test_install_with_skill_name_auto_discovers(self, client: AsyncClient):
         mock_discovered = _make_discovered_skill(path="skills/my-skill")
@@ -327,8 +325,7 @@ class TestInstallInline:
                 _INSTALL_INLINE,
                 new_callable=AsyncMock,
                 return_value=mock_skill,
-            ),
-            patch(_CAPTURE) as mock_capture,
+            ) as mock_install,
         ):
             response = await client.post(
                 INSTALL_INLINE_URL,
@@ -341,10 +338,7 @@ class TestInstallInline:
             )
 
         assert response.status_code == 201
-        mock_capture.assert_called_once_with(
-            AnalyticsEvents.SKILL_INSTALLED,
-            {"skill_id": "sk_abc123", "target": "gmail_agent", "source": "inline"},
-        )
+        assert mock_install.await_args.kwargs["author"] is SkillAuthor.USER
 
     async def test_create_inline_skill_missing_name_returns_422(self, client: AsyncClient):
         response = await client.post(

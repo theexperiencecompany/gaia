@@ -1,6 +1,6 @@
 """Unit tests for app.agents.tools.skill_tools."""
 
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -8,6 +8,7 @@ from langchain_core.runnables import RunnableConfig
 from pydantic import ValidationError
 import pytest
 
+from app.agents.skills.models import SkillAuthor
 from app.agents.tools.skill_tools import (
     LearnedSkillSpec,
     _compose_learned_skill_md,
@@ -15,6 +16,7 @@ from app.agents.tools.skill_tools import (
     save_learned_skill,
     update_skill,
 )
+from app.utils.errors import AppError
 from shared.py.wide_events import log
 
 # ---------------------------------------------------------------------------
@@ -532,11 +534,6 @@ class TestComposeLearnedSkillMd:
 
 @pytest.mark.unit
 class TestSaveLearnedSkill:
-    @pytest.fixture(autouse=True)
-    def _name_is_free(self) -> Iterator[AsyncMock]:
-        with patch(f"{MODULE}.get_skill_by_name", new_callable=AsyncMock, return_value=None) as m:
-            yield m
-
     @patch(f"{MODULE}.install_from_inline", new_callable=AsyncMock)
     async def test_happy_path(self, mock_install: AsyncMock) -> None:
         mock_install.return_value = _installed_skill(name="triage-inbox")
@@ -547,28 +544,41 @@ class TestSaveLearnedSkill:
         assert "gmail" in result
         assert "executor" in result
 
-        call_kwargs = mock_install.call_args[1]
-        assert call_kwargs["user_id"] == FAKE_USER_ID
-        assert call_kwargs["name"] == "triage-inbox"
-        assert call_kwargs["target"] == "executor"
-        assert call_kwargs["extra_metadata"] == {"source": "learned", "learned_from_run": "1"}
-        assert "## Steps" in call_kwargs["instructions"]
+        user_id, request = mock_install.call_args.args
+        assert user_id == FAKE_USER_ID
+        assert (request.name, request.target) == ("triage-inbox", "executor")
+        assert "## Steps" in request.instructions
+        assert mock_install.call_args.kwargs == {"author": SkillAuthor.AGENT, "learned": True}
 
-    @patch(f"{MODULE}.install_from_inline", new_callable=AsyncMock)
-    async def test_a_taken_name_points_at_update_skill_and_writes_nothing(
-        self, mock_install: AsyncMock, _name_is_free: AsyncMock
-    ) -> None:
-        _name_is_free.return_value = _installed_skill(name="triage-inbox")
-
+    @patch(
+        f"{MODULE}.install_from_inline",
+        new_callable=AsyncMock,
+        side_effect=AppError(
+            message="A skill named 'triage-inbox' already exists (for executor).",
+            status_code=409,
+        ),
+    )
+    async def test_a_taken_name_points_at_update_skill(self, mock_install: AsyncMock) -> None:
         result = await _invoke_save_learned_skill(_cfg(), _learned_spec())
 
         assert result == (
-            "Not saved: a skill named 'triage-inbox' already exists for executor. "
-            "If it covers this task, revise it with update_skill (read its SKILL.md first and "
-            "keep what still applies); otherwise save under a different name."
+            "Not saved: A skill named 'triage-inbox' already exists (for executor). If it "
+            "covers this task, revise it with update_skill (read its SKILL.md first and keep "
+            "what still applies); otherwise save under a different name."
         )
-        _name_is_free.assert_awaited_once_with(FAKE_USER_ID, "triage-inbox", "executor")
-        mock_install.assert_not_awaited()
+        mock_install.assert_awaited_once()
+
+    @patch(
+        f"{MODULE}.install_from_inline",
+        new_callable=AsyncMock,
+        side_effect=AppError(message="registry unavailable", status_code=503),
+    )
+    async def test_any_other_app_error_is_a_safe_persist_failure(
+        self, mock_install: AsyncMock
+    ) -> None:
+        result = await _invoke_save_learned_skill(_cfg(), _learned_spec())
+
+        assert result == "Error saving skill: the skill could not be persisted. Try again."
 
     @patch(
         f"{MODULE}.install_from_inline",
@@ -712,11 +722,6 @@ class TestSaveLearnedSkillRecordsTheRun:
     """The tool's return value is the agent's only view of the outcome, and log.set is how a failed save is findable in production."""
 
     @pytest.fixture(autouse=True)
-    def _name_is_free(self) -> Iterator[AsyncMock]:
-        with patch(f"{MODULE}.get_skill_by_name", new_callable=AsyncMock, return_value=None) as m:
-            yield m
-
-    @pytest.fixture(autouse=True)
     def _fresh_wide_event(self) -> None:
         log.reset()
 
@@ -770,7 +775,7 @@ class TestSaveLearnedSkillRecordsTheRun:
 
         await _invoke_save_learned_skill(_cfg(), _learned_spec())
 
-        assert mock_install.call_args[1]["description"] == (
+        assert mock_install.call_args.args[1].description == (
             "Triage the inbox: archive promos/newsletters, flag action-needed mail"
         )
 
@@ -834,20 +839,24 @@ class TestUpdateSkill:
         )
 
     @patch(f"{MODULE}.update_skill_inline", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_skill_by_name", new_callable=AsyncMock)
-    async def test_revises_the_named_skill_in_place(
-        self, mock_get: AsyncMock, mock_update: AsyncMock
+    @patch(f"{MODULE}.list_skills", new_callable=AsyncMock)
+    async def test_revises_the_only_skill_with_that_name_as_the_agent(
+        self, mock_list: AsyncMock, mock_update: AsyncMock
     ) -> None:
-        mock_get.return_value = _installed_skill(name="triage-inbox", id="skill-1")
+        mock_list.return_value = [
+            _installed_skill(name="triage-inbox", id="skill-1", target="gmail_agent"),
+            _installed_skill(name="weekly-digest", id="skill-2", target="executor"),
+        ]
         mock_update.return_value = _installed_skill(name="triage-inbox", target="gmail_agent")
 
-        result = await self._invoke(
-            name="triage-inbox", instructions="# New steps", target="gmail_agent"
-        )
+        result = await self._invoke(name="triage-inbox", instructions="# New steps")
 
-        mock_get.assert_awaited_once_with(FAKE_USER_ID, "triage-inbox", "gmail_agent")
         mock_update.assert_awaited_once_with(
-            FAKE_USER_ID, "skill-1", description=None, instructions="# New steps"
+            FAKE_USER_ID,
+            "skill-1",
+            description=None,
+            instructions="# New steps",
+            author=SkillAuthor.AGENT,
         )
         assert result == (
             "Updated skill 'triage-inbox' for gmail_agent. The next run that reads it "
@@ -855,9 +864,42 @@ class TestUpdateSkill:
         )
 
     @patch(f"{MODULE}.update_skill_inline", new_callable=AsyncMock)
-    @patch(f"{MODULE}.get_skill_by_name", new_callable=AsyncMock, return_value=None)
+    @patch(f"{MODULE}.list_skills", new_callable=AsyncMock)
+    async def test_a_name_on_several_targets_is_refused_without_a_target(
+        self, mock_list: AsyncMock, mock_update: AsyncMock
+    ) -> None:
+        """Skills saved before names were unique per user can share a name; editing whichever Mongo returns first is a silent wrong edit."""
+        mock_list.return_value = [
+            _installed_skill(name="triage", id="skill-1", target="executor"),
+            _installed_skill(name="triage", id="skill-2", target="gmail_agent"),
+        ]
+
+        result = await self._invoke(name="triage", instructions="x")
+
+        assert result == (
+            "Not updated: 'triage' exists for executor, gmail_agent. Pass target to choose one."
+        )
+        mock_update.assert_not_awaited()
+
+    @patch(f"{MODULE}.update_skill_inline", new_callable=AsyncMock)
+    @patch(f"{MODULE}.list_skills", new_callable=AsyncMock)
+    async def test_target_picks_one_of_several(
+        self, mock_list: AsyncMock, mock_update: AsyncMock
+    ) -> None:
+        mock_list.return_value = [
+            _installed_skill(name="triage", id="skill-1", target="executor"),
+            _installed_skill(name="triage", id="skill-2", target="gmail_agent"),
+        ]
+        mock_update.return_value = _installed_skill(name="triage", target="gmail_agent")
+
+        await self._invoke(name="triage", instructions="x", target="gmail_agent")
+
+        assert mock_update.await_args.args == (FAKE_USER_ID, "skill-2")
+
+    @patch(f"{MODULE}.update_skill_inline", new_callable=AsyncMock)
+    @patch(f"{MODULE}.list_skills", new_callable=AsyncMock, return_value=[])
     async def test_an_unknown_name_changes_nothing(
-        self, mock_get: AsyncMock, mock_update: AsyncMock
+        self, mock_list: AsyncMock, mock_update: AsyncMock
     ) -> None:
         result = await self._invoke(name="gaia-self-knowledge", instructions="x")
 
@@ -869,11 +911,11 @@ class TestUpdateSkill:
         new_callable=AsyncMock,
         side_effect=ValueError("Invalid skill: body exceeds 500 lines"),
     )
-    @patch(f"{MODULE}.get_skill_by_name", new_callable=AsyncMock)
+    @patch(f"{MODULE}.list_skills", new_callable=AsyncMock)
     async def test_an_invalid_revision_is_reported_not_raised(
-        self, mock_get: AsyncMock, mock_update: AsyncMock
+        self, mock_list: AsyncMock, mock_update: AsyncMock
     ) -> None:
-        mock_get.return_value = _installed_skill(name="triage-inbox", id="skill-1")
+        mock_list.return_value = [_installed_skill(name="triage-inbox", id="skill-1")]
 
         result = await self._invoke(name="triage-inbox", instructions="x")
 

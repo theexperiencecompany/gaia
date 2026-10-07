@@ -140,6 +140,8 @@ async def build_executor_graph(
         "message_subagent",
         "cancel_subagent",
         "activate_integration",
+        # A spawn mines untrusted output; global instructions reach every tier.
+        "update_user_instructions",
     }
 
     middleware = create_executor_middleware(

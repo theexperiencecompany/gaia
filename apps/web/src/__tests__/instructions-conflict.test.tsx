@@ -2,6 +2,8 @@
 //
 // The real hook, typed client and ApiError run against an in-memory stand-in
 // for /api/v1/instructions/{scope}; only the axios transport is faked.
+
+import { INSTRUCTIONS_CONFLICT_CODE } from "@shared/constants/instructions";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type React from "react";
@@ -80,7 +82,7 @@ const fakeInstructionsApi = async (config: {
       message:
         "These instructions were changed somewhere else since you opened them",
       fix: "Load the latest version, or save again to overwrite it",
-      code: "instructions_conflict",
+      code: INSTRUCTIONS_CONFLICT_CODE,
       current_revision: current.revision,
     });
   }

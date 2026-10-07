@@ -21,7 +21,7 @@ import pytest
 
 from app.constants.account import ACCOUNT_DIR, ACCOUNT_LINKED_ACCOUNTS_DIRNAME
 from app.models.payment_models import PlanDuration, PlanResponse, PlanType, SubscriptionDocument
-from app.models.user_instructions_models import GLOBAL_INSTRUCTIONS_SCOPE
+from app.models.user_instructions_models import GLOBAL_INSTRUCTIONS_SCOPE, UserInstructionsDocument
 from app.models.user_models import UserDocument
 from app.schemas.usage import FeatureUsageSummary, UsageBudget
 from app.services import account_fs
@@ -147,7 +147,11 @@ def sources():
     users = SimpleNamespace(
         get=AsyncMock(return_value=_user(preferences={"response_style": "brief"}))
     )
-    instructions = AsyncMock(return_value="Be terse.")
+    instructions = AsyncMock(
+        return_value=UserInstructionsDocument(
+            user_id="user-42", scope=GLOBAL_INSTRUCTIONS_SCOPE, content="Be terse.", revision=1
+        )
+    )
     voices = AsyncMock(return_value=catalog)
     linked_platforms = AsyncMock(return_value=linked)
     with (
@@ -155,7 +159,7 @@ def sources():
         patch(f"{MODULE}.build_usage_summary", new=usage_summary),
         patch(f"{MODULE}.fetch_channel_preferences", new=channel_preferences),
         patch(f"{MODULE}.user_repository", new=users),
-        patch(f"{MODULE}.get_instructions", new=instructions),
+        patch(f"{MODULE}.user_instructions_repository.get_record", new=instructions),
         patch(f"{MODULE}.list_voices", new=voices),
         patch(f"{MODULE}.PlatformLinkService.get_linked_platforms", new=linked_platforms),
     ):
@@ -457,7 +461,9 @@ class TestProjectionBodies:
         assert await _raw("custom-instructions") == _serialized({"instructions": "Be terse."})
 
     async def test_custom_instructions_are_null_when_unset(self, sources) -> None:
-        with patch(f"{MODULE}.get_instructions", new=AsyncMock(return_value=None)):
+        with patch(
+            f"{MODULE}.user_instructions_repository.get_record", new=AsyncMock(return_value=None)
+        ):
             assert await _body("custom-instructions") == {"instructions": None}
 
     async def test_voice_catalog_body(self, sources) -> None:
