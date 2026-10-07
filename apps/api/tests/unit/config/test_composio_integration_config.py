@@ -9,6 +9,7 @@ connect, skipped by startup tool indexing). The model validator makes
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from pydantic import ValidationError
 import pytest
 
 from app.agents.tools.core.registry import ToolRegistry
@@ -44,8 +45,16 @@ def _composio_integration(*, available: bool, auth_config_id: str) -> OAuthInteg
 @pytest.mark.unit
 class TestAuthConfigInvariant:
     def test_available_without_auth_config_id_is_rejected(self) -> None:
-        with pytest.raises(ValueError, match="no Composio auth_config_id"):
+        with pytest.raises(ValidationError) as exc_info:
             _composio_integration(available=True, auth_config_id="")
+        # Assert the exact wording (correct case, no mutmut XX-wrapper) so a
+        # mutated message string is caught, not just that validation failed.
+        message = str(exc_info.value)
+        assert (
+            "Integration 'example' is available but has no Composio auth_config_id; "
+            "set it from the Composio dashboard or keep available=False." in message
+        )
+        assert "XX" not in message
 
     def test_unavailable_without_auth_config_id_is_allowed(self) -> None:
         assert _composio_integration(available=False, auth_config_id="").available is False

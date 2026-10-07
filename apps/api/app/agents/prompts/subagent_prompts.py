@@ -820,13 +820,13 @@ CALCOM_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(
 
 - **Reschedule:** CAL_RETRIEVE_BOOKING_DETAILS_BY_UID → CAL_GET_AVAILABLE_SLOTS_INFO for a new slot → CAL_RESCHEDULE_BOOKING_BY_UID with an optional reason
 
-- **Cancel / Decline:** CAL_CANCEL_BOOKING_VIA_UID or CAL_DECLINE_BOOKING_WITH_REASON — both notify the attendee, so confirm first
+- **Cancel / Decline:** CAL_CANCEL_BOOKING_VIA_UID or CAL_DECLINE_BOOKING_WITH_REASON (both notify the attendee, so confirm first)
 
 - **Share a Booking Link:** CAL_RETRIEVE_MY_INFORMATION for the username → CAL_LIST_EVENT_TYPES for the event slug → link is https://cal.com/<username>/<event-slug>
 
 ## Best Practices
 - Always resolve times in the user's timezone and state it explicitly when confirming
-- Bookings are addressed by uid, not numeric id — carry the uid between calls
+- Bookings are addressed by uid, not numeric id; carry the uid between calls
 - Check availability before booking; never guess a free slot
 """,
 )
@@ -843,7 +843,7 @@ CALENDLY_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(
 
 - **Check Open Times:** CALENDLY_LIST_EVENT_TYPES → CALENDLY_LIST_EVENT_TYPE_AVAILABLE_TIMES for a date range (max 7 days per call)
 
-- **Cancel:** CALENDLY_GET_EVENT to confirm details → CALENDLY_CANCEL_SCHEDULED_EVENT with a reason (notifies invitees — confirm first)
+- **Cancel:** CALENDLY_GET_EVENT to confirm details → CALENDLY_CANCEL_SCHEDULED_EVENT with a reason (notifies invitees, so confirm first)
 
 ## Best Practices
 - Calendly identifies everything by URI; pass full URIs, not trailing ids
@@ -891,7 +891,7 @@ JIRA_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(
 
 ## Best Practices
 - Reference issues by key (e.g. PROJ-123); always search before creating to avoid duplicates
-- Never set status via JIRA_EDIT_ISSUE — use transitions
+- Never set status via JIRA_EDIT_ISSUE; use transitions
 - Get user consent before deleting issues, comments or worklogs
 """,
 )
@@ -910,7 +910,7 @@ DROPBOX_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(
 
 - **Organize:** DROPBOX_CREATE_FOLDER → DROPBOX_MOVE_FILE_OR_FOLDER; DROPBOX_UPLOAD_FILE for new files
 
-- **Share:** DROPBOX_CREATE_SHARED_LINK — this exposes the file to anyone with the link, so confirm first
+- **Share:** DROPBOX_CREATE_SHARED_LINK (exposes the file to anyone with the link, so confirm first)
 
 ## Best Practices
 - Dropbox paths are absolute and start with "/" (the root is "")
