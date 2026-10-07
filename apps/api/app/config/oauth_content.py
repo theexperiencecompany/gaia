@@ -1362,7 +1362,7 @@ POSTHOG_CONTENT = IntegrationContent(
 CALCOM_CONTENT = IntegrationContent(
     use_cases=[
         "See every upcoming Cal.com booking with attendees and meeting links in one message",
-        "Book a meeting on any of your event types by saying who and roughly when — GAIA finds an open slot",
+        "Book a meeting on any of your event types by saying who and roughly when, and GAIA finds an open slot",
         "Reschedule or cancel a booking in plain English without opening Cal.com",
         "Get the right booking link for the right meeting type whenever you need to share one",
         "Run a scheduled workflow that briefs you every morning on the day's Cal.com bookings",
@@ -1396,7 +1396,7 @@ CALCOM_CONTENT = IntegrationContent(
         ),
         IntegrationFAQ(
             question="Can GAIA reschedule an existing booking?",
-            answer="Yes. GAIA looks up the booking, finds a free slot that works, and reschedules it — optionally with a reason for the attendee.",
+            answer="Yes. GAIA looks up the booking, finds a free slot that works, and reschedules it, optionally with a reason for the attendee.",
         ),
     ],
 )
@@ -1446,7 +1446,7 @@ CALENDLY_CONTENT = IntegrationContent(
 OUTLOOK_CONTENT = IntegrationContent(
     use_cases=[
         "Summarise your unread Outlook mail and draft replies for the ones that need an answer",
-        "Search your Outlook inbox in plain English — 'the invoice Priya sent last month'",
+        "Search your Outlook inbox in plain English: 'the invoice Priya sent last month'",
         "Find a meeting time that works for everyone and send the invite with a Teams link",
         "Get today's Outlook calendar as a morning briefing in your chat",
         "Draft emails in your voice and send them only after you approve",
@@ -1488,7 +1488,7 @@ OUTLOOK_CONTENT = IntegrationContent(
 JIRA_CONTENT = IntegrationContent(
     use_cases=[
         "See every Jira issue assigned to you, ranked by priority, in one message",
-        "Create Jira issues by describing the bug or task — GAIA fills in the project and type",
+        "Create Jira issues by describing the bug or task, and GAIA fills in the project and type",
         "Move issues through your workflow with a plain English command",
         "Turn meeting notes into Jira issues with owners and descriptions",
         "Get a weekly summary of what your team moved to Done through a scheduled workflow",
@@ -1504,7 +1504,7 @@ JIRA_CONTENT = IntegrationContent(
         ),
         IntegrationHowItWorksStep(
             title="Updates stay in your workflow",
-            body="GAIA moves issues through your team's real transitions, comments on them, and reassigns them — deletions always ask for approval first.",
+            body="GAIA moves issues through your team's real transitions, comments on them, and reassigns them. Deletions always ask for approval first.",
         ),
     ],
     faqs=[
@@ -1529,11 +1529,11 @@ JIRA_CONTENT = IntegrationContent(
 
 DROPBOX_CONTENT = IntegrationContent(
     use_cases=[
-        "Find any file in your Dropbox by describing it — no folder digging",
+        "Find any file in your Dropbox by describing it, no folder digging",
         "Summarise a document stored in Dropbox without downloading it yourself",
         "Organise files into folders with a single instruction",
         "Create a share link for a file, after you approve exposing it",
-        "Save files GAIA generates — reports, decks, spreadsheets — straight into Dropbox",
+        "Save files GAIA generates (reports, decks, spreadsheets) straight into Dropbox",
     ],
     how_it_works=[
         IntegrationHowItWorksStep(
