@@ -30,8 +30,8 @@ from arq.constants import default_queue_name, job_key_prefix
 from arq.jobs import JobDef
 import fakeredis.aioredis
 import pytest
-import time_machine
 from redis.exceptions import ConnectionError as RedisConnectionError, RedisError
+import time_machine
 
 from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import TodoRunRequest

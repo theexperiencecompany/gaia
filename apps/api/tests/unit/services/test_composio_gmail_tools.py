@@ -900,10 +900,7 @@ class TestTheDesksSweep:
     def test_the_estimate_decides_the_fetch_format_at_the_boundary(
         self, mock_proxy: MagicMock, size: int, estimate: int | None, expected_format: str
     ) -> None:
-        """Exactly at the estimate the scan stays metadata; one over it fetches bodies.
-
-        An absent estimate says nothing, so it fetches metadata too.
-        """
+        """At the estimate the scan stays metadata; one over it fetches bodies."""
         formats: list[str] = []
 
         def gmail(request: ProxyRequest) -> dict[str, Any]:
