@@ -679,7 +679,6 @@ def _recased_call_argument_is_equivalent(
         param = _positional_parameter(callee, index)
         if param is None:
             continue
-<<<<<<< HEAD
         site = _RecaseSite(callee, module, literal, spot)
         if _recased_literal_is_equivalent(site, param):
             return True
@@ -691,27 +690,6 @@ def _recased_call_argument_is_equivalent(
         site = _RecaseSite(callee, module, keyword.value, spot)
         if _recased_literal_is_equivalent(site, keyword.arg):
             return True
-=======
-        for index, literal in enumerate(node.args):
-            if not isinstance(literal, ast.Constant) or not isinstance(literal.value, str):
-                continue
-            param = _positional_parameter(callee, index)
-            if param is None:
-                continue
-            site = _RecaseSite(callee, module, literal, line_no, col, orig_line, mut_line)
-            if _recased_literal_is_equivalent(site, param):
-                return True
-        for keyword in node.keywords:
-            if not isinstance(keyword.value, ast.Constant) or not isinstance(
-                keyword.value.value, str
-            ):
-                continue
-            if keyword.arg not in _parameter_names(callee):
-                continue
-            site = _RecaseSite(callee, module, keyword.value, line_no, col, orig_line, mut_line)
-            if _recased_literal_is_equivalent(site, keyword.arg):
-                return True
->>>>>>> 0483be314b (fix(api): close the four race windows CodeRabbit found in watch registration)
     return False
 
 
@@ -730,28 +708,16 @@ def _recased_literal_is_equivalent(site: _RecaseSite, param: str) -> bool:
     """Whether the mutation re-cased the literal taken as this parameter."""
     # A case-only rewrite is usually a different length, so the slice ends where
     # the mutant's literal ends rather than where the original's did.
-<<<<<<< HEAD
     literal, spot = site.literal, site.spot
-=======
-    literal = site.literal
->>>>>>> 0483be314b (fix(api): close the four race windows CodeRabbit found in watch registration)
     mut_span = (
         literal.lineno,
         literal.col_offset,
         literal.end_lineno or literal.lineno,
-<<<<<<< HEAD
         literal.end_col_offset + len(spot.mut_line) - len(spot.orig_line),
     )
     if not _within(mut_span, spot.line_no, spot.col):
         return False
     replacement = _mutated_token(mut_span, spot.line_no, spot.orig_line, spot.mut_line)
-=======
-        literal.end_col_offset + len(site.mut_line) - len(site.orig_line),
-    )
-    if not _within(mut_span, site.line_no, site.col):
-        return False
-    replacement = _mutated_token(mut_span, site.line_no, site.orig_line, site.mut_line)
->>>>>>> 0483be314b (fix(api): close the four race windows CodeRabbit found in watch registration)
     if replacement is None:
         return False
     try:
@@ -805,15 +771,8 @@ def _loads_under(node: ast.AST, name: str) -> set[int]:
     }
 
 
-<<<<<<< HEAD
 def _forwarded_parameters(called: ast.FunctionDef, node: ast.Call, param: str) -> list[str]:
     """Return the called function's parameters receiving exactly this value."""
-=======
-def _forwarded_parameters(
-    called: ast.FunctionDef, node: ast.Call, param: str
-) -> list[str]:
-    """The called function's parameters receiving exactly this value."""
->>>>>>> 0483be314b (fix(api): close the four race windows CodeRabbit found in watch registration)
     positional = (*called.args.posonlyargs, *called.args.args)
     targets = [
         positional[index].arg
