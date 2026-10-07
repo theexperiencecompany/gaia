@@ -140,11 +140,12 @@ onboarding — there is no tool for them.
 
 ACCOUNT_CUSTOM_INSTRUCTIONS_GUIDE_MD = """# custom-instructions
 
-`account/custom-instructions.json` holds standing instructions the user wants
-applied to every conversation (max 500 chars).
+`account/custom-instructions.json` holds the user's standing instructions for
+every conversation (the "global" scope, max 8000 chars).
 
-TO CHANGE: `update_custom_instructions(instructions=...)`. It pauses for the
-user's approval first. Passing an empty string clears the instructions.
+TO CHANGE: `update_user_instructions(scope="global", content=...)` with the FULL
+new text. An empty string clears them. Per-integration instructions use the
+integration's id as the scope.
 """
 
 ACCOUNT_VOICES_GUIDE_MD = """# voices

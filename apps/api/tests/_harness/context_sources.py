@@ -42,7 +42,9 @@ class ContextSources:
     #: ``get_connected_integrations_named`` shape: ``[{"id": ..., "name": ...}]``.
     connected_integrations: list[dict[str, str]] = field(default_factory=list)
     provider_metadata: dict[str, str] = field(default_factory=dict)
-    custom_instructions: str = ""
+    #: The user's "global" standing instructions; every other scope reads ``integration_instructions``.
+    global_instructions: str = ""
+    integration_instructions: str = ""
     active_todo: TodoDocument | None = None
     #: Ground-truth block the workflow authoring tier folds into its human turn.
     workflow_integrations_hint: str = ""
@@ -51,6 +53,10 @@ class ContextSources:
     #: Comms-only: the onboarding system prompt for this turn, or ``None`` when
     #: the conversation is not an onboarding one.
     onboarding_prompt: str | None = None
+
+
+def _instructions_for(sources: ContextSources, scope: str) -> str:
+    return sources.global_instructions if scope == "global" else sources.integration_instructions
 
 
 #: The real clients underneath the faked edges, reachable from some context
@@ -138,7 +144,7 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
         enter(
             patch(
                 "app.agents.context.sections.get_instructions",
-                AsyncMock(return_value=sources.custom_instructions),
+                AsyncMock(side_effect=lambda _user_id, scope: _instructions_for(sources, scope)),
             )
         )
         enter(

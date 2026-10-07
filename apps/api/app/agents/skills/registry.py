@@ -62,6 +62,24 @@ def _skills_invalidation_keys_for_request(
     return [pattern.format(user_id=request.user_id) for pattern in _SKILLS_INVALIDATION_PATTERNS]
 
 
+async def ensure_skill_name_available(user_id: str, name: str, target: str) -> None:
+    """Raise AppError 409 when the user already has a skill with this name on this target.
+
+    Installers call this before writing SKILL.md: the file path is keyed by name, so a
+    late check would leave the existing skill's file overwritten by the rejected body.
+    """
+    if await skill_repository.find_by_name(user_id, name, target):
+        raise AppError(
+            message=(
+                f"Skill '{name}' already installed for target '{target}'. "
+                "Update it, uninstall it first, or use a different name."
+            ),
+            why="Skill names are unique per user and target.",
+            fix="Update the existing skill, uninstall it first, or use a different name.",
+            status_code=409,
+        )
+
+
 @CacheInvalidator(key_generator=_skills_invalidation_keys_for_request)
 async def install_skill(request: SkillInstallRequest) -> Skill:
     """Register a newly installed skill in the registry.
@@ -74,18 +92,7 @@ async def install_skill(request: SkillInstallRequest) -> Skill:
         skill=SkillContext(operation="install", skill_name=request.name),
     )
 
-    # Check for duplicate by name + user_id + target
-    existing = await skill_repository.find_by_name(request.user_id, request.name, request.target)
-    if existing:
-        raise AppError(
-            message=(
-                f"Skill '{request.name}' already installed for target "
-                f"'{request.target}'. Uninstall first or use a different name."
-            ),
-            why="Skill names are unique per user and target.",
-            fix="Uninstall the existing skill first, or install under a different name.",
-            status_code=409,
-        )
+    await ensure_skill_name_available(request.user_id, request.name, request.target)
 
     skill = Skill(
         id=str(uuid4()),

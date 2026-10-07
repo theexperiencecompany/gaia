@@ -357,7 +357,7 @@ class ToolRegistry:
             finish_task_tool,
             flowchart_tool,
             image_tool,
-            integration_instructions_tools,
+            instructions_tools,
             integration_tool,
             manual_tool,
             memory_tools,
@@ -407,7 +407,6 @@ class ToolRegistry:
                 always_gate_tools={
                     "update_notification_settings",
                     "update_preferences",
-                    "update_custom_instructions",
                     "set_selected_voice",
                 },
             ),
@@ -497,8 +496,8 @@ class ToolRegistry:
             ),
         )
         self._add_category(
-            "integration_instructions",
-            tools=[*integration_instructions_tools.tools],
+            "instructions",
+            tools=[*instructions_tools.tools],
             options=CategoryOptions(internal=True),
             risk=CategoryRisk(destructive_tools=set()),
         )

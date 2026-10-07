@@ -81,6 +81,9 @@ EXECUTOR_INITIAL_TOOL_IDS = [
     "subscribe_todo_to_trigger",
     "unsubscribe_todo_from_trigger",
     "save_learned_skill",
+    "update_skill",
+    "get_user_instructions",
+    "update_user_instructions",
     # Bound statically, not left to retrieve_tools: prompts name these
     # directly, so a run whose semantic retrieval misses them could read
     # the instruction and silently never act on it.

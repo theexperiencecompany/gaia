@@ -32,12 +32,14 @@ from app.models.account_models import (
     VoiceSelectedProjection,
 )
 from app.models.payment_models import PlanDuration, PlanType
+from app.models.user_instructions_models import GLOBAL_INSTRUCTIONS_SCOPE
 from app.services._vfs_scheduler import make_scheduler
 from app.services.payments.payment_service import payment_service
 from app.services.platform_link_service import Platform, PlatformLinkService
 from app.services.storage.account_vfs import AccountFileProjection, materialize_account_files
 from app.services.storage.juicefs import _is_mounted, user_workspace_path
 from app.services.usage_summary import build_usage_summary
+from app.services.user_instructions_service import get_instructions
 from app.services.voice_service import list_voices
 from app.utils.notification.channel_preferences import fetch_channel_preferences
 from shared.py.wide_events import log
@@ -201,9 +203,8 @@ async def _preferences_body(user_id: str) -> str:
 
 
 async def _custom_instructions_body(user_id: str) -> str:
-    preferences = await _onboarding_preferences(user_id)
-    projection = CustomInstructionsProjection.model_validate(
-        {"instructions": preferences.get("custom_instructions")}
+    projection = CustomInstructionsProjection(
+        instructions=await get_instructions(user_id, GLOBAL_INSTRUCTIONS_SCOPE)
     )
     return projection.model_dump_json(indent=2) + "\n"
 

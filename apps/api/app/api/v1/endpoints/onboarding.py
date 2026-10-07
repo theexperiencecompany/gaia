@@ -291,7 +291,6 @@ async def update_user_preferences(
                 "setting": "onboarding_preferences",
                 "fields": sorted(preferences.model_fields_set),
                 "response_style": preferences.response_style,
-                "has_custom_instructions": bool(preferences.custom_instructions),
             },
         )
 

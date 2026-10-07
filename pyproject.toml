@@ -680,7 +680,7 @@ module = [
   "app.models.payment_models",
   "app.models.usage_models",
   "app.models.search_models",
-  "app.models.integration_instructions_models",
+  "app.models.user_instructions_models",
   "app.models.user_models",
   "app.models.workflow_models",
   "app.models.reminder_models",

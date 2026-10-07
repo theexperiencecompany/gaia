@@ -206,12 +206,15 @@ class AnalyticsEvents(StrEnum):
     INTEGRATION_CONNECTED = "integration:connected"
     INTEGRATION_CONNECT_INITIATED = "integration:connect_initiated"
     INTEGRATION_DISCONNECTED = "integration:disconnected"
-    INTEGRATION_INSTRUCTIONS_UPDATED = "integration:instructions_updated"
     INTEGRATION_CUSTOM_UPDATED = "integration:custom_updated"
     INTEGRATION_CUSTOM_DELETED = "integration:custom_deleted"
     INTEGRATION_CUSTOM_PUBLISHED = "integration:custom_published"
     INTEGRATION_CUSTOM_UNPUBLISHED = "integration:custom_unpublished"
     MCP_CONNECTION_TESTED = "mcp:connection_tested"
+
+    # Standing instructions (global and per-integration)
+    INSTRUCTIONS_UPDATED = "instructions:updated"
+    INSTRUCTIONS_CONFLICT = "instructions:conflict"
 
     # Skills
     SKILL_INSTALLED = "skill:installed"

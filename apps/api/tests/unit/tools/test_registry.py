@@ -492,14 +492,12 @@ class TestCoreInitializationContract:
         assert [tool.name for tool in category.tools] == [
             "update_notification_settings",
             "update_preferences",
-            "update_custom_instructions",
             "set_selected_voice",
             "manage_linked_account",
         ]
         assert {tool.name for tool in category.tools if tool.always_gate} == {
             "update_notification_settings",
             "update_preferences",
-            "update_custom_instructions",
             "set_selected_voice",
         }
         assert all(tool.destructive is False for tool in category.tools)
@@ -741,7 +739,7 @@ class TestInitializedCategoryContract:
         "manual": {},
         "memory": {},
         "integrations": {},
-        "integration_instructions": {"internal": True},
+        "instructions": {"internal": True},
         "development": {"internal": True},
         "execute": {"internal": True},
         "creative": {},

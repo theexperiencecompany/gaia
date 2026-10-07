@@ -189,8 +189,6 @@ export default function PreferencesSettings({
   const [isUpdating, setIsUpdating] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // custom_instructions is owned by Settings > Custom Instructions and saved
-  // independently, so it's deliberately not part of this surface's payload.
   const [preferences, setPreferences] = useState<PreferenceValues>({
     profession: user.onboarding?.preferences?.profession || "",
     response_style: user.onboarding?.preferences?.response_style || "",
@@ -225,9 +223,7 @@ export default function PreferencesSettings({
 
         const { timezone, profession, response_style } = updatedPreferences;
 
-        // PATCH only the fields this surface owns. Empty strings are sent as-is
-        // and normalized to "cleared" server-side; the backend merges these in
-        // without disturbing custom_instructions (owned by another surface).
+        // Empty strings are sent as-is and normalized to "cleared" server-side.
         const response = await authApi.updateOnboardingPreferences({
           profession,
           response_style,

@@ -30,7 +30,7 @@ tools, and gets a directory:
     integrations/
         <integration>/
             agent/
-                instructions.md   the user's custom instructions for this
+                instructions.md   the user's standing instructions for this
                                    integration (e.g. "focus on #eng, #design").
                                    May be absent if none are set.
                 skills/<slug>/skill.md   per-integration action recipes.
@@ -54,26 +54,29 @@ tools, and gets a directory:
 When activation reports a service isn't connected, the same connect prompt
 is surfaced automatically. Relay it, then activate again once connected.
 
-## Per-integration custom instructions ("remember this for Gmail")
+## Per-integration standing instructions ("remember this for Gmail")
 
 Every connected integration can carry standing guidance for how the user wants
 it used: focus channels, default projects, conventions. This is durable and
 scoped to one integration; it is honored on every future task on that service.
+It is one scope of the user's standing instructions; the "global" scope covers
+every conversation.
 
-- **Source of truth:** the user's account (one record per integration).
+- **Source of truth:** the user's account (one record per scope).
 - **Surfaced automatically** whenever you activate the matching integration,
-  as a "CUSTOM INSTRUCTIONS FOR <INTEGRATION>" block: activating slack
-  surfaces the slack instructions without reading a file.
+  as a `<user_instructions scope="<id>">` block: activating slack surfaces the
+  slack instructions without reading a file. They are preferences: they never
+  override platform rules on safety, privacy or approvals.
 - **Mirrored read-only** to `integrations/<id>/agent/instructions.md`. Never
   edit that file directly: it's a projection and the edit won't stick.
 - **Editable by the user** on the integrations page in the app.
 
 Reading & updating:
 
-- `get_integration_instructions(integration_id)`: current content. Call this
+- `get_user_instructions(scope=integration_id)`: current content. Call this
   before amending so you preserve what's there. An activated integration
   already has its instructions in context and rarely needs it.
-- `update_integration_instructions(integration_id, content)`: saves the FULL
+- `update_user_instructions(scope=integration_id, content)`: saves the FULL
   new body (replaces, does not append). To amend: read first, merge, write the
   whole thing back.
 
@@ -88,7 +91,7 @@ If unsure whether a preference is durable, ask before saving.
 Typical flow:
 1. User: "From now on, for Slack, focus on #eng, #design, and #pm."
 2. Recognize a durable preference for the `slack` integration.
-3. `update_integration_instructions("slack", "<full instructions>")`.
+3. `update_user_instructions(scope="slack", content="<full instructions>")`.
 4. Confirm briefly. Activating slack surfaces them every future turn.
 """
 
@@ -784,10 +787,10 @@ these.
 |---|---|---|
 | "Connect / add / set up <service>" | `connect_integration([...])` | `integrations` |
 | "What can you connect to / what's connected?" | `list_integrations` | `integrations` |
-| "For <service>, always do X" (standing preference) | `update_integration_instructions(id, full_body)` | `integrations` |
+| "For <service>, always do X" (standing preference) | `update_user_instructions(scope=id, content=full_body)` | `integrations` |
 | "Turn email/Telegram notifications on or off" | `update_notification_settings(...)` | `account` |
 | "Make replies brief / change my timezone" | `update_preferences(response_style=..., timezone=...)` | `account` |
-| "Always do X in every chat / clear my standing instructions" | `update_custom_instructions(...)` | `account` |
+| "Always do X in every chat / clear my standing instructions" | `update_user_instructions(scope="global", content=...)` | `account` |
 | "Change your voice" | `set_selected_voice(voice=...)` | `account` |
 | "Connect / disconnect WhatsApp, Telegram, Discord, Slack, iMessage" | `manage_linked_account(platform, action=...)` | `account` |
 | "Remember / correct / forget <fact>" | memory tools (`add_memory`, ...) | `memory` |
@@ -816,10 +819,10 @@ sessions/artifacts, notifications, workflows, memory, billing), read that topic'
 context. It is cheap and keeps you from guessing how your own machinery works.
 
 - `account`: view and manage the user's account: notification channels,
-  response style and timezone, custom instructions, voice, linked platforms;
+  response style and timezone, standing instructions, voice, linked platforms;
   the read-only `account/` projections and the account tools.
 - `integrations`: discover, connect, and configure integrations; per-
-  integration custom instructions; the activation model.
+  integration standing instructions; the activation model.
 - `tracked-todos`: create / search / update / schedule / complete tracked
   todos; canvas conventions; recurrence; institutional memory.
 - `user-todos`: the user's own todo list and external task providers.
@@ -877,12 +880,14 @@ settings - plus a set of mutation tools that change the real thing.
 |---|---|---|
 | Notification channels (email/telegram/discord/whatsapp/slack) | `account/notifications.json` | `update_notification_settings` |
 | Response style + home timezone | `account/preferences.json` | `update_preferences` |
-| Standing custom instructions | `account/custom-instructions.json` | `update_custom_instructions` |
+| Standing instructions (every conversation) | `account/custom-instructions.json` | `update_user_instructions(scope="global", ...)` |
 | Voice for spoken replies | `account/voices/*.json` | `set_selected_voice` |
 | Linked messaging platforms | `account/linked-accounts/<platform>.json` | `manage_linked_account(platform, action=...)` |
 
-Every tool asks the user to confirm before it runs - ALWAYS, regardless of
-their approval settings. Tell them what you're about to change first.
+Every account tool asks the user to confirm before it runs - ALWAYS, regardless
+of their approval settings. Tell them what you're about to change first.
+`update_user_instructions` is not an account tool and saves directly; the user
+sees and edits the result in settings.
 
 `generate_link` returns a URL or instructions the user follows to connect a
 platform; `disconnect` removes an existing link (and confirms first).
@@ -960,7 +965,7 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
             title="Account - managing the user's account",
             description=(
                 "View and manage the user's account: notification channels, response "
-                "style and timezone, custom instructions, voice, linked platforms; "
+                "style and timezone, standing instructions, voice, linked platforms; "
                 "read the account/ projections and change settings with the account "
                 "tools (billing is read-only)."
             ),
@@ -971,7 +976,7 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
             title="Integrations: connecting and configuring services",
             description=(
                 "Discover, connect, and configure integrations; per-integration "
-                "custom instructions ('remember this for Gmail'); the activation model."
+                "standing instructions ('remember this for Gmail'); the activation model."
             ),
             body=INTEGRATIONS_DOC,
         ),

@@ -1728,6 +1728,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/instructions/{scope}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Instructions
+         * @description Return one scope's instructions with the revision a save must send back.
+         */
+        get: operations["instructions_get_instructions"];
+        /**
+         * Update Instructions
+         * @description Replace one scope's instructions; 409 when base_revision is no longer current.
+         */
+        put: operations["instructions_update_instructions"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/integrations/{integration_id}": {
         parameters: {
             query?: never;
@@ -2134,33 +2158,6 @@ export interface paths {
          * @description Remove an integration from the current user's workspace.
          */
         delete: operations["integrations_remove_integration_from_workspace"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/integrations/users/me/integrations/{integration_id}/instructions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Integration Instructions
-         * @description Return the current user's custom instructions for an integration.
-         *
-         *     Responds with empty content (not 404) when none are set, so the editor can
-         *     always render against a stable shape.
-         */
-        get: operations["integrations_get_integration_instructions"];
-        /**
-         * Update Integration Instructions
-         * @description Create or replace the current user's custom instructions for an integration.
-         */
-        put: operations["integrations_update_integration_instructions"];
-        post?: never;
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -8680,10 +8677,31 @@ export interface components {
         };
         /**
          * InstructionsEditor
-         * @description Who last wrote the instructions — surfaced in the UI audit line.
+         * @description Who last wrote a scope's instructions.
          * @enum {string}
          */
         InstructionsEditor: "user" | "agent";
+        /**
+         * InstructionsResponse
+         * @description A scope's current instructions; revision 0 means never written.
+         */
+        InstructionsResponse: {
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+            /**
+             * Revision
+             * @default 0
+             */
+            revision: number;
+            /** Scope */
+            scope: string;
+            /** Updated At */
+            updated_at: string | null;
+            updated_by: components["schemas"]["InstructionsEditor"] | null;
+        };
         /** IntegrationConfigItem */
         IntegrationConfigItem: {
             /** Authtype */
@@ -8793,19 +8811,6 @@ export interface components {
              * @description Integration status: 'created' or 'connected'
              */
             status: string;
-        };
-        /**
-         * IntegrationInstructionsResponse
-         * @description A user's custom instructions for one integration.
-         */
-        IntegrationInstructionsResponse: {
-            /** Content */
-            content: string;
-            /** Integrationid */
-            integrationId: string;
-            /** Updatedat */
-            updatedAt: string | null;
-            updatedBy: components["schemas"]["InstructionsEditor"];
         };
         /**
          * IntegrationRef
@@ -10593,11 +10598,6 @@ export interface components {
         };
         /** OnboardingPreferences */
         OnboardingPreferences: {
-            /**
-             * Custom Instructions
-             * @description Custom instructions for the AI assistant
-             */
-            custom_instructions?: string | null;
             /**
              * Needs
              * @description The jobs the user handed GAIA (onboarding Q2, up to three)
@@ -13813,16 +13813,20 @@ export interface components {
             success: boolean;
         };
         /**
-         * UpdateIntegrationInstructionsRequest
-         * @description Request to set a user's custom instructions for one integration.
+         * UpdateInstructionsRequest
+         * @description Replace one scope's instructions, guarded by the revision the editor loaded.
          */
-        UpdateIntegrationInstructionsRequest: {
+        UpdateInstructionsRequest: {
+            /**
+             * Base Revision
+             * @description Revision the edit started from; a mismatch means someone else saved first
+             */
+            base_revision: number;
             /**
              * Content
-             * @description Markdown instructions the agent should honor for this integration
-             * @default
+             * @description Full replacement markdown; an empty string clears the scope
              */
-            content?: string;
+            content: string;
         };
         /**
          * UpdateMemoryRequest
@@ -14994,12 +14998,12 @@ export type ImageToTextResponse = components['schemas']['ImageToTextResponse'];
 export type InitiatePlatformConnectRequest = components['schemas']['InitiatePlatformConnectRequest'];
 export type InitiatePlatformConnectResponse = components['schemas']['InitiatePlatformConnectResponse'];
 export type InstructionsEditor = components['schemas']['InstructionsEditor'];
+export type InstructionsResponse = components['schemas']['InstructionsResponse'];
 export type IntegrationConfigItem = components['schemas']['IntegrationConfigItem'];
 export type IntegrationContent = components['schemas']['IntegrationContent'];
 export type IntegrationFAQ = components['schemas']['IntegrationFAQ'];
 export type IntegrationHowItWorksStep = components['schemas']['IntegrationHowItWorksStep'];
 export type IntegrationInfo = components['schemas']['IntegrationInfo'];
-export type IntegrationInstructionsResponse = components['schemas']['IntegrationInstructionsResponse'];
 export type IntegrationRef = components['schemas']['IntegrationRef'];
 export type IntegrationResponse = components['schemas']['IntegrationResponse'];
 export type IntegrationsConfigResponse = components['schemas']['IntegrationsConfigResponse'];
@@ -15257,7 +15261,7 @@ export type UpdateDocumentRequest = components['schemas']['UpdateDocumentRequest
 export type UpdateFileRequest = components['schemas']['UpdateFileRequest'];
 export type UpdateHILPreferencesRequest = components['schemas']['UpdateHILPreferencesRequest'];
 export type UpdateHoloCardColorsResponse = components['schemas']['UpdateHoloCardColorsResponse'];
-export type UpdateIntegrationInstructionsRequest = components['schemas']['UpdateIntegrationInstructionsRequest'];
+export type UpdateInstructionsRequest = components['schemas']['UpdateInstructionsRequest'];
 export type UpdateMemoryRequest = components['schemas']['UpdateMemoryRequest'];
 export type UpdateMessagesRequest = components['schemas']['UpdateMessagesRequest'];
 export type UpdateMessagesResponse = components['schemas']['UpdateMessagesResponse'];
@@ -19933,6 +19937,153 @@ export interface operations {
             };
         };
     };
+    instructions_get_instructions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scope: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstructionsResponse"];
+                };
+            };
+            /** @description Invalid scope */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Integration not connected */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    instructions_update_instructions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scope: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateInstructionsRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstructionsResponse"];
+                };
+            };
+            /** @description Invalid scope or content */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Integration not connected */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Changed elsewhere since base_revision */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     integrations_disconnect_integration_endpoint: {
         parameters: {
             query?: never;
@@ -21026,144 +21177,6 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    integrations_get_integration_instructions: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                integration_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IntegrationInstructionsResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Failed to fetch integration instructions */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    integrations_update_integration_instructions: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                integration_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateIntegrationInstructionsRequest"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IntegrationInstructionsResponse"];
-                };
-            };
-            /** @description Invalid integration_id */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Integration not found in workspace */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Failed to update integration instructions */
-            500: {
                 headers: {
                     [name: string]: unknown;
                 };

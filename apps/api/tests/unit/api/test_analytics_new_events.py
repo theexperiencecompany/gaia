@@ -2,8 +2,8 @@
 
 Every mutating endpoint that had no PostHog event now emits exactly one,
 after success. Each test drives the real route with the service seam mocked
-and asserts the exact event; the two capture_event paths (device revoke,
-notification unsubscribe) additionally assert the explicit user id.
+and asserts the exact event; the capture_event paths (device revoke,
+notification unsubscribe, instructions update) additionally assert the explicit user id.
 Context-attributed paths rely on PostHogRequestContextMiddleware for identity,
 pinned once by TestPostHogIdentityBinding rather than per endpoint.
 """
@@ -26,6 +26,11 @@ from app.models.mail_models import GmailMessageResource
 from app.models.notification.notification_models import NotificationRecord
 from app.models.payment_models import PlanType
 from app.models.todo_models import TodoDocument
+from app.models.user_instructions_models import (
+    GLOBAL_INSTRUCTIONS_SCOPE,
+    InstructionsEditor,
+    UserInstructionsDocument,
+)
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import Workflow
 from app.schemas.hil_schemas import BatchDecisionOutcome
@@ -1361,8 +1366,6 @@ class TestOnboardingNewEvents:
 
 CUSTOM = "app.api.v1.endpoints.integrations.custom"
 _CUSTOM_CAPTURE = f"{CUSTOM}.capture_context_event"
-USERINT = "app.api.v1.endpoints.integrations.user"
-_USERINT_CAPTURE = f"{USERINT}.capture_context_event"
 
 
 def _custom_integration() -> Integration:
@@ -1425,29 +1428,40 @@ class TestCustomIntegrationNewEvents:
         mock_capture.assert_called_once_with(AnalyticsEvents.INTEGRATION_CUSTOM_UNPUBLISHED)
 
 
+INSTRUCTIONS_SERVICE = "app.services.user_instructions_service"
+
+
 class TestInstructionsUpdate:
-    async def test_instructions_update_captures(self, client: AsyncClient) -> None:
+    async def test_global_instructions_update_captures_with_user_id(
+        self, client: AsyncClient
+    ) -> None:
+        saved = UserInstructionsDocument(
+            user_id=UID,
+            scope=GLOBAL_INSTRUCTIONS_SCOPE,
+            content="Be brief",
+            revision=1,
+            updated_by=InstructionsEditor.USER,
+            updated_at=datetime(2025, 1, 1, tzinfo=UTC),
+        )
         with (
             patch(
-                f"{USERINT}.check_user_has_integration",
+                f"{INSTRUCTIONS_SERVICE}.user_instructions_repository.write",
                 new_callable=AsyncMock,
-                return_value=True,
+                return_value=saved,
             ),
-            patch(f"{USERINT}.upsert_instructions", new_callable=AsyncMock) as m,
-            patch(_USERINT_CAPTURE) as mock_capture,
+            patch("app.api.v1.endpoints.instructions.schedule_account_sync"),
+            patch(f"{INSTRUCTIONS_SERVICE}.capture_event") as mock_capture,
         ):
-            m.return_value = SimpleNamespace(
-                integration_id="gmail",
-                content="Be brief",
-                updated_by="user",
-                updated_at=datetime(2025, 1, 1, tzinfo=UTC),
-            )
             resp = await client.put(
-                "/api/v1/integrations/users/me/integrations/gmail/instructions",
-                json={"content": "Be brief"},
+                f"/api/v1/instructions/{GLOBAL_INSTRUCTIONS_SCOPE}",
+                json={"content": "Be brief", "base_revision": 0},
             )
         assert resp.status_code == 200
-        mock_capture.assert_called_once_with(AnalyticsEvents.INTEGRATION_INSTRUCTIONS_UPDATED)
+        mock_capture.assert_called_once_with(
+            UID,
+            AnalyticsEvents.INSTRUCTIONS_UPDATED,
+            {"scope_kind": "global", "updated_by": "user", "cleared": False},
+        )
 
 
 class TestPostHogIdentityBinding:

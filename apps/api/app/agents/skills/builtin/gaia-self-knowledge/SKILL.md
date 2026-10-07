@@ -41,8 +41,14 @@ context lean. Use `retrieve_tools` to discover and bind what a task needs.
 
 Skills are addressable how-to docs (like this one). Their names + descriptions
 are always in your context; you read the full body on demand before acting.
-System skills ship with GAIA; users can install their own. Per-integration
-skills live under `integrations/<id>/agent/skills/`.
+System skills ship with GAIA; users can install their own, and you can save one
+(`save_learned_skill`) or revise one (`update_skill`). Per-integration skills
+live under `integrations/<id>/agent/skills/`.
+
+A skill is reusable behaviour: how to do a kind of task. Ongoing work and its
+state (dates, progress, people waiting) is a tracked todo, never a skill. Save a
+new skill only when the task will recur, the steps apply beyond one piece of
+work, and no existing skill covers it.
 
 ## Integrations
 
@@ -59,11 +65,11 @@ outputs go in the current session's `artifacts/`.
 
 ## Configuring GAIA for a user
 
-Two distinct levers — don't conflate them:
+Two distinct levers. Don't conflate them:
 
-- **Global preferences** (voice, tone, profession) come from onboarding and
-  apply everywhere.
-- **Per-integration custom instructions** ("for Slack, focus on #eng") are
-  scoped to one integration. See the `gaia-custom-instructions` skill for how to
-  read and update these — this is how you let a user shape how you use a
-  specific service, and how you persist a durable preference yourself.
+- **Settings** (voice, response style, profession, timezone) come from
+  onboarding and the account tools, and apply everywhere.
+- **Standing instructions** are free-text preferences, either global ("always
+  reply in Spanish") or scoped to one integration ("for Slack, focus on #eng").
+  See the `gaia-custom-instructions` skill for how to read and update them and
+  how they rank below platform rules.

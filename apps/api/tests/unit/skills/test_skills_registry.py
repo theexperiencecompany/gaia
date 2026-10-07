@@ -395,6 +395,6 @@ class TestInstallSkill:
         assert exc_info.value.why == "Skill names are unique per user and target."
         assert (
             exc_info.value.fix
-            == "Uninstall the existing skill first, or install under a different name."
+            == "Update the existing skill, uninstall it first, or use a different name."
         )
         mock_skill_repo.create.assert_not_awaited()

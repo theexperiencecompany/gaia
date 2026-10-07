@@ -1,10 +1,12 @@
 import type { HilMode } from "@gaia/shared/chat";
-import { Button, Card, Chip, Spinner, TextField } from "heroui-native";
+import { Button, Card, Chip, Spinner } from "heroui-native";
 import { useCallback, useEffect, useState } from "react";
 import { Alert, ScrollView, View } from "react-native";
 import { Text } from "@/components/ui/text";
 import type { OnboardingPreferences } from "@/features/settings/api/settings-api";
 import { settingsApi } from "@/features/settings/api/settings-api";
+import { GlobalInstructionsCard } from "@/features/settings/components/global-instructions-card";
+import { SectionHeader } from "@/features/settings/components/section-header";
 import { useHilPreferences } from "@/features/settings/hooks/use-hil-preferences";
 import { useResponsive } from "@/lib/responsive";
 
@@ -42,28 +44,10 @@ const RESPONSE_STYLES = [
   { value: "balanced", label: "Balanced" },
 ];
 
-function SectionHeader({ children }: { children: string }) {
-  const { fontSize, spacing } = useResponsive();
-  return (
-    <Text
-      style={{
-        fontSize: fontSize.xs,
-        color: "#71717a",
-        textTransform: "uppercase",
-        letterSpacing: 1,
-        marginBottom: spacing.xs,
-      }}
-    >
-      {children}
-    </Text>
-  );
-}
-
 export function PreferencesSection() {
   const { spacing, fontSize } = useResponsive();
 
   const [prefs, setPrefs] = useState<OnboardingPreferences>({});
-  const [customInstructions, setCustomInstructions] = useState("");
   const [timezone, setTimezone] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -89,7 +73,6 @@ export function PreferencesSection() {
         if (cancelled) return;
         const p = profile.onboarding?.preferences ?? {};
         setPrefs(p);
-        setCustomInstructions(p.custom_instructions ?? "");
         setTimezone(
           profile.timezone ??
             (() => {
@@ -118,10 +101,7 @@ export function PreferencesSection() {
     setIsSaving(true);
     try {
       await Promise.all([
-        settingsApi.updatePreferences({
-          ...prefs,
-          custom_instructions: customInstructions.trim() || null,
-        }),
+        settingsApi.updatePreferences(prefs),
         settingsApi.updateTimezone(timezone),
       ]);
       Alert.alert("Saved", "Preferences updated.");
@@ -130,7 +110,7 @@ export function PreferencesSection() {
     } finally {
       setIsSaving(false);
     }
-  }, [prefs, customInstructions, timezone]);
+  }, [prefs, timezone]);
 
   if (isLoading) {
     return (
@@ -223,18 +203,6 @@ export function PreferencesSection() {
             })}
           </View>
 
-          <SectionHeader>Custom Instructions</SectionHeader>
-          <TextField>
-            <TextField.Input
-              value={customInstructions}
-              onChangeText={setCustomInstructions}
-              placeholder="Tell GAIA how you'd like it to respond…"
-              multiline
-              numberOfLines={4}
-              style={{ minHeight: 100 }}
-            />
-          </TextField>
-
           <SectionHeader>Timezone</SectionHeader>
           <Card variant="secondary" className="rounded-2xl bg-secondary">
             <Card.Body className="px-4 py-4">
@@ -258,6 +226,8 @@ export function PreferencesSection() {
       >
         {isSaving ? <Spinner /> : <Button.Label>Save Preferences</Button.Label>}
       </Button>
+
+      <GlobalInstructionsCard />
     </ScrollView>
   );
 }

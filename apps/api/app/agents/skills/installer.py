@@ -23,6 +23,7 @@ from app.agents.skills.parser import (
 )
 from app.agents.skills.registry import (
     SkillInstallRequest,
+    ensure_skill_name_available,
     get_skill,
     get_skill_by_name,
     install_skill,
@@ -192,6 +193,8 @@ async def install_from_github(
                 "Connect the integration before installing a skill scoped to it."
             )
 
+        await ensure_skill_name_available(user_id, metadata.name, target)
+
         # Determine logical storage path (used by the Skill record)
         storage_path = _skill_storage_path(user_id, metadata.name)
 
@@ -321,6 +324,8 @@ async def install_from_inline(
 
     # Parse back to get validated metadata + body
     metadata, body = parse_skill_md(skill_md_content)
+
+    await ensure_skill_name_available(user_id, metadata.name, metadata.target)
 
     # Write body-only to JuiceFS (metadata lives in MongoDB)
     storage_path = _skill_storage_path(user_id, metadata.name)

@@ -7,7 +7,7 @@ and the Mongo-backed install_skill registry call are mocked — those have their
 own dedicated tests (storage layer, test_skills_registry.py).
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -16,6 +16,7 @@ import respx
 from app.agents.skills.installer import install_from_github, install_from_inline
 from app.agents.skills.models import SkillSource
 from app.agents.skills.utils import GITHUB_API_BASE
+from app.utils.errors import AppError
 
 _SKILL_MD_CONTENT = """\
 ---
@@ -61,9 +62,25 @@ def storage_seams():
             "app.agents.skills.installer.install_skill",
             new_callable=AsyncMock,
         ) as install_mock,
+        patch(
+            "app.agents.skills.registry.skill_repository.find_by_name",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
     ):
         install_mock.return_value = AsyncMock(name="my-skill")
         yield write_mock, install_mock, ensure_dir_mock
+
+
+@pytest.fixture
+def name_taken():
+    """Make the registry report the requested name and target as already taken."""
+    with patch(
+        "app.agents.skills.registry.skill_repository.find_by_name",
+        new_callable=AsyncMock,
+        return_value=MagicMock(name="existing-skill"),
+    ) as find_mock:
+        yield find_mock
 
 
 class TestInstallFromGithubSuccess:
@@ -364,3 +381,39 @@ class TestInstallFromInline:
         assert request.license_name == "MIT"
         assert request.compatibility == "Python >=3.10"
         assert request.allowed_tools == ["web_search"]
+
+
+class TestNameClashLeavesExistingSkillUntouched:
+    """A taken name must be refused before the shared SKILL.md path is written."""
+
+    async def test_inline_install_refuses_before_writing(self, storage_seams, name_taken):
+        write_mock, install_mock, _ = storage_seams
+        with pytest.raises(AppError) as exc_info:
+            await install_from_inline(
+                user_id="u1",
+                name="my-skill",
+                description="An inline skill",
+                instructions="Replacement body that must not land on disk.",
+            )
+        assert exc_info.value.status_code == 409
+        name_taken.assert_awaited_once_with("u1", "my-skill", "executor")
+        write_mock.assert_not_awaited()
+        install_mock.assert_not_awaited()
+
+    async def test_github_install_refuses_before_writing(self, storage_seams, name_taken):
+        write_mock, install_mock, _ = storage_seams
+        with respx.mock:
+            respx.get(f"{GITHUB_API_BASE}/repos/org/repo/contents/skills/my-skill").mock(
+                return_value=httpx.Response(
+                    200,
+                    json=[_contents_entry("SKILL.md", "file", "skills/my-skill/SKILL.md")],
+                )
+            )
+            respx.get(
+                "https://raw.githubusercontent.com/org/repo/main/skills/my-skill/SKILL.md"
+            ).mock(return_value=httpx.Response(200, text=_SKILL_MD_CONTENT))
+            with pytest.raises(AppError) as exc_info:
+                await install_from_github("u1", "org/repo/skills/my-skill")
+        assert exc_info.value.status_code == 409
+        write_mock.assert_not_awaited()
+        install_mock.assert_not_awaited()

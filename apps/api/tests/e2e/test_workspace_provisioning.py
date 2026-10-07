@@ -85,9 +85,7 @@ def instructions(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
     async def get_all(user_id: str) -> dict[str, str]:
         return dict(payload)
 
-    monkeypatch.setattr(
-        "app.services.integration_instructions_service.get_all_instructions", get_all
-    )
+    monkeypatch.setattr("app.services.user_instructions_service.get_all_instructions", get_all)
     return payload
 
 

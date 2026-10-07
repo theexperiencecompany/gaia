@@ -16,6 +16,7 @@ from app.agents.skills.installer import (
     install_from_github,
     install_from_inline,
     uninstall_skill_full,
+    update_skill_inline,
 )
 from app.agents.skills.registry import (
     disable_skill,
@@ -362,6 +363,14 @@ async def save_learned_skill(
     log.set(tool={"name": "save_learned_skill", "action": "save"})
     user_id = _get_user_id(config)
 
+    if await get_skill_by_name(user_id, spec.name, spec.target):
+        log.set(tool={"name": "save_learned_skill", "action": "save", "error": "name_taken"})
+        return (
+            f"Not saved: a skill named '{spec.name}' already exists for {spec.target}. "
+            "If it covers this task, revise it with update_skill (read its SKILL.md first and "
+            "keep what still applies); otherwise save under a different name."
+        )
+
     try:
         body = _compose_learned_skill_md(spec)
         installed = await install_from_inline(
@@ -392,11 +401,57 @@ async def save_learned_skill(
         return "Error saving skill: the skill could not be persisted. Try again."
 
 
+@tool
+async def update_skill(
+    config: RunnableConfig,
+    name: Annotated[str, "Name of the skill to revise, exactly as listed in Available Skills."],
+    instructions: Annotated[
+        str,
+        "The FULL new markdown body (replaces the current body). Read the skill's SKILL.md "
+        "first and keep every part that still applies.",
+    ],
+    description: Annotated[
+        str | None,
+        "New description, only when what the skill covers or when to use it has changed.",
+    ] = None,
+    target: Annotated[
+        str | None,
+        "The skill's target, only needed when the same name exists on more than one target.",
+    ] = None,
+) -> str:
+    """Revise one of the user's existing skills in place instead of saving a near-duplicate.
+
+    Use when a run shows a saved skill is wrong, outdated or missing a step. Builtin
+    GAIA skills cannot be revised.
+    """
+    log.set(tool={"name": "update_skill", "action": "update"})
+    user_id = _get_user_id(config)
+    skill = await get_skill_by_name(user_id, name, target)
+    if not skill or not skill.id:
+        return (
+            f"Skill '{name}' not found among the user's skills. Builtin skills cannot be "
+            "revised; use save_learned_skill for a new one."
+        )
+    try:
+        updated = await update_skill_inline(
+            user_id, skill.id, description=description, instructions=instructions
+        )
+    except ValueError as e:
+        return f"Not updated: {e}"
+    if updated is None:
+        return f"Skill '{name}' was removed before it could be updated."
+    return (
+        f"Updated skill '{updated.name}' for {updated.target}. The next run that reads it "
+        "gets the new version."
+    )
+
+
 # Export tools list for registry
 tools = [
     install_skill_from_github,
     create_skill,
     save_learned_skill,
+    update_skill,
     list_installed_skills,
     manage_skill,
 ]

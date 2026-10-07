@@ -44,7 +44,7 @@ class TestAccountTopic:
         for tool in (
             "update_notification_settings",
             "update_preferences",
-            "update_custom_instructions",
+            "update_user_instructions",
             "set_selected_voice",
             "manage_linked_account",
         ):

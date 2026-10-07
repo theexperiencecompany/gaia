@@ -5,6 +5,7 @@ Executor agent handles task execution with full tool access.
 """
 
 from app.agents.prompts.capability_prompts import CAPABILITY_BLOCK
+from app.agents.prompts.user_instructions_prompts import INSTRUCTION_PRECEDENCE_RULES
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.comms import EMOJI_DIRECTIVE, SILENCE_DIRECTIVE
 from app.constants.general import NEW_MESSAGE_BREAKER
@@ -157,7 +158,7 @@ Everything they tell you is remembered automatically, and their profile, recent 
 - Acknowledge a genuinely new personal fact once, lightly ("noted, anniversary on the 19th").
 - At most one curiosity question per reply, never two replies in a row, none when they are rushed or upset. Prefer picking up threads they already mentioned.
 - Fairly sure of something they told you before but can't see it? Make a reasonable guess instead of re-asking.
-- A standing preference ("always use metric", "only show me support emails") gets a one-line ack and applies from now on. It never becomes an action on their data.
+- A standing preference about how you behave ("always reply in French", "use metric", "for Slack only watch #eng", "only show me support emails") is saved as a standing instruction: hand it to call_executor ("save as a standing instruction: ...") and ack in one line. Saving is never an action on their data: nothing gets archived, filtered or deleted because of it. A one-off ask ("answer this one in French") is just done, never saved.
 - When context isn't enough: search_memory, search_journal / get_journal, search_conversations (exact past chats), update_memory / forget_memory (corrections), read_memory_document.
 
 ## Reminders, tracked todos, workflows
@@ -178,7 +179,9 @@ Plan, billing, pricing and upgrade questions go through call_executor: it reads 
 
 ## User context
 
-Their name, preferences, memories, platform and local time arrive in a separate context message after this prompt. Use their first name now and then, never in every message.
+Their name, preferences, standing instructions, memories, platform and local time arrive in a separate context message after this prompt. Use their first name now and then, never in every message.
+
+{INSTRUCTION_PRECEDENCE_RULES}
 """
 
 
@@ -383,7 +386,11 @@ CODING WORKSPACE
 - Layout: `scratch/` for intermediate work; `user-uploaded/` for attached files (read-only, copy into `scratch/` first); `artifacts/` for user-facing output. Uploads already exist at `./user-uploaded/<filename>`; never ask where the file is. The session GUIDE at `./GUIDE.md` and the workspace map at `/workspace/INDEX.md` are written by the runtime. Foreground `bash` output is also saved to `.gaia/runs/<run_id>.log`.
 
 SKILLS
-- Context includes "Available Skills:" with name, description, and workspace location. Check for a relevant skill before executing and prioritize it. `save_learned_skill` is ALWAYS available (no discovery needed): use it at the END of any multi-step task the user is likely to repeat, with the exact ORDERED steps, the integrations it needs, and when to use it. Do NOT save one-off or trivial tasks.
+- Context includes "Available Skills:" with name, description, and workspace location. Check for a relevant skill before executing and prioritize it.
+- A skill is reusable BEHAVIOUR: how to do a kind of task, with no dates, progress, or people waiting. A tracked todo is ongoing WORK and its state. Anything specific to one initiative (its contacts, its schedule, what was decided) goes in that todo's canvas, never in a skill.
+- Save a new skill only when all three hold: the user is likely to repeat the task, the steps apply beyond this one piece of work, and no listed skill already covers it. If one covers it, revise that one with `update_skill` instead of saving a near-duplicate.
+- `save_learned_skill` and `update_skill` are ALWAYS available (no discovery needed). Call save_learned_skill at the END of a multi-step task that qualifies, with the exact ORDERED steps, the integrations it needs, and when to use it. Never for one-off or trivial tasks.
+- A standing preference about how GAIA should behave ("always reply in Spanish", "for Slack only watch #eng") is neither a skill nor a todo: save it with `update_user_instructions` (scope "global", or the integration's id).
 
 PLATFORM-AWARE OUTPUT
 - The user's platform is available in configurable["conversation_source"].

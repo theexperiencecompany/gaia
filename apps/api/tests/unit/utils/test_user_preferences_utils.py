@@ -100,18 +100,16 @@ class TestBuildUserContextParts:
         preferences: dict[str, Any] = {
             "profession": "software engineer",
             "response_style": "brief",
-            "custom_instructions": "Always use Python examples",
         }
         parts = build_user_context_parts(preferences)
-        assert len(parts) == 3
-        assert parts[0] == "User Profession: Software Engineer"
-        assert parts[1] == "Communication Style: Keep responses brief and to the point"
-        assert parts[2] == "Special Instructions: Always use Python examples"
+        assert parts == [
+            "User Profession: Software Engineer",
+            "Communication Style: Keep responses brief and to the point",
+        ]
         mock_log.set.assert_called_once_with(
             operation="build_user_context_parts",
             has_profession=True,
             has_response_style=True,
-            has_custom_instructions=True,
         )
 
     @patch("app.utils.user_preferences_utils.log")
@@ -130,16 +128,18 @@ class TestBuildUserContextParts:
         assert parts == ["Communication Style: Use a casual and friendly tone"]
 
     @patch("app.utils.user_preferences_utils.log")
-    def test_only_custom_instructions(self, mock_log: Any) -> None:
-        parts = build_user_context_parts({"custom_instructions": "Respond in Spanish"})
-        assert parts == ["Special Instructions: Respond in Spanish"]
+    def test_a_legacy_custom_instructions_key_is_not_rendered(self, mock_log: Any) -> None:
+        """Old Mongo rows still carry it; instructions now reach the prompt as their own section."""
+        parts = build_user_context_parts(
+            {"profession": "doctor", "custom_instructions": "Respond in Spanish"}
+        )
+        assert parts == ["User Profession: Doctor"]
 
     @patch("app.utils.user_preferences_utils.log")
     def test_none_values_ignored(self, mock_log: Any) -> None:
         preferences: dict[str, Any] = {
             "profession": None,
             "response_style": None,
-            "custom_instructions": None,
         }
         parts = build_user_context_parts(preferences)
         assert parts == []
@@ -149,20 +149,9 @@ class TestBuildUserContextParts:
         preferences: dict[str, Any] = {
             "profession": "",
             "response_style": "",
-            "custom_instructions": "",
         }
         parts = build_user_context_parts(preferences)
         assert parts == []
-
-    @patch("app.utils.user_preferences_utils.log")
-    def test_whitespace_only_custom_instructions_ignored(self, mock_log: Any) -> None:
-        parts = build_user_context_parts({"custom_instructions": "   "})
-        assert parts == []
-
-    @patch("app.utils.user_preferences_utils.log")
-    def test_custom_instructions_stripped(self, mock_log: Any) -> None:
-        parts = build_user_context_parts({"custom_instructions": "  Be concise  "})
-        assert parts == ["Special Instructions: Be concise"]
 
     @patch("app.utils.user_preferences_utils.log")
     def test_unknown_response_style_used_as_is(self, mock_log: Any) -> None:
@@ -183,14 +172,6 @@ class TestBuildUserContextParts:
         parts = build_user_context_parts({"profession": long_profession})
         assert len(parts) == 1
         assert parts[0] == f"User Profession: {long_profession.title()}"
-
-    @patch("app.utils.user_preferences_utils.log")
-    def test_long_custom_instructions_still_included(self, mock_log: Any) -> None:
-        # build_user_context_parts does NOT enforce length limits
-        long_instructions = "x" * 1000
-        parts = build_user_context_parts({"custom_instructions": long_instructions})
-        assert len(parts) == 1
-        assert parts[0] == f"Special Instructions: {long_instructions}"
 
 
 # ---------------------------------------------------------------------------
@@ -249,15 +230,12 @@ class TestFormatUserPreferencesForAgent:
         preferences: dict[str, Any] = {
             "profession": "designer",
             "response_style": "detailed",
-            "custom_instructions": "Use visual examples",
         }
         result = format_user_preferences_for_agent(preferences)
-        assert result is not None
-        lines = result.split("\n")
-        assert len(lines) == 3
-        assert lines[0] == "User Profession: Designer"
-        assert lines[1] == "Communication Style: Provide detailed and comprehensive responses"
-        assert lines[2] == "Special Instructions: Use visual examples"
+        assert result == (
+            "User Profession: Designer\n"
+            "Communication Style: Provide detailed and comprehensive responses"
+        )
 
     @patch("app.utils.user_preferences_utils.log")
     def test_single_preference_returns_string(self, mock_log: Any) -> None:
@@ -269,7 +247,6 @@ class TestFormatUserPreferencesForAgent:
         preferences: dict[str, Any] = {
             "profession": "",
             "response_style": "",
-            "custom_instructions": "",
         }
         result = format_user_preferences_for_agent(preferences)
         assert result is None
@@ -279,7 +256,6 @@ class TestFormatUserPreferencesForAgent:
         preferences: dict[str, Any] = {
             "profession": None,
             "response_style": None,
-            "custom_instructions": None,
         }
         result = format_user_preferences_for_agent(preferences)
         assert result is None

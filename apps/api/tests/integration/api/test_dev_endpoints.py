@@ -453,7 +453,6 @@ class TestDevServiceLogic:
             needs=None,
             other_need=None,
             response_style="casual",
-            custom_instructions=None,
         )
 
     async def test_seed_rejects_unknown_platform_before_writing(self):

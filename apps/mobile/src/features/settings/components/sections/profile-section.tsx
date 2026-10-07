@@ -52,7 +52,6 @@ export function ProfileSection() {
   const [isSaving, setIsSaving] = useState(false);
 
   const [displayName, setDisplayName] = useState("");
-  const [bio, setBio] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -63,7 +62,6 @@ export function ProfileSection() {
         setProfile(profileData);
         setStats(statsData);
         setDisplayName(profileData.name ?? "");
-        setBio(profileData.onboarding?.preferences?.custom_instructions ?? "");
       })
       .catch(() => {
         if (!cancelled) Alert.alert("Error", "Failed to load profile.");
@@ -130,40 +128,19 @@ export function ProfileSection() {
     }
   }, [displayName, profile?.name]);
 
-  const _handleSaveBio = useCallback(async () => {
-    const trimmed = bio.trim();
-    const original =
-      profile?.onboarding?.preferences?.custom_instructions ?? "";
-    if (trimmed === original) return;
-    setIsSaving(true);
-    try {
-      await settingsApi.updatePreferences({
-        custom_instructions: trimmed || null,
-      });
-    } catch {
-      Alert.alert("Error", "Failed to update bio. Please try again.");
-      setBio(original);
-    } finally {
-      setIsSaving(false);
-    }
-  }, [bio, profile?.onboarding?.preferences?.custom_instructions]);
-
   const handleSaveAll = useCallback(async () => {
     setIsSaving(true);
     try {
       const nameForm = new FormData();
       nameForm.append("name", displayName.trim() || (profile?.name ?? ""));
       await settingsApi.updateProfile(nameForm);
-      await settingsApi.updatePreferences({
-        custom_instructions: bio.trim() || null,
-      });
       Alert.alert("Saved", "Profile updated.");
     } catch {
       Alert.alert("Error", "Failed to save profile. Please try again.");
     } finally {
       setIsSaving(false);
     }
-  }, [displayName, bio, profile?.name]);
+  }, [displayName, profile?.name]);
 
   const avatarUri = profile?.picture ?? null;
 

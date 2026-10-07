@@ -76,14 +76,15 @@ async def materialize_user_integrations(user_id: str, connected_ids: set[str]) -
     """
     # Late-bound to break the storage -> sessions -> lifecycle -> service ->
     # storage import cycle (the service transitively re-enters the storage pkg).
-    from app.services.integration_instructions_service import (  # noqa: PLC0415 -- breaks the storage -> sessions -> lifecycle -> service -> storage import cycle
+    from app.services.user_instructions_service import (  # noqa: PLC0415 -- breaks the storage -> sessions -> lifecycle -> service -> storage import cycle
         get_all_instructions,
         instructions_signature,
+        integration_instructions,
     )
 
     expected = library_hash()
     connected = set(connected_ids)
-    instructions = await get_all_instructions(user_id)
+    instructions = integration_instructions(await get_all_instructions(user_id))
     instructions_sig = instructions_signature(instructions)
 
     def _go() -> None:

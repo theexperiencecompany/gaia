@@ -26,6 +26,7 @@ from app.agents.context.text import (
     EXECUTOR_ACTIVATION_CONNECTED_INTEGRATIONS_HEADER,
 )
 from app.agents.context.tiers import ALL_TIERS, AgentTier
+from app.agents.prompts.user_instructions_prompts import USER_INSTRUCTIONS_HEADER
 from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
 
@@ -90,6 +91,7 @@ class TestTheTableIsWellFormed:
         assert [s.id for s in sections_for(AgentTier.COMMS, PromptSlot.DYNAMIC_STABLE)] == [
             "user_identity",
             "user_prefs",
+            "global_instructions",
             "new_user_guidance",
             "integrations_manifest",
             "connected_devices",
@@ -114,6 +116,7 @@ class TestTheTableIsWellFormed:
         assert [s.id for s in sections_for(AgentTier.EXECUTOR, PromptSlot.DYNAMIC_STABLE)] == [
             "user_identity",
             "user_prefs",
+            "global_instructions",
             "workspace_session",
             "integrations_manifest",
             "connected_devices",
@@ -336,41 +339,53 @@ class TestProviderMetadata:
 
 
 @pytest.mark.unit
-class TestCustomInstructions:
-    async def test_it_injects_the_users_instructions_in_full(self) -> None:
+class TestUserInstructions:
+    async def test_it_injects_the_integration_instructions_in_full_inside_the_fence(self) -> None:
         """Injected rather than pointed at, so the subagent honours it without spending a file read to discover it."""
         with patch(
             "app.agents.context.sections.get_instructions",
             AsyncMock(return_value="  Always archive newsletters.  "),
         ):
-            rendered = await section("custom_instructions").fetch(
+            rendered = await section("integration_instructions").fetch(
                 ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
             )
 
         assert rendered == (
-            "CUSTOM INSTRUCTIONS FOR GMAIL (set by the user — honor these):\n"
-            "Always archive newsletters."
+            f'<user_instructions scope="{INTEGRATION_ID}">\n'
+            f"{USER_INSTRUCTIONS_HEADER}\n\n"
+            "Always archive newsletters.\n"
+            "</user_instructions>"
         )
 
     async def test_a_spawned_subagent_is_looked_up_by_its_own_id(self) -> None:
-        """With no integration, subagent_id is the key — otherwise a spawned worker never receives its instructions."""
+        """With no integration, subagent_id is the key, otherwise a spawned worker never receives its instructions."""
         instructions = AsyncMock(return_value="Stay terse.")
         with patch("app.agents.context.sections.get_instructions", instructions):
-            rendered = await section("custom_instructions").fetch(
+            rendered = await section("integration_instructions").fetch(
                 ctx(AgentTier.PROVIDER_SUBAGENT, subagent_id="docgen")
             )
 
         instructions.assert_awaited_once_with("user1", "docgen")
-        assert rendered.startswith("CUSTOM INSTRUCTIONS FOR DOCGEN")
+        assert rendered.startswith('<user_instructions scope="docgen">')
+
+    async def test_the_global_scope_is_read_for_every_tier(self) -> None:
+        instructions = AsyncMock(return_value="Reply in Spanish.")
+        with patch("app.agents.context.sections.get_instructions", instructions):
+            rendered = await section("global_instructions").fetch(ctx(AgentTier.COMMS))
+
+        instructions.assert_awaited_once_with("user1", "global")
+        assert rendered.startswith('<user_instructions scope="global">')
+        assert section("global_instructions").applies_to == ALL_TIERS
 
     async def test_no_instructions_yields_no_block(self) -> None:
-        with patch("app.agents.context.sections.get_instructions", AsyncMock(return_value="")):
+        with patch("app.agents.context.sections.get_instructions", AsyncMock(return_value=None)):
             assert (
-                await section("custom_instructions").fetch(
+                await section("integration_instructions").fetch(
                     ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
                 )
                 == ""
             )
+            assert await section("global_instructions").fetch(ctx(AgentTier.COMMS)) == ""
 
     async def test_a_failed_lookup_is_visible_in_the_wide_event(self) -> None:
         async with captured_wide_event() as event:
@@ -378,14 +393,14 @@ class TestCustomInstructions:
                 "app.agents.context.sections.get_instructions",
                 AsyncMock(side_effect=RuntimeError("mongo down")),
             ):
-                rendered = await section("custom_instructions").fetch(
+                rendered = await section("integration_instructions").fetch(
                     ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
                 )
 
         assert rendered == ""
         (warning,) = event["warnings"]
-        assert warning["msg"] == f"{LogTag.AGENT} Failed to fetch custom instructions"
-        assert warning["integration_id"] == INTEGRATION_ID
+        assert warning["msg"] == f"{LogTag.AGENT} Failed to fetch user instructions"
+        assert warning["scope"] == INTEGRATION_ID
         assert warning["user_id"] == "user1"
         assert warning["error"] == "mongo down"
         assert warning["error_type"] == "RuntimeError"

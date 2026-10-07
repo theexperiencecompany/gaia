@@ -55,8 +55,7 @@ async def test_response_style_patches_only_that_field(repo) -> None:
     assert result == "Preferences updated: response style set to 'brief'."
     assert repo.update_prefs.await_args.args[0] == USER_ID
     preferences = repo.update_prefs.await_args.args[1]
-    # PATCH semantics: only response_style is in fields_set, so profession and
-    # custom_instructions are never clobbered.
+    # PATCH semantics: only response_style is in fields_set, so profession is never clobbered.
     assert preferences.model_fields_set == {"response_style"}
     assert preferences.response_style == "brief"
 
@@ -87,29 +86,6 @@ async def test_timezone_writes_the_root_level_field(repo) -> None:
     update = repo.update.await_args
     assert update.args[0] == USER_ID
     assert update.args[1].timezone == "Asia/Kolkata"
-
-
-async def test_custom_instructions_patch_exactly_one_field_and_cap_length(repo) -> None:
-    result = await account_settings.set_custom_instructions(
-        USER_ID, instructions="  always reply in haiku "
-    )
-    assert result == "Custom instructions updated."
-    preferences = repo.update_prefs.await_args.args[1]
-    assert preferences.model_fields_set == {"custom_instructions"}
-    assert preferences.custom_instructions == "always reply in haiku"
-    assert repo.update_prefs.await_args.args[0] == USER_ID
-
-    with pytest.raises(AppError):
-        await account_settings.set_custom_instructions(USER_ID, instructions="x" * 501)
-
-
-async def test_empty_custom_instructions_clear_them(repo) -> None:
-    result = await account_settings.set_custom_instructions(USER_ID, instructions="   ")
-
-    assert result == "Custom instructions cleared."
-    preferences = repo.update_prefs.await_args.args[1]
-    assert preferences.model_fields_set == {"custom_instructions"}
-    assert preferences.custom_instructions is None
 
 
 async def test_voice_resolves_by_name_case_insensitively(repo) -> None:
@@ -228,35 +204,6 @@ class TestSetPreferencesEdges:
         repo.update.side_effect = RuntimeError("mongo down")
         with pytest.raises(RuntimeError, match="mongo down"):
             await account_settings.set_preferences(USER_ID, timezone="UTC")
-
-
-class TestCustomInstructionBoundaries:
-    @pytest.mark.parametrize("length", [499, 500])
-    async def test_instructions_at_the_cap_are_accepted(self, repo, length: int) -> None:
-        await account_settings.set_custom_instructions(USER_ID, instructions="é" * length)
-        preferences = repo.update_prefs.await_args.args[1]
-        assert preferences.custom_instructions == "é" * length
-
-    @pytest.mark.parametrize("length", [501, 10_000])
-    async def test_instructions_over_the_cap_are_rejected_before_any_write(
-        self, repo, length: int
-    ) -> None:
-        with pytest.raises(AppError) as excinfo:
-            await account_settings.set_custom_instructions(USER_ID, instructions="é" * length)
-
-        assert excinfo.value.message == "Custom instructions must be 500 characters or less"
-        assert excinfo.value.fix == "Shorten the instructions and try again"
-        assert excinfo.value.status_code == 400
-        repo.update_prefs.assert_not_awaited()
-
-    async def test_missing_user_raises_404(self, repo) -> None:
-        repo.update_prefs.return_value = None
-        with pytest.raises(AppError) as excinfo:
-            await account_settings.set_custom_instructions(USER_ID, instructions="hi")
-
-        assert excinfo.value.message == "User not found"
-        assert excinfo.value.status_code == 404
-        assert repo.update_prefs.await_args.args[0] == USER_ID
 
 
 class TestChannelFlagSemantics:

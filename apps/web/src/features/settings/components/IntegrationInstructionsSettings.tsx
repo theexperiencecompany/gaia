@@ -1,26 +1,25 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Textarea } from "@heroui/input";
 import { Skeleton } from "@heroui/skeleton";
 import { useQueries } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { ChevronRight } from "@/components/shared/icons";
-import { integrationsApi } from "@/features/integrations/api/integrationsApi";
-import { integrationKeys } from "@/features/integrations/api/queryKeys";
+import {
+  instructionsQueryOptions,
+  useInstructions,
+} from "@/features/instructions";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { IntegrationInstructionsModal } from "@/features/integrations/components/IntegrationInstructionsModal";
-import { useIntegrationInstructions } from "@/features/integrations/hooks/useIntegrationInstructions";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useIntegrationTools } from "@/features/integrations/hooks/useIntegrationTools";
 import type { Integration } from "@/features/integrations/types";
 import { instructionsPreview } from "@/features/integrations/utils/instructionsPreview";
-import { StatusIndicator } from "@/features/settings/components/StatusIndicator";
+import { GlobalInstructionsEditor } from "@/features/settings/components/GlobalInstructionsEditor";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
-import { useGlobalCustomInstructions } from "@/features/settings/hooks/useGlobalCustomInstructions";
 
 interface InstructionsModalHostProps {
   integration: Integration;
@@ -37,9 +36,7 @@ const InstructionsModalHost = ({
   isOpen,
   onClose,
 }: InstructionsModalHostProps) => {
-  const { instructions, isSaving, save } = useIntegrationInstructions(
-    integration.id,
-  );
+  const instructions = useInstructions(integration.id);
   const { mentionNames } = useIntegrationTools(integration, integration.name);
 
   return (
@@ -47,10 +44,8 @@ const InstructionsModalHost = ({
       isOpen={isOpen}
       onClose={onClose}
       integration={integration}
-      savedContent={instructions?.content ?? ""}
-      isSaving={isSaving}
+      instructions={instructions}
       toolNames={mentionNames}
-      onSave={save}
     />
   );
 };
@@ -63,7 +58,6 @@ const SKELETON_KEYS = Array.from(
 
 export function IntegrationInstructionsSettings() {
   const router = useRouter();
-  const globalInstructions = useGlobalCustomInstructions();
   const { integrations, isLoading: integrationsLoading } = useIntegrations();
 
   const connected = useMemo(
@@ -72,14 +66,11 @@ export function IntegrationInstructionsSettings() {
     [integrations],
   );
 
-  // Same query keys as useIntegrationInstructions, so opening the modal for a
-  // row is an instant cache hit.
+  // Same query options as useInstructions, so opening a row's modal is a cache hit.
   const instructionQueries = useQueries({
-    queries: connected.map((integration) => ({
-      queryKey: integrationKeys.instructions(integration.id),
-      queryFn: () => integrationsApi.getIntegrationInstructions(integration.id),
-      staleTime: 0,
-    })),
+    queries: connected.map((integration) =>
+      instructionsQueryOptions(integration.id),
+    ),
   });
 
   const [selected, setSelected] = useState<Integration | null>(null);
@@ -95,22 +86,7 @@ export function IntegrationInstructionsSettings() {
 
   return (
     <SettingsPage>
-      <div>
-        <p className="text-sm text-white">Custom Instructions</p>
-        <p className="mt-0.5 mb-3 text-xs text-zinc-500">
-          Included in every conversation.
-        </p>
-        <Textarea
-          placeholder="Add any specific instructions for how GAIA should assist you..."
-          value={globalInstructions.value}
-          onChange={(e) => globalInstructions.onChange(e.target.value)}
-          minRows={3}
-          classNames={{
-            input: "bg-zinc-800/50 text-sm",
-            inputWrapper: "bg-zinc-800/50 hover:bg-zinc-700/50",
-          }}
-        />
-      </div>
+      <GlobalInstructionsEditor />
 
       <SettingsSection
         title="Apps"
@@ -168,16 +144,12 @@ export function IntegrationInstructionsSettings() {
 
       {selected && (
         <InstructionsModalHost
+          key={selected.id}
           integration={selected}
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
         />
       )}
-
-      <StatusIndicator
-        isUpdating={globalInstructions.isSaving}
-        hasUnsavedChanges={globalInstructions.hasUnsavedChanges}
-      />
     </SettingsPage>
   );
 }
