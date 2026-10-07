@@ -74,11 +74,14 @@ runs:
       # the same audited code as every other install path.
       # Self-hosted: .venv persists in the workspace; skip the sync when the
       # marker the previous sync left still matches (scripts/ci/runner.sh dep-marker
-      # keys it on uv.lock AND the pyproject files, ~10-20s saved).
+      # keys it on uv.lock AND the pyproject files, ~10-20s saved) and the env
+      # still holds exactly that lock: a job syncing outside this composite (another
+      # branch's python-mypy) can change the .venv under an unchanged marker.
       run: |
         set -euo pipefail
         MARK="$(bash scripts/ci/runner.sh dep-marker python)"
-        if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ] && [ -f "$MARK" ] && [ -x .venv/bin/python ]; then
+        if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ] && [ -f "$MARK" ] && [ -x .venv/bin/python ] &&
+           uv sync --frozen --package gaia --group backend --group dev --check > /dev/null 2>&1; then
           echo ".venv already synced ($MARK) — skipping uv sync"
           exit 0
         fi
