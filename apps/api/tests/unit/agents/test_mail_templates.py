@@ -704,6 +704,8 @@ class TestDraftTemplate:
         assert result["id"] == "draft_001"
         assert result["message"]["subject"] == "Draft Subject"
         assert result["message"]["to"] == "recipient@example.com"
+        assert result["message"]["snippet"] == "Draft snip"
+        assert result["message"]["body"].strip() == "Draft body"
         assert "content" in result["message"]
 
     def test_draft_template_empty_message(self):
@@ -731,6 +733,7 @@ class TestProcessListDraftsResponse:
         result = process_list_drafts_response(response)
         assert result["nextPageToken"] == "dt_token"
         assert result["resultSize"] == 1
+        assert [d["id"] for d in result["drafts"]] == ["d1"]
 
     def test_no_drafts_key(self):
         response = {}

@@ -30,6 +30,7 @@ from arq.constants import default_queue_name, job_key_prefix
 from arq.jobs import JobDef
 import fakeredis.aioredis
 import pytest
+import time_machine
 from redis.exceptions import ConnectionError as RedisConnectionError, RedisError
 
 from app.agents.core.background.session import TodoRun
@@ -2691,6 +2692,31 @@ class TestExecuteOnExecutor:
             == f"[run_started] scheduled run (conversation {self._request().conversation_id[:8]})"
         )
         assert {c.args[:2] for c in self.timeline.call_args_list} == {("todo-1", "user-1")}
+
+    async def test_the_run_prompt_uses_the_users_clock_not_utc(self) -> None:
+        """local_now comes from the user's timezone: 17:30 UTC is 23:00 in Kolkata."""
+        desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail")
+        origin = TriggerOrigin(
+            subscription_id="sub-1", trigger_name="gmail_new_message", payload={"thread_id": "t"}
+        )
+        frozen = datetime(2026, 10, 3, 17, 30, tzinfo=UTC)
+        run = AsyncMock()
+        with (
+            patch(f"{MODULE}.run_todo_on_executor", run),
+            patch(f"{MODULE}.record_activity", AsyncMock(return_value=True)),
+            patch(f"{MODULE}._collect_run_context", AsyncMock(return_value=_RunContext())),
+            patch(f"{MODULE}.with_desk_notes", AsyncMock(side_effect=lambda doc: doc)),
+            time_machine.travel(frozen, tick=False),
+        ):
+            await _execute_on_executor(
+                _doc(external_ref=desk),
+                user_data=AuthenticatedUser(user_id="user-1"),
+                user_tz=Timezone.parse("Asia/Kolkata"),
+                origin=origin,
+            )
+
+        task = run.await_args.args[0].task
+        assert todo_prompts.INBOX_DESK_QUIET_HOURS_NOTE.format(local_time="23:00") in task
 
     async def test_each_run_gets_a_fresh_conversation(self):
         await self._execute()

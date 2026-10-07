@@ -793,6 +793,10 @@ class TestFetchedAt:
         assert result["offloaded_to"] == "/workspace/sessions/run/f.jsonl"
         assert "read_plan" in result
         assert result["fetched_at"] == int(FETCH_STARTED.timestamp())
+        assert isinstance(result["file_size_bytes"], int) and result["file_size_bytes"] > 0
+        assert result["field_count"] >= len(result["inline_preview"][0]) > 0
+        assert result["read_plan"]["total_lines"] == result["total_messages"]
+        assert result["read_plan"]["recommended_subagents"] == 3
 
     @pytest.mark.regression
     def test_a_partial_result_carries_it_too(self, mock_proxy: MagicMock) -> None:
@@ -885,6 +889,51 @@ class TestTheDesksSweep:
         assert "messages" not in result
         assert len(records) == result["total_messages"] == 3
 
+    @pytest.mark.parametrize(
+        ("size", "estimate", "expected_format"),
+        [
+            (3, None, "metadata"),
+            (OFFLOAD_MIN_MESSAGES, OFFLOAD_MIN_MESSAGES, "metadata"),
+            (OFFLOAD_MIN_MESSAGES + 1, OFFLOAD_MIN_MESSAGES + 1, "full"),
+        ],
+    )
+    def test_the_estimate_decides_the_fetch_format_at_the_boundary(
+        self, mock_proxy: MagicMock, size: int, estimate: int | None, expected_format: str
+    ) -> None:
+        """Exactly at the estimate the scan stays metadata; one over it fetches bodies.
+
+        An absent estimate says nothing, so it fetches metadata too.
+        """
+        formats: list[str] = []
+
+        def gmail(request: ProxyRequest) -> dict[str, Any]:
+            if re.match(r".+/users/me/messages/?$", request.endpoint):
+                refs = [{"id": f"m{i}"} for i in range(size)]
+                page: dict[str, Any] = {"messages": refs}
+                if estimate is not None:
+                    page["resultSizeEstimate"] = estimate
+                return page
+            formats.append(request.query["format"])
+            n = int(request.endpoint.rsplit("/m", 1)[1])
+            return {
+                "id": f"m{n}",
+                "threadId": f"t{n}",
+                "payload": {
+                    "headers": [{"name": "From", "value": "a@example.com"}],
+                    "body": {"data": base64.urlsafe_b64encode(b"x").decode()},
+                },
+            }
+
+        mock_proxy.side_effect = gmail
+        _register_and_get_tools()["FETCH_MESSAGES"](
+            request=FetchMessagesInput(query="after:1790000000", per_page=100),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert formats
+        assert set(formats) == {expected_format}
+
     def test_a_requested_file_carries_the_bodies_unless_none_were_asked_for(
         self, mock_proxy: MagicMock, tmp_path: Path
     ) -> None:
@@ -924,6 +973,114 @@ class TestTheDesksSweep:
             {"value": "notifications@github.com", "count": 6},
             {"value": "bob@example.com", "count": 2},
         ]
+
+    def test_an_oversized_result_with_no_session_is_cut_with_a_hint(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        """Over the char limit with nowhere to offload: capped inline plus a too-large hint."""
+        big_body = "x" * 30_000
+        list_response = {"messages": [{"id": f"m{i}"} for i in range(5)]}
+        message_response = {
+            "id": "m",
+            "threadId": "t",
+            "labelIds": ["INBOX"],
+            "payload": {
+                "headers": [{"name": "From", "value": "a@b.com"}],
+                "body": {"data": base64.urlsafe_b64encode(big_body.encode()).decode()},
+            },
+        }
+        list_iter = iter([list_response])
+        message_iter = iter([message_response] * 5)
+
+        def side_effect(request: ProxyRequest):
+            if re.match(r".+/users/me/messages/?$", request.endpoint):
+                return next(list_iter)
+            return next(message_iter)
+
+        mock_proxy.side_effect = side_effect
+        with patch(
+            "app.services.composio.custom_tools.gmail_tools.current_run_config",
+            return_value={"configurable": {}},
+        ):
+            fields_with_body = list(FetchMessagesInput.model_fields["fields"].default_factory()) + [
+                "body"
+            ]
+            result = _register_and_get_tools()["FETCH_MESSAGES"](
+                request=FetchMessagesInput(
+                    timeframe="today",
+                    per_page=10,
+                    fields=fields_with_body,
+                    body_processing="raw",
+                ),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+        assert "offloaded_to" not in result
+        assert result["total_matched"] == 5
+        assert "too large to return inline" in result["hint"]
+
+    def test_an_oversized_thread_with_no_session_is_cut_with_a_hint(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        """Same sized-payload contract on the thread path: the char limit decides."""
+        big_body = base64.urlsafe_b64encode(b"y" * 30_000).decode()
+        mock_proxy.side_effect = lambda request: {
+            "id": "thread-1",
+            "messages": [
+                {
+                    "id": f"m{i}",
+                    "threadId": "thread-1",
+                    "labelIds": ["INBOX"],
+                    "payload": {
+                        "headers": [{"name": "From", "value": "a@b.com"}],
+                        "body": {"data": big_body},
+                    },
+                }
+                for i in range(5)
+            ],
+        }
+        with patch(
+            "app.services.composio.custom_tools.gmail_tools.current_run_config",
+            return_value={"configurable": {}},
+        ):
+            fields_with_body = list(FetchThreadInput.model_fields["fields"].default_factory()) + [
+                "body"
+            ]
+            result = _register_and_get_tools()["FETCH_THREAD"](
+                request=FetchThreadInput(
+                    thread_ids=["thread-1"], fields=fields_with_body, body_processing="raw"
+                ),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+        assert "offloaded_to" not in result
+        assert "too large to return inline" in result["hint"]
+
+    def test_an_empty_window_offloads_with_zero_fields(
+        self, mock_proxy: MagicMock, tmp_path: Path
+    ) -> None:
+        """No messages means no fields: an empty offload still reports its shape."""
+        mock_proxy.side_effect = lambda request: {"messages": []}
+        with (
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.write_session_file_sync",
+                return_value=(tmp_path / "f.jsonl", "/workspace/sessions/run/f.jsonl"),
+            ),
+            patch(
+                "app.services.composio.custom_tools.gmail_tools.current_run_config",
+                return_value={"configurable": {"vfs_session_id": "run"}},
+            ),
+        ):
+            result = _register_and_get_tools()["FETCH_MESSAGES"](
+                request=FetchMessagesInput(query="after:1790000000", offload=True),
+                execute_request=MagicMock(),
+                auth_credentials=AUTH_CREDS,
+            )
+
+        assert result["offloaded_to"] == "/workspace/sessions/run/f.jsonl"
+        assert result["field_count"] == 0
 
     def test_a_requested_file_with_no_session_to_hold_it_fails_the_call(
         self, mock_proxy: MagicMock
@@ -1529,6 +1686,53 @@ class TestTheThreadCapStopsTheWalk:
 
         assert [thread["id"] for thread in result["threads"]] == ["thread-1"]
         assert result["truncated"] is True
+
+    def test_a_complete_thread_carries_only_the_fields_asked_for(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        """The grouped thread path projects too, not just the partial one."""
+        mock_proxy.side_effect = lambda request: {
+            "id": "thread-1",
+            "messages": [{"id": "m1", "threadId": "thread-1", "labelIds": ["INBOX"]}],
+        }
+
+        result = _register_and_get_tools()["FETCH_THREAD"](
+            request=FetchThreadInput(thread_ids=["thread-1"], fields=["id"]),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert set(result["threads"][0]["messages"][0]) == {"id"}
+
+    def test_a_body_no_one_asked_to_process_is_dropped_from_threads(
+        self, mock_proxy: MagicMock
+    ) -> None:
+        """body_processing="none" drops the body even when the fields ask for it."""
+        body = base64.urlsafe_b64encode(b"secret body").decode()
+        mock_proxy.side_effect = lambda request: {
+            "id": "thread-1",
+            "messages": [
+                {
+                    "id": "m1",
+                    "threadId": "thread-1",
+                    "labelIds": ["INBOX"],
+                    "payload": {
+                        "headers": [{"name": "From", "value": "a@b.com"}],
+                        "body": {"data": body},
+                    },
+                }
+            ],
+        }
+
+        result = _register_and_get_tools()["FETCH_THREAD"](
+            request=FetchThreadInput(
+                thread_ids=["thread-1"], fields=["id", "body"], body_processing="none"
+            ),
+            execute_request=MagicMock(),
+            auth_credentials=AUTH_CREDS,
+        )
+
+        assert result["threads"][0]["messages"][0].get("body") is None
 
 
 class TestAPartialThreadRead:
