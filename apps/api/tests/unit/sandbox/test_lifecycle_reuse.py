@@ -15,8 +15,8 @@ import uuid
 from e2b import NotFoundException, SandboxState
 import pytest
 
-from app.constants.sandbox import SANDBOX_TIMEOUT_REFRESH_SECONDS
-from app.services.sandbox import lifecycle
+from app.constants.sandbox import SANDBOX_LAB_LIFETIME_SECONDS, SANDBOX_LIFETIME_SECONDS
+from app.services.sandbox import lifecycle, pool as pool_module
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 
 
@@ -51,7 +51,7 @@ async def _reuse(entry: PooledSandbox) -> tuple[str, PooledSandbox | None]:
 
 async def test_set_timeout_refreshed_when_window_elapsed() -> None:
     entry = _healthy_entry()
-    entry.timeout_refreshed_at = time.monotonic() - (SANDBOX_TIMEOUT_REFRESH_SECONDS + 5)
+    entry.timeout_refreshed_at = time.monotonic() - (SANDBOX_LIFETIME_SECONDS // 2 + 5)
     p1, p2, p3, p4 = _patch_probes_healthy()
     with p1, p2, p3, p4:
         _, result = await _reuse(entry)
@@ -176,3 +176,23 @@ async def test_evicting_a_dead_cached_sandbox_marks_only_that_sandbox_dead() -> 
     ):
         await _reuse(entry)
     assert repo.mark_dead.await_args.kwargs["sandbox_id"] == "sbx-stale"
+
+
+async def test_an_agent_lab_sandbox_refreshes_to_twelve_hours_on_its_own_window() -> None:
+    # Refreshing a lab sandbox back to 1h would cut its 12h lifetime short.
+    entry = _healthy_entry()
+    entry.template_id = "gaia-coder-8gb"
+    p1, p2, p3, p4 = _patch_probes_healthy()
+    with (
+        p1,
+        p2,
+        p3,
+        p4,
+        patch.object(pool_module.settings, "E2B_AGENT_LAB_TEMPLATE_ID", "gaia-coder-8gb"),
+    ):
+        entry.timeout_refreshed_at = time.monotonic() - (SANDBOX_LIFETIME_SECONDS + 5)
+        await _reuse(entry)
+        entry.sandbox.set_timeout.assert_not_awaited()
+        entry.timeout_refreshed_at = time.monotonic() - (SANDBOX_LAB_LIFETIME_SECONDS // 2 + 5)
+        await _reuse(entry)
+    entry.sandbox.set_timeout.assert_awaited_once_with(SANDBOX_LAB_LIFETIME_SECONDS)

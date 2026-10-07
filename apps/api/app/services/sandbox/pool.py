@@ -24,12 +24,12 @@ from e2b import AsyncSandbox
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.sandbox import (
+    SANDBOX_LAB_LIFETIME_SECONDS,
     SANDBOX_LIFETIME_SECONDS,
     SANDBOX_LOCK_ACQUIRE_TIMEOUT_SECONDS,
     SANDBOX_LOCK_LEASE_SECONDS,
     SANDBOX_LOCK_MAX_HOLD_SECONDS,
     SANDBOX_LOCK_RENEW_SECONDS,
-    SANDBOX_TIMEOUT_REFRESH_SECONDS,
 )
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.services.sandbox.artifact_watcher import ArtifactWatcher
@@ -205,17 +205,25 @@ def get_sandbox_pool() -> SandboxPool:
     return _pool_singleton
 
 
-async def refresh_sandbox_timeout(entry: PooledSandbox) -> bool:
-    """Refresh the sandbox kill timer once the refresh window has elapsed.
+def sandbox_lifetime_seconds(template_id: str | None) -> int:
+    """Return the kill-timer lifetime for a sandbox built from template_id: 12h for agent-lab, else 1h."""
+    if template_id is not None and template_id == settings.E2B_AGENT_LAB_TEMPLATE_ID:
+        return SANDBOX_LAB_LIFETIME_SECONDS
+    return SANDBOX_LIFETIME_SECONDS
 
-    Not immortality: E2B kills every sandbox at SANDBOX_LIFETIME_SECONDS however
-    often it is refreshed; past that acquire_sandbox recreates, and CLI logins
-    survive through the lab seed's JuiceFS-backed credential links.
+
+async def refresh_sandbox_timeout(entry: PooledSandbox) -> bool:
+    """Refresh the sandbox kill timer once half its lifetime has passed since the last refresh.
+
+    Half the lifetime skips a set_timeout round trip on every tool call. Not
+    immortality: E2B still ends a sandbox at its team's cap from the start;
+    only a pause and resume (lifecycle.renew_sandbox) restarts that clock.
     """
-    if time.monotonic() - entry.timeout_refreshed_at <= SANDBOX_TIMEOUT_REFRESH_SECONDS:
+    lifetime = sandbox_lifetime_seconds(entry.template_id)
+    if time.monotonic() - entry.timeout_refreshed_at <= lifetime // 2:
         return False
     try:
-        await entry.sandbox.set_timeout(SANDBOX_LIFETIME_SECONDS)
+        await entry.sandbox.set_timeout(lifetime)
     except Exception as e:
         log.warning(
             f"{LogTag.SANDBOX} timeout refresh failed",

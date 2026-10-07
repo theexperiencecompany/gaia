@@ -182,7 +182,7 @@ WorkerSettings.cron_jobs = [
         second=0,
     ),
     # Keep-warm for AGENT_LAB users: saves the agents' home and renews the
-    # sandbox before E2B's one-hour end (see SANDBOX_LAB_RENEW_WHEN_SECONDS_LEFT).
+    # sandbox before E2B's lifetime cap ends it (see SANDBOX_LAB_RENEW_WHEN_SECONDS_LEFT).
     cron(
         cast(WorkerCoroutine, _refresh_lab_sandboxes),
         minute={0, 10, 20, 30, 40, 50},

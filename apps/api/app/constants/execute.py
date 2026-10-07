@@ -52,7 +52,7 @@ SANDBOX_EXECUTE_MAX_CALLS_PER_MINUTE = 60
 # Max lab wall-clock since run start (12h): past it keep-warm stops refreshing
 # the sandbox and idle-pause reclaims it, bounding E2B burn on forgotten runs.
 SANDBOX_LAB_MAX_RUN_SECONDS = 43200
-# Keep-warm ticks every 10 min; renewing under 20 min left always beats E2B's hour.
+# Keep-warm ticks every 10 min; renewing under 20 min left always beats E2B's lifetime cap.
 SANDBOX_LAB_RENEW_WHEN_SECONDS_LEFT = 20 * 60
 # Sandbox run event token (POST /api/v1/lab/events), empty tool scope. A running
 # CLI keeps the token it launched with, so it must outlive the longest run.

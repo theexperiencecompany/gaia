@@ -32,7 +32,7 @@ from e2b import CommandExitException, SandboxState
 import pytest
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
-from app.constants.sandbox import SANDBOX_LIFETIME_SECONDS
+from app.constants.sandbox import SANDBOX_LAB_LIFETIME_SECONDS, SANDBOX_LIFETIME_SECONDS
 from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
 from app.services.agent_lab.agents_home import build_agents_setup_command
 from app.services.agent_lab.sandbox_events import SandboxEventKind
@@ -565,15 +565,30 @@ async def test_connect_refreshes_the_server_side_lifetime_of_a_resumed_sandbox()
     sbx = _fake_sandbox()
     cls = _sandbox_class(sbx)
     with patch.object(lifecycle, "AsyncSandbox", cls):
-        assert await lifecycle._connect_sandbox("sbx-old") is sbx
+        assert await lifecycle._connect_sandbox("sbx-old", SANDBOX_LIFETIME_SECONDS) is sbx
     assert cls.connect.await_args.kwargs["timeout"] == SANDBOX_LIFETIME_SECONDS
+
+
+async def test_a_resumed_agent_lab_sandbox_asks_for_the_twelve_hour_lifetime() -> None:
+    # A coding agent runs for hours; the 1h regular lifetime would force a
+    # pause-and-resume renewal every ~40 min instead of every ~11h40.
+    sbx = _fake_sandbox()
+    cls = _sandbox_class(sbx)
+    with (
+        patch.object(lifecycle, "AsyncSandbox", cls),
+        patch.object(lifecycle.settings, "E2B_AGENT_LAB_TEMPLATE_ID", "gaia-coder-8gb"),
+        patch.object(pool_module.settings, "E2B_AGENT_LAB_TEMPLATE_ID", "gaia-coder-8gb"),
+        patch.object(lifecycle, "_ensure_mounted", AsyncMock()),
+    ):
+        await lifecycle._resume_existing_sandbox(_doc("sbx-old", template_id="gaia-coder-8gb"), {})
+    assert cls.connect.await_args.kwargs["timeout"] == SANDBOX_LAB_LIFETIME_SECONDS
 
 
 async def test_connect_failure_returns_none_so_acquire_falls_through_to_a_fresh_create() -> None:
     cls = _sandbox_class(_fake_sandbox())
     cls.connect = AsyncMock(side_effect=RuntimeError("sandbox not found"))
     with patch.object(lifecycle, "AsyncSandbox", cls):
-        assert await lifecycle._connect_sandbox("sbx-old") is None
+        assert await lifecycle._connect_sandbox("sbx-old", SANDBOX_LIFETIME_SECONDS) is None
 
 
 @pytest.mark.slow
@@ -591,7 +606,7 @@ async def test_a_hung_control_plane_connect_is_bounded_instead_of_stalling_the_a
         patch.object(lifecycle, "AsyncSandbox", cls),
         patch.object(lifecycle, "SANDBOX_CONNECT_TIMEOUT_SECONDS", 0.05),
     ):
-        assert await lifecycle._connect_sandbox("sbx-old") is None
+        assert await lifecycle._connect_sandbox("sbx-old", SANDBOX_LIFETIME_SECONDS) is None
     assert time.monotonic() - started < 2, "connect must be bounded, not wait out the SDK"
 
 
@@ -981,6 +996,7 @@ async def test_a_flagged_user_gets_a_fresh_sandbox_from_the_agent_lab_template()
     try:
         entry = await lifecycle._acquire_or_create(uid)
         assert cls.create.await_args.kwargs["template"] == "gaia-coder-8gb"
+        assert cls.create.await_args.kwargs["timeout"] == SANDBOX_LAB_LIFETIME_SECONDS
         assert entry.template_id == "gaia-coder-8gb"
         assert repo.record_acquisition.await_args.kwargs["template_id"] == "gaia-coder-8gb"
     finally:
@@ -1151,16 +1167,25 @@ async def test_a_replacement_tells_the_watching_todos_which_save_came_back() -> 
 
 
 async def test_renewing_pauses_then_resumes_with_a_full_lifetime_and_swaps_the_handle() -> None:
-    # set_timeout cannot pass E2B's hour; only a resume starts a new one.
+    # set_timeout cannot pass E2B's lifetime cap; only a resume starts a new one.
     uid = _uid()
     old = _fake_sandbox("sbx-1")
     old.files.read = AsyncMock(return_value="ts-1")
-    entry = PooledSandbox(sandbox=old, last_canary_ts="ts-1", timeout_refreshed_at=time.monotonic())
+    entry = PooledSandbox(
+        sandbox=old,
+        last_canary_ts="ts-1",
+        timeout_refreshed_at=time.monotonic(),
+        template_id="gaia-coder-8gb",
+    )
     get_sandbox_pool().put(uid, entry)
     resumed = _fake_sandbox("sbx-1")
     cls = _sandbox_class(resumed)
     repo = AsyncMock()
-    stack = [*_acquire_patches(old, repo), patch.object(lifecycle, "AsyncSandbox", cls)]
+    stack = [
+        *_acquire_patches(old, repo, lab=True),
+        patch.object(pool_module.settings, "E2B_AGENT_LAB_TEMPLATE_ID", "gaia-coder-8gb"),
+        patch.object(lifecycle, "AsyncSandbox", cls),
+    ]
     for p in stack:
         p.start()
     try:
@@ -1170,7 +1195,7 @@ async def test_renewing_pauses_then_resumes_with_a_full_lifetime_and_swaps_the_h
             p.stop()
     try:
         old.beta_pause.assert_awaited_once()
-        cls.connect.assert_awaited_once_with("sbx-1", timeout=SANDBOX_LIFETIME_SECONDS)
+        cls.connect.assert_awaited_once_with("sbx-1", timeout=SANDBOX_LAB_LIFETIME_SECONDS)
         assert get_sandbox_pool().get(uid).sandbox is resumed
     finally:
         get_sandbox_pool().evict(uid)

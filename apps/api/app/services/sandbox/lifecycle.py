@@ -36,7 +36,6 @@ from app.constants.sandbox import (
     HEALTH_PROBE_RETRY_WAIT_TIMEOUT_SECONDS,
     HEALTH_PROBE_WAIT_TIMEOUT_SECONDS,
     SANDBOX_CONNECT_TIMEOUT_SECONDS,
-    SANDBOX_LIFETIME_SECONDS,
 )
 from app.db.repositories.e2b_sandboxes import e2b_sandbox_repository
 from app.decorators import enforce_rate_limit
@@ -54,6 +53,7 @@ from app.services.sandbox.pool import (
     PooledSandbox,
     get_sandbox_pool,
     refresh_sandbox_timeout,
+    sandbox_lifetime_seconds,
 )
 from app.services.sandbox.shard_router import shard_for, shard_meta_url
 from app.services.storage import (
@@ -219,7 +219,7 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int, template_id: str) -
     async with fs_timer(FsOps.SBX_CREATE):
         sbx = await async_sandbox_cls.create(
             template=template_id,
-            timeout=SANDBOX_LIFETIME_SECONDS,
+            timeout=sandbox_lifetime_seconds(template_id),
             metadata={"user_id": user_id, "shard_id": str(shard_id)},
         )
     sandbox_id = getattr(sbx, "sandbox_id", None)
@@ -388,7 +388,7 @@ async def _verify_canary_or_die(user_id: str, entry: PooledSandbox) -> bool:
         return False
 
 
-async def _connect_sandbox(sandbox_id: str) -> AsyncSandbox | None:
+async def _connect_sandbox(sandbox_id: str, lifetime_seconds: int) -> AsyncSandbox | None:
     """Connect to a recorded sandbox, auto-resuming it if paused. None on failure.
 
     AsyncSandbox.connect already resumes a paused sandbox — there is no
@@ -399,7 +399,7 @@ async def _connect_sandbox(sandbox_id: str) -> AsyncSandbox | None:
     async with fs_timer(FsOps.SBX_CONNECT_RESUME):
         try:
             return await asyncio.wait_for(
-                AsyncSandbox.connect(sandbox_id, timeout=SANDBOX_LIFETIME_SECONDS),
+                AsyncSandbox.connect(sandbox_id, timeout=lifetime_seconds),
                 timeout=SANDBOX_CONNECT_TIMEOUT_SECONDS,
             )
         except Exception as e:
@@ -553,7 +553,7 @@ async def _resume_existing_sandbox(
     if sandbox_id is None:
         return None
     log.info(f"{LogTag.SANDBOX} resuming sandbox", sandbox_id=sandbox_id)
-    sbx = await _connect_sandbox(sandbox_id)
+    sbx = await _connect_sandbox(sandbox_id, sandbox_lifetime_seconds(doc.template_id))
     if sbx is None:
         _record(resume_status="failed")
         return None
@@ -799,8 +799,8 @@ async def mark_sandbox_dead(user_id: str) -> None:
 async def renew_sandbox(user_id: str) -> None:
     """Restart E2B's lifetime clock with a pause and resume; processes and local disk survive.
 
-    E2B ends a sandbox an hour after it starts and set_timeout cannot pass that,
-    while a resume starts a fresh hour (both measured). The next acquire remounts.
+    E2B ends a sandbox at its team's lifetime cap from its start and set_timeout
+    cannot pass that, while a resume restarts the clock (both measured). The next acquire remounts.
     """
     pool = get_sandbox_pool()
     async with pool.distributed_lock(user_id):
@@ -809,7 +809,9 @@ async def renew_sandbox(user_id: str) -> None:
         await _stop_watcher(entry)
         sandbox_id = entry.sandbox.sandbox_id
         await entry.sandbox.beta_pause()
-        entry.sandbox = await AsyncSandbox.connect(sandbox_id, timeout=SANDBOX_LIFETIME_SECONDS)
+        entry.sandbox = await AsyncSandbox.connect(
+            sandbox_id, timeout=sandbox_lifetime_seconds(entry.template_id)
+        )
         entry.timeout_refreshed_at = time.monotonic()
         await e2b_sandbox_repository.touch_last_used(user_id, timestamp=_now())
         log.info(

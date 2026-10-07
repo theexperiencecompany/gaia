@@ -518,7 +518,7 @@ class TestLabMissPolicy:
 
 
 class TestKeepWarmSavesAndRenews:
-    """Each tick saves the agents' home; only a sandbox near E2B's hour gets a pause+resume."""
+    """Each tick saves the agents' home; only a sandbox near E2B's lifetime cap gets a pause+resume."""
 
     async def _tick(
         self, acquire: _FakeAcquire, pool: _FakePool | None = None

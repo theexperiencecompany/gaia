@@ -9,7 +9,7 @@ Currently:
   exempt while the flag is on (their keep-warm refresh keeps last_used_at
   fresh anyway; the exemption covers a missed cron run).
 - refresh_lab_sandboxes: every 10 minutes. For flagged users it saves the
-  agents' home and, near E2B's one-hour end, renews the sandbox with a pause
+  agents' home and, near E2B's lifetime cap, renews the sandbox with a pause
   and resume; past SANDBOX_LAB_MAX_RUN_SECONDS it leaves the sandbox to
   idle-pause, with one notification per cap window.
 """
@@ -114,7 +114,7 @@ async def refresh_lab_sandboxes(ctx: dict[str, Any]) -> str:
 
 
 async def _keep_lab_sandbox(ctx: dict[str, Any], user_id: str) -> None:
-    """Save the agents' home, then renew the sandbox when E2B's hour is nearly up."""
+    """Save the agents' home, then renew the sandbox when E2B's lifetime cap is near."""
     async with acquire_sandbox(user_id) as sbx:
         info = await sbx.get_info()
         seconds_left = (info.end_at - datetime.now(UTC)).total_seconds()
@@ -125,7 +125,7 @@ async def _keep_lab_sandbox(ctx: dict[str, Any], user_id: str) -> None:
     await report_sandbox_event(
         user_id,
         SandboxEventKind.RENEWED,
-        f"paused and resumed to start a new hour ({int(seconds_left // 60)} min were left); "
+        f"paused and resumed to restart its lifetime ({int(seconds_left // 60)} min were left); "
         "running agents carried on",
     )
 
