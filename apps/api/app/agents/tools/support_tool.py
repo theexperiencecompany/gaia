@@ -90,11 +90,14 @@ async def create_support_ticket(
         ticket_type_display = (
             "feature request" if request_type == SupportRequestType.FEATURE else "support ticket"
         )
-        return f"I've prepared a {ticket_type_display} draft for you to review. Please check the details and click 'Submit Ticket' when you're ready to send it to our support team."
+        return (
+            f"Drafted a {ticket_type_display} for you. Check it over and hit "
+            "Submit Ticket when it looks right."
+        )
 
     except Exception as e:
         log.error(f"{LogTag.TOOL} Error preparing support ticket", error_type=e.__class__.__name__)
-        return f"Sorry, I encountered an error while preparing your support ticket: {e!s}"
+        return f"Could not prepare your support ticket: {e!s}"
 
 
 # Export tools list for registry

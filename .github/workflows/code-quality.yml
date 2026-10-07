@@ -1314,39 +1314,44 @@ jobs:
           # projects changed (from the .py diff) and check only those project
           # roots. libs/shared/py is a dependency of both apps, so any change
           # there pulls both apps in. On push we check everything.
+          #
+          # voice-agent is checked in its own environment: under the API's, livekit
+          # resolves only partly (livekit-api), so its livekit code read as Any and
+          # real errors against livekit-agents went unseen.
+          #
+          # --no-build is impossible here, not forgotten. composio pulls pysher, and pysher's
+          # latest release (1.0.8) publishes no wheel at all, so uv refuses the install:
+          # "Wheels are required for `pysher` because building from source is disabled".
+          # No pin of ours can change that — it is upstream's to publish. --frozen already
+          # locks every resolved version from uv.lock, which is the part we do control.
+          # Sonar githubactions:S8541 therefore stays open here; NOSONAR is not honoured by
+          # that analyzer, so it is resolved as Accepted in the SonarCloud UI instead.
           FILES=$(scripts/ci/changes.sh files py)
+          API_TARGETS=""
+          VOICE=""
           if [ "$FILES" = "__FULL__" ]; then
-            # --no-build is impossible here, not forgotten. composio pulls pysher, and pysher's
-            # latest release (1.0.8) publishes no wheel at all, so uv refuses the install:
-            # "Wheels are required for `pysher` because building from source is disabled".
-            # No pin of ours can change that — it is upstream's to publish. --frozen already
-            # locks every resolved version from uv.lock, which is the part we do control.
-            # Sonar githubactions:S8541 therefore stays open here; NOSONAR is not honoured by
-            # that analyzer, so it is resolved as Accepted in the SonarCloud UI instead.
-            uv run --project apps/api --frozen --group backend --group dev mypy apps/api/app apps/voice-agent/src libs/shared/py tools/lints --ignore-missing-imports
-          elif [ -z "$FILES" ]; then
-            echo "No changed Python files — skipping."
-          else
-            TARGETS=""
+            API_TARGETS="apps/api/app libs/shared/py tools/lints"
+            VOICE=1
+          elif [ -n "$FILES" ]; then
             if echo "$FILES" | grep -q '^libs/shared/py/'; then
-              TARGETS="apps/api/app apps/voice-agent/src libs/shared/py"
+              API_TARGETS="apps/api/app libs/shared/py"
+              VOICE=1
             else
-              echo "$FILES" | grep -q '^apps/api/'         && TARGETS="$TARGETS apps/api/app"
-              echo "$FILES" | grep -q '^apps/voice-agent/' && TARGETS="$TARGETS apps/voice-agent/src"
+              echo "$FILES" | grep -q '^apps/api/'         && API_TARGETS="apps/api/app"
+              echo "$FILES" | grep -q '^apps/voice-agent/' && VOICE=1
             fi
-            echo "$FILES" | grep -q '^tools/lints/' && TARGETS="$TARGETS tools/lints"
-            if [ -z "$TARGETS" ]; then
-              echo "No tracked Python project changed — skipping."
-            else
-              # --no-build is impossible here, not forgotten. composio pulls pysher, and pysher's
-              # latest release (1.0.8) publishes no wheel at all, so uv refuses the install:
-              # "Wheels are required for `pysher` because building from source is disabled".
-              # No pin of ours can change that — it is upstream's to publish. --frozen already
-              # locks every resolved version from uv.lock, which is the part we do control.
-              # Sonar githubactions:S8541 therefore stays open here; NOSONAR is not honoured by
-              # that analyzer, so it is resolved as Accepted in the SonarCloud UI instead.
-              uv run --project apps/api --frozen --group backend --group dev mypy $TARGETS --ignore-missing-imports
-            fi
+            echo "$FILES" | grep -q '^tools/lints/' && API_TARGETS="$API_TARGETS tools/lints"
+          fi
+          if [ -z "$API_TARGETS" ] && [ -z "$VOICE" ]; then
+            echo "No tracked Python project changed — skipping."
+          fi
+          if [ -n "$API_TARGETS" ]; then
+            uv run --project apps/api --frozen --group backend --group dev mypy $API_TARGETS --ignore-missing-imports
+          fi
+          if [ -n "$VOICE" ]; then
+            # Its own venv and cache: uv run syncs exactly, so the shared .venv would lose the API's
+            # packages for the next job on this runner, and a shared cache crashed mypy's cache load.
+            UV_PROJECT_ENVIRONMENT=.venv-voice-agent uv run --project apps/voice-agent --frozen --group dev mypy apps/voice-agent/src --ignore-missing-imports --cache-dir "${MYPY_CACHE_DIR:-.mypy_cache}/voice-agent"
           fi
           echo "::endgroup::"
           echo "mypy: OK (no type errors)"

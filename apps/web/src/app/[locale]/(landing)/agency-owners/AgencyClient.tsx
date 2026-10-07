@@ -73,7 +73,7 @@ export default function AgencyClient() {
           className="relative z-10 mb-10 max-w-2xl text-xl font-light leading-relaxed text-white"
         >
           GAIA monitors your client portfolio, writes the status reports, and
-          keeps your pipeline moving — while you focus on the work that actually
+          keeps your pipeline moving, while you focus on the work that actually
           grows the agency.
         </m.p>
         <m.div
@@ -95,7 +95,7 @@ export default function AgencyClient() {
         <SectionHeader
           label="Proactive AI"
           headline="GAIA runs your operations. You run your agency."
-          description="Client updates, project blockers, overdue invoices, and new business leads — GAIA monitors it all across your portfolio. It surfaces what needs a decision and handles everything else, so you spend your week doing billable work, not chasing status."
+          description="Client updates, project blockers, overdue invoices, and new business leads: GAIA monitors it all across your portfolio. It surfaces what needs a decision and handles everything else, so you spend your week doing billable work, not chasing status."
           integrations={[
             { id: "gmail", label: "Gmail" },
             { id: "slack", label: "Slack" },
@@ -114,7 +114,7 @@ export default function AgencyClient() {
         <SectionHeader
           label="Portfolio Brief"
           headline="Every client, at a glance. Every morning."
-          description="GAIA scans your project management tools, email, and calendar across every active engagement — then delivers one daily brief with portfolio health, upcoming deadlines, and at-risk projects. No dashboard surfing, no status Slack messages."
+          description="GAIA scans your project management tools, email, and calendar across every active engagement, then delivers one daily brief with portfolio health, upcoming deadlines, and at-risk projects. No dashboard surfing, no status Slack messages."
           integrations={[
             { id: "clickup", label: "ClickUp" },
             { id: "asana", label: "Asana" },
@@ -151,7 +151,7 @@ export default function AgencyClient() {
         <SectionHeader
           label="Business Development"
           headline="Your pipeline doesn't stop when delivery gets busy."
-          description="GAIA triages inbound leads, researches prospects from LinkedIn and Perplexity, and drafts initial responses — so your new business development keeps moving even during your heaviest delivery weeks."
+          description="GAIA triages inbound leads, researches prospects from LinkedIn and Perplexity, and drafts initial responses, so your new business development keeps moving even during your heaviest delivery weeks."
           integrations={[
             { id: "hubspot", label: "HubSpot" },
             { id: "gmail", label: "Gmail" },
@@ -189,7 +189,7 @@ export default function AgencyClient() {
         <SectionHeader
           label="On Autopilot"
           headline="Tell GAIA once. It runs your agency every week."
-          description="Weekly client reports every Friday. Portfolio brief every Monday morning. BD pipeline review every Thursday. Tell GAIA once — it connects ClickUp, Gmail, and your sheets, and delivers every time. You never build another status email from scratch."
+          description="Weekly client reports every Friday. Portfolio brief every Monday morning. BD pipeline review every Thursday. Tell GAIA once: it connects ClickUp, Gmail, and your sheets, and delivers every time. You never build another status email from scratch."
           integrations={[
             { id: "clickup", label: "ClickUp" },
             { id: "gmail", label: "Gmail" },

@@ -9,7 +9,8 @@ guarantee that no silence longer than the interval can reach the socket.
 """
 
 import asyncio
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Coroutine
+import selectors
 
 import pytest
 
@@ -19,33 +20,58 @@ from app.core.stream_manager import with_heartbeat
 INTERVAL = 0.05
 
 
+class _VirtualClockSelector(selectors.DefaultSelector):
+    """A selector that never waits: it advances the clock by the timeout it was given."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.now = 0.0
+
+    def select(self, timeout: float | None = None) -> list[tuple[selectors.SelectorKey, int]]:
+        if timeout is None:
+            raise RuntimeError("virtual-time loop would block forever: nothing is scheduled")
+        self.now += max(timeout, 0.0)
+        return super().select(0)
+
+
+class _VirtualTimeLoop(asyncio.SelectorEventLoop):
+    """An event loop whose clock jumps to the next timer instead of waiting for it.
+
+    Every sleep and wait_for timeout resolves in exact virtual time, so a test of
+    interval arithmetic is deterministic however loaded the machine is.
+    """
+
+    def __init__(self) -> None:
+        self._clock = _VirtualClockSelector()
+        super().__init__(self._clock)
+
+    def time(self) -> float:
+        return self._clock.now
+
+
+def _run_on_virtual_time(coro: Coroutine[object, object, list[str]]) -> list[str]:
+    loop = _VirtualTimeLoop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
 async def _drain(frames: AsyncGenerator[str, None]) -> list[str]:
     return [frame async for frame in frames]
 
 
-@pytest.mark.asyncio
-async def test_silent_producer_still_writes_to_the_socket() -> None:
+def test_silent_producer_still_writes_to_the_socket() -> None:
     """A producer that yields nothing for several intervals is padded, since the bot translator swallows web-only frames."""
 
-    # The producer stays silent until three keepalives have reached the socket,
-    # so no wall-clock margin decides the outcome; a fixed 3.5-interval sleep
-    # lost its third keepalive to timer drift on a loaded runner.
-    spoke = asyncio.Event()
-
-    async def silent_until_told() -> AsyncGenerator[str, None]:
-        await spoke.wait()
+    async def silent_then_speak() -> AsyncGenerator[str, None]:
+        await asyncio.sleep(INTERVAL * 5.5)
         yield "data: real\n\n"
 
-    frames: list[str] = []
-    async with asyncio.timeout(5):
-        async for frame in with_heartbeat(silent_until_told(), interval=INTERVAL):
-            frames.append(frame)
-            if frames.count(SSE_KEEPALIVE_FRAME) == 3:
-                spoke.set()
+    frames = _run_on_virtual_time(_drain(with_heartbeat(silent_then_speak(), interval=INTERVAL)))
 
-    assert frames == [SSE_KEEPALIVE_FRAME] * 3 + ["data: real\n\n"], (
-        f"the silence must be padded and the real frame arrive last and intact, got {frames!r}"
-    )
+    # One keepalive per elapsed interval of silence, then the real frame, intact.
+    assert frames == [SSE_KEEPALIVE_FRAME] * 5 + ["data: real\n\n"]
 
 
 @pytest.mark.asyncio
@@ -61,42 +87,17 @@ async def test_real_frames_are_forwarded_in_order_and_unmodified() -> None:
     assert frames == [f"data: {index}\n\n" for index in range(5)]
 
 
-@pytest.mark.asyncio
-async def test_an_always_ready_producer_is_forwarded_verbatim() -> None:
-    """The wrapper is transparent: real frames through, padding not asserted absent."""
+def test_no_keepalive_when_the_producer_keeps_talking() -> None:
+    """Frames spaced just under the interval, across many intervals, are never padded: each frame restarts the wait."""
 
-    async def ready() -> AsyncGenerator[str, None]:
-        for index in range(4):
+    async def steady() -> AsyncGenerator[str, None]:
+        for index in range(10):
+            await asyncio.sleep(INTERVAL * 0.9)
             yield f"data: {index}\n\n"
 
-    frames = await _drain(with_heartbeat(ready(), interval=INTERVAL))
+    frames = _run_on_virtual_time(_drain(with_heartbeat(steady(), interval=INTERVAL)))
 
-    assert [frame for frame in frames if frame != SSE_KEEPALIVE_FRAME] == [
-        f"data: {index}\n\n" for index in range(4)
-    ]
-
-
-@pytest.mark.asyncio
-async def test_a_stall_longer_than_the_interval_is_padded_even_before_the_first_frame() -> None:
-    """Padding is keyed to silence, not frame position — even before the first frame."""
-
-    async def slow_first_frame() -> AsyncGenerator[str, None]:
-        await asyncio.sleep(INTERVAL * 2)
-        yield "data: late\n\n"
-
-    async def occupy(seconds: float) -> None:
-        # Block the loop thread the way a co-scheduled xdist worker does, so the
-        # sleep above cannot be serviced on time.
-        deadline = asyncio.get_running_loop().time() + seconds
-        while asyncio.get_running_loop().time() < deadline:
-            pass
-
-    staller = asyncio.ensure_future(occupy(INTERVAL * 2))
-    frames = await _drain(with_heartbeat(slow_first_frame(), interval=INTERVAL))
-    await staller
-
-    assert frames[0] == SSE_KEEPALIVE_FRAME
-    assert "data: late\n\n" in frames
+    assert frames == [f"data: {index}\n\n" for index in range(10)]
 
 
 @pytest.mark.asyncio

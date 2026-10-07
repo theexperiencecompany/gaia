@@ -131,7 +131,7 @@ export default async function About() {
               ))}
             </div>
             <div className="text-foreground-500">
-              — Founders, The Experience Company
+              Founders, The Experience Company
             </div>
           </div>
           <div className="flex w-full justify-start">

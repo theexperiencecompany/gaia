@@ -88,10 +88,6 @@ apps/api/app/core/lazy_loader.py	TB001
 apps/api/app/core/websocket_broadcast_listener.py	TB002
 apps/api/app/core/websocket_manager.py	TB001
 apps/api/app/core/websocket_manager.py	TB002
-apps/api/app/db/chroma/chroma_store.py	TB001
-apps/api/app/db/chroma/chroma_store.py	TB002
-apps/api/app/db/chroma/chroma_triggers_store.py	TB001
-apps/api/app/db/chroma/chroma_triggers_store.py	TB002
 apps/api/app/db/chroma/chromadb.py	TB002
 apps/api/app/db/chroma/noop_embedding.py	TB001
 apps/api/app/db/chroma/public_integrations_store.py	TB001
@@ -101,7 +97,6 @@ apps/api/app/db/mongodb/mongodb.py	TB001
 apps/api/app/db/postgresql.py	TB001
 apps/api/app/db/repositories/usage_daily.py	TB002
 apps/api/app/db/repositories/workflows.py	TB001
-apps/api/app/decorators/caching.py	TB001
 apps/api/app/memory/chroma_store.py	TB002
 apps/api/app/memory/context.py	TB002
 apps/api/app/memory/embeddings.py	TB001
@@ -115,7 +110,6 @@ apps/api/app/models/composio_schemas/github_tools.py	TB001
 apps/api/app/models/composio_schemas/github_tools.py	TB002
 apps/api/app/models/composio_schemas/slack_tools.py	TB002
 apps/api/app/models/mail_models.py	TB001
-apps/api/app/models/memory_models.py	TB002
 apps/api/app/models/playbook_models.py	TB001
 apps/api/app/models/playbook_models.py	TB002
 apps/api/app/models/trigger_configs.py	TB001

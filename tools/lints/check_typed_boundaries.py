@@ -102,6 +102,7 @@ EXTERNAL_TYPEDDICT_PATHS = frozenset(
         "chromadb.api.types.QueryResult",
         "langchain_core.messages.ReasoningContentBlock",
         "langchain_core.messages.content.ReasoningContentBlock",
+        "langgraph.store.base.IndexConfig",
         "composio.core.models.tools.ToolExecutionResponse",
         "playwright.sync_api.StorageState",
         "playwright.sync_api.StorageStateCookie",

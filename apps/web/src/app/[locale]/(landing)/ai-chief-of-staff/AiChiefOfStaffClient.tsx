@@ -15,12 +15,12 @@ const faqs = [
   {
     question: "Can GAIA really replace a human chief of staff?",
     answer:
-      "For most operational overhead — inbox triage, meeting prep, follow-up tracking, briefing generation, and routine delegation — yes. GAIA handles the administrative layer that occupies most of a chief of staff's calendar. It won't replace a strategic thought partner or someone who manages people, but for day-to-day operational work, it covers 70-80% of what founders and execs hire for.",
+      "For most operational overhead (inbox triage, meeting prep, follow-up tracking, briefing generation, and routine delegation), yes. GAIA handles the administrative layer that occupies most of a chief of staff's calendar. It won't replace a strategic thought partner or someone who manages people, but for day-to-day operational work, it covers 70-80% of what founders and execs hire for.",
   },
   {
     question: "What does GAIA do automatically vs what do I need to ask?",
     answer:
-      "GAIA sends your morning briefing automatically every day at your chosen time. It also runs scheduled workflows: daily summaries, weekly pipeline reviews, follow-up reminders. You ask GAIA for anything ad-hoc — drafting a reply, scheduling a meeting, pulling context on a deal — via natural language in chat or through the desktop app.",
+      "GAIA sends your morning briefing automatically every day at your chosen time. It also runs scheduled workflows: daily summaries, weekly pipeline reviews, follow-up reminders. You ask GAIA for anything ad-hoc (drafting a reply, scheduling a meeting, pulling context on a deal) via natural language in chat or through the desktop app.",
   },
   {
     question: "How long does setup take?",
@@ -30,7 +30,7 @@ const faqs = [
   {
     question: "Is my email data private?",
     answer:
-      "On the cloud tier, your data is processed with strict security controls, and content from your connected accounts is never used to improve our services. To generate responses, email content is shared with third-party AI model providers as described in our Privacy Policy. On the self-hosted tier, your email content never leaves your own infrastructure — GAIA processes everything locally using your own LLM API key.",
+      "On the cloud tier, your data is processed with strict security controls, and content from your connected accounts is never used to improve our services. To generate responses, email content is shared with third-party AI model providers as described in our Privacy Policy. On the self-hosted tier, your email content never leaves your own infrastructure. GAIA processes everything locally using your own LLM API key.",
   },
 ];
 
@@ -51,7 +51,7 @@ const dayInTheLife = [
     time: "12:00 PM",
     label: "Inbox Triage",
     description:
-      "GAIA has drafted replies to 6 emails. You review and send. The other 14 are labeled and archived — none of them needed you. You spend 8 minutes on email, not 90.",
+      "GAIA has drafted replies to 6 emails. You review and send. The other 14 are labeled and archived. None of them needed you. You spend 8 minutes on email, not 90.",
   },
   {
     time: "3:00 PM",
@@ -74,15 +74,15 @@ const capabilities = [
   },
   {
     headline: "Prepares your day's priorities",
-    body: "GAIA cross-references your inbox, calendar, and task list to generate a ranked priority list. Not a dump of everything — a focused view of what actually needs you today.",
+    body: "GAIA cross-references your inbox, calendar, and task list to generate a ranked priority list. Not a dump of everything, just a focused view of what actually needs you today.",
   },
   {
     headline: "Drafts replies in your voice",
-    body: "For emails that need a response, GAIA drafts a reply using context from the full thread and your past communication style. You review and send — or edit and send.",
+    body: "For emails that need a response, GAIA drafts a reply using context from the full thread and your past communication style. You review and send, or edit and send.",
   },
   {
     headline: "Schedules follow-ups automatically",
-    body: "Tell GAIA to follow up in 3 days if no reply, and it will — without another thought from you. It tracks every open thread and surfaces the right ones at the right time.",
+    body: "Tell GAIA to follow up in 3 days if no reply, and it will, without another thought from you. It tracks every open thread and surfaces the right ones at the right time.",
   },
   {
     headline: "Alerts you to urgent items",
@@ -90,7 +90,7 @@ const capabilities = [
   },
   {
     headline: "Delegates via natural language",
-    body: "Tell GAIA what needs to happen in plain English — 'schedule a 30-minute call with Alex next week, morning preferred' — and it handles the back-and-forth to make it happen.",
+    body: "Tell GAIA what needs to happen in plain English, like 'schedule a 30-minute call with Alex next week, morning preferred,' and it handles the back-and-forth to make it happen.",
   },
 ];
 
@@ -143,7 +143,7 @@ export default function AiChiefOfStaffClient() {
           transition={{ duration: 0.7, ease, delay: 0.1 }}
           className="font-serif relative z-10 mb-6 max-w-4xl text-5xl font-normal leading-[1.1] text-white sm:text-6xl md:text-7xl"
         >
-          Your AI Chief of Staff —
+          Your AI Chief of Staff
           <br />
           Runs your day before you ask.
         </m.h1>
@@ -154,7 +154,7 @@ export default function AiChiefOfStaffClient() {
           className="relative z-10 mb-10 max-w-2xl text-xl font-light leading-relaxed text-white"
         >
           A great chief of staff handles your operational overhead so you can
-          focus on what only you can do. GAIA does the same — for a fraction of
+          focus on what only you can do. GAIA does the same: for a fraction of
           the cost, available 24/7, with no ramp-up time.
         </m.p>
         <m.div
@@ -176,7 +176,7 @@ export default function AiChiefOfStaffClient() {
         <SectionHeader
           label="Chief of Staff"
           headline="How GAIA fills the chief of staff role."
-          description="Most founders and executives can't afford a $150K–$300K human chief of staff. GAIA handles the operational layer — inbox triage, meeting prep, follow-ups, and briefings — starting immediately, no ramp-up required."
+          description="Most founders and executives can't afford a $150K to $300K human chief of staff. GAIA handles the operational layer (inbox triage, meeting prep, follow-ups, and briefings) starting immediately, no ramp-up required."
           integrations={[
             { id: "gmail", label: "Gmail" },
             { id: "slack", label: "Slack" },
@@ -209,7 +209,7 @@ export default function AiChiefOfStaffClient() {
         <SectionHeader
           label="Who It's For"
           headline="Built for people who run things."
-          description="If you spend more than 2 hours a day on email, meeting prep, follow-ups, and operational coordination — GAIA is for you."
+          description="If you spend more than 2 hours a day on email, meeting prep, follow-ups, and operational coordination, GAIA is for you."
           integrations={[
             { id: "gmail", label: "Gmail" },
             { id: "slack", label: "Slack" },
@@ -298,11 +298,11 @@ export default function AiChiefOfStaffClient() {
       <PersonaSEOSection
         persona="Founders &amp; Executives"
         painPoints={[
-          "Spending 2–4 hours a day on email triage, meeting prep, and follow-ups instead of high-leverage work.",
-          "A senior chief of staff costs $150K–$300K per year — not justifiable until the company is much larger.",
+          "Spending 2 to 4 hours a day on email triage, meeting prep, and follow-ups instead of high-leverage work.",
+          "A senior chief of staff costs $150K to $300K per year, not justifiable until the company is much larger.",
           "Critical follow-ups fall through the cracks when you're context-switching across investor relations, team ops, and product.",
           "Morning scramble: no single view of what's urgent, what's on the calendar, and what needs a decision today.",
-          "Manually updating the CRM, writing the investor update, scheduling back-and-forth — all work a system should handle.",
+          "Manually updating the CRM, writing the investor update, scheduling back-and-forth: all work a system should handle.",
         ]}
         features={capabilities.map((cap) => ({
           title: cap.headline,
@@ -320,13 +320,13 @@ export default function AiChiefOfStaffClient() {
             href: "/for/startup-founders",
             label: "GAIA for Founders",
             description:
-              "See how GAIA helps startup founders specifically — investor updates, team ops, pipeline management.",
+              "See how GAIA helps startup founders specifically: investor updates, team ops, pipeline management.",
           },
           {
             href: "/inbox-zero-ai",
             label: "Inbox Zero with AI",
             description:
-              "Deep dive into GAIA's email triage capabilities — how it reaches inbox zero automatically.",
+              "Deep dive into GAIA's email triage capabilities: how it reaches inbox zero automatically.",
           },
           {
             href: "/open-source-ai-assistant",

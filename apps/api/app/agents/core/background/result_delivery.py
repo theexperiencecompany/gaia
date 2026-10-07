@@ -241,7 +241,7 @@ async def deliver_message_to_conversation(
     # (only once actually delivered) so the next turn here remembers it.
     if delivered:
         await record_platform_delivery(
-            conversation_id, f"[Delivered to the user — {origin}]: {text}"
+            conversation_id, f"[Delivered to the user ({origin})]: {text}"
         )
 
     _log_delivery_verdict(
@@ -315,13 +315,11 @@ async def _narrate_and_deliver(
         user_msg_content=user_msg_content,
     )
 
-    # Follow-ups are a second LLM call. The web/mobile path delivers the answer
-    # first and generates them in the background so the result isn't gated on
-    # them; workflow/bot-platform paths have no spinner to unblock, so attach inline.
+    # Follow-ups are a second LLM call: web/mobile get them after the answer, a
+    # workflow run attaches them inline, and a bot reply gets none (no bot renders them).
     conversation_source = await _get_conversation_source(run.conversation_id, user_id)
-    is_ws_path = not run.workflow_id and not is_bot_platform(conversation_source)
 
-    if not is_ws_path and not is_react:
+    if run.workflow_id and not is_react:
         follow_up_actions = await _safe_inline_follow_ups(
             result_type=result_type,
             notification_text=notification_text,

@@ -106,7 +106,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({ todoId, todoTitle }) => {
       <MarkdownViewerModal
         isOpen={openFile !== null}
         onClose={() => setOpenFile(null)}
-        title={`${openFile ?? "canvas.md"} — ${todoTitle}`}
+        title={`${openFile ?? "canvas.md"}: ${todoTitle}`}
         content={
           notes && open && notesTodoId === todoId ? open.pick(notes) : null
         }

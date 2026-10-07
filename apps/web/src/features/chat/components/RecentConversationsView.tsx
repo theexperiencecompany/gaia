@@ -60,7 +60,7 @@ const RecentConversationsView = memo(() => {
         description: "Identify conversations that ended with open action items",
         onPress: () =>
           appendToInput(
-            "Go through my recent conversations and identify any that ended without a clear resolution — things where there were open action items, unanswered questions, or follow-ups I still need to do.",
+            "Go through my recent conversations and identify any that ended without a clear resolution: things where there were open action items, unanswered questions, or follow-ups I still need to do.",
           ),
       },
       {
