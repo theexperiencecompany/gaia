@@ -180,7 +180,7 @@
     
     REMINDERS: a reminder is a message GAIA sends at a time. One-off (at 3pm, in two hours, tomorrow at 9) or recurring on a cron cadence in the user's timezone, optionally stopping after a number of times. It lands as a notification on the channel the user is on. GAIA creates, lists, edits and deletes them from chat, no setup needed.
     
-    INTEGRATIONS: 35 services the user can connect (14 productivity, 6 communication, 4 social media, 4 developer, 4 business, 2 lifestyle, 1 news). GAIA can search them for what the user needs and show a connect card in chat. Nothing runs on a service before it is connected; once it is, GAIA gets that service's tools, and the built-in workflows below switch on by themselves.
+    INTEGRATIONS: 40 services the user can connect (17 productivity, 7 communication, 5 developer, 4 social media, 4 business, 2 lifestyle, 1 news). GAIA can search them for what the user needs and show a connect card in chat. Nothing runs on a service before it is connected; once it is, GAIA gets that service's tools, and the built-in workflows below switch on by themselves.
     
     CHANNELS: the user can text GAIA on Discord, Slack, Telegram, WhatsApp, iMessage as well as the web app. A linked platform receives workflow results, reminders and briefs there, so nothing waits for them to open a tab.
     

@@ -1358,3 +1358,213 @@ POSTHOG_CONTENT = IntegrationContent(
         ),
     ],
 )
+
+CALCOM_CONTENT = IntegrationContent(
+    use_cases=[
+        "See every upcoming Cal.com booking with attendees and meeting links in one message",
+        "Book a meeting on any of your event types by saying who and roughly when — GAIA finds an open slot",
+        "Reschedule or cancel a booking in plain English without opening Cal.com",
+        "Get the right booking link for the right meeting type whenever you need to share one",
+        "Run a scheduled workflow that briefs you every morning on the day's Cal.com bookings",
+    ],
+    how_it_works=[
+        IntegrationHowItWorksStep(
+            title="Connect Cal.com to GAIA",
+            body='Open the GAIA Marketplace, find Cal.com, and click "Add to your GAIA". Authorise via Cal.com OAuth.',
+        ),
+        IntegrationHowItWorksStep(
+            title="Manage bookings in plain English",
+            body='Say "what\'s booked on my Cal.com tomorrow?" or "move my 3pm intro call with Sam to Thursday". GAIA checks availability before it books or reschedules anything.',
+        ),
+        IntegrationHowItWorksStep(
+            title="Confirm before anyone is notified",
+            body="Cancelling or declining a booking emails your attendee, so GAIA asks for your approval before it does either.",
+        ),
+    ],
+    faqs=[
+        IntegrationFAQ(
+            question="Can GAIA book meetings on my Cal.com event types?",
+            answer="Yes. GAIA lists your event types, checks the available slots, and creates the booking with the attendee's name, email and timezone once you confirm the time.",
+        ),
+        IntegrationFAQ(
+            question="Will GAIA cancel bookings without asking?",
+            answer="No. Cancelling and declining are gated behind an approval card because they notify your attendee and can't be undone.",
+        ),
+        IntegrationFAQ(
+            question="Does it work with self-hosted Cal.com?",
+            answer="The integration connects to Cal.com's hosted API through OAuth. Self-hosted instances are not supported through this integration.",
+        ),
+        IntegrationFAQ(
+            question="Can GAIA reschedule an existing booking?",
+            answer="Yes. GAIA looks up the booking, finds a free slot that works, and reschedules it — optionally with a reason for the attendee.",
+        ),
+    ],
+)
+
+CALENDLY_CONTENT = IntegrationContent(
+    use_cases=[
+        "Ask what's on your Calendly this week and see each meeting with its invitees",
+        "Generate a single-use scheduling link for one person in seconds",
+        "Check which times are still open on an event type before you share it",
+        "Cancel a scheduled Calendly meeting with a reason, after you approve it",
+        "Get a daily briefing of new Calendly bookings through a scheduled workflow",
+    ],
+    how_it_works=[
+        IntegrationHowItWorksStep(
+            title="Connect Calendly to GAIA",
+            body='Open the GAIA Marketplace, find Calendly, and click "Add to your GAIA". Authorise via Calendly OAuth.',
+        ),
+        IntegrationHowItWorksStep(
+            title="Ask about your schedule",
+            body='Say "who booked time with me this week?" or "send me a one-time link for my 30 minute call". GAIA reads your event types and scheduled events directly.',
+        ),
+        IntegrationHowItWorksStep(
+            title="Share links without leaving the chat",
+            body="GAIA creates scheduling links you can paste into email, Slack or WhatsApp, and can draft the message around them.",
+        ),
+    ],
+    faqs=[
+        IntegrationFAQ(
+            question="Can GAIA create one-time Calendly links?",
+            answer="Yes. GAIA can create a single-use scheduling link for any of your event types, so the link stops working after one booking.",
+        ),
+        IntegrationFAQ(
+            question="Can GAIA cancel Calendly meetings?",
+            answer="Yes, after you approve it. Cancelling notifies invitees, so it always goes through an approval card first.",
+        ),
+        IntegrationFAQ(
+            question="Can GAIA see who booked a meeting?",
+            answer="Yes. GAIA can list the invitees of any scheduled event, including their names, emails and answers to your booking questions.",
+        ),
+        IntegrationFAQ(
+            question="Can I choose which Calendly permissions GAIA gets?",
+            answer="Calendly's OAuth does not offer individual scopes, so the connection grants access to your scheduling data as a whole.",
+        ),
+    ],
+)
+
+OUTLOOK_CONTENT = IntegrationContent(
+    use_cases=[
+        "Summarise your unread Outlook mail and draft replies for the ones that need an answer",
+        "Search your Outlook inbox in plain English — 'the invoice Priya sent last month'",
+        "Find a meeting time that works for everyone and send the invite with a Teams link",
+        "Get today's Outlook calendar as a morning briefing in your chat",
+        "Draft emails in your voice and send them only after you approve",
+    ],
+    how_it_works=[
+        IntegrationHowItWorksStep(
+            title="Connect Outlook to GAIA",
+            body='Open the GAIA Marketplace, find Outlook, and click "Add to your GAIA". Sign in with your Microsoft account. Some work accounts need an admin to approve the app first.',
+        ),
+        IntegrationHowItWorksStep(
+            title="Manage mail and calendar in plain English",
+            body='Say "what needs a reply in my inbox?" or "book 30 minutes with Alex and Dana next week". GAIA reads, drafts, and schedules across your mailbox and calendar.',
+        ),
+        IntegrationHowItWorksStep(
+            title="You approve anything that goes out",
+            body="Sending, replying, forwarding and cancelling meetings are gated behind an approval card, so nothing reaches another person without your yes.",
+        ),
+    ],
+    faqs=[
+        IntegrationFAQ(
+            question="Does GAIA send emails from Outlook automatically?",
+            answer="No. GAIA prepares drafts, and sending, replying or forwarding always requires your approval first.",
+        ),
+        IntegrationFAQ(
+            question="Does it work with work or school Microsoft accounts?",
+            answer="Yes, with personal and work accounts. Some organisations require an administrator to approve the app before you can connect it.",
+        ),
+        IntegrationFAQ(
+            question="Can GAIA schedule Outlook meetings with a Teams link?",
+            answer="Yes. GAIA can find a time that suits all attendees and create the event as an online meeting so a Teams link is included.",
+        ),
+        IntegrationFAQ(
+            question="Will GAIA permanently delete my email?",
+            answer="Deleting moves mail to Deleted Items, where you can recover it. Permanent deletion is gated and only used when you explicitly ask for it.",
+        ),
+    ],
+)
+
+JIRA_CONTENT = IntegrationContent(
+    use_cases=[
+        "See every Jira issue assigned to you, ranked by priority, in one message",
+        "Create Jira issues by describing the bug or task — GAIA fills in the project and type",
+        "Move issues through your workflow with a plain English command",
+        "Turn meeting notes into Jira issues with owners and descriptions",
+        "Get a weekly summary of what your team moved to Done through a scheduled workflow",
+    ],
+    how_it_works=[
+        IntegrationHowItWorksStep(
+            title="Connect Jira to GAIA",
+            body='Open the GAIA Marketplace, find Jira, and click "Add to your GAIA". Authorise via Atlassian OAuth and pick your Jira site.',
+        ),
+        IntegrationHowItWorksStep(
+            title="Work your backlog in plain English",
+            body='Say "what\'s assigned to me that\'s still open?" or "create a bug in MOB for the login crash on Android". GAIA writes the JQL and the issue for you.',
+        ),
+        IntegrationHowItWorksStep(
+            title="Updates stay in your workflow",
+            body="GAIA moves issues through your team's real transitions, comments on them, and reassigns them — deletions always ask for approval first.",
+        ),
+    ],
+    faqs=[
+        IntegrationFAQ(
+            question="Do I need to know JQL?",
+            answer="No. Describe what you're looking for and GAIA builds the JQL query for you.",
+        ),
+        IntegrationFAQ(
+            question="Can GAIA change an issue's status?",
+            answer="Yes. GAIA looks up the transitions your workflow allows for that issue and applies the right one.",
+        ),
+        IntegrationFAQ(
+            question="Will GAIA delete issues without asking?",
+            answer="No. Deleting issues, comments, attachments or worklogs always requires your approval.",
+        ),
+        IntegrationFAQ(
+            question="Does it work with Jira Cloud?",
+            answer="Yes. The integration connects to Jira Cloud sites through Atlassian OAuth.",
+        ),
+    ],
+)
+
+DROPBOX_CONTENT = IntegrationContent(
+    use_cases=[
+        "Find any file in your Dropbox by describing it — no folder digging",
+        "Summarise a document stored in Dropbox without downloading it yourself",
+        "Organise files into folders with a single instruction",
+        "Create a share link for a file, after you approve exposing it",
+        "Save files GAIA generates — reports, decks, spreadsheets — straight into Dropbox",
+    ],
+    how_it_works=[
+        IntegrationHowItWorksStep(
+            title="Connect Dropbox to GAIA",
+            body='Open the GAIA Marketplace, find Dropbox, and click "Add to your GAIA". Authorise via Dropbox OAuth.',
+        ),
+        IntegrationHowItWorksStep(
+            title="Search and read files in plain English",
+            body='Say "find the signed contract from Acme" or "summarise the Q3 report in my Finance folder". GAIA searches and reads the file for you.',
+        ),
+        IntegrationHowItWorksStep(
+            title="Sharing always asks first",
+            body="Creating share links or adding people to a folder exposes its contents, so GAIA shows an approval card before doing either.",
+        ),
+    ],
+    faqs=[
+        IntegrationFAQ(
+            question="Can GAIA read the contents of my Dropbox files?",
+            answer="Yes. GAIA can read files on demand to summarise them or use them in another task, like attaching them to an email.",
+        ),
+        IntegrationFAQ(
+            question="Will GAIA share my files without asking?",
+            answer="No. Share links, folder sharing and adding members are gated behind your approval.",
+        ),
+        IntegrationFAQ(
+            question="What happens if GAIA deletes a file?",
+            answer="Dropbox keeps deleted files recoverable, and GAIA can restore a file to an earlier version if you ask.",
+        ),
+        IntegrationFAQ(
+            question="Does GAIA copy my Dropbox to its servers?",
+            answer="No. GAIA fetches files only when a request needs them and does not sync or store your Dropbox.",
+        ),
+    ],
+)

@@ -99,6 +99,7 @@ from app.utils.mcp_utils import (
 )
 from app.utils.url_safety import assert_public_http_url
 from mcp import ClientSession
+from mcp.client.auth.exceptions import OAuthRegistrationError
 from mcp.client.auth.oauth2 import PKCEParameters
 from mcp.client.auth.utils import (
     create_client_registration_request,
@@ -189,6 +190,15 @@ class _ClientBranding(TypedDict, total=False):
 
 class DCRNotSupportedError(Exception):
     """Raised when Dynamic Client Registration is not supported by the server."""
+
+
+class DCRRegistrationError(ValueError):
+    """Raised when an authorization server rejects our DCR (identified rejection).
+
+    Subclasses ValueError to preserve the existing caller contract (callers that
+    catch ValueError still work), while letting callers distinguish an external
+    AS rejection from an internal failure that also raises a bare ValueError.
+    """
 
 
 class StepUpAuthRequiredError(Exception):
@@ -1555,9 +1565,23 @@ class MCPClient:
                 return client_info.client_id
         except DCRNotSupportedError:
             raise  # Re-raise without wrapping
+        except OAuthRegistrationError as e:
+            # An external AS rejecting our DCR (4xx body, invalid response) is its
+            # policy, not a GAIA fault; the caller surfaces it to the user, so warn
+            # to keep it out of Sentry's High queue.
+            log.warning(
+                f"{LogTag.MCP} DCR rejected by authorization server",
+                integration_id=integration_id,
+                registration_endpoint=registration_endpoint,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            raise DCRRegistrationError(f"Dynamic Client Registration failed: {e}") from e
         except Exception as e:
+            # Transport, parsing, or store_dcr_client failures are internal and
+            # may silently block OAuth, so keep error-level monitoring on them.
             log.error(
-                f"{LogTag.MCP} DCR failed for at",
+                f"{LogTag.MCP} DCR failed unexpectedly",
                 integration_id=integration_id,
                 registration_endpoint=registration_endpoint,
                 error=str(e),

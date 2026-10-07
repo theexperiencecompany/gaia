@@ -87,6 +87,13 @@ class OAuthIntegration(BaseModel):
             raise ValueError(
                 f"Integration {self.id!r} has managed_by='composio' but no composio_config."
             )
+        # Available with an empty auth_config_id would mint Connect Links against
+        # an empty Composio config; staged integrations keep available=False.
+        if self.available and self.composio_config and not self.composio_config.auth_config_id:
+            raise ValueError(
+                f"Integration {self.id!r} is available but has no Composio auth_config_id; "
+                "set it from the Composio dashboard or keep available=False."
+            )
         return self
 
 
