@@ -1349,8 +1349,9 @@ jobs:
             uv run --project apps/api --frozen --group backend --group dev mypy $API_TARGETS --ignore-missing-imports
           fi
           if [ -n "$VOICE" ]; then
-            # Its own cache: one shared with the API run, built in another environment, crashed mypy's cache load.
-            uv run --project apps/voice-agent --frozen --group dev mypy apps/voice-agent/src --ignore-missing-imports --cache-dir "${MYPY_CACHE_DIR:-.mypy_cache}/voice-agent"
+            # Its own venv and cache: uv run syncs exactly, so the shared .venv would lose the API's
+            # packages for the next job on this runner, and a shared cache crashed mypy's cache load.
+            UV_PROJECT_ENVIRONMENT=.venv-voice-agent uv run --project apps/voice-agent --frozen --group dev mypy apps/voice-agent/src --ignore-missing-imports --cache-dir "${MYPY_CACHE_DIR:-.mypy_cache}/voice-agent"
           fi
           echo "::endgroup::"
           echo "mypy: OK (no type errors)"
