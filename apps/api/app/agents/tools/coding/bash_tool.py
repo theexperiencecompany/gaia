@@ -403,10 +403,12 @@ async def _run_bash(
                     result = await _run_background(sbx, run, command_env)
                 else:
                     result = await _run_foreground(sbx, run, command_env)
-            except Exception:
+            except Exception as e:
                 # A run that never started must not stay subscribed and count as live.
                 if lab is not None and run_todo_id is not None:
                     await unregister_subscription(run_todo_id, user_id, lab.subscription_id)
+                if isinstance(e, BackgroundStartError):
+                    return _emit_bash_error(run_id, str(e), f"Error: {e}", session_id)
                 raise
             if not background and session_id:
                 # A bash command can create artifacts many ways (cat, python, mv,

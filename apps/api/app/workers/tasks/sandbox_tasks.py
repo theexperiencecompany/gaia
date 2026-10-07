@@ -5,9 +5,8 @@ Currently:
   than the eviction threshold as dead and drops them from the in-process pool
   so the next request creates a fresh one. The underlying E2B sandbox is left
   to E2B's own paused-TTL to reclaim (default 30 days), which keeps the FS
-  available if the user comes back inside the window. AGENT_LAB users are
-  exempt while the flag is on (their keep-warm refresh keeps last_used_at
-  fresh anyway; the exemption covers a missed cron run).
+  available if the user comes back inside the window. An agent-lab sandbox
+  with a live run never gets that old: keep-warm uses it every tick.
 - refresh_lab_sandboxes: every 10 minutes, over agent-lab sandboxes. A live
   run's sandbox is saved and, near E2B's lifetime cap, renewed with a pause
   and resume; any other, including a run past SANDBOX_LAB_MAX_RUN_SECONDS
@@ -32,18 +31,15 @@ from app.constants.execute import (
 )
 from app.constants.log_tags import LogTag
 from app.db.repositories.e2b_sandboxes import e2b_sandbox_repository
-from app.db.repositories.todos import todo_repository
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
     NotificationType,
 )
-from app.models.todo_models import TodoDocument
 from app.services.agent_lab.agents_saves import save_agents_home
-from app.services.agent_lab.lab_runs import SANDBOX_RUN_TRIGGER, run_cap_status
+from app.services.agent_lab.lab_runs import lab_run_status
 from app.services.agent_lab.sandbox_events import SandboxEventKind, report_sandbox_event
-from app.services.feature_flags import is_agent_lab_enabled
 from app.services.notification_service import notification_service
 from app.services.sandbox import (
     acquire_sandbox,
@@ -59,12 +55,8 @@ async def sweep_idle_sandboxes(_ctx: dict[str, Any]) -> str:
     cutoff = datetime.now(UTC) - timedelta(days=settings.E2B_SANDBOX_EVICT_DAYS)
     idle_user_ids = await e2b_sandbox_repository.find_idle_user_ids(cutoff=cutoff)
     evicted = 0
-    skipped_lab = 0
     for user_id in idle_user_ids:
         try:
-            if await is_agent_lab_enabled(user_id):
-                skipped_lab += 1
-                continue
             await mark_sandbox_dead(user_id)
             evicted += 1
         except Exception as e:
@@ -75,11 +67,7 @@ async def sweep_idle_sandboxes(_ctx: dict[str, Any]) -> str:
                 error=str(e),
             )
     log.set(sandbox=SandboxContext(operation="sweep", evicted_count=evicted))
-    log.info(
-        f"{LogTag.SANDBOX} sweep evicted idle sandboxes",
-        evicted_count=evicted,
-        skipped_lab_count=skipped_lab,
-    )
+    log.info(f"{LogTag.SANDBOX} sweep evicted idle sandboxes", evicted_count=evicted)
     return f"Evicted {evicted} idle sandboxes (cutoff={cutoff.isoformat()})"
 
 
@@ -129,10 +117,10 @@ async def refresh_lab_sandboxes(ctx: dict[str, Any]) -> str:
 async def _tick_lab_sandbox(ctx: dict[str, Any], user_id: str) -> LabTickOutcome:
     """Keep a live run's sandbox warm; otherwise pause it once idle. A failure only logs."""
     try:
-        status = run_cap_status(await _lab_run_todos(user_id))
+        status = await lab_run_status(user_id)
         if status.capped_todo_ids:
             await _notify_lab_cap_hit(ctx, user_id, status.capped_todo_ids)
-        if status.live and await is_agent_lab_enabled(user_id):
+        if status.live:
             await _keep_lab_sandbox(user_id)
             return LabTickOutcome.KEPT
         return LabTickOutcome.PAUSED if await pause_idle_sandbox(user_id) else LabTickOutcome.LEFT
@@ -166,11 +154,6 @@ async def _keep_lab_sandbox(user_id: str) -> None:
 def _lab_cap_notified_key(user_id: str) -> str:
     """Redis key throttling the cap-hit notification to one per cap window."""
     return f"lab:cap_notified:{user_id}"
-
-
-async def _lab_run_todos(user_id: str) -> list[TodoDocument]:
-    """Open todos subscribed to at least one sandbox run."""
-    return await todo_repository.find_active_by_user_and_trigger(user_id, SANDBOX_RUN_TRIGGER)
 
 
 async def _notify_lab_cap_hit(ctx: dict[str, Any], user_id: str, todo_ids: list[str]) -> None:

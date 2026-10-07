@@ -375,6 +375,26 @@ class TestFailedLaunchUnsubscribes:
         assert stored is not None
         assert lab_runs.run_subscriptions(stored) == []
 
+    @pytest.mark.regression
+    async def test_a_background_start_failure_is_a_command_error_not_a_sandbox_crash(
+        self,
+    ) -> None:
+        # Regression: it raised through acquire_sandbox, so the sandbox was
+        # health-checked as if it had died and the tool logged a crash.
+        sbx = _sbx(SimpleNamespace(exit_code=0, stdout="", stderr="no shell"))
+        acquire = _acquire(sbx)
+        error_log = MagicMock()
+        with (
+            patch(f"{MODULE}.acquire_sandbox", new=acquire),
+            patch(f"{MODULE}.sandbox_execute_enabled", return_value=False),
+            patch(f"{MODULE}.log.error", error_log),
+        ):
+            out = await bash.ainvoke({"command": "sleep 60", "background": True}, config=CONFIG)
+        assert out == "Error: failed to start background command (stderr: no shell)"
+        exc_type = acquire.return_value.__aexit__.await_args.args[0]
+        assert exc_type is None, "the start failure reached the sandbox's crash handling"
+        error_log.assert_not_called()
+
 
 @pytest.mark.unit
 class TestLabRunSubscribesTodo:

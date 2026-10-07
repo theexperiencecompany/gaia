@@ -86,16 +86,15 @@ def run_cap_status(todos: list[TodoDocument]) -> RunCapStatus:
     return RunCapStatus(live=live, capped_todo_ids=capped)
 
 
-async def keeps_sandbox_awake(user_id: str) -> bool:
-    """Whether the user's sandbox must stay running: the flag is on and a watched run is within the cap.
+async def lab_run_status(user_id: str) -> RunCapStatus:
+    """Split the user's watched runs by the cap; a live one keeps the sandbox awake.
 
-    A coding agent works without GAIA calls, so nothing else would hold the
-    sandbox; past the cap, or with no run, it idle-pauses like any other.
+    A coding agent works without GAIA calls, so nothing else holds the sandbox.
+    The flag gates launching a run, never this: it reads off whenever PostHog
+    is unreachable, and a running agent must not freeze on that.
     """
-    if not await is_agent_lab_enabled(user_id):
-        return False
     todos = await todo_repository.find_active_by_user_and_trigger(user_id, SANDBOX_RUN_TRIGGER)
-    return run_cap_status(todos).live
+    return run_cap_status(todos)
 
 
 def find_run(

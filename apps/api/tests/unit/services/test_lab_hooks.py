@@ -229,6 +229,27 @@ class TestAgentsSetup:
     def test_no_save_means_nothing_is_restored(self, tmp_path: Path) -> None:
         assert RESTORED_MARKER not in self._run(tmp_path).stdout
 
+    def test_a_save_on_a_home_never_set_up_runs_no_script_and_says_so(self, tmp_path: Path) -> None:
+        result = subprocess.run(
+            ["bash", "-c", _local(agents_home.SAVE_COMMAND, tmp_path)],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert result.stdout.strip() == agents_home.HOME_NOT_SET_UP
+
+    def test_a_set_up_home_saves_through_gaia_save(self, tmp_path: Path) -> None:
+        self._run(tmp_path)
+        save = Path(_local(SAVE_SCRIPT, tmp_path))
+        _executable(save, "#!/usr/bin/env bash\necho saved\n")
+        result = subprocess.run(
+            ["bash", "-c", _local(agents_home.SAVE_COMMAND, tmp_path)],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert result.stdout.strip() == "saved"
+
     def test_the_profile_block_is_replaced_not_duplicated(self, tmp_path: Path) -> None:
         profile = tmp_path / "home" / ".profile"
         profile.parent.mkdir(parents=True)

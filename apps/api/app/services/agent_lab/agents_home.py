@@ -56,6 +56,12 @@ SAVE_EXCLUDES: Final[tuple[str, ...]] = (
     ".mypy_cache",
 )
 SAVE_TIMEOUT_SECONDS: Final[int] = 120
+HOME_NOT_SET_UP: Final[str] = "agents_home_not_set_up"
+# Setup writes gaia-save before the marker, and no run launches without both.
+SAVE_COMMAND: Final[str] = (
+    f"if [ -e {shlex.quote(_READY_MARKER)} ]; then {shlex.quote(SAVE_SCRIPT)};"
+    f" else echo {HOME_NOT_SET_UP}; fi"
+)
 # Save, then up to two 15s POSTs (the event, and a failed save's report).
 HOOK_TIMEOUT_SECONDS: Final[int] = SAVE_TIMEOUT_SECONDS + 30
 

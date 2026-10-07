@@ -225,7 +225,7 @@ async def test_an_unreachable_control_plane_never_gets_a_live_sandbox_killed() -
     entry = _healthy_entry()
     repo = AsyncMock()
     with (
-        patch.object(lifecycle, "_health_probe", AsyncMock(return_value=False)),
+        patch.object(lifecycle, "_health_probe", AsyncMock(side_effect=[False, True])),
         patch.object(
             lifecycle.AsyncSandbox, "get_info", AsyncMock(side_effect=RuntimeError("e2b 502"))
         ),
@@ -240,6 +240,25 @@ async def test_an_unreachable_control_plane_never_gets_a_live_sandbox_killed() -
 
 
 @pytest.mark.regression
+async def test_a_dead_sandbox_is_dropped_even_when_the_control_plane_cannot_be_asked() -> None:
+    # Regression: an unreachable control plane counted as alive, so a sandbox
+    # failing both probes stayed in use and each request stalled on it.
+    entry = _healthy_entry()
+    repo = AsyncMock()
+    with (
+        patch.object(lifecycle, "_health_probe", AsyncMock(return_value=False)),
+        patch.object(
+            lifecycle.AsyncSandbox, "get_info", AsyncMock(side_effect=RuntimeError("e2b 502"))
+        ),
+        patch.object(lifecycle, "e2b_sandbox_repository", repo),
+    ):
+        user_id, result = await _reuse(entry)
+    assert result is None
+    assert get_sandbox_pool().get(user_id) is None
+    repo.mark_dead.assert_awaited_once()
+
+
+@pytest.mark.regression
 async def test_a_hung_control_plane_is_bounded_in_the_liveness_check() -> None:
     entry = _healthy_entry()
 
@@ -247,7 +266,7 @@ async def test_a_hung_control_plane_is_bounded_in_the_liveness_check() -> None:
         await asyncio.sleep(3600)
 
     with (
-        patch.object(lifecycle, "_health_probe", AsyncMock(return_value=False)),
+        patch.object(lifecycle, "_health_probe", AsyncMock(side_effect=[False, True])),
         patch.object(lifecycle.AsyncSandbox, "get_info", hang),
         patch.object(lifecycle, "SANDBOX_CONNECT_TIMEOUT_SECONDS", 0.05),
         patch.object(lifecycle, "_ensure_mounted", AsyncMock()),

@@ -1,8 +1,9 @@
-"""Agent-lab sandbox upkeep: idle pause, the keep-warm tick, the run cap, saves and renewals.
+"""Agent-lab sandbox upkeep: the sweep, the keep-warm tick, the run cap, saves and renewals.
 
 A sandbox stays up only while a watched run is within the cap; every other
-agent-lab sandbox pauses once idle. Boundaries mocked: e2b, Mongo repositories,
-the flag, notifications; the tick, run-cap and pause logic run for real.
+agent-lab sandbox pauses once idle (the idle timer is in test_lifecycle_pause).
+Boundaries mocked: e2b, Mongo repositories, notifications; the tick, run-cap
+and pause logic run for real.
 """
 
 from __future__ import annotations
@@ -31,7 +32,6 @@ from app.services import feature_flags
 from app.services.agent_lab import agents_home, lab_runs
 from app.services.agent_lab.agents_saves import save_agents_home
 from app.services.agent_lab.sandbox_events import SandboxEventKind
-from app.services.sandbox import lifecycle
 from app.services.sandbox.pool import PooledSandbox, refresh_sandbox_timeout
 from app.workers.tasks import sandbox_tasks
 from app.workers.tasks.sandbox_tasks import LabTickOutcome
@@ -40,11 +40,6 @@ pytestmark = pytest.mark.unit
 
 TASKS_MODULE = "app.workers.tasks.sandbox_tasks"
 LAB_TEMPLATE = "gaia-coder-8gb"
-
-
-def _lab_only(user_id: str | None) -> bool:
-    """Fake flag evaluation: only "lab" is flagged."""
-    return user_id == "lab"
 
 
 def _make_entry() -> tuple[AsyncMock, PooledSandbox]:
@@ -92,64 +87,21 @@ def _lab_todo(
     )
 
 
-class TestIdlePause:
-    """The in-process idle pause skips only a sandbox a live run keeps awake."""
-
-    async def _schedule(self, *, flagged: bool, todos: list[TodoDocument]) -> AsyncMock:
-        sbx, entry = _make_entry()
-        coll = AsyncMock()
-        coll.get_for_user = AsyncMock(return_value=None)
-        with (
-            patch.object(lifecycle.settings, "E2B_SANDBOX_IDLE_PAUSE_SECONDS", 0),
-            patch.object(lifecycle, "e2b_sandbox_repository", coll),
-            patch.object(lifecycle, "_stop_watcher", AsyncMock()),
-            patch.object(feature_flags.settings, "ENABLE_AGENT_LAB", flagged),
-            patch(
-                "app.db.repositories.todos.todo_repository.find_active_by_user_and_trigger",
-                AsyncMock(return_value=todos),
-            ),
-        ):
-            lifecycle._schedule_pause("lab", entry)
-            assert entry.pause_task is not None
-            await entry.pause_task
-        return sbx
-
-    async def test_a_live_run_keeps_the_sandbox_from_pausing(self) -> None:
-        sbx = await self._schedule(flagged=True, todos=[_lab_todo(1)])
-        sbx.beta_pause.assert_not_awaited()
-
+class TestSweep:
     @pytest.mark.regression
-    async def test_a_flagged_user_with_no_live_run_is_idle_paused(self) -> None:
-        # Regression: every flagged user skipped the idle pause, so a sandbox
-        # with nothing running billed until E2B's lifetime cap killed it.
-        sbx = await self._schedule(flagged=True, todos=[])
-        sbx.beta_pause.assert_awaited_once()
-
-    async def test_a_run_past_the_cap_no_longer_keeps_it_awake(self) -> None:
-        sbx = await self._schedule(flagged=True, todos=[_lab_todo(13)])
-        sbx.beta_pause.assert_awaited_once()
-
-    async def test_an_unflagged_user_is_idle_paused(self) -> None:
-        sbx = await self._schedule(flagged=False, todos=[_lab_todo(1)])
-        sbx.beta_pause.assert_awaited_once()
-
-
-class TestSweepExemption:
-    async def test_lab_users_exempt_from_evict(self) -> None:
+    async def test_a_flagged_user_idle_past_the_cutoff_is_swept_like_anyone(self) -> None:
+        # Regression: flagged users were exempt on the assumption that keep-warm
+        # keeps their sandbox fresh; it only touches one with a live run.
         with (
             patch(
                 f"{TASKS_MODULE}.e2b_sandbox_repository.find_idle_user_ids",
                 AsyncMock(return_value=["lab", "plain"]),
             ),
-            patch(
-                f"{TASKS_MODULE}.is_agent_lab_enabled",
-                AsyncMock(side_effect=_lab_only),
-            ),
             patch(f"{TASKS_MODULE}.mark_sandbox_dead", AsyncMock()) as mark_dead,
         ):
             result = await sandbox_tasks.sweep_idle_sandboxes({})
-        mark_dead.assert_awaited_once_with("plain")
-        assert result.startswith("Evicted 1 idle sandboxes (cutoff=")
+        assert [call.args[0] for call in mark_dead.await_args_list] == ["lab", "plain"]
+        assert result.startswith("Evicted 2 idle sandboxes (cutoff=")
 
 
 class TestRunCapStatus:
@@ -228,11 +180,9 @@ class _Tick:
         self,
         todos_by_user: dict[str, list[TodoDocument]],
         *,
-        flagged: set[str] | None = None,
         minutes_left: float = 50,
         broken: frozenset[str] = frozenset(),
     ) -> Iterator[None]:
-        flagged_users = set(todos_by_user) if flagged is None else flagged
         self.lookup.return_value = list(todos_by_user)
 
         def acquire(user_id: str) -> _FakeAcquire:
@@ -247,15 +197,10 @@ class _Tick:
         async def todos(user_id: str, _trigger: str) -> list[TodoDocument]:
             return todos_by_user.get(user_id, [])
 
-        async def is_flagged(user_id: str | None) -> bool:
-            return user_id in flagged_users
-
         with ExitStack() as stack:
             for target, value in (
                 ("settings.E2B_AGENT_LAB_TEMPLATE_ID", LAB_TEMPLATE),
                 ("e2b_sandbox_repository.find_live_user_ids_on_template", self.lookup),
-                ("todo_repository.find_active_by_user_and_trigger", todos),
-                ("is_agent_lab_enabled", is_flagged),
                 ("acquire_sandbox", acquire),
                 ("save_agents_home", save),
                 ("pause_idle_sandbox", self.pause),
@@ -264,6 +209,12 @@ class _Tick:
                 ("notification_service.create_notification", self.notify),
             ):
                 stack.enter_context(patch(f"{TASKS_MODULE}.{target}", value))
+            stack.enter_context(
+                patch(
+                    "app.db.repositories.todos.todo_repository.find_active_by_user_and_trigger",
+                    todos,
+                )
+            )
             yield
 
     async def run(self) -> str:
@@ -272,7 +223,6 @@ class _Tick:
 
 class TestKeepWarmTick:
     async def test_candidates_are_the_agent_lab_template_sandboxes(self) -> None:
-        """Looked up by recorded template, so regular users cost no flag evaluation."""
         tick = _Tick()
         with tick.world({"lab": [_lab_todo(1)]}):
             await tick.run()
@@ -310,12 +260,18 @@ class TestKeepWarmTick:
         assert tick.acquired == []
         tick.pause.assert_awaited_once_with("lab")
 
-    async def test_a_revoked_flag_stops_keeping_a_live_run_warm(self) -> None:
+    @pytest.mark.regression
+    async def test_a_live_run_stays_warm_when_the_flag_reads_off(self) -> None:
+        # Regression: the flag reads off whenever PostHog is unreachable, and
+        # keep-warm then froze every running coding agent.
         tick = _Tick()
-        with tick.world({"lab": [_lab_todo(1)]}, flagged=set()):
+        with (
+            tick.world({"lab": [_lab_todo(1)]}),
+            patch.object(feature_flags.settings, "ENABLE_AGENT_LAB", False),
+        ):
             await tick.run()
-        assert tick.acquired == []
-        tick.pause.assert_awaited_once_with("lab")
+        assert tick.acquired == ["lab"]
+        tick.pause.assert_not_awaited()
 
     async def test_the_cap_notice_goes_out_once_per_cap_window(self) -> None:
         tick = _Tick()
@@ -367,10 +323,21 @@ class TestSaveAgentsHome:
         return ok, report
 
     async def test_a_save_runs_gaia_save(self) -> None:
-        run = AsyncMock()
+        run = AsyncMock(return_value=SimpleNamespace(exit_code=0, stdout="", stderr=""))
         ok, report = await self._save(run)
         assert ok
-        assert run.await_args.args[0] == agents_home.SAVE_SCRIPT
+        assert agents_home.SAVE_SCRIPT in run.await_args.args[0]
+        report.assert_not_awaited()
+
+    @pytest.mark.regression
+    async def test_a_home_whose_setup_failed_is_not_reported_as_a_failed_save(self) -> None:
+        # Regression: with setup failed there is no gaia-save, and the pause woke
+        # the todos with "saving failed" though there was nothing to save.
+        set_up_never = SimpleNamespace(
+            exit_code=0, stdout=f"{agents_home.HOME_NOT_SET_UP}\n", stderr=""
+        )
+        ok, report = await self._save(AsyncMock(return_value=set_up_never))
+        assert not ok
         report.assert_not_awaited()
 
     async def test_a_failed_save_wakes_the_todos_once_until_a_save_succeeds(self) -> None:

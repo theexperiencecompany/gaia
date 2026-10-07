@@ -45,7 +45,7 @@ from app.decorators import enforce_rate_limit
 from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
 from app.services.agent_lab.agents_home import build_agents_setup_command, restored_from
 from app.services.agent_lab.agents_saves import save_agents_home
-from app.services.agent_lab.lab_runs import keeps_sandbox_awake
+from app.services.agent_lab.lab_runs import lab_run_status
 from app.services.agent_lab.sandbox_events import SandboxEventKind, report_sandbox_event
 from app.services.feature_flags import is_agent_lab_enabled
 from app.services.sandbox.artifact_watcher import start_watcher_for
@@ -453,9 +453,8 @@ async def _liveness(sbx: AsyncSandbox) -> SandboxLiveness:
     """Classify the sandbox, asking E2B's control plane before calling a missed probe a death.
 
     One missed /health probe is not death: a live sandbox misses it about 1 in
-    60 times, and killing on that killed the coding agent running inside. When
-    the control plane cannot be asked either, the answer is ALIVE: never
-    destroy a sandbox on a guess; its next command fails loud if it is gone.
+    60 times, and killing on that killed the coding agent running inside. A
+    longer second probe decides, also when the control plane cannot be asked.
     """
     if await _health_probe(sbx):
         return SandboxLiveness.ALIVE
@@ -467,14 +466,14 @@ async def _liveness(sbx: AsyncSandbox) -> SandboxLiveness:
         return SandboxLiveness.GONE
     except Exception as e:
         log.warning(
-            f"{LogTag.SANDBOX} control plane unreachable; keeping the sandbox",
+            f"{LogTag.SANDBOX} control plane unreachable; the second probe decides",
             sandbox_id=sbx.sandbox_id,
             error_type=type(e).__name__,
             error=str(e),
         )
-        return SandboxLiveness.ALIVE
-    if info.state == SandboxState.PAUSED:
-        return SandboxLiveness.PAUSED
+    else:
+        if info.state == SandboxState.PAUSED:
+            return SandboxLiveness.PAUSED
     alive = await _health_probe(
         sbx,
         request_timeout=HEALTH_PROBE_RETRY_REQUEST_TIMEOUT_SECONDS,
@@ -711,10 +710,10 @@ async def _acquire_or_create(user_id: str, template_id: str) -> PooledSandbox:
 
 
 async def _cancel_pause_task(entry: PooledSandbox) -> None:
-    """Cancel a pending idle-pause task and wait for it to fully unwind."""
+    """Cancel a pending idle-pause task and wait for it to fully unwind; never the calling task."""
     task = entry.pause_task
     entry.pause_task = None
-    if task is None or task.done():
+    if task is None or task.done() or task is asyncio.current_task():
         return
     task.cancel()
     with contextlib.suppress(asyncio.CancelledError, Exception):
@@ -774,15 +773,12 @@ def _schedule_pause(user_id: str, entry: PooledSandbox) -> None:
         # inner ``except Exception`` never catches it — so the idle-pause task
         # cancels cleanly when work arrives.
         await asyncio.sleep(settings.E2B_SANDBOX_IDLE_PAUSE_SECONDS)
-        # At fire time, so a run starting or ending in the idle window counts.
-        if await keeps_sandbox_awake(user_id):
-            return
         if entry.refcount > 0:
             return
-        if not await _idle_on_every_replica(user_id):
+        # At fire time, so a run starting or ending in the idle window counts.
+        if is_agent_lab_template(entry.template_id) and (await lab_run_status(user_id)).live:
             return
-        await _stop_watcher(entry)
-        await _pause_sandbox(user_id, entry)
+        await pause_idle_sandbox(user_id)
 
     # Replace any prior pending pause so two tasks can't both fire on one entry.
     if entry.pause_task is not None and not entry.pause_task.done():
@@ -879,9 +875,10 @@ async def renew_sandbox(user_id: str) -> None:
 async def pause_idle_sandbox(user_id: str) -> bool:
     """Pause the user's running sandbox from any process once nobody used it in the idle window.
 
-    The in-process idle pause only fires after a call in that process, and a
-    coding agent makes none; keep-warm uses this for every lab sandbox it no
-    longer keeps awake. False when nothing was running or it is still in use.
+    Under the user's lock, so no command another replica starts during the
+    save is frozen mid-run. The idle timer and keep-warm (a coding agent makes
+    no GAIA calls) both pause through here. False when nothing was running or
+    it is still in use.
     """
     pool = get_sandbox_pool()
     async with pool.distributed_lock(user_id):

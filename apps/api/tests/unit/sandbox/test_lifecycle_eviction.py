@@ -181,7 +181,7 @@ async def test_a_tool_error_keeps_its_own_message_when_e2b_cannot_be_asked() -> 
     # Regression: the liveness check raised on a transient control-plane error,
     # replacing the tool's real error and leaving the sandbox state unknown.
     sbx = AsyncMock()
-    sbx.is_running = AsyncMock(return_value=False)
+    sbx.is_running = AsyncMock(side_effect=[False, True])
     unreachable = AsyncMock(side_effect=RuntimeError("e2b 502"))
     async with _run(sbx, body_error=RuntimeError("grep: no match"), control_plane=unreachable) as (
         uid,
