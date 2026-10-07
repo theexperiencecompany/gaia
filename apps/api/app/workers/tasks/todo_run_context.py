@@ -26,14 +26,7 @@ from app.db.repositories.todos import todo_repository
 from app.models.todo_models import TodoDocument, TodoRunContext
 from app.services.canvas_markdown import section_body
 from app.utils.general_utils import clip_text
-
-
-class TodoRunContext(NamedTuple):
-    """What a run reads from other todos: its parent's rules, its sub-todos, past lessons."""
-
-    parent_rules: str = ""
-    sub_todos: str = ""
-    learnings: str = ""
+from shared.py.wide_events import log
 
 
 async def collect_run_context(doc: TodoDocument) -> TodoRunContext:

@@ -92,7 +92,7 @@ from app.utils.occurrence import occurrence_stamp
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import Timezone
 from app.workers.task_envelope import arq_task
-from app.workers.tasks.todo_run_context import collect_reference_learnings
+from app.workers.tasks.todo_run_context import collect_reference_learnings, collect_run_context
 from app.workers.tasks.todo_run_prompt import build_execution_prompt
 from app.workers.tasks.tracked_todo_tasks import (
     _compute_next_run,
@@ -3184,19 +3184,24 @@ class TestCollectRunContext:
         doc = _doc(references=["507f1f77bcf86cd799439011"])
         with (
             patch(
-                f"{MODULE}.todo_repository.list_active_tracked",
+                "app.workers.tasks.todo_run_context.todo_repository.list_active_tracked",
                 AsyncMock(side_effect=RuntimeError("mongo down")),
             ),
             patch(
-                f"{MODULE}.todo_repository.find_by_ids",
+                "app.workers.tasks.todo_run_context.todo_repository.find_by_ids",
                 AsyncMock(side_effect=RuntimeError("mongo down")),
             ),
-            patch(f"{MODULE}.log") as mock_log,
+            patch("app.workers.tasks.todo_run_context.log") as mock_log,
         ):
-            context = await _collect_run_context(doc)
+            context = await collect_run_context(doc)
 
-        assert context == _RunContext()
+        assert context == TodoRunContext()
         assert mock_log.warning.call_count == 2
+        for call in mock_log.warning.call_args_list:
+            assert call.args[0] == "tracked_todo.run_context_incomplete"
+            assert call.kwargs["todo_id"] == "todo-1"
+            assert call.kwargs["error"] == "mongo down"
+            assert call.kwargs["error_type"] == "RuntimeError"
         assert {c.kwargs["section"] for c in mock_log.warning.call_args_list} == {
             "sub_todos",
             "learnings",
@@ -3212,14 +3217,14 @@ class TestCollectRunContext:
             raise RuntimeError("mongo down")
 
         with (
-            patch(f"{MODULE}.todo_repository.get", AsyncMock(side_effect=_get)),
+            patch("app.workers.tasks.todo_run_context.todo_repository.get", AsyncMock(side_effect=_get)),
             patch(
-                f"{MODULE}.todo_repository.list_active_tracked",
+                "app.workers.tasks.todo_run_context.todo_repository.list_active_tracked",
                 AsyncMock(side_effect=RuntimeError("mongo down")),
             ),
-            patch(f"{MODULE}.log"),
+            patch("app.workers.tasks.todo_run_context.log"),
         ):
-            context = await _collect_run_context(doc)
+            context = await collect_run_context(doc)
 
         assert "Be kind." in context.parent_rules
         assert context.sub_todos == ""
@@ -3229,11 +3234,11 @@ class TestCollectRunContext:
         doc = _doc(parent_todo_id="parent-1")
         with (
             patch(
-                f"{MODULE}.todo_repository.get", AsyncMock(side_effect=RuntimeError("mongo down"))
+                "app.workers.tasks.todo_run_context.todo_repository.get", AsyncMock(side_effect=RuntimeError("mongo down"))
             ),
-            patch(f"{MODULE}.log") as mock_log,
+            patch("app.workers.tasks.todo_run_context.log") as mock_log,
             pytest.raises(RuntimeError, match="mongo down"),
         ):
-            await _collect_run_context(doc)
+            await collect_run_context(doc)
 
         mock_log.warning.assert_not_called()

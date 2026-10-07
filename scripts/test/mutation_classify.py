@@ -626,21 +626,13 @@ def _unobservable_header_case(
     return False
 
 
-<<<<<<< HEAD
 class _MutationSpot(NamedTuple):
-=======
-class _RecaseSite(NamedTuple):
-    callee: ast.FunctionDef
-    module: dict[str, ast.FunctionDef]
-    literal: ast.Constant
->>>>>>> 0483be314b (fix(api): close the four race windows CodeRabbit found in watch registration)
     line_no: int
     col: int
     orig_line: str
     mut_line: str
 
 
-<<<<<<< HEAD
 class _RecaseSite(NamedTuple):
     callee: ast.FunctionDef
     module: dict[str, ast.FunctionDef]
@@ -648,8 +640,6 @@ class _RecaseSite(NamedTuple):
     spot: _MutationSpot
 
 
-=======
->>>>>>> 0483be314b (fix(api): close the four race windows CodeRabbit found in watch registration)
 def _unobservable_case_insensitive_heading(
     path: str, line_no: int, col: int, orig_line: str, mut_line: str
 ) -> bool:

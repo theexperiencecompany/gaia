@@ -49,7 +49,7 @@ def external_ref_guidance(doc: TodoDocument) -> str | None:
     """Return how to work the outside object the todo owns, or None when that kind has no contract."""
     if doc.external_ref is None:
         return None
-    guidance = _EXTERNAL_REF_RUN_GUIDANCE.get(doc.external_ref.source)
+    guidance = EXTERNAL_REF_RUN_GUIDANCE.get(doc.external_ref.source)
     return guidance.format(ref_id=doc.external_ref.id) if guidance else None
 
 
@@ -72,7 +72,7 @@ def opening_parts(
     title = doc.title
     if origin is None:
         return [f"Execute the following scheduled task: {title}"]
-    wake = _WAKE_OPENINGS.get(doc.external_ref.source) if doc.external_ref else None
+    wake = WAKE_OPENINGS.get(doc.external_ref.source) if doc.external_ref else None
     if wake is not None:
         woken = [wake.format(title=title)]
         if in_quiet_hours(local_now):
