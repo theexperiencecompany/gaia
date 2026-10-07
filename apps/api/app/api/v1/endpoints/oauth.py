@@ -27,6 +27,7 @@ from app.services.oauth.composio_callback import (
 )
 from app.services.oauth.oauth_service import store_user_info
 from app.services.oauth.oauth_state_service import (
+    OAuthStateData,
     is_safe_redirect_path,
     validate_and_consume_oauth_state,
 )
@@ -519,7 +520,7 @@ async def composio_callback(
     """
     log.set(operation="composio_callback", oauth={"provider": "composio", "status": status})
     # Validate and consume state token
-    state_data = await validate_and_consume_oauth_state(state)
+    state_data: OAuthStateData | None = await validate_and_consume_oauth_state(state)
     if not state_data:
         log.warning(f"{LogTag.OAUTH} Invalid OAuth state token", state_prefix=state[:8])
         return RedirectResponse(url=f"{settings.FRONTEND_URL}/redirect?oauth_error=invalid_state")

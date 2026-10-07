@@ -6,10 +6,10 @@ All provider-specific trigger handlers must extend this class.
 
 from abc import ABC, abstractmethod
 import asyncio
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from http import HTTPStatus
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal, TypedDict, cast
 
 from composio_client import APIStatusError
 
@@ -41,14 +41,27 @@ class TriggerEventResult(TypedDict):
     message: str
 
 
-def _parse_event_start_utc(data: dict[str, Any]) -> datetime | None:
+class _EventTiming(TypedDict, total=False):
+    """The timing fields a calendar-style trigger payload may carry; unchecked, as providers vary."""
+
+    start_time: object
+    startTime: object
+    countdown_window_minutes: object
+
+
+def _raw_event_start(data: Mapping[str, object]) -> object:
+    timing: _EventTiming = cast(_EventTiming, data)
+    return timing.get("start_time") or timing.get("startTime")
+
+
+def _parse_event_start_utc(data: Mapping[str, object]) -> datetime | None:
     """Best-effort extraction of an event's start time as a UTC datetime.
 
     Handles Composio/Google payloads that may ship start_time as an ISO-8601
     string with or without offset. Returns None when the field is absent or
     unparseable — callers should skip lag instrumentation in that case.
     """
-    raw = data.get("start_time") or data.get("startTime")
+    raw = _raw_event_start(data)
     if not isinstance(raw, str) or not raw:
         return None
     try:
@@ -60,7 +73,7 @@ def _parse_event_start_utc(data: dict[str, Any]) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
-def _log_event_timing(data: dict[str, Any], now_utc: datetime) -> None:
+def _log_event_timing(data: Mapping[str, object], now_utc: datetime) -> None:
     """Attach event-start and webhook-lag instrumentation to the log context."""
     event_start_utc = _parse_event_start_utc(data)
     if event_start_utc is None:
@@ -68,10 +81,11 @@ def _log_event_timing(data: dict[str, Any], now_utc: datetime) -> None:
     seconds_until_event = int((event_start_utc - now_utc).total_seconds())
     log.set(
         event_start_time_utc=event_start_utc.isoformat(),
-        event_start_time_raw=data.get("start_time") or data.get("startTime"),
+        event_start_time_raw=_raw_event_start(data),
         seconds_until_event=seconds_until_event,
     )
-    countdown = data.get("countdown_window_minutes")
+    timing: _EventTiming = cast(_EventTiming, data)
+    countdown = timing.get("countdown_window_minutes")
     if not isinstance(countdown, int):
         return
     expected_fire = event_start_utc.timestamp() - countdown * 60
@@ -200,9 +214,9 @@ class TriggerHandler(ABC):
         self,
         user_id: str,
         trigger_name: str,
-        configs: list[dict[str, Any]],
+        configs: Sequence[Mapping[str, object]],
         composio_slug: str,
-        config_description_fn: Callable[[dict[str, Any]], str] | None = None,
+        config_description_fn: Callable[[Mapping[str, object]], str] | None = None,
     ) -> list[str]:
         """Register multiple triggers in parallel with automatic rollback on failure.
 
@@ -217,13 +231,13 @@ class TriggerHandler(ABC):
         composio = get_composio_service()
         connected_account_id = await primary_account_for_trigger(user_id, composio_slug)
 
-        async def register_single(config: dict[str, Any]) -> str | None:
+        async def register_single(config: Mapping[str, object]) -> str | None:
             """Register a single trigger and return trigger_id."""
             result = await asyncio.to_thread(
                 composio.composio.triggers.create,
                 connected_account_id=connected_account_id,
                 slug=composio_slug,
-                trigger_config=config,
+                trigger_config=dict(config),
             )
             if result and hasattr(result, "trigger_id"):
                 return result.trigger_id
@@ -282,7 +296,7 @@ class TriggerHandler(ABC):
 
     @abstractmethod
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: dict[str, Any]
+        self, event_type: str, trigger_id: str, data: dict[str, object]
     ) -> list[Workflow]:
         """Find workflows that match an incoming webhook event."""
 
@@ -304,7 +318,7 @@ class TriggerHandler(ABC):
         event_type: str,
         trigger_id: str | None,
         user_id: str | None,
-        data: dict[str, Any],
+        data: dict[str, object],
     ) -> TriggerEventResult:
         """Process an incoming webhook event and queue matching workflows.
 
@@ -363,7 +377,7 @@ class TriggerHandler(ABC):
         return TriggerEventResult(status="success", message=f"Queued {queued_count} workflows")
 
     async def _queue_todo_dispatch(
-        self, event_type: str, trigger_id: str | None, user_id: str | None, data: dict[str, Any]
+        self, event_type: str, trigger_id: str | None, user_id: str | None, data: dict[str, object]
     ) -> bool:
         """Hand the todo fan-out to its worker task. Returns whether it was queued.
 
@@ -396,7 +410,7 @@ class TriggerHandler(ABC):
     async def _queue_one_workflow(
         self,
         workflow: Workflow,
-        data: dict[str, Any],
+        data: dict[str, object],
         signal_context_by_user: dict[str, str],
         event_type: str,
         trigger_id: str | None,

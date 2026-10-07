@@ -14,7 +14,8 @@ integration and running the shared integration expiry transition.
 """
 
 import asyncio
-from typing import Any, cast
+from collections.abc import Mapping
+from typing import TypedDict, cast
 
 from composio.core.models.webhook_events import is_connection_expired_event
 from fastapi import APIRouter, Request
@@ -113,7 +114,25 @@ async def _expire_connection(
         )
 
 
-def _handle_connection_event(body: dict[str, Any]) -> ComposioWebhookAckResponse:
+class _WebhookEnvelope(TypedDict, total=False):
+    """A Composio delivery as it arrives, before validation; values unchecked."""
+
+    type: object
+    timestamp: object
+    data: object
+
+
+class _TriggerData(TypedDict, total=False):
+    """The identifiers a trigger delivery's data carries; values unchecked."""
+
+    connection_id: object
+    connection_nano_id: object
+    trigger_nano_id: object
+    trigger_id: object
+    user_id: object
+
+
+def _handle_connection_event(body: Mapping[str, object]) -> ComposioWebhookAckResponse:
     """Route a Composio connection-lifecycle event onto the shared expiry transition.
 
     Always acknowledges: an envelope GAIA cannot parse, an integration it does not
@@ -122,10 +141,12 @@ def _handle_connection_event(body: dict[str, Any]) -> ComposioWebhookAckResponse
     """
     # Confirms the delivered shape against the SDK TypedDicts without ever
     # touching `data.state`, which carries the account's access/refresh tokens.
+    envelope: _WebhookEnvelope = cast(_WebhookEnvelope, body)
+    data = envelope.get("data")
     log.set_ns(
         "composio_connection",
         envelope_keys=sorted(body),
-        data_keys=sorted(body["data"]) if isinstance(body.get("data"), dict) else None,
+        data_keys=sorted(data) if isinstance(data, dict) else None,
     )
 
     try:
@@ -133,7 +154,7 @@ def _handle_connection_event(body: dict[str, Any]) -> ComposioWebhookAckResponse
     except ValidationError as e:
         log.error(
             f"{LogTag.COMPOSIO} Unparseable connection event — dropped",
-            event_type=body.get("type"),
+            event_type=envelope.get("type"),
             error_type=type(e).__name__,
             error=str(e),
         )
@@ -210,7 +231,7 @@ async def webhook_composio(request: Request) -> ComposioWebhookAckResponse:
     if is_connection_expired_event(body):
         # The SDK type guard narrows to its ConnectionExpiredEvent TypedDict; the
         # handler re-validates the payload itself rather than trusting that shape.
-        return _handle_connection_event(cast(dict[str, Any], body))
+        return _handle_connection_event(cast(Mapping[str, object], body))
 
     if not isinstance(body, dict):
         # Composio only ever sends an object, so this is malformed. Ack anyway:
@@ -222,17 +243,21 @@ async def webhook_composio(request: Request) -> ComposioWebhookAckResponse:
         )
         return ComposioWebhookAckResponse(message="Webhook body not understood")
 
-    data = body.get("data")
+    envelope: _WebhookEnvelope = cast(_WebhookEnvelope, body)
+    data = envelope.get("data")
+    trigger: _TriggerData = cast(_TriggerData, data if isinstance(data, dict) else {})
 
-    event_data = ComposioWebhookEvent(
-        connection_id=data.get("connection_id"),
-        connection_nano_id=data.get("connection_nano_id"),
-        trigger_nano_id=data.get("trigger_nano_id"),
-        trigger_id=data.get("trigger_id"),
-        user_id=data.get("user_id"),
-        data=data,
-        timestamp=body.get("timestamp"),
-        type=body.get("type"),
+    event_data = ComposioWebhookEvent.model_validate(
+        {
+            "connection_id": trigger.get("connection_id"),
+            "connection_nano_id": trigger.get("connection_nano_id"),
+            "trigger_nano_id": trigger.get("trigger_nano_id"),
+            "trigger_id": trigger.get("trigger_id"),
+            "user_id": trigger.get("user_id"),
+            "data": data,
+            "timestamp": envelope.get("timestamp"),
+            "type": envelope.get("type"),
+        }
     )
     log.set(
         user={"id": event_data.user_id},

@@ -13,6 +13,7 @@ call is scoped to, else the user's primary (see account_scope).
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal, TypedDict
 
@@ -80,7 +81,7 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
 
 def _build_parameters(
     headers: dict[str, str] | None,
-    query: dict[str, Any] | None,
+    query: Mapping[str, object] | None,
 ) -> list[dict[str, str]]:
     params: list[dict[str, str]] = []
     if headers:
@@ -192,7 +193,8 @@ def proxy_request_sync(request: ProxyRequest) -> Any:
     provider's differently-shaped JSON, and annotating it -> object measured
     47 new mypy errors across 16 files (mostly "object has no attribute get").
     """
-    return _proxy_call(request)["data"]
+    response: ProxyResponse = _proxy_call(request)
+    return response["data"]
 
 
 def proxy_request_full_sync(request: ProxyRequest) -> ProxyResponse:

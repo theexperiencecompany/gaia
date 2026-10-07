@@ -10,11 +10,30 @@ Uses Redis for temporary state storage with automatic expiration.
 """
 
 import secrets
+from typing import TypedDict, cast
 
 from app.constants.cache import STATE_KEY_PREFIX, STATE_TOKEN_TTL
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from shared.py.wide_events import OAuthContext, log
+
+
+class _StoredOAuthState(TypedDict, total=False):
+    """The Redis hash behind a state token; a field the writer never set is absent."""
+
+    user_id: str
+    redirect_path: str
+    integration_id: str
+    connected_account_id: str
+
+
+class OAuthStateData(TypedDict):
+    """A validated, consumed OAuth state; connected_account_id is empty unless a Composio connect set it."""
+
+    user_id: str
+    redirect_path: str
+    integration_id: str
+    connected_account_id: str
 
 
 async def create_oauth_state(user_id: str, redirect_path: str, integration_id: str) -> str:
@@ -77,7 +96,7 @@ async def attach_connected_account(state_token: str, connected_account_id: str) 
 
 async def validate_and_consume_oauth_state(
     state_token: str,
-) -> dict[str, str] | None:
+) -> OAuthStateData | None:
     """Validate an OAuth state token and delete it to prevent replay, or return None.
 
     Returns user_id, redirect_path, and integration_id when valid.
@@ -87,14 +106,16 @@ async def validate_and_consume_oauth_state(
         state_key = f"{STATE_KEY_PREFIX}:{state_token}"
 
         # Get state data
-        state_data = await redis_client.hgetall(state_key)
+        state_data: _StoredOAuthState = cast(
+            _StoredOAuthState, await redis_client.hgetall(state_key)
+        )
 
         if not state_data:
             log.warning(f"{LogTag.OAUTH} Invalid or expired OAuth state token")
             return None
 
         # Decode bytes to strings
-        result = {
+        result: OAuthStateData = {
             "user_id": state_data.get("user_id", ""),
             "redirect_path": state_data.get("redirect_path", ""),
             "integration_id": state_data.get("integration_id", ""),

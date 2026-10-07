@@ -972,9 +972,10 @@ class TestSlackTriggerHandler:
         )
         assert len(result) == 1
 
+    @pytest.mark.regression
     @patch("app.services.triggers.handlers.slack.workflow_repository")
-    async def test_find_workflows_channel_filter_skips(self, mock_repo):
-        """A non-empty channel_ids list makes the handler call .split on a list, raise, and skip the workflow."""
+    async def test_a_message_in_a_selected_channel_fires_the_workflow(self, mock_repo):
+        """channel_ids is a list; treating it as a comma string raised, and every channel-filtered workflow was skipped."""
         wf = _make_workflow(
             trigger_name="slack_new_message",
             composio_trigger_ids=[TRIGGER_ID],
@@ -984,9 +985,24 @@ class TestSlackTriggerHandler:
 
         handler = SlackTriggerHandler()
         result = await handler.find_workflows(
-            "SLACK_RECEIVE_MESSAGE", TRIGGER_ID, {"channel": "C001", "text": "hello"}
+            "SLACK_RECEIVE_MESSAGE", TRIGGER_ID, {"channel": "C002", "text": "hello"}
         )
-        assert len(result) == 0
+        assert result == [wf]
+
+    @patch("app.services.triggers.handlers.slack.workflow_repository")
+    async def test_a_message_outside_the_selected_channels_is_skipped(self, mock_repo):
+        wf = _make_workflow(
+            trigger_name="slack_new_message",
+            composio_trigger_ids=[TRIGGER_ID],
+            trigger_data=SlackNewMessageConfig(channel_ids=["C001", "C002"]),
+        )
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
+
+        handler = SlackTriggerHandler()
+        result = await handler.find_workflows(
+            "SLACK_RECEIVE_MESSAGE", TRIGGER_ID, {"channel": "C999", "text": "hello"}
+        )
+        assert result == []
 
     @patch("app.services.triggers.handlers.slack.workflow_repository")
     async def test_find_workflows_no_channel_filter_passes_all(self, mock_repo):
