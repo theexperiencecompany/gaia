@@ -39,7 +39,9 @@ async def test_build_oauth_result_logs_dcr_rejection_as_warning_not_error() -> N
     # It must NOT reach Sentry as an ERROR — warn instead.
     mock_log.error.assert_not_called()
     mock_log.warning.assert_called_once()
-    _, kwargs = mock_log.warning.call_args
+    args, kwargs = mock_log.warning.call_args
+    assert "OAuth discovery failed" in args[0]
+    assert "allowed list" in kwargs["error"]
     assert kwargs["integration_id"] == INTEGRATION_ID
     assert kwargs["error_type"] == "ValueError"
 
@@ -58,6 +60,8 @@ async def test_build_oauth_result_logs_unexpected_failure_as_error() -> None:
     assert result["status"] == "failed"
     mock_log.warning.assert_not_called()
     mock_log.error.assert_called_once()
-    _, kwargs = mock_log.error.call_args
+    args, kwargs = mock_log.error.call_args
+    assert "OAuth discovery failed unexpectedly" in args[0]
+    assert "missing_field" in kwargs["error"]
     assert kwargs["integration_id"] == INTEGRATION_ID
     assert kwargs["error_type"] == "KeyError"

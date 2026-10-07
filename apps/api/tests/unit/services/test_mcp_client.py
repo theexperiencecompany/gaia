@@ -3250,8 +3250,11 @@ class TestMCPClientRegisterClient:
 
         mock_log.error.assert_not_called()
         mock_log.warning.assert_called_once()
-        _, kwargs = mock_log.warning.call_args
+        args, kwargs = mock_log.warning.call_args
+        assert "DCR rejected by authorization server" in args[0]
+        assert "Registration failed: 400" in kwargs["error"]
         assert kwargs["integration_id"] == INTEGRATION_ID
+        assert kwargs["registration_endpoint"] == "https://auth.example.com/register"
         # The logged error_type is the original caught exception (the SDK raises
         # OAuthRegistrationError on a 4xx body), not the ValueError it is wrapped in.
         assert kwargs["error_type"] == "OAuthRegistrationError"
@@ -3279,8 +3282,11 @@ class TestMCPClientRegisterClient:
 
         mock_log.warning.assert_not_called()
         mock_log.error.assert_called_once()
-        _, kwargs = mock_log.error.call_args
+        args, kwargs = mock_log.error.call_args
+        assert "DCR failed unexpectedly" in args[0]
+        assert kwargs["error"] == "Network error"
         assert kwargs["integration_id"] == INTEGRATION_ID
+        assert kwargs["registration_endpoint"] == "https://auth.example.com/register"
         assert kwargs["error_type"] == "Exception"
 
 
