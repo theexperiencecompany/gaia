@@ -70,7 +70,7 @@ def _make_sentry_loguru_sink() -> Callable[[object], None]:
     def _sink(message: object) -> None:
         # loguru hands the sink a Message whose .record is a stub-only TypedDict;
         # cast to the local shape so the field reads are key-checked.
-        record: _Record = cast("_Message", message).record
+        record: _Record = cast(_Message, message).record
         if record["level"].no < 40:  # below ERROR — skip
             return
 
