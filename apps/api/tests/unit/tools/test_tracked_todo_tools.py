@@ -1834,7 +1834,7 @@ class TestSubTodoTools:
         }
         assert result == "Updated tracked todo t1: notify_on_run, parent_todo_id"
 
-    async def test_a_parent_completed_mid_move_rolls_the_move_back(self):
+    async def test_a_parent_completed_mid_move_rolls_the_move_back(self, recorded_changes):
         moving = TodoDocument(
             id="t1", user_id="user-1", title="Reply to Sam", labels=[GAIA_TRACKED_LABEL]
         )
@@ -1857,9 +1857,18 @@ class TestSubTodoTools:
                 config=_config(), todo_id="t1", parent_todo_id=self.DESK
             )
 
-        assert "rolled back" in result
-        rollback = update.await_args_list[-1].kwargs["update"]
+        assert result == (
+            "Error: the parent no longer accepts sub-todos, "
+            "so moving todo t1 under it was rolled back. "
+            "Reopen the parent first, or pick an open one."
+        )
+        rollback_call = update.await_args_list[-1]
+        assert rollback_call.args == ("t1",)
+        assert rollback_call.kwargs["user_id"] == "user-1"
+        rollback = rollback_call.kwargs["update"]
         assert rollback.parent_todo_id is None
+        recorded_changes.assert_awaited_once()
+        assert recorded_changes.await_args.args[:2] == ("t1", "user-1")
 
     async def test_a_refused_parent_on_update_saves_nothing(self):
         existing = TodoDocument(id="t1", user_id="user-1", title="Reply to Sam")

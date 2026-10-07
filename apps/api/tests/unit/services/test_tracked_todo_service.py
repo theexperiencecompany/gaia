@@ -593,6 +593,10 @@ class TestReconcileParentCompletion:
             await _reconcile_parent_completion(USER_ID, _PARENT_ID, _CHILD_ID)
 
         assert complete.await_args.args[:2] == (_CHILD_ID, USER_ID)
+        assert (
+            complete.await_args.kwargs["summary"]
+            == "Parent completed while this sub-todo was being created."
+        )
 
     async def test_a_parent_deleted_mid_create_completes_the_newborn(self, mock_repo):
         mock_repo.get.return_value = None
@@ -602,6 +606,10 @@ class TestReconcileParentCompletion:
             await _reconcile_parent_completion(USER_ID, _PARENT_ID, _CHILD_ID)
 
         complete.assert_awaited_once()
+        assert (
+            complete.await_args.kwargs["summary"]
+            == "Parent completed while this sub-todo was being created."
+        )
 
 
 class TestCreateSubTodo:
