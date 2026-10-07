@@ -2,4 +2,4 @@
 
 import os
 
-os.environ.setdefault("HERMETIC_ALLOW_KEYS", "OPENROUTER_API_KEY")
+os.environ.setdefault("HERMETIC_ALLOW_KEYS", "OPENROUTER_API_KEY,OPENAI_API_KEY,DEV_LLM_API_KEY")

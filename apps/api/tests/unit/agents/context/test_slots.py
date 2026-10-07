@@ -88,6 +88,7 @@ class TestSlotOrder:
             PromptSlot.TODO_CONTEXT,
             PromptSlot.BACKGROUND_EXECUTOR,
             PromptSlot.EXECUTOR_STATUS,
+            PromptSlot.BROWSER_TASK,
             PromptSlot.MEMORY_RECALL,
             PromptSlot.CONVERSATION,
             PromptSlot.TIME,
@@ -114,6 +115,7 @@ class TestRequestSlotOrder:
             PromptSlot.TODO_CONTEXT,
             PromptSlot.BACKGROUND_EXECUTOR,
             PromptSlot.EXECUTOR_STATUS,
+            PromptSlot.BROWSER_TASK,
             PromptSlot.MEMORY_RECALL,
             PromptSlot.TIME,
         )

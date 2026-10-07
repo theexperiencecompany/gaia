@@ -11,6 +11,7 @@ Redis, external services). Verifies that each task function:
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -332,6 +333,8 @@ class TestTaskErrorHandling:
 
 
 @pytest.mark.integration
+# The fire's reservation renews its liveness in Redis: a per-test one, never the ambient client.
+@pytest.mark.usefixtures("fake_redis")
 class TestWorkflowTaskExecution:
     """Verify workflow execution tracks success/failure and sends notifications."""
 
@@ -517,6 +520,12 @@ class TestWorkflowTaskExecution:
 @pytest.mark.integration
 class TestWorkerStartupHooks:
     """Verify the ARQ startup function initializes required services."""
+
+    @pytest.fixture(autouse=True)
+    def _no_browser_worker(self) -> Iterator[None]:
+        # A real one would start consuming the browser queue on whatever Redis is up.
+        with patch("app.workers.lifecycle.startup.start_browser_worker"):
+            yield
 
     async def test_startup_calls_unified_startup(self):
         """The startup hook should invoke unified_startup with 'arq_worker'."""

@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 from uuid import UUID
 
 from fastapi import HTTPException
+import httpx
 from httpx import AsyncClient
 from prometheus_client import REGISTRY
 import pytest
@@ -1453,7 +1454,10 @@ class TestBotTranscribe:
             )
 
         assert response.status_code == 402
-        assert mock_log.set.call_args_list[-1].kwargs == {"outcome": "subscription_required"}
+        assert mock_log.set.call_args_list[-1].kwargs == {
+            "outcome": "subscription_required",
+            "reason": "subscription_required",
+        }
 
     @patch("app.api.v1.endpoints.bot.capture_event")
     @patch(
@@ -1626,6 +1630,221 @@ class TestBotTranscribe:
 
         assert response.status_code == 502
         mock_capture.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Refusals: the body the bots branch on, and the reason on the wide event
+# ---------------------------------------------------------------------------
+
+_LINKED_HEADERS = {"X-Bot-Platform": "discord", "X-Bot-Platform-User-Id": "u1"}
+_VOICE_NOTE = {"file": ("voice.ogg", b"fake-audio-bytes", "audio/ogg")}
+
+
+@pytest.fixture
+def bot_log():
+    with patch("app.api.v1.endpoints.bot.log") as mock_log:
+        yield mock_log
+
+
+@pytest.fixture
+def api_key_ok():
+    with patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock):
+        yield
+
+
+@pytest.fixture
+def unlinked():
+    with patch(
+        "app.utils.auth_utils.user_repository.get_by_platform_id",
+        new_callable=AsyncMock,
+        return_value=None,
+    ):
+        yield
+
+
+def _chunked_multipart(files: dict) -> tuple[dict[str, str], AsyncGenerator[bytes]]:
+    """Encode files as multipart and stream them without a Content-Length, as a chunked client does."""
+    encoded = httpx.Request("POST", "http://x", files=files)
+    body = encoded.read()
+
+    async def chunks() -> AsyncGenerator[bytes]:
+        yield body
+
+    return {"content-type": encoded.headers["content-type"]}, chunks()
+
+
+class TestBotRefusalsSayWhy:
+    """The bots branch on a refusal's code and show its message; ops query the wide event's reason.
+
+    A refusal that loses either still returns the right status, so the status alone proves nothing.
+    """
+
+    async def test_a_missing_bot_key_is_refused_with_its_code(
+        self, bot_log: MagicMock, client: AsyncClient
+    ):
+        response = await client.post(f"{BOT_BASE}/unlink", headers=_LINKED_HEADERS)
+
+        assert response.status_code == 401
+        assert response.json() == {
+            "message": "Invalid or missing bot API key",
+            "code": "BOT_API_KEY_INVALID",
+        }
+        bot_log.fail.assert_called_once_with("bot_api_key_invalid")
+
+    async def test_an_unlinked_account_is_told_to_link_before_resetting(
+        self, bot_log: MagicMock, api_key_ok: None, unlinked: None, client: AsyncClient
+    ):
+        response = await client.post(
+            f"{BOT_BASE}/reset-session",
+            json={"platform": "discord", "platform_user_id": "u1", "channel_id": "ch1"},
+        )
+
+        assert response.status_code == 401
+        assert response.json() == {
+            "message": "This platform account is not linked to a GAIA account.",
+            "code": "BOT_ACCOUNT_NOT_LINKED",
+        }
+        bot_log.fail.assert_called_once_with("account_not_linked")
+
+    async def test_an_unknown_platform_is_refused(
+        self, bot_log: MagicMock, api_key_ok: None, client: AsyncClient
+    ):
+        response = await client.post(
+            f"{BOT_BASE}/unlink",
+            headers={"X-Bot-Platform": "badplatform", "X-Bot-Platform-User-Id": "u1"},
+        )
+
+        assert response.status_code == 400
+        assert response.json() == {"message": "Invalid platform"}
+        bot_log.fail.assert_called_once_with("invalid_platform")
+
+    async def test_an_unlink_without_its_platform_headers_is_refused(
+        self, bot_log: MagicMock, api_key_ok: None, client: AsyncClient
+    ):
+        response = await client.post(f"{BOT_BASE}/unlink")
+
+        assert response.status_code == 400
+        assert response.json() == {"message": "Missing platform headers"}
+        bot_log.fail.assert_called_once_with("missing_platform_headers")
+
+    async def test_unlinking_an_account_that_was_never_linked_is_a_not_found(
+        self, bot_log: MagicMock, api_key_ok: None, unlinked: None, client: AsyncClient
+    ):
+        response = await client.post(f"{BOT_BASE}/unlink", headers=_LINKED_HEADERS)
+
+        assert response.status_code == 404
+        assert response.json() == {
+            "message": "Account not linked",
+            "code": "BOT_ACCOUNT_NOT_LINKED",
+        }
+        bot_log.fail.assert_called_once_with("account_not_linked")
+
+    async def test_an_unlinked_chat_turn_is_stamped_not_authenticated(
+        self, bot_log: MagicMock, api_key_ok: None, unlinked: None, client: AsyncClient
+    ):
+        with patch(
+            "app.api.v1.endpoints.bot.BotService.enforce_rate_limit", new_callable=AsyncMock
+        ):
+            await client.post(f"{BOT_BASE}/chat-stream", json=_CHAT_BODY("discord"))
+
+        bot_log.set.assert_any_call(outcome="not_authenticated", reason="account_not_linked")
+
+    async def test_a_reset_session_is_stamped_with_the_linked_user(
+        self, bot_log: MagicMock, api_key_ok: None, client: AsyncClient
+    ):
+        with (
+            patch(
+                "app.utils.auth_utils.user_repository.get_by_platform_id",
+                new_callable=AsyncMock,
+                return_value=UserDocument(id="uid1"),
+            ),
+            patch("app.api.v1.endpoints.bot.BotService") as bot_service,
+            patch("app.api.v1.endpoints.bot.capture_event"),
+        ):
+            bot_service.reset_session = AsyncMock(return_value="new-convo-id")
+            response = await client.post(
+                f"{BOT_BASE}/reset-session",
+                json={"platform": "discord", "platform_user_id": "u1", "channel_id": "ch1"},
+            )
+
+        assert response.status_code == 200
+        bot_log.set.assert_any_call(user={"id": "uid1"})
+
+
+class TestBotTranscribeRefusals:
+    """A voice note the API will not transcribe is refused before any Whisper spend, with why."""
+
+    async def test_a_declared_oversize_upload_is_refused_with_the_limit_in_megabytes(
+        self, bot_log: MagicMock, api_key_ok: None, client: AsyncClient
+    ):
+        with (
+            patch("app.api.v1.endpoints.bot.MAX_AUDIO_BYTES", 1024 * 1024),
+            patch("app.api.v1.endpoints.bot.transcribe_audio", new_callable=AsyncMock) as whisper,
+        ):
+            response = await client.post(
+                f"{BOT_BASE}/transcribe",
+                files={"file": ("voice.ogg", b"x" * (1024 * 1024 + 1), "audio/ogg")},
+            )
+
+        assert response.status_code == 413
+        assert response.json() == {"message": "Audio exceeds the 1 MB limit."}
+        bot_log.fail.assert_called_once_with("audio_too_large")
+        whisper.assert_not_awaited()
+
+    async def test_an_oversize_upload_with_no_declared_length_is_refused_once_read(
+        self, bot_log: MagicMock, api_key_ok: None, client: AsyncClient
+    ):
+        headers, body = _chunked_multipart(
+            {"file": ("voice.ogg", b"x" * (2 * 1024 * 1024 + 1), "audio/ogg")}
+        )
+        with (
+            patch("app.api.v1.endpoints.bot.MAX_AUDIO_BYTES", 2 * 1024 * 1024),
+            patch("app.api.v1.endpoints.bot.transcribe_audio", new_callable=AsyncMock) as whisper,
+        ):
+            response = await client.post(f"{BOT_BASE}/transcribe", headers=headers, content=body)
+
+        assert response.status_code == 413
+        assert response.json() == {"message": "Audio exceeds the 2 MB limit."}
+        bot_log.fail.assert_called_once_with("audio_too_large")
+        whisper.assert_not_awaited()
+
+    async def test_the_validators_size_verdict_is_a_413_in_its_own_words(
+        self, bot_log: MagicMock, api_key_ok: None, client: AsyncClient
+    ):
+        with patch(
+            "app.api.v1.endpoints.bot.validate_audio_payload",
+            side_effect=bot_module.AudioTooLargeError("Audio is 9 bytes; max supported is 8."),
+        ):
+            response = await client.post(f"{BOT_BASE}/transcribe", files=_VOICE_NOTE)
+
+        assert response.status_code == 413
+        assert response.json() == {"message": "Audio is 9 bytes; max supported is 8."}
+        bot_log.fail.assert_called_once_with("audio_too_large")
+
+    async def test_a_non_audio_upload_is_an_unsupported_format(
+        self, bot_log: MagicMock, api_key_ok: None, client: AsyncClient
+    ):
+        response = await client.post(
+            f"{BOT_BASE}/transcribe", files={"file": ("notes.txt", b"hello", "text/plain")}
+        )
+
+        assert response.status_code == 415
+        assert response.json() == {"message": "Unsupported audio content type: text/plain."}
+        bot_log.fail.assert_called_once_with("unsupported_audio_format")
+
+    async def test_a_provider_failure_is_a_502_that_leaks_nothing(
+        self, bot_log: MagicMock, api_key_ok: None, client: AsyncClient
+    ):
+        with patch(
+            "app.api.v1.endpoints.bot.transcribe_audio",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("openai key sk-live-abc rejected"),
+        ):
+            response = await client.post(f"{BOT_BASE}/transcribe", files=_VOICE_NOTE)
+
+        assert response.status_code == 502
+        assert response.json() == {"message": "Transcription failed"}
+        bot_log.fail.assert_called_once_with("transcription_failed")
 
 
 # ---------------------------------------------------------------------------

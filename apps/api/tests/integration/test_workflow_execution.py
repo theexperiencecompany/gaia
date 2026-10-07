@@ -887,7 +887,7 @@ class TestGenerationServiceRetries:
         with (
             # Schema-invalid output on every attempt exhausts the regeneration loop.
             patch(
-                "app.services.workflow.generation_service._structured_one_shot",
+                "app.services.workflow.generation_service.ainvoke_structured",
                 new_callable=AsyncMock,
                 side_effect=OutputParserException("bad json"),
             ),

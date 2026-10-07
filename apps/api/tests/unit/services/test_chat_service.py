@@ -1562,6 +1562,138 @@ class TestRunChatStreamBackground:
         assert state.ttft_ms == 2000.0
         assert state.e2e_ack_ms == 2000.0
 
+    async def _drive(self, agent_chunks, sm, save, *, stream_id="stream_dispatch"):
+        async def agent_stream():
+            for chunk in agent_chunks:
+                yield chunk
+
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=AsyncMock(return_value=agent_stream()),
+            ),
+            patch("app.services.chat.stream.save_conversation_async", new=save),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+        ):
+            await run_chat_stream_background(
+                stream_id=stream_id,
+                body=self.dispatch_body(),
+                user=AuthenticatedUser(user_id="user_1", email="a@b.com"),
+                conversation_id="conv_existing_123",
+            )
+
+    @staticmethod
+    def dispatch_body() -> MessageRequestWithHistory:
+        return MessageRequestWithHistory(
+            message="hi", messages=[], conversation_id="conv_existing_123"
+        )
+
+    # executor tool_data attach + finalize backstop: attach is the sole owner of
+    # the executor's cards on a live delegated turn; `_finalize_stream` re-runs
+    # it as a backstop when the turn was cut short. Both paths fail silently.
+
+    async def test_a_completed_attach_is_not_repeated_by_the_finally_backstop(
+        self, test_user
+    ) -> None:
+        """Flip attached on a completed attach so the finally backstop does not wait and drain twice."""
+        wait = AsyncMock(return_value=True)
+
+        with (
+            patch("app.services.chat.stream.await_executor_done", new=wait),
+            patch("app.services.chat.stream.drain_executor_tool_data", return_value=[]),
+        ):
+            await self._drive(["data: [DONE]\n\n"], _make_stream_manager_mock(), AsyncMock())
+
+        wait.assert_awaited_once()
+
+    async def test_the_fallback_save_persists_this_turn_recovered_from_its_own_stream(
+        self, test_user, existing_conv_body
+    ) -> None:
+        """Recover this stream's progress and save it under this conversation and user, or write an empty turn."""
+        sm = _make_stream_manager_mock()
+        sm.get_progress = AsyncMock(
+            side_effect=lambda sid: {"complete_message": "recovered"}
+            if sid == "stream_fallback"
+            else None
+        )
+        save = AsyncMock()
+
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=AsyncMock(side_effect=RuntimeError("agent down")),
+            ),
+            patch("app.services.chat.stream.save_conversation_async", new=save),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_fallback",
+                body=existing_conv_body,
+                user=test_user,
+                conversation_id="conv_existing_123",
+            )
+
+        assert save.call_args.kwargs["complete_message"] == "recovered"
+        assert save.call_args.kwargs["body"] is existing_conv_body
+        assert save.call_args.kwargs["user"] == test_user
+        assert save.call_args.kwargs["conversation_id"] == "conv_existing_123"
+
+    async def test_the_backstop_attaches_the_executor_cards_to_this_conversation(
+        self, test_user, existing_conv_body
+    ) -> None:
+        """A turn cut short during the executor wait leaves saved=True but attached=False; the backstop is the only thing that still writes the cards, and it must write them to the conversation they belong to."""
+        entries = [{"tool_name": "browser_task", "data": {"steps": 3}}]
+        append = AsyncMock(return_value=True)
+
+        with (
+            patch(
+                "app.services.chat.stream.await_executor_done",
+                new=AsyncMock(side_effect=[RuntimeError("wait interrupted"), True]),
+            ),
+            patch("app.services.chat.stream.drain_executor_tool_data", return_value=entries),
+            patch(
+                "app.services.chat.stream.conversation_repository.append_message_tool_data",
+                new=append,
+            ),
+        ):
+            await self._drive(["data: [DONE]\n\n"], _make_stream_manager_mock(), AsyncMock())
+
+        append.assert_awaited_once()
+        assert append.await_args.args[0] == "conv_existing_123"
+        assert append.await_args.kwargs["entries"] == entries
+
+    async def test_a_failing_backstop_attach_is_reported_with_its_cause(self, test_user) -> None:
+        """Best-effort means the user loses their cards silently; the wide event is the only signal that it happened, so it carries the stream, the cause and the conversation."""
+        with (
+            patch("app.services.chat.stream.log") as mock_log,
+            patch(
+                "app.services.chat.stream.await_executor_done",
+                new=AsyncMock(side_effect=RuntimeError("executor gone")),
+            ),
+        ):
+            mock_log.get.return_value = {}
+            await self._drive(
+                ["data: [DONE]\n\n"],
+                _make_stream_manager_mock(),
+                AsyncMock(),
+                stream_id="stream_backstop",
+            )
+
+        errors = [
+            c
+            for c in mock_log.error.call_args_list
+            if "Backstop executor tool_data attach failed" in c.args[0]
+        ]
+        assert len(errors) == 1
+        assert errors[0].kwargs == {
+            "stream_id": "stream_backstop",
+            "error": "executor gone",
+            "error_type": "RuntimeError",
+            "conversation_id": "conv_existing_123",
+        }
+
     async def _run_turn(
         self, user: AuthenticatedUser, *reply_pieces: str
     ) -> tuple[list[tuple[str, dict[str, Any]]], AsyncMock, MagicMock]:
@@ -1961,3 +2093,13 @@ class TestTurnLatencyHelpers:
                 None,
             )
         assert _log.get()["chat"] == {"delegated": False, "queued": False}
+
+
+class TestAFreshStreamState:
+    """A new turn starts with nothing saved and nothing attached, as real bools."""
+
+    def test_starts_with_nothing_saved_or_attached(self) -> None:
+        state = _StreamState()
+
+        assert state.saved is False
+        assert state.attached is False

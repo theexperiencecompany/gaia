@@ -27,12 +27,12 @@ import { BOT_STREAM_ERROR, type ReactionHandler } from "../api/chat-stream";
 import type { ChatRequest, PlatformName } from "../types";
 import { segmentIntoBubbles } from "./bubbles";
 import { isMessageGoneError, retryAfterMs } from "./delivery-errors";
+import { BOT_FAILURE_REASON, recordBotFailure } from "./failure-reasons";
 import {
   buildPlanRequiredMessage,
   formatBotError,
   PLATFORM_MARKDOWN,
 } from "./formatters";
-
 import {
   createBotLogger,
   hashLogIdentifier,
@@ -123,7 +123,7 @@ async function _handleStream(
   editMessage: MessageEditor,
   sendNewMessage: NewMessageSender,
   onAuthError: ((authUrl: string) => Promise<void>) | null,
-  onGenericError: (formattedError: string) => Promise<void>,
+  onGenericError: (formattedError: string, cause: unknown) => Promise<void>,
   options: StreamingOptions,
   onReaction: ReactionHandler | undefined,
 ): Promise<void> {
@@ -133,7 +133,8 @@ async function _handleStream(
   // platform converter HERE, at the single chokepoint, so adapters receive
   // already-converted text and never call convertTo<Platform>Markdown inline.
   const render = PLATFORM_MARKDOWN[platform];
-  const emitGenericError = (text: string) => onGenericError(render(text));
+  const emitGenericError = (text: string, cause: unknown) =>
+    onGenericError(render(text), cause);
   const wrappedEditMessage: MessageEditor = (text) => editMessage(render(text));
   const wrappedSendNewMessage: NewMessageSender = async (text) => {
     const editor = await sendNewMessage(render(text));
@@ -241,18 +242,19 @@ async function _handleStream(
    * harmless — the next preview or the finished-bubble delivery supersedes it.
    */
   const previewBubble = async (text: string): Promise<void> => {
-    if (!text) return;
-    if (bubbleSealed) {
-      currentEditor = await wrappedSendNewMessage(text);
-      shownText = text;
-      bubbleSealed = false;
-      return;
-    }
-    if (text === shownText) return;
+    if (!text || (!bubbleSealed && text === shownText)) return;
+    // A preview is best effort and is queued without being awaited, so it must never reject:
+    // a failed preview would otherwise surface as an unhandled rejection, or fail the final
+    // delivery that awaits the queue.
     try {
-      await currentEditor(text);
+      if (bubbleSealed) {
+        currentEditor = await wrappedSendNewMessage(text);
+        bubbleSealed = false;
+      } else {
+        await currentEditor(text);
+        bubbleProvisional = false;
+      }
       shownText = text;
-      bubbleProvisional = false;
     } catch (err) {
       // Transient: the live bubble may have been deleted or the interaction expired — the next
       // edit or final delivery recovers. But a persistent edit problem is exactly how a bot
@@ -397,14 +399,16 @@ async function _handleStream(
             clearTimeout(editTimer);
             editTimer = null;
           }
-          enqueue(() => previewBubble(previewFor(pending)));
+          // A preview never rejects (previewBubble catches its own failures), so
+          // it is queued without waiting; the final delivery awaits the queue.
+          void enqueue(() => previewBubble(previewFor(pending)));
         } else if (!editTimer) {
           editTimer = setTimeout(
             () => {
               editTimer = null;
               if (!streamDone) {
                 lastEditTime = Date.now();
-                enqueue(() => previewBubble(previewFor(pending)));
+                void enqueue(() => previewBubble(previewFor(pending)));
               }
             },
             editIntervalMs - (now - lastEditTime),
@@ -456,17 +460,19 @@ async function _handleStream(
               request.platformUserId,
             );
             await onAuthError(authUrl);
-          } catch {
+          } catch (linkError) {
             await emitGenericError(
               "Failed to generate auth link. Please try /auth again.",
+              linkError,
             );
           }
         } else if (error.message === BOT_STREAM_ERROR.planRequired) {
           await emitGenericError(
             buildPlanRequiredMessage(gaia.getPricingUrl()),
+            error,
           );
         } else {
-          await emitGenericError(formatBotError(error));
+          await emitGenericError(formatBotError(error, platform), error);
         }
       },
       deliverOutOfBand,
@@ -478,10 +484,14 @@ async function _handleStream(
     // time it reaches here the user is already told — reporting again doubled every rate limit
     // and dead backend. This catch only nets failures that never reached `onError` (e.g. a throw from a delivery callback).
     if (failureReported) {
-      logger.info("stream_error_already_reported", sanitizeErrorForLog(error));
+      // Usually the rethrow of what onError already recorded — or delivering that notice failed.
+      wideLog.warning(
+        "stream_error_already_reported",
+        sanitizeErrorForLog(error),
+      );
       return;
     }
-    await emitGenericError(formatBotError(error));
+    await emitGenericError(formatBotError(error, platform), error);
   }
 }
 
@@ -533,7 +543,6 @@ export async function handleStreamingChat(
         options,
         analytics,
         userHash,
-        channelHash,
         onReaction,
       ),
   );
@@ -550,7 +559,6 @@ async function runStreamingChat(
   options: StreamingOptions,
   analytics: AnalyticsContext | undefined,
   userHash: string | undefined,
-  channelHash: string | undefined,
   onReaction: ReactionHandler | undefined,
 ): Promise<void> {
   const startMs = Date.now();
@@ -581,16 +589,18 @@ async function runStreamingChat(
     // A fresh auth link was minted for this user (createLinkToken in
     // _handleStream) — leave an audit trail like the backend's auth routes do.
     wideLog.audit("auth_link_issued", { user_hash: userHash });
+    wideLog.fail(BOT_FAILURE_REASON.ACCOUNT_NOT_LINKED);
     await onAuthError(authUrl);
   };
 
-  const wrappedOnGenericError = async (formattedError: string) => {
+  const wrappedOnGenericError = async (
+    formattedError: string,
+    cause: unknown,
+  ) => {
     hadError = true;
-    // Surface the failure with full latency context so every error is visible —
-    // a real-time line plus an errors[] entry on this chat's wide event.
-    wideLog.error("chat_stream_failed", {
-      user_hash: userHash,
-      channel_hash: channelHash,
+    // The failure with its reason and full latency context — a real-time line,
+    // an errors[] entry, and outcome "failed" on this chat's wide event.
+    recordBotFailure("chat_stream_failed", cause, {
       duration_ms: Date.now() - startMs,
       ttfb_ms: firstChunkMs,
       chunk_count: chunkCount,

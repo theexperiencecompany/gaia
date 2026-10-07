@@ -140,7 +140,7 @@ unpinned, the unpinned run hitting a warm upstream's copy of the shared
 prefix).
 
 **What ships is not that.** The aux one-shots now carry their own suffixed
-session (`{session_id}-aux`, see `_aux_structured_runnable`) precisely so they
+session (`{session_id}-aux`, see `_structured_runnable`) precisely so they
 cannot re-pin the conversation's provider, and the sticky-flip retry recovers
 the cold-flip case rather than relying on the pin alone. Measured best on the
 real full graph in that shape — 82.2% total, 83–88% steady-state (recorded

@@ -142,7 +142,7 @@ export function friendlyMediaError(
     return `That ${kind} took too long to download. Please try sending it again.`;
   }
 
-  const code = (err as { status?: number })?.status ?? getHttpStatus(err);
+  const code = getHttpStatus(err);
 
   if (code === 401 || code === 403) {
     return "I need you to link your GAIA account first before I can read attachments. Send /auth to get started.";

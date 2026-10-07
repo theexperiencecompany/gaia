@@ -9,8 +9,6 @@ automation still stops (or a restored subscriber's still resumes) once the
 dependency comes back.
 """
 
-from typing import TypedDict
-
 from arq import Retry
 
 from app.constants.log_tags import LogTag
@@ -19,18 +17,10 @@ from app.constants.payments import (
     SubscriptionWorkflowSync,
 )
 from app.services.workflow.subscription_pause import SYNC_ACTIONS
+from app.workers.task_envelope import ArqJobContext
 from shared.py.wide_events import log
 
 RETRY_BACKOFF_BASE = 2
-
-
-class ArqJobContext(TypedDict, total=False):
-    """The ARQ job context, narrowed to the key this task reads.
-
-    job_try is absent only when a caller invokes the task with a bare context.
-    """
-
-    job_try: int
 
 
 async def sync_workflows_for_subscription_state(ctx: ArqJobContext, user_id: str, sync: str) -> str:

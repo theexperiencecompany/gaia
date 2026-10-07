@@ -1,0 +1,102 @@
+name: Obscura Compat
+
+# Loads a set of common sites in our Obscura build and in headless Chrome
+# (apps/api/scripts/obscura_compat_probe.py). A gap is Obscura throwing a JS
+# error Chrome does not, or showing far fewer inputs/buttons/links, and the
+# probe sorts each gap by the main document each engine got:
+#   - rendered differently: the server sent both engines the same document
+#     (same status class, final host/path, body size within 10x), so the gap is
+#     the engine's. Known ones sit in scripts/ci/baselines/obscura-compat.txt;
+#     one elsewhere fails the run, and a baseline site that now matches Chrome
+#     is printed as removable.
+#   - served a different document: the server answered Obscura with something
+#     else (a bot wall, a challenge). Listed in its own section with both
+#     documents' status and size; it never fails the run, since the product
+#     already moves a walled run to Chrome.
+#
+# The probe is informational, never a required check: it loads live third-party
+# sites, so a red probe means "look at the summary", not "the PR is broken". The
+# engine-tests job runs Obscura's own tests on the patched tree, so a red one is
+# a broken patch, not a flaky site.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - apps/api/obscura-patches/**
+      - apps/api/Dockerfile
+      - apps/api/scripts/obscura_compat_probe.py
+      - scripts/ci/baselines/obscura-compat.txt
+      - .github/workflows/obscura-compat.yml
+      - .github/actions/build-obscura/**
+
+concurrency:
+  group: obscura-compat-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Obscura vs Chrome on common sites
+    runs-on: ubuntu-latest
+    # A cold cargo build of Obscura is most of this; the probe itself is ~10 min.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      # The build main.yml's obscura-bin job makes too, under one cache scope.
+      - uses: ./.github/actions/build-obscura
+
+      - name: Locate the binaries (Obscura built above, Chrome from the runner image)
+        run: |
+          set -euo pipefail
+          chrome="$(command -v google-chrome)" || { echo "::error::google-chrome is not on this runner image"; exit 1; }
+          echo "OBSCURA_BIN=$RUNNER_TEMP/obscura/obscura" >> "$GITHUB_ENV"
+          echo "CHROMIUM_BIN=$chrome" >> "$GITHUB_ENV"
+          "$chrome" --version
+
+      - uses: ./.github/actions/setup-uv
+
+      - name: Probe common sites against the baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run --project apps/api --frozen --group backend \
+            python apps/api/scripts/obscura_compat_probe.py \
+            --baseline scripts/ci/baselines/obscura-compat.txt \
+            | tee "$RUNNER_TEMP/probe.txt"
+
+      - name: Write the probe report to the job summary
+        if: always()
+        run: |
+          [ -s "$RUNNER_TEMP/probe.txt" ] || exit 0
+          { echo '```'; cat "$RUNNER_TEMP/probe.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  engine-tests:
+    name: Obscura's own tests with our patch series
+    runs-on: ubuntu-latest
+    # A cold release build plus every test binary of the workspace.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      # cargo test runs inside the obscura-test stage, so a failing test fails
+      # this build. Nothing is exported or cached: the test binaries are GBs.
+      - name: Run cargo test in the obscura-test stage of apps/api/Dockerfile
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          target: obscura-test
+          outputs: type=cacheonly

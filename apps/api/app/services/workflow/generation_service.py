@@ -2,18 +2,12 @@
 
 from dataclasses import dataclass
 import re
-from typing import TypeVar, cast
 
 from langchain_core.exceptions import OutputParserException
-from langchain_core.language_models import LanguageModelInput
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
-from app.agents.llm.client import (
-    ainvoke_llm,
-    background_structured_runnable,
-    metered_config,
-)
+from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.trigger_prompts import generate_trigger_context
 from app.agents.prompts.workflow_prompts import (
     WORKFLOW_PROMPT_GENERATION_SYSTEM,
@@ -35,8 +29,6 @@ from app.models.workflow_models import (
     WorkflowStep,
 )
 from shared.py.wide_events import log
-
-_StructuredSchemaT = TypeVar("_StructuredSchemaT", bound=BaseModel)
 
 _MAX_GENERATION_ATTEMPTS = 2
 
@@ -70,32 +62,6 @@ def _failure_reason(error: BaseException) -> str:
     if len(detail) > _MAX_REASON_CHARS:
         detail = detail[: _MAX_REASON_CHARS - 1].rstrip() + "…"
     return f"{type(error).__name__}: {detail}"
-
-
-async def _structured_one_shot(
-    schema: type[_StructuredSchemaT],
-    prompt: LanguageModelInput,
-    *,
-    label: str,
-    user_id: str,
-) -> _StructuredSchemaT:
-    """Run a structured one-shot on the provider this deployment actually runs on.
-
-    ainvoke_structured is hardwired to the OpenRouter aux lane, so a deployment
-    on a custom endpoint (DEV_DEFAULT_MODEL=custom) died with a blank 500 from
-    /regenerate-steps; this picks the deployment's configured lane instead,
-    falling back to aux.
-    """
-    config = metered_config(user_id)
-    return cast(
-        _StructuredSchemaT,
-        await ainvoke_llm(
-            background_structured_runnable(schema, config=config),
-            prompt,
-            label=label,
-            config=config,
-        ),
-    )
 
 
 def _slug_to_friendly_name(slug: str) -> str:
@@ -352,11 +318,11 @@ async def _run_generation_attempt(
     WorkflowStepGenerationError.
     """
     try:
-        result = await _structured_one_shot(
+        result = await ainvoke_structured(
             GeneratedWorkflow,
             formatted_prompt,
             label="workflow_generation",
-            user_id=user_id,
+            config=metered_config(user_id),
         )
     except (ValidationError, OutputParserException) as e:
         # Schema-invalid structured output is regenerable; the provider's
@@ -586,11 +552,11 @@ class WorkflowGenerationService:
             HumanMessage(content=formatted),
         ]
 
-        result = await _structured_one_shot(
+        result = await ainvoke_structured(
             GeneratedPromptOutput,
             messages,
             label="workflow_prompt",
-            user_id=user_id,
+            config=metered_config(user_id),
         )
 
         suggested: SuggestedTrigger | None = None

@@ -1,0 +1,34 @@
+From efa174fb70c853b7a038d657efe42317e7a0a29f Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 07:32:39 +0530
+Subject: [PATCH] docs(frames): FrameRealm::execute_script keeps its own doc
+ comment
+
+Adding the frame resource methods put them between execute_script and its
+doc comment, which then described the wrong method.
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/src/frame.rs | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/crates/obscura-js/src/frame.rs b/crates/obscura-js/src/frame.rs
+index d891453..f580948 100644
+--- a/crates/obscura-js/src/frame.rs
++++ b/crates/obscura-js/src/frame.rs
+@@ -243,7 +243,6 @@ impl FrameRealm {
+         parent.eval_in_realm(&self.context, source)
+     }
+ 
+-    /// Runs a script inside the frame, reporting a script error as `Err`.
+     /// Applies the frame's finished image and font loads and starts loads for
+     /// what its layout or paint missed, as the page's runtime does for the
+     /// page. Returns the number of loads that stored usable bytes.
+@@ -316,6 +315,7 @@ impl FrameRealm {
+         self.state.borrow().dom.as_ref().map(read)
+     }
+ 
++    /// Runs a script inside the frame, reporting a script error as `Err`.
+     pub fn execute_script(
+         &self,
+         parent: &mut ObscuraJsRuntime,

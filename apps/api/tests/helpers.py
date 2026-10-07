@@ -427,6 +427,10 @@ async def pg_advisory_lock(
             await conn.execute("SELECT pg_advisory_unlock(%s)", (lock_id,))
 
 
+#: The CDP URL of the fake Browser-Use sessions the patch tests drive.
+OBSCURA_TEST_CDP_URL = "ws://obscura.test:9300/devtools/browser/run-1"
+
+
 #: How long a test's in-process ASGI server gets to start listening.
 _ASGI_STARTUP_TIMEOUT_SECONDS = 5
 

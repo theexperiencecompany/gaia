@@ -15,7 +15,7 @@ from collections.abc import Awaitable, Callable
 import re
 import secrets
 import time
-from typing import Any, TypedDict, cast
+from typing import TypedDict, cast
 import urllib.parse
 
 import httpx
@@ -307,21 +307,7 @@ def _spawn_background(coro: Awaitable[None], label: str) -> asyncio.Task[None] |
     except RuntimeError:
         return None
 
-    def _on_done(t: asyncio.Task[None]) -> None:
-        if t.cancelled():
-            return
-        exc = t.exception()
-        if exc is not None:
-            log.warning(
-                f"{LogTag.MCP} background mcp task raised",
-                label=label,
-                error=str(exc),
-                error_type=type(exc).__name__,
-            )
-
-    return spawn_background_task(
-        _with_wide_event(coro, label), name=f"mcp:{label}", on_done=_on_done
-    )
+    return spawn_background_task(_with_wide_event(coro, label), name=f"mcp:{label}")
 
 
 def _parse_device_server_url(server_url: str) -> tuple[str, str]:
@@ -1640,7 +1626,7 @@ class MCPClient:
         exchange: _TokenExchangeRequest,
     ) -> OidcTokenResponse:
         """POST the RFC 6749 authorization-code grant to token_endpoint and return the parsed response."""
-        token_data: dict[str, Any] = {
+        token_data: dict[str, str] = {
             "grant_type": "authorization_code",
             # Always include client_id in body for PKCE compatibility
             # Some OAuth servers require client_id in body for PKCE validation

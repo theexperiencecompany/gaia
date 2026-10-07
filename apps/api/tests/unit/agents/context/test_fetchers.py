@@ -40,6 +40,7 @@ from app.agents.context.section_context import ExecutionMode, SectionContext
 from app.agents.context.text import (
     CORE_MEMORY_HEADER,
     GAIA_KNOWLEDGE_HEADER,
+    MEMORY_IS_PAST_NOTE,
     MEMORY_RECALL_HEADER,
 )
 from app.agents.context.tiers import AgentTier
@@ -595,7 +596,7 @@ class TestCoreContextSingleFlight:
         assert calls == 1
         assert core_block == f"{CORE_MEMORY_HEADER}\nDocs."
         assert agenda_block == (
-            f"{AGENDA_HEADING}\n- ship it\n\n{RECENT_ACTIVITY_HEADING}\n- reviewed"
+            f"{AGENDA_HEADING}\n- ship it\n\n{RECENT_ACTIVITY_HEADING}\n{MEMORY_IS_PAST_NOTE}\n- reviewed"
         )
 
     async def test_different_users_do_not_share_a_fetch(self) -> None:
@@ -1204,7 +1205,8 @@ class TestTheMemoryCoreSplit:
             block = await build_agenda_and_activity_block(ctx())
 
         assert block == (
-            f"{AGENDA_HEADING}\n- ship the cache work\n\n{RECENT_ACTIVITY_HEADING}\n- reviewed a PR"
+            f"{AGENDA_HEADING}\n- ship the cache work\n\n"
+            f"{RECENT_ACTIVITY_HEADING}\n{MEMORY_IS_PAST_NOTE}\n- reviewed a PR"
         )
 
     async def test_a_core_with_no_documents_still_yields_its_volatile_half(self) -> None:
@@ -1259,7 +1261,9 @@ class TestTheMemoryCoreSplit:
         with self._core(core):
             block = await build_agenda_and_activity_block(ctx())
 
-        assert block == (f"{AGENDA_HEADING}\n{agenda}\n\n{RECENT_ACTIVITY_HEADING}\n{journal}")
+        assert block == (
+            f"{AGENDA_HEADING}\n{agenda}\n\n{RECENT_ACTIVITY_HEADING}\n{MEMORY_IS_PAST_NOTE}\n{journal}"
+        )
 
 
 @pytest.mark.unit

@@ -12,6 +12,7 @@ encoding bug this file pins: a lock written through the JSON-encoding wrapper
 comes back quoted, so the run that wrote it reads its own lock as FOREIGN.
 """
 
+import asyncio
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from types import SimpleNamespace
@@ -34,18 +35,28 @@ from app.agents.core.background.executor_queue import (
     extend_lock_if_owned,
     get_lock_holder,
     get_lock_state,
-    is_executor_busy,
+    hold_run_alive,
+    keep_alive,
     parse_lock_value,
     prepare_run_from_item,
+    reclaim_dead_lock,
     release_lock_if_owned,
     safe_configurable,
     try_acquire_lock,
 )
 from app.agents.core.background.session import RunIdentity, RunKind, get_session
-from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_BUSY_TTL
+from app.constants.cache import (
+    EXECUTOR_ALIVE_GIVE_UP_SECONDS,
+    EXECUTOR_ALIVE_PREFIX,
+    EXECUTOR_BUSY_PREFIX,
+    EXECUTOR_BUSY_TTL,
+    EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
+)
+from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable
 from app.models.user_models import AuthenticatedUser
+from tests.helpers import captured_wide_event
 
 CONVERSATION = "conv-1"
 BUSY_KEY = f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION}"
@@ -286,13 +297,6 @@ class TestLockOwnership:
         assert await extend_lock_if_owned(CONVERSATION, "s1", "t1", 900) is False
         assert await redis.ttl(BUSY_KEY) == 5
 
-    async def test_busy_reports_any_holder_not_just_ours(self, redis) -> None:
-        assert await is_executor_busy(CONVERSATION) is False
-
-        await redis.set(BUSY_KEY, build_lock_value("other", "t9"))
-
-        assert await is_executor_busy(CONVERSATION) is True
-
 
 class TestWithoutRedis:
     """How each answer degrades when Redis cannot be reached.
@@ -308,11 +312,6 @@ class TestWithoutRedis:
     async def test_lock_state_degrades_to_ours(self) -> None:
         with _no_redis():
             assert await get_lock_state(CONVERSATION, "s1", "t1") is LockState.OURS
-
-    async def test_busy_fails_closed(self) -> None:
-        """The HIL early decision reads this: "cannot tell" must mean "no collector is alive", or a decision is recorded that nobody will act on."""
-        with _no_redis():
-            assert await is_executor_busy(CONVERSATION) is False
 
     async def test_extend_reports_that_it_did_not_re_arm(self) -> None:
         with _no_redis():
@@ -647,6 +646,80 @@ class TestRunItemCarriesWorkflowExecution:
         assert prepared.run.workflow_execution_id == "exec-42"
 
 
+class TestReclaimDeadLock:
+    """A run that died with its process must not hold its conversation for the lock's whole TTL."""
+
+    _OLD = EXECUTOR_BUSY_TTL - EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS
+
+    async def test_a_lock_whose_run_stopped_beating_is_freed(self, redis) -> None:
+        await redis.set(BUSY_KEY, "s1:t1", ex=self._OLD)
+
+        async with captured_wide_event() as event:
+            assert await reclaim_dead_lock(CONVERSATION) is True
+
+        assert await redis.get(BUSY_KEY) is None
+        [warning] = event["warnings"]
+        assert warning["msg"].endswith("Reclaimed the busy lock of an executor run that died")
+        assert (warning["conversation_id"], warning["holder"]) == (CONVERSATION, "s1:t1")
+
+    async def test_a_lock_in_its_last_second_is_old_enough(self, redis) -> None:
+        """Redis rounds a sub-second TTL down to 0: that lock is at its oldest, not ageless."""
+        await redis.set(BUSY_KEY, "s1:t1", px=300)
+
+        assert await redis.ttl(BUSY_KEY) == 0
+        assert await reclaim_dead_lock(CONVERSATION) is True
+
+    async def test_a_beating_run_keeps_its_lock(self, redis) -> None:
+        await redis.set(BUSY_KEY, "s1:t1", ex=self._OLD)
+        await hold_run_alive(CONVERSATION, "s1:t1")
+
+        assert await reclaim_dead_lock(CONVERSATION) is False
+        assert await redis.get(BUSY_KEY) == "s1:t1"
+
+    async def test_another_runs_beat_does_not_keep_a_dead_holder(self, redis) -> None:
+        await redis.set(BUSY_KEY, "s1:t1", ex=self._OLD)
+        await hold_run_alive(CONVERSATION, "s0:t0")
+
+        assert await reclaim_dead_lock(CONVERSATION) is True
+
+    @pytest.mark.parametrize(
+        "ttl", [EXECUTOR_BUSY_TTL - EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS + 1, None]
+    )
+    async def test_a_lock_too_young_or_without_an_age_is_never_taken(
+        self, redis, ttl: int | None
+    ) -> None:
+        """A run just started has not beaten yet: reclaiming it would run two executors at once."""
+        await redis.set(BUSY_KEY, "s1:t1", ex=ttl)
+
+        assert await reclaim_dead_lock(CONVERSATION) is False
+        assert await redis.get(BUSY_KEY) == "s1:t1"
+
+    async def test_no_lock_is_free(self, redis) -> None:
+        assert await reclaim_dead_lock(CONVERSATION) is True
+
+    async def test_a_parked_runs_liveness_lasts_its_park(self, redis) -> None:
+        await hold_run_alive(CONVERSATION, "s1:t1", 9000)
+
+        assert 8990 < await redis.ttl(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}:s1:t1") <= 9000
+
+    async def test_a_holder_kept_alive_keeps_its_lock_until_it_lets_go(self, redis) -> None:
+        """Every holder, a run or a workflow's reservation, stays live only while it renews."""
+        await redis.set(BUSY_KEY, "s1:t1", ex=self._OLD)
+
+        with patch.object(eq, "EXECUTOR_ALIVE_BEAT_SECONDS", 0):
+            alive = await keep_alive(CONVERSATION, "s1:t1")
+            assert alive.get_name() == "executor_alive_beat"
+            await redis.delete(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}:s1:t1")
+            for _ in range(20):
+                await asyncio.sleep(0)
+            assert await reclaim_dead_lock(CONVERSATION) is False
+            alive.cancel()
+            await asyncio.gather(alive, return_exceptions=True)
+
+        await redis.delete(f"{EXECUTOR_ALIVE_PREFIX}{CONVERSATION}:s1:t1")
+        assert await reclaim_dead_lock(CONVERSATION) is True
+
+
 class TestBreakHolderLock:
     async def test_deletes_only_on_value_match(self, redis) -> None:
         await redis.set(BUSY_KEY, "s1:t1", ex=99)
@@ -669,3 +742,69 @@ class TestBreakHolderLock:
 
         assert broken is False
         assert await redis.get(BUSY_KEY) == "s2:t2"
+
+
+class TestLivenessRenewal:
+    """A holder renews while it lives; one that cannot prove it lives stops acting."""
+
+    async def test_a_failed_renewal_does_not_end_the_holders_liveness(self, redis) -> None:
+        """One Redis blip once ended renewal for good, and the live run's lock later read as dead."""
+        writes: list[str] = []
+
+        async def _hold(conversation_id: str, lock_value: str, ttl_seconds: int = 0) -> None:
+            writes.append(lock_value)
+            if len(writes) in (2, 4):
+                raise ConnectionError("redis blip")
+
+        with (
+            patch.object(eq, "EXECUTOR_ALIVE_BEAT_SECONDS", 0),
+            patch.object(eq, "hold_run_alive", _hold),
+        ):
+            alive = await keep_alive(CONVERSATION, "s1:t1")
+            for _ in range(50):
+                await asyncio.sleep(0)
+            renewing = not alive.done()
+            alive.cancel()
+            await asyncio.gather(alive, return_exceptions=True)
+
+        assert renewing
+        assert len(writes) > 5
+
+    async def test_a_holder_that_cannot_prove_it_lives_is_cancelled_and_says_why(
+        self, redis
+    ) -> None:
+        """Past the point its liveness could lapse, another run may take over: this one must stop."""
+        writes: list[str] = []
+        clock = iter([100.0, 112.345, 100.0 + EXECUTOR_ALIVE_GIVE_UP_SECONDS])
+
+        async def _hold(conversation_id: str, lock_value: str, ttl_seconds: int = 0) -> None:
+            writes.append(lock_value)
+            if len(writes) > 1:
+                raise ConnectionError("redis down")
+
+        async def _holder() -> None:
+            await keep_alive(CONVERSATION, "s1:t1")
+            await asyncio.Event().wait()
+
+        with (
+            patch.object(eq, "EXECUTOR_ALIVE_BEAT_SECONDS", 0),
+            patch.object(eq, "hold_run_alive", _hold),
+            patch.object(eq, "time", SimpleNamespace(monotonic=lambda: next(clock))),
+        ):
+            async with captured_wide_event() as event:
+                holder = asyncio.create_task(_holder())
+                with pytest.raises(asyncio.CancelledError, match="^executor liveness lost$"):
+                    await holder
+
+        assert len(writes) == 3
+        failures = [e for e in event["errors"] if e["msg"].endswith("holder's liveness")]
+        assert [(e["unproven_seconds"], e["stopping_holder"]) for e in failures] == [
+            (12.3, False),
+            (float(EXECUTOR_ALIVE_GIVE_UP_SECONDS), True),
+        ]
+        assert failures[0]["msg"] == (
+            f"{LogTag.AGENT} Could not renew an executor lock holder's liveness"
+        )
+        assert {
+            (e["conversation_id"], e["holder"], e["error_type"], e["error"]) for e in failures
+        } == {(CONVERSATION, "s1:t1", "ConnectionError", "redis down")}
