@@ -860,10 +860,14 @@ async def _wide_event_boundary(
         raise
     finally:
         if failure is not None:
+            # Attach the exception so the Sentry sink can capture a genuine
+            # crash (grouped by traceback), while still suppressing this line
+            # when it carries no exception (the pure aggregate roll-up).
             log.error(
                 BOUNDARY_FAILURE_MESSAGE,
                 error=str(failure),
                 error_type=type(failure).__name__,
+                exc_info=failure,
             )
         duration_ms = round((time.monotonic() - start) * 1000, 2)
         log.set(duration_ms=duration_ms)

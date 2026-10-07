@@ -88,9 +88,10 @@ def _make_sentry_loguru_sink() -> Callable[[object], None]:
         if logger_name in BOUNDARY_LOGGER_NAMES:
             return
 
-        # The boundary's "task failed" line is constant too; its real error is in
-        # the extras and in Loki, already forwarded by the specific handler.
-        if record["message"] == BOUNDARY_FAILURE_MESSAGE:
+        # The constant "task failed" line is skipped only when it carries no
+        # exception; a boundary that raised without a specific error still
+        # reaches Sentry below, captured as its attached exception.
+        if record["message"] == BOUNDARY_FAILURE_MESSAGE and record["exception"] is None:
             return
 
         exc_info = record["exception"]

@@ -18,7 +18,7 @@ INTEGRATION_ID = "89d43eae-d6b4-4bfa-aa9a-90b971af8c03"
 
 
 @pytest.mark.asyncio
-async def test_build_oauth_result_logs_dcr_rejection_as_warning_not_error():
+async def test_build_oauth_result_logs_dcr_rejection_as_warning_not_error() -> None:
     """A remote DCR rejection is surfaced to the user and logged at WARNING only."""
     mcp_client = MagicMock()
     mcp_client.build_oauth_auth_url = AsyncMock(
@@ -42,3 +42,22 @@ async def test_build_oauth_result_logs_dcr_rejection_as_warning_not_error():
     _, kwargs = mock_log.warning.call_args
     assert kwargs["integration_id"] == INTEGRATION_ID
     assert kwargs["error_type"] == "ValueError"
+
+
+@pytest.mark.asyncio
+async def test_build_oauth_result_logs_unexpected_failure_as_error() -> None:
+    """An unexpected internal failure keeps error-level monitoring, not warn."""
+    mcp_client = MagicMock()
+    # A KeyError is not an expected external OAuth rejection; it signals a GAIA
+    # bug that would silently block OAuth if downgraded to a warning.
+    mcp_client.build_oauth_auth_url = AsyncMock(side_effect=KeyError("missing_field"))
+
+    with patch("app.services.integrations.custom_crud.log") as mock_log:
+        result = await _build_oauth_result(mcp_client, INTEGRATION_ID)
+
+    assert result["status"] == "failed"
+    mock_log.warning.assert_not_called()
+    mock_log.error.assert_called_once()
+    _, kwargs = mock_log.error.call_args
+    assert kwargs["integration_id"] == INTEGRATION_ID
+    assert kwargs["error_type"] == "KeyError"

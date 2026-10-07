@@ -3209,7 +3209,7 @@ class TestMCPClientRegisterClient:
                     "https://myapp.com/callback",
                 )
 
-    async def test_dcr_rejection_logs_warning_not_error(self):
+    async def test_dcr_rejection_logs_warning_not_error(self) -> None:
         """A remote AS rejecting DCR warns (not errors) so it skips the Sentry sink."""
         client = MCPClient(user_id=USER_ID)
         as_metadata = _make_oauth_metadata(
@@ -3255,6 +3255,33 @@ class TestMCPClientRegisterClient:
         # The logged error_type is the original caught exception (the SDK raises
         # OAuthRegistrationError on a 4xx body), not the ValueError it is wrapped in.
         assert kwargs["error_type"] == "OAuthRegistrationError"
+
+    async def test_dcr_internal_failure_logs_error_not_warning(self) -> None:
+        """A transport/internal failure keeps error-level monitoring, not warn."""
+        client = MCPClient(user_id=USER_ID)
+        as_metadata = _make_oauth_metadata(
+            registration_endpoint="https://auth.example.com/register"
+        )
+
+        with (
+            patch("app.services.mcp.mcp_client.httpx.AsyncClient") as mock_http,
+            patch("app.services.mcp.mcp_client.log") as mock_log,
+        ):
+            mock_http.return_value.__aenter__ = AsyncMock(side_effect=Exception("Network error"))
+            mock_http.return_value.__aexit__ = AsyncMock()
+
+            with pytest.raises(ValueError, match="Dynamic Client Registration failed"):
+                await client._register_client(
+                    INTEGRATION_ID,
+                    as_metadata,
+                    "https://myapp.com/callback",
+                )
+
+        mock_log.warning.assert_not_called()
+        mock_log.error.assert_called_once()
+        _, kwargs = mock_log.error.call_args
+        assert kwargs["integration_id"] == INTEGRATION_ID
+        assert kwargs["error_type"] == "Exception"
 
 
 # ===========================================================================

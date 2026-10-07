@@ -37,10 +37,22 @@ from app.services.integrations.user_integrations import (
     invalidate_user_integration_caches,
     remove_user_integration,
 )
-from app.services.mcp.mcp_client import MCPClient
+from app.services.mcp.mcp_client import DCRNotSupportedError, MCPClient
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.utils.favicon_utils import fetch_favicon_from_url
+from app.utils.mcp_oauth_utils import OAuthDiscoveryError, OAuthSecurityError
 from shared.py.wide_events import log
+
+#: OAuth discovery/DCR failures that are the remote server's policy, not a GAIA
+#: fault. The caller returns them to the user, so they warn (visible in Loki)
+#: rather than paging Sentry; anything else is an unexpected internal bug.
+_EXPECTED_OAUTH_DISCOVERY_ERRORS: tuple[type[Exception], ...] = (
+    ValueError,  # _register_client wraps DCR rejections as ValueError
+    OAuthAuthenticationError,
+    DCRNotSupportedError,
+    OAuthDiscoveryError,
+    OAuthSecurityError,
+)
 
 
 async def create_custom_integration(
@@ -436,12 +448,24 @@ async def _build_oauth_result(mcp_client: MCPClient, integration_id: str) -> Cus
             redirect_path="/integrations",
         )
         return {"status": "requires_oauth", "oauth_url": auth_url}
-    except Exception as e:
-        # A user-supplied MCP server rejecting OAuth discovery/DCR is its policy,
-        # not a GAIA fault; it is returned to the user, so warn (not error) to
-        # keep it out of Sentry's High queue.
+    except _EXPECTED_OAUTH_DISCOVERY_ERRORS as e:
+        # Remote-server policy (its redirect_uri allowlist, missing AS metadata,
+        # DCR disabled), returned to the user; warn to keep it out of Sentry High.
         log.warning(
             f"{LogTag.INTEGRATION} OAuth discovery failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            integration_id=integration_id,
+        )
+        return {
+            "status": "failed",
+            "error": f"OAuth required but discovery failed: {e}",
+        }
+    except Exception as e:
+        # Unexpected internal failure in build_oauth_auth_url; keep error-level
+        # monitoring so a GAIA bug that blocks OAuth is not hidden as a warning.
+        log.error(
+            f"{LogTag.INTEGRATION} OAuth discovery failed unexpectedly",
             error=str(e),
             error_type=type(e).__name__,
             integration_id=integration_id,
