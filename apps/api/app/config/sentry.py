@@ -1,7 +1,7 @@
 """Sentry configuration for error tracking and performance monitoring."""
 
-from collections.abc import Callable
-from typing import Any
+from collections.abc import Callable, Mapping
+from typing import Protocol, TypedDict, cast
 
 from loguru import logger as _loguru
 import sentry_sdk
@@ -9,7 +9,41 @@ import sentry_sdk
 from app.config.loggers import REQUEST_LOGGER_NAME
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from shared.py.wide_events import log
+from shared.py.wide_events import (
+    BOUNDARY_FAILURE_MESSAGE,
+    BOUNDARY_LOGGER_NAMES,
+    log,
+)
+
+
+class _Level(Protocol):
+    no: int
+    name: str
+
+
+class _Exception(Protocol):
+    value: BaseException | None
+
+
+class _Extra(TypedDict, total=False):
+    """The one wide-event field the sink routes on; the rest is scrubbed generically."""
+
+    logger_name: str
+
+
+class _Record(TypedDict):
+    """The loguru record fields the Sentry sink reads (loguru's Record is stub-only)."""
+
+    level: _Level
+    extra: _Extra
+    exception: _Exception | None
+    module: str
+    message: str
+
+
+class _Message(Protocol):
+    record: _Record
+
 
 # Direct identifiers never leave the process for Sentry. Pseudonymous ids
 # (user_id, trace_id, request_id) stay for correlation; join back to the
@@ -17,7 +51,7 @@ from shared.py.wide_events import log
 _PII_KEYS = frozenset({"client_ip", "email", "user_agent", "user_email"})
 
 
-def _scrub_pii(extra: dict[str, Any]) -> dict[str, Any]:
+def _scrub_pii(extra: Mapping[str, object]) -> dict[str, object]:
     """Drop direct identifiers from wide-event fields, including nested dicts (user.email)."""
     return {
         key: _scrub_pii(value) if isinstance(value, dict) else value
@@ -34,22 +68,38 @@ def _make_sentry_loguru_sink() -> Callable[[object], None]:
     """
 
     def _sink(message: object) -> None:
-        record = message.record  # type: ignore[attr-defined]  # loguru's sink hands us a Message whose .record attr is untyped upstream
+        # loguru hands the sink a Message whose .record is a stub-only TypedDict;
+        # cast to the local shape so the field reads are key-checked.
+        record: _Record = cast(_Message, message).record
         if record["level"].no < 40:  # below ERROR — skip
             return
 
-        extra = dict(record["extra"])
+        extra: _Extra = record["extra"]
+        logger_name = extra.get("logger_name")
 
         # Skip the per-request wide-event roll-up ("http_request"): forwarding it
         # would group every 5xx under one useless Sentry issue carrying PII in extras.
-        if extra.get("logger_name") == REQUEST_LOGGER_NAME:
+        if logger_name == REQUEST_LOGGER_NAME:
             return
+
+        # Worker/background boundary roll-ups have a constant message, so every
+        # task failure would collapse into one issue; the specific cause reaches
+        # Sentry via its own log.error elsewhere.
+        if logger_name in BOUNDARY_LOGGER_NAMES:
+            return
+
+        # The constant "task failed" line is skipped only when it carries no
+        # exception; a boundary that raised without a specific error still
+        # reaches Sentry below, captured as its attached exception.
+        if record["message"] == BOUNDARY_FAILURE_MESSAGE and record["exception"] is None:
+            return
+
         exc_info = record["exception"]
 
         with sentry_sdk.new_scope() as scope:
-            scope.set_tag("logger", extra.get("logger_name", "app"))
+            scope.set_tag("logger", logger_name or "app")
             scope.set_tag("module", record["module"])
-            for key, value in _scrub_pii(extra).items():
+            for key, value in _scrub_pii(cast("Mapping[str, object]", extra)).items():
                 if key != "logger_name":
                     scope.set_extra(key, value)
 
