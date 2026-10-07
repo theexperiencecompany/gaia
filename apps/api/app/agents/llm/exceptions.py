@@ -24,6 +24,8 @@ from openrouter.errors import (
     TooManyRequestsResponseError,
 )
 
+from app.constants.llm import OPENAI_QUOTA_ERROR_TYPE
+
 
 class LLMNotConfiguredError(RuntimeError):
     """No provider key is configured for the requested model.
@@ -47,6 +49,22 @@ _OPENROUTER_TRANSIENT_ERRORS: tuple[type[BaseException], ...] = (
     NoResponseError,
 )
 
+
+class _TransientRateLimitMeta(type):
+    def __instancecheck__(cls, instance: object) -> bool:
+        return (
+            isinstance(instance, OpenAIRateLimitError) and instance.type != OPENAI_QUOTA_ERROR_TYPE
+        )
+
+
+class OpenAITransientRateLimitError(OpenAIRateLimitError, metaclass=_TransientRateLimitMeta):
+    """Match an OpenAI 429 except a spent quota, which no retry can recover.
+
+    The SDK raises RateLimitError for both; with_retry takes only exception types,
+    so the split lives in isinstance. Never raised, only matched.
+    """
+
+
 # Transient provider/infra errors — safe to retry; the app rate limiter's
 # LangChainRateLimitError must NOT be. Gemini wraps every 4xx (including 429s) into
 # ChatGoogleGenerativeAIError, hiding the status class, so Gemini 429s fall through to fallback.
@@ -56,7 +74,7 @@ LLM_RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
     # OpenRouter SDK
     *_OPENROUTER_TRANSIENT_ERRORS,
     # OpenAI SDK (the comms lane and the custom dev lane); its connection error is no ConnectionError
-    OpenAIRateLimitError,
+    OpenAITransientRateLimitError,
     OpenAIServerError,
     OpenAIConnectionError,
     # stdlib

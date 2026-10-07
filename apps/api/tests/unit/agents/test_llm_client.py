@@ -63,6 +63,7 @@ from app.agents.llm.client import (
     init_llm,
     invoke_llm,
     register_llm_providers,
+    with_llm_retry,
 )
 from app.agents.llm.exceptions import LLM_FALLBACK_EXCEPTIONS, LLMNotConfiguredError
 from app.agents.llm.types import LLMProvider
@@ -1483,6 +1484,27 @@ class TestConstants:
         assert not isinstance(unauthorized, LLM_RETRYABLE_EXCEPTIONS)
         for exc in (rate_limited, unauthorized, disconnected):
             assert isinstance(exc, LLM_FALLBACK_EXCEPTIONS), type(exc).__name__
+
+    def test_an_openai_quota_429_goes_straight_to_fallback_without_retrying(self) -> None:
+        """A spent project quota cannot recover, so retrying it only delays the fallback."""
+        request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+        quota_exhausted = RateLimitError(
+            "spend limit",
+            response=httpx.Response(429, request=request),
+            body={"type": "insufficient_quota", "code": "project_spend_limit_exceeded"},
+        )
+        calls: list[int] = []
+
+        def _call(_: object) -> None:
+            calls.append(1)
+            raise quota_exhausted
+
+        with pytest.raises(RateLimitError):
+            with_llm_retry(RunnableLambda(_call)).invoke("hi")
+
+        assert len(calls) == 1
+        assert not isinstance(quota_exhausted, LLM_RETRYABLE_EXCEPTIONS)
+        assert isinstance(quota_exhausted, LLM_FALLBACK_EXCEPTIONS)
 
     def test_non_retryable_exception_not_in_tuple(self) -> None:
         assert not isinstance(ValueError("bad"), LLM_RETRYABLE_EXCEPTIONS)

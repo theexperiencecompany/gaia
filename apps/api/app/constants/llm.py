@@ -169,6 +169,9 @@ LLM_LABEL_METADATA_KEY: Final = "llm_label"
 # to the default model (see with_llm_retry in app/agents/llm/client.py).
 LLM_RETRY_MAX_ATTEMPTS = 3
 
+# OpenAI's error type on every quota 429 (spend limit, unpaid plan); a short-lived 429 carries another.
+OPENAI_QUOTA_ERROR_TYPE: Final = "insufficient_quota"
+
 # Sticky routing (the session_id hint pinning a chain to one upstream) is
 # OpenRouter-only wire behaviour: Gemini rejects the key, and CUSTOM runs
 # ChatOpenAI where session_id is unsupported on AsyncCompletions.create.
