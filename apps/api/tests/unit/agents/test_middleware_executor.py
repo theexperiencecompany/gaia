@@ -22,10 +22,12 @@ from langchain_google_genai.chat_models import _parse_chat_history
 import pytest
 
 from app.agents.middleware.executor import (
+    MIDDLEWARE_FAILURE_TEMPLATE,
     MiddlewareExecutor,
     _apply_state_update,
     _has_override,
 )
+from app.agents.middleware.hil_approval import HILApprovalMiddleware
 from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.override.langgraph_bigtool.utils import State
 from app.services.analytics_service import AnalyticsEvents
@@ -849,35 +851,6 @@ class TestWrapToolInvocation:
         "app.agents.middleware.executor.BigtoolToolRuntime.from_graph_context",
         return_value=MagicMock(),
     )
-    async def test_tool_chain_failure_falls_back(
-        self, mock_rt: MagicMock, mock_create_req: MagicMock
-    ) -> None:
-        tool_call = {"name": "test_tool", "args": {}, "id": "call_1"}
-        expected = ToolMessage(content="fallback", tool_call_id="call_1")
-        invoke_fn = AsyncMock(return_value=expected)
-
-        mock_request = MagicMock(spec=ToolCallRequest)
-        mock_request.tool_call = tool_call
-        mock_create_req.return_value = mock_request
-
-        class _FailingWrapTool(AgentMiddleware):
-            async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> ToolMessage:
-                raise RuntimeError("tool middleware failed")
-
-        executor = MiddlewareExecutor([_FailingWrapTool()])
-        state = _make_state()
-        result = await executor.wrap_tool_invocation(
-            tool_call, None, state, _make_config(), None, invoke_fn
-        )
-        assert result.content == "fallback"
-
-    @patch(
-        "app.agents.middleware.executor.create_tool_call_request",
-    )
-    @patch(
-        "app.agents.middleware.executor.BigtoolToolRuntime.from_graph_context",
-        return_value=MagicMock(),
-    )
     async def test_tool_cancelled_error_propagates(
         self, mock_rt: MagicMock, mock_create_req: MagicMock
     ) -> None:
@@ -898,6 +871,92 @@ class TestWrapToolInvocation:
             await executor.wrap_tool_invocation(
                 tool_call, None, state, _make_config(), None, invoke_fn
             )
+
+
+class _PreToolBreak(AgentMiddleware):
+    """Raise before handing the call on, as a broken pre-tool check would."""
+
+    async def awrap_tool_call(self, request: ToolCallRequest, handler: Any) -> ToolMessage:
+        raise RuntimeError("pre-tool check broke")
+
+
+def _gated_run_config() -> RunnableConfig:
+    """Build a live run config the HIL gate can identify, so it reaches its policy branch."""
+    return _make_config(
+        configurable={
+            "user_id": "user_123",
+            "thread_id": "thread_abc",
+            "stream_id": "stream_1",
+            "conversation_id": "conv_1",
+        }
+    )
+
+
+class TestToolChainFailsClosed:
+    async def test_a_raising_hil_gate_refuses_the_call_instead_of_running_it(self) -> None:
+        tool_call = {"name": "send_email", "args": {"to": "bob"}, "id": "call_1"}
+        invoke_fn = AsyncMock(return_value=ToolMessage(content="sent", tool_call_id="call_1"))
+
+        with (
+            patch("app.services.hil.gate.resolve_policy", AsyncMock(return_value="ask")),
+            patch(
+                "app.services.hil.gate.is_hil_ledger_enabled",
+                AsyncMock(side_effect=RuntimeError("flag store down")),
+            ),
+            patch("app.agents.middleware.executor.log") as mock_log,
+        ):
+            result = await MiddlewareExecutor([HILApprovalMiddleware()]).wrap_tool_invocation(
+                tool_call, None, _make_state(), _gated_run_config(), None, invoke_fn
+            )
+
+        invoke_fn.assert_not_awaited()
+        assert isinstance(result, ToolMessage)
+        assert result.status == "error"
+        assert result.tool_call_id == "call_1"
+        assert result.content == MIDDLEWARE_FAILURE_TEMPLATE.format(tool="send_email")
+        mock_log.error.assert_called_once()
+        assert mock_log.error.call_args.kwargs["middleware"] == "HILApprovalMiddleware"
+        assert mock_log.error.call_args.kwargs["error_type"] == "RuntimeError"
+
+    async def test_the_failure_is_blamed_on_the_middleware_that_raised(self) -> None:
+        """An outer pass-through sees the inner one's exception second; the log names the inner one."""
+        invoke_fn = AsyncMock()
+
+        with patch("app.agents.middleware.executor.log") as mock_log:
+            result = await MiddlewareExecutor(
+                [_WrapToolMiddleware(), _PreToolBreak()]
+            ).wrap_tool_invocation(
+                {"name": "t", "args": {}, "id": "c1"},
+                None,
+                _make_state(),
+                _make_config(),
+                None,
+                invoke_fn,
+            )
+
+        invoke_fn.assert_not_awaited()
+        assert isinstance(result, ToolMessage) and result.status == "error"
+        assert mock_log.error.call_args.kwargs["middleware"] == "_PreToolBreak"
+
+    async def test_a_raising_sync_hook_also_refuses_the_call(self) -> None:
+        class _SyncPreToolBreak(AgentMiddleware):
+            def wrap_tool_call(self, request: ToolCallRequest, handler: Any) -> Any:
+                raise RuntimeError("sync pre-tool check broke")
+
+        invoke_fn = AsyncMock()
+        with patch("app.agents.middleware.executor.log") as mock_log:
+            result = await MiddlewareExecutor([_SyncPreToolBreak()]).wrap_tool_invocation(
+                {"name": "t", "args": {}, "id": "c1"},
+                None,
+                _make_state(),
+                _make_config(),
+                None,
+                invoke_fn,
+            )
+
+        invoke_fn.assert_not_awaited()
+        assert isinstance(result, ToolMessage) and result.status == "error"
+        assert mock_log.error.call_args.kwargs["middleware"] == "_SyncPreToolBreak"
 
 
 # ---------------------------------------------------------------------------
