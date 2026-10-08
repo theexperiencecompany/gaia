@@ -1,5 +1,6 @@
 """Type-safe server-side PostHog event tracking with consistent naming conventions."""
 
+import asyncio
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -10,7 +11,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from posthog import Posthog
 
-from app.constants.analytics import POSTHOG_PROVIDER_KEY
+from app.constants.analytics import AGENT_RUN_CANCELLED_REASON, POSTHOG_PROVIDER_KEY
 from app.constants.auth import LOGIN_METHOD_WORKOS
 from app.core.lazy_loader import providers
 from app.models.payment_models import PlanType, SubscriptionStatus
@@ -486,8 +487,9 @@ def agent_run_lifecycle(
 ) -> Iterator[AgentRunOutcome]:
     """Emit run_started on entry, then exactly one of run_completed or run_failed.
 
-    A raised exception fails the run with its type as reason; a body that handles
-    its own failure sets failure_reason, and a paused run emits no terminal event.
+    A raised exception fails the run with its type as reason, a cancellation with
+    "cancelled"; a body that handles its own failure sets failure_reason, and a
+    paused run emits no terminal event.
     dedupe_key keys the terminal event. No user id, no events.
     """
     outcome = AgentRunOutcome()
@@ -497,6 +499,10 @@ def agent_run_lifecycle(
     capture_event(user_id, AnalyticsEvents.AGENT_RUN_STARTED, properties)
     try:
         yield outcome
+    except asyncio.CancelledError:
+        outcome.failure_reason = AGENT_RUN_CANCELLED_REASON
+        _capture_run_terminal(user_id, properties, outcome, dedupe_key)
+        raise
     except Exception as exc:
         outcome.failure_reason = type(exc).__name__
         _capture_run_terminal(user_id, properties, outcome, dedupe_key)
