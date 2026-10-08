@@ -2723,7 +2723,7 @@ class TestExecuteOnExecutor:
         with (
             patch(f"{MODULE}.run_todo_on_executor", run),
             patch(f"{MODULE}.record_activity", AsyncMock(return_value=True)),
-            patch(f"{MODULE}._collect_run_context", AsyncMock(return_value=_RunContext())),
+            patch(f"{MODULE}.collect_run_context", AsyncMock(return_value=TodoRunContext())),
             patch(f"{MODULE}.with_desk_notes", AsyncMock(side_effect=lambda doc: doc)),
             time_machine.travel(frozen, tick=False),
         ):
