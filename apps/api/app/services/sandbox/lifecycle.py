@@ -23,7 +23,7 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 import time
-from typing import Any, cast
+from typing import cast
 from urllib.parse import unquote, urlsplit, urlunsplit
 
 from e2b import AsyncSandbox, NotFoundException, SandboxState
@@ -147,15 +147,13 @@ async def _enforce_creation_limit(user_id: str) -> None:
     try:
         await enforce_rate_limit(user_id, SANDBOX_CREATION_FEATURE_KEY)
     except RateLimitExceededException as e:
-        # HTTPException.detail is typed `str` by Starlette, but
-        # RateLimitExceededException always sets it to a dict at runtime — cast
-        # to Any so the isinstance check isn't (incorrectly) statically unreachable.
-        raw_detail = cast(Any, e.detail)
-        detail: dict[str, Any] = raw_detail if isinstance(raw_detail, dict) else {}
+        # The gate and reset ride on the exception itself (not the wire
+        # detail), so there is nothing to dig out of a string-keyed dict.
+        reset = e.reset_time.isoformat() if e.reset_time is not None else None
         _record(
             rate_limited=True,
-            rate_limit_reset=detail.get("reset_time"),
-            rate_limit_plan=detail.get("plan_required"),
+            rate_limit_reset=reset,
+            rate_limit_plan=e.plan_required,
         )
         log.warning(
             f"{LogTag.SANDBOX} creation rate limit hit user",
@@ -164,10 +162,10 @@ async def _enforce_creation_limit(user_id: str) -> None:
             error_type=type(e).__name__,
         )
         message = "sandbox creation limit reached"
-        if detail.get("reset_time"):
-            message += f"; resets at {detail['reset_time']}"
-        if detail.get("plan_required"):
-            message += f" (upgrade to {detail['plan_required'].upper()} for higher limits)"
+        if reset is not None:
+            message += f"; resets at {reset}"
+        if e.plan_required is not None:
+            message += f" (upgrade to {e.plan_required.upper()} for higher limits)"
         raise SandboxRateLimitError(message) from e
     except Exception as e:
         log.error(

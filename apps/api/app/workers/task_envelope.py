@@ -22,6 +22,7 @@ import functools
 import time
 from typing import TypedDict, TypeVar
 
+from arq.connections import ArqRedis
 from arq.worker import Function, func as arq_func
 
 from app.workers.config.worker_settings import (
@@ -39,12 +40,13 @@ ArqTask = Callable[..., Coroutine[object, object, T]]
 
 
 class ArqJobContext(TypedDict, total=False):
-    """The ARQ job context, narrowed to the key a retrying task reads.
+    """The ARQ job context, narrowed to the keys tasks read.
 
     job_try is absent only when a caller invokes the task with a bare context.
     """
 
     job_try: int
+    redis: ArqRedis
 
 
 #: The worker_task event's reason when the envelope's deadline cut the task off.

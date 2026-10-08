@@ -191,7 +191,6 @@ apps/api/app/services/provider_metadata_service.py	TB001
 apps/api/app/services/provider_metadata_service.py	TB002
 apps/api/app/services/reminder_service.py	TB001
 apps/api/app/services/reminder_service.py	TB002
-apps/api/app/services/sandbox/lifecycle.py	TB002
 apps/api/app/services/scheduler_service.py	TB001
 apps/api/app/services/storage/_vfs_common.py	TB001
 apps/api/app/services/storage/_vfs_common.py	TB002
@@ -250,7 +249,6 @@ apps/api/app/workers/tasks/nurture_tasks.py	TB001
 apps/api/app/workers/tasks/onboarding_tasks.py	TB001
 apps/api/app/workers/tasks/platform_link_tasks.py	TB001
 apps/api/app/workers/tasks/reminder_tasks.py	TB001
-apps/api/app/workers/tasks/sandbox_tasks.py	TB001
 apps/api/app/workers/tasks/scheduler_recovery_tasks.py	TB001
 apps/api/app/workers/tasks/session_tasks.py	TB001
 apps/api/app/workers/tasks/signup_email_tasks.py	TB001

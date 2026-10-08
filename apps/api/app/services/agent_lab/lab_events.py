@@ -6,7 +6,7 @@ payload, and the todo run it wakes reads it and decides what to tell the user.
 """
 
 import json
-from typing import Any, Final
+from typing import Final
 
 from pydantic import BaseModel
 
@@ -29,7 +29,7 @@ class LabEventReceipt(BaseModel):
     kind: str
 
 
-def _bounded(body: dict[str, Any]) -> dict[str, Any]:
+def _bounded(body: dict[str, object]) -> dict[str, object]:
     """Return body, or its JSON head with the original size when it is past the cap."""
     encoded = json.dumps(body, default=str).encode()
     if len(encoded) <= LAB_EVENT_MAX_RAW_BYTES:
@@ -39,7 +39,7 @@ def _bounded(body: dict[str, Any]) -> dict[str, Any]:
     return {"truncated_from_bytes": len(encoded), "head": head}
 
 
-def lab_event_kind(body: dict[str, Any]) -> str:
+def lab_event_kind(body: dict[str, object]) -> str:
     """Name the event for logs: the plugin's kind, else Claude's hook event name."""
     for key in ("kind", "hook_event_name"):
         value = body.get(key)
@@ -48,7 +48,9 @@ def lab_event_kind(body: dict[str, Any]) -> str:
     return UNNAMED_EVENT_KIND
 
 
-async def record_lab_event(run_id: str, *, user_id: str, body: dict[str, Any]) -> LabEventReceipt:
+async def record_lab_event(
+    run_id: str, *, user_id: str, body: dict[str, object]
+) -> LabEventReceipt:
     """Wake the todo subscribed to run_id with body attached; fails loud on misuse."""
     access = await lab_access(user_id)
     if access == LabAccess.NOT_PAID:

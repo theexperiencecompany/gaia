@@ -44,6 +44,7 @@ from app.constants.sandbox import (
 from app.constants.todos import FAILED_LABEL, GAIA_TRACKED_LABEL
 from app.db.repositories.todos import todo_repository
 from app.decorators import with_doc, with_rate_limiting
+from app.models.todo_models import TodoDocument
 from app.services.agent_lab.lab_runs import (
     LAB_SEED_TIMEOUT_SECONDS,
     LabAccess,
@@ -201,15 +202,14 @@ def build_bash_tool(scoped_tools: Mapping[str, BaseTool] | None = None) -> BaseT
         ] = None,
     ) -> str:
         """Run a shell command in the user's persistent coding sandbox."""
-        return await _run_bash(
-            config=config,
+        request = _BashRequest(
             command=command,
             cwd=cwd,
             timeout=timeout,
             background=background,
             run_todo_id=run_todo_id,
-            scoped_tools=scoped_tools,
         )
+        return await _run_bash(config=config, request=request, scoped_tools=scoped_tools)
 
     return bash
 
@@ -217,6 +217,17 @@ def build_bash_tool(scoped_tools: Mapping[str, BaseTool] | None = None) -> BaseT
 # The unscoped tool the global registry publishes — the executor's space is the
 # whole registry, so it needs no confinement.
 bash = build_bash_tool()
+
+
+@dataclass(frozen=True)
+class _BashRequest:
+    """One bash tool call as the model made it: what to run, before identity resolution."""
+
+    command: str
+    cwd: str
+    timeout: int
+    background: bool
+    run_todo_id: str | None
 
 
 @dataclass(frozen=True)
@@ -267,17 +278,8 @@ class BackgroundStartError(RuntimeError):
     """The detached command printed no pid, so nothing is running."""
 
 
-async def _setup_lab_run(*, user_id: str, run_todo_id: str, sbx: object) -> _LabRun | str:
-    """Mint the run token, stage the seed, and subscribe the todo; or return the loud error.
-
-    On any failure the caller runs nothing. The error is a plain string (the
-    tool's contract), not a raise — the command must never execute unseeded.
-    """
-    access = await lab_access(user_id)
-    if access == LabAccess.NOT_PAID:
-        return "Error: sandbox agent runs need a paid plan (run_todo_id), ran nothing"
-    if access == LabAccess.FLAG_OFF:
-        return "Error: agent lab is disabled for this user (run_todo_id needs the AGENT_LAB flag)"
+async def _resolve_lab_todo(*, user_id: str, run_todo_id: str) -> TodoDocument | str:
+    """Fetch the tracked todo the run attaches to, or the loud error for the tool."""
     try:
         todo = await todo_repository.get(run_todo_id, user_id=user_id)
     except Exception as e:
@@ -291,8 +293,11 @@ async def _setup_lab_run(*, user_id: str, run_todo_id: str, sbx: object) -> _Lab
         return f"Error: tracked todo {run_todo_id} is completed; create a new one, ran nothing"
     if FAILED_LABEL in todo.labels:
         return f"Error: tracked todo {run_todo_id} is marked failed; reset it first, ran nothing"
+    return todo
 
-    sandbox_run_id = uuid.uuid4().hex
+
+async def _seed_lab_run(*, user_id: str, sandbox_run_id: str, sbx: object) -> tuple[str, str] | str:
+    """Mint the hooks token, stage the seed, run it; or the loud error. Returns (url, token)."""
     try:
         url = lab_events_url()
         token = mint_lab_hooks_token(user_id, sandbox_run_id)
@@ -305,6 +310,28 @@ async def _setup_lab_run(*, user_id: str, run_todo_id: str, sbx: object) -> _Lab
         await sbx.commands.run(seed, timeout=LAB_SEED_TIMEOUT_SECONDS)  # type: ignore[attr-defined]  # e2b sandbox SDK ships no type stubs
     except Exception as e:
         return f"Error: lab seed failed ({e}), ran nothing"
+    return url, token
+
+
+async def _setup_lab_run(*, user_id: str, run_todo_id: str, sbx: object) -> _LabRun | str:
+    """Mint the run token, stage the seed, and subscribe the todo; or return the loud error.
+
+    On any failure the caller runs nothing. The error is a plain string (the
+    tool's contract), not a raise — the command must never execute unseeded.
+    """
+    access = await lab_access(user_id)
+    if access == LabAccess.NOT_PAID:
+        return "Error: sandbox agent runs need a paid plan (run_todo_id), ran nothing"
+    if access == LabAccess.FLAG_OFF:
+        return "Error: agent lab is disabled for this user (run_todo_id needs the AGENT_LAB flag)"
+    todo = await _resolve_lab_todo(user_id=user_id, run_todo_id=run_todo_id)
+    if isinstance(todo, str):
+        return todo
+    sandbox_run_id = uuid.uuid4().hex
+    seed = await _seed_lab_run(user_id=user_id, sandbox_run_id=sandbox_run_id, sbx=sbx)
+    if isinstance(seed, str):
+        return seed
+    url, token = seed
     try:
         subscription = await subscribe_todo_to_run(todo, sandbox_run_id)
     except Exception as e:
@@ -327,24 +354,49 @@ def _lab_footer(lab: _LabRun, run_todo_id: str) -> str:
     )
 
 
-async def _run_bash(
-    *,
-    config: RunnableConfig,
-    command: str,
-    cwd: str,
-    timeout: int,  # NOSONAR python:S7483 -- e2b server-side command deadline, not a local wait (see _run_foreground)
-    background: bool,
-    run_todo_id: str | None,
-    scoped_tools: Mapping[str, BaseTool] | None,
-) -> str:
-    log.set(tool={"name": "bash", "action": "execute"})
+async def _lab_run_and_env(
+    *, user_id: str, run_todo_id: str | None, sbx: object, base_env: dict[str, str] | None
+) -> tuple[_LabRun | None, dict[str, str] | None] | str:
+    """Set up the lab run for run_todo_id and merge its env over base_env; error as string."""
+    if run_todo_id is None:
+        return None, base_env
+    setup = await _setup_lab_run(user_id=user_id, run_todo_id=run_todo_id, sbx=sbx)
+    if isinstance(setup, str):
+        return setup
+    return setup, {**(base_env or {}), **setup.env}
 
-    if not command or not command.strip():
+
+async def _run_sandbox_command(
+    *,
+    sbx: object,
+    run: _BashInvocation,
+    command_env: dict[str, str] | None,
+    background: bool,
+    lab: _LabRun | None,
+    run_todo_id: str | None,
+) -> str:
+    """Run the command detached or in the foreground; a run that never started unsubscribes."""
+    try:
+        if background:
+            return await _run_background(sbx, run, command_env)
+        return await _run_foreground(sbx, run, command_env)
+    except Exception:
+        # A run that never started must not stay subscribed and count as live.
+        if lab is not None and run_todo_id is not None:
+            await unregister_subscription(run_todo_id, run.user_id, lab.subscription_id)
+        raise
+
+
+async def _prepare_invocation(
+    *, config: RunnableConfig, request: _BashRequest, scoped_tools: Mapping[str, BaseTool] | None
+) -> _BashInvocation | str:
+    """Validate the request and resolve identity; or the plain error string for the tool."""
+    if not request.command or not request.command.strip():
         return "Error: command cannot be empty"
-    if len(command) > BASH_MAX_COMMAND_LENGTH:
+    if len(request.command) > BASH_MAX_COMMAND_LENGTH:
         return f"Error: command exceeds {BASH_MAX_COMMAND_LENGTH} characters"
 
-    timeout = max(1, min(timeout, BASH_MAX_TIMEOUT_SECONDS))
+    timeout = max(1, min(request.timeout, BASH_MAX_TIMEOUT_SECONDS))
     run_id = uuid.uuid4().hex[:12]
 
     try:
@@ -353,78 +405,93 @@ async def _run_bash(
         return f"Error: {e}"
 
     session_id = get_session_id(config)
-    cwd, cwd_error = _resolve_cwd(cwd, session_id)
+    cwd, cwd_error = _resolve_cwd(request.cwd, session_id)
     if cwd_error:
         return cwd_error
 
-    run = _BashInvocation(
+    return _BashInvocation(
         user_id=user_id,
         run_id=run_id,
-        command=command,
+        command=request.command,
         cwd=cwd,
         timeout=timeout,
-        background=background,
+        background=request.background,
         session_id=session_id,
         config=config,
         scoped_tools=scoped_tools,
     )
 
-    safe_emit(
-        {
-            "bash_data": {
-                "id": run_id,
-                "command": command,
-                "cwd": cwd or WORKSPACE_ROOT,
-                "status": "starting",
-            }
-        },
-        session_id=session_id,
-    )
 
+async def _execute_invocation(*, run: _BashInvocation, run_todo_id: str | None) -> str:
+    """Run one prepared invocation in the sandbox: env, lab setup, dispatch, artifacts."""
     try:
-        async with fs_timer(FsOps.TOOL_BASH), acquire_sandbox(user_id) as sbx:
-            if cwd:
+        async with fs_timer(FsOps.TOOL_BASH), acquire_sandbox(run.user_id) as sbx:
+            if run.cwd:
                 # Session dirs are created on demand, so a resolved cwd may
                 # not exist yet. `make_dir` creates parents and no-ops if it
                 # already exists.
                 with contextlib.suppress(Exception):
-                    await sbx.files.make_dir(cwd)
+                    await sbx.files.make_dir(run.cwd)
             execute_env = await _build_execute_env(run, sbx)
-            command_env = execute_env
-            lab: _LabRun | None = None
-            if run_todo_id is not None:
-                setup = await _setup_lab_run(user_id=user_id, run_todo_id=run_todo_id, sbx=sbx)
-                if isinstance(setup, str):
-                    return _emit_bash_error(run_id, setup, setup, session_id)
-                lab = setup
-                command_env = {**(command_env or {}), **lab.env}
+            lab_result = await _lab_run_and_env(
+                user_id=run.user_id, run_todo_id=run_todo_id, sbx=sbx, base_env=execute_env
+            )
+            if isinstance(lab_result, str):
+                return _emit_bash_error(run.run_id, lab_result, lab_result, run.session_id)
+            lab, command_env = lab_result
             try:
-                if background:
-                    result = await _run_background(sbx, run, command_env)
-                else:
-                    result = await _run_foreground(sbx, run, command_env)
-            except Exception as e:
-                # A run that never started must not stay subscribed and count as live.
-                if lab is not None and run_todo_id is not None:
-                    await unregister_subscription(run_todo_id, user_id, lab.subscription_id)
-                if isinstance(e, BackgroundStartError):
-                    return _emit_bash_error(run_id, str(e), f"Error: {e}", session_id)
-                raise
-            if not background and session_id:
+                result = await _run_sandbox_command(
+                    sbx=sbx,
+                    run=run,
+                    command_env=command_env,
+                    background=run.background,
+                    lab=lab,
+                    run_todo_id=run_todo_id,
+                )
+            except BackgroundStartError as e:
+                return _emit_bash_error(run.run_id, str(e), f"Error: {e}", run.session_id)
+            if not run.background and run.session_id:
                 # A bash command can create artifacts many ways (cat, python, mv,
                 # curl -o, …), not just the write tool. Enumerate the session's
                 # artifacts/ from the sandbox itself (no cross-mount race) in real time.
                 async with fs_timer(FsOps.TOOL_BASH_PUBLISH):
-                    await _publish_artifacts(sbx, user_id, session_id)
+                    await _publish_artifacts(sbx, run.user_id, run.session_id)
             if lab is not None and run_todo_id is not None:
                 result = f"{result}\n{_lab_footer(lab, run_todo_id)}"
             return result
     except SandboxAcquisitionError as e:
-        return _emit_bash_error(run_id, str(e), f"Error: sandbox unavailable ({e})", session_id)
+        return _emit_bash_error(
+            run.run_id, str(e), f"Error: sandbox unavailable ({e})", run.session_id
+        )
     except Exception as e:
         # acquire_sandbox already evicted the sandbox if it died; surface it.
         log.error(f"{LogTag.SANDBOX} bash tool failed", error_type=type(e).__name__, exc_info=True)
-        return _emit_bash_error(run_id, str(e), f"Error executing command: {e}", session_id)
+        return _emit_bash_error(run.run_id, str(e), f"Error executing command: {e}", run.session_id)
+
+
+async def _run_bash(
+    *, config: RunnableConfig, request: _BashRequest, scoped_tools: Mapping[str, BaseTool] | None
+) -> str:
+    """Run one bash tool call: validate, resolve identity, execute in the sandbox."""
+    log.set(tool={"name": "bash", "action": "execute"})
+
+    run = await _prepare_invocation(config=config, request=request, scoped_tools=scoped_tools)
+    if isinstance(run, str):
+        return run
+
+    safe_emit(
+        {
+            "bash_data": {
+                "id": run.run_id,
+                "command": run.command,
+                "cwd": run.cwd or WORKSPACE_ROOT,
+                "status": "starting",
+            }
+        },
+        session_id=run.session_id,
+    )
+
+    return await _execute_invocation(run=run, run_todo_id=request.run_todo_id)
 
 
 async def _publish_artifacts(sbx: object, user_id: str, session_id: str) -> None:

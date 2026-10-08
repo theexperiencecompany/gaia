@@ -19,9 +19,6 @@ import asyncio
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import Any, cast
-
-from arq.connections import ArqRedis
 
 from app.config.settings import settings
 from app.constants.execute import (
@@ -47,10 +44,11 @@ from app.services.sandbox import (
     pause_idle_sandbox,
     renew_sandbox,
 )
+from app.workers.task_envelope import ArqJobContext
 from shared.py.wide_events import SandboxContext, log
 
 
-async def sweep_idle_sandboxes(_ctx: dict[str, Any]) -> str:
+async def sweep_idle_sandboxes(_ctx: ArqJobContext) -> str:
     """Evict sandboxes whose last_used_at is older than the eviction window."""
     cutoff = datetime.now(UTC) - timedelta(days=settings.E2B_SANDBOX_EVICT_DAYS)
     idle_user_ids = await e2b_sandbox_repository.find_idle_user_ids(cutoff=cutoff)
@@ -80,7 +78,7 @@ class LabTickOutcome(StrEnum):
     FAILED = "failed"
 
 
-async def refresh_lab_sandboxes(ctx: dict[str, Any]) -> str:
+async def refresh_lab_sandboxes(ctx: ArqJobContext) -> str:
     """Keep agent-lab sandboxes with a live run warm and saved; pause the rest once idle.
 
     Candidates come from the template recorded in Mongo, so regular users cost
@@ -114,7 +112,7 @@ async def refresh_lab_sandboxes(ctx: dict[str, Any]) -> str:
     )
 
 
-async def _tick_lab_sandbox(ctx: dict[str, Any], user_id: str) -> LabTickOutcome:
+async def _tick_lab_sandbox(ctx: ArqJobContext, user_id: str) -> LabTickOutcome:
     """Keep a live run's sandbox warm; otherwise pause it once idle. A failure only logs."""
     try:
         status = await lab_run_status(user_id)
@@ -156,9 +154,9 @@ def _lab_cap_notified_key(user_id: str) -> str:
     return f"lab:cap_notified:{user_id}"
 
 
-async def _notify_lab_cap_hit(ctx: dict[str, Any], user_id: str, todo_ids: list[str]) -> None:
+async def _notify_lab_cap_hit(ctx: ArqJobContext, user_id: str, todo_ids: list[str]) -> None:
     """One in-app notification per cap window that keep-warm stopped; delivery failure never costs the tick."""
-    pool = cast(ArqRedis | None, ctx.get("redis"))
+    pool = ctx.get("redis")
     if pool is not None:
         try:
             if await pool.exists(_lab_cap_notified_key(user_id)):
