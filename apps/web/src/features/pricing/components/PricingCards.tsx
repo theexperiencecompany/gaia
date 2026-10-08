@@ -4,7 +4,7 @@ import { Skeleton } from "@heroui/skeleton";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 
 import type { CheckoutSource, Plan } from "../api/pricingApi";
-import { ANNUAL_PRICE_RETENTION } from "../constants";
+import { MONTHS_PER_YEAR } from "../constants";
 import {
   useIsSubscriptionStatusUnknown,
   usePricing,
@@ -160,13 +160,18 @@ export function PricingCards({
             index === 0
               ? "Includes:"
               : `Everything in ${sortedPlans[index - 1].name}, plus`;
-          // Every paid annual plan carries the same discount, so the pre-discount
-          // price (what 12 monthly payments would cost) is the annual price
-          // divided by the retained fraction.
-          const originalPrice =
-            !durationIsMonth && plan.amount > 0
-              ? Math.round(plan.amount / ANNUAL_PRICE_RETENTION)
-              : undefined;
+          // A yearly card is compared against twelve payments of the same tier's
+          // monthly row, so the saving is whatever the two live prices say.
+          const monthlyTwin = durationIsMonth
+            ? undefined
+            : plans.find(
+                (candidate: Plan) =>
+                  candidate.plan_type === plan.plan_type &&
+                  candidate.duration === "monthly",
+              );
+          const originalPrice = monthlyTwin
+            ? monthlyTwin.amount * MONTHS_PER_YEAR
+            : undefined;
 
           // current_plan can be null even for an active subscription (product not
           // in the active plan list), so use plan_type instead: pro is the only

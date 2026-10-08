@@ -60,6 +60,8 @@ const PRO_PLAN: Plan = {
   updated_at: "",
 };
 
+const PRO_PLAN_MONTHLY_30: Plan = { ...PRO_PLAN, amount: 3000 };
+
 const ENTERPRISE_PLAN: Plan = {
   id: "plan_enterprise",
   dodo_product_id: "",
@@ -148,6 +150,25 @@ describe("PricingCards paid-only rendering", () => {
     expect(screen.getByText("GAIA")).not.toBeNull();
     expect(screen.queryByText("Enterprise")).toBeNull();
     expect(screen.queryByText("Talk to the team")).toBeNull();
+  });
+});
+
+describe("PricingCards yearly savings", () => {
+  it("compares the yearly row against twelve of the live monthly row", () => {
+    // $30/month vs $270/year is 25% off, three months free; a fixed 1/6
+    // annual discount would have kept saying two.
+    mockPlans = [
+      PRO_PLAN_MONTHLY_30,
+      {
+        ...PRO_PLAN_MONTHLY_30,
+        id: "plan_pro_yearly",
+        duration: "yearly",
+        amount: 27000,
+      },
+    ];
+    render(<PricingCards hideEnterprise />);
+
+    expect(screen.getByText("3 months free")).not.toBeNull();
   });
 });
 
