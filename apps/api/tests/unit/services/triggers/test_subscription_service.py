@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from app.constants import triggers as trigger_constants
 from app.constants.todos import BLOCKING_LABEL, TodoActivityEvent
 from app.models.todo_models import TodoDocument
 from app.models.trigger_subscription_models import (
@@ -26,6 +25,7 @@ from app.models.trigger_subscription_models import (
     TriggerSubscriptionStatus,
 )
 from app.services.analytics_service import AnalyticsEvents
+from app.services.triggers import subscription_service
 from app.services.triggers.subscription_service import (
     SubscriptionError,
     build_trigger_config,
@@ -465,7 +465,7 @@ class TestRegisterSubscription:
                         action=SubscriptionAction.EXECUTE,
                     )
 
-        assert h.set_subscriptions.await_count == trigger_constants.SUBSCRIPTION_WRITE_MAX_TRIES
+        assert h.set_subscriptions.await_count == subscription_service.SUBSCRIPTION_WRITE_MAX_TRIES
         # The instance registered for the watch that never stored is released rather
         # than left orphaned upstream, and the failed release names the todo it
         # belongs to rather than an empty id.
