@@ -53,7 +53,7 @@ async def get_user_tz(user_id: str) -> str:
     return "UTC"
 
 
-def compute_first_fire_from_cron(cron_expr: str, tz_name: str) -> datetime:
+def compute_first_fire_from_cron(cron_expr: str, tz_name: str | None) -> datetime:
     """Next fire of a cron in ``tz_name``, returned as UTC.
 
     Thin wrapper over the canonical ``get_next_run_time`` so todo recurrence and
@@ -111,7 +111,7 @@ def resolve_cron_first_fire(
             "is computed from the cron in the user's timezone."
         )
     try:
-        parsed = compute_first_fire_from_cron(recurrence, user_tz_name or "UTC")
+        parsed = compute_first_fire_from_cron(recurrence, user_tz_name)
     except Exception as e:
         return None, notes, (f"Error: could not compute first fire from cron '{recurrence}': {e}")
     return parsed, notes, None

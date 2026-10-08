@@ -109,6 +109,12 @@ class TestParseIsoFutureDatetime:
         assert parsed is None
         assert error == "Error: scheduled_at '2027-03-20T09:00:00' must include a timezone offset."
 
+    @time_machine.travel(datetime(2026, 10, 1, 9, tzinfo=UTC), tick=False)
+    def test_the_present_moment_is_not_the_future(self):
+        parsed, error = parse_iso_future_datetime("2026-10-01T09:00:00+00:00", "scheduled_at")
+        assert parsed is None
+        assert error == "Error: scheduled_at must be in the future."
+
     def test_z_suffix_is_treated_as_utc(self):
         future_z = (datetime.now(UTC) + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
         parsed, error = parse_iso_future_datetime(future_z, "scheduled_at")
@@ -840,6 +846,12 @@ class TestResolveCronFirstFire:
             "scheduled_at was ignored: for a cron recurrence the first fire "
             "is computed from the cron in the user's timezone."
         ]
+
+    @time_machine.travel(datetime(2026, 10, 1, tzinfo=UTC), tick=False)
+    def test_an_owner_with_no_timezone_gets_the_cron_in_utc(self):
+        parsed, _notes, error = resolve_cron_first_fire("0 9 * * *", None, None)
+        assert error is None
+        assert parsed == datetime(2026, 10, 1, 9, tzinfo=UTC)
 
     def test_no_note_when_scheduled_at_not_provided(self):
         parsed, notes, error = resolve_cron_first_fire("0 9 * * *", None, "UTC")
