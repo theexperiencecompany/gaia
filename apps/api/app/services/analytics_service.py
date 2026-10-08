@@ -341,6 +341,7 @@ class AIFeature(StrEnum):
     FILE_EXTRACTION = "file_extraction", ("file_image_summary", "file_text_summary")
     FOLLOW_UPS = "follow_ups", ("follow_up_actions",)
     RESEARCH = "research", ("research_queries",)
+    TODO_MAINTENANCE = "todo_maintenance", ("todo_health_check",)
     MODERATION = "moderation", ("profanity",)
     TITLE_GENERATION = "title_generation", ("chatbot",)
     # A caller whose label no member claims.

@@ -274,17 +274,17 @@ class TestHealthCheckExpired:
     async def test_archive_decision_archives_and_cooldowns(self):
         pool = _pool()
         archive = AsyncMock()
+        verdict = AsyncMock(return_value="ARCHIVE: everything resolved itself")
         with (
             patch(f"{MODULE}._read_canvas", AsyncMock(return_value="canvas text")),
-            patch(
-                f"{MODULE}._health_check_verdict",
-                AsyncMock(return_value="ARCHIVE: everything resolved itself"),
-            ),
+            patch(f"{MODULE}._health_check_verdict", verdict),
             patch(f"{MODULE}.tracked_todo_service.archive_tracked_todo", archive),
         ):
             outcome = await _health_check_expired(_doc(), pool)
 
         assert outcome == "archived"
+        # The model call is metered to the todo's owner.
+        assert verdict.await_args.args[0] == "user-1"
         archive.assert_awaited_once_with("todo-1", "user-1", "everything resolved itself")
         pool.set.assert_awaited_once_with(
             "gaia_maintenance_notified:todo-1", "1", ex=SECONDS_PER_DAY
@@ -363,12 +363,10 @@ class TestHealthCheckDormant:
         schedule = AsyncMock()
         store = AsyncMock()
         syslog = AsyncMock()
+        verdict = AsyncMock(return_value="EXECUTE: send the follow-up email")
         with (
             patch(f"{MODULE}._read_canvas", AsyncMock(return_value="")),
-            patch(
-                f"{MODULE}._health_check_verdict",
-                AsyncMock(return_value="EXECUTE: send the follow-up email"),
-            ),
+            patch(f"{MODULE}._health_check_verdict", verdict),
             patch(f"{MODULE}.tracked_todo_service.schedule_execution", schedule),
             patch(f"{MODULE}.todo_repository.update", store) as store,
             patch(f"{MODULE}.record_activity", syslog),
@@ -378,6 +376,8 @@ class TestHealthCheckDormant:
             after = datetime.now(UTC)
 
         assert outcome == "requeued"
+        # The model call is metered to the todo's owner.
+        assert verdict.await_args.args[0] == "user-1"
         run_at = schedule.await_args.args[1]
         assert before <= run_at <= after + timedelta(seconds=120)
         assert schedule.await_args.args[0] == "todo-1"
