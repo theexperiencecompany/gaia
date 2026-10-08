@@ -52,9 +52,9 @@ class TaskOutcome(str, Enum):
 class BaseScheduledTask(BaseModel):
     """Base model for any scheduled task; domain models inherit and add their own fields."""
 
-    id: str | None = Field(None, alias="_id")
+    id: str | None = Field(default=None, alias="_id")
     user_id: str = Field(..., description="User ID who owns this task")
-    repeat: str | None = Field(None, description="Cron expression for recurring tasks")
+    repeat: str | None = Field(default=None, description="Cron expression for recurring tasks")
     scheduled_at: datetime | None = Field(
         default=None,
         description="Next scheduled execution time; None when the task has no schedule "
@@ -66,9 +66,11 @@ class BaseScheduledTask(BaseModel):
     occurrence_count: int = Field(
         default=0, description="Number of times this task has been executed"
     )
-    max_occurrences: int | None = Field(None, description="Maximum number of executions (optional)")
+    max_occurrences: int | None = Field(
+        default=None, description="Maximum number of executions (optional)"
+    )
     stop_after: datetime | None = Field(
-        None, description="Stop executing after this date (optional)"
+        default=None, description="Stop executing after this date (optional)"
     )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
