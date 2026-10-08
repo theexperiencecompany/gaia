@@ -24,9 +24,9 @@ from uuid import uuid4
 
 from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from app.agents.llm.client import ainvoke_llm, background_structured_runnable, metered_config
+from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.middleware.factory import (
     AccountingOptions,
     ContextOptions,
@@ -40,7 +40,7 @@ from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_NARRATION_PROMPT,
 )
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
-from app.agents.workspace.offload import read_offload
+from app.agents.workspace.offload import OffloadInfo, read_offload
 from app.constants.agents import PLAYBOOK_SUSPECT_BASELINE_WINDOW
 from app.constants.hil import HIL_STATUS_KWARG
 from app.constants.log_tags import LogTag
@@ -583,7 +583,7 @@ def _record_step(
         return _StepFailure(position, tool_name, reported)
 
     if step.id:
-        info = read_offload(message)
+        info: OffloadInfo | None = read_offload(message)
         run.steps[step.id] = StepResult(value=value, file=info["path"] if info else None)
     if run.suspect is None:
         run.suspect = _empty_where_previous_had_items(tool_name, value, run.recent_traces)
@@ -594,7 +594,7 @@ def _record_step(
     return None
 
 
-def _shown_args(args: dict[str, Any]) -> str:
+def _shown_args(args: Mapping[str, object]) -> str:
     rendered = json.dumps(args, separators=(",", ":"), default=str)
     if len(rendered) <= _NARRATION_ARGS_MAX_CHARS:
         return rendered
@@ -627,8 +627,8 @@ async def _replay_call(call: ScriptedCall, run: _Run, space: ToolSpace) -> ToolM
             ),
         ),
     )
-    configurable = _configurable_for(run, space)
-    state = cast(
+    configurable: AgentConfigurable = _configurable_for(run, space)
+    state: State = cast(
         State,
         await builder.compile().ainvoke(
             cast(State, {"messages": [], "todos": []}),
@@ -648,14 +648,28 @@ async def _replay_call(call: ScriptedCall, run: _Run, space: ToolSpace) -> ToolM
     )
 
 
+class _ToolEnvelope(BaseModel):
+    """The failure fields of a tool's JSON envelope; a tool may set any, all or none.
+
+    object, not bool/str: only a literal False success means failure, and
+    error/message are quoted whatever their type, so nothing may be coerced.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    success: object = None
+    error: object = None
+    message: object = None
+
+
 def _envelope_failure(value: object) -> str | None:
     """Return what a JSON envelope says went wrong, or None when it reports no failure."""
     if not isinstance(value, dict):
         return None
-    error = value.get("error")
-    if value.get("success") is not False and not error:
+    envelope = _ToolEnvelope.model_validate(value)
+    if envelope.success is not False and not envelope.error:
         return None
-    reported = error or value.get("message") or "the tool reported success=false"
+    reported = envelope.error or envelope.message or "the tool reported success=false"
     return str(reported)[:_FAILURE_QUOTE_MAX_CHARS]
 
 
@@ -696,7 +710,7 @@ def _suspect_verdict(
 
 
 def _record(
-    run: _Run, tool_name: str, subagent_id: str | None, args: dict[str, Any], text: str
+    run: _Run, tool_name: str, subagent_id: str | None, args: Mapping[str, object], text: str
 ) -> None:
     """Append the call to the trace the moment it resolves.
 
@@ -708,7 +722,7 @@ def _record(
             tool_name=tool_name,
             tool_category=run.registry.get_category_of_tool(tool_name),
             subagent=subagent_id,
-            args=args,
+            args=dict(args),
             result_digest=build_result_digest(text),
             replayed=True,
         )
@@ -730,9 +744,9 @@ async def _subagent_space(
     return handoff_tool_space(space)
 
 
-def _configurable_for(run: _Run, space: ToolSpace) -> dict[str, Any]:
+def _configurable_for(run: _Run, space: ToolSpace) -> AgentConfigurable:
     """Return the run's configurable, tagged with the subagent when inside a handoff."""
-    configurable: dict[str, Any] = dict(run.configurable)
+    configurable: AgentConfigurable = run.configurable.copy()
     if space.subagent_id is not None:
         configurable["subagent_id"] = space.subagent_id
     return configurable
@@ -889,9 +903,8 @@ async def _structured_call(
     label: str,
 ) -> _Structured:
     """One metered structured call; None from the runnable is a failure, not a value."""
-    config = metered_config(playbook.user_id)
-    reply: _Structured | None = await ainvoke_llm(
-        background_structured_runnable(schema, config=config), prompt, label=label, config=config
+    reply: _Structured | None = await ainvoke_structured(
+        schema, prompt, label=label, config=metered_config(playbook.user_id)
     )
     run.llm_calls += 1
     if reply is None:

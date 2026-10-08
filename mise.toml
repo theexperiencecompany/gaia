@@ -13,7 +13,7 @@
 # Documentation: https://docs.heygaia.io/developers/commands
 # ═══════════════════════════════════════════════════════════════════════════════
 
-experimental_monorepo_root = true
+monorepo_root = true
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MONOREPO CONFIGURATION
@@ -42,16 +42,16 @@ experimental_monorepo_root = true
 #   - Local tasks (cd apps/api && mise dev) = when working in one app
 #
 
-# [monorepo]
-# config_roots = [
-#     "apps/api",
-#     "apps/web",
-#     "apps/desktop",
-#     "apps/mobile",
-#     "docs",
-#     "apps/voice-agent",
-#     "apps/bots/*",
-# ]
+[monorepo]
+config_roots = [
+    "apps/api",
+    "apps/web",
+    "apps/desktop",
+    "apps/mobile",
+    "docs",
+    "apps/voice-agent",
+    "apps/bots/*",
+]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TOOLS & ENVIRONMENT
@@ -61,7 +61,7 @@ experimental_monorepo_root = true
 python = "3.12"
 node = "22"
 java = "21"
-uv = "latest"
+uv = "0.10.6"  # same as .github/actions/setup-uv and the Dockerfiles; tools/lints/check_tool_pins.py holds them together
 prek = "0.2.23"
 "npm:nx" = "latest"
 "npm:mintlify" = "latest"
@@ -70,15 +70,14 @@ prek = "0.2.23"
 
 [env]
 _.python.venv = { path = ".venv", create = true }
-MISE_NODE_COREPACK = "1"
 # Per-worktree port allocation written by `mise run wt:env`. Optional: mise silently
 # skips it when absent, so the main worktree keeps today's defaults (ports 8000/3000).
 _.file = ".env.worktree"
 
 [settings]
 experimental = true
-task.monorepo_depth = 4
-task.monorepo_exclude_dirs = ["node_modules", ".next", ".venv", "__pycache__", "dist", "build", ".expo"]
+# a setting, not [env]: [env] is exported to commands, never read as mise config, so node installed without pnpm
+node.corepack = true
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SETUP & INSTALLATION
@@ -175,6 +174,8 @@ else
   offset=$(( (sum % 199 + 1) * 10 ))
 fi
 
+chroma_suffix=""
+if [ "$offset" -ne 0 ]; then chroma_suffix="_wt$offset"; fi
 api_port=$(( 8000 + offset ))
 web_port=$(( 3000 + offset ))
 
@@ -203,6 +204,10 @@ BOT_DISCORD_PORT=$(( 3200 + offset ))
 BOT_SLACK_PORT=$(( 3201 + offset ))
 BOT_TELEGRAM_PORT=$(( 3202 + offset ))
 BOT_WHATSAPP_PORT=$(( 3203 + offset ))
+# All worktrees share one local ChromaDB, and the tool and trigger stores delete
+# rows their own registry does not know, so each linked worktree gets its own
+# collection names (empty on main, which keeps the default names).
+GAIA_CHROMA_COLLECTION_SUFFIX=$chroma_suffix
 EOF
 
 echo "wt:env → $root/.env.worktree (offset $offset): API_PORT=$api_port WEB_PORT=$web_port"
@@ -387,7 +392,11 @@ run = "cd apps/api && uv run --group backend --group dev pytest -q --tb=short"
 
 [tasks."test:python:real"]
 description = "Run the real-infra tier (Postgres/Redis/Mongo/Chroma via docker compose) — opt-in"
-run = "cd apps/api && USE_REAL_SERVICES=1 uv run --group backend --group dev pytest tests/integration/real tests/contracts tests/e2e/test_hil_barrier_e2e.py tests/e2e/test_hil_spawn_e2e.py --tb=short -q"
+run = "cd apps/api && USE_REAL_SERVICES=1 uv run --group backend --group dev pytest tests/integration/real tests/contracts tests/e2e/test_hil_barrier_e2e.py tests/e2e/test_hil_spawn_e2e.py --ignore=tests/integration/real/browser --tb=short -q"
+
+[tasks."test:python:browser"]
+description = "Run the hermetic browser stack (API, worker, Chrome and Obscura hosts, fake models, fixture site) — needs the real services, CHROMIUM_BIN or google-chrome, and OBSCURA_BIN"
+run = "cd apps/api && USE_REAL_SERVICES=1 uv run --group backend --group dev pytest tests/integration/real/browser -n 2 --tb=short -q"
 
 [tasks."test:one"]
 description = "Run one or more API test files exactly as CI does, minus xdist: `mise test:one tests/unit/x.py [more...]` (keeps --strict-markers and the -m filter; `-o addopts=\"\"` silently drops both)"
@@ -441,6 +450,27 @@ run = "nx run-many -t format:check --parallel=3"
 description = "Whitespace/indentation only for affected projects — does NOT sort imports"
 run = "nx affected -t format --parallel=3"
 
+# Whole-repo Python lint/format, scoped to the files no Nx project owns.
+#
+# `nx run-many -t format` only reaches the 12 Nx projects (apps/*, libs/*).
+# CI runs `ruff format --check .` from the repo root, which also covers the ~161
+# Python files under scripts/, tools/, .agents/skills/, docs/ and
+# libs/wake-word/ — none of which belong to an Nx project. That asymmetry is how
+# scripts/ci/tests/test_workflow_suites.py and scripts/test/mutation_classify.py
+# sat unformatted since 2026-09-24 and only ever failed in CI.
+#
+# These run CI's exact command, from the root, at CI's exact pin, so a clean
+# local run means a clean lane. Keep the ruff version in lockstep with
+# .github/workflows/code-quality.yml, .pre-commit-config.yaml and uv.lock —
+# `python3 tools/lints/check_tool_pins.py` enforces that.
+[tasks."lint:py"]
+description = "Whole-repo Python lint + format check — CI's exact ruff command (covers scripts/, tools/)"
+run = "uvx --no-build ruff@0.14.13 check . && uvx --no-build ruff@0.14.13 format --check ."
+
+[tasks."lint:py:fix"]
+description = "Whole-repo Python autofix + format — CI's exact ruff command"
+run = "uvx --no-build ruff@0.14.13 check --fix . && uvx --no-build ruff@0.14.13 format ."
+
 [tasks."type-check"]
 description = "Type-check all apps (parallel with caching)"
 run = "nx run-many -t type-check --parallel=3"
@@ -470,8 +500,8 @@ description = "Run all pre-commit checks (workspace mode)"
 run = "prek run --all-files"
 
 [tasks."pre-commit:install"]
-description = "Install pre-commit hooks using prek"
-run = "prek install"
+description = "Install the commit and pre-push hooks using prek"
+run = "prek install --hook-type pre-commit --hook-type pre-push"
 
 [tasks."pre-commit:run"]
 description = "Run pre-commit hooks on staged files"
@@ -639,6 +669,10 @@ run = "docker compose -f apps/api/scripts/evals/infra/compose.opik.yml down -v"
 description = "Run the eval-harness smoke suite (3 toy cases; verifies rotation, journal, report)"
 run = "cd apps/api && uv run --group backend python -m scripts.evals run --suite smoke"
 
+[tasks."eval:browser"]
+description = "Run the browser quality eval: real models drive the hosts BROWSER_HOST_URL / BROWSER_FALLBACK_HOST_URL through 22 real-site tasks (bills model calls; not a CI gate; OPENROUTER_MODEL names the browser agent's model for the record)"
+run = "bash scripts/ci/browser.sh eval"
+
 [tasks."eval:gate"]
 description = "Stub-driven regression gate (free) — run before pushing agent/LLM/tool changes"
 run = "cd apps/api && uv run --group backend python -m scripts.evals run --suite regression --sim"
@@ -670,7 +704,8 @@ run = "python3 tools/evlog_map --all"
 # ── Agent-legible gates ──────────────────────────────────────────────────────
 [tasks."ci:local"]
 description = "Run CI quality gates locally (same lanes/versions as GitHub Actions); --list shows all lanes"
-run = "uv run python scripts/dev/gaia_verify.py"
+# --no-project: the runner is stdlib-only.
+run = "uv run --no-project python scripts/dev/gaia_verify.py"
 
 
 [tasks."pr:comments"]

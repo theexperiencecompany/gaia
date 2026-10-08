@@ -217,7 +217,7 @@ CLAUSES: tuple[Clause, ...] = (
         source="comms",
         starts_at="## Actions: three moments",
         ends_before="Needs a service they haven't connected",
-        governs="the three moments: silent call, one ack, then the outcome",
+        governs="the three moments: silent call, a reaction or one short ack, then the outcome",
         depends_on=("data/quality/bubbles.yaml", "data/quality/multiturn_extra.yaml"),
     ),
     Clause(

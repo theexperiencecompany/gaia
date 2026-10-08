@@ -28,18 +28,20 @@ import {
   extractSubcommandArgs,
   handleStreamingChat,
   hashLogIdentifier,
-  type OutboundAttachment,
+  type OutboundFile,
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
   type RichMessage,
   type RichMessageTarget,
+  recordBotFailure,
   renderForPlatform,
   richMessageToMarkdown,
   type SentMessage,
   STREAMING_DEFAULTS,
+  withWideEvent,
 } from "@gaia/shared/bots";
-import { App } from "@slack/bolt";
+import { App, type CodedError, type Context } from "@slack/bolt";
 import { which } from "node-emoji";
 
 /** Bolt's respond function for slash command responses. */
@@ -118,7 +120,27 @@ export class SlackAdapter extends BaseBotAdapter {
       signingSecret: this.signingSecret,
       socketMode: true,
       appToken: this.appToken,
+      // Hands the handler the event's context, so the error says who hit it.
+      extendedErrorHandler: true,
     });
+    // Bolt's last resort for anything a listener or middleware throws: its own
+    // unit of work, like Telegram's bot.catch, so it gets a failed event with a
+    // reason. Resolving keeps Bolt's receiver from logging it again, unstructured.
+    this.app.error(
+      async ({ error, context }: { error: CodedError; context: Context }) =>
+        withWideEvent(
+          "bot_runtime_error",
+          {
+            platform: this.platform,
+            component: "adapter",
+            user_hash: hashLogIdentifier(context.userId),
+            slack_error_code: error.code,
+          },
+          async () => {
+            recordBotFailure("slack_runtime_error", error.original ?? error);
+          },
+        ),
+    );
   }
 
   /**
@@ -254,55 +276,57 @@ export class SlackAdapter extends BaseBotAdapter {
     return channel;
   }
 
+  /**
+   * Runs one outbound send against the conversation's channel id: the channel
+   * itself for a channel/group, else the user's resolved DM channel
+   * (platform_links stores the user id).
+   */
+  private async sendToConversation(
+    destinationId: string,
+    isChannel: boolean,
+    send: (channel: string) => Promise<unknown>,
+  ): Promise<void> {
+    const channel = isChannel
+      ? destinationId
+      : await this.resolveDmChannel(destinationId);
+    try {
+      await send(channel);
+    } catch (err) {
+      // A cached DM channel id can go stale (conversation archived, user
+      // deactivated): drop it so the next delivery re-resolves.
+      if (!isChannel) this.dmChannelCache.delete(destinationId);
+      throw err;
+    }
+  }
+
   protected async deliverOutbound(
     destinationId: string,
     text: string,
     isChannel: boolean,
   ): Promise<void> {
-    // A channel/group conversation posts to the channel id directly; a DM posts
-    // to the user's resolved DM channel (platform_links stores the user id).
-    if (isChannel) {
-      await this.app.client.chat.postMessage({ channel: destinationId, text });
-      return;
-    }
-    const channel = await this.resolveDmChannel(destinationId);
-    try {
-      await this.app.client.chat.postMessage({ channel, text });
-    } catch (err) {
-      // A cached DM channel id can go stale (conversation archived, user
-      // deactivated). Drop it so the next delivery re-resolves instead of
-      // failing forever against a dead channel.
-      this.dmChannelCache.delete(destinationId);
-      throw err;
-    }
+    await this.sendToConversation(destinationId, isChannel, (channel) =>
+      this.app.client.chat.postMessage({ channel, text }),
+    );
   }
 
   /**
-   * Delivers an agent-generated file artifact to a Slack user. Fetches the
-   * bytes from GAIA (bot-authenticated) and uploads them to the user's DM
-   * channel via files.uploadV2, with the caption as the message comment.
+   * Uploads an agent-generated file artifact via files.uploadV2, with the
+   * caption as the message comment: into the channel when `isChannel`, else
+   * into the user's DM channel.
    */
-  protected override async deliverOutboundFile(
+  protected override async sendOutboundFile(
     destinationId: string,
-    attachment: OutboundAttachment,
+    { data, filename, caption }: OutboundFile,
+    isChannel: boolean,
   ): Promise<void> {
-    const artifact = await this.fetchOutboundArtifact(
-      destinationId,
-      attachment,
-    );
-    if (!artifact) return; // too large — fetchOutboundArtifact already replied
-    const channel = await this.resolveDmChannel(destinationId);
-    try {
-      await this.app.client.files.uploadV2({
+    await this.sendToConversation(destinationId, isChannel, (channel) =>
+      this.app.client.files.uploadV2({
         channel_id: channel,
-        file: artifact.data,
-        filename: attachment.filename,
-        initial_comment: attachment.caption ?? undefined,
-      });
-    } catch (err) {
-      this.dmChannelCache.delete(destinationId);
-      throw err;
-    }
+        file: data,
+        filename,
+        initial_comment: caption,
+      }),
+    );
   }
 
   protected override async reactToMessage(
@@ -476,7 +500,7 @@ export class SlackAdapter extends BaseBotAdapter {
         await client.chat.update({
           channel: channelId,
           ts: currentTs,
-          text: "🔒 Authentication required — check the private message below to link your account.",
+          text: "🔒 Authentication required. Check the private message below to link your account.",
         });
         await client.chat.postEphemeral({
           channel: channelId,

@@ -267,7 +267,6 @@ class _Seams:
     """The mocked seams a test may hold on to; see _run."""
 
     subagent: _FakeSubagent | None = None
-    runnable: MagicMock | None = None
     find_previous: AsyncMock | None = None
     llm: AsyncMock | None = None
 
@@ -287,9 +286,8 @@ async def _run(
     seams.llm instead. seams lets a test hold on to the mock it asserts on.
     """
     seams = seams or _Seams()
-    subagent, runnable, find_previous, llm = (
+    subagent, find_previous, llm = (
         seams.subagent,
-        seams.runnable,
         seams.find_previous,
         seams.llm,
     )
@@ -313,11 +311,9 @@ async def _run(
             if subagent is not None and subagent_id == subagent.id
             else None,
         ),
-        # The model calls run on whatever provider the deployment uses, so the
-        # runnable is built then invoked. Both halves are stubbed: the test cares
-        # how many model calls happen and what they return, not which lane served them.
-        patch(f"{MODULE}.background_structured_runnable", runnable or MagicMock()),
-        patch(f"{MODULE}.ainvoke_llm", llm),
+        # The test cares how many model calls happen and what they return, not
+        # which lane served them.
+        patch(f"{MODULE}.ainvoke_structured", llm),
         _gate_policy(policy),
     ):
         result = await run_playbook(
@@ -902,7 +898,6 @@ class TestNarrationCall:
         """The mid-run ask call returns only the ask schema; the bug this split fixed let it also carry a result or verdict mid-run."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
-        runnable = MagicMock()
         playbook = _playbook(
             [
                 ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
@@ -918,37 +913,29 @@ class TestNarrationCall:
             playbook,
             registry,
             ask_fill=_ask_fill({"mail.body": "Twelve today."}),
-            seams=_Seams(runnable=runnable),
         )
 
         assert result.ok is True, result.failure
-        assert [call.args for call in runnable.call_args_list] == [
-            (PlaybookAskFill,),
-            (PlaybookNarration,),
+        assert [call.args[0] for call in llm.await_args_list] == [
+            PlaybookAskFill,
+            PlaybookNarration,
         ]
         assert [call.kwargs["label"] for call in llm.await_args_list] == [
             "playbook_ask_fill",
             "playbook_narration",
         ]
         assert llm.await_args_list[0].kwargs["config"] == {"configurable": {"user_id": "u_1"}}
-        # The mid-run call is metered too: built unmetered it is a replay's COGS
-        # landing on nobody, which is exactly the line a background run hides.
-        assert runnable.call_args_list[0].kwargs == {"config": {"configurable": {"user_id": "u_1"}}}
         assert _prompt_block(_ask_prompt(llm), "playbook") == playbook.description
 
     async def test_it_is_one_structured_call_metered_to_the_workflows_user(self) -> None:
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
-        runnable = MagicMock()
-
-        result, llm = await _run(_playbook(AGENDA_STEPS), registry, seams=_Seams(runnable=runnable))
+        result, llm = await _run(_playbook(AGENDA_STEPS), registry)
 
         assert result.ok is True, result.failure
-        assert runnable.call_args.args == (PlaybookNarration,)
+        assert llm.await_args.args[0] is PlaybookNarration
         # Attribution, not budget: a replay's narration is COGS and has to land
-        # on the workflow's owner at both halves of the call.
-        assert runnable.call_args.kwargs["config"] == {"configurable": {"user_id": "u_1"}}
-        assert llm.await_args.args[0] is runnable.return_value
+        # on the workflow's owner.
         assert llm.await_args.kwargs["config"] == {"configurable": {"user_id": "u_1"}}
         assert llm.await_args.kwargs["label"] == "playbook_narration"
 
@@ -1397,7 +1384,7 @@ class TestCallOrder:
         answers = [_ask_fill({"mail.body": "Twelve today."}), _narration()]
         tools_run_before_each_call: list[list[str]] = []
 
-        async def model(runnable: object, prompt: object, **kwargs: object) -> object:
+        async def model(schema: object, prompt: object, **kwargs: object) -> object:
             tools_run_before_each_call.append([name for name, _ in recorder.calls])
             return answers[len(tools_run_before_each_call) - 1]
 
@@ -2524,7 +2511,7 @@ async def test_each_fill_fires_at_its_own_step_and_no_earlier() -> None:
     ]
     tools_run_before_each_call: list[list[str]] = []
 
-    async def model(runnable: object, prompt: object, **kwargs: object) -> object:
+    async def model(schema: object, prompt: object, **kwargs: object) -> object:
         tools_run_before_each_call.append([name for name, _ in recorder.calls])
         return answers[len(tools_run_before_each_call) - 1]
 
@@ -2756,8 +2743,7 @@ async def test_the_ask_fill_adds_to_the_runs_llm_count_rather_than_resetting_it(
     fill = PlaybookAskFill(asks=[])
 
     with (
-        patch(f"{MODULE}.background_structured_runnable", MagicMock()),
-        patch(f"{MODULE}.ainvoke_llm", AsyncMock(return_value=fill)),
+        patch(f"{MODULE}.ainvoke_structured", AsyncMock(return_value=fill)),
     ):
         await _fill_asks(playbook, run, playbook.steps[0].arg_ask_slots("mail"), pending=[])
 
@@ -2835,8 +2821,7 @@ class TestGuardsOnStatesTheModelsRuleOut:
         run = _bare_run()
 
         with (
-            patch(f"{MODULE}.background_structured_runnable", MagicMock()),
-            patch(f"{MODULE}.ainvoke_llm", AsyncMock(return_value=_narration())) as llm,
+            patch(f"{MODULE}.ainvoke_structured", AsyncMock(return_value=_narration())) as llm,
         ):
             await _narrate(_playbook(AGENDA_STEPS), run)
 

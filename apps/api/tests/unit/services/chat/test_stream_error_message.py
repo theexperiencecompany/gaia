@@ -23,6 +23,7 @@ import fakeredis.aioredis
 from langgraph.errors import GraphRecursionError
 import pytest
 
+from app.core.stream_manager import StreamManager
 from app.db.redis import redis_cache
 from app.services.chat.stream import _handle_stream_error
 
@@ -47,12 +48,11 @@ def published(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     async def capture(_stream_id: str, chunk: str) -> None:
         chunks.append(chunk)
 
-    monkeypatch.setattr(
-        "app.services.chat.stream.stream_manager.publish_chunk", AsyncMock(side_effect=capture)
-    )
-    monkeypatch.setattr(
-        "app.services.chat.stream.stream_manager.set_error", AsyncMock(return_value=None)
-    )
+    # Patched on the class: monkeypatch restores an instance target by re-setting
+    # the instance attribute, which permanently shadows StreamManager.publish_chunk
+    # on the process-wide singleton for any later test that patches the class.
+    monkeypatch.setattr(StreamManager, "publish_chunk", AsyncMock(side_effect=capture))
+    monkeypatch.setattr(StreamManager, "set_error", AsyncMock(return_value=None))
     return chunks
 
 

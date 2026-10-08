@@ -24,13 +24,14 @@ from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.background.session import get_session, teardown_session
 from app.agents.tools import executor_tool
 from app.agents.tools.executor_tool import call_executor, cancel_executor, tools
-from app.constants.agents import AgentTag
+from app.constants.agents import DONE_EVIDENCE_RULE, AgentTag
+from app.constants.browser import BrowserSessionStatus
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_BUSY_TTL,
     EXECUTOR_INBOX_PREFIX,
-    EXECUTOR_INBOX_TTL,
 )
+from app.constants.hil import EXECUTOR_INBOX_TTL
 from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
@@ -38,7 +39,19 @@ from app.db.redis import redis_cache
 from app.db.repositories.playbooks import playbook_repository
 from app.models.agent_models import InboxEntry, RunningSubagent
 from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus, ToolStep
+from app.schemas.browser import BrowserResultSnapshot
+from app.schemas.browser_job import BrowserJobFinished, BrowserJobState, BrowserJobStatus
+from app.services.browser import job_stop
+from app.services.browser.job_events import JOB_TERMINAL_FRAME, publish_job_event
+from app.services.browser.jobs import (
+    claim_conversation_slot,
+    job_cancel_requested,
+    put_job_state,
+    record_ending,
+    set_latest_job,
+)
 from app.utils import background_tasks
+from tests.browser_factories import make_browser_job_state
 
 
 def tool_function(tool_obj: BaseTool) -> Callable[..., Awaitable[str]]:
@@ -353,7 +366,7 @@ class TestCallExecutorLockContention:
                 id=handed_id,
                 text=(
                     "second\n\nDefinition of done (every item must be true before you "
-                    "finish):\n- the draft is saved"
+                    f"finish):\n- the draft is saved\n{DONE_EVIDENCE_RULE}"
                 ),
                 tag=AgentTag.USER_INTERJECTION,
             )
@@ -534,6 +547,140 @@ class TestCallExecutorFailures:
 
         assert response == "Error starting task: redis write failed"
         assert await fake_redis.get(LOCK_KEY) == "stream-1:live-task"
+
+
+# ── cancel_executor reaches a detached browser job ───────────────────
+
+
+async def _a_running_browser_job(job_id: str = "job-1") -> None:
+    await set_latest_job(CONVERSATION_ID, job_id)
+    await claim_conversation_slot(CONVERSATION_ID, job_id)
+    await put_job_state(
+        make_browser_job_state(
+            job_id,
+            status=BrowserJobStatus.RUNNING,
+            task="t",
+            conversation_id="conv-of-the-job",
+            user_id="u1",
+            in_background=True,
+        )
+    )
+
+
+async def _abort_ends_the_job(job_id: str) -> bool:
+    """Stand in for ARQ's abort: the run's task is cancelled and ends on its stopped card."""
+    await publish_job_event(job_id, JOB_TERMINAL_FRAME)
+    return True
+
+
+@pytest.fixture
+def no_arq(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(job_stop, "_abort_if_started", _abort_ends_the_job)
+
+
+@pytest.mark.usefixtures("no_arq")
+class TestCancelExecutorStopsTheBrowser:
+    """A browser run outlives the turn that started it, so /stop has to reach the job itself."""
+
+    async def test_a_stop_cancels_the_conversations_browser_job(
+        self,
+        fake_redis: fakeredis.aioredis.FakeRedis,
+        broadcast: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
+        await _a_running_browser_job()
+        await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
+
+        response = await run_cancel_executor(config=config_for(), task_ids=[])
+
+        assert await job_cancel_requested("job-1") is True
+        assert response.endswith("Stopped the browser task.")
+
+    async def test_a_stop_reaches_a_browser_job_whose_turn_already_ended(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        # The executor is long gone, so there is no busy lock and no live stream
+        # to cancel — the job itself is the only thing that still stops the browser.
+        await _a_running_browser_job()
+
+        response = await run_cancel_executor(config=config_for(), task_ids=[])
+
+        assert response == "Stopped the browser task."
+
+    async def test_a_stop_from_the_dm_reaches_the_users_run_from_a_group(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(job_stop, "_abort_if_started", AsyncMock(return_value=False))
+        await set_latest_job("telegram:user-1", "job-g")
+        await put_job_state(
+            make_browser_job_state(
+                "job-g",
+                status=BrowserJobStatus.RUNNING,
+                task="t",
+                conversation_id="conv-of-the-job",
+                user_id="u1",
+                in_background=True,
+            )
+        )
+
+        response = await run_cancel_executor(
+            config=config_for(conversation_source="telegram"), task_ids=[]
+        )
+
+        assert response == "Stopped the browser task."
+        assert await job_cancel_requested("job-g") is True
+
+    async def test_a_stop_after_the_runs_own_end_says_its_result_stands(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The run recorded its ending first: the stop lost, and the agent is told its answer is told."""
+        monkeypatch.setattr(job_stop, "_abort_if_started", AsyncMock(return_value=False))
+        await _a_running_browser_job()
+        found_running = job_stop.running_chat_jobs
+
+        async def _the_run_ends_as_the_stop_finds_it(*args: Any) -> list[BrowserJobState]:
+            running = await found_running(*args)
+            await record_ending(
+                "job-1",
+                BrowserJobFinished(
+                    result=BrowserResultSnapshot(
+                        status=BrowserSessionStatus.COMPLETED, success=True, summary="ok"
+                    )
+                ),
+            )
+            return running
+
+        monkeypatch.setattr(job_stop, "running_chat_jobs", _the_run_ends_as_the_stop_finds_it)
+
+        response = await run_cancel_executor(config=config_for(), task_ids=[])
+
+        assert response == (
+            "The browser task had already finished before the stop reached it; its result stands."
+        )
+        assert await job_cancel_requested("job-1") is False
+
+    async def test_a_targeted_cancel_leaves_the_browser_run_alone(
+        self,
+        fake_redis: fakeredis.aioredis.FakeRedis,
+        broadcast: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Cancelling one named executor task is not "stop everything"; the browser keeps going."""
+        monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
+        await _a_running_browser_job()
+        await inbox().append("q1", "queued work")
+
+        await run_cancel_executor(config=config_for(), task_ids=["q1"])
+
+        assert await job_cancel_requested("job-1") is False
+
+    async def test_a_stop_with_nothing_running_anywhere_still_reports_nothing(
+        self, fake_redis: fakeredis.aioredis.FakeRedis
+    ) -> None:
+        response = await run_cancel_executor(config=config_for(), task_ids=[])
+
+        assert response == "No executor tasks are running or pending for this conversation."
 
 
 # ── cancel_executor ──────────────────────────────────────────────────
@@ -930,6 +1077,21 @@ class TestCancelStopsSubagents:
         assert response == "Cancelled: q1."
         assert not await StreamManager.is_cancelled(stream_id)
 
+    async def test_stop_everything_stops_both_a_browser_job_and_a_subagent(
+        self,
+        fake_redis: fakeredis.aioredis.FakeRedis,
+        broadcast: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(job_stop, "_abort_if_started", _abort_ends_the_job)
+        stream_id = await self._running("s1", dispatched_by="finished-turn")
+        await _a_running_browser_job()
+
+        response = await run_cancel_executor(config=config_for(), task_ids=[])
+
+        assert response == "Cancelled: 1 running subagent(s). Stopped the browser task."
+        assert await StreamManager.is_cancelled(stream_id)
+
 
 # ── malformed inbox entries ──────────────────────────────────────────
 
@@ -1201,12 +1363,38 @@ class TestDispatchAcknowledgement:
             "work has STARTED. Do not tell the user anything was sent, created, deleted, or "
             "finished. Risky actions pause for the user's approval first and they see an "
             "approval card; if that happens the work waits on them, not on you. Acknowledge "
-            "that you are on it, and say the action is waiting for their approval if one is "
-            "pending. This guidance applies ONLY to this acknowledgment. The real result "
+            "it, a reaction is enough, and say in words that the action is waiting for their "
+            "approval if one is pending. This guidance applies ONLY to this acknowledgment. The real result "
             "arrives later as its own message and supersedes it completely: by then the gate "
             "is settled, so report what happened and never ask again for an approval the "
             "user has already given."
         )
+
+
+class TestAResultNarrationTurnStartsNoWork:
+    """Comms re-voicing a finished result must not dispatch again.
+
+    The run being narrated still holds the busy lock, so a dispatch here queued a duplicate
+    of the task that just finished: one user message, two browser runs. The refusal is what
+    comms reads instead of an acknowledgement, so its wording is the behaviour: it must say
+    nothing started, and steer comms to report the outcome and offer a retry itself.
+    """
+
+    async def test_the_call_is_refused_and_nothing_is_spawned_or_locked(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        response = await call_executor_with(
+            config=config_for(is_result_narration=True), task="try the booking again"
+        )
+
+        assert response == (
+            "Not dispatched. This turn only reports a result that already came back; it "
+            "cannot start new work. Report what happened, including the failure and its "
+            "reason if it failed, and ask the user whether they want it retried."
+        )
+        await drain_background_tasks()
+        assert spawned_runs == []
+        assert await fake_redis.get(f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION_ID}") is None
 
 
 class TestSparedRunHearsNoInterruption:

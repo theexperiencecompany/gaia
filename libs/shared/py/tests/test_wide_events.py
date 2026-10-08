@@ -395,6 +395,18 @@ class TestWideTask:
         assert event["errors"][0]["error"] == "bad value"
         assert event["errors"][0]["error_type"] == "ValueError"
 
+    @pytest.mark.asyncio
+    @patch("shared.py.wide_events._loguru")
+    async def test_a_failure_the_body_handled_is_not_reported_as_success(
+        self, mock_loguru: MagicMock
+    ):
+        async with wide_task("handled_task"):
+            log.fail("engine_crash", engine="obscura")
+        event = _emitted_event(mock_loguru)
+        assert event["outcome"] == "failed"
+        assert event["reason"] == "engine_crash"
+        assert event["engine"] == "obscura"
+
 
 # ---------------------------------------------------------------------------
 # ContextVar isolation

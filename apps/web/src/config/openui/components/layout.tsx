@@ -31,7 +31,7 @@ export const fileTreeDef = defineComponent({
 export const kbdRowDef = defineComponent({
   name: "KbdRow",
   description:
-    "A single keyboard shortcut row — keys + description. Compose inside a Card for a shortcut table.",
+    "A single keyboard shortcut row: keys + description. Compose inside a Card for a shortcut table.",
   props: kbdRowSchema,
   component: ({ props }) => React.createElement(KbdRowView, props),
 });

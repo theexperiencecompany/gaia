@@ -10,8 +10,9 @@ from types import SimpleNamespace
 from pydantic import SecretStr, ValidationError
 import pytest
 
-from app.agents.llm import client
+from app.agents.llm import client, dev_lane
 from app.agents.llm.client import PROVIDER_MODELS
+from app.config.browser_host_settings import BrowserHostSettings
 from app.config.settings import (
     CommonSettings,
     DevelopmentSettings,
@@ -28,6 +29,7 @@ from app.constants.llm import (
     OPENROUTER_DEV_APP_URL,
     OPENROUTER_MAX_OUTPUT_TOKENS,
     OPENROUTER_REASONING,
+    DevLLMApi,
     LLMProviderName,
 )
 
@@ -47,6 +49,9 @@ DEV_OVERRIDE_VARS = (
     "DEV_UNLIMITED_RATE_LIMITS",
     "OPENROUTER_BASE_URL",
     "GAIA_SIM_MODE",
+    "BROWSER_HOST_ALLOW_PRIVATE_ORIGINS",
+    "OBSCURA_ALLOW_PRIVATE_NETWORK",
+    "BROWSER_HOST_TEST_CA_FILE",
 )
 
 
@@ -87,6 +92,69 @@ def test_dev_overrides_block_production_boot(monkeypatch, env_var, value):
 
     with pytest.raises(RuntimeError, match=env_var):
         get_settings()
+
+
+@pytest.mark.parametrize(
+    ("env_var", "value"),
+    [
+        ("BROWSER_HOST_ALLOW_PRIVATE_ORIGINS", "http://localhost:8123"),
+        ("OBSCURA_ALLOW_PRIVATE_NETWORK", "1"),
+        ("BROWSER_HOST_TEST_CA_FILE", "/stack/ca.pem"),
+    ],
+)
+def test_private_browsing_blocks_production_boot_of_the_host_and_the_api(
+    monkeypatch, env_var, value
+):
+    """One validator on the host's settings, which the API's production settings inherit, refuses both."""
+    monkeypatch.setenv("ENV", "production")
+    for var in DEV_OVERRIDE_VARS:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv(env_var, value)
+    refusal = f"Value error, {env_var} is set but ENV=production"
+
+    with pytest.raises(ValidationError) as host_refused:
+        BrowserHostSettings()
+    with pytest.raises(ValidationError) as api_refused:
+        _prod_settings()
+    assert host_refused.value.errors()[0]["msg"] == refusal
+    assert [e["msg"] for e in api_refused.value.errors()] == [refusal]
+
+
+def test_a_host_with_no_private_reach_boots_in_production_and_one_with_it_in_development(
+    monkeypatch,
+):
+    monkeypatch.setenv("ENV", "production")
+    for var in DEV_OVERRIDE_VARS:
+        monkeypatch.delenv(var, raising=False)
+    assert not BrowserHostSettings().BROWSER_HOST_ALLOW_PRIVATE_ORIGINS
+
+    monkeypatch.setenv("ENV", "development")
+    monkeypatch.setenv("OBSCURA_ALLOW_PRIVATE_NETWORK", "1")
+    assert BrowserHostSettings().ENV == "development"
+
+
+def test_private_origins_are_read_as_exact_origins_in_development(monkeypatch):
+    monkeypatch.setenv("ENV", "development")
+    monkeypatch.setenv(
+        "BROWSER_HOST_ALLOW_PRIVATE_ORIGINS", "http://localhost:8123, http://127.0.0.1:8124,"
+    )
+
+    assert {
+        "http://localhost:8123",
+        "http://127.0.0.1:8124",
+    } == BrowserHostSettings().BROWSER_HOST_ALLOW_PRIVATE_ORIGINS
+
+
+@pytest.mark.parametrize(
+    "origin", ["http://localhost", "http://localhost:8123/form", "localhost:8123"]
+)
+def test_a_private_origin_that_is_not_exact_refuses_to_load(monkeypatch, origin):
+    """A path or a missing port would widen or miss the origin the list means."""
+    monkeypatch.setenv("ENV", "development")
+    monkeypatch.setenv("BROWSER_HOST_ALLOW_PRIVATE_ORIGINS", origin)
+
+    with pytest.raises(ValidationError, match="is not an exact origin|unsupported URL scheme"):
+        BrowserHostSettings()
 
 
 def test_openrouter_base_url_allowed_in_development(monkeypatch):
@@ -269,7 +337,8 @@ def test_init_custom_llm_wires_every_kwarg_and_profile(monkeypatch):
     """The DEV_LLM_* endpoint must receive every construction kwarg intact, including its context-window profile and configurable model field."""
     captured: dict[str, object] = {}
     # The custom lane deliberately constructs ChatOpenAI, not ChatOpenRouter.
-    monkeypatch.setattr(client, "ChatOpenAI", _fake_chat_openrouter(captured))
+    monkeypatch.setattr(dev_lane, "ChatOpenAI", _fake_chat_openrouter(captured))
+    dev_lane.build_custom_chat_model.cache_clear()
     monkeypatch.setattr(client.settings, "ENV", "development")
     monkeypatch.setattr(client.settings, "GAIA_SIM_MODE", False)
     # PROVIDER_MODELS freezes at import from the ambient env; CI has no
@@ -293,3 +362,24 @@ def test_init_custom_llm_wires_every_kwarg_and_profile(monkeypatch):
     assert captured["stream_usage"] is True
     assert llm.profile == {"max_input_tokens": DEFAULT_MAX_TOKENS}
     assert captured["cf_model_name"] is client._MODEL_FIELD
+
+
+def test_the_custom_endpoint_defaults_to_chat_completions(monkeypatch):
+    """Nous-style endpoints predate the setting and speak chat completions only."""
+    monkeypatch.delenv("DEV_LLM_API", raising=False)
+
+    assert DevelopmentSettings(_env_file=None).DEV_LLM_API is DevLLMApi.CHAT_COMPLETIONS
+
+
+def test_the_custom_endpoint_can_be_switched_to_the_responses_api(monkeypatch):
+    monkeypatch.setenv("DEV_LLM_API", "responses")
+
+    assert DevelopmentSettings(_env_file=None).DEV_LLM_API is DevLLMApi.RESPONSES
+
+
+def test_an_unknown_custom_endpoint_api_refuses_to_load(monkeypatch):
+    """A typo must not quietly fall back to chat completions, where gpt-6-luna rejects tools."""
+    monkeypatch.setenv("DEV_LLM_API", "response")
+
+    with pytest.raises(ValidationError, match="DEV_LLM_API"):
+        DevelopmentSettings(_env_file=None)

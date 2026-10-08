@@ -21,6 +21,7 @@ from typing import cast
 
 from bson import ObjectId
 
+from app.config.feature_flags import FeatureFlag
 from app.constants.cache import (
     LAST_ACTIVE_DEBOUNCE_SECONDS,
     LAST_ACTIVE_GATE_PREFIX,
@@ -680,6 +681,15 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
+
+    async def set_feature_flag(self, user_id: str, flag: FeatureFlag, enabled: bool) -> bool:
+        """Store the user's choice for one flag, leaving their other choices alone; returns whether the user existed."""
+        updated = await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {f"feature_flags.{flag.value}": enabled}},
+            scope=REPO_GLOBAL_SCOPE,
+        )
+        return updated is not None
 
     async def mark_email_processing_complete(self, user_id: str, memory_count: int) -> None:
         """Mark the user's Gmail→memory processing as complete."""

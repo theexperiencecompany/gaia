@@ -85,9 +85,6 @@ async def construct_langchain_messages(
     attachments = attachments or MessageAttachments()
     user_id, user_name, user_dict = scope.user_id, scope.user_name, scope.user_dict
     conversation_id, source = scope.conversation_id, scope.source
-    selected_tool, tool_category = attachments.selected_tool, attachments.tool_category
-    files_data = attachments.files_data
-    currently_uploaded_file_ids = attachments.currently_uploaded_file_ids
 
     # Static per-channel main prompt, byte-identical across users on this
     # channel so the provider's implicit prompt cache matches across users.
@@ -144,6 +141,19 @@ async def construct_langchain_messages(
     if assembled.volatile is not None:
         chain_msgs.append(assembled.volatile)
 
+    human_msg = HumanMessage(content=await _human_content(scope, attachments, user_content))
+    return [*chain_msgs, human_msg, time_msg]
+
+
+async def _human_content(
+    scope: MessageScope, attachments: MessageAttachments, user_content: str
+) -> str:
+    """Return the user's turn as the model reads it, reframed by what the turn carries."""
+    user_id, conversation_id = scope.user_id, scope.conversation_id
+    selected_tool, tool_category = attachments.selected_tool, attachments.tool_category
+    files_data = attachments.files_data
+    currently_uploaded_file_ids = attachments.currently_uploaded_file_ids
+
     # Priority: workflow > calendar event > tool selection > user message
     content = (
         await format_workflow_execution_message(
@@ -182,6 +192,4 @@ async def construct_langchain_messages(
         )
     ):
         content += f"\n\n{files_str}"
-
-    human_msg = HumanMessage(content=content)
-    return [*chain_msgs, human_msg, time_msg]
+    return content

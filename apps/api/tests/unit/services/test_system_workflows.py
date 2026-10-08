@@ -263,6 +263,31 @@ class TestNotifyWorkflowsProvisioned:
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}.NotificationService")
+    async def test_the_body_lists_every_workflow_one_per_line_with_its_description(
+        self, mock_notif_cls: MagicMock
+    ) -> None:
+        """The user only learns what was switched on from this body, so each workflow needs its own bulleted line."""
+        mock_svc = AsyncMock()
+        mock_notif_cls.return_value = mock_svc
+
+        from app.services.system_workflows.provisioner import (
+            _notify_workflows_provisioned,
+        )
+
+        req1 = _make_workflow_request("Digest", "Daily digest")
+        req2 = _make_workflow_request("Sorter", "Files your mail")
+        await _notify_workflows_provisioned("user-1", "Gmail", [req1, req2])
+
+        notification = mock_svc.create_notification.call_args[0][0]
+        assert notification.content.body == (
+            "Here's what I've got running for you:\n\n"
+            "\u2022 Digest: Daily digest\n"
+            "\u2022 Sorter: Files your mail\n\n"
+            "You can adjust or turn them off anytime."
+        )
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.NotificationService")
     async def test_notification_failure_does_not_raise(self, mock_notif_cls: MagicMock) -> None:
         mock_svc = AsyncMock()
         mock_svc.create_notification = AsyncMock(side_effect=RuntimeError("notify fail"))

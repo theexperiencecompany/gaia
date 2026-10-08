@@ -55,6 +55,20 @@ from tests.unit.services.hil.conftest import make_record
 pytestmark = pytest.mark.unit
 
 MODULE = "app.agents.core.subagents.delegation"
+FOLDED = "app.agents.core.background.folded_stream"
+FOLDED_CARDS = "app.services.folded_cards"
+
+
+class _OwnStream:
+    """Equal to any id of a background run's own stream: the one its frames were collected on."""
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, str) and other.startswith(SUBAGENT_STREAM_ID_PREFIX)
+
+    def __hash__(self) -> int:
+        return hash(SUBAGENT_STREAM_ID_PREFIX)
+
+
 CONVERSATION = "conv-d"
 THREAD = f"spawn_{CONVERSATION}_call-1"
 
@@ -118,8 +132,9 @@ def client_edges() -> Iterator[SimpleNamespace]:
     with (
         patch.object(executor_queue, "StreamManager", AsyncMock()) as stream_manager,
         patch.object(executor_queue.websocket_manager, "broadcast_to_user", new=_broadcast),
-        patch(f"{MODULE}.conversation_repository") as conversations,
+        patch(f"{FOLDED_CARDS}.conversation_repository") as conversations,
         patch(f"{MODULE}.stream_manager") as streams,
+        patch(f"{FOLDED}.stream_manager", new=streams),
         patch(f"{MODULE}.deliver_to_executor", new=AsyncMock()) as deliver,
     ):
         conversations.append_message_tool_data = AsyncMock(return_value=True)
@@ -972,7 +987,7 @@ class TestABackgroundRunsStreamLifecycle:
                 f"{MODULE}.execute_subagent_stream",
                 new=AsyncMock(return_value=SubagentOutcome(text="done")),
             ),
-            patch(f"{MODULE}.drain_executor_tool_data", return_value=entries),
+            patch(f"{FOLDED}.drain_executor_tool_data", return_value=entries),
         ):
             await delegate(run, background=True, probe_parked=False)
             await _drain()
@@ -997,7 +1012,7 @@ class TestSavingABackgroundRunsFrames:
                 f"{MODULE}.execute_subagent_stream",
                 new=AsyncMock(return_value=SubagentOutcome(text="done")),
             ),
-            patch(f"{MODULE}.drain_executor_tool_data", return_value=entries),
+            patch(f"{FOLDED}.drain_executor_tool_data", return_value=entries),
         ):
             await delegate(_delegation(parent), background=True, probe_parked=False)
             await _drain()
@@ -1043,28 +1058,28 @@ class TestSavingABackgroundRunsFrames:
         client_edges.conversations.append_message_tool_data.assert_not_awaited()
         assert recorder.event("subagent_run")["warnings"] == [
             {
-                "msg": f"{LogTag.AGENT} Background subagent has no message to save its cards into",
+                "msg": f"{LogTag.AGENT} Detached stream has no message to save its cards into",
                 "conversation_id": CONVERSATION,
+                "stream_id": _OwnStream(),
                 "entries": 2,
             }
         ]
 
-    async def test_a_missing_message_saves_nothing_and_says_so(
+    async def test_frames_for_a_message_not_saved_yet_wait_for_its_save(
         self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder
     ) -> None:
-        client_edges.conversations.get_message.return_value = None
+        """A fast run can end before its turn saved the message: its cards wait on the conversation."""
+        conversations = client_edges.conversations
+        conversations.get_message.return_value = None
+        conversations.park_folded_cards = AsyncMock(return_value=True)
 
         await self._run([GROUP, SEARCH])
 
-        client_edges.conversations.append_message_tool_data.assert_not_awaited()
-        assert recorder.event("subagent_run")["errors"] == [
-            {
-                "msg": f"{LogTag.AGENT} Background subagent cards matched no message; not saved",
-                "conversation_id": CONVERSATION,
-                "message_id": "bot-msg-1",
-                "entries": 2,
-            }
-        ]
+        conversations.append_message_tool_data.assert_not_awaited()
+        conversations.park_folded_cards.assert_awaited_once_with(
+            CONVERSATION, user_id="u1", message_id="bot-msg-1", entries=[GROUP, SEARCH]
+        )
+        assert "errors" not in recorder.event("subagent_run")
 
     async def test_an_append_that_matched_nothing_is_recorded(
         self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder
@@ -1075,7 +1090,7 @@ class TestSavingABackgroundRunsFrames:
 
         assert recorder.event("subagent_run")["errors"] == [
             {
-                "msg": f"{LogTag.AGENT} Background subagent cards matched no message; not saved",
+                "msg": f"{LogTag.AGENT} Detached stream cards matched no message; not saved",
                 "conversation_id": CONVERSATION,
                 "message_id": "bot-msg-1",
                 "entries": 3,
@@ -1092,9 +1107,9 @@ class TestSavingABackgroundRunsFrames:
         assert _landings(client_edges.deliver) == [_landing("done")]
         assert recorder.event("subagent_run")["errors"] == [
             {
-                "msg": f"{LogTag.AGENT} Could not save a background subagent's cards",
+                "msg": f"{LogTag.AGENT} Could not save a detached stream's cards",
                 "conversation_id": CONVERSATION,
-                "subagent_id": "row-1",
+                "stream_id": _OwnStream(),
                 "error_type": "RuntimeError",
                 "error": "mongo down",
             }

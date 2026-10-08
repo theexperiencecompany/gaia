@@ -19,7 +19,7 @@
     "quality:pkg-json": "npmPkgJsonLint . --configFile config/.npmpackagejsonlintrc.json --quiet",
     "quality:publint": "pnpm --filter @heygaia/cli build && publint packages/cli",
     "quality:py:interrogate": "uvx --no-build interrogate==1.7.0 -c pyproject.toml apps/api apps/voice-agent libs/shared/py",
-    "quality:py:mypy": "uv run --project apps/api --group backend --group dev mypy apps/api/app apps/voice-agent/src libs/shared/py --ignore-missing-imports",
+    "quality:py:mypy": "uv run --project apps/api --group backend --group dev mypy apps/api/app libs/shared/py --ignore-missing-imports && UV_PROJECT_ENVIRONMENT=.venv-voice-agent uv run --project apps/voice-agent --group dev mypy apps/voice-agent/src --ignore-missing-imports --cache-dir .mypy_cache/voice-agent",
     "quality:py:ruff": "uv run --project apps/api --group dev ruff check apps/api apps/voice-agent libs/shared/py",
     "quality:py:xenon": "uvx --no-build xenon==0.9.3 --max-absolute F --max-modules E --max-average B apps/api apps/voice-agent libs/shared/py -e 'apps/api/tests/**' -e 'apps/api/scripts/**' -e 'libs/shared/py/tests/**'",
     "quality:size": "node scripts/ci/checks.mjs file-sizes",
@@ -106,7 +106,7 @@
       "metro-core@>=0.83.0 <0.83.8": "0.83.8",
       "metro-runtime@>=0.83.0 <0.83.8": "0.83.8",
       "metro-source-map@>=0.83.0 <0.83.8": "0.83.8",
-      "sharp@<0.35.4": "0.35.4",
+      "sharp@<0.35.5": "0.35.5",
       "browserslist@<4.28.7": "4.28.7",
       "brace-expansion@<1.1.20": "1.1.20",
       "brace-expansion@>=2.0.0 <2.1.6": "2.1.6",
@@ -117,7 +117,12 @@
       "joi@>=17.0.0 <17.13.7": "17.13.7",
       "joi@>=18.0.0 <18.2.6": "18.2.6",
       "@smithy/config-resolver@<4.4.0": "4.4.0",
-      "@tootallnate/once@<3.0.1": "3.0.1"
+      "@tootallnate/once@<3.0.1": "3.0.1",
+      "proxy-addr@<2.0.8": "2.0.8",
+      "compression@<1.8.2": "1.8.2",
+      "shell-quote@<1.12.0": "1.12.0",
+      "source-map-js@<1.2.2": "1.2.2",
+      "prosemirror-view@<1.42.6": "1.42.6"
     },
     "peerDependencyRules": {
       "allowedVersions": {

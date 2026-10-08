@@ -19,13 +19,18 @@ import re
 import sys
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-CHAT_MODELS = REPO_ROOT / "apps/api/app/models/chat_models.py"
+# The frozenset is DEFINED in app/constants/chat.py and only re-exported by
+# app/models/chat_models.py. It moved out of models/ when the import fence made
+# app.constants a leaf; this checker kept reading the old path, so its regex
+# matched nothing and it exited "could not locate BOT_CONVERSATION_SOURCES" on
+# every run — a stale path reading as a parity failure.
+CHAT_CONSTANTS = REPO_ROOT / "apps/api/app/constants/chat.py"
 TOPOLOGY_TS = REPO_ROOT / "libs/shared/ts/src/bots/consumer/topology.ts"
 
 
 def python_bot_platforms() -> set[str]:
     """Platform tokens in BOT_CONVERSATION_SOURCES (the Python source of truth)."""
-    text = CHAT_MODELS.read_text(encoding="utf-8")
+    text = CHAT_CONSTANTS.read_text(encoding="utf-8")
     match = re.search(
         r"BOT_CONVERSATION_SOURCES:\s*frozenset\[ConversationSource\]\s*=\s*"
         r"frozenset\(\s*\{(.*?)\}\s*\)",
@@ -33,7 +38,7 @@ def python_bot_platforms() -> set[str]:
         re.DOTALL,
     )
     if not match:
-        sys.exit(f"could not locate BOT_CONVERSATION_SOURCES in {CHAT_MODELS}")
+        sys.exit(f"could not locate BOT_CONVERSATION_SOURCES in {CHAT_CONSTANTS}")
     return {m.lower() for m in re.findall(r"ConversationSource\.(\w+)", match.group(1))}
 
 
@@ -65,7 +70,7 @@ def main() -> int:
     if ts - py:
         print(f"  only in TypeScript (OUTBOUND_QUEUES): {sorted(ts - py)}", file=sys.stderr)
     print(
-        "  add the missing platform to BOTH chat_models.py and topology.ts.",
+        "  add the missing platform to BOTH app/constants/chat.py and topology.ts.",
         file=sys.stderr,
     )
     return 1

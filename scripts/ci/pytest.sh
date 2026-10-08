@@ -2,8 +2,10 @@
 # pytest.sh — everything about RUNNING the Python suite in CI.
 #
 # Subcommands:
-#   slices                   Print the test-python slice matrix (lib/test-slices.json)
-#                            as a `python_slices=<json>` GITHUB_OUTPUT line.
+#   slices                   Print the test-python slice matrices (lib/test-slices.json)
+#                            as GITHUB_OUTPUT lines: `python_slices=<json>` for the
+#                            slices that need no browser engine, `engine_slices=<json>`
+#                            for those that do (they wait on the obscura-bin build).
 #   slice                    Run one test-python slice, either whole or on the
 #                            test-impact selection this job's `test_impact.py
 #                            select` wrote. Reads its inputs from the env.
@@ -33,8 +35,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # ── slices ────────────────────────────────────────────────────────────────
-# lib/test-slices.json is the ONE definition of the four slices: main.yml's
-# test-python matrix reads it through this subcommand and the Dagger module
+# lib/test-slices.json is the ONE definition of the slices: main.yml's
+# test-python matrices read it through this subcommand and the Dagger module
 # (.dagger, `test-python --slice`) reads the file directly, so a local run
 # cannot drift from CI. Why the shares look the way they do:
 #   * workers sum to the box (16 threads): the lanes start together, so a
@@ -46,13 +48,19 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 #   * bridge is serial (workers 0): the device-bridge e2e TRUNCATEs a shared
 #     Postgres table, which another xdist worker's fixture would wipe mid-test.
 #   * node: only bridge drives the real `gaia bridge` CLI via tsx.
-#   * after: the extra suites a slice runs once its own run is done — see
-#     cmd_shared_suite / cmd_contract_fuzz for why each is its own invocation.
+#   * browser runs 2 workers, each booting a whole stack (API, worker, two hosts):
+#     measured on 4 pinned cores against a fresh Postgres, Chroma and Mongo,
+#     2:40 for the 13 scenarios; 15 min leaves the GitHub VM a slow boot and a
+#     flake-gate rerun. Building Obscura is not in it: main.yml's obscura-bin job
+#     builds it (cold: tens of minutes) and the engine slices wait on that job.
 SLICES_FILE="$SCRIPT_DIR/lib/test-slices.json"
 
 cmd_slices() {
-  printf 'python_slices=%s\n' "$(python3 -c 'import json, sys
-print(json.dumps(json.load(open(sys.argv[1]))["slices"], separators=(",", ":")))' "$SLICES_FILE")"
+  python3 -c 'import json, sys
+slices = json.load(open(sys.argv[1]))["slices"]
+for key, engines in (("python_slices", "false"), ("engine_slices", "true")):
+    chosen = [s for s in slices if s["engines"] == engines]
+    print(key + "=" + json.dumps(chosen, separators=(",", ":")))' "$SLICES_FILE"
 }
 
 # ── slice ─────────────────────────────────────────────────────────────────
@@ -144,13 +152,15 @@ cmd_slice() {
     -m 'not composio and not model_onboarding and not schemathesis' \
     --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
     --junitxml="test-results/pytest-$SLICE.xml" --durations=30 2>&1 \
-    | cut -c-20000 | tee "${SCRATCH}/pytest-${SLICE}.time"
+    | stdbuf -oL cut -c-20000 | tee "${SCRATCH}/pytest-${SLICE}.time"
   rc=${PIPESTATUS[0]}
   set -e
   # cut: the Actions runner handles step output line by line (regex matchers,
   # console upload); a single multi-MB line — a parametrize id carrying a 2 MB
   # string in --durations, measured 2026-08-29 — spun Runner.Worker at 100 %
   # CPU until the job timeout. 20k chars keeps every real traceback intact.
+  # stdbuf -oL: writing to a pipe, cut holds 4 KB before passing anything on, so a
+  # lane cancelled at its cap lost everything it had said (the browser slice, 19 min, blank).
   cpu_slots_release "$N_SLOTS"
 
   # The verdict, from the JUnit the run already wrote: every failed test at its

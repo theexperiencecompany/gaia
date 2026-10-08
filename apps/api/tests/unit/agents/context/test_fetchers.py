@@ -40,6 +40,7 @@ from app.agents.context.section_context import ExecutionMode, SectionContext
 from app.agents.context.text import (
     CORE_MEMORY_HEADER,
     GAIA_KNOWLEDGE_HEADER,
+    MEMORY_IS_PAST_NOTE,
     MEMORY_RECALL_HEADER,
 )
 from app.agents.context.tiers import AgentTier
@@ -109,6 +110,68 @@ class TestMemoryRecallBlock:
             await build_memory_recall_block(ctx(user_id="user-7", query="what did I promise?"))
 
         recall.assert_awaited_once_with("user-7", "what did I promise?", limit=5)
+
+    async def test_a_failed_shared_recall_falls_back_to_the_executors_own_query(self) -> None:
+        found = MemorySearchResult(
+            memories=[memory("User's manager is Priya")], total_count=1, has_confident_match=True
+        )
+        recall = AsyncMock(side_effect=[RuntimeError("cache down"), found])
+        executor = SectionContext(
+            tier=AgentTier.EXECUTOR, user_id="user-7", query="the brief", request_query="yes"
+        )
+        with patch("app.memory.engine.memory_engine.recall", recall):
+            block = await build_memory_recall_block(executor)
+
+        assert "User's manager is Priya" in block
+        assert recall.await_args_list[-1].args == ("user-7", "the brief")
+
+    async def test_a_confident_recall_on_the_request_is_reused_instead_of_recalling_the_brief(
+        self,
+    ) -> None:
+        """Comms already recalled on what the user said; the brief's own recall would only add noise its template words match."""
+        found = MemorySearchResult(
+            memories=[memory("User's manager is Priya")], total_count=1, has_confident_match=True
+        )
+        recall = AsyncMock(return_value=found)
+        executor = SectionContext(
+            tier=AgentTier.EXECUTOR,
+            user_id="user-7",
+            query="the brief",
+            request_query="who is Priya",
+        )
+        async with captured_wide_event() as event:
+            with patch("app.memory.engine.memory_engine.recall", recall):
+                block = await build_memory_recall_block(executor)
+
+        assert "User's manager is Priya" in block
+        recall.assert_awaited_once_with("user-7", "who is Priya", limit=5)
+        assert event["dynamic_context"]["memory_recall_reused"] is True
+
+    async def test_a_request_that_matched_nothing_confidently_earns_the_brief_its_own_recall(
+        self,
+    ) -> None:
+        """A bare "yes do it" recalls nothing useful; the brief carries the real subject, so it recalls on that."""
+        weak = MemorySearchResult(
+            memories=[memory("User said yes once")], total_count=1, has_confident_match=False
+        )
+        own = MemorySearchResult(
+            memories=[memory("User's manager is Priya")], total_count=1, has_confident_match=True
+        )
+        recall = AsyncMock(side_effect=[weak, own])
+        executor = SectionContext(
+            tier=AgentTier.EXECUTOR, user_id="user-7", query="the brief", request_query="yes do it"
+        )
+        async with captured_wide_event() as event:
+            with patch("app.memory.engine.memory_engine.recall", recall):
+                block = await build_memory_recall_block(executor)
+
+        assert "User's manager is Priya" in block
+        assert "User said yes once" not in block
+        assert [c.args for c in recall.await_args_list] == [
+            ("user-7", "yes do it"),
+            ("user-7", "the brief"),
+        ]
+        assert event["dynamic_context"]["memory_recall_reused"] is False
 
     async def test_no_memories_yields_no_block(self) -> None:
         with patch(
@@ -595,7 +658,7 @@ class TestCoreContextSingleFlight:
         assert calls == 1
         assert core_block == f"{CORE_MEMORY_HEADER}\nDocs."
         assert agenda_block == (
-            f"{AGENDA_HEADING}\n- ship it\n\n{RECENT_ACTIVITY_HEADING}\n- reviewed"
+            f"{AGENDA_HEADING}\n- ship it\n\n{RECENT_ACTIVITY_HEADING}\n{MEMORY_IS_PAST_NOTE}\n- reviewed"
         )
 
     async def test_different_users_do_not_share_a_fetch(self) -> None:
@@ -1204,7 +1267,8 @@ class TestTheMemoryCoreSplit:
             block = await build_agenda_and_activity_block(ctx())
 
         assert block == (
-            f"{AGENDA_HEADING}\n- ship the cache work\n\n{RECENT_ACTIVITY_HEADING}\n- reviewed a PR"
+            f"{AGENDA_HEADING}\n- ship the cache work\n\n"
+            f"{RECENT_ACTIVITY_HEADING}\n{MEMORY_IS_PAST_NOTE}\n- reviewed a PR"
         )
 
     async def test_a_core_with_no_documents_still_yields_its_volatile_half(self) -> None:
@@ -1259,7 +1323,9 @@ class TestTheMemoryCoreSplit:
         with self._core(core):
             block = await build_agenda_and_activity_block(ctx())
 
-        assert block == (f"{AGENDA_HEADING}\n{agenda}\n\n{RECENT_ACTIVITY_HEADING}\n{journal}")
+        assert block == (
+            f"{AGENDA_HEADING}\n{agenda}\n\n{RECENT_ACTIVITY_HEADING}\n{MEMORY_IS_PAST_NOTE}\n{journal}"
+        )
 
 
 @pytest.mark.unit

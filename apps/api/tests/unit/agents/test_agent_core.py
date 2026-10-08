@@ -15,7 +15,6 @@ from app.agents.core.agent import (
     call_agent,
     call_agent_silent,
 )
-from app.agents.llm import lane as lane_module
 from app.agents.llm.lane import AgentRole
 from app.config.settings import settings
 from app.constants.agents import (
@@ -1260,7 +1259,7 @@ class TestTheDevModelSelector:
             ) as build_config,
             patches["log"],
             patch.object(agent_module.settings, "ENV", env),
-            patch.object(lane_module.settings, "DEV_DEFAULT_MODEL", dev_default),
+            patch.object(settings, "DEV_DEFAULT_MODEL", dev_default),
         ):
             await _core_agent_logic(request=request, conversation_id="conv-1", user=_make_user())
         return build_config.call_args.kwargs["lane"].dev_option
@@ -1310,7 +1309,7 @@ class TestTheExecutorsOwnDevModel:
             ),
             patches["log"],
             patch.object(agent_module.settings, "ENV", env),
-            patch.object(lane_module.settings, "DEV_DEFAULT_MODEL", dev_default),
+            patch.object(settings, "DEV_DEFAULT_MODEL", dev_default),
         ):
             await _core_agent_logic(request=request, conversation_id="conv-1", user=_make_user())
         return config["configurable"]

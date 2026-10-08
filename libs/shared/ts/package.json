@@ -43,15 +43,16 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "vitest run",
-    "format": "prettier --write src/",
-    "lint": "eslint src/"
+    "format": "biome format --write src/",
+    "format:check": "biome format src/",
+    "lint": "biome check ."
   },
   "dependencies": {
     "@hono/node-server": "^1.19.14",
     "@infisical/sdk": "^4.0.6",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.32.0",
     "amqplib": "^0.10.9",
-    "axios": "^1.18.1",
+    "axios": "^1.20.0",
     "dotenv": "^16.6.1",
     "hono": "^4.12.29",
     "posthog-node": "^5.51.4",

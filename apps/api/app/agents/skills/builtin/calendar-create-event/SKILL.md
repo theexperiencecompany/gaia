@@ -15,24 +15,24 @@ target: googlecalendar_agent
 ## Tools
 
 ### Discovery
-- **GOOGLECALENDAR_CUSTOM_LIST_CALENDARS** — List all calendars
-- **GOOGLECALENDAR_FIND_FREE_SLOTS** — Find available time slots
-- **GOOGLECALENDAR_FREE_BUSY_QUERY** — Check busy/free status
-- **GOOGLECALENDAR_CUSTOM_FETCH_EVENTS** — List events in time range
-- **GOOGLECALENDAR_CUSTOM_FIND_EVENT** — Search events by keyword
+- **GOOGLECALENDAR_CUSTOM_LIST_CALENDARS**: List all calendars
+- **GOOGLECALENDAR_FIND_FREE_SLOTS**: Find available time slots
+- **GOOGLECALENDAR_FREE_BUSY_QUERY**: Check busy/free status
+- **GOOGLECALENDAR_CUSTOM_FETCH_EVENTS**: List events in time range
+- **GOOGLECALENDAR_CUSTOM_FIND_EVENT**: Search events by keyword
 
 ### Creation & Modification (Custom Tools vs Standard Tools)
 > **Prefer using Custom Tools** over standard Composio tools where possible, as they are simplified and sufficient for most use cases. However, standard tools (like `GOOGLECALENDAR_CREATE_EVENT`) are fully featured and can be used when advanced functionality is missing.
 
-- **GOOGLECALENDAR_CUSTOM_CREATE_EVENT** — Create new event (immediate; the
+- **GOOGLECALENDAR_CUSTOM_CREATE_EVENT**: Create new event (immediate; the
   approval card is the confirmation when gating is on)
-- **GOOGLECALENDAR_CREATE_EVENT** — Standard composer tool. Use if the custom tool doesn't support an advanced parameter you explicitly need.
-- **GOOGLECALENDAR_CUSTOM_ADD_RECURRENCE** — Add recurrence to existing event
+- **GOOGLECALENDAR_CREATE_EVENT**: Standard composer tool. Use if the custom tool doesn't support an advanced parameter you explicitly need.
+- **GOOGLECALENDAR_CUSTOM_ADD_RECURRENCE**: Add recurrence to existing event
   - frequency: DAILY, WEEKLY, MONTHLY, YEARLY
   - by_day: ["MO", "WE", "FR"] etc.
   - count / until: Limit occurrences
-- **GOOGLECALENDAR_CUSTOM_PATCH_EVENT** — Modify event
-- **GOOGLECALENDAR_CUSTOM_DELETE_EVENT** — Delete (REQUIRES CONSENT)
+- **GOOGLECALENDAR_CUSTOM_PATCH_EVENT**: Modify event
+- **GOOGLECALENDAR_CUSTOM_DELETE_EVENT**: Delete (REQUIRES CONSENT)
 
 ## Workflow
 
@@ -104,7 +104,7 @@ Give the event's length with `start_datetime` and `end_datetime`. Omit
 and use `end_datetime` as the last day (inclusive), or omit it for one day.
 
 The call creates immediately. When approval gating is on, the approval card
-is the confirmation — no separate draft step.
+is the confirmation; there is no separate draft step.
 
 > Always set `create_meeting_room=True` when:
 > - The event has attendees (i.e., it's a meeting)
@@ -150,8 +150,8 @@ If creation fails:
 3. **Permission error** → Inform user, suggest checking calendar sharing settings
 
 ## Important Rules
-1. **Check availability first** — Especially for meetings with attendees
-2. **Local timezone always** — Don't convert to UTC, backend handles it
-3. **Approval card confirms** — Creation is immediate; gating asks the user
-4. **Recurrence is 2-step** — Create event first, then add recurrence
-5. **Delete requires consent** — Never delete events without asking
+1. **Check availability first**: Especially for meetings with attendees
+2. **Local timezone always**: Don't convert to UTC, backend handles it
+3. **Approval card confirms**: Creation is immediate; gating asks the user
+4. **Recurrence is 2-step**: Create event first, then add recurrence
+5. **Delete requires consent**: Never delete events without asking

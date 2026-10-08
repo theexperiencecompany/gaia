@@ -1,14 +1,24 @@
 """Webpage fetch failover behaviour and the httpx engine's HTML->markdown parse."""
 
 from collections.abc import Callable
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
 import respx
 
+from app.constants.search import (
+    CRAWL4AI_PAGE_TIMEOUT_MS,
+    CRAWL4AI_SINGLE_TOTAL_TIMEOUT_SECONDS,
+)
+from app.utils.crawl4ai_utils import CrawlBatchParams
 from app.utils.exceptions import FetchError
-from app.utils.webpage_fetch import HttpxFetcher, WebpageFetcher, _fetch_first_success
+from app.utils.webpage_fetch import (
+    Crawl4aiFetcher,
+    HttpxFetcher,
+    WebpageFetcher,
+    _fetch_first_success,
+)
 
 
 def _resolver(host_to_ip: dict[str, str]) -> Callable[[str, int], list[str]]:
@@ -72,6 +82,61 @@ async def test_raises_when_all_engines_fail() -> None:
 
     with pytest.raises(FetchError):
         await _fetch_first_success("https://example.com", fetchers=fetchers)
+
+
+async def test_crawl4ai_fetcher_returns_content_and_passes_exact_batch_params() -> None:
+    url = "https://example.com/page"
+    mock_batch = AsyncMock(return_value=({url: "# content"}, {}))
+    fetcher = Crawl4aiFetcher()
+
+    assert fetcher.is_configured() is True
+
+    with patch("app.utils.webpage_fetch.batch_fetch_with_crawl4ai", mock_batch):
+        result = await fetcher.fetch(url)
+
+    assert result == "# content"
+    mock_batch.assert_awaited_once()
+    call_args = mock_batch.call_args
+    assert call_args.args[0] == [url]
+    params = call_args.args[1]
+    assert isinstance(params, CrawlBatchParams)
+    assert params == CrawlBatchParams(
+        page_timeout_ms=CRAWL4AI_PAGE_TIMEOUT_MS,
+        total_timeout_seconds=CRAWL4AI_SINGLE_TOTAL_TIMEOUT_SECONDS,
+        semaphore_count=1,
+        context_name="webpage_fetch",
+        thorough=True,
+    )
+
+
+async def test_crawl4ai_fetcher_raises_the_engines_own_error_on_empty_content() -> None:
+    url = "https://example.com/empty"
+    mock_batch = AsyncMock(return_value=({url: "   "}, {url: "blocked by robots.txt"}))
+    fetcher = Crawl4aiFetcher()
+
+    with (
+        patch("app.utils.webpage_fetch.batch_fetch_with_crawl4ai", mock_batch),
+        pytest.raises(FetchError) as exc_info,
+    ):
+        await fetcher.fetch(url)
+
+    assert exc_info.value.message == "blocked by robots.txt"
+    assert exc_info.value.url == url
+
+
+async def test_crawl4ai_fetcher_raises_default_message_when_url_missing_from_errors() -> None:
+    url = "https://example.com/missing"
+    mock_batch = AsyncMock(return_value=({}, {}))
+    fetcher = Crawl4aiFetcher()
+
+    with (
+        patch("app.utils.webpage_fetch.batch_fetch_with_crawl4ai", mock_batch),
+        pytest.raises(FetchError) as exc_info,
+    ):
+        await fetcher.fetch(url)
+
+    assert exc_info.value.message == "crawl4ai returned no content"
+    assert exc_info.value.url == url
 
 
 @respx.mock

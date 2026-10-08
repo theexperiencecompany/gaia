@@ -33,6 +33,7 @@ from app.agents.core.background.session import (
 )
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
+from app.constants.chat import ConversationSource
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
 from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
@@ -40,6 +41,8 @@ from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, agent_configurable
+from app.services.browser.chat_task import stop_report
+from app.services.browser.job_stop import requester_chat, stop_chat_jobs
 from app.services.hil.ledger_decide import cancel_ledger_approvals
 from app.services.hil.resolution import cancel_conversation_approvals
 from app.services.workflow.execution_service import get_last_run_brief
@@ -133,6 +136,19 @@ async def call_executor(
     if not conversation_id:
         log.error(f"{LogTag.TOOL} call_executor: missing thread_id in configurable")
         return "Internal error: conversation context unavailable. Please try again."
+    if base_configurable.get("is_result_narration"):
+        # A result-narration turn must not start work: the run it narrates still
+        # holds the busy lock, so a dispatch here queues a duplicate of the task
+        # that just finished (one user message, two browser runs).
+        log.info(
+            f"{LogTag.TOOL} call_executor refused during result narration",
+            conversation_id=conversation_id,
+        )
+        return (
+            "Not dispatched. This turn only reports a result that already came back; it "
+            "cannot start new work. Report what happened, including the failure and its "
+            "reason if it failed, and ask the user whether they want it retried."
+        )
 
     task_id = str(uuid4())
     # Read off the configurable, never a tool argument: asking the comms model to
@@ -306,8 +322,8 @@ async def _dispatch_executor(
         "work has STARTED. Do not tell the user anything was sent, created, deleted, or "
         "finished. Risky actions pause for the user's approval first and they see an "
         "approval card; if that happens the work waits on them, not on you. Acknowledge "
-        "that you are on it, and say the action is waiting for their approval if one is "
-        "pending. This guidance applies ONLY to this acknowledgment. The real result "
+        "it, a reaction is enough, and say in words that the action is waiting for their "
+        "approval if one is pending. This guidance applies ONLY to this acknowledgment. The real result "
         "arrives later as its own message and supersedes it completely: by then the gate "
         "is settled, so report what happened and never ask again for an approval the "
         "user has already given."
@@ -356,6 +372,36 @@ async def cancel_executor(
     if not conversation_id:
         return "No conversation context available."
 
+    # A browser run outlives the turn that started it, so a stop-everything stops
+    # the job itself. A targeted cancel names one executor task and leaves it running.
+    # After the pending work is cleared: the stop's notice in the inbox must survive it.
+    executor = await _cancel_executor_work(configurable, conversation_id, task_ids, message)
+    browser = await _stop_the_browser(configurable, conversation_id) if not task_ids else None
+    if browser is None:
+        return executor
+    if executor in (_NOTHING_TO_CANCEL, _NOTHING_MATCHED):
+        return browser
+    return f"{executor} {browser}"
+
+
+_NOTHING_TO_CANCEL = "No executor tasks are running or pending for this conversation."
+_NOTHING_MATCHED = "None of the specified task_ids matched any running or pending tasks."
+
+
+async def _stop_the_browser(configurable: AgentConfigurable, conversation_id: str) -> str | None:
+    """Stop the browser jobs this chat controls and say what that came to; None when none runs."""
+    requester = requester_chat(
+        configurable.get("user_id"),
+        ConversationSource.coerce(configurable.get("conversation_source")),
+    )
+    outcomes = await stop_chat_jobs(conversation_id, requester)
+    return stop_report(outcomes.values()) if outcomes else None
+
+
+async def _cancel_executor_work(
+    configurable: AgentConfigurable, conversation_id: str, task_ids: list[str], message: str | None
+) -> str:
+    """Cancel the running executor task, its pending work and its subagents, as task_ids names them."""
     lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
     inbox = ExecutorInbox(conversation_id)
     subagents = RunningSubagents(conversation_id)
@@ -369,7 +415,7 @@ async def cancel_executor(
     has_subagents = bool(await subagents.live())
 
     if not lock_value and not has_pending and not has_subagents:
-        return "No executor tasks are running or pending for this conversation."
+        return _NOTHING_TO_CANCEL
 
     try:
         cancelled = await _cancel_running_task(
@@ -402,7 +448,7 @@ async def cancel_executor(
             cancelled.append(f"{len(stopped_subagents)} running subagent(s)")
 
         if not cancelled:
-            return "None of the specified task_ids matched any running or pending tasks."
+            return _NOTHING_MATCHED
 
         # Record the stop into the per-conversation thread, or the next run
         # resumes exactly what the user stopped — but only when the RUNNING
@@ -431,6 +477,7 @@ async def cancel_executor(
         return f"Cancellation attempted but hit an error: {e}"
 
 
+#: What the agent is told a browser stop came to, as the job's ending of record says.
 async def _broadcast_executor_cancelled(
     *,
     user_id: str,

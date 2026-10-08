@@ -1,0 +1,73 @@
+From b2a072c8ae746564d25e5403a339eae022bd54db Mon Sep 17 00:00:00 2001
+From: gaia <build@heygaia.io>
+Date: Fri, 2 Oct 2026 07:46:20 +0530
+Subject: [PATCH] fix(js): window.onerror starts null, and page errors are not
+ kept in a growing list
+
+The bootstrap installed a default window.onerror that pushed every error a
+page reported into __obscura_errors, which nothing reads. Since uncaught
+script errors reach window.onerror, a page throwing on every animation
+frame grew that list without bound for the life of the document, and a
+window.onerror that is a function before the page sets one is not what a
+browser shows (it is null).
+
+Claude-Session: https://claude.ai/code/session_01Tm2SNEJ42hMPiZ6cFb8Vih
+---
+ crates/obscura-js/js/bootstrap.js |  9 +++------
+ crates/obscura-js/src/runtime.rs  | 14 ++++++++++++++
+ 2 files changed, 17 insertions(+), 6 deletions(-)
+
+diff --git a/crates/obscura-js/js/bootstrap.js b/crates/obscura-js/js/bootstrap.js
+index e29837f..209f9c2 100644
+--- a/crates/obscura-js/js/bootstrap.js
++++ b/crates/obscura-js/js/bootstrap.js
+@@ -12,7 +12,7 @@
+ (function _preHideInternals() {
+   var _names = [
+     // runtime-set by Rust (runtime.rs / page.rs)
+-    '__obscura_errors', '__obscura_init', '__obscura_hide_list',
++    '__obscura_init', '__obscura_hide_list',
+     '__obscura_objects', '__obscura_oid', '__obscura_ua',
+     '__obscura_platform', '__obscura_ua_platform', '__obscura_ua_platform_version',
+     '__obscura_ua_architecture',
+@@ -79,13 +79,10 @@
+ // `take_ops_handoff` / `share_ops_with_realm`).
+ globalThis.__obscura_core_handoff = Deno.core;
+ 
+-globalThis.__obscura_errors = [];
+-
+ globalThis.onunhandledrejection = function(e) { if (e?.preventDefault) e.preventDefault(); };
++// No handler until the page sets one, as in a browser.
++globalThis.onerror = null;
+ 
+-globalThis.onerror = function(msg, src, line, col, error) {
+-  globalThis.__obscura_errors.push({msg: String(msg), src: String(src||""), line, error: String(error||"")});
+-};
+ // HTML "report the exception" for a classic script's uncaught exception. The
+ // host calls this with the message V8 formats ("Uncaught Error: boom"), the
+ // script URL, the 1-based line and column, and the thrown value, for scripts
+diff --git a/crates/obscura-js/src/runtime.rs b/crates/obscura-js/src/runtime.rs
+index c192aa6..cb00cb5 100644
+--- a/crates/obscura-js/src/runtime.rs
++++ b/crates/obscura-js/src/runtime.rs
+@@ -7353,6 +7353,20 @@ mod tests {
+         );
+     }
+ 
++    /// window.onerror starts null, as in a browser, and the engine keeps no
++    /// record of the page's errors that could grow with every one it throws.
++    #[test]
++    fn page_errors_reach_no_default_handler_and_are_not_retained() {
++        let mut rt = setup_runtime("<html><body></body></html>");
++        for _ in 0..3 {
++            let _ = rt.execute_script("thrower", "throw new Error('boom')");
++        }
++        assert_eq!(
++            rt.evaluate("[window.onerror === null, '__obscura_errors' in globalThis]").unwrap(),
++            serde_json::json!([true, false])
++        );
++    }
++
+     /// A runaway in-order script the watchdog kills never reports its own
+     /// completion; the scripts queued behind it must still run.
+     #[tokio::test(flavor = "current_thread")]

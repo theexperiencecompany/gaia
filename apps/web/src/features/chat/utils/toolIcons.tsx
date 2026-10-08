@@ -10,6 +10,7 @@
  */
 
 import {
+  AiWebBrowsingIcon,
   AlarmClockIcon,
   AppStoreIcon,
   BodyPartMuscleIcon,
@@ -85,6 +86,7 @@ const isRenderableIconSrc = (src: string): boolean => {
 
 /** Map icon component names to actual React components */
 const iconComponentMap: Record<string, React.ComponentType<IconProps>> = {
+  AiWebBrowsingIcon,
   CheckListIcon,
   Clock04Icon,
   CheckmarkCircle02Icon,
