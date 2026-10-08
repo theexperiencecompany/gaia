@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { Plan } from "@/features/pricing/api/pricingApi";
 
@@ -91,32 +91,33 @@ vi.mock("@/features/pricing/hooks/usePricing", () => ({
 }));
 
 // Imported after the mocks above so PricingCards picks up the mocked hooks.
+import { BillingPeriodTabs } from "@/features/pricing/components/BillingPeriodTabs";
 import { PricingCards } from "@/features/pricing/components/PricingCards";
 import { isProPlan } from "@/features/pricing/utils/planPredicates";
 
-describe("PricingCards paid-only rendering", () => {
-  // TextMorph (torph) reads window.matchMedia for reduced-motion detection;
-  // jsdom doesn't implement it.
-  beforeAll(() => {
-    window.matchMedia =
-      window.matchMedia ||
-      ((query: string) => ({
-        matches: false,
-        media: query,
-        onchange: null,
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-      }));
-    // TextMorph also calls Element.getAnimations for its exit transition;
-    // jsdom doesn't implement the Web Animations API.
-    if (!Element.prototype.getAnimations) {
-      Element.prototype.getAnimations = () => [];
-    }
-  });
+// TextMorph (torph) reads window.matchMedia for reduced-motion detection;
+// jsdom doesn't implement it.
+beforeAll(() => {
+  window.matchMedia =
+    window.matchMedia ||
+    ((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+  // TextMorph also calls Element.getAnimations for its exit transition;
+  // jsdom doesn't implement the Web Animations API.
+  if (!Element.prototype.getAnimations) {
+    Element.prototype.getAnimations = () => [];
+  }
+});
 
+describe("PricingCards paid-only rendering", () => {
   it("renders only the paid plan when the backend returns no $0 row", () => {
     mockPlans = [PRO_PLAN];
     render(<PricingCards durationIsMonth hideEnterprise />);
@@ -169,6 +170,53 @@ describe("PricingCards yearly savings", () => {
     render(<PricingCards hideEnterprise />);
 
     expect(screen.getByText("3 months free")).not.toBeNull();
+  });
+});
+
+const EUR_PRO_MONTHLY: Plan = { ...PRO_PLAN, amount: 3000, currency: "EUR" };
+const EUR_PRO_YEARLY: Plan = {
+  ...EUR_PRO_MONTHLY,
+  id: "plan_pro_yearly",
+  dodo_product_id: "dodo_pro_yearly",
+  amount: 30000,
+  duration: "yearly",
+};
+
+// A row prices itself in its own currency, and a yearly saving is claimed only
+// against a monthly row in the same currency: two currencies need a rate.
+describe("a non-USD catalogue", () => {
+  it("prices the yearly card in the row's own currency", () => {
+    mockPlans = [EUR_PRO_MONTHLY, EUR_PRO_YEARLY];
+    const { container } = render(<PricingCards hideEnterprise />);
+
+    const text = container.textContent ?? "";
+    expect(text).toContain("€300");
+    expect(text).not.toContain("$");
+  });
+});
+
+describe("a monthly and a yearly row in different currencies", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("the yearly card claims no months free", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mockPlans = [{ ...EUR_PRO_MONTHLY, currency: "USD" }, EUR_PRO_YEARLY];
+    const { container } = render(<PricingCards hideEnterprise />);
+
+    expect(container.textContent).not.toMatch(/months? free/);
+  });
+
+  it("claims no yearly saving, and says why", () => {
+    const error = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    mockPlans = [{ ...EUR_PRO_MONTHLY, currency: "USD" }, EUR_PRO_YEARLY];
+    render(<BillingPeriodTabs isYearly={false} onChange={vi.fn()} />);
+
+    expect(screen.queryByText(/months? free|Save/)).toBeNull();
+    expect(error).toHaveBeenCalled();
   });
 });
 
